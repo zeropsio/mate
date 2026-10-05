@@ -64,6 +64,7 @@ import {
 import { VcsStatusBroadcaster } from "../../vcs/VcsStatusBroadcaster.ts";
 import { GitWorkflowService } from "../../git/GitWorkflowService.ts";
 import { withAgentNotes } from "../agentNotes.ts";
+import { makeSendLanes } from "../../sendLanes.ts";
 import { classifyModelSelectionChange } from "../modelSelectionChange.ts";
 const isProviderAdapterProcessError = Schema.is(ProviderAdapterProcessError);
 const isProviderAdapterRequestError = Schema.is(ProviderAdapterRequestError);
@@ -244,6 +245,7 @@ const make = Effect.gen(function* () {
     );
 
   const threadModelSelections = new Map<string, ModelSelection>();
+  const turnLanes = makeSendLanes();
   const compactingThreadIds = new Set<ThreadId>();
   type QueuedTurnStart = Extract<ProviderIntentEvent, { type: "thread.turn-start-requested" }>;
   // Turn starts received while a thread compacts, replayed in order once its session is restored.
@@ -1505,33 +1507,8 @@ const make = Effect.gen(function* () {
       turnsAfterCompaction.set(event.payload.threadId, queued);
       return;
     }
-    const sendPreparedTurn = Effect.gen(function* () {
+    const sendThroughLane = Effect.gen(function* () {
       const coordinator = Option.getOrUndefined(workspaceHistory);
-      // A crewmate's work is kept in its lane, never in checkpoints.
-      if (coordinator && thread.crew === undefined) {
-        const project = yield* resolveProject(thread.projectId);
-        const cwd = resolveThreadWorkspaceCwd({ thread, projects: project ? [project] : [] });
-        // The agent's own session says whether a send steers an open turn; the
-        // projection's lifecycle can lag it or lose the turn id mid-run.
-        const liveSession = (yield* providerService.listSessions()).find(
-          (session) => session.threadId === thread.id,
-        );
-        const continuationOf =
-          liveSession !== undefined
-            ? liveSession.status === "running"
-              ? liveSession.activeTurnId
-              : undefined
-            : thread.session?.status === "running"
-              ? (thread.session.activeTurnId ?? undefined)
-              : undefined;
-        if (cwd)
-          yield* coordinator.prepare({
-            threadId: thread.id,
-            runId: event.payload.messageId,
-            cwd,
-            ...(continuationOf ? { continuationOf } : {}),
-          });
-      }
       const sendTurnRequest = yield* buildSendTurnRequestForThread({
         threadId: event.payload.threadId,
         messageText: message.text,
@@ -1567,7 +1544,39 @@ const make = Effect.gen(function* () {
           ),
         ),
       );
-    }).pipe(
+    });
+    const prepareTurn = Effect.gen(function* () {
+      const coordinator = Option.getOrUndefined(workspaceHistory);
+      // A crewmate's work is kept in its lane, never in checkpoints.
+      if (coordinator && thread.crew === undefined) {
+        const project = yield* resolveProject(thread.projectId);
+        const cwd = resolveThreadWorkspaceCwd({ thread, projects: project ? [project] : [] });
+        // The agent's own session says whether a send steers an open turn; the
+        // projection's lifecycle can lag it or lose the turn id mid-run.
+        const liveSession = (yield* providerService.listSessions()).find(
+          (session) => session.threadId === thread.id,
+        );
+        const continuationOf =
+          liveSession !== undefined
+            ? liveSession.status === "running"
+              ? liveSession.activeTurnId
+              : undefined
+            : thread.session?.status === "running"
+              ? (thread.session.activeTurnId ?? undefined)
+              : undefined;
+        if (cwd)
+          yield* coordinator.prepare({
+            threadId: thread.id,
+            runId: event.payload.messageId,
+            cwd,
+            ...(continuationOf ? { continuationOf } : {}),
+          });
+      }
+      // One lane per thread for a turn's session setup and its send: one
+      // message's setup never restarts the session under another's handshake.
+      yield* turnLanes(thread.id, sendThroughLane);
+    });
+    const sendPreparedTurn = prepareTurn.pipe(
       Effect.catchCause((cause) =>
         recoverTurnStartFailure(cause).pipe(
           Effect.ensuring(

@@ -641,6 +641,43 @@ describe("ProviderCommandReactor", () => {
     };
   }
 
+  effectIt.effect("never sets a session up under another message's send", () =>
+    Effect.gen(function* () {
+      const firstSendHeld = yield* Deferred.make<void>();
+      let sends = 0;
+      const harness = yield* Effect.promise(() =>
+        createHarness({
+          threadModelSelection: {
+            instanceId: ProviderInstanceId.make("claudeAgent"),
+            model: "claude-sonnet-4-6",
+          },
+          inSessionModelOptions: ["effort"],
+          workspaceHistory: {
+            prepare: () => Effect.void,
+            release: () => Effect.void,
+            markDispatched: () => Effect.void,
+          },
+          onSendTurn: Effect.suspend(() =>
+            ++sends === 1 ? Deferred.await(firstSendHeld) : Effect.void,
+          ),
+        }),
+      );
+
+      yield* harness.engine.dispatch(claudeTurnStart("lane-a", [{ id: "fastMode", value: false }]));
+      yield* Effect.promise(() => waitFor(() => harness.sendTurn.mock.calls.length === 1));
+      yield* harness.engine.dispatch(claudeTurnStart("lane-b", [{ id: "fastMode", value: true }]));
+      // Without the lane the second message's setup restarts the session here.
+      yield* Effect.promise(() =>
+        waitFor(() => harness.startSession.mock.calls.length > 1, 300).catch(() => undefined),
+      );
+      expect(harness.startSession).toHaveBeenCalledTimes(1);
+
+      yield* Deferred.succeed(firstSendHeld, undefined);
+      yield* Effect.promise(() => waitFor(() => harness.sendTurn.mock.calls.length === 2));
+      expect(harness.startSession).toHaveBeenCalledTimes(2);
+    }),
+  );
+
   effectIt.effect("prepares a message as a steer while the agent's own session runs a turn", () =>
     Effect.gen(function* () {
       const prepared: Array<Parameters<WorkspaceHistory["Service"]["prepare"]>[0]> = [];
