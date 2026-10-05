@@ -115,25 +115,34 @@ describe("spans", () => {
   it("ends once with its duration, and drops only one that never ended", () => {
     const time = clock(100);
     const diagnostics = createMateDiagnostics({ now: time.now, enabled: true });
-    const finished = diagnostics.span("flow-pass", { pass: "forge", groups: 2 });
+    const finished = diagnostics.span("identity-exchange", {
+      origin: "https://a.zerops.app",
+      reason: "user",
+    });
     time.advance(40);
-    finished.end({ answered: 1 });
+    finished.end({ outcome: "success" });
     finished.drop();
-    finished.end({ answered: 2 });
+    finished.end({ outcome: "success", kept: true });
     const superseded = diagnostics.span("access-round", { round: 7 });
     time.advance(10);
     superseded.drop();
     superseded.end({ outcome: "verified", reads: 3 });
     expect(diagnostics.snapshot()).toEqual([
-      { t: 100, kind: "flow-pass", phase: "start", pass: "forge", groups: 2 },
+      {
+        t: 100,
+        kind: "identity-exchange",
+        phase: "start",
+        origin: "https://a.zerops.app",
+        reason: "user",
+      },
       {
         t: 140,
-        kind: "flow-pass",
+        kind: "identity-exchange",
         phase: "end",
-        pass: "forge",
-        groups: 2,
+        origin: "https://a.zerops.app",
+        reason: "user",
         durationMs: 40,
-        answered: 1,
+        outcome: "success",
       },
       { t: 140, kind: "access-round", phase: "start", round: 7 },
       { t: 150, kind: "access-round", phase: "dropped", round: 7, durationMs: 10 },

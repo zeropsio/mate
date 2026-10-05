@@ -85,11 +85,6 @@ interface MateDiagnosticSpans {
       | { readonly outcome: "verified"; readonly reads: number }
       | ({ readonly outcome: "failed"; readonly reads: number } & DiagnosticFailure);
   };
-  /** One pass over every group of the project flow; `answered` is how many groups it read. */
-  readonly "flow-pass": {
-    readonly start: { readonly pass: "forge"; readonly groups: number };
-    readonly end: { readonly answered: number };
-  };
 }
 
 export type MateDiagnosticSpanKind = keyof MateDiagnosticSpans;
