@@ -2347,7 +2347,7 @@ export default function ChatView(props: ChatViewProps) {
     [providerStatuses],
   );
   useThreadModelSelection({
-    threadRef: routeKind === "server" && serverThread ? routeThreadRef : null,
+    threadRef: routeKind === "server" ? routeThreadRef : null,
     threadSelection: serverThread?.modelSelection ?? null,
     write: writeThreadModelSelection,
     capabilitiesFor: threadModelCapabilitiesFor,

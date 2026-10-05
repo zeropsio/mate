@@ -3,7 +3,11 @@ import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { useEffect, useRef } from "react";
 
 import { useComposerDraftStore } from "../composerDraftStore";
-import { modelSelectionKey, selectionToWrite } from "./threadModelSelection.logic.ts";
+import {
+  draftPicksKey,
+  modelSelectionKey,
+  selectionToWrite,
+} from "./threadModelSelection.logic.ts";
 
 /**
  * One model selection per thread. The thread's stored selection wins: on
@@ -14,6 +18,7 @@ import { modelSelectionKey, selectionToWrite } from "./threadModelSelection.logi
 export function useThreadModelSelection(input: {
   /** A thread the server holds; null for a local draft, which keeps its own pick. */
   readonly threadRef: ScopedThreadRef | null;
+  /** The thread's stored selection; null while the thread loads. */
   readonly threadSelection: ModelSelection | null;
   readonly write: (selection: ModelSelection) => void;
   /** What a model takes, so a model switch keeps the thread's options it can. */
@@ -30,16 +35,29 @@ export function useThreadModelSelection(input: {
     readonly refKey: string | null;
     readonly threadKey: string | null;
     readonly written: string | null;
-  }>({ refKey: null, threadKey: null, written: null });
+    /** The draft's picks when this thread opened, before it loaded. */
+    readonly picksAtOpen: string | null;
+  }>({ refKey: null, threadKey: null, written: null, picksAtOpen: null });
   useEffect(() => {
     const refKey = threadRef ? scopedThreadKey(threadRef) : null;
     const previous = seen.current;
-    const moved = previous.refKey !== refKey || previous.threadKey !== threadKey;
-    // The echo of this tab's own pick is no change from elsewhere: a pick
-    // made since stays and goes to the thread.
-    const echo = moved && previous.refKey === refKey && threadKey === previous.written;
-    const foreign = moved && !echo;
-    seen.current = { refKey, threadKey, written: foreign ? null : previous.written };
+    const sameRef = previous.refKey === refKey;
+    const picks = draftPicksKey(draft);
+    const picksAtOpen = sameRef ? previous.picksAtOpen : picks;
+    const moved = !sameRef || previous.threadKey !== threadKey;
+    // The echo of this tab's own pick is no change from elsewhere, and neither
+    // is the thread arriving after the person picked while it loaded: such a
+    // pick stays and goes to the thread.
+    const echo = moved && sameRef && threadKey === previous.written;
+    const loadedAfterPick =
+      moved && sameRef && previous.threadKey === null && picks !== picksAtOpen;
+    const foreign = moved && !echo && !loadedAfterPick;
+    seen.current = {
+      refKey,
+      threadKey,
+      written: foreign ? null : previous.written,
+      picksAtOpen,
+    };
     if (!threadRef || !threadSelection) return;
     if (foreign) {
       // The thread's selection wins over this tab's pick.
@@ -54,7 +72,7 @@ export function useThreadModelSelection(input: {
     });
     const nextKey = modelSelectionKey(next);
     if (next === null || nextKey === seen.current.written) return;
-    seen.current = { refKey, threadKey, written: nextKey };
+    seen.current = { ...seen.current, written: nextKey };
     write(next);
   }, [capabilitiesFor, clearModelSelection, draft, threadKey, threadRef, threadSelection, write]);
 }

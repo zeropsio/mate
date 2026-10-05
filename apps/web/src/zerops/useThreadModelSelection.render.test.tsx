@@ -43,15 +43,18 @@ const capabilitiesFor = (selection: ModelSelection): ModelCapabilities =>
 
 let tree: ReactTestRenderer | undefined;
 const write = vi.fn<(selection: ModelSelection) => void>();
-function Probe(props: { threadRef: ScopedThreadRef | null; threadSelection: ModelSelection }) {
+function Probe(props: {
+  threadRef: ScopedThreadRef | null;
+  threadSelection: ModelSelection | null;
+}) {
   useThreadModelSelection({ ...props, write, capabilitiesFor });
   return null;
 }
-const mount = (threadSelection: ModelSelection, ref: ScopedThreadRef | null = threadRef) =>
+const mount = (threadSelection: ModelSelection | null, ref: ScopedThreadRef | null = threadRef) =>
   act(() => {
     tree = create(<Probe threadRef={ref} threadSelection={threadSelection} />);
   });
-const rerender = (threadSelection: ModelSelection) =>
+const rerender = (threadSelection: ModelSelection | null) =>
   act(() => tree?.update(<Probe threadRef={threadRef} threadSelection={threadSelection} />));
 const pick = (selection: ModelSelection) =>
   act(() => useComposerDraftStore.getState().setModelSelection(threadRef, selection));
@@ -129,6 +132,22 @@ describe("useThreadModelSelection", () => {
     });
     expect(write).toHaveBeenCalledExactlyOnceWith(withEffort("low"));
     expect(draftPick()).toEqual(withEffort("low"));
+  });
+
+  it("a pick made while the thread loads goes to it once it has loaded", () => {
+    mount(null);
+    pick(withEffort("xhigh"));
+    rerender(withEffort("max"));
+    expect(write).toHaveBeenCalledExactlyOnceWith(withEffort("xhigh"));
+    expect(draftPick()).toEqual(withEffort("xhigh"));
+  });
+
+  it("a stale pick from before the thread loaded gives way to it", () => {
+    pick(withEffort("xhigh"));
+    mount(null);
+    rerender(withEffort("max"));
+    expect(write).not.toHaveBeenCalled();
+    expect(draftPick()).toBeUndefined();
   });
 
   it("a local draft thread keeps its own pick", () => {

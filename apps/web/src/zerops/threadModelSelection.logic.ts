@@ -72,3 +72,11 @@ export function withThreadOptions(
     : undefined;
   return kept ? { ...pick, options: kept } : pick;
 }
+
+/** A draft's model picks by value, whatever thread they are for. */
+export function draftPicksKey(draft: DraftModelSelection | null | undefined): string {
+  const picks = Object.entries(draft?.modelSelectionByProvider ?? {})
+    .map(([instanceId, selection]) => [instanceId, modelSelectionKey(selection)] as const)
+    .toSorted(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  return JSON.stringify([draft?.activeProvider ?? null, picks]);
+}
