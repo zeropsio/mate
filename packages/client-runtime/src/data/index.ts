@@ -16,6 +16,7 @@ export { historyScope, runningScope, type ProcessValue } from "./families/proces
 export {
   buildsUnderWay,
   projectProcesses,
+  projectsProcesses,
   runningWork,
   type HistoryRead,
   type ProjectKey,

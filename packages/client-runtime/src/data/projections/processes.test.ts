@@ -5,7 +5,7 @@ import { historyScope, runningScope } from "../families/process.ts";
 import { emptyAccount, linkKeys, type AccountState } from "../model.ts";
 import { reduceAccount, type AccountInput } from "../reducer.ts";
 import { readsOfState } from "../store.ts";
-import { buildsUnderWay, projectProcesses, runningWork } from "./processes.ts";
+import { buildsUnderWay, projectProcesses, projectsProcesses, runningWork } from "./processes.ts";
 
 const KEY = { orgId: ORG, projectId: "p1" };
 const apply = (state: AccountState, inputs: ReadonlyArray<AccountInput>) =>
@@ -94,6 +94,12 @@ const ids = (state: AccountState) =>
   projectProcesses.derive(readsOfState(state), KEY).processes?.map((process) => process.id);
 
 describe("projectProcesses", () => {
+  it("names apart what runs now: listed running, never an ended or a restarted-elsewhere one", () => {
+    const read = projectProcesses.derive(readsOfState(live()), KEY);
+    expect(read.running.map((process) => process.id)).toEqual(["build"]);
+    expect(projectProcesses.derive(readsOfState(emptyAccount), KEY).running).toEqual([]);
+  });
+
   it.each([
     {
       name: "before the organization's running work was first read",
@@ -209,5 +215,18 @@ describe("buildsUnderWay", () => {
     expect(
       buildsUnderWay.derive(readsOfState(emptyAccount), { orgId: ORG, projectIds: ["p1"] }),
     ).toEqual([]);
+  });
+});
+
+describe("projectsProcesses", () => {
+  it("reads several projects' processes at once, each as projectProcesses reads it", () => {
+    const state = live();
+    const read = projectsProcesses.derive(readsOfState(state), {
+      orgId: ORG,
+      projectIds: ["p1", "p2"],
+    });
+    expect(Object.keys(read)).toEqual(["p1", "p2"]);
+    expect(read.p1).toEqual(projectProcesses.derive(readsOfState(state), KEY));
+    expect(read.p2?.processes?.map((process) => process.id)).toEqual(["elsewhere"]);
   });
 });

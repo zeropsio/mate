@@ -106,6 +106,8 @@ function historyRead(stream: StreamState): HistoryRead {
 export interface ProjectProcesses {
   /** Every process held of the project, newest first; `undefined` before the first read. */
   readonly processes: ReadonlyArray<ProcessValue> | undefined;
+  /** Those that run now, as the organization's running work lists them, newest first. */
+  readonly running: ReadonlyArray<ProcessValue>;
   /** The organization's running work is observed live now. */
   readonly live: boolean;
   /** Read before and not live now: what is held stays, catching up. */
@@ -125,15 +127,37 @@ export const projectProcesses: Projection<ProjectKey, ProjectProcesses> = {
   derive: (read, { orgId, projectId }) => {
     const { complete, ...fresh } = freshness(read, orgId);
     const history = historyRead(read.stream(historyScope(orgId, projectId)));
-    const held = [...read.index("project", projectId)].flatMap((id) => {
-      const fact = read.fact("process", id);
-      return fact.kind === "known" ? [fact.value] : [];
-    });
+    const valuesOf = (ids: ReadonlySet<string>) =>
+      [...ids]
+        .flatMap((id) => {
+          const fact = read.fact("process", id);
+          return fact.kind === "known" ? [fact.value] : [];
+        })
+        .sort(newestFirst);
+    const held = valuesOf(read.index("project", projectId));
     return {
-      processes: complete || held.length > 0 ? [...held].sort(newestFirst) : undefined,
+      processes: complete || held.length > 0 ? held : undefined,
+      running: valuesOf(read.index("running", projectId)),
       ...fresh,
       history,
     };
   },
+  equals: sameValue,
+};
+
+/** Several projects' processes at once: what a surface listing many Mates follows each one by. */
+export const projectsProcesses: Projection<
+  { readonly orgId: string; readonly projectIds: ReadonlyArray<string> },
+  Readonly<Record<string, ProjectProcesses>>
+> = {
+  name: "projectsProcesses",
+  keyOf: ({ orgId, projectIds }) => `${orgId}/${projectIds.join(",")}`,
+  derive: (read, { orgId, projectIds }) =>
+    Object.fromEntries(
+      projectIds.map((projectId) => [
+        projectId,
+        projectProcesses.derive(read, { orgId, projectId }),
+      ]),
+    ),
   equals: sameValue,
 };
