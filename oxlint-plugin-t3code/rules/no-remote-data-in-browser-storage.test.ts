@@ -130,6 +130,14 @@ describe("t3code/no-remote-data-in-browser-storage", () => {
       `export const read = () => localStorage.getItem("k");`,
     );
   }
+  webFile.invalid(
+    "reports a zustand store persisted outside the allowlist",
+    `import { persist } from "zustand/middleware";\nexport const store = create(persist(() => ({}), { name: "mate:fixture" }));`,
+  );
+  webFile.valid(
+    "leaves zustand's other middleware alone",
+    `import { subscribeWithSelector } from "zustand/middleware";\nexport const m = subscribeWithSelector;`,
+  );
   webFile.valid(
     "leaves a storage the module was handed alone",
     `export const read = (localStorage: Storage) => localStorage.getItem("k");`,

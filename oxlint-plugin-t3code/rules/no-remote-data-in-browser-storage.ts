@@ -13,7 +13,12 @@ import { getPropertyName, resolveVariable, unwrapExpression } from "../utils.ts"
  * Data a source answered never lands in browser storage: it lives in memory, in the store, and a
  * reload reads it again. Browser storage holds what the person chose and typed and how they sign
  * in. Every use of `localStorage`, `sessionStorage`, IndexedDB, a `storage` event, the app's own
- * storage helpers and the mobile key-value stores is reported outside the modules allowed below.
+ * storage helpers, the mobile key-value stores and zustand's `persist` (local storage by default)
+ * is reported outside the modules allowed below.
+ *
+ * Out of scope for now: the mobile app's SQLite offline cache (`persistence/mobile-database.ts`,
+ * `connection/environment-cache-store.ts`, the dynamic `import("expo-sqlite")`), T3's own cache of
+ * Mate conversations; the data-layer rewrite decides its fate separately.
  */
 const RULE_NAME = "no-remote-data-in-browser-storage";
 const LEDGER_DIRECTORY_ENV = "T3CODE_BROWSER_STORAGE_LEDGER_DIRECTORY";
@@ -200,8 +205,20 @@ export default defineRule({
         }
       },
       ImportDeclaration(node) {
-        if (node.importKind === "type" || !STORAGE_LIBRARIES.has(String(node.source.value))) return;
-        report(node, String(node.source.value));
+        if (node.importKind === "type") return;
+        const source = String(node.source.value);
+        if (STORAGE_LIBRARIES.has(source)) return report(node, source);
+        if (source !== "zustand/middleware") return;
+        for (const specifier of node.specifiers) {
+          if (
+            specifier.type === "ImportSpecifier" &&
+            specifier.importKind !== "type" &&
+            specifier.imported.type === "Identifier" &&
+            specifier.imported.name === "persist"
+          ) {
+            report(specifier, `${source} persist`);
+          }
+        }
       },
       Identifier(node) {
         const global = STORAGE_GLOBALS.has(node.name);
