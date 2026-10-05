@@ -13,6 +13,8 @@ export type OperationInput =
       readonly kind: "operation-recorded";
       readonly requestId: string;
       readonly intent: OperationIntent;
+      /** Handles already known for it: a request resumed after a restart. */
+      readonly handles?: ReadonlyArray<string>;
     }
   /** The request went out and its answer was lost: whether the owner took it is unknown. */
   | { readonly kind: "operation-uncertain"; readonly requestId: string }
@@ -30,6 +32,12 @@ export type OperationInput =
       readonly nextActor: string;
     };
 
+/** Handles only accumulate: one the account knew is never forgotten by a later answer. */
+const withHandles = (record: OperationRecord, handles: ReadonlyArray<string>): OperationRecord =>
+  handles.every((handle) => record.handles.includes(handle))
+    ? record
+    : { ...record, handles: [...new Set([...record.handles, ...handles])] };
+
 const settled = (receipt: OperationReceipt | null) =>
   receipt !== null && receipt.outcome.kind !== "pending";
 
@@ -38,15 +46,16 @@ export function reduceOperation(
   input: OperationInput,
 ): OperationRecord | undefined {
   if (input.kind === "operation-recorded")
-    return (
-      record ?? {
-        requestId: input.requestId,
-        intent: input.intent,
-        submission: "recorded",
-        receipt: null,
-        unresolved: null,
-      }
-    );
+    return record === undefined
+      ? {
+          requestId: input.requestId,
+          intent: input.intent,
+          submission: "recorded",
+          receipt: null,
+          handles: input.handles ?? [],
+          unresolved: null,
+        }
+      : withHandles(record, input.handles ?? []);
   if (record === undefined) return undefined;
   switch (input.kind) {
     case "operation-uncertain":
@@ -60,7 +69,12 @@ export function reduceOperation(
     case "operation-receipt":
       return settled(record.receipt)
         ? record
-        : { ...record, submission: "answered", receipt: input.receipt, unresolved: null };
+        : {
+            ...withHandles(record, input.receipt.handles),
+            submission: "answered",
+            receipt: input.receipt,
+            unresolved: null,
+          };
     case "operation-exhausted":
       return settled(record.receipt)
         ? record

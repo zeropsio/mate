@@ -86,7 +86,7 @@ const processRow = (store: AccountStore, id: string, status: string, version: nu
     ],
   });
 
-function zerops(options: { readonly loseAnswer: boolean }) {
+function zerops(options: { readonly loseAnswer: boolean; readonly unreachable?: () => boolean }) {
   const submitted: string[] = [];
   const executor: OperationExecutor = {
     submit: (requestId) =>
@@ -97,7 +97,10 @@ function zerops(options: { readonly loseAnswer: boolean }) {
           : Effect.succeed(receiptOf(requestId));
       }),
     // Zerops answers for its process, knowing nothing of the request id that started it.
-    lookupHandle: (handle) => Effect.sync(() => (handle === "proc-1" ? receiptOf(handle) : null)),
+    lookupHandle: (handle) =>
+      options.unreachable?.()
+        ? Effect.fail({ outcome: "transient", message: "Zerops could not be reached." })
+        : Effect.sync(() => (handle === "proc-1" ? receiptOf(handle) : null)),
   };
   return { executor, submitted };
 }
@@ -178,6 +181,28 @@ describe("an operation Zerops executes", () => {
         makeId: ids(),
       }).resume("request-7", RESTART, ["proc-1"]);
       expect(owner.submitted).toEqual([]);
+      expect(progress(store, "request-7")).toEqual({ stage: "accepted", operationId: "proc-1" });
+    }),
+  );
+
+  it.effect("asks again by the handle it resumed with, never adopting another process", () =>
+    Effect.gen(function* () {
+      const store = account();
+      let unreachable = true;
+      const owner = zerops({ loseAnswer: false, unreachable: () => unreachable });
+      const operations = makeOperations({
+        store,
+        kinds,
+        executors: { zerops: owner.executor },
+        makeId: ids(),
+      });
+      yield* operations.resume("request-7", RESTART, ["proc-1"]);
+      expect(progress(store, "request-7")).toEqual({ stage: "uncertain", next: "ask-owner-again" });
+
+      // Someone else's process runs in the project meanwhile; the retry still asks by the handle.
+      processRow(store, "proc-other", "RUNNING", 1);
+      unreachable = false;
+      yield* operations.retry("request-7");
       expect(progress(store, "request-7")).toEqual({ stage: "accepted", operationId: "proc-1" });
     }),
   );

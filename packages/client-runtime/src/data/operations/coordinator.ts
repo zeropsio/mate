@@ -119,10 +119,10 @@ export function makeOperations(options: {
     requestId: string,
     intent: OperationIntent,
     resend: boolean,
-    handles: ReadonlyArray<string> = [],
   ): Effect.Effect<void> => {
     const { owner, executor } = executorOf(intent);
-    const handle = handles[0];
+    // Every ask goes by the handles the record holds first, whoever learned them.
+    const handle = store.state().operations.get(requestId)?.handles[0];
     if (handle !== undefined && executor.lookupHandle !== undefined)
       return Effect.matchEffect(executor.lookupHandle(handle), {
         onSuccess: (receipt) => admit(receipt, requestId),
@@ -182,8 +182,13 @@ export function makeOperations(options: {
       }),
     resume: (requestId, intent, handles) =>
       Effect.gen(function* () {
-        store.dispatch({ kind: "operation-recorded", requestId, intent });
-        yield* reconcile(requestId, intent, true, handles);
+        store.dispatch({
+          kind: "operation-recorded",
+          requestId,
+          intent,
+          ...(handles === undefined ? {} : { handles }),
+        });
+        yield* reconcile(requestId, intent, true);
       }),
   };
 }
