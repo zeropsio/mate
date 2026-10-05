@@ -834,6 +834,29 @@ describe("ProviderCommandReactor", () => {
       expect(prepared.map((input) => input.continuationOf)).toEqual([undefined, "turn-live"]);
       // A message that waits asks the session again: the first one's turn is open now.
       expect(yield* prepared[0]!.liveTurn!).toBe("turn-live");
+
+      // A session that never reports a running turn (Cursor's stays ready)
+      // leaves the decision to the projection's running turn.
+      harness.runtimeSessions[0] = { ...harness.runtimeSessions[0]!, status: "ready" };
+      yield* harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("cmd-steer-projected-running"),
+        threadId: ThreadId.make("thread-1"),
+        session: {
+          threadId: ThreadId.make("thread-1"),
+          providerName: "codex",
+          providerInstanceId: ProviderInstanceId.make("codex"),
+          status: "running",
+          runtimeMode: "approval-required",
+          activeTurnId: asTurnId("turn-projected"),
+          lastError: null,
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        },
+        createdAt: "2026-01-01T00:00:00.000Z",
+      });
+      yield* start("c");
+      yield* Effect.promise(() => waitFor(() => harness.sendTurn.mock.calls.length === 3));
+      expect(prepared[2]?.continuationOf).toBe("turn-projected");
     }),
   );
 

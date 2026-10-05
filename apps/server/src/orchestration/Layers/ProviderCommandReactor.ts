@@ -566,17 +566,18 @@ const make = Effect.gen(function* () {
   });
 
   /**
-   * The turn a message sent now would steer: the agent's own session says
-   * whether one is open; the projection's lifecycle can lag it or lose the
-   * turn id mid-run.
+   * The turn a message sent now would steer: the agent's own session's when
+   * it reports one running (the projection's lifecycle can lag it or lose the
+   * turn id mid-run), else the projection's, for sessions that never report a
+   * running turn (Cursor's stays ready through its turns).
    */
   const runningTurnFor = (threadId: ThreadId): Effect.Effect<TurnId | undefined> =>
     Effect.gen(function* () {
       const liveSession = (yield* providerService.listSessions()).find(
         (session) => session.threadId === threadId,
       );
-      if (liveSession !== undefined) {
-        return liveSession.status === "running" ? liveSession.activeTurnId : undefined;
+      if (liveSession?.status === "running" && liveSession.activeTurnId !== undefined) {
+        return liveSession.activeTurnId;
       }
       const thread = yield* resolveThreadShell(threadId);
       return thread?.session?.status === "running"
