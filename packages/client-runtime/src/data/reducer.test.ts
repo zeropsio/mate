@@ -242,6 +242,19 @@ describe("reduceAccount", () => {
       expect(ended.changed.has("index:running:x")).toBe(true);
     });
 
+    it("keeps every process of a project it holds under the project, running or ended", () => {
+      const ended = apply(live(), [
+        members(["q"], []),
+        rows(processRow("q", 1, "RUNNING")),
+        rows(processRow("q", 2, "FINISHED")),
+        members([], ["q"]),
+        rows(processRow("r", 1, "FAILED", "y")),
+      ]);
+      expect(indexOf(ended, "running", "x")).toEqual(new Set());
+      expect(indexOf(ended, "project", "x")).toEqual(new Set(["q"]));
+      expect(indexOf(ended, "project", "y")).toEqual(new Set(["r"]));
+    });
+
     it("clears a process that finished during an outage without inventing how it ended", () => {
       const lit = apply(live(), [members(["q"], []), rows(processRow("q", 1, "RUNNING"))]);
       expect(indexOf(lit, "running", "x")).toEqual(new Set(["q"]));

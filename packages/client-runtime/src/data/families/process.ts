@@ -38,15 +38,20 @@ export const processFamily: FamilySpec<"process"> = {
   family: "process",
   authority: "zerops",
   scope: { source: "zerops", suffix: "running", leaving: "removed", demand: "navigation" },
-  /**
-   * Running ids by project: a process runs while its newest row is not terminal and its running
-   * scope has not let it go. A terminal row clears it; leaving the scope clears it inventing no end.
-   */
-  index: {
-    name: "running",
-    keyOf: (value, listed) =>
-      RUNNING.has(value.status) && listed !== "removed" ? value.projectId : null,
-  },
+  indexes: [
+    /**
+     * Running ids by project: a process runs while its newest row is not terminal and its running
+     * scope has not let it go. A terminal row clears it; leaving the scope clears it inventing no
+     * end.
+     */
+    {
+      name: "running",
+      keyOf: (value, listed) =>
+        RUNNING.has(value.status) && listed !== "removed" ? value.projectId : null,
+    },
+    /** Every process this account holds, by project: running, ended, or read in a history. */
+    { name: "project", keyOf: (value) => value.projectId },
+  ],
   zerops: {
     entity: "process",
     membership: ({ orgId }) => [

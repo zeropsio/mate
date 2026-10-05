@@ -9,6 +9,7 @@
  * @module data/reducer
  */
 import { FAMILIES, familySpec, ownScopeOf, scopeListing, scopeSpec } from "./families/index.ts";
+import type { FamilyIndex } from "./families/spec.ts";
 import {
   factKey,
   type Access,
@@ -18,7 +19,6 @@ import {
   type FactKey,
   type Family,
   type FamilyValues,
-  type MemberState,
   type Membership,
   type MembershipDelta,
   type ReadKey,
@@ -326,16 +326,17 @@ function reduceEvidence(
   };
 }
 
-/** Where a fact counts in its family's index now: its value and how its scope lists it. */
-function indexKey(state: AccountState, family: Family, id: string): string | null {
-  const spec = familySpec(family);
+/** Where a fact counts in one of its family's indexes now: its value and how its scope lists it. */
+function indexKey(
+  state: AccountState,
+  family: Family,
+  index: FamilyIndex<unknown>,
+  id: string,
+): string | null {
   const fact = state.facts.get(factKey(family, id));
-  if (spec.index === undefined || fact?.content.kind !== "value") return null;
+  if (fact?.content.kind !== "value") return null;
   const listed = state.memberships.get(ownScopeOf(fact.scope))?.members.get(id);
-  return (spec.index.keyOf as (value: unknown, listed: MemberState | undefined) => string | null)(
-    fact.content.value,
-    listed,
-  );
+  return index.keyOf(fact.content.value, listed);
 }
 
 /**
@@ -355,14 +356,16 @@ function reindex(before: AccountState, after: AccountState, changed: Set<ReadKey
     return draft;
   };
   for (const spec of FAMILIES) {
-    if (spec.index === undefined) continue;
-    for (const id of touched(spec.family, before, after, changed)) {
-      const was = indexKey(before, spec.family, id);
-      const is = indexKey(after, spec.family, id);
-      if (was === is) continue;
-      if (was !== null) draftOf(`${spec.index.name}:${was}`).delete(id);
-      if (is !== null) draftOf(`${spec.index.name}:${is}`).add(id);
-    }
+    const indexes = (spec.indexes ?? []) as ReadonlyArray<FamilyIndex<unknown>>;
+    if (indexes.length === 0) continue;
+    for (const id of touched(spec.family, before, after, changed))
+      for (const index of indexes) {
+        const was = indexKey(before, spec.family, index, id);
+        const is = indexKey(after, spec.family, index, id);
+        if (was === is) continue;
+        if (was !== null) draftOf(`${index.name}:${was}`).delete(id);
+        if (is !== null) draftOf(`${index.name}:${is}`).add(id);
+      }
   }
   if (drafts.size === 0) return after;
   const indexes = new Map(after.indexes);

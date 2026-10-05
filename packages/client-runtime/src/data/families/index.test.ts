@@ -9,7 +9,7 @@ const otherFamily = {
   ...processFamily,
   family: "other",
   scope: { ...processFamily.scope, suffix: "other" },
-  index: { ...processFamily.index!, name: "other" },
+  indexes: [{ name: "other", keyOf: () => null }],
   details: [],
 };
 
@@ -32,7 +32,7 @@ describe("the registries", () => {
     },
     {
       name: "an index name twice",
-      families: [processFamily, { ...otherFamily, index: processFamily.index }],
+      families: [processFamily, { ...otherFamily, indexes: processFamily.indexes }],
       error: /index running/,
     },
   ])("refuse $name at startup", ({ families, error }) => {

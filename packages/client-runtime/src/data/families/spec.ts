@@ -79,10 +79,10 @@ export interface FamilySpec<F extends Family> {
     readonly demand: "navigation" | "detail";
   };
   /**
-   * Its index. A member's `listed` is how this family's own scope lists it, whichever listing
-   * last delivered its value.
+   * The indexes the reducer keeps for it. A member's `listed` is how this family's own scope lists
+   * it, whichever listing last delivered its value.
    */
-  readonly index?: FamilyIndex<FamilyValues[F]>;
+  readonly indexes?: ReadonlyArray<FamilyIndex<FamilyValues[F]>>;
   readonly zerops?: ZeropsFamilySource<FamilyValues[F]>;
   readonly details?: ReadonlyArray<DetailListing>;
 }

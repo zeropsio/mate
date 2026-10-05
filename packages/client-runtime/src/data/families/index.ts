@@ -21,7 +21,7 @@ export function defineFamilies(
     once(`family ${spec.family}`);
     once(`scope ${spec.scope.suffix}`);
     for (const listing of spec.details ?? []) once(`scope ${listing.suffix}`);
-    if (spec.index !== undefined) once(`index ${spec.index.name}`);
+    for (const index of spec.indexes ?? []) once(`index ${index.name}`);
   }
   return families;
 }

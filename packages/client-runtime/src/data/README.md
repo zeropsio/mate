@@ -16,7 +16,7 @@ duplicate family, scope name, index name or operation kind when the layer loads.
 - declare its value: `declare module "../model.ts" { interface FamilyValues { readonly <name>: Value } }`;
 - export a `FamilySpec`: its owner (`authority`); its one listing scope (`source`, `suffix`, what
   `leaving` the scope means, and `demand` — `navigation`, always and once per organization, or
-  `detail`, only while demanded and once per owner id); an optional `index` (`name`, `keyOf`); for a
+  `detail`, only while demanded and once per owner id); optional `indexes` (each a `name` and a `keyOf`); for a
   Zerops family, `zerops` (`entity`, the `membership` and `updates` searches, `decode`, and
   `verifyPath` where leaving must ask "deleted or not yours?");
 - export its scope helper (`scopeOf(spec, orgId)`);
