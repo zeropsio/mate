@@ -742,4 +742,30 @@ describe("RunChat — an operation's card, read from the account store", () => {
     const renderer = mount(settledRow(op));
     expect(opener(renderer)).toHaveLength(0);
   });
+
+  // A settled call of one step wears no bar: its mark and its time say it (pass 43).
+  it.each([
+    { name: "a call of one step", op: kindOp({ kind: "env", steps: one("done") }), bars: 0 },
+    {
+      name: "a look at the services",
+      op: kindOp({
+        kind: "discover",
+        readResult: { kind: "discover", pending: false, rows: [] },
+      }),
+      bars: 0,
+    },
+    {
+      name: "a batch, a segment per service",
+      op: kindOp({
+        kind: "deploy",
+        batch: true,
+        steps: [...one("done"), { id: "web", label: "web", state: "done", stateLabel: "Done" }],
+      }),
+      bars: 1,
+    },
+  ])("$name: bars $bars", ({ op, bars }) => {
+    store.processes = [];
+    const renderer = mount(settledRow(op));
+    expect(nodes(renderer, "data-status-bar")).toHaveLength(bars);
+  });
 });

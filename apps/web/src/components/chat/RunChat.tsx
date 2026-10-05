@@ -1794,6 +1794,8 @@ function OperationLine({
           operation.batch === true ? undefined : regions?.observed?.pipeline,
         )
       : null;
+  // Settled, a bar only where it says what the line does not (`settledOperationBar`).
+  const settled = settledOperationBar(operation, undone);
   const words =
     noResult === undefined ? operationLineWords(operation) : operationUnreturnedWords(operation);
   // A deploy's steps are its progress, under its name: the line holds its
@@ -1836,8 +1838,8 @@ function OperationLine({
             <StatusBar className="w-12" segments={live.segments} />
             {live.word === null ? null : <span className="text-muted-foreground">{live.word}</span>}
           </>
-        ) : running || noResult !== undefined ? null : (
-          <StatusBar className="w-12" segments={settledOperationBar(operation, undone)} />
+        ) : running || noResult !== undefined || settled.length === 0 ? null : (
+          <StatusBar className="w-12" segments={settled} />
         )}
         {detail !== null ? (
           <span

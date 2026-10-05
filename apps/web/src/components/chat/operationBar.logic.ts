@@ -160,11 +160,14 @@ export function processReasons(
 
 /**
  * A settled operation's bar in the chat, from what it knew of its steps: it
- * carries what the call found, not only that the call ran. Whole and green
- * when all went as asked; a step that found something wrong — a dev server
- * not running, from a call that itself went through — amber; a call that
- * failed cut where it failed, red while that still stands and quiet once a
- * later one undid it (K9).
+ * carries what the call found, not only that the call ran. A step that found
+ * something wrong — a check that did not pass, from a call that itself went
+ * through — amber; a call that failed cut where it failed, red while that
+ * still stands and quiet once a later one undid it (K9). Its segments are its
+ * services where they mean services — a batch, an import, a mount, a
+ * stand-up, a check of every service — and kept however they went. Empty —
+ * no bar — where it would say nothing its mark, its words and its time do
+ * not: one segment, or every one only done (pass 43).
  */
 export function settledOperationBar(
   operation: ZeropsOperation,
@@ -177,8 +180,8 @@ export function settledOperationBar(
     operation.kind === "standup"
       ? operation.steps.filter((step) => standupStepRole(step) === "own")
       : operation.steps;
-  if (steps.length === 0) return [{ key: "whole", tone: failed ? cut : "done" }];
-  return steps.map((step) => ({
+  if (steps.length < 2) return [];
+  const segments = steps.map((step): { readonly key: string; readonly tone: BarTone } => ({
     key: step.id,
     tone: failed
       ? step.state === "done"
@@ -192,6 +195,24 @@ export function settledOperationBar(
           : "attention"
         : "done",
   }));
+  if (segmentsAreServices(operation)) return segments;
+  return segments.every((segment) => segment.tone === "done") ? [] : segments;
+}
+
+/** Whether an operation's steps are its services: a batch, an import, a mount, a stand-up, a check of every service. */
+function segmentsAreServices(operation: ZeropsOperation): boolean {
+  switch (operation.kind) {
+    case "deploy":
+      return operation.batch === true;
+    case "import":
+    case "mount":
+    case "standup":
+      return true;
+    case "verify":
+      return operation.subject === "all services";
+    default:
+      return false;
+  }
 }
 
 /** A pipeline step's state as its segment's tone. */

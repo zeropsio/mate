@@ -194,25 +194,35 @@ describe("processReasons — why the platform says each service failed", () => {
   });
 });
 
+// A bar says what its line, its mark and its time do not: where a call
+// failed among its steps, how its services went. A bar of one segment, or one
+// whose only news is "done", says nothing and is not drawn (pass 43).
 describe("settledOperationBar — a settled operation's bar carries what it found", () => {
+  const two = [step("appdev", "done"), step("apidev", "done")];
   it.each([
     {
-      name: "a dev server found running: green",
-      op: { kind: "devServer", phase: "done", steps: [step("dev-server", "done")] },
+      name: "a call of one step: none",
+      op: { kind: "env", phase: "done", steps: [step("env", "done")] },
       undone: false,
-      tones: ["done"],
+      tones: [],
     },
     {
-      name: "a dev server found not running, from a call that went through: amber, never green",
-      op: { kind: "devServer", phase: "done", steps: [step("dev-server", "failed")] },
+      name: "a call with no steps: none",
+      op: { kind: "discover", phase: "done", steps: [] },
       undone: false,
-      tones: ["attention"],
+      tones: [],
     },
     {
-      name: "that finding undone by a later call: quiet",
+      name: "a one-step finding, its mark and words say it: none",
       op: { kind: "devServer", phase: "done", steps: [step("dev-server", "failed")] },
-      undone: true,
-      tones: ["waiting"],
+      undone: false,
+      tones: [],
+    },
+    {
+      name: "a one-step failure, its mark and reason say it: none",
+      op: { kind: "manage", phase: "failed", steps: [step("restart", "failed")] },
+      undone: false,
+      tones: [],
     },
     {
       name: "a call that failed: cut red where it failed",
@@ -225,16 +235,50 @@ describe("settledOperationBar — a settled operation's bar carries what it foun
       tones: ["done", "failed", "waiting"],
     },
     {
-      name: "all checks passed: whole",
-      op: { kind: "verify", phase: "done", steps: [step("a", "done"), step("b", "done")] },
+      name: "that failure undone by a later call: quiet",
+      op: {
+        kind: "deploy",
+        phase: "failed",
+        steps: [step("build", "done"), step("deploy", "failed")],
+      },
+      undone: true,
+      tones: ["done", "waiting"],
+    },
+    {
+      name: "every check passed, only done: none",
+      op: { kind: "verify", phase: "done", steps: two },
+      undone: false,
+      tones: [],
+    },
+    {
+      name: "a check that found something wrong: amber where",
+      op: { kind: "verify", phase: "done", steps: [step("a", "done"), step("b", "failed")] },
+      undone: false,
+      tones: ["done", "attention"],
+    },
+    {
+      name: "a batch deploy: a segment per service",
+      op: { kind: "deploy", phase: "done", batch: true, steps: two },
       undone: false,
       tones: ["done", "done"],
     },
     {
-      name: "no steps, landed: one green",
-      op: { kind: "deploy", phase: "done", steps: [] },
+      name: "a batch of one service: none",
+      op: { kind: "deploy", phase: "done", batch: true, steps: [step("appdev", "done")] },
       undone: false,
-      tones: ["done"],
+      tones: [],
+    },
+    {
+      name: "an import: a segment per service",
+      op: { kind: "import", phase: "done", steps: two },
+      undone: false,
+      tones: ["done", "done"],
+    },
+    {
+      name: "a check of all services: a segment per service",
+      op: { kind: "verify", phase: "done", subject: "all services", steps: two },
+      undone: false,
+      tones: ["done", "done"],
     },
   ] as const)("$name", ({ op, undone, tones }) => {
     expect(
