@@ -62,6 +62,7 @@ import { ExpandedImageDialog } from "../chat/ExpandedImageDialog";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { ServiceBrowserLink } from "../ServiceBrowserLink";
 import { ZeropsMark } from "../ZeropsMark";
+import { drawnSteps } from "./operation/drawnSteps";
 import { ExplanationBlock } from "./operation/ExplanationBlock";
 import { CheckChips, PipelineSegments } from "./operation/OperationStepRow";
 import {
@@ -591,29 +592,6 @@ function pipelineListed(pipeline: PipelineReadout | undefined): boolean {
 
 function isRunningPhase(operation: ZeropsOperation): boolean {
   return operation.phase === "running";
-}
-
-/**
- * The kinds whose card is a header and a result: their one step repeats what
- * the status word and the result line already say, so it is drawn only when
- * it failed.
- */
-const RESULT_LINE_KINDS: ReadonlySet<ZeropsOperationKind> = new Set<ZeropsOperationKind>([
-  "delete",
-  "devServer",
-  "env",
-  "manage",
-  "scale",
-]);
-
-/** The steps a card draws: all of them, except a result-line kind with nothing failed. */
-function drawnSteps(
-  operation: ZeropsOperation,
-  steps: ReadonlyArray<ProcessStep>,
-): ReadonlyArray<ProcessStep> {
-  return RESULT_LINE_KINDS.has(operation.kind) && !steps.some((step) => step.state === "failed")
-    ? []
-    : steps;
 }
 
 /** A passed verify's chips already say every check passed; its closing is said only on a failure. */

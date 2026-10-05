@@ -14,6 +14,7 @@ import type {
 import { standupStepRole, type ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 
+import { drawnSteps } from "../zerops/operation/drawnSteps";
 import { splitBatchDeploy } from "./conversation.logic";
 import type { BarTone } from "./StatusBar";
 
@@ -320,31 +321,43 @@ export function detailLines(
 ): number {
   if (operation.kind === "standup") return standupRows ?? 0;
   if (operation.kind === "import") return Math.max(operation.steps.length, observed?.steps ?? 0);
-  const read = operation.readResult;
-  const returned =
-    read === undefined
-      ? 0
-      : read.kind === "logs"
-        ? read.lines.length + (read.note === undefined ? 0 : 1)
-        : read.kind === "events" || read.kind === "discover"
-          ? read.rows.length
-          : 0;
+  // A read's card draws what it returned in place of its steps and its reason.
+  if (operation.readResult !== undefined) {
+    return returnedLines(operation.readResult, operation.steps) + operation.links.length;
+  }
+  // A result-line kind's one step is drawn only when it failed (`drawnSteps`).
+  const own = drawnSteps(operation, operation.steps).length;
   // What it read of the platform stands for the steps its call reserved.
   const drawn =
     observed === null
-      ? operation.steps.length
-      : (observed.steps > 0 ? observed.steps : operation.steps.length) +
-        observed.chips +
-        (observed.log ? 1 : 0);
+      ? own
+      : (observed.steps > 0 ? observed.steps : own) + observed.chips + (observed.log ? 1 : 0);
   return (
     drawn +
     operation.links.length +
-    returned +
     (operation.explanation === undefined ? 0 : 1) +
     (operation.version === undefined ? 0 : 1) +
     (operation.screenshot === undefined ? 0 : 1) +
     (operation.browserRead === undefined ? 0 : 1)
   );
+}
+
+/** What a read's card draws of what it returned: a log's lines and its note, a row each, a process each. */
+function returnedLines(
+  read: NonNullable<ZeropsOperation["readResult"]>,
+  steps: ZeropsOperation["steps"],
+): number {
+  if (read.pending) return 0;
+  switch (read.kind) {
+    case "logs":
+      return read.lines.length + (read.counts === undefined && read.note === undefined ? 0 : 1);
+    case "events":
+      return read.rows.length + (read.more === undefined ? 0 : 1);
+    case "discover":
+      return read.rows.length;
+    case "process":
+      return steps.length;
+  }
 }
 
 /**

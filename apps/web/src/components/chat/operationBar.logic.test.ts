@@ -280,6 +280,112 @@ describe("detailLines — how much an operation opens to", () => {
   });
 });
 
+// The count of what an operation opens to agrees with what its card draws,
+// kind by kind: a chevron that opens onto nothing is a defect (pass 43).
+describe("detailLines — what its card draws, kind by kind", () => {
+  const done = step("apidev", "done");
+  const failed = step("apidev", "failed");
+  const link = { label: "app.example", url: "https://app.example" };
+  const discover = (rows: number) => ({
+    kind: "discover" as const,
+    pending: false,
+    rows: Array.from({ length: rows }, (_, index) => ({
+      hostname: `svc${index}`,
+      status: { tone: "ok" as const, word: "Running" },
+    })),
+  });
+  it.each([
+    // A result-line kind's one step repeats its line: drawn only when it failed.
+    ...(["env", "delete", "scale", "manage", "devServer"] as const).flatMap((kind) => [
+      { name: `${kind}, done: nothing`, overrides: { kind, steps: [done] }, lines: 0 },
+      {
+        name: `${kind}, failed: its step and why`,
+        overrides: {
+          kind,
+          phase: "failed" as const,
+          steps: [failed],
+          explanation: { reason: "quota exceeded" },
+        },
+        lines: 2,
+      },
+    ]),
+    {
+      name: "a mount: its services",
+      overrides: { kind: "mount" as const, steps: [done] },
+      lines: 1,
+    },
+    {
+      name: "a subdomain: its step and its address",
+      overrides: { kind: "subdomain" as const, steps: [done], links: [link] },
+      lines: 2,
+    },
+    {
+      name: "a check: its checks",
+      overrides: { kind: "verify" as const, steps: [done, done] },
+      lines: 2,
+    },
+    {
+      name: "an error: why",
+      overrides: {
+        kind: "error" as const,
+        phase: "failed" as const,
+        explanation: { reason: "No such tool" },
+      },
+      lines: 1,
+    },
+    // A read draws what it returned in place of its steps and its reason.
+    {
+      name: "a look at the services: a row each",
+      overrides: { kind: "discover" as const, readResult: discover(2) },
+      lines: 2,
+    },
+    {
+      name: "a look that returned no service: nothing",
+      overrides: { kind: "discover" as const, steps: [done], readResult: discover(0) },
+      lines: 0,
+    },
+    {
+      name: "a log: its lines and its note",
+      overrides: {
+        kind: "logs" as const,
+        steps: [done],
+        readResult: {
+          kind: "logs" as const,
+          pending: false,
+          service: "apidev",
+          lines: [{ id: "l1", text: "listening", severity: "info" as const }],
+          note: "1 line",
+        },
+      },
+      lines: 2,
+    },
+    {
+      name: "the events: a row each and the rest",
+      overrides: {
+        kind: "events" as const,
+        readResult: {
+          kind: "events" as const,
+          pending: false,
+          rows: [{ id: "e1", action: "Deploy", status: { tone: "ok" as const, word: "Finished" } }],
+          more: "3 more",
+        },
+      },
+      lines: 2,
+    },
+    {
+      name: "a process followed: its processes",
+      overrides: {
+        kind: "process" as const,
+        steps: [done],
+        readResult: { kind: "process" as const, pending: false },
+      },
+      lines: 1,
+    },
+  ])("$name", ({ overrides, lines }) => {
+    expect(detailLines(operation(overrides as Partial<ZeropsOperation>), null)).toBe(lines);
+  });
+});
+
 /** A deploy's pipeline as the card reads it off the platform: a step per id, in its state. */
 function pipeline(
   states: ReadonlyArray<PipelineSpokenState>,
