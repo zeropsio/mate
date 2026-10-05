@@ -23,7 +23,8 @@
  *   a real run's 669 items, the history trails the Mate by 2.4 s at most.
  * - The last one standing holds its place `SLOT_HOLD_MS` past its end for the
  *   next, which takes it in one change; only a longer quiet says "Thinking",
- *   and once said it stands its minimum too.
+ *   and once said it stands its minimum against words — a call takes its
+ *   place at once, so it shows as it runs.
  * - What the record holds when the slot is first drawn is history at once,
  *   and so is everything once the run is over (`final`).
  *
@@ -33,7 +34,8 @@
 
 /**
  * How long anything the slot says, once said, stands before something else
- * takes its place: an item, and "Thinking" too.
+ * takes its place: an item, and "Thinking" too — against words; a call takes
+ * its place at once.
  */
 export const SLOT_MIN_SHOW_MS = 800;
 
@@ -155,11 +157,19 @@ function plopsAt(slot: Queue & Pick<LiveSlot, "lastPlopAt">, entry: SlotEntry): 
   return slot.lastPlopAt === null ? due : Math.max(due, slot.lastPlopAt + plopGap(slot));
 }
 
+/** A call of the Mate's — a step, an operation, a call — rather than its words or the person's. */
+function isCall(key: string): boolean {
+  return key.startsWith("step:") || key.startsWith("operation:") || key.startsWith("call:");
+}
+
 /**
- * What waits enters once no ended item stands in the slot, and once the
- * "Thinking" it says, empty, has stood its minimum (`quietSince`): first what
- * arrived ended, one at a time, in the order it came; then what is live, all
- * of it at once.
+ * What waits enters once no ended item stands in the slot: first what arrived
+ * ended, one at a time, in the order it came; then what is live, all of it at
+ * once. While the "Thinking" it says, empty, has not stood its minimum
+ * (`quietSince`), only a call takes its place — one live, so it shows as it
+ * runs, or one first seen ended (run 12: seven times a short command waited
+ * out Thinking's minimum, ended meanwhile, and stood finished between two
+ * "Thinking"s); words wait it out.
  */
 function admit(
   queue: Queue,
@@ -168,9 +178,9 @@ function admit(
 ): Pick<LiveSlot, "entries" | "pending"> {
   const { entries, pending } = queue;
   if (entries.some((entry) => entry.endedAt !== null)) return { entries, pending };
-  if (entries.length === 0 && quietSince !== null && at < quietSince + SLOT_MIN_SHOW_MS) {
-    return { entries, pending };
-  }
+  const thinkingFresh =
+    entries.length === 0 && quietSince !== null && at < quietSince + SLOT_MIN_SHOW_MS;
+  if (thinkingFresh && pending.length > 0 && !isCall(pending[0]!)) return { entries, pending };
   const [next, ...rest] = pending;
   if (next !== undefined) {
     return { entries: [...entries, { key: next, shownAt: at, endedAt: at }], pending: rest };

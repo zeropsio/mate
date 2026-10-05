@@ -118,17 +118,31 @@ describe("the live slot's schedule", () => {
       plopped: { a: SLOT_MIN_SHOW_MS, b: 5000 + SLOT_HOLD_MS },
     },
     {
-      // "Thinking" said for a moment is a flicker: once said, it stands.
-      name: "past its hold the slot says Thinking, which stands its minimum before the next enters",
+      // Run 12: seven times the line read "Thinking" 0.8 s, a short command
+      // already finished 1.2 s, "Thinking" again — the command had waited out
+      // Thinking's minimum and ended meanwhile. What the Mate's hands are on
+      // shows as it runs.
+      name: "past its hold the slot says Thinking, and a call going live takes its place at once",
       moments: [
-        { at: 0, live: ["a"], record: [] },
-        { at: 300, live: [], record: ["a"] },
-        { at: 1600, live: ["b"], record: ["a"] },
-        { at: 6000, live: [], record: ["a", "b"] },
+        { at: 0, live: ["step:a"], record: [] },
+        { at: 300, live: [], record: ["step:a"] },
+        { at: 1600, live: ["step:b"], record: ["step:a"] },
+        { at: 2100, live: [], record: ["step:a", "step:b"] },
       ],
-      until: 9000,
-      shown: { a: 0, b: 300 + SLOT_HOLD_MS + SLOT_MIN_SHOW_MS },
-      plopped: { a: 300 + SLOT_HOLD_MS, b: 6000 + SLOT_HOLD_MS },
+      until: 5000,
+      shown: { "step:a": 0, "step:b": 1600 },
+      plopped: { "step:a": 300 + SLOT_HOLD_MS, "step:b": 2100 + SLOT_HOLD_MS },
+    },
+    {
+      name: "a call first seen ended never waits behind a fresh Thinking",
+      moments: [
+        { at: 0, live: ["step:a"], record: [] },
+        { at: 300, live: [], record: ["step:a"] },
+        { at: 1600, live: [], record: ["step:a", "call:c"] },
+      ],
+      until: 5000,
+      shown: { "step:a": 0, "call:c": 1600 },
+      plopped: { "step:a": 300 + SLOT_HOLD_MS, "call:c": 1600 + SLOT_HOLD_MS },
     },
     {
       // Run 11: "one plop and 5 messages". A burst no longer rides along with
