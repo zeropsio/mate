@@ -385,6 +385,25 @@ describe("a release as HQ records it", () => {
     });
   });
 
+  it("lists a release an older HQ recorded as a snapshot like any other: read-only history", () => {
+    const row = releaseRow(
+      flowReleaseOf({
+        tag: "v0.1.0",
+        sha: OLD,
+        entries: [{ service: "api", sha: API }],
+        by: "u1",
+        at: "2026-10-02T10:00:00.000Z",
+        state: "approved",
+        reason: null,
+        rollbackOf: null,
+        snapshot: true,
+      }),
+      1,
+      { production: new Map(), failed: [], live: false },
+    );
+    expect([row.word, row.standing]).toEqual(["Approved", undefined]);
+  });
+
   it("carries why a refused one was refused", () => {
     expect(
       flowReleaseOf({
@@ -819,13 +838,6 @@ describe("a release in flight", () => {
       name: "neither for a release HQ refused",
       release: { ...newest, verdict: "refused" as const },
       rollouts: [rollout("v0.1.3", false)],
-      inFlight: undefined,
-      stalled: undefined,
-    },
-    {
-      name: "neither for a snapshot, which deploys nothing",
-      release: { ...newest, snapshot: true },
-      rollouts: [rollout("v0.1.3", true, { id: null })],
       inFlight: undefined,
       stalled: undefined,
     },

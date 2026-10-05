@@ -704,7 +704,7 @@ export function changeReview(input: ChangeReviewInput): ReviewModel {
 export type ReleaseOutcome =
   | { readonly kind: "offered" }
   | { readonly kind: "releasing"; readonly progress?: string | undefined }
-  | { readonly kind: "released"; readonly at: string | undefined; readonly snapshot?: boolean }
+  | { readonly kind: "released"; readonly at: string | undefined }
   /** Made longer ago than the wait for it, and production doesn't run it: the wait is over. */
   | { readonly kind: "stalled"; readonly at: string | undefined }
   /**
@@ -721,7 +721,6 @@ export type ReleaseOutcome =
     };
 
 export interface ReleaseReviewInput {
-  readonly snapshot?: boolean | undefined;
   /** The version it tags — the suggestion, or the tag on its way. */
   readonly tag: string;
   readonly gate: ReleaseGate;
@@ -797,14 +796,11 @@ export function releaseReview(input: ReleaseReviewInput): ReleaseReviewModel {
     input.outcome.kind === "superseded" ||
     (input.outcome.kind === "failed" && input.productionMoved !== true);
   const back =
-    input.snapshot === true ||
-    (input.outcome.kind === "released" && input.outcome.snapshot === true)
+    replaces.kind === "first" || nothingWentOut
       ? undefined
-      : replaces.kind === "first" || nothingWentOut
-        ? undefined
-        : replaces.kind === "release" && replaces.tag !== tag
-          ? `roll back to ${replaces.tag} from production's menu`
-          : "roll back from production's menu";
+      : replaces.kind === "release" && replaces.tag !== tag
+        ? `roll back to ${replaces.tag} from production's menu`
+        : "roll back from production's menu";
   const facts = {
     meta: [
       replaces.kind === "first"
@@ -843,18 +839,6 @@ function releaseVerdictOf(input: ReleaseReviewInput, back: string | undefined): 
         primary: undefined,
       };
     case "released": {
-      if (outcome.snapshot === true)
-        return {
-          verdict: {
-            state: "released",
-            tone: "done",
-            title: `Saved ${tag}`,
-            why: "Release snapshot recorded",
-            fix: undefined,
-          },
-          consequence: "The release snapshot is recorded. Nothing was deployed.",
-          primary: undefined,
-        };
       const age =
         outcome.at === undefined ? undefined : reviewAge(outcome.at, input.now)?.toLowerCase();
       return {
@@ -915,7 +899,7 @@ function releaseVerdictOf(input: ReleaseReviewInput, back: string | undefined): 
   // A release reaches people outside the account: it takes a deliberate press — never the
   // review's first focus, never ⌘↵.
   const primary = {
-    label: `${input.snapshot ? "Save" : "Release"} ${tag}`,
+    label: `Release ${tag}`,
     enabled: input.gate.allowed,
     safe: false,
   };
@@ -942,14 +926,11 @@ function releaseVerdictOf(input: ReleaseReviewInput, back: string | undefined): 
     verdict: {
       state: "release-ready",
       tone: "ok",
-      title: input.snapshot ? "Ready to save release" : "Ready to release",
+      title: "Ready to release",
       why: stageWhy(input),
       fix: undefined,
     },
-    consequence:
-      input.snapshot === true
-        ? `Saves main as ${tag}. There is no production to deploy to.`
-        : `Tags main as ${tag}. Production redeploys ${listed(input.services)} from it.`,
+    consequence: `Tags main as ${tag}. Production redeploys ${listed(input.services)} from it.`,
     primary,
   };
 }
@@ -1108,18 +1089,6 @@ function rollbackVerdictOf(input: RollbackReviewInput): ReviewModel {
     case "releasing":
       return onItsWay(outcome.progress ?? `Production redeploys from ${nextTag}`);
     case "released": {
-      if (outcome.snapshot === true)
-        return {
-          verdict: {
-            state: "rolled-back",
-            tone: "done",
-            title: `Saved ${nextTag}`,
-            why: `Records ${tag}'s commits`,
-            fix: undefined,
-          },
-          consequence: "The release snapshot is recorded. Nothing was deployed.",
-          primary: undefined,
-        };
       const age =
         outcome.at === undefined ? undefined : reviewAge(outcome.at, input.now)?.toLowerCase();
       return {

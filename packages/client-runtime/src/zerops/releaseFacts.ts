@@ -35,7 +35,6 @@ export interface ReleaseFacts {
 
 /** The facts as the project reads them now. */
 export function releaseFacts(input: {
-  readonly snapshot?: boolean;
   readonly tag: string;
   /** The release production runs in full now (`releaseRunBy`), if any does. */
   readonly live: string | undefined;
@@ -59,12 +58,9 @@ export function releaseFacts(input: {
     contents: input.contents,
     where: input.comparison.map((row) => ({
       service: row.service,
-      line:
-        input.snapshot === true
-          ? `saved at ${row.candidate ?? "main"}`
-          : row.changed
-            ? `redeploys from ${row.candidate ?? "main"}`
-            : `stays on ${row.production ?? "what it runs"}`,
+      line: row.changed
+        ? `redeploys from ${row.candidate ?? "main"}`
+        : `stays on ${row.production ?? "what it runs"}`,
     })),
     services: moving.length === 0 ? input.productionServices : moving,
   };
@@ -156,12 +152,7 @@ export function releaseFollows(input: {
     releasing,
     stalled,
     superseded,
-    ticking:
-      releasing &&
-      tagged?.snapshot !== true &&
-      tagged?.standing === undefined &&
-      !stalled &&
-      superseded === undefined,
+    ticking: releasing && tagged?.standing === undefined && !stalled && superseded === undefined,
   };
 }
 
@@ -171,12 +162,7 @@ export function releaseFollows(input: {
  * landed waits for production's own word, never stalls; a release HQ has not listed has not ended.
  */
 function stalledAt(tagged: FlowReleaseRow | undefined, stalled: string | undefined): boolean {
-  if (
-    tagged === undefined ||
-    tagged.snapshot === true ||
-    tagged.standing !== undefined ||
-    tagged.verdict === "refused"
-  )
+  if (tagged === undefined || tagged.standing !== undefined || tagged.verdict === "refused")
     return false;
   return tagged.tag === stalled;
 }
@@ -194,8 +180,6 @@ export function releaseOutcomeOf(input: {
   readonly clockMs: number;
 }): ReleaseOutcome {
   const { tagged } = input;
-  if (tagged?.snapshot === true && tagged.verdict === "approved")
-    return { kind: "released", at: tagged.taggedAt, snapshot: true };
   if (tagged?.standing === "live") return { kind: "released", at: tagged.taggedAt };
   if (tagged?.standing === "deploy-failed" || tagged?.verdict === "refused") {
     const service = tagged.failedEntry?.service;

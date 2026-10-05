@@ -21,10 +21,9 @@
  *
  * ## Who may
  *
- * HQ's rule (SPEC §3.3a): Basic user or above on production, or an organization owner/admin
- * saving a snapshot before production exists. HQ streams its decision beside the application
- * (`can`'s `release`), and the button is offered by it; HQ asks it again at the press, and a
- * refusal that arrives anyway is shown in HQ's words.
+ * HQ's rule (SPEC §3.3a): Basic user or above on production, and only where there is one. HQ
+ * streams its decision beside the application (`can`'s `release`), and the button is offered by
+ * it; HQ asks it again at the press, and a refusal that arrives anyway is shown in HQ's words.
  *
  * ## Rollback
  *
@@ -275,7 +274,6 @@ export type ReleaseVerdict = Release["state"];
 
 /** The newest release, for {@link releaseInFlight}. */
 export interface ReleaseAttempt {
-  readonly snapshot?: boolean;
   readonly tag: string;
   readonly verdict: ReleaseVerdict;
 }
@@ -287,7 +285,7 @@ export interface ReleaseAttempt {
  * live. A release HQ ended with no rollout of its own (made before rollouts were, or recorded from
  * git) is ended. Nothing where HQ says nothing of this release — a production naming another, or
  * none, an HQ that tells no release's end, no production at all — and nothing for a release HQ
- * refused or a snapshot, which deploy nothing: what HQ has not said is never on its way. HQ follows
+ * refused, which deploys nothing: what HQ has not said is never on its way. HQ follows
  * each build to its end, so nothing here waits on a clock.
  */
 function releaseDeploy(input: {
@@ -303,8 +301,7 @@ function releaseDeploy(input: {
     }
   | undefined {
   const { newest } = input;
-  if (newest === undefined || newest.verdict === "refused" || newest.snapshot === true)
-    return undefined;
+  if (newest === undefined || newest.verdict === "refused") return undefined;
   const its = input.rollouts.filter(
     (rollout): rollout is ReleaseRollout => rollout != null && rollout.tag === newest.tag,
   );
@@ -349,13 +346,11 @@ export function flowReleaseOf(release: Release): FlowRelease {
     line: entries.map((entry) => `${entry.service} ${shortCommit(entry.commit)}`).join(" · "),
     entries,
     taggedAt: release.at,
-    ...(release.snapshot === true ? { snapshot: true } : {}),
   };
 }
 
 /** One release of the application, as HQ judged it. */
 export interface FlowRelease {
-  readonly snapshot?: boolean;
   readonly tag: string;
   readonly verdict: ReleaseVerdict;
   /** Why HQ refused it, when it did. */
@@ -505,10 +500,7 @@ export function releaseRow(
     failedEntry: undefined,
     line,
     standing: undefined,
-    word:
-      release.snapshot === true && release.verdict === "approved"
-        ? "Saved"
-        : releaseWord(release.verdict),
+    word: releaseWord(release.verdict),
     rollBack: index > 0 && release.verdict === "approved" && !runsAll(release, deploys.production),
   };
 }

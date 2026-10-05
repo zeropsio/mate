@@ -301,8 +301,6 @@ function ReleaseData({
         releases: flow.releases,
         contents: flow.release.contents,
         comparison: flow.release.comparison,
-        snapshot:
-          flow.declarationsRead && !flow.declarations.some((entry) => entry.tier === "production"),
         productionServices: production?.services.map((entry) => entry.hostname) ?? [],
       }),
   });
@@ -377,9 +375,6 @@ function ReleaseData({
       }}
       outcome={outcome}
       press={press}
-      snapshot={
-        flow.declarationsRead && !flow.declarations.some((entry) => entry.tier === "production")
-      }
       productionMoved={productionMoved}
       replaces={facts.replaces}
       rows={rows}
@@ -403,7 +398,6 @@ export interface ReleaseReviewViewProps {
   readonly comparisonFailure?:
     | { readonly reason: string; readonly again?: (() => void) | undefined }
     | undefined;
-  readonly snapshot?: boolean | undefined;
   /** The project's name: the title is it and the version. */
   readonly name: string | undefined;
   readonly tag: string;
@@ -460,7 +454,6 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
     services: props.services,
     replaces: props.replaces,
     outcome: props.outcome,
-    snapshot: props.snapshot,
     productionMoved: props.productionMoved,
     now: props.now,
   });
@@ -513,7 +506,7 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
               onPress: props.onRelease,
             }
       }
-      title={`${props.name ?? (props.snapshot ? "Release" : "Production")} ${tag}`}
+      title={`${props.name ?? "Production"} ${tag}`}
       titleId={props.titleId}
       verdict={model.verdict}
     >
@@ -563,7 +556,7 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
       {rows.length === 0 && untold.length === 0 && untoldDeploying.length === 0 ? null : (
         <ReviewSection
           aside={`${String(rows.length)} ${rows.length === 1 ? "change" : "changes"}`}
-          title={props.snapshot ? "What is saved" : "What goes out"}
+          title="What goes out"
         >
           {rows.length === 0 ? null : <ReviewReleaseRows onOpen={props.onOpenChange} rows={rows} />}
           {untoldDeploying.length === 0 ? null : (
