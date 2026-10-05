@@ -188,6 +188,12 @@ describe("a call whose output was saved to a file", () => {
       spilled: "q7t2m4xke",
     },
     { name: "an ordinary command: nothing", content: "4 passed", spilled: undefined },
+    // Review of pass 42: a `find` listing a project's own file of that shape saved nothing.
+    {
+      name: "a listing of a project's file of that shape: nothing",
+      content: "./api/tool-results/report.txt",
+      spilled: undefined,
+    },
   ])("$name", ({ content, spilled }) => {
     const [entry] = deriveWorkLogEntries([
       completedCall("command_execution", {

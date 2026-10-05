@@ -3,10 +3,13 @@
  * back: a read of one is said by what the file holds, never by its name (run
  * 11: the working line read "Reading br89ocvyk.txt").
  *
- * - `…/tasks/<id>.output`: what a background job prints.
- * - `…/tool-results/<id>.txt`: a call's output too long to hand back whole;
- *   the call's own output names the file. An MCP tool's is
+ * - `…/<session>/tasks/<id>.output`: what a background job prints.
+ * - `…/<session>/tool-results/<id>.txt`: a call's output too long to hand
+ *   back whole; the call's own output names the file. An MCP tool's is
  *   `mcp-<server>-<tool>-<n>.txt`, its tool in its name.
+ *
+ * Both stand in a session's own folder, named by its id: a project's own
+ * `tool-results` folder is no session's.
  *
  * Pure.
  *
@@ -18,14 +21,18 @@ export type SpilledOutput =
   | { readonly kind: "job"; readonly id: string }
   | { readonly kind: "result"; readonly id: string; readonly tool: string | null };
 
-const JOB_OUTPUT = /[\\/]tasks[\\/]([\w-]+)\.output$/u;
-const TOOL_RESULT = /[\\/]tool-results[\\/]([\w.-]+)\.txt$/u;
+const JOB_OUTPUT =
+  /[\\/][0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}[\\/]tasks[\\/]([\w-]+)\.output$/u;
+const TOOL_RESULT =
+  /[\\/][0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}[\\/]tool-results[\\/]([\w.-]+)\.txt$/u;
+const NAMED_RESULT =
+  /[\\/][0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}[\\/]tool-results[\\/]([\w.-]+)\.txt\b/u;
 /** `mcp-<server>-<tool>-<n>`: the server may hold a hyphen, the tool's own name does not. */
 const MCP_RESULT = /^mcp-.+-([^-]+)-\d+$/u;
 
 /** The file a call's own output says it spilled to, by the id a read of it names; none else. */
 export function spilledResultIdIn(output: string): string | undefined {
-  return /[\\/]tool-results[\\/]([\w.-]+)\.txt\b/u.exec(output)?.[1];
+  return NAMED_RESULT.exec(output)?.[1];
 }
 
 /** What the file at `path` holds, where it is one Claude Code spills output to; null else. */

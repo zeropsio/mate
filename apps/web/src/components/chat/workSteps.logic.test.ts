@@ -671,6 +671,12 @@ describe("a read of a call's spilled output", () => {
       path: "/srv/app/q7t2m4xke.txt",
       words: "Reading q7t2m4xke.txt",
     },
+    // Review of pass 42: a project's own folder of that name is no session's.
+    {
+      name: "a project's own tool-results folder: by its name",
+      path: "/srv/app/api/tool-results/q7t2m4xke.txt",
+      words: "Reading q7t2m4xke.txt",
+    },
   ])("$name", ({ path, words }) => {
     const reading = read(path);
     expect(stepOf(reading, trackCommands([described, plain, reading])).words).toBe(words);
