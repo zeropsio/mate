@@ -117,7 +117,7 @@ function render(
     React.ComponentProps<typeof ZeropsGroupPane>,
     "environments" | "withheldNotice" | "firstDeployOf"
   > = {
-    environments: [environment("stage", "stage"), environment("prod", "production")],
+    environments: [environment("stage", "stage"), environment("prod", "production", "production")],
   },
   waiting: ReleaseContentsSummary = releaseContentsSummary([], 20),
   /** The page's flow; absent, it holds none. */
@@ -260,7 +260,7 @@ describe("ZeropsGroupPane", () => {
     expect(markup.match(/<button/g)?.length).toBe(render().match(/<button/g)!.length - 1);
   });
 
-  it("says at least how many changes are not live where HQ stopped counting", () => {
+  it("says at least how many changes wait for production where HQ stopped counting", () => {
     const markup = render(undefined, undefined, {
       subjects: ["Two-step checkout"],
       more: 9999,
@@ -268,8 +268,18 @@ describe("ZeropsGroupPane", () => {
       atLeast: true,
     });
 
-    expect(markup).toContain("Merged, not live · 10000+");
+    expect(markup).toContain("Merged, waiting for production · 10000+");
     expect(markup).toContain("+9999+ more");
+  });
+
+  it("lists nothing as waiting for a production the application does not have", () => {
+    const markup = render(
+      undefined,
+      { environments: [environment("stage", "stage")] },
+      { subjects: ["Two-step checkout"], more: 0, total: 1, atLeast: false },
+    );
+    expect(markup).not.toContain("Two-step checkout");
+    expect(markup).not.toContain("waiting for production");
   });
 
   it("says an empty stage's first deploy on its line, as its cell does", () => {

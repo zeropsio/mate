@@ -14,6 +14,7 @@ import {
   waitingForProduction,
   releaseContentsSummary,
   releaseWaitingLabel,
+  flowChange,
   flowChanges,
   flowVerbKey,
   flowVerbLabel,
@@ -181,6 +182,37 @@ describe("a Mate's changes in HQ, as the flow shows them", () => {
       mergeCommitSha: "m".repeat(39) + "2",
       updatedAt: "2026-10-02T11:00:00.000Z",
     });
+  });
+});
+
+describe("the one merge that was an application's first code", () => {
+  const merged = (over: Partial<HqChange>): HqChange => ({
+    appId: "g1",
+    repo: "appdev",
+    number: 3,
+    mateProjectId: VERA,
+    title: "First",
+    body: "",
+    state: "merged",
+    head: "a".repeat(40),
+    mergedSha: "m".repeat(40),
+    landedHead: "a".repeat(40),
+    openedAt: "2026-10-02T09:00:00.000Z",
+    mergedAt: "2026-10-02T10:00:00.000Z",
+    closedAt: null,
+    updatedAt: "2026-10-02T10:00:00.000Z",
+    mergeability: "clean",
+    behind: false,
+    ready: true,
+    comments: 0,
+    ...over,
+  });
+  it.each([
+    ["HQ says it was", { firstCodeMerge: true }, true],
+    ["HQ says it was not", { firstCodeMerge: false }, false],
+    ["HQ says nothing", {}, undefined],
+  ] as const)("%s", (_name, over, expected) => {
+    expect(flowChange(merged(over), "https://hq/").firstCodeMerge).toBe(expected);
   });
 });
 

@@ -1,5 +1,6 @@
 import {
   RELEASE_CHECKING,
+  RELEASE_NO_PRODUCTION,
   type AppRecipe,
   type GroupEnvironmentRowInput,
   type GroupStops,
@@ -12,7 +13,7 @@ import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 import type { Release, ReleaseRollout } from "@t3tools/shared/hqRelease";
 import { describe, expect, it } from "vite-plus/test";
 
-import { joinProjectFlows, snapshotReleasePlan } from "./ZeropsProjectFlowProvider";
+import { joinProjectFlows } from "./ZeropsProjectFlowProvider";
 
 const GROUPS = [
   { groupId: "g1", slug: "harbor" },
@@ -484,28 +485,42 @@ describe("joinProjectFlows", () => {
   });
 });
 
-it("plans a snapshot from main only once HQ confirms no production", () => {
-  const sha = "1".repeat(40);
-  const recipe = { productionRepositories: new Map([["app", "appdev"]]) };
-  const repos = [
-    { name: "group", mainHead: "9".repeat(40), updatedAt: "" },
-    { name: "appdev", mainHead: sha, updatedAt: "" },
-  ];
-  expect(snapshotReleasePlan(undefined, recipe, repos)).toBeUndefined();
-  expect(
-    snapshotReleasePlan(
-      {
-        ...stopsOf(),
-        declarations: [
-          { name: "prod", tier: "production", project: "p-prod", sources: ["release"] },
-        ],
-      },
-      recipe,
-      repos,
-    ),
-  ).toBeUndefined();
-  const plan = snapshotReleasePlan(stopsOf(), recipe, repos);
-  expect(plan?.running.get("app")).toEqual({ kind: "nothing" });
-  expect(plan?.untold).toEqual([]);
-  expect(plan?.reads).toHaveLength(1);
+describe("an application with no production", () => {
+  const older = approved("v0.1.1", { app: "2".repeat(40) }, "2026-09-24T10:00:00Z");
+  const flow = (stops: GroupStops | undefined) =>
+    join({
+      stops: stops === undefined ? new Map() : new Map([["g1", stops]]),
+      releases: new Map([["g1", [older, FIRST]]]),
+      permissions: new Map([["g1", { allowed: true }]]),
+    }).get("g1");
+  const production = stopsOf([
+    {
+      projectId: "p-prod",
+      name: "harbor prod",
+      tier: "production",
+      sources: "release",
+      environment: "prod",
+      keyHeld: true,
+      keyInvalid: false,
+      services: [],
+    },
+  ]);
+
+  it("offers no release and no roll back when none is declared", () => {
+    const joined = flow(stopsOf());
+    expect(joined?.release.gate).toEqual({ allowed: false, reason: RELEASE_NO_PRODUCTION });
+    expect(joined?.releases.map((row) => row.rollBack)).toEqual([false, false]);
+  });
+
+  it("claims nothing before HQ has told the environments", () => {
+    expect(flow(undefined)?.release.gate.allowed).toBe(false);
+    expect(flow(undefined)?.release.gate).not.toEqual({
+      allowed: false,
+      reason: RELEASE_NO_PRODUCTION,
+    });
+  });
+
+  it("offers a roll back to an earlier release once a production is there", () => {
+    expect(flow(production)?.releases.map((row) => row.rollBack)).toContain(true);
+  });
 });

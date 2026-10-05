@@ -237,28 +237,6 @@ interface ReleasePlan extends CompareReads {
   readonly running: ReadonlyMap<string, ProductionRun>;
 }
 
-/** A snapshot compares main against nothing only when HQ has confirmed no production. */
-export function snapshotReleasePlan(
-  stops: GroupStops | undefined,
-  recipe: Pick<AppRecipe, "productionRepositories">,
-  repos: ReadonlyArray<RepoListEntry>,
-): ReleasePlan | undefined {
-  if (stops === undefined || stops.declarations.some((entry) => entry.tier === "production"))
-    return undefined;
-  const { productionRepositories } = recipe;
-  const running = new Map<string, ProductionRun>(
-    [...productionRepositories.keys()].map((service) => [service, { kind: "nothing" }]),
-  );
-  return {
-    ...releaseReads({
-      productionRepositories,
-      candidate: releaseCandidate({ productionRepositories, repos }).candidate,
-      running,
-    }),
-    running,
-  };
-}
-
 /** What goes live while nothing has been asked of HQ: what production runs is not known yet. */
 const NOT_COMPARED: MovedCommits = { state: "reading" };
 const NOT_ASKED: ReleaseLive = { moved: NOT_COMPARED, untold: [], runs: undefined };
@@ -433,13 +411,20 @@ function projectFlow(
   const sides = releaseDeploys(environmentInputs.filter((entry) => !withheld.has(entry.projectId)));
   const releaseList = (records ?? []).map(flowReleaseOf);
   const liveTag = releaseRunBy(releaseList, sides.production);
-  const releaseRows = releaseList.map((entry, index) =>
-    releaseRow(entry, index, {
+  // Known once HQ has told the environments: an application holds a production in whatever state
+  // HQ records it, and one with none has nothing to release to, nor to roll back.
+  const hasProduction =
+    stops === undefined
+      ? undefined
+      : environmentInputs.some((entry) => entry.tier === "production");
+  const releaseRows = releaseList.map((entry, index) => {
+    const row = releaseRow(entry, index, {
       production: sides.production,
       failed: sides.failed,
       live: entry.tag === liveTag,
-    }),
-  );
+    });
+    return hasProduction === false ? { ...row, rollBack: false } : row;
+  });
   // Until HQ's releases, its repositories and the recipe are read, nothing is known to release:
   // the gate says it is checking.
   const { repos, recipe, permission, live } = offered;
@@ -454,6 +439,7 @@ function projectFlow(
     inFlight: deploy.inFlight,
     tags: releaseList.map(({ tag }) => tag),
     live: live.moved,
+    hasProduction,
   });
   return {
     groupId: group.groupId,
@@ -704,11 +690,8 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
         .get(groupId)
         ?.environments.find((entry) => entry.tier === "production");
       if (recipe === undefined || repos === undefined || records === undefined) continue;
-      if (production === undefined) {
-        const snapshot = snapshotReleasePlan(groupStops.get(groupId), recipe, repos);
-        if (snapshot !== undefined) plans.set(groupId, snapshot);
-        continue;
-      }
+      // Nothing is compared for an application with no production: there is nothing to release to.
+      if (production === undefined) continue;
       const productionId = ZeropsProjectId.make(production.projectId);
       if (withheld.has(productionId)) continue;
       const listed = held?.services.get(productionId)?.status === "resolved";

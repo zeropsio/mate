@@ -17,6 +17,7 @@ import {
   releaseStalled,
   releaseWord,
   RELEASE_CHECKING,
+  RELEASE_NO_PRODUCTION,
   RELEASE_NOTHING_MERGED,
   RELEASE_NOTHING_NEW_ON_MAIN,
   shortCommit,
@@ -115,8 +116,23 @@ describe("the gate HQ's rule decides", () => {
       allowed: false,
       reason: RELEASE_NOTHING_MERGED,
     },
-  ])("for $name", ({ permission, entries: list, allowed, reason }) => {
-    const gate = releaseGate({ permission, entries: list });
+    {
+      name: "a releaser of an application with no production",
+      permission: RELEASER,
+      entries,
+      hasProduction: false,
+      allowed: false,
+      reason: RELEASE_NO_PRODUCTION,
+    },
+    {
+      name: "a releaser of an application whose production is there",
+      permission: RELEASER,
+      entries,
+      hasProduction: true,
+      allowed: true,
+    },
+  ])("for $name", ({ permission, entries: list, allowed, reason, hasProduction }) => {
+    const gate = releaseGate({ permission, entries: list, hasProduction });
     expect(gate.allowed).toBe(allowed);
     if (!gate.allowed) expect(gate.reason).toBe(reason);
   });

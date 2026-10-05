@@ -592,9 +592,10 @@ export function changeReview(input: ChangeReviewInput): ReviewModel {
         fix: undefined,
       },
       consequence,
-      // A recipe is never released: the next review is a code change's release, and only its.
+      // A recipe is never released: the next review is a code change's release, and only its —
+      // and a release exists only where a production does.
       primary:
-        !recipe && input.release?.allowed === true
+        !recipe && input.downstream.production && input.release?.allowed === true
           ? { label: REVIEW_RELEASE_LABEL, enabled: true, safe: true }
           : undefined,
     };

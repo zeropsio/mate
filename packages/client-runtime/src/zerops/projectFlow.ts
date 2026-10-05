@@ -65,6 +65,12 @@ export interface FlowPullRequest {
    */
   readonly mergeCommitSha?: string | undefined;
   /**
+   * Whether it was the application's first merged code change, as HQ decided when it merged
+   * (`HqChange.firstCodeMerge`); absent for a recipe change, one not merged, and one merged before
+   * HQ said.
+   */
+  readonly firstCodeMerge?: boolean | undefined;
+  /**
    * `open` or `closed`, as HQ says. A change read on its own by number may be closed without
    * ever merging: its review must not offer to merge it. Optional, as every flow built before a
    * review read it carries none.
@@ -126,6 +132,7 @@ export function flowChange(change: HqChange, hqAddress: string): FlowPullRequest
     merged,
     mergedAt: change.mergedAt ?? undefined,
     ...(merged && change.mergedSha !== null ? { mergeCommitSha: change.mergedSha } : {}),
+    ...(change.firstCodeMerge === undefined ? {} : { firstCodeMerge: change.firstCodeMerge }),
     state: change.state === "open" ? "open" : "closed",
     headSha: change.head ?? undefined,
     baseBranch: FALLBACK_BASE,

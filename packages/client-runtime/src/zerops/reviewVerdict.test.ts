@@ -308,6 +308,16 @@ describe("changeReview: the button says what will happen (R5)", () => {
       "The stage picks it up from main.",
       undefined,
     ],
+    [
+      "no production, whatever a stale gate allows: still nothing to press",
+      {
+        pull: pull({ merged: true, mergedAt: minutesAgo(1) }),
+        downstream: { production: false, stage: true },
+        release: { allowed: true },
+      },
+      "The stage picks it up from main.",
+      undefined,
+    ],
   ])("after the merge, %s (R6)", (_name, over, consequence, next) => {
     const review = changeReview(change(over));
     expect(review.consequence).toBe(consequence);

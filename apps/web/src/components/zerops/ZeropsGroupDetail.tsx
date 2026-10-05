@@ -937,8 +937,10 @@ export function ZeropsGroupPane({
         )}
       </Section>
 
-      {waiting.total === 0 ? null : (
-        <Section title={`Merged, not live · ${String(waiting.total)}${waiting.atLeast ? "+" : ""}`}>
+      {waiting.total === 0 || !environments.some((entry) => entry.tier === "production") ? null : (
+        <Section
+          title={`Merged, waiting for production · ${String(waiting.total)}${waiting.atLeast ? "+" : ""}`}
+        >
           <ul className="mb-3 flex flex-col gap-1">
             {waiting.subjects.map((subject) => (
               <li className="truncate text-sm text-foreground" key={subject}>

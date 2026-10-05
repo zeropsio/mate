@@ -162,6 +162,8 @@ export function releaseNothingReason(gate: ReleaseGate | undefined): string | un
     ? gate.reason
     : undefined;
 }
+/** A release is a production's: an application with none has nothing to release to. */
+export const RELEASE_NO_PRODUCTION = "There is no production to release to.";
 /** Who may release is not known yet: HQ's rule has nothing to be asked over. */
 export const RELEASE_CHECKING = "Checking what can be released…";
 /** What goes live could not be compared: no release is offered over a list nobody could read. */
@@ -193,7 +195,13 @@ export function releaseGate(input: {
   readonly inFlight?: string | undefined;
   /** What it would put live (`movedCommits`); omitted where nobody asks. */
   readonly live?: MovedCommits | undefined;
+  /**
+   * Whether the application has a production, in any state; omitted where it is not known. With
+   * none no release exists, whoever asks.
+   */
+  readonly hasProduction?: boolean | undefined;
 }): ReleaseGate {
+  if (input.hasProduction === false) return { allowed: false, reason: RELEASE_NO_PRODUCTION };
   if (input.permission === undefined) return { allowed: false, reason: RELEASE_CHECKING };
   if (!input.permission.allowed) return input.permission;
   if (input.inFlight !== undefined)
@@ -231,6 +239,8 @@ export function releaseOffer(input: {
   readonly tags: ReadonlyArray<string>;
   /** What it would put live, as HQ compared it (`movedCommits`). */
   readonly live: MovedCommits;
+  /** Whether the application has a production (`releaseGate`). */
+  readonly hasProduction?: boolean | undefined;
 }): {
   readonly gate: ReleaseGate;
   readonly suggestion: string;
@@ -251,6 +261,7 @@ export function releaseOffer(input: {
       comparison,
       inFlight: input.inFlight,
       live: input.live,
+      hasProduction: input.hasProduction,
     }),
     suggestion: nextPatch(input.tags),
     comparison,
