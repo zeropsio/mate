@@ -3679,7 +3679,9 @@ no-cache`.
   The stream asks with `limit=100`, `desc=0`, `projectId`, and a `from` only as the newest line's id;
   the backfill keeps its time. "Waiting for the build's first line…" shows only while the build step
   runs and the stream's handshake has stood.
-- **2026-10-03** — **A Mate's name is its Zerops project's name** (D3, the owner: Zerops is the
+- **2026-10-03** — **Superseded 2026-10-05 in part: a Mate's project is `<application> - <Mate>`,
+  and under its application the client cuts that prefix.** **A Mate's name is its Zerops project's
+  name** (D3, the owner: Zerops is the
   source of truth, HQ stores only what Zerops lacks, and a name's source is Zerops). A Mate is called
   what its project is, wherever it is drawn; HQ keeps no name of a Mate or of a Mate on its way
   (migration `0030`), only its face, its place and its birth. _Rename Mate_ renames the project
@@ -4080,3 +4082,19 @@ medium < high < xhigh` (a driver's own order does not rank: Grok reports its lev
   still holds: the menu says since when, and how old its rows are.
   - _Why:_ every reconnect and every reload pushed the whole menu down and back; syncing belongs in
     the header, and a reload paints nothing it takes back.
+- **2026-10-05** — **Every project of an application is named in full in Zerops; under its
+  application the client shows a Mate or a stop by its own name** (the owner, of Aleš's report that
+  a new Mate's project read only `Sage` in the organization's project list while older ones read
+  `SPN - Rune`). A Mate's project is `<application> - <Mate>`, a stage's or a production's
+  `<application> - stage` as before; New Mate, New project and _Rename Mate_ send the full name,
+  the person types and sees only the Mate's own. Wherever a Mate or a stop is drawn with its
+  application at hand, the exact `<application> - ` prefix is cut (`nameUnderApp`): a separator is
+  required, so `Shopper - stage` under `Shop` stays whole, and a name without the prefix — a project
+  renamed in Zerops, a moved Mate, a renamed application — is drawn whole. A Mate's name is unique
+  and capped at 24 characters on its own part. The name's source stays Zerops; HQ still keeps none.
+  Projects named before this were renamed once to the full form. **Supersedes** in the 2026-10-03
+  D3 row: "a new Mate's project is named as the Mate is" and "no prefix is cut".
+  - _Open:_ renaming an application or moving a Mate leaves the old prefix in Zerops, so the Mate
+    reads whole until it is renamed; neither renames its projects yet.
+  - _Why:_ the organization's project list in Zerops is where the projects of every application
+    stand side by side; without the prefix a Mate's project says nothing of whose it is.
