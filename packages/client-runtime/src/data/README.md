@@ -76,7 +76,8 @@ baseline, and ends only by failing with a classified fault. Run it under
 - An operation is recorded before it is sent. A lost answer is resolved by the owner — by a known
   handle, by the original id where the owner keeps ids, else by its facts showing the effect — and
   never sent again blindly. Its end comes from the owner's receipt or its facts, never from a
-  clock. A watch that runs out is unresolved and names who acts next.
+  clock. It is unresolved only when its owner says it can no longer observe it, naming who acts
+  next; an accepted operation holds the detail that shows its end until it settles.
 - Source data lives in memory only, never in browser storage.
 - Facts about a person — role, may write, unseen — are computed by HQ, not here.
 

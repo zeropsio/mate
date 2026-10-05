@@ -14,6 +14,15 @@ import type { StreamFault } from "../streamMachine.ts";
 import type { RegisteredOperationKind } from "./kind.ts";
 import { OPERATION_KINDS, operationKind } from "./kinds.ts";
 
+/**
+ * What an owner answers when asked: its receipt; `null` for none; or that it can no longer observe
+ * the operation, and who must act — the one way an operation becomes unresolved.
+ */
+export type OwnerAnswer =
+  | OperationReceipt
+  | null
+  | { readonly unobservable: { readonly nextActor: string } };
+
 /** The owner's answer was lost on the way: it may or may not have taken the request. */
 export interface UncertainAcceptance {
   readonly outcome: "uncertain-acceptance";
@@ -31,9 +40,9 @@ export interface OperationExecutor {
     intent: OperationIntent,
   ) => Effect.Effect<OperationReceipt, StreamFault | UncertainAcceptance>;
   /** The receipt the owner holds for this request id; `null` when it never took it. */
-  readonly lookup?: (requestId: string) => Effect.Effect<OperationReceipt | null, StreamFault>;
+  readonly lookup?: (requestId: string) => Effect.Effect<OwnerAnswer, StreamFault>;
   /** The receipt behind an external handle; `null` when the owner holds none for it. */
-  readonly lookupHandle?: (handle: string) => Effect.Effect<OperationReceipt | null, StreamFault>;
+  readonly lookupHandle?: (handle: string) => Effect.Effect<OwnerAnswer, StreamFault>;
 }
 
 export interface Operations {
@@ -121,12 +130,14 @@ export function makeOperations(options: {
   };
 
   /** Files the owner's answer under this account's request id, whatever id the owner knows. */
-  const admit = (receipt: OperationReceipt | null, requestId: string) =>
+  const admit = (answer: OwnerAnswer, requestId: string) =>
     Effect.sync(() =>
       store.dispatch(
-        receipt === null
+        answer === null
           ? { kind: "operation-lookup-failed", requestId }
-          : { kind: "operation-receipt", receipt: { ...receipt, requestId } },
+          : "unobservable" in answer
+            ? { kind: "operation-exhausted", requestId, nextActor: answer.unobservable.nextActor }
+            : { kind: "operation-receipt", receipt: { ...answer, requestId } },
       ),
     );
 
@@ -166,9 +177,8 @@ export function makeOperations(options: {
       );
     }
     return Effect.matchEffect(executor.lookup(requestId), {
-      onSuccess: (receipt) => {
-        if (receipt !== null)
-          return Effect.sync(() => store.dispatch({ kind: "operation-receipt", receipt }));
+      onSuccess: (answer) => {
+        if (answer !== null) return admit(answer, requestId);
         // Never taken: sent again now, once; after that it waits, unsent, for the person.
         if (!resend)
           return Effect.sync(() => store.dispatch({ kind: "operation-unsent", requestId }));

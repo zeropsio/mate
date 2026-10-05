@@ -153,7 +153,7 @@ export interface OperationRecord {
   readonly before: ReadonlyArray<string> | null;
   /** The owner's handles this account knows for it — given on resume, or from a receipt. */
   readonly handles: ReadonlyArray<string>;
-  /** Observation ended without the owner's word: who must act next, never an invented failure. */
+  /** The owner can no longer observe it: who must act next, never an invented failure. */
   readonly unresolved: { readonly nextActor: string } | null;
 }
 

@@ -287,4 +287,26 @@ describe("an operation Zerops executes", () => {
       });
     }),
   );
+
+  it.effect("is unresolved only when its owner says it can no longer observe it", () =>
+    Effect.gen(function* () {
+      const store = account();
+      const executor: OperationExecutor = {
+        submit: () => Effect.fail({ outcome: "uncertain-acceptance", message: "No answer." }),
+        lookupHandle: () => Effect.succeed({ unobservable: { nextActor: "Zerops support" } }),
+      };
+      const operations = makeOperations({
+        store,
+        kinds,
+        executors: { zerops: executor },
+        makeId: ids(),
+      });
+      yield* operations.resume("request-7", RESTART, ["proc-gone"]);
+      expect(progress(store, "request-7")).toEqual({
+        stage: "unresolved",
+        operationId: null,
+        nextActor: "Zerops support",
+      });
+    }),
+  );
 });

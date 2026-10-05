@@ -27,7 +27,7 @@ export type OperationInput =
   /** The owner, asked by the original id, holds no such request: it was never taken. */
   | { readonly kind: "operation-absent"; readonly requestId: string }
   | { readonly kind: "operation-receipt"; readonly receipt: OperationReceipt }
-  /** The observation's budget ran out before the owner said how it ended. */
+  /** The owner says it can no longer observe the operation, and who must act; never a clock. */
   | {
       readonly kind: "operation-exhausted";
       readonly requestId: string;
