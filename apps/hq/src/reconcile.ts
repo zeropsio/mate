@@ -240,19 +240,81 @@ const changesOf = (git: HqGit, sql: SqlClient.SqlClient, leader: Leader["Service
     const squashOf = (mateId: string, number: number) =>
       squashes.get(`${mateId}/${String(number)}`) ?? null;
     const headOf = new Map(branches.map((branch) => [branch.number, branch.sha]));
-    // Merged, as `main` holds their squash.
-    const merged = new Set<number>();
-    for (const row of open) {
-      const squash = squashOf(row.mate_project_id, row.number);
-      if (squash === null) continue;
-      merged.add(row.number);
-      const head = headOf.get(row.number) ?? null;
+    // Of each Mate's open changes, its newest stays open.
+    const newest = new Map<string, number>();
+    // A branch with no record, recorded: merged where main holds its squash, else open if it is its
+    // Mate's newest, else closed.
+    const restoreOrphan = (
+      branch: { readonly mateId: string; readonly number: number; readonly sha: string },
+      squash: string | null,
+    ) =>
+      Effect.gen(function* () {
+        const state =
+          squash !== null
+            ? "merged"
+            : newest.get(branch.mateId) === branch.number
+              ? "open"
+              : "closed";
+        yield* leader.write(
+          Effect.gen(function* () {
+            const first =
+              squash === null
+                ? null
+                : yield* firstCodeMergeOf(sql, {
+                    appId: repo.appId,
+                    repo: repo.id,
+                    number: branch.number,
+                  });
+            yield* sql`
+              INSERT INTO hq_change (app_id, repo, number, mate_project_id, title, state, head,
+                merged_sha, landed_head, merged_at, closed_at, mergeability, first_code_merge)
+              VALUES (${repo.appId}::uuid, ${repo.id}, ${branch.number}, ${branch.mateId},
+                ${`Change ${String(branch.number)} (restored)`}, ${state}, ${branch.sha},
+                ${squash}, ${squash === null ? null : branch.sha},
+                ${squash === null ? null : sql`now()`},
+                ${state === "closed" ? sql`now()` : null},
+                ${squash === null ? "unknown" : "already_merged"}, ${first}::boolean)`;
+            yield* appendEvent(sql, {
+              kind: "opened",
+              appId: repo.appId,
+              repo: repo.id,
+              number: branch.number,
+              data: { mateProjectId: branch.mateId, state, by: BY, reconciled: true },
+            });
+          }),
+        );
+      });
+    // Merged, as `main` holds their squash: recorded in the order main merged them, oldest first,
+    // so each one's first-code-merge flag reads what the ones before it recorded.
+    const mergedFirst = [...squashes.keys()].reverse();
+    const mergedAt = (mateId: string, number: number) =>
+      mergedFirst.indexOf(`${mateId}/${String(number)}`);
+    const merged = new Set<number>(
+      open
+        .filter((row) => squashOf(row.mate_project_id, row.number) !== null)
+        .map((row) => row.number),
+    );
+    const recoveries = [
+      ...open
+        .filter((row) => merged.has(row.number))
+        .map((row) => ({ at: mergedAt(row.mate_project_id, row.number), row, branch: undefined })),
+      ...orphans
+        .filter((branch) => squashOf(branch.mateId, branch.number) !== null)
+        .map((branch) => ({ at: mergedAt(branch.mateId, branch.number), row: undefined, branch })),
+    ].toSorted((one, other) => one.at - other.at);
+    for (const { row, branch } of recoveries) {
+      if (branch !== undefined) {
+        yield* restoreOrphan(branch, squashOf(branch.mateId, branch.number));
+        continue;
+      }
+      const squash = squashOf(row!.mate_project_id, row!.number)!;
+      const head = headOf.get(row!.number) ?? null;
       yield* leader.write(
         Effect.gen(function* () {
           const first = yield* firstCodeMergeOf(sql, {
             appId: repo.appId,
             repo: repo.id,
-            number: row.number,
+            number: row!.number,
           });
           yield* sql`
             UPDATE hq_change
@@ -260,12 +322,12 @@ const changesOf = (git: HqGit, sql: SqlClient.SqlClient, leader: Leader["Service
                 head = COALESCE(${head}, head),
                 merged_at = now(), updated_at = now(), mergeability = 'already_merged',
                 behind = false, first_code_merge = ${first}::boolean
-            WHERE app_id::text = ${repo.appId} AND repo = ${repo.id} AND number = ${row.number}`;
+            WHERE app_id::text = ${repo.appId} AND repo = ${repo.id} AND number = ${row!.number}`;
           yield* appendEvent(sql, {
             kind: "merged",
             appId: repo.appId,
             repo: repo.id,
-            number: row.number,
+            number: row!.number,
             data: {
               mergedSha: squash,
               landedHead: head,
@@ -277,8 +339,6 @@ const changesOf = (git: HqGit, sql: SqlClient.SqlClient, leader: Leader["Service
         }),
       );
     }
-    // Of each Mate's open changes, its newest stays open.
-    const newest = new Map<string, number>();
     const candidates = [
       ...open
         .filter((row) => !merged.has(row.number))
@@ -308,33 +368,7 @@ const changesOf = (git: HqGit, sql: SqlClient.SqlClient, leader: Leader["Service
       );
     }
     for (const branch of orphans) {
-      const squash = squashOf(branch.mateId, branch.number);
-      const state =
-        squash !== null
-          ? "merged"
-          : newest.get(branch.mateId) === branch.number
-            ? "open"
-            : "closed";
-      yield* leader.write(
-        Effect.andThen(
-          sql`
-            INSERT INTO hq_change (app_id, repo, number, mate_project_id, title, state, head,
-              merged_sha, landed_head, merged_at, closed_at, mergeability)
-            VALUES (${repo.appId}::uuid, ${repo.id}, ${branch.number}, ${branch.mateId},
-              ${`Change ${String(branch.number)} (restored)`}, ${state}, ${branch.sha},
-              ${squash}, ${squash === null ? null : branch.sha},
-              ${squash === null ? null : sql`now()`},
-              ${state === "closed" ? sql`now()` : null},
-              ${squash === null ? "unknown" : "already_merged"})`,
-          appendEvent(sql, {
-            kind: "opened",
-            appId: repo.appId,
-            repo: repo.id,
-            number: branch.number,
-            data: { mateProjectId: branch.mateId, state, by: BY, reconciled: true },
-          }),
-        ),
-      );
+      if (squashOf(branch.mateId, branch.number) === null) yield* restoreOrphan(branch, null);
     }
   });
 

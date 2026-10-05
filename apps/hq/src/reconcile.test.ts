@@ -211,6 +211,62 @@ describe("a takeover after git moved past HQ's records", () => {
         }),
     );
 
+    // Main's order decides which merge was the application's first, whether the record of a squash
+    // is open and lagging or missing altogether.
+    it.effect("recovers unrecorded squashes in the order main merged them", () =>
+      Effect.gen(function* () {
+        const first = yield* startCore(true);
+        yield* untilHealth(first.call, "active");
+        const owner = yield* sessionFor(first.call, "door-owner");
+        const ada = yield* mateInApp(first.call, first.fake, owner, "P_MATE", "Shop");
+        const { appId } = ada;
+        yield* first.call("POST", "/api/mate/repos", {
+          headers: ada.auth,
+          body: { name: "appdev" },
+        });
+        // In the records: Ada's change 1, open. Bo's change 2 is in git only.
+        yield* first.call("POST", "/api/mate/changes", {
+          headers: ada.auth,
+          body: { repo: "appdev", title: "Ada's first" },
+        });
+        yield* anotherMate(first.call, first.fake, owner, appId, "P_MATE2");
+        yield* first.stop;
+
+        const appdev = bareAt(NodePath.join(first.gitRoot, appId, "appdev.git"));
+        const main = appdev(["rev-parse", "refs/heads/main"]);
+        // Bo's squash is older on main than Ada's.
+        const boSquash = commitOn(appdev, main, "bo.txt", "Bo's (#2)\n\nMate-Change: P_MATE2/2");
+        const adaSquash = commitOn(
+          appdev,
+          boSquash,
+          "ada.txt",
+          "Ada's (#1)\n\nMate-Change: P_MATE/1",
+        );
+        appdev(["update-ref", "refs/heads/main", adaSquash, main]);
+        appdev(["update-ref", "refs/heads/mate/P_MATE2/2", commitOn(appdev, main, "bo.txt", "Bo")]);
+        appdev([
+          "update-ref",
+          "refs/heads/mate/P_MATE/1",
+          commitOn(appdev, main, "ada.txt", "Ada"),
+        ]);
+
+        const next = yield* startCore(true, { url: first.url, gitRoot: first.gitRoot });
+        yield* Stream.runHead(Stream.filter(next.gitHost.recorded, (tick) => tick > 0));
+        assert.deepStrictEqual(
+          yield* rowsWhere(
+            next.url,
+            `SELECT number, state, first_code_merge AS first FROM hq_change
+             WHERE repo = 'appdev' ORDER BY number`,
+            () => true,
+          ),
+          [
+            { number: 1, state: "merged", first: false },
+            { number: 2, state: "merged", first: true },
+          ],
+        );
+      }),
+    );
+
     it.effect("numbers a new change past every change branch, recorded or not", () =>
       Effect.gen(function* () {
         const { call, fake, gitRoot } = yield* startCore(true);
