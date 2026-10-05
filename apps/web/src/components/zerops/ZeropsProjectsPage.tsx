@@ -103,6 +103,7 @@ import { withheldProjectNotices } from "~/zerops/inventoryContext";
 import { useZeropsInventory } from "~/zerops/ZeropsInventoryProvider";
 import { useZeropsCreationVerdicts } from "~/zerops/useZeropsCreationVerdicts";
 import { useZeropsFirstBuilds } from "~/zerops/useZeropsFirstBuilds";
+import { usePressesElsewhere } from "~/zerops/usePressesElsewhere";
 import { useNowMs } from "~/zerops/useNowMs";
 import { mateUpdateStatus } from "~/zerops/mateUpdate";
 import { useZeropsMateUpdateStates } from "~/zerops/useZeropsMateUpdate";
@@ -1898,6 +1899,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   // read as holding nothing, and every environment in it as half-made.
   const heldEnvironments = useAtomValue(hqEnvironmentsAtom);
   const mayKeepKey = useKeepDeployKeyOffer();
+  // A press still at a project — this browser's or another's, as HQ holds it — is its own to finish.
+  const pressOf = usePressesElsewhere(candidates);
   const halfMade = useMemo(
     () =>
       heldEnvironments === null
@@ -1908,8 +1911,9 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
             environments: heldEnvironments,
             // A key is minted only by somebody HQ offers keeping it (`keep_deploy_token`).
             mayKey: (projectId) => mayKeepKey(projectId) === true,
+            pressing: (projectId) => pressOf(projectId) === "pressing",
           }),
-    [candidates, heldEnvironments, mayKeepKey, registryState.registry],
+    [candidates, heldEnvironments, mayKeepKey, pressOf, registryState.registry],
   );
   const finishing = useFinishGroupEnvironment({ client, clientId: activeOrganization?.id, hq });
 

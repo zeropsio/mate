@@ -146,14 +146,15 @@ export const hqStructureAtom = Atom.make<HqStructureView | null>(null).pipe(
 
 /**
  * Where HQ places each project of the organization in view, as last known; null while nothing
- * is known of its structure — its projects are then placed nowhere.
+ * is known of its structure — its projects are then placed nowhere. A stage's or a production's
+ * project HQ holds nowhere is placed by its press's record, unregistered (`placementsOf`).
  */
 export const hqPlacementsAtom = Atom.make((get): ReadonlyMap<string, HqPlacement> | null => {
   const view = get(hqStructureAtom);
   const organizationId = get(zeropsSessionAtom)?.activeOrganization?.organizationId;
   return view === null || view.organizationId !== organizationId || view.structure === null
     ? null
-    : placementsOf(view.structure, get(hqLoginsAtom), get(hqReadyAgentsAtom));
+    : placementsOf(view.structure, get(hqLoginsAtom), get(hqReadyAgentsAtom), view.presses ?? null);
 }).pipe(Atom.withLabel("zerops:hq-placements"));
 
 /**

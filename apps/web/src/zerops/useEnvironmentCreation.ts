@@ -209,9 +209,16 @@ export function useEnvironmentCreation(): (
         data: { runtime, organizationRef, projectRef },
         organizationId: organization.id,
       };
-      // A Mate's press is held at HQ while it runs, so another browser never takes it for one
-      // that stopped (B5).
-      const hold = withAgent ? pressHold(accountHqApi(client, organization.id, hq)) : undefined;
+      // Every press is held at HQ while it runs, so another browser never takes it for one that
+      // stopped, and one cut short is read as what it was making, in its application (B5).
+      const pressKind = withAgent ? "mate" : tier;
+      const hold =
+        pressKind === null
+          ? undefined
+          : pressHold(accountHqApi(client, organization.id, hq), {
+              kind: pressKind,
+              appId: group.groupId,
+            });
       const platform = pressPlatform(inputs, {
         register: pressRegistration(
           inputs,

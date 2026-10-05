@@ -103,8 +103,12 @@ export type HqStructureEvent =
 
 const readSnapshotChanges = Schema.decodeUnknownOption(ChangesSnapshot);
 
-/** A Mate's press another browser holds, as HQ sent it (`Structure.holdPress`). */
+/** A press HQ holds a record of, as HQ sent it (`Structure.holdPress`). */
 const PressSent = Schema.Struct({
+  /** What it makes: a Mate, or a stage's or a production's environment. */
+  kind: Schema.Literals(["mate", "stage", "production"]),
+  /** The application its registration places it in; none for a Mate in no application. */
+  appId: Schema.optionalKey(Schema.String),
   /** How long its hold runs on from the message that said it, ms; 0 where it ran out. */
   heldForMs: Schema.Number,
   /** The Zerops process of the container import its press asked for, once Zerops answered it. */
@@ -115,10 +119,13 @@ export type HqPressesSent = typeof PressesSent.Type;
 const readPressesSent = Schema.decodeUnknownOption(PressesSent);
 
 /**
- * A Mate's press another browser holds, by its project: until when its hold runs on this browser's
- * clock — measured from when its message arrived, never against HQ's clock — and its import.
+ * A press HQ holds a record of, by its project: what it makes and where, until when its hold runs
+ * on this browser's clock — measured from when its message arrived, never against HQ's clock — and
+ * its import. A press that finished has none.
  */
 export interface HqPressHold {
+  readonly kind: "mate" | "stage" | "production";
+  readonly appId?: string;
   readonly expiresAtMs: number;
   readonly importProcessId?: string;
 }
@@ -141,6 +148,8 @@ export function applyPressesEvent(
     Object.entries(sent).map(([projectId, press]) => [
       projectId,
       {
+        kind: press.kind,
+        ...(press.appId === undefined ? {} : { appId: press.appId }),
         expiresAtMs: receivedAtMs + press.heldForMs,
         ...(press.importProcessId === undefined ? {} : { importProcessId: press.importProcessId }),
       },

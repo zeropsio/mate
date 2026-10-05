@@ -484,10 +484,13 @@ describe("driveHqStructure", () => {
             appReads: null,
             mates: null,
             people: null,
-            presses: { p1: { heldForMs: 60_000 } },
+            presses: { p1: { kind: "mate", heldForMs: 60_000 } },
           },
           { pingAfterMs: 5_000, tick: h.tick },
-          { kind: "presses", presses: { p1: { heldForMs: 60_000, importProcessId: "imp-1" } } },
+          {
+            kind: "presses",
+            presses: { p1: { kind: "mate", heldForMs: 60_000, importProcessId: "imp-1" } },
+          },
         ],
         end: "hang",
       },
@@ -497,9 +500,11 @@ describe("driveHqStructure", () => {
     try {
       await vi.advanceTimersByTimeAsync(0);
       const pressesSaid = h.views.flatMap((view) => (view.presses == null ? [] : [view.presses]));
-      expect(pressesSaid[0]).toEqual(new Map([["p1", { expiresAtMs: 10_000 + 60_000 }]]));
+      expect(pressesSaid[0]).toEqual(
+        new Map([["p1", { kind: "mate", expiresAtMs: 10_000 + 60_000 }]]),
+      );
       expect(h.views.at(-1)?.presses).toEqual(
-        new Map([["p1", { expiresAtMs: 15_000 + 60_000, importProcessId: "imp-1" }]]),
+        new Map([["p1", { kind: "mate", expiresAtMs: 15_000 + 60_000, importProcessId: "imp-1" }]]),
       );
     } finally {
       stop.abort();

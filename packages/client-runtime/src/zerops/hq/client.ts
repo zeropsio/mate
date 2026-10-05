@@ -296,17 +296,26 @@ export interface HqApi {
    */
   readonly recordBirth: (birth: { readonly appId: string } & HqNewMate) => Promise<HqBirth>;
   /**
-   * Holds, or renews, a Mate's press for this browser's press `owner` (`PUT
-   * /api/presses/{projectId}`), with its container import's Zerops process once Zerops answered
-   * it: another browser takes it for a press still running. Another press's hold refuses it
-   * (`press_held`).
+   * Holds, or renews, a press for this browser's press `owner` (`PUT /api/presses/{projectId}`):
+   * what it makes and into which application, with its container import's Zerops process once
+   * Zerops answered it — another browser takes it for a press still running. Another press's hold
+   * refuses it (`press_held`).
    */
   readonly holdPress: (
     projectId: string,
-    press: { readonly owner: string; readonly importProcessId?: string },
+    press: {
+      readonly owner: string;
+      readonly kind: "mate" | "stage" | "production";
+      readonly appId?: string;
+      readonly importProcessId?: string;
+    },
   ) => Promise<void>;
-  /** Lets this browser's press's hold go at its end (`DELETE /api/presses/{projectId}/{owner}`). */
-  readonly releasePress: (projectId: string, owner: string) => Promise<void>;
+  /**
+   * This browser's press's end: one that `finished` leaves no record (`DELETE
+   * /api/presses/{projectId}/{owner}`); one that stopped ends its hold and keeps its record, for its
+   * setup to be finished for its kind (`POST …/stopped`).
+   */
+  readonly endPress: (projectId: string, owner: string, finished: boolean) => Promise<void>;
   readonly bindBirth: (birthId: string, projectId: string) => Promise<void>;
   readonly attachProject: (appId: string, attach: HqAttach) => Promise<void>;
   /**
@@ -1014,10 +1023,11 @@ export function makeHqApi(input: {
         true,
       );
     },
-    releasePress: async (projectId, owner) => {
+    endPress: async (projectId, owner, finished) => {
+      const path = `/api/presses/${encodeURIComponent(projectId)}/${encodeURIComponent(owner)}`;
       await authorized(
-        `/api/presses/${encodeURIComponent(projectId)}/${encodeURIComponent(owner)}`,
-        { method: "DELETE" },
+        finished ? path : `${path}/stopped`,
+        { method: finished ? "DELETE" : "POST" },
         true,
       );
     },

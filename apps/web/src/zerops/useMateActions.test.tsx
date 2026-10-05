@@ -6,7 +6,7 @@
  * Mate's (D3).
  */
 import { RegistryContext } from "@effect/atom-react";
-import type { ZeropsMateFace } from "@t3tools/client-runtime/zerops";
+import { readZeropsMembership, type ZeropsMateFace } from "@t3tools/client-runtime/zerops";
 import type { MateLiveView } from "@t3tools/shared/hqMates";
 import type { HqMateOfferStates, HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 import { EnvironmentId, ThreadId, TurnId } from "@t3tools/contracts";
@@ -1056,6 +1056,29 @@ describe("useMateActions — Finish setup on a Mate another browser still presse
     mock.pressElsewhere = (projectId) => (projectId === SLOW.project.id ? held : "stopped");
     mount();
     expect(verbs(SLOW).some((verb) => verb.id === "finish-setup")).toBe(offered);
+  });
+
+  // A stage's press cut short before its registration: its record places it in its application
+  // as a stage, and a stage is never set up as a Mate.
+  it("offers no Mate's Finish setup on a stage its press's record places", () => {
+    const STAGE = {
+      ...SLOW,
+      project: {
+        ...SLOW.project,
+        hq: {
+          appId: "acme",
+          appName: "Acme Docs",
+          kind: "stage",
+          mate: null,
+          unregistered: true,
+        },
+      },
+    } as ZeropsCandidatePresentation;
+    mount();
+    const offered = actions()
+      .actionsFor(STAGE, readZeropsMembership(STAGE.project))
+      .filter((entry): entry is ZeropsMenuAction => !("separator" in entry));
+    expect(offered.some((verb) => verb.id === "finish-setup")).toBe(false);
   });
 });
 

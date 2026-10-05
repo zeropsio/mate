@@ -80,7 +80,7 @@ afterEach(() => {
 
 describe("usePressesElsewhere", () => {
   it("reads a slow press as at it while its hold runs, and as stopped the moment it ran out", async () => {
-    mount(new Map([["p-una", { expiresAtMs: NOW + 30_000 }]]));
+    mount(new Map([["p-una", { kind: "mate", expiresAtMs: NOW + 30_000 }]]));
     expect(said("p-una")).toBe("pressing");
     await act(async () => {
       await vi.advanceTimersByTimeAsync(30_001);
@@ -91,7 +91,9 @@ describe("usePressesElsewhere", () => {
 
   it("reads a press whose import failed as stopped at once, though its hold still runs", () => {
     processes.of = new Map([["p-una", [{ id: "imp-1", status: "FAILED" }]]]);
-    mount(new Map([["p-una", { expiresAtMs: NOW + 30_000, importProcessId: "imp-1" }]]));
+    mount(
+      new Map([["p-una", { kind: "mate", expiresAtMs: NOW + 30_000, importProcessId: "imp-1" }]]),
+    );
     expect(processes.asked).toEqual(["p-una"]);
     expect(said("p-una")).toBe("stopped");
   });

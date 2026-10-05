@@ -19,6 +19,7 @@ import type { ZeropsProject } from "../api.ts";
 
 import type { Known } from "../knowledge/known.ts";
 import type { HqMate, HqStructure } from "./client.ts";
+import type { HqPresses } from "./stream.ts";
 
 export type HqPlacement =
   | {
@@ -27,6 +28,12 @@ export type HqPlacement =
       readonly kind: RoleProjectKind;
       /** A Mate's face as HQ records it (`readMateFace`). */
       readonly mate: HqMate | null;
+      /**
+       * Placed by its press's record alone (`hq_press`): a stage's or a production's press that
+       * Zerops took and that never registered it — HQ holds it nowhere yet. Its setup is finished
+       * as its tier, into this application.
+       */
+      readonly unregistered?: true;
     }
   /** A Mate HQ holds in no application (`HqStructure.ungrouped`). */
   | { readonly appId: null; readonly appName: null; readonly kind: "mate"; readonly mate: HqMate };
@@ -51,12 +58,15 @@ export const isRoleProjectKind = (kind: string): kind is RoleProjectKind =>
 /**
  * Each project HQ places, by its id; a kind this build does not know places nothing. Each Mate's
  * record carries its logins as HQ's overview of it says them (`logins`, by project), where HQ
- * holds one for the reader.
+ * holds one for the reader. A project HQ places nowhere whose press record (`presses`) is a
+ * stage's or a production's, into an application HQ holds, is placed there by that record —
+ * `unregistered` — never read as a project nobody made: what HQ said of it is its press.
  */
 export function placementsOf(
   structure: HqStructure,
   logins: ReadonlyMap<string, OverviewLogins> = new Map(),
   readyAgents: ReadonlyMap<string, boolean> = new Map(),
+  presses: HqPresses | null = null,
 ): HqPlacements {
   const withLogins = (projectId: string, mate: HqMate): HqMate => {
     const told =
@@ -99,17 +109,33 @@ export function placementsOf(
       mate: withLogins(projectId, mate),
     });
   }
+  for (const [projectId, press] of presses ?? []) {
+    if (placements.has(projectId) || press.kind === "mate" || press.appId === undefined) continue;
+    const app = structure.apps.find((entry) => entry.id === press.appId);
+    if (app === undefined) continue;
+    placements.set(projectId, {
+      appId: app.id,
+      appName: app.name,
+      kind: press.kind,
+      mate: null,
+      unregistered: true,
+    });
+  }
   return Object.assign(placements, {
     tools: new Map((structure.tools ?? []).map((tool) => [tool.projectId, tool.kind] as const)),
   });
 }
 
-/** What HQ holds a project as, from where it places it: `none` where it places it nowhere. */
+/**
+ * What HQ holds a project as, from where it places it: `none` where it places it nowhere — placed
+ * by a press's record alone included (`unregistered`).
+ */
 export function heldOf(project: {
   readonly hq?: HqPlacement | undefined;
 }): RoleProjectKind | "none" {
   const placed = project.hq;
-  if (placed === undefined) return "none";
+  if (placed === undefined || ("unregistered" in placed && placed.unregistered === true))
+    return "none";
   return placed.appId === null ? "mate" : placed.kind;
 }
 

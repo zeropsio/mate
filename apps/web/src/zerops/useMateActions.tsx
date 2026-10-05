@@ -571,6 +571,9 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   );
   const finishSetupVerbFor = useCallback(
     (candidate: ZeropsCandidatePresentation, tags: ZeropsMembership): string | undefined => {
+      // A stage or a production is no Mate: its own setup is finished as its tier
+      // (`halfMadeGroupEnvironments`), never as a Mate's.
+      if (tags.role === "stage" || tags.role === "prod") return undefined;
       const press = presses.find((entry) => entry.projectId === candidate.project.id);
       // A Mate claimed from the pool is in no group: no registration of its, no container to make.
       const grouped = tags.groupId !== undefined;

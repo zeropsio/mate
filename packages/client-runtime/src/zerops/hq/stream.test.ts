@@ -471,11 +471,17 @@ describe("applyPressesEvent", () => {
     expect(
       structureEventOf({
         type: "presses",
-        presses: { p1: { heldForMs: 60_000, until: "x", importProcessId: "imp-1" } },
+        presses: {
+          p1: { kind: "mate", heldForMs: 60_000, until: "x", importProcessId: "imp-1" },
+          p2: { kind: "stage", appId: "app-1", heldForMs: 0, until: "x" },
+        },
       }),
     ).toEqual({
       kind: "presses",
-      presses: { p1: { heldForMs: 60_000, importProcessId: "imp-1" } },
+      presses: {
+        p1: { kind: "mate", heldForMs: 60_000, importProcessId: "imp-1" },
+        p2: { kind: "stage", appId: "app-1", heldForMs: 0 },
+      },
     });
     expect(structureEventOf({ type: "presses", presses: { p1: { heldForMs: "soon" } } })).toBe(
       undefined,
@@ -485,13 +491,19 @@ describe("applyPressesEvent", () => {
   it("holds each press until its hold runs out on this browser's clock, from its message", () => {
     const held = applyPressesEvent(
       null,
-      { kind: "presses", presses: { p1: { heldForMs: 60_000 }, p2: { heldForMs: 0 } } },
+      {
+        kind: "presses",
+        presses: {
+          p1: { kind: "mate", heldForMs: 60_000 },
+          p2: { kind: "stage", appId: "app-1", heldForMs: 0 },
+        },
+      },
       AT,
     );
     expect(held).toEqual(
       new Map([
-        ["p1", { expiresAtMs: AT + 60_000 }],
-        ["p2", { expiresAtMs: AT }],
+        ["p1", { kind: "mate", expiresAtMs: AT + 60_000 }],
+        ["p2", { kind: "stage", appId: "app-1", expiresAtMs: AT }],
       ]),
     );
     // Any other event leaves them; the next message replaces them whole.

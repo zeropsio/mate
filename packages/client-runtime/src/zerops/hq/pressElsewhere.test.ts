@@ -13,6 +13,7 @@ describe("pressElsewhere", () => {
       [
         "p1",
         {
+          kind: "mate",
           expiresAtMs: NOW + expiresInMs,
           ...(importProcessId === undefined ? {} : { importProcessId }),
         },
@@ -52,12 +53,12 @@ describe("pressElsewhere", () => {
 
   it("says when the soonest hold still running runs out", () => {
     const presses: HqPresses = new Map([
-      ["p1", { expiresAtMs: NOW + 50_000 }],
-      ["p2", { expiresAtMs: NOW + 20_000 }],
-      ["p3", { expiresAtMs: NOW - 1 }],
+      ["p1", { kind: "mate", expiresAtMs: NOW + 50_000 }],
+      ["p2", { kind: "stage", expiresAtMs: NOW + 20_000 }],
+      ["p3", { kind: "mate", expiresAtMs: NOW - 1 }],
     ]);
     expect(nextPressExpiry(presses, NOW)).toBe(NOW + 20_000);
-    expect(nextPressExpiry(new Map([["p3", { expiresAtMs: NOW }]]), NOW)).toBeNull();
+    expect(nextPressExpiry(new Map([["p3", { kind: "mate", expiresAtMs: NOW }]]), NOW)).toBeNull();
     expect(nextPressExpiry(null, NOW)).toBeNull();
   });
 });

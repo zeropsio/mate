@@ -31,6 +31,7 @@ import {
   mateFinishRegistration,
   PRESS_MAY_HAVE_LANDED,
   PRESS_RENEW_MS,
+  PRESS_STEP_RENEW_MS,
   PRESSED_IN_ANOTHER_BROWSER,
   pressHold,
   pressPlatform,
@@ -357,7 +358,12 @@ describe("a press's hold at HQ", () => {
       api: {
         holdPress: async (
           projectId: string,
-          press: { readonly owner: string; readonly importProcessId?: string },
+          press: {
+            readonly owner: string;
+            readonly kind: string;
+            readonly appId?: string;
+            readonly importProcessId?: string;
+          },
         ) => {
           if (heldBy !== null && heldBy !== press.owner) {
             throw new HqError({
@@ -370,12 +376,12 @@ describe("a press's hold at HQ", () => {
           }
           heldBy = press.owner;
           calls.push(
-            `hold ${projectId} ${press.owner}${press.importProcessId ? ` ${press.importProcessId}` : ""}`,
+            `hold ${projectId} ${press.kind}${press.appId ? `@${press.appId}` : ""} ${press.owner}${press.importProcessId ? ` ${press.importProcessId}` : ""}`,
           );
         },
-        releasePress: async (projectId: string, owner: string) => {
+        endPress: async (projectId: string, owner: string, finished: boolean) => {
           if (heldBy === owner) heldBy = null;
-          calls.push(`release ${projectId} ${owner}`);
+          calls.push(`${finished ? "finished" : "stopped"} ${projectId} ${owner}`);
         },
       },
     };
@@ -385,19 +391,26 @@ describe("a press's hold at HQ", () => {
     vi.useFakeTimers();
     try {
       const hq = api();
-      const hold = pressHold(hq.api, "press-a");
+      const hold = pressHold(hq.api, { kind: "mate", appId: "app-1" }, "press-a");
       expect(await hold.take("p-1")).toBe("held");
       await vi.advanceTimersByTimeAsync(PRESS_RENEW_MS);
       await hold.imported("imp-1");
-      await vi.advanceTimersByTimeAsync(PRESS_RENEW_MS);
-      await hold.release();
+      // A step that moves renews it, whatever its timer is let do in a hidden tab — not twice
+      // within its least gap.
+      hold.renew();
+      await vi.advanceTimersByTimeAsync(PRESS_STEP_RENEW_MS);
+      hold.renew();
+      hold.renew();
+      await vi.advanceTimersByTimeAsync(PRESS_RENEW_MS - PRESS_STEP_RENEW_MS);
+      await hold.end(true);
       await vi.advanceTimersByTimeAsync(PRESS_RENEW_MS * 3);
       expect(hq.calls).toEqual([
-        "hold p-1 press-a",
-        "hold p-1 press-a",
-        "hold p-1 press-a imp-1",
-        "hold p-1 press-a imp-1",
-        "release p-1 press-a",
+        "hold p-1 mate@app-1 press-a",
+        "hold p-1 mate@app-1 press-a",
+        "hold p-1 mate@app-1 press-a imp-1",
+        "hold p-1 mate@app-1 press-a imp-1",
+        "hold p-1 mate@app-1 press-a imp-1",
+        "finished p-1 press-a",
       ]);
     } finally {
       vi.useRealTimers();
@@ -420,15 +433,16 @@ describe("a press's hold at HQ", () => {
               message: "refused",
             });
           },
-          releasePress: async () => {
-            asked.push("release");
+          endPress: async () => {
+            asked.push("end");
           },
         },
+        { kind: "mate" },
         "press-a",
       );
       expect(await hold.take("p-1")).toBe("held");
       await vi.advanceTimersByTimeAsync(PRESS_RENEW_MS * 3);
-      await hold.release();
+      await hold.end(false);
       expect(asked).toEqual(["hold"]);
     } finally {
       vi.useRealTimers();
@@ -437,7 +451,7 @@ describe("a press's hold at HQ", () => {
 
   it("stops a press of a Mate another browser's press holds, before it writes anything", async () => {
     const hq = api();
-    await pressHold(hq.api, "press-a").take("p-1");
+    await pressHold(hq.api, { kind: "mate" }, "press-a").take("p-1");
     const written: Array<string> = [];
     const platform = {
       importDevelopmentContainer: async () => {
@@ -453,7 +467,7 @@ describe("a press's hold at HQ", () => {
         isCurrent: () => true,
         resume: { from: 0, projectId: "p-1", projectName: "Acme - Una" },
         locks: undefined,
-        hold: pressHold(hq.api, "press-b"),
+        hold: pressHold(hq.api, { kind: "mate" }, "press-b"),
       });
       expect(outcome).toMatchObject({ ok: false, error: PRESSED_IN_ANOTHER_BROWSER });
       expect(written).toEqual([]);
@@ -464,7 +478,7 @@ describe("a press's hold at HQ", () => {
 
   it("names the container import's process to its hold once Zerops answered it", async () => {
     const hq = api();
-    const hold = pressHold(hq.api, "press-a");
+    const hold = pressHold(hq.api, { kind: "mate" }, "press-a");
     await hold.take("p-1");
     const platform = pressPlatform(
       {
@@ -493,8 +507,33 @@ describe("a press's hold at HQ", () => {
       projectName: "Acme - Una",
       agents: [],
     });
-    expect(hq.calls.at(-1)).toBe("hold p-1 press-a imp-9");
-    await hold.release();
+    expect(hq.calls.at(-1)).toBe("hold p-1 mate press-a imp-9");
+    await hold.end(true);
+  });
+
+  // B5: a stage's press imports first and registers last; cut short between them, its record stays
+  // with its hold ended, for its setup to be finished as a stage of its application.
+  it("ends a stage's press that stopped, keeping its record; one that went through leaves none", async () => {
+    const hq = api();
+    const platform = {
+      importServices: async () => undefined,
+      register: async () => {
+        throw new Error("HQ could not be reached.");
+      },
+    } as unknown as EnvironmentCreationPlatform;
+    const stopped = await runPress({
+      organizationId: "org-acme",
+      steps: [{ kind: "import-recipe", role: "stage", yaml: "services: []" }, { kind: "register" }],
+      platform,
+      isCurrent: () => true,
+      resume: { from: 0, projectId: "p-stage", projectName: "Acme - stage" },
+      locks: undefined,
+      hold: pressHold(hq.api, { kind: "stage", appId: "app-1" }, "press-s"),
+    });
+    await Promise.resolve();
+    expect(stopped.ok).toBe(false);
+    expect(hq.calls).toEqual(["hold p-stage stage@app-1 press-s", "stopped p-stage press-s"]);
+    forgetPress("p-stage");
   });
 });
 

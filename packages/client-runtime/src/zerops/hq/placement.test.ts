@@ -81,6 +81,34 @@ describe("placementsOf", () => {
   });
 });
 
+// B5: a stage's press imports first and registers last; one cut short between them leaves a
+// project HQ holds nowhere. Its press's record places it in its application as its tier — never a
+// project nobody made — and HQ still holds it as nothing.
+describe("placementsOf — a press's record of a project HQ holds nowhere", () => {
+  const presses = new Map([
+    ["p-new-stage", { kind: "stage", appId: "app-1", expiresAtMs: 0 }],
+    ["p-stage", { kind: "production", appId: "app-1", expiresAtMs: 0 }],
+    ["p-elsewhere", { kind: "stage", appId: "app-gone", expiresAtMs: 0 }],
+    ["p-new-mate", { kind: "mate", appId: "app-1", expiresAtMs: 0 }],
+  ] as const);
+
+  it("places a stage's or a production's there as its tier, unregistered; HQ's own word first", () => {
+    const placed = placementsOf(STRUCTURE, new Map(), new Map(), presses);
+    expect(placed.get("p-new-stage")).toEqual({
+      appId: "app-1",
+      appName: "Acme CRM",
+      kind: "stage",
+      mate: null,
+      unregistered: true,
+    });
+    expect(heldOf({ hq: placed.get("p-new-stage") })).toBe("none");
+    // What HQ registered stands; an application HQ does not hold, or a Mate's, places nothing.
+    expect(placed.get("p-stage")?.kind).toBe("stage");
+    expect(placed.has("p-elsewhere")).toBe(false);
+    expect(placed.has("p-new-mate")).toBe(false);
+  });
+});
+
 describe("placeProjects", () => {
   it("joins each project HQ places, leaves the rest as they are, and takes back a placement HQ dropped", () => {
     const placements = placementsOf(STRUCTURE);
