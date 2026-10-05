@@ -2029,15 +2029,17 @@ function toSessionError(
   threadId: ThreadId,
   cause: unknown,
 ): ProviderAdapterSessionNotFoundError | ProviderAdapterSessionClosedError | undefined {
+  // Only words about the session itself: "model not found" or a proxy's
+  // "connection closed" is no closed session.
   const normalized = toMessage(cause, "").toLowerCase();
-  if (normalized.includes("unknown session") || normalized.includes("not found")) {
+  if (/\bunknown session\b|\bsession\b[^.]*\bnot found\b/.test(normalized)) {
     return new ProviderAdapterSessionNotFoundError({
       provider: PROVIDER,
       threadId,
       cause,
     });
   }
-  if (normalized.includes("closed")) {
+  if (/\b(query|session|stream|transport|process|stdin)\b[^.]*\bclosed\b/.test(normalized)) {
     return new ProviderAdapterSessionClosedError({
       provider: PROVIDER,
       threadId,

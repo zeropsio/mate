@@ -112,8 +112,10 @@ class FakeClaudeQuery implements AsyncIterable<SDKMessage> {
     }
   }
 
+  public setModelError: unknown | undefined;
   readonly setModel = async (model?: string): Promise<void> => {
     this.setModelCalls.push(model);
+    if (this.setModelError !== undefined) throw this.setModelError;
   };
 
   readonly setPermissionMode = async (mode: PermissionMode): Promise<void> => {
@@ -9128,6 +9130,41 @@ describe("ClaudeAdapterLive", () => {
         assert.equal(harness.queries.length, queryCountBeforeRollback);
         assert.equal(harness.queries.at(-1)?.closeCalls, 0);
         assert.deepEqual((yield* adapter.listSessions())[0]?.resumeCursor, cursorBeforeRollback);
+      }).pipe(
+        Effect.provideService(Random.Random, makeDeterministicRandomService()),
+        Effect.provide(harness.layer),
+      );
+    });
+  }
+
+  for (const { message, tag } of [
+    { message: "Query closed before response received", tag: "ProviderAdapterSessionClosedError" },
+    { message: "Unknown session: abc", tag: "ProviderAdapterSessionNotFoundError" },
+    { message: "Model not found: claude-unknown", tag: "ProviderAdapterRequestError" },
+    { message: "Connection closed by the proxy", tag: "ProviderAdapterRequestError" },
+  ]) {
+    it.effect(`reads a failed control request "${message}" as ${tag}`, () => {
+      const harness = makeHarness();
+      return Effect.gen(function* () {
+        const adapter = yield* ClaudeAdapter;
+        const session = yield* adapter.startSession({
+          threadId: THREAD_ID,
+          provider: ProviderDriverKind.make("claudeAgent"),
+          runtimeMode: "full-access",
+        });
+        harness.query.setModelError = new Error(message);
+        const error = yield* adapter
+          .sendTurn({
+            threadId: session.threadId,
+            input: "hello",
+            modelSelection: {
+              instanceId: ProviderInstanceId.make("claudeAgent"),
+              model: SYNTHETIC_CLAUDE_CAPABLE_MODEL,
+            },
+            attachments: [],
+          })
+          .pipe(Effect.flip);
+        assert.equal(error._tag, tag);
       }).pipe(
         Effect.provideService(Random.Random, makeDeterministicRandomService()),
         Effect.provide(harness.layer),
