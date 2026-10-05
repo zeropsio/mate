@@ -308,6 +308,25 @@ describe("readZeropsContainer", () => {
     });
   });
 
+  // Live, 2026-10-05: with `zerops@mate` stopped, nginx kept serving zcp's init marker at
+  // `/mate/healthz` (200, initComplete true) while the descriptor's preflight got a 502 with no CORS
+  // header — a network error to the browser. The container is up; its Mate is not answering.
+  it.each([
+    { name: "a descriptor the browser could not read (a CORS-less 502)", descriptor: corsBlocked },
+    { name: "a descriptor answering 502", descriptor: () => html(502) },
+    { name: "a descriptor answering a page", descriptor: () => html(404) },
+  ])(
+    "reads a container whose init is complete and whose Mate does not answer as not answering: $name",
+    async ({ descriptor }) => {
+      const read = stub({ [DESCRIPTOR]: descriptor, [HEALTHZ]: () => json(LIVE_HEALTHZ) });
+      const { reading } = await readZeropsContainer(ORIGIN, ports(read), signal, {
+        fresh: true,
+        initAt: true,
+      });
+      expect(reading).toEqual({ kind: "not-answering", initAt: LIVE_HEALTHZ.initAt });
+    },
+  );
+
   it.each([false, true])(
     "reads what the health probe concludes when the descriptor does not answer (fresh: %s)",
     async (fresh) => {
@@ -315,7 +334,10 @@ describe("readZeropsContainer", () => {
         (await readZeropsContainer(ORIGIN, ports(stub(routes)), signal, { fresh, initAt: fresh }))
           .reading;
       expect(
-        await read({ [DESCRIPTOR]: () => html(404), [HEALTHZ]: () => json(LIVE_HEALTHZ) }),
+        await read({
+          [DESCRIPTOR]: () => html(404),
+          [HEALTHZ]: () => json({ initComplete: false, initAt: LIVE_HEALTHZ.initAt }),
+        }),
       ).toEqual({ kind: "initializing", initAt: LIVE_HEALTHZ.initAt });
       expect(await read({ [DESCRIPTOR]: opaqueRedirect, [HEALTHZ]: opaqueRedirect })).toEqual({
         kind: "predates-mate",
