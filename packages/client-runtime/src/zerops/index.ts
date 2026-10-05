@@ -96,6 +96,7 @@ export {
   appProjectName,
   nameUnderApp,
   projectNameInApp,
+  renamedProjectName,
   withZeropsMateTag,
   type BirthPlacement,
   type DeriveZeropsGroupsOptions,

@@ -1309,22 +1309,38 @@ describe("useMateActions — HQ's verbs only on a Mate HQ holds", () => {
   });
 });
 
-// D3: a Mate's name is its project's in Zerops. A rename is the project's, written by the account's
-// one writer of the project's record, and offered where the platform takes it: never HQ's.
+// A Mate's name is its project's in Zerops, under its application's name. A rename is the
+// project's, written by the account's one writer of the project's record, and offered where the
+// platform takes it: never HQ's.
 describe("useMateActions — Rename Mate", () => {
-  it("renames the Mate's project in Zerops, starting from its name there, and writes nothing to HQ", () => {
+  const named = mate("Acme Docs - Fen");
+
+  it("renames the Mate's project in Zerops in full, starting from its own name, and writes nothing to HQ", () => {
     mock.renameProject.mockReturnValue(Promise.resolve({ value: { kind: "written" } }));
     mount();
-    const rename = actions().renameInPlace(FEN);
+    const rename = actions().renameInPlace(named);
     expect(rename?.initialValue).toBe("Fen");
     act(() => {
       rename!.commit("Nova");
     });
     expect(mock.renameProject).toHaveBeenCalledWith(
-      { organizationId: "org-acme", projectId: FEN.project.id },
-      "Nova",
+      { organizationId: "org-acme", projectId: named.project.id },
+      "Acme Docs - Nova",
     );
     expect(mock.updateMate).not.toHaveBeenCalled();
+  });
+
+  it("renames nothing where the name is kept", () => {
+    mount();
+    act(() => {
+      actions().renameInPlace(named)!.commit("Fen");
+    });
+    expect(mock.renameProject).not.toHaveBeenCalled();
+  });
+
+  it("starts from the whole name of a Mate not named under its application", () => {
+    mount();
+    expect(actions().renameInPlace(FEN)?.initialValue).toBe("Fen");
   });
 
   it("offers it to a member who owns the Mate's project, as the platform takes it", () => {

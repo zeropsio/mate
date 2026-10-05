@@ -13,6 +13,7 @@ import {
   projectNameInApp,
   readMateFace,
   readZeropsMembership,
+  renamedProjectName,
   withZeropsMateTag,
   ZEROPS_GROUP_ID_LENGTH,
   type ZeropsPlacedBirth,
@@ -999,6 +1000,52 @@ describe("appProjectName", () => {
 
   it("keeps the own name alone where the project has no application", () => {
     expect(appProjectName(undefined, "Rune")).toBe("Rune");
+  });
+});
+
+describe("renamedProjectName", () => {
+  const inApp = (name: string, appName = "SPN") =>
+    project(name, { hq: placed("a", "mate", { appName }) });
+
+  it.each([
+    {
+      case: "builds the full name under its application",
+      name: "SPN - Rune",
+      typed: "Milo",
+      expected: "SPN - Milo",
+    },
+    { case: "trims what is typed", name: "SPN - Rune", typed: "  Milo ", expected: "SPN - Milo" },
+    {
+      case: "renames a Mate shown whole under the application it does not carry",
+      name: "Old - Rune",
+      typed: "Rune2",
+      expected: "SPN - Rune2",
+    },
+    {
+      case: "is no rename where the shown name is kept",
+      name: "SPN - Rune",
+      typed: "Rune",
+      expected: undefined,
+    },
+    {
+      case: "is no rename where a name shown whole is kept",
+      name: "Old - Rune",
+      typed: "Old - Rune",
+      expected: undefined,
+    },
+    {
+      case: "is no rename where the full name comes out the same",
+      name: "SPN - Rune",
+      typed: " Rune ",
+      expected: undefined,
+    },
+  ])("$case", ({ name, typed, expected }) => {
+    expect(renamedProjectName(inApp(name), typed)).toBe(expected);
+  });
+
+  it("renames a Mate in no application to what is typed", () => {
+    expect(renamedProjectName(project("Rune"), "Milo")).toBe("Milo");
+    expect(renamedProjectName(project("Rune"), "Rune")).toBeUndefined();
   });
 });
 

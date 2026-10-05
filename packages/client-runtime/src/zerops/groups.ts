@@ -178,6 +178,21 @@ export function appProjectName(appName: string | undefined, ownName: string): st
 }
 
 /**
+ * What a project is renamed to when its person types `typed` as its own name under its
+ * application: the full name, or `undefined` where nothing changes — the name shown is kept, or the
+ * full name comes out as the project's already.
+ */
+export function renamedProjectName(
+  project: { readonly name: string; readonly hq?: HqPlacement | undefined },
+  typed: string,
+): string | undefined {
+  const own = typed.trim();
+  if (own === projectNameInApp(project)) return undefined;
+  const full = appProjectName(readZeropsMembership(project).label, own);
+  return full === project.name.trim() ? undefined : full;
+}
+
+/**
  * The face a Mate already born changes to. One that wore its name's tint — no face this client
  * reads a tint from, or one changed before — keeps its name's place among the names the tints
  * are shared out over (`named`), so no other Mate changes colour; one whose face was picked at its

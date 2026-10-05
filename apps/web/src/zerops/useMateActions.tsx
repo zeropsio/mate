@@ -26,8 +26,8 @@
  * listing lets it go (`deletingMates.ts`), and a viewer who was in its
  * conversation is taken to the next Mate of its project, or to the projects.
  *
- * *Rename Mate* renames the Mate's project in Zerops, whose name is the Mate's (D3), by the
- * account's one writer of a project's record, where the platform takes it from this person.
+ * *Rename Mate* renames the Mate's project in Zerops, whose name is the Mate's own after its
+ * application's (`renamedProjectName`), by the account's one writer of a project's record, where the platform takes it from this person.
  * *Change face…* writes the Mate's face to HQ, where every surface reads it from, where HQ's rule
  * lets them: its dialog open until HQ answers, a refusal said there.
  */
@@ -38,8 +38,10 @@ import {
   changedMateFace,
   hasMate,
   kindOfRole,
+  projectNameInApp,
   rankZeropsCandidateForListing,
   readZeropsMembership,
+  renamedProjectName,
   finishMateSetupScope,
   finishMateSetupVerb,
   resolveMateRegistration,
@@ -474,14 +476,19 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
     return accountHqApi(client, activeOrganization.id, officialHq(accountHq));
   }, [accountHq, activeOrganization, client]);
 
-  /** Renames the Mate's project in Zerops: its name is the Mate's (D3). */
+  /**
+   * Renames the Mate's project in Zerops: `name` is the Mate's own, its project's is built from it
+   * under its application (`renamedProjectName`).
+   */
   const rename = useCallback(
     (candidate: ZeropsCandidatePresentation, name: string) => {
       if (activeOrganization === null) return;
+      const full = renamedProjectName(candidate.project, name);
+      if (full === undefined) return;
       const project = projectRef(activeOrganization.id, candidate.project.id);
       void write(
         candidate.key,
-        () => runZeropsCommand(runtime.commands.renameProject(project, name)),
+        () => runZeropsCommand(runtime.commands.renameProject(project, full)),
         refresh,
       );
     },
@@ -1057,7 +1064,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
               { id: "delete-apart", separator: true } as const,
               {
                 id: "delete",
-                label: deleteMateVerb(candidate.project.name),
+                label: deleteMateVerb(projectNameInApp(candidate.project)),
                 variant: "destructive" as const,
                 disabled: busy,
                 onSelect: () => {
@@ -1103,7 +1110,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   const renameInPlace = useCallback(
     (candidate: ZeropsCandidatePresentation): MateRenameInPlace | undefined => {
       if (!platformVerbsOf(candidate).rename) return undefined;
-      const current = candidate.project.name;
+      const current = projectNameInApp(candidate.project);
       return {
         initialValue: current,
         validate: (value) => validateBotName(value, taken, { current }),
@@ -1121,7 +1128,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       {dialog?.kind === "restart" ? (
         <RestartMateConfirmation
           projectId={dialog.candidate.project.id}
-          name={dialog.candidate.project.name}
+          name={projectNameInApp(dialog.candidate.project)}
           environmentId={dialog.candidate.environmentId ?? linkTarget(dialog.candidate)}
           pending={press.pending}
           error={press.error}
@@ -1133,7 +1140,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       ) : null}
       {dialog?.kind === "rename" ? (
         <ZeropsRenameDialog
-          initialValue={dialog.candidate.project.name}
+          initialValue={projectNameInApp(dialog.candidate.project)}
           key={`rename-agent:${dialog.candidate.key}`}
           label="Mate's name"
           onCancel={close}
@@ -1147,9 +1154,9 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
           }}
           open
           submitLabel="Rename"
-          title={`Rename ${dialog.candidate.project.name}`}
+          title={`Rename ${projectNameInApp(dialog.candidate.project)}`}
           validate={(value) =>
-            validateBotName(value, taken, { current: dialog.candidate.project.name })
+            validateBotName(value, taken, { current: projectNameInApp(dialog.candidate.project) })
           }
         />
       ) : null}
@@ -1203,7 +1210,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
             assign(dialog.candidate, clientUserId);
           }}
           pending={press.pending}
-          projectName={dialog.candidate.project.name}
+          projectName={projectNameInApp(dialog.candidate.project)}
         />
       ) : null}
       {dialog?.kind === "move" ? (
@@ -1222,7 +1229,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
             move(candidate, membership);
           }}
           open
-          name={dialog.candidate.project.name}
+          name={projectNameInApp(dialog.candidate.project)}
         />
       ) : null}
       {dialog?.kind === "delete" ? (
@@ -1230,7 +1237,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
           error={press.error}
           cleanup={dialog.cleanup !== undefined}
           key={`delete:${dialog.candidate.key}`}
-          name={dialog.candidate.project.name}
+          name={projectNameInApp(dialog.candidate.project)}
           onCancel={close}
           onConfirm={() => {
             deleteMate(dialog.candidate, dialog.cleanup);
@@ -1241,8 +1248,8 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
           open
           pending={press.pending}
           words={deleteMateWords({
-            name: dialog.candidate.project.name,
-            environment: dialog.candidate.project.name,
+            name: projectNameInApp(dialog.candidate.project),
+            environment: projectNameInApp(dialog.candidate.project),
             services: deleteMateServiceCount(dialog.candidate),
             owner: colleagueOf(dialog.candidate),
           })}
