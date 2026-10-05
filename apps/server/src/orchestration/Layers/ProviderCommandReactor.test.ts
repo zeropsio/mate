@@ -641,6 +641,48 @@ describe("ProviderCommandReactor", () => {
     };
   }
 
+  effectIt.effect("prepares a message as a steer while the agent's own session runs a turn", () =>
+    Effect.gen(function* () {
+      const prepared: Array<Parameters<WorkspaceHistory["Service"]["prepare"]>[0]> = [];
+      const harness = yield* Effect.promise(() =>
+        createHarness({
+          workspaceHistory: {
+            prepare: (input) => Effect.sync(() => void prepared.push(input)),
+            release: () => Effect.void,
+            markDispatched: () => Effect.void,
+          },
+        }),
+      );
+      const start = (suffix: string) =>
+        harness.engine.dispatch({
+          type: "thread.turn.start",
+          commandId: CommandId.make(`cmd-steer-${suffix}`),
+          threadId: ThreadId.make("thread-1"),
+          message: {
+            messageId: asMessageId(`message-steer-${suffix}`),
+            role: "user",
+            text: `message ${suffix}`,
+            attachments: [],
+          },
+          interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+          runtimeMode: "approval-required",
+          createdAt: "2026-01-01T00:00:00.000Z",
+        });
+
+      yield* start("a");
+      yield* Effect.promise(() => waitFor(() => harness.sendTurn.mock.calls.length === 1));
+      harness.runtimeSessions[0] = {
+        ...harness.runtimeSessions[0]!,
+        status: "running",
+        activeTurnId: asTurnId("turn-live"),
+      };
+      yield* start("b");
+      yield* Effect.promise(() => waitFor(() => harness.sendTurn.mock.calls.length === 2));
+
+      expect(prepared.map((input) => input.continuationOf)).toEqual([undefined, "turn-live"]);
+    }),
+  );
+
   effectIt.effect("a crew thread's turn goes to the provider without preparing a checkpoint", () =>
     Effect.gen(function* () {
       const sent = yield* Deferred.make<void>();

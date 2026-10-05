@@ -1511,14 +1511,25 @@ const make = Effect.gen(function* () {
       if (coordinator && thread.crew === undefined) {
         const project = yield* resolveProject(thread.projectId);
         const cwd = resolveThreadWorkspaceCwd({ thread, projects: project ? [project] : [] });
+        // The agent's own session says whether a send steers an open turn; the
+        // projection's lifecycle can lag it or lose the turn id mid-run.
+        const liveSession = (yield* providerService.listSessions()).find(
+          (session) => session.threadId === thread.id,
+        );
+        const continuationOf =
+          liveSession !== undefined
+            ? liveSession.status === "running"
+              ? liveSession.activeTurnId
+              : undefined
+            : thread.session?.status === "running"
+              ? (thread.session.activeTurnId ?? undefined)
+              : undefined;
         if (cwd)
           yield* coordinator.prepare({
             threadId: thread.id,
             runId: event.payload.messageId,
             cwd,
-            ...(thread.session?.status === "running" && thread.session.activeTurnId
-              ? { continuationOf: thread.session.activeTurnId }
-              : {}),
+            ...(continuationOf ? { continuationOf } : {}),
           });
       }
       const sendTurnRequest = yield* buildSendTurnRequestForThread({
