@@ -29,6 +29,7 @@ import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates"
 import {
   HQ_PROJECT_NAME,
   type HqMateOfferStates,
+  type HqPresses,
   type HqStructure,
   type OfficialHq,
 } from "@t3tools/client-runtime/zerops/hq";
@@ -350,7 +351,7 @@ export function mateSetupOffered(role: ZeropsEnvironmentRole | undefined): boole
  * records, its anchor and this tab's own presses (`plainZeropsProject`).
  */
 export interface PlainProjectEvidence {
-  /** Every project HQ's structure holds any record of (`hqRecordedProjects`). */
+  /** Every project HQ holds any record of (`hqRecordedProjects`), a press's included. */
   readonly hqRecords: ReadonlySet<string>;
   /** The project the organization's official HQ anchor names: the HQ carries no record of itself. */
   readonly hqAnchors: ReadonlySet<string>;
@@ -380,18 +381,21 @@ export function plainZeropsProject(
 
 /**
  * The page's evidence for `plainZeropsProject`: none while HQ's structure is not known, or the
- * organization has no official HQ — with none, or an unclear one, nothing is plain.
+ * organization has no official HQ — with none, or an unclear one, nothing is plain. A press HQ holds
+ * a record of, running elsewhere or stopped, is its Mate being made: never plain.
  */
 export function plainEvidenceOf(input: {
   readonly hqKnown: boolean;
   readonly structure: HqStructure | null;
+  /** Each press HQ holds a record of, by project (`hq_press`); none before HQ said. */
+  readonly presses: HqPresses | null;
   readonly hq: OfficialHq;
   /** The projects this tab is making or finishing. */
   readonly local: Iterable<string>;
 }): PlainProjectEvidence | undefined {
   if (!input.hqKnown || input.structure === null || input.hq.kind !== "official") return undefined;
   return {
-    hqRecords: hqRecordedProjects(input.structure),
+    hqRecords: new Set([...hqRecordedProjects(input.structure), ...(input.presses?.keys() ?? [])]),
     hqAnchors: new Set([input.hq.projectId]),
     local: new Set(input.local),
   };

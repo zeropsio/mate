@@ -389,7 +389,7 @@ describe("deriveZeropsRowAction", () => {
       const evidence = (
         hq: OfficialHq = { kind: "official", projectId: "hq-1", address: "https://hq.test" },
         hqKnown = true,
-      ) => plainEvidenceOf({ hqKnown, structure: STRUCTURE, hq, local: [] });
+      ) => plainEvidenceOf({ hqKnown, structure: STRUCTURE, presses: null, hq, local: [] });
 
       it("names the official HQ's own project as its anchor", () => {
         expect(evidence()?.hqAnchors).toEqual(new Set(["hq-1"]));
@@ -398,6 +398,24 @@ describe("deriveZeropsRowAction", () => {
       it("is none while HQ's structure is not known, or with no official HQ", () => {
         expect(evidence({ kind: "none" }, false)).toBeUndefined();
         expect(evidence({ kind: "unclear", projectIds: ["hq-1", "old-hq"] })).toBeUndefined();
+      });
+
+      // A press HQ holds a record of — at work in another browser, or stopped — is that Mate
+      // being made, never a project nobody made: Finish setup is its way on, not Set up Mate.
+      it("counts every project HQ holds a press record of as recorded", () => {
+        const presses = new Map([
+          ["p-pressing", { kind: "mate" as const, expiresAtMs: 2_000 }],
+          ["p-stopped", { kind: "mate" as const, expiresAtMs: 0 }],
+        ]);
+        expect(
+          plainEvidenceOf({
+            hqKnown: true,
+            structure: STRUCTURE,
+            presses,
+            hq: { kind: "official", projectId: "hq-1", address: "https://hq.test" },
+            local: [],
+          })?.hqRecords,
+        ).toEqual(new Set(["p-pressing", "p-stopped"]));
       });
     });
 

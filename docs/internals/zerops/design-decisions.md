@@ -3864,8 +3864,10 @@ no-cache`.
 - **2026-10-04** — **Set up Mate is offered on an existing plain project, and a Mate's project keeps
   its owner's own tags.**
   - A project is plain on HQ's word alone (ADR 0002): HQ's structure is read and holds no record of
-    it of any kind, and the official HQ's anchor does not name it. Its tags and its age decide
-    nothing; a stage or production whose registration never reached HQ reads as plain.
+    it of any kind, no press of it either — running elsewhere or stopped — and the official HQ's
+    anchor does not name it. Its tags and its age decide nothing. Set up Mate is offered where HQ
+    offers writing its Mate's record (`create_mate_record`, streamed beside each project it holds
+    nowhere), never on a client's own reading of the person's roles.
   - Set up Mate asks first, in the app's own dialog: what it adds, and that the project's services
     restart once while it is closed off.
   - Declaring a Mate adds `mate` beside the project's tags and drops only old `mate:*` ones; a rename

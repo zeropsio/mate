@@ -999,14 +999,16 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   const accountHq = useAccountHq(activeOrganization?.id);
   const hq = accountHq.hq.kind === "official" ? accountHq.hq : undefined;
   // What says a project is its person's own, for Set up Mate on it (`plainEvidenceOf`): HQ's
-  // records of every kind, its anchor, and what this tab is making. None while HQ's structure is
-  // not known, so nothing is plain then.
+  // records of every kind, its presses, its anchor, and what this tab is making. None while HQ's
+  // structure is not known, so nothing is plain then.
   const knownStructure = hqStructure?.structure ?? null;
+  const hqPresses = hqStructure?.presses ?? null;
   const plainEvidence = useMemo(
     () =>
       plainEvidenceOf({
         hqKnown,
         structure: knownStructure,
+        presses: hqPresses,
         hq: accountHq.hq,
         local: [
           ...presses.map((press) => press.projectId),
@@ -1015,7 +1017,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
           ),
         ],
       }),
-    [accountHq.hq, hqKnown, knownStructure, made, presses],
+    [accountHq.hq, hqKnown, hqPresses, knownStructure, made, presses],
   );
 
   const rowInput = (
