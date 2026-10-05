@@ -48,3 +48,51 @@ export function startZeropsNavigation(options: {
     stop: () => void Effect.runFork(Fiber.interrupt(fiber)),
   };
 }
+
+/** The account's observation, as an app holds it: the organization shown, and the details held. */
+export interface AccountObservation {
+  /** The organization the app shows now; `null` stops observing. */
+  readonly show: (orgId: string | null) => void;
+  /**
+   * A screen's hold on a detail while it is drawn, whichever organization is shown: held before
+   * one is, it is read once one is; a switch reads it again under the new one.
+   */
+  readonly demandDetail: (demand: DetailDemand) => () => void;
+  /** The person's "try now". */
+  readonly retry: () => void;
+}
+
+export function observeAccount(options: {
+  readonly store: AccountStore;
+  readonly wire: ZeropsWire;
+  readonly repairSession: Effect.Effect<void, StreamFault>;
+}): AccountObservation {
+  let shown: { readonly orgId: string; readonly link: RunningLink } | null = null;
+  const holds = new Set<{ readonly demand: DetailDemand; release: (() => void) | null }>();
+  return {
+    show: (orgId) => {
+      if (shown?.orgId === orgId) return;
+      if (shown !== null) {
+        for (const hold of holds) {
+          hold.release?.();
+          hold.release = null;
+        }
+        shown.link.stop();
+        shown = null;
+      }
+      if (orgId === null) return;
+      const link = startZeropsNavigation({ ...options, orgId });
+      shown = { orgId, link };
+      for (const hold of holds) hold.release = link.demandDetail(hold.demand);
+    },
+    demandDetail: (demand) => {
+      const hold = { demand, release: shown?.link.demandDetail(demand) ?? null };
+      holds.add(hold);
+      return () => {
+        if (!holds.delete(hold)) return;
+        hold.release?.();
+      };
+    },
+    retry: () => shown?.link.signal("manual-retry"),
+  };
+}

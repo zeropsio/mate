@@ -4,7 +4,7 @@
  *
  * @module data
  */
-export { startZeropsNavigation, type RunningLink } from "./account.ts";
+export { observeAccount, type AccountObservation } from "./account.ts";
 export type { DetailDemand } from "./demand.ts";
 export { makeAccountStore, type AccountStore, type Projection } from "./store.ts";
 export {

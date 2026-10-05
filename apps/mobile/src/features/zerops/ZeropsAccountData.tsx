@@ -6,9 +6,10 @@
 import {
   makeAccountStore,
   makeZeropsWire,
+  observeAccount,
   repairZeropsSession,
-  startZeropsNavigation,
   type AccountStore,
+  type DetailDemand,
   type ZeropsWireClient,
 } from "@t3tools/client-runtime/data";
 import { AtomRegistry } from "effect/unstable/reactivity";
@@ -19,6 +20,8 @@ interface AccountData {
   readonly registry: AtomRegistry.AtomRegistry;
   /** The organization whose navigation is observed; `null` before one is chosen. */
   readonly orgId: string | null;
+  /** A screen's hold on a detail while it is drawn; the release lets it go. */
+  readonly demandDetail: (demand: DetailDemand) => () => void;
 }
 
 const AccountDataContext = createContext<AccountData | null>(null);
@@ -36,23 +39,39 @@ export function ZeropsAccountData({
   const userId = account?.userId ?? null;
   // One registry and store per account: a new account starts empty, nothing carries over.
   const held = useMemo(() => {
-    if (userId === null) return null;
+    if (userId === null || client === null) return null;
     const registry = AtomRegistry.make();
-    return { registry, store: makeAccountStore(registry) };
-  }, [userId]);
-  useEffect(() => (held === null ? undefined : () => held.registry.dispose()), [held]);
-  useEffect(() => {
-    if (held === null || client === null || activeOrganizationId === null) return;
-    const navigation = startZeropsNavigation({
-      orgId: activeOrganizationId,
-      store: held.store,
+    const store = makeAccountStore(registry);
+    const observation = observeAccount({
+      store,
       wire: makeZeropsWire({ client }),
       repairSession: repairZeropsSession(client),
     });
-    return navigation.stop;
-  }, [activeOrganizationId, client, held]);
+    return { registry, store, observation };
+  }, [client, userId]);
+  useEffect(
+    () =>
+      held === null
+        ? undefined
+        : () => {
+            held.observation.show(null);
+            held.registry.dispose();
+          },
+    [held],
+  );
+  useEffect(() => {
+    held?.observation.show(activeOrganizationId);
+  }, [activeOrganizationId, held]);
   const value = useMemo(
-    () => (held === null ? null : { ...held, orgId: activeOrganizationId }),
+    () =>
+      held === null
+        ? null
+        : {
+            store: held.store,
+            registry: held.registry,
+            orgId: activeOrganizationId,
+            demandDetail: held.observation.demandDetail,
+          },
     [activeOrganizationId, held],
   );
   return <AccountDataContext value={value}>{children}</AccountDataContext>;
