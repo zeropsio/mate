@@ -436,6 +436,7 @@ function Change({
   press = IDLE,
   closing = OPEN,
   frame,
+  addable,
 }: {
   readonly over?: Partial<FlowPullRequest>;
   /** HQ's detail of it, where it is not the one every state shares. */
@@ -448,13 +449,18 @@ function Change({
   readonly press?: ReviewPress;
   readonly closing?: ReviewClose;
   readonly frame?: ChangeReviewViewProps["frame"];
+  /** The environments the one question after a first merge may offer. */
+  readonly addable?: ChangeReviewViewProps["addable"];
 }) {
   const value = pull(over);
   return (
     <ChangeReviewView
+      addable={addable}
       closing={closing}
       comments={conversation}
       environments={environments}
+      onAddEnvironment={noop}
+      productionHeld={false}
       frame={frame}
       hqAddress={HARNESS_HQ}
       initiallyOpen={open}
@@ -901,6 +907,42 @@ export const REVIEW_STATES: ReadonlyArray<{
   },
   { id: "merged-now", label: "After Merge", node: <Change press={{ kind: "done" }} /> },
   { id: "merged", label: "Merged", node: <Change over={MERGED_NOW} /> },
+  {
+    id: "first-merge-both",
+    label: "The first code merge, no environment yet: where should it run? (stage and production)",
+    node: (
+      <Change
+        addable={{ stage: true, production: true }}
+        environments={NO_ENVIRONMENTS}
+        over={{ ...MERGED_NOW, firstCodeMerge: true }}
+        press={{ kind: "done" }}
+      />
+    ),
+  },
+  {
+    id: "first-merge-production",
+    label: "The first code merge, a stage exists: where should it run? (production only)",
+    node: (
+      <Change
+        addable={{ stage: false, production: true }}
+        environments={[{ tier: "stage" }]}
+        over={{ ...MERGED_NOW, firstCodeMerge: true }}
+        press={{ kind: "done" }}
+      />
+    ),
+  },
+  {
+    id: "merged-no-question",
+    label: "A later merge, no production: the plain merged review, no question",
+    node: (
+      <Change
+        addable={{ stage: true, production: true }}
+        environments={NO_ENVIRONMENTS}
+        over={{ ...MERGED_NOW, firstCodeMerge: false }}
+        press={{ kind: "done" }}
+      />
+    ),
+  },
   {
     id: "close-asked",
     label: "Close without merging, asked",
