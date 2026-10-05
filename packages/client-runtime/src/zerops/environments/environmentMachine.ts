@@ -74,7 +74,11 @@ export type ContainerVerdict =
   | { readonly level: "ready" }
   | { readonly level: "creating"; readonly overdue: boolean }
   | { readonly level: "provisioning"; readonly overdue: boolean }
-  | { readonly level: "booting"; readonly overdue: boolean }
+  /**
+   * `guessed`: only failed probes say it is coming up — no platform transition, no process. The
+   * platform says nothing of a start, so its link, not its container, is what fails (§4.4).
+   */
+  | { readonly level: "booting"; readonly overdue: boolean; readonly guessed?: true }
   | {
       readonly level: "restarting";
       readonly by: "platform" | "you" | "announced";

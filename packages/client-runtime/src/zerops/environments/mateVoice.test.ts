@@ -153,7 +153,7 @@ describe("mateVoice — the one voice of a Mate's link", () => {
       },
       shown: true,
       held: LONG,
-      voice: banner("Quinn is taking longer than usual to start.", ["restart"]),
+      voice: banner("Quinn is taking longer than usual to start.", ["try-now", "restart"]),
     },
     {
       state: "retrying: its cause and Try now",

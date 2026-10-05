@@ -43,6 +43,7 @@ import {
   MATE_VOICE_SLOW_MS,
   mateVoice,
   mateVoiceQuietKey,
+  reachabilityCountsDown,
   type MateVoice,
 } from "@t3tools/client-runtime/zerops/environments";
 import {
@@ -622,7 +623,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   // The minute clock its pose reads (`mateArriving`).
   const clockMs = useNowMs();
   const nowMs = useSecondsNowMs(
-    page?.kind === "reaching" && page.reachability?.kind === "retrying",
+    page?.kind === "reaching" && reachabilityCountsDown(page.reachability),
   );
   // What its link says under its name (`mateVoice`): nothing for a blip, "Opening Wren…" and the
   // platform's processes for a first connect that is slow, a restart in its name.

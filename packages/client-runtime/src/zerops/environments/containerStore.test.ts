@@ -15,6 +15,7 @@ import {
 } from "./containerStore.ts";
 import { makeExchangeDriver, type ExchangeClock } from "./exchangeDriver.ts";
 import type { ProbeReading } from "./probeStore.ts";
+import { reachabilityPhrase, selectReachability } from "./reachability.ts";
 
 /** Answers settle across a few promise hops; this lets every one of them land. */
 const flush = async (): Promise<void> => {
@@ -471,6 +472,34 @@ describe("container store (DESIGN §4.5)", () => {
     expect(driver.machine(KEY)?.credential.kind).toBe("held");
     unbind();
     driver.dispose();
+    store.dispose();
+  });
+
+  // Live, 2026-10-05: Ada's container stayed ACTIVE while `zerops@mate` was stopped; with the
+  // conversation open 127 s its banner said "Ada is taking longer than usual to start." with only
+  // Go to projects. Nothing but failed probes said it was starting: the link is failing, and says
+  // so with Try now — "starting" is the platform's word alone.
+  it("an ACTIVE container whose server stops answering reads as its link failing, with Try now", async () => {
+    const setup = rig();
+    const { clock, store } = setup;
+    store.setTargets([target("ACTIVE")]);
+    const { driver, dispose } = await boundDriver(setup);
+    driver.link(ENVIRONMENT_ID, { phase: "connected" });
+    await clock.advance(1_000);
+
+    // The server stops: the socket drops into backoff and every probe goes unanswered, while the
+    // platform keeps saying ACTIVE.
+    setup.answer = { kind: "unreachable" };
+    driver.link(ENVIRONMENT_ID, { phase: "backoff", retryAtMs: null });
+    for (let second = 0; second < 127; second += 1) await clock.advance(1_000);
+
+    const machine = driver.machine(KEY)!;
+    const verdict = selectReachability(machine, ENVIRONMENT_ID);
+    expect(verdict.kind).not.toBe("container");
+    const phrase = reachabilityPhrase(verdict, { nowMs: clock.now().wall, mateName: "Ada" });
+    expect(phrase.text ?? "").not.toMatch(/start/u);
+    expect(phrase.actions).toContain("try-now");
+    dispose();
     store.dispose();
   });
 

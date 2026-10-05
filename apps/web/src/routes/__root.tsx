@@ -11,6 +11,7 @@ import {
   mateVoice,
   mateVoiceQuietKey,
   type Reachability,
+  reachabilityCountsDown,
   routeGatePhrase,
   selectRouteGate,
   type MateVoice,
@@ -94,7 +95,7 @@ import { RouteGateView } from "./-routeGate";
 import { useHqGate } from "../zerops/hqGate";
 import { installMateDiagnostics } from "~/zerops/diagnostics";
 import { useHeldPast } from "~/zerops/useHeldPast";
-import { useNowMs } from "~/zerops/useNowMs";
+import { useSecondsNowMs } from "~/zerops/useNowMs";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { rememberLastConversation } from "~/zerops/lastConversationMemory";
 import {
@@ -178,8 +179,6 @@ function SignedInRootRouteView() {
   );
   const gate = selectRouteGate(gateInputs.target);
   const { gate: hqGate } = useHqGate(pathname);
-  const nowMs = useNowMs();
-  const gatePhrase = routeGatePhrase(gate, { nowMs, mateName: gateInputs.mateName });
   // The link's one voice (`mateVoice`): the banner over a mounted conversation, the stage where
   // none can show yet; the Mate by its own name, never its container's host.
   const routeEnvironment =
@@ -218,6 +217,9 @@ function SignedInRootRouteView() {
         : gate.kind === "wait"
           ? gate.reachability
           : null;
+  // Seconds tick only while the words count down to the link's next try.
+  const nowMs = useSecondsNowMs(reachabilityCountsDown(linkReachability));
+  const gatePhrase = routeGatePhrase(gate, { nowMs, mateName: gateInputs.mateName });
   const speaksFor = routeEnvironment ?? draftEnvironmentId;
   // The quiet is kept by what the voice would say, so one line never goes and comes back.
   const quietKey = `${speaksFor ?? "none"}:${gate.kind}:${mateVoiceQuietKey(linkReachability)}`;
