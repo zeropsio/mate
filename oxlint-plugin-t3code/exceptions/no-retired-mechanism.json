@@ -66,22 +66,6 @@
   {
     "path": "apps/hq/src/deploys.ts",
     "kind": "retired-token",
-    "fingerprint": "release_floor",
-    "owner": "data-layer rewrite: releases/environments",
-    "reason": "the release floor picks a release by time; the source names what a production follows",
-    "expires": "never"
-  },
-  {
-    "path": "apps/hq/src/deploys.ts",
-    "kind": "retired-token",
-    "fingerprint": "release_floor",
-    "owner": "data-layer rewrite: releases/environments",
-    "reason": "the release floor picks a release by time; the source names what a production follows",
-    "expires": "never"
-  },
-  {
-    "path": "apps/hq/src/deploys.ts",
-    "kind": "retired-token",
     "fingerprint": "untakenAfter",
     "owner": "data-layer rewrite: running work/processes",
     "reason": "a deploy outcome decided by the clock; only the source settles an operation",
@@ -133,22 +117,6 @@
     "fingerprint": "moveOffers",
     "owner": "data-layer rewrite: HQ structure/apps",
     "reason": "HQ enumerates every Mate-by-app move offer up front; ask when the dialog opens",
-    "expires": "never"
-  },
-  {
-    "path": "apps/hq/src/releases.ts",
-    "kind": "retired-token",
-    "fingerprint": "release_floor",
-    "owner": "data-layer rewrite: releases/environments",
-    "reason": "the release floor picks a release by time; the source names what a production follows",
-    "expires": "never"
-  },
-  {
-    "path": "apps/hq/src/releases.ts",
-    "kind": "retired-token",
-    "fingerprint": "release_floor",
-    "owner": "data-layer rewrite: releases/environments",
-    "reason": "the release floor picks a release by time; the source names what a production follows",
     "expires": "never"
   },
   {
@@ -221,30 +189,6 @@
     "fingerprint": "moveTo: moveOffers(",
     "owner": "data-layer rewrite: HQ structure/apps",
     "reason": "HQ enumerates every Mate-by-app move offer up front; ask when the dialog opens",
-    "expires": "never"
-  },
-  {
-    "path": "apps/hq/src/structure.ts",
-    "kind": "retired-token",
-    "fingerprint": "release_floor",
-    "owner": "data-layer rewrite: releases/environments",
-    "reason": "the release floor picks a release by time; the source names what a production follows",
-    "expires": "never"
-  },
-  {
-    "path": "apps/hq/src/structure.ts",
-    "kind": "retired-token",
-    "fingerprint": "release_floor",
-    "owner": "data-layer rewrite: releases/environments",
-    "reason": "the release floor picks a release by time; the source names what a production follows",
-    "expires": "never"
-  },
-  {
-    "path": "apps/hq/src/structure.ts",
-    "kind": "retired-token",
-    "fingerprint": "release_floor",
-    "owner": "data-layer rewrite: releases/environments",
-    "reason": "the release floor picks a release by time; the source names what a production follows",
     "expires": "never"
   },
   {
@@ -1954,14 +1898,6 @@
   {
     "path": "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
     "kind": "retired-token",
-    "fingerprint": "useZeropsThrowawaySweep(",
-    "owner": "data-layer rewrite: sign-in/session",
-    "reason": "the throwaway-token debt and its sweep run in the app; the sign-in adapter owns them",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
-    "kind": "retired-token",
     "fingerprint": "useZeropsUpgradeRestart",
     "owner": "data-layer rewrite: operations",
     "reason": "upgrade restart and finish-environment hooks poll themselves; the operations adapter owns them",
@@ -3200,38 +3136,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/zerops/ZeropsSessionProvider.tsx",
-    "kind": "retired-token",
-    "fingerprint": "endEveryKeptSession",
-    "owner": "data-layer rewrite: sign-in/session",
-    "reason": "kept sessions of every account are ended from one tab; each tab ends its own",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsSessionProvider.tsx",
-    "kind": "retired-token",
-    "fingerprint": "endEveryKeptSession",
-    "owner": "data-layer rewrite: sign-in/session",
-    "reason": "kept sessions of every account are ended from one tab; each tab ends its own",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsSessionProvider.tsx",
-    "kind": "retired-token",
-    "fingerprint": "rememberBootFrame",
-    "owner": "data-layer rewrite: sign-in/session",
-    "reason": "the boot frame is remembered in browser storage; the first frame follows the local session",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsSessionProvider.tsx",
-    "kind": "retired-token",
-    "fingerprint": "rememberBootFrame",
-    "owner": "data-layer rewrite: sign-in/session",
-    "reason": "the boot frame is remembered in browser storage; the first frame follows the local session",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/zerops/accountChannel.ts",
     "kind": "retired-token",
     "fingerprint": "\"mate:account\"",
@@ -3277,14 +3181,6 @@
     "fingerprint": "NO_HQ_RECHECK_MS",
     "owner": "data-layer rewrite: HQ structure/apps",
     "reason": "the official-HQ verdict is remembered in browser storage for a day; HQ says which is official",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/accountHq.ts",
-    "kind": "retired-token",
-    "fingerprint": "accountThrowawayDebt(",
-    "owner": "data-layer rewrite: sign-in/session",
-    "reason": "the throwaway-token debt and its sweep run in the app; the sign-in adapter owns them",
     "expires": "never"
   },
   {
@@ -3616,22 +3512,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/zerops/bootFrame.logic.ts",
-    "kind": "retired-token",
-    "fingerprint": "mate:boot-frame",
-    "owner": "data-layer rewrite: sign-in/session",
-    "reason": "the boot frame is remembered in browser storage; the first frame follows the local session",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/bootFrame.ts",
-    "kind": "retired-token",
-    "fingerprint": "rememberBootFrame",
-    "owner": "data-layer rewrite: sign-in/session",
-    "reason": "the boot frame is remembered in browser storage; the first frame follows the local session",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/zerops/composerTopMemory.ts",
     "kind": "retired-token",
     "fingerprint": "mate:zerops:composer-top-memory",
@@ -3685,14 +3565,6 @@
     "fingerprint": "hq.structure(signal)",
     "owner": "data-layer rewrite: HQ structure/apps",
     "reason": "the whole structure is read back after an action; the action's result updates the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/environmentPorts.ts",
-    "kind": "retired-token",
-    "fingerprint": "accountThrowawayDebt(",
-    "owner": "data-layer rewrite: sign-in/session",
-    "reason": "the throwaway-token debt and its sweep run in the app; the sign-in adapter owns them",
     "expires": "never"
   },
   {
@@ -4045,14 +3917,6 @@
     "fingerprint": "zerops-mate.hq-verdict.v1",
     "owner": "data-layer rewrite: HQ structure/apps",
     "reason": "the official-HQ verdict is remembered in browser storage for a day; HQ says which is official",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/keptSessions.ts",
-    "kind": "retired-token",
-    "fingerprint": "endEveryKeptSession",
-    "owner": "data-layer rewrite: sign-in/session",
-    "reason": "kept sessions of every account are ended from one tab; each tab ends its own",
     "expires": "never"
   },
   {
@@ -4581,14 +4445,6 @@
     "fingerprint": "useSentAsks",
     "owner": "data-layer rewrite: operations",
     "reason": "creations and sent asks are kept by the app; the operations adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/throwawayDebt.ts",
-    "kind": "retired-token",
-    "fingerprint": "accountThrowawayDebt(",
-    "owner": "data-layer rewrite: sign-in/session",
-    "reason": "the throwaway-token debt and its sweep run in the app; the sign-in adapter owns them",
     "expires": "never"
   },
   {
@@ -5741,22 +5597,6 @@
     "fingerprint": "useZeropsRegistry",
     "owner": "data-layer rewrite: HQ structure/apps",
     "reason": "registry, recipes and releases are read by app hooks; the HQ adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsThrowawaySweep.ts",
-    "kind": "retired-token",
-    "fingerprint": "accountThrowawayDebt(",
-    "owner": "data-layer rewrite: sign-in/session",
-    "reason": "the throwaway-token debt and its sweep run in the app; the sign-in adapter owns them",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsThrowawaySweep.ts",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsThrowawaySweep(",
-    "owner": "data-layer rewrite: sign-in/session",
-    "reason": "the throwaway-token debt and its sweep run in the app; the sign-in adapter owns them",
     "expires": "never"
   },
   {

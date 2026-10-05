@@ -571,11 +571,6 @@ export const RETIRED_MECHANISMS: ReadonlyArray<RetiredMechanism> = [
     reason: "the review hand-off is decided in the app; the operation's result says where to go",
   },
   {
-    token: "release_floor",
-    family: "releases/environments",
-    reason: "the release floor picks a release by time; the source names what a production follows",
-  },
-  {
     token: "useHalfMadeEnvironments(",
     family: "releases/environments",
     reason:
@@ -1085,24 +1080,9 @@ export const RETIRED_MECHANISMS: ReadonlyArray<RetiredMechanism> = [
       "the composer's model label is remembered in browser storage; the catalog's projection replaces it",
   },
   {
-    token: "accountThrowawayDebt(",
-    family: "sign-in/session",
-    reason: "the throwaway-token debt and its sweep run in the app; the sign-in adapter owns them",
-  },
-  {
-    token: "useZeropsThrowawaySweep(",
-    family: "sign-in/session",
-    reason: "the throwaway-token debt and its sweep run in the app; the sign-in adapter owns them",
-  },
-  {
     token: "window.location.replace(accountReturnPath())",
     family: "sign-in/session",
     reason: "the document reloads after sign-in; the store opens the account in place",
-  },
-  {
-    token: "endEveryKeptSession",
-    family: "sign-in/session",
-    reason: "kept sessions of every account are ended from one tab; each tab ends its own",
   },
   {
     token: "openAccountChannel",
@@ -1113,17 +1093,5 @@ export const RETIRED_MECHANISMS: ReadonlyArray<RetiredMechanism> = [
     token: '"mate:account"',
     family: "sign-in/session",
     reason: "the account broadcast channel has no caller; delete it",
-  },
-  {
-    token: "mate:boot-frame",
-    family: "sign-in/session",
-    reason:
-      "the boot frame is remembered in browser storage; the first frame follows the local session",
-  },
-  {
-    token: "rememberBootFrame",
-    family: "sign-in/session",
-    reason:
-      "the boot frame is remembered in browser storage; the first frame follows the local session",
   },
 ];
