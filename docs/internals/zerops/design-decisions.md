@@ -4125,3 +4125,17 @@ medium < high < xhigh` (a driver's own order does not rank: Grok reports its lev
   not authenticate" and "'s sign-in has expired") and says them (`mateErrorWords`) in the
   conversation's banner, the menu row and the jump box.
   - _Why:_ the adapter does not know the Mate's name, and the client does wherever it draws one.
+- **2026-10-06** — **A helper is called what the Mate called it** (F6: the Mate's text said "the
+  deep-sea builder", the card said the launch's task). Where a helper's launch gave it a name —
+  Claude's Agent `name`, kept by the activity projection for an agent launch only — every place
+  the card names that helper (its row, its band, the dock, its report's wake) reads the name;
+  Codex's helpers were already named by their nickname or path. Where the launch named none, or
+  aged out, the task's words stand as before. Cursor, Grok, Antigravity and OpenCode report no
+  named helpers.
+- **2026-10-06** — **A result picture that can no longer load is no result** (N2, run 11: a muted
+  "Gone" tile stood as a Noibit turn's result). A file whose read fails leaves the result strip
+  with no room held: the next picture takes its place, the strip's six and its "+N" count only
+  what stands, and a run whose pictures are all gone shows nothing of them (no strip; no result
+  where it left no row). A file still being read keeps its quiet tile, so the common case never
+  shifts; a gone one drops once its read fails. The opened card's step that looked at a picture
+  still says "… is not there any more".
