@@ -258,6 +258,18 @@ export function mateComing(input: MateComingInput): MateComing | undefined {
 
 const FAILED_PROCESS_STATUSES: ReadonlySet<string> = new Set(["FAILED", "CANCELED"]);
 const LIVE_PROCESS_STATUSES: ReadonlySet<string> = new Set(["PENDING", "RUNNING"]);
+/**
+ * The statuses a build's version ends badly in (`AppVersionStatusEnum`): a deploy that fails after
+ * its build — an init command, its runtime's prepare — leaves the process FINISHED and says it
+ * here (zerops-docs, deployment lifecycle: "Diagnose via `appVersion.status`").
+ */
+const FAILED_VERSION_STATUSES: ReadonlySet<string> = new Set([
+  "BUILD_VALIDATION_FAILED",
+  "BUILD_FAILED",
+  "PREPARING_RUNTIME_FAILED",
+  "DEPLOY_FAILED",
+  "CANCELLED",
+]);
 
 /** A Mate's first build as its project's processes say it: still running, or failed and why. */
 export type FirstBuildState =
@@ -266,7 +278,8 @@ export type FirstBuildState =
 
 /**
  * Its container's first build, as its project's processes say it: its newest build for that
- * service queued or running, or ended failed or cancelled. `undefined` while nothing says either.
+ * service queued or running, or ended failed or cancelled — its process's, or its version's own
+ * failure once the process ended. `undefined` while nothing says either.
  */
 export function firstBuildState(
   processes:
@@ -276,6 +289,7 @@ export function firstBuildState(
         readonly status: string;
         readonly created: string;
         readonly failReason?: string | undefined;
+        readonly appVersion?: { readonly status?: string | undefined } | undefined;
       }>
     | undefined,
   serviceId: string | undefined,
@@ -289,8 +303,18 @@ export function firstBuildState(
     .toSorted((left, right) => Date.parse(right.created) - Date.parse(left.created))[0];
   if (newest === undefined) return undefined;
   if (LIVE_PROCESS_STATUSES.has(newest.status)) return { kind: "running" };
-  if (!FAILED_PROCESS_STATUSES.has(newest.status)) return undefined;
-  return { kind: "failed", why: newest.failReason ?? "Its container's first build did not finish" };
+  if (FAILED_PROCESS_STATUSES.has(newest.status)) {
+    return {
+      kind: "failed",
+      why: newest.failReason ?? "Its container's first build did not finish",
+    };
+  }
+  const version = newest.appVersion?.status;
+  if (version === undefined || !FAILED_VERSION_STATUSES.has(version)) return undefined;
+  return {
+    kind: "failed",
+    why: newest.failReason ?? `Its container's first deploy failed: ${version}`,
+  };
 }
 
 /**
