@@ -1,14 +1,14 @@
 /**
  * What a write or an edit wrote, under its row once opened (D9): a new
- * file's content, an edit's change — each in one box of the opened detail's
- * height that scrolls inside, the box growing only under the row, so nothing
- * above it moves. Each file says where it is and opens in the Files tab:
+ * file's content, an edit's change — each in the card's own item box, as
+ * every item's text: whole in the log, nothing scrolling inside; the box
+ * grows only under the row, so nothing above it moves. Each file says where it is and opens in the Files tab:
  * inside the workspace as any file there, outside it read-only, served only
  * because this thread's agent wrote it (`threads.readWrittenFile`).
  */
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import type { FileWrite, ScopedThreadRef } from "@t3tools/contracts";
-import { use, useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
+import { type ReactNode, use, useEffect, useEffectEvent, useState } from "react";
 
 import { cn } from "~/lib/utils";
 import { useRightPanelStore } from "../../rightPanelStore";
@@ -91,31 +91,6 @@ function useFileWrites(threadRef: ScopedThreadRef | null, callIds: ReadonlyArray
   return asked;
 }
 
-/** A fade at each edge of a box that has more past it (`.run-capped`), as the person scrolls it. */
-function useEdgeFades() {
-  const ref = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => {
-    const box = ref.current;
-    if (box === null) return;
-    const mark = () => {
-      box.toggleAttribute("data-more-above", box.scrollTop > 1);
-      box.toggleAttribute(
-        "data-more-below",
-        box.scrollTop + box.clientHeight < box.scrollHeight - 2,
-      );
-    };
-    mark();
-    box.addEventListener("scroll", mark, { passive: true });
-    const resized = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(mark);
-    resized?.observe(box);
-    return () => {
-      box.removeEventListener("scroll", mark);
-      resized?.disconnect();
-    };
-  }, []);
-  return ref;
-}
-
 const LINE_TONE = {
   kept: "text-foreground/70",
   added: "bg-success/8 text-foreground",
@@ -125,15 +100,10 @@ const LINE_TONE = {
 
 const LINE_MARK = { kept: " ", added: "+", removed: "-", gap: "⋯" } as const;
 
+/** A file's text, as drawn inside the card's own item box. */
 function WrittenText({ write }: { readonly write: FileWrite }) {
-  const boxRef = useEdgeFades();
   return (
-    <div
-      ref={boxRef}
-      className="run-capped rounded-xl bg-foreground/4"
-      data-capped="detail"
-      data-file-write={write.kind}
-    >
+    <div data-file-write={write.kind}>
       <pre className={cn("min-w-0 px-3 py-2 font-mono select-text", META)}>
         {write.format === "content" ? (
           <span className="whitespace-pre-wrap break-words text-foreground/80">{write.text}</span>
@@ -159,7 +129,18 @@ function WrittenText({ write }: { readonly write: FileWrite }) {
 }
 
 /** What the calls of one row wrote, a file each, once the row is opened. */
-export function FileWriteDetail({ callIds }: { readonly callIds: ReadonlyArray<string> }) {
+export function FileWriteDetail({
+  callIds,
+  box,
+}: {
+  readonly callIds: ReadonlyArray<string>;
+  /**
+   * The card's item box (`CappedBox`), as every item's text stands in: in the
+   * log all of it, nothing scrolling inside; in the working row its height,
+   * scrolling. `part` tells each file's box apart.
+   */
+  readonly box: (part: string, children: ReactNode) => ReactNode;
+}) {
   const { threadRef, workspaceRoot, markdownCwd } = use(TimelineRowCtx);
   const asked = useFileWrites(threadRef, callIds);
   if (asked.state === "reading") return null;
@@ -191,7 +172,7 @@ export function FileWriteDetail({ callIds }: { readonly callIds: ReadonlyArray<s
                 </button>
               ) : null}
             </div>
-            <WrittenText write={write} />
+            {box(`write:${index}`, <WrittenText write={write} />)}
             {write.truncated ? (
               <p className={cn(META, "text-muted-foreground")}>
                 Cut here: the file holds the rest.

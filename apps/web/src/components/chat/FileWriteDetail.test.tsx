@@ -1,5 +1,5 @@
 import { EnvironmentId, ThreadId, type ThreadFileWritesInput } from "@t3tools/contracts";
-import { act } from "react";
+import { act, type ReactNode } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vite-plus/test";
 
@@ -73,6 +73,9 @@ afterEach(() => {
   openFile.mockClear();
 });
 
+/** The card's item box, as the row hands it: here, a mark of where each file's text stands. */
+const box = (part: string, children: ReactNode) => <div data-item-box={part}>{children}</div>;
+
 const texts = (node: ReactTestRenderer) =>
   node.root
     .findAll((child) => child.children.every((part) => typeof part === "string"))
@@ -85,13 +88,19 @@ describe("FileWriteDetail — what a write or an edit wrote, opened under its ro
         <TimelineRowCtx
           value={{ threadRef, workspaceRoot: "/srv/app" } as unknown as TimelineRowSharedState}
         >
-          <FileWriteDetail callIds={["call-edit", "call-plan"]} />
+          <FileWriteDetail box={box} callIds={["call-edit", "call-plan"]} />
         </TimelineRowCtx>,
       );
     });
     const drawn = renderer!;
     expect(asked).toEqual([{ threadId: "thread-1", toolCallIds: ["call-edit", "call-plan"] }]);
 
+    // Each file's text stands in the card's own item box, as every item's does.
+    expect(
+      drawn.root
+        .findAll((node) => node.props["data-item-box"] !== undefined)
+        .map((node) => node.props["data-item-box"]),
+    ).toEqual(["write:0", "write:1"]);
     const lines = drawn.root.findAll((node) => node.props["data-diff-line"] !== undefined);
     expect(lines.map((line) => line.props["data-diff-line"])).toEqual(["kept", "removed", "added"]);
     expect(texts(drawn)).toEqual(
@@ -118,7 +127,7 @@ describe("FileWriteDetail — what a write or an edit wrote, opened under its ro
         <TimelineRowCtx
           value={{ threadRef, workspaceRoot: "/srv/app" } as unknown as TimelineRowSharedState}
         >
-          <FileWriteDetail callIds={["call-edit", "call-plan"]} />
+          <FileWriteDetail box={box} callIds={["call-edit", "call-plan"]} />
         </TimelineRowCtx>,
       );
     });

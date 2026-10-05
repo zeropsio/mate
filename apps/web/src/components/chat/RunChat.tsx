@@ -1603,7 +1603,14 @@ function StepBubble({
       ) : null}
       {disclosure.open && writeCalls.length > 0 ? (
         <div className={cn("px-3 pb-2", rises(disclosure.made))} data-chat-detail>
-          <FileWriteDetail callIds={writeCalls} />
+          <FileWriteDetail
+            box={(part, text) => (
+              <CappedBox className="rounded-xl bg-foreground/4" detail part={part}>
+                {text}
+              </CappedBox>
+            )}
+            callIds={writeCalls}
+          />
         </div>
       ) : null}
     </CallRow>
