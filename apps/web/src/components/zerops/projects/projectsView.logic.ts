@@ -490,8 +490,8 @@ function releaseInputOf(release: GroupFlowReads["release"]): GroupFlowInput["rel
  * unread) and the platform's pushed deployments.
  *
  * What `main` holds is not read here (`mainHasCode`, `mainHead` stay
- * `undefined`): the default-branch read runs only for a group with a
- * production, so a merged code change is the page's one proof of code.
+ * `undefined`), nor anywhere else: a merged code change is the page's one
+ * proof of code.
  */
 export function groupFlowInputOf(input: {
   readonly groupId: string;

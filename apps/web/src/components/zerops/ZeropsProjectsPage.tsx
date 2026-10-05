@@ -2265,8 +2265,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
    *
    * The flow's own `add-production` next step stays the usual way there: it
    * needs `main` to have code, which today is read only from a merged code
-   * pull request still in the recent list (`groupFlowInputOf`'s own
-   * `mainHasCode`/`mainHead` go unread for every group). That misses the code
+   * change still in the recent list (nothing fills `groupFlowInputOf`'s own
+   * `mainHasCode`/`mainHead`). That misses the code
    * a recipe planted at birth and any merge that has since scrolled off, so
    * the menu offers the same verb on the one thing this account can always
    * answer — whether the role is still there to take (`creatableRoles`) and
