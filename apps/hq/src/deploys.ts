@@ -13,7 +13,7 @@
  *   (main D15, audit D2). A release — every production environment gets each service its
  *   production tier builds at the commit the release lists (C15/C16), named `<tag> <7 hex>`. An
  *   environment added, and a deploy key kept for one, ask for what the environment is wanted at
- *   now: a stage the head of `main`, a production the newest release. A person's Run again asks for
+ *   now: a stage the head of `main`, a production the newest release made since it was attached. A person's Run again asks for
  *   one deploy again, and Add service for one service the tier declares. Nothing else asks.
  * - **The request that asked runs it** (`run`): its rollout planned into jobs once, then each of its
  *   environments' next job submitted where none builds, and it answers where each job stands
@@ -476,14 +476,18 @@ export const deploysLayer = (
 
       /**
        * A production's: each runtime at the commit the release `tag` lists (C16), else the newest
-       * approved release's — none before a release, which is no failure; a runtime it does not
-       * list, and a service it lists that production no longer builds, are reported, and the rest
-       * deploy.
+       * approved release's — only of a release made since the production environment was created,
+       * so attaching one deploys nothing: none before a release, which is no failure; a runtime it
+       * does not list, and a service it lists that production no longer builds, are reported, and
+       * the rest deploy.
        */
-      const productionWanted = (appId: string, tag?: string) =>
+      const productionWanted = (environment: Environment, tag?: string) =>
         Effect.gen(function* () {
+          const appId = environment.app_id;
           const release =
-            tag === undefined ? yield* releases.newest(appId) : yield* releaseOf(appId, tag);
+            tag === undefined
+              ? yield* releases.newest(appId, environment.project_id)
+              : yield* releaseOf(environment, tag);
           if (release === undefined) return { targets: [], note: undefined };
           const { runtimes, note } = yield* runtimesOf(appId, "production");
           const listed = new Map(release.entries.map((entry) => [entry.service, entry.sha]));
@@ -508,14 +512,19 @@ export const deploysLayer = (
           return { targets, note: notes.length === 0 ? undefined : notes.join("; ") };
         });
 
-      /** The release `tag` of the application, as its row holds it; none where it is not one. */
-      const releaseOf = (appId: string, tag: string) =>
+      /**
+       * The release `tag` of the production's application, as its row holds it, if made since the
+       * production was created; none where it is not one.
+       */
+      const releaseOf = (environment: Environment, tag: string) =>
         Effect.map(
           sql<{
             readonly tag: string;
             readonly entries: ReadonlyArray<{ readonly service: string; readonly sha: string }>;
           }>`
-            SELECT tag, entries FROM hq_release WHERE app_id::text = ${appId} AND tag = ${tag}`,
+            SELECT tag, entries FROM hq_release
+            WHERE app_id::text = ${environment.app_id} AND tag = ${tag} AND released_at >= (
+              SELECT created_at FROM hq_environment WHERE project_id = ${environment.project_id})`,
           (rows) => rows[0],
         );
 
@@ -525,7 +534,7 @@ export const deploysLayer = (
           ? environment.sources.includes("main")
             ? stageWanted(environment.app_id)
             : Effect.succeed({ targets: [], note: undefined })
-          : productionWanted(environment.app_id);
+          : productionWanted(environment);
 
       /** The environments of `where`, in the order they were declared. */
       const environmentsOf = (
@@ -781,10 +790,10 @@ export const deploysLayer = (
               break;
             }
             case "release": {
-              const wanted = yield* productionWanted(rollout.app_id, rollout.tag ?? undefined);
-              if (wanted.note !== undefined) notes.push(wanted.note);
               for (const environment of yield* environmentsOf({ appId: rollout.app_id })) {
                 if (environment.tier !== "production") continue;
+                const wanted = yield* productionWanted(environment, rollout.tag ?? undefined);
+                if (wanted.note !== undefined) notes.push(wanted.note);
                 yield* ask(environment, wanted.targets);
               }
               break;

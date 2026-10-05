@@ -2090,6 +2090,58 @@ describe("deploys", () => {
       ),
     );
 
+    // A production follows the releases made after it was attached: attaching, keeping its key or
+    // replacing it deploys nothing of an older one, a rolled-back snapshot of v0.13.x included.
+    it.effect("deploys nothing of a release made before the production was attached", () =>
+      withDeploys(({ appId, world, tiers, commit, deploys, until, ask, planned }) =>
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          const groupHead = yield* commit("group", { "README.md": "# Shop\n" });
+          tiers.set(`${appId}/production`, tierOf(...runtime(appId, "web")));
+          const old = yield* commit("web", { "zerops.yaml": ZEROPS_YAML, "index.js": "old\n" });
+          yield* sql`
+            INSERT INTO hq_release
+              (app_id, tag, sha, entries, released_by, state, snapshot, released_at)
+            VALUES (${appId}::uuid, 'v0.1.0', ${groupHead},
+              ${`[{"service":"web","sha":"${old}"}]`}::jsonb, 'dev', 'approved', true,
+              now() - interval '1 hour')`;
+          yield* withProduction(appId, world);
+          for (const cause of ["env_added", "key_kept"] as const) {
+            yield* ask({ cause, projectId: "P_PROD", by: "owner" });
+          }
+          yield* planned;
+          assert.deepStrictEqual(
+            (yield* deploys).filter((row) => row.project === "P_PROD"),
+            [],
+          );
+          // The first release made after it is what it follows.
+          const fresh = yield* commit("web", { "index.js": "fresh\n" });
+          yield* (yield* Releases).release("dev", appId, {
+            tag: "v0.1.1",
+            groupHead,
+            entries: [{ service: "web", sha: fresh }],
+          });
+          yield* until((rows) =>
+            rows.some(
+              (row) => row.project === "P_PROD" && row.sha === fresh && row.state === "live",
+            ),
+          );
+          // Replaced, it follows nothing again until the next release.
+          yield* sql`DELETE FROM hq_environment WHERE project_id = 'P_PROD'`;
+          yield* sql`
+            INSERT INTO hq_environment (project_id, app_id, tier, name, sources, created_by)
+            VALUES ('P_PROD', ${appId}::uuid, 'production', 'shop-production', '{release}', 'owner')`;
+          const before = (yield* deploys).filter((row) => row.project === "P_PROD").length;
+          yield* ask({ cause: "env_added", projectId: "P_PROD", by: "owner" });
+          yield* planned;
+          assert.strictEqual(
+            (yield* deploys).filter((row) => row.project === "P_PROD").length,
+            before,
+          );
+        }),
+      ),
+    );
+
     // F17: a release listing a commit with no zerops.yaml submits nothing of it: its job is skipped,
     // saying so.
     it.effect("skips production's deploy of a release commit with no zerops.yaml", () =>

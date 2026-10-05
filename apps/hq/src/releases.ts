@@ -84,8 +84,15 @@ export class Releases extends Context.Service<
       tag: string,
       request: RollbackRequest,
     ) => Made;
-    /** The application's newest approved release by version: what its production runs. */
-    readonly newest: (appId: string) => Effect.Effect<Release | undefined, SqlError>;
+    /**
+     * The newest approved release by version made since the production environment `projectId` was
+     * created, not before: what that production follows. None before one, whatever older releases
+     * the application has.
+     */
+    readonly newest: (
+      appId: string,
+      projectId: string,
+    ) => Effect.Effect<Release | undefined, SqlError>;
     /** Ticks after every release made, starting with the current tick. */
     readonly changes: Stream.Stream<number>;
   }
@@ -288,8 +295,14 @@ export const releasesLayer: Layer.Layer<
       });
 
     return Releases.of({
-      newest: (appId) =>
-        Effect.map(releasesOf(appId), (all) => all.find((release) => release.state === "approved")),
+      newest: (appId, projectId) =>
+        Effect.map(
+          sql<ReleaseRow>`
+            SELECT ${sql.literal(RELEASE_COLUMNS)} FROM hq_release
+            WHERE app_id::text = ${appId} AND state = 'approved' AND released_at >= (
+              SELECT created_at FROM hq_environment WHERE project_id = ${projectId})`,
+          (rows) => rows.map(releaseOf).sort((a, b) => compareReleaseTags(b.tag, a.tag))[0],
+        ),
       changes: SubscriptionRef.changes(ticks),
       list: (userId, appId) =>
         Effect.gen(function* () {
