@@ -1159,6 +1159,36 @@ describe("useMateActions — Finish setup on a Mate HQ holds in its application,
       harden: false,
     });
   });
+
+  // Its key widened too, for one HQ does not tell that key: Finish setup is offered for its
+  // container, and says nothing of a key it will not touch.
+  it("says nothing of a widened key it will not narrow", async () => {
+    mock.finishMateSetup.mockResolvedValue({ ok: true });
+    mock.mateOffers = () => ({ ...OWNER_OFFERS, edit: { kind: "refused", reason: "not_admin" } });
+    const wider = {
+      ...IVO,
+      project: { ...IVO.project, hq: { ...IVO.project.hq!, mate: { face: "", keyWider: true } } },
+    } as ZeropsCandidatePresentation;
+    mock.listing.current = {
+      state: "known",
+      value: [wider],
+      asOf: { ordinal: 1, atMs: 1_000 },
+      coverage: "complete",
+      freshness: { kind: "live" },
+    };
+    mount(known());
+    const finish = verbs(wider).find(
+      (verb): verb is ZeropsMenuAction => verb.id === "finish-setup",
+    );
+    expect(finish?.why).toBeUndefined();
+    await act(async () => {
+      finish!.onSelect();
+    });
+    expect(mock.finishMateSetup.mock.calls[0]![0]).toMatchObject({
+      harden: false,
+      keyWider: false,
+    });
+  });
 });
 
 // B5: two browsers. A slow press the other one still holds at HQ is no half-made Mate, however

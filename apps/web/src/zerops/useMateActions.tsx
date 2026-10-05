@@ -1008,7 +1008,9 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
               {
                 id: "finish-setup",
                 label: finishSetupLabel,
-                ...(keyWiderOf(candidate) ? { why: KEY_WIDER_WHY } : {}),
+                ...(keyWiderOf(candidate) && mayEditRecord(candidate)
+                  ? { why: KEY_WIDER_WHY }
+                  : {}),
                 disabled:
                   busy ||
                   finishSetupRunning(
@@ -1087,6 +1089,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       move,
       finishSetup,
       finishSetupVerbFor,
+      mayEditRecord,
       presses,
       rowInputFor,
       serverVersions,
