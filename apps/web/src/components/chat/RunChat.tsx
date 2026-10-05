@@ -129,7 +129,7 @@ import {
 import { useLiveSlot } from "./useLiveSlot";
 import { usePace } from "./usePace";
 import { KeptTimelineContext } from "./keptTimelineContext";
-import { landingHosts, slotMoves } from "./slotMoves.logic";
+import { landingHosts, rowShifts, slotMoves } from "./slotMoves.logic";
 import { resultPictures as allResultPictures, stripShowsFiles } from "./runResult.logic";
 import { useStripFiles } from "./resultStripFiles";
 import {
@@ -4402,6 +4402,28 @@ function RunScroll({
     }
     markEdges(element);
   }, [from, follow]);
+  // A line joining above lines already there, or a call moving past the
+  // ones still running (F3, run 9), glides what it moved from where it
+  // stood, as a landing does; one joining at the foot makes its room there
+  // by the history's ease.
+  const drawnRef = useRef<{
+    readonly rows: ReadonlyMap<string, ReadonlyArray<string>>;
+    readonly from: number;
+    readonly landing: ReadonlyMap<string, number> | null;
+  } | null>(null);
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    if (list === null || typeof list.querySelectorAll !== "function") return;
+    const rows = historyRows(list);
+    const drawn = drawnRef.current;
+    drawnRef.current = { rows, from, landing };
+    // A landing glides the history itself, and plops what lands.
+    if (drawn === null || drawn.landing !== landing || !easesRef.current || !shownRef.current) {
+      return;
+    }
+    // Earlier lines drawn over the ones in view keep their place by the scroll.
+    glideShifted(list, drawn.rows, rows, drawn.from === from);
+  });
   // A line arriving, a bubble growing as its words stream, a call opening,
   // the live slot under it growing into its room: a scroll that follows its
   // foot stays at it, moved before the frame paints, so no arrival is ever
@@ -4577,6 +4599,71 @@ function glideLines(
       continue;
     }
     glideFrom(line, stood);
+  }
+}
+
+/** A row of a run's history: a line, a card of calls, a call in its card. */
+const HISTORY_ROW = "[data-chat-row][data-run-key]";
+
+/** The rows of a run's history by what holds them: its lines (""), and each card's calls by its key. */
+function historyRows(list: HTMLElement): ReadonlyMap<string, ReadonlyArray<string>> {
+  const keysOf = (holder: Element) =>
+    [...holder.children].flatMap((row) =>
+      row instanceof HTMLElement && row.dataset.runKey !== undefined ? [row.dataset.runKey] : [],
+    );
+  const rows = new Map([["", keysOf(list)]]);
+  for (const calls of list.querySelectorAll<HTMLElement>("[data-chat-calls]")) {
+    const card = calls.closest<HTMLElement>(HISTORY_ROW);
+    if (card !== null) rows.set(card.dataset.runKey!, keysOf(calls));
+  }
+  return rows;
+}
+
+/**
+ * The rows in view that the rows around them moved since the last draw —
+ * what joined above them, what left — gliding from where they stood on the
+ * plop's curve (`rowShifts`), a glide in flight taken over from where it
+ * shows; a call in a card rides its card. The lines themselves only when
+ * `lines`.
+ */
+function glideShifted(
+  list: HTMLElement,
+  before: ReadonlyMap<string, ReadonlyArray<string>>,
+  after: ReadonlyMap<string, ReadonlyArray<string>>,
+  lines: boolean,
+): void {
+  if (prefersReducedMotion()) return;
+  const scroll = list.parentElement;
+  if (scroll === null) return;
+  const view = scroll.getBoundingClientRect();
+  for (const [holderKey, keys] of after) {
+    const was = before.get(holderKey);
+    if (was === undefined || (holderKey === "" && !lines)) continue;
+    if (was.length === keys.length && was.every((key, index) => keys[index] === key)) continue;
+    const holder =
+      holderKey === ""
+        ? list
+        : ([...list.querySelectorAll<HTMLElement>("[data-chat-calls]")].find(
+            (calls) => calls.closest<HTMLElement>(HISTORY_ROW)?.dataset.runKey === holderKey,
+          ) ?? null);
+    if (holder === null) continue;
+    const byKey = new Map<string, HTMLElement>();
+    for (const row of holder.children) {
+      if (row instanceof HTMLElement && row.dataset.runKey !== undefined) {
+        byKey.set(row.dataset.runKey, row);
+      }
+    }
+    const gap = Number.parseFloat(getComputedStyle(holder).rowGap) || 0;
+    const shifts = rowShifts(was, keys, (key) => {
+      const row = byKey.get(key);
+      return row === undefined ? undefined : row.offsetHeight + gap;
+    });
+    for (const [key, shift] of shifts) {
+      const row = byKey.get(key)!;
+      const box = row.getBoundingClientRect();
+      if (box.bottom - shift < view.top || box.top - shift > view.bottom) continue;
+      glideFrom(row, box.top - shift);
+    }
   }
 }
 

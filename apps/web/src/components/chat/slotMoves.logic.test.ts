@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import type { LiveSlot, SlotEntry } from "./liveSlot.logic";
-import { landingHosts, slotMoves } from "./slotMoves.logic";
+import { landingHosts, rowShifts, slotMoves } from "./slotMoves.logic";
 
 const entry = (key: string, answer?: string): SlotEntry => ({
   key,
@@ -93,5 +93,48 @@ describe("landingHosts", () => {
     },
   ])("$what", ({ from, leaving, drawn, hosts }) => {
     expect([...landingHosts(from, leaving, new Set(drawn))]).toEqual(hosts);
+  });
+});
+
+// F3 (run 9): a line joining the history above lines already there pushed
+// them down in one frame; each that moved glides from where it stood.
+describe("rowShifts", () => {
+  const rooms: Record<string, number> = { a: 40, b: 60, c: 30, d: 50 };
+  it.each([
+    { what: "nothing changed", before: ["a", "b"], after: ["a", "b"], shifts: {} },
+    { what: "a line joining at the foot", before: ["a", "b"], after: ["a", "b", "c"], shifts: {} },
+    { what: "the first lines", before: [], after: ["a", "b"], shifts: {} },
+    {
+      what: "a line joining between two",
+      before: ["a", "c"],
+      after: ["a", "b", "c"],
+      shifts: { c: 60 },
+    },
+    {
+      what: "a line joining at the head",
+      before: ["b", "c"],
+      after: ["a", "b", "c"],
+      shifts: { b: 40, c: 40 },
+    },
+    {
+      what: "a call that returned moving past one still running",
+      before: ["a", "b", "c", "d"],
+      after: ["a", "c", "d", "b"],
+      shifts: { c: -60, d: -60, b: 80 },
+    },
+    {
+      what: "a line leaving that is still drawn elsewhere",
+      before: ["a", "b", "c"],
+      after: ["a", "c"],
+      shifts: { c: -60 },
+    },
+    {
+      what: "a line that left and is gone: what stood under it is not said",
+      before: ["a", "x", "c"],
+      after: ["a", "c"],
+      shifts: {},
+    },
+  ])("$what", ({ before, after, shifts }) => {
+    expect(Object.fromEntries(rowShifts(before, after, (key) => rooms[key]))).toEqual(shifts);
   });
 });
