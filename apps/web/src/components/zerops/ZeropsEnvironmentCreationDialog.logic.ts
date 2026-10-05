@@ -108,10 +108,11 @@ function botNameVerdict(
 ): BotNameVerdict {
   const bot = raw.replace(/\s+/g, " ").trim();
   if (bot.length === 0) return { kind: "refused", reason: "blank", bot };
-  if (bot.length > ZEROPS_BOT_NAME_MAX_LENGTH) return { kind: "refused", reason: "long", bot };
+  // The name a Mate already has is never refused, however long it is.
   const isCurrent =
     options.current !== undefined && options.current.toLowerCase() === bot.toLowerCase();
   if (isCurrent) return { kind: "free" };
+  if (bot.length > ZEROPS_BOT_NAME_MAX_LENGTH) return { kind: "refused", reason: "long", bot };
   if (taken.names.some((name) => name.toLowerCase() === bot.toLowerCase())) {
     return { kind: "refused", reason: "taken", bot };
   }

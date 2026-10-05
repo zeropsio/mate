@@ -67,6 +67,13 @@ describe("environmentProjectName — what an environment's project is created as
       shown: "Rune",
     },
     {
+      case: "a Mate typed with its application's prefix, never doubled",
+      role: "dev",
+      typed: "SPN - Rune",
+      name: "SPN - Rune",
+      shown: "Rune",
+    },
+    {
       case: "a stage, as the person named it",
       role: "stage",
       typed: "SPN - stage",

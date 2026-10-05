@@ -188,9 +188,11 @@ export function renamedProjectName(
   project: { readonly name: string; readonly hq?: HqPlacement | undefined },
   typed: string,
 ): string | undefined {
-  const own = typed.trim();
+  const { label } = readZeropsMembership(project);
+  // A typed `"<application> - "` is the prefix already, never a second one.
+  const own = nameUnderApp(typed, label);
   if (own === projectNameInApp(project)) return undefined;
-  const full = appProjectName(readZeropsMembership(project).label, own);
+  const full = appProjectName(label, own);
   return full === project.name.trim() ? undefined : full;
 }
 

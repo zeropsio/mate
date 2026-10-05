@@ -1022,6 +1022,12 @@ describe("renamedProjectName", () => {
       expected: "SPN - Rune2",
     },
     {
+      case: "takes a typed prefix of the application once, never twice",
+      name: "SPN - Rune",
+      typed: "SPN - Milo",
+      expected: "SPN - Milo",
+    },
+    {
       case: "is no rename where the shown name is kept",
       name: "SPN - Rune",
       typed: "Rune",

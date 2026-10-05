@@ -137,7 +137,8 @@ export function environmentProjectName(
   groupName: string,
   typed: string,
 ): { readonly name: string; readonly shown: string } {
-  const name = role === "dev" ? appProjectName(groupName, typed) : typed.trim();
+  const name =
+    role === "dev" ? appProjectName(groupName, nameUnderApp(typed, groupName)) : typed.trim();
   return { name, shown: nameUnderApp(name, groupName) };
 }
 

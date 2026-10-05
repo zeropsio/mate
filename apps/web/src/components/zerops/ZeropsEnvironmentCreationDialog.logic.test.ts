@@ -147,6 +147,13 @@ describe("validateBotName", () => {
       verdict: undefined,
     },
     {
+      name: "the name a Mate already has stays its own, however long",
+      value: "Old - A Mate With A Very Long Name",
+      taken: { names: [], complete: true },
+      current: "Old - A Mate With A Very Long Name",
+      verdict: undefined,
+    },
+    {
       name: "an empty name is refused before anything is read",
       value: " ",
       taken: { names: [], complete: false },
