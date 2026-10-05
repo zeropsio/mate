@@ -47,10 +47,33 @@ export const superviseLink = (options: LinkOptions): Effect.Effect<LinkSuperviso
     const { key, scopes, store } = options;
     const signals = yield* Queue.unbounded<LinkSignal>();
 
+    /**
+     * Every stream event goes through here. Whenever the link ends up refused — by a refusal, a
+     * denial, or a session that could not be repaired — each scope is refused with the link's fault:
+     * a scope never waits on a parent that will not come back by itself.
+     */
     const dispatch = (event: StreamEvent, target: LinkKey | ScopeKey = key) =>
-      Effect.map(Clock.currentTimeMillis, (now) =>
-        store.dispatch({ kind: "stream", key: target, now, event }),
-      );
+      Effect.map(Clock.currentTimeMillis, (now) => {
+        const before = streamOf(store.state(), key).phase;
+        const directives = store.dispatch({ kind: "stream", key: target, now, event });
+        const link = streamOf(store.state(), key);
+        if (target === key && before !== "refused" && link.phase === "refused")
+          for (const scope of scopes)
+            store.dispatch({
+              kind: "stream",
+              key: scope,
+              now,
+              event: {
+                kind: "fault",
+                jitter: 0,
+                fault: {
+                  outcome: "definitive-refusal",
+                  message: link.fault?.message ?? "The connection was refused.",
+                },
+              },
+            });
+        return directives;
+      });
 
     /**
      * Fails once a named deadline passes in the phase that named it: the link's for this attempt,
@@ -100,16 +123,9 @@ export const superviseLink = (options: LinkOptions): Effect.Effect<LinkSuperviso
                   jitter: yield* Random.next,
                 });
           }
-          const jitter = yield* Random.next;
-          // A refusal of the link is its scopes' refusal too; any other end leaves them waiting.
-          const refused =
-            ended.outcome === "definitive-refusal" || ended.outcome === "authoritative-denial";
-          for (const scope of scopes)
-            yield* dispatch(
-              refused ? { kind: "fault", fault: ended, jitter } : { kind: "parent-lost" },
-              scope,
-            );
-          return yield* dispatch({ kind: "fault", fault: ended, jitter });
+          // The scopes wait for the link's next attempt; if the link is refused, so are they.
+          for (const scope of scopes) yield* dispatch({ kind: "parent-lost" }, scope);
+          return yield* dispatch({ kind: "fault", fault: ended, jitter: yield* Random.next });
         }
         if (directives.some((directive) => directive.kind === "repair-session")) {
           const repaired = yield* Effect.exit(options.repairSession);

@@ -368,4 +368,30 @@ describe("the walking skeleton", () => {
         yield* Fiber.interrupt(fiber);
       }),
   );
+
+  it.effect("shows the row refused when the session cannot be repaired, never catching up", () =>
+    Effect.gen(function* () {
+      const registry = AtomRegistry.make();
+      const store = makeAccountStore(registry);
+      const expired = fixtureWire(() => Effect.fail(classifyHttp(401)));
+      const supervisor = yield* superviseLink({
+        ...zeropsNavigationLink({ orgId: ORG, wire: expired.wire, store, makeId: () => "sub" }),
+        store,
+        repairSession: Effect.fail(classifyHttp(401)),
+      });
+      const fiber = yield* Effect.forkChild(supervisor.run);
+      yield* settle;
+      const row = render(
+        registry,
+        store.data.project(menuRow, { orgId: ORG, row: { kind: "project", projectId: "p" } }),
+      );
+      expect(store.state().streams.get(linkKeys.zerops(ORG))?.phase).toBe("refused");
+      expect(store.state().streams.get(projectsScope(ORG))).toMatchObject({
+        phase: "refused",
+        fault: { outcome: "definitive-refusal", message: "HTTP 401" },
+      });
+      expect(row.latest().status.display).toBe("refused");
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
 });
