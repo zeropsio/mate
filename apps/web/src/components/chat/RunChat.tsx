@@ -4191,14 +4191,23 @@ function RunScroll({
       };
       gliding.frame = requestAnimationFrame(tick);
     };
+    // Its box and its lines as they stood at the last read.
+    const sized: { box: number | null; lines: number | null } = { box: null, lines: null };
     /**
-     * Where it stands, read: while its room eases or it glides, a move with
-     * no input of the person's is that motion's — the browser clamping it as
-     * its box grows — and never their move up.
+     * Where it stands, read: while its room eases or it glides, or as its box
+     * or its lines change size, a move with no input of the person's is that
+     * motion's or that change's — the browser clamping it — and never their
+     * move up.
      */
     const read = (position: RunScrollPosition) => {
+      const resized =
+        (sized.box !== null && Math.abs(position.clientHeight - sized.box) > 0.5) ||
+        (sized.lines !== null && Math.abs(position.scrollHeight - sized.lines) > 0.5);
+      sized.box = position.clientHeight;
+      sized.lines = position.scrollHeight;
       const person = movesAsPerson({
         moving: gliding.frame !== 0 || (roomRef.current?.easing() ?? false) || heldAbove(),
+        resized,
         msSinceInput: performance.now() - personAtRef.current,
         atFoot: standsAtFoot(position),
         follows: followRef.current.follows,
