@@ -235,6 +235,38 @@ describe("zeropsNavigationLink", () => {
       yield* Fiber.interrupt(fiber);
     }),
   );
+
+  it.effect("keeps a member whose baseline row is damaged, with the value it had", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      let reconnected = false;
+      const deploy = { id: "deploy", projectId: PROBE_PROJECT_ID, actionName: "stack.deploy" };
+      const fixture = fixtureWire(
+        answers({
+          projects: [PROBE_PROJECT],
+          running: () =>
+            reconnected
+              ? [{ id: "deploy", projectId: PROBE_PROJECT_ID, status: 42 }]
+              : [{ ...deploy, status: "RUNNING", _version: 1 }],
+        }),
+      );
+      const fiber = yield* run(store, fixture);
+      expect(store.state().running.get(PROBE_PROJECT_ID)).toEqual(new Set(["deploy"]));
+
+      reconnected = true;
+      yield* fixture.drop({ outcome: "transient", message: "socket closed" });
+      yield* settle;
+      const link = store.state().streams.get(scopeKeys.zeropsLink(ORG));
+      yield* TestClock.adjust(link?.next.kind === "retry" ? link.next.at : 0);
+      yield* settle;
+      expect(store.state().streams.get(scopeKeys.running(ORG))?.phase).toBe("live");
+      expect(store.state().memberships.get(scopeKeys.running(ORG))?.members.get("deploy")).toBe(
+        "member",
+      );
+      expect(store.state().running.get(PROBE_PROJECT_ID)).toEqual(new Set(["deploy"]));
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
 });
 
 const itemsOf = (event: ReturnType<typeof recorded>) => ("items" in event ? event.items : []);

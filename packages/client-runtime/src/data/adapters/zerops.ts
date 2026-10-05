@@ -84,6 +84,8 @@ const MembershipData = Schema.Struct({
 });
 const UpdateData = Schema.Struct({ update: Schema.Array(Schema.Unknown) });
 const ListAnswer = Schema.Struct({ items: Schema.Array(Schema.Unknown) });
+/** A member's identity alone: a row too damaged to read still names its id. */
+const Identified = Schema.Struct({ id: Schema.String });
 
 const decodeProjectRow = Schema.decodeUnknownOption(ProjectRow);
 const decodeProcessRow = Schema.decodeUnknownOption(ProcessRow);
@@ -91,6 +93,7 @@ const decodeFrame = Schema.decodeUnknownOption(Schema.fromJsonString(Frame));
 const decodeMembership = Schema.decodeUnknownOption(MembershipData);
 const decodeUpdates = Schema.decodeUnknownOption(UpdateData);
 const decodeList = Schema.decodeUnknownOption(ListAnswer);
+const decodeIdentified = Schema.decodeUnknownOption(Identified);
 
 /** Each row that decodes; a damaged row is refused alone, its neighbours admitted (corrupt data). */
 function rowsOf(family: Registration["family"], raw: ReadonlyArray<unknown>): ReadonlyArray<Row> {
@@ -268,7 +271,13 @@ export function zeropsNavigationLink(options: {
               scope,
               generation: generationOf(scope),
               via: "zerops-realtime",
-              members: rows.map((row) => row.id),
+              // Membership is every item's id: a damaged row keeps its member and its last value.
+              members: list.items.flatMap((item) =>
+                Option.match(decodeIdentified(item), {
+                  onNone: () => [],
+                  onSome: ({ id }) => [id],
+                }),
+              ),
               rows,
             }),
           );
