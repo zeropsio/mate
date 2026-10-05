@@ -3,11 +3,11 @@ import { describe, expect, it } from "vite-plus/test";
 import type { LiveSlot, SlotEntry } from "./liveSlot.logic";
 import { landingHosts, slotMoves } from "./slotMoves.logic";
 
-const entry = (key: string, riders: ReadonlyArray<string> = []): SlotEntry => ({
+const entry = (key: string, answer?: string): SlotEntry => ({
   key,
   shownAt: 0,
   endedAt: null,
-  riders,
+  ...(answer === undefined ? {} : { answer }),
 });
 
 const slot = (overrides: Partial<LiveSlot> = {}): LiveSlot => ({
@@ -16,6 +16,7 @@ const slot = (overrides: Partial<LiveSlot> = {}): LiveSlot => ({
   seen: new Set(),
   quietSince: null,
   pending: [],
+  lastPlopAt: null,
   ...overrides,
 });
 
@@ -29,10 +30,17 @@ describe("slotMoves", () => {
       entering: false,
     },
     {
-      what: "an item ended and lands in the history, with what rode along",
-      from: slot({ entries: [entry("a", ["r1"])] }),
+      what: "an item ended and lands in the history",
+      from: slot({ entries: [entry("a")] }),
       to: slot(),
-      leaving: ["a", "r1"],
+      leaving: ["a"],
+      entering: false,
+    },
+    {
+      what: "a question lands with the person's answer under it",
+      from: slot({ entries: [entry("question:q1", "person:q1-answer")] }),
+      to: slot(),
+      leaving: ["question:q1", "person:q1-answer"],
       entering: false,
     },
     {
@@ -71,15 +79,15 @@ describe("landingHosts", () => {
     },
     {
       what: "a question and the answer drawn under it: the pair lands as one",
-      from: slot({ entries: [entry("question:q1", ["person:q1-answer"])] }),
+      from: slot({ entries: [entry("question:q1", "person:q1-answer")] }),
       leaving: ["question:q1", "person:q1-answer"],
       drawn: ["question:q1", "person:q1-answer"],
       hosts: ["question:q1", "person:q1-answer"],
     },
     {
-      what: "what rode along unseen enters after, in its turn",
-      from: slot({ entries: [entry("a", ["r1", "r2"])] }),
-      leaving: ["a", "r1", "r2"],
+      what: "what waits its turn is no host: it enters the slot first",
+      from: slot({ entries: [entry("a")], pending: ["r1"] }),
+      leaving: ["a"],
       drawn: ["a"],
       hosts: ["a"],
     },

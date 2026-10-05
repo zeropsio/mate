@@ -3276,13 +3276,9 @@ function LiveSlot({
     const item = byKey.get(entry.key);
     if (item === undefined) return [];
     // A question's answer rises in under it, and the pair plops as one.
-    const answer =
-      item.kind === "question"
-        ? entry.riders.flatMap((key) => {
-            const rider = byKey.get(key);
-            return rider?.kind === "person" ? [{ entry, item: rider }] : [];
-          })
-        : [];
+    const said =
+      item.kind === "question" && entry.answer !== undefined ? byKey.get(entry.answer) : undefined;
+    const answer = said?.kind === "person" ? [{ entry, item: said }] : [];
     return [{ entry, item }, ...answer];
   });
   const drawn = shown.slice(0, SLOT_MAX_ROWS);

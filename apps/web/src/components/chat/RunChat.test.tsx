@@ -1036,7 +1036,7 @@ describe("RunChat, as the person uses it", () => {
           </Rows>,
         ),
       );
-      act(() => vi.advanceTimersByTime(SLOT_MIN_SHOW_MS + 100));
+      act(() => vi.advanceTimersByTime(SLOT_HOLD_MS + 100));
       expect(shown()).toContain('"data-chat-folded":"true"');
       expect(shown()).toContain("Show all 16 lines");
     } finally {
@@ -1107,7 +1107,7 @@ describe("RunChat, as the person uses it", () => {
       expect(rows().filter((key) => key.endsWith("step:e2"))).toHaveLength(1);
       expect(said()).not.toContain("data-run-shimmer");
       expect(said()).not.toContain("2 edits");
-      act(() => vi.advanceTimersByTime(SLOT_MIN_SHOW_MS + 100));
+      act(() => vi.advanceTimersByTime(SLOT_HOLD_MS + 100));
       // Landed, it folds in.
       expect(rows().filter((key) => key.endsWith("step:e2"))).toHaveLength(0);
       expect(said()).toContain("2 edits");
@@ -1177,7 +1177,7 @@ describe("RunChat, as the person uses it", () => {
       const risingBefore = rising();
       // The first call returns and lands; the other two run on.
       draw(live([step(command("w1", "pnpm w1"))], ["w2", "w3"]));
-      act(() => vi.advanceTimersByTime(SLOT_MIN_SHOW_MS + 100));
+      act(() => vi.advanceTimersByTime(SLOT_HOLD_MS + 100));
       draw(live([step(command("w1", "pnpm w1"))], ["w2", "w3"]));
       expect(card().map((node) => node.props["data-run-key"])).toEqual(["calls#step:w1"]);
       expect(card()[0]).toBe(before[0]);
@@ -1807,7 +1807,7 @@ describe("RunChat, as the person uses it", () => {
       expect(commands()).toHaveLength(1);
       // Ended, never still running (E17).
       expect(JSON.stringify(renderer.toJSON())).not.toContain("data-run-shimmer");
-      act(() => vi.advanceTimersByTime(SLOT_MIN_SHOW_MS + 100));
+      act(() => vi.advanceTimersByTime(SLOT_HOLD_MS + 100));
       expect(commands()).toHaveLength(0);
     } finally {
       vi.useRealTimers();
@@ -1838,7 +1838,7 @@ describe("RunChat, as the person uses it", () => {
           </Rows>,
         ),
       );
-      act(() => vi.advanceTimersByTime(SLOT_MIN_SHOW_MS + 100));
+      act(() => vi.advanceTimersByTime(SLOT_HOLD_MS + 100));
       const folds = renderer.root.findAll(
         (node) => node.type === "div" && node.props["data-chat-folded"] !== undefined,
       );
@@ -2207,7 +2207,7 @@ describe("RunChat, as the person uses it", () => {
           ),
         });
         run.show([call, step(command("w8", code))]);
-        act(() => vi.advanceTimersByTime(SLOT_MIN_SHOW_MS + 100));
+        act(() => vi.advanceTimersByTime(SLOT_HOLD_MS + 100));
         run.press("Show less");
         await Promise.resolve();
         run.grow(65);
@@ -2351,7 +2351,7 @@ describe("RunChat, as the person uses it", () => {
               </Rows>,
             ),
           );
-          act(() => vi.advanceTimersByTime(SLOT_MIN_SHOW_MS + 100));
+          act(() => vi.advanceTimersByTime(SLOT_HOLD_MS + 100));
           expect(landed()).toBe(true);
         },
       };

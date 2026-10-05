@@ -1,24 +1,29 @@
 /**
  * The live slot's schedule (pass 35, the owner: "when this thing is done, it
  * would animatedly plop to the history; items should have some minimal show
- * time before they plop"). The slot at the card's foot shows what the Mate is
- * doing this moment, each thing as the row it becomes; the history above
- * holds what happened. Pure: the caller offers what is live and what the
- * record holds, at a time, and draws what this says.
+ * time before they plop"; run 11, 2026-10-05: "one plop and 5 messages" —
+ * everything goes through the working row, one item at a time). The slot at
+ * the card's foot shows what the Mate is doing this moment, each thing as the
+ * row it becomes; the history above holds what happened. Pure: the caller
+ * offers what is live and what the record holds, at a time, and draws what
+ * this says.
  *
  * - An item enters the slot when it goes live, unless an item that ended
- *   still stands there: then it waits, so the slot is never more than one
- *   minimum show time behind the Mate.
- * - An item leaves as it ends, once it has been shown `SLOT_MIN_SHOW_MS` —
- *   a question once its answer has stood that long under it — and plops into
- *   the history. The last one standing holds its place `SLOT_HOLD_MS` past
- *   its end for the next, which takes it in one change; only a longer quiet
- *   says "Thinking", and once said it stands its minimum too.
- * - Bursts coalesce: what starts and ends while an ended item stands never
- *   takes the slot; it joins the history in that item's plop. The board
- *   measured the lag at 0.7 s this way, against 4.7 s for a queue.
+ *   still stands there: then it waits. Calls that run at once stand together.
  * - What is first seen ended — a note placed, a Codex command, which says
- *   nothing until it returns — stands its own minimum, unless it rides.
+ *   nothing until it returns, a quick call that started and ended while
+ *   another stood — waits its turn in the order it came, and enters alone:
+ *   nothing reaches the history without standing in the slot first.
+ * - An item leaves as it ends, once it has been shown `SLOT_MIN_SHOW_MS` —
+ *   `SLOT_BUSY_SHOW_MS` while three or more wait behind it, `SLOT_RUSH_SHOW_MS`
+ *   past eight, a question once
+ *   the person's answer has stood that long under it, the pair as one — and
+ *   plops into the history,
+ *   one at a time: never two plops within `SLOT_BUSY_SHOW_MS`. Simulated on
+ *   a real run's 669 items, the history trails the Mate by 2.4 s at most.
+ * - The last one standing holds its place `SLOT_HOLD_MS` past its end for the
+ *   next, which takes it in one change; only a longer quiet says "Thinking",
+ *   and once said it stands its minimum too.
  * - What the record holds when the slot is first drawn is history at once,
  *   and so is everything once the run is over (`final`).
  *
@@ -30,7 +35,28 @@
  * How long anything the slot says, once said, stands before something else
  * takes its place: an item, and "Thinking" too.
  */
-export const SLOT_MIN_SHOW_MS = 1200;
+export const SLOT_MIN_SHOW_MS = 800;
+
+/**
+ * How long an item stands while `SLOT_BUSY_WAITING` or more wait behind it,
+ * and the least time between two plops: a burst passes as a quick sequence,
+ * never as one plop.
+ */
+export const SLOT_BUSY_SHOW_MS = 250;
+
+/** How many waiting items make the slot hurry. */
+export const SLOT_BUSY_WAITING = 3;
+
+/**
+ * How long an item stands, and the least time between two plops, while
+ * `SLOT_RUSH_WAITING` or more wait: a long burst of quick calls (twenty reads
+ * in two seconds) passes as a ticker, and what follows it is seconds behind
+ * at most.
+ */
+export const SLOT_RUSH_SHOW_MS = 125;
+
+/** How many waiting items make the slot rush. */
+export const SLOT_RUSH_WAITING = 8;
 
 /**
  * How long an item that ended, the last one standing, holds the slot past its
@@ -43,14 +69,14 @@ export const SLOT_HOLD_MS = 1200;
 /** How many items the slot draws at once; the rest are "+N more running". */
 export const SLOT_MAX_ROWS = 3;
 
-/** One item in the slot: since when it shows, when it ended, what rides along with it. */
+/** One item in the slot: since when it shows, and when it ended. */
 export interface SlotEntry {
   readonly key: string;
   readonly shownAt: number;
   /** When it ended: null while it runs (a question while it waits). */
   readonly endedAt: number | null;
-  /** Record items that started and ended while it stood: they plop with it. */
-  readonly riders: ReadonlyArray<string>;
+  /** A question's: the person's answer, which rises in under it and plops with it as one. */
+  readonly answer?: string;
 }
 
 export interface LiveSlot {
@@ -66,11 +92,10 @@ export interface LiveSlot {
    * Null while an item stands.
    */
   readonly quietSince: number | null;
-  /**
-   * What arrived whole while "Thinking" had not stood its minimum: it takes
-   * the slot once it has, the first standing, the rest riding with it.
-   */
+  /** What arrived ended and has not stood yet, in the order it came: each enters on its own. */
   readonly pending: ReadonlyArray<string>;
+  /** When the last item plopped: the next plops no sooner than `SLOT_BUSY_SHOW_MS` after it. */
+  readonly lastPlopAt: number | null;
 }
 
 /** What the caller offers: what is live, what the record holds, and whether the run is over. */
@@ -92,48 +117,74 @@ function standsAfterItsEnd(key: string): boolean {
   return key.startsWith("question:");
 }
 
-/** Whether a live item waits to enter: it takes the place of what ended as soon as that stood. */
-function waits(slot: Pick<LiveSlot, "entries" | "live">): boolean {
+type Queue = Pick<LiveSlot, "entries" | "live" | "pending">;
+
+/** How many items wait to enter: live ones behind an ended item, and what arrived ended. */
+function waiting(slot: Queue): number {
   const shown = new Set(slot.entries.map((entry) => entry.key));
-  return slot.live.some((key) => !shown.has(key));
+  return slot.live.filter((key) => !shown.has(key)).length + slot.pending.length;
+}
+
+/** How long an item stands once shown: less while three or more wait behind it, less again past eight. */
+function showFor(slot: Queue): number {
+  const behind = waiting(slot);
+  if (behind >= SLOT_RUSH_WAITING) return SLOT_RUSH_SHOW_MS;
+  return behind >= SLOT_BUSY_WAITING ? SLOT_BUSY_SHOW_MS : SLOT_MIN_SHOW_MS;
+}
+
+/** The least time between two plops, so each lands on its own. */
+function plopGap(slot: Queue): number {
+  return Math.min(showFor(slot), SLOT_BUSY_SHOW_MS);
 }
 
 /**
  * When an ended entry may plop: once it stood its minimum and ended — and,
  * the last one standing with nothing waiting, once it held its place
- * `SLOT_HOLD_MS` past its end for the next.
+ * `SLOT_HOLD_MS` past its end for the next. Never sooner than
+ * `SLOT_BUSY_SHOW_MS` after the plop before it.
  */
-function plopsAt(slot: Pick<LiveSlot, "entries" | "live">, entry: SlotEntry): number | null {
+function plopsAt(slot: Queue & Pick<LiveSlot, "lastPlopAt">, entry: SlotEntry): number | null {
   if (entry.endedAt === null) return null;
   const from = standsAfterItsEnd(entry.key)
     ? Math.max(entry.shownAt, entry.endedAt)
     : entry.shownAt;
-  const shown = Math.max(entry.endedAt, from + SLOT_MIN_SHOW_MS);
-  const last = slot.entries.every((other) => other === entry || other.endedAt !== null);
-  return last && !waits(slot) ? Math.max(shown, entry.endedAt + SLOT_HOLD_MS) : shown;
+  const shown = Math.max(entry.endedAt, from + showFor(slot));
+  // The last one standing, nothing behind it, holds its place for the next.
+  const last = slot.entries.length === 1 && waiting(slot) === 0;
+  const due = last ? Math.max(shown, entry.endedAt + SLOT_HOLD_MS) : shown;
+  return slot.lastPlopAt === null ? due : Math.max(due, slot.lastPlopAt + plopGap(slot));
 }
 
 /**
- * Live items that wait enter once no ended item stands in the slot, and once
- * the "Thinking" it says, empty, has stood its minimum (`quietSince`).
+ * What waits enters once no ended item stands in the slot, and once the
+ * "Thinking" it says, empty, has stood its minimum (`quietSince`): first what
+ * arrived ended, one at a time, in the order it came; then what is live, all
+ * of it at once.
  */
 function admit(
-  entries: ReadonlyArray<SlotEntry>,
-  live: ReadonlyArray<string>,
+  queue: Queue,
   at: number,
   quietSince: number | null,
-) {
-  if (entries.some((entry) => entry.endedAt !== null)) return entries;
+): Pick<LiveSlot, "entries" | "pending"> {
+  const { entries, pending } = queue;
+  if (entries.some((entry) => entry.endedAt !== null)) return { entries, pending };
   if (entries.length === 0 && quietSince !== null && at < quietSince + SLOT_MIN_SHOW_MS) {
-    return entries;
+    return { entries, pending };
+  }
+  const [next, ...rest] = pending;
+  if (next !== undefined) {
+    return { entries: [...entries, { key: next, shownAt: at, endedAt: at }], pending: rest };
   }
   const shown = new Set(entries.map((entry) => entry.key));
-  const entering = live.filter((key) => !shown.has(key));
-  if (entering.length === 0) return entries;
-  return [
-    ...entries,
-    ...entering.map((key): SlotEntry => ({ key, shownAt: at, endedAt: null, riders: [] })),
-  ];
+  const entering = queue.live.filter((key) => !shown.has(key));
+  if (entering.length === 0) return { entries, pending };
+  return {
+    entries: [
+      ...entries,
+      ...entering.map((key): SlotEntry => ({ key, shownAt: at, endedAt: null })),
+    ],
+    pending,
+  };
 }
 
 /** Since when the slot says "Thinking": kept while it is empty, null once an item stands. */
@@ -154,13 +205,14 @@ function quietStart(offer: Omit<SlotOffer, "final">): number | null {
 
 /** The slot as first drawn: what the record holds is history, what is live shows at once. */
 export function slotStart(offer: Omit<SlotOffer, "final">): LiveSlot {
-  const entries = admit([], offer.live, offer.at, null);
+  const { entries } = admit({ entries: [], live: offer.live, pending: [] }, offer.at, null);
   return {
     entries,
     live: offer.live,
     seen: new Set(offer.record),
     quietSince: quietAfter(entries, quietStart(offer), offer.at),
     pending: [],
+    lastPlopAt: null,
   };
 }
 
@@ -173,12 +225,7 @@ export function slotResync(slot: LiveSlot, offer: Omit<SlotOffer, "final">): Liv
   const live = new Set(offer.live);
   const kept = slot.entries.filter((entry) => entry.endedAt === null && live.has(entry.key));
   // Nobody watched the quiet either: what is live shows at once.
-  const entries = admit(
-    kept.map((entry) => (entry.riders.length === 0 ? entry : { ...entry, riders: [] })),
-    offer.live,
-    offer.at,
-    null,
-  );
+  const { entries } = admit({ entries: kept, live: offer.live, pending: [] }, offer.at, null);
   const seen = new Set([...slot.seen, ...offer.record]);
   const same =
     entries.length === slot.entries.length &&
@@ -194,87 +241,80 @@ export function slotResync(slot: LiveSlot, offer: Omit<SlotOffer, "final">): Liv
         seen,
         quietSince: quietAfter(entries, quietStart(offer), offer.at),
         pending: [],
+        lastPlopAt: slot.lastPlopAt,
       };
 }
 
-/** Plops what has ended and stood its minimum, and lets in what waited. */
+/** Plops the one item due first, and lets in what waited. */
 export function slotSettle(slot: LiveSlot, at: number): LiveSlot {
-  // What arrived whole during a young "Thinking" takes the slot once it stood.
-  if (
-    slot.pending.length > 0 &&
-    slot.entries.length === 0 &&
-    (slot.quietSince === null || at >= slot.quietSince + SLOT_MIN_SHOW_MS)
-  ) {
-    const [first, ...along] = slot.pending;
-    return {
-      ...slot,
-      entries: [{ key: first!, shownAt: at, endedAt: at, riders: along }],
-      quietSince: null,
-      pending: [],
-    };
-  }
-  const plopping = slot.entries.filter((entry) => {
+  let plopping: SlotEntry | null = null;
+  let plopsFirst = Infinity;
+  for (const entry of slot.entries) {
     const due = plopsAt(slot, entry);
-    return due !== null && at >= due;
-  });
-  if (plopping.length === 0) {
-    const entries = admit(slot.entries, slot.live, at, slot.quietSince);
-    const quietSince = quietAfter(entries, slot.quietSince, at);
-    return entries === slot.entries && quietSince === slot.quietSince
-      ? slot
-      : { ...slot, entries, quietSince };
+    if (due !== null && at >= due && due < plopsFirst) {
+      plopping = entry;
+      plopsFirst = due;
+    }
   }
-  const left = slot.entries.filter((entry) => !plopping.includes(entry));
+  if (plopping === null) {
+    const admitted = admit(slot, at, slot.quietSince);
+    const quietSince = quietAfter(admitted.entries, slot.quietSince, at);
+    return admitted.entries === slot.entries && quietSince === slot.quietSince
+      ? slot
+      : { ...slot, ...admitted, quietSince };
+  }
+  const left = slot.entries.filter((entry) => entry !== plopping);
   // What plops makes way for what waited at once: one change, never a "Thinking" between.
-  const entries = admit(left, slot.live, at, null);
-  return { ...slot, entries, quietSince: quietAfter(entries, null, at) };
+  const admitted = admit({ ...slot, entries: left }, at, null);
+  return {
+    ...slot,
+    ...admitted,
+    quietSince: quietAfter(admitted.entries, null, at),
+    lastPlopAt: at,
+  };
 }
 
 /**
  * What is live and what the record holds, at `at`: an item no longer live
- * ended; a record item that was never shown rides with the ended item that
- * stands, else is history at once; then what is due plops. An offer that
- * changes nothing returns the slot it was given.
+ * ended; a record item that was never shown waits its turn; then what is due
+ * plops. An offer that changes nothing returns the slot it was given.
  */
 export function slotOffer(slot: LiveSlot, offer: SlotOffer): LiveSlot {
   if (offer.final) {
-    if (slot.entries.length === 0 && slot.live.length === 0) return slot;
+    if (slot.entries.length === 0 && slot.live.length === 0 && slot.pending.length === 0) {
+      return slot;
+    }
     return {
       entries: [],
       live: [],
       seen: new Set([...slot.seen, ...offer.record]),
       quietSince: null,
       pending: [],
+      lastPlopAt: null,
     };
   }
   const live = new Set(offer.live);
-  let pending = slot.pending;
-  let entries = slot.entries.map((entry) =>
+  const entries = slot.entries.map((entry) =>
     entry.endedAt === null && !live.has(entry.key) ? { ...entry, endedAt: offer.at } : entry,
   );
   const fresh = offer.record.filter((key) => !slot.seen.has(key));
-  if (fresh.length > 0) {
-    const inSlot = new Set(entries.map((entry) => entry.key));
-    const unseen = fresh.filter((key) => !inSlot.has(key) && !live.has(key));
-    // Never seen live — a note placed, a call that said nothing until it
-    // returned: it rides with the ended item that stands, else it stands
-    // its own minimum in the slot and what arrived with it rides along.
-    const host = entries.findLast((entry) => entry.endedAt !== null);
-    const young =
-      entries.length === 0 &&
-      slot.quietSince !== null &&
-      offer.at < slot.quietSince + SLOT_MIN_SHOW_MS;
-    if (unseen.length > 0 && (young || slot.pending.length > 0) && entries.length === 0) {
-      pending = [...slot.pending, ...unseen];
-    } else if (host !== undefined && unseen.length > 0) {
-      entries = entries.map((entry) =>
-        entry === host ? { ...entry, riders: [...entry.riders, ...unseen] } : entry,
-      );
-    } else if (unseen.length > 0) {
-      const [first, ...along] = unseen;
-      entries = [...entries, { key: first!, shownAt: offer.at, endedAt: offer.at, riders: along }];
-    }
+  const inSlot = new Set(entries.map((entry) => entry.key));
+  const waitingAlready = new Set(slot.pending);
+  // Never shown live — a note placed, a call that said nothing until it
+  // returned, one that started and ended while another stood: it waits its
+  // turn. The person's answer to a question standing rises in under it.
+  let unseen = fresh.filter(
+    (key) => !inSlot.has(key) && !live.has(key) && !waitingAlready.has(key),
+  );
+  const asked = entries.findIndex(
+    (entry) => standsAfterItsEnd(entry.key) && entry.answer === undefined,
+  );
+  const answer = asked === -1 ? undefined : unseen.find((key) => key.startsWith("person:"));
+  if (answer !== undefined) {
+    entries[asked] = { ...entries[asked]!, answer };
+    unseen = unseen.filter((key) => key !== answer);
   }
+  const pending = unseen.length === 0 ? slot.pending : [...slot.pending, ...unseen];
   const sameLive =
     offer.live.length === slot.live.length &&
     offer.live.every((key, index) => slot.live[index] === key);
@@ -291,6 +331,7 @@ export function slotOffer(slot: LiveSlot, offer: SlotOffer): LiveSlot {
       seen: fresh.length === 0 ? slot.seen : new Set([...slot.seen, ...fresh]),
       quietSince: entries.length > 0 ? null : slot.quietSince,
       pending,
+      lastPlopAt: slot.lastPlopAt,
     },
     offer.at,
   );
@@ -317,11 +358,7 @@ export function slotDue(slot: LiveSlot): number | null {
     if (at !== null && (due === null || at < due)) due = at;
   }
   // An item waits while "Thinking" stands its minimum.
-  if (
-    slot.entries.length === 0 &&
-    slot.quietSince !== null &&
-    (waits(slot) || slot.pending.length > 0)
-  ) {
+  if (slot.entries.length === 0 && slot.quietSince !== null && waiting(slot) > 0) {
     const at = slot.quietSince + SLOT_MIN_SHOW_MS;
     if (due === null || at < due) due = at;
   }
@@ -329,12 +366,14 @@ export function slotDue(slot: LiveSlot): number | null {
 }
 
 /**
- * The record keys the history does not draw yet: the slot's own, what rides
- * with them, and what is live — a question waits in the record and the slot.
+ * The record keys the history does not draw yet: the slot's own, what waits
+ * its turn, and what is live — a question waits in the record and the slot.
  */
 export function slotHolds(slot: LiveSlot): ReadonlySet<string> {
   return new Set([
-    ...slot.entries.flatMap((entry) => [entry.key, ...entry.riders]),
+    ...slot.entries.flatMap((entry) =>
+      entry.answer === undefined ? [entry.key] : [entry.key, entry.answer],
+    ),
     ...slot.live,
     ...slot.pending,
   ]);
@@ -343,7 +382,7 @@ export function slotHolds(slot: LiveSlot): ReadonlySet<string> {
 /**
  * What the history leaves out as the record holds `record`: what the slot
  * holds, and what arrived since the slot last heard — a new item is the
- * slot's to place (it rides along, or stands its minimum) before it is
+ * slot's to place (it stands its minimum, in its turn) before it is
  * history, so it never shows there first for a frame.
  */
 export function slotHoldsIn(slot: LiveSlot, record: ReadonlyArray<string>): ReadonlySet<string> {

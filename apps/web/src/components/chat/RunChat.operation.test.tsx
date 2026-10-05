@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import type { WorkLogEntry } from "../../session-logic";
 import type { MessagesTimelineRow, RecordItem, RunStatus } from "./MessagesTimeline.logic";
 import { RunChat } from "./RunChat";
-import { SLOT_MIN_SHOW_MS } from "./liveSlot.logic";
+import { SLOT_HOLD_MS } from "./liveSlot.logic";
 import { stepOf } from "./workSteps.logic";
 import { at as fixtureAt, operation } from "./conversationFixtures";
 import {
@@ -363,7 +363,7 @@ describe("RunChat — an operation's card, read from the account store", () => {
   /** The plop: the call ended, and the slot's minimum show ran out. */
   const plop = (renderer: ReactTestRenderer, row: RecordRow) => {
     redraw(renderer, row);
-    act(() => vi.advanceTimersByTime(SLOT_MIN_SHOW_MS + 100));
+    act(() => vi.advanceTimersByTime(SLOT_HOLD_MS + 100));
   };
 
   it("a running deploy stands open in the live slot on its pipeline and its build's newest lines", () => {

@@ -2,7 +2,7 @@ import { act } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { SLOT_MIN_SHOW_MS, slotHolds } from "./liveSlot.logic";
+import { SLOT_HOLD_MS, SLOT_MIN_SHOW_MS, slotHolds } from "./liveSlot.logic";
 import { useLiveSlot } from "./useLiveSlot";
 
 /** What the slot holds, as drawn. */
@@ -47,7 +47,7 @@ describe("useLiveSlot — as drawn", () => {
     expect(renderer.toJSON()).toBe("step:a");
   });
 
-  it("lands what ended in the last draw once it has stood its minimum, telling the card", () => {
+  it("lands what ended in the last draw once it has stood its minimum and its hold, telling the card", () => {
     const heard = vi.fn();
     let renderer!: ReactTestRenderer;
     act(() => {
@@ -57,7 +57,7 @@ describe("useLiveSlot — as drawn", () => {
       renderer.update(<Slot live={[]} record={["step:a"]} onChange={heard} />);
     });
     act(() => {
-      vi.advanceTimersByTime(SLOT_MIN_SHOW_MS + 50);
+      vi.advanceTimersByTime(Math.max(SLOT_MIN_SHOW_MS, SLOT_HOLD_MS) + 50);
     });
     expect(renderer.toJSON()).toBeNull();
     expect(heard).toHaveBeenCalled();
