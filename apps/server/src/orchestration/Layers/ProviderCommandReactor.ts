@@ -1590,6 +1590,12 @@ const make = Effect.gen(function* () {
         });
       yield* providerService.sendTurn(request).pipe(
         Effect.catchIf(isSessionGoneError, resendOnNewSession),
+        // The turn it went into tells a steer from a turn of its own.
+        Effect.tap((turn) =>
+          coordinator
+            ? coordinator.sentTo(thread.id, event.payload.messageId, turn.turnId)
+            : Effect.void,
+        ),
         Effect.asVoid,
         Effect.catchCause((cause) =>
           recoverTurnStartFailure(cause).pipe(

@@ -478,6 +478,7 @@ describe("ProviderCommandReactor", () => {
         input?.workspaceHistory
           ? Layer.mock(WorkspaceHistory)({
               markDispatched: () => Effect.void,
+              sentTo: () => Effect.void,
               ...input.workspaceHistory,
             })
           : Layer.empty,
@@ -868,10 +869,12 @@ describe("ProviderCommandReactor", () => {
   effectIt.effect("prepares a message as a steer while the agent's own session runs a turn", () =>
     Effect.gen(function* () {
       const prepared: Array<Parameters<WorkspaceHistory["Service"]["prepare"]>[0]> = [];
+      const sentTo = vi.fn<WorkspaceHistory["Service"]["sentTo"]>(() => Effect.void);
       const harness = yield* Effect.promise(() =>
         createHarness({
           workspaceHistory: {
             prepare: (input) => Effect.sync(() => void prepared.push(input)),
+            sentTo,
             release: () => Effect.void,
             markDispatched: () => Effect.void,
           },
@@ -904,6 +907,11 @@ describe("ProviderCommandReactor", () => {
       yield* Effect.promise(() => waitFor(() => harness.sendTurn.mock.calls.length === 2));
 
       expect(prepared.map((input) => input.continuationOf)).toEqual([undefined, "turn-live"]);
+      // Each message tells the history which turn took it.
+      expect(sentTo.mock.calls.map(([, runId, turnId]) => [runId, turnId])).toEqual([
+        ["message-steer-a", "turn-1"],
+        ["message-steer-b", "turn-1"],
+      ]);
       // A message that waits asks the session again: the first one's turn is open now.
       expect(yield* prepared[0]!.liveTurn!).toBe("turn-live");
 

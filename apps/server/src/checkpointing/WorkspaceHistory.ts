@@ -84,6 +84,8 @@ export class WorkspaceHistory extends Context.Service<
     }) => Effect.Effect<void>;
     readonly bindTurn: (threadId: ThreadId, turnId: TurnId) => Effect.Effect<void>;
     readonly markDispatched: (threadId: ThreadId, runId: string) => Effect.Effect<void>;
+    /** The provider took this run's message into a turn (a new one, or one it steered). */
+    readonly sentTo: (threadId: ThreadId, runId: string, turnId: TurnId) => Effect.Effect<void>;
     readonly finish: (input: {
       threadId: ThreadId;
       turnId: TurnId;
@@ -127,6 +129,8 @@ export const make = Effect.gen(function* () {
       steering?: boolean;
       finishing?: boolean;
       dispatched?: boolean;
+      /** The turn the provider took this run's message into, before any bind. */
+      sentTurnId?: TurnId;
     }
   >();
   const captureLock = yield* Semaphore.make(1);
@@ -433,16 +437,19 @@ export const make = Effect.gen(function* () {
 
   const bindTurn: WorkspaceHistory["Service"]["bindTurn"] = Effect.fn("WorkspaceHistory.bindTurn")(
     function* (threadId, turnId) {
-      const entry = [...active.values()].find(
-        (r) =>
-          r.threadId === threadId &&
-          r.ready &&
-          (r.turnId === turnId || r.turnId === undefined || r.steering === true),
-      );
-      const bindInMemory = Effect.sync(() => {
+      const ready = [...active.values()].filter((r) => r.threadId === threadId && r.ready);
+      // A run the provider took into another turn never claims this one.
+      const entry =
+        ready.find((r) => r.turnId === turnId) ??
+        ready.find((r) => r.turnId === undefined && r.sentTurnId === turnId) ??
+        ready.find(
+          (r) => (r.turnId === undefined && r.sentTurnId === undefined) || r.steering === true,
+        );
+      const bindInMemory = Effect.gen(function* () {
         if (entry) {
           entry.turnId = turnId;
           entry.steering = false;
+          yield* dropSteeredRuns(threadId, turnId, entry);
         }
       });
       // Keep terminal-event cleanup usable even while the journal is failing.
@@ -456,6 +463,39 @@ export const make = Effect.gen(function* () {
       yield* journal.save({ ...run, turnId });
     },
     Effect.catch(logFailure),
+  );
+
+  // A run whose message went into a turn another run holds was steered into
+  // that run: it never gets a turn of its own, so it ends here.
+  const dropSteeredRuns = Effect.fn("WorkspaceHistory.dropSteeredRuns")(function* (
+    threadId: ThreadId,
+    turnId: TurnId,
+    owner: { readonly runId: string },
+  ) {
+    for (const [runKey, r] of active) {
+      if (
+        r.threadId !== threadId ||
+        r.runId === owner.runId ||
+        r.turnId !== undefined ||
+        r.sentTurnId !== turnId
+      )
+        continue;
+      yield* Deferred.succeed(r.done, undefined);
+      yield* Deferred.succeed(r.prepared, undefined);
+      active.delete(runKey);
+    }
+  });
+
+  const sentTo: WorkspaceHistory["Service"]["sentTo"] = Effect.fn("WorkspaceHistory.sentTo")(
+    function* (threadId, runId, turnId) {
+      const entry = active.get(key(threadId, runId));
+      if (!entry || entry.turnId !== undefined) return;
+      entry.sentTurnId = turnId;
+      const owner = [...active.values()].find(
+        (r) => r.threadId === threadId && r !== entry && r.turnId === turnId,
+      );
+      if (owner) yield* dropSteeredRuns(threadId, turnId, owner);
+    },
   );
 
   const markDispatched: WorkspaceHistory["Service"]["markDispatched"] = (threadId, runId) =>
@@ -759,7 +799,16 @@ export const make = Effect.gen(function* () {
     Effect.catch(logFailure),
   );
 
-  return WorkspaceHistory.of({ prepare, bindTurn, markDispatched, finish, release, read, cleanup });
+  return WorkspaceHistory.of({
+    prepare,
+    bindTurn,
+    markDispatched,
+    sentTo,
+    finish,
+    release,
+    read,
+    cleanup,
+  });
 });
 
 export const layer = Layer.effect(WorkspaceHistory, make);

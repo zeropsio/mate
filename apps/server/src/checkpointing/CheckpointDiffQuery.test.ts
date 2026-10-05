@@ -687,6 +687,7 @@ function makeHistoryQueryHarness(
   const historyService = WorkspaceHistory.of({
     prepare: () => Effect.die("review must not capture a new baseline"),
     markDispatched: () => Effect.die("unused"),
+    sentTo: () => Effect.die("unused"),
     bindTurn: () => Effect.die("unused"),
     finish: () => Effect.die("review must not capture a new endpoint"),
     release: () => Effect.die("unused"),
