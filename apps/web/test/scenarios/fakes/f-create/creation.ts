@@ -12,7 +12,7 @@ export class CreationFake {
     this.zerops = zerops;
   }
 
-  handle = (request: WireRequest): WireResponse | undefined => {
+  handle = async (request: WireRequest): Promise<WireResponse | undefined> => {
     const path = request.url.pathname.replace(/^\/api\/rest\/public/u, "");
     const create = path.match(/^\/client\/([^/]+)\/project$/u);
     if (create && request.method === "POST") {
@@ -103,6 +103,21 @@ export class CreationFake {
       const processId = this.zerops.writes.start(projectId, "service-stack.create", [id]);
       this.zerops.writes.transition(processId, "FINISHED");
       return { body: { processes: [{ id: processId }] } };
+    }
+    if (/^\/project\/[^/]+\/service-stack\/import$/u.test(path) && request.method === "POST") {
+      const credential = request.headers.authorization?.replace(/^Bearer /u, "") ?? "";
+      const response = await this.zerops.writes.handle(request, path, credential);
+      if (response && response.status === undefined) {
+        // Agent-off creation observes service readiness rather than reading each process.
+        // Complete this area fixture's imports just as its container creation completes above.
+        const imported = response.body as {
+          serviceStacks: { processes: { id: string }[] }[];
+        };
+        for (const service of imported.serviceStacks)
+          for (const process of service.processes)
+            this.zerops.writes.transition(process.id, "FINISHED");
+      }
+      return response;
     }
     return undefined;
   };

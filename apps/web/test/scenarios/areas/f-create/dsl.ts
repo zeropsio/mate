@@ -74,6 +74,13 @@ export function creation(s: Scenario) {
       drivers.zerops.waitForRequest("GET /project/created-1", 1),
     ),
     settled: Effect.promise(network.settled),
+    pastRetryWindow: Effect.gen(function* () {
+      yield* Effect.promise(network.settled);
+      // Drain requests before advancing: their continuations may install the 5 s re-check.
+      // Ten fake seconds gives that window another full 5 s of headroom on a loaded CPU.
+      yield* Effect.promise(() => s.clock.advance(10_000));
+      yield* Effect.promise(network.settled);
+    }),
     text,
     click,
     fill,
@@ -101,23 +108,45 @@ export function creation(s: Scenario) {
         .setTimeout(15_000)
         .click(),
     ),
-    environmentAppears: (name: string, role: string) =>
+    agentIsOff: Effect.promise(async () => {
+      const selector = '[data-zerops-surface="environment-creation-form"] [role="switch"]';
+      await page.locator(selector).setTimeout(15_000).wait();
+      expect(await page.$eval(selector, (toggle) => toggle.getAttribute("aria-checked"))).toBe(
+        "false",
+      );
+    }),
+    environmentAppears: (name: string, tag: "stage" | "prod") =>
       Effect.promise(async () => {
         await page.waitForSelector('[data-zerops-surface="environment-creation-form"]', {
           hidden: true,
           timeout: 15_000,
         });
-        await page.waitForFunction(
-          (name, role) =>
-            [
-              ...document.querySelectorAll<HTMLElement>('[data-zerops-surface="environment-rows"]'),
-            ].some(
-              (row) => row.innerText.includes(name) && row.innerText.toLowerCase().includes(role),
-            ),
-          { timeout: 15_000, polling: "raf" },
-          name,
-          role,
-        );
+        try {
+          await page.waitForFunction(
+            (name, tag) =>
+              [
+                ...document.querySelectorAll<HTMLElement>(
+                  '[data-zerops-surface="environment-rows"] [data-zerops-surface="environment-name"]',
+                ),
+              ].some(
+                (label) =>
+                  label.innerText.trim() === name &&
+                  label
+                    .closest("li")
+                    ?.querySelector<HTMLElement>('[data-zerops-surface="role-tag"]')
+                    ?.innerText.trim()
+                    .toLowerCase() === tag,
+              ),
+            { timeout: 15_000, polling: "raf" },
+            name,
+            tag,
+          );
+        } catch (cause) {
+          throw new Error(
+            `Missing environment ${name} with ${tag} badge\n${await page.evaluate(() => document.body.innerText)}`,
+            { cause },
+          );
+        }
       }),
     mateAppearsInProject: (name: string, group: string) =>
       Effect.promise(async () => {

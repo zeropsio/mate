@@ -35,6 +35,13 @@ export function creationNetwork(page: Page) {
           "creation platform requests drained",
           15_000,
         );
+      } catch (cause) {
+        throw new Error(
+          `Platform requests still pending: ${[...pending]
+            .map((request) => `${request.method()} ${new URL(request.url()).pathname}`)
+            .join(", ")}`,
+          { cause },
+        );
       } finally {
         waiters.delete(resolve);
       }

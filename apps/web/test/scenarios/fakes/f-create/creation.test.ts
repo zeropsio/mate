@@ -80,4 +80,25 @@ describe("creation platform extension", () => {
       error: { message: "Project capacity exhausted." },
     });
   });
+
+  it("recipe imports publish active services without needing a process read", async () => {
+    const { fake, request } = fixture();
+    await fake.handle(request);
+    const imported = await fake.handle({
+      ...request,
+      url: new URL("http://localhost/api/rest/public/project/created-1/service-stack/import"),
+      body: { yaml: "services:\n  - hostname: api\n    type: nodejs@22\n" },
+    });
+    expect(imported?.body).toMatchObject({ serviceStacks: [{ name: "api" }] });
+    expect(fake.rows("service-stack")).toContainEqual(
+      expect.objectContaining({ projectId: "created-1", name: "api", status: "ACTIVE" }),
+    );
+    expect(fake.rows("process")).toContainEqual(
+      expect.objectContaining({
+        projectId: "created-1",
+        actionName: "service-stack.create",
+        status: "FINISHED",
+      }),
+    );
+  });
 });
