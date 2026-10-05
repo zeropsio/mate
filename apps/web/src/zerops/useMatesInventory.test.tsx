@@ -39,10 +39,13 @@ const ref = (projectId: string): ProjectRef => ({
 const runtime = vi.hoisted(() => ({
   /** The projects whose inventory is held now. */
   held: [] as Array<string>,
+  /** Every lease taken, in order. */
+  acquired: [] as Array<string>,
   inventory: null as unknown,
 }));
-vi.mock("./zeropsDataContext", () => ({
-  useZeropsData: () => ({
+vi.mock("./zeropsDataContext", () => {
+  // The account's runtime: one object for the account's life, as the real one is.
+  const data = {
     runtime: {
       acquire: (descriptor: RuntimeInterestDescriptor) => {
         if (descriptor.kind !== "project-inventory") throw new Error(descriptor.kind);
@@ -50,6 +53,7 @@ vi.mock("./zeropsDataContext", () => ({
         return Effect.acquireRelease(
           Effect.sync(() => {
             runtime.held.push(projectId);
+            runtime.acquired.push(projectId);
           }),
           () =>
             Effect.sync(() => {
@@ -58,8 +62,9 @@ vi.mock("./zeropsDataContext", () => ({
         );
       },
     },
-  }),
-}));
+  };
+  return { useZeropsData: () => data };
+});
 vi.mock("./inventoryContext", async (importOriginal) => ({
   ...(await importOriginal<object>()),
   useZeropsInventory: () => runtime.inventory,
@@ -111,6 +116,7 @@ const render = async (candidates: ReadonlyArray<ZeropsCandidate>) => {
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   runtime.held = [];
+  runtime.acquired = [];
   runtime.inventory = inventoryOf();
 });
 afterEach(async () => {
@@ -136,6 +142,16 @@ describe("useMatesInventory", () => {
     await act(async () => tree?.unmount());
     tree = undefined;
     expect(runtime.held).toEqual([]);
+  });
+
+  // A row drawn or let go moves only its own project: the others keep their leases, and nothing
+  // is read again for them.
+  it("takes only the newly drawn Mate's lease and lets go only the one no longer drawn", async () => {
+    await render([ADA]);
+    await render([ADA, CY]);
+    await render([CY]);
+    expect(runtime.acquired).toEqual(["p-ada", "p-cy"]);
+    expect(runtime.held).toEqual(["p-cy"]);
   });
 
   it("asks nothing again of a Mate whose project the platform refused, and still of one being verified", async () => {
