@@ -1,6 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 
-import { cubicBezier, drawerEase, stepHeight, type CarriedRow } from "./stepHeight";
+import { LONG_GONE_MS } from "./runMotion.logic";
+import {
+  LATE_STEP_MS,
+  cubicBezier,
+  drawerEase,
+  easedClock,
+  stepHeight,
+  type CarriedRow,
+} from "./stepHeight";
 
 /** Frames by hand: each `frame(now)` runs what asked for it. */
 let frames: FrameRequestCallback[] = [];
@@ -62,7 +70,49 @@ describe("cubicBezier", () => {
   });
 });
 
+// A late frame counts no more than a late step: a stall slows the ease, and
+// nothing drops (run 12: a 195 ms stall dropped the helpers' card 41 px).
+describe("easedClock", () => {
+  it.each([
+    { name: "a frame on time counts whole", elapsed: 100, frame: 16, next: 116 },
+    {
+      name: "a step a frame late counts whole",
+      elapsed: 100,
+      frame: LATE_STEP_MS,
+      next: 100 + LATE_STEP_MS,
+    },
+    {
+      name: "a stalled frame counts as a late step",
+      elapsed: 100,
+      frame: 195,
+      next: 100 + LATE_STEP_MS,
+    },
+    { name: "a frame long gone finishes the ease", elapsed: 100, frame: LONG_GONE_MS, next: 360 },
+    { name: "the ease never runs past its end", elapsed: 350, frame: 30, next: 360 },
+    { name: "a frame back in time counts nothing", elapsed: 100, frame: -5, next: 100 },
+  ])("$name", ({ elapsed, frame: dt, next }) => {
+    expect(easedClock(elapsed, dt, 360)).toBe(next);
+  });
+});
+
 describe("stepHeight", () => {
+  it("slows through a stalled frame instead of dropping", () => {
+    const node = element();
+    stepHeight({
+      element: node,
+      from: 100,
+      to: 0,
+      duration: 360,
+      ease: (t) => t,
+      done: () => undefined,
+    });
+    frame(0);
+    frame(16);
+    const before = heightOf(node);
+    frame(16 + 195);
+    expect(before - heightOf(node)).toBeCloseTo((100 * LATE_STEP_MS) / 360, 5);
+  });
+
   it("holds where it stood, then eases to its end a step a frame on its curve", () => {
     const node = element();
     let finished = 0;
@@ -94,7 +144,7 @@ describe("stepHeight", () => {
       element: node,
       from: 40,
       to: 20,
-      duration: 100,
+      duration: 64,
       ease: (t) => t,
       wait: 2,
       done: () => undefined,
@@ -103,7 +153,7 @@ describe("stepHeight", () => {
     frame(16);
     expect(heightOf(node)).toBe(40);
     frame(32);
-    frame(82);
+    frame(64);
     expect(heightOf(node)).toBe(30);
   });
 
@@ -123,17 +173,17 @@ describe("stepHeight", () => {
         element: node,
         from: 40,
         to: 20,
-        duration: 100,
+        duration: 64,
         ease: (t) => t,
         carried,
         done: () => undefined,
       });
       frame(0);
-      frame(50);
+      frame(32);
       expect(heightOf(node)).toBe(30);
       expect(moved.style.translate).toBe(carry);
       // Not heard yet: no step.
-      frame(66);
+      frame(48);
       expect(heightOf(node)).toBe(30);
       hear();
       frame(100);
@@ -176,13 +226,13 @@ describe("stepHeight", () => {
       element: node,
       from: 40,
       to: 20,
-      duration: 100,
+      duration: 64,
       ease: (t) => t,
       carried: [{ row: carriedRow, direction }],
       done: () => undefined,
     });
     frame(0);
-    frame(50);
+    frame(32);
     state.top += moved;
     hear();
     expect(carriedRow.style.translate).toBe(translate);
@@ -196,13 +246,13 @@ describe("stepHeight", () => {
       element: node,
       from: 40,
       to: 20,
-      duration: 100,
+      duration: 64,
       ease: (t) => t,
       carried: [{ row: carriedRow, direction: 1 }],
       done: () => (finished += 1),
     });
     frame(0);
-    frame(50);
+    frame(32);
     stop();
     hear();
     frame(100);
