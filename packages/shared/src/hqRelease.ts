@@ -91,7 +91,7 @@ export const ReleaseRollout = Schema.Struct({
   tag: Schema.String,
   planned: Schema.Boolean,
   ended: Schema.Boolean,
-  /** Absent from a Core before it said so: nothing said to have landed. */
+  /** Absent from a Core before it said so: not known — never read as landed nor as stalled. */
   landed: Schema.optionalKey(Schema.Boolean),
   /** When its last job there ended, or when it was planned where it asked for none; ISO 8601. */
   endedAt: Schema.NullOr(Schema.String),

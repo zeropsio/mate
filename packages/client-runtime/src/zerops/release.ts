@@ -283,7 +283,14 @@ function releaseDeploy(input: {
   readonly newest: ReleaseAttempt | undefined;
   /** Each production environment's newest release; `undefined` where HQ tells none. */
   readonly rollouts: ReadonlyArray<ReleaseRollout | null | undefined>;
-}): { readonly tag: string; readonly ended: boolean; readonly landed: boolean } | undefined {
+}):
+  | {
+      readonly tag: string;
+      readonly ended: boolean;
+      /** Whether all of it went live; `undefined` where a Core does not say. */
+      readonly landed: boolean | undefined;
+    }
+  | undefined {
   const { newest } = input;
   if (newest === undefined || newest.verdict === "refused" || newest.snapshot === true)
     return undefined;
@@ -294,7 +301,9 @@ function releaseDeploy(input: {
   return {
     tag: newest.tag,
     ended: its.every((rollout) => rollout.ended),
-    landed: its.every((rollout) => rollout.landed === true),
+    landed: its.some((rollout) => rollout.landed === undefined)
+      ? undefined
+      : its.every((rollout) => rollout.landed === true),
   };
 }
 
@@ -305,13 +314,13 @@ export function releaseInFlight(input: Parameters<typeof releaseDeploy>[0]): str
 }
 
 /**
- * The newest release, once HQ ended its deploy to production with some of it not live
+ * The newest release, once HQ ended its deploy to production saying some of it did not go live
  * (`releaseDeploy`), or `undefined`: one that landed waits for production's own word that it runs
- * it, never reads as stalled before.
+ * it, and one a Core says nothing of landing of is never called stalled.
  */
 export function releaseStalled(input: Parameters<typeof releaseDeploy>[0]): string | undefined {
   const deploy = releaseDeploy(input);
-  return deploy?.ended === true && !deploy.landed ? deploy.tag : undefined;
+  return deploy?.ended === true && deploy.landed === false ? deploy.tag : undefined;
 }
 
 /** The one word beside a release's dot (R5). */
