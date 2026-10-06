@@ -56,6 +56,13 @@ export {
 } from "./projections/projects.ts";
 export type { UnavailableReason } from "./projections/freshness.ts";
 export { projectCreations } from "./projections/creation.ts";
+export {
+  creationStepId,
+  creationSteps,
+  type CreationRead,
+  type CreationStep,
+  type CreationStepRead,
+} from "./projections/creationSteps.ts";
 export { makeOperations, type Operations } from "./operations/coordinator.ts";
 export { makeHqExecutor, type HqWrites } from "./operations/executors/hq.ts";
 export { makeZeropsExecutor } from "./operations/executors/zerops.ts";
