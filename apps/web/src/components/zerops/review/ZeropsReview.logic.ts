@@ -468,8 +468,6 @@ export function changeReadVerdict(input: {
   readonly read:
     | { readonly kind: "idle" | "reading" | "gone" }
     | { readonly kind: "refused" | "unavailable"; readonly reason: string };
-  /** Whether there is an account's flow to read it through at all. */
-  readonly provided: boolean;
   readonly failure?: string | undefined;
   readonly projectKnown?: boolean | undefined;
 }): ReviewVerdict {
@@ -486,7 +484,6 @@ export function changeReadVerdict(input: {
   }
   if (read.kind === "refused" || read.kind === "unavailable")
     return verdict("attention", "This change could not be read", read.reason);
-  if (!input.provided) return verdict("quiet", "Nothing here reads this change");
   if (input.failure !== undefined)
     return verdict("attention", "This change could not be read", input.failure);
   if (input.projectKnown === false)

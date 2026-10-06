@@ -18,6 +18,7 @@ import { HQ_WRITE_KINDS } from "./hqWrites.ts";
 import { importContainer } from "./importContainer.ts";
 import { importProject } from "./importProject.ts";
 import { importServices } from "./importServices.ts";
+import { FLOW_WRITE_KINDS } from "./flowWrites.ts";
 import type { RegisteredOperationKind } from "./kind.ts";
 import { mateRestart } from "./mateRestart.ts";
 import { renameProject } from "./renameProject.ts";
@@ -58,6 +59,7 @@ export const OPERATION_KINDS = defineOperationKinds([
   ...HQ_WRITE_KINDS,
   ...HQ_BIRTH_KINDS,
   changeComment,
+  ...FLOW_WRITE_KINDS,
 ]);
 
 /** The kind an intent belongs to, in a registry: the account's, or a test's own. */

@@ -3,7 +3,6 @@ import type { ChangeLink } from "@t3tools/shared/hqChanges";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { buttonsLabelled, press, TestNode } from "../../zerops/__fixtures__/testDom";
-import type { ZeropsProjectFlowValue } from "../../zerops/projectFlowContext";
 import type { ZeropsLandedChangeState } from "../../zerops/useZeropsLandedChange";
 
 /** What HQ answers for a change the flow does not carry, and the change the chip last asked for. */
@@ -53,16 +52,21 @@ const CLOSED = {
   behind: false,
 } as unknown as FlowPullRequest;
 
-/** The flow as a chip reads it: the official HQ once its anchor is resolved, and `g1`'s landed. */
-function flowValue(
-  hqAddress: string | undefined,
-  merged: ReadonlyArray<FlowPullRequest> = [],
-): ZeropsProjectFlowValue {
-  return {
-    hqAddress,
-    flows: new Map([["g1", { pullRequests: [], merged }]]),
-  } as unknown as ZeropsProjectFlowValue;
+/** The changes as a chip reads them: the official HQ once its anchor is resolved, and `g1`'s landed. */
+function flowValue(hqAddress: string | undefined, merged: ReadonlyArray<FlowPullRequest> = []) {
+  return { hqAddress, changes: new Map([["g1", { pullRequests: [], merged }]]) };
 }
+
+const shown = vi.hoisted(() => ({
+  value: { hqAddress: undefined, changes: new Map() } as {
+    readonly hqAddress: string | undefined;
+    readonly changes: ReadonlyMap<string, unknown>;
+  },
+}));
+vi.mock("../../zerops/projectFlows", () => ({
+  useHqAddress: () => shown.value.hqAddress,
+  useAppsChanges: () => shown.value,
+}));
 
 function installTestDom(): TestNode {
   const document = new TestNode("#document", null, 9);
@@ -159,20 +163,15 @@ describe("ZeropsChangeLinkChip", () => {
     const document = installTestDom();
     const { act } = await import("react");
     const { createRoot } = await import("react-dom/client");
-    const { ZeropsProjectFlowContext } = await import("../../zerops/projectFlowContext");
     const { ZeropsChangeLinkChip } = await import("./ZeropsChangeLinkChip");
     const container = document.createElement("div");
     const root = createRoot(container as unknown as Element);
     try {
       for (const { hqAddress, merged, answer } of renders) {
         hq.answer = answer ?? { kind: "reading" };
-        const value = flowValue(hqAddress, merged);
+        shown.value = flowValue(hqAddress, merged);
         await act(async () =>
-          root.render(
-            <ZeropsProjectFlowContext.Provider value={value}>
-              <ZeropsChangeLinkChip href={href}>{href}</ZeropsChangeLinkChip>
-            </ZeropsProjectFlowContext.Provider>,
-          ),
+          root.render(<ZeropsChangeLinkChip href={href}>{href}</ZeropsChangeLinkChip>),
         );
       }
       expect(container.textContent).toBe(text);
@@ -187,19 +186,14 @@ describe("ZeropsChangeLinkChip", () => {
       const document = installTestDom();
       const { act } = await import("react");
       const { createRoot } = await import("react-dom/client");
-      const { ZeropsProjectFlowContext } = await import("../../zerops/projectFlowContext");
       const { ZeropsChangeLinkChip } = await import("./ZeropsChangeLinkChip");
       const container = document.createElement("div");
       const root = createRoot(container as unknown as Element);
-      const value = flowValue(HQ);
+      shown.value = flowValue(HQ);
       hq.answer = kind === "gone" ? { kind } : { kind, reason: "HQ answered this read." };
       try {
         await act(async () =>
-          root.render(
-            <ZeropsProjectFlowContext.Provider value={value}>
-              <ZeropsChangeLinkChip href={HREF}>{HREF}</ZeropsChangeLinkChip>
-            </ZeropsProjectFlowContext.Provider>,
-          ),
+          root.render(<ZeropsChangeLinkChip href={HREF}>{HREF}</ZeropsChangeLinkChip>),
         );
         expect(container.textContent).toContain(
           kind === "gone" ? "zitdev has no change #31" : "This change could not be read",
@@ -221,17 +215,12 @@ describe("ZeropsChangeLinkChip", () => {
     const document = installTestDom();
     const { act } = await import("react");
     const { createRoot } = await import("react-dom/client");
-    const { ZeropsProjectFlowContext } = await import("../../zerops/projectFlowContext");
     const { ZeropsChangeLinkChip } = await import("./ZeropsChangeLinkChip");
     const root = createRoot(document.createElement("div") as unknown as Element);
-    const value = flowValue(HQ, [LANDED]);
+    shown.value = flowValue(HQ, [LANDED]);
     try {
       await act(async () =>
-        root.render(
-          <ZeropsProjectFlowContext.Provider value={value}>
-            <ZeropsChangeLinkChip href={HREF}>{HREF}</ZeropsChangeLinkChip>
-          </ZeropsProjectFlowContext.Provider>,
-        ),
+        root.render(<ZeropsChangeLinkChip href={HREF}>{HREF}</ZeropsChangeLinkChip>),
       );
       expect(hq.asked).toBeNull();
     } finally {
@@ -250,7 +239,6 @@ describe("ZeropsChangeLinkChip", () => {
     const document = installTestDom();
     const { act } = await import("react");
     const { createRoot } = await import("react-dom/client");
-    const { ZeropsProjectFlowContext } = await import("../../zerops/projectFlowContext");
     const { ChangeChipMomentContext, ZeropsChangeLinkChip } =
       await import("./ZeropsChangeLinkChip");
     hq.answer = {
@@ -259,15 +247,13 @@ describe("ZeropsChangeLinkChip", () => {
     };
     const container = document.createElement("div");
     const root = createRoot(container as unknown as Element);
-    const value = flowValue(HQ);
+    shown.value = flowValue(HQ);
     try {
       await act(async () =>
         root.render(
-          <ZeropsProjectFlowContext.Provider value={value}>
-            <ChangeChipMomentContext value={writtenAt}>
-              <ZeropsChangeLinkChip href={HREF}>{HREF}</ZeropsChangeLinkChip>
-            </ChangeChipMomentContext>
-          </ZeropsProjectFlowContext.Provider>,
+          <ChangeChipMomentContext value={writtenAt}>
+            <ZeropsChangeLinkChip href={HREF}>{HREF}</ZeropsChangeLinkChip>
+          </ChangeChipMomentContext>,
         ),
       );
       expect(container.textContent).toBe(`Cache the link previews${tail}`);

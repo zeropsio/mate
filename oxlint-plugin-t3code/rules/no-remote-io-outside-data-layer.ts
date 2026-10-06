@@ -153,7 +153,6 @@ export const ZEROPS_CLIENT_VERBS = [
   "importDevelopmentContainer",
   "importProject",
   "importServicesIntoProject",
-  "isZeropsMateEnabled",
   "isolateProjectEnvironment",
   "listAccessibleClientProjects",
   "listClientProjects",

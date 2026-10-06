@@ -219,7 +219,7 @@ export function mateBirthFace(failed: boolean): MateMarkState {
  * | the viewer's own      | needs you          | needs you, unless at work            |
  * | another's, or nobody's | at rest            | at rest                              |
  *
- * Own is the viewer having signed its agent in (`mateIsViewers`). Another's Mate waits on its
+ * Own is HQ saying it waits on the viewer, who signed its agent in (`waitsOnViewer`). Another's Mate waits on its
  * owner, not on the viewer: it claims nothing of them here, though its change stays on its row
  * with its Review, for anybody with write on the group to review and merge. At work, the work
  * shows; the review still waits under it.
@@ -232,7 +232,7 @@ export function mateFaceAwaitingReview(
    * reads paused, and the review stays on its change's row under it.
    */
   paused: boolean,
-  /** The viewer's own Mate (`mateIsViewers`): only then does anything it waits on wait on them. */
+  /** The viewer's own Mate (HQ's `waitsOnViewer`): only then does anything it waits on wait on them. */
   mine: boolean,
 ): MateMarkState {
   if (paused && face === "sleep") return face;
@@ -292,7 +292,7 @@ export function mateFaceOf(input: {
       })
     | undefined;
   readonly reviewWaits: boolean;
-  /** The viewer's own Mate (`mateIsViewers`). */
+  /** The viewer's own Mate (HQ's `waitsOnViewer`). */
   readonly mine: boolean;
   /** Where it is in its life (`mateFaceFor`). */
   readonly pose?: MatePoseFacts | undefined;

@@ -139,7 +139,6 @@ describe("Zerops access grant policy", () => {
     expect(DEFAULT_ZEROPS_GRANT_POLICY.windowMs).toBe(15 * MINUTE);
     expect(DEFAULT_ZEROPS_GRANT_POLICY.dormantAfterHiddenMs).toBe(60 * MINUTE);
     expect(DEFAULT_ZEROPS_GRANT_POLICY.wallJumpBackToleranceMs).toBe(60 * SECOND);
-    expect(DEFAULT_ZEROPS_GRANT_POLICY.denialConfirmationDelayMs).toBe(5 * SECOND);
     expect(DEFAULT_ZEROPS_GRANT_POLICY.initialRetryMs).toEqual(
       [2, 4, 8, 15, 30, 60].map((s) => s * SECOND),
     );

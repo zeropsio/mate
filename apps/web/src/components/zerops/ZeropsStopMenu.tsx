@@ -1,4 +1,4 @@
-import { useStopPublicAccess } from "~/zerops/useStopPublicAccess";
+import { usePublicAccess } from "~/zerops/usePublicAccess";
 import { StopPublicAccessStatus } from "./StopPublicAccess";
 import type { ZeropsPublicRoute } from "@t3tools/client-runtime/zerops";
 import type { StopView } from "@t3tools/client-runtime/zerops/flow";
@@ -45,8 +45,8 @@ export function ZeropsStopMenu({
   /** The trigger's look, which is the surface's: sidebar tokens there, page tokens on a page. */
   readonly triggerClassName: string;
 }) {
-  const publicAccess = useStopPublicAccess(projectId);
-  routes = publicAccess.bound ? publicAccess.access.routes : routes;
+  const publicAccess = usePublicAccess(projectId);
+  routes = publicAccess.bound ? publicAccess.routes : routes;
   // `v1.4.0 · 77ab0e1 · tagged by ada` — the whole of what one row abbreviates.
   const version = stop.version;
   const detail =
@@ -85,7 +85,7 @@ export function ZeropsStopMenu({
         >
           Open in Zerops
         </MenuItem>
-        <StopPublicAccessStatus shown={publicAccess.shown} again={publicAccess.again} />
+        <StopPublicAccessStatus access={publicAccess} />
         {routes.length === 0 ? null : (
           <>
             <MenuSeparator />

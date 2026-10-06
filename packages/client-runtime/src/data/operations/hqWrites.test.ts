@@ -48,6 +48,12 @@ function operationsOf(store: AccountStore, api: Partial<HqWrites>, zerops = fake
         recordClosedOff: asked("recordClosedOff"),
         keepDeployToken: asked("keepDeployToken"),
         commentOnChange: asked("commentOnChange"),
+        release: asked("release"),
+        rollback: asked("rollback"),
+        redeploy: asked("redeploy"),
+        addService: asked("addService"),
+        mergeChange: asked("mergeChange"),
+        closeChange: asked("closeChange"),
         ...api,
       };
     },

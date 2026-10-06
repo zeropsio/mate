@@ -51,12 +51,7 @@ import {
 import { candidatesComplete, heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { heldOf, type HqPlacement } from "@t3tools/client-runtime/zerops/hq";
-import {
-  mateIsViewers,
-  resolveMateOwnerPerson,
-  resolveMateVerbs,
-  resolveMateVisibility,
-} from "@t3tools/client-runtime/zerops/mateAccess";
+import { resolveMateVerbs, resolveMateVisibility } from "@t3tools/client-runtime/zerops/mateAccess";
 import type { HqOfferState } from "@t3tools/shared/hqOffers";
 import { isMateKind } from "@t3tools/shared/zeropsRoles";
 import { useRouter } from "@tanstack/react-router";
@@ -100,7 +95,8 @@ import {
 import { currentAccountEnvironments } from "./accountEnvironments";
 import { useEnvironmentLinks } from "../routes/-environmentTargets";
 import { resolveThreadRouteTarget } from "../threadRoutes";
-import { hqPeopleAtom, hqPlacementsAtom, hqNavigationAtom } from "../state/zerops";
+import { shownHqProjectPeopleAtom, type HqHandoverCandidates } from "@t3tools/client-runtime/data";
+import { hqPlacementsAtom, hqNavigationAtom } from "../state/zerops";
 import { invalidateZerops } from "./accountInvalidations";
 import {
   deletingMates,
@@ -119,7 +115,6 @@ import {
   useZeropsCandidates,
   type ZeropsCandidatePresentation,
 } from "./useZeropsCandidates";
-import { useZeropsOrganizationMembersRead } from "./useZeropsMateOwners";
 import { finishSetupContainer } from "./finishSetup.logic";
 import { usePressesElsewhere } from "./usePressesElsewhere";
 import {
@@ -255,7 +250,7 @@ const writes = (createApp: HqOfferState): boolean | undefined =>
 
 export function useMateActions({ registry, serverVersions }: MateActionsInput): MateActions {
   const { activeOrganization, client, user } = useZeropsSession();
-  const { organizationRef, projectRef, runtime } = useZeropsData();
+  const { organizationRef } = useZeropsData();
   const operations = useAccountOperations();
   const { listing, refresh } = useZeropsCandidates();
   const candidates = useMemo(() => heldCandidates(listing).rows, [listing]);
@@ -283,12 +278,12 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   // Whether HQ's structure is known: only then does a Mate it places nowhere have no record.
   const hqPlacements = useAtomValue(hqPlacementsAtom);
   const hqStructure = useAtomValue(hqNavigationAtom);
-  const people = useAtomValue(hqPeopleAtom);
+  const projectPeople = useAtomValue(shownHqProjectPeopleAtom);
   const hqKnown = hqPlacements !== null && hqStructure.live;
   const presses = useMatePresses();
   // A press interrupted before its close-off, on a Mate made in any browser: the store's markers,
   // at no cost of their own, for anyone who could finish it — its own adder too.
-  const interrupted = useInterruptedPresses(candidates, { runtime, projectRef });
+  const interrupted = useInterruptedPresses(candidates);
   // Whether each Mate's press in another browser is still at it, as HQ holds it (B5).
   const pressOf = usePressesElsewhere(candidates);
   const pressedElsewhere = useCallback(
@@ -363,12 +358,35 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
     },
     [mateOffersOf],
   );
-  // The member list is read only once a hand-over's picker opens: a load reads none, and a Mate
-  // about to be deleted says whose it is from HQ's people.
-  const { members, status: membersStatus } = useZeropsOrganizationMembersRead({
-    clientId: activeOrganization?.id,
-    enabled: dialog?.kind === "assign",
-  });
+  const askHandoverCandidates = useAccountDataOptional()?.handoverCandidates;
+  // Whom a Mate may be handed over to is HQ's answer, asked once its picker opens: a load asks
+  // nothing. HQ alone decides who may hand over and to whom; its refusal is a failed read.
+  const [handover, setHandover] = useState<{
+    readonly projectId: string;
+    readonly read:
+      | { readonly kind: "reading" }
+      | { readonly kind: "read"; readonly candidates: HqHandoverCandidates }
+      /** HQ refused it for good: its word, nothing asked again on its own. */
+      | { readonly kind: "refused" }
+      | { readonly kind: "failed" };
+  } | null>(null);
+  const askHandover = useCallback(
+    (projectId: string) => {
+      // No HQ to ask: the read has failed, never left reading.
+      if (askHandoverCandidates === undefined) {
+        setHandover({ projectId, read: { kind: "failed" } });
+        return;
+      }
+      setHandover({ projectId, read: { kind: "reading" } });
+      const settle = (read: NonNullable<typeof handover>["read"]) =>
+        setHandover((now) => (now?.projectId === projectId ? { projectId, read } : now));
+      askHandoverCandidates(projectId).then(
+        (candidates) => settle({ kind: "read", candidates }),
+        (fault: unknown) => settle({ kind: definitiveRefusal(fault) ? "refused" : "failed" }),
+      );
+    },
+    [askHandoverCandidates],
+  );
 
   /** One write, with its busy key and its refusal, wherever it came from. */
   const write = useCallback(
@@ -677,7 +695,11 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
         // A press this tab saw stop: no press elsewhere is still at it.
         pressStopped: press?.state.kind === "failed",
         pressedElsewhere: pressedElsewhere(candidate.project.id),
-        viewerIsAdder: mateAddedBy(candidate.project, user?.id),
+        viewerIsAdder: mateAddedBy(
+          candidate.project,
+          user?.id,
+          projectPeople[candidate.project.id]?.waitsOnViewer === true,
+        ),
         hasContainer: candidate.service !== undefined,
         writer: writes(orgOffer("create_app")),
         recordMissing: recordMissing(candidate),
@@ -694,6 +716,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       orgOffer,
       pressedElsewhere,
       presses,
+      projectPeople,
       recordMissing,
       registry.registry,
       user,
@@ -794,10 +817,10 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   /** Whose Mate it is, where that is a colleague: "Ada's Mate", as its row says it. */
   const colleagueOf = useCallback(
     (candidate: ZeropsCandidatePresentation): string | undefined => {
-      const owner = resolveMateOwnerPerson({ project: candidate.project, people });
-      return owner === undefined || owner.userId === user?.id ? undefined : owner.name;
+      const owner = projectPeople[candidate.project.id]?.owner;
+      return owner == null || owner.userId === user?.id ? undefined : owner.name;
     },
-    [people, user?.id],
+    [projectPeople, user?.id],
   );
 
   /**
@@ -1069,6 +1092,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
                 onSelect: () => {
                   setPress(UNPRESSED);
                   setDialog({ kind: "assign", candidate });
+                  askHandover(candidate.project.id);
                 },
               },
             ]
@@ -1144,6 +1168,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       ];
     },
     [
+      askHandover,
       busyKey,
       changeFace,
       deleting,
@@ -1254,15 +1279,23 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
         <ZeropsAssignMateDialog
           error={press.error}
           key={`assign:${dialog.candidate.key}`}
-          members={members}
+          candidates={handover?.read.kind === "read" ? handover.read.candidates : []}
           readingOrganization={
-            membersStatus === "loading" && members.length === 0
+            handover === null || handover.read.kind === "reading"
               ? activeOrganization?.name
               : undefined
           }
+          readRefused={
+            handover?.read.kind === "refused" && activeOrganization !== null
+              ? { organization: activeOrganization.name }
+              : undefined
+          }
           readFailed={
-            membersStatus === "failed" && members.length === 0 && activeOrganization !== null
-              ? { organization: activeOrganization.name, onReadAgain: accountHq.reread }
+            handover?.read.kind === "failed" && activeOrganization !== null
+              ? {
+                  organization: activeOrganization.name,
+                  onReadAgain: () => askHandover(dialog.candidate.project.id),
+                }
               : undefined
           }
           onCancel={close}
@@ -1338,19 +1371,26 @@ export function mateContainerMissing(
   return candidate.missingContainer === true && !pressedHere && !pressedElsewhere;
 }
 
+/** Whether an HQ answer failed for good (`StreamFault` outcome `definitive-refusal`). */
+function definitiveRefusal(fault: unknown): boolean {
+  return (
+    typeof fault === "object" &&
+    fault !== null &&
+    (fault as { readonly outcome?: unknown }).outcome === "definitive-refusal"
+  );
+}
+
 /**
  * Whether the viewer added this Mate: HQ's record names them as its maker (New project or Add a
- * Mate), its stand-up was asked for by them, or its seat is theirs — as HQ's record of it says.
+ * Mate), its stand-up was asked for by them, or HQ says it waits on them (`waitsOnViewer`).
  */
 export function mateAddedBy(
   project: { readonly hq?: HqPlacement | undefined },
   viewer: string | undefined,
+  waitsOnViewer: boolean,
 ): boolean {
+  if (waitsOnViewer) return true;
   if (viewer === undefined || viewer.length === 0) return false;
   const membership = readZeropsMembership(project);
-  return (
-    membership.madeBy === viewer ||
-    membership.standUp?.by === viewer ||
-    mateIsViewers(project, viewer)
-  );
+  return membership.madeBy === viewer || membership.standUp?.by === viewer;
 }

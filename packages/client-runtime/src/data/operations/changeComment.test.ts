@@ -10,7 +10,7 @@ import { makeAccountStore, readsOfState, type AccountStore } from "../store.ts";
 import { HqError } from "../../zerops/hq/client.ts";
 import { changeComment } from "./changeComment.ts";
 import { makeOperations } from "./coordinator.ts";
-import { makeHqExecutor } from "./executors/hq.ts";
+import { makeHqExecutor, type HqWrites } from "./executors/hq.ts";
 
 const LINK = { appId: "shop", repo: "web", number: 7 };
 const SAY = {
@@ -61,19 +61,13 @@ function operationsOf(store: AccountStore, post: () => Promise<HqChangeComment>)
         },
         apiOf: (orgId) =>
           orgId === ORG
-            ? {
-                createApp: () => Promise.reject(new Error("Unexpected creation")),
-                recordBirth: () => Promise.reject(new Error("Unexpected birth")),
-                bindBirth: () => Promise.reject(new Error("Unexpected bind")),
-                attachProject: () => Promise.reject(new Error("Unexpected attach")),
-                createMate: () => Promise.reject(new Error("Unexpected Mate")),
-                recordClosedOff: () => Promise.reject(new Error("Unexpected close-off")),
-                keepDeployToken: () => Promise.reject(new Error("Unexpected key")),
+            ? ({
                 commentOnChange: (link, body) => {
                   calls.push(`${link.repo}#${String(link.number)} ${body}`);
                   return post();
                 },
-              }
+                // A comment reaches no other write.
+              } as Partial<HqWrites> as HqWrites)
             : null,
       }),
     },

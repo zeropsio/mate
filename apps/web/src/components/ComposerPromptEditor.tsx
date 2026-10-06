@@ -275,7 +275,7 @@ function $createComposerMentionNode(path: string, source?: string): ComposerMent
 
 /**
  * The prompt's type: the composer's font and size, 16 px on a phone so it
- * never zooms. `ComposerStandIn` draws its placeholder in it too.
+ * never zooms. `ComposerRoomHeld` lays a held draft out in it too.
  */
 export const COMPOSER_PROMPT_TYPE_CLASS_NAME =
   "relative [font-family:var(--font-composer,var(--font-sans))] [font-size:var(--font-size-prompt,0.875rem)] [@media(max-width:39.999rem)_and_(pointer:coarse)]:[font-size:max(var(--font-size-prompt,1rem),16px)]";

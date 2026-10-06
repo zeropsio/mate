@@ -104,8 +104,8 @@ export function hqBirthExecutor(
 ): OperationExecutor["submit"] {
   const holds = (orgId: string, serviceId: string, key: string) =>
     birthVerb(() => platform.hasServiceVariable({ clientId: orgId, serviceId, key }));
-  const writeSecret = (serviceId: string, key: string, content: string) =>
-    birthVerb(() => platform.writeServiceSecret({ serviceId, key, content }));
+  const writeSecret = (clientId: string, serviceId: string, key: string, content: string) =>
+    birthVerb(() => platform.writeServiceSecret({ clientId, serviceId, key, content }));
 
   const note = (requestId: string, intent: IntentOf<"hq-birth-note">) =>
     Effect.flatMap(
@@ -150,7 +150,7 @@ export function hqBirthExecutor(
                 platform.regenerateIntegrationToken({ clientId: intent.orgId, tokenId: held.id }),
               ),
             };
-      yield* writeSecret(intent.serviceId, HQ_ORG_TOKEN_ENV, token.token);
+      yield* writeSecret(intent.orgId, intent.serviceId, HQ_ORG_TOKEN_ENV, token.token);
       return done(requestId, target, { tokenId: token.id });
     });
 
@@ -159,7 +159,12 @@ export function hqBirthExecutor(
       const target = { family: "service", id: intent.serviceId } as const;
       if (!(yield* holds(intent.orgId, intent.serviceId, HQ_KEY_SECRET_ENV))) {
         const key = randomBytes(new Uint8Array(HQ_KEY_SECRET_BYTES));
-        yield* writeSecret(intent.serviceId, HQ_KEY_SECRET_ENV, btoa(String.fromCharCode(...key)));
+        yield* writeSecret(
+          intent.orgId,
+          intent.serviceId,
+          HQ_KEY_SECRET_ENV,
+          btoa(String.fromCharCode(...key)),
+        );
       }
       return done(requestId, target);
     });

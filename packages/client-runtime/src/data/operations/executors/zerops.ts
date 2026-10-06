@@ -82,6 +82,8 @@ export function makeZeropsExecutor(input: {
   readonly registry: AtomRegistry.AtomRegistry;
   /** The account's hold on a detail while an operation needs it observed. */
   readonly demandDetail: (demand: DetailDemand) => () => void;
+  /** Our successful write invalidates its organization's sampled detail. */
+  readonly revalidate: (orgId: string, demand: DetailDemand) => void;
   readonly debtOf: (clientId: string) => ThrowawayDebt;
   readonly nowMs: () => number;
   readonly run: RunToEnd;
@@ -159,6 +161,8 @@ export function makeZeropsExecutor(input: {
   });
   const enableMate = enableZeropsMateExecutor({
     writeMateFlag: (serviceId) => client.writeMateFlag(serviceId),
+    variablesWritten: ({ orgId, serviceId }) =>
+      input.revalidate(orgId, { family: "mateVariables", ownerId: serviceId }),
     restartService: (serviceId) => client.restartService(serviceId),
   });
   const tags = makeProjectTagWriter({ source: client, locks: input.locks });

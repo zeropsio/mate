@@ -17,6 +17,7 @@ import { LAYER_TURNS_MS, makeMemberAccount } from "./__fixtures__/sampledAccount
 import {
   accountHqApi,
   nextHqStanding,
+  readOfficialHqNow,
   readBundledCore,
   useAccountHq,
   useCarriedCoreBuild,
@@ -992,5 +993,44 @@ describe("useAccountHq — no official HQ, kept too", () => {
     expect([hq.reads(), hq.last().hq]).toEqual([2, official]);
     const next = await loaded("org-born", () => members);
     expect([next.reads(), next.last().hq]).toEqual([0, official]);
+  });
+});
+
+// Another admin can create HQ after the gate last read an empty member list.
+describe("readOfficialHqNow", () => {
+  const ANCHOR = {
+    id: "cu-anchor",
+    roleCode: "ADMIN",
+    status: "ACTIVE",
+    user: { fullName: "mate-hq:P_HQ:https://hq.example.test", email: "token-hq@zerops.io" },
+  } as ZeropsOrganizationMember;
+
+  it("reads the store's official HQ afresh at each birth attempt", async () => {
+    let members: ReadonlyArray<ZeropsOrganizationMember> = [];
+    const registry = AtomRegistry.make();
+    const account = makeMemberAccount({ registry, orgId: "org-1", members: async () => members });
+    expect((await readOfficialHqNow(account.value, registry, "org-1")).kind).toBe("none");
+    members = [ANCHOR];
+    expect(await readOfficialHqNow(account.value, registry, "org-1")).toEqual({
+      kind: "official",
+      projectId: "P_HQ",
+      address: "https://hq.example.test",
+    });
+    expect(account.reads()).toBe(2);
+  });
+
+  it("does not treat a refusal as proof there is no HQ or automatically retry it", async () => {
+    const registry = AtomRegistry.make();
+    const account = makeMemberAccount({
+      registry,
+      orgId: "org-refused",
+      members: async () => {
+        throw new Error("Refused");
+      },
+    });
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      await expect(readOfficialHqNow(account.value, registry, "org-refused")).rejects.toThrow();
+    }
+    expect(account.reads()).toBe(1);
   });
 });

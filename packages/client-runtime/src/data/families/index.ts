@@ -19,11 +19,14 @@ import { hqMateFamily } from "./hqMate.ts";
 import { mateAttentionFamily } from "./mateAttention.ts";
 import { organizationLocationsFamily } from "./organizationLocations.ts";
 import { organizationMembersFamily } from "./organizationMembers.ts";
+import { hqVerdictFamily } from "./hqVerdict.ts";
+import { mateLinkFamily } from "./mateLink.ts";
 import { processFamily } from "./process.ts";
 import { projectFamily } from "./project.ts";
 import { versionFamily } from "./version.ts";
 import { publicRoutingFamily } from "./publicRouting.ts";
 import { serviceAgentsFamily } from "./serviceAgents.ts";
+import { mateVariablesFamily } from "./mateVariables.ts";
 import { serviceFamily } from "./service.ts";
 import { usageFamily } from "./usage.ts";
 import { usageHistoryFamily } from "./usageHistory.ts";
@@ -70,6 +73,9 @@ export const FAMILIES = defineFamilies([
   serviceAgentsFamily,
   publicRoutingFamily,
   hqAppDetailFamily,
+  hqVerdictFamily,
+  mateVariablesFamily,
+  mateLinkFamily,
 ]);
 
 const byFamily = new Map<string, AnyFamilySpec>(FAMILIES.map((spec) => [spec.family, spec]));
@@ -107,6 +113,7 @@ export function scopeListing(scope: ScopeKey): ScopeListing {
  * once where time never ages it; the rest realtime.
  */
 export function streamMode(key: string): "realtime" | "sampled" | "once" {
+  if (key.startsWith("mate:")) return "sampled";
   const sampled = bySuffix.get(key.split(":")[2] ?? "")?.spec.sampled;
   if (sampled === undefined) return "realtime";
   return sampled.freshMs === null ? "once" : "sampled";

@@ -53,7 +53,7 @@ export function SidebarCrewLine({
   readonly projectId: string;
   /** A crew handed in instead of HQ's; absent, the line reads HQ's. */
   readonly read?: SidebarCrewRead | undefined;
-  /** Its Mate is the viewer's own (`mateIsViewers`): only then does the crew need them. */
+  /** Its Mate is the viewer's own (HQ's `waitsOnViewer`): only then does the crew need them. */
   readonly mine: boolean;
 }) {
   const held = useMateCrew(projectId);

@@ -44,7 +44,9 @@ export type Revision =
       readonly incarnation: string;
       readonly revision: number;
       readonly live: boolean;
-    };
+    }
+  /** The Mate adapter orders readings of one Mate in this tab by its own sequence. */
+  | { readonly kind: "mate-link"; readonly sequence: number };
 
 export type Authority = Source;
 export type Delivery = "zerops-realtime" | "zerops-read" | "hq-stream" | "mate-direct";

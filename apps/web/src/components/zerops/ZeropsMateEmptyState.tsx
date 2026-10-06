@@ -59,7 +59,7 @@ import { useZeropsEnvironmentProject } from "../../zerops/useZeropsEnvironmentPr
 import { useProjectServices } from "../../zerops/ZeropsAccountData";
 import { useZeropsAgentAuth } from "../../zerops/useZeropsFeeds";
 import { useNowMs } from "../../zerops/useNowMs";
-import { useZeropsMemberNames } from "../../zerops/useZeropsMateOwners";
+import { useHqPersonNames } from "../../zerops/useZeropsMateOwners";
 import { useZeropsSessionOptional } from "../../zerops/ZeropsSessionProvider";
 import { ArrivalSwap } from "./ArrivalSwap";
 import { ArrivalRuntimesLine } from "./ZeropsArrivalSteps";
@@ -187,7 +187,7 @@ export function useMateEmptyState({
       listed === undefined ? undefined : (birthRuntimesFacts({ services: listed })?.runtimes ?? []),
     [listed],
   );
-  const nameOf = useZeropsMemberNames({ clientId: project?.orgId, enabled: colleague });
+  const nameOf = useHqPersonNames(project?.orgId);
 
   return {
     phase,

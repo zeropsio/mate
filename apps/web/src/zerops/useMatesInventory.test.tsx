@@ -14,7 +14,10 @@ import {
   type RuntimeInterestDescriptor,
   type ScopeAuthority,
 } from "@t3tools/client-runtime/zerops/data";
+import { RegistryContext } from "@effect/atom-react";
+import { accountReadsAtom } from "@t3tools/client-runtime/data";
 import * as Effect from "effect/Effect";
+import { Atom, AtomRegistry } from "effect/unstable/reactivity";
 import { act, createElement, useLayoutEffect } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -42,6 +45,8 @@ const runtime = vi.hoisted(() => ({
   /** Every lease taken, in order. */
   acquired: [] as Array<string>,
   inventory: null as unknown,
+  /** The viewer's role in the organization, as the session's membership says it. */
+  viewerRole: "OWNER" as string,
 }));
 vi.mock("./zeropsDataContext", () => {
   // The account's runtime: one object for the account's life, as the real one is.
@@ -65,6 +70,9 @@ vi.mock("./zeropsDataContext", () => {
   };
   return { useZeropsData: () => data };
 });
+vi.mock("./sessionContext", () => ({
+  useZeropsSessionOptional: () => ({ activeOrganization: { roleCode: runtime.viewerRole } }),
+}));
 vi.mock("./inventoryContext", async (importOriginal) => ({
   ...(await importOriginal<object>()),
   useZeropsInventory: () => runtime.inventory,
@@ -118,6 +126,7 @@ beforeEach(() => {
   runtime.held = [];
   runtime.acquired = [];
   runtime.inventory = inventoryOf();
+  runtime.viewerRole = "OWNER";
 });
 afterEach(async () => {
   await act(async () => tree?.unmount());
@@ -163,6 +172,96 @@ describe("useMatesInventory", () => {
     );
     await render([ADA, CY]);
     expect(runtime.held).toEqual(["p-cy"]);
+  });
+});
+
+describe("a drawn Mate's own project row", () => {
+  // It is read only where it decides the viewer's access: a NO_ACCESS member's project whose
+  // listing row names no grant of theirs. Whose a Mate is comes from HQ's person facts.
+  it.each([
+    { name: "an organization member's: none", role: "OWNER", own: undefined, held: [] },
+    { name: "a READ_ONLY member's: none", role: "READ_ONLY", own: undefined, held: [] },
+    {
+      name: "a READ_ONLY member with a project OWNER override: none",
+      role: "READ_ONLY",
+      own: "OWNER",
+      held: [],
+    },
+    {
+      name: "a NO_ACCESS member's: only the Mate whose listing names no grant of theirs",
+      role: "NO_ACCESS",
+      own: undefined,
+      held: ["project/project/p-cy"],
+    },
+  ])("is held while the Mate is drawn — $name", async ({ role, own, held }) => {
+    runtime.viewerRole = role;
+    const registry = AtomRegistry.make();
+    const rowsHeld: string[] = [];
+    const roster = Atom.make({
+      projects: [
+        {
+          id: "p-ada",
+          name: "Ada",
+          status: "ACTIVE",
+          viewerRoleCode: "BASIC_USER",
+          listingNamesGrants: true,
+        },
+        {
+          id: "p-bo",
+          name: "Bo",
+          status: "ACTIVE",
+          viewerRoleCode: "BASIC_USER",
+          listingNamesGrants: true,
+        },
+        {
+          id: "p-cy",
+          name: "Cy",
+          status: "ACTIVE",
+          ...(own === undefined ? {} : { viewerRoleCode: own }),
+          listingNamesGrants: own !== undefined,
+        },
+      ],
+      read: "read",
+      complete: true,
+      live: true,
+      reconnecting: false,
+    });
+    registry.set(accountReadsAtom, {
+      data: { project: () => roster } as never,
+      orgId: "org-1",
+      demandDetail: (demand) => {
+        const key = `${demand.family}/${demand.listing}/${demand.ownerId}`;
+        rowsHeld.push(key);
+        return () => rowsHeld.splice(rowsHeld.indexOf(key), 1);
+      },
+      renewHeld: () => {},
+    });
+    const probe = (candidates: ReadonlyArray<ZeropsCandidate>) =>
+      createElement(
+        RegistryContext.Provider,
+        { value: registry },
+        createElement(Probe, { candidates }),
+      );
+    await act(async () => {
+      tree = create(probe([ADA, BO, CY]));
+    });
+    expect(rowsHeld.toSorted()).toEqual(held);
+
+    // Its first own-row answer must not release the demand needed by the next grant round.
+    await act(async () => {
+      registry.set(roster, {
+        ...registry.get(roster),
+        projects: registry.get(roster).projects.map((project) => ({
+          ...project,
+          userRoles: [{ clientUserId: "viewer", roleCode: "OWNER" }],
+        })),
+      });
+    });
+    expect(rowsHeld.toSorted()).toEqual(held);
+
+    await act(async () => tree?.unmount());
+    tree = undefined;
+    expect(rowsHeld).toEqual([]);
   });
 });
 

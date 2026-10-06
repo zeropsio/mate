@@ -5,9 +5,13 @@ import type { ZeropsProject } from "../api.ts";
 import type { Known } from "../knowledge/known.ts";
 import type { CandidateRow } from "../projections/candidates.ts";
 import type { Presence } from "./environmentMachine.ts";
-import type { RegistrationRecord } from "./records.ts";
-import { containerTargetsOf, listTargets, type ListedTarget } from "./targets.ts";
-import type { TargetKey } from "./exchangeDriver.ts";
+import {
+  containerTargetsOf,
+  listTargets,
+  type ListedTarget,
+  type RememberedTarget,
+} from "./targets.ts";
+import type { TargetKey } from "./exchange.ts";
 
 const ORIGIN = "https://zcp-24cb-8080.prg1.zerops.app";
 const ENV = EnvironmentId.make("environment-1");
@@ -56,12 +60,11 @@ const known = (
   freshness: { kind: "live" },
 });
 
-const remembered = (targetKey: string, origin: string | null = ORIGIN): RegistrationRecord => ({
+const remembered = (targetKey: string, origin: string | null = ORIGIN): RememberedTarget => ({
   targetKey,
   environmentId: ENV,
   origin,
-  projectRef: { projectId: "project-1", orgId: "org-1" },
-  name: "shop",
+  orgId: "org-1",
 });
 
 interface Row {
@@ -233,7 +236,7 @@ const ROWS: ReadonlyArray<Row> = [
   },
 ];
 
-describe("listTargets: region P from the listings and the records (§4.4, §9 C19)", () => {
+describe("listTargets: region P from the listings and the kept sessions (§4.4, §9 C19)", () => {
   it.each(ROWS)("$name", (row) => {
     expect(
       listTargets({
@@ -241,7 +244,7 @@ describe("listTargets: region P from the listings and the records (§4.4, §9 C1
           organizationId: `org-${index + 1}`,
           listing,
         })),
-        records: row.records.map((key) =>
+        remembered: row.records.map((key) =>
           remembered(key, row.origin === undefined ? ORIGIN : row.origin),
         ),
         lastPresence: (key) => new Map(row.last ?? []).get(key) ?? null,
@@ -250,17 +253,17 @@ describe("listTargets: region P from the listings and the records (§4.4, §9 C1
   });
 });
 
-describe("listTargets: a record is gone only on its own organization's word", () => {
+describe("listTargets: a remembered Mate is gone only on its own organization's word", () => {
   it.each([
     { name: "no listing at all (no organization chosen, or none read)", listings: [] },
     {
       name: "only another organization's listing, complete",
       listings: [{ organizationId: "org-2", listing: known([]) }],
     },
-  ])("$name: kept where its record kept it", ({ listings }) => {
+  ])("$name: kept where its session kept it", ({ listings }) => {
     const listed = listTargets({
       listings,
-      records: [remembered(KEY)],
+      remembered: [remembered(KEY)],
       lastPresence: () => null,
     });
     expect(listed.targets).toEqual([{ key: KEY, presence: REMEMBERED, record: ENV }]);
@@ -269,7 +272,7 @@ describe("listTargets: a record is gone only on its own organization's word", ()
 
 describe("containerTargetsOf", () => {
   it("names each row's origin and platform statuses", () => {
-    expect(containerTargetsOf([mateRow("ACTIVE"), unreadRow], [], null)).toEqual([
+    expect(containerTargetsOf([mateRow("ACTIVE"), unreadRow], [])).toEqual([
       { key: KEY, origin: ORIGIN, platform: { project: "ACTIVE", service: "ACTIVE" } },
       { key: project.id, origin: null, platform: { project: "ACTIVE", service: null } },
     ]);
@@ -281,7 +284,7 @@ describe("containerTargetsOf", () => {
       ...mateRow("READY_TO_DEPLOY", null),
       service: { id: "service-1", name: "zcp", status: "READY_TO_DEPLOY", created: made },
     };
-    expect(containerTargetsOf([row], [], null)).toEqual([
+    expect(containerTargetsOf([row], [])).toEqual([
       {
         key: KEY,
         origin: null,
@@ -290,7 +293,7 @@ describe("containerTargetsOf", () => {
     ]);
   });
 
-  it("reads a remembered Mate of a listed project at its record's origin, the route's first (A16)", () => {
+  it("reads a remembered Mate of a listed project at the origin its session kept (A16)", () => {
     const other = { id: "project-2", name: "blog", status: "ACTIVE" } as ZeropsProject;
     const otherOrigin = "https://zcp-9f1a-8080.prg1.zerops.app";
     const otherKey = "project-2:service-2";
@@ -303,7 +306,7 @@ describe("containerTargetsOf", () => {
     ];
     const otherUnread: CandidateRow = { ...unreadRow, key: other.id, project: other };
 
-    expect(containerTargetsOf([mateRow("ACTIVE"), otherUnread], targets, otherKey)).toEqual([
+    expect(containerTargetsOf([mateRow("ACTIVE"), otherUnread], targets)).toEqual([
       { key: otherKey, origin: otherOrigin, platform: { project: "ACTIVE", service: null } },
       { key: KEY, origin: ORIGIN, platform: { project: "ACTIVE", service: "ACTIVE" } },
       { key: other.id, origin: null, platform: { project: "ACTIVE", service: null } },

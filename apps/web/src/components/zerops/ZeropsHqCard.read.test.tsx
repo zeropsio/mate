@@ -137,6 +137,7 @@ function account(services: ReadonlyArray<ZeropsService> = SERVICES) {
       held.push(ownerId);
       return () => void held.splice(held.indexOf(ownerId), 1);
     },
+    renewHeld: () => {},
   });
 }
 

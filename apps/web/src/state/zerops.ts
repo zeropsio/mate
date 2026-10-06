@@ -13,14 +13,10 @@ import {
   type ProjectRef,
   type ProjectTopologyRead,
 } from "@t3tools/client-runtime/zerops/data";
-import {
-  mateListingsAtom,
-  type RegistrationRecord,
-} from "@t3tools/client-runtime/zerops/environments";
+import { mateListingsAtom } from "@t3tools/client-runtime/zerops/environments";
 import {
   placeListing,
   placementsOf,
-  type HqEnvironment,
   type HqMates,
   type HqPlacement,
 } from "@t3tools/client-runtime/zerops/hq";
@@ -169,26 +165,6 @@ export const hqPlacementsAtom = Atom.make((get): ReadonlyMap<string, HqPlacement
 }).pipe(Atom.withLabel("zerops:hq-placements"));
 
 /**
- * Each application's stage and production as HQ's navigation says them, with their deploys, by its
- * id (SPEC §3.2b); an application whose environments HQ refused the reader, or sent none this build
- * can read, is missing. Null while nothing is known of the organization's structure.
- */
-export const hqEnvironmentsAtom = Atom.make(
-  (get): ReadonlyMap<string, ReadonlyArray<HqEnvironment>> | null => {
-    const structure = get(shownHqNavigationAtom).structure;
-    return structure === null
-      ? null
-      : new Map(
-          structure.apps.flatMap((app) =>
-            app.environments === undefined || "refused" in app.environments
-              ? []
-              : [[app.id, app.environments] as const],
-          ),
-        );
-  },
-).pipe(Atom.withLabel("zerops:hq-environments"));
-
-/**
  * The Mates the reader may observe, as HQ relays them (`hqMates`): each by its project, its
  * presence and its overview's sections.
  */
@@ -227,15 +203,6 @@ export const hqPeopleAtom = Atom.make((get): HqPeople | null => {
   const navigation = get(shownHqNavigationAtom);
   return navigation.read === "unread" ? null : navigation.people;
 }).pipe(Atom.withLabel("zerops:hq-people"));
-
-/**
- * Whether the organization in view has an official HQ, as `useAccountHq` decided it from the
- * member list (`ZeropsHqNavigation`). Null while it has not said.
- */
-export const hqOfficialAtom = Atom.make<boolean | null>(null).pipe(
-  Atom.keepAlive,
-  Atom.withLabel("zerops:hq-official"),
-);
 
 const sameLogins = (
   left: ReadonlyMap<string, OverviewLogins>,
@@ -444,24 +411,28 @@ export const environmentProjectsAtom = Atom.make((get): EnvironmentProjects => {
 }).pipe(Atom.withLabel("zerops:environment-projects"));
 
 /**
- * The project an environment belongs to (C3): its descriptor's word first, then its registration
- * record, then a listing row that reaches it — each resolved to the inventory's one operable
- * reference. Null while none of them places it in a project the inventory holds.
+ * The project an environment belongs to (C3): its descriptor's word first, then the Mate this tab
+ * read serving it, then a listing row that reaches it — each resolved to the inventory's one
+ * operable reference. Null while none of them places it in a project the inventory holds.
  */
 export function environmentProjectRef(input: {
   readonly environmentId: EnvironmentId;
-  readonly record: RegistrationRecord | undefined;
+  readonly mate: { readonly projectId: string; readonly orgId: string | null } | undefined;
   readonly located: EnvironmentProjects;
   readonly inventory: Pick<InventoryProjection, "projectRefs">;
 }): ProjectRef | null {
   const described = input.located.described.get(input.environmentId);
-  const remembered = input.record?.projectRef ?? null;
+  const remembered = input.mate ?? null;
   const listed = input.located.listed.get(input.environmentId);
   return (
     (described === undefined ? null : findInventoryProjectRef(input.inventory, described)) ??
     (remembered === null
       ? null
-      : findInventoryProjectRef(input.inventory, remembered.projectId, remembered.orgId)) ??
+      : findInventoryProjectRef(
+          input.inventory,
+          remembered.projectId,
+          remembered.orgId ?? undefined,
+        )) ??
     (listed === undefined ? null : findInventoryProjectRef(input.inventory, listed))
   );
 }

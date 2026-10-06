@@ -19,7 +19,7 @@ import * as Schema from "effect/Schema";
 
 import { readMatePath, type FetchLike, type MatePathReading } from "./containerHealth.ts";
 import type { Instant } from "./data/access/grant.ts";
-import type { ExchangeClock } from "./environments/exchangeDriver.ts";
+import type { ExchangeClock } from "./environments/exchange.ts";
 
 /** How long a descriptor read is served to the readers after it. */
 export const DESCRIPTOR_SHARE_MS = 10_000;

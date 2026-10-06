@@ -1,9 +1,7 @@
-import type { ZeropsProject } from "../api.ts";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
 import { coverageFor } from "./coverage.ts";
-import { decodeTableFrame, decodeTableSearch } from "./tableProtocol.ts";
 
 import type {
   EntityObservation,
@@ -202,7 +200,6 @@ export interface ProtocolDecodeIssue {
 export const isRowIssue = (issue: ProtocolDecodeIssue): boolean => issue.kind === "malformed-row";
 
 export interface ProtocolDecodeResult {
-  readonly project?: ZeropsProject;
   readonly observations: ReadonlyArray<PlatformObservation>;
   readonly issues: ReadonlyArray<ProtocolDecodeIssue>;
 }
@@ -754,13 +751,6 @@ export function decodeEntityDirectResponse(
       };
     return {
       observations: projectObservations(target.ref, row, { source: "direct-read", ticket }),
-      project: {
-        id: row.id,
-        clientId: target.ref.organization.organizationId,
-        name: row.name,
-        status: row.status,
-        ...(row.userRoles === undefined ? {} : { userRoles: row.userRoles }),
-      },
       issues: [],
     };
   }
@@ -867,20 +857,6 @@ export function decodeNativeFrame(
       subscriptionName: name,
       message: "Frame names no active registration.",
     };
-  if (
-    registration.descriptor.kind === "table-list" ||
-    registration.descriptor.kind === "table-updates"
-  ) {
-    const decoded = decodeTableFrame(
-      registration as RegistrationRequest & {
-        readonly descriptor: { readonly kind: "table-list" | "table-updates" };
-      },
-      frame.data,
-    );
-    return decoded === null
-      ? { kind: "malformed", subscriptionName: name, message: "Table frame is malformed." }
-      : { kind: "observations", ...decoded };
-  }
   if (registration.descriptor.kind === "query-membership") {
     const delta = Option.getOrUndefined(decodeMembershipDelta(frame.data));
     const query = registration.descriptor.query;
@@ -982,9 +958,7 @@ export function decodeRegistrationResponse(
   input: unknown,
 ): ProtocolDecodeResult {
   const descriptor = request.descriptor;
-  if (descriptor.kind === "table-list")
-    return decodeTableSearch(request.baselineTicket as ReadTicket, input);
-  if (descriptor.kind === "entity-updates" || descriptor.kind === "table-updates")
+  if (descriptor.kind === "entity-updates")
     return Option.isSome(decodeRegistrationSuccess(input))
       ? { observations: [], issues: [] }
       : {

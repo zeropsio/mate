@@ -6,10 +6,9 @@
  * inside the message says where the change stands now; the timeline says when it
  * moved, in the place a person reads the work in order.
  *
- * Every group's landed changes are handed to `changeLandedEvents` together: it
- * keeps the ones belonging to this conversation's Mate, so no group has to be
- * looked up here. Outside a Zerops session there is no flow and no Mate, and it
- * takes nothing.
+ * The Mate's application's landed changes are read while its conversation is
+ * drawn, and `changeLandedEvents` keeps the ones belonging to this Mate.
+ * Outside a Zerops session there is no Mate, and it takes nothing.
  *
  * A Mate has many conversations and its landings are all of theirs. The Mate is
  * told of every one; a timeline places only the ones its own messages named
@@ -27,11 +26,23 @@ import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { findCandidate, type CandidateRow } from "@t3tools/client-runtime/zerops/projections";
 import { useMemo } from "react";
 
-import { useZeropsProjectFlowOptional } from "./projectFlowContext";
+import { useAppsChanges, useHqAddress } from "./projectFlows";
 import { useHqAppDetailHold } from "./useHqAppDetail";
 import { useZeropsCandidates } from "./useZeropsCandidates";
 
 const NONE: ReadonlyArray<ChangeLandedEvent> = [];
+
+/** The Mate that lives in `environmentId`, as the listing names it; none until it does. */
+function mateIn(
+  listing: Shown<ReadonlyArray<CandidateRow>>,
+  environmentId: string,
+): CandidateRow | undefined {
+  const mate = findCandidate(
+    listing,
+    (candidate) => String(candidate.environmentId) === environmentId,
+  );
+  return mate.kind === "found" ? mate.row : undefined;
+}
 
 /**
  * The landings of the Mate that lives in `environmentId`. Which Mate that is comes from the
@@ -41,15 +52,12 @@ const NONE: ReadonlyArray<ChangeLandedEvent> = [];
 export function changeLandedEventsFor(
   listing: Shown<ReadonlyArray<CandidateRow>>,
   environmentId: string,
-  flows: ReadonlyMap<string, { readonly merged: ReadonlyArray<FlowPullRequest> }>,
+  changes: ReadonlyMap<string, { readonly merged: ReadonlyArray<FlowPullRequest> }>,
 ): ReadonlyArray<ChangeLandedEvent> {
-  const mate = findCandidate(
-    listing,
-    (candidate) => String(candidate.environmentId) === environmentId,
-  );
-  if (mate.kind !== "found") return NONE;
-  const merged = [...flows.values()].flatMap((flow) => [...flow.merged]);
-  const events = changeLandedEvents(merged, mate.row.project.id);
+  const mate = mateIn(listing, environmentId);
+  if (mate === undefined) return NONE;
+  const merged = [...changes.values()].flatMap((app) => [...app.merged]);
+  const events = changeLandedEvents(merged, mate.project.id);
   return events.length === 0 ? NONE : events;
 }
 
@@ -68,16 +76,21 @@ export function useZeropsMateAppDetailHold(environmentId: string | null | undefi
   useHqAppDetailHold(groupId === undefined || groupId === null ? [] : [groupId]);
 }
 
+const NO_APPS: ReadonlyArray<string> = [];
+
 export function useZeropsChangeLandedEvents(
   environmentId: string | null | undefined,
 ): ReadonlyArray<ChangeLandedEvent> {
-  const flowValue = useZeropsProjectFlowOptional();
   const { listing } = useZeropsCandidates();
-  const flows = flowValue?.flows;
+  const mate = environmentId == null ? undefined : mateIn(listing, String(environmentId));
+  // Only the Mate's own application's changes are read, while its conversation is drawn.
+  const groupId = mate === undefined ? undefined : readZeropsMembership(mate.project).groupId;
+  const appIds = useMemo(() => (groupId === undefined ? NO_APPS : [groupId]), [groupId]);
+  const { changes } = useAppsChanges(appIds);
   return useMemo(() => {
-    if (environmentId === null || environmentId === undefined || flows === undefined) return NONE;
-    return changeLandedEventsFor(listing, String(environmentId), flows);
-  }, [environmentId, flows, listing]);
+    if (environmentId === null || environmentId === undefined) return NONE;
+    return changeLandedEventsFor(listing, String(environmentId), changes);
+  }, [changes, environmentId, listing]);
 }
 
 type SaidMessage = { readonly text: string; readonly createdAt: string };
@@ -127,7 +140,7 @@ export function useZeropsConversationLandings(
   events: ReadonlyArray<ChangeLandedEvent>,
   messages: ReadonlyArray<SaidMessage>,
 ): ReadonlyArray<ChangeLandedEvent> {
-  const hqAddress = useZeropsProjectFlowOptional()?.hqAddress;
+  const hqAddress = useHqAddress();
   return useMemo(
     () => conversationLandings(events, messages, hqAddress),
     [events, messages, hqAddress],

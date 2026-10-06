@@ -51,6 +51,7 @@ export function ZeropsAccountData({
             registry: binding.registry,
             orgId: activeOrganizationId,
             demandDetail: binding.accountData.observation.demandDetail,
+            renewHeld: binding.accountData.observation.renewHeld,
           },
     [activeOrganizationId, binding],
   );

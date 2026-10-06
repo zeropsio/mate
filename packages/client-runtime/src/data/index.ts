@@ -10,6 +10,7 @@ export {
   startMateAttention,
   type AccountObservation,
   type CompareAsk,
+  type ShownHq,
 } from "./account.ts";
 export { makeMateAttentionWire, type MateAttentionWire } from "./adapters/mateAttention.ts";
 export { makeHqWire } from "./adapters/hqWire.ts";
@@ -24,6 +25,7 @@ export type {
 } from "./families/hqNavigation.ts";
 export {
   hqAppChanges,
+  hqAppReleaseOffers,
   hqNavigation,
   hqPersonFacts,
   hqStatus,
@@ -39,6 +41,11 @@ export {
 } from "./projections/changeDiscussion.ts";
 export { discussionDemand } from "./families/hqDiscussion.ts";
 export type { ZeropsWire } from "./adapters/zerops.ts";
+export {
+  appEnvironments,
+  appsEnvironments,
+  type AppEnvironmentsRead,
+} from "./projections/appEnvironments.ts";
 export {
   hqAppDetail,
   hqAppDetails,
@@ -70,10 +77,26 @@ export {
   type BuildLogSnapshot,
   type BuildLogStatus,
 } from "./buildLogs.ts";
+export { makeMateAdapter, mateContainerReads, type MateAdapter } from "./adapters/mate.ts";
+export type { MateLinkValue } from "./families/mateLink.ts";
+export {
+  mateLink,
+  mateLinks,
+  mateOfEnvironment,
+  type MateLinksRead,
+} from "./projections/mateLinks.ts";
 export { historyScope, runningScope, type ProcessValue } from "./families/process.ts";
 export { projectsScope, type ProjectValue } from "./families/project.ts";
 export { servicesScope, type ServiceValue } from "./families/service.ts";
+export { PROJECT_ROUTINGS_LISTING } from "./families/publicRouting.ts";
+export { publicAccess, type PublicAccess } from "./projections/publicAccess.ts";
 export { projectServices, projectsServices, type ProjectServices } from "./projections/services.ts";
+export { mateVariables, type MateVariables } from "./projections/mateVariables.ts";
+export {
+  serviceRuns,
+  type ServiceRuns,
+  type ZeropsServiceDeployedVersion,
+} from "./projections/serviceRuns.ts";
 export type { ProjectUsage } from "./projections/usage.ts";
 export { usageOwnerOf } from "./families/usage.ts";
 export {
@@ -89,6 +112,7 @@ export {
 export {
   listedProject,
   organizationProjects,
+  ownRowWanted,
   projectGone,
   type OrganizationProjects,
   type RosterRead,
@@ -111,10 +135,11 @@ export {
   type MembersRead,
   type SampledRead,
 } from "./projections/sampled.ts";
-export { publicAccess, type PublicAccessView } from "./projections/publicAccess.ts";
 export { makeOperations, type Operations } from "./operations/coordinator.ts";
 export { makeHqExecutor, type HqWrites } from "./operations/executors/hq.ts";
 export { makeZeropsExecutor } from "./operations/executors/zerops.ts";
+export { type FlowWriteIntent } from "./operations/flowWrites.ts";
+export { flowAnswer, type FlowWriteAnswer } from "./projections/flowAnswer.ts";
 export { restartWay } from "./operations/mateRestart.ts";
 export { runToEnd, type RunToEnd } from "./operations/runToEnd.ts";
 export {
@@ -129,10 +154,13 @@ export {
   accountReadsAtom,
   NOT_READ_PROCESSES,
   listedProjectAtom,
+  mateVariablesAtom,
+  readMateMarker,
   NOT_READ_PROJECTS,
   NOT_READ_SERVICES,
   NOT_READ_USAGE,
   projectGoneAtom,
+  projectStandingAtom,
   projectProcessesAtom,
   projectServicesAtom,
   projectsServicesAtom,
@@ -144,6 +172,10 @@ export {
   shownHqAppChangesAtom,
   shownHqPersonFactsAtom,
   shownHqStatusAtom,
+  shownHqVerdictAtom,
+  mateOfEnvironmentAtom,
+  NO_MATE_LINKS,
+  shownMateLinksAtom,
   type AccountReads,
 } from "./reads.ts";
 
@@ -157,3 +189,12 @@ export {
   registrationRequestId,
   type MateRegistration,
 } from "./projections/mateRegistration.ts";
+export { shownHqProjectPeopleAtom } from "./personReads.ts";
+export {
+  hqProjectPeople,
+  type HqMateOwner,
+  type HqProjectPeople,
+} from "./projections/hqProjectPeople.ts";
+export type { HqVerdict } from "./families/hqVerdict.ts";
+
+export { environmentSetup } from "./projections/environmentSetup.ts";

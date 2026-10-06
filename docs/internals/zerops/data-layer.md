@@ -138,6 +138,15 @@ active versions; each uses a membership and an entity-update registration.
 Detail registrations and sampled reads are additional demand, not work performed for every menu
 entry. A direct current-state read must not wait for realtime setup.
 
+Public HTTP routings use one additional organization-wide membership/update pair. Addresses are
+joined with services by id; a routing must be synced before its address becomes a link. A service
+switch without that routing means publication is pending. A routing leaving membership removes its
+address without claiming entity deletion. If the organization routing search is refused to a
+viewer who can read individual projects, only that scope is refused. A visible project then demands
+its filtered pair; if that search is also refused, its GET listing is refreshed by service-switch
+or terminal routing-process evidence. Receiver rotation and elapsed time never repeat a refused
+search. Partial answers retain previously read addresses while reporting incomplete coverage.
+
 ## HQ scopes
 
 The full wire contract is [HQ scopes and revisions](hq-scopes.md). One socket serves each renderer
@@ -222,7 +231,6 @@ The rewrite lands in waves. The remaining lanes are:
 - Creation through HQ operations and their receipts.
 - Mate connections without polling.
 - Menu first-paint and outage truth.
-- Organization-wide public access reads and live updates.
 - Variables on declared data-layer demand.
 - Mate start epoch across source publication, HQ and client ordering.
 - Releases and environments client surfaces.

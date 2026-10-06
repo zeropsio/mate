@@ -875,7 +875,6 @@ describe("mateArrivalShown — what a Mate's own view keeps saying once it came 
         projectId: "project-wren",
         machines: new Map([[KEY, environment]]),
         index: { serving: new Map(), reported: new Map() },
-        records: [],
         registered: new Set(),
       });
       return {
@@ -958,7 +957,6 @@ describe("mateArrivalShown — what a Mate's own view keeps saying once it came 
         projectId: "project-wren",
         machines: new Map([[KEY, current]]),
         index: { serving: new Map(), reported: new Map() },
-        records: [],
         registered: new Set(),
       });
     const holds: Array<boolean> = [];
@@ -1339,7 +1337,6 @@ describe("a Mate whose address landed, not answering yet, in a window that did n
       projectId: "project-larch",
       machines: new Map([[KEY, machine]]),
       index: { serving: new Map(), reported: new Map() },
-      records: [],
       registered: new Set(),
     });
   };

@@ -25,7 +25,7 @@ import {
   work,
 } from "@t3tools/client-runtime/zerops/flow/fixtures";
 import type { ServiceDeployInfo } from "@t3tools/client-runtime/zerops/data";
-import type { ZeropsServiceDeployedVersion } from "@t3tools/client-runtime/zerops/data";
+import type { ZeropsServiceDeployedVersion } from "@t3tools/client-runtime/data";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import type { HqJob } from "@t3tools/client-runtime/zerops/hq";
 import { describe, expect, it } from "vite-plus/test";

@@ -15,7 +15,7 @@ import * as DateTime from "effect/DateTime";
 import { useNavigate, useRouteContext, useSearch } from "@tanstack/react-router";
 import type { EnvironmentId } from "@t3tools/contracts";
 import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
-import { ZeropsServiceId, type OrganizationRef } from "@t3tools/client-runtime/zerops/data";
+import { type OrganizationRef } from "@t3tools/client-runtime/zerops/data";
 import type * as React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -27,7 +27,9 @@ import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../
 import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { environmentsWithSnapshotAtom } from "~/state/shell";
-import { hqPeopleAtom, hqPlacementsAtom, hqNavigationAtom } from "~/state/zerops";
+import { shownHqProjectPeopleAtom } from "@t3tools/client-runtime/data";
+import { useEnvironmentOffers } from "~/zerops/useAddEnvironment";
+import { hqPlacementsAtom, hqNavigationAtom } from "~/state/zerops";
 import {
   PROJECT_ORDER_CHOICES,
   readProjectsOnScreen,
@@ -42,8 +44,6 @@ import {
   type ZeropsCandidate,
 } from "@t3tools/client-runtime/zerops/candidates";
 import {
-  mateIsViewers,
-  resolveMateOwnerPerson,
   resolveMateVisibility,
   type RoleMateVisibility,
 } from "@t3tools/client-runtime/zerops/mateAccess";
@@ -167,9 +167,10 @@ import { useChangeOffers } from "~/zerops/useChangeOffers";
 import { useMateOffers, useOrgOffers } from "~/zerops/useHqOffers";
 import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
 import { officialHq, useAccountHq } from "~/zerops/accountHq";
-import { useHalfMadeEnvironments } from "~/zerops/useHalfMadeEnvironments";
+import { useEnvironmentSetup } from "~/zerops/useEnvironmentSetup";
 import { useZeropsRegistry } from "~/zerops/useZeropsRegistry";
-import { useZeropsProjectFlow } from "~/zerops/projectFlowContext";
+import { useFlowVerbs } from "~/zerops/flowVerbs";
+import { useProjectFlows, useStopDeploymentsShown } from "~/zerops/projectFlows";
 import { REVIEW_LABEL, REVIEW_RELEASE_LABEL, useOpenReview } from "~/zerops/review";
 import { useReadGroupAgents } from "~/zerops/groupAgents";
 import { deployRowTone } from "./ZeropsProjectRow.logic";
@@ -189,7 +190,6 @@ import {
   changesUnknownOf,
   flowStepsAwaiting,
   groupFlowInputOf,
-  mayAddEnvironment,
   groupMemberFactsOf,
   lastMergedCode,
   parseProjectsSearch,
@@ -802,9 +802,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     organizationStatus,
     selectOrganization,
     status,
-    user,
   } = useZeropsSession();
-  const { organizationRef, projectRef, runtime } = useZeropsData();
+  const { organizationRef } = useZeropsData();
   const operations = useAccountOperations();
   const inventory = useZeropsInventory();
   const { listing, error, refresh: refreshCandidates } = useZeropsCandidates();
@@ -955,8 +954,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   // What HQ offers of each row's project (`mateRowCan`), and of the organization.
   const mateOffersOf = useMateOffers();
   const orgOffer = useOrgOffers();
-  // Whose a Mate this person may see and not open is, named from HQ's people: no member list read.
-  const people = useAtomValue(hqPeopleAtom);
+  // Whose a Mate this person may see and not open is, as HQ names its owner: no member list read.
+  const projectPeople = useAtomValue(shownHqProjectPeopleAtom);
 
   /** A press of the organization on show: the page is not empty while one is on its way. */
   const activeBirths = presses.some((press) => press.organizationId === activeOrganization?.id);
@@ -1009,9 +1008,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   ): ZeropsRowInput => {
     const visibility = visibilityOf(candidate);
     const ownerName =
-      visibility === "listed"
-        ? resolveMateOwnerPerson({ project: candidate.project, people })?.name
-        : undefined;
+      visibility === "listed" ? projectPeople[candidate.project.id]?.owner?.name : undefined;
     const waiting = candidate.group !== "connected" && waitedOn(candidate);
     const mateFlag = candidateMateFlags.get(candidate.key);
     return {
@@ -1525,8 +1522,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
    * the name, whether it gets an agent, and what that agent is called.
    */
   // A group is offered more once its first Mate is up (`groupAddsOffered`).
-  // Shared by the project's menu, its card's add verbs and whether
-  // production is offered.
+  // This gates another Mate; HQ's own offers decide stage and production.
   const addsOfferedFor = useCallback(
     (group: ZeropsGroup) =>
       groupAddsOffered(
@@ -1536,19 +1532,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     [candidateHealth, groupTree.groups],
   );
 
-  // Whether this person may add a stage or a production to the group (`mayAddEnvironment`).
-  const mayAddFor = useCallback(
-    (group: ZeropsGroup) =>
-      activeOrganization !== null &&
-      mayAddEnvironment({
-        organization: activeOrganization,
-        projects: (
-          groupTree.groups.find((entry) => entry.group.groupId === group.groupId)?.environments ??
-          []
-        ).map(({ item }) => item.project),
-      }),
-    [activeOrganization, groupTree.groups],
-  );
+  // Which tiers HQ offers this person to add to the group (`add_stage` / `add_production`).
+  const environmentOffers = useEnvironmentOffers();
 
   // "Add stage" opens the form; the form's answer is what gets created.
   const [creationRequest, setCreationRequest] = useState<{
@@ -1586,9 +1571,11 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   });
 
   // Every group's flow — its declared environments and what they run, what
-  // is waiting to land, what was released — is read once for the account
-  // (`ZeropsProjectFlowProvider`, D26); the page draws its share of it.
-  const projectFlow = useZeropsProjectFlow();
+  // is waiting to land, what was released — read while the page is drawn.
+  // What a release would put live is compared on the project's own page.
+  const projectFlow = useProjectFlows("every");
+  const verbs = useFlowVerbs();
+  const deployments = useStopDeploymentsShown();
   // What HQ's rule shows this person of each project's changes: a project listed to them whose
   // changes it does not says so in their steps, never "None yet".
   const changeOffersOf = useChangeOffers();
@@ -1607,7 +1594,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         groupId === undefined ? undefined : projectFlow.flows.get(groupId),
         candidate.project.id,
       ),
-      mine: mateIsViewers(candidate.project, user?.id),
+      mine: projectPeople[candidate.project.id]?.waitsOnViewer === true,
       // Waking while it comes up and arrives, as its row in the menu.
       pose: matePoseOf(candidate, nowMs),
     });
@@ -1616,14 +1603,18 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   const groupDeploys = projectFlow.flows;
   // A production just added is the intent to release (P7): the application whose production came
   // up waits here until HQ holds it and the gate says whether its first release is the person's to
-  // review, which then opens by itself (`firstReleaseHandoff`).
+  // review, which then opens by itself (`firstReleaseHandoff`). Its release is compared meanwhile.
   const [handoffTo, setHandoffTo] = useState<{
     readonly groupId: string;
     readonly projectId: string;
   } | null>(null);
+  const handoffFlows = useProjectFlows(
+    useMemo(() => (handoffTo === null ? [] : [handoffTo.groupId]), [handoffTo]),
+    { compare: true },
+  ).flows;
   useEffect(() => {
     if (handoffTo === null) return;
-    const flow = groupDeploys.get(handoffTo.groupId);
+    const flow = handoffFlows.get(handoffTo.groupId);
     if (flow === undefined) return;
     const verdict = firstReleaseHandoff({
       // The project this press made, never another production that comes up later.
@@ -1635,7 +1626,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     if (verdict === "wait") return;
     setHandoffTo(null);
     if (verdict === "open") openReview({ kind: "release", groupId: handoffTo.groupId });
-  }, [groupDeploys, handoffTo, openReview]);
+  }, [handoffFlows, handoffTo, openReview]);
 
   /**
    * The environment row of one Zerops project, when HQ records it as one of an
@@ -1743,7 +1734,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     const action =
       withMerge && review ? (
         <ZeropsMateVerb
-          label={changeRowVerb(projectFlow.pending, group.groupId, pull)}
+          label={changeRowVerb(verbs.pending, group.groupId, pull)}
           onClick={(event) => {
             openReview(
               {
@@ -1905,8 +1896,10 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   );
 
   // A stage or a production whose creation lost its last writes is said on its project's row and
-  // finished from its menu, when the person asks (`useHalfMadeEnvironments`).
-  const { halfMade, finishing } = useHalfMadeEnvironments(candidates);
+  // finished from its menu, when the person asks (`useEnvironmentSetup`).
+  const { halfMade, finishing } = useEnvironmentSetup(
+    useMemo(() => candidates.map(({ project }) => project.id), [candidates]),
+  );
 
   // Persisted cleanup debt is restored after a crash, once inventory admits the account.
   const throwawayCleanup = useZeropsThrowawaySweep({
@@ -2078,7 +2071,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     const stopDeployTone =
       declared === undefined
         ? undefined
-        : stopTone(projectFlow.deployments.get(candidate.project.id), declared);
+        : stopTone(deployments.get(candidate.project.id), declared);
     const deployTone = stopDeployTone === undefined ? undefined : deployRowTone(stopDeployTone);
     const deployLabel = stopDeployTone === undefined ? undefined : deployWord(stopDeployTone);
     // *Release* is the project's next step, in production's cell beside
@@ -2244,8 +2237,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
    * A project's own quiet actions: its name, and the environments a person
    * adds to it — another Mate, and a stage and a production as equals: neither
    * is optional, neither comes before the other, and each is offered where the
-   * role is still there to take (`creatableRoles`) and this person may add one
-   * (`mayAddEnvironment`).
+   * role is still there to take (`creatableRoles`) and HQ offers it to this
+   * person (`useEnvironmentOffers`).
    */
   const renderGroupMenu = ({ group, flow }: ProjectsFlowGroup<ZeropsCandidatePresentation>) => {
     // Each Mate's preview, where its pair has one: a link out, so the menu's, not the row's.
@@ -2288,7 +2281,9 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
                 },
               ]
             : []),
-          ...(addsOfferedFor(group) && mayAddFor(group)
+          ...(environmentOffers(group.groupId)?.stage === true &&
+          !groupIsEmpty(group) &&
+          creatableRoles(group).includes("stage")
             ? [
                 {
                   id: "add-stage",
@@ -2300,7 +2295,9 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
                 },
               ]
             : []),
-          ...(mayAddFor(group) && !groupIsEmpty(group) && creatableRoles(group).includes("prod")
+          ...(environmentOffers(group.groupId)?.production === true &&
+          !groupIsEmpty(group) &&
+          creatableRoles(group).includes("prod")
             ? [
                 {
                   id: "add-production",
@@ -2312,9 +2309,10 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
                 },
               ]
             : []),
-          // A stage or a production whose setup is not finished, finished as the person asks.
+          // A stage or a production whose setup is not finished, finished as the person asks —
+          // where HQ offers them finishing it (`can.finish`), as on the application's own page.
           ...halfMade
-            .filter((entry) => entry.groupId === group.groupId)
+            .filter((entry) => entry.groupId === group.groupId && entry.finish)
             .map((entry) => ({
               id: `finish-${entry.tier}`,
               label: `Finish setting up ${entry.tier}`,
@@ -2367,7 +2365,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
           onRollBack={(tag, from) => {
             openReview({ kind: "rollback", groupId: group.groupId, tag }, { from });
           }}
-          pending={projectFlow.pending}
+          pending={verbs.pending}
           releases={releases}
         />
       </>
@@ -2457,7 +2455,12 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       });
       const conversationsRead = (item: ZeropsCandidatePresentation) =>
         item.environmentId !== undefined && withConversations.has(item.environmentId);
-      const members = groupMemberFactsOf(environments, activityOf, conversationsRead, user?.id);
+      const members = groupMemberFactsOf(
+        environments,
+        activityOf,
+        conversationsRead,
+        (projectId) => projectPeople[projectId]?.waitsOnViewer === true,
+      );
       const isStop = (role: ZeropsEnvironmentRole | undefined) =>
         role === "stage" || role === "prod";
       const placeholder = groupNameUnread(group);
@@ -2469,7 +2472,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
             groupId: group.groupId,
             members,
             flow: reads,
-            deployments: projectFlow.deployments,
+            deployments,
             pending: group.pending,
           }),
         ),
@@ -2514,7 +2517,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       ?.firstDeploy;
   // The page's one line of trouble: a refusal of something done here — a
   // merge or a release the project flow refused included — one at a time.
-  const trouble = toolError ?? route.trouble ?? projectFlow.trouble;
+  const trouble = toolError ?? route.trouble ?? verbs.trouble;
   const ungroupedRows = shownUngrouped(
     withoutOfficialHq(groupTree.ungrouped, accountHq.hq).map((candidate) => ({
       item: candidate,

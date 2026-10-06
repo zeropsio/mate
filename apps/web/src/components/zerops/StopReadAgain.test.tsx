@@ -15,9 +15,9 @@ vi.mock("~/zerops/accountForge", () => ({
   },
 }));
 const read = vi.hoisted(() => ({ failure: "transport" }));
-vi.mock("~/zerops/projectFlowContext", () => ({
-  useZeropsProjectFlowOptional: () => ({
-    deployments: new Map([
+vi.mock("~/zerops/projectFlows", () => ({
+  useStopDeploymentsShown: () =>
+    new Map([
       [
         "prod",
         read.failure === "unread"
@@ -44,7 +44,6 @@ vi.mock("~/zerops/projectFlowContext", () => ({
               },
       ],
     ]),
-  }),
 }));
 vi.mock("../ui/button", () => ({
   Button: ({

@@ -1,4 +1,13 @@
+import {
+  BearerConnectionCredential,
+  BearerConnectionProfile,
+  BearerConnectionRegistration,
+  BearerConnectionTarget,
+} from "@t3tools/client-runtime/connection";
 import type { ZeropsUser } from "@t3tools/client-runtime/zerops";
+import { KEPT_SESSIONS_KEY } from "@t3tools/client-runtime/zerops/keptSessions";
+import { EnvironmentId } from "@t3tools/contracts";
+import * as Schema from "effect/Schema";
 import { makeAccountHarness, type FakeDatastream } from "@t3tools/client-runtime/zerops/testing";
 import type { ComponentType, ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
@@ -268,39 +277,63 @@ describe("a sign-in in another tab", () => {
   });
 });
 
+const encodeRegistration = Schema.encodeSync(BearerConnectionRegistration);
+
 describe("cold sign-in", () => {
   it("mounts the router on the first grant while services are unknown: the sidebar shows its placeholder, never none, and nothing exchanges before the grant", async () => {
     const harness = productHarness();
-    // A Mate this browser remembers: the post-grant stage restores it.
+    // A Mate this browser reached before: its kept session names it, and the post-grant stage
+    // restores it.
+    const connectionId = "bearer:environment-1";
     harness.browser.openTab().localStorage.setItem(
-      "mate:account:user-1:zerops-mate.registration-records.v1",
-      JSON.stringify([
-        {
-          targetKey: "p1:zcp",
-          environmentId: "environment-1",
-          origin: "https://zcp-1-8080.prg1.zerops.app",
-          projectRef: { projectId: "p1", orgId: "org-1" },
-          name: "One",
-        },
-      ]),
+      `mate:account:user-1:${KEPT_SESSIONS_KEY}`,
+      JSON.stringify({
+        "p1:zcp": encodeRegistration(
+          new BearerConnectionRegistration({
+            target: new BearerConnectionTarget({
+              environmentId: EnvironmentId.make("environment-1"),
+              label: "One",
+              connectionId,
+            }),
+            profile: new BearerConnectionProfile({
+              connectionId,
+              environmentId: EnvironmentId.make("environment-1"),
+              label: "One",
+              httpBaseUrl: "https://zcp-1-8080.prg1.zerops.app/mate/",
+              wsBaseUrl: "wss://zcp-1-8080.prg1.zerops.app/mate/",
+            }),
+            credential: new BearerConnectionCredential({
+              token: "session-one",
+              expiresAtEpochMs: Date.now() + 86_400_000,
+              origin: "zerops-identity",
+            }),
+          }),
+        ),
+      }),
     );
     const round = harness.rest.hold("GET /project/p1");
     const establishing = harness.datastream.holdRegistrations();
     const accessAtMount: string[] = [];
-    let environments!: typeof import("./accountEnvironments");
+    /** Whether the Mate of `p1` is among the Mates the account's store holds, as a surface reads them. */
+    let mateHeld = false;
     const { tab } = await appTab(harness, async () => {
       const [{ ProductChild, SidebarListing }, { createElement, Fragment }] = await Promise.all([
         import("./__fixtures__/accountProduct"),
         import("react"),
       ]);
-      environments = await import("./accountEnvironments");
+      const { useEnvironmentMachines } = await import("./accountEnvironments");
       const onMount = (access: string) => accessAtMount.push(access);
+      function Mates() {
+        mateHeld = useEnvironmentMachines().has("p1:zcp");
+        return null;
+      }
       return () =>
         createElement(
           Fragment,
           null,
           createElement(ProductChild, { label: "", onMount }),
           createElement(SidebarListing),
+          createElement(Mates),
         );
     });
     const mints = () =>
@@ -322,7 +355,7 @@ describe("cold sign-in", () => {
     // Granted while the push half still establishes: the route is on screen,
     // and the menu says it is reading rather than that there is nothing.
     expect(accessAtMount).toEqual(["verified"]);
-    expect(environments.currentAccountEnvironments()?.machines().has("p1:zcp")).toBe(true);
+    expect(mateHeld).toBe(true);
     expect(tab.text()).toContain("Project p1");
     expect(tab.text()).toContain("Reading your projects…");
     expect(tab.text()).not.toMatch(/No projects|No environment has Mate yet/);

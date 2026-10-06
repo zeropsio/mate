@@ -2,7 +2,6 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
-import * as Schema from "effect/Schema";
 import * as Fiber from "effect/Fiber";
 import * as Result from "effect/Result";
 import * as Stream from "effect/Stream";
@@ -36,10 +35,6 @@ import {
   type RegistrationRequest,
   type RequestContext,
 } from "./types.ts";
-
-const decodeBody = Schema.decodeUnknownSync(
-  Schema.fromJsonString(Schema.Struct({ search: Schema.Array(Schema.Unknown) })),
-);
 
 const timers: PlatformWatchTimers = {
   setTimer: (callback, delayMs) => setTimeout(callback, delayMs),
@@ -1499,163 +1494,5 @@ describe("one malformed row of the organization's", () => {
       expect(events.map((event) => event.kind)).not.toContain("malformed");
       expect(events.some((event) => event.kind === "observation")).toBe(true);
     }),
-  );
-});
-
-describe("the entity table's streams", () => {
-  const variables = {
-    kind: "service-variables-of-services" as const,
-    organization,
-    serviceIds: ["s-1", "s-2", "service", "service-a", "app", "mate"],
-    keys: ["ZCP_MATE_ENABLED", "appVersionId"],
-    schemaVersion: 1 as const,
-  };
-  const variablesTicket = (): ReadTicket =>
-    ({
-      kind: "baseline",
-      requestId: ZeropsRequestId.make("variables-read"),
-      owner: { kind: "interest", identity: interest },
-      target: { kind: "query", descriptor: variables },
-      receiptOrdinalAtStart: ReceiptOrdinal.make(0),
-      membershipReceiptOrdinalAtStart: ReceiptOrdinal.make(0),
-      readStartOrdinal: ReadStartOrdinal.make(1),
-      dispatchOrdinal: DispatchOrdinal.make(1),
-      startedAtMs: 0,
-    }) as ReadTicket;
-
-  it.effect(
-    "registers a kind's list and updates by organization and takes its frames without a read",
-    () =>
-      Effect.gen(function* () {
-        const sockets: FakeSocket[] = [];
-        const requests: Array<{ readonly url: string; readonly body: string }> = [];
-        const client = clientFor((url, init) => {
-          if (url.endsWith("/web-socket/login"))
-            return new Response('{"webSocketToken":"socket-token"}', { status: 200 });
-          requests.push({ url, body: String(init?.body) });
-          return new Response(
-            url.endsWith("/user-data/search") && String(init?.body).includes("listStream")
-              ? JSON.stringify({
-                  items: [
-                    { id: "u-0", serviceStackId: "s-1", key: "appVersionId", content: "v-1" },
-                  ],
-                  limit: 2000,
-                  offset: 0,
-                  totalHits: 1,
-                })
-              : '{"success":true}',
-            { status: 200 },
-          );
-        });
-        const adapter = makeZeropsDataAdapter({
-          client,
-          makeSocket: socketFactory(sockets),
-          timers,
-        });
-        const list = {
-          identity: interest,
-          subscriptionName: ZeropsWireSubscriptionName.make("opaque/list"),
-          descriptor: { kind: "table-list", query: variables },
-          baselineTicket: variablesTicket(),
-        } as RegistrationRequest;
-        const updates = {
-          identity: interest,
-          subscriptionName: ZeropsWireSubscriptionName.make("opaque/variables"),
-          descriptor: {
-            kind: "table-updates",
-            entity: "user-data",
-            organization,
-            serviceIds: variables.serviceIds,
-          },
-          baselineTicket: null,
-        } as RegistrationRequest;
-
-        const { answered, events } = yield* Effect.scoped(
-          Effect.gen(function* () {
-            const receiver = yield* adapter.openReceiver(
-              scope,
-              organization,
-              receiverIdentity,
-              context(),
-            );
-            const answered = yield* adapter.register(receiver, list, context());
-            yield* adapter.register(receiver, updates, context());
-            sockets[0]!.receive({
-              type: "search",
-              subscriptionName: "opaque/list",
-              data: { add: ["u-2"], delete: ["u-0"] },
-            });
-            sockets[0]!.receive({
-              type: "search",
-              subscriptionName: "opaque/variables",
-              data: {
-                update: [
-                  { id: "u-1", serviceStackId: "s-1", key: "ZCP_MATE_ENABLED", content: "1" },
-                ],
-              },
-            });
-            const events = yield* Stream.runCollect(Stream.take(receiver.events, 3));
-            return { answered, events: Array.from(events) };
-          }),
-        );
-
-        expect(requests.map(({ url }) => new URL(url).pathname.replace(/^.*public/, ""))).toEqual([
-          "/user-data/search",
-          "/user-data/search",
-        ]);
-        expect(decodeBody(requests[0]!.body).search).toContainEqual({
-          name: "serviceStackId",
-          operator: "in",
-          value: variables.serviceIds,
-        });
-        expect(requests[0]!.body).toContain('"wsOutputType":"listStream"');
-        expect(requests[0]!.body).toContain('"subscriptionName":"opaque/list"');
-        expect(decodeBody(requests[1]!.body).search).toContainEqual({
-          name: "serviceStackId",
-          operator: "in",
-          value: variables.serviceIds,
-        });
-        expect(requests[1]!.body).toContain('"wsOutputType":"updateStream"');
-        expect(answered.responseObservations).toEqual([
-          expect.objectContaining({
-            kind: "table-rows-observed",
-            entity: "user-data",
-            source: "direct-read",
-            rows: [
-              { id: "u-0", serviceId: "s-1", projectId: null, key: "appVersionId", content: "v-1" },
-            ],
-            coverage: expect.objectContaining({ kind: "exhausted-traversal" }),
-          }),
-        ]);
-        const observed = events.flatMap((event) =>
-          event.kind === "observation" ? [event.input] : [],
-        );
-        expect(observed).toEqual([
-          expect.objectContaining({
-            kind: "table-membership-observed",
-            operation: "add",
-            id: "u-2",
-          }),
-          expect.objectContaining({
-            kind: "table-membership-observed",
-            operation: "remove",
-            id: "u-0",
-          }),
-          expect.objectContaining({
-            kind: "table-rows-observed",
-            entity: "user-data",
-            source: "native-push",
-            rows: [
-              {
-                id: "u-1",
-                serviceId: "s-1",
-                projectId: null,
-                key: "ZCP_MATE_ENABLED",
-                content: "1",
-              },
-            ],
-          }),
-        ]);
-      }),
   );
 });

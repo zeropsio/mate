@@ -37,6 +37,12 @@ describe("withProjectGrants — a project row with its own grants", () => {
     });
   });
 
+  it("keeps the grants the project's own row names: the store's own read is the newer word", () => {
+    const own = [{ clientUserId: "cu-dev", roleCode: "OWNER" }];
+    const row = { id: "p-cyd", name: "Cyd", userRoles: own };
+    expect(withProjectGrants(row, grants)).toBe(row);
+  });
+
   it("leaves a project no read named as it is", () => {
     const row = { id: "p-made", name: "Made" };
     expect(withProjectGrants(row, grants)).toBe(row);

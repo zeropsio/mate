@@ -19,6 +19,9 @@ import type {
   Source,
 } from "../model.ts";
 
+import type { Row } from "../reducer.ts";
+import type { ProjectionReads } from "../store.ts";
+
 export type SearchTerms = ReadonlyArray<Readonly<Record<string, unknown>>>;
 
 /** A Zerops row as a family reads it; `null` for a row it cannot read. */
@@ -46,6 +49,12 @@ export interface ZeropsFamilySource<Value> {
   /** The `updateStream` of whole rows. */
   readonly updates: (owner: ScopeOwner) => SearchTerms;
   readonly decode: (raw: unknown) => ZeropsRow<Value> | null;
+  /**
+   * Whether the organization's search may be refused to a viewer who reads the rest of it (a
+   * member without organization read answers 401 or 403 there): that refusal is this scope's
+   * alone — never the link's, never its session's — until the person tries again.
+   */
+  readonly refusedAlone?: boolean;
   /** The owner's answer to "gone or not yours?" (404 / 403), where leaving the scope asks it. */
   readonly verifyPath?: (id: string) => string;
   /**
@@ -109,10 +118,19 @@ export interface DetailListing {
   readonly suffix: string;
   /** What leaving the listing says of a member. */
   readonly leaving: MemberState;
+  /**
+   * The listing reads one member by its own id (a project's own row): our own write to that
+   * member reads it again while a screen holds it (`holdStandingDemands`).
+   */
+  readonly member?: true;
   /** Zerops: the `GET` whose answer is the listing's baseline, and the rows in that answer. */
   readonly zerops: {
     readonly path: (owner: ScopeOwner) => string;
     readonly items: (answer: unknown) => ReadonlyArray<unknown> | undefined;
+    /** Try a project-filtered list/update pair before falling back to the GET. */
+    readonly subscription?: (owner: ScopeOwner) => SearchTerms;
+    /** Owner evidence that refreshes a GET fallback after its subscription was refused. */
+    readonly refreshOn?: (owner: ScopeOwner, row: Row, previous: ProjectionReads) => boolean;
   };
 }
 
@@ -182,6 +200,18 @@ export interface FamilySpec<F extends Family> {
    * names replace the held ones, the rest stay. Without it, a push replaces the value whole.
    */
   readonly merge?: (held: FamilyValues[F], pushed: FamilyValues[F]) => FamilyValues[F];
+  /**
+   * What a row of any kind — a push, a read, a baseline — says, by where it came from: `own`, the
+   * member's own row read by its id (a `member` detail listing), Zerops' whole word on it; else a
+   * listing's row, which may leave unsaid what the value held says (a project's listing never
+   * names everybody's grants). `held` is the value held, if any. Without it, a row that is not
+   * merged replaces the value whole.
+   */
+  readonly keepUnsaid?: (
+    held: FamilyValues[F] | undefined,
+    row: FamilyValues[F],
+    own: boolean,
+  ) => FamilyValues[F];
   /**
    * The owner's own ordering of a read that carries no revision (a by-id read, or a detail
    * listing's baseline): whether the value it read is

@@ -88,7 +88,7 @@ export interface ZeropsRowInput {
    */
   readonly runningProcessKind?: "restart-service" | "start-service" | "start-project" | undefined;
   /**
-   * `ZCP_MATE_ENABLED`'s own read (`ZeropsApiClient.isZeropsMateEnabled`),
+   * `ZCP_MATE_ENABLED`'s own read, by key (`data/projections/mateVariables`),
    * for a `predates-mate` row only — the fact that tells this container
    * apart from one merely away (spec-mate §4.5, H9). `"unknown"` for a read
    * that failed; absent for one not yet made (or made for any other

@@ -9,6 +9,7 @@ import { hqAppsScope } from "./families/hqNavigation.ts";
 import { historyScope, runningScope } from "./families/process.ts";
 import { linkKeys, type OperationIntent } from "./model.ts";
 import type { RegisteredOperationKind } from "./operations/kind.ts";
+import { hqVerdict } from "./projections/hqVerdict.ts";
 import { streamOf } from "./reducer.ts";
 import { makeAccountStore } from "./store.ts";
 
@@ -111,6 +112,52 @@ describe("observeAccount", () => {
         );
         expect(streamOf(store.state(), linkKeys.zerops("org-b")).demanded).toBe(false);
       }),
+  );
+
+  it.live("renews each held project's own row once, and no other held detail", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const fixture = fixtureWire((request) =>
+        Effect.succeed(
+          request.method === "GET"
+            ? {
+                status: 200,
+                body: request.path.endsWith("/process?limit=100")
+                  ? { list: [] }
+                  : { id: request.path.split("/").at(-1), name: "p", status: "ACTIVE" },
+              }
+            : request.body?.wsOutputType === "listStream"
+              ? { items: [] }
+              : {},
+        ),
+      );
+      const account = observeAccount({ store, wire: fixture.wire, repairSession: Effect.void });
+      const reads = (path: string) =>
+        fixture.requests.filter((request) => request.path === path).length;
+      account.renewHeld();
+      account.show("org");
+      account.demandDetail({ family: "project", listing: "project", ownerId: "p1" });
+      account.demandDetail({ family: "project", listing: "project", ownerId: "p2" });
+      account.demandDetail({ family: "process", listing: "history", ownerId: "p1" });
+      yield* until(
+        () =>
+          reads("/project/p1") === 1 &&
+          reads("/project/p2") === 1 &&
+          reads(HISTORY_PATH) === 1 &&
+          streamOf(store.state(), "zerops:org:project:p2").phase === "live" &&
+          streamOf(store.state(), "zerops:org:project:p1").phase === "live",
+        "the held details to be read",
+      );
+
+      account.renewHeld();
+      yield* until(
+        () => reads("/project/p1") === 2 && reads("/project/p2") === 2,
+        "the own rows to be renewed",
+      );
+      yield* Effect.sleep(20);
+      expect([reads("/project/p1"), reads("/project/p2"), reads(HISTORY_PATH)]).toEqual([2, 2, 1]);
+      account.show(null);
+    }),
   );
 
   it.live("holds an open operation's detail as a standing demand, without any screen", () =>
@@ -336,6 +383,30 @@ describe("an account's HQ", () => {
       account.showHq(null);
       yield* turns;
       expect(streamOf(store.state(), linkKeys.hq("org-a")).demanded).toBe(false);
+      account.stop();
+    }),
+  );
+  it.live("holds whether the organization has an official HQ as the account says it", () =>
+    Effect.sync(() => {
+      const registry = AtomRegistry.make();
+      const store = makeAccountStore(registry);
+      const account = observeAccount({
+        store,
+        wire: emptyZerops().wire,
+        repairSession: Effect.void,
+      });
+      const verdict = () => registry.get(store.data.project(hqVerdict, "org-a"));
+      // Said before its organization is shown: held once it is.
+      account.showHq({ orgId: "org-a", verdict: "none" });
+      expect(verdict()).toBe("pending");
+      account.show("org-a");
+      expect(verdict()).toBe("none");
+      account.showHq({ orgId: "org-a", verdict: "pending" });
+      expect(verdict()).toBe("pending");
+      account.showHq({ orgId: "org-a", wire: hqFixtureWire().wire });
+      expect(verdict()).toBe("official");
+      account.showHq({ orgId: "org-a", verdict: "unreadable" });
+      expect(verdict()).toBe("unreadable");
       account.stop();
     }),
   );

@@ -325,6 +325,7 @@ export function earlierReleasesLabel(count: number): string {
 /** One code service of a stop, as its page draws it. */
 export interface StopServiceRow {
   readonly hostname: string;
+  readonly serviceId?: string;
   /** The repository its tier builds it from, in the group's org. */
   readonly repository: string;
   readonly sha: string | undefined;
@@ -609,6 +610,7 @@ export function serviceRows(input: {
     const { tone, word, activatedAt } = stopView({ deployment, row, nowMs: input.nowMs });
     return {
       hostname,
+      ...(state.serviceId === undefined ? {} : { serviceId: state.serviceId }),
       repository: state.repository,
       // As the name spells it: it keys the deploy-run read, which must not move as main's head
       // arrives, and the run is matched with `sameCommit`.

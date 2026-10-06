@@ -14,7 +14,6 @@ import {
   heldEvidence,
   inventoryProjectRefs,
   organizationProjectsRead,
-  pendingDenials,
   projectRead,
 } from "@t3tools/client-runtime/zerops/account/runtime";
 import {
@@ -47,9 +46,9 @@ import {
 } from "react";
 
 import { ZeropsFrameWait } from "../components/zerops/landing/ZeropsLandingShell";
+import { useAppsEnvironments, useEveryAppId } from "./projectFlows";
 import {
   hqPlacementsAtom,
-  hqEnvironmentsAtom,
   zeropsDataRuntimeAtom,
   zeropsInventoryAtom,
   zeropsSessionAtom,
@@ -326,19 +325,10 @@ export function ZeropsInventoryProvider({
   );
   const accessReadEntries = useMemo(() => [["access", runtime.reads.access] as const], [runtime]);
   const access = useZeropsAtomSelections(accessReadEntries).get("access");
-  const denied = useMemo(() => pendingDenials(evidence), [evidence]);
   /** The account's authority, as the grant last published it (G12). */
   const account = grant.machine.published.account ?? AUTHORIZED;
-  /** The projects a confirming read proved lost (G6). */
-  const lost = useMemo(
-    () =>
-      new Set(
-        [...(evidence?.closedProjects.values() ?? [])]
-          .filter(({ confirmation }) => confirmation.status === "confirmed")
-          .map(({ project }) => project.projectId),
-      ),
-    [evidence],
-  );
+  /** The projects the platform refused or proved gone (G6). */
+  const lost = useMemo(() => new Set<string>(evidence?.closedProjects.keys() ?? []), [evidence]);
 
   const organizationReadEntries = useMemo(
     () =>
@@ -367,7 +357,7 @@ export function ZeropsInventoryProvider({
     [organizationDescriptors],
   );
   const organizationReads = useZeropsAtomSelections(organizationReadEntries);
-  const hqEnvironments = useAtomValue(hqEnvironmentsAtom);
+  const hqEnvironments = useAppsEnvironments(useEveryAppId());
   const knownProjectRefs = useMemo(() => {
     const refs = new Map(
       inventoryProjectRefs(evidenceProjectRefs(evidence), access)
@@ -393,9 +383,9 @@ export function ZeropsInventoryProvider({
     }
     // HQ supplies relations by project id, including projects absent from the search listing.
     // Naming their refs does not read them: a visible stop's deployment demand owns the read.
-    if (activeOrganization !== null && hqEnvironments !== null) {
-      for (const environments of hqEnvironments.values()) {
-        for (const { projectId } of environments) {
+    if (activeOrganization !== null) {
+      for (const { environments } of Object.values(hqEnvironments)) {
+        for (const { projectId } of environments ?? []) {
           if (lost.has(ZeropsProjectId.make(projectId))) continue;
           const ref = projectRef(activeOrganization.id, projectId);
           refs.set(inventoryProjectRefKey(ref), ref);
@@ -452,9 +442,8 @@ export function ZeropsInventoryProvider({
       const project = projectReads.get(key)?.value;
       const dto =
         project?.knowledge === "observed" ? projectRecordToZeropsProject(project.record) : null;
-      // A project withheld until its denial is confirmed holds nothing open (G6).
       if (dto === null) {
-        if (!denied.has(key)) unread.add(ref.organization.organizationId);
+        unread.add(ref.organization.organizationId);
         continue;
       }
       projects.push(dto);
@@ -478,14 +467,7 @@ export function ZeropsInventoryProvider({
       pendingOrganizations: read.pending,
       retrying: read.retrying,
     };
-  }, [
-    denied,
-    documentHidden,
-    organizationDescriptors,
-    organizationReads,
-    projectReads,
-    knownProjectRefs,
-  ]);
+  }, [documentHidden, organizationDescriptors, organizationReads, projectReads, knownProjectRefs]);
 
   const phase = grant.machine.phase;
   /** What the first mount's gate says when its wait failed. */

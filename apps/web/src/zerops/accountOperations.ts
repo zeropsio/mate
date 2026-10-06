@@ -7,6 +7,7 @@ import {
   creationSteps,
   mateRegistration,
   registrationRequestId,
+  accountReadsAtom,
   makeOperations,
   makeHqExecutor,
   makeZeropsExecutor,
@@ -81,6 +82,7 @@ export function accountOperations(
   registry: AtomRegistry.AtomRegistry,
   client: SessionClient,
   demandDetail: (demand: DetailDemand) => () => void,
+  revalidate: (demand: DetailDemand) => void,
 ): AccountOperations {
   let byClient = coordinators.get(store);
   if (byClient === undefined) {
@@ -100,6 +102,9 @@ export function accountOperations(
         store,
         registry,
         demandDetail,
+        revalidate: (orgId, demand) => {
+          if (registry.get(accountReadsAtom)?.orgId === orgId) revalidate(demand);
+        },
         debtOf: () => accountThrowawayDebt(client),
         nowMs: () => Date.now(),
         makeId: randomUUID,

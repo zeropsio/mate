@@ -163,7 +163,8 @@ describe("hq-org-token", () => {
             calls.push(`regenerate ${tokenId}`);
             return "regenerated";
           },
-          writeServiceSecret: async ({ serviceId, key, content }) => {
+          writeServiceSecret: async ({ clientId, serviceId, key, content }) => {
+            expect(clientId).toBe(ORG);
             calls.push(`secret ${serviceId} ${key} ${content}`);
           },
         }).submit(INTENT);
@@ -234,7 +235,8 @@ describe("hq-key-secret", () => {
         const calls: string[] = [];
         yield* operationsOf(store, {
           hasServiceVariable: async ({ key }) => key === "HQ_KEY_SECRET" && held,
-          writeServiceSecret: async ({ serviceId, key, content }) => {
+          writeServiceSecret: async ({ clientId, serviceId, key, content }) => {
+            expect(clientId).toBe(ORG);
             calls.push(`secret ${serviceId} ${key} ${content}`);
           },
         }).submit({ kind: "hq-key-secret", orgId: ORG, serviceId: "svc" });

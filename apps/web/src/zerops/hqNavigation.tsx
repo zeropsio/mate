@@ -8,30 +8,38 @@
  * - **HQ down:** what was read stands, and the menu says since when HQ does not answer
  *   (SPEC §4); chat and terminal to the Mates do not go through HQ and keep working.
  */
-import { RegistryContext } from "@effect/atom-react";
 import { makeHqWire, type HqNavigationRead } from "@t3tools/client-runtime/data";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
-import { useContext, useEffect, useMemo } from "react";
+import { useEffect, useMemo } from "react";
 
-import { hqOfficialAtom } from "../state/zerops";
 import { formatDayAwareTimestamp } from "../timestampFormat";
-import { accountHqApi, useAccountHq, type AccountHq } from "./accountHq";
+import { accountHqApi, useAccountHq } from "./accountHq";
 import { holdHqWrites } from "./hqWrites";
 import { useAccountDataOptional } from "./ZeropsAccountData";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
 /** How the menu says HQ's standing: `null` while it answers, or before anything is known. */
 export interface HqOutage {
-  readonly kind: "syncing" | "unavailable";
+  /**
+   * `syncing`: its first read is catching up, nothing of it shown yet; `last-known`: what it last
+   * said stands, and the menu says so in words; `unavailable`: it refused, or stopped retrying
+   * often, before it ever answered.
+   */
+  readonly kind: "syncing" | "last-known" | "unavailable";
   readonly line: string;
   /** Whether the person's *Try again* is offered: HQ refused, or its retries are capped. */
   readonly again: boolean;
 }
 
+/** What the menu's header says, in words, while what HQ said is not current. */
+export const HQ_LAST_KNOWN = "HQ is not reachable — showing what it last said";
+
 /**
- * What the menu says while HQ does not answer (SPEC §6.2.3): catching up while its stream
- * reconnects — a spinner in the menu's header, the line in its tooltip — and "unavailable" once it
- * refused, or its retries are as far apart as they get; since when, as this tab saw it.
+ * What the menu says while HQ does not answer (SPEC §6.2.3). Once HQ answered, any pause of its
+ * link — catching up, refused, its retries as far apart as they get — leaves what it said on
+ * screen as last known, and the header says so in words; since when, as this tab saw it. Before it
+ * ever answered, a spinner while it catches up, and "unavailable" once it refused or stopped
+ * retrying often.
  */
 export function hqOutage(
   navigation: HqNavigationRead,
@@ -41,45 +49,38 @@ export function hqOutage(
 ): HqOutage | null {
   if (navigation.live) return null;
   const read = navigation.structure !== null;
-  if (navigation.refusal === null && !navigation.capped) {
-    if (!navigation.reconnecting) return null;
-    return {
-      kind: "syncing",
-      line: read ? "Last known · Reconnecting…" : "Reconnecting…",
-      again: false,
-    };
-  }
+  const stopped = navigation.refusal !== null || navigation.capped;
+  if (!stopped && !navigation.reconnecting) return null;
   const since =
     downSince === null
       ? ""
       : ` since ${formatDayAwareTimestamp(new Date(downSince).toISOString(), timestampFormat, nowMs)}`;
   const refusal = navigation.refusal === null ? "" : `${navigation.refusal} `;
-  const retry = navigation.capped ? " Retrying every minute." : "";
-  return { kind: "unavailable", line: `${refusal}HQ unavailable${since}.${retry}`, again: true };
-}
-
-/**
- * Whether the organization has an official HQ, once its verdict is decided: kept, or read off its
- * member list. Null before — no answer of HQ's is waited for where it is false.
- */
-export function hqOfficialOf(accountHq: Pick<AccountHq, "status" | "hq">): boolean | null {
-  return accountHq.status === "ready" ? accountHq.hq.kind === "official" : null;
+  const retry = navigation.capped
+    ? " Retrying every minute."
+    : navigation.refusal === null
+      ? " Reconnecting…"
+      : "";
+  if (read) {
+    const line = `${refusal}HQ is not reachable${since} — showing what it last said.${retry}`;
+    return { kind: "last-known", line, again: stopped };
+  }
+  if (!stopped) return { kind: "syncing", line: "Reconnecting…", again: false };
+  return {
+    kind: "unavailable",
+    line: `${refusal}HQ unavailable${since}.${navigation.capped ? " Retrying every minute." : ""}`,
+    again: true,
+  };
 }
 
 /** Observes the organization in view's HQ for as long as the account shows it. */
 export function ZeropsHqNavigation(): null {
   const { activeOrganization, client, status } = useZeropsSession();
-  const registry = useContext(RegistryContext);
   const showHq = useAccountDataOptional()?.showHq;
   const organizationId = status === "signed-in" ? activeOrganization?.id : undefined;
   const accountHq = useAccountHq(organizationId);
   const hqProjectId = accountHq.hq.kind === "official" ? accountHq.hq.projectId : undefined;
   const hqAddress = accountHq.hq.kind === "official" ? accountHq.hq.address : undefined;
-  const official = organizationId === undefined ? null : hqOfficialOf(accountHq);
-
-  useEffect(() => {
-    registry.set(hqOfficialAtom, official);
-  }, [official, registry]);
 
   const api = useMemo(
     () =>
@@ -96,12 +97,23 @@ export function ZeropsHqNavigation(): null {
     [api, organizationId],
   );
   // A new wire for the same organization's HQ moves the link to it; the link stops only once no
-  // HQ is named, or with this mount.
+  // HQ is named, or with this mount. Without one, the account holds its verdict: none, the member
+  // list unreadable, or not decided yet.
+  const verdict =
+    accountHq.status === "failed"
+      ? "unreadable"
+      : accountHq.status === "ready" && accountHq.hq.kind !== "official"
+        ? "none"
+        : "pending";
   useEffect(() => {
     showHq?.(
-      organizationId === undefined || wire === null ? null : { orgId: organizationId, wire },
+      organizationId === undefined
+        ? null
+        : wire === null
+          ? { orgId: organizationId, verdict }
+          : { orgId: organizationId, wire },
     );
-  }, [organizationId, showHq, wire]);
+  }, [organizationId, showHq, verdict, wire]);
   useEffect(() => () => showHq?.(null), [showHq]);
 
   return null;

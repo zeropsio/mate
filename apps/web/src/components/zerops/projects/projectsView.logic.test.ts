@@ -6,7 +6,6 @@ import {
   type GroupFlowInput,
   type GroupNextStepKind,
   type ZeropsGroup,
-  type ZeropsOrganization,
   type ZeropsProject,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
@@ -27,7 +26,6 @@ import {
   stopLine,
   nextStepAwaitsSomebody,
   parseProjectsSearch,
-  mayAddEnvironment,
   tiersAddable,
   rowMateActivitiesOf,
   risenFirst,
@@ -478,37 +476,24 @@ describe("groupMemberFactsOf — whether a Mate was spoken to", () => {
         [{ item: mate(group), role: "dev" }],
         () => found,
         () => conversationsRead,
-        undefined,
+        () => false,
       );
       expect(facts?.mate?.talked).toBe(talked);
     });
   }
 
-  // A Mate asking waits on the viewer only when it is theirs (`mateIsViewers`): the overview's
+  // A Mate asking waits on the viewer only when HQ says it does (`waitsOnViewer`): the overview's
   // "is waiting on an answer" step says what the group's detail and the menu say.
   it.each([
-    { case: "own Mate asking", signer: "u-petra", waiting: true },
-    { case: "a colleague's Mate asking", signer: "u-karlos", waiting: false },
-    { case: "nobody's Mate asking", signer: undefined, waiting: false },
-  ])("$case waits on the viewer: $waiting", ({ signer, waiting }) => {
-    const asking = mate("connected");
-    // Who signed it in, as HQ's overview of its logins names them.
-    const logins =
-      signer === undefined
-        ? {}
-        : { "claude-code": { signedInBy: signer, present: true, token: false } };
-    const item = {
-      ...asking,
-      project: {
-        ...asking.project,
-        hq: { appId: "g", appName: "G", kind: "mate", mate: { name: "Wren", face: "", logins } },
-      },
-    } as ZeropsCandidate;
+    { case: "a Mate HQ says waits on the viewer, asking", waitsOnViewer: true, waiting: true },
+    { case: "a Mate HQ says waits on someone else, asking", waitsOnViewer: false, waiting: false },
+  ])("$case: $waiting", ({ waitsOnViewer, waiting }) => {
+    const item = mate("connected");
     const [facts] = groupMemberFactsOf(
       [{ item, role: "dev" }],
       () => ({ ...activity("Which port?"), kind: "input", face: "needs" }),
       () => true,
-      "u-petra",
+      (projectId) => projectId === item.project.id && waitsOnViewer,
     );
     expect(facts?.mate?.waiting).toBe(waiting);
   });
@@ -529,7 +514,7 @@ describe("groupMemberFactsOf — whether a Mate was spoken to", () => {
       [{ item: mate(group), role: "dev" }],
       () => ({ ...activity("Fix it"), face, ...rest }),
       () => true,
-      undefined,
+      () => false,
     );
     const input = groupFlowInputOf({
       groupId: "g",
@@ -546,7 +531,7 @@ describe("groupMemberFactsOf — whether a Mate was spoken to", () => {
       [{ item: mate("ready"), role: "dev" }],
       () => undefined,
       () => false,
-      undefined,
+      () => false,
     );
     const input = groupFlowInputOf({
       groupId: "g",
@@ -992,21 +977,14 @@ describe("a project row's Mates — what each is on", () => {
 });
 
 describe("tiersAddable", () => {
-  const ME = "member-1";
   type Tier = "stage" | "production";
-  const project = (id: string, userRoles?: ZeropsProject["userRoles"]) =>
-    ({
-      id,
-      name: id,
-      status: "ACTIVE",
-      ...(userRoles === undefined ? {} : { userRoles }),
-    }) as ZeropsProject;
   const entry = (id: string, role: "dev" | "stage" | "prod" | "devstage") => ({
-    project: project(id),
+    project: { id, name: id, status: "ACTIVE" } as ZeropsProject,
     role,
   });
+  const BOTH = { stage: true, production: true };
   const ask = (over: {
-    org?: Partial<ZeropsOrganization> | null;
+    offered?: { stage: boolean; production: boolean } | null;
     environments?: ReadonlyArray<{
       project: ZeropsProject;
       role: "dev" | "stage" | "prod" | "devstage";
@@ -1016,16 +994,7 @@ describe("tiersAddable", () => {
     recipe?: { read: boolean; tiers: ReadonlyArray<Tier> };
   }) =>
     tiersAddable({
-      organization:
-        over.org === null
-          ? null
-          : ({
-              id: "o",
-              name: "Acme",
-              membershipId: ME,
-              roleCode: "ADMIN",
-              ...over.org,
-            } as ZeropsOrganization),
+      offered: over.offered === undefined ? BOTH : over.offered,
       group: {
         environments: over.environments ?? [entry("dev", "dev")],
         pending: over.pending ?? [],
@@ -1033,31 +1002,22 @@ describe("tiersAddable", () => {
       hq: over.hq ?? [],
       recipe: over.recipe ?? { read: true, tiers: ["stage", "production"] },
     });
-  const developer = { roleCode: "NO_ACCESS", canCreateProjects: true };
-  const mine = {
-    project: project("m", [{ clientUserId: ME, roleCode: "BASIC_USER" }]),
-    role: "dev" as const,
-  };
 
   it.each<[string, Parameters<typeof ask>[0], ReadonlyArray<Tier>]>([
-    ["an admin, nothing added", {}, ["stage", "production"]],
-    ["nobody known", { org: null }, []],
+    ["HQ offers both, nothing added", {}, ["stage", "production"]],
+    ["HQ has not said", { offered: null }, []],
+    [
+      "HQ offers only a production",
+      { offered: { stage: false, production: true } },
+      ["production"],
+    ],
     ["the recipe not read", { recipe: { read: false, tiers: [] } }, []],
     [
-      "a Mate that is also the stage, a developer: the stage is there",
-      { org: developer, environments: [mine, entry("v", "devstage")] },
+      "a Mate that is also the stage: the stage is there",
+      { environments: [entry("m", "dev"), entry("v", "devstage")] },
       ["production"],
     ],
-    [
-      "a stage held, an admin: another may be added",
-      { environments: [entry("s", "stage")] },
-      ["stage", "production"],
-    ],
-    [
-      "a stage held, a developer: only a production",
-      { org: developer, environments: [mine, entry("s", "stage")] },
-      ["production"],
-    ],
+    ["a stage held", { environments: [entry("s", "stage")] }, ["production"]],
     [
       "a production made as one, HQ not holding it",
       { environments: [entry("p", "prod")] },
@@ -1077,64 +1037,10 @@ describe("tiersAddable", () => {
           { id: "p", tier: "production" },
         ],
       },
-      ["stage"],
+      [],
     ],
     ["the recipe holds only the stage", { recipe: { read: true, tiers: ["stage"] } }, ["stage"]],
   ])("%s", (_name, over, expected) => {
     expect(ask(over)).toEqual(expected);
-  });
-});
-
-// An application's environments are offered to the people HQ takes them from: an owner or admin of
-// the organization, or a member who may create projects and develops the application - at least a
-// Basic user on one of its projects. A project made for anybody else is one whose attachment is
-// then refused.
-describe("mayAddEnvironment", () => {
-  const ME = "member-1";
-  type Roles = ReadonlyArray<{ clientUserId: string; roleCode: string }>;
-  const on = (roleCode: string, clientUserId = ME): { userRoles: Roles } => ({
-    userRoles: [{ clientUserId, roleCode }],
-  });
-  it.each([
-    {
-      case: "an owner",
-      org: { roleCode: "OWNER" },
-      projects: [] as ReadonlyArray<{ userRoles?: Roles }>,
-      may: true,
-    },
-    { case: "an admin", org: { roleCode: "ADMIN" }, projects: [], may: true },
-    {
-      case: "a developer with a Basic user grant on one of its projects",
-      org: { roleCode: "NO_ACCESS", canCreateProjects: true },
-      projects: [{}, on("BASIC_USER")],
-      may: true,
-    },
-    {
-      case: "a developer whose org role already reaches Basic user",
-      org: { roleCode: "BASIC_USER", canCreateProjects: true },
-      projects: [{}],
-      may: true,
-    },
-    {
-      case: "a developer with no grant on its projects",
-      org: { roleCode: "NO_ACCESS", canCreateProjects: true },
-      projects: [{}, on("BASIC_USER", "somebody-else")],
-      may: false,
-    },
-    {
-      case: "a developer who only reads its projects",
-      org: { roleCode: "NO_ACCESS", canCreateProjects: true },
-      projects: [on("READ_ONLY")],
-      may: false,
-    },
-    {
-      case: "a Basic user who may not create projects",
-      org: { roleCode: "BASIC_USER", canCreateProjects: false },
-      projects: [on("ADMIN")],
-      may: false,
-    },
-    { case: "a reader", org: { roleCode: "READ_ONLY" }, projects: [], may: false },
-  ])("is $may for $case", ({ org, projects, may }) => {
-    expect(mayAddEnvironment({ organization: { membershipId: ME, ...org }, projects })).toBe(may);
   });
 });

@@ -1,7 +1,8 @@
 /**
  * The web's binding to the account runtime's Mate environments (DESIGN §7.3): the post-grant
- * stage the host binds once the epoch's first grant built it, and the hooks surfaces read it
- * through. The stores are the runtime's; nothing here holds a fact of its own.
+ * stage the host binds once the epoch's first grant built it — what surfaces ask of it — and the
+ * hooks surfaces read each Mate through: projections of what the Mate adapter wrote to the
+ * account's store (`mateLinks`). Nothing here holds a fact of its own.
  *
  * Closing the account lifetime unbinds it at once: a reader after sign-out sees no environments.
  */
@@ -17,23 +18,28 @@ import type {
 } from "@t3tools/client-runtime/zerops/account/runtime";
 import { normalizeOrigin, type ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { CapabilityRefusal, OrganizationRef } from "@t3tools/client-runtime/zerops/data";
+import {
+  mateOfEnvironmentAtom,
+  shownMateLinksAtom,
+  type MateLinkValue,
+} from "@t3tools/client-runtime/data";
 import type { IdentityExchangeReason } from "@t3tools/client-runtime/zerops/diagnostics";
 import {
   environmentTarget,
+  indexDescriptors,
   isTerminalReachability,
   reachabilityPhrase,
   resolveEnvironment,
   selectReachability,
   type ConnectOutcome,
-  type ContainerMachine,
   type DescriptorIndex,
   type EnvironmentMachine,
   type TargetKey,
 } from "@t3tools/client-runtime/zerops/environments";
 import type { ZeropsIdentityExchangeResult } from "@t3tools/client-runtime/zerops/identityExchange";
 import type { EnvironmentId } from "@t3tools/contracts";
-import { Atom } from "effect/unstable/reactivity";
-import { useCallback, useContext, useEffect, useSyncExternalStore } from "react";
+import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
+import { useCallback, useContext, useEffect, useMemo, useSyncExternalStore } from "react";
 
 import { useAtomCommand } from "../state/use-atom-command";
 import { hqMatesAtom, hqProjectOf, hqProjectAtom } from "../state/zerops";
@@ -134,30 +140,38 @@ export function useAccountEnvironmentsSnapshot<T>(
 
 // ── What surfaces read ───────────────────────────────────────────────────────────────────────
 
-const NO_MACHINES: ReadonlyMap<TargetKey, EnvironmentMachine> = new Map();
-const NO_CONTAINERS: ReadonlyMap<TargetKey, ContainerMachine> = new Map();
-const NO_INDEX: DescriptorIndex = {
-  serving: new Map(),
-  reported: new Map(),
-};
-const machinesOf = (environments: AccountEnvironments) => environments.machines();
-const containersOf = (environments: AccountEnvironments) => environments.containers();
-const indexOf = (environments: AccountEnvironments) => environments.index();
-
-/** Every Mate target's environment machine (§4.4). */
+/** Every Mate target's environment machine (§4.4), as the account's store holds it. */
 export function useEnvironmentMachines(): ReadonlyMap<TargetKey, EnvironmentMachine> {
-  return useAccountEnvironmentsSnapshot(machinesOf, NO_MACHINES);
+  return useAtomValue(shownMateLinksAtom).machines;
 }
 
-/** Every Mate target's container machine (§4.5). */
-export function useContainerMachines(): ReadonlyMap<TargetKey, ContainerMachine> {
-  return useAccountEnvironmentsSnapshot(containersOf, NO_CONTAINERS);
+/** Each Mate shown, as the account's store holds it: its machines, and whether it is read now. */
+export function useMateLinkValues(): ReadonlyMap<TargetKey, MateLinkValue> {
+  return useAtomValue(shownMateLinksAtom).targets;
 }
 
 /** The descriptor index over every present target (§4.8). */
 export function useDescriptorIndex(): DescriptorIndex {
-  return useAccountEnvironmentsSnapshot(indexOf, NO_INDEX);
+  const links = useAtomValue(shownMateLinksAtom);
+  return useMemo(() => indexDescriptors(links.machines, links.containers), [links]);
 }
+
+/**
+ * Where the Mate serving an environment is, as this tab read it: its project, the organization
+ * that lists it and its address. Undefined while no Mate read names the environment.
+ */
+export function useMateOfEnvironment(environmentId: string | null | undefined):
+  | {
+      readonly projectId: string;
+      readonly orgId: string | null;
+      readonly origin: string | null;
+    }
+  | undefined {
+  const mate = useAtomValue(environmentId == null ? NO_MATE : mateOfEnvironmentAtom(environmentId));
+  return mate ?? undefined;
+}
+
+const NO_MATE = Atom.make(null);
 
 const NO_CLOSE_OFF_HOLDS: ReadonlyMap<string, CloseOffHold> = new Map();
 const closeOffHoldsOf = (environments: AccountEnvironments) => environments.closeOffHolds();
@@ -184,28 +198,17 @@ export function useMateDetailRead(
   const hqProject = useAtomValue(
     environmentId === null ? NO_DETAIL_PROJECT : hqProjectAtom(environmentId),
   );
-  const projectOf = useCallback(
-    (environments: AccountEnvironments) =>
-      projectId ??
-      hqProject ??
-      environments.records().find((record) => record.environmentId === environmentId)?.projectRef
-        ?.projectId ??
-      null,
-    [environmentId, hqProject, projectId],
-  );
+  const mate = useMateOfEnvironment(environmentId);
+  const project = projectId ?? hqProject ?? mate?.projectId ?? null;
   const read = useCallback(
-    (environments: AccountEnvironments) => {
-      const project = projectOf(environments);
-      return project === null ? null : environments.detailFailure(project);
-    },
-    [projectOf],
+    (environments: AccountEnvironments) =>
+      project === null ? null : environments.detailFailure(project),
+    [project],
   );
   const failure = useAccountEnvironmentsSnapshot(read, null);
   const again = useCallback(() => {
-    if (account === null) return;
-    const project = projectOf(account);
-    if (project !== null) account.retryDetail(project);
-  }, [account, projectOf]);
+    if (account !== null && project !== null) account.retryDetail(project);
+  }, [account, project]);
   return { failure, again };
 }
 
@@ -219,7 +222,28 @@ const NO_DETAIL_PROJECT = Atom.make<string | null>(null);
  */
 export const MATE_HOLD_WAIT_MS = 30_000;
 
-type HeldEnvironments = Pick<AccountEnvironments, "hold" | "machines" | "subscribe">;
+/**
+ * What an action's lease reaches: the stage's `hold`, and the Mates as the account's store holds
+ * them — read now, and heard as they change.
+ */
+export interface HeldEnvironments {
+  readonly hold: AccountEnvironments["hold"];
+  readonly machines: () => ReadonlyMap<TargetKey, EnvironmentMachine>;
+  readonly subscribe: (listener: () => void) => () => void;
+}
+
+/** The stage's lease over the Mates as `registry` holds them; null while no stage is bound. */
+export function heldEnvironments(
+  environments: AccountEnvironments | null,
+  registry: AtomRegistry.AtomRegistry,
+): HeldEnvironments | null {
+  if (environments === null) return null;
+  return {
+    hold: environments.hold,
+    machines: () => registry.get(shownMateLinksAtom).machines,
+    subscribe: (listener) => registry.subscribe(shownMateLinksAtom, listener),
+  };
+}
 
 /**
  * Whether a command for `environmentId` can go: its Mate's link is up on that environment's
@@ -310,7 +334,7 @@ export function useMateCommand<A, E, W extends { readonly environmentId: Environ
   const atoms = useContext(RegistryContext);
   return useCallback(
     (value: W) =>
-      whileMateHeld(environments, value.environmentId, () => send(value), {
+      whileMateHeld(heldEnvironments(environments, atoms), value.environmentId, () => send(value), {
         named: hqProjectOf(atoms.get(hqMatesAtom), value.environmentId) !== null,
       }),
     [atoms, environments, send],
@@ -448,9 +472,10 @@ export function useTryMateAgain(): (environmentId: EnvironmentId) => void {
   return useCallback(
     (environmentId: EnvironmentId) => {
       if (environments === null) return;
+      const { machines, containers } = atoms.get(shownMateLinksAtom);
       const key = tryAgainTarget({
-        machines: environments.machines(),
-        index: environments.index(),
+        machines,
+        index: indexDescriptors(machines, containers),
         environmentId,
         hqProject: hqProjectOf(atoms.get(hqMatesAtom), environmentId),
       });

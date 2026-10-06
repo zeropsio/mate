@@ -232,6 +232,40 @@ export function makeFakeZeropsRest(): FakeZeropsRest {
       projects.set(projectId!, updated);
       return json(200, updated);
     }
+    // A member's project roles, read and written whole (`setProjectMemberRole`): each project's
+    // `userRoles` names the member with the role the list gives it there, or not at all.
+    const memberRoles = /^(GET|PUT) \/client-user\/([^/]+)\/roles$/.exec(request.route);
+    if (memberRoles !== null) {
+      const [, method, clientUserId] = memberRoles;
+      if (bearer === undefined) return failure(401, "unauthorized");
+      if (method === "GET")
+        return json(200, {
+          projectRoleList: [...projects.values()].flatMap((project) =>
+            (project.userRoles ?? [])
+              .filter((role) => role.clientUserId === clientUserId)
+              .map(({ roleCode }) => ({ projectId: project.id, roleCode })),
+          ),
+        });
+      const list = (
+        request.body as {
+          readonly projectRoleList: ReadonlyArray<{ projectId: string; roleCode: string }>;
+        }
+      ).projectRoleList;
+      for (const project of projects.values()) {
+        const others = (project.userRoles ?? []).filter(
+          (role) => role.clientUserId !== clientUserId,
+        );
+        const given = list.find((entry) => entry.projectId === project.id);
+        projects.set(project.id, {
+          ...project,
+          userRoles:
+            given === undefined
+              ? others
+              : [...others, { clientUserId: clientUserId!, roleCode: given.roleCode }],
+        });
+      }
+      return json(200, { projectRoleList: list });
+    }
     const tokenList = /^GET \/client\/([^/]+)\/integration-token\/list$/.exec(request.route);
     if (tokenList !== null) {
       if (bearer === undefined) return failure(401, "unauthorized");
@@ -338,13 +372,14 @@ export function makeFakeZeropsRest(): FakeZeropsRest {
         return json(200, { items, totalHits: items.length });
       }
       // The account store's receiver: its login, and the running work, active versions and
-      // services it registers (none here).
+      // services and public routings it registers (none here).
       case "POST /web-socket/login":
         if (bearer === undefined) return failure(401, "unauthorized");
         return json(200, { webSocketToken: `ws-${request.token}` });
       case "POST /process/search":
       case "POST /app-version/search":
       case "POST /service-stack/search":
+      case "POST /public-http-routing/search":
         if (bearer === undefined) return failure(401, "unauthorized");
         return json(200, { items: [], totalHits: 0 });
       case "GET /user/info": {

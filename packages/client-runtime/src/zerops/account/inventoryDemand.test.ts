@@ -6,6 +6,10 @@ import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { Atom, AtomRegistry } from "effect/unstable/reactivity";
 
+import { liveProjects, projectValue, zeropsVersion } from "../../data/__fixtures__/account.ts";
+import { projectsScope, type ProjectValue } from "../../data/families/project.ts";
+import { accountReadsAtom, projectStandingAtom } from "../../data/reads.ts";
+import { makeAccountStore } from "../../data/store.ts";
 import { account, organization, project, scope } from "../data/__fixtures__/index.ts";
 import {
   initialGrant,
@@ -15,7 +19,7 @@ import {
   type Instant,
   type ProjectOutcome,
 } from "../data/access/grant.ts";
-import type { AccessVerifier } from "../data/access/verifier.ts";
+import { makeRestAccessVerifier, type AccessVerifier } from "../data/access/verifier.ts";
 import { DEFAULT_ZEROPS_GRANT_POLICY } from "../data/policy.ts";
 import { makeZeropsDataRuntime } from "../data/runtime.ts";
 import {
@@ -29,6 +33,7 @@ import {
 import {
   heldEvidence,
   holdInventoryDemand,
+  holdListedAccess,
   inventoryDemand,
   inventoryProjectRefs,
 } from "./inventoryDemand.ts";
@@ -105,7 +110,7 @@ describe("inventoryDemand", () => {
         },
       ]);
       expect(
-        inventoryDemand({ activeOrganizationId, grant, openedServices: [] }).map((row) =>
+        inventoryDemand({ activeOrganizationId, grant }).map((row) =>
           "organization" in row
             ? row.organization.organizationId
             : row.project.organization.organizationId,
@@ -204,25 +209,199 @@ it("does not turn admitted navigation projects into detail or deploy demand", ()
     inventoryDemand({
       activeOrganizationId: organization.organizationId,
       grant: drive(granted),
-      openedServices: [],
     }).map(({ kind }) => kind),
   ).toEqual(["organization-inventory"]);
 });
-
-it("navigation reads only Mate flags; opened detail reads all variables", () => {
-  const grant = drive(granted);
-  const descriptors = inventoryDemand({
-    activeOrganizationId: organization.organizationId,
-    grant,
-    openedServices: [
-      { project: A, serviceIds: ["app"], detail: false, mateServiceIds: [] },
-      { project: B, serviceIds: ["zcp", "app"], detail: false, mateServiceIds: ["zcp"] },
-      { project: C, serviceIds: ["zcp"], detail: false, mateServiceIds: ["zcp"] },
-      { project: C, serviceIds: ["app"], detail: true, mateServiceIds: [] },
-    ],
+describe("holdListedAccess", () => {
+  const settle = Effect.gen(function* () {
+    for (let turn = 0; turn < 20; turn++) {
+      yield* Effect.promise(() => new Promise<void>((resolve) => setImmediate(resolve)));
+      yield* Effect.yieldNow;
+    }
   });
-  expect(descriptors.filter((row) => row.kind !== "organization-inventory")).toEqual([
-    { kind: "project-variables", project: B, serviceIds: ["zcp"] },
-    { kind: "project-variables", project: C, serviceIds: ["app"] },
-  ]);
+  const silentAdapter: ZeropsDataAdapter = {
+    openReceiver: () => Effect.never,
+    register: () => Effect.never,
+    read: () => Effect.never,
+    execute: () => Effect.never,
+    closeReceiver: () => Effect.void,
+  };
+
+  it.effect(
+    "the grant admits each project the shown roster lists, on its row, without reading one",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const orgId = organization.organizationId;
+          const registry = AtomRegistry.make();
+          const store = makeAccountStore(registry);
+          liveProjects(orgId, [{ id: "project-a" }]).forEach(store.dispatch);
+          registry.set(accountReadsAtom, {
+            data: store.data,
+            orgId,
+            demandDetail: () => () => {},
+            renewHeld: () => {},
+          });
+          const data = yield* makeZeropsDataRuntime({
+            scope: scope(),
+            adapter: silentAdapter,
+            atomRegistry: registry,
+            makeOpaqueId: () => "opaque",
+          });
+          yield* Effect.addFinalizer(() =>
+            data
+              .shutdown("application-close")
+              .pipe(Effect.andThen(Effect.sync(() => registry.dispose()))),
+          );
+          yield* holdListedAccess({ data, atomRegistry: registry });
+          yield* data.access.start({
+            verifier: makeRestAccessVerifier({
+              client: {
+                fetchUser: async () => ({
+                  id: account.accountId,
+                  email: "person@example.test",
+                  clientUserList: [{ id: "membership", clientId: orgId, roleCode: "OWNER" }],
+                }),
+              },
+              standing: (ref) => registry.get(projectStandingAtom(ref.projectId)),
+              account,
+              onUser: () => {},
+            }),
+            hidden: false,
+            online: true,
+          });
+          yield* settle;
+          const admitted = () =>
+            [...(heldEvidence(registry.get(data.access.view).machine)?.projects.values() ?? [])]
+              .map(({ access }) => `${access.project.projectId}:${access.role}`)
+              .toSorted();
+          expect(admitted()).toEqual(["project-a:OWNER"]);
+
+          // Someone creates a project anywhere: the roster lists it, and the grant admits it.
+          const scopeKey = projectsScope(orgId);
+          store.dispatch({
+            kind: "membership",
+            scope: scopeKey,
+            generation: 1,
+            delta: { add: ["project-b"], remove: [] },
+          });
+          store.dispatch({
+            kind: "rows",
+            scope: scopeKey,
+            generation: 1,
+            method: "push",
+            via: "zerops-realtime",
+            rows: [
+              {
+                family: "project",
+                id: "project-b",
+                value: projectValue({ id: "project-b", clientId: orgId }),
+                revision: zeropsVersion(1),
+              },
+            ],
+          });
+          yield* settle;
+          expect(admitted()).toEqual(["project-a:OWNER", "project-b:OWNER"]);
+
+          // Its owner refuses project-a: the store withholds it, and the grant closes it at once.
+          store.dispatch({ kind: "access", family: "project", id: "project-a", access: "denied" });
+          yield* settle;
+          expect(admitted()).toEqual(["project-b:OWNER"]);
+          expect([
+            ...(heldEvidence(registry.get(data.access.view).machine)?.closedProjects.keys() ?? []),
+          ]).toEqual(["project-a"]);
+        }),
+      ),
+  );
+
+  it.effect(
+    "a listed project whose row names other grants is judged again at once, on that row alone",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const orgId = organization.organizationId;
+          const registry = AtomRegistry.make();
+          const store = makeAccountStore(registry);
+          const scopeKey = projectsScope(orgId);
+          const push = (value: Partial<ProjectValue>, version: number) =>
+            store.dispatch({
+              kind: "rows",
+              scope: scopeKey,
+              generation: 1,
+              method: "push",
+              via: "zerops-realtime",
+              rows: [
+                {
+                  family: "project",
+                  id: "project-a",
+                  value: { ...projectValue({ id: "project-a", clientId: orgId }), ...value },
+                  revision: zeropsVersion(version),
+                },
+              ],
+            });
+          liveProjects(orgId, [{ id: "project-a" }]).forEach(store.dispatch);
+          push({ viewerRoleCode: "READ_ONLY" }, 2);
+          registry.set(accountReadsAtom, {
+            data: store.data,
+            orgId,
+            demandDetail: () => () => {},
+            renewHeld: () => {},
+          });
+          const data = yield* makeZeropsDataRuntime({
+            scope: scope(),
+            adapter: silentAdapter,
+            atomRegistry: registry,
+            makeOpaqueId: () => "opaque",
+          });
+          yield* Effect.addFinalizer(() =>
+            data
+              .shutdown("application-close")
+              .pipe(Effect.andThen(Effect.sync(() => registry.dispose()))),
+          );
+          let judged = 0;
+          yield* holdListedAccess({ data, atomRegistry: registry });
+          yield* data.access.start({
+            verifier: makeRestAccessVerifier({
+              client: {
+                fetchUser: async () => ({
+                  id: account.accountId,
+                  email: "person@example.test",
+                  clientUserList: [{ id: "membership", clientId: orgId, roleCode: "NO_ACCESS" }],
+                }),
+              },
+              standing: (ref) => {
+                judged++;
+                return registry.get(projectStandingAtom(ref.projectId));
+              },
+              account,
+              onUser: () => {},
+            }),
+            hidden: false,
+            online: true,
+          });
+          yield* settle;
+          const admitted = () =>
+            [
+              ...(heldEvidence(registry.get(data.access.view).machine)?.projects.values() ?? []),
+            ].map(({ access }) => `${access.project.projectId}:${access.role}`);
+          expect(admitted()).toEqual(["project-a:READ_ONLY"]);
+          const rounds = () => {
+            const phase = registry.get(data.access.view).machine.phase;
+            return phase.phase === "granted" ? phase.renewal.status : phase.phase;
+          };
+
+          // An override is granted the READ_ONLY member: it applies with the push that names it.
+          push({ viewerRoleCode: "BASIC_USER" }, 3);
+          yield* settle;
+          expect(admitted()).toEqual(["project-a:BASIC_USER"]);
+          expect(rounds()).toBe("idle");
+
+          // A push that names the same grants judges nothing again.
+          const before = judged;
+          push({ viewerRoleCode: "BASIC_USER", name: "Renamed" }, 4);
+          yield* settle;
+          expect(judged).toBe(before);
+        }),
+      ),
+  );
 });

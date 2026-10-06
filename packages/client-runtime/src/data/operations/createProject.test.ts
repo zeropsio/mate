@@ -157,7 +157,6 @@ describe("create-project", () => {
 
   it.effect("reads no listing at the send where the account holds the projects wholly read", () =>
     Effect.gen(function* () {
-      const store = account();
       const calls: unknown[] = [];
       const submit = createProjectExecutor({
         createProject: async () => ({ id: "p9" }),

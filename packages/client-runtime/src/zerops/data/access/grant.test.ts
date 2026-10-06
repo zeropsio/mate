@@ -573,7 +573,7 @@ describe("access grant reducer", () => {
     expect(sim.state.phase.phase).toBe(phase);
   });
 
-  it("closes a denied project's writes at once and withholds its content without removing it (G6)", () => {
+  it("closes a denied project at once and for good: no read confirms it later (G6)", () => {
     const sim = grantedSim();
     sim.elapse(MINUTE);
     const before = sim.effects.length;
@@ -589,25 +589,16 @@ describe("access grant reducer", () => {
       reason: "access-denied",
       cause: null,
     });
-    expect(effects).not.toContainEqual(
-      expect.objectContaining({
-        kind: "observe",
-        observation: expect.objectContaining({ kind: "project-gone" }),
-      }),
-    );
-
-    sim.elapse(4 * SECOND);
-    sim.send({ type: "TICK" });
-    expect(sim.runs.some((run) => run.op.kind === "confirm-denial")).toBe(false);
-    sim.elapse(SECOND);
-    sim.send({ type: "TICK" });
-    const confirm = sim.lastRun("confirm-denial");
-    expect(confirm.op).toEqual({ kind: "confirm-denial", project: A });
-    sim.send({ type: "PROJECT_RESULT", attempt: confirm.attempt, project: A, outcome: forbidden });
-    expect(sim.effectsSince(before)).toContainEqual({
+    expect(effects).toContainEqual({
       kind: "observe",
       observation: { kind: "project-gone", project: A, evidence: "direct-forbidden" },
     });
+
+    // A definitive refusal is never asked again by a clock: no read of A follows, then or later.
+    const runs = sim.runs.length;
+    sim.elapse(10 * MINUTE);
+    sim.send({ type: "TICK" });
+    expect(sim.runs.slice(runs).filter((run) => run.op.kind !== "verify-round")).toEqual([]);
     expect(sim.write(A).allowed).toBe(false);
   });
 
@@ -703,55 +694,34 @@ describe("access grant reducer", () => {
     expect(gaps).toEqual([21 * SECOND, 41 * SECOND, 61 * SECOND]);
   });
 
-  it.each([
-    ["a second 403 confirms it gone", forbidden, false],
-    ["a 200 reopens it", verified(A), true],
-  ] as const)(
-    "keeps a project that 403s once after a lapse withheld until confirmed: %s (G6, T-L20)",
-    (_label, confirmation, reopened) => {
-      const sim = grantedSim();
-      sim.elapse(30 * MINUTE);
-      sim.send({ type: "USER_RETRY" });
-      sim.elapse(2 * SECOND);
-      const before = sim.effects.length;
-      sim.answerRound([
-        [A, forbidden],
-        [B, verified(B)],
-      ]);
-      const effects = sim.effectsSince(before);
-      expect(sim.state.phase.phase).toBe("granted");
-      expect(effects).toContainEqual({
-        kind: "restore-authority",
-        scope: { kind: "project", project: B },
-      });
-      expect(effects).not.toContainEqual({
-        kind: "restore-authority",
-        scope: { kind: "project", project: A },
-      });
-      expect(effects).toContainEqual({
-        kind: "withhold",
-        scope: { kind: "project", project: A },
-        reason: "access-denied",
-        cause: null,
-      });
-      expect(sim.write(A).allowed).toBe(false);
-
-      sim.elapse(5 * SECOND);
-      sim.send({ type: "TICK" });
-      const confirm = sim.lastRun("confirm-denial");
-      const settled = sim.effects.length;
-      sim.send({
-        type: "PROJECT_RESULT",
-        attempt: confirm.attempt,
-        project: A,
-        outcome: confirmation,
-      });
-      expect(sim.read(A).allowed).toBe(reopened);
-      expect(sim.effectsSince(settled).some((effect) => effect.kind === "restore-authority")).toBe(
-        reopened,
-      );
-    },
-  );
+  it("closes a project that 403s in the round after a lapse, and restores the others (G6, T-L20)", () => {
+    const sim = grantedSim();
+    sim.elapse(30 * MINUTE);
+    sim.send({ type: "USER_RETRY" });
+    sim.elapse(2 * SECOND);
+    const before = sim.effects.length;
+    sim.answerRound([
+      [A, forbidden],
+      [B, verified(B)],
+    ]);
+    const effects = sim.effectsSince(before);
+    expect(sim.state.phase.phase).toBe("granted");
+    expect(effects).toContainEqual({
+      kind: "restore-authority",
+      scope: { kind: "project", project: B },
+    });
+    expect(effects).toContainEqual({
+      kind: "withhold",
+      scope: { kind: "project", project: A },
+      reason: "access-denied",
+      cause: null,
+    });
+    expect(effects).toContainEqual({
+      kind: "observe",
+      observation: { kind: "project-gone", project: A, evidence: "direct-forbidden" },
+    });
+    expect(sim.write(A).allowed).toBe(false);
+  });
 
   it.each([
     [0, 30 * SECOND],
@@ -1314,6 +1284,61 @@ describe("access grant: grants this account wrote", () => {
   });
 });
 
+describe("access grant: a project judged again on its row's changed grants", () => {
+  /** A tab granted A at `mutationsAllowed`, and B, a minute ago. */
+  const judgedSim = (mutationsAllowed: boolean) => {
+    const sim = new GrantSim();
+    sim.send({ type: "PROJECTS_DEMANDED", projects: [A, B] });
+    sim.send({ type: "START" });
+    sim.answerRound([
+      [A, verified(A, mutationsAllowed)],
+      [B, verified(B)],
+    ]);
+    sim.elapse(MINUTE);
+    return sim;
+  };
+
+  it.each([
+    { name: "an override granted to a READ_ONLY member applies at once", from: false, to: true },
+    { name: "a grant lowered to READ_ONLY applies at once", from: true, to: false },
+  ])("$name, with no read", ({ from, to }) => {
+    const sim = judgedSim(from);
+    const runs = sim.runs.length;
+    sim.send({ type: "PROJECT_JUDGED", project: A, outcome: verified(A, to) });
+    expect(sim.write(A).allowed).toBe(to);
+    expect(sim.write(B).allowed).toBe(true);
+    expect(sim.runs.slice(runs)).toEqual([]);
+  });
+
+  it("closes a project its row's owner refused", () => {
+    const sim = judgedSim(true);
+    sim.send({ type: "PROJECT_JUDGED", project: A, outcome: forbidden });
+    expect(sim.write(A)).toEqual({ allowed: false, reason: "project-closed", waitable: false });
+  });
+
+  it("revives no refusal, and takes no judgement that did not answer", () => {
+    const sim = judgedSim(true);
+    sim.send({ type: "PROJECT_DENIED", project: A, evidence: "direct-forbidden" });
+    sim.send({ type: "PROJECT_JUDGED", project: A, outcome: verified(A) });
+    expect(sim.write(A)).toEqual({ allowed: false, reason: "project-closed", waitable: false });
+    sim.send({ type: "PROJECT_JUDGED", project: B, outcome: failed });
+    expect(sim.write(B).allowed).toBe(true);
+  });
+
+  it("judges a round in flight's own answer again, so its completion takes the newer one", () => {
+    const sim = judgedSim(false);
+    sim.elapse(12 * MINUTE);
+    sim.send({ type: "TICK" });
+    const round = sim.round();
+    sim.send({ type: "ROUND_ACCOUNT", round, organizations, projects: [A, B] });
+    sim.send({ type: "ROUND_PROJECT", round, project: A, outcome: verified(A, false) });
+    sim.send({ type: "PROJECT_JUDGED", project: A, outcome: verified(A) });
+    sim.send({ type: "ROUND_PROJECT", round, project: B, outcome: verified(B) });
+    expect(grantRoundInFlight(sim.state)).toBeNull();
+    expect(sim.write(A).allowed).toBe(true);
+  });
+});
+
 describe("access grant invariants over enumerated event sequences", () => {
   interface GrantNode {
     readonly state: GrantMachine;
@@ -1513,18 +1538,13 @@ describe("access grant invariants over enumerated event sequences", () => {
       }
     }
 
-    // G6 — a denial is lifted only by a confirming read or a round that started after it; one
-    // only a round held may end with that round, never while it runs.
+    // G6 — a denial is lifted only by a round that started after it; one only a round held may
+    // end with that round, never while it runs.
     const denials = denialsOf(state);
     const roundBefore = grantRoundInFlight(previous);
     const roundAfter = grantRoundInFlight(state);
     for (const [id, deniedAt] of denialsOf(previous)) {
       if (denials.has(id)) continue;
-      const confirmedLater =
-        answeredRead?.kind === "confirm" &&
-        answeredRead.project.projectId === id &&
-        answeredRead.startedAt.mono >= deniedAt.mono;
-      if (confirmedLater) continue;
       const own = evidence?.projects.get(ZeropsProjectId.make(id));
       if (own !== undefined) {
         invariant(own.startedAt.mono >= deniedAt.mono, "G6 denial lifted by an older read");
@@ -1596,17 +1616,6 @@ describe("access grant invariants over enumerated event sequences", () => {
         );
       }
     }
-    // G6 — a confirming read starts at least the confirmation delay after its denial.
-    for (const effect of effects) {
-      if (effect.kind !== "run" || effect.op.kind !== "confirm-denial") continue;
-      const closed = evidence!.closedProjects.get(effect.op.project.projectId)!;
-      invariant(
-        now.mono - closed.deniedAt.mono >= policy.denialConfirmationDelayMs ||
-          now.wall - closed.deniedAt.wall >= policy.denialConfirmationDelayMs,
-        "G6 confirmation delay",
-      );
-    }
-
     // What the runtime was last told agrees with what a reader is allowed now.
     for (const [id, entry] of state.published.projects) {
       invariant(
@@ -1719,33 +1728,6 @@ it.each([false, true])(
 );
 
 describe("a failed check retries on its rungs", () => {
-  it("reads a denial's failed confirmation again on the project rungs", () => {
-    const sim = grantedSim();
-    sim.send({ type: "PROJECT_DENIED", project: A, evidence: "direct-forbidden" });
-    sim.elapse(policy.denialConfirmationDelayMs);
-    sim.send({ type: "TICK" });
-    const confirm = sim.lastRun("confirm-denial");
-    sim.send({ type: "PROJECT_RESULT", project: A, attempt: confirm.attempt, outcome: failed });
-    const confirms = () => sim.runs.filter(({ op }) => op.kind === "confirm-denial");
-    sim.elapse(10 * SECOND - 1);
-    sim.send({ type: "TICK" });
-    expect(confirms()).toHaveLength(1);
-    sim.elapse(1);
-    sim.send({ type: "TICK" });
-    expect(confirms()).toHaveLength(2);
-    sim.send({
-      type: "PROJECT_RESULT",
-      project: A,
-      attempt: sim.lastRun("confirm-denial").attempt,
-      outcome: forbidden,
-    });
-    expect(
-      sim.effects.filter(
-        ({ effect }) => effect.kind === "observe" && effect.observation.kind === "project-gone",
-      ),
-    ).toHaveLength(1);
-  });
-
   it("retries a failed renewal on its rungs, never waiting for the next sample", () => {
     const sim = grantedSim();
     sim.elapse(12 * MINUTE - 2 * SECOND);
@@ -1766,42 +1748,4 @@ describe("a failed check retries on its rungs", () => {
     ]);
     expect(sim.state.phase).toMatchObject({ phase: "granted", failure: null });
   });
-});
-
-it("reads a confirmation that failed during a lapse again once a round grants, and on Check access again", () => {
-  const sim = grantedSim();
-  sim.elapse(12 * MINUTE - 2 * SECOND);
-  sim.send({ type: "TICK" });
-  sim.send({ type: "ROUND_FAILED", round: sim.round(), failure: { kind: "server", status: 503 } });
-  sim.elapse(3 * MINUTE - 10 * SECOND);
-  sim.send({ type: "PROJECT_DENIED", project: A, evidence: "direct-forbidden" });
-  sim.elapse(policy.denialConfirmationDelayMs);
-  sim.send({ type: "TICK" });
-  const confirm = sim.lastRun("confirm-denial");
-  sim.elapse(6 * SECOND);
-  sim.send({ type: "PROJECT_RESULT", project: A, attempt: confirm.attempt, outcome: failed });
-  expect(sim.state.phase).toMatchObject({ phase: "lapsed" });
-  if (sim.state.phase.phase !== "lapsed") throw new Error("expected lapse");
-  expect(sim.state.phase.last.closedProjects.get(A.projectId)?.confirmation).toMatchObject({
-    failure: failed.failure,
-  });
-  // The lapse's round outlives its deadline; the next waits its 2 s rung.
-  sim.elapse(9 * MINUTE - SECOND);
-  sim.send({ type: "TICK" });
-  sim.elapse(2 * SECOND);
-  sim.send({ type: "TICK" });
-  // The round's own read of A fails too: nothing confirms the denial but its own read.
-  sim.answerRound([
-    [A, failed],
-    [B, verified(B)],
-  ]);
-  expect(sim.runs.filter(({ op }) => op.kind === "confirm-denial")).toHaveLength(2);
-  sim.send({
-    type: "PROJECT_RESULT",
-    project: A,
-    attempt: sim.lastRun("confirm-denial").attempt,
-    outcome: failed,
-  });
-  sim.send({ type: "USER_RETRY" });
-  expect(sim.runs.filter(({ op }) => op.kind === "confirm-denial")).toHaveLength(3);
 });

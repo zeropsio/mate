@@ -33,8 +33,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 
 import { service as platformService } from "~/zerops/__fixtures__/platformData";
 import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
-import { ZeropsProjectFlowContext, type ZeropsProjectFlowValue } from "~/zerops/projectFlowContext";
-import type { ZeropsHistoryState } from "~/zerops/useZeropsHistory";
+import type { ZeropsHistoryState } from "~/zerops/useRepositoryHistory";
 
 import {
   detailTrail,
@@ -49,6 +48,14 @@ import { ZeropsReleaseRows } from "./ZeropsReleaseRows";
 
 /** The rows' one clock, fixed: an age is the producer's to test, not the minute this ran in. */
 const NOW = vi.hoisted(() => Date.parse("2026-09-25T12:00:00Z"));
+/** What the platform answered of each stop, as the page's stop lines read it. */
+const platform = vi.hoisted(() => ({
+  deployments: new Map() as ReadonlyMap<string, unknown>,
+}));
+vi.mock("~/zerops/projectFlows", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  useStopDeploymentsShown: () => platform.deployments,
+}));
 vi.mock("~/zerops/useNowMs", async (importOriginal) => ({
   ...(await importOriginal<object>()),
   useNowMs: () => NOW,
@@ -114,8 +121,7 @@ const slotsOf = (environments: ReadonlyArray<EnvironmentRow>) =>
     halfMade: [],
     recipeTiers: [],
     recipeRead: false,
-    mayAdd: false,
-    writer: false,
+    offered: { stage: false, production: false },
     productionRuns: "unknown",
     waiting: { count: 0, atLeast: false },
     mainHasCode: undefined,
@@ -141,7 +147,7 @@ function render(
   },
   waiting: ReleaseContentsSummary = releaseContentsSummary([], 20),
   /** The page's flow; absent, it holds none. */
-  flow?: ZeropsProjectFlowValue,
+  flow?: ReadonlyMap<string, Shown<Deployment>>,
 ) {
   const pane = (
     <ZeropsGroupPane
@@ -174,15 +180,12 @@ function render(
       waiting={waiting}
     />
   );
-  if (flow === undefined) return renderToStaticMarkup(pane);
-  return renderToStaticMarkup(
-    <ZeropsProjectFlowContext.Provider value={flow}>{pane}</ZeropsProjectFlowContext.Provider>,
-  );
+  platform.deployments = flow ?? new Map();
+  return renderToStaticMarkup(pane);
 }
 
-/** A page's flow that holds only what the platform answered of each stop. */
-const flowOf = (deployments: ReadonlyMap<string, Shown<Deployment>>) =>
-  ({ deployments }) as unknown as ZeropsProjectFlowValue;
+/** What the platform answered of each stop, as the page reads it. */
+const flowOf = (deployments: ReadonlyMap<string, Shown<Deployment>>) => deployments;
 
 it("an empty open-change list makes no claim about how closed changes ended", () => {
   const markup = render();
@@ -322,8 +325,7 @@ describe("ZeropsGroupPane", () => {
         halfMade: [],
         recipeTiers: ["stage", "production"],
         recipeRead: true,
-        mayAdd: true,
-        writer: false,
+        offered: { stage: true, production: true },
         productionRuns: "unknown",
         waiting: { count: 0, atLeast: false },
         mainHasCode: true,
@@ -345,10 +347,10 @@ describe("ZeropsGroupPane", () => {
       expect(markup).toContain("Add production");
     });
 
-    it("offers no Add to somebody who may not add, and says a tier waits for the recipe", () => {
+    it("offers no Add HQ does not offer, and says a tier waits for the recipe", () => {
       const markup = render(undefined, {
         environments: [],
-        slots: slots({ mayAdd: false, recipeTiers: ["stage"] }),
+        slots: slots({ offered: { stage: false, production: false }, recipeTiers: ["stage"] }),
       });
       expect(markup).not.toContain("Add stage");
       expect(markup).toContain("Waiting for the Mate&#x27;s recipe");
@@ -376,7 +378,7 @@ describe("ZeropsGroupPane", () => {
     it("says a half-made environment is unfinished, with Finish setup and no Add for its tier", () => {
       const markup = render(undefined, {
         environments: [],
-        slots: slots({ halfMade: [{ id: "p-half", tier: "production" }] }),
+        slots: slots({ halfMade: [{ id: "p-half", tier: "production", finish: true }] }),
       });
       expect(markup).toContain("Setup isn&#x27;t finished");
       expect(markup).toContain("Finish setup");

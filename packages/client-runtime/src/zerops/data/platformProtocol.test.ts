@@ -504,28 +504,3 @@ describe("a service read's active version name (A14)", () => {
     );
   });
 });
-
-it.each(["READ_ONLY", "NO_ACCESS"])(
-  "preserves %s project grants in the direct answer used by admission",
-  (roleCode) => {
-    const ticket: ReadTicket = {
-      requestId: ZeropsRequestId.make("project-grants"),
-      owner: { kind: "interest", identity: interest },
-      receiptOrdinalAtStart: ReceiptOrdinal.make(0),
-      readStartOrdinal: ReadStartOrdinal.make(1),
-      dispatchOrdinal: DispatchOrdinal.make(1),
-      startedAtMs: 0,
-      kind: "direct",
-      target: { kind: "project", ref: project },
-    };
-    const userRoles = [{ clientUserId: "member", roleCode }];
-    expect(
-      decodeEntityDirectResponse(ticket, {
-        id: project.projectId,
-        name: "Mate",
-        status: "ACTIVE",
-        userRoles,
-      }).project?.userRoles,
-    ).toEqual(userRoles);
-  },
-);

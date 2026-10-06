@@ -2,7 +2,7 @@
  * Capabilities (DESIGN §4.3): what a command may do now, read from the access grant at the moment
  * it is asked. The grant runs inside a data runtime here, its verification reads on a fake verifier
  * and its timers on the harness clock, so a capability is compared with what the runtime's own
- * command admission and the cells decide over the same grant.
+ * command admission decides over the same grant.
  */
 import { describe, expect, it } from "@effect/vitest";
 import * as Clock from "effect/Clock";
@@ -13,9 +13,8 @@ import { AtomRegistry } from "effect/unstable/reactivity";
 
 import { makeDeadlineClock, type DeadlineClock } from "../../testing/deadlineClock.ts";
 import { ZeropsApiError, type ZeropsProject } from "../../api.ts";
-import { account, organization, project, scope, service } from "../__fixtures__/index.ts";
+import { account, organization, project, scope } from "../__fixtures__/index.ts";
 import { commandAdmissionError } from "../commands.ts";
-import type { MateFlagCellRequest, ZeropsCellAdapter } from "../cells.ts";
 import { makeZeropsDataRuntime } from "../runtime.ts";
 import type { ProjectEffectiveAccess, ProjectRef, ZeropsDataAdapter } from "../types.ts";
 import { grantCapabilities, mate, throwawayCleanup, type CapabilityAsk } from "./capabilities.ts";
@@ -57,11 +56,6 @@ const inertAdapter: ZeropsDataAdapter = {
   read: () => unused,
   execute: () => unused,
   closeReceiver: () => Effect.void,
-};
-
-/** Every service's flag reads as on; nothing else is asked for. */
-const cellAdapter: ZeropsCellAdapter = {
-  readServiceMateFlag: () => Effect.succeed({ enabled: true }),
 };
 
 /** What the platform answers the grant's reads, changeable between steps. */
@@ -116,7 +110,7 @@ const tab = Effect.fnUntraced(function* (platform: Platform, rest?: AccessVerifi
   let opaque = 0;
   const runtime = yield* makeZeropsDataRuntime({
     scope: scope(),
-    adapter: { ...inertAdapter, cells: cellAdapter },
+    adapter: inertAdapter,
     atomRegistry: registry,
     makeOpaqueId: () => `opaque-${++opaque}`,
   }).pipe(Effect.provideService(Clock.Clock, clock));
@@ -166,17 +160,6 @@ const tab = Effect.fnUntraced(function* (platform: Platform, rest?: AccessVerifi
   });
   yield* runtime.access.start({ verifier: rest ?? verifier, hidden: false, online: true });
   yield* settle;
-  const resources = new Map(
-    [A, B].map((target): [ProjectRef, MateFlagCellRequest] => [
-      target,
-      {
-        kind: "mate-flag",
-        account: runtime.scope,
-        service: service(`service-of-${target.projectId}`, target),
-      },
-    ]),
-  );
-  for (const request of resources.values()) registry.mount(runtime.cells.known(request));
   const capabilities = grantCapabilities(runtime.access);
   return {
     clock,
@@ -191,20 +174,6 @@ const tab = Effect.fnUntraced(function* (platform: Platform, rest?: AccessVerifi
     /** Waits for the capability, in the background. */
     await: (ask: CapabilityAsk, withinMs: number) =>
       Effect.forkChild(capabilities.await(ask, { withinMs })),
-    /**
-     * Whether the cells admit a read of the project's cell now: it is neither withheld
-     * nor, once the account closed, waiting for a Zerops session.
-     */
-    readable: (target: ProjectRef) =>
-      Effect.gen(function* () {
-        yield* runtime.cells.reconcileAccess;
-        yield* settle;
-        const shown = registry.get(runtime.cells.known(resources.get(target)!));
-        return (
-          shown.state !== "withheld" &&
-          !(shown.state === "unread" && shown.waitingFor === "zerops-session")
-        );
-      }),
     /** Whether the runtime's command admission lets a write on the project run now. */
     commandable: (target: ProjectRef) =>
       Effect.gen(function* () {
@@ -395,7 +364,7 @@ describe("capabilities over the access grant", () => {
     ...ACCOUNT_STATES.map(([state, ...rest]) => [`account ${state}`, ...rest] as const),
     ...PROJECT_STATES.map(([state, ...rest]) => [`project ${state}`, ...rest] as const),
   ])(
-    "commands and resources agree for every access state and every project evidence state: %s",
+    "commands agree with the capability for every access state and every project evidence state: %s",
     ([, arrange, write, read]) =>
       Effect.scoped(
         Effect.gen(function* () {
@@ -412,18 +381,9 @@ describe("capabilities over the access grant", () => {
               kind: "platformWrite",
               project: target.projectId,
             });
-            const canRead = yield* opened.check({
-              kind: "platformRead",
-              project: target.projectId,
-            });
-            expect({
-              project: target.projectId,
-              write: canWrite.allowed,
-              read: canRead.allowed,
-            }).toEqual({
+            expect({ project: target.projectId, write: canWrite.allowed }).toEqual({
               project: target.projectId,
               write: yield* opened.commandable(target),
-              read: yield* opened.readable(target),
             });
           }
         }),
@@ -563,10 +523,9 @@ describe("capabilities over the access grant", () => {
                   ],
                 };
               },
-              fetchProject: async () => read,
             },
+            standing: () => ({ kind: "listed", project: read }),
             account,
-            concurrency: 4,
             onUser: () => undefined,
           });
           const opened = yield* tab(answering(), rest);

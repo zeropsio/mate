@@ -19,7 +19,6 @@ import { createRoot } from "react-dom/client";
 import ChatMarkdown from "~/components/ChatMarkdown";
 import { ServiceBrowserScope } from "~/components/ServiceBrowserLink";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
-import { ZeropsProjectFlowContext, type ZeropsProjectFlowValue } from "~/zerops/projectFlowContext";
 import "../index.css";
 
 const params = new URLSearchParams(location.search);
@@ -42,28 +41,6 @@ const services: ZeropsTopologyService[] = [
 /** The organization's HQ, and change #7 of the group's site repository at it. */
 const HQ = "https://hq.example.test";
 const CHANGE = changeUrl(HQ, "group-1", "site", 7);
-
-/** The person's group, with change #7 open on its site repository. */
-const FLOW = {
-  hqAddress: HQ,
-  flows: new Map([
-    [
-      "group-1",
-      {
-        pullRequests: [
-          {
-            repository: "site",
-            number: 7,
-            line: "Screenshots of the new landing page",
-            merged: false,
-            mergeability: "mergeable",
-          },
-        ],
-        merged: [],
-      },
-    ],
-  ]),
-} as unknown as ZeropsProjectFlowValue;
 
 /** A change opened in the app, as the conversation's own resolver would (`useOpenZeropsChange`). */
 const openChange = (href: string) =>
@@ -104,8 +81,6 @@ document.documentElement.classList.toggle("dark", appearance === "dark");
 applyThemePalette(ZEROPS_THEME_ID, appearance);
 createRoot(document.getElementById("design")!).render(
   <StrictMode>
-    <ZeropsProjectFlowContext.Provider value={FLOW}>
-      <Harness />
-    </ZeropsProjectFlowContext.Provider>
+    <Harness />
   </StrictMode>,
 );

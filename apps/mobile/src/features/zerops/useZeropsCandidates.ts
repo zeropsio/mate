@@ -24,6 +24,7 @@ import {
   NOT_READ_PROJECTS,
   projectProcessesAtom,
   projectServicesAtom,
+  shownMateLinksAtom,
   shownProjectsAtom,
   type ProjectServices,
 } from "@t3tools/client-runtime/data";
@@ -43,8 +44,6 @@ interface InventoryReads {
 
 const UNREAD: Known<never> = { state: "unread", waitingFor: null };
 const NO_MACHINES: ReadonlyMap<TargetKey, EnvironmentMachine> = new Map();
-const NO_SUBSCRIPTION = () => () => undefined;
-const noMachines = () => NO_MACHINES;
 
 /** The read held until it changes, so its stamp does not tick with every publication. */
 function stamped<Read>(previous: StampedRead<Read> | undefined, read: Read): StampedRead<Read> {
@@ -64,7 +63,7 @@ export function useZeropsCandidates(): {
   readonly refresh: () => void;
 } {
   const { status, activeOrganization } = useZeropsSession();
-  const { binding, environments, error: runtimeError } = useZeropsData();
+  const { binding, error: runtimeError } = useZeropsData();
   const [reads, setReads] = useState<InventoryReads | null>(null);
   const organizationId = activeOrganization?.id ?? "";
   // What this view saw of each container's address, for as long as it lives: one seen with its
@@ -166,11 +165,18 @@ export function useZeropsCandidates(): {
 
   const organizationListing = reads?.listing ?? null;
 
-  // Every Mate's machine, as the account runtime's exchange driver holds it (§4.4).
-  const machines = useSyncExternalStore(
-    environments?.subscribe ?? NO_SUBSCRIPTION,
-    environments?.machines ?? noMachines,
+  // Every Mate's machine, as the account's store holds it (§4.4).
+  const registry = binding?.registry ?? null;
+  const subscribeMates = useCallback(
+    (listener: () => void) =>
+      registry === null ? () => undefined : registry.subscribe(shownMateLinksAtom, listener),
+    [registry],
   );
+  const readMates = useCallback(
+    () => (registry === null ? NO_MACHINES : registry.get(shownMateLinksAtom).machines),
+    [registry],
+  );
+  const machines = useSyncExternalStore(subscribeMates, readMates);
 
   const listing = useMemo(
     (): Known<ReadonlyArray<MobileCandidate>> =>

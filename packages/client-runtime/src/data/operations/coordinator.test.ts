@@ -17,15 +17,15 @@ import { makeOperations, type OperationExecutor } from "./coordinator.ts";
 import type { RegisteredOperationKind } from "./kind.ts";
 import { OPERATION_KINDS } from "./kinds.ts";
 
-/** A test-only kind HQ executes: a redeploy, reflected once Zerops shows its deploy process. */
-const redeploy: RegisteredOperationKind = {
-  kind: "redeploy",
+/** A test-only kind HQ executes: a move, reflected once Zerops shows its deploy process. */
+const move: RegisteredOperationKind = {
+  kind: "test-move",
   executor: "hq",
   reflected: (read: ProjectionReads, _intent, receipt: OperationReceipt) =>
     receipt.handles.some((handle) => read.fact("process", handle).kind === "known"),
 };
-const kinds = [...OPERATION_KINDS, redeploy];
-const MOVE = { kind: "redeploy", projectId: "p1" } as unknown as OperationIntent;
+const kinds = [...OPERATION_KINDS, move];
+const MOVE = { kind: "test-move", projectId: "p1" } as unknown as OperationIntent;
 
 /** HQ as the operation's owner: it applies each request id once, and may lose its answer. */
 function fixtureOwner(options: {

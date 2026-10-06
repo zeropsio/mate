@@ -327,11 +327,31 @@ describe("readZeropsContainer", () => {
     },
   );
 
+  // The owner's load, 2026-10-06: a `/healthz` read beside every descriptor that did not answer
+  // put a second CORS error in the console for every stopped or unready Mate. Readiness is the
+  // descriptor's word; `/healthz` is read only for a container coming up, whose restart it judges.
+  it.each([
+    { name: "a CORS-less failure", descriptor: corsBlocked, reading: { kind: "unreachable" } },
+    { name: "a 502", descriptor: () => html(502), reading: { kind: "unreachable" } },
+    { name: "a page", descriptor: () => html(404), reading: { kind: "predates-mate" } },
+    { name: "a redirect", descriptor: opaqueRedirect, reading: { kind: "predates-mate" } },
+  ])(
+    "reads a descriptor that does not answer on its own word, never /healthz beside it: $name",
+    async ({ descriptor, reading }) => {
+      const read = stub({ [DESCRIPTOR]: descriptor, [HEALTHZ]: () => json(LIVE_HEALTHZ) });
+      expect(
+        (await readZeropsContainer(ORIGIN, ports(read), signal, { fresh: true, initAt: false }))
+          .reading,
+      ).toEqual(reading);
+      expect(read.calls.map((call) => call.url)).toEqual([DESCRIPTOR]);
+    },
+  );
+
   it.each([false, true])(
-    "reads what the health probe concludes when the descriptor does not answer (fresh: %s)",
+    "reads what the health probe concludes for a container coming up (fresh: %s)",
     async (fresh) => {
       const read = async (routes: Record<string, () => Response>) =>
-        (await readZeropsContainer(ORIGIN, ports(stub(routes)), signal, { fresh, initAt: fresh }))
+        (await readZeropsContainer(ORIGIN, ports(stub(routes)), signal, { fresh, initAt: true }))
           .reading;
       expect(
         await read({

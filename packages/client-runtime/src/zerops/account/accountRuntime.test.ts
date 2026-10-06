@@ -28,8 +28,6 @@ import {
 } from "../data/platformProtocol.ts";
 import {
   ZeropsOrganizationId,
-  ZeropsProjectId,
-  ZeropsServiceId,
   type MembershipQueryDescriptor,
   type ProjectRef,
   type ZeropsDataAdapter,
@@ -37,27 +35,30 @@ import {
 import type { DescriptorFacts } from "../environments/environmentMachine.ts";
 import type { CloseOffWord } from "../environments/closeOff.ts";
 import { mateListingsAtom } from "../environments/listings.ts";
-import { readServiceMateFlag } from "../environments/mateFlag.ts";
 import { rowTarget } from "../environments/mateLink.ts";
-import type { ProbeReading } from "../environments/probeStore.ts";
-import { REGISTRATION_RECORDS_KEY, type RegistrationRecord } from "../environments/records.ts";
+import type { ProbeReading } from "../environments/probe.ts";
+import type { RememberedTarget } from "../environments/targets.ts";
 import { heldCandidates } from "../projections/candidates.ts";
 import type { ExchangeAnswer } from "../identityExchange.ts";
 import type { Invalidation } from "../knowledge/invalidation.ts";
 import { makePlatformSignals, type PageEvent } from "../knowledge/signals.ts";
 import { makeDeadlineClock, type DeadlineClock } from "../testing/deadlineClock.ts";
 import { makeFakeDatastream } from "../testing/fakeDatastream.ts";
-import { makeFakeZeropsRest } from "../testing/fakeZeropsRest.ts";
+import { makeFakeZeropsRest, type FakeZeropsRest } from "../testing/fakeZeropsRest.ts";
 import {
   makeAccountRuntime,
   type AccountEnvironmentPorts,
+  type AccountEnvironments,
   type CatalogListener,
   type DoorCredential,
   type DoorRequest,
 } from "./accountRuntime.ts";
-import { liveProjects, liveServices } from "../../data/__fixtures__/account.ts";
-import { accountReadsAtom } from "../../data/reads.ts";
+import { liveMateVariables, liveProjects, liveServices } from "../../data/__fixtures__/account.ts";
+import { accountReadsAtom, projectStandingAtom } from "../../data/reads.ts";
 import { makeAccountStore, type AccountStore } from "../../data/store.ts";
+import { readsOfState } from "../../data/store.ts";
+import { mateLinks } from "../../data/projections/mateLinks.ts";
+import { indexDescriptors } from "../environments/descriptorIndex.ts";
 import { historyScope } from "../../data/families/process.ts";
 
 const SECOND = 1_000;
@@ -110,11 +111,7 @@ const MATE_ORIGIN = A_MATE.origin;
 const ENV_A = EnvironmentId.make("env-a");
 
 /** The datastream over a platform whose one organization holds these Mates' projects. */
-const platformAdapter = (
-  mates: ReadonlyArray<Mate>,
-  /** The services' variables as the stream answers them; `never`: it never answers. */
-  variables: ReadonlyArray<unknown> | "never" = [],
-): ZeropsDataAdapter => {
+const platformAdapter = (mates: ReadonlyArray<Mate>): ZeropsDataAdapter => {
   const rowsOf = (query: MembershipQueryDescriptor): ReadonlyArray<unknown> => {
     switch (query.kind) {
       case "projects-of-organization":
@@ -134,31 +131,16 @@ const platformAdapter = (
         events: Stream.never,
       }),
     register: (_receiver, request) =>
-      request.descriptor.kind === "table-list" && variables === "never"
-        ? Effect.never
-        : Effect.sync(() => {
-            if (request.descriptor.kind === "table-list") {
-              const listed =
-                request.descriptor.query.kind === "service-variables-of-services" &&
-                variables !== "never"
-                  ? variables
-                  : [];
-              return {
-                responseObservations: decodeRegistrationResponse(request, {
-                  items: listed,
-                  totalHits: listed.length,
-                }).observations,
-              };
-            }
-            if (request.descriptor.kind !== "query-membership") return { responseObservations: [] };
-            const items = rowsOf(request.descriptor.query);
-            return {
-              responseObservations: decodeRegistrationResponse(request, {
-                items,
-                totalHits: items.length,
-              }).observations,
-            };
-          }),
+      Effect.sync(() => {
+        if (request.descriptor.kind !== "query-membership") return { responseObservations: [] };
+        const items = rowsOf(request.descriptor.query);
+        return {
+          responseObservations: decodeRegistrationResponse(request, {
+            items,
+            totalHits: items.length,
+          }).observations,
+        };
+      }),
     read: (ticket) =>
       Effect.sync(() => {
         if (ticket.target.kind === "query") {
@@ -221,41 +203,22 @@ const admitted = (
   credential: { install },
 });
 
-/** A descriptor that answered as Mate for this environment, stating this project. */
-const answering = (environmentId: EnvironmentId, projectId: string): ProbeReading => ({
-  kind: "ready",
-  descriptor: {
-    environmentId,
-    serverVersion: "0.12.0",
-    update: null,
-    identity: "ok",
-    identityCheckedAt: null,
-  },
-  projectId,
-  initAt: null,
-});
-
 /**
  * The Mate environments' ports as a tab hands them over, with no React: every exchange and probe
- * is recorded and left for the test to answer, the records hold what `remembered` names, and the
- * catalog and the records' other tabs are the test's to drive.
+ * is recorded and left for the test to answer, the kept sessions name what `remembered` names,
+ * and the catalog is the test's to drive.
  */
-const environmentRig = (clock: DeadlineClock, remembered: ReadonlyArray<RegistrationRecord>) => {
+const environmentRig = (clock: DeadlineClock, remembered: ReadonlyArray<RememberedTarget>) => {
   const exchanges: Array<Pending<DoorRequest, ExchangeAnswer<DoorCredential>>> = [];
   const descriptors: Array<Pending<string, DescriptorFacts>> = [];
   const probes: Array<Pending<string, ProbeReading>> = [];
   const removed: Array<EnvironmentId> = [];
   /** Every target whose kept session the stage dropped. */
   const forgotten: Array<string> = [];
-  const storage = new Map<string, string>([[REGISTRATION_RECORDS_KEY, JSON.stringify(remembered)]]);
   /** What the stage listens to now, by port. */
-  const listening = { records: 0, catalog: 0 };
-  /** How many times the records were read from storage. */
-  let recordReads = 0;
-  /** What the stage hears when another tab writes the records. */
-  let recordsChanged: (() => void) | null = null;
-  /** The tab's writes of the records do not land: a full or refusing storage, which the port swallows. */
-  let writesLand = true;
+  const listening = { catalog: 0 };
+  /** The sessions kept now: an install the web's door takes keeps one in place of its target's. */
+  let kept = [...remembered];
   let catalog: CatalogListener | null = null;
   /** The environment the tab's route names, as its address bar holds it. */
   let route: EnvironmentId | null = null;
@@ -292,23 +255,12 @@ const environmentRig = (clock: DeadlineClock, remembered: ReadonlyArray<Registra
     },
     readInitAt: async () => null,
     intents: { read: () => null, write: () => undefined },
-    records: {
-      getItem: (key) => {
-        recordReads += 1;
-        return storage.get(key) ?? null;
-      },
-      setItem: (key, value) => {
-        if (writesLand) storage.set(key, value);
-      },
-      listen: (changed) => {
-        recordsChanged = changed;
-        listening.records += 1;
-        return () => void (listening.records -= 1);
-      },
-    },
+    remembered: () => kept,
     catalog: {
       listen: (listener) => {
         catalog = listener;
+        // The catalog says what it holds as it is first heard: nothing, in a tab.
+        listener.environments([]);
         listening.catalog += 1;
         return () => void (listening.catalog -= 1);
       },
@@ -321,11 +273,8 @@ const environmentRig = (clock: DeadlineClock, remembered: ReadonlyArray<Registra
         return () => void down.splice(down.indexOf(environmentId), 1);
       },
     },
-    // HQ's word, current: it names no environment's project, holds no Mate online and speaks for
-    // no organization. A test that needs another word says it.
+    // HQ's word: it names no environment's project. A test that needs another word says it.
     hqIndex: { projectOf: () => null, subscribe: () => () => undefined },
-    online: { read: () => new Set(), subscribe: () => () => undefined },
-    hqOrganization: { read: () => null, subscribe: () => () => undefined },
     // No word on any close-off, and none pending here: nothing is held.
     closeOff: { read: () => null, subscribe: () => () => undefined },
     closeOffPending: { read: () => new Set(), subscribe: () => () => undefined },
@@ -357,23 +306,11 @@ const environmentRig = (clock: DeadlineClock, remembered: ReadonlyArray<Registra
     removed,
     forgotten,
     listening,
-    /** The records as they are stored now. */
-    records: () =>
-      JSON.parse(storage.get(REGISTRATION_RECORDS_KEY) ?? "[]") as Array<RegistrationRecord>,
-    recordReads: () => recordReads,
-    /**
-     * Another tab stores these records; `announce` is whether its storage event has reached this
-     * tab yet.
-     */
-    storeElsewhere: (records: ReadonlyArray<RegistrationRecord>, announce: boolean) => {
-      storage.set(REGISTRATION_RECORDS_KEY, JSON.stringify(records));
-      if (announce) recordsChanged?.();
-    },
     /** The connection catalog as the stage hears it. */
     catalog: () => catalog!,
-    /** Whether this tab's writes of the records land from now on. */
-    landWrites: (land: boolean) => {
-      writesLand = land;
+    /** The door kept this session for its target, in place of the one kept before. */
+    keep: (session: RememberedTarget) => {
+      kept = [...kept.filter((entry) => entry.targetKey !== session.targetKey), session];
     },
   };
 };
@@ -381,13 +318,25 @@ const environmentRig = (clock: DeadlineClock, remembered: ReadonlyArray<Registra
 /** The ports of a runtime whose Mates these tests never reach. */
 const inertEnvironments = (clock: DeadlineClock) => environmentRig(clock, []).ports;
 
-const REMEMBERED_A: RegistrationRecord = {
+const REMEMBERED_A: RememberedTarget = {
   targetKey: MATE,
   environmentId: ENV_A,
   origin: MATE_ORIGIN,
-  projectRef: { projectId: A_MATE.projectId, orgId: "org-1" },
-  name: "shop a",
+  orgId: "org-1",
 };
+
+/**
+ * The stage as a test asks it, with each Mate's machines as the account's store holds them — the
+ * reading every surface gets (`mateLinks`).
+ */
+const withMates = (environments: AccountEnvironments, store: AccountStore) => ({
+  ...environments,
+  machines: () => mateLinks.derive(readsOfState(store.state()), null).machines,
+  index: () => {
+    const { machines, containers } = mateLinks.derive(readsOfState(store.state()), null);
+    return indexDescriptors(machines, containers);
+  },
+});
 
 /** Lets every fiber the last step woke run to its next wait, on whichever scheduler it runs. */
 const settle = Effect.gen(function* () {
@@ -498,6 +447,24 @@ const passWith = (clock: DeadlineClock, nextTimer: () => number) =>
     yield* settle;
   });
 
+/**
+ * The account's store, mounted in `registry` with the shown organization's roster as the fake
+ * platform lists it: where each project stands, as the grant's verifier asks.
+ */
+const rosterOf = (registry: AtomRegistry.AtomRegistry, rest: FakeZeropsRest) => {
+  const store = makeAccountStore(registry);
+  const orgId = organization.organizationId;
+  liveProjects(orgId, [...rest.projectsOf(orgId)] as never).forEach(store.dispatch);
+  registry.set(accountReadsAtom, {
+    data: store.data,
+    orgId,
+    demandDetail: () => () => {},
+    renewHeld: () => {},
+  });
+  return ({ projectId }: { readonly projectId: string }) =>
+    registry.get(projectStandingAtom(projectId));
+};
+
 describe("the account runtime", () => {
   it.effect(
     "builds nothing post-grant before the epoch's first grant, and keeps it through a lapse (I10, AL-04, G11)",
@@ -522,6 +489,7 @@ describe("the account runtime", () => {
               signals: page.signals,
               atomRegistry: registry,
               environments: inertEnvironments(clock),
+              store: makeAccountStore(registry),
             }).pipe(
               Effect.tap((runtime) =>
                 Effect.sync(() => runtime.selectOrganization(organization.organizationId)),
@@ -601,6 +569,7 @@ describe("the account runtime", () => {
               signals: page.signals,
               atomRegistry: registry,
               environments: inertEnvironments(clock),
+              store: makeAccountStore(registry),
             }).pipe(
               Effect.tap((runtime) =>
                 Effect.sync(() => runtime.selectOrganization(organization.organizationId)),
@@ -653,6 +622,7 @@ describe("the account runtime", () => {
               signals: page.signals,
               atomRegistry: registry,
               environments: inertEnvironments(clock),
+              store: makeAccountStore(registry),
             }).pipe(
               Effect.tap((runtime) =>
                 Effect.sync(() => runtime.selectOrganization(organization.organizationId)),
@@ -715,6 +685,7 @@ describe("the account runtime", () => {
             signals: page.signals,
             atomRegistry: registry,
             environments: inertEnvironments(clock),
+            store: makeAccountStore(registry),
           }).pipe(
             Effect.tap((runtime) =>
               Effect.sync(() => runtime.selectOrganization(organization.organizationId)),
@@ -741,6 +712,49 @@ describe("the account runtime", () => {
         yield* clock.advance(250);
         yield* settle;
         expect(grant.rounds()).toBe(2);
+      }),
+    ),
+  );
+
+  it.effect("each access round renews the own rows the account holds, once", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const clock = yield* makeDeadlineClock({ startWallMs: START_WALL_MS });
+        const registry = AtomRegistry.make();
+        let renewed = 0;
+        registry.set(accountReadsAtom, {
+          data: makeAccountStore(registry).data,
+          orgId: organization.organizationId,
+          demandDetail: () => () => {},
+          renewHeld: () => void renewed++,
+        });
+        const page = yield* makePage(clock);
+        const grant = heldVerifier();
+        const built = yield* Effect.gen(function* () {
+          const data = yield* makeZeropsDataRuntime({
+            random: () => 0,
+            scope: scope(),
+            adapter: inertAdapter,
+            atomRegistry: registry,
+            makeOpaqueId: () => "opaque",
+          });
+          return yield* makeAccountRuntime({
+            data,
+            verifier: grant.verifier,
+            signals: page.signals,
+            atomRegistry: registry,
+            environments: inertEnvironments(clock),
+            store: makeAccountStore(registry),
+          });
+        }).pipe(Effect.provideService(Clock.Clock, clock));
+        yield* Effect.addFinalizer(() => built.close("application-close"));
+        yield* settle;
+        expect([grant.rounds(), renewed]).toEqual([1, 1]);
+
+        yield* grant.answer({ kind: "server", status: 503 });
+        yield* clock.advance(2_000);
+        yield* settle;
+        expect([grant.rounds(), renewed]).toEqual([2, 2]);
       }),
     ),
   );
@@ -796,12 +810,13 @@ describe("the account runtime", () => {
             verifier: makeRestAccessVerifier({
               client,
               account,
-              concurrency: policy.roundProjectConcurrency,
+              standing: rosterOf(registry, rest),
               onUser: () => undefined,
             }),
             signals: page.signals,
             atomRegistry: registry,
             environments: inertEnvironments(clock),
+            store: makeAccountStore(registry),
           }).pipe(
             Effect.tap((runtime) =>
               Effect.sync(() => runtime.selectOrganization(organization.organizationId)),
@@ -841,349 +856,122 @@ describe("the account runtime", () => {
     ),
   );
 
-  it.effect(
-    "reads a Mate flag from the account's streamed variables however often it is asked, registering nothing",
-    () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const clock = yield* makeDeadlineClock({ startWallMs: START_WALL_MS });
-          const registry = AtomRegistry.make();
-          const page = yield* makePage(clock);
-          const rest = makeFakeZeropsRest();
-          rest.addUser({
-            user: {
-              id: account.accountId,
-              email: "person@example.test",
-              clientUserList: [
-                { id: "cu-1", clientId: organization.organizationId, roleCode: "OWNER" },
-              ],
-            },
-            password: "secret",
-          });
-          rest.addProject({
-            id: "project-1",
-            clientId: organization.organizationId,
-            name: "project-1",
-            status: "ACTIVE",
-            tagList: ["mate"],
-          });
-          const client = new ZeropsApiClient({ fetch: rest.fetch });
-          client.restoreSession(rest.issueSession(account.accountId));
-          const datastream = makeFakeDatastream(rest, {
-            variables: () => [
-              {
-                id: "variable-1",
-                serviceStackId: "service-1",
-                projectId: "project-1",
-                key: "ZCP_MATE_ENABLED",
-                content: "1",
-              },
+  it.effect("navigation discovers a new project without reading its access or its services", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const clock = yield* makeDeadlineClock({ startWallMs: START_WALL_MS });
+        const registry = AtomRegistry.make();
+        const page = yield* makePage(clock);
+        const rest = makeFakeZeropsRest();
+        rest.addUser({
+          user: {
+            id: account.accountId,
+            email: "person@example.test",
+            clientUserList: [
+              { id: "cu-1", clientId: organization.organizationId, roleCode: "OWNER" },
             ],
+          },
+          password: "secret",
+        });
+        rest.addProject({
+          id: "project-1",
+          clientId: organization.organizationId,
+          name: "project-1",
+          status: "ACTIVE",
+        });
+        const client = new ZeropsApiClient({ fetch: rest.fetch });
+        client.restoreSession(rest.issueSession(account.accountId));
+        const built = yield* Effect.gen(function* () {
+          const data = yield* makeZeropsDataRuntime({
+            random: () => 0,
+            scope: scope(),
+            adapter: makeFakeDatastream(rest).adapter,
+            atomRegistry: registry,
+            makeOpaqueId: (() => {
+              let next = 0;
+              return () => `opaque-${++next}`;
+            })(),
           });
-          const built = yield* Effect.gen(function* () {
-            const data = yield* makeZeropsDataRuntime({
-              random: () => 0,
-              scope: scope(),
-              adapter: datastream.adapter,
-              atomRegistry: registry,
-              makeOpaqueId: (() => {
-                let next = 0;
-                return () => `opaque-${++next}`;
-              })(),
-            });
-            return yield* makeAccountRuntime({
-              data,
-              verifier: makeRestAccessVerifier({
-                client,
-                account,
-                concurrency: policy.roundProjectConcurrency,
-                onUser: () => undefined,
-              }),
-              signals: page.signals,
-              atomRegistry: registry,
-              environments: inertEnvironments(clock),
-            }).pipe(
-              Effect.tap((runtime) =>
-                Effect.sync(() => runtime.selectOrganization(organization.organizationId)),
-              ),
-            );
-          }).pipe(Effect.provideService(Clock.Clock, clock));
-          yield* Effect.addFinalizer(() => built.close("application-close"));
-          yield* clock.advance(SECOND);
-          yield* settle;
-          yield* settle;
-          const service = {
-            kind: "service" as const,
-            project: {
-              kind: "project" as const,
-              organization,
-              projectId: ZeropsProjectId.make("project-1"),
-            },
-            serviceId: ZeropsServiceId.make("service-1"),
-          };
-
-          yield* built.data.acquire({
-            kind: "project-variables",
-            project: service.project,
-            serviceIds: [service.serviceId],
-          });
-          yield* clock.advance(SECOND);
-          yield* settle;
-          const registered = datastream.registrations().length;
-          for (let asked = 0; asked < 20; asked++) {
-            const flag = yield* Effect.promise(() =>
-              readServiceMateFlag(built.data, registry, service),
-            );
-            expect(flag).toBe(true);
-            yield* settle;
-          }
-
-          expect(datastream.registrations()).toHaveLength(registered);
-          expect(
-            datastream
-              .registrations()
-              .filter(
-                ({ descriptor }) =>
-                  descriptor.kind === "table-list" || descriptor.kind === "table-updates",
-              ),
-          ).toHaveLength(2);
-        }),
-      ),
-  );
-
-  it.effect(
-    "reads a Mate flag the account's variables never stated from the service itself, once",
-    () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const clock = yield* makeDeadlineClock({ startWallMs: START_WALL_MS });
-          const registry = AtomRegistry.make();
-          const page = yield* makePage(clock);
-          const rest = makeFakeZeropsRest();
-          rest.addUser({
-            user: {
-              id: account.accountId,
-              email: "person@example.test",
-              clientUserList: [
-                { id: "cu-1", clientId: organization.organizationId, roleCode: "OWNER" },
-              ],
-            },
-            password: "secret",
-          });
-          rest.addProject({
-            id: "project-1",
-            clientId: organization.organizationId,
-            name: "project-1",
-            status: "ACTIVE",
-            tagList: ["mate"],
-          });
-          const client = new ZeropsApiClient({ fetch: rest.fetch });
-          client.restoreSession(rest.issueSession(account.accountId));
-          let ownReads = 0;
-          const datastream = makeFakeDatastream(rest, {
-            variables: () => [
-              {
-                id: "variable-1",
-                serviceStackId: "service-1",
-                projectId: "project-1",
-                key: "ZCP_MATE_ENABLED",
-                content: "1",
-              },
-            ],
-          });
-          const built = yield* Effect.gen(function* () {
-            const data = yield* makeZeropsDataRuntime({
-              random: () => 0,
-              scope: scope(),
-              adapter: {
-                ...datastream.adapter,
-                cells: {
-                  readServiceMateFlag: () =>
-                    Effect.sync(() => {
-                      ownReads += 1;
-                      return { enabled: true };
-                    }),
-                },
-              },
-              atomRegistry: registry,
-              makeOpaqueId: (() => {
-                let next = 0;
-                return () => `opaque-${++next}`;
-              })(),
-            });
-            return yield* makeAccountRuntime({
-              data,
-              verifier: makeRestAccessVerifier({
-                client,
-                account,
-                concurrency: policy.roundProjectConcurrency,
-                onUser: () => undefined,
-              }),
-              signals: page.signals,
-              atomRegistry: registry,
-              environments: inertEnvironments(clock),
-            }).pipe(
-              Effect.tap((runtime) =>
-                Effect.sync(() => runtime.selectOrganization(organization.organizationId)),
-              ),
-            );
-          }).pipe(Effect.provideService(Clock.Clock, clock));
-          yield* Effect.addFinalizer(() => built.close("application-close"));
-          // The account's variables never answer: the flag cannot be stated from them.
-          datastream.holdRegistrations();
-          yield* clock.advance(SECOND);
-          yield* settle;
-          yield* settle;
-          const service = {
-            kind: "service" as const,
-            project: {
-              kind: "project" as const,
-              organization,
-              projectId: ZeropsProjectId.make("project-1"),
-            },
-            serviceId: ZeropsServiceId.make("service-1"),
-          };
-
-          yield* built.data.acquire({
-            kind: "project-variables",
-            project: service.project,
-            serviceIds: [service.serviceId],
-          });
-          yield* clock.advance(SECOND);
-          yield* settle;
-          const flag = yield* Effect.promise(() =>
-            readServiceMateFlag(built.data, registry, service, undefined, 50),
+          return yield* makeAccountRuntime({
+            data,
+            verifier: makeRestAccessVerifier({
+              client,
+              account,
+              standing: rosterOf(registry, rest),
+              onUser: () => undefined,
+            }),
+            signals: page.signals,
+            atomRegistry: registry,
+            environments: inertEnvironments(clock),
+            store: makeAccountStore(registry),
+          }).pipe(
+            Effect.tap((runtime) =>
+              Effect.sync(() => runtime.selectOrganization(organization.organizationId)),
+            ),
           );
+        }).pipe(Effect.provideService(Clock.Clock, clock));
+        yield* Effect.addFinalizer(() => built.close("application-close"));
+        const data = built.data;
+        const rounds = () => rest.requests().filter(({ route }) => route === "GET /user/info");
+        /** Each project read of its own, `GET /project/{id}`: the grant reads none. */
+        const projectReads = () =>
+          rest.requests().filter(({ route }) => /^GET \/project\/[^/]+$/u.test(route));
+        const verifiedProjects = () => {
+          const phase = registry.get(data.access.view).machine.phase;
+          return phase.phase === "granted" ? [...phase.evidence.projects.keys()].toSorted() : [];
+        };
+        const observing = () =>
+          Effect.map(
+            data.state,
+            (state) =>
+              [...state.interests.values()].filter(
+                ({ interest }) => interest.status === "observing",
+              ).length,
+          );
+        const unsubscribe = registry.subscribe(mateListingsAtom(data), () => undefined);
+        yield* Effect.addFinalizer(() => Effect.sync(unsubscribe));
+        yield* clock.advance(SECOND);
+        yield* settle;
+        yield* settle;
+        // The roster's project is the viewer's on its row alone.
+        expect(verifiedProjects()).toEqual(["project-1"]);
+        expect(projectReads()).toEqual([]);
+        expect(yield* observing()).toBe(1);
+        const roundsBefore = rounds().length;
 
-          expect(flag).toBe(true);
-          expect(ownReads).toBe(1);
-        }),
-      ),
-  );
+        // Someone else adds the organization's first Mate: its project appears in the list.
+        const mate = {
+          id: "project-2",
+          clientId: organization.organizationId,
+          name: "project-2",
+          status: "ACTIVE",
+        } as const;
+        rest.addProject({ ...mate, tagList: ["mate"] });
+        yield* built.invalidations
+          .invalidate({ topic: "inventory", organization })
+          .pipe(Effect.provideService(Clock.Clock, clock));
+        yield* clock.advance(SECOND);
+        yield* settle;
+        yield* settle;
 
-  it.effect(
-    "navigation discovers a new project without verifying access or reading its services",
-    () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const clock = yield* makeDeadlineClock({ startWallMs: START_WALL_MS });
-          const registry = AtomRegistry.make();
-          const page = yield* makePage(clock);
-          const rest = makeFakeZeropsRest();
-          rest.addUser({
-            user: {
-              id: account.accountId,
-              email: "person@example.test",
-              clientUserList: [
-                { id: "cu-1", clientId: organization.organizationId, roleCode: "OWNER" },
-              ],
-            },
-            password: "secret",
-          });
-          rest.addProject({
-            id: "project-1",
-            clientId: organization.organizationId,
-            name: "project-1",
-            status: "ACTIVE",
-          });
-          const client = new ZeropsApiClient({ fetch: rest.fetch });
-          client.restoreSession(rest.issueSession(account.accountId));
-          const built = yield* Effect.gen(function* () {
-            const data = yield* makeZeropsDataRuntime({
-              random: () => 0,
-              scope: scope(),
-              adapter: makeFakeDatastream(rest).adapter,
-              atomRegistry: registry,
-              makeOpaqueId: (() => {
-                let next = 0;
-                return () => `opaque-${++next}`;
-              })(),
-            });
-            return yield* makeAccountRuntime({
-              data,
-              verifier: makeRestAccessVerifier({
-                client,
-                account,
-                concurrency: policy.roundProjectConcurrency,
-                onUser: () => undefined,
-              }),
-              signals: page.signals,
-              atomRegistry: registry,
-              environments: inertEnvironments(clock),
-            }).pipe(
-              Effect.tap((runtime) =>
-                Effect.sync(() => runtime.selectOrganization(organization.organizationId)),
-              ),
-            );
-          }).pipe(Effect.provideService(Clock.Clock, clock));
-          yield* Effect.addFinalizer(() => built.close("application-close"));
-          const data = built.data;
-          const rounds = () => rest.requests().filter(({ route }) => route === "GET /user/info");
-          const verifiedProjects = () => {
-            const phase = registry.get(data.access.view).machine.phase;
-            return phase.phase === "granted" ? [...phase.evidence.projects.keys()].toSorted() : [];
-          };
-          const observing = () =>
-            Effect.map(
-              data.state,
-              (state) =>
-                [...state.interests.values()].filter(
-                  ({ interest }) => interest.status === "observing",
-                ).length,
-            );
-          const unsubscribe = registry.subscribe(mateListingsAtom(data), () => undefined);
-          yield* Effect.addFinalizer(() => Effect.sync(unsubscribe));
-          yield* clock.advance(SECOND);
-          yield* settle;
-          yield* settle;
-          expect(verifiedProjects()).toEqual([]);
-          expect(yield* observing()).toBe(1);
-          const roundsBefore = rounds().length;
+        expect(verifiedProjects()).toEqual(["project-1"]);
+        expect(projectReads()).toEqual([]);
+        // Its services are read: the organization's inventory and both projects'; and, with a
+        // Mate there now, what its services run and their Mate flags are streamed.
+        expect(yield* observing()).toBe(1);
+        expect(rounds()).toHaveLength(roundsBefore);
 
-          const streamed = () =>
-            Effect.map(data.state, (state) =>
-              [...state.interests.values()]
-                .filter(({ interest }) => interest.status === "observing")
-                .map(({ descriptor }) => descriptor.kind)
-                .filter((kind) => kind === "project-variables")
-                .toSorted(),
-            );
-          expect(yield* streamed()).toEqual([]);
-
-          // Someone else adds the organization's first Mate: its project appears in the list.
-          const mate = {
-            id: "project-2",
-            clientId: organization.organizationId,
-            name: "project-2",
-            status: "ACTIVE",
-          } as const;
-          rest.addProject({ ...mate, tagList: ["mate"] });
-          yield* built.invalidations
-            .invalidate({ topic: "inventory", organization })
-            .pipe(Effect.provideService(Clock.Clock, clock));
-          yield* clock.advance(SECOND);
-          yield* settle;
-          yield* settle;
-
-          expect(verifiedProjects()).toEqual([]);
-          // Its services are read: the organization's inventory and both projects'; and, with a
-          // Mate there now, what its services run and their Mate flags are streamed.
-          expect(yield* observing()).toBe(1);
-          expect(yield* streamed()).toEqual([]);
-          expect(rounds()).toHaveLength(roundsBefore);
-
-          // The organization's last Mate stops being one: nothing reads the streams, so they go.
-          rest.addProject({ ...mate, tagList: [] });
-          yield* built.invalidations
-            .invalidate({ topic: "inventory", organization })
-            .pipe(Effect.provideService(Clock.Clock, clock));
-          yield* clock.advance(SECOND);
-          yield* settle;
-          yield* settle;
-          expect(yield* streamed()).toEqual([]);
-          expect(yield* observing()).toBe(1);
-        }),
-      ),
+        // The organization's last Mate stops being one: nothing reads the streams, so they go.
+        rest.addProject({ ...mate, tagList: [] });
+        yield* built.invalidations
+          .invalidate({ topic: "inventory", organization })
+          .pipe(Effect.provideService(Clock.Clock, clock));
+        yield* clock.advance(SECOND);
+        yield* settle;
+        yield* settle;
+        expect(yield* observing()).toBe(1);
+      }),
+    ),
   );
 
   it.effect(
@@ -1209,6 +997,7 @@ describe("the account runtime", () => {
               signals: page.signals,
               atomRegistry: registry,
               environments: inertEnvironments(clock),
+              store: makeAccountStore(registry),
             });
           }).pipe(Effect.provideService(Clock.Clock, clock));
           yield* Effect.addFinalizer(() => built.close("application-close"));
@@ -1261,6 +1050,7 @@ describe("the account runtime", () => {
             signals: page.signals,
             atomRegistry: registry,
             environments: inertEnvironments(clock),
+            store: makeAccountStore(registry),
           })
             .pipe(
               Effect.tap((runtime) =>
@@ -1321,12 +1111,13 @@ describe("the account runtime", () => {
               verifier: makeRestAccessVerifier({
                 client,
                 account,
-                concurrency: policy.roundProjectConcurrency,
+                standing: rosterOf(registry, rest),
                 onUser: () => undefined,
               }),
               signals: page.signals,
               atomRegistry: registry,
               environments: inertEnvironments(clock),
+              store: makeAccountStore(registry),
             }).pipe(
               Effect.tap((runtime) =>
                 Effect.sync(() => runtime.selectOrganization(organization.organizationId)),
@@ -1388,7 +1179,7 @@ describe("the account runtime", () => {
 describe("the post-grant stage's Mate environments", () => {
   /** An account runtime over a platform holding these Mates' projects, with no React mounted. */
   const openAccount = Effect.fnUntraced(function* (
-    remembered: ReadonlyArray<RegistrationRecord>,
+    remembered: ReadonlyArray<RememberedTarget>,
     mates: ReadonlyArray<Mate> = [A_MATE],
     adapter: ZeropsDataAdapter = platformAdapter(mates),
     /** The Mates the grant admits; the organization may list more. */
@@ -1401,6 +1192,8 @@ describe("the post-grant stage's Mate environments", () => {
     rosterHeld = false,
     /** The services listing does not answer until the case releases it. */
     servicesHeld = false,
+    /** The organization's Mate variables as their search answers them; `never`: it never does. */
+    variables: ReadonlyArray<Readonly<Record<string, unknown>>> | "never" = [],
   ) {
     const clock = yield* makeDeadlineClock({ startWallMs: START_WALL_MS });
     const registry = AtomRegistry.make();
@@ -1412,6 +1205,8 @@ describe("the post-grant stage's Mate environments", () => {
         .map(({ projectId }) => project(projectId)),
     );
     const rig = environmentRig(clock, remembered);
+    // The account's store, its organization's roster read: the Mates' projects.
+    const store = makeAccountStore(registry);
     const built = yield* Effect.gen(function* () {
       const data = yield* makeZeropsDataRuntime({
         random: () => 0,
@@ -1430,6 +1225,7 @@ describe("the post-grant stage's Mate environments", () => {
         signals: page.signals,
         atomRegistry: registry,
         environments: { ...rig.ports, ...extra },
+        store,
       }).pipe(
         Effect.tap((runtime) =>
           Effect.sync(() => runtime.selectOrganization(organization.organizationId)),
@@ -1437,8 +1233,6 @@ describe("the post-grant stage's Mate environments", () => {
       );
     }).pipe(Effect.provideService(Clock.Clock, clock));
     yield* Effect.addFinalizer(() => built.close("application-close"));
-    // The account's store, its organization's roster read: the Mates' projects.
-    const store = makeAccountStore(registry);
     let rosterReleased = false;
     let servicesReleased = false;
     /** The organization's services listing answers: after the roster, once the grant answered. */
@@ -1460,10 +1254,18 @@ describe("the post-grant stage's Mate environments", () => {
     };
     let answeredOnce = false;
     if (!rosterHeld) releaseRoster();
+    const variablesRead = new Set<string>();
     registry.set(accountReadsAtom, {
       data: store.data,
       orgId: organization.organizationId,
-      demandDetail: () => () => undefined,
+      demandDetail: ({ family, ownerId }) => {
+        if (family !== "mateVariables" || variables === "never" || variablesRead.has(ownerId))
+          return () => undefined;
+        variablesRead.add(ownerId);
+        liveMateVariables(organization.organizationId, ownerId, variables).forEach(store.dispatch);
+        return () => undefined;
+      },
+      renewHeld: () => {},
     });
     // As a page loads: the services listing lands once the account's first grant is in.
     const answered = {
@@ -1488,6 +1290,8 @@ describe("the post-grant stage's Mate environments", () => {
       registry,
       store,
       releaseRoster,
+      /** The Mates' containers whose variables were asked for. */
+      variablesRead,
       /** The held services listing answers now. */
       releaseHeldServices: () => {
         servicesHeld = false;
@@ -1499,13 +1303,14 @@ describe("the post-grant stage's Mate environments", () => {
 
   /** `openAccount` past the epoch's first grant, with its post-grant stage. */
   const granted = Effect.fnUntraced(function* (
-    remembered: ReadonlyArray<RegistrationRecord>,
+    remembered: ReadonlyArray<RememberedTarget>,
     mates: ReadonlyArray<Mate> = [A_MATE],
     adapter: ZeropsDataAdapter = platformAdapter(mates),
     admitted: ReadonlyArray<Mate> = mates,
     extra: Partial<AccountEnvironmentPorts> = {},
     rosterHeld = false,
     servicesHeld = false,
+    variables: ReadonlyArray<Readonly<Record<string, unknown>>> | "never" = [],
   ) {
     const opened = yield* openAccount(
       remembered,
@@ -1516,6 +1321,7 @@ describe("the post-grant stage's Mate environments", () => {
       undefined,
       rosterHeld,
       servicesHeld,
+      variables,
     );
     yield* opened.grant.answer();
     yield* opened.clock.advance(SECOND);
@@ -1529,7 +1335,7 @@ describe("the post-grant stage's Mate environments", () => {
         project: project(mate.projectId),
       });
     yield* settle;
-    return { ...opened, environments: stage.environments };
+    return { ...opened, environments: withMates(stage.environments, opened.store) };
   });
 
   it.effect("a refused cold route read ends visibly and waits for manual Again", () =>
@@ -1557,7 +1363,7 @@ describe("the post-grant stage's Mate environments", () => {
         }
         yield* opened.grant.answer();
         yield* settle;
-        const { environments } = yield* opened.built.postGrant;
+        const environments = withMates((yield* opened.built.postGrant).environments, opened.store);
         environments.setActiveOrganization(organization.organizationId);
         environments.setRoute(ENV_A);
         yield* settle;
@@ -1635,12 +1441,11 @@ describe("the post-grant stage's Mate environments", () => {
   // Mate of the open organization: the 20+-Mate account opened twenty-odd sockets per tab.
   const B_MATE = mate("b");
   const ENV_B = EnvironmentId.make("env-b");
-  const REMEMBERED_B: RegistrationRecord = {
+  const REMEMBERED_B: RememberedTarget = {
     targetKey: B_MATE.key,
     environmentId: ENV_B,
     origin: B_MATE.origin,
-    projectRef: { projectId: B_MATE.projectId, orgId: "org-1" },
-    name: "shop b",
+    orgId: "org-1",
   };
   const registered = (...environmentIds: ReadonlyArray<EnvironmentId>) =>
     environmentIds.map((environmentId) => ({ environmentId, origin: null }));
@@ -1764,6 +1569,7 @@ describe("the post-grant stage's Mate environments", () => {
         held.add(`${listing} ${ownerId}`);
         return () => void held.delete(`${listing} ${ownerId}`);
       },
+      renewHeld: () => {},
     });
     return held;
   };
@@ -1879,7 +1685,7 @@ describe("the post-grant stage's Mate environments", () => {
   // The close-off gate (restores 0.12.3's closeOffGate inside the lease model): a Mate whose
   // container carries the press's marker is let in only once HQ says its project is closed off.
   describe("the close-off gate", () => {
-    /** The press's marker on Mate A's container, as the account's streamed variables say it. */
+    /** The press's marker on Mate A's container, as the organization's Mate variables say it. */
     const MARKER = [
       {
         id: "variable-marker",
@@ -1936,9 +1742,12 @@ describe("the post-grant stage's Mate environments", () => {
             const { rig, environments } = yield* granted(
               [],
               [A_MATE],
-              platformAdapter([A_MATE], MARKER),
+              platformAdapter([A_MATE]),
               [A_MATE],
               { closeOff: word.port },
+              false,
+              false,
+              MARKER,
             );
             environments.setOnScreen(A_MATE.projectId);
             yield* settle;
@@ -1984,9 +1793,16 @@ describe("the post-grant stage's Mate environments", () => {
         Effect.scoped(
           Effect.gen(function* () {
             const fresh = madeAt("2026-09-23T09:50:00.000Z");
-            const unheld = yield* granted([], [fresh], platformAdapter([fresh], MARKER), [fresh], {
-              closeOff: hqWord(null).port,
-            });
+            const unheld = yield* granted(
+              [],
+              [fresh],
+              platformAdapter([fresh]),
+              [fresh],
+              { closeOff: hqWord(null).port },
+              false,
+              false,
+              MARKER,
+            );
             unheld.environments.setOnScreen(fresh.projectId);
             yield* settle;
             expect(unheld.environments.closeOffHolds().size).toBe(0);
@@ -2003,9 +1819,12 @@ describe("the post-grant stage's Mate environments", () => {
             const { rig, environments } = yield* granted(
               [],
               [A_MATE],
-              platformAdapter([A_MATE], MARKER),
+              platformAdapter([A_MATE]),
               [A_MATE],
               { closeOff: hqWord(null).port, closeOffPending: pendingHere([A_MATE.projectId]) },
+              false,
+              false,
+              MARKER,
             );
             environments.setOnScreen(A_MATE.projectId);
             yield* settle;
@@ -2013,6 +1832,32 @@ describe("the post-grant stage's Mate environments", () => {
             expect(exchangesOf(rig)).toBe(0);
           }),
         ),
+    );
+
+    // The marker decides only where HQ says a project is not closed off: listing Mates HQ says
+    // are closed off, or says nothing of, reads no container's variables.
+    it.effect.each([
+      { name: "closed off", word: () => said([A_MATE.projectId]) },
+      { name: "said nothing of", word: () => null },
+      { name: "not current", word: () => said([], false) },
+    ])("a Mate HQ has $name reads no variables", ({ word }) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { variablesRead, environments } = yield* granted(
+            [],
+            [A_MATE],
+            platformAdapter([A_MATE]),
+            [A_MATE],
+            { closeOff: hqWord(word()).port },
+            false,
+            false,
+            MARKER,
+          );
+          environments.setOnScreen(A_MATE.projectId);
+          yield* settle;
+          expect([...variablesRead]).toEqual([]);
+        }),
+      ),
     );
 
     // Security review 10: HQ's record saying it is not closed off holds the Mate while its marker
@@ -2024,9 +1869,12 @@ describe("the post-grant stage's Mate environments", () => {
           const { rig, environments } = yield* granted(
             [],
             [old],
-            platformAdapter([old], "never"),
+            platformAdapter([old]),
             [old],
             { closeOff: hqWord(said([])).port },
+            false,
+            false,
+            "never",
           );
           environments.setOnScreen(old.projectId);
           yield* settle;
@@ -2047,9 +1895,12 @@ describe("the post-grant stage's Mate environments", () => {
           const { rig, environments } = yield* granted(
             [],
             [tagged],
-            platformAdapter([tagged], MARKER),
+            platformAdapter([tagged]),
             [tagged],
             { closeOff: hqWord(said([])).port },
+            false,
+            false,
+            MARKER,
           );
           environments.setOnScreen(tagged.projectId);
           yield* settle;
@@ -2083,7 +1934,8 @@ describe("the post-grant stage's Mate environments", () => {
           yield* settle;
           expect(environments.machines().get(MATE)?.guards.want).toBe(false);
           expect(rig.parked()).toContain(ENV_A);
-          expect(rig.records()).toContainEqual(REMEMBERED_A);
+          // Its kept session stays for when the delete fails.
+          expect(rig.forgotten).not.toContain(MATE);
           expect(rig.removed).toEqual([]);
           const before = {
             exchanges: rig.exchanges.filter(({ input }) => input.key === MATE).length,
@@ -2169,7 +2021,7 @@ describe("the post-grant stage's Mate environments", () => {
   it.effect("no exchange before the first grant (I10, AL-04), with no React", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const { clock, grant, rig, built } = yield* openAccount([REMEMBERED_A]);
+        const { clock, grant, rig, built, store } = yield* openAccount([REMEMBERED_A]);
         rig.openOn(ENV_A);
         const postGrant = yield* Effect.forkChild(built.postGrant);
         yield* clock.advance(SECOND);
@@ -2199,7 +2051,9 @@ describe("the post-grant stage's Mate environments", () => {
         ).toEqual([
           { key: MATE, origin: MATE_ORIGIN, projectId: "project-a", organizationId: "org-1" },
         ]);
-        expect(stage.environments.machines().get(MATE)?.credential.kind).toBe("exchanging");
+        expect(withMates(stage.environments, store).machines().get(MATE)?.credential.kind).toBe(
+          "exchanging",
+        );
       }),
     ),
   );
@@ -2256,7 +2110,7 @@ describe("the post-grant stage's Mate environments", () => {
         yield* settle;
         expect(rig.exchanges).toHaveLength(1);
         expect(rig.probes.length).toBeGreaterThan(0);
-        expect(rig.listening).toEqual({ records: 1, catalog: 1 });
+        expect(rig.listening).toEqual({ catalog: 1 });
         let heard = 0;
         environments.subscribe(() => {
           heard += 1;
@@ -2269,45 +2123,13 @@ describe("the post-grant stage's Mate environments", () => {
         expect(rig.probes.every(({ signal }) => signal.aborted)).toBe(true);
         expect(yield* Effect.promise(() => connect)).toEqual({ _tag: "Closed" });
         // The stage hears nothing more: no port, and nothing the tab does, reaches a machine.
-        expect(rig.listening).toEqual({ records: 0, catalog: 0 });
+        expect(rig.listening).toEqual({ catalog: 0 });
         yield* page.emit({ type: "visibility", hidden: true });
         yield* clock.advance(MINUTE);
         yield* page.emit({ type: "visibility", hidden: false });
         yield* settle;
         expect(rig.exchanges).toHaveLength(1);
         expect(heard).toBe(0);
-      }),
-    ),
-  );
-
-  it.effect.each([
-    {
-      name: "the registry takes it: its target is remembered",
-      installed: true,
-      records: [REMEMBERED_A],
-    },
-    {
-      name: "the registry refuses it: nothing is written",
-      installed: false,
-      records: [],
-    },
-  ])("an installed credential writes its target's record (H12): $name", (row) =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const { rig, environments } = yield* granted([]);
-        const connect = environments.connect(MATE, "user");
-        yield* settle;
-
-        rig.exchanges[0]!.answer(admitted(ENV_A, async () => ({ ok: row.installed })));
-        yield* settle;
-
-        expect(rig.records()).toEqual(row.records);
-        if (row.installed) {
-          expect(yield* Effect.promise(() => connect)).toEqual({
-            _tag: "Connected",
-            environmentId: ENV_A,
-          });
-        }
       }),
     ),
   );
@@ -2357,12 +2179,17 @@ describe("the post-grant stage's Mate environments", () => {
         if (row.install !== null) {
           void environments.connect(MATE, "user");
           yield* settle;
+          const environmentId = row.install.environmentId;
           rig.exchanges[0]!.answer(
             admitted(
-              row.install.environmentId,
+              environmentId,
               () =>
                 new Promise((resolve) => {
-                  finish = (ok) => resolve({ ok });
+                  finish = (ok) => {
+                    // The web's door keeps the session it installed, in place of the one before.
+                    if (ok) rig.keep({ ...REMEMBERED_A, environmentId });
+                    resolve({ ok });
+                  };
                 }),
             ),
           );
@@ -2377,42 +2204,6 @@ describe("the post-grant stage's Mate environments", () => {
         if (row.install !== null) finish(row.install.ok);
         yield* settle;
         expect([...new Set(rig.removed)]).toEqual(row.removed);
-      }),
-    ),
-  );
-
-  // A registration a machine holds is the Mate's live link. Records are personal context: a write
-  // that does not land — a full storage, which the web's port swallows — or another tab's write
-  // made without it says nothing about the link, and releasing it left a Mate this tab still held
-  // unregistered, so no door could open it, with nothing to exchange it again.
-  it.effect.each([
-    { name: "its record's write did not land", lands: false, elsewhere: null },
-    { name: "another tab stored the records without it", lands: true, elsewhere: [] },
-  ])("a registration its machine holds is kept though the records lack it: $name", (row) =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const { rig, environments } = yield* granted([]);
-        rig.landWrites(row.lands);
-        void environments.connect(MATE, "user");
-        yield* settle;
-        rig.exchanges[0]!.answer(
-          admitted(ENV_A, async () => {
-            // The registry takes it: the catalog publishes it before the record is written.
-            rig.catalog().environments([{ environmentId: ENV_A, origin: MATE_ORIGIN }]);
-            return { ok: true };
-          }),
-        );
-        yield* settle;
-        if (row.elsewhere !== null) rig.storeElsewhere(row.elsewhere, true);
-        yield* settle;
-
-        expect(environments.machines().get(MATE)?.credential).toMatchObject({
-          kind: "held",
-          environmentId: ENV_A,
-          installed: true,
-        });
-        expect(rig.records()).toEqual([]);
-        expect(rig.removed).toEqual([]);
       }),
     ),
   );
@@ -2454,7 +2245,6 @@ describe("the post-grant stage's Mate environments", () => {
             key: listed!.key,
             projectId: listed!.project.id,
             machines,
-            records: environments.records(),
           });
           expect(key).toBe(MATE);
           expect(machines.get(MATE)?.credential).toMatchObject({
@@ -2462,46 +2252,6 @@ describe("the post-grant stage's Mate environments", () => {
             environmentId: ENV_A,
             installed: true,
           });
-        }),
-      ),
-  );
-
-  /** Answers the oldest probe of this origin still in flight. */
-  const answerProbe = (
-    rig: ReturnType<typeof environmentRig>,
-    origin: string,
-    reading: ProbeReading,
-  ) =>
-    Effect.gen(function* () {
-      const probe = rig.probes.find(
-        (entry) => entry.input === origin && !answeredProbes.has(entry),
-      );
-      if (probe === undefined) throw new Error(`No probe of ${origin} is in flight.`);
-      answeredProbes.add(probe);
-      probe.answer(reading);
-      yield* settle;
-    });
-  const answeredProbes = new WeakSet<object>();
-
-  it.effect(
-    "a deep link on a device with no record exchanges the Mate its descriptor names first",
-    () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const { rig, environments } = yield* granted([]);
-          environments.setRoute(ENV_A);
-          yield* settle;
-          expect(rig.exchanges).toEqual([]);
-
-          yield* answerProbe(rig, MATE_ORIGIN, answering(ENV_A, A_MATE.projectId));
-
-          expect(
-            rig.exchanges.map(({ input: { key, expected, reason } }) => ({
-              key,
-              expected,
-              reason,
-            })),
-          ).toEqual([{ key: MATE, expected: null, reason: "restore" }]);
         }),
       ),
   );
@@ -2524,23 +2274,16 @@ describe("the post-grant stage's Mate environments", () => {
             },
           },
         );
-        // No descriptor names the route's environment: the named Mate's read is still out.
-        yield* answerProbe(rig, down.origin, { kind: "unreachable" });
-        yield* answerProbe(rig, coming.origin, { kind: "initializing", initAt: null });
-
         environments.setRoute(ENV_A);
         yield* settle;
         expect(rig.exchanges.map(({ input: { key, expected } }) => ({ key, expected }))).toEqual([
           { key: named.key, expected: null },
         ]);
 
-        // Neither is read again for the route: the one coming up only on its poll, the one only a
-        // failed read says is coming up not at all, as nobody waits on it. Each stays unanswered.
+        // The other Mates are never read for the route: nobody waits on them.
         yield* clock.advance(10 * SECOND);
-        yield* answerProbe(rig, coming.origin, { kind: "initializing", initAt: null });
-        expect(rig.probes.filter(({ input }) => input === down.origin)).toHaveLength(1);
-        expect(environments.index().reported.has(down.key)).toBe(false);
-        expect(environments.index().reported.has(coming.key)).toBe(false);
+        expect(rig.probes.map(({ input }) => input)).not.toContain(down.origin);
+        expect(rig.probes.map(({ input }) => input)).not.toContain(coming.origin);
       }),
     ),
   );
@@ -2604,7 +2347,10 @@ describe("the post-grant stage's Mate environments", () => {
           );
           yield* opened.grant.answer();
           yield* settle;
-          const { environments } = yield* opened.built.postGrant;
+          const environments = withMates(
+            (yield* opened.built.postGrant).environments,
+            opened.store,
+          );
           environments.setActiveOrganization(organization.organizationId);
           yield* settle;
           expect(opened.rig.exchanges).toEqual([]);
@@ -2657,12 +2403,11 @@ describe("the post-grant stage's Mate environments", () => {
           const drawn = ["1", "2", "3"].map((id) => {
             const listed = mate(id);
             const environmentId = EnvironmentId.make(`env-${id}`);
-            const record: RegistrationRecord = {
+            const record: RememberedTarget = {
               targetKey: listed.key,
               environmentId,
               origin: listed.origin,
-              projectRef: { projectId: listed.projectId, orgId: organization.organizationId },
-              name: listed.project.name,
+              orgId: organization.organizationId,
             };
             return { mate: listed, environmentId, record };
           });
@@ -2686,7 +2431,10 @@ describe("the post-grant stage's Mate environments", () => {
           );
           yield* opened.grant.answer();
           yield* settle;
-          const { environments } = yield* opened.built.postGrant;
+          const environments = withMates(
+            (yield* opened.built.postGrant).environments,
+            opened.store,
+          );
           opened.rig.catalog().environments(registered(...drawn.map((e) => e.environmentId)));
           environments.setActiveOrganization(organization.organizationId);
           yield* settle;
@@ -2730,12 +2478,11 @@ describe("the post-grant stage's Mate environments", () => {
         const drawn = ["1", "2"].map((id) => {
           const listed = mate(id);
           const environmentId = EnvironmentId.make(`env-${id}`);
-          const record: RegistrationRecord = {
+          const record: RememberedTarget = {
             targetKey: listed.key,
             environmentId,
             origin: listed.origin,
-            projectRef: { projectId: listed.projectId, orgId: organization.organizationId },
-            name: listed.project.name,
+            orgId: organization.organizationId,
           };
           return { mate: listed, environmentId, record };
         });
@@ -2755,7 +2502,7 @@ describe("the post-grant stage's Mate environments", () => {
         );
         yield* opened.grant.answer();
         yield* settle;
-        const { environments } = yield* opened.built.postGrant;
+        const environments = withMates((yield* opened.built.postGrant).environments, opened.store);
         opened.rig.catalog().environments(registered(...drawn.map((e) => e.environmentId)));
         environments.setActiveOrganization(organization.organizationId);
         yield* opened.page.emit({ type: "visibility", hidden: true });
@@ -2809,7 +2556,7 @@ describe("the post-grant stage's Mate environments", () => {
         }
         yield* opened.grant.answer();
         yield* settle;
-        const { environments } = yield* opened.built.postGrant;
+        const environments = withMates((yield* opened.built.postGrant).environments, opened.store);
         environments.setActiveOrganization(organization.organizationId);
         const leased = () =>
           [...opened.registry.get(opened.built.data.stateAtom).interests.values()].filter(
@@ -2851,7 +2598,7 @@ describe("the post-grant stage's Mate environments", () => {
           let pressing = true;
           const heard = { listener: (): void => undefined };
           const { rig, environments } = yield* granted(
-            [],
+            [REMEMBERED_A],
             [A_MATE],
             platformAdapter([A_MATE]),
             [A_MATE],
@@ -2865,7 +2612,6 @@ describe("the post-grant stage's Mate environments", () => {
               },
             },
           );
-          yield* answerProbe(rig, MATE_ORIGIN, answering(ENV_A, A_MATE.projectId));
           // Left in the same turn it was opened: only the Mate left last wants it.
           environments.setRoute(ENV_A);
           environments.setRoute(null);
@@ -2933,46 +2679,10 @@ describe("the post-grant stage's Mate environments", () => {
       ),
   );
 
+  // A Mate is read only while something waits on it: the platform's statuses say
+  // the rest, and no listing, HQ word or load probes a Mate nobody opened.
   it.effect(
-    "a Mate HQ holds online is not probed as the stage starts, and is once HQ lets it go",
-    () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          let online: ReadonlySet<string> = new Set([A_MATE.projectId]);
-          const heard = { listener: (): void => undefined };
-          const { clock, rig, environments } = yield* granted(
-            [],
-            [A_MATE],
-            platformAdapter([A_MATE]),
-            [A_MATE],
-            {
-              online: {
-                read: () => online,
-                subscribe: (listener) => {
-                  heard.listener = listener;
-                  return () => undefined;
-                },
-              },
-            },
-          );
-          yield* clock.advance(MINUTE);
-          yield* settle;
-          expect([...environments.machines().keys()]).toContain(MATE);
-          expect(rig.probes.map(({ input }) => input)).not.toContain(MATE_ORIGIN);
-
-          online = new Set();
-          heard.listener();
-          yield* settle;
-          expect(rig.probes.map(({ input }) => input)).toContain(MATE_ORIGIN);
-        }),
-      ),
-  );
-
-  // t10, 2026-10-03: under KRLS's official HQ, every listed zcp project — Mate or not, up or not —
-  // was read at load. A project HQ's current word speaks for and does not hold online waits for a
-  // lease.
-  it.effect(
-    "a project an official HQ's current word does not hold online is read only once a lease holds it",
+    "a listed Mate nobody waits on is never read, and is through its door once a lease holds it",
     () =>
       Effect.scoped(
         Effect.gen(function* () {
@@ -2981,75 +2691,17 @@ describe("the post-grant stage's Mate environments", () => {
             [A_MATE],
             platformAdapter([A_MATE]),
             [A_MATE],
-            {
-              online: { read: () => new Set(), subscribe: () => () => undefined },
-              hqOrganization: {
-                read: () => organization.organizationId,
-                subscribe: () => () => undefined,
-              },
-            },
           );
           yield* clock.advance(MINUTE);
           yield* settle;
           expect([...environments.machines().keys()]).toContain(MATE);
           expect(rig.probes.map(({ input }) => input)).not.toContain(MATE_ORIGIN);
+          expect(rig.exchanges).toEqual([]);
 
           environments.setOnScreen(A_MATE.projectId);
           yield* settle;
-          expect(rig.probes.map(({ input }) => input)).toContain(MATE_ORIGIN);
-        }),
-      ),
-  );
-
-  it.effect("a Mate listed where no HQ will answer is read at once, never waiting for HQ", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const { rig, environments } = yield* granted(
-          [],
-          [A_MATE],
-          platformAdapter([A_MATE]),
-          [A_MATE],
-          {
-            online: { read: () => "absent", subscribe: () => () => undefined },
-          },
-        );
-        yield* settle;
-        expect([...environments.machines().keys()]).toContain(MATE);
-        expect(rig.probes.map(({ input }) => input)).toContain(MATE_ORIGIN);
-      }),
-    ),
-  );
-
-  it.effect(
-    "a Mate listed before HQ answers waits for its word, and HQ holding it online keeps it unread",
-    () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          let online: ReadonlySet<string> | null = null;
-          const heard = { listener: (): void => undefined };
-          const { clock, rig, environments } = yield* granted(
-            [],
-            [A_MATE],
-            platformAdapter([A_MATE]),
-            [A_MATE],
-            {
-              online: {
-                read: () => online,
-                subscribe: (listener) => {
-                  heard.listener = listener;
-                  return () => undefined;
-                },
-              },
-            },
-          );
-          yield* settle;
-          expect([...environments.machines().keys()]).toContain(MATE);
-          expect(rig.probes.map(({ input }) => input)).not.toContain(MATE_ORIGIN);
-
-          online = new Set([A_MATE.projectId]);
-          heard.listener();
-          yield* clock.advance(MINUTE);
-          yield* settle;
+          // Its door's descriptor read is its container's reading: no probe besides.
+          expect(rig.exchanges.map(({ input }) => input.key)).toEqual([MATE]);
           expect(rig.probes.map(({ input }) => input)).not.toContain(MATE_ORIGIN);
         }),
       ),
@@ -3107,80 +2759,6 @@ describe("the post-grant stage's Mate environments", () => {
       ),
   );
 
-  /** Three Mates, each remembered, the third the route's. */
-  const routeScene = () => {
-    const mates = [mate("1"), mate("2"), mate("3")];
-    const route = mates[2]!;
-    const environment = EnvironmentId.make("env-3");
-    const records = mates.map((listed, index): RegistrationRecord => ({
-      targetKey: listed.key,
-      environmentId: listed === route ? environment : EnvironmentId.make(`env-${index}`),
-      origin: listed.origin,
-      projectRef: { projectId: listed.projectId, orgId: "org-1" },
-      name: listed.project.name,
-    }));
-    return { mates, route, environment, records };
-  };
-
-  it.effect("the route is set before the first probe of a listing change", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const { mates, route, environment, records } = routeScene();
-        const { rig, environments, releaseRoster } = yield* granted(
-          records.filter(({ environmentId }) => environmentId !== environment),
-          mates,
-          undefined,
-          undefined,
-          undefined,
-          true,
-          true,
-        );
-        environments.setRoute(environment);
-        yield* settle;
-        expect(rig.probes.map(({ input }) => input)).not.toContain("unknown-environment");
-
-        // Another tab stores the route's record; its storage event has not reached this tab yet.
-        rig.storeElsewhere(records, false);
-        // The organization's projects are read: every remembered Mate's container is read at
-        // once, the route's first.
-        releaseRoster();
-        yield* settle;
-        expect(rig.probes.map(({ input }) => input)[0]).toBe(route.origin);
-        expect(rig.probes.map(({ input }) => input).toSorted()).toEqual(
-          mates.map(({ origin }) => origin).toSorted(),
-        );
-      }),
-    ),
-  );
-
-  it.effect("a record naming the route has the route's origin probed first", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const { mates, route, environment, records } = routeScene();
-        const { rig, environments } = yield* granted(
-          [],
-          mates,
-          undefined,
-          undefined,
-          undefined,
-          false,
-          true,
-        );
-        environments.setRoute(environment);
-        yield* settle;
-        expect(rig.probes.map(({ input }) => input)).not.toContain("unknown-environment");
-
-        // The organization's projects are listed already; another tab remembers every Mate.
-        rig.storeElsewhere(records, true);
-        yield* settle;
-        expect(rig.probes.map(({ input }) => input)[0]).toBe(route.origin);
-        expect(rig.probes.map(({ input }) => input).toSorted()).toEqual(
-          mates.map(({ origin }) => origin).toSorted(),
-        );
-      }),
-    ),
-  );
-
   it.effect("the socket admission follows the route, and lets go when the account closes", () =>
     Effect.scoped(
       Effect.gen(function* () {
@@ -3213,12 +2791,11 @@ describe("the post-grant stage's Mate environments", () => {
   it.effect("an unchanged listing publishes no target change", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const { clock, grant, rig, environments } = yield* granted([REMEMBERED_A]);
+        const { clock, grant, rig, store } = yield* granted([REMEMBERED_A]);
         yield* clock.advance(SECOND);
         yield* settle;
-        const machines = environments.machines();
+        const facts = store.state().facts;
         const probes = rig.probes.length;
-        const reads = rig.recordReads();
 
         // A renewal admits the same evidence: the listings are derived again, and none changed.
         while (grant.rounds() < 2) {
@@ -3227,9 +2804,9 @@ describe("the post-grant stage's Mate environments", () => {
         }
         yield* grant.answer();
 
-        expect(rig.recordReads()).toBe(reads);
         expect(rig.probes).toHaveLength(probes);
-        expect(environments.machines()).toBe(machines);
+        // Nothing of any Mate was written again.
+        expect(store.state().facts).toBe(facts);
       }),
     ),
   );

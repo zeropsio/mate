@@ -18,6 +18,10 @@ afterEach(({ task }) => {
     ).toBe(true);
 });
 
+// One registration pair per organization-wide family (project, service, process, app version,
+// public routing): a fixed count that never grows with the projects or Mates shown.
+const REGISTRATIONS = 10;
+
 describe("H: hosted client budgets", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
     // Catches a request storm that prevents a populated organization menu becoming usable.
@@ -35,6 +39,7 @@ describe("H: hosted client budgets", () => {
         report(
           `H startup: browser total=${requests}, registrations=${sample.registrations - before.registrations}, other=${sample.otherRequests - before.otherRequests}; 4 Mates, settled`,
         );
+        report(`H startup HQ: ${JSON.stringify(b.measure.hqRequests())}; excludes preflights`);
         expect(requests, "Browser startup request budget").toBeLessThanOrEqual(60);
         yield* s.then.noExternalNetwork;
       }),
@@ -80,9 +85,12 @@ describe("H: hosted client budgets", () => {
             concurrency: "unbounded",
           });
           yield* b.when.hqFirstData(receivedBefore + 5);
-          yield* Effect.forEach(tabs, (tab) => tab.then.menu.row("Shop").appears(), {
-            concurrency: "unbounded",
-          });
+          // Chrome pauses animation-frame assertions in background tabs. All five HQ answers
+          // have arrived; inspect each tab in front without changing the delivery measurement.
+          for (const tab of tabs) {
+            yield* Effect.promise(() => tab.page.bringToFront());
+            yield* tab.then.menu.row("Shop").appears();
+          }
           yield* Effect.promise(() => s.hq.ready());
           for (const [index, count] of connections.counts().entries())
             expect(
@@ -194,8 +202,40 @@ describe("H: hosted client budgets", () => {
       }),
     );
 
-    // Catches a per-project services read: at start, or repeated over an idle session.
-    it.effect("an idle session reads no project's services on its own", () =>
+    // Catches a per-project routings read for an organization reader: at start, with the
+    // production menu open, or repeated over an idle session.
+    it.effect("an organization reader reads no project's routings, shown or idle", () =>
+      Effect.gen(function* () {
+        const s = yield* createScenario([installBudget]);
+        const b = budgets(s);
+        yield* b.given.mates(names);
+        yield* s.given.project("Shop-live", {
+          app: "Shop",
+          kind: "production",
+          environmentName: "live",
+        });
+        yield* Effect.promise(() => s.clock.install());
+        yield* s.given.signedIn;
+        yield* b.when.menuReady(names);
+        yield* b.when.opensProductionChip;
+        yield* b.when.browserSettled;
+        const atStart = b.measure.projectRoutingReads();
+        yield* Effect.promise(() => s.clock.advance(120_000));
+        yield* b.when.browserSettled;
+        const idle = b.measure.projectRoutingReads() - atStart;
+        report(
+          `H routings: GET public-http-routing (with preflights) at start=${atStart}, over 2 min idle=${idle}; 4 Mates, production menu open`,
+        );
+        yield* s.then.noExternalNetwork;
+        expect(atStart, "Per-project routings reads at start").toBe(0);
+        expect(idle, "Per-project routings reads while idle").toBe(0);
+      }),
+    );
+
+    // Catches a per-project services or access read: at start, or repeated over an idle session
+    // that outlasts the access grant's renewal. The owner is judged on their membership, and whose
+    // a Mate is comes from HQ: no project's own row is read, then or at a renewal.
+    it.effect("an idle owner's session reads no project's services or own row", () =>
       Effect.gen(function* () {
         const s = yield* createScenario([installBudget]);
         const b = budgets(s);
@@ -204,22 +244,99 @@ describe("H: hosted client budgets", () => {
         yield* s.given.signedIn;
         yield* b.when.menuReady(names);
         yield* b.when.browserSettled;
-        const atStart = b.measure.projectServiceReads();
-        yield* Effect.promise(() => s.clock.advance(120_000));
+        const servicesAtStart = b.measure.projectServiceReads();
+        const projectsAtStart = b.measure.projectReads();
+        const variablesAtStart = b.measure.variableReads();
+        yield* Effect.promise(() => s.clock.advance(15 * 60_000));
         yield* b.when.browserSettled;
-        const idle = b.measure.projectServiceReads() - atStart;
+        const servicesIdle = b.measure.projectServiceReads() - servicesAtStart;
+        const projectsIdle = b.measure.projectReads() - projectsAtStart;
+        const variablesIdle = b.measure.variableReads() - variablesAtStart;
         report(
-          `H idle: GET service-stack (with preflights) at start=${atStart}, over 2 min idle=${idle}; 4 Mates`,
+          `H idle, owner: GET service-stack (with preflights) at start=${servicesAtStart}, over 15 min idle=${servicesIdle}; GET project (with preflights) at start=${projectsAtStart}, over 15 min idle (one renewal)=${projectsIdle}; 4 Mates`,
         );
         yield* s.then.noExternalNetwork;
-        expect(atStart, "Per-project services reads at start").toBe(0);
-        expect(idle, "Per-project services reads while idle").toBe(0);
+        expect(servicesAtStart, "Per-project services reads at start").toBe(0);
+        expect(servicesIdle, "Per-project services reads while idle").toBe(0);
+        expect(projectsAtStart, "Own project rows at start").toBe(0);
+        expect(projectsIdle, "Own project rows over one renewal").toBe(0);
+        report(`H variables: startup=${variablesAtStart}, idle=${variablesIdle}; 4 Mates`);
+        expect(variablesAtStart, "One variables search per Mate at most").toBeLessThanOrEqual(
+          names.length,
+        );
+        expect(variablesIdle, "No variables search while idle").toBe(0);
       }),
+    );
+
+    // A Developer (NO_ACCESS member) is judged on the grant their listing names on each project:
+    // a project's own row is read only where the listing names none, and here it names every one.
+    it.effect("an idle Developer's session reads no own row their listing names a grant on", () =>
+      Effect.gen(function* () {
+        const s = yield* createScenario([installBudget]);
+        const b = budgets(s);
+        yield* b.given.mates(names);
+        s.given.person("dev", {
+          role: "Developer",
+          grants: Object.fromEntries(names.map((name) => [name, "BASIC_USER"])),
+        });
+        s.given.asPerson("dev");
+        yield* Effect.promise(() => s.clock.install());
+        yield* s.given.signedIn;
+        yield* b.when.menuReady(names);
+        yield* b.when.browserSettled;
+        const projectsAtStart = b.measure.projectReads();
+        const variablesAtStart = b.measure.variableReads();
+        yield* Effect.promise(() => s.clock.advance(15 * 60_000));
+        yield* b.when.browserSettled;
+        const projectsIdle = b.measure.projectReads() - projectsAtStart;
+        const variablesIdle = b.measure.variableReads() - variablesAtStart;
+        report(
+          `H idle, Developer granted on 4 Mates: GET project (with preflights) at start=${projectsAtStart}, over 15 min idle (one renewal)=${projectsIdle}`,
+        );
+        yield* s.then.noExternalNetwork;
+        expect(projectsAtStart, "Own project rows at start").toBe(0);
+        expect(projectsIdle, "Own project rows over one renewal").toBe(0);
+        report(`H variables: startup=${variablesAtStart}, idle=${variablesIdle}; 4 Mates`);
+        expect(variablesAtStart, "One variables search per Mate at most").toBeLessThanOrEqual(
+          names.length,
+        );
+        expect(variablesIdle, "No variables search while idle").toBe(0);
+      }),
+    );
+
+    // Catches reading each project's own row, services and public routing when no surface
+    // shows them.
+    // An owner reads no project's own row: whose a Mate is comes from HQ.
+    it.effect(
+      "an eight-project menu starts with no per-project row, services or routing read",
+      () =>
+        Effect.gen(function* () {
+          const s = yield* createScenario([installBudget]);
+          const b = budgets(s);
+          yield* b.given.mates(names);
+          yield* b.given.stops("Shop");
+          yield* b.given.plainProjects(["Plain1", "Plain2"]);
+          yield* s.given.signedIn;
+          yield* b.when.menuReady(names);
+          yield* b.when.browserSettled;
+          const own = b.measure.projectReads();
+          const others = b.measure.projectReads(["Staging", "Production", "Plain1", "Plain2"]);
+          const services = b.measure.projectServiceReads();
+          const routing = b.measure.projectRoutingReads();
+          report(
+            `H start, 8 projects (4 Mates, stage, production, 2 plain), with preflights: GET project=${own} (of which not a Mate's ${others}), GET service-stack=${services}, GET public-http-routing=${routing}`,
+          );
+          yield* s.then.noExternalNetwork;
+          expect(own, "Own project rows at start").toBe(0);
+          expect(others, "Own rows of projects no Mate is drawn for").toBe(0);
+          expect(services, "Per-project services reads at start").toBe(0);
+          expect(routing, "Per-project public routing reads at start").toBe(0);
+        }),
     );
 
     // Targets today's per-Mate startup reads, which make a large organization slow and expensive.
     it.effect.fails(
-      "target: browser startup uses at most eight registrations and eight other requests",
+      "target: browser startup uses at most its organization-wide registrations and eight other requests",
       () =>
         Effect.gen(function* () {
           const s = yield* createScenario([installBudget]);
@@ -234,18 +351,18 @@ describe("H: hosted client budgets", () => {
           const registrations = sample.registrations - before.registrations;
           const otherRequests = sample.otherRequests - before.otherRequests;
           report(
-            `H target startup: browser registrations=${registrations}, other=${otherRequests}, total=${registrations + otherRequests}; targets <=8 each`,
+            `H target startup: browser registrations=${registrations}, other=${otherRequests}, total=${registrations + otherRequests}; targets <=${REGISTRATIONS} registrations, <=8 others`,
           );
           reachedTargets.add(
-            "target: browser startup uses at most eight registrations and eight other requests",
+            "target: browser startup uses at most its organization-wide registrations and eight other requests",
           );
-          expect(registrations, "Browser startup registrations").toBeLessThanOrEqual(8);
+          expect(registrations, "Browser startup registrations").toBeLessThanOrEqual(REGISTRATIONS);
           expect(otherRequests, "Browser startup non-registration requests").toBeLessThanOrEqual(8);
         }),
     );
 
-    // Targets menu registrations growing with the number of Mates instead of organization scope.
-    it.effect.fails("target: menu registrations do not grow from one to four Mates", () =>
+    // Catches menu registrations growing with the number of Mates instead of organization scope.
+    it.effect("target: menu registrations do not grow from one to four Mates", () =>
       Effect.gen(function* () {
         const counts: number[] = [];
         for (const inventory of [["Ada"], names]) {
@@ -273,14 +390,14 @@ describe("H: hosted client budgets", () => {
           );
         }
         report(
-          `H target registrations: 1 Mate=${counts[0]}, 4 Mates + 6 plain projects=${counts[1]}; settled, target <=8 and no growth`,
+          `H target registrations: 1 Mate=${counts[0]}, 4 Mates + 6 plain projects=${counts[1]}; settled, target <=${REGISTRATIONS} and no growth`,
         );
         reachedTargets.add("target: menu registrations do not grow from one to four Mates");
-        expect(counts[0], "One-Mate menu registration ceiling").toBeLessThanOrEqual(8);
+        expect(counts[0], "One-Mate menu registration ceiling").toBeLessThanOrEqual(REGISTRATIONS);
         expect(
           counts[1],
           "Four-Mate and plain-project menu registration ceiling",
-        ).toBeLessThanOrEqual(8);
+        ).toBeLessThanOrEqual(REGISTRATIONS);
         expect(
           counts[1],
           "Menu registration cost must be independent of Mate count",

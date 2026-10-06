@@ -34,8 +34,6 @@ import {
   type ZeropsOrgRole,
 } from "@t3tools/shared/zeropsRoles";
 
-import type { HqPeople } from "@t3tools/shared/hqMates";
-
 import type { HqPlacement } from "./hq/placement.ts";
 
 export type { RoleMateVisibility };
@@ -219,48 +217,10 @@ export function mateMemberName(member: MateOwnerCandidate): string | undefined {
   return email && email.length > 0 ? email : undefined;
 }
 
-/** A Mate's owner as HQ's people name them: their Zerops user id, and their name. */
-export interface MateOwnerPerson {
-  readonly userId: string;
-  readonly name: string;
-}
-
 /**
- * Who owns this Mate, named from HQ's people (`hqMates.ts`) — no member list read: the person
- * its project raised to `OWNER`, found by the member id the entry names — of two a hand-over
- * before the transfer left, the first HQ names — else whoever signed its agent in (D6), Claude
- * Code's first. HQ names exactly the people the reader's view names, never a token.
- *
- * The `OWNER` entry is there only where somebody put it — a creator below `ADMIN` (verified.md,
- * 2026-09-15) or a hand-over, which moves it (F23) — and so wins: a Mate whose `OWNER` HQ does
- * not name is nobody's here, never its signer's. An org owner or admin who creates a Mate gets no
- * entry at all — the project's roles are then only token users' (measured 2026-09-24) — and the
- * one record naming a person is D6's signer, as the Mate's server saw them sign in.
- */
-export function resolveMateOwnerPerson(input: {
-  readonly project: MateAccessProject;
-  readonly people: HqPeople | null;
-}): MateOwnerPerson | undefined {
-  const people = Object.entries(input.people ?? {});
-  const owners = (input.project.userRoles ?? []).filter((entry) => entry.roleCode === "OWNER");
-  if (owners.length > 0) {
-    for (const owner of owners) {
-      const named = people.find(([, person]) => person.clientUserId === owner.clientUserId);
-      if (named !== undefined) return { userId: named[0], name: named[1].name };
-    }
-    return undefined;
-  }
-  const { person } = matePerson(input.project);
-  const named = person === undefined ? undefined : input.people?.[person];
-  return person === undefined || named === undefined
-    ? undefined
-    : { userId: person, name: named.name };
-}
-
-/**
- * What a Mate's own records say of its person before anybody is looked up —
- * the records `resolveMateOwnerPerson` reads, as facts: whether they name anybody at
- * all (an `OWNER` entry, or the signer of its agent), and whether anybody has
+ * What a Mate's own records say of its person before anybody is looked up, as
+ * facts: whether they name anybody at all (an owner HQ names, or the signer of
+ * its agent), and whether anybody has
  * signed its agent in (D6's signer of the agent's own login; a login added
  * beside it names only who uses that one).
  *
@@ -269,7 +229,11 @@ export function resolveMateOwnerPerson(input: {
  * is nobody's whether or not anybody is named yet, and the first person to sign
  * its agent in makes it theirs. A viewer HQ sends no overview to sees no signer.
  */
-export function mateOwnerRecords(project: Pick<MateAccessProject, "hq" | "userRoles">): {
+export function mateOwnerRecords(
+  project: Pick<MateAccessProject, "hq">,
+  /** Whether HQ names an owner of it (`ownerUserId`); `undefined` while HQ has not said. */
+  owned: boolean | undefined,
+): {
   readonly named: boolean | undefined;
   readonly signedIn: boolean;
   /** The Zerops user id who signed its agent in, where somebody did. */
@@ -280,23 +244,7 @@ export function mateOwnerRecords(project: Pick<MateAccessProject, "hq" | "userRo
   readonly runsWithoutSignIn: boolean;
 } {
   const records = matePerson(project);
-  const owned = project.userRoles?.some((entry) => entry.roleCode === "OWNER");
   return { named: records.signedIn || records.person !== undefined || owned, ...records };
-}
-
-/**
- * Whether a Mate is the viewer's own: they signed its agent in (D6's signer, read as
- * `mateOwnerRecords` reads it). Only what one's own Mate waits on waits on them — its question,
- * its change's review; a colleague's waits on its owner (the owner, 2026-09-30: "sana doesn't
- * wait for me, it waits for karlos"). Nobody's Mate, and any Mate while the viewer is not known
- * yet, are nobody's to be waited on.
- */
-export function mateIsViewers(
-  project: Pick<MateAccessProject, "hq">,
-  viewer: string | undefined,
-): boolean {
-  const { person } = matePerson(project);
-  return person !== undefined && viewer !== undefined && viewer.length > 0 && person === viewer;
 }
 
 /**
@@ -355,16 +303,6 @@ export function isTokenMember(member: {
   readonly user?: { readonly email?: string | undefined } | undefined;
 }): boolean {
   return TOKEN_EMAIL.test(member.user?.email ?? "");
-}
-
-/**
- * Whom a Mate may be handed to: the organization's people who have joined it. Its integration
- * tokens are members too (`isTokenMember`), and a person still invited is not one yet.
- */
-export function handOverCandidates<
-  M extends MateOwnerCandidate & { readonly status?: string | undefined },
->(members: ReadonlyArray<M>): ReadonlyArray<M> {
-  return members.filter((member) => member.status === "ACTIVE" && !isTokenMember(member));
 }
 
 /**

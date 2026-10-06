@@ -179,6 +179,7 @@ describe("mateListingsAtom: a container ACTIVE before its address landed", () =>
       } as unknown as AccountReads["data"],
       orgId: organization.organizationId,
       demandDetail: () => () => {},
+      renewHeld: () => {},
     });
     const data = {
       scope: { account: organization.account },
@@ -411,6 +412,7 @@ describe("mateListingsAtom: one listing per organization the grant names", () =>
       } as unknown as AccountReads["data"],
       orgId,
       demandDetail: () => () => {},
+      renewHeld: () => {},
     });
     const data = {
       scope: { account: organization.account },
