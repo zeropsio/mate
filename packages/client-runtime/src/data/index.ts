@@ -59,6 +59,7 @@ export { projectCreations } from "./projections/creation.ts";
 export {
   creationStepId,
   creationSteps,
+  creationsSteps,
   type CreationRead,
   type CreationStep,
   type CreationStepRead,

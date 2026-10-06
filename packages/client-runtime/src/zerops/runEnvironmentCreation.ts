@@ -157,9 +157,9 @@ export function resumableEnvironmentCreationStep(step: EnvironmentCreationStep):
 }
 
 /** Where the project's `project.create` can no longer be followed to its end. */
-const UNCONFIRMED_PROJECT = "Zerops did not confirm the project was created.";
+export const UNCONFIRMED_PROJECT = "Zerops did not confirm the project was created.";
 /** Where a write's end can no longer be followed. */
-const UNCONFIRMED_WRITE =
+export const UNCONFIRMED_WRITE =
   "Zerops may have accepted this operation, but its response was lost. Check the project and its services before starting another operation.";
 
 function defaultDescribeError(cause: unknown): string {

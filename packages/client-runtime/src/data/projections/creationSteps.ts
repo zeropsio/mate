@@ -8,7 +8,7 @@
  *
  * @module data/projections/creationSteps
  */
-import { operationResult, type OperationRecord } from "../model.ts";
+import { operationResult, type OperationIntent, type OperationRecord } from "../model.ts";
 import type { Projection, ProjectionReads } from "../store.ts";
 import { sameValue } from "./equal.ts";
 import { operationEnd, operationStop } from "./operationEnd.ts";
@@ -21,6 +21,8 @@ export type CreationStepRead =
   | {
       readonly state: "stopped";
       readonly attempt: number;
+      /** What the step asked for: a project created, or imported with its services. */
+      readonly kind: OperationIntent["kind"];
       /** Its owner's words; `null` where only the step can say it lost sight of it. */
       readonly reason: string | null;
       /** It may have landed: tried again, it could be made twice. */
@@ -42,11 +44,18 @@ export function creationStepId(creationId: string, step: CreationStep, attempt: 
   return attempt <= 1 ? `${creationId}:${step}` : `${creationId}:${step}#${attempt}`;
 }
 
-/** The newest attempt recorded of a step: 0 where none was. */
-function newestAttempt(read: ProjectionReads, creationId: string, step: CreationStep): number {
-  let attempt = 0;
-  while (read.operation(creationStepId(creationId, step, attempt + 1)) !== undefined) attempt += 1;
-  return attempt;
+/** The newest attempt recorded of a step, and its record: none where none was. */
+function newestAttempt(
+  read: ProjectionReads,
+  creationId: string,
+  step: CreationStep,
+): { readonly attempt: number; readonly record: OperationRecord } | null {
+  let newest: { readonly attempt: number; readonly record: OperationRecord } | null = null;
+  for (let attempt = 1; ; attempt += 1) {
+    const record = read.operation(creationStepId(creationId, step, attempt));
+    if (record === undefined) return newest;
+    newest = { attempt, record };
+  }
 }
 
 const STEPS: ReadonlyArray<CreationStep> = ["app", "birth", "project"];
@@ -71,22 +80,21 @@ export const creationSteps: Projection<
     const records = {} as Record<CreationStep, OperationRecord | undefined>;
     const steps = {} as Record<CreationStep, CreationStepRead>;
     for (const step of STEPS) {
-      const attempt = newestAttempt(read, creationId, step);
-      if (attempt === 0) {
+      const newest = newestAttempt(read, creationId, step);
+      if (newest === null) {
         steps[step] = { state: "not-sent", attempt: 0 };
         continue;
       }
-      const requestId = creationStepId(creationId, step, attempt);
-      const record = read.operation(requestId);
+      const { attempt, record } = newest;
       records[step] = record;
-      const end = operationEnd.derive(read, { requestId, orgId });
+      const end = operationEnd.derive(read, { requestId: record.requestId, orgId });
       const stop = end === null ? undefined : operationStop(end, record);
       steps[step] =
         stop === undefined
           ? { state: "running", attempt }
           : stop === null
             ? { state: "done", attempt }
-            : { state: "stopped", attempt, ...stop };
+            : { state: "stopped", attempt, kind: record.intent.kind, ...stop };
     }
     return {
       steps,
@@ -95,4 +103,16 @@ export const creationSteps: Projection<
       projectId: projectOf(records.project),
     };
   },
+};
+
+/** Each creation a tab holds, read as `creationSteps` reads one, in the order given. */
+export const creationsSteps: Projection<
+  ReadonlyArray<{ readonly orgId: string; readonly creationId: string }>,
+  ReadonlyArray<CreationRead>
+> = {
+  name: "creationsSteps",
+  keyOf: (creations) =>
+    creations.map(({ orgId, creationId }) => `${orgId}/${creationId}`).join(","),
+  equals: sameValue,
+  derive: (read, creations) => creations.map((creation) => creationSteps.derive(read, creation)),
 };

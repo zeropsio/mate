@@ -11,7 +11,12 @@ import {
 } from "../model.ts";
 import { makeAccountStore, readsOfState } from "../store.ts";
 import type { HqStructure } from "../../zerops/hq/client.ts";
-import { creationSteps, creationStepId, type CreationRead } from "./creationSteps.ts";
+import {
+  creationSteps,
+  creationStepId,
+  creationsSteps,
+  type CreationRead,
+} from "./creationSteps.ts";
 
 const APP: OperationIntent = { kind: "create-app", orgId: ORG, name: "Garden" };
 const BIRTH: OperationIntent = { kind: "record-birth", orgId: ORG, appId: "app-1", face: "tint" };
@@ -134,7 +139,7 @@ describe("creationSteps", () => {
       { paused: true },
       {
         steps: {
-          app: { state: "stopped", attempt: 1, reason: null, uncertain: true },
+          app: { state: "stopped", attempt: 1, kind: "create-app", reason: null, uncertain: true },
           birth: NOT_SENT,
           project: NOT_SENT,
         },
@@ -157,7 +162,13 @@ describe("creationSteps", () => {
       {
         steps: {
           app: { state: "done", attempt: 1 },
-          birth: { state: "stopped", attempt: 1, reason: "HQ said no.", uncertain: false },
+          birth: {
+            state: "stopped",
+            attempt: 1,
+            kind: "record-birth",
+            reason: "HQ said no.",
+            uncertain: false,
+          },
           project: NOT_SENT,
         },
         birthId: null,
@@ -181,6 +192,7 @@ describe("creationSteps", () => {
           project: {
             state: "stopped",
             attempt: 1,
+            kind: "create-project",
             reason: "The answer was lost.",
             uncertain: true,
           },
@@ -205,6 +217,7 @@ describe("creationSteps", () => {
           project: {
             state: "stopped",
             attempt: 1,
+            kind: "create-project",
             reason: "Look in the projects.",
             uncertain: true,
           },
@@ -226,7 +239,13 @@ describe("creationSteps", () => {
         steps: {
           app: NOT_SENT,
           birth: NOT_SENT,
-          project: { state: "stopped", attempt: 1, reason: "Too many projects.", uncertain: false },
+          project: {
+            state: "stopped",
+            attempt: 1,
+            kind: "create-project",
+            reason: "Too many projects.",
+            uncertain: false,
+          },
         },
       },
     ],
@@ -271,5 +290,27 @@ describe("creationSteps", () => {
     ],
   ])("%s", (_label, records, hq, expected) => {
     expect(read(records, hq)).toMatchObject(expected);
+  });
+});
+
+describe("creationsSteps", () => {
+  it("reads each creation the tab holds, in its order", () => {
+    const store = makeAccountStore(AtomRegistry.make());
+    liveZerops({ running: [] }).forEach(store.dispatch);
+    const state = store.state();
+    const operations = new Map(state.operations).set("c2:app", {
+      requestId: "c2:app",
+      intent: APP,
+      submission: "recorded",
+      receipt: null,
+      handles: [],
+      before: null,
+      unresolved: null,
+    });
+    const reads = creationsSteps.derive(readsOfState({ ...state, operations }), [
+      { orgId: ORG, creationId: "c1" },
+      { orgId: ORG, creationId: "c2" },
+    ]);
+    expect(reads.map((read) => read.steps.app.state)).toEqual(["not-sent", "running"]);
   });
 });

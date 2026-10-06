@@ -189,6 +189,8 @@ export {
   resumableEnvironmentCreationStep,
   runEnvironmentCreation,
   servicesSettled,
+  UNCONFIRMED_PROJECT,
+  UNCONFIRMED_WRITE,
   type EnvironmentCreationOutcome,
   type EnvironmentCreationPlatform,
   type EnvironmentCreationStepProgress,
