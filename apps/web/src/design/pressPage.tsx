@@ -1,8 +1,8 @@
 /**
  * The page a press lands on, for the add dialogs' harnesses (`design-newproject.html`,
  * `design-newmate.html`): the Mate coming up, drawn by the real stage (`MateEmptyStateView`), the
- * real steps (`ComingBelow`, `arrivalSteps`) and the real sentence (`comingSentenceOf`) over the
- * real creations store (`newProjectBirth.ts`), whose steps a fake press moves at the pace run 6
+ * real steps (`ComingBelow`, `arrivalSteps`) and the real sentence (`comingSentenceOf`) over a
+ * creation as the app draws it (`newProjectBirth.ts`), whose steps a fake press moves at the pace run 6
  * measured (2026-10-03): a New project registered in 0.4 s, its Mate's project in 2.0 s, closed
  * off in 4.0 s, registered in 3.6 s; an added Mate's project in 2.0 s, its container in 0.8 s,
  * closed off in 5.2 s, registered in 2.0 s.
@@ -12,8 +12,8 @@
  * off and registered (`endPress`). `?fail=<step>` stops the press there to watch a stop said where
  * the app says it: `created` before the take (on `/mate/new`, *Try again* goes through),
  * `closed-off` after it (on the Mate's own view, with its press's *Try again*), `registered` a
- * registration refused (not finished, with Finish setup, never a stop). Fixtures only: nothing here
- * ships, and no route imports this module.
+ * registration refused (never a stop: the press ends with it). Fixtures only: nothing here ships,
+ * and no route imports this module.
  */
 import {
   birthCopyServices,
@@ -26,6 +26,7 @@ import type {
   ZeropsMateFace,
 } from "@t3tools/client-runtime/zerops";
 import { useMemo } from "react";
+import { create } from "zustand";
 
 import {
   ComingBelow,
@@ -45,16 +46,11 @@ import {
   useMatePress,
 } from "~/zerops/matePress";
 import {
-  beginNewProjectBirth,
   comingPlanned,
   creationManaged,
   creationSubsteps,
   newProjectComing,
   newProjectProgress,
-  progressNewProjectBirth,
-  refinishNewProjectBirth,
-  retryNewProjectBirth,
-  useNewProjectBirths,
   type NewProjectBirth,
 } from "~/zerops/newProjectBirth";
 import { useSecondsNowMs } from "~/zerops/useNowMs";
@@ -92,13 +88,29 @@ const STEP: Readonly<Record<string, EnvironmentCreationStep>> = {
   "await-ready": { kind: "await-ready", withAgent: true },
 };
 
+/** The creations the harness pressed, as the app draws them, by their id. */
+const useHarnessCreations = create<{
+  readonly creations: Readonly<Record<string, NewProjectBirth>>;
+}>(() => ({ creations: {} }));
+
+const moved = (id: string, patch: Partial<NewProjectBirth>) => {
+  useHarnessCreations.setState((state) => {
+    const creation = state.creations[id];
+    return creation === undefined
+      ? state
+      : { creations: { ...state.creations, [id]: { ...creation, ...patch } } };
+  });
+};
+
+/** Its *Try again*, by the creation's id. */
+const retries = new Map<string, () => void>();
+
 /**
- * Moves a press through its steps at their measured pace, telling the creation of each — and,
- * once the platform took its project, its press record too, as `runPress` does: over (forgotten)
- * once closed off and registered, stopped with *Try again* where a step stops after the take.
+ * Moves a press through its steps at their measured pace — once the platform took its project,
+ * telling its press record, as `runPress` does: over (forgotten) once closed off and registered,
+ * stopped with *Try again* where a step stops after the take.
  */
 function press(
-  id: string,
   kinds: ReadonlyArray<readonly [Kind, number]>,
   failAt: Kind | null,
   /** Its project, once the platform took it. */
@@ -113,7 +125,6 @@ function press(
       state: states.get(kind)!,
       ...(states.get(kind) === "failed" ? { error: "Zerops did not answer in time." } : {}),
     }));
-    progressNewProjectBirth(id, progress);
     const projectId = taken();
     if (projectId === null) return;
     progressPress(projectId, progress);
@@ -161,6 +172,7 @@ export function beginHarnessPress(input: {
   readonly botName: string;
 }): string {
   const adds = input.flow === "add";
+  const id = `harness-${input.flow}`;
   const failAt: Kind | null =
     FAIL === "closed-off" ? "close-off" : FAIL === "registered" ? "register" : null;
   let tries = 0;
@@ -173,91 +185,96 @@ export function beginHarnessPress(input: {
         { hostname: "appstage", role: "stage" },
       ] as const)
     : undefined;
-  return beginNewProjectBirth({
-    ask: {
+  useHarnessCreations.setState((state) => ({
+    creations: {
+      ...state.creations,
+      [id]: {
+        organizationId: "org-harness",
+        birthId: id,
+        name: input.project,
+        botName: input.botName,
+        face: FACE,
+        locationId: null,
+        agents: [],
+        // As its recipe names them, at the press.
+        ...(adds ? { adds: { appId: "g-harness", registers: true, managed, runtimes } } : {}),
+        startedAt: Date.now(),
+        hq: { projectId: "hq-harness", address: "https://hq.example" },
+        appId: adds ? "g-harness" : null,
+        intent: null,
+        step: adds ? "create" : "registry",
+        failed: null,
+        projectId: null,
+      },
+    },
+  }));
+  // The platform took its project: its press is the Mate's from here, as `runPress` keeps it.
+  const accepted = (projectId: string) => {
+    taken = projectId;
+    beginPress({
+      projectId,
       organizationId: "org-harness",
-      birthId: `harness-${input.flow}`,
-      name: input.project,
-      botName: input.botName,
-      face: FACE,
-      locationId: null,
-      agents: [],
-      ...(adds
-        ? {
-            adds: {
-              appId: "g-harness",
-              registers: true,
-              // As its recipe names them, at the press.
-              managed,
-              runtimes,
-            },
-          }
-        : {}),
-    },
-    hq: { projectId: "hq-harness", address: "https://hq.example" },
-    now: Date.now(),
-    ports: {
-      recordBirth: async () => ({ id: "intent-harness" }),
-      registerGroup: async () => {
-        await wait(400);
-        return { appId: "g-harness" };
-      },
-      createProject: async () => {
-        tries += 1;
-        const refused = FAIL === "created" && tries === 1;
-        if (adds) {
-          // The press is heard from its plan on: its project, then the rest.
-          press(
-            `harness-${input.flow}`,
-            refused
-              ? [["create-project", 2_000]]
-              : [
-                  ["create-project", 2_000],
-                  ["import-managed", 0],
-                  ["import-container", 800],
-                  ["close-off", 5_200],
-                  ["register", 2_000],
-                  ["await-ready", 400],
-                ],
-            refused ? "create-project" : failAt,
-            projectOf,
-          );
-        }
-        await wait(2_000);
-        if (refused) throw new Error("No room in this organization.");
-        return { project: { id: `p-harness-${input.flow}` } };
-      },
-      // The platform took its project: its press is the Mate's from here, as `runPress` keeps it.
-      accepted: (projectId) => {
-        taken = projectId;
-        beginPress({
-          projectId,
-          organizationId: "org-harness",
-          startedAt: Date.now(),
-          placement: null,
-          container: true,
-          ...(managed === undefined ? {} : { managed }),
-          ...(runtimes === undefined ? {} : { runtimes }),
-        });
-        if (adds) return;
-        press(
-          `harness-${input.flow}`,
-          [
-            ["close-off", 4_000],
-            ["register", 3_600],
-            ["await-ready", 400],
-          ],
-          failAt,
-          projectOf,
-        );
-      },
-    },
+      startedAt: Date.now(),
+      placement: null,
+      container: true,
+      ...(managed === undefined ? {} : { managed }),
+      ...(runtimes === undefined ? {} : { runtimes }),
+    });
+    moved(id, { step: "created", projectId });
+    if (adds) return;
+    press(
+      [
+        ["close-off", 4_000],
+        ["register", 3_600],
+        ["await-ready", 400],
+      ],
+      failAt,
+      projectOf,
+    );
+  };
+  const createProject = async () => {
+    tries += 1;
+    const refused = FAIL === "created" && tries === 1;
+    if (adds)
+      // The press is heard from its plan on: its project, then the rest.
+      press(
+        refused
+          ? [["create-project", 2_000]]
+          : [
+              ["create-project", 2_000],
+              ["import-managed", 0],
+              ["import-container", 800],
+              ["close-off", 5_200],
+              ["register", 2_000],
+              ["await-ready", 400],
+            ],
+        refused ? "create-project" : failAt,
+        projectOf,
+      );
+    await wait(2_000);
+    if (refused) {
+      moved(id, { failed: { reason: "No room in this organization.", uncertain: false } });
+      return;
+    }
+    accepted(`p-harness-${input.flow}`);
+  };
+  retries.set(id, () => {
+    moved(id, { failed: null });
+    void createProject();
   });
+  void (async () => {
+    if (!adds) {
+      await wait(400);
+      moved(id, { appId: "g-harness", intent: "intent-harness", step: "create" });
+    }
+    await createProject();
+  })();
+  return id;
 }
 
 /** The Mate's page, as a press lands on it, over the creation the harness holds. */
 export function HarnessPressPage({ birthId }: { readonly birthId: string }) {
-  const birth = useNewProjectBirths((state) => state.births[birthId]);
+  const birth = useHarnessCreations((state) => state.creations[birthId]);
   const nowMs = useSecondsNowMs(birth !== undefined && birth.failed === null);
   const progress = useMemo((): ArrivalProgress | undefined => {
     if (birth === undefined) return undefined;
@@ -268,7 +285,7 @@ export function HarnessPressPage({ birthId }: { readonly birthId: string }) {
     return {
       ...newProjectProgress(birth, null, nowMs),
       ...(birth.adds === undefined || managed === undefined ? {} : { managed }),
-      press: creationSubsteps(birth),
+      press: creationSubsteps(birth, null),
     };
   }, [birth, nowMs]);
   if (birth === undefined) return null;
@@ -290,7 +307,7 @@ export function HarnessPressPage({ birthId }: { readonly birthId: string }) {
               mate={mate}
               nowMs={nowMs}
               onTryAgain={() => {
-                retryNewProjectBirth(birthId);
+                retries.get(birthId)?.();
               }}
               progress={progress}
               you={{ initials: "AR", avatarUrl: null }}
@@ -335,7 +352,8 @@ function HarnessMatePage({
     const planned = comingPlanned(press, made);
     const container =
       made.adds === undefined ||
-      made.progress?.some(
+      press === undefined ||
+      press.progress?.some(
         (entry) => entry.step.kind === "import-container" && entry.state === "done",
       ) === true;
     const runtimes = birthRuntimesFacts({ planned: planned.runtimes, services: undefined });
@@ -356,7 +374,17 @@ function HarnessMatePage({
     return {
       ...(made.adds === undefined ? newProjectProgress(made, theirs, nowMs) : theirs),
       ...(managed === undefined ? {} : { managed }),
-      press: creationSubsteps(made),
+      ...(press === undefined
+        ? {}
+        : {
+            press: creationSubsteps(
+              made,
+              press.progress ?? null,
+              FAIL === "registered"
+                ? { attempt: 1, state: "unfinished", reason: "Register said no." }
+                : { attempt: 1, state: "done" },
+            ),
+          }),
     };
   }, [made, nowMs, press]);
   const coming =
@@ -389,11 +417,6 @@ function HarnessMatePage({
               mate={mate}
               nowMs={nowMs}
               {...(retry === null ? {} : { onTryAgain: () => void retry() })}
-              // Finish setup, as the app runs it on a registration not finished: its own step
-              // follows it, here at once through.
-              onFinishSetup={() =>
-                refinishNewProjectBirth(projectId, [{ step: { kind: "register" }, state: "done" }])
-              }
               progress={progress}
               you={{ initials: "AR", avatarUrl: null }}
             />

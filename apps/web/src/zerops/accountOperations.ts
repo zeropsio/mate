@@ -4,13 +4,20 @@
  * the operation's progress projection; it never calls the platform itself.
  */
 import {
+  creationSteps,
+  mateRegistration,
+  registrationRequestId,
   accountReadsAtom,
-  makeHqExecutor,
   makeOperations,
+  makeHqExecutor,
   makeZeropsExecutor,
+  recordedEnvironment,
+  runToEnd,
+  type RunToEnd,
   operationEnd,
   operationProgress,
   type AccountStore,
+  type CreationRead,
   type DetailDemand,
   type OperationEnd,
   type OperationProgress,
@@ -22,6 +29,7 @@ import { createContext, useContext } from "react";
 
 import { randomUUID } from "~/lib/utils";
 
+import { readCarriedCore } from "./accountHq";
 import { hqWritesOf } from "./hqWrites";
 import { accountThrowawayDebt } from "./throwawayDebt";
 import type { ZeropsSessionValue } from "./ZeropsSessionProvider";
@@ -30,7 +38,10 @@ type SessionClient = ZeropsSessionValue["client"];
 
 export interface AccountOperations {
   /** Records and sends one intent; resolves with where it stands once its owner has answered. */
-  readonly submit: (intent: Parameters<Operations["submit"]>[0]) => Promise<{
+  readonly submit: (
+    intent: Parameters<Operations["submit"]>[0],
+    requestId?: string,
+  ) => Promise<{
     readonly requestId: string;
     readonly progress: OperationProgress;
     /** What the owner said of how it ended, once it has; `null` before. */
@@ -43,7 +54,26 @@ export interface AccountOperations {
   readonly askAgain: (requestId: string) => Promise<void>;
   /** Resolves once the operation is final for now, or can no longer be followed (`operationEnd`). */
   readonly untilEnd: (requestId: string, orgId: string) => Promise<NonNullable<OperationEnd>>;
+  /** Runs one intent to its end: its owner's result, or what stopped it (`runToEnd`). */
+  readonly run: RunToEnd;
+  /**
+   * The environment HQ's navigation records for a project attached to `appId`, once it does:
+   * its name, and whether HQ holds a key that works. Rejects with what stops the wait.
+   */
+  readonly untilEnvironment: (
+    orgId: string,
+    appId: string,
+    projectId: string,
+  ) => Promise<{ readonly name: string; readonly keyed: boolean }>;
+  /** Where a creation's steps stand now, read off their operations (`creationSteps`). */
+  readonly readCreation: (orgId: string, creationId: string) => CreationRead;
 }
+
+/** What an HQ write says where its effect can no longer be followed in HQ's navigation. */
+export const HQ_UNFOLLOWED = "HQ isn't answering. HQ may have taken it anyway.";
+
+/** What a wait on HQ's navigation says once HQ's link observes nothing more. */
+const HQ_UNOBSERVED = "HQ isn't answering.";
 
 const coordinators = new WeakMap<AccountStore, WeakMap<SessionClient, AccountOperations>>();
 
@@ -66,6 +96,7 @@ export function accountOperations(
   const operations = makeOperations({
     store,
     executors: {
+      hq: makeHqExecutor({ apiOf: hqWritesOf, zerops: client }),
       zerops: makeZeropsExecutor({
         client,
         store,
@@ -76,12 +107,33 @@ export function accountOperations(
         },
         debtOf: () => accountThrowawayDebt(client),
         nowMs: () => Date.now(),
+        makeId: randomUUID,
+        run: (intent, options) => run(intent, options),
+        // The Core this build carries, read from its own bundle once HQ's update runs.
+        hqCore: readCarriedCore,
         ...(locks === undefined ? {} : { locks }),
       }),
-      hq: makeHqExecutor({ apiOf: hqWritesOf }),
     },
     makeId: randomUUID,
   });
+  const runStep = runToEnd({ operations, store, registry });
+  const run: RunToEnd = (intent, options) => {
+    const projectId =
+      intent.kind === "create-mate-record"
+        ? intent.mate.projectId
+        : intent.kind === "attach-project" && intent.attach.kind === "mate"
+          ? intent.attach.projectId
+          : intent.kind === "bind-birth"
+            ? intent.projectId
+            : null;
+    if (projectId === null || options.requestId !== undefined) return runStep(intent, options);
+    const key = { orgId: options.orgId, projectId };
+    const current = registry.get(store.data.project(mateRegistration, key));
+    return runStep(intent, {
+      ...options,
+      requestId: registrationRequestId(key, current.attempt + 1),
+    });
+  };
   const untilEnd = (requestId: string, orgId: string) =>
     new Promise<NonNullable<OperationEnd>>((resolve) => {
       const atom = store.data.project(operationEnd, { requestId, orgId });
@@ -96,11 +148,32 @@ export function accountOperations(
         { immediate: true },
       );
     });
+  const untilEnvironment: AccountOperations["untilEnvironment"] = (orgId, appId, projectId) =>
+    new Promise((resolve, reject) => {
+      let ended = false;
+      let cancel: (() => void) | undefined;
+      cancel = registry.subscribe(
+        store.data.project(recordedEnvironment, { orgId, appId, projectId }),
+        (recorded) => {
+          if (ended || recorded.kind === "waiting") return;
+          ended = true;
+          if (recorded.kind === "recorded") resolve({ name: recorded.name, keyed: recorded.keyed });
+          else reject(new Error(recorded.kind === "refused" ? recorded.reason : HQ_UNOBSERVED));
+          cancel?.();
+        },
+        { immediate: true },
+      );
+      if (ended) cancel();
+    });
   const made: AccountOperations = {
     untilEnd,
+    untilEnvironment,
+    readCreation: (orgId, creationId) =>
+      registry.get(store.data.project(creationSteps, { orgId, creationId })),
+    run,
     askAgain: (requestId) => Effect.runPromise(operations.retry(requestId)),
-    submit: async (intent) => {
-      const requestId = await Effect.runPromise(operations.submit(intent));
+    submit: async (intent, named) => {
+      const requestId = await Effect.runPromise(operations.submit(intent, named));
       const outcome = store.state().operations.get(requestId)?.receipt?.outcome;
       return {
         requestId,

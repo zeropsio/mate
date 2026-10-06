@@ -1,41 +1,36 @@
+import type { CreationRead, CreationStepRead } from "@t3tools/client-runtime/data";
 import {
   birthCopyServices,
   birthRuntimesFacts,
   deriveBirthProgress,
 } from "@t3tools/client-runtime/zerops/birthProgress";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import type { EnvironmentCreationStepProgress } from "@t3tools/client-runtime/zerops";
+import { describe, expect, it, vi } from "vite-plus/test";
 
-import { isUncertainZeropsFailure } from "@t3tools/client-runtime/zerops/errors";
+import { HQ_UNFOLLOWED } from "./accountOperations";
 import { arrivalSteps } from "./mateArrival";
-import { useNewMate } from "./newMate";
-import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
+import { PRESS_MAY_HAVE_LANDED } from "./matePress";
 import {
-  beginNewProjectBirth,
-  addCreateProject,
   creationEnds,
   comingPlanned,
-  dismissNewProjectBirth,
-  startAddOver,
   creationManaged,
+  creationOf,
+  creationRunId,
   creationRuntimes,
   creationSubsteps,
   recipeManaged,
   recipeRuntimes,
-  progressNewProjectBirth,
-  refinishNewProjectBirth,
-  registrationUnfinished,
   newProjectComing,
   newProjectHandOver,
   newProjectProgress,
   newProjectSteps,
   newProjectView,
   placedNewProjects,
-  retryNewProjectBirth,
+  runAdd,
   runNewProjectBirth,
-  useNewProjectBirths,
+  type CreationAsk,
   type NewProjectAsk,
   type NewProjectBirth,
-  type NewProjectPatch,
   type NewProjectPorts,
 } from "./newProjectBirth";
 
@@ -56,8 +51,13 @@ const NOW = PRESSED_AT + 5_000;
 /** The organization's HQ. */
 const HQ = { projectId: "hq-1", address: "https://hq-30db-8080.prg1.zerops.app" } as const;
 
+/** A creation as its view draws it, with — after the take — its Mate's press's progress. */
+type Drawn = NewProjectBirth & {
+  readonly progress?: ReadonlyArray<EnvironmentCreationStepProgress> | null;
+};
+
 /** Acme CRM's creation, pressed at `PRESSED_AT`, in an organization whose HQ stands. */
-function birth(over: Partial<NewProjectBirth> = {}): NewProjectBirth {
+function birth(over: Partial<Drawn> = {}): Drawn {
   return {
     ...ASK,
     startedAt: PRESSED_AT,
@@ -67,7 +67,6 @@ function birth(over: Partial<NewProjectBirth> = {}): NewProjectBirth {
     step: "registry",
     failed: null,
     projectId: null,
-    progress: null,
     ...over,
   };
 }
@@ -307,99 +306,230 @@ describe("the menu draws it from the press", () => {
   });
 });
 
-const PROJECT = { id: "p-vera", name: "Vera", status: "ACTIVE" } as const;
+const NOT_SENT: CreationStepRead = { state: "not-sent", attempt: 0 };
+const DONE: CreationStepRead = { state: "done", attempt: 1 };
+const RUNNING: CreationStepRead = { state: "running", attempt: 1 };
+const stopped = (
+  kind: string,
+  reason: string | null,
+  uncertain = false,
+  attempt = 1,
+): CreationStepRead => ({ state: "stopped", attempt, kind: kind as never, reason, uncertain });
 
-type RegisterArgs = Parameters<NewProjectPorts["registerGroup"]>[0];
-type IntentArgs = Parameters<NewProjectPorts["recordBirth"]>[0];
-type AcceptedArgs = Parameters<NewProjectPorts["accepted"]>;
+/** Where a creation's steps stand, as its operations say. */
+function read(
+  over: Omit<Partial<CreationRead>, "steps"> & {
+    readonly steps?: Partial<CreationRead["steps"]>;
+  } = {},
+): CreationRead {
+  return {
+    appId: null,
+    birthId: null,
+    projectId: null,
+    ...over,
+    steps: { app: NOT_SENT, birth: NOT_SENT, project: NOT_SENT, ...over.steps },
+  };
+}
 
-/** Ports that do what they are asked, each call written down in `order`. */
-function ports(over: Partial<NewProjectPorts> = {}) {
+/** The ask this tab holds of Acme CRM. */
+const held = (ask: Partial<NewProjectAsk> = {}, over: Partial<CreationAsk> = {}): CreationAsk => ({
+  ask: { ...ASK, ...ask },
+  startedAt: PRESSED_AT,
+  hq: HQ,
+  presses: 1,
+  refusedHere: null,
+  ...over,
+});
+
+const ADDS = { appId: "app-acme", registers: true } as const;
+
+describe("creationOf — where a creation stands, read off its steps' operations", () => {
+  it.each<{
+    readonly case: string;
+    readonly held: CreationAsk;
+    readonly read: CreationRead;
+    readonly want: Partial<NewProjectBirth>;
+  }>([
+    {
+      case: "a New project nothing of is recorded yet registers",
+      held: held(),
+      read: read(),
+      want: { step: "registry", failed: null, appId: null, intent: null, projectId: null },
+    },
+    {
+      case: "its application answered, HQ's navigation not showing it yet: still in its own group",
+      held: held(),
+      read: read({ appId: "app-acme", steps: { app: RUNNING } }),
+      want: { step: "registry", appId: null, intent: null, failed: null },
+    },
+    {
+      case: "its birth answered, HQ's navigation not showing it yet: no intent of its own yet",
+      held: held(),
+      read: read({ appId: "app-acme", birthId: "b-vera", steps: { app: DONE, birth: RUNNING } }),
+      want: { step: "registry", appId: "app-acme", intent: null },
+    },
+    {
+      case: "its application refused: the registration stops with HQ's words",
+      held: held(),
+      read: read({
+        steps: { app: stopped("create-app", "An application named Acme CRM exists.") },
+      }),
+      want: {
+        step: "registry",
+        failed: { reason: "An application named Acme CRM exists.", uncertain: false },
+      },
+    },
+    {
+      case: "its birth's end out of HQ's sight: said so, and tried again as it stopped",
+      held: held(),
+      read: read({
+        appId: "app-acme",
+        steps: { app: DONE, birth: stopped("record-birth", null, true) },
+      }),
+      want: {
+        step: "registry",
+        appId: "app-acme",
+        failed: { reason: HQ_UNFOLLOWED, uncertain: false },
+      },
+    },
+    {
+      case: "registered: its Mate's project is created, under its birth",
+      held: held(),
+      read: read({
+        appId: "app-acme",
+        birthId: "b-vera",
+        steps: { app: DONE, birth: DONE, project: RUNNING },
+      }),
+      want: { step: "create", appId: "app-acme", intent: "b-vera", failed: null },
+    },
+    {
+      case: "its project's end out of sight: it may have landed",
+      held: held(),
+      read: read({
+        appId: "app-acme",
+        birthId: "b-vera",
+        steps: { app: DONE, birth: DONE, project: stopped("create-project", null, true) },
+      }),
+      want: { step: "create", failed: { reason: PRESS_MAY_HAVE_LANDED, uncertain: true } },
+    },
+    {
+      case: "its project taken: created, whatever its creation's end",
+      held: held(),
+      read: read({
+        appId: "app-acme",
+        birthId: "b-vera",
+        projectId: "p-vera",
+        steps: { app: DONE, birth: DONE, project: RUNNING },
+      }),
+      want: { step: "created", projectId: "p-vera", failed: null },
+    },
+    {
+      case: "an Add's birth refused: its copy is not created, for certain",
+      held: held({ adds: ADDS }),
+      read: read({ steps: { birth: stopped("record-birth", "HQ said no.", true) } }),
+      want: {
+        step: "create",
+        appId: "app-acme",
+        failed: { reason: "HQ said no.", uncertain: false },
+      },
+    },
+    {
+      case: "an Add's import out of sight: it may have landed",
+      held: held({ adds: ADDS }),
+      read: read({ steps: { birth: DONE, project: stopped("import-project", null, true) } }),
+      want: {
+        failed: {
+          reason:
+            "Zerops may have accepted this operation, but its response was lost. Check the project and its services before starting another operation.",
+          uncertain: true,
+        },
+      },
+    },
+    {
+      case: "an Add's create out of sight: it may have landed",
+      held: held({ adds: ADDS }),
+      read: read({ steps: { birth: DONE, project: stopped("create-project", null, true) } }),
+      want: {
+        failed: { reason: "Zerops did not confirm the project was created.", uncertain: true },
+      },
+    },
+    {
+      case: "an Add this tab refused before it sent anything",
+      held: held({ adds: ADDS }, { refusedHere: "This project has no recipe merged yet." }),
+      read: read(),
+      want: { failed: { reason: "This project has no recipe merged yet.", uncertain: false } },
+    },
+    {
+      case: "an Add's birth intent, as HQ recorded it",
+      held: held({ adds: ADDS }),
+      read: read({ birthId: "hq-birth", steps: { birth: DONE, project: RUNNING } }),
+      want: { intent: "hq-birth", failed: null },
+    },
+  ])("$case", ({ held: asked, read: steps, want }) => {
+    expect(creationOf(asked, steps)).toMatchObject(want);
+  });
+
+  it("names an Add's presses: its own id, then one per Try again", () => {
+    expect(creationRunId(held({ adds: ADDS }))).toBe("b-acme");
+    expect(creationRunId(held({ adds: ADDS }, { presses: 2 }))).toBe("b-acme#2");
+    // A New project's steps take their next attempt each, under its own id.
+    expect(creationRunId(held({}, { presses: 2 }))).toBe("b-acme");
+  });
+});
+
+/**
+ * Ports over a fake account: each step recorded as its operation would be, each call written down
+ * in `order` with the request id it was sent under.
+ */
+function ports(start: CreationRead = read(), over: Partial<NewProjectPorts> = {}) {
   const order: Array<string> = [];
+  let now = start;
+  const record = (step: keyof CreationRead["steps"], patch: Partial<CreationRead>) => {
+    now = { ...now, ...patch, steps: { ...now.steps, [step]: DONE } };
+  };
   const made: NewProjectPorts = {
-    registerGroup: vi.fn(async ({ hq, name }: RegisterArgs) => {
-      order.push(`register:${hq.projectId}:${name}`);
+    registerGroup: vi.fn(async (requestId: string, name: string) => {
+      order.push(`register ${requestId}:${name}`);
+      record("app", { appId: "app-acme" });
       return { appId: "app-acme" };
     }),
-    recordBirth: vi.fn(async ({ appId, face }: IntentArgs) => {
-      order.push(`intent:${appId}:${face}`);
-      return { id: "b-vera" };
+    recordBirth: vi.fn(async (requestId: string, { appId, face }) => {
+      order.push(`intent ${requestId}:${appId}:${face}`);
+      record("birth", { birthId: "b-vera" });
+      return { birthId: "b-vera" };
     }),
-    createProject: vi.fn(async () => {
-      order.push("create");
-      return { project: PROJECT };
+    createProject: vi.fn(async (requestId: string) => {
+      order.push(`create ${requestId}`);
+      record("project", { projectId: "p-vera" });
+      return { projectId: "p-vera" };
     }),
-    accepted: vi.fn((...[projectId, registration]: AcceptedArgs) => {
-      if (registration === null) throw new Error("Expected a new-project registration");
-      const { hq, appId } = registration;
-      order.push(`accepted:${projectId}:${hq.projectId}:${appId}`);
+    accepted: vi.fn((projectId, { hq, appId, intent }) => {
+      order.push(`accepted:${projectId}:${hq.projectId}:${appId}:${intent}`);
     }),
     ...over,
   };
-  return { order, ports: made };
+  return { order, ports: made, read: () => now };
 }
 
 describe("runNewProjectBirth — the project, then its first Mate", () => {
-  it("registers the project in the organization's HQ, then creates its Mate", async () => {
-    const { order, ports: made } = ports();
-    const moved: Array<NewProjectPatch> = [];
-    await runNewProjectBirth(birth(), made, (patch) => moved.push(patch));
+  it("registers the project in the organization's HQ, records its Mate's birth, then creates its Mate", async () => {
+    const { order, ports: made, read: now } = ports();
+    await runNewProjectBirth(held(), now, made);
     // The registry lives in HQ: the project is registered there before anything is created in it,
-    // and its Mate goes into the application HQ named.
+    // and its Mate goes into the application HQ named — each step under the creation's own id.
     expect(order).toEqual([
-      "register:hq-1:Acme CRM",
-      "intent:app-acme:rose:seal",
-      "create",
-      "accepted:p-vera:hq-1:app-acme",
+      "register b-acme:app:Acme CRM",
+      "intent b-acme:birth:app-acme:rose:seal",
+      "create b-acme:project",
+      "accepted:p-vera:hq-1:app-acme:b-vera",
     ]);
-    // Its Mate's row counts on from the press, not from when the platform answered; its container
-    // is its press's, after its attach (F6b).
-    expect(made.accepted).toHaveBeenCalledWith(
-      "p-vera",
-      expect.objectContaining({ appId: "app-acme" }),
-      PRESSED_AT,
-    );
-    expect(moved).toEqual([
-      { appId: "app-acme" },
-      { step: "create", intent: "b-vera" },
-      { step: "created", projectId: "p-vera" },
-    ]);
-  });
-
-  // F6c (2026-10-03): a press cut off between its project and its attach left a Mate another
-  // browser finished under a new name in no application. Its birth intent is HQ's before its
-  // project exists, and the project names it, so any browser finishes it where and as asked.
-  it("records its first Mate's birth intent between its application and its project, once, and creates the project under it", async () => {
-    const { order, ports: made } = ports();
-    const moved: Array<NewProjectPatch> = [];
-    await runNewProjectBirth(birth(), made, (patch) => moved.push(patch));
-    expect(order.slice(0, 3)).toEqual([
-      "register:hq-1:Acme CRM",
-      "intent:app-acme:rose:seal",
-      "create",
-    ]);
-    expect(made.createProject).toHaveBeenCalledWith({ name: "Acme CRM - Vera", birth: "b-vera" });
-    expect(made.accepted).toHaveBeenCalledWith(
-      "p-vera",
-      expect.objectContaining({ appId: "app-acme", intent: "b-vera" }),
-      PRESSED_AT,
-    );
-    // Held by the creation, so a creation tried again records none twice.
-    expect(moved).toContainEqual(expect.objectContaining({ intent: "b-vera" }));
-    const again = ports();
-    await runNewProjectBirth(
-      birth({ step: "create", appId: "app-acme", intent: "b-vera" }),
-      again.ports,
-      () => undefined,
-    );
-    expect(again.ports.recordBirth).not.toHaveBeenCalled();
   });
 
   it.each<{ readonly case: string; readonly ask: Partial<NewProjectAsk>; readonly args: object }>([
     {
       // The project is named in full, its application's name and its Mate's; its application and
       // face are HQ's, which the press's registration writes.
-      case: "named in full under its application, and nothing of its place on the project",
+      case: "named in full under its application, under its birth intent",
       ask: {},
       args: { name: "Acme CRM - Vera", birth: "b-1" },
     },
@@ -410,189 +540,148 @@ describe("runNewProjectBirth — the project, then its first Mate", () => {
       args: { name: "Acme CRM - Vera", location: "prg1", birth: "b-1" },
     },
   ])("creates its first Mate $case", async ({ ask, args }) => {
-    const { ports: made } = ports();
-    await runNewProjectBirth(
-      birth({ step: "create", appId: "app-acme", intent: "b-1", ...ask }),
-      made,
-      () => undefined,
+    const { ports: made, read: now } = ports(
+      read({ appId: "app-acme", birthId: "b-1", steps: { app: DONE, birth: DONE } }),
     );
-    expect(made.createProject).toHaveBeenCalledWith(args);
+    await runNewProjectBirth(held(ask), now, made);
+    expect(made.createProject).toHaveBeenCalledWith("b-acme:project", args);
   });
 
   it.each<{
     readonly case: string;
-    readonly birth: NewProjectBirth;
     readonly over: Partial<NewProjectPorts>;
     readonly order: ReadonlyArray<string>;
-    readonly failed: NewProjectPatch["failed"];
   }>([
     {
-      case: "a registration HQ refuses creates nothing, and says why",
-      birth: birth(),
+      case: "a registration HQ refuses creates nothing",
       over: {
         registerGroup: () => Promise.reject(new Error("An application named Acme CRM exists.")),
       },
       order: [],
-      failed: { reason: "An application named Acme CRM exists.", uncertain: false },
     },
     {
       case: "a birth intent HQ refuses leaves a registered project, and creates no Mate project",
-      birth: birth(),
       over: { recordBirth: () => Promise.reject(new Error("HQ is not answering right now.")) },
-      order: ["register:hq-1:Acme CRM"],
-      failed: { reason: "HQ is not answering right now.", uncertain: false },
+      order: ["register b-acme:app:Acme CRM"],
     },
     {
       case: "a creation the platform refused leaves a registered project, and no Mate",
-      birth: birth(),
       over: { createProject: () => Promise.reject(new Error("Project name is taken.")) },
-      order: ["register:hq-1:Acme CRM", "intent:app-acme:rose:seal"],
-      failed: { reason: "Project name is taken.", uncertain: false },
+      order: ["register b-acme:app:Acme CRM", "intent b-acme:birth:app-acme:rose:seal"],
     },
-    {
-      case: "a creation the platform may have taken anyway is kept from being made twice",
-      birth: birth(),
-      over: {
-        createProject: () =>
-          Promise.reject({
-            _tag: "ZeropsDataAdapterError",
-            kind: "uncertain",
-            message: "The project may already exist.",
-          }),
-      },
-      order: ["register:hq-1:Acme CRM", "intent:app-acme:rose:seal"],
-      failed: { reason: "The project may already exist.", uncertain: true },
-    },
-  ])("stops where it fails: $case", async ({ birth: made, over, order: expected, failed }) => {
-    const { order, ports: fake } = ports(over);
-    const moved: Array<NewProjectPatch> = [];
-    await runNewProjectBirth(made, fake, (patch) => moved.push(patch));
+  ])("stops where it fails: $case", async ({ over, order: expected }) => {
+    const { order, ports: fake, read: now } = ports(read(), over);
+    await runNewProjectBirth(held(), now, fake);
     expect(order).toEqual(expected);
-    expect(moved.at(-1)).toEqual({ failed });
     expect(fake.accepted).not.toHaveBeenCalled();
   });
 
   it.each<{
     readonly case: string;
-    readonly birth: NewProjectBirth;
+    readonly read: CreationRead;
     readonly order: ReadonlyArray<string>;
   }>([
     {
-      case: "a registration",
-      birth: birth(),
+      case: "a registration that stopped, under its next attempt",
+      read: read({ steps: { app: stopped("create-app", "No.") } }),
       order: [
-        "register:hq-1:Acme CRM",
-        "intent:app-acme:rose:seal",
-        "create",
-        "accepted:p-vera:hq-1:app-acme",
+        "register b-acme:app#2:Acme CRM",
+        "intent b-acme:birth:app-acme:rose:seal",
+        "create b-acme:project",
+        "accepted:p-vera:hq-1:app-acme:b-vera",
       ],
     },
     {
       case: "its Mate's birth intent, its application not made again",
-      birth: birth({ appId: "app-1" }),
-      order: ["intent:app-1:rose:seal", "create", "accepted:p-vera:hq-1:app-1"],
+      read: read({ appId: "app-1", steps: { app: DONE } }),
+      order: [
+        "intent b-acme:birth:app-1:rose:seal",
+        "create b-acme:project",
+        "accepted:p-vera:hq-1:app-1:b-vera",
+      ],
     },
     {
       case: "its Mate's creation, with nothing before it made again",
-      birth: birth({ step: "create", appId: "app-1", intent: "b-1" }),
-      order: ["create", "accepted:p-vera:hq-1:app-1"],
+      read: read({
+        appId: "app-1",
+        birthId: "b-1",
+        steps: { app: DONE, birth: DONE, project: stopped("create-project", "No room.") },
+      }),
+      order: ["create b-acme:project#2", "accepted:p-vera:hq-1:app-1:b-1"],
     },
-    { case: "nothing, once the platform took it", birth: birth({ step: "created" }), order: [] },
-  ])("resumes from the step it stopped on: $case", async ({ birth: made, order: expected }) => {
-    const { order, ports: fake } = ports();
-    await runNewProjectBirth(made, fake, () => undefined);
+    {
+      case: "nothing, while a step is still under way",
+      read: read({ steps: { app: RUNNING } }),
+      order: [],
+    },
+    {
+      case: "nothing, once the platform took it",
+      read: read({ projectId: "p-vera", steps: { app: DONE, birth: DONE, project: RUNNING } }),
+      order: [],
+    },
+  ])("resumes from the step it stopped on: $case", async ({ read: start, order: expected }) => {
+    const { order, ports: fake, read: now } = ports(start);
+    await runNewProjectBirth(held(), now, fake);
     expect(order).toEqual(expected);
   });
 });
 
-describe("the tab holds a New project's creation until the platform takes it", () => {
-  beforeEach(() => {
-    openAccountLifetime("u-ada");
-    useNewProjectBirths.setState({ births: {} });
-  });
-  afterEach(() => {
-    closeAccountLifetime();
-  });
-
-  const held = () => useNewProjectBirths.getState().births["b-acme"];
-
-  it("holds it from the press, and moves it to its Mate's project once the platform takes it", async () => {
-    const { ports: fake } = ports();
-    const birthId = beginNewProjectBirth({
-      ask: ASK,
-      hq: HQ,
-      ports: fake,
-      now: PRESSED_AT,
-    });
-    expect(birthId).toBe("b-acme");
-    expect(held()).toMatchObject({ step: "registry", hq: HQ, startedAt: PRESSED_AT });
-    await vi.waitFor(() => expect(held()?.projectId).toBe("p-vera"));
-    expect(held()).toMatchObject({ step: "created", hq: HQ, appId: "app-acme", failed: null });
-    expect(fake.accepted).toHaveBeenCalledTimes(1);
-  });
-
-  it("resumes from the step that stopped it, with the same project, on Try again", async () => {
-    let refuse = true;
-    const { order, ports: fake } = ports({
-      registerGroup: vi.fn(async () => {
-        if (refuse) throw new Error("HQ is not answering right now.");
-        order.push("register");
-        return { appId: "app-acme" };
+// Run 6's review: an Add's port flattened its stop to a string, so one Zerops may have made
+// offered Try again, which made a second; and a run that threw left Created spinning for good.
+describe("runAdd — an Add's press, under its press's id", () => {
+  const STEP = { kind: "create-project", name: "Ida", tagList: [] } as never;
+  it.each<{
+    readonly case: string;
+    readonly run: () => Promise<never> | Promise<unknown>;
+    readonly taken?: boolean;
+    readonly refused: ReadonlyArray<string>;
+  }>([
+    {
+      case: "taken, then through: nothing of its own to say",
+      run: async () => ({ kind: "ran", outcome: { ok: true, projectId: "p-ida" } }),
+      taken: true,
+      refused: [],
+    },
+    {
+      case: "stopped before the platform took it: its operation says why",
+      run: async () => ({
+        kind: "ran",
+        outcome: { ok: false, projectId: undefined, failedStep: STEP, error: "No room." },
       }),
-    });
-    beginNewProjectBirth({ ask: ASK, hq: HQ, ports: fake, now: 0 });
-    await vi.waitFor(() => expect(held()?.failed).not.toBeNull());
-    expect(held()).toMatchObject({ step: "registry", failed: { uncertain: false } });
-
-    refuse = false;
-    retryNewProjectBirth("b-acme");
-    expect(held()?.failed).toBeNull();
-    await vi.waitFor(() => expect(held()?.step).toBe("created"));
-    expect(order).toEqual([
-      "register",
-      "intent:app-acme:rose:seal",
-      "create",
-      "accepted:p-vera:hq-1:app-acme",
-    ]);
-    expect(fake.registerGroup).toHaveBeenLastCalledWith({ hq: HQ, name: "Acme CRM" });
-  });
-
-  it("never tries again a creation the platform may have taken", async () => {
-    const { ports: fake } = ports({
-      createProject: vi.fn(() =>
-        Promise.reject({ _tag: "ZeropsDataAdapterError", kind: "uncertain", message: "Unsure." }),
-      ),
-    });
-    beginNewProjectBirth({ ask: ASK, hq: HQ, ports: fake, now: 0 });
-    await vi.waitFor(() => expect(held()?.failed?.uncertain).toBe(true));
-    retryNewProjectBirth("b-acme");
-    expect(held()?.failed?.uncertain).toBe(true);
-    expect(fake.createProject).toHaveBeenCalledTimes(1);
-  });
-
-  it("forgets every creation, and lets none land, once its account is signed out", async () => {
-    let accept: (value: {
-      readonly project: typeof PROJECT;
-      readonly serviceName: string;
-    }) => void = () => undefined;
-    const { ports: fake } = ports({
-      createProject: vi.fn(
-        () =>
-          new Promise<{ readonly project: typeof PROJECT; readonly serviceName: string }>(
-            (resolve) => {
-              accept = resolve;
-            },
-          ),
-      ),
-    });
-    beginNewProjectBirth({ ask: ASK, hq: HQ, ports: fake, now: 0 });
-    await vi.waitFor(() => expect(fake.createProject).toHaveBeenCalled());
-    closeAccountLifetime();
-    expect(useNewProjectBirths.getState().births).toEqual({});
-    accept({ project: PROJECT, serviceName: "zcp" });
-    await new Promise((settled) => setTimeout(settled, 0));
-    expect(fake.accepted).not.toHaveBeenCalled();
-    expect(useNewProjectBirths.getState().births).toEqual({});
+      refused: [],
+    },
+    {
+      case: "refused here before anything was asked: why",
+      run: async () => ({ kind: "refused", reason: "This project has no recipe merged yet." }),
+      refused: ["This project has no recipe merged yet."],
+    },
+    {
+      case: "refused here without words: said for it",
+      run: async () => ({ kind: "refused", reason: null }),
+      refused: ["It could not be added."],
+    },
+    {
+      case: "a run that threw before the platform took it: why",
+      run: () => Promise.reject(new Error("The press could not start.")),
+      refused: ["The press could not start."],
+    },
+    {
+      case: "a run that threw after the platform took it: its press's to say",
+      run: () => Promise.reject(new Error("The press could not finish.")),
+      taken: true,
+      refused: [],
+    },
+  ])("$case", async ({ run, taken = false, refused }) => {
+    const press = vi.fn((_creationId: string) => run() as never);
+    const said: Array<string> = [];
+    await runAdd(
+      held({ adds: ADDS }, { presses: 2 }),
+      () => read(taken ? { projectId: "p-ida" } : {}),
+      press,
+      (reason) => said.push(reason),
+    );
+    expect(press).toHaveBeenCalledWith("b-acme#2");
+    expect(said).toEqual(refused);
   });
 });
 
@@ -621,7 +710,7 @@ const pressed = (...entries: ReadonlyArray<readonly [Kind, RunState]>) =>
   }));
 
 /** Ida added to Acme CRM, from Add: a Mate into a project that stands. */
-const added = (over: Partial<NewProjectBirth> = {}) =>
+const added = (over: Partial<Drawn> = {}) =>
   birth({
     birthId: "add-1",
     appId: "app-acme",
@@ -631,9 +720,25 @@ const added = (over: Partial<NewProjectBirth> = {}) =>
     ...over,
   });
 
+/** The operation verdict paired with each creation fixture. */
+function registrationOf(progress: ReadonlyArray<EnvironmentCreationStepProgress> | null) {
+  const step = progress?.find((entry) => entry.step.kind === "register");
+  return step?.state === "failed"
+    ? { attempt: 1, state: "unfinished" as const, reason: step.error ?? "It was refused." }
+    : {
+        attempt: step === undefined ? 0 : 1,
+        state:
+          step?.state === "running"
+            ? ("active" as const)
+            : step?.state === "done"
+              ? ("done" as const)
+              : ("waiting" as const),
+      };
+}
+
 /** Each sub-step as `label:state`, with why where it stopped. */
-const drawnSubsteps = (made: NewProjectBirth) =>
-  creationSubsteps(made).map(
+const drawnSubsteps = (made: Drawn) =>
+  creationSubsteps(made, made.progress ?? null, registrationOf(made.progress ?? null)).map(
     (step) => `${step.label}:${step.state}${step.why === undefined ? "" : ` (${step.why})`}`,
   );
 
@@ -882,22 +987,11 @@ describe("an added Mate held from the press", () => {
   it("brings no project steps of its own: its copy is its first row", () => {
     expect(newProjectSteps(added())).toEqual([]);
   });
-
-  it("delegates an Add to its existing HQ press, without registering another application or intent", async () => {
-    const { ports: fake } = ports({ accepted: vi.fn() });
-    await runNewProjectBirth(added(), fake, () => undefined);
-    expect(fake.registerGroup).not.toHaveBeenCalled();
-    expect(fake.recordBirth).not.toHaveBeenCalled();
-    expect(fake.createProject).toHaveBeenCalledWith({ name: "Acme CRM - Ida" });
-    expect(fake.accepted).toHaveBeenCalledWith("p-vera", null, PRESSED_AT);
-  });
 });
 
 describe("creationManaged — the managed services an added Mate's copy waits on, from the press", () => {
   const TIER =
     "services:\n  - hostname: db\n    type: postgresql@16\n  - hostname: appdev\n    type: nodejs@22\n    zeropsSetup: dev\n";
-  const PLANNED =
-    "services:\n  - hostname: db\n    type: postgresql@16\n  - hostname: cache\n    type: valkey@7.2\n";
   it.each([
     { case: "a New project's first Mate: none of its own", made: birth(), want: undefined },
     {
@@ -910,18 +1004,6 @@ describe("creationManaged — the managed services an added Mate's copy waits on
         },
       }),
       want: ["db"],
-    },
-    {
-      case: "planned: as its plan names them",
-      made: added({
-        adds: {
-          appId: "app-acme",
-          registers: true,
-          managed: ["db"],
-        },
-        progress: [{ step: { kind: "import-managed", yaml: PLANNED }, state: "queued" }],
-      }),
-      want: ["db", "cache"],
     },
     {
       case: "a recipe that brings none",
@@ -953,23 +1035,6 @@ describe("creationRuntimes — the runtimes an added Mate's workspace brings, fr
         adds: { appId: "app-acme", registers: true, runtimes: APP },
       }),
       want: APP,
-    },
-    {
-      case: "planned: as its plan names them",
-      made: added({
-        adds: { appId: "app-acme", registers: true },
-        progress: [
-          {
-            step: {
-              kind: "import-container",
-              agents: [],
-              runtimes: { yaml: "", services: [{ hostname: "apidev", role: "dev" }] },
-            },
-            state: "queued",
-          },
-        ],
-      }),
-      want: [{ hostname: "apidev", role: "dev" }],
     },
   ])("$case", ({ made, want }) => {
     expect(creationRuntimes(made)).toEqual(want);
@@ -1061,139 +1126,6 @@ describe("comingPlanned — what a Mate's view names before its project lists it
   });
 });
 
-// Run 6's review: an Add's port flattened its stop to a string, so one Zerops may have made
-// offered Try again, which made a second; and a run that threw left Created spinning for good.
-describe("addCreateProject — an Add's press as its creation's port", () => {
-  const STEP = { kind: "create-project", name: "Ida", tagList: [] } as never;
-  type Script = (onAccepted: (projectId: string) => void) => Promise<never> | Promise<unknown>;
-  const portOf = (script: Script) => {
-    const settled = vi.fn();
-    const created = addCreateProject({
-      run: (onAccepted) => script(onAccepted) as never,
-      settled,
-    }).then(
-      (made) => ({ resolved: made.project.id }),
-      (cause: unknown) => ({
-        rejected: (cause as Error).message,
-        uncertain: isUncertainZeropsFailure(cause),
-      }),
-    );
-    return { created, settled };
-  };
-
-  it.each<{
-    readonly case: string;
-    readonly script: Script;
-    readonly want: object;
-    readonly settled?: ReadonlyArray<string>;
-  }>([
-    {
-      case: "taken, then through: its project",
-      script: async (accepted) => {
-        accepted("p-ida");
-        return { kind: "ran", outcome: { ok: true, projectId: "p-ida" } };
-      },
-      want: { resolved: "p-ida" },
-    },
-    {
-      case: "taken, then stopped: its project, and the stop is its press's to say",
-      script: async (accepted) => {
-        accepted("p-ida");
-        return {
-          kind: "ran",
-          outcome: { ok: false, projectId: "p-ida", failedStep: STEP, error: "Not closed off." },
-        };
-      },
-      want: { resolved: "p-ida" },
-      settled: ["p-ida", "Not closed off."],
-    },
-    {
-      case: "refused before anything was asked: why, certain",
-      script: async () => ({ kind: "refused", reason: "This project has no recipe merged yet." }),
-      want: { rejected: "This project has no recipe merged yet.", uncertain: false },
-    },
-    {
-      case: "stopped before the platform took it: why, certain",
-      script: async () => ({
-        kind: "ran",
-        outcome: { ok: false, projectId: undefined, failedStep: STEP, error: "No room." },
-      }),
-      want: { rejected: "No room.", uncertain: false },
-    },
-    {
-      case: "stopped where Zerops may have made it: why, uncertain",
-      script: async () => ({
-        kind: "ran",
-        outcome: {
-          ok: false,
-          projectId: undefined,
-          failedStep: STEP,
-          error: "Zerops may have created it.",
-          uncertain: true,
-        },
-      }),
-      want: { rejected: "Zerops may have created it.", uncertain: true },
-    },
-    {
-      case: "a run that threw before the platform took it: why",
-      script: () => Promise.reject(new Error("The press could not start.")),
-      want: { rejected: "The press could not start.", uncertain: false },
-    },
-    {
-      case: "a run that threw after: its project, and the stop is its press's to say",
-      script: (accepted) => {
-        accepted("p-ida");
-        return Promise.reject(new Error("The press could not finish."));
-      },
-      want: { resolved: "p-ida" },
-      settled: ["p-ida", "The press could not finish."],
-    },
-  ])("$case", async ({ script, want, settled: stop }) => {
-    const { created, settled } = portOf(script);
-    expect(await created).toEqual(want);
-    if (stop === undefined) expect(settled).not.toHaveBeenCalled();
-    else expect(settled).toHaveBeenCalledWith(...stop);
-  });
-
-  it("never offers Try again on an added Mate Zerops may have made", async () => {
-    openAccountLifetime("u-ada");
-    useNewProjectBirths.setState({ births: {} });
-    const run = vi.fn(async () => ({
-      kind: "ran" as const,
-      outcome: {
-        ok: false as const,
-        projectId: undefined,
-        failedStep: STEP,
-        error: "Zerops may have created it.",
-        uncertain: true as const,
-      },
-    }));
-    beginNewProjectBirth({
-      ask: {
-        ...ASK,
-        birthId: "add-1",
-        botName: "Ida",
-        adds: { appId: "app-acme", registers: true },
-      },
-      hq: HQ,
-      now: 0,
-      ports: {
-        recordBirth: () => Promise.reject(new Error("not asked")),
-        registerGroup: () => Promise.reject(new Error("not asked")),
-        createProject: () => addCreateProject({ run, settled: () => undefined }),
-        accepted: () => undefined,
-      },
-    });
-    const held = () => useNewProjectBirths.getState().births["add-1"];
-    await vi.waitFor(() => expect(held()?.failed).not.toBeNull());
-    expect(held()?.failed).toEqual({ reason: "Zerops may have created it.", uncertain: true });
-    expect(newProjectComing(held()!)).toMatchObject({ kind: "failed", verb: "go-to-projects" });
-    retryNewProjectBirth("add-1");
-    expect(run).toHaveBeenCalledTimes(1);
-    closeAccountLifetime();
-  });
-});
-
 // Run 6's review: an Add refused before Zerops took anything (quota, rights) stood in the menu all
 // session, failed, its one way on Try again with the same name.
 describe("creationEnds — a creation that stopped can end", () => {
@@ -1234,229 +1166,52 @@ describe("creationEnds — a creation that stopped can end", () => {
   ])("$case", ({ made, want }) => {
     expect(creationEnds(made)).toEqual(want);
   });
-
-  describe("on the page and from the row", () => {
-    beforeEach(() => {
-      openAccountLifetime("u-ada");
-      useNewProjectBirths.setState({ births: { "add-1": refused } });
-      useNewMate.setState({ asked: null });
-    });
-    afterEach(() => {
-      closeAccountLifetime();
-      useNewMate.setState({ asked: null });
-    });
-
-    it("Dismiss takes it out of the menu, another Add beside it staying, and asks for nothing", () => {
-      useNewProjectBirths.setState({
-        births: { "add-1": refused, "add-2": added({ birthId: "add-2", botName: "Otto" }) },
-      });
-      dismissNewProjectBirth("add-1");
-      expect(useNewProjectBirths.getState().births["add-1"]).toBeUndefined();
-      const held = Object.values(useNewProjectBirths.getState().births);
-      expect(placedNewProjects(held, ASK.organizationId).map((placed) => placed.projectId)).toEqual(
-        ["add-2"],
-      );
-      expect(useNewMate.getState().asked).toBeNull();
-    });
-
-    it("Start over takes it out and opens Add over its project, its name there to change", () => {
-      startAddOver("add-1");
-      expect(useNewProjectBirths.getState().births["add-1"]).toBeUndefined();
-      expect(useNewMate.getState().asked).toMatchObject({
-        groupId: "app-acme",
-        again: { botName: "Ida", tint: "rose", shape: "seal" },
-      });
-    });
-
-    it("never starts over one Zerops may have made: it could make it twice", () => {
-      useNewProjectBirths.setState({
-        births: { "add-1": added({ failed: { reason: "Lost.", uncertain: true } }) },
-      });
-      startAddOver("add-1");
-      expect(useNewProjectBirths.getState().births["add-1"]).toBeDefined();
-      expect(useNewMate.getState().asked).toBeNull();
-    });
-
-    it("leaves one still running alone", () => {
-      useNewProjectBirths.setState({ births: { "add-1": added() } });
-      startAddOver("add-1");
-      expect(useNewProjectBirths.getState().births["add-1"]).toBeDefined();
-      expect(useNewMate.getState().asked).toBeNull();
-    });
-  });
 });
 
 // Run 6's second review: an owner whose broker grant timed out read "An owner registers Ida for
-// Git." with a hollow mark, never why, and Finish setup came two minutes on, or never where the
-// registry write had landed. The step keeps why, and Finish setup is theirs at once.
-describe("a registration not finished — Finish setup at once, and its step following it", () => {
-  const refused = added({
-    step: "created",
-    projectId: "p-ida",
-    progress: pressed(
-      ["create-project", "done"],
-      ["import-container", "done"],
-      ["close-off", "done"],
-      ["register", "failed"],
-      ["await-ready", "done"],
-    ),
-  });
-  const through = added({
-    step: "created",
-    projectId: "p-ida",
-    progress: pressed(["close-off", "done"], ["register", "done"]),
-  });
-
+// Git." with a hollow mark, never why. The step keeps why while its press is held, and follows
+// Finish setup's own press.
+describe("a registration not finished, and Finish setup's own steps", () => {
+  const made = added({ step: "created", projectId: "p-ida" });
   it.each([
-    { case: "refused here: Finish setup at once", births: { "add-1": refused }, want: true },
-    { case: "registered", births: { "add-1": through }, want: false },
     {
-      case: "another Mate's",
-      births: { "add-2": { ...refused, projectId: "p-other" } },
-      want: false,
-    },
-    { case: "nothing made here", births: {}, want: false },
-  ])("$case", ({ births, want }) => {
-    expect(registrationUnfinished(births, "p-ida")).toBe(want);
-  });
-
-  describe("Finish setup's own steps", () => {
-    beforeEach(() => {
-      openAccountLifetime("u-ada");
-      useNewProjectBirths.setState({ births: { "add-1": refused } });
-    });
-    afterEach(() => closeAccountLifetime());
-
-    it.each([
-      {
-        case: "registering",
-        finish: pressed(["close-off", "done"], ["register", "running"]),
-        want: "Ida registered:active",
-      },
-      {
-        case: "registered",
-        finish: pressed(["close-off", "done"], ["register", "done"]),
-        want: "Ida registered:done",
-      },
-      {
-        case: "refused again: the new reason",
-        finish: [
-          { step: { kind: "close-off" } as never, state: "done" as const },
-          {
-            step: { kind: "register" } as never,
-            state: "failed" as const,
-            error: "Still no grant.",
-          },
-        ],
-        want: "Not registered:unfinished (Still no grant.)",
-      },
-      {
-        case: "not at its registration yet",
-        finish: pressed(["close-off", "running"]),
-        want: "Not registered:unfinished (Register said no.)",
-      },
-    ])("draw its registration: $case", ({ finish, want }) => {
-      refinishNewProjectBirth("p-ida", finish);
-      const made = useNewProjectBirths.getState().births["add-1"]!;
-      expect(
-        drawnSubsteps(made).find(
-          (step) => step.startsWith("Ida registered:") || step.startsWith("Not registered:"),
-        ),
-      ).toBe(want);
-    });
-
-    it("once through, offers it no more", () => {
-      refinishNewProjectBirth("p-ida", pressed(["register", "done"]));
-      expect(registrationUnfinished(useNewProjectBirths.getState().births, "p-ida")).toBe(false);
-    });
-  });
-});
-
-describe("an Add's HQ intent in its creation progress", () => {
-  it("keeps the intent ID for listing reconciliation, without matching names", () => {
-    openAccountLifetime("u-ada");
-    useNewProjectBirths.setState({ births: { "add-1": added() } });
-    progressNewProjectBirth("add-1", [
-      {
-        step: {
-          kind: "create-project",
-          name: "Ida",
-          tagList: ["mate"],
-          birth: "hq-birth",
-          location: undefined,
-        },
-        state: "running",
-      },
-    ]);
-    expect(
-      placedNewProjects(Object.values(useNewProjectBirths.getState().births), ASK.organizationId)[0]
-        ?.intent,
-    ).toBe("hq-birth");
-    closeAccountLifetime();
-  });
-});
-
-// Reload is an account close/open with the same tab's non-secret personal context retained.
-describe("creation context across reload", () => {
-  beforeEach(() => {
-    const entries = new Map<string, string>();
-    vi.stubGlobal("window", {
-      sessionStorage: {
-        getItem: (key: string) => entries.get(key) ?? null,
-        setItem: (key: string, value: string) => entries.set(key, value),
-      },
-    });
-    openAccountLifetime("u-reload");
-  });
-  afterEach(() => {
-    closeAccountLifetime();
-    vi.unstubAllGlobals();
-  });
-
-  it("keeps a refused creation's route, progress and reason and retries manually from that step", async () => {
-    const fake = ports({ createProject: () => Promise.reject(new Error("No room.")) }).ports;
-    beginNewProjectBirth({ ask: ASK, hq: HQ, ports: fake, now: PRESSED_AT });
-    await vi.waitFor(() =>
-      expect(useNewProjectBirths.getState().births[ASK.birthId]?.failed?.reason).toBe("No room."),
-    );
-    const before = useNewProjectBirths.getState().births[ASK.birthId]!;
-    closeAccountLifetime();
-    openAccountLifetime("u-reload");
-    const restored = useNewProjectBirths.getState().births[ASK.birthId]!;
-    expect(restored).toMatchObject({
-      appId: before.appId,
-      intent: before.intent,
-      startedAt: PRESSED_AT,
-      failed: before.failed,
-    });
-    expect(creationSubsteps(restored)).toEqual(creationSubsteps(before));
-    const again = ports().ports;
-    retryNewProjectBirth(ASK.birthId, again);
-    await vi.waitFor(() =>
-      expect(useNewProjectBirths.getState().births[ASK.birthId]?.projectId).toBe("p-vera"),
-    );
-    expect(again.registerGroup).not.toHaveBeenCalled();
-    expect(again.recordBirth).not.toHaveBeenCalled();
-  });
-
-  it("ends an interrupted write visibly as uncertain and never replays it on reload or retry", async () => {
-    const fake = ports({
-      createProject: vi.fn(
-        () => new Promise<{ readonly project: { readonly id: string } }>(() => undefined),
+      case: "refused by its press: not registered, and why",
+      progress: pressed(
+        ["create-project", "done"],
+        ["import-container", "done"],
+        ["close-off", "done"],
+        ["register", "failed"],
+        ["await-ready", "done"],
       ),
-    }).ports;
-    beginNewProjectBirth({ ask: ASK, hq: HQ, ports: fake, now: PRESSED_AT });
-    await vi.waitFor(() => expect(fake.createProject).toHaveBeenCalledOnce());
-    closeAccountLifetime();
-    openAccountLifetime("u-reload");
-    const restored = useNewProjectBirths.getState().births[ASK.birthId]!;
-    expect(restored?.failed).toMatchObject({ uncertain: true });
-    expect(newProjectComing(restored)).toMatchObject({ verb: "go-to-projects" });
-    const again = ports().ports;
-    retryNewProjectBirth(ASK.birthId, again);
-    expect(again.createProject).not.toHaveBeenCalled();
-    closeAccountLifetime();
-    openAccountLifetime("u-other");
-    expect(useNewProjectBirths.getState().births).toEqual({});
+      want: "Not registered:unfinished (Register said no.)",
+    },
+    {
+      case: "Finish setup registering",
+      progress: pressed(["close-off", "done"], ["register", "running"]),
+      want: "Ida registered:active",
+    },
+    {
+      case: "Finish setup registered",
+      progress: pressed(["close-off", "done"], ["register", "done"]),
+      want: "Ida registered:done",
+    },
+    {
+      case: "Finish setup refused again: the new reason",
+      progress: [
+        { step: { kind: "close-off" } as never, state: "done" as const },
+        {
+          step: { kind: "register" } as never,
+          state: "failed" as const,
+          error: "Still no grant.",
+        },
+      ],
+      want: "Not registered:unfinished (Still no grant.)",
+    },
+  ])("draws its registration: $case", ({ progress, want }) => {
+    expect(
+      drawnSubsteps({ ...made, progress }).find(
+        (step) => step.startsWith("Ida registered:") || step.startsWith("Not registered:"),
+      ),
+    ).toBe(want);
   });
 });

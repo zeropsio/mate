@@ -54,8 +54,9 @@ import {
 } from "@t3tools/client-runtime/zerops";
 
 import { officialHq, useAccountHq } from "~/zerops/accountHq";
-import { beginNewProjectBirth, newProjectView, type NewProjectAsk } from "~/zerops/newProjectBirth";
-import { useNewProjectBirthPorts } from "~/zerops/useNewProjectBirthPorts";
+import { beginCreation } from "~/zerops/creations";
+import { newProjectView, type NewProjectAsk } from "~/zerops/newProjectBirth";
+import { useRunNewProject } from "~/zerops/useRunNewProject";
 import { useNewProjectAsk } from "~/zerops/newProjectAsk";
 import { useHqOffers, useOrgOffers } from "~/zerops/useHqOffers";
 import { useTakenBotNames, useZeropsCandidates } from "~/zerops/useZeropsCandidates";
@@ -91,7 +92,7 @@ export function ZeropsNewProjectHost() {
 
 function NewProjectDialog() {
   const dismiss = useNewProjectAsk((state) => state.dismiss);
-  const birthPorts = useNewProjectBirthPorts();
+  const runNewProject = useRunNewProject();
   const { activeOrganization, organizationStatus, organizations, selectOrganization } =
     useZeropsSession();
   const navigate = useNavigate();
@@ -217,11 +218,11 @@ function NewProjectDialog() {
     };
     // The creation's id is its group's: its view is there from the press.
     const birthId = ask.birthId;
-    beginNewProjectBirth({
+    beginCreation({
       ask,
       hq: officialHq(accountHq),
       now: Date.now(),
-      ports: birthPorts(ask),
+      run: runNewProject,
     });
     // The dialog gives way to the first Mate's view at once: the steps run on without it.
     dismiss();

@@ -184,12 +184,11 @@ export {
   type EnvironmentCreationStep,
 } from "./createEnvironment.ts";
 export {
-  ENVIRONMENT_SERVICE_POLL_INTERVAL_MS,
-  ENVIRONMENT_SERVICE_WAIT_CAP_MS,
-  PROJECT_CREATE_POLL_INTERVAL_MS,
-  PROJECT_CREATE_WAIT_CAP_MS,
   resumableEnvironmentCreationStep,
   runEnvironmentCreation,
+  servicesSettled,
+  UNCONFIRMED_PROJECT,
+  UNCONFIRMED_WRITE,
   type EnvironmentCreationOutcome,
   type EnvironmentCreationPlatform,
   type EnvironmentCreationStepProgress,

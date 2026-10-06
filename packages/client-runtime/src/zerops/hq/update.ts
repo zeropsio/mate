@@ -12,15 +12,8 @@
  *   that deployed it, while the project's newest processes still hold it.
  */
 import type { ActivityProcess } from "../activity/dto.ts";
-import { ZeropsApiError, type ZeropsApiClient, type ZeropsService } from "../api.ts";
-import {
-  HQ_BIRTH_WAITS,
-  HQ_CORE_VERSION_PREFIX,
-  HQ_SERVICE,
-  HQ_SETUP,
-  hqCoreVersionName,
-  type HqCoreArtifact,
-} from "./birth.ts";
+import type { ZeropsService } from "../api.ts";
+import { HQ_CORE_VERSION_PREFIX } from "./birth.ts";
 
 /** `<commit UTC>.<first 12 hex of the digest>`. */
 const IDENTITY = /^(\d{8}T\d{6}Z)\.([0-9a-f]{12})$/u;
@@ -122,109 +115,4 @@ export function hqUpdateState(input: {
     };
   }
   return { kind: "available", running, carried };
-}
-
-/** The platform calls an update makes, as the account's client offers them. */
-export type HqUpdatePlatform = Pick<
-  ZeropsApiClient,
-  | "listProjectServices"
-  | "listProjectProcesses"
-  | "createAppVersion"
-  | "uploadAppVersionArchive"
-  | "buildAndDeployAppVersion"
-  | "readProcessStatus"
->;
-
-async function readHq(
-  platform: HqUpdatePlatform,
-  projectId: string,
-  carried: string,
-  answering: string | undefined,
-) {
-  const [services, processes] = await Promise.all([
-    platform.listProjectServices(projectId),
-    platform.listProjectProcesses(projectId),
-  ]);
-  const service = services.find((entry) => entry.name === HQ_SERVICE);
-  if (service === undefined) throw new Error("Zerops lists no hq service in HQ's project.");
-  return { service, state: hqUpdateState({ service, processes, carried, answering }) };
-}
-
-/** Where HQ's Core stands against `carried`, read from Zerops now. */
-export async function readHqUpdate(input: {
-  readonly platform: HqUpdatePlatform;
-  readonly projectId: string;
-  readonly carried: string;
-  /** The Core HQ's health names; `undefined` while it does not answer. */
-  readonly answering: string | undefined;
-}): Promise<HqUpdateState> {
-  return (await readHq(input.platform, input.projectId, input.carried, input.answering)).state;
-}
-
-export type HqUpdateOutcome =
-  | { readonly ok: true }
-  | { readonly ok: false; readonly reason: string };
-
-/**
- * Deploys the carried Core to HQ's `hq` service with the person's own token, as a birth does, and
- * follows the deploy to its end. Only where Zerops says the update is offered and no build of
- * HQ's runs. Nothing is retried: a stop is the person's to act on.
- */
-export async function runHqUpdate(input: {
-  readonly platform: HqUpdatePlatform;
-  readonly projectId: string;
-  /** The Core HQ's health names; `undefined` while it does not answer. */
-  readonly answering: string | undefined;
-  /** Read once the update is to run: the archive is the size of Core. */
-  readonly core: () => Promise<HqCoreArtifact>;
-  readonly sleep: (ms: number) => Promise<void>;
-  readonly now: () => number;
-}): Promise<HqUpdateOutcome> {
-  const { platform } = input;
-  try {
-    const core = await input.core();
-    const { service, state } = await readHq(platform, input.projectId, core.build, input.answering);
-    if (state.kind === "updating") {
-      return { ok: false, reason: "HQ is being updated already. Wait for that update to end." };
-    }
-    if (state.kind === "current") return { ok: false, reason: "HQ runs this Core already." };
-    const { id } = await platform.createAppVersion(service.id, hqCoreVersionName(core.build));
-    await platform.uploadAppVersionArchive(id, core.archive);
-    const { processId } = await platform.buildAndDeployAppVersion(id, {
-      zeropsYaml: core.zeropsYaml,
-      setup: HQ_SETUP,
-    });
-    const startedAt = input.now();
-    for (;;) {
-      const status = await platform.readProcessStatus(processId);
-      if (status === "FINISHED") return { ok: true };
-      if (status !== undefined && FAILED_STATUSES.has(status)) {
-        return {
-          ok: false,
-          reason: `HQ's update ${status.toLowerCase()}. HQ still runs ${state.running || "its Core"}.`,
-        };
-      }
-      if (input.now() - startedAt >= HQ_BIRTH_WAITS.deployCapMs) {
-        return {
-          ok: false,
-          reason: "HQ's update took too long. Its build in Zerops says where it stands.",
-        };
-      }
-      await input.sleep(HQ_BIRTH_WAITS.pollMs);
-    }
-  } catch (cause) {
-    if (cause instanceof ZeropsApiError && cause.kind === "forbidden") {
-      return {
-        ok: false,
-        reason: "Zerops refused: you need full access to Headquarters. Ask an organization owner.",
-      };
-    }
-    return {
-      ok: false,
-      reason:
-        cause instanceof Error && cause.message.length > 0
-          ? cause.message
-          : "Zerops could not be reached.",
-    };
-  }
 }

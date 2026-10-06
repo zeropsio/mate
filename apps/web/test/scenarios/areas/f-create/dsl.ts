@@ -66,6 +66,12 @@ export function creation(s: Scenario) {
     loseCreationReply: () => {
       control.outcome = "lost";
     },
+    /** Zerops has been asked to create the project. */
+    createAsked: Effect.promise(() => drivers.zerops.waitForRequest("POST /client/ORG/project", 1)),
+    /** Another project of the same name appears as the creation is accepted. */
+    twinCreation: () => {
+      control.twin = true;
+    },
     refuseCreatedProjectAccess: () => {
       drivers.zerops.faults.set("GET /project/created-1", { status: 403 });
     },

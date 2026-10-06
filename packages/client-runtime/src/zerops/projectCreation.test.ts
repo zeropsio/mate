@@ -2,26 +2,11 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   isGenericPlatformError,
-  pickProjectCreation,
   projectCreationFailureSentence,
   projectCreationOutcome,
   projectProcessSearchBody,
   zcpCreationUnderWay,
 } from "./projectCreation.ts";
-
-/** A process item as `POST /process/search` answers it (measured 2026-09-16). */
-function process(overrides: Record<string, unknown>): Record<string, unknown> {
-  return {
-    id: "proc-1",
-    actionName: "project.create",
-    status: "FINISHED",
-    created: "2026-09-16T20:21:17.000Z",
-    projectId: "proj-1",
-    clientId: "org-1",
-    error: null,
-    ...overrides,
-  };
-}
 
 describe("projectCreationOutcome", () => {
   it.each([
@@ -98,54 +83,6 @@ describe("projectProcessSearchBody", () => {
   });
 });
 
-describe("pickProjectCreation", () => {
-  it("answers nothing when no project.create has appeared yet", () => {
-    expect(pickProjectCreation([], "proj-1")).toBeUndefined();
-    expect(
-      pickProjectCreation([process({ actionName: "stack.build", status: "FAILED" })], "proj-1"),
-    ).toBeUndefined();
-  });
-
-  it("takes the newest project.create of that project, whatever the order", () => {
-    const items = [
-      process({ id: "old", status: "FAILED", created: "2026-09-16T19:00:00.000Z" }),
-      process({ id: "other", projectId: "proj-2", created: "2026-09-16T21:00:00.000Z" }),
-      process({ id: "new", status: "FINISHED", created: "2026-09-16T20:21:18.151Z" }),
-      process({ id: "build", actionName: "stack.build", created: "2026-09-16T20:21:19.000Z" }),
-    ];
-    expect(pickProjectCreation(items, "proj-1")).toEqual({
-      processId: "new",
-      status: "FINISHED",
-      error: null,
-    });
-  });
-
-  it("carries the platform's error and skips items with no id or status", () => {
-    const items = [
-      process({ id: "", status: "FAILED" }),
-      process({
-        id: "failed",
-        status: "FAILED",
-        error: {
-          code: "internalServerError",
-          message: "unexpected internal server error",
-          meta: [],
-        },
-      }),
-    ];
-    expect(pickProjectCreation(items, "proj-1")).toEqual({
-      processId: "failed",
-      status: "FAILED",
-      error: { code: "internalServerError", message: "unexpected internal server error" },
-    });
-    expect(
-      pickProjectCreation([null, 3, "x", { actionName: "project.create" }], "proj-1"),
-    ).toBeUndefined();
-  });
-});
-
-// A Mate's key is regenerated only where no container holds it: a zcp the platform is still
-// creating does, though the services listing may not say so yet (pass 28 review).
 describe("zcpCreationUnderWay", () => {
   const step = (actionName: string, status: string, names: ReadonlyArray<string>) => ({
     id: `pr-${actionName}-${status}`,

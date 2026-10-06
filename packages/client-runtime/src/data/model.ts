@@ -195,6 +195,8 @@ export interface OperationRecord {
   readonly unresolved: Unobservable | null;
   /** Why it was not taken, where its owner or the door before it said: its words, shown as is. */
   readonly unsentBecause?: string;
+  /** What the send said where its answer was lost: shown beside asking the owner again. */
+  readonly uncertainBecause?: string;
 }
 
 /** The result an accepted operation of `kind` was answered with; `undefined` before or without one. */

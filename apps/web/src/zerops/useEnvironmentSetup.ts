@@ -1,12 +1,13 @@
 /**
  * Environments whose final setup is missing, through the account's projection. The finish action
- * remains with the creation operations until that family lands.
+ * runs through the account's creation operations.
  */
 import { environmentSetup } from "@t3tools/client-runtime/data";
 import type { HalfMadeGroupEnvironment } from "@t3tools/client-runtime/zerops";
 import { Atom } from "effect/unstable/reactivity";
 import { useMemo } from "react";
 
+import { useAccountOperations } from "./accountOperations";
 import { useAccountHq } from "./accountHq";
 import { useFinishGroupEnvironment } from "./useFinishGroupEnvironment";
 import { useAccountOrgId, useProjection } from "./ZeropsAccountData";
@@ -21,10 +22,11 @@ export function useEnvironmentSetup(projectIds: ReadonlyArray<string>) {
     useMemo(() => (orgId === null ? null : { orgId, projectIds }), [orgId, projectIds]),
     NONE,
   );
-  const { activeOrganization, client } = useZeropsSession();
+  const { activeOrganization } = useZeropsSession();
+  const operations = useAccountOperations();
   const { hq } = useAccountHq(activeOrganization?.id);
   const finishing = useFinishGroupEnvironment({
-    client,
+    operations,
     clientId: activeOrganization?.id,
     hq: hq.kind === "official" ? hq : undefined,
   });

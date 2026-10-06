@@ -3,16 +3,19 @@
  * has no HQ: an owner or an admin sees it born — each step, the one it is on, and the one that
  * stopped it, with the way on — and anybody else whom to ask, and nothing more.
  */
-import { HQ_BIRTH_DOING, HQ_BIRTH_STEPS, runHqBirth } from "@t3tools/client-runtime/zerops/hq";
+import { RegistryContext } from "@effect/atom-react";
+import { hqBirthProgress, hqBirthRequestId } from "@t3tools/client-runtime/data";
+import { HQ_BIRTH_DOING, HQ_BIRTH_STEPS } from "@t3tools/client-runtime/zerops/hq";
 import { CheckIcon, CircleAlertIcon } from "lucide-react";
 import { useCallback, useContext, useEffect } from "react";
 
 import { cn } from "~/lib/utils";
-import { hqBirthDeps, hqBirthSite, readOfficialHqNow, useAccountHq } from "~/zerops/accountHq";
-import { RegistryContext } from "@effect/atom-react";
-import { useAccountDataOptional } from "~/zerops/ZeropsAccountData";
-import { bearHq, hqBirthView, useHqBirths, type HqBirthView } from "~/zerops/hqBirth";
+import { captureAccountLifetime } from "~/zerops/accountLifetime";
+import { useAccountOperations } from "~/zerops/accountOperations";
+import { hqBirthSite, useAccountHq } from "~/zerops/accountHq";
+import { useHqBirths, hqBirthView, type HqBirthView } from "~/zerops/hqBirth";
 import type { HqGate } from "~/zerops/hqGate";
+import { useAccountData } from "~/zerops/ZeropsAccountData";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
 import { Button } from "../ui/button";
@@ -25,37 +28,29 @@ export function ZeropsHqGate({ gate }: { readonly gate: ClosedGate }) {
   const { activeOrganization, client } = useZeropsSession();
   const clientId = activeOrganization?.id ?? "";
   const accountHq = useAccountHq(activeOrganization?.id);
-  const held = useHqBirths((state) => state.byOrg[clientId]);
-  const { reread } = accountHq;
-  const data = useAccountDataOptional();
+  const held = useHqBirths(clientId);
   const registry = useContext(RegistryContext);
+  const operations = useAccountOperations();
+  const { data } = useAccountData();
+  const { reread } = accountHq;
   const bear = useCallback(
-    (again: boolean) =>
-      bearHq({
-        clientId,
-        run: (record, moved, manualAgain) =>
-          runHqBirth({
-            record,
-            clientId,
-            ...hqBirthSite(client),
-            deps: hqBirthDeps(client),
-            moved,
-            again: manualAgain,
-          }),
-        // Another admin may have set an HQ up since this page decided there is none: the member
-        // list is read afresh at every attempt, and an HQ it names ends the birth as made.
-        alreadyBorn: async () => {
-          if (data === null) throw new Error("No account data is available to verify this HQ.");
-          if (again) data.retryDetail({ family: "organizationMembers", ownerId: clientId });
-          return (await readOfficialHqNow(data, registry, clientId)).kind === "official";
-        },
-        // Its anchor is in the member list now: the gate opens once it is read again.
-        onBorn: reread,
-        again,
-      }),
-    [client, clientId, data, registry, reread],
+    (again: boolean) => {
+      const current = registry.get(data.project(hqBirthProgress, clientId));
+      if (current?.running || current?.record.step === "done") return;
+      const isCurrent = captureAccountLifetime();
+      void operations
+        .submit(
+          { kind: "hq-birth", orgId: clientId, ...hqBirthSite(client), again },
+          hqBirthRequestId(clientId, (current?.attempt ?? 0) + 1),
+        )
+        .then(({ progress }) => {
+          if (isCurrent() && progress.stage === "done" && progress.outcome === "succeeded")
+            reread();
+        });
+    },
+    [client, clientId, data, operations, registry, reread],
   );
-  const birthDue = gate.kind === "birth" && held === undefined;
+  const birthDue = gate.kind === "birth" && held === null;
   useEffect(() => {
     if (birthDue) bear(false);
   }, [bear, birthDue]);

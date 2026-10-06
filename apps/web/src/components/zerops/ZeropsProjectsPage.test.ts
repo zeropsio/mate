@@ -42,7 +42,7 @@ import groupDetailSource from "./ZeropsGroupDetail.tsx?raw";
 import gitPageSource from "./ZeropsGitPage.tsx?raw";
 import sidebarTreeSource from "./SidebarZeropsTree.tsx?raw";
 import sidebarSource from "../Sidebar.tsx?raw";
-import newProjectPortsSource from "../../zerops/useNewProjectBirthPorts.ts?raw";
+import newProjectPortsSource from "../../zerops/useRunNewProject.ts?raw";
 import verdictPanelSource from "./primitives/VerdictPanel.tsx?raw";
 import releaseRowsSource from "./ZeropsReleaseRows.tsx?raw";
 import historyViewSource from "./ZeropsHistoryView.tsx?raw";
@@ -99,9 +99,9 @@ describe("same-origin Zerops identity bootstrap", () => {
     }
     // The creation itself is the account's (`useEnvironmentCreation`), shared with the New Mate
     // dialog over any view.
-    expect(pressSource).toContain("data.runtime.commands.createProject(");
-    expect(pressSource).toContain("data.runtime.commands.importServices(");
-    expect(creationSource).toContain("readObservedServices:");
+    // Its writes are the account's operations, its services' wait the account's listing.
+    expect(pressSource).not.toContain("runtime.commands");
+    expect(creationSource).toContain("untilServicesSettled:");
     expect(projectsPageSource).not.toContain("listProjectServices(");
     expect(creationSource).not.toContain("listProjectServices(");
   });
@@ -841,9 +841,7 @@ describe("a project's next step on the projects page", () => {
 describe("a creation under way on the projects page", () => {
   it("is drawn in its group from the one placing the left menu reads, and feeds the flow", () => {
     // A New project this tab is making included, from the press, on both.
-    expect(projectsPageSource).toContain(
-      "births: placedPressesIn(presses, activeOrganization?.id, Object.values(made)),",
-    );
+    expect(projectsPageSource).toContain("placedNewProjects(made, activeOrganization?.id),");
     expect(projectsPageSource).toContain("pending: group.pending,");
     expect(sidebarTreeSource).toContain("pending: group?.pending ?? [],");
     expect(sidebarSource).toContain("placedPressesIn(\n        zeropsPresses,");

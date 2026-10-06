@@ -12,7 +12,7 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import type { ZeropsOrganization } from "@t3tools/client-runtime/zerops";
 
 import { Dialog } from "../ui/dialog";
-import birthPortsSource from "../../zerops/useNewProjectBirthPorts.ts?raw";
+import birthPortsSource from "../../zerops/useRunNewProject.ts?raw";
 import hostSource from "./ZeropsNewProjectHost.tsx?raw";
 import { ZeropsNewProjectForm } from "./ZeropsNewProjectForm";
 import { zeropsNewProjectScopeStepVisible } from "./ZeropsNewProjectHost";
@@ -29,7 +29,7 @@ describe("ZeropsNewProjectHost source", () => {
   it("writes no tags for its group: the group is an application HQ creates, and HQ names", () => {
     expect(hostSource).not.toContain("runtime.commands.updateProjectTags(");
     expect(birthPortsSource).not.toContain("runtime.commands.updateProjectTags(");
-    expect(birthPortsSource).toContain(".createApp(groupName)");
+    expect(birthPortsSource).toContain('kind: "create-app"');
     // HQ stands before any project does (ADR 0001): no project brings it along.
     expect(hostSource).not.toContain("runHqBirth(");
     expect(birthPortsSource).not.toContain("runHqBirth(");
@@ -37,10 +37,10 @@ describe("ZeropsNewProjectHost source", () => {
 
   // F6b (2026-10-03): the project alone, then its press — its Mate attached to its application
   // before its container, which the press imports — never project and container in one call.
-  it("creates the project alone through the typed runtime command, its press bringing the container", () => {
-    // gap-create extracts the callable ports so a reloaded creation can use the same steps.
-    expect(hostSource).toContain("ports: birthPorts(ask)");
-    expect(birthPortsSource).toContain("runtime.commands.createProject(");
+  it("creates the project alone as the account's create-project operation, its press bringing the container", () => {
+    // The creation runs its steps over the account's operations, from the press and on Try again.
+    expect(hostSource).toContain("run: runNewProject");
+    expect(birthPortsSource).toContain('kind: "create-project"');
     expect(hostSource).not.toContain("createProjectWithMate");
     expect(birthPortsSource).not.toContain("createProjectWithMate");
     expect(birthPortsSource).toContain("container: { agents: ask.agents }");

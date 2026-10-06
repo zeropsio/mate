@@ -35,16 +35,11 @@ import { useEffect, useMemo, useState } from "react";
 import { useThreadDetail, useThreadStatus } from "~/state/entities";
 import { officialHq, useAccountHq } from "~/zerops/accountHq";
 import { hqNavigationAtom } from "~/state/zerops";
-import { useNewMate, type NewMateAgain } from "~/zerops/newMate";
+import { useAccountOperations } from "~/zerops/accountOperations";
+import { beginCreation, refuseAddHere, runOnce } from "~/zerops/creations";
+import { useMateHandOver, useNewMateDialog, type NewMateAgain } from "~/zerops/newMate";
 import { useAppsChanges, useMateNames } from "~/zerops/projectFlows";
-import {
-  addCreateProject,
-  beginNewProjectBirth,
-  newProjectView,
-  progressNewProjectBirth,
-  recipeManaged,
-  recipeRuntimes,
-} from "~/zerops/newProjectBirth";
+import { newProjectView, recipeManaged, recipeRuntimes, runAdd } from "~/zerops/newProjectBirth";
 import { useEnvironmentCreation } from "~/zerops/useEnvironmentCreation";
 import { useOpenMate } from "~/zerops/useOpenMate";
 import { useTakenBotNames, useZeropsCandidates } from "~/zerops/useZeropsCandidates";
@@ -64,8 +59,8 @@ import {
 import { emptyApplications } from "./projects/emptyApps.logic";
 
 export function ZeropsNewMateHost() {
-  const asked = useNewMate((state) => state.asked);
-  const handOver = useNewMate((state) => state.handOver);
+  const asked = useNewMateDialog((state) => state.asked);
+  const handOver = useMateHandOver((state) => state.handOver);
   const { status } = useZeropsSession();
   // The creation lives here, above the dialog: it runs on after the dialog has closed.
   const create = useEnvironmentCreation();
@@ -95,7 +90,7 @@ function KeepHandOverRead({ conversation }: { readonly conversation: ScopedThrea
   useThreadStatus(conversation);
   useThreadDetail(conversation);
   useZeropsAgentAuth(conversation.environmentId);
-  const handingOver = useNewMate((state) => state.handingOver);
+  const handingOver = useMateHandOver((state) => state.handingOver);
   useEffect(() => {
     const timer = setTimeout(() => handingOver(null), HAND_OVER_KEPT_MS);
     return () => clearTimeout(timer);
@@ -157,9 +152,8 @@ function NewMateDialog({
   const [defaultBotName] = useState(
     () => again?.botName ?? generateBotName(taken.names, (bytes) => crypto.getRandomValues(bytes)),
   );
-  const dismiss = useNewMate((state) => state.dismiss);
-  const created = useNewMate((state) => state.created);
-  const settled = useNewMate((state) => state.settled);
+  const dismiss = useNewMateDialog((state) => state.dismiss);
+  const operations = useAccountOperations();
   const navigate = useNavigate();
 
   if (entry === undefined) return null;
@@ -196,11 +190,13 @@ function NewMateDialog({
         const tier = choice.recipe.kind === "tier" ? choice.recipe.yaml : undefined;
         // Its own id, its view's: a random one, as a New project's group's.
         const id = generateZeropsGroupId((bytes) => crypto.getRandomValues(bytes));
-        // Held from the press, its steps run on in the account's creations: the dialog gives way
-        // to the Mate's view at once.
-        beginNewProjectBirth({
+        // Held from the press, its steps run on in the account's operations: the dialog gives way
+        // to the Mate's view at once. A stop once the platform took its project is its press's to
+        // say (`matePress.ts`).
+        const organizationId = activeOrganization.id;
+        beginCreation({
           ask: {
-            organizationId: activeOrganization.id,
+            organizationId,
             birthId: id,
             name: group.name,
             botName: name,
@@ -219,34 +215,15 @@ function NewMateDialog({
           },
           hq: officialHq(accountHq),
           now: Date.now(),
-          ports: {
-            recordBirth: () => Promise.reject(new Error("The Add press owns its birth intent.")),
-            registerGroup: () => Promise.reject(new Error("An added Mate's project stands.")),
-            // Taken once the platform takes its project; the press runs on after it, and a stop
-            // after that is its press's to say (`matePress.ts`).
-            createProject: () =>
-              addCreateProject({
-                run: (onAccepted) =>
-                  create({
-                    group,
-                    environments,
-                    role: "dev",
-                    choice,
-                    onAccepted,
-                    onProgress: (progress) => progressNewProjectBirth(id, progress),
-                  }),
-                settled,
-              }),
-            accepted: (projectId) => {
-              created({
-                projectId,
-                groupId: group.groupId,
-                groupName: group.name,
-                botName: name,
-                face,
-              });
-            },
-          },
+          run: (held) =>
+            void runOnce(id, () =>
+              runAdd(
+                held,
+                (creationId) => operations.readCreation(organizationId, creationId),
+                (creationId) => create({ group, environments, role: "dev", choice, creationId }),
+                (reason) => refuseAddHere(id, reason),
+              ),
+            ),
         });
         dismiss();
         void navigate(newProjectView(id));

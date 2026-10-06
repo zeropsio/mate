@@ -19,7 +19,12 @@ export type OperationInput =
       readonly before?: ReadonlyArray<string>;
     }
   /** The request went out and its answer was lost: whether the owner took it is unknown. */
-  | { readonly kind: "operation-uncertain"; readonly requestId: string }
+  | {
+      readonly kind: "operation-uncertain";
+      readonly requestId: string;
+      /** What the send said as its answer was lost. */
+      readonly reason?: string;
+    }
   /** The owner did not take the request (it never arrived, or was turned away unread). */
   | {
       readonly kind: "operation-unsent";
@@ -69,7 +74,13 @@ export function reduceOperation(
   if (record === undefined) return undefined;
   switch (input.kind) {
     case "operation-uncertain":
-      return record.receipt === null ? { ...record, submission: "uncertain" } : record;
+      return record.receipt === null
+        ? {
+            ...record,
+            submission: "uncertain",
+            ...(input.reason === undefined ? {} : { uncertainBecause: input.reason }),
+          }
+        : record;
     case "operation-unsent":
       return record.receipt === null
         ? {

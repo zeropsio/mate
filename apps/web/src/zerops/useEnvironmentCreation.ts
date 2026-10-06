@@ -9,12 +9,14 @@
  * HQ, which decides who may write it. An organization with no HQ takes no environment (ADR 0001).
  * The container does the rest whether this tab stays or not.
  */
+import { HQ_UNFOLLOWED, useAccountOperations } from "./accountOperations";
 import {
   appProjectName,
   formatMateFace,
   nameUnderApp,
   planEnvironmentCreation,
   recipeTierServices,
+  servicesSettled,
   type EnvironmentCreationOutcome,
   type EnvironmentCreationStep,
   type EnvironmentCreationStepProgress,
@@ -24,15 +26,20 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
-import type { HqApi } from "@t3tools/client-runtime/zerops/hq";
 import { RegistryContext } from "@effect/atom-react";
-import { projectServicesAtom } from "@t3tools/client-runtime/data";
+import {
+  creationStepId,
+  projectServicesAtom,
+  type ProjectServices,
+  type RunToEnd,
+} from "@t3tools/client-runtime/data";
+import type { Atom, AtomRegistry } from "effect/unstable/reactivity";
 import { useCallback, useContext } from "react";
 
 import type { EnvironmentCreationChoice } from "../components/zerops/ZeropsEnvironmentCreationDialog";
 import { accountHqApi, officialHq, useAccountHq } from "./accountHq";
 import { invalidateZerops } from "./accountInvalidations";
-import { captureAccountLifetime } from "./accountLifetime";
+import { captureAccountLifetime, onAccountLifetimeClose } from "./accountLifetime";
 import { beginPress, pressHold, pressPlatform, pressRegistration, runPress } from "./matePress";
 import { useReadGroupAgents } from "./groupAgents";
 import { useZeropsSession } from "./ZeropsSessionProvider";
@@ -48,8 +55,12 @@ export interface EnvironmentCreationRequest {
   /** The steps it will take, once planned. */
   readonly onPlanned?: (steps: ReadonlyArray<EnvironmentCreationStep>) => void;
   readonly onProgress?: (progress: ReadonlyArray<EnvironmentCreationStepProgress>) => void;
-  /** The platform took the project: the rest of the press acts on it. */
-  readonly onAccepted?: (projectId: string) => void;
+  /**
+   * The creation an Add a Mate runs this press for (`creationRunId`): its birth intent and the
+   * write that makes its project are recorded under ids named from it, where its view reads them
+   * (`creationSteps`). None for a stage or a production.
+   */
+  readonly creationId?: string | undefined;
 }
 
 /** How a creation ended, for the surface that started it. */
@@ -106,7 +117,12 @@ function addedMateStandUp(
  * Mate is born.
  */
 export async function addedMateBirth(
-  hq: Pick<HqApi, "recordBirth">,
+  /** Records the birth intent at HQ (the `record-birth` operation): its id. */
+  record: (birth: {
+    readonly appId: string;
+    readonly face: string;
+    readonly standUp: boolean;
+  }) => Promise<string>,
   input: {
     readonly groupId: string;
     readonly role: ZeropsEnvironmentRole;
@@ -115,13 +131,12 @@ export async function addedMateBirth(
 ): Promise<string | undefined> {
   const { choice } = input;
   if ((input.role !== "dev" && input.role !== "devstage") || !choice.withAgent) return undefined;
-  const { id } = await hq.recordBirth({
+  return record({
     appId: input.groupId,
     // Empty where none was picked, as its attach records it: the Mate wears its name's tint.
     face: choice.face === undefined ? "" : formatMateFace(choice.face),
     standUp: addedMateStandUp(input.role, choice),
   });
-  return id;
 }
 
 /**
@@ -140,11 +155,59 @@ export function environmentProjectName(
   return { name, shown: nameUnderApp(name, groupName) };
 }
 
+/** What an environment's services' wait says where Zerops refused to say how they stand. */
+const SERVICES_REFUSED = "Zerops refused to say how the environment's services stand.";
+/** What it says where the account closed while it waited: as a creation's own stop says it. */
+const ACCOUNT_CLOSED = "This account session has ended.";
+
+/**
+ * Resolves with a project's services once every one has settled (`servicesSettled`), as the
+ * account's services listing holds them — read as they change, never on a clock; rejects where
+ * that listing is refused, and where the account it waits in closes.
+ */
+export function untilServicesSettled(
+  registry: AtomRegistry.AtomRegistry,
+  /** The project's services as the account's store holds them (`projectServicesAtom`). */
+  listed: Atom.Atom<ProjectServices>,
+): Promise<ReadonlyArray<{ readonly name: string; readonly status: string }>> {
+  return new Promise((resolve, reject) => {
+    let ended = false;
+    let cancel: (() => void) | undefined;
+    const finish = () => {
+      ended = true;
+      cancel?.();
+      leave();
+    };
+    const leave = onAccountLifetimeClose(() => {
+      if (ended) return;
+      reject(new Error(ACCOUNT_CLOSED));
+      finish();
+    });
+    cancel = registry.subscribe(
+      listed,
+      ({ services, unavailableReason }) => {
+        if (ended) return;
+        if (unavailableReason !== undefined) {
+          reject(new Error(SERVICES_REFUSED));
+          finish();
+        } else if (servicesSettled(services)) {
+          resolve(services!.map((service) => ({ name: service.name, status: service.status })));
+          finish();
+        }
+      },
+      { immediate: true },
+    );
+    // Its first value may have ended it before its subscription was in hand.
+    if (ended) cancel();
+  });
+}
+
 export function useEnvironmentCreation(): (
   request: EnvironmentCreationRequest,
 ) => Promise<EnvironmentCreationRun> {
   const { activeOrganization, client } = useZeropsSession();
-  const { organizationRef, projectRef, runtime } = useZeropsData();
+  const { organizationRef } = useZeropsData();
+  const operations = useAccountOperations();
   const registry = useContext(RegistryContext);
   const accountHq = useAccountHq(activeOrganization?.id);
 
@@ -156,14 +219,27 @@ export function useEnvironmentCreation(): (
       const hq = officialHq(accountHq);
       const organization = activeOrganization;
       const isCurrent = captureAccountLifetime();
-      const { group, role, choice } = request;
+      const { group, role, choice, creationId } = request;
       const { name, shown } = environmentProjectName(role, group.name, choice.name);
       const tier = role === "prod" ? "production" : role === "stage" ? "stage" : null;
 
       // A Mate's birth intent before its project: an HQ that cannot record it takes no project.
       let intent: string | undefined;
       try {
-        intent = await addedMateBirth(accountHqApi(client, organization.id, hq), {
+        const record = async (birth: Parameters<Parameters<typeof addedMateBirth>[0]>[0]) =>
+          (
+            await operations.run(
+              { kind: "record-birth", orgId: organization.id, ...birth },
+              {
+                orgId: organization.id,
+                unobserved: HQ_UNFOLLOWED,
+                ...(creationId === undefined
+                  ? {}
+                  : { requestId: creationStepId(creationId, "birth", 1) }),
+              },
+            )
+          ).birthId;
+        intent = await addedMateBirth(record, {
           groupId: group.groupId,
           role,
           choice,
@@ -184,9 +260,18 @@ export function useEnvironmentCreation(): (
       if (!plan.ok) return { kind: "refused", reason: plan.reason };
 
       const withAgent = plan.steps.some((step) => step.kind === "import-container");
+      // An Add's project, made or imported, is recorded where its creation's view reads it.
+      const run: RunToEnd = (intent, options) =>
+        operations.run(
+          intent,
+          creationId !== undefined &&
+            (intent.kind === "create-project" || intent.kind === "import-project")
+            ? { ...options, requestId: creationStepId(creationId, "project", 1) }
+            : options,
+        );
       const inputs = {
         client,
-        data: { runtime, organizationRef, projectRef },
+        operations: { ...operations, run },
         organizationId: organization.id,
       };
       // Every press is held at HQ while it runs, so another browser never takes it for one that
@@ -217,15 +302,8 @@ export function useEnvironmentCreation(): (
             : { hq, groupId: group.groupId, kind: tier },
         ),
         hq,
-        hold,
-        // Reads the organization's services listing as the account's store holds it.
-        // Not listed yet: none observed.
-        readObservedServices: async (projectId) => {
-          const listed = registry.get(projectServicesAtom(projectId)).services;
-          return listed === undefined
-            ? []
-            : listed.map((service) => ({ name: service.name, status: service.status }));
-        },
+        untilServicesSettled: (projectId) =>
+          untilServicesSettled(registry, projectServicesAtom(projectId)),
       });
 
       request.onPlanned?.(plan.steps);
@@ -253,9 +331,17 @@ export function useEnvironmentCreation(): (
             },
           });
           invalidateZerops({ topic: "inventory", organization: organizationRef(organization.id) });
-          request.onAccepted?.(projectId);
           if (intent !== undefined)
-            await accountHqApi(client, organization.id, hq).bindBirth(intent, projectId);
+            await operations.run(
+              {
+                kind: "bind-birth",
+                orgId: organization.id,
+                appId: group.groupId,
+                birthId: intent,
+                projectId,
+              },
+              { orgId: organization.id, unobserved: HQ_UNFOLLOWED },
+            );
         },
         onProgress: (progress) => {
           if (isCurrent()) request.onProgress?.(progress);
@@ -264,15 +350,6 @@ export function useEnvironmentCreation(): (
       });
       return { kind: "ran", outcome, withAgent };
     },
-    [
-      accountHq,
-      activeOrganization,
-      client,
-      organizationRef,
-      projectRef,
-      readGroupAgents,
-      registry,
-      runtime,
-    ],
+    [accountHq, activeOrganization, client, organizationRef, readGroupAgents, registry, operations],
   );
 }

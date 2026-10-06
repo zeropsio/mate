@@ -243,6 +243,47 @@ describe("makeOperations", () => {
     }),
   );
 
+  it.effect(
+    "records a request under the id its caller names, so a screen can find it by that",
+    () =>
+      Effect.gen(function* () {
+        const store = account();
+        const owner = fixtureOwner({ loseAnswers: 0 });
+        const operations = makeOperations({
+          store,
+          kinds,
+          executors: { hq: owner.executor },
+          makeId: ids(),
+        });
+        expect(yield* operations.submit(MOVE, "birth-1:project")).toBe("birth-1:project");
+        expect(progress(store, "birth-1:project").stage).toBe("accepted");
+      }),
+  );
+
+  it.effect("keeps what a send not taken, or not answered, said until its owner answers", () =>
+    Effect.gen(function* () {
+      for (const [options, field, said] of [
+        [{ loseAnswers: 0, unavailable: 1 }, "unsentBecause", "HTTP 503"],
+        [
+          { loseAnswers: 0, loseRequests: 1, unreachable: () => true },
+          "uncertainBecause",
+          "No answer.",
+        ],
+      ] as const) {
+        const store = account();
+        const owner = fixtureOwner(options);
+        const operations = makeOperations({
+          store,
+          kinds,
+          executors: { hq: owner.executor },
+          makeId: ids(),
+        });
+        const requestId = yield* operations.submit(MOVE);
+        expect(store.state().operations.get(requestId)?.[field]).toBe(said);
+      }
+    }),
+  );
+
   it.effect("asks the owner again, never sends, when the person retries an uncertain one", () =>
     Effect.gen(function* () {
       let unreachable = true;

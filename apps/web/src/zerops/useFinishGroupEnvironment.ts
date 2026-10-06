@@ -16,13 +16,12 @@
 import type {
   GroupEnvironmentTier,
   HalfMadeGroupEnvironment,
-  ZeropsApiClient,
 } from "@t3tools/client-runtime/zerops";
 import type { HqEndpoint } from "@t3tools/client-runtime/zerops/hq";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import type { AccountOperations } from "./accountOperations";
 import { addGroupEnvironment } from "./addGroupEnvironment";
-import { accountHqApi } from "./accountHq";
 
 export interface FinishGroupEnvironment {
   /** The projects whose environment is being finished now, by group, with its tier. */
@@ -40,12 +39,13 @@ const without = <V>(map: ReadonlyMap<string, V>, key: string): ReadonlyMap<strin
 };
 
 export function useFinishGroupEnvironment(input: {
-  readonly client: ZeropsApiClient;
+  /** The account's operations: the attach and the key HQ executes, and HQ's navigation. */
+  readonly operations: Pick<AccountOperations, "run" | "untilEnvironment">;
   readonly clientId: string | undefined;
   /** The organization's HQ, where the registry and the keys live; none while no organization is open. */
   readonly hq: HqEndpoint | undefined;
 }): FinishGroupEnvironment {
-  const { client, clientId, hq } = input;
+  const { operations, clientId, hq } = input;
   const [finishing, setFinishing] = useState<ReadonlyMap<string, GroupEnvironmentTier>>(
     () => new Map(),
   );
@@ -72,12 +72,10 @@ export function useFinishGroupEnvironment(input: {
         let wentThrough = false;
         try {
           const outcome = await addGroupEnvironment({
-            client,
-            hq: accountHqApi(client, clientId, hq),
-            clientId,
+            operations,
+            orgId: clientId,
             groupId: entry.groupId,
             environment: { tier: entry.tier, project: entry.projectId },
-            signal: controller.signal,
           });
           wentThrough = outcome.failed === undefined;
         } catch {
@@ -93,7 +91,7 @@ export function useFinishGroupEnvironment(input: {
         );
       })();
     },
-    [client, clientId, hq],
+    [operations, clientId, hq],
   );
 
   return { finishing, unfinished, finish };

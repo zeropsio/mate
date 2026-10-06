@@ -235,6 +235,8 @@ vi.mock("./accountOperations", () => ({
         };
       }
     },
+    // A press's writes: none is answered here.
+    run: async () => undefined,
   }),
 }));
 // The account's runtime: no platform command is answered here.

@@ -55,8 +55,11 @@ export interface OperationExecutor {
 }
 
 export interface Operations {
-  /** Records, sends and reconciles one intent; answers with its request id. */
-  readonly submit: (intent: OperationIntent) => Effect.Effect<string>;
+  /**
+   * Records, sends and reconciles one intent; answers with its request id — the one its caller
+   * names (a creation's step, found again by it), else a new one.
+   */
+  readonly submit: (intent: OperationIntent, requestId?: string) => Effect.Effect<string>;
   /**
    * The person's try-now: an unsent request is sent again, an uncertain one asked after — both
    * under the original id. Anything else is left as it stands.
@@ -96,7 +99,7 @@ export function makeOperations(options: {
       onSuccess: (answer) => admit(answer, requestId),
       onFailure: (fault) => {
         if (fault.outcome === "uncertain-acceptance") {
-          store.dispatch({ kind: "operation-uncertain", requestId });
+          store.dispatch({ kind: "operation-uncertain", requestId, reason: fault.message });
           return reconcile(requestId, intent, resend);
         }
         if (fault.outcome === "definitive-refusal" || fault.outcome === "authoritative-denial")
@@ -195,6 +198,7 @@ export function makeOperations(options: {
       });
     if (executor.lookup === undefined) {
       const adopted = adoptable(requestId, intent);
+      const resultOf = kindOf(intent).adoptedResult;
       return admit(
         adopted === null
           ? null
@@ -204,7 +208,10 @@ export function makeOperations(options: {
               executor: owner,
               affected: [],
               handles: [adopted],
-              acceptance: { kind: "accepted" },
+              acceptance: {
+                kind: "accepted",
+                ...(resultOf === undefined ? {} : { result: resultOf(adopted) }),
+              },
               outcome: { kind: "pending" },
             },
         requestId,
@@ -225,9 +232,9 @@ export function makeOperations(options: {
   };
 
   return {
-    submit: (intent) =>
+    submit: (intent, named) =>
       Effect.gen(function* () {
-        const requestId = options.makeId();
+        const requestId = named ?? options.makeId();
         const effectHandles = kindOf(intent).effectHandles;
         store.dispatch({
           kind: "operation-recorded",

@@ -42,7 +42,9 @@ import { buildThreadRouteParams } from "../threadRoutes";
 import { deletingMates, mateDeleting } from "./deletingMates";
 import { arrivalAwaitsAnswer, arrivalLinkHolds, mateComing } from "./mateComing";
 import { awaitMateConversation } from "./mateOpening";
-import { newMateView, useNewMate } from "./newMate";
+import { useCreations } from "./creations";
+import { newMateView } from "./newMate";
+import { madeOf } from "./newProjectBirth";
 import { useHqMainChats } from "./useMenuMateReadings";
 import { useZeropsCandidates } from "./useZeropsCandidates";
 import { useCloseOffHolds } from "./accountEnvironments";
@@ -62,7 +64,7 @@ export function useOpenMate(): OpenMate {
   const handleNewThread = useNewThreadHandler();
   const presses = useMatePresses();
   const closeOffHolds = useCloseOffHolds();
-  const creations = useNewMate((state) => state.creations);
+  const creations = useCreations();
   const { listing } = useZeropsCandidates();
   const mainChatOf = useHqMainChats();
   return useCallback<OpenMate>(
@@ -99,6 +101,8 @@ export function useOpenMate(): OpenMate {
         return;
       }
       const pressed = pressComingInput(presses, projectId);
+      // Made here, and not connected since.
+      const created = candidate.group !== "connected" && madeOf(creations, projectId) !== undefined;
       const coming = mateComing({
         press: pressed.press,
         // Held by the close-off gate, it opens on its own view, which says why.
@@ -108,11 +112,10 @@ export function useOpenMate(): OpenMate {
           presses.find((press) => press.projectId === projectId),
         ),
         candidate,
-        setUpFailed: pressed.setUpFailed ?? creations[projectId]?.failed,
+        setUpFailed: pressed.setUpFailed,
         nowMs: Date.now(),
-        created: creations[projectId] !== undefined,
-        linkHolds:
-          creations[projectId] === undefined ? undefined : arrivalLinkHolds(mateLink(candidate)),
+        created,
+        linkHolds: created ? arrivalLinkHolds(mateLink(candidate)) : undefined,
         answerAwaited:
           candidate.arriving === undefined ? undefined : arrivalAwaitsAnswer(mateLink(candidate)),
       });

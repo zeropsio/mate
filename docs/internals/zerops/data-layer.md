@@ -101,6 +101,11 @@ Register kinds in `operations/kinds.ts` (`OPERATION_KINDS`). Executors live only
 request id or handle as supported by the owner. Kind predicates stay pure; adapters and executors
 are the remote I/O boundary.
 
+Before HQ exists, its setup runs as a Zerops operation with child writes and observation demand.
+Its append-only journal stays in HQ's project environment for recovery across browsers; the gate
+reads progress from operation receipts. Mate registration receipts likewise retain a refusal and
+its reason after the originating press ends, until a later registration replaces that verdict.
+
 A lost answer is resolved from the original id, handle or proven effect, never by blindly sending
 again. HQ retains operation evidence across client reconnects and tab closure. A process disappearing
 from a running list does not prove its outcome. Timers may bound observation but cannot invent a
