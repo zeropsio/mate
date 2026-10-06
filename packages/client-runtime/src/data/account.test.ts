@@ -10,8 +10,16 @@ import type { RegisteredOperationKind } from "./operations/kind.ts";
 import { streamOf } from "./reducer.ts";
 import { makeAccountStore } from "./store.ts";
 
-/** The navigation runs on its own runtime: real time passes for it. */
-const turns = Effect.sleep(20);
+/** The navigation runs on its own runtime: real time passes for it, so a test waits on the state it expects, not on a delay. */
+const until = (condition: () => boolean, what: string) =>
+  Effect.gen(function* () {
+    const deadline = Date.now() + 5_000;
+    while (!condition()) {
+      if (Date.now() > deadline)
+        return yield* Effect.die(new Error(`timed out waiting for ${what}`));
+      yield* Effect.sleep(2);
+    }
+  });
 
 describe("startZeropsNavigation", () => {
   it.live("observes the organization's running work until stopped, then lets its demand go", () =>
@@ -26,11 +34,18 @@ describe("startZeropsNavigation", () => {
         wire: fixture.wire,
         repairSession: Effect.void,
       });
-      yield* turns;
-      expect(streamOf(store.state(), runningScope("org")).phase).toBe("live");
+      yield* until(
+        () => streamOf(store.state(), runningScope("org")).phase === "live",
+        "the running scope to go live",
+      );
 
       navigation.stop();
-      yield* turns;
+      yield* until(
+        () =>
+          !streamOf(store.state(), linkKeys.zerops("org")).demanded &&
+          !streamOf(store.state(), runningScope("org")).demanded,
+        "the demand to be let go",
+      );
       expect(streamOf(store.state(), linkKeys.zerops("org")).demanded).toBe(false);
       expect(streamOf(store.state(), runningScope("org")).demanded).toBe(false);
     }),
@@ -61,25 +76,39 @@ describe("observeAccount", () => {
         });
         const reads = () =>
           fixture.requests.filter((request) => request.path === HISTORY_PATH).length;
-        yield* turns;
         expect(reads()).toBe(0);
 
         account.show("org-a");
-        yield* turns;
+        yield* until(
+          () =>
+            reads() >= 1 && streamOf(store.state(), historyScope("org-a", "p1")).phase === "live",
+          "org-a's history to be read",
+        );
         expect(reads()).toBe(1);
         expect(streamOf(store.state(), historyScope("org-a", "p1")).phase).toBe("live");
 
         account.show("org-b");
-        yield* turns;
+        yield* until(
+          () =>
+            reads() >= 2 &&
+            !streamOf(store.state(), historyScope("org-a", "p1")).demanded &&
+            streamOf(store.state(), historyScope("org-b", "p1")).phase === "live",
+          "org-b's history to be read",
+        );
         expect(reads()).toBe(2);
         expect(streamOf(store.state(), historyScope("org-a", "p1")).demanded).toBe(false);
         expect(streamOf(store.state(), historyScope("org-b", "p1")).phase).toBe("live");
 
         release();
-        yield* turns;
-        expect(streamOf(store.state(), historyScope("org-b", "p1")).demanded).toBe(false);
+        yield* until(
+          () => !streamOf(store.state(), historyScope("org-b", "p1")).demanded,
+          "org-b's detail to be released",
+        );
         account.show(null);
-        yield* turns;
+        yield* until(
+          () => !streamOf(store.state(), linkKeys.zerops("org-b")).demanded,
+          "org-b's link to be let go",
+        );
         expect(streamOf(store.state(), linkKeys.zerops("org-b")).demanded).toBe(false);
       }),
   );
@@ -123,8 +152,10 @@ describe("observeAccount", () => {
           outcome: { kind: "pending" },
         },
       });
-      yield* turns;
-      expect(streamOf(store.state(), historyScope("org", "p1")).phase).toBe("live");
+      yield* until(
+        () => streamOf(store.state(), historyScope("org", "p1")).phase === "live",
+        "the open operation's history to go live",
+      );
       account.show(null);
     }),
   );
@@ -153,11 +184,14 @@ describe("observeAccount — its end", () => {
         repairSession: Effect.void,
       });
       first.show("org");
-      yield* turns;
+      yield* until(() => listening === 1, "the first account to listen");
       expect(listening).toBe(1);
 
       first.stop();
-      yield* turns;
+      yield* until(
+        () => listening === 0 && !streamOf(store.state(), linkKeys.zerops("org")).demanded,
+        "the first account to let go",
+      );
       expect(listening).toBe(0);
       expect(streamOf(store.state(), linkKeys.zerops("org")).demanded).toBe(false);
 
@@ -167,13 +201,11 @@ describe("observeAccount — its end", () => {
         repairSession: Effect.void,
       });
       second.show("org");
-      yield* turns;
-      expect(listening).toBe(1);
+      yield* until(() => listening === 1, "the second account to listen");
       // Stopped and shown again (a remount): it observes again, once.
       second.stop();
       second.show("org");
-      yield* turns;
-      expect(listening).toBe(1);
+      yield* until(() => listening === 1, "the remounted account to listen");
       second.stop();
     }),
   );
@@ -200,7 +232,10 @@ describe("observeAccount — closed with its account", () => {
         ownerId: "p1",
       });
       account.show("org");
-      yield* turns;
+      yield* until(
+        () => streamOf(store.state(), linkKeys.zerops("org")).demanded,
+        "the link to be demanded",
+      );
       registry.mount(store.data.stream(linkKeys.zerops("org")));
 
       account.close();
@@ -217,7 +252,6 @@ describe("observeAccount — closed with its account", () => {
           event: { kind: "demand", demanded: false },
         }),
       ).not.toThrow();
-      yield* turns;
     }),
   );
 });
