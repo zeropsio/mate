@@ -77,6 +77,6 @@
     "vite": "catalog:",
     "vite-plus": "catalog:",
     "ws": "8.21.3",
-    "yaml": "catalog:"
+    "yaml": "^2.9.0"
   }
 }
