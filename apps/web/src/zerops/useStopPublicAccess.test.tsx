@@ -9,6 +9,7 @@ import { ZeropsDataContext, type ZeropsDataContextValue } from "./zeropsDataCont
 const held = vi.hoisted(() => ({
   ids: [] as string[],
   demanded: [] as string[],
+  readAhead: [] as string[],
   retried: [] as string[],
   renewals: 0,
   again: [] as string[],
@@ -39,6 +40,10 @@ const account = vi.hoisted(() => ({
       held.demanded.splice(held.demanded.indexOf(`${family}:${ownerId}`), 1);
     };
   },
+  readDetail: ({ family, ownerId }: { family: string; ownerId: string }) => {
+    held.readAhead.push(`${family}:${ownerId}`);
+    return Promise.resolve(true);
+  },
   retryDetail: ({ ownerId }: { ownerId: string }) => {
     held.retried.push(ownerId);
   },
@@ -48,11 +53,12 @@ vi.mock("./ZeropsAccountData", () => ({
   useProjection: (_projection: unknown, key: unknown, fallback: unknown) =>
     key === null ? fallback : held.view,
 }));
-import { useStopPublicAccess, useStopPublicAccesses } from "./useStopPublicAccess";
+import { useStopDeploymentDemand, useStopPublicAccess } from "./useStopPublicAccess";
 
 afterEach(() => {
   held.ids = [];
   held.demanded = [];
+  held.readAhead = [];
   held.retried = [];
   held.renewals = 0;
   held.again = [];
@@ -61,9 +67,9 @@ afterEach(() => {
 
 const data = { projectRef: (_org: string, id: string) => project(id) } as ZeropsDataContextValue;
 
-it("holds each drawn stop's routing and deployment, and lets go of the one no longer drawn", async () => {
+it("demands a chip's stops' deployments, reading no stop's routing", async () => {
   function Stops({ ids }: { ids: string[] }) {
-    useStopPublicAccesses(ids);
+    useStopDeploymentDemand(ids);
     return null;
   }
   const render = (ids: string[]) => (
@@ -76,9 +82,28 @@ it("holds each drawn stop's routing and deployment, and lets go of the one no lo
     tree = create(render(["production", "stage"]));
   });
   expect(held.ids).toEqual(["production", "stage"]);
-  expect(held.demanded).toEqual(["publicRouting:production", "publicRouting:stage"]);
+  expect([held.readAhead, held.demanded]).toEqual([[], []]);
   await act(async () => {
     tree.update(render(["stage"]));
+  });
+  expect(held.ids).toEqual(["stage"]);
+  await act(async () => {
+    tree.unmount();
+  });
+});
+
+it("holds a drawn stop's routing while it is drawn, and lets it go after", async () => {
+  function Stop() {
+    useStopPublicAccess("stage");
+    return null;
+  }
+  let tree: ReturnType<typeof create>;
+  await act(async () => {
+    tree = create(
+      <ZeropsDataContext.Provider value={data}>
+        <Stop />
+      </ZeropsDataContext.Provider>,
+    );
   });
   expect(held.ids).toEqual(["stage"]);
   expect(held.demanded).toEqual(["publicRouting:stage"]);

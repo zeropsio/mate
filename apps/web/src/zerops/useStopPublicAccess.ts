@@ -1,7 +1,8 @@
 /**
  * A stop's public face — its addresses and what it could open — belongs to the drawn stop's id,
- * apart from navigation and deployment reads: its routing is held while a surface draws the stop
- * (`publicAccess`), and its project's and services' rows are the account's live ones.
+ * apart from navigation and deployment reads: its routing is held — read again on its cadence —
+ * only while a surface draws that stop's addresses (`publicAccess`); its project's and services'
+ * rows are the account's live ones.
  */
 import { publicAccess, type PublicAccessView } from "@t3tools/client-runtime/data";
 import type { ProjectRef } from "@t3tools/client-runtime/zerops/data";
@@ -39,22 +40,6 @@ export function useStopDeploymentDemand(projectIds: ReadonlyArray<string>): void
   useStopDeployments(useStopRefs(projectIds));
 }
 
-/** Holds these stops' public faces and deployments while the caller is drawn. */
-export function useStopPublicAccesses(projectIds: ReadonlyArray<string>): void {
-  const demandDetail = useAccountDataOptional()?.demandDetail;
-  useStopDeployments(useStopRefs(projectIds));
-  const held = projectIds.join(",");
-  useEffect(() => {
-    if (demandDetail === undefined || held === "") return;
-    const releases = held
-      .split(",")
-      .map((ownerId) => demandDetail({ family: "publicRouting", ownerId }));
-    return () => {
-      for (const release of releases) release();
-    };
-  }, [demandDetail, held]);
-}
-
 export function useStopPublicAccess(projectId: string | undefined): {
   /** The stop is read: a surface shows its own addresses, not the ones it was handed. */
   readonly bound: boolean;
@@ -63,10 +48,16 @@ export function useStopPublicAccess(projectId: string | undefined): {
   /** Reads it again after a failure; a denial asks for the viewer's access anew first. */
   readonly again: () => void;
 } {
-  useStopPublicAccesses(projectId === undefined ? [] : [projectId]);
   const account = useAccountDataOptional();
+  const demandDetail = account?.demandDetail;
   const orgId = account?.orgId ?? null;
-  const [ref] = useStopRefs(projectId === undefined ? [] : [projectId]);
+  const refs = useStopRefs(projectId === undefined ? [] : [projectId]);
+  useStopDeployments(refs);
+  const [ref] = refs;
+  useEffect(() => {
+    if (demandDetail === undefined || projectId === undefined) return;
+    return demandDetail({ family: "publicRouting", ownerId: projectId });
+  }, [demandDetail, projectId]);
   const bound = projectId !== undefined && orgId !== null;
   const access = useProjection(publicAccess, bound ? { orgId, projectId } : null, NOT_READ);
   return {

@@ -197,6 +197,11 @@ export function zeropsNavigationLink(options: {
    * family's `freshMs` reads nothing. Our own write forgets it.
    */
   const sampledAt = new Map<ScopeKey, number>();
+  /**
+   * Sampled details our own write changed while their read was under way: that read's answer may
+   * predate the write, so each is read once more after it.
+   */
+  const written = new Set<ScopeKey>();
   const tellDetail = (demand: DetailDemand, event: StreamEvent) => {
     const scope = detailScopeOf(orgId, demand);
     Effect.runSync(
@@ -660,6 +665,8 @@ export function zeropsNavigationLink(options: {
             observed.delete(scope);
             yield* forgetQueries(scope);
           }
+        // A write to a detail no longer demanded is read by its next demand anyway.
+        for (const scope of written) if (!demanded.has(scope)) written.delete(scope);
         const fresh: Array<ScopeKey> = [];
         let wakeAt = Number.POSITIVE_INFINITY;
         for (const scope of demanded) {
@@ -677,6 +684,13 @@ export function zeropsNavigationLink(options: {
             continue;
           }
           if (inFlight.has(scope)) continue;
+          // Our write landed while its last read was under way: it is read once more, now.
+          if (stream.phase === "live" && written.delete(scope)) {
+            sampledAt.delete(scope);
+            yield* signal(scope, { kind: "revalidate" });
+            fresh.push(scope);
+            continue;
+          }
           // A sampled detail's revalidation comes due on its cadence while it stays demanded.
           if (stream.phase === "live" && stream.next.kind === "revalidate") {
             if (stream.next.at > now) wakeAt = Math.min(wakeAt, stream.next.at);
@@ -729,7 +743,10 @@ export function zeropsNavigationLink(options: {
     childMoved: () => wakeAttempt?.(),
     demandDetail: (demand) => demands.hold(detailScopeOf(orgId, demand)),
     revalidate: (demand) => {
-      sampledAt.delete(detailScopeOf(orgId, demand));
+      const scope = detailScopeOf(orgId, demand);
+      sampledAt.delete(scope);
+      const { phase } = streamOf(store.state(), scope);
+      if (phase === "connecting" || phase === "baselining") written.add(scope);
       tellDetail(demand, { kind: "revalidate" });
     },
     retryDetail: (demand) => tellDetail(demand, { kind: "manual-retry" }),

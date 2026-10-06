@@ -1013,6 +1013,35 @@ describe("a sampled detail", () => {
     }),
   );
 
+  it.effect("our write while a read is under way reads it once more after that read", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const held = yield* Deferred.make<void>();
+      const list = { current: [member("m1")] as ReadonlyArray<unknown> };
+      const fixture = fixtureWire((request) =>
+        request.method === "GET" && readsOf(fixture, MEMBERS_PATH) === 1
+          ? sampledAnswers(list, held)(request)
+          : sampledAnswers(list)(request),
+      );
+      const { fiber, link } = yield* runLink(store, fixture);
+      link.demandDetail(MEMBERS);
+      yield* settle;
+      expect(store.state().streams.get(members)?.phase).toBe("baselining");
+
+      // The birth minted the anchor while the list was being read: its answer may predate it.
+      list.current = [member("m1"), member("anchor")];
+      link.revalidate(MEMBERS);
+      yield* Deferred.succeed(held, undefined);
+      yield* settle;
+      expect(readsOf(fixture, MEMBERS_PATH)).toBe(2);
+      expect(factOf(store.state(), "organizationMembers", ORG)?.content).toEqual({
+        kind: "value",
+        value: [member("m1"), member("anchor")],
+      });
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+
   it.effect("a refusal stays refused through its cadence; only the person's again reads it", () =>
     Effect.gen(function* () {
       const store = makeAccountStore(AtomRegistry.make());

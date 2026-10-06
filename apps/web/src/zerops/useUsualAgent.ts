@@ -2,9 +2,9 @@
  * The project's usual coding agent, for a sign-in to offer first: the one its other Mates are
  * signed in with, read as a new Mate's creation reads it (`agentSelection.ts` — each Mate's
  * `ZCP_AGENT_OAUTH_*` flags, the one source the platform does not redact). Each Mate's agents are
- * held while a surface asks, and what was read before answers at once; until every one has
- * answered, or a second and a half has passed, the answer is not settled, so a sign-in never
- * paints its cards in one order and then another.
+ * read once when a surface asks — never kept polling — and what was read before answers at once;
+ * until every read has settled, or a second and a half has passed, the answer is not settled, so a
+ * sign-in never paints its cards in one order and then another.
  */
 import {
   hasMate,
@@ -52,7 +52,7 @@ export function useUsualAgent(projectId: string | undefined): {
   readonly settled: boolean;
 } {
   const account = useAccountDataOptional();
-  const demandDetail = account?.demandDetail;
+  const readDetail = account?.readDetail;
   const orgId = account?.orgId ?? null;
   const { listing } = useZeropsCandidates();
   const serviceIds = useMemo(
@@ -62,18 +62,22 @@ export function useUsualAgent(projectId: string | undefined): {
       ),
     [listing, projectId],
   );
-  const held = serviceIds.join(",");
+  const asked = serviceIds.join(",");
   const [waited, setWaited] = useState(false);
+  // The services whose read this surface asked for has settled, read or not.
+  const [settledReads, setSettledReads] = useState<ReadonlySet<string>>(() => new Set());
 
   useEffect(() => {
-    if (demandDetail === undefined || orgId === null || held === "") return;
-    const releases = held
-      .split(",")
-      .map((ownerId) => demandDetail({ family: "serviceAgents", ownerId }));
+    if (readDetail === undefined || orgId === null || asked === "") return;
+    let current = true;
+    for (const ownerId of asked.split(","))
+      void readDetail({ family: "serviceAgents", ownerId }).then(() => {
+        if (current) setSettledReads((settled) => new Set(settled).add(ownerId));
+      });
     return () => {
-      for (const release of releases) release();
+      current = false;
     };
-  }, [demandDetail, held, orgId]);
+  }, [readDetail, asked, orgId]);
   const agents = useProjection(
     servicesAgents,
     orgId === null ? null : { orgId, serviceIds },
@@ -85,13 +89,14 @@ export function useUsualAgent(projectId: string | undefined): {
     return () => window.clearTimeout(timer);
   }, [projectId]);
 
-  // A Mate whose read failed answers no agent, as one signed in with none.
-  const answers = serviceIds.map((serviceId) => agents[serviceId]);
-  const read = answers.flatMap((answer) =>
-    answer === undefined || answer.status === "loading" ? [] : [answer.value ?? []],
-  );
+  // What each Mate is signed in with as read before or now; a Mate whose read failed answers no
+  // agent, as one signed in with none.
+  const read = serviceIds.flatMap((serviceId) => {
+    const value = agents[serviceId]?.value;
+    return value !== undefined ? [value] : settledReads.has(serviceId) ? [[]] : [];
+  });
   return {
     usual: usualAgentOf(read),
-    settled: waited || orgId === null || read.length === answers.length,
+    settled: waited || orgId === null || read.length === serviceIds.length,
   };
 }
