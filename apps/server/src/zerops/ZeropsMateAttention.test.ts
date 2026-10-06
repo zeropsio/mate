@@ -1,3 +1,4 @@
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import {
   EnvironmentId,
@@ -8,6 +9,7 @@ import {
 } from "@t3tools/contracts";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Fiber from "effect/Fiber";
 import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
@@ -18,6 +20,7 @@ import {
   type AttentionEvent,
   makeZeropsMateAttention,
   MATE_ATTENTION_MOVED_MAX,
+  nextMateEpoch,
 } from "./ZeropsMateAttention.ts";
 
 const decodeShell = Schema.decodeUnknownSync(OrchestrationThreadShell);
@@ -74,6 +77,7 @@ const attentionFor = (projection: ReturnType<typeof projectionOf>, idle = false)
     const events = yield* PubSub.unbounded<AttentionEvent>();
     const attention = yield* makeZeropsMateAttention({
       environmentId: EnvironmentId.make("env-1"),
+      epoch: 1,
       incarnation: "boot-1",
       project: Effect.sync(() => {
         projection.lookups.project += 1;
@@ -124,9 +128,9 @@ describe("ZeropsMateAttention", () => {
           asked: projection.asked,
         },
         {
-          first: { environmentId: "env-1", incarnation: "boot-1", revision: 0 },
+          first: { environmentId: "env-1", epoch: 1, incarnation: "boot-1", revision: 0 },
           next: {
-            source: { environmentId: "env-1", incarnation: "boot-1", revision: 1 },
+            source: { environmentId: "env-1", epoch: 1, incarnation: "boot-1", revision: 1 },
             last: "b",
             working: 0,
           },
@@ -274,5 +278,44 @@ describe("ZeropsMateAttention", () => {
         { last: "z", whole: 2, one: ["a"] },
       );
     }),
+  );
+});
+
+describe("nextMateEpoch", () => {
+  it.effect.each([
+    { name: "a first start, nothing saved", saved: undefined, starts: 1, epochs: [1] },
+    { name: "a start after four", saved: "4\n", starts: 1, epochs: [5] },
+    { name: "three starts in a row", saved: undefined, starts: 3, epochs: [1, 2, 3] },
+  ])("counts one more at each start and saves it: $name", ({ saved, starts, epochs }) =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const dir = yield* fs.makeTempDirectoryScoped();
+      const path = `${dir}/mate-epoch`;
+      if (saved !== undefined) yield* fs.writeFileString(path, saved);
+      const seen: Array<number> = [];
+      for (let start = 0; start < starts; start += 1) seen.push(yield* nextMateEpoch(path));
+      assert.deepStrictEqual(
+        { seen, saved: (yield* fs.readFileString(path)).trim() },
+        { seen: epochs, saved: String(epochs.at(-1)) },
+      );
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect.each([
+    { name: "no number", saved: "boot" },
+    { name: "zero", saved: "0" },
+    { name: "a fraction", saved: "2.5" },
+  ])("refuses a saved epoch it cannot order, leaving it as it was: $name", ({ saved }) =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const dir = yield* fs.makeTempDirectoryScoped();
+      const path = `${dir}/mate-epoch`;
+      yield* fs.writeFileString(path, saved);
+      const exit = yield* Effect.exit(nextMateEpoch(path));
+      assert.deepStrictEqual(
+        { failed: exit._tag === "Failure", saved: yield* fs.readFileString(path) },
+        { failed: true, saved },
+      );
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   );
 });

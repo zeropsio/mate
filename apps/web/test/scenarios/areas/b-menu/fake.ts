@@ -100,9 +100,23 @@ export const relayAttention = Effect.fn("menu.relayAttention")(function* (
   yield* drivers.links.get(name)!.send(yield* encode({ type: "attention", attention }));
 });
 
+/** A new link of Mate `name` to HQ, enrolled the way zcp does it, its state read. */
+const openLink = Effect.fn("menu.openLink")(function* (
+  drivers: Pick<ScenarioDrivers, "core">,
+  name: string,
+) {
+  const credential = yield* enrollMate(drivers.core.call, drivers.core.fake, name);
+  const { ticket } = (yield* drivers.core.call("POST", "/api/mate/link-ticket", {
+    headers: { authorization: `Mate ${credential}` },
+  })).body as { ticket: string };
+  const link = yield* drivers.core.socket(`/api/mate/link?ticket=${ticket}`);
+  yield* link.next("state");
+  return link;
+});
+
 /**
- * A Mate's server restarts: its old link to HQ drops and its new run reaches HQ on a new one,
- * enrolled the way zcp does it; its attention goes on as a new incarnation.
+ * A Mate's server restarts: its old link to HQ drops and its new run reaches HQ on a new one;
+ * its attention goes on in its next epoch, a new incarnation.
  */
 export const restartMate = Effect.fn("menu.restartMate")(function* (
   drivers: Pick<ScenarioDrivers, "mates" | "core" | "links">,
@@ -110,13 +124,21 @@ export const restartMate = Effect.fn("menu.restartMate")(function* (
 ) {
   drivers.mates.get(name)!.restart();
   yield* drivers.links.get(name)!.close;
-  const credential = yield* enrollMate(drivers.core.call, drivers.core.fake, name);
-  const { ticket } = (yield* drivers.core.call("POST", "/api/mate/link-ticket", {
-    headers: { authorization: `Mate ${credential}` },
-  })).body as { ticket: string };
-  const link = yield* drivers.core.socket(`/api/mate/link?ticket=${ticket}`);
-  drivers.links.set(name, link);
-  yield* link.next("state");
+  drivers.links.set(name, yield* openLink(drivers, name));
+});
+
+/**
+ * The run of Mate `name` before its last restart, never killed, comes back from a partition: it
+ * reaches HQ on a link newer than the restarted run's and says `says` of its own epoch.
+ */
+export const speakFromRunBefore = Effect.fn("menu.speakFromRunBefore")(function* (
+  drivers: Pick<ScenarioDrivers, "mates" | "core">,
+  name: string,
+  says: Parameters<MateFake["lateFromRunBefore"]>[0],
+) {
+  const attention = drivers.mates.get(name)!.lateFromRunBefore(says);
+  const link = yield* openLink(drivers, name);
+  yield* link.send(yield* encode({ type: "attention", attention }));
 });
 
 export const moveMate = Effect.fn("menu.moveMate")(function* (

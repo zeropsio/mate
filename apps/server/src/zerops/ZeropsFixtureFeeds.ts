@@ -523,7 +523,12 @@ const loginsFixtureLayer = Layer.effect(
  * chats of its own, and a revision that never moves claims nothing it did not see.
  */
 export const FIXTURE_ATTENTION: MateAttention = {
-  source: { environmentId: EnvironmentId.make("fixture"), incarnation: "fixture", revision: 0 },
+  source: {
+    environmentId: EnvironmentId.make("fixture"),
+    epoch: 1,
+    incarnation: "fixture",
+    revision: 0,
+  },
   mainThreadId: null,
   lastThreadId: null,
   working: 0,

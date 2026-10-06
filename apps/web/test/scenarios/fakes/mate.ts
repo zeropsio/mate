@@ -123,8 +123,10 @@ export class MateFake {
   /** Its attention's incarnation and revision, and what it says beyond its one chat. */
   attentionIncarnation: string;
   attentionRevision = 0;
-  /** How many times it restarted: each restart is a new incarnation of its attention. */
+  /** How many times it restarted: each restart is its next epoch, a new incarnation. */
   private restarts = 0;
+  /** Its attention as the run before the last restart left it. */
+  private runBefore: MateAttention | undefined;
   private attentionSays: Partial<
     Pick<
       MateAttention,
@@ -245,6 +247,7 @@ export class MateFake {
     return decodeMateAttention({
       source: {
         environmentId: this.descriptor.environmentId,
+        epoch: this.restarts + 1,
         incarnation: this.attentionIncarnation,
         revision: this.attentionRevision,
       },
@@ -276,11 +279,24 @@ export class MateFake {
           this.chunk(socket, id, [encodeMateAttention(value)]);
     return value;
   }
-  /** Its server restarted: its attention goes on, a new incarnation from revision 0. */
+  /** Its server restarted: its attention goes on in the next epoch, a new incarnation from revision 0. */
   restart(): void {
+    this.runBefore = this.attention();
     this.restarts += 1;
     this.attentionIncarnation = `fake-${this.projectId}:${this.restarts}`;
     this.attentionRevision = 0;
+  }
+  /**
+   * A word of the run before its last restart, said late — after a partition, that run never
+   * killed — at a revision past where it stopped.
+   */
+  lateFromRunBefore(says: MateFake["attentionSays"]): MateAttention {
+    const before = this.runBefore!;
+    return decodeMateAttention({
+      ...before,
+      source: { ...before.source, revision: before.source.revision + 1 },
+      ...says,
+    });
   }
   snapshot() {
     return decodeOrchestrationThreadDetailSnapshot({

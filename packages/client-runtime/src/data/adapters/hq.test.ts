@@ -503,7 +503,7 @@ describe("asking HQ on the open socket", () => {
 describe("a Mate's attention, relayed", () => {
   const ATTENTION = { kind: "attention", projectId: "ada" } as const;
   const presence = { online: true, since: "2026-10-06T00:00:00Z", overview: "live" } as const;
-  const relayed = (value: MateAttention | null, state: "live" | "stored") => ({
+  const relayed = (value: unknown, state: "live" | "stored") => ({
     presence,
     overview: null,
     attention: value,
@@ -512,7 +512,7 @@ describe("a Mate's attention, relayed", () => {
   const relay = (
     type: HqScopeDelivery["type"],
     revision: number,
-    value: MateAttention | null,
+    value: unknown,
     state: "live" | "stored" = "live",
   ): HqStreamMessage => ({
     type,
@@ -537,6 +537,8 @@ describe("a Mate's attention, relayed", () => {
           value,
           revision: {
             kind: "mate-attention",
+            environmentId: value.source.environmentId,
+            epoch: value.source.epoch,
             incarnation: value.source.incarnation,
             revision: value.source.revision,
             live: true,
@@ -545,6 +547,63 @@ describe("a Mate's attention, relayed", () => {
       ],
     });
   const held = (store: AccountStore) => factOf(store.state(), "mateAttention", "ada");
+
+  it.effect.each([
+    {
+      name: "baseline",
+      firstEpoch: undefined,
+      nextEpoch: undefined,
+      firstRevision: 1,
+      nextRevision: 2,
+      epoch: 0,
+      revision: 2,
+    },
+    {
+      name: "uncounted then counted",
+      firstEpoch: undefined,
+      nextEpoch: 1,
+      firstRevision: 9,
+      nextRevision: 0,
+      epoch: 1,
+      revision: 0,
+    },
+    {
+      name: "counted then uncounted",
+      firstEpoch: 1,
+      nextEpoch: undefined,
+      firstRevision: 0,
+      nextRevision: 9,
+      epoch: 1,
+      revision: 0,
+    },
+  ])(
+    "decodes missing epochs into the reducer as zero: $name",
+    ({ firstEpoch, nextEpoch, firstRevision, nextRevision, epoch, revision }) =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const fixture = hqFixtureWire();
+        const { fiber } = yield* live(store, fixture);
+        const raw = (epoch: number | undefined, revision: number) => ({
+          ...attention("m1", revision),
+          source: {
+            environmentId: "env",
+            incarnation: "m1",
+            revision,
+            ...(epoch === undefined ? {} : { epoch }),
+          },
+        });
+        yield* fixture.send(relay("scope-reset", 1, raw(firstEpoch, firstRevision)));
+        yield* settle;
+        expect(held(store)?.revision).toMatchObject({ epoch: firstEpoch ?? 0 });
+        yield* fixture.send(relay("scope-values", 2, raw(nextEpoch, nextRevision)));
+        yield* settle;
+        expect(held(store)).toMatchObject({
+          content: { value: { source: { epoch, revision } } },
+          revision: { kind: "mate-attention", epoch, revision },
+        });
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
 
   it.effect("holds the attention HQ relays by the Mate's own revision, beside HQ's record", () =>
     Effect.gen(function* () {
@@ -643,58 +702,74 @@ describe("a Mate's attention, relayed", () => {
     value,
   });
 
+  /** The run before the restart, and the restarted one: start 1 and start 2. */
+  const before = (revision: number, working = 0) => attention("m1", revision, working, 1);
+  const after = (revision: number, working = 0) => attention("m2", revision, working, 2);
+
   it.effect.each([
     {
       name: "the Mate restarts while open, HQ relaying it live",
-      steps: [
-        relayStep("scope-reset", 1, attention("m1", 9)),
-        relayStep("scope-values", 2, attention("m2", 0, 1)),
-      ],
-      held: attention("m2", 0, 1),
+      steps: [relayStep("scope-reset", 1, before(9)), relayStep("scope-values", 2, after(0, 1))],
+      held: after(0, 1),
     },
     {
       name: "the Mate restarts while open, its own link saying it",
-      steps: [
-        directStep("baseline", attention("m1", 9)),
-        directStep("push", attention("m2", 0, 1)),
-      ],
-      held: attention("m2", 0, 1),
+      steps: [directStep("baseline", before(9)), directStep("push", after(0, 1))],
+      held: after(0, 1),
     },
     {
       name: "a restarted Mate's own word, then what HQ stored of the run before",
       steps: [
-        directStep("baseline", attention("m2", 0, 1)),
-        relayStep("scope-reset", 1, attention("m1", 9), "stored"),
+        directStep("baseline", after(0, 1)),
+        relayStep("scope-reset", 1, before(9), "stored"),
       ],
-      held: attention("m2", 0, 1),
+      held: after(0, 1),
     },
     {
       name: "what HQ stored of the run before, then the restarted Mate's own word",
       steps: [
-        relayStep("scope-reset", 1, attention("m1", 9), "stored"),
-        directStep("baseline", attention("m2", 0, 1)),
+        relayStep("scope-reset", 1, before(9), "stored"),
+        directStep("baseline", after(0, 1)),
       ],
-      held: attention("m2", 0, 1),
+      held: after(0, 1),
     },
     {
       name: "a reload just after a restart: both paths go on after HQ's stored value",
       steps: [
-        directStep("baseline", attention("m2", 0, 1)),
-        relayStep("scope-reset", 1, attention("m1", 9), "stored"),
-        directStep("push", attention("m2", 1, 2)),
-        relayStep("scope-values", 2, attention("m2", 2, 0)),
+        directStep("baseline", after(0, 1)),
+        relayStep("scope-reset", 1, before(9), "stored"),
+        directStep("push", after(1, 2)),
+        relayStep("scope-values", 2, after(2, 0)),
       ],
-      held: attention("m2", 2, 0),
+      held: after(2, 0),
     },
     {
-      name: "what HQ stored of another run, pushed, never over a live one",
+      name: "what HQ stored of the run before, pushed, never over the later run",
       steps: [
-        relayStep("scope-reset", 1, attention("m2", 3)),
-        relayStep("scope-values", 2, attention("m1", 9), "stored"),
+        relayStep("scope-reset", 1, after(3)),
+        relayStep("scope-values", 2, before(9), "stored"),
       ],
-      held: attention("m2", 3),
+      held: after(3),
     },
-  ])("orders another incarnation by its being live: $name", ({ steps, held: expected }) =>
+    {
+      name: "the run before, relayed live after a partition, never over the later run",
+      steps: [relayStep("scope-reset", 1, after(3)), relayStep("scope-values", 2, before(9))],
+      held: after(3),
+    },
+    {
+      name: "the run before, said straight late, never over the later run HQ relayed",
+      steps: [relayStep("scope-reset", 1, after(3)), directStep("push", before(9))],
+      held: after(3),
+    },
+    {
+      name: "what HQ stored of the later run replaces the run before, said straight",
+      steps: [
+        directStep("baseline", before(9)),
+        relayStep("scope-reset", 1, after(0, 1), "stored"),
+      ],
+      held: after(0, 1),
+    },
+  ])("orders a Mate's runs by their epoch, on either path: $name", ({ steps, held: expected }) =>
     Effect.gen(function* () {
       const store = makeAccountStore(AtomRegistry.make());
       const fixture = hqFixtureWire();
@@ -832,7 +907,7 @@ describe("an HQ session", () => {
       yield* supervisor.signal("manual-retry");
       yield* settle;
       expect(fixture.opens()).toBe(2);
-      expect(fixture.sent.filter(({ segment }) => segment === 2)[0]?.request).toEqual({
+      expect(fixture.sent.find(({ segment }) => segment === 2)?.request).toEqual({
         type: "retry",
       });
       yield* Fiber.interrupt(fiber);

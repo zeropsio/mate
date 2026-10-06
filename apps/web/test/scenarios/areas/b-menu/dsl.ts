@@ -8,6 +8,7 @@ import {
   installMenu,
   relayAttention,
   restartMate,
+  speakFromRunBefore,
   reportAttention,
   reportConversation,
   moveMate,
@@ -75,6 +76,31 @@ export const menuScenario = Effect.fn("menu.scenario")(function* (
           surface,
         ),
       ),
+    /** The row of Mate `name` shows no `surface` line at any moment of the next `during` ms. */
+    keepsLacking: (name: string, surface: string, during: number) =>
+      Effect.promise(async () => {
+        const shown = await s.page
+          .waitForFunction(
+            (name, surface) =>
+              [
+                ...document.querySelectorAll<HTMLElement>('[data-zerops-surface="sidebar-mate"]'),
+              ].some(
+                (row) =>
+                  row
+                    .querySelector<HTMLElement>('[data-zerops-surface="sidebar-mate-name"]')
+                    ?.innerText.trim() === name &&
+                  row.querySelector(`[data-zerops-surface="${surface}"]`) !== null,
+              ),
+            { timeout: during, polling: "raf" },
+            name,
+            surface,
+          )
+          .then(
+            () => true,
+            () => false,
+          );
+        if (shown) throw new Error(`Menu ${name} showed ${surface} within ${during} ms`);
+      }),
     /** The row of Mate `name` shows a `tone` dot within `within` ms. */
     dot: (name: string, tone: string, within: number) =>
       Effect.promise(() =>
@@ -181,8 +207,11 @@ export const menuScenario = Effect.fn("menu.scenario")(function* (
       /** Its attention moves up its link to HQ only. */
       relays: (name: string, says: Parameters<MateFake["reviseAttention"]>[0]) =>
         relayAttention(s.drivers, name, says),
-      /** Its server restarts: its attention's next word is a new incarnation's first revision. */
+      /** Its server restarts: its attention's next word is its next epoch's first revision. */
       restarts: (name: string) => restartMate(s.drivers, name),
+      /** Its run before the last restart, back from a partition, says `says` late. */
+      speaksFromRunBefore: (name: string, says: Parameters<MateFake["lateFromRunBefore"]>[0]) =>
+        speakFromRunBefore(s.drivers, name, says),
       holdsDetails: (app: string) => holdDetails(s.drivers, app),
       releasesDetails: releaseDetails(s.drivers),
       moves: (name: string, app: string | null) => moveMate(s.drivers, name, app),

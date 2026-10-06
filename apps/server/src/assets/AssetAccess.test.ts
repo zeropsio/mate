@@ -28,6 +28,7 @@ import {
   resolveAsset,
 } from "./AssetAccess.ts";
 import { openMediaFile } from "./MediaFile.ts";
+import * as AssetSigningKey from "./AssetSigningKey.ts";
 
 vi.mock("node:fs/promises", async (importOriginal) => {
   const actual = await importOriginal<typeof NodeFSP>();
@@ -37,18 +38,118 @@ vi.mock("node:fs/promises", async (importOriginal) => {
 const configLayer = ServerConfig.ServerConfig.layerTest(process.cwd(), {
   prefix: "t3-asset-access-test-",
 });
-const testLayer = Layer.mergeAll(
-  NodeHttpPlatform.layer,
-  configLayer,
-  WorkspacePaths.layer,
-  ProjectFaviconResolver.layer.pipe(
-    Layer.provide(WorkspacePaths.layer),
-    Layer.provide(T3ProjectFileLoader.layer),
-  ),
-  ServerSecretStore.layer.pipe(Layer.provide(configLayer)),
-).pipe(Layer.provideMerge(NodeServices.layer));
+const makeTestLayer = (services = NodeServices.layer) =>
+  Layer.mergeAll(
+    NodeHttpPlatform.layer,
+    configLayer,
+    WorkspacePaths.layer,
+    ProjectFaviconResolver.layer.pipe(
+      Layer.provide(WorkspacePaths.layer),
+      Layer.provide(T3ProjectFileLoader.layer),
+    ),
+    AssetSigningKey.layer.pipe(Layer.provide(ServerSecretStore.layer), Layer.provide(configLayer)),
+  ).pipe(Layer.provideMerge(services));
+const testLayer = makeTestLayer();
+
+const recordingKeyServices = (read: Effect.Effect<void, PlatformError.PlatformError>) =>
+  Layer.effect(
+    FileSystem.FileSystem,
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      return {
+        ...fs,
+        readFile: (path) =>
+          path.endsWith("/asset-access-signing-key.bin")
+            ? Effect.andThen(read, () => fs.readFile(path))
+            : fs.readFile(path),
+      } satisfies FileSystem.FileSystem;
+    }),
+  ).pipe(Layer.provideMerge(NodeServices.layer));
+
+const exerciseSigningKey = Effect.gen(function* () {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const root = yield* fs.makeTempDirectoryScoped({ prefix: "t3-asset-key-" });
+  yield* fs.writeFileString(path.join(root, "report.html"), "<p>asset</p>");
+  const urls = yield* Effect.all(
+    Array.from({ length: 3 }, () =>
+      issueAssetUrl({
+        resource: {
+          _tag: "workspace-file",
+          threadId: ThreadId.make("thread-1"),
+          path: "report.html",
+        },
+        workspaceRoot: root,
+      }),
+    ),
+    { concurrency: "unbounded" },
+  );
+  for (const url of urls) {
+    const suffix = url.relativeUrl.slice(`${ASSET_ROUTE_PREFIX}/`.length);
+    const slash = suffix.indexOf("/");
+    const token = suffix.slice(0, slash);
+    expect(yield* resolveAsset(token, suffix.slice(slash + 1))).toMatchObject({ kind: "file" });
+    expect(yield* resolveAsset(`${token}tampered`, suffix.slice(slash + 1))).toBeNull();
+  }
+});
 
 describe("AssetAccess", () => {
+  it.effect(
+    "shares one signing-key read across concurrent minting and asset requests per server",
+    () =>
+      Effect.gen(function* () {
+        let reads = 0;
+        const services = recordingKeyServices(
+          Effect.sync(() => {
+            reads += 1;
+          }),
+        );
+        yield* exerciseSigningKey.pipe(Effect.provide(makeTestLayer(services)));
+        expect(reads).toBe(1);
+        yield* exerciseSigningKey.pipe(Effect.provide(makeTestLayer(services)));
+        expect(reads).toBe(2);
+      }),
+  );
+
+  it.effect("a failed key load can recover and then remains cached", () =>
+    Effect.gen(function* () {
+      let reads = 0;
+      const services = recordingKeyServices(
+        Effect.suspend(() => {
+          reads += 1;
+          return reads === 1
+            ? Effect.fail(
+                PlatformError.systemError({
+                  _tag: "PermissionDenied",
+                  module: "FileSystem",
+                  method: "readFile",
+                  description: "Synthetic key-read failure",
+                  pathOrDescriptor: "synthetic signing key",
+                }),
+              )
+            : Effect.void;
+        }),
+      );
+      yield* Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const root = yield* fs.makeTempDirectoryScoped({ prefix: "t3-asset-key-recovery-" });
+        yield* fs.writeFileString(path.join(root, "report.html"), "<p>asset</p>");
+        const issue = issueAssetUrl({
+          resource: {
+            _tag: "workspace-file",
+            threadId: ThreadId.make("thread-1"),
+            path: "report.html",
+          },
+          workspaceRoot: root,
+        });
+        expect((yield* Effect.flip(issue))._tag).toBe("AssetSigningKeyLoadError");
+        yield* issue;
+        yield* exerciseSigningKey;
+        expect(reads).toBe(2);
+      }).pipe(Effect.provide(makeTestLayer(services)));
+    }),
+  );
   it.effect("issues exact URLs for images and videos outside the workspace", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;

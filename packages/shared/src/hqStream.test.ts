@@ -60,6 +60,7 @@ it("defines the definitive HTTP refusal separately from an unavailable response"
 
 it("navigation preserves production release standing and deploy evidence", () => {
   const value = {
+    releaseOffer: null,
     id: "app",
     name: "Shop",
     can: { read_change: { allow: true } },

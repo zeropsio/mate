@@ -686,6 +686,7 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
               if (Option.isSome(read) && read.value.attention !== null) {
                 const next = json([
                   read.value.attention.source.environmentId,
+                  read.value.attention.source.epoch,
                   read.value.attention.source.incarnation,
                 ]);
                 baseline = next !== entry.attentionSource;

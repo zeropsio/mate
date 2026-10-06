@@ -12,7 +12,9 @@
  * subscription); from then on it is kept for the service's lifetime.
  *
  * The incarnation is one run of this server: the revision starts at 0 with it and is never kept
- * across a restart, so a reader orders values only inside one incarnation.
+ * across a restart. The epoch orders the runs: counted in the state directory beside the
+ * environment id and raised by one at every start, so a reader orders values of one environment by
+ * epoch first, then by revision.
  *
  * @module ZeropsMateAttention
  */
@@ -30,14 +32,17 @@ import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
+import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 
+import { writeFileStringAtomically } from "../atomicWrite.ts";
 import { ServerConfig } from "../config.ts";
 import { ServerEnvironment } from "../environment/ServerEnvironment.ts";
 import { OrchestrationEngineService } from "../orchestration/Services/OrchestrationEngine.ts";
@@ -52,6 +57,8 @@ export type AttentionEvent = Pick<OrchestrationEvent, "aggregateKind" | "aggrega
 
 export interface MateAttentionReads<E> {
   readonly environmentId: EnvironmentId;
+  /** This start's place among the server's starts in its environment (`nextMateEpoch`). */
+  readonly epoch: number;
   /** This run of the server. */
   readonly incarnation: string;
   /** The project at the workspace root; none until it exists. */
@@ -80,7 +87,11 @@ export const makeZeropsMateAttention = <E>(
   reads: MateAttentionReads<E>,
 ): Effect.Effect<ZeropsMateAttention["Service"], never, Scope.Scope> =>
   Effect.gen(function* () {
-    const source = { environmentId: reads.environmentId, incarnation: reads.incarnation };
+    const source = {
+      environmentId: reads.environmentId,
+      epoch: reads.epoch,
+      incarnation: reads.incarnation,
+    };
     const chats = new Map<ThreadId, OrchestrationThreadShell>();
     let project = Option.none<ProjectId>();
     /**
@@ -191,10 +202,36 @@ export const makeZeropsMateAttention = <E>(
     });
   });
 
+export class MateEpochPersistenceError extends Schema.TaggedError<MateEpochPersistenceError>()(
+  "MateEpochPersistenceError",
+  { path: Schema.String, cause: Schema.Defect() },
+) {
+  override get message(): string {
+    return `The Mate's start epoch at '${this.path}' could not be counted.`;
+  }
+}
+
+/**
+ * This start's epoch: the one saved at `path` plus one (1 when none is), saved atomically before it
+ * is used. A saved value that is no positive whole number is refused, never counted from 0 again: a
+ * count that went back would let an older run's values order after this one's.
+ */
+export const nextMateEpoch = (path: string) =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const saved = (yield* fs.exists(path)) ? (yield* fs.readFileString(path)).trim() : null;
+    if (saved !== null && !/^[1-9][0-9]*$/u.test(saved))
+      return yield* Effect.fail(`no epoch in "${saved}"`);
+    const epoch = saved === null ? 1 : Number(saved) + 1;
+    if (!Number.isSafeInteger(epoch)) return yield* Effect.fail(`no epoch after ${saved}`);
+    yield* writeFileStringAtomically({ filePath: path, contents: `${epoch}\n` });
+    return epoch;
+  }).pipe(Effect.mapError((cause) => new MateEpochPersistenceError({ path, cause })));
+
 /**
  * The attention of the project at the workspace root (the threads the stand-up and every client
  * open the Mate to), from the projection and the engine's domain events; its incarnation a new id
- * at every start.
+ * and its epoch one more at every start.
  */
 export const layer = Layer.effect(
   ZeropsMateAttention,
@@ -204,6 +241,7 @@ export const layer = Layer.effect(
     const engine = yield* OrchestrationEngineService;
     return yield* makeZeropsMateAttention({
       environmentId: yield* (yield* ServerEnvironment).getEnvironmentId,
+      epoch: yield* nextMateEpoch(config.mateEpochPath),
       incarnation: yield* (yield* Crypto.Crypto).randomUUIDv4,
       project: projection
         .getActiveProjectByWorkspaceRoot(config.cwd)

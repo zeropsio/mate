@@ -119,7 +119,12 @@ describe("HQ scoped socket", () => {
                   overview: overviewOf(),
                 });
                 yield* core.overviews.reportAttention(projectId, link, {
-                  source: { environmentId: `env-${index}`, incarnation: "boot", revision: 1 },
+                  source: {
+                    environmentId: `env-${index}`,
+                    epoch: 1,
+                    incarnation: "boot",
+                    revision: 1,
+                  },
                   mainThreadId: "thread",
                   lastThreadId: "thread",
                   working: 1,
@@ -306,7 +311,7 @@ describe("HQ scoped socket", () => {
           yield* untilHealth(core.call, "active");
           const session = yield* setUpMate(core.call, "P_MATE");
           const attention = {
-            source: { environmentId: "environment", incarnation: "boot", revision: 1 },
+            source: { environmentId: "environment", epoch: 1, incarnation: "boot", revision: 1 },
             mainThreadId: "thread",
             lastThreadId: "thread",
             working: 0,
@@ -475,7 +480,7 @@ describe("HQ scoped socket", () => {
             JSON.stringify({
               type: "attention",
               attention: {
-                source: { environmentId: "devstage", incarnation: "boot", revision: 1 },
+                source: { environmentId: "devstage", epoch: 1, incarnation: "boot", revision: 1 },
                 mainThreadId: "thread",
                 lastThreadId: "thread",
                 working: 0,
@@ -594,7 +599,7 @@ describe("HQ scoped socket", () => {
           );
           const overview = overviewOf();
           const attention = {
-            source: { environmentId: "environment", incarnation: "boot", revision: 3 },
+            source: { environmentId: "environment", epoch: 1, incarnation: "boot", revision: 3 },
             mainThreadId: "thread",
             lastThreadId: "thread",
             working: 1,

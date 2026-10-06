@@ -46,12 +46,12 @@ import {
   signPayload,
   timingSafeEqualBase64Url,
 } from "../auth/utils.ts";
-import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import { parseAttachmentFileExtension, resolveAttachmentPathById } from "../attachmentStore.ts";
 import * as ServerConfig from "../config.ts";
 import * as ProjectFaviconResolver from "../project/ProjectFaviconResolver.ts";
 import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
 import { openMediaFile, readMediaFileHeader, type OpenMediaFile } from "./MediaFile.ts";
+import { AssetSigningKey } from "./AssetSigningKey.ts";
 
 export const ASSET_ROUTE_PREFIX = "/api/assets";
 
@@ -67,7 +67,6 @@ export const OutsideWorkspaceImageRoots = Context.Reference<ReadonlyArray<string
   { defaultValue: () => [NodeOS.homedir(), NodeOS.tmpdir()] },
 );
 
-const SIGNING_SECRET_NAME = "asset-access-signing-key";
 const ASSET_TOKEN_TTL_MS = 60 * 60 * 1000;
 const PROJECT_FAVICON_TOKEN_BUCKET_MS = 30 * 60 * 1000;
 const PROJECT_FAVICON_VERSION_PREFIX = "v";
@@ -639,8 +638,8 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
     }
   }
 
-  const secretStore = yield* ServerSecretStore.ServerSecretStore;
-  const signingSecret = yield* secretStore.getOrCreateRandom(SIGNING_SECRET_NAME, 32).pipe(
+  const signingKey = yield* AssetSigningKey;
+  const signingSecret = yield* signingKey.get.pipe(
     Effect.mapError(
       (cause) =>
         new AssetSigningKeyLoadError({
@@ -673,8 +672,8 @@ export const resolveAsset = Effect.fn("AssetAccess.resolveAsset")(function* (
   const [encodedPayload, signature] = token.split(".");
   if (!encodedPayload || !signature) return null;
 
-  const secretStore = yield* ServerSecretStore.ServerSecretStore;
-  const signingSecret = yield* secretStore.getOrCreateRandom(SIGNING_SECRET_NAME, 32).pipe(
+  const signingKey = yield* AssetSigningKey;
+  const signingSecret = yield* signingKey.get.pipe(
     Effect.tapError((cause) => Effect.logError("Failed to load the asset signing key.", { cause })),
     Effect.orElseSucceed(() => null),
   );

@@ -179,13 +179,17 @@ feed the same family and reducer.
 
 Within one environment, the persisted start epoch increases on each server start. A higher epoch
 wins over an earlier run regardless of arrival path or live/stored status. Within the same epoch
-and incarnation, the higher revision wins; a conflicting incarnation is not ordered by its string
+and incarnation, the higher revision wins. An absent epoch decodes to zero, below every counted
+start, so a container awaiting its Mate update still participates in the same ordering. A
+conflicting incarnation is not ordered by its string
 or receipt time. Distinct environment identities have no comparable epoch; a live source is needed
 to establish replacement. HQ's scope cursor orders delivery, not Mate's source value.
 
 Live and stored describe source evidence separately from ordering. A live client-to-HQ connection
 cannot make stored attention live while HQ cannot hear Mate. Older live evidence cannot overwrite
-a newer epoch merely because it is live. HQ computes unseen from result identities and per-person
+a newer epoch merely because it is live. A direct connection proves freshness only for the source
+revision it observed; confirming the retained revision refreshes that evidence without replacing
+its value. HQ computes unseen from result identities and per-person
 acknowledgements; absent attention means unknown unseen, not zero.
 
 ## Guards and proof
@@ -232,15 +236,13 @@ The rewrite lands in waves. The remaining lanes are:
 - Mate connections without polling.
 - Menu first-paint and outage truth.
 - Variables on declared data-layer demand.
-- Mate start epoch across source publication, HQ and client ordering.
 - Releases and environments client surfaces.
 - Final removal of the old runtime and remaining duplicate paths.
 
 Code in these areas is being replaced — coordinate before changing it. Build new work on the data
 layer, not on the old runtime: `packages/client-runtime/src/zerops/data/runtime.ts` and its related
 stores, grant plumbing and wrappers are being deleted. An old call site is migration debt, not a
-pattern to copy. The start-epoch contract above is part of that in-flight work; check the current
-source contracts when integrating it.
+pattern to copy.
 
 HQ change attachments are the `hqPicture` detail family. A description picture near the viewport demands its immutable
 attachment identity; the HQ link reads its bytes through the wire once and publishes the answer

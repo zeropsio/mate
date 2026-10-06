@@ -174,8 +174,9 @@ export function streamOf(state: AccountState, key: StreamKey): StreamState {
  * Whether `incoming` may replace `current` in its owner's ordering. Revisions compare only inside
  * their own domain: a Mate's own attention revision always outranks HQ's relay of it, which never
  * replaces it back; another incarnation of an HQ scope is not ordered, so only a baseline replaces
- * it; another incarnation of a Mate replaces the held one iff it is live (the Mate restarted), by
- * whichever path and delivery it comes, and never when it is what HQ stored; a value of another
+ * it; a Mate's runs order by their epoch, a later run's value replacing an earlier run's by
+ * whichever path and delivery it comes, live or stored, and never the other way round; between two
+ * environments of a Mate, which have no order, only a live value replaces; a value of another
  * domain never replaces one. Time never decides.
  */
 export function supersedes(
@@ -196,9 +197,9 @@ export function supersedes(
     case "mate-attention":
       if (current.kind === "hq") return true;
       if (current.kind !== "mate-attention") return false;
-      return current.incarnation === incoming.incarnation
-        ? incoming.revision > current.revision
-        : incoming.live;
+      if (current.environmentId !== incoming.environmentId) return incoming.live;
+      if (current.epoch !== incoming.epoch) return incoming.epoch > current.epoch;
+      return current.incarnation === incoming.incarnation && incoming.revision > current.revision;
     case "mate-link":
       return current.kind === "mate-link" && incoming.sequence > current.sequence;
   }
@@ -262,7 +263,35 @@ function reduceRows(
   for (const row of input.rows) {
     const key = factKey(row.family, row.id);
     const current = (draft ?? state.facts).get(key);
-    if (current !== undefined && !admits(state, input, current, row)) continue;
+    if (current !== undefined && !admits(state, input, current, row)) {
+      const held = current.revision;
+      const incoming = row.revision;
+      // A direct confirmation of the held revision proves this path observed it, without
+      // replacing its value. A live path carrying an older run proves no freshness for it.
+      if (
+        input.via !== "mate-direct" ||
+        current.content.kind !== "value" ||
+        held.kind !== "mate-attention" ||
+        incoming.kind !== "mate-attention" ||
+        !incoming.live ||
+        held.environmentId !== incoming.environmentId ||
+        held.epoch !== incoming.epoch ||
+        held.incarnation !== incoming.incarnation ||
+        held.revision !== incoming.revision ||
+        current.scope === input.scope
+      )
+        continue;
+      draft ??= new Map(state.facts);
+      draft.set(key, {
+        ...current,
+        revision: incoming,
+        via: input.via,
+        method: input.method,
+        scope: input.scope,
+      });
+      changed.add(key);
+      continue;
+    }
     const spec = familySpec(row.family);
     const merge = spec.merge as ((held: unknown, pushed: unknown) => unknown) | undefined;
     const keepUnsaid = spec.keepUnsaid as

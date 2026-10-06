@@ -86,7 +86,7 @@ const VERA_ENV = EnvironmentId.make("env-vera");
 
 const said = (over: Partial<MateAttention> = {}): MateAttention =>
   ({
-    source: { environmentId: "env-vera", incarnation: "m1", revision: 4 },
+    source: { environmentId: "env-vera", epoch: 1, incarnation: "m1", revision: 4 },
     mainThreadId: "t1",
     lastThreadId: "t1",
     working: 0,
