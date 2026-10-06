@@ -147,6 +147,9 @@ export const STREAM_POLICY = {
   sampledIntervalMs: 30_000,
 } as const;
 
+/** What a connection or scope that passed its deadline says to the person. */
+export const NO_ANSWER_IN_TIME = "No answer came in time.";
+
 export function initialStream(input: {
   readonly parent: string | null;
   readonly mode: StreamState["mode"];
@@ -304,7 +307,7 @@ export function transition(state: StreamState, event: StreamEvent, now: number):
       return state.parent !== null && isActive(state.phase) ? awaitParent(state) : settle(state);
     case "deadline":
       return state.phase === "connecting" || state.phase === "baselining"
-        ? fail(state, { outcome: "transient", message: `No answer while ${state.phase}.` }, 1, now)
+        ? fail(state, { outcome: "transient", message: NO_ANSWER_IN_TIME }, 1, now)
         : settle(state);
     case "session-repaired":
       return state.phase === "reauthenticating"

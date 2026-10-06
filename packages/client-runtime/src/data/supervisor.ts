@@ -17,7 +17,12 @@ import type * as Scope from "effect/Scope";
 import type { LinkKey, ScopeKey } from "./model.ts";
 import { streamOf, type RuntimeDirective } from "./reducer.ts";
 import type { AccountStore } from "./store.ts";
-import { STREAM_POLICY, type StreamEvent, type StreamFault } from "./streamMachine.ts";
+import {
+  NO_ANSWER_IN_TIME,
+  STREAM_POLICY,
+  type StreamEvent,
+  type StreamFault,
+} from "./streamMachine.ts";
 
 export type LinkSignal = "manual-retry" | "input-changed";
 
@@ -152,7 +157,7 @@ export const superviseLink = (options: LinkOptions): Effect.Effect<LinkSuperviso
               ? dispatch({ kind: "deadline" })
               : dispatch({
                   kind: "fault",
-                  fault: { outcome: "transient", message: `No answer for ${ended.deadline}.` },
+                  fault: { outcome: "transient", message: NO_ANSWER_IN_TIME },
                   jitter: yield* Random.next,
                 });
           }

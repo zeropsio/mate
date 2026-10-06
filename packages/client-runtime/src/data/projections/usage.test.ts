@@ -167,6 +167,11 @@ describe("projectUsage", () => {
       expected: { read: false, failure: "HTTP 403" },
     },
     {
+      name: "the use not answered in time: says so in the person's words, never a phase",
+      inputs: [...demanded(USAGE), event(USAGE, { kind: "deadline" })],
+      expected: { read: false, failure: "No answer came in time." },
+    },
+    {
       name: "the hours catching up after a failed read: says why, keeps the use",
       inputs: [
         ...answered(USAGE, [container("c1", "s1")]),

@@ -70,9 +70,18 @@ export interface ZeropsWire {
   readonly open: Effect.Effect<ZeropsLink, StreamFault, Scope.Scope>;
 }
 
-/** How an HTTP answer classifies; the wire applies it to every failed request. */
-export function classifyHttp(status: number, retryAfterMs?: number): StreamFault {
-  const message = `HTTP ${status}`;
+/**
+ * How an HTTP answer classifies, by its status alone; the wire applies it to every failed request.
+ * The message is what the person reads: the platform's own words where it gave any, else the
+ * API client's words for the status.
+ */
+export function classifyHttp(
+  status: number,
+  retryAfterMs?: number,
+  message: string = status === 403
+    ? "This Zerops account is not allowed to do that."
+    : `Zerops API request failed (${status}).`,
+): StreamFault {
   if (status === 401) return { outcome: "recoverable-session", message };
   if (status === 403) return { outcome: "authoritative-denial", message };
   if (status === 429 || status >= 500)
@@ -474,7 +483,7 @@ export function zeropsNavigationLink(options: {
             typeof answer === "object" && answer !== null && "outcome" in answer
               ? (answer as StreamFault)
               : (Option.getOrUndefined(decodeList(answer)) ??
-                corrupt("A query's baseline answer is malformed."));
+                corrupt("Zerops answered with something this app cannot read."));
           if ("outcome" in listing) {
             queries.delete(subscriptionName);
             return yield* signal(scope, {
