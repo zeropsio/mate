@@ -1,4 +1,6 @@
 import * as Effect from "effect/Effect";
+import { STREAM_POLICY } from "../../../../../../packages/client-runtime/src/data/streamMachine.ts";
+import { DEFAULT_ZEROPS_GRANT_POLICY } from "@t3tools/client-runtime/zerops/data";
 import type { Page } from "puppeteer-core";
 import { createScenario } from "../../harness/scenario.ts";
 import {
@@ -6,8 +8,6 @@ import {
   outageControls,
   reportsWork as reportWork,
   dropZerops,
-  refusedHqRetry,
-  refusedZeropsRetry,
   installSilentSleep,
   stallSleepSocket,
 } from "./fake.ts";
@@ -70,26 +70,19 @@ export const caughtUp = (actor: Actor, name: string) =>
 export const cappedHqOutage = (s: Scenario) =>
   Effect.gen(function* () {
     yield* s.then.hq.isUnavailable;
-    for (let attempt = 0; attempt < 8; attempt++) {
-      const capped = yield* Effect.promise(() =>
-        s.page.evaluate(
-          () =>
-            document
-              .querySelector('[data-zerops-surface="sidebar-hq-outage"]')
-              ?.textContent?.includes("Retrying every minute.") === true,
-        ),
-      );
-      if (capped) return;
-      const receipt = refusedHqRetry(s.page);
-      yield* Effect.promise(() => s.clock.advance(30_000));
-      yield* Effect.promise(() => receipt);
-      yield* Effect.promise(() =>
-        s.page.evaluate(
-          () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
-        ),
-      );
-    }
-    throw new Error("HQ never reached its capped outage state after eight 30-second retry rounds");
+    yield* Effect.promise(() =>
+      s.clock.advanceUntil(
+        () =>
+          s.page.evaluate(
+            () =>
+              document
+                .querySelector('[data-zerops-surface="sidebar-hq-outage"]')
+                ?.textContent?.includes("Retrying every minute.") === true,
+          ),
+        "HQ capped retry indicator",
+        STREAM_POLICY.backoffCapMs,
+      ),
+    );
   });
 
 export const zeropsGoesDown = (s: Scenario) => dropZerops(s.drivers);
@@ -110,28 +103,19 @@ export const zeropsCatchesUp = (s: Scenario) =>
   });
 
 export const lastingZeropsOutage = (s: Scenario) =>
-  Effect.gen(function* () {
-    for (let attempt = 0; attempt < 8; attempt++) {
-      const shown = yield* Effect.promise(() =>
+  Effect.promise(() =>
+    s.clock.advanceUntil(
+      () =>
         s.page.evaluate(
           () =>
             document
               .querySelector<HTMLElement>('[data-zerops-surface="sidebar-account-line"]')
               ?.innerText.includes("Zerops isn't answering. Trying again…") === true,
         ),
-      );
-      if (shown) return;
-      const receipt = refusedZeropsRetry(s.page);
-      yield* Effect.promise(() => s.clock.advance(30_000));
-      yield* Effect.promise(() => receipt);
-      yield* Effect.promise(() =>
-        s.page.evaluate(
-          () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
-        ),
-      );
-    }
-    throw new Error("Zerops never showed its catching-up line after eight 30-second retry rounds");
-  });
+      "Zerops catching-up indicator",
+      Math.max(...DEFAULT_ZEROPS_GRANT_POLICY.renewalRetryMs),
+    ),
+  );
 
 export const newSegmentWithoutSnapshot = (s: Scenario) =>
   Effect.promise(() => outageControls(s.drivers).nextSegmentWithoutSnapshot());

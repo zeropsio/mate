@@ -5,6 +5,7 @@ import { afterAll, expect } from "vite-plus/test";
 import puppeteer, { type Page, type BrowserContext } from "puppeteer-core";
 import { clientClock, type ScenarioWallClock } from "./clientClock.ts";
 import { boundPageWaits, waitBudget } from "./waits.ts";
+import { scenarioPolicy } from "./policy.ts";
 import { deadline, serve } from "./http.ts";
 
 // Vitest inverts afterEach failures inside it.fails too. Retain diagnostics from every opened
@@ -78,7 +79,7 @@ export async function openBrowser(
   const browser = await puppeteer.launch({
     executablePath,
     headless: true,
-    timeout: waitBudget(),
+    timeout: waitBudget(scenarioPolicy.testMs),
     args: [
       "--disable-background-networking",
       "--disable-component-update",

@@ -135,11 +135,13 @@ client subscriptions. Area scenarios assert visible outcomes in `then`.
 `advanceStepped(ms, {settle?, timeout?})` fires one due timer at a time and awaits completed HTTP
 requests before choosing the next timer (including timers newly scheduled by response handlers).
 The default tracks `requestfinished` / `requestfailed`, then observes renderer turns for response
-continuations and any HTTP they start. The whole condition has a 10-second deadline, overridden by
-`timeout`; it uses no quiet-time delay. Puppeteer's `waitForNetworkIdle` counts responses complete
+continuations and any HTTP they start. Each drain uses the condition budget capped by the live
+test's remaining time; `timeout` can tighten it. It uses no quiet-time delay. Puppeteer's `waitForNetworkIdle` counts responses complete
 at headers, so it cannot guard body readers or response-driven retries. For held fake replies,
 deliberate timeouts, or WebSocket-driven work, supply `settle: async () => { ... }` to replace that condition. The area driver must release
-any held response and await its reply/UI receipt before returning; use deadlines. For example:
+any held response and await its reply/UI receipt before returning; use deadlines.
+`advanceUntil(condition, label, maxStep)` follows scheduled one-shot timers within the protocol's
+retry cap, coalesces UI intervals and drains replies until the named condition holds. For example:
 
 ```ts
 const settledHttp = completedHttp(actor.page); // import harness/completedHttp.ts; register before navigation

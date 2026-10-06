@@ -1,5 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
-import { afterEach } from "vite-plus/test";
+import { afterAll, beforeEach } from "vite-plus/test";
 import * as Effect from "effect/Effect";
 import { scenarioTimeout } from "../../harness/policy.ts";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
@@ -11,11 +11,16 @@ const report = (line: string) => process.stdout.write(`${line}\n`);
 
 const names = ["Ada", "Bea", "Cara", "Dora"];
 const reachedTargets = new Set<string>();
-afterEach(({ task }) => {
-  if (task.name.startsWith("target:"))
+const selectedTargets = new Set<string>();
+beforeEach(({ task }) => {
+  if (task.name.startsWith("target:")) selectedTargets.add(task.name);
+});
+// .fails inverts afterEach failures too; check setup at the suite boundary.
+afterAll(() => {
+  for (const name of selectedTargets)
     expect(
-      reachedTargets.delete(task.name),
-      "Expected failure must reach its budget assertion",
+      reachedTargets.has(name),
+      `Expected failure must reach its budget assertion: ${name}`,
     ).toBe(true);
 });
 

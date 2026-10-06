@@ -127,6 +127,22 @@ it.each(["held reply", "default HTTP settling"])(
         ["deadline", 4000, true],
       ]);
       expect(requests).toBe(2);
+      await web.page.evaluate(() => {
+        setTimeout(() => Object.assign(window, { nextReceipt: Date.now() }), 2117);
+      });
+      await clock.advanceUntil(
+        () => web.page.evaluate(() => "nextReceipt" in window),
+        "next scheduled client timer receipt",
+      );
+      expect(
+        await web.page.evaluate(() => {
+          const state = window as unknown as {
+            nextReceipt: number;
+            events: [string, number, boolean?][];
+          };
+          return state.nextReceipt - Date.now();
+        }),
+      ).toBe(0);
     } finally {
       release();
       await web.close();

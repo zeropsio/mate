@@ -54,24 +54,6 @@ export const stallSleepSocket = (page: Page) =>
     (window as unknown as { scenarioStallSleepSocket(): void }).scenarioStallSleepSocket();
   });
 
-export const refusedHqRetry = (page: Page) =>
-  deadline(
-    page.waitForResponse(
-      (response) => new URL(response.url()).origin === hqOrigin && response.status() === 503,
-      { timeout: 0 }, // The named receipt deadline owns this wait.
-    ),
-    "HQ retry received 503",
-  );
-
-export const refusedZeropsRetry = (page: Page) =>
-  deadline(
-    page.waitForResponse(
-      (response) => response.url().includes("api.app-prg1.zerops.io") && response.status() === 503,
-      { timeout: 0 }, // The named receipt deadline owns this wait.
-    ),
-    "Zerops retry received 503",
-  );
-
 const decodeOverview = Schema.decodeUnknownEffect(MateOverview);
 const encodeLink = Schema.encodeEffect(MateLinkUp);
 

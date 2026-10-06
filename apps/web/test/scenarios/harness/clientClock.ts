@@ -140,7 +140,19 @@ export function clientClock(page: Page, wallClock?: ScenarioWallClock) {
           return true;
         };
         Object.assign(window, {
-          scenarioClock: { advance, step, now: () => now, pending: () => timers.size },
+          scenarioClock: {
+            advance,
+            step,
+            now: () => now,
+            pending: () => timers.size,
+            next: (maxStep: number) =>
+              [...timers.values()]
+                .filter((timer) => timer.interval === undefined && timer.at <= now + maxStep)
+                .reduce<number | null>(
+                  (next, timer) => (next === null ? timer.at : Math.max(next, timer.at)),
+                  null,
+                ),
+          },
         });
       }, initialTime);
     let script = await registerDocument(initialTime);
@@ -168,7 +180,7 @@ export function clientClock(page: Page, wallClock?: ScenarioWallClock) {
     );
     await refreshEpoch();
   };
-  return {
+  const clock = {
     install,
     advance,
     async advanceStepped(ms: number, options: SteppedAdvanceOptions = {}) {
@@ -196,6 +208,34 @@ export function clientClock(page: Page, wallClock?: ScenarioWallClock) {
         await settle();
       }
       await refreshEpoch();
+    },
+    /** Cross the client's actual deadlines, draining replies before reading its next timer. */
+    async advanceUntil(
+      condition: () => Promise<boolean>,
+      what: string,
+      maxStep = Infinity,
+    ): Promise<void> {
+      await deadline(
+        (async () => {
+          await settleHttp();
+          while (!(await condition())) {
+            const delay = await page.evaluate((maxStep) => {
+              const clock = (
+                window as unknown as {
+                  scenarioClock: { now(): number; next(maxStep: number): number | null };
+                }
+              ).scenarioClock;
+              const next = clock.next(maxStep);
+              return next === null ? null : Math.max(0, next - clock.now());
+            }, maxStep);
+            if (delay === null)
+              throw new Error(`No client timer scheduled while waiting for: ${what}`);
+            await advance(delay, true);
+            await settleHttp();
+          }
+        })(),
+        what,
+      );
     },
     async sleep() {
       if (!installed) throw new Error("Install clientClock before sign-in/navigation");
@@ -232,4 +272,5 @@ export function clientClock(page: Page, wallClock?: ScenarioWallClock) {
       });
     },
   };
+  return clock;
 }
