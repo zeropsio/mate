@@ -4,6 +4,7 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import { expect, it } from "vite-plus/test";
 import { openBrowser, clickText } from "../harness/browser.ts";
+import { completedHttp } from "../harness/completedHttp.ts";
 
 it("manual client timers cross Retry-After/backoff deadlines and coalesce timers across sleep/wake", async () => {
   const dist = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "scenario-clock-"));
@@ -83,6 +84,7 @@ it.each(["held reply", "default HTTP settling"])(
       return { body: { done: true } };
     });
     const web = await openBrowser(dist, { "https://retry.example.test": api.origin });
+    const settledHttp = completedHttp(web.page);
     try {
       const clock = web.clock(web.page);
       await clock.install();
@@ -106,7 +108,15 @@ it.each(["held reply", "default HTTP settling"])(
       const settle = async () => {
         await deadline(requested, "retry admission");
         release();
-        await web.page.waitForNetworkIdle({ idleTime: 0 });
+        await settledHttp();
+        await web.page.waitForFunction(
+          (count) =>
+            (window as unknown as { events: [string, number, boolean?][] }).events.filter(
+              ([name]) => name.startsWith("reply-"),
+            ).length === count,
+          { timeout: 10_000, polling: "raf" },
+          requests,
+        );
       };
       await clock.advanceStepped(5000, mode === "held reply" ? { settle } : {});
       expect(

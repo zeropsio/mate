@@ -28,6 +28,7 @@ Only browsers actually opened by selected tests contribute diagnostics; `-t` fil
 - `harness/{build,http,browser}.ts`: production build, loopback servers, pages/contexts and routing.
 - `harness/scenario.ts`: real Core composition and the foundation `given / when / then` DSL.
 - `harness/clientClock.ts`: opt-in browser timers, stepped network settling and lifecycle controls.
+- `harness/completedHttp.ts`: request-body completion and renderer-turn receipts for clock settling.
 - `harness/hqCore.ts`: production-like Core timing defaults and per-scenario overrides.
 - `apps/hq/test/harness/coreWithDeployTimings.ts`: opt-in composition of real Core layers for deploy timing overrides.
 - `fakes/zerops.ts`: REST, socket login, subscriptions, versioned entity tables, faults and budgets.
@@ -122,16 +123,19 @@ client subscriptions. Area scenarios assert visible outcomes in `then`.
 
 `advanceStepped(ms, {settle?, timeout?})` fires one due timer at a time and awaits completed HTTP
 requests before choosing the next timer (including timers newly scheduled by response handlers).
-The default is `page.waitForNetworkIdle({idleTime: 0, timeout: timeout ?? 10_000})`: a condition,
-with no arbitrary quiet delay. For held fake replies, deliberate timeouts, or WebSocket-driven
-work, supply `settle: async () => { ... }` to replace that condition. The area driver must release
+The default tracks `requestfinished` / `requestfailed`, then observes renderer turns for response
+continuations and any HTTP they start. The whole condition has a 10-second deadline, overridden by
+`timeout`; it uses no quiet-time delay. Puppeteer's `waitForNetworkIdle` counts responses complete
+at headers, so it cannot guard body readers or response-driven retries. For held fake replies,
+deliberate timeouts, or WebSocket-driven work, supply `settle: async () => { ... }` to replace that condition. The area driver must release
 any held response and await its reply/UI receipt before returning; use deadlines. For example:
 
 ```ts
+const settledHttp = completedHttp(actor.page); // import harness/completedHttp.ts; register before navigation
 await actor.clock.advanceStepped(7_000, {
   settle: async () => {
     await area.releaseAdmittedReplies(); // domain driver, no protocol in the scenario
-    await actor.page.waitForNetworkIdle({ idleTime: 0, timeout: 10_000 });
+    await settledHttp();
     await area.repliesApplied(); // add a semantic condition when HTTP completion is insufficient
   },
 });

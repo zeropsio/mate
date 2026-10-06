@@ -1,4 +1,5 @@
 import type { Page } from "puppeteer-core";
+import { completedHttp } from "./completedHttp.ts";
 
 export interface SteppedAdvanceOptions {
   /** Override the default completed-HTTP condition, e.g. to release held replies and await receipts. */
@@ -13,6 +14,7 @@ export interface ScenarioWallClock {
 
 /** Opt-in clock at the browser API boundary. Install before navigation/sign-in. */
 export function clientClock(page: Page, wallClock?: ScenarioWallClock) {
+  const settleHttp = completedHttp(page);
   let installed = false;
   let refreshEpoch = async () => {};
   const install = async () => {
@@ -176,9 +178,7 @@ export function clientClock(page: Page, wallClock?: ScenarioWallClock) {
           (window as unknown as { scenarioClock: { now(): number } }).scenarioClock.now() + ms,
         ms,
       );
-      const settle =
-        options.settle ??
-        (() => page.waitForNetworkIdle({ idleTime: 0, timeout: options.timeout ?? 10_000 }));
+      const settle = options.settle ?? (() => settleHttp(options.timeout));
       let turns = 0;
       while (
         await page.evaluate(
