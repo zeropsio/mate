@@ -1527,8 +1527,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
    * the name, whether it gets an agent, and what that agent is called.
    */
   // A group is offered more once its first Mate is up (`groupAddsOffered`).
-  // Shared by the project's menu, its card's add verbs and whether
-  // production is offered.
+  // This gates another Mate; HQ's own offers decide stage and production.
   const addsOfferedFor = useCallback(
     (group: ZeropsGroup) =>
       groupAddsOffered(
@@ -2296,7 +2295,9 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
                 },
               ]
             : []),
-          ...(addsOfferedFor(group) && environmentOffers(group.groupId)?.stage === true
+          ...(environmentOffers(group.groupId)?.stage === true &&
+          !groupIsEmpty(group) &&
+          creatableRoles(group).includes("stage")
             ? [
                 {
                   id: "add-stage",
