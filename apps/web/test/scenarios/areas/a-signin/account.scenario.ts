@@ -97,6 +97,27 @@ describe("A: sign-in, session and organizations", () => {
       }),
     );
 
+    // Catches a reload minting a throwaway Zerops token for HQ's door though the account kept a
+    // live HQ session: only HQ asking for a new session may mint one.
+    it.effect("a reload with a kept HQ session mints no door token", () =>
+      Effect.gen(function* () {
+        const s = yield* accountScenario();
+        yield* s.given.project("Ada", { mate: true, app: "Shop" });
+        yield* s.given.signedIn;
+        yield* s.then.menu.row("Shop").appears();
+        const mints = () =>
+          s.drivers.zerops.requests.get("POST /client/ORG/integration-token") ?? 0;
+        const first = mints();
+        expect(first, "The first load enters HQ's door once").toBe(1);
+        yield* account(s.page).reload;
+        yield* s.then.menu.row("Shop").appears();
+        yield* account(s.page).reload;
+        yield* s.then.menu.row("Shop").appears();
+        expect(mints(), "Two reloads mint no further door token").toBe(first);
+        yield* s.then.noExternalNetwork;
+      }),
+    );
+
     // Catches organization selection showing the previous organization's projects or losing the way back.
     it.effect("switching organizations clears previous work and can return", () =>
       Effect.gen(function* () {
