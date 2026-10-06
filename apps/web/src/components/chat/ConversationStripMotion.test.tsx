@@ -70,7 +70,10 @@ function Line({ mateLeft, face }: { readonly mateLeft: number; readonly face: st
   // one that says the same, so the line redraws and switches nothing. Built
   // from the face, or the React Compiler keeps the line's element and it
   // never redraws at all.
-  const stage: LineStage = { band: STAGE.band, crew: STAGE.crew.filter(() => face !== "") };
+  const stage: LineStage = {
+    band: STAGE.band,
+    crew: STAGE.crew?.filter(() => face !== "") ?? null,
+  };
   return (
     <div data-left="0">
       <LineMotion stage={stage} onFolded={() => undefined} />
