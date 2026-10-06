@@ -44,7 +44,7 @@ import { useProjectTopology } from "../../zerops/useProjectTopology";
 import { activityOfNow, mateFaceFor } from "../../zerops/agentActivity";
 import { useZeropsAgentActivity } from "../../zerops/useZeropsAgentActivity";
 import { useZeropsEnvironmentProject } from "../../zerops/useZeropsEnvironmentProject";
-import { useZeropsMemberNames } from "../../zerops/useZeropsMateOwners";
+import { useHqPersonNames } from "../../zerops/useZeropsMateOwners";
 import { useZeropsLifecycle } from "../../zerops/useZeropsFeeds";
 import { mateIdentityPose, zeropsMateAt } from "../../zerops/mateIdentities";
 import { useNowMs } from "../../zerops/useNowMs";
@@ -111,12 +111,7 @@ export function ZeropsPanel({
   // Another member's login says whose it is — read from the Mate's own org,
   // and only when some login names somebody else.
   const mateProject = useZeropsEnvironmentProject(threadRef?.environmentId ?? null);
-  const loginSignerName = useZeropsMemberNames({
-    clientId: mateProject?.orgId,
-    enabled: logins.some(
-      (login) => login.signedInBy !== undefined && login.signedInBy !== viewerSubject,
-    ),
-  });
+  const loginSignerName = useHqPersonNames(mateProject?.orgId);
   const [authorizationLoginId, setAuthorizationLoginId] = useState<string | null>(null);
   const authorizationLogin = logins.find(
     (login) => !login.default && login.id === authorizationLoginId,

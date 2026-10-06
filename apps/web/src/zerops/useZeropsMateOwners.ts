@@ -25,9 +25,7 @@ import { useAtomValue } from "@effect/atom-react";
 import type { ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import {
-  mateMemberName,
   resolveMateOwnerPerson,
-  type MateOwnerCandidate,
   type MateOwnerPerson,
 } from "@t3tools/client-runtime/zerops/mateAccess";
 import {
@@ -42,8 +40,7 @@ import {
   zeropsInitials,
 } from "~/components/zerops/landing/ZeropsAccountControl.logic";
 
-import { hqDown, hqNavigationAtom, hqPeopleAtom } from "../state/zerops";
-import { noHq, useHqVerdict, type HqVerdictOwner } from "./hqVerdict";
+import { hqNavigationAtom, hqPeopleAtom } from "../state/zerops";
 import { useKnown, ZeropsDataContext } from "./zeropsDataContext";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
@@ -54,15 +51,6 @@ export interface ZeropsMateOwner {
   readonly avatarUrl: string | null;
   /** The owner is the person looking: "You asked", and *Mine* keeps this Mate. */
   readonly isViewer: boolean;
-}
-
-/** The name of the member whose Zerops user id a signer is, when the list has one. */
-export function zeropsMemberNameByUserId(
-  members: ReadonlyArray<MateOwnerCandidate>,
-  userId: string,
-): string | undefined {
-  const member = members.find((entry) => entry.user?.id === userId);
-  return member === undefined ? undefined : mateMemberName(member);
 }
 
 const NO_MEMBERS: ReadonlyArray<ZeropsOrganizationMember> = [];
@@ -132,32 +120,18 @@ export function useZeropsOrganizationMembers(input: {
 
 /**
  * Somebody of the organization `clientId` by their Zerops user id, by name — a login's signer, a
- * remark's author: as HQ's people name them while HQ has word for the organization (its official
- * HQ, not down), the ids being the join; else from the member list, read only while `enabled`.
+ * remark's author — as HQ's people name them for the organization in view; its last word stands
+ * while HQ does not answer. Nobody of another organization.
  */
-export function useZeropsMemberNames(input: {
-  readonly clientId: string | undefined;
-  readonly enabled: boolean;
-}): (userId: string) => string | undefined {
-  const { clientId, enabled } = input;
-  const data = useContext(ZeropsDataContext);
-  const owner = useMemo<HqVerdictOwner | undefined>(
-    () =>
-      data === null || clientId === undefined
-        ? undefined
-        : { account: data.runtime.scope.account, clientId },
-    [clientId, data],
-  );
-  const kept = useHqVerdict(owner);
+export function useHqPersonNames(
+  clientId: string | undefined,
+): (userId: string) => string | undefined {
   const navigation = useAtomValue(hqNavigationAtom);
-  const shown = navigation.orgId === clientId;
-  const hqWord = kept !== undefined && !noHq(kept) && !(shown && hqDown(navigation));
-  const people = shown && navigation.read !== "unread" ? navigation.people : null;
-  const members = useZeropsOrganizationMembers({ clientId, enabled: enabled && !hqWord });
+  const people = useAtomValue(hqPeopleAtom);
+  const shown = clientId !== undefined && navigation.orgId === clientId;
   return useCallback(
-    (userId: string) =>
-      hqWord ? people?.[userId]?.name : zeropsMemberNameByUserId(members, userId),
-    [hqWord, members, people],
+    (userId: string) => (shown ? people?.[userId]?.name : undefined),
+    [people, shown],
   );
 }
 

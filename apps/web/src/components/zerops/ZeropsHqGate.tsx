@@ -3,12 +3,7 @@
  * has no HQ: an owner or an admin sees it born — each step, the one it is on, and the one that
  * stopped it, with the way on — and anybody else whom to ask, and nothing more.
  */
-import {
-  findOfficialHq,
-  HQ_BIRTH_DOING,
-  HQ_BIRTH_STEPS,
-  runHqBirth,
-} from "@t3tools/client-runtime/zerops/hq";
+import { HQ_BIRTH_DOING, HQ_BIRTH_STEPS, runHqBirth } from "@t3tools/client-runtime/zerops/hq";
 import { CheckIcon, CircleAlertIcon } from "lucide-react";
 import { useCallback, useEffect } from "react";
 
@@ -30,6 +25,7 @@ export function ZeropsHqGate({ gate }: { readonly gate: ClosedGate }) {
   const accountHq = useAccountHq(activeOrganization?.id);
   const held = useHqBirths((state) => state.byOrg[clientId]);
   const { reread } = accountHq;
+  const official = accountHq.hq.kind === "official";
   const bear = useCallback(
     (again: boolean) =>
       bearHq({
@@ -43,13 +39,14 @@ export function ZeropsHqGate({ gate }: { readonly gate: ClosedGate }) {
             moved,
             again: manualAgain,
           }),
-        alreadyBorn: async () =>
-          findOfficialHq(await client.listOrganizationMembers(clientId)).kind === "official",
+        // An HQ the account names official meanwhile ends the birth as made; the birth itself
+        // checks the anchor again before it makes anything.
+        alreadyBorn: async () => official,
         // Its anchor is in the member list now: the gate opens once it is read again.
         onBorn: reread,
         again,
       }),
-    [client, clientId, reread],
+    [client, clientId, official, reread],
   );
   const birthDue = gate.kind === "birth" && held === undefined;
   useEffect(() => {

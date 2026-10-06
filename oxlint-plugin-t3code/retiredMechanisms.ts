@@ -919,16 +919,6 @@ export const RETIRED_MECHANISMS: ReadonlyArray<RetiredMechanism> = [
     reason: "the client reads organization members for owners and admins; HQ sends them finished",
   },
   {
-    token: "shownInScope(",
-    family: "permissions/members",
-    reason: "the Mine filter and owner records are computed in the client; HQ sends them finished",
-    paths: [
-      "apps/web/src/components/Sidebar.tsx",
-      "apps/web/src/design/sidebarHarness.tsx",
-      "apps/web/src/zerops/mateScope.ts",
-    ],
-  },
-  {
     token: "mateIsViewers(",
     family: "permissions/members",
     reason: "the Mine filter and owner records are computed in the client; HQ sends them finished",

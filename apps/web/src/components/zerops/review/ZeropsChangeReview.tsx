@@ -65,7 +65,7 @@ import { useZeropsLandedChange } from "~/zerops/useZeropsLandedChange";
 import { useNowMs } from "~/zerops/useNowMs";
 import { useFixMates } from "~/zerops/fixMates";
 import { useZeropsReviewMates } from "~/zerops/useZeropsReviewMates";
-import { useZeropsMemberNames } from "~/zerops/useZeropsMateOwners";
+import { useHqPersonNames } from "~/zerops/useZeropsMateOwners";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 
 import { MateFace } from "../primitives";
@@ -279,10 +279,7 @@ function ChangeReviewData({
   });
   // Who said it, as the organization's members name them; the reader's own words marked.
   const session = useZeropsSessionOptional();
-  const nameOf = useZeropsMemberNames({
-    clientId: session?.activeOrganization?.id,
-    enabled: comments.state.kind === "read" && comments.state.comments.length > 0,
-  });
+  const nameOf = useHqPersonNames(session?.activeOrganization?.id);
   const me = session?.user?.id;
   // A Mate's words brought over from HQ, as the application names its Mates.
   const mateNameOf = useCallback((projectId: string) => mates.get(projectId)?.name, [mates]);

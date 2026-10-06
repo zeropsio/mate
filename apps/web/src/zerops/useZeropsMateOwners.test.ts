@@ -17,14 +17,12 @@ import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates"
 
 import { zeropsSessionAtom } from "../state/zerops";
 import { makeMemberCells } from "./__fixtures__/memberCells";
-import { keepHqVerdict, keepNoHqVerdict } from "./hqVerdict";
 import { ZeropsDataContext, type ZeropsDataContextValue } from "./zeropsDataContext";
 import {
   useZeropsMateOwners,
-  useZeropsMemberNames,
+  useHqPersonNames,
   useZeropsOrganizationMembersRead,
   zeropsMateOwnerOf,
-  zeropsMemberNameByUserId,
 } from "./useZeropsMateOwners";
 import { mountHqNavigation } from "~/zerops/__fixtures__/hqNavigation";
 
@@ -81,23 +79,6 @@ describe("zeropsMateOwnerOf", () => {
 
 // A login's signer is a Zerops user id; the member list turns it into
 // the name the coding-agents card shows ("Signed in by Cleo").
-describe("zeropsMemberNameByUserId", () => {
-  const members = [
-    { id: "cu-cleo", user: { id: "u-cleo", fullName: "Cleo Dvořák" } },
-    { id: "cu-quiet", user: { id: "u-quiet", email: "quiet@example.com" } },
-    { id: "cu-blank", user: { id: "u-blank" } },
-  ];
-
-  it.each([
-    ["u-cleo", "Cleo Dvořák"],
-    ["u-quiet", "quiet@example.com"],
-    ["u-blank", undefined],
-    ["u-left", undefined],
-  ])("%s is %s", (userId, name) => {
-    expect(zeropsMemberNameByUserId(members, userId)).toBe(name);
-  });
-});
-
 describe("useZeropsOrganizationMembersRead", () => {
   it("is one read of the organization's members, however many surfaces ask at once", async () => {
     const scope: AccountScope = {
@@ -250,71 +231,28 @@ describe("useZeropsMateOwners", () => {
   });
 });
 
-// Who signed a login in, who said a remark: HQ's people name them where HQ has word for the
-// organization; the member list is read only where it has none.
-describe("useZeropsMemberNames", () => {
-  const scope: AccountScope = {
-    account: {
-      apiOrigin: makeZeropsApiOrigin("https://api.example.test"),
-      accountId: ZeropsAccountId.make("account-names"),
-    },
-    epoch: AccountEpoch.make(1),
-  };
-  const organizationRef = (organizationId: string): OrganizationRef => ({
-    kind: "organization",
-    account: scope.account,
-    organizationId: ZeropsOrganizationId.make(organizationId),
-  });
-  const HQ = { projectId: "P_HQ", address: "https://hq.example.test" };
-
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
+// Who signed a login in, who said a remark: as HQ's people name them for the organization in view,
+// whether HQ answers now or not (its last word stands); nobody of another organization, and no
+// member list is read for it.
+describe("useHqPersonNames", () => {
   it.each([
-    ["HQ answers for it", "official", null, "Cleo as HQ names her", 0],
-    ["its HQ is down", "official", 1_000, "Cleo Dvořák", 1],
-    ["it has no official HQ", "none", null, "Cleo Dvořák", 1],
-  ] as const)("names Cleo where %s", async (_case, verdict, unavailableSince, name, reads) => {
-    const clientId = `org-${verdict}-${String(unavailableSince)}`;
-    const owner = { account: scope.account, clientId };
-    if (verdict === "official") keepHqVerdict(owner, HQ);
-    else keepNoHqVerdict(owner);
-    let read = 0;
-    const cells = await makeMemberCells({
-      scope,
-      organization: organizationRef(clientId),
-      members: async () => {
-        read += 1;
-        return [{ id: "cu-cleo", user: { id: "u-cleo", fullName: "Cleo Dvořák" } }] as never;
-      },
-    });
-    const data = {
-      runtime: { scope, cells },
-      organizationRef,
-    } as unknown as ZeropsDataContextValue;
+    ["HQ answers for it", "org-1", true, "Cleo as HQ names her"],
+    ["its HQ is down", "org-1", false, "Cleo as HQ names her"],
+    ["another organization", "org-2", true, undefined],
+  ] as const)("names Cleo where %s", async (_case, clientId, live, name) => {
     const registry = AtomRegistry.make();
-    mountHqNavigation(registry, clientId, {
+    mountHqNavigation(registry, "org-1", {
       people: { "u-cleo": { name: "Cleo as HQ names her" } },
-      live: unavailableSince === null,
+      live,
     });
     const named: Array<string | undefined> = [];
     function Probe() {
-      named.push(useZeropsMemberNames({ clientId, enabled: true })("u-cleo"));
+      named.push(useHqPersonNames(clientId)("u-cleo"));
       return null;
     }
     await act(async () => {
-      create(
-        createElement(
-          RegistryContext.Provider,
-          { value: registry },
-          createElement(ZeropsDataContext.Provider, { value: data }, createElement(Probe)),
-        ),
-      );
+      create(createElement(RegistryContext.Provider, { value: registry }, createElement(Probe)));
     });
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    });
-    expect([named.at(-1), read]).toEqual([name, reads]);
+    expect(named.at(-1)).toBe(name);
   });
 });
