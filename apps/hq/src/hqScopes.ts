@@ -4,6 +4,7 @@ import {
   HQ_ZEROPS_REFUSED,
   HqNavigationApp,
   HqNavigationProject,
+  HqAttentionValue,
   hqScopeKey,
   type HqScope,
   type HqScopeFailure,
@@ -119,6 +120,9 @@ const refusalDisposition = (code: string) =>
     ? ("refused" as const)
     : ("transient" as const);
 const json = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
+const readAttentionSource = Schema.decodeUnknownOption(
+  Schema.Struct({ attention: Schema.NullOr(HqAttentionValue) }),
+);
 
 export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
   Layer.effect(
@@ -151,6 +155,7 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
         one: Semaphore.Semaphore;
         generation: number;
         sourceVersion: number;
+        attentionSource?: string;
         refreshing: boolean;
         subscribing: number;
         failure?: Extract<HqStreamMessage, { type: "scope-error" }>;
@@ -560,7 +565,19 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
             const data = yield* load(entry);
             yield* sourceNow;
             if (generation !== entry.generation || version !== sourceVersion) continue;
-            const message = entry.journal.commit(data.values, data.removals);
+            let baseline = false;
+            if (entry.scope.kind === "attention") {
+              const read = readAttentionSource(data.values[0]?.value);
+              if (Option.isSome(read) && read.value.attention !== null) {
+                const next = json([
+                  read.value.attention.source.environmentId,
+                  read.value.attention.source.incarnation,
+                ]);
+                baseline = next !== entry.attentionSource;
+                entry.attentionSource = next;
+              }
+            }
+            const message = entry.journal.commit(data.values, data.removals, baseline);
             entry.sourceVersion = version;
             entry.dirty = generation !== entry.generation;
             delete entry.failure;

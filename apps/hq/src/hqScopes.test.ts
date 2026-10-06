@@ -496,6 +496,54 @@ const resetOf = (message: ScopeOutput) => {
 };
 
 describe("revisioned HQ values", () => {
+  it.effect(
+    "a new Mate attention incarnation replaces revision seven with an atomic baseline",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const f = yield* fixture;
+          const oldLink = yield* f.overviews.connect("P");
+          const value = {
+            source: { environmentId: "env", incarnation: "first", revision: 7 },
+            mainThreadId: null,
+            lastThreadId: null,
+            working: 1,
+            waiting: 0,
+            results: [],
+            questions: [],
+            truncated: false,
+          };
+          yield* f.overviews.reportAttention("P", oldLink, value);
+          const client = yield* f.connect("owner");
+          yield* client.subscribe([{ scope: attention }]);
+          const first = resetOf(yield* client.take);
+          yield* client.take;
+          const newLink = yield* f.overviews.connect("P");
+          const restarted = {
+            ...value,
+            source: { ...value.source, incarnation: "second", revision: 0 },
+            working: 0,
+          };
+          yield* f.overviews.reportAttention("P", newLink, restarted);
+          let next = resetOf(yield* client.take);
+          if (!json(next.values).includes('"incarnation":"second"'))
+            next = resetOf(yield* client.take);
+          assert.strictEqual(next.type, "scope-reset");
+          assert.notStrictEqual(next.incarnation, first.incarnation);
+          assert.include(json(next.values), '"incarnation":"second","revision":0');
+          yield* client.subscribe([
+            {
+              scope: attention,
+              cursor: { incarnation: first.incarnation, revision: first.revision },
+              knownKeys: ["P"],
+            },
+          ]);
+          const resumed = resetOf(yield* client.take);
+          assert.strictEqual(resumed.type, "scope-reset");
+          assert.notInclude(json(resumed.values), '"incarnation":"first"');
+        }),
+      ),
+  );
   it.effect("navigation retains filtered environment jobs and press hold duration", () =>
     Effect.scoped(
       Effect.gen(function* () {

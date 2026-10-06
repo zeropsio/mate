@@ -87,6 +87,13 @@ Send `move-offers` with `requestId` and `projectId` when the move dialog opens. 
 is `move-offers` with `moveTo`, or `move-offers-error`. Destination enumeration runs only on request;
 the eventual write still checks current permissions.
 
+An accepted attention report from a restarted Mate's newest link, with a new source environment
+or incarnation, rotates only that Mate's attention scope journal and sends an atomic `scope-reset`.
+The baseline carries the new source revision (including 0 after 7); subsequent updates are deltas.
+A cursor for the retired scope incarnation gets the current baseline, never retired source history.
+The first attention source also establishes a baseline. Older links and stale revisions remain
+fenced by ingestion. Navigation receives its separate targeted person/attention fact update.
+
 ## Shared computation and integration seams
 
 A Core reads one repeatable PostgreSQL snapshot of raw navigation records and shares it between
