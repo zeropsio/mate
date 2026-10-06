@@ -28,8 +28,9 @@ import {
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import type { MateLiveView } from "@t3tools/shared/hqMates";
+import { createSharer } from "@t3tools/shared/structuralSharing";
 import { useRouter } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import type { MateRowActions } from "~/components/zerops/SidebarMateMenu";
 import type { ZeropsMenuEntry } from "~/components/zerops/ZeropsProjectMenu";
@@ -70,6 +71,48 @@ export function sidebarMateVerbs(
   });
 }
 
+/** What a Mate's menu reads of HQ's word of it (`MateLiveView`): its environment, its main chat. */
+interface MenuTold {
+  readonly identity?: { readonly environmentId: EnvironmentId } | undefined;
+  readonly main?:
+    | {
+        readonly id: ThreadId;
+        readonly latestTurn: { readonly completedAt: string | null } | null;
+      }
+    | null
+    | undefined;
+}
+
+/**
+ * HQ's word of each Mate as its menu reads it (`MenuTold`), by project: plain data, so a reading
+ * shares with the last (`createSharer`) and the menus stand while no Mate's word of it changed —
+ * HQ relays far more of each Mate than a menu reads.
+ */
+function menuToldOf(
+  mates: ReadonlyMap<string, MateLiveView> | undefined,
+): Readonly<Record<string, MenuTold>> {
+  const told: Record<string, MenuTold> = {};
+  for (const [projectId, mate] of mates ?? []) {
+    told[projectId] = {
+      ...(mate.identity === undefined
+        ? {}
+        : { identity: { environmentId: mate.identity.environmentId } }),
+      ...(mate.main
+        ? {
+            main: {
+              id: mate.main.id,
+              latestTurn:
+                mate.main.latestTurn === null
+                  ? null
+                  : { completedAt: mate.main.latestTurn.completedAt },
+            },
+          }
+        : {}),
+    };
+  }
+  return told;
+}
+
 /**
  * Where a Mate's menu acts: its environment — its socket's, else the one HQ names — when the
  * chat its row reads last finished, for *Mark as unread*: this page's shell of it, else HQ's word,
@@ -79,7 +122,7 @@ export function mateMenuTarget(input: {
   /** Its socket's environment, where this page holds one. */
   readonly environmentId: EnvironmentId | undefined;
   /** HQ's word of it, where HQ holds one. */
-  readonly told: MateLiveView | undefined;
+  readonly told: MenuTold | undefined;
   readonly activity: ZeropsAgentActivity | undefined;
   /** Each chat's last finished turn as this page's shells hold it, by thread key. */
   readonly completedAt: ReadonlyMap<string, string>;
@@ -109,6 +152,47 @@ export function mateMenuTarget(input: {
   };
 }
 
+/** `build`, answered again for a Mate whose candidate and activity are the ones it last built for. */
+function builtOnce(
+  build: (
+    candidate: ZeropsCandidatePresentation,
+    activity: ZeropsAgentActivity | undefined,
+  ) => MateRowActions,
+): (
+  candidate: ZeropsCandidatePresentation,
+  activity: ZeropsAgentActivity | undefined,
+) => MateRowActions {
+  const built = new WeakMap<
+    ZeropsCandidatePresentation,
+    { readonly activity: ZeropsAgentActivity | undefined; readonly actions: MateRowActions }
+  >();
+  return (candidate, activity) => {
+    const known = built.get(candidate);
+    if (known !== undefined && known.activity === activity) return known.actions;
+    const actions = build(candidate, activity);
+    built.set(candidate, { activity, actions });
+    return actions;
+  };
+}
+
+/** Each chat's last finished turn by thread key, the last map kept while it reads the same. */
+function createCompletedAtReader(): (
+  threads: ReadonlyArray<EnvironmentThreadShell>,
+) => ReadonlyMap<string, string> {
+  let last: ReadonlyMap<string, string> = new Map();
+  return (threads) => {
+    const byThread = new Map<string, string>();
+    for (const thread of threads) {
+      const at = thread.latestTurn?.completedAt;
+      if (at !== null && at !== undefined) byThread.set(`${thread.environmentId}:${thread.id}`, at);
+    }
+    const same =
+      byThread.size === last.size && [...byThread].every(([key, at]) => last.get(key) === at);
+    if (!same) last = byThread;
+    return last;
+  };
+}
+
 export function useSidebarMateMenus(input: {
   /** Every conversation's shell: what *Mark as unread* marks is its last finished turn. */
   readonly threads: ReadonlyArray<EnvironmentThreadShell>;
@@ -130,6 +214,8 @@ export function useSidebarMateMenus(input: {
   const interrupt = useMateCommand(threadEnvironment.interruptTurn, { reportFailure: false });
   const router = useRouter();
   const hq = useAtomValue(hqMatesAtom);
+  const [shareTold] = useState(() => createSharer<Readonly<Record<string, MenuTold>>>());
+  const told = useMemo(() => shareTold(menuToldOf(hq?.mates)), [hq, shareTold]);
   const { copyToClipboard } = useCopyToClipboard<{ readonly name: string }>({
     onCopy: ({ name }) => {
       toastManager.add({ type: "success", title: `Link to ${name} copied` });
@@ -150,91 +236,90 @@ export function useSidebarMateMenus(input: {
     }
   }, [mateActions.trouble]);
 
-  const completedAt = useMemo(() => {
-    const byThread = new Map<string, string>();
-    for (const thread of input.threads) {
-      const at = thread.latestTurn?.completedAt;
-      if (at !== null && at !== undefined) byThread.set(`${thread.environmentId}:${thread.id}`, at);
-    }
-    return byThread;
-  }, [input.threads]);
+  // Each chat's last finished turn: the same map while no turn finishes, however often a
+  // streaming chat's shell changes — every row's menu is built off it.
+  const [completedAtOf] = useState(createCompletedAtReader);
+  const completedAt = useMemo(() => completedAtOf(input.threads), [completedAtOf, input.threads]);
 
-  const getMateActions = useCallback(
-    (
-      candidate: ZeropsCandidatePresentation,
-      activity: ZeropsAgentActivity | undefined,
-    ): MateRowActions | undefined => {
-      const { environmentId, finished, stop } = mateMenuTarget({
-        environmentId: candidate.environmentId,
-        told: hq?.mates?.get(candidate.project.id),
-        activity,
-        completedAt,
-      });
-      const tags = readZeropsMembership(candidate.project);
-      const name = projectNameInApp(candidate.project);
-      const threadRef =
-        environmentId === undefined || activity === undefined
-          ? undefined
-          : scopeThreadRef(environmentId, activity.threadId);
-      return {
-        muted: environmentId !== undefined && muted.includes(environmentId),
-        toggleMute:
-          environmentId === undefined
+  const { actionsFor, renameInPlace, changeFace } = mateActions;
+  // A row's menu stands while its Mate and its activity do: a memoised row redraws only when its
+  // own menu changes.
+  const getMateActions = useMemo(
+    () =>
+      builtOnce((candidate, activity) => {
+        const { environmentId, finished, stop } = mateMenuTarget({
+          environmentId: candidate.environmentId,
+          told: told[candidate.project.id],
+          activity,
+          completedAt,
+        });
+        const tags = readZeropsMembership(candidate.project);
+        const name = projectNameInApp(candidate.project);
+        const threadRef =
+          environmentId === undefined || activity === undefined
             ? undefined
-            : () => {
-                toggle(environmentId);
-              },
-        toggleUnread:
-          activity === undefined || finished === undefined
-            ? undefined
-            : () => {
-                if (activity.unread)
-                  markThreadVisited(activity.threadKey, new Date().toISOString());
-                else markThreadUnread(activity.threadKey, finished);
-              },
-        copyLink:
-          threadRef === undefined
-            ? undefined
-            : () => {
-                const { href } = router.buildLocation({
-                  to: "/$environmentId/$threadId",
-                  params: buildThreadRouteParams(threadRef),
-                });
-                copyToClipboard(new URL(href, window.location.origin).toString(), { name });
-              },
-        rename: mateActions.renameInPlace(candidate),
-        changeFace: mateActions.changeFace(candidate),
-        stop:
-          stop === undefined
-            ? undefined
-            : () => {
-                void interrupt(stop).then((result) => {
-                  if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
-                    const error = squashAtomCommandFailure(result);
-                    toastManager.add({
-                      type: "error",
-                      title: `Could not stop ${name}`,
-                      ...(error instanceof Error ? { description: error.message } : {}),
-                    });
-                  }
-                });
-              },
-        entries: sidebarMateVerbs(mateActions.actionsFor(candidate, tags)),
-        drawn: drawnOf(candidate.project.id),
-      };
-    },
+            : scopeThreadRef(environmentId, activity.threadId);
+        return {
+          muted: environmentId !== undefined && muted.includes(environmentId),
+          toggleMute:
+            environmentId === undefined
+              ? undefined
+              : () => {
+                  toggle(environmentId);
+                },
+          toggleUnread:
+            activity === undefined || finished === undefined
+              ? undefined
+              : () => {
+                  if (activity.unread)
+                    markThreadVisited(activity.threadKey, new Date().toISOString());
+                  else markThreadUnread(activity.threadKey, finished);
+                },
+          copyLink:
+            threadRef === undefined
+              ? undefined
+              : () => {
+                  const { href } = router.buildLocation({
+                    to: "/$environmentId/$threadId",
+                    params: buildThreadRouteParams(threadRef),
+                  });
+                  copyToClipboard(new URL(href, window.location.origin).toString(), { name });
+                },
+          rename: renameInPlace(candidate),
+          changeFace: changeFace(candidate),
+          stop:
+            stop === undefined
+              ? undefined
+              : () => {
+                  void interrupt(stop).then((result) => {
+                    if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+                      const error = squashAtomCommandFailure(result);
+                      toastManager.add({
+                        type: "error",
+                        title: `Could not stop ${name}`,
+                        ...(error instanceof Error ? { description: error.message } : {}),
+                      });
+                    }
+                  });
+                },
+          entries: sidebarMateVerbs(actionsFor(candidate, tags)),
+          drawn: drawnOf(candidate.project.id),
+        };
+      }),
     [
+      actionsFor,
+      changeFace,
       completedAt,
       copyToClipboard,
       drawnOf,
-      hq,
       interrupt,
       markThreadUnread,
       markThreadVisited,
-      mateActions,
       muted,
+      renameInPlace,
       router,
       toggle,
+      told,
     ],
   );
 

@@ -11,7 +11,7 @@ import { hqMatesAtom, zeropsEnvironmentsAtom } from "../state/zerops";
 import { useUiStateStore } from "../uiStateStore";
 import { threadAgentActivity, type ZeropsAgentActivity } from "./agentActivity";
 import { createLiveStepPacer, sameLiveStep, type ShownLiveSteps } from "./liveStep";
-import { mateEnvironmentOf, matesActivityOf } from "./mateActivity";
+import { mateEnvironmentOf, matesActivityOf, type MatesActivityInput } from "./mateActivity";
 import { useAccountOrgId, useProjection } from "./ZeropsAccountData";
 
 /** The socket phases in which a conversation read through it still stands: up, or only blinking. */
@@ -76,18 +76,34 @@ export function useMatesActivity(): MatesActivity {
     }),
     [attention, hq, projectIds, sockets, standing, threadLastVisitedAtById, threads],
   );
-  const activity = usePacedLiveSteps(useMemo(() => matesActivityOf(input), [input]));
+  // Each Mate's entry stands while what it says does (`matesActivityOf`): the reading changes
+  // only when some Mate's does, not on every event of a streaming chat's shell.
+  const [sharer] = useState(createActivitySharer);
+  const read = useMemo(() => sharer(input), [input, sharer]);
+  const activity = usePacedLiveSteps(read);
+  const overviews = input.overviews;
   return useMemo(() => {
     const byEnvironment = new Map<EnvironmentId, ZeropsAgentActivity>();
     for (const [projectId, entry] of activity) {
-      const environmentId = mateEnvironmentOf(input, projectId);
+      const environmentId = mateEnvironmentOf({ attention, overviews, sockets }, projectId);
       if (environmentId !== undefined) byEnvironment.set(environmentId, entry);
     }
     return {
       ofProject: (projectId) => activity.get(projectId),
       ofEnvironment: (environmentId) => byEnvironment.get(environmentId),
     };
-  }, [activity, input]);
+  }, [activity, attention, overviews, sockets]);
+}
+
+/** `matesActivityOf` over successive inputs, each read sharing what it can with the last. */
+function createActivitySharer(): (
+  input: MatesActivityInput,
+) => ReadonlyMap<string, ZeropsAgentActivity> {
+  let last: ReadonlyMap<string, ZeropsAgentActivity> | undefined;
+  return (input) => {
+    last = matesActivityOf(input, last);
+    return last;
+  };
 }
 
 /**

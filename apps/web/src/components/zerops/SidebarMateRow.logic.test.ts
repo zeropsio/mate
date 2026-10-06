@@ -16,6 +16,7 @@ import {
   mateFinishingView,
   mateOwnerView,
   mateNotYours,
+  mateRowPropsEqual,
   ownerBadge,
   mateRowAskLine,
   mateRowSentAsk,
@@ -1647,5 +1648,42 @@ describe("mateRowSentAsk — what this browser just sent, until the conversation
     },
   ])("$case", ({ sent, activity, read, text }) => {
     expect(mateRowSentAsk(sent, activity, read)).toBe(text);
+  });
+});
+
+describe("mateRowPropsEqual — when a memoised row may skip its redraw", () => {
+  const select = () => {};
+  const activity = { threadId: ThreadId.make("t1"), kind: "working" } as ZeropsAgentActivity;
+  const base = {
+    active: false,
+    activity,
+    owner: { name: "Ales", initials: "A", avatarUrl: null, isViewer: true },
+    coming: undefined as MateComing | undefined,
+    onSelect: select,
+    number: 1,
+  };
+
+  it.each<[string, Partial<typeof base>, boolean]>([
+    ["nothing changed", {}, true],
+    ["its owner read again, the same", { owner: { ...base.owner } }, true],
+    ["its coming read again, the same", { coming: undefined }, true],
+    ["it became the open one", { active: true }, false],
+    ["its activity changed", { activity: { ...activity, kind: "idle" } }, false],
+    ["its activity is a new object, the same", { activity: { ...activity } }, false],
+    ["its owner changed", { owner: { ...base.owner, name: "Jan" } }, false],
+    [
+      "it started coming up",
+      { coming: { kind: "coming", line: "Starting its container" } as MateComing },
+      false,
+    ],
+    ["its verb changed", { onSelect: () => {} }, false],
+    ["its number changed", { number: 2 }, false],
+  ])("%s → equal: %s", (_, change, equal) => {
+    expect(mateRowPropsEqual(base, { ...base, ...change })).toBe(equal);
+  });
+
+  it("redraws for a prop it no longer has", () => {
+    const { number: _number, ...rest } = base;
+    expect(mateRowPropsEqual(base, rest)).toBe(false);
   });
 });

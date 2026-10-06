@@ -694,22 +694,36 @@ export function applyThreadDetailEvent(
       // ids are random), and the completion then appends where it stood. The
       // id set and the echo rows move forward to the new array; a superseded
       // array falls back to the sorting path, and its echo rows are read anew
-      // when next asked for.
+      // when next asked for. A context-window update streaming in takes the
+      // same path: the rows it supersedes come out in one pass, and what is
+      // left stays in order.
       const ids = activityIdIndex.get(thread.activities);
       const base = echoes.length === 0 ? thread.activities : withoutRows(thread.activities, echoes);
       const lastActivity = base.at(-1);
       if (
-        !supersedesContextWindow &&
         ids !== undefined &&
         (lastActivity === undefined || activityOrder(lastActivity, activity) <= 0) &&
         !ids.has(activity.id)
       ) {
-        const activities = Arr.append(base, activity);
         const rows = echoRowsOf(thread.activities);
+        const superseded: OrchestrationThreadActivity[] = [];
+        const kept = supersedesContextWindow
+          ? base.filter((entry) => {
+              const replaced =
+                entry.turnId === activity.turnId && isResolvableContextWindowActivity(entry);
+              if (replaced) superseded.push(entry);
+              return !replaced;
+            })
+          : base;
+        const activities = Arr.append(kept, activity);
         activityIdIndex.delete(thread.activities);
         echoRowsIndex.delete(thread.activities);
         ids.add(activity.id);
         for (const echo of echoes) ids.delete(echo.id);
+        for (const row of superseded) {
+          ids.delete(row.id);
+          forgetEchoRow(rows, row);
+        }
         if (echoKey !== null) {
           rows.set(echoKey, [...(peers ?? []).filter((row) => !echoes.includes(row)), activity]);
         }

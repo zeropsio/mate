@@ -32,6 +32,19 @@ const NAMED_FACE_PART = "named";
 
 /** A face as HQ records it: `<tint>:<shape>`, `:named` after it where the name kept its place. */
 export function readMateFace(value: string): ZeropsMateFaceTag | undefined {
+  if (readFaces.has(value)) return readFaces.get(value);
+  const face = readMateFaceOnce(value);
+  // A handful of faces per account: emptied whole on the rare overflow.
+  if (readFaces.size >= READ_FACES_HELD) readFaces.clear();
+  readFaces.set(value, face);
+  return face;
+}
+
+/** Faces read, by their value: every row reads its Mate's on every render, the same answer. */
+const READ_FACES_HELD = 256;
+const readFaces = new Map<string, ZeropsMateFaceTag | undefined>();
+
+function readMateFaceOnce(value: string): ZeropsMateFaceTag | undefined {
   // Parts past these three are a newer client's; the ones this one knows still read.
   const [tint, shape, named] = value.split(":");
   const face = {

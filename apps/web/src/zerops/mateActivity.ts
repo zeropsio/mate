@@ -19,6 +19,7 @@ import type { MateAttentionRead } from "@t3tools/client-runtime/data";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import type { EnvironmentId, MateAttention, ThreadId } from "@t3tools/contracts";
 import type { MateLiveView } from "@t3tools/shared/hqMates";
+import { shareEqual } from "@t3tools/shared/structuralSharing";
 import {
   mateMarkStateForThread,
   toneIdForKind,
@@ -64,9 +65,35 @@ export function mateEnvironmentOf(
   );
 }
 
+/**
+ * Every Mate's activity, by project. Given the previous reading, each Mate whose activity reads
+ * the same keeps its entry, and a reading with no Mate changed is the previous one: a streaming
+ * chat's shell changes on every event, mostly where no row reads it, and each row redraws only
+ * when its own entry is new.
+ */
 export function matesActivityOf(
   input: MatesActivityInput,
+  previous?: ReadonlyMap<string, ZeropsAgentActivity>,
 ): ReadonlyMap<string, ZeropsAgentActivity> {
+  const next = readMatesActivity(input);
+  return previous === undefined ? next : shareActivities(previous, next);
+}
+
+function shareActivities(
+  previous: ReadonlyMap<string, ZeropsAgentActivity>,
+  next: Map<string, ZeropsAgentActivity>,
+): ReadonlyMap<string, ZeropsAgentActivity> {
+  let same = previous.size === next.size;
+  for (const [projectId, entry] of next) {
+    const before = previous.get(projectId);
+    const shared = before === undefined ? entry : shareEqual(before, entry);
+    if (shared !== before) same = false;
+    next.set(projectId, shared);
+  }
+  return same ? previous : next;
+}
+
+function readMatesActivity(input: MatesActivityInput): Map<string, ZeropsAgentActivity> {
   const shellsByEnvironment = new Map<EnvironmentId, EnvironmentThreadShell[]>();
   for (const thread of input.threads) {
     const shells = shellsByEnvironment.get(thread.environmentId);
