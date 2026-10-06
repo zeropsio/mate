@@ -25,6 +25,12 @@ import { membersScope } from "../families/organizationMembers.ts";
 import { projectRoutingsScope, routingsScope } from "../families/publicRouting.ts";
 import { STREAM_POLICY } from "../streamMachine.ts";
 
+import {
+  RECORDED_ROUTING,
+  REMOVED_ROUTING,
+  ROUTING_PROJECT,
+} from "../__fixtures__/publicRouting.ts";
+
 const PROCESS_SEARCH = "/process/search";
 const PROJECT_SEARCH = "/project/search";
 
@@ -1176,5 +1182,83 @@ describe("the organization's routings refused to the viewer", () => {
       release();
       yield* Fiber.interrupt(fiber);
     }),
+  );
+});
+
+describe("recorded routing membership frames", () => {
+  it.effect.each([
+    { name: "delete without add", data: { delete: [REMOVED_ROUTING] }, expected: "removed" },
+    {
+      name: "delete with empty add",
+      data: { add: [], delete: [REMOVED_ROUTING] },
+      expected: "removed",
+    },
+  ])("$name", ({ data, expected }) =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const base = answers(() => []);
+      const fixture = fixtureWire((request) =>
+        request.path === "/public-http-routing/search" &&
+        request.body?.wsOutputType === "listStream"
+          ? Effect.succeed({ items: [{ ...RECORDED_ROUTING, id: REMOVED_ROUTING }] })
+          : base(request),
+      );
+      const fiber = yield* run(store, fixture);
+      yield* fixture.push(fixture.subscription("/public-http-routing/search", "listStream"), data);
+      yield* settle;
+      expect(store.state().memberships.get(routingsScope(ORG))?.members.get(REMOVED_ROUTING)).toBe(
+        expected,
+      );
+      expect([...indexOf(store.state(), "routingProject", ROUTING_PROJECT)]).toEqual([]);
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+
+  it.effect.each(["read", "push-first", "push-during-read", "listed-row"] as const)(
+    "id-only add resolved by %s",
+    (source) =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const resolved = yield* Deferred.make<void>();
+        const base = answers(() => []);
+        const fixture = fixtureWire((request) =>
+          request.path === "/public-http-routing/search" && !request.body?.wsOutputType
+            ? Effect.as(Deferred.await(resolved), { items: [RECORDED_ROUTING] })
+            : base(request),
+        );
+        const fiber = yield* run(store, fixture);
+        const push = fixture.push(
+          fixture.subscription("/public-http-routing/search", "updateStream"),
+          { update: [RECORDED_ROUTING] },
+        );
+        if (source === "push-first") {
+          yield* push;
+          yield* settle;
+        }
+        yield* fixture.push(fixture.subscription("/public-http-routing/search", "listStream"), {
+          add: [RECORDED_ROUTING.id],
+          ...(source === "listed-row" ? { update: [RECORDED_ROUTING] } : {}),
+        });
+        yield* settle;
+        expect(
+          store.state().memberships.get(routingsScope(ORG))?.members.get(RECORDED_ROUTING.id),
+        ).toBe("member");
+        if (source !== "push-first" && source !== "listed-row") {
+          expect(factOf(store.state(), "publicRouting", RECORDED_ROUTING.id)).toBeUndefined();
+          expect([...indexOf(store.state(), "routingProject", ROUTING_PROJECT)]).toEqual([]);
+          expect(fixture.requests.at(-1)?.body?.search).toContainEqual({
+            name: "id",
+            operator: "in",
+            value: [RECORDED_ROUTING.id],
+          });
+          if (source === "push-during-read") yield* push;
+          else yield* Deferred.succeed(resolved, undefined);
+          yield* settle;
+        }
+        expect([...indexOf(store.state(), "routingProject", ROUTING_PROJECT)]).toEqual([
+          RECORDED_ROUTING.id,
+        ]);
+        yield* Fiber.interrupt(fiber);
+      }),
   );
 });

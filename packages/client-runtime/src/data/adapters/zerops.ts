@@ -105,8 +105,9 @@ const Frame = Schema.Struct({
   data: Schema.optionalKey(Schema.Unknown),
 });
 const MembershipData = Schema.Struct({
-  add: Schema.Array(Schema.String),
-  delete: Schema.Array(Schema.String),
+  add: Schema.optionalKey(Schema.Array(Schema.String)),
+  update: Schema.optionalKey(Schema.Array(Schema.Unknown)),
+  delete: Schema.optionalKey(Schema.Array(Schema.String)),
 });
 const UpdateData = Schema.Struct({ update: Schema.Array(Schema.Unknown) });
 const ListAnswer = Schema.Struct({
@@ -421,12 +422,21 @@ export function zeropsNavigationLink(options: {
           if (registration.role === "membership") {
             const delta = Option.getOrUndefined(decodeMembership(frame.data));
             if (delta === undefined) return Effect.void;
+            // Some listStream frames carry rows too; admit them before resolving id-only adds.
+            store.dispatch({
+              kind: "rows",
+              scope,
+              generation: generationOf(scope),
+              method: "push",
+              via: "zerops-realtime",
+              rows: rowsOf(registration.family, delta.update ?? []),
+            });
             return carryOut(
               store.dispatch({
                 kind: "membership",
                 scope,
                 generation: generationOf(scope),
-                delta: { add: delta.add, remove: delta.delete },
+                delta: { add: delta.add ?? [], remove: delta.delete ?? [] },
               }),
             );
           }
