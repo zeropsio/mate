@@ -10,11 +10,12 @@
 import * as Effect from "effect/Effect";
 import type { AtomRegistry } from "effect/unstable/reactivity";
 
-import { linkKeys, type OperationReceipt } from "../model.ts";
+import { linkKeys } from "../model.ts";
 import { sameValue } from "../projections/equal.ts";
 import { UNOBSERVED_PHASES } from "../projections/operationEnd.ts";
 import type { AccountStore, Projection } from "../store.ts";
 import type { OperationKind } from "./kind.ts";
+import { historyHolding, reflectedByProcess, runningIn, settledByProcess } from "./processEnd.ts";
 
 /** How a container is brought back: restarted, or — failed — stopped, then started. */
 type RestartWay = "restart" | "stop-then-start";
@@ -41,42 +42,27 @@ export function restartWay(status: string | undefined): RestartWay {
   return normalized !== undefined && normalized.endsWith("FAILED") ? "stop-then-start" : "restart";
 }
 
-const FAILED_STATUSES: ReadonlySet<string> = new Set(["FAILED", "CANCELED"]);
-
-/** The process an accepted restart follows; its last verb's. */
-const processOf = (receipt: OperationReceipt) => receipt.handles[0] ?? "";
-
 /** The action of the way's last verb: the process that brings the container back. */
 const lastVerbOf = (way: RestartWay) => (way === "restart" ? "stack.restart" : "stack.start");
 
 export const mateRestart: OperationKind<"mate-restart"> = {
   kind: "mate-restart",
   executor: "zerops",
-  reflected: (read, _intent, receipt) => read.fact("process", processOf(receipt)).kind === "known",
-  settledBy: (read, _intent, receipt) => {
-    const process = read.fact("process", processOf(receipt));
-    if (process.kind !== "known") return null;
-    if (process.value.status === "FINISHED") return { kind: "succeeded" };
-    if (FAILED_STATUSES.has(process.value.status))
-      return { kind: "failed", reason: `The restart ended ${process.value.status}.` };
-    return null;
-  },
+  reflected: (read, _intent, receipt) => reflectedByProcess(read, receipt),
+  settledBy: (read, _intent, receipt) =>
+    settledByProcess(read, receipt, (process) => `The restart ended ${process.status}.`),
   // Its process is in its project's history: held until it ends, an end met while away is read.
-  observedIn: (intent, receipt) =>
-    receipt.handles.length === 0
-      ? null
-      : { family: "process", listing: "history", ownerId: intent.projectId },
+  observedIn: (intent, receipt) => historyHolding(intent.projectId, receipt),
   // After a lost answer: the way's last verb running for this very service — never its stop,
   // which alone would end the operation with the container stopped.
   effectHandles: (read, intent) =>
-    [...read.index("running", intent.projectId)].filter((id) => {
-      const process = read.fact("process", id);
-      return (
-        process.kind === "known" &&
-        process.value.actionName === lastVerbOf(intent.way) &&
-        process.value.serviceStackIds.includes(intent.serviceId)
-      );
-    }),
+    runningIn(
+      read,
+      intent.projectId,
+      (process) =>
+        process.actionName === lastVerbOf(intent.way) &&
+        process.serviceStackIds.includes(intent.serviceId),
+    ),
 };
 
 type StopWatch = "waiting" | "ended" | "unobservable";

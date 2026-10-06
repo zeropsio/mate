@@ -178,7 +178,10 @@ describe("delete-project", () => {
   );
 
   it("holds its project's process history until it ends", () => {
-    const receipt = { handles: ["proc-del"] } as unknown as OperationReceipt;
+    const receipt = {
+      handles: ["proc-del"],
+      outcome: { kind: "pending" },
+    } as unknown as OperationReceipt;
     expect(deleteProject.observedIn!(DELETE, receipt)).toEqual({
       family: "process",
       listing: "history",

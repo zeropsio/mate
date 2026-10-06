@@ -5,7 +5,7 @@
  * @module data/operations/startService
  */
 import type { OperationKind } from "./kind.ts";
-import { followedByProcess } from "./processEnd.ts";
+import { historyHolding, reflectedByProcess, runningIn, settledByProcess } from "./processEnd.ts";
 
 declare module "../model.ts" {
   interface OperationIntents {
@@ -21,5 +21,16 @@ declare module "../model.ts" {
 export const startService: OperationKind<"start-service"> = {
   kind: "start-service",
   executor: "zerops",
-  ...followedByProcess({ action: "stack.start", what: "The start" }),
+  reflected: (read, _intent, receipt) => reflectedByProcess(read, receipt),
+  settledBy: (read, _intent, receipt) =>
+    settledByProcess(read, receipt, (process) => `The start ended ${process.status}.`),
+  observedIn: (intent, receipt) => historyHolding(intent.projectId, receipt),
+  // After a lost answer: a start running for this very service.
+  effectHandles: (read, intent) =>
+    runningIn(
+      read,
+      intent.projectId,
+      (process) =>
+        process.actionName === "stack.start" && process.serviceStackIds.includes(intent.serviceId),
+    ),
 };

@@ -225,7 +225,10 @@ describe("mate-restart", () => {
   );
 
   it("holds its project's process history until it ends, so an end during an outage is read", () => {
-    const receipt = { handles: ["proc-restart"] } as unknown as OperationReceipt;
+    const receipt = {
+      handles: ["proc-restart"],
+      outcome: { kind: "pending" },
+    } as unknown as OperationReceipt;
     expect(mateRestart.observedIn!(RESTART, receipt)).toEqual({
       family: "process",
       listing: "history",

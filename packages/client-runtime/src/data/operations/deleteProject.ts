@@ -7,8 +7,8 @@
  *
  * @module data/operations/deleteProject
  */
-import type { OperationReceipt } from "../model.ts";
 import type { OperationKind } from "./kind.ts";
+import { historyHolding, reflectedByProcess, runningIn, settledByProcess } from "./processEnd.ts";
 
 declare module "../model.ts" {
   interface OperationIntents {
@@ -21,33 +21,19 @@ declare module "../model.ts" {
 }
 
 const DELETE_ACTION = "project.delete";
-const FAILED_STATUSES: ReadonlySet<string> = new Set(["FAILED", "CANCELED"]);
 const FAILED_REASON = "The Zerops deletion process failed or was canceled.";
-
-const processOf = (receipt: OperationReceipt) => receipt.handles[0] ?? "";
 
 export const deleteProject: OperationKind<"delete-project"> = {
   kind: "delete-project",
   executor: "zerops",
-  reflected: (read, _intent, receipt) => read.fact("process", processOf(receipt)).kind === "known",
-  settledBy: (read, intent, receipt) => {
+  reflected: (read, _intent, receipt) => reflectedByProcess(read, receipt),
+  settledBy: (read, intent, receipt) =>
     // The project proven gone is the deletion's end, though its process's end went unseen.
-    if (read.fact("project", intent.projectId).kind === "deleted") return { kind: "succeeded" };
-    const process = read.fact("process", processOf(receipt));
-    if (process.kind !== "known") return null;
-    if (process.value.status === "FINISHED") return { kind: "succeeded" };
-    if (FAILED_STATUSES.has(process.value.status))
-      return { kind: "failed", reason: process.value.failReason ?? FAILED_REASON };
-    return null;
-  },
-  observedIn: (intent, receipt) =>
-    receipt.handles.length === 0
-      ? null
-      : { family: "process", listing: "history", ownerId: intent.projectId },
+    read.fact("project", intent.projectId).kind === "deleted"
+      ? { kind: "succeeded" }
+      : settledByProcess(read, receipt, (process) => process.failReason ?? FAILED_REASON),
+  observedIn: (intent, receipt) => historyHolding(intent.projectId, receipt),
   // After a lost answer: a delete process running for this very project.
   effectHandles: (read, intent) =>
-    [...read.index("running", intent.projectId)].filter((id) => {
-      const process = read.fact("process", id);
-      return process.kind === "known" && process.value.actionName === DELETE_ACTION;
-    }),
+    runningIn(read, intent.projectId, (process) => process.actionName === DELETE_ACTION),
 };
