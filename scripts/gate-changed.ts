@@ -150,7 +150,11 @@ if (import.meta.main) {
     args: ["scripts/check-guard-exceptions.ts"],
   });
   if (existing.length)
-    steps.push({ name: "check touched files", command: "vp", args: ["check", ...existing] });
+    steps.push({
+      name: "check touched files",
+      command: "vp",
+      args: ["check", "--no-error-on-unmatched-pattern", ...existing],
+    });
   for (const pkg of packages.filter((pkg) => pkg.typecheck))
     steps.push({
       name: `typecheck ${pkg.name}`,

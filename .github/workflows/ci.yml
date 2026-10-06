@@ -155,7 +155,7 @@ jobs:
   # `--parallel` drops the package dependency ordering that
   # `vp run` applies by default: these `test` tasks declare no `dependsOn` and
   # resolve workspace deps from source, so ordering only bought us idle runners
-  # between dependency layers.
+  # between dependency layers. Bound its otherwise unlimited fan-out by the runner's actual CPUs.
   test:
     name: Test
     runs-on: ubuntu-latest
@@ -180,7 +180,7 @@ jobs:
         run: vp run --filter @t3tools/desktop ensure:electron
 
       - name: Test
-        run: vp run --parallel --filter '!t3' --filter '!@t3tools/web' --filter '!@t3tools/mobile' --filter '!@t3tools/hq' --filter '!@t3tools/monorepo' test
+        run: vp run --parallel --concurrency-limit "$(node -p 'require("node:os").availableParallelism()')" --filter '!t3' --filter '!@t3tools/web' --filter '!@t3tools/mobile' --filter '!@t3tools/hq' --filter '!@t3tools/monorepo' test
 
   test_hq:
     name: Test HQ
