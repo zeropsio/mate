@@ -62,6 +62,8 @@ it("ignores control traffic and measures first Shop data without rewriting frame
     });
     expect(observer.segments[0]!.firstDataMs).toBeGreaterThanOrEqual(0);
     expect(await (await fetch(observer.origin)).json()).toEqual({ real: "HQ" });
+    await fetch(observer.origin, { method: "OPTIONS" });
+    expect(observer.requests()).toEqual({ http: 1, sockets: 1, byPath: { "GET /": 1 } });
   } finally {
     socket.terminate();
     await observer.close();

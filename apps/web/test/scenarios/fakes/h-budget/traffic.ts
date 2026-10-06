@@ -21,6 +21,7 @@ export async function observeTraffic(origin: string) {
   const events = new NodeEvents.EventEmitter();
   const stateEvents = new NodeEvents.EventEmitter();
   const links = new Map<WebSocket, WebSocket>();
+  const requests = new Map<string, number>();
   const segments: {
     open: boolean;
     firstDataMs: number | null;
@@ -30,6 +31,10 @@ export async function observeTraffic(origin: string) {
   }[] = [];
   const server = await serve(
     async (request) => {
+      if (request.method !== "OPTIONS") {
+        const key = `${request.method} ${request.url.pathname}`;
+        requests.set(key, (requests.get(key) ?? 0) + 1);
+      }
       const response = await fetch(new URL(request.url.pathname + request.url.search, origin), {
         method: request.method,
         headers: Object.fromEntries(
@@ -102,6 +107,11 @@ export async function observeTraffic(origin: string) {
   return {
     ...server,
     segments,
+    requests: () => ({
+      http: [...requests.values()].reduce((total, count) => total + count, 0),
+      sockets: segments.length,
+      byPath: Object.fromEntries(requests),
+    }),
     stateSettled: () => settled(stateEvents, () => true, "HQ menu state quiet for 1 s"),
     async opened(count: number) {
       const ready = () => segments.filter((segment) => segment.open).length >= count;

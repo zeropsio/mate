@@ -35,6 +35,7 @@ describe("H: hosted client budgets", () => {
         report(
           `H startup: browser total=${requests}, registrations=${sample.registrations - before.registrations}, other=${sample.otherRequests - before.otherRequests}; 4 Mates, settled`,
         );
+        report(`H startup HQ: ${JSON.stringify(b.measure.hqRequests())}; excludes preflights`);
         expect(requests, "Browser startup request budget").toBeLessThanOrEqual(60);
         yield* s.then.noExternalNetwork;
       }),

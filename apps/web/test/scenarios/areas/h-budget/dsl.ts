@@ -103,6 +103,7 @@ export function budgets(s: Scenario) {
       /** The organization's Mate variables read by key, `POST /user-data/search`. */
       variableReads: () => observation.browser.matching(/^POST \/user-data\/search(\?|$)/u),
       hqSegments: () => observation.hq.segments,
+      hqRequests: observation.hq.requests,
       firstData: (after = 0) => {
         const samples = observation.hq.segments.slice(after).map((segment) => {
           if (segment.firstDataMs === null) throw new Error("HQ segment has not served data");
