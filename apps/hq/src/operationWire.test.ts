@@ -1,4 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
+import * as TestClock from "effect/testing/TestClock";
+import * as Fiber from "effect/Fiber";
 import * as Effect from "effect/Effect";
 import * as Redacted from "effect/Redacted";
 import * as Stream from "effect/Stream";
@@ -6,7 +8,9 @@ import { makeOperationWire } from "./operationWire.ts";
 
 class TestSocket extends EventTarget {
   closed = false;
-  send(_data: string) {}
+  send(_data: string) {
+    this.dispatchEvent(new MessageEvent("message", { data: '{"type":"pong"}' }));
+  }
   close() {
     this.closed = true;
   }
@@ -69,6 +73,41 @@ describe("HQ operation receiver transport", () => {
       assert.strictEqual(calls, 1);
       assert.notInclude(String(error), "test-org-secret");
     }),
+  );
+  it.effect("detects a revoked credential on a quiet receiver even while pongs continue", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        let revoked = false;
+        const calls: string[] = [];
+        const wire = makeOperationWire({
+          baseUrl: "https://api.test",
+          credential,
+          fetch: async (url) => {
+            calls.push(String(url));
+            return revoked
+              ? new Response("forbidden", { status: 403 })
+              : new Response('{"webSocketToken":"ticket"}');
+          },
+          makeSocket: () => {
+            const socket = new TestSocket();
+            queueMicrotask(() =>
+              socket.dispatchEvent(
+                new MessageEvent("message", { data: '{"type":"SocketSuccess"}' }),
+              ),
+            );
+            return socket as unknown as WebSocket;
+          },
+        });
+        const link = yield* wire.open;
+        const ended = yield* Stream.runHead(link.frames).pipe(Effect.flip, Effect.forkChild);
+        revoked = true;
+        yield* TestClock.adjust(61_000);
+        assert.isDefined(ended.pollUnsafe(), "a credential refusal must end the quiet follow");
+        const error = yield* Fiber.join(ended);
+        assert.strictEqual(error._tag, "ZeropsRefused");
+        assert.include(calls, "https://api.test/user/info");
+      }),
+    ),
   );
   it.live("retains the owner's Retry-After on a transient registration failure", () =>
     Effect.gen(function* () {

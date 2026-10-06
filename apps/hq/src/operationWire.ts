@@ -156,6 +156,16 @@ export function makeOperationWire(options: {
           }),
         ),
       );
+      // A pong proves transport, not authorization: a deleted org token can leave this socket silent.
+      yield* Effect.forkScoped(
+        Effect.forever(
+          Effect.sleep(60_000).pipe(Effect.andThen(request("/user/info", "GET"))),
+        ).pipe(
+          Effect.catch((error) =>
+            Effect.sync(() => Queue.failCauseUnsafe(queue, Cause.fail(error))),
+          ),
+        ),
+      );
       return {
         receiverId,
         frames: Stream.fromQueue(queue),
