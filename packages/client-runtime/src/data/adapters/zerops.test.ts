@@ -326,6 +326,43 @@ describe("zeropsNavigationLink", () => {
       }),
   );
 
+  it.effect(
+    "lets a project that moved to another organization leave this one's roster, claiming nothing",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const row = (id: string) => ({ id, name: id, status: "ACTIVE", _version: 1 });
+        const fixture = fixtureWire((request) =>
+          request.method === "GET"
+            ? Effect.succeed({
+                status: 200,
+                body: {
+                  ...row(request.path.split("/").at(-1)!),
+                  clientId: request.path.endsWith("/moved") ? "other-org" : ORG,
+                },
+              })
+            : answers(
+                () => [],
+                () => ["kept", "moved", "lagging"].map(row),
+              )(request),
+        );
+        const fiber = yield* run(store, fixture);
+        yield* fixture.push(fixture.subscription(PROJECT_SEARCH, "listStream"), {
+          add: [],
+          delete: ["moved", "lagging"],
+        });
+        yield* settle;
+        const members = store.state().memberships.get(projectsScope(ORG))?.members;
+        // It exists, in another organization: it leaves this roster, neither deleted nor withheld.
+        expect(members?.has("moved")).toBe(false);
+        expect(factOf(store.state(), "project", "moved")?.content.kind).toBe("value");
+        // Still this organization's: the roster's index lags; it stays, unverified.
+        expect(members?.get("lagging")).toBe("absent-unverified");
+        expect(fixture.opens()).toBe(1);
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
+
   it.effect("registers again once for several projects taken at once, each withheld", () =>
     Effect.gen(function* () {
       const store = makeAccountStore(AtomRegistry.make());

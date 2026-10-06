@@ -167,7 +167,7 @@ export function zeropsNavigationLink(options: {
           if (directive.kind === "verify-absence")
             // Every member gone is asked about first; access that changed ends the attempt once.
             return Effect.flatMap(
-              Effect.forEach(directive.ids, (id) => verifyAbsence(familyOf(directive.key), id)),
+              Effect.forEach(directive.ids, (id) => verifyAbsence(directive.key, id)),
               (denied) =>
                 denied.some(Boolean)
                   ? Deferred.fail(ended, {
@@ -220,11 +220,17 @@ export function zeropsNavigationLink(options: {
        * A member gone from its scope: deleted, or no longer the viewer's — the owner says. Whether
        * the viewer's access to it was taken.
        */
-      const verifyAbsence = (family: Family, id: string): Effect.Effect<boolean, StreamFault> =>
+      const verifyAbsence = (scope: ScopeKey, id: string): Effect.Effect<boolean, StreamFault> =>
         Effect.gen(function* () {
-          const path = familySpec(family).zerops?.verifyPath?.(id);
+          const family = familyOf(scope);
+          const source = familySpec(family).zerops;
+          const path = source?.verifyPath?.(id);
           if (path === undefined) return false;
-          const { status } = yield* link.get(path);
+          const { status, body } = yield* link.get(path);
+          const placed = status === 200 ? (source?.organizationOf?.(body) ?? null) : null;
+          // It exists, in another organization: it left this one, claiming nothing more.
+          if (placed !== null && placed !== orgId)
+            store.dispatch({ kind: "left", scope, generation: generationOf(scope), id });
           if (status === 404)
             store.dispatch({
               kind: "proven-deletion",

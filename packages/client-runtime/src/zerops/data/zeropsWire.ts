@@ -74,7 +74,8 @@ const typeOf = (data: string): string | undefined => Option.getOrUndefined(decod
 
 /**
  * A failed request: its HTTP status where it had one, and how it classifies. The platform answers
- * a read of what it no longer has `400 <entity>NotFound` as often as 404; `status` says 404 for both.
+ * a read of a project it no longer has `400 projectNotFound`; `status` says 404 for it, the one
+ * code that proves a project gone — another `400 <x>NotFound` proves nothing of it.
  */
 interface RequestFailure {
   readonly status: number | null;
@@ -116,7 +117,7 @@ export function makeZeropsWire(options: {
       catch: (cause): RequestFailure => ({
         status:
           cause instanceof ZeropsApiError
-            ? cause.kind === "not-found"
+            ? cause.code === "projectNotFound"
               ? 404
               : cause.status
             : null,

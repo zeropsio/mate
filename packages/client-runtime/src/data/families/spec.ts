@@ -38,6 +38,11 @@ export interface ZeropsFamilySource<Value> {
   readonly decode: (raw: unknown) => ZeropsRow<Value> | null;
   /** The owner's answer to "gone or not yours?" (404 / 403), where leaving the scope asks it. */
   readonly verifyPath?: (id: string) => string;
+  /**
+   * The organization the owner's answer to that read places the entity in: one that answers from
+   * another organization left this one, though it exists and the viewer reads it.
+   */
+  readonly organizationOf?: (answer: unknown) => string | null;
 }
 
 /**

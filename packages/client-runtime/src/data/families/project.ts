@@ -73,6 +73,11 @@ export const projectFamily: FamilySpec<"project"> = {
         onSome: (row) => ({ id: row.id, value: valueOf(row), version: row._version ?? null }),
       }),
     verifyPath: (id) => `/project/${encodeURIComponent(id)}`,
+    organizationOf: (answer) =>
+      Option.match(decodeRow(answer), {
+        onNone: () => null,
+        onSome: (row) => row.clientId ?? null,
+      }),
   },
 };
 

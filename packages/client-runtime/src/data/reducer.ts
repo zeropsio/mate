@@ -88,6 +88,16 @@ export type AccountInput =
       readonly generation: number;
       readonly delta: MembershipDelta;
     }
+  /**
+   * The owner places a member that left the scope elsewhere (another organization): it leaves the
+   * scope, its fact kept — neither deleted nor withheld.
+   */
+  | {
+      readonly kind: "left";
+      readonly scope: ScopeKey;
+      readonly generation: number;
+      readonly id: string;
+    }
   | {
       readonly kind: "rows";
       readonly scope: ScopeKey;
@@ -302,6 +312,20 @@ function commitBaseline(
   return next;
 }
 
+function leaveScope(
+  state: AccountState,
+  scope: ScopeKey,
+  id: string,
+  changed: Set<ReadKey>,
+): AccountState {
+  const membership = state.memberships.get(scope);
+  if (membership === undefined || !membership.members.has(id)) return state;
+  const members = new Map(membership.members);
+  members.delete(id);
+  changed.add(`members:${scope}`);
+  return withMembership(state, scope, { ...membership, members });
+}
+
 /** The entity's id leaves every scope of its family: it is gone, or not the viewer's to list. */
 function unlist(state: AccountState, family: Family, id: string, changed: Set<ReadKey>) {
   let memberships = state.memberships;
@@ -445,7 +469,9 @@ export function reduceAccount(state: AccountState, input: AccountInput): Reducti
           ? commitBaseline(state, input, changed, directives)
           : input.kind === "membership"
             ? reduceMembership(state, input.scope, input.delta, changed, directives)
-            : reduceRows(state, input, changed);
+            : input.kind === "left"
+              ? leaveScope(state, input.scope, input.id, changed)
+              : reduceRows(state, input, changed);
   return { state: reindex(state, next, changed), changed, directives };
 }
 
