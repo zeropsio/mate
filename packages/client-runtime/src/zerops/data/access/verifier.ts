@@ -178,6 +178,17 @@ const judgeProject = (
       // A listing row names the viewer's own grant without whose it is: theirs, as a grant. Held
       // beside everybody's, it is the newer word on the viewer: a row's own read retires it.
       const { viewerRoleCode, ...row } = standing.project;
+      // A NO_ACCESS member's access is only what a row names (their own grant, or everybody's):
+      // a row naming none (a push of a project they just created) is no judgement yet.
+      if (
+        membership.roleCode === "NO_ACCESS" &&
+        viewerRoleCode === undefined &&
+        row.userRoles === undefined
+      )
+        return {
+          kind: "failed",
+          failure: { kind: "transport", detail: "The project's row names no grant yet." },
+        };
       return projectOutcome(
         project,
         viewerRoleCode === undefined

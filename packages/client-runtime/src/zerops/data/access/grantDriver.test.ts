@@ -640,6 +640,51 @@ describe("the access grant inside the data runtime", () => {
       ),
   );
 
+  it.effect(
+    "keeps the OWNER a creation established while the project's row names no grant yet, until one does",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const unsaid: ProjectOutcome = {
+            kind: "failed",
+            failure: { kind: "transport", detail: "The project's row names no grant yet." },
+          };
+          const platform: Platform = { ...healthy([B]) };
+          const opened = yield* grantedTab(platform);
+          const roleOfA = () =>
+            Effect.map(opened.access(), (access) =>
+              access.status === "verified"
+                ? access.projects.find(({ project: ref }) => ref.projectId === A.projectId)?.role
+                : access.status,
+            );
+          // A NO_ACCESS member created A: the creation establishes its OWNER at once.
+          yield* opened.runtime.observeAccess({
+            kind: "project-access-established",
+            accountEpoch: scope().epoch,
+            project: A,
+          });
+          expect(yield* roleOfA()).toBe("OWNER");
+
+          // The roster lists it from a push that names no grant: the grant cannot judge it yet.
+          platform.listed = [A, B];
+          platform.outcome = (target) => (target === A ? unsaid : verified(target));
+          yield* opened.runtime.access.signal({ type: "PROJECTS_DEMANDED", projects: [A, B] });
+          yield* opened.pass(10 * SECOND);
+          expect(yield* roleOfA()).toBe("OWNER");
+          // A renewal round still finds no grant on its row: the creation's OWNER stands.
+          yield* opened.pass(13 * MINUTE);
+          expect(opened.platform.rounds.length).toBeGreaterThan(1);
+          expect(yield* roleOfA()).toBe("OWNER");
+
+          // A row naming the member's grant arrives: the grant judges A on it.
+          platform.outcome = (target) => verified(target);
+          yield* opened.runtime.access.signal({ type: "PROJECT_GRANTS_CHANGED", project: A });
+          yield* opened.pass(platform.projectMs);
+          expect(yield* roleOfA()).toBe("ADMIN");
+        }),
+      ),
+  );
+
   it.effect("interrupts a read between rounds its own deadline abandons (G1)", () =>
     Effect.scoped(
       Effect.gen(function* () {

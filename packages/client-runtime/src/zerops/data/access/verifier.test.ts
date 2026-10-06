@@ -224,6 +224,36 @@ describe("the access verifier's round", () => {
     }),
   );
 
+  // A NO_ACCESS member's listing row names their own grant; a push may carry the row without it
+  // (a project they just created): that is no word that they have none.
+  it.effect.each([
+    {
+      name: "a row naming no grant leaves a Developer's project unjudged",
+      grants: {},
+      kind: "failed",
+    },
+    {
+      name: "a row naming everybody's grants judges it",
+      grants: { userRoles: [{ clientUserId: "someone", roleCode: "OWNER" }] },
+      kind: "verified",
+    },
+  ])("$name", ({ grants, kind }) =>
+    Effect.gen(function* () {
+      const developer: ZeropsUser = {
+        ...user,
+        clientUserList: [{ id: "membership", clientId: orgId, roleCode: "NO_ACCESS" }],
+      };
+      const verifier = makeRestAccessVerifier({
+        client: { fetchUser: async () => developer },
+        standing: (ref) => ({ kind: "listed", project: { ...project(ref.projectId), ...grants } }),
+        account,
+        onUser: () => {},
+      });
+      yield* verifier.verifyRound({ round: 1, carried: [], report: () => Effect.void });
+      expect(yield* verifier.verifyProject(projectRef("a"))).toMatchObject({ kind });
+    }),
+  );
+
   it.effect.each([
     ["denied", "direct-forbidden"],
     ["deleted", "direct-not-found"],

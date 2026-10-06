@@ -220,20 +220,19 @@ export const makeGrantDriver = Effect.fnUntraced(function* (options: GrantDriver
 
   /**
    * The runtime's grant for held evidence: every project whose own evidence
-   * is fresh, and those a command established that no evidence has named yet —
-   * in an organization the evidence still holds. A project the evidence holds
-   * unverified or denied is out of it, and so is one the last grant carried from
-   * evidence that no longer names it.
+   * is fresh, and those a command established that no evidence has judged yet —
+   * in an organization the evidence still holds. One the evidence holds unverified
+   * (a NO_ACCESS creator's project whose row names no grant yet) keeps what its
+   * command established; one it denied is out of it, and so is one the last grant
+   * carried from evidence that no longer names it.
    */
   const runtimeGrant = (
     evidence: Evidence,
     access: AccessState,
     at: Instant,
   ): VerifiedAccessGrant => {
-    const named = (project: ProjectRef) =>
-      evidence.projects.has(project.projectId) ||
-      evidence.unverified.has(project.projectId) ||
-      evidence.closedProjects.has(project.projectId);
+    const judged = (project: ProjectRef) =>
+      evidence.projects.has(project.projectId) || evidence.closedProjects.has(project.projectId);
     const organizations = new Set(
       evidence.account.organizations.map(({ organization }) => organizationKeyOf(organization)),
     );
@@ -241,7 +240,7 @@ export const makeGrantDriver = Effect.fnUntraced(function* (options: GrantDriver
       access.status === "verified"
         ? access.projects.filter(
             ({ project }) =>
-              !named(project) &&
+              !judged(project) &&
               !fromEvidence.has(projectKeyOf(project)) &&
               organizations.has(organizationKeyOf(project.organization)),
           )
