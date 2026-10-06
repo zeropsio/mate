@@ -529,6 +529,30 @@ describe("useAccountHq — the HQ whose session the account kept, verified behin
     expect(keptHqSessions.read(`org-kept-b:${KEPT.projectId}:${KEPT.address}`)).toBeNull();
   });
 
+  it("falls back to the member list once the kept HQ refuses its session, entering no door", async () => {
+    keepSession("org-kept-r", KEPT);
+    const hq = await pending("org-kept-r");
+    vi.stubGlobal("fetch", async () =>
+      Response.json({ code: "session_required" }, { status: 401 }),
+    );
+    let mints = 0;
+    const client = {
+      accountEpoch: 901,
+      mintThrowaway: async () => {
+        mints += 1;
+        return { id: "t-1", token: "door-1", mintingToken: "minting" };
+      },
+      deleteThrowaway: async () => {},
+    } as unknown as ZeropsApiClient;
+    await act(async () => {
+      await expect(accountHqApi(client, "org-kept-r", KEPT).structure()).rejects.toMatchObject({
+        code: "hq_unverified",
+      });
+    });
+    expect(mints).toBe(0);
+    expect([hq.last().status, hq.last().hq.kind]).toEqual(["loading", "none"]);
+  });
+
   it("without a kept session waits for the member list, as before", async () => {
     const hq = await pending("org-cold");
     expect(hq.last().status).toBe("loading");

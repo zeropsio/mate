@@ -96,10 +96,10 @@ export function useAccountHq(clientId: string | undefined): AccountHq {
   const named = useMemo(() => findOfficialHq(members), [members]);
   // The HQ whose session the account kept: verified official when the session was minted, so
   // the page goes to it while the member list verifies it behind.
-  const trusted = useMemo(
-    () => (clientId === undefined ? undefined : keptHqOf(clientId)),
-    [clientId],
+  const trustedKey = useSyncExternalStore(subscribeKeptHq, () =>
+    clientId === undefined ? undefined : keptHqOf(clientId),
   );
+  const trusted = useMemo(() => endpointOf(trustedKey), [trustedKey]);
   // What a read of the member list settles is this page's verdict from then on: the official
   // HQ it names, or that it names none — never a list being read again. A kept HQ it does not
   // name is dropped with its session.
@@ -150,28 +150,45 @@ export function useAccountHq(clientId: string | undefined): AccountHq {
 /** Where the account keeps HQ's session for the organization `clientId` and `hq`. */
 const keptHqKey = (clientId: string, hq: HqEndpoint) => `${clientId}:${hq.projectId}:${hq.address}`;
 
+/** Who hears that a kept HQ session was forgotten here: the HQ it named is trusted no more. */
+const keptHqListeners = new Set<() => void>();
+const subscribeKeptHq = (listener: () => void) => {
+  keptHqListeners.add(listener);
+  return () => keptHqListeners.delete(listener);
+};
+const forgetKeptHqSession = (key: string, token: string) => {
+  keptHqSessions.forget(key, token);
+  for (const listener of keptHqListeners) listener();
+};
+
 /**
- * The one HQ the account keeps a live session for in the organization `clientId`; none where it
- * keeps none, or sessions of more than one HQ.
+ * The one HQ the account keeps a live session for in the organization `clientId`, as
+ * `<projectId>:<address>`; none where it keeps none, or sessions of more than one HQ.
  */
-function keptHqOf(clientId: string): HqEndpoint | undefined {
+function keptHqOf(clientId: string): string | undefined {
   const prefix = `${clientId}:`;
-  const found = new Map<string, HqEndpoint>();
-  for (const key of keptHqSessions.keys()) {
-    if (!key.startsWith(prefix) || key.includes(":displaced:")) continue;
-    const rest = key.slice(prefix.length);
-    const split = rest.indexOf(":");
-    if (split <= 0) continue;
-    found.set(rest, { projectId: rest.slice(0, split), address: rest.slice(split + 1) });
-  }
-  return found.size === 1 ? [...found.values()][0] : undefined;
+  const found = new Set(
+    keptHqSessions
+      .keys()
+      .filter((key) => key.startsWith(prefix) && !key.includes(":displaced:"))
+      .map((key) => key.slice(prefix.length)),
+  );
+  return found.size === 1 ? [...found][0] : undefined;
+}
+
+/** The HQ a `<projectId>:<address>` names; the address holds `:` itself. */
+function endpointOf(named: string | undefined): HqEndpoint | undefined {
+  const split = named?.indexOf(":") ?? -1;
+  return named === undefined || split <= 0
+    ? undefined
+    : { projectId: named.slice(0, split), address: named.slice(split + 1) };
 }
 
 /** Forgets the session the account kept for `hq`, which the member list does not name. */
 function forgetKeptHq(clientId: string, hq: HqEndpoint): void {
   const key = keptHqKey(clientId, hq);
   const session = keptHqSessions.read(key);
-  if (session !== null) keptHqSessions.forget(key, session.token);
+  if (session !== null) forgetKeptHqSession(key, session.token);
 }
 
 const apis = new Map<string, HqApi>();
@@ -268,7 +285,7 @@ export function accountHqApi(client: ZeropsApiClient, clientId: string, hq: HqEn
         if (displaced !== null)
           keptHqSessions.keep(`${keptKey}:displaced:${displaced.token}`, displaced);
       },
-      forget: (token) => void keptHqSessions.forget(keptKey, token),
+      forget: (token) => forgetKeptHqSession(keptKey, token),
     },
     fetch: (input, init) => fetch(input, init),
     throughDoor: (use) =>
