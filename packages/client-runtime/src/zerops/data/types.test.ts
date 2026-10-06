@@ -3,15 +3,11 @@ import { describe, expect, it } from "@effect/vitest";
 import {
   ZeropsAccountId,
   ZeropsApiOrigin,
-  ZeropsContainerId,
   ZeropsOrganizationId,
   ZeropsProcessId,
   ZeropsProjectId,
   ZeropsServiceId,
-  currentMetricKeyOf,
   entityKeyOf,
-  historyBucketKeyOf,
-  historySeriesKeyOf,
   makeZeropsApiOrigin,
   projectKeyOf,
   queryKeyOf,
@@ -89,56 +85,6 @@ describe("Zerops platform data identities", () => {
       processId: ZeropsProcessId.make("same-id"),
     };
     expect(entityKeyOf(service)).not.toBe(entityKeyOf(process));
-  });
-
-  it("keeps distinct history windows from sharing registrations", () => {
-    const base = {
-      kind: "metric-history-of-project" as const,
-      project: project(),
-      groupBy: "serviceStackId" as const,
-      schemaVersion: 1 as const,
-    };
-    expect(
-      queryKeyOf({
-        ...base,
-        window: { timeGroupBy: "1h", limit: 24, timeZone: "Europe/Prague" },
-      }),
-    ).not.toBe(
-      queryKeyOf({
-        ...base,
-        window: { timeGroupBy: "1h", limit: 24, timeZone: "UTC" },
-      }),
-    );
-  });
-
-  it("keys metric series and corrected buckets by their complete declared identity", () => {
-    const service: ServiceRef = {
-      kind: "service",
-      project: project(),
-      serviceId: ZeropsServiceId.make("service"),
-    };
-    const current = {
-      service,
-      containerId: ZeropsContainerId.make("container"),
-      groupBy: "containerId" as const,
-      schemaVersion: 1 as const,
-    };
-    expect(currentMetricKeyOf(current)).not.toBe(
-      currentMetricKeyOf({ ...current, containerId: ZeropsContainerId.make("other") }),
-    );
-
-    const series = {
-      service,
-      groupBy: "serviceStackId" as const,
-      window: { timeGroupBy: "1h" as const, limit: 24, timeZone: "UTC" },
-      schemaVersion: 1 as const,
-    };
-    expect(historySeriesKeyOf(series)).not.toBe(
-      historySeriesKeyOf({ ...series, window: { ...series.window, timeZone: "Europe/Prague" } }),
-    );
-    expect(historyBucketKeyOf({ series, from: "a", till: "b" })).not.toBe(
-      historyBucketKeyOf({ series, from: "b", till: "c" }),
-    );
   });
 });
 

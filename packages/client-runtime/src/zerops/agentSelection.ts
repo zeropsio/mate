@@ -34,6 +34,11 @@ import {
 /** The env key zcp writes when an agent's login verifies. */
 const OAUTH_FLAG_PREFIX = "ZCP_AGENT_OAUTH_";
 
+/** Every agent's sign-in flag key: what a read of a container's agents asks for, and nothing else. */
+export const AGENT_OAUTH_FLAG_KEYS: ReadonlyArray<string> = ZEROPS_AGENT_TYPE_CANONICAL_ORDER.map(
+  (agentType) => `${OAUTH_FLAG_PREFIX}${agentTypeToEnvSuffix(agentType)}`,
+);
+
 /** Suffix back to agent type, derived from the one forward mapping so they cannot drift. */
 const AGENT_BY_SUFFIX = new Map(
   ZEROPS_AGENT_TYPE_CANONICAL_ORDER.map((agentType) => [

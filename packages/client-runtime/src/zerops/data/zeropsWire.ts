@@ -35,7 +35,8 @@ const transient = (message: string): StreamFault => ({ outcome: "transient", mes
 /** How a failed Zerops request classifies. */
 export function zeropsFault(cause: unknown): StreamFault {
   if (!(cause instanceof ZeropsApiError)) return transient(String(cause));
-  if (cause.status !== null) return classifyHttp(cause.status, cause.retryAfterMs ?? undefined);
+  if (cause.status !== null)
+    return classifyHttp(cause.status, cause.retryAfterMs ?? undefined, cause.message);
   switch (cause.kind) {
     case "expired-session":
       return { outcome: "recoverable-session", message: cause.message };

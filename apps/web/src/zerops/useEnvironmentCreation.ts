@@ -15,17 +15,14 @@ import {
   nameUnderApp,
   planEnvironmentCreation,
   recipeTierServices,
-  unionAgents,
   type EnvironmentCreationOutcome,
   type EnvironmentCreationStep,
   type EnvironmentCreationStepProgress,
   type RecipeRuntime,
-  type ZeropsAgentType,
   type ZeropsEnvironmentRole,
   type ZeropsGroup,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import { ZeropsServiceId, type AgentsCellRequest } from "@t3tools/client-runtime/zerops/data";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import type { HqApi } from "@t3tools/client-runtime/zerops/hq";
 import { RegistryContext } from "@effect/atom-react";
@@ -37,7 +34,7 @@ import { accountHqApi, officialHq, useAccountHq } from "./accountHq";
 import { invalidateZerops } from "./accountInvalidations";
 import { captureAccountLifetime } from "./accountLifetime";
 import { beginPress, pressHold, pressPlatform, pressRegistration, runPress } from "./matePress";
-import { readZeropsCellOnce } from "./readZeropsCell";
+import { useReadGroupAgents } from "./groupAgents";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 import { useZeropsData } from "./zeropsDataContext";
 
@@ -151,39 +148,7 @@ export function useEnvironmentCreation(): (
   const registry = useContext(RegistryContext);
   const accountHq = useAccountHq(activeOrganization?.id);
 
-  /**
-   * The agents a group's existing environments are signed in with, so a Mate born into that group
-   * offers the same ones instead of the platform's whole menu (`agentSelection.ts`). A read that
-   * fails is no reason to refuse a creation: the empty answer leaves `ZCP_AGENTS` out, and the
-   * container offers every agent.
-   */
-  const readGroupAgents = useCallback(
-    async (
-      environments: ReadonlyArray<{ readonly item: ZeropsCandidate }>,
-    ): Promise<ReadonlyArray<ZeropsAgentType>> =>
-      unionAgents(
-        await Promise.all(
-          environments.flatMap(({ item }) => {
-            if (item.service === undefined || activeOrganization === null) return [];
-            const request: AgentsCellRequest = {
-              kind: "agents",
-              account: runtime.scope,
-              service: {
-                kind: "service",
-                project: projectRef(activeOrganization.id, item.project.id),
-                serviceId: ZeropsServiceId.make(item.service.id),
-              },
-            };
-            return [
-              readZeropsCellOnce(runtime.cells, request).then(
-                (agents): ReadonlyArray<ZeropsAgentType> => agents ?? [],
-              ),
-            ];
-          }),
-        ),
-      ),
-    [activeOrganization, projectRef, runtime.cells, runtime.scope],
-  );
+  const readGroupAgents = useReadGroupAgents();
 
   return useCallback(
     async (request: EnvironmentCreationRequest): Promise<EnvironmentCreationRun> => {

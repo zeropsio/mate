@@ -16,10 +16,12 @@ import {
 } from "./adapters/hq.ts";
 import { mateAttentionLink, type MateAttentionWire } from "./adapters/mateAttention.ts";
 import { zeropsNavigationLink, type ZeropsWire } from "./adapters/zerops.ts";
-import type { DetailDemand } from "./demand.ts";
+import { detailScopeOf, type DetailDemand } from "./demand.ts";
 import { familySpec } from "./families/index.ts";
 import type { RegisteredOperationKind } from "./operations/kind.ts";
 import { holdStandingDemands } from "./operations/standing.ts";
+import { linkKeys } from "./model.ts";
+import { streamOf } from "./reducer.ts";
 import type { AccountStore } from "./store.ts";
 import type { StreamFault } from "./streamMachine.ts";
 import { superviseLink, type LinkSignal } from "./supervisor.ts";
@@ -29,6 +31,10 @@ export interface RunningLink {
   readonly signal: (signal: LinkSignal) => void;
   /** A screen's hold on a detail while it is drawn; the release lets it go. */
   readonly demandDetail: (demand: DetailDemand) => () => void;
+  /** Our own write changed a sampled detail: it is read again now, or on its next demand. */
+  readonly revalidate: (demand: DetailDemand) => void;
+  /** The person's "try again" on one detail. */
+  readonly retryDetail: (demand: DetailDemand) => void;
   /** Ends the demand: the link and its scopes pause, their facts stay. */
   readonly stop: () => void;
 }
@@ -55,6 +61,8 @@ export function startZeropsNavigation(options: {
   return {
     signal: (signal) => void Effect.runFork(supervisor.signal(signal)),
     demandDetail: link.demandDetail,
+    revalidate: link.revalidate,
+    retryDetail: link.retryDetail,
     stop: () => {
       Effect.runSync(supervisor.release);
       Effect.runFork(Fiber.interrupt(fiber));
@@ -62,7 +70,7 @@ export function startZeropsNavigation(options: {
   };
 }
 
-export interface RunningHq extends RunningLink {
+export interface RunningHq extends Omit<RunningLink, "revalidate" | "retryDetail"> {
   /** The same organization's HQ reached over a new wire: the next socket opens over it. */
   readonly rewire: (wire: HqWire) => void;
   /** Asks HQ where a Mate may move, as the move opens. */
@@ -144,6 +152,17 @@ export interface AccountObservation {
    * one is, it is read once one is; a switch reads it again under the new one.
    */
   readonly demandDetail: (demand: DetailDemand) => () => void;
+  /**
+   * Holds a detail of the organization shown until its read settles, then lets it go: `true` once
+   * it is read (or held read by another screen already), `false` once it failed, was refused or
+   * let go — and at once with no organization shown, or with its link down or refused: a flow
+   * that awaits it never waits for a link.
+   */
+  readonly readDetail: (demand: DetailDemand) => Promise<boolean>;
+  /** Our own write changed a sampled detail of the organization shown: read it again. */
+  readonly revalidate: (demand: DetailDemand) => void;
+  /** The person's "try again" on one detail of the organization shown. */
+  readonly retryDetail: (demand: DetailDemand) => void;
   /** The person's "try now". */
   readonly retry: () => void;
   /** Ends the observation: no organization shown, and its operations' standing demands let go. */
@@ -180,7 +199,7 @@ export function observeAccount(options: {
     release: (() => void) | null;
   }
   const holds = new Set<Hold>();
-  const linkOf = (source: Hold["source"]): RunningLink | null =>
+  const linkOf = (source: Hold["source"]): Pick<RunningLink, "demandDetail"> | null =>
     source === "hq" ? (hq?.link ?? null) : (shown?.link ?? null);
   const attach = (source: Hold["source"]) => {
     for (const hold of holds)
@@ -263,6 +282,36 @@ export function observeAccount(options: {
         hold.release?.();
       };
     },
+    readDetail: (demand) =>
+      new Promise((resolve) => {
+        if (shown === null) return resolve(false);
+        const scope = detailScopeOf(shown.orgId, demand);
+        const link = linkKeys.zerops(shown.orgId);
+        const release = observation.demandDetail(demand);
+        // Waits only for a read the live link will make; a link down or refused is no answer.
+        const settled = () => {
+          const { phase } = streamOf(options.store.state(), scope);
+          if (phase === "live") return true;
+          if (phase === "connecting" || phase === "baselining") return null;
+          return phase === "stale" && streamOf(options.store.state(), link).phase === "live"
+            ? null
+            : false;
+        };
+        const answer = settled();
+        if (answer !== null) {
+          release();
+          return resolve(answer);
+        }
+        const stopHearing = options.store.subscribe(() => {
+          const heard = settled();
+          if (heard === null) return;
+          stopHearing();
+          release();
+          resolve(heard);
+        });
+      }),
+    revalidate: (demand) => shown?.link.revalidate(demand),
+    retryDetail: (demand) => shown?.link.retryDetail(demand),
     retry: () => {
       shown?.link.signal("manual-retry");
       hq?.link.signal("manual-retry");

@@ -40,11 +40,9 @@
  * ⋯ menu finishes it (*Finish setup*).
  */
 import { useNavigate } from "@tanstack/react-router";
-import {
-  selectLocationChoice,
-  type LocationsCellRequest,
-} from "@t3tools/client-runtime/zerops/data";
+import { organizationLocations, type LocationsRead } from "@t3tools/client-runtime/data";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
+import { Atom } from "effect/unstable/reactivity";
 import { useEffect, useMemo, useState } from "react";
 
 import {
@@ -61,7 +59,7 @@ import { useNewProjectBirthPorts } from "~/zerops/useNewProjectBirthPorts";
 import { useNewProjectAsk } from "~/zerops/newProjectAsk";
 import { useHqOffers, useOrgOffers } from "~/zerops/useHqOffers";
 import { useTakenBotNames, useZeropsCandidates } from "~/zerops/useZeropsCandidates";
-import { useKnown, useZeropsData } from "~/zerops/zeropsDataContext";
+import { useAccountDataOptional, useProjection } from "~/zerops/ZeropsAccountData";
 import type { ZeropsOrganizationStatus } from "~/zerops/ZeropsSessionProvider";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
@@ -82,6 +80,8 @@ export function zeropsNewProjectScopeStepVisible(input: {
 }
 
 /** Mounted once, above every view: the dialog while New project is asked for. */
+const UNREAD_LOCATIONS = Atom.make<LocationsRead>({ status: "loading", locations: [] });
+
 export function ZeropsNewProjectHost() {
   const asked = useNewProjectAsk((state) => state.asked);
   const { status } = useZeropsSession();
@@ -94,7 +94,6 @@ function NewProjectDialog() {
   const birthPorts = useNewProjectBirthPorts();
   const { activeOrganization, organizationStatus, organizations, selectOrganization } =
     useZeropsSession();
-  const { organizationRef, runtime } = useZeropsData();
   const navigate = useNavigate();
   // The account's Mates: the names a new one may not take, and the tints its face walks past.
   const { listing } = useZeropsCandidates();
@@ -122,20 +121,17 @@ function NewProjectDialog() {
     at,
   });
   const canCreate = addProject.offered;
-  const locationRequest = useMemo<LocationsCellRequest | null>(
-    () =>
-      activeOrganization && canCreate
-        ? {
-            kind: "locations",
-            account: runtime.scope,
-            organization: organizationRef(activeOrganization.id),
-          }
-        : null,
-    [activeOrganization, canCreate, organizationRef, runtime.scope],
-  );
-  const offered = selectLocationChoice(
-    useKnown(locationRequest === null ? null : runtime.cells.known(locationRequest)),
-  );
+  // Where it may live is read while the dialog can create: once on opening, and again while open.
+  const account = useAccountDataOptional();
+  const demandDetail = account?.demandDetail;
+  const orgId = account?.orgId ?? null;
+  const placesFor =
+    activeOrganization && canCreate && orgId === activeOrganization.id ? orgId : null;
+  useEffect(() => {
+    if (demandDetail === undefined || placesFor === null) return;
+    return demandDetail({ family: "organizationLocations", ownerId: placesFor });
+  }, [demandDetail, placesFor]);
+  const offered = useProjection(organizationLocations, placesFor, UNREAD_LOCATIONS);
   const locations = offered.locations;
   const locationKey = activeOrganization?.id ?? "";
   const locationId =

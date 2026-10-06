@@ -14,8 +14,6 @@ export * from "./projection.ts";
 export * from "./cellSelectors.ts";
 export * from "./cells.ts";
 export * from "./restAdapter.ts";
-export * from "./logTransport.ts";
-export * from "./logs.ts";
 export * from "./runtime.ts";
 export * from "./state.ts";
 export * from "./storeReads.ts";

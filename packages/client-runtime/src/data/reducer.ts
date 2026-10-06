@@ -8,7 +8,14 @@
  *
  * @module data/reducer
  */
-import { FAMILIES, familySpec, ownScopeOf, scopeListing, scopeSpec } from "./families/index.ts";
+import {
+  FAMILIES,
+  familySpec,
+  ownScopeOf,
+  scopeListing,
+  scopeSpec,
+  streamMode,
+} from "./families/index.ts";
 import type { FamilyIndex } from "./families/spec.ts";
 import {
   factKey,
@@ -160,7 +167,7 @@ function parentOf(key: StreamKey): string | null {
 }
 
 export function streamOf(state: AccountState, key: StreamKey): StreamState {
-  return state.streams.get(key) ?? initialStream({ parent: parentOf(key), mode: "realtime" });
+  return state.streams.get(key) ?? initialStream({ parent: parentOf(key), mode: streamMode(key) });
 }
 
 /**

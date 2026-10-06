@@ -47,9 +47,9 @@ describe("ZeropsNewProjectHost source", () => {
     expect(birthPortsSource).not.toContain("containerImported");
   });
 
-  it("loads organization locations through the broker's demand-scoped atom", () => {
-    expect(hostSource).toContain("runtime.cells.known(locationRequest)");
-    expect(hostSource).toContain('kind: "locations"');
+  it("reads organization locations through the data layer's demanded projection", () => {
+    expect(hostSource).toContain('family: "organizationLocations"');
+    expect(hostSource).toContain("useProjection(organizationLocations,");
     expect(hostSource).not.toContain(".listClientLocations(");
   });
 

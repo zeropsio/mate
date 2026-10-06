@@ -16,8 +16,9 @@ import { AtomRegistry } from "effect/unstable/reactivity";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 
 import { zeropsSessionAtom } from "../state/zerops";
-import { makeMemberCells } from "./__fixtures__/memberCells";
+import { LAYER_TURNS_MS, makeMemberAccount } from "./__fixtures__/sampledAccount";
 import { keepHqVerdict, keepNoHqVerdict } from "./hqVerdict";
+import { AccountDataContext } from "./ZeropsAccountData";
 import { ZeropsDataContext, type ZeropsDataContextValue } from "./zeropsDataContext";
 import {
   useZeropsMateOwners,
@@ -107,24 +108,17 @@ describe("useZeropsOrganizationMembersRead", () => {
       },
       epoch: AccountEpoch.make(1),
     };
-    const organizationRef = (organizationId: string): OrganizationRef => ({
-      kind: "organization",
-      account: scope.account,
-      organizationId: ZeropsOrganizationId.make(organizationId),
-    });
     let reads = 0;
-    const cells = await makeMemberCells({
-      scope,
-      organization: organizationRef("org-1"),
+    const registry = AtomRegistry.make();
+    const account = makeMemberAccount({
+      registry,
+      orgId: "org-1",
       members: async () => {
         reads += 1;
         return [{ id: "cu-jan", user: { fullName: "Jan Novák" } }] as never;
       },
     });
-    const data = {
-      runtime: { scope, cells },
-      organizationRef,
-    } as unknown as ZeropsDataContextValue;
+    const data = { runtime: { scope } } as unknown as ZeropsDataContextValue;
     const seen: Array<ReturnType<typeof useZeropsOrganizationMembersRead>> = [];
     function Probe() {
       seen.push(useZeropsOrganizationMembersRead({ clientId: "org-1", enabled: true }));
@@ -137,21 +131,25 @@ describe("useZeropsOrganizationMembersRead", () => {
           null,
           createElement(
             RegistryContext.Provider,
-            { value: AtomRegistry.make() },
+            { value: registry },
             createElement(
               ZeropsDataContext.Provider,
               { value: data },
-              createElement(Probe),
-              createElement(Probe),
-              createElement(Probe),
-              createElement(Probe),
+              createElement(
+                AccountDataContext.Provider,
+                { value: account.value },
+                createElement(Probe),
+                createElement(Probe),
+                createElement(Probe),
+                createElement(Probe),
+              ),
             ),
           ),
         ),
       );
     });
     await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, LAYER_TURNS_MS));
     });
     expect(seen.at(-1)?.status).toBe("ready");
     expect(seen.at(-1)?.members).toHaveLength(1);
@@ -174,9 +172,10 @@ describe("useZeropsMateOwners", () => {
       organizationId: ZeropsOrganizationId.make(organizationId),
     });
     let reads = 0;
-    const cells = await makeMemberCells({
-      scope,
-      organization: organizationRef("org-1"),
+    const registry = AtomRegistry.make();
+    const account = makeMemberAccount({
+      registry,
+      orgId: "org-1",
       members: async () => {
         reads += 1;
         // The platform knows Eva by another name; the badge keeps HQ's, and takes her picture.
@@ -192,11 +191,7 @@ describe("useZeropsMateOwners", () => {
         ];
       },
     });
-    const data = {
-      runtime: { scope, cells },
-      organizationRef,
-    } as unknown as ZeropsDataContextValue;
-    const registry = AtomRegistry.make();
+    const data = { runtime: { scope } } as unknown as ZeropsDataContextValue;
     registry.set(zeropsSessionAtom, {
       status: "signed-in",
       organizationStatus: "selected",
@@ -233,12 +228,20 @@ describe("useZeropsMateOwners", () => {
         createElement(
           RegistryContext.Provider,
           { value: registry },
-          createElement(ZeropsDataContext.Provider, { value: data }, createElement(Probe)),
+          createElement(
+            ZeropsDataContext.Provider,
+            { value: data },
+            createElement(
+              AccountDataContext.Provider,
+              { value: account.value },
+              createElement(Probe),
+            ),
+          ),
         ),
       );
     });
     await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, LAYER_TURNS_MS));
     });
     expect(owners.at(-1)).toEqual({
       name: "Eva Dvořák",
@@ -260,11 +263,6 @@ describe("useZeropsMemberNames", () => {
     },
     epoch: AccountEpoch.make(1),
   };
-  const organizationRef = (organizationId: string): OrganizationRef => ({
-    kind: "organization",
-    account: scope.account,
-    organizationId: ZeropsOrganizationId.make(organizationId),
-  });
   const HQ = { projectId: "P_HQ", address: "https://hq.example.test" };
 
   afterEach(() => {
@@ -281,19 +279,16 @@ describe("useZeropsMemberNames", () => {
     if (verdict === "official") keepHqVerdict(owner, HQ);
     else keepNoHqVerdict(owner);
     let read = 0;
-    const cells = await makeMemberCells({
-      scope,
-      organization: organizationRef(clientId),
+    const registry = AtomRegistry.make();
+    const account = makeMemberAccount({
+      registry,
+      orgId: clientId,
       members: async () => {
         read += 1;
         return [{ id: "cu-cleo", user: { id: "u-cleo", fullName: "Cleo Dvořák" } }] as never;
       },
     });
-    const data = {
-      runtime: { scope, cells },
-      organizationRef,
-    } as unknown as ZeropsDataContextValue;
-    const registry = AtomRegistry.make();
+    const data = { runtime: { scope } } as unknown as ZeropsDataContextValue;
     mountHqNavigation(registry, clientId, {
       people: { "u-cleo": { name: "Cleo as HQ names her" } },
       live: unavailableSince === null,
@@ -308,12 +303,20 @@ describe("useZeropsMemberNames", () => {
         createElement(
           RegistryContext.Provider,
           { value: registry },
-          createElement(ZeropsDataContext.Provider, { value: data }, createElement(Probe)),
+          createElement(
+            ZeropsDataContext.Provider,
+            { value: data },
+            createElement(
+              AccountDataContext.Provider,
+              { value: account.value },
+              createElement(Probe),
+            ),
+          ),
         ),
       );
     });
     await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, LAYER_TURNS_MS));
     });
     expect([named.at(-1), read]).toEqual([name, reads]);
   });

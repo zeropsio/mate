@@ -38,9 +38,7 @@ import {
   zeropsThrowawayPlatform,
 } from "@t3tools/client-runtime/zerops/doorThrowaway";
 import type { ZeropsApiClient, ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
-import type { MembersCellRequest } from "@t3tools/client-runtime/zerops/data";
-import * as Effect from "effect/Effect";
-import { useCallback, useContext, useEffect, useMemo, useSyncExternalStore } from "react";
+import { useCallback, useContext, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 
 import { appBasePath } from "~/basePath";
 import { randomUUID } from "~/lib/utils";
@@ -59,6 +57,7 @@ import {
 } from "./hqVerdict";
 import { endHqSession, keptHqSessions } from "./keptSessions";
 import { useZeropsOrganizationMembersRead } from "./useZeropsMateOwners";
+import { useAccountDataOptional } from "./ZeropsAccountData";
 import { whenShown } from "./whenShown";
 import { ZeropsDataContext } from "./zeropsDataContext";
 import { useZeropsSessionOptional } from "./ZeropsSessionProvider";
@@ -134,16 +133,26 @@ export function useAccountHq(clientId: string | undefined): AccountHq {
     [kept, named, settled, trusted],
   );
   const admins = useMemo(() => ownersAndAdmins(members), [members]);
+  const account = useAccountDataOptional();
+  const revalidate = account?.revalidate;
+  const retryDetail = account?.retryDetail;
+  // A verdict this page held and forgot — its HQ said it is not the official one — says the list it
+  // was read from is old: the member list is read again, whenever it was read this session.
+  const heldVerdict = useRef(kept !== undefined);
+  useEffect(() => {
+    const held = kept !== undefined;
+    if (heldVerdict.current && !held && clientId !== undefined)
+      revalidate?.({ family: "organizationMembers", ownerId: clientId });
+    heldVerdict.current = held;
+  }, [clientId, kept, revalidate]);
   const reread = useCallback(() => {
-    if (data === null || owner === undefined) return;
-    const request: MembersCellRequest = {
-      kind: "members",
-      account: data.runtime.scope,
-      organization: data.organizationRef(owner.clientId),
-    };
-    Effect.runFork(data.runtime.cells.invalidate(request));
+    if (owner === undefined) return;
+    const members = { family: "organizationMembers", ownerId: owner.clientId } as const;
+    // Our own write made the list old; the person's again also lifts a refusal.
+    revalidate?.(members);
+    retryDetail?.(members);
     forgetNoHqVerdict(owner);
-  }, [data, owner]);
+  }, [owner, retryDetail, revalidate]);
   return {
     status: kept !== undefined || (!settled && trusted !== undefined) ? "ready" : status,
     hq,

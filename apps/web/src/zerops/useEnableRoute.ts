@@ -13,13 +13,11 @@
  * surface.
  */
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
-import * as Effect from "effect/Effect";
 import { useCallback, useState } from "react";
 
 import { captureAccountLifetime } from "./accountLifetime";
 import { useAccountOperations } from "./accountOperations";
 import { useAccountData } from "./ZeropsAccountData";
-import { useZeropsData } from "./zeropsDataContext";
 import { submitZeropsWrite } from "./zeropsWrite";
 
 export interface EnableRoute {
@@ -33,8 +31,7 @@ export interface EnableRoute {
 
 export function useEnableRoute(): EnableRoute {
   const operations = useAccountOperations();
-  const { orgId } = useAccountData();
-  const { projectRef, runtime } = useZeropsData();
+  const { orgId, revalidate } = useAccountData();
   const [enablingServiceId, setEnablingServiceId] = useState<string | null>(null);
   const [trouble, setTrouble] = useState<string | null>(null);
 
@@ -51,21 +48,16 @@ export function useEnableRoute(): EnableRoute {
           projectId,
           serviceId,
         });
-        // The project's public access is read again: it has a subdomain now.
-        void Effect.runPromise(
-          runtime.cells.invalidate({
-            kind: "public-access",
-            account: runtime.scope,
-            project: projectRef(orgId, projectId),
-          }),
-        );
+        // Our own write: the project's routing is read again (its subdomain rides the services'
+        // own rows, which say it live).
+        revalidate({ family: "publicRouting", ownerId: projectId });
       } catch (cause) {
         if (isCurrent()) setTrouble(zeropsErrorMessage(cause));
       } finally {
         if (isCurrent()) setEnablingServiceId(null);
       }
     },
-    [enablingServiceId, operations, orgId, projectRef, runtime],
+    [enablingServiceId, operations, orgId, revalidate],
   );
 
   return { enable, enablingServiceId, trouble };

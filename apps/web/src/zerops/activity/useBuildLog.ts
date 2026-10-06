@@ -7,11 +7,9 @@ import {
   type BuildLogRegistry,
   type BuildLogSnapshot,
   type BuildLogStatus,
-  type ProjectRef,
-} from "@t3tools/client-runtime/zerops/data";
+} from "@t3tools/client-runtime/data";
 
-import { findInventoryProjectRef, useZeropsInventory } from "../inventoryContext";
-import { useZeropsData } from "../zeropsDataContext";
+import { useAccountDataOptional } from "../ZeropsAccountData";
 
 export interface UseBuildLogInput {
   readonly projectId: string | null;
@@ -28,7 +26,6 @@ const IDLE_SNAPSHOT: BuildLogSnapshot = {
   lines: [],
   bytes: 0,
   status: "idle",
-  loadingOlder: false,
   cursor: { oldestLineId: null, newestLineId: null },
   gaps: { older: false, newer: false },
   truncation: { lines: 0, bytes: 0 },
@@ -39,7 +36,7 @@ const ERROR_SNAPSHOT: BuildLogSnapshot = { ...IDLE_SNAPSHOT, status: "error", er
 
 interface ActiveLog {
   readonly key: string;
-  readonly project: ProjectRef;
+  readonly projectId: string;
   readonly query: BuildLogQuery;
 }
 
@@ -67,13 +64,14 @@ class BuildLogBindingStore {
       : IDLE_SNAPSHOT;
   }
 
-  bind(owner: object, logs: BuildLogRegistry, active: ActiveLog): () => void {
+  /** Binds the log `active` names; `logs` owns the snapshot this store shows until it unbinds. */
+  bind(logs: BuildLogRegistry, active: ActiveLog): () => void {
     let lease: BuildLogLease;
     try {
-      lease = logs.acquire(active.project, active.query, { follow: false });
+      lease = logs.acquire(active.projectId, active.query, { follow: false });
     } catch {
       const failed: BoundLog = {
-        owner,
+        owner: logs,
         key: active.key,
         lease: null,
         unsubscribe: () => undefined,
@@ -84,7 +82,7 @@ class BuildLogBindingStore {
       return () => this.#clear(failed);
     }
 
-    const bound: BoundLog = { owner, key: active.key, lease, unsubscribe: () => undefined };
+    const bound: BoundLog = { owner: logs, key: active.key, lease, unsubscribe: () => undefined };
     this.#bound = bound;
     bound.unsubscribe = lease.session.subscribe(() => {
       if (this.#bound !== bound) return;
@@ -116,17 +114,15 @@ class BuildLogBindingStore {
   }
 }
 
-/** Demand-scoped projection over the account runtime's shared build-log registry. */
+/** Demand-scoped read of the account's shared build logs: held while the card is drawn. */
 export function useBuildLog(input: UseBuildLogInput): UseBuildLogResult {
-  const { runtime } = useZeropsData();
-  const inventory = useZeropsInventory();
-  const project =
-    input.projectId === null ? null : findInventoryProjectRef(inventory, input.projectId);
+  const logs = useAccountDataOptional()?.logs ?? null;
+  const projectId = input.projectId;
   const buildServiceStackId = input.query?.buildServiceStackId;
   const appVersionId = input.query?.appVersionId;
   const fromIso = input.query?.fromIso;
   const active = useMemo<ActiveLog | null>(() => {
-    if (project === null || buildServiceStackId === undefined || appVersionId === undefined) {
+    if (projectId === null || buildServiceStackId === undefined || appVersionId === undefined) {
       return null;
     }
     const query: BuildLogQuery = {
@@ -134,8 +130,8 @@ export function useBuildLog(input: UseBuildLogInput): UseBuildLogResult {
       appVersionId,
       ...(fromIso === undefined ? {} : { fromIso }),
     };
-    return { key: buildLogSessionKeyOf(project, query), project, query };
-  }, [appVersionId, buildServiceStackId, fromIso, project]);
+    return { key: buildLogSessionKeyOf(projectId, query), projectId, query };
+  }, [appVersionId, buildServiceStackId, fromIso, projectId]);
   const store = useMemo(() => new BuildLogBindingStore(), []);
 
   // Bound as the card mounts; what the registry holds reaches the card on the
@@ -143,17 +139,17 @@ export function useBuildLog(input: UseBuildLogInput): UseBuildLogResult {
   // lines' room and a settled one's way to its log stand from the first draw
   // (`ZeropsBuildLog`).
   useLayoutEffect(() => {
-    if (active === null) return;
-    return store.bind(runtime, runtime.logs, active);
-  }, [active, runtime, store]);
+    if (active === null || logs === null) return;
+    return store.bind(logs, active);
+  }, [active, logs, store]);
 
   useEffect(() => {
-    if (active !== null) store.setFollow(runtime, active.key, input.live);
-  }, [active, input.live, runtime, store]);
+    if (active !== null && logs !== null) store.setFollow(logs, active.key, input.live);
+  }, [active, input.live, logs, store]);
 
   const snapshot = useSyncExternalStore(
     store.subscribe,
-    () => store.getSnapshot(runtime, active?.key ?? null),
+    () => (logs === null ? IDLE_SNAPSHOT : store.getSnapshot(logs, active?.key ?? null)),
     () => IDLE_SNAPSHOT,
   );
   return { lines: snapshot.lines, status: snapshot.status };

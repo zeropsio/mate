@@ -998,11 +998,6 @@ describe("the account runtime", () => {
               adapter: {
                 ...datastream.adapter,
                 cells: {
-                  readProjectPublicAccess: () => Effect.never,
-                  readOrganizationLocations: () => Effect.succeed([]),
-                  readServiceAuthorizedAgents: () => Effect.succeed([]),
-                  readOrganizationIntegrationTokens: () => Effect.succeed([]),
-                  readOrganizationMembers: () => Effect.succeed([]),
                   readServiceMateFlag: () =>
                     Effect.sync(() => {
                       ownReads += 1;

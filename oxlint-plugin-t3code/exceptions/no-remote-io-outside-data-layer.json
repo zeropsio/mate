@@ -209,22 +209,6 @@
   },
   {
     "path": "apps/web/src/zerops/ZeropsDataProvider.tsx",
-    "kind": "CallExpression",
-    "fingerprint": "client.fetchProjectLogAccess",
-    "owner": "data-layer rewrite: Zerops platform",
-    "reason": "only the data layer's adapters reach a remote: a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsDataProvider.tsx",
-    "kind": "CallExpression",
-    "fingerprint": "fetch",
-    "owner": "data-layer rewrite: Zerops platform",
-    "reason": "only the data layer's adapters reach a remote: a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsDataProvider.tsx",
     "kind": "NewExpression",
     "fingerprint": "new WebSocket",
     "owner": "data-layer rewrite: Mate identity/connection",

@@ -11,6 +11,7 @@ import type { DetailDemand } from "./demand.ts";
 import { projectProcesses, type ProjectProcesses } from "./projections/processes.ts";
 import type { ProjectValue } from "./families/project.ts";
 import { projectServices, projectsServices, type ProjectServices } from "./projections/services.ts";
+import { projectUsage, type ProjectUsage } from "./projections/usage.ts";
 import {
   listedProject,
   organizationProjects,
@@ -72,6 +73,25 @@ export const projectServicesAtom = Atom.family((projectId: string) =>
     if (account === null || account.orgId === null) return NOT_READ_SERVICES;
     return get(account.data.project(projectServices, { orgId: account.orgId, projectId }));
   }).pipe(Atom.withLabel(`data:project-services:${projectId}`)),
+);
+
+export const NOT_READ_USAGE: ProjectUsage = {
+  read: false,
+  byService: {},
+  history: [],
+  failure: undefined,
+};
+
+/**
+ * One project's resources (`usageOwnerOf`) as the mounted account holds them; not read without
+ * one. Read only while a screen demands the owner's `usage` and `usageHistory` details.
+ */
+export const projectUsageAtom = Atom.family((owner: string) =>
+  Atom.make((get): ProjectUsage => {
+    const account = get(accountReadsAtom);
+    if (account === null || account.orgId === null) return NOT_READ_USAGE;
+    return get(account.data.project(projectUsage, { orgId: account.orgId, owner }));
+  }).pipe(Atom.withLabel(`data:project-usage:${owner}`)),
 );
 
 const NO_PROJECTS_SERVICES: Readonly<Record<string, ProjectServices>> = {};

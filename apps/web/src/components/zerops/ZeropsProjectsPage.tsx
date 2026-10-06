@@ -15,11 +15,7 @@ import * as DateTime from "effect/DateTime";
 import { useNavigate, useRouteContext, useSearch } from "@tanstack/react-router";
 import type { EnvironmentId } from "@t3tools/contracts";
 import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
-import {
-  ZeropsServiceId,
-  type OrganizationRef,
-  type AgentsCellRequest,
-} from "@t3tools/client-runtime/zerops/data";
+import { ZeropsServiceId, type OrganizationRef } from "@t3tools/client-runtime/zerops/data";
 import type * as React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -131,11 +127,9 @@ import {
   type FlowPullRequest,
   projectNameInApp,
   readZeropsMembership,
-  unionAgents,
   type EnvironmentCreationStepProgress,
   type EnvironmentRow,
   type GroupEnvironmentTier,
-  type ZeropsAgentType,
   type ZeropsEnvironmentRole,
   type ZeropsGroup,
   type ZeropsMembership,
@@ -175,7 +169,7 @@ import { useHalfMadeEnvironments } from "~/zerops/useHalfMadeEnvironments";
 import { useZeropsRegistry } from "~/zerops/useZeropsRegistry";
 import { useZeropsProjectFlow } from "~/zerops/projectFlowContext";
 import { REVIEW_LABEL, REVIEW_RELEASE_LABEL, useOpenReview } from "~/zerops/review";
-import { readZeropsCellOnce } from "~/zerops/readZeropsCell";
+import { useReadGroupAgents } from "~/zerops/groupAgents";
 import { deployRowTone } from "./ZeropsProjectRow.logic";
 import { ZeropsSetUpMateDialog } from "./ZeropsSetUpMateDialog";
 import { ZeropsReleaseRows } from "./ZeropsReleaseRows";
@@ -904,11 +898,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   // The server that served this page gets one automatic identity exchange.
   // A failed exchange stays manual so rerenders cannot hammer the door.
   const autoConnectingRef = useRef(false);
-  // One-shot resource reads (readZeropsCellOnce) hold their lease under
-  // this signal, so a component unmounted mid-read releases immediately.
-  const unmountRef = useRef<AbortController>(undefined);
-  if (unmountRef.current === undefined) unmountRef.current = new AbortController();
-  useEffect(() => () => unmountRef.current?.abort(), []);
 
   const [toolError, setToolError] = useState<string | null>(null);
   const [creation, setCreation] = useState<EnvironmentCreationView | null>(null);
@@ -1047,43 +1036,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   /** The project a Set up Mate waits on its confirm for (`ZeropsSetUpMateDialog`). */
   const [confirmingSetUp, setConfirmingSetUp] = useState<ZeropsCandidate | null>(null);
 
-  /**
-   * The agents a group's existing environments are signed in with, so a Mate
-   * born into that group offers the same ones instead of the platform's whole
-   * menu (`agentSelection.ts`).
-   *
-   * Read per environment and unioned. A read that fails is not a reason to
-   * refuse a creation: the empty answer omits `ZCP_AGENTS` from the import,
-   * and the container falls back to offering every agent — which is exactly
-   * what it did before this existed.
-   */
-  const readGroupAgents = useCallback(
-    async (
-      environments: ReadonlyArray<{ readonly item: ZeropsCandidate }>,
-    ): Promise<ReadonlyArray<ZeropsAgentType>> =>
-      unionAgents(
-        await Promise.all(
-          environments.flatMap(({ item }) => {
-            if (item.service === undefined || activeOrganization === null) return [];
-            const request: AgentsCellRequest = {
-              kind: "agents",
-              account: runtime.scope,
-              service: {
-                kind: "service",
-                project: projectRef(activeOrganization.id, item.project.id),
-                serviceId: ZeropsServiceId.make(item.service.id),
-              },
-            };
-            return [
-              readZeropsCellOnce(runtime.cells, request, unmountRef.current?.signal).then(
-                (agents): ReadonlyArray<ZeropsAgentType> => agents ?? [],
-              ),
-            ];
-          }),
-        ),
-      ),
-    [activeOrganization, projectRef, runtime.cells, runtime.scope],
-  );
+  const readGroupAgents = useReadGroupAgents();
 
   const setUpMate = useCallback(
     async (candidate: ZeropsCandidate) => {

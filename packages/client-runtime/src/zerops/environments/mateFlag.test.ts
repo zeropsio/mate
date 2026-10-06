@@ -69,12 +69,7 @@ const flagThrough = (
       scope,
       access: () => access,
       adapter: {
-        readProjectPublicAccess: () => Effect.never,
-        readOrganizationLocations: () => Effect.succeed([]),
-        readServiceAuthorizedAgents: () => Effect.succeed([]),
         readServiceMateFlag: read,
-        readOrganizationIntegrationTokens: () => Effect.succeed([]),
-        readOrganizationMembers: () => Effect.succeed([]),
       },
     });
     const flagAtom = Atom.make<boolean | "unknown" | "unread">(stated);

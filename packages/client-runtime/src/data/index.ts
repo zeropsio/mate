@@ -33,6 +33,7 @@ export {
   type DiscussionGate,
 } from "./projections/changeDiscussion.ts";
 export { discussionDemand } from "./families/hqDiscussion.ts";
+export type { ZeropsWire } from "./adapters/zerops.ts";
 export type { DetailDemand } from "./demand.ts";
 export { makeAccountStore, type AccountStore, type Projection } from "./store.ts";
 export {
@@ -48,10 +49,21 @@ export {
   type ZeropsSessionCalls,
 } from "../zerops/data/zeropsSession.ts";
 export { endIssuedSession } from "./adapters/issuedSessions.ts";
+export { makeBuildLogTransport } from "./adapters/buildLog.ts";
+export {
+  buildLogSessionKeyOf,
+  makeAccountBuildLogs,
+  type BuildLogLease,
+  type BuildLogRegistry,
+  type BuildLogSnapshot,
+  type BuildLogStatus,
+} from "./buildLogs.ts";
 export { historyScope, runningScope, type ProcessValue } from "./families/process.ts";
 export { projectsScope, type ProjectValue } from "./families/project.ts";
 export { servicesScope, type ServiceValue } from "./families/service.ts";
 export { projectServices, projectsServices, type ProjectServices } from "./projections/services.ts";
+export type { ProjectUsage } from "./projections/usage.ts";
+export { usageOwnerOf } from "./families/usage.ts";
 export {
   buildsUnderWay,
   projectProcesses,
@@ -71,6 +83,15 @@ export {
 } from "./projections/projects.ts";
 export type { UnavailableReason } from "./projections/freshness.ts";
 export { projectCreations } from "./projections/creation.ts";
+export {
+  organizationLocations,
+  organizationMembers,
+  servicesAgents,
+  type LocationsRead,
+  type MembersRead,
+  type SampledRead,
+} from "./projections/sampled.ts";
+export { publicAccess, type PublicAccessView } from "./projections/publicAccess.ts";
 export { makeOperations, type Operations } from "./operations/coordinator.ts";
 export { makeZeropsExecutor } from "./operations/executors/zerops.ts";
 export { makeHqExecutor, type HqWrites } from "./operations/executors/hq.ts";
@@ -85,10 +106,12 @@ export {
   listedProjectAtom,
   NOT_READ_PROJECTS,
   NOT_READ_SERVICES,
+  NOT_READ_USAGE,
   projectGoneAtom,
   projectProcessesAtom,
   projectServicesAtom,
   projectsServicesAtom,
+  projectUsageAtom,
   shownProjectsAtom,
   NOT_READ_HQ,
   shownHqMatesAtom,

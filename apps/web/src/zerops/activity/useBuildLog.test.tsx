@@ -3,26 +3,23 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import type { BuildLogLine, BuildLogQuery } from "@t3tools/client-runtime/zerops/activity/buildLog";
 import {
-  AccountEpoch,
-  makeBuildLogRegistry,
+  makeAccountBuildLogs,
+  makeAccountStore,
   makeBuildLogTransport,
-  makeZeropsApiOrigin,
-  makeZeropsDataPolicy,
-  ZeropsAccountId,
-  ZeropsOrganizationId,
-  ZeropsProjectId,
-  type AccessState,
   type BuildLogLease,
   type BuildLogRegistry,
   type BuildLogSnapshot,
-  type BuildLogSocket,
-  type ManagedZeropsDataRuntime,
-  type ProjectRef,
-  type SharedBuildLogSession,
-} from "@t3tools/client-runtime/zerops/data";
+} from "@t3tools/client-runtime/data";
+import { AtomRegistry } from "effect/unstable/reactivity";
 
-import { InventoryContext, type Inventory } from "../inventoryContext";
-import { ZeropsDataContext, type ZeropsDataContextValue } from "../zeropsDataContext";
+import type { AccountData } from "../ZeropsAccountData";
+
+/** The account mounted around the hook: only its logs are read. */
+const mounted = vi.hoisted(() => ({ logs: null as unknown }));
+vi.mock("../ZeropsAccountData", () => ({
+  useAccountDataOptional: () =>
+    mounted.logs === null ? null : ({ logs: mounted.logs } as unknown as AccountData),
+}));
 
 class TestNode {
   parentNode: TestNode | null = null;
@@ -88,20 +85,6 @@ function installTestDom(): void {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
 }
 
-const account = {
-  apiOrigin: makeZeropsApiOrigin("https://api.example.test"),
-  accountId: ZeropsAccountId.make("account-1"),
-};
-const organization = {
-  kind: "organization" as const,
-  account,
-  organizationId: ZeropsOrganizationId.make("org-1"),
-};
-const PROJECT: ProjectRef = {
-  kind: "project",
-  organization,
-  projectId: ZeropsProjectId.make("project-1"),
-};
 const QUERY: BuildLogQuery = { buildServiceStackId: "build-1", appVersionId: "version-1" };
 
 const snapshot = (
@@ -111,7 +94,6 @@ const snapshot = (
   lines,
   bytes: 0,
   status,
-  loadingOlder: false,
   cursor: {
     oldestLineId: lines.at(0)?.id ?? null,
     newestLineId: lines.at(-1)?.id ?? null,
@@ -121,7 +103,7 @@ const snapshot = (
   error: null,
 });
 
-class FakeSession implements SharedBuildLogSession {
+class FakeSession implements Pick<BuildLogLease["session"], "getSnapshot" | "subscribe"> {
   #snapshot: BuildLogSnapshot;
   readonly #listeners = new Set<() => void>();
 
@@ -136,14 +118,6 @@ class FakeSession implements SharedBuildLogSession {
   subscribe(listener: () => void): () => void {
     this.#listeners.add(listener);
     return () => this.#listeners.delete(listener);
-  }
-
-  loadOlder(): Promise<void> {
-    return Promise.resolve();
-  }
-
-  retry(): Promise<void> {
-    return Promise.resolve();
   }
 
   drain(): Promise<void> {
@@ -165,7 +139,7 @@ class FakeSession implements SharedBuildLogSession {
 }
 
 interface FakeLeaseRecord {
-  readonly project: ProjectRef;
+  readonly projectId: string;
   readonly query: BuildLogQuery;
   readonly session: FakeSession;
   readonly followChanges: boolean[];
@@ -179,14 +153,14 @@ class FakeLogs implements BuildLogRegistry {
   closed = false;
 
   acquire(
-    project: ProjectRef,
+    projectId: string,
     query: BuildLogQuery,
     options: { readonly follow?: boolean } = {},
   ): BuildLogLease {
     if (this.failAcquire) throw new Error("signed=https://secret.invalid");
     const session = new FakeSession(options.follow ?? false);
     const record: FakeLeaseRecord = {
-      project,
+      projectId,
       query,
       session,
       followChanges: [options.follow ?? false],
@@ -200,8 +174,6 @@ class FakeLogs implements BuildLogRegistry {
         record.followChanges.push(follow);
         session.setFollow(follow);
       },
-      loadOlder: () => session.loadOlder(),
-      retry: () => session.retry(),
       release: () => {
         if (record.released) return;
         record.released = true;
@@ -231,34 +203,6 @@ class FakeLogs implements BuildLogRegistry {
   }
 }
 
-function inventory(project: ProjectRef | null = PROJECT): Inventory {
-  return {
-    projects: [],
-    isLoading: false,
-    error: null,
-    projectRefs: project === null ? new Map() : new Map([[project.projectId, project]]),
-    authority: new Map(),
-    account: { kind: "authorized" },
-    lost: new Set(),
-  };
-}
-
-function runtime(logs: FakeLogs, epoch = 1): ManagedZeropsDataRuntime {
-  return {
-    logs,
-    scope: { account, epoch: AccountEpoch.make(epoch) },
-  } as unknown as ManagedZeropsDataRuntime;
-}
-
-function context(value: ManagedZeropsDataRuntime): ZeropsDataContextValue {
-  return {
-    runtime: value,
-    signals: { hidden: () => false, online: () => true, listen: () => () => undefined },
-    organizationRef: () => organization,
-    projectRef: () => PROJECT,
-  };
-}
-
 async function flushEffects(): Promise<void> {
   await act(async () => {
     await Promise.resolve();
@@ -267,6 +211,7 @@ async function flushEffects(): Promise<void> {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  mounted.logs = null;
 });
 
 describe("useBuildLog runtime lease binding", () => {
@@ -275,7 +220,7 @@ describe("useBuildLog runtime lease binding", () => {
     const { createRoot } = await import("react-dom/client");
     const { useBuildLog } = await import("./useBuildLog.ts");
     const logs = new FakeLogs();
-    const managed = runtime(logs);
+    mounted.logs = logs;
     const onResult = vi.fn();
 
     function Probe() {
@@ -289,11 +234,7 @@ describe("useBuildLog runtime lease binding", () => {
       await act(() => {
         root.render(
           <StrictMode>
-            <ZeropsDataContext value={context(managed)}>
-              <InventoryContext value={inventory()}>
-                <Probe />
-              </InventoryContext>
-            </ZeropsDataContext>
+            <Probe />
           </StrictMode>,
         );
       });
@@ -314,7 +255,7 @@ describe("useBuildLog runtime lease binding", () => {
     const { createRoot } = await import("react-dom/client");
     const { useBuildLog } = await import("./useBuildLog.ts");
     const logs = new FakeLogs();
-    const managed = runtime(logs);
+    mounted.logs = logs;
     const onResult = vi.fn();
 
     function Probe({ live }: { readonly live: boolean }) {
@@ -324,13 +265,7 @@ describe("useBuildLog runtime lease binding", () => {
     }
 
     const root = createRoot(document.createElement("div") as unknown as Element);
-    const render = (live: boolean) => (
-      <ZeropsDataContext value={context(managed)}>
-        <InventoryContext value={inventory()}>
-          <Probe live={live} />
-        </InventoryContext>
-      </ZeropsDataContext>
-    );
+    const render = (live: boolean) => <Probe live={live} />;
     try {
       await act(() => root.render(render(false)));
       await flushEffects();
@@ -350,14 +285,12 @@ describe("useBuildLog runtime lease binding", () => {
     }
   });
 
-  it("releases on runtime replacement and does not expose the old account session during the change", async () => {
+  it("releases on account replacement and does not expose the old account's log during the change", async () => {
     installTestDom();
     const { createRoot } = await import("react-dom/client");
     const { useBuildLog } = await import("./useBuildLog.ts");
     const firstLogs = new FakeLogs();
     const secondLogs = new FakeLogs();
-    const firstRuntime = runtime(firstLogs, 1);
-    const secondRuntime = runtime(secondLogs, 2);
     const onResult = vi.fn();
 
     function Probe() {
@@ -367,17 +300,14 @@ describe("useBuildLog runtime lease binding", () => {
     }
 
     const root = createRoot(document.createElement("div") as unknown as Element);
-    const render = (managed: ManagedZeropsDataRuntime) => (
-      <ZeropsDataContext value={context(managed)}>
-        <InventoryContext value={inventory()}>
-          <Probe />
-        </InventoryContext>
-      </ZeropsDataContext>
-    );
+    const render = (logs: FakeLogs) => {
+      mounted.logs = logs;
+      return <Probe />;
+    };
     try {
-      await act(() => root.render(render(firstRuntime)));
+      await act(() => root.render(render(firstLogs)));
       await flushEffects();
-      await act(() => root.render(render(secondRuntime)));
+      await act(() => root.render(render(secondLogs)));
       await flushEffects();
 
       expect(firstLogs.diagnostics().leases).toBe(0);
@@ -389,40 +319,33 @@ describe("useBuildLog runtime lease binding", () => {
     }
   });
 
-  it("stays idle without a unique inventory ProjectRef and sanitizes lease admission failure", async () => {
+  it("stays idle without a project or an account and sanitizes lease admission failure", async () => {
     installTestDom();
     const { createRoot } = await import("react-dom/client");
     const { useBuildLog } = await import("./useBuildLog.ts");
     const logs = new FakeLogs();
-    const managed = runtime(logs);
     const onResult = vi.fn();
 
-    function Probe() {
-      const result = useBuildLog({
-        projectId: "project-1",
-        query: QUERY,
-        live: false,
-      });
+    function Probe({ projectId }: { readonly projectId: string | null }) {
+      const result = useBuildLog({ projectId, query: QUERY, live: false });
       useEffect(() => onResult(result), [result]);
       return null;
     }
 
     const root = createRoot(document.createElement("div") as unknown as Element);
-    const render = (value: Inventory) => (
-      <ZeropsDataContext value={context(managed)}>
-        <InventoryContext value={value}>
-          <Probe />
-        </InventoryContext>
-      </ZeropsDataContext>
-    );
     try {
-      await act(() => root.render(render(inventory(null))));
+      await act(() => root.render(<Probe projectId="project-1" />));
+      await flushEffects();
+      expect(onResult.mock.calls.at(-1)?.[0].status).toBe("idle");
+
+      mounted.logs = logs;
+      await act(() => root.render(<Probe projectId={null} />));
       await flushEffects();
       expect(logs.records).toHaveLength(0);
       expect(onResult.mock.calls.at(-1)?.[0].status).toBe("idle");
 
       logs.failAcquire = true;
-      await act(() => root.render(render(inventory())));
+      await act(() => root.render(<Probe projectId="project-1" />));
       await flushEffects();
       expect(onResult.mock.calls.at(-1)?.[0].status).toBe("error");
     } finally {
@@ -432,7 +355,7 @@ describe("useBuildLog runtime lease binding", () => {
 });
 
 /** The log backend's stream, as the browser opens it: its url, and the frames it answers. */
-class StreamSocket implements BuildLogSocket {
+class StreamSocket {
   static opened: StreamSocket[] = [];
   readonly url: string;
   #message: ((event: { readonly data: unknown }) => void) | undefined;
@@ -471,17 +394,6 @@ class StreamSocket implements BuildLogSocket {
   close(): void {}
 }
 
-const VERIFIED: AccessState = {
-  status: "verified",
-  account,
-  accountEpoch: AccountEpoch.make(1),
-  verifiedAtMs: 0,
-  deadlineMs: Number.MAX_SAFE_INTEGER,
-  mutationsAllowed: true,
-  organizations: [{ organization, mutationsAllowed: true }],
-  projects: [{ project: PROJECT, role: "OWNER", mutationsAllowed: true }],
-};
-
 describe("useBuildLog over the account's own log registry", () => {
   // Live run, 2026-10-03: a running deploy's log was read 2 s in, the build
   // had written nothing yet, and its stream — asked from the backfill's time —
@@ -493,25 +405,24 @@ describe("useBuildLog over the account's own log registry", () => {
     const { createRoot } = await import("react-dom/client");
     const { useBuildLog } = await import("./useBuildLog.ts");
     const pageReads: string[] = [];
-    const scope = { account, epoch: AccountEpoch.make(1) };
-    const logs = makeBuildLogRegistry({
-      scope,
-      access: () => VERIFIED,
-      now: () => 0,
+    const logs = makeAccountBuildLogs({
+      store: makeAccountStore(AtomRegistry.make()),
       transport: makeBuildLogTransport({
-        scope,
-        acquireGrant: async () => ({ url: "https://logs.example.test/api/rest/log?accessToken=t" }),
+        client: {
+          fetchProjectLogAccess: async () => ({
+            url: "https://logs.example.test/api/rest/log?accessToken=t",
+          }),
+        },
         fetchImpl: async (url) => {
           pageReads.push(url);
           return { ok: true, json: async () => ({ items: [] }) };
         },
         WebSocketCtor: StreamSocket,
       }),
-      policy: makeZeropsDataPolicy(),
       setTimer: (callback) => setTimeout(callback, 0),
       clearTimer: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
     });
-    const managed = { logs, scope } as unknown as ManagedZeropsDataRuntime;
+    mounted.logs = logs;
     const running: BuildLogQuery = { ...QUERY, fromIso: "2026-10-03T10:00:00.000Z" };
     const seen: Record<string, ReadonlyArray<string>> = {};
     const statuses: string[] = [];
@@ -525,13 +436,7 @@ describe("useBuildLog over the account's own log registry", () => {
       useEffect(() => void statuses.push(status), [status]);
       return null;
     }
-    const draw = (where: string, live: boolean) => (
-      <ZeropsDataContext value={context(managed)}>
-        <InventoryContext value={inventory()}>
-          <Line key={where} live={live} where={where} />
-        </InventoryContext>
-      </ZeropsDataContext>
-    );
+    const draw = (where: string, live: boolean) => <Line key={where} live={live} where={where} />;
 
     const root = createRoot(document.createElement("div") as unknown as Element);
     try {
@@ -567,5 +472,41 @@ describe("useBuildLog over the account's own log registry", () => {
       await act(() => root.unmount());
       logs.shutdown();
     }
+  });
+});
+
+describe("the account's build logs under StrictMode", () => {
+  it("stay readable after React mounts, unmounts and mounts the account again", async () => {
+    installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const { useAccountBuildLogs } = await import("../accountBuildLogs.ts");
+    const store = makeAccountStore(AtomRegistry.make());
+    const client = { fetchProjectLogAccess: async () => ({ url: "https://logs.example.test/l" }) };
+    const seen: Array<BuildLogRegistry | null> = [];
+
+    function Account() {
+      const logs = useAccountBuildLogs(client, store);
+      useEffect(() => void seen.push(logs), [logs]);
+      return null;
+    }
+
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    try {
+      await act(() =>
+        root.render(
+          <StrictMode>
+            <Account />
+          </StrictMode>,
+        ),
+      );
+      await flushEffects();
+      const logs = seen.at(-1);
+      expect(logs).not.toBeNull();
+      expect(logs?.diagnostics().closed).toBe(false);
+      expect(() => logs?.acquire("project-1", QUERY).release()).not.toThrow();
+    } finally {
+      await act(() => root.unmount());
+    }
+    expect(seen.at(-1)?.diagnostics().closed ?? true).toBe(true);
   });
 });

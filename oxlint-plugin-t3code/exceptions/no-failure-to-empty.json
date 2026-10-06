@@ -64,14 +64,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/zerops/readZeropsCell.ts",
-    "kind": "CallExpression",
-    "fingerprint": "readZeropsCell(cells, request, signal).catch(() => undefined)",
-    "owner": "state-model 4.6",
-    "reason": "readZeropsCellOnce turns a failed cell read into no answer; the deployment store (4.4) replaces its callers and 4.6 deletes the hook",
-    "expires": "never"
-  },
-  {
     "path": "packages/client-runtime/src/zerops/agentLogin.ts",
     "kind": "ConditionalExpression",
     "fingerprint": "result._tag === \"Success\" ? result.value.terminalId : undefined",

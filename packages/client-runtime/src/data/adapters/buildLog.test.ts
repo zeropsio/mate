@@ -1,14 +1,18 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 
-import { project, scope } from "./__fixtures__/index.ts";
 import {
   BuildLogTransportError,
   makeBuildLogTransport,
   type BuildLogFollowCallbacks,
   type BuildLogSocket,
-} from "./logTransport.ts";
-import { ZeropsAccountId } from "./types.ts";
+} from "./buildLog.ts";
 
+const PROJECT = "project-1";
+
+/** A client whose log grant answers as `acquire` does. */
+const client = (
+  acquire: (projectId: string, signal?: AbortSignal) => Promise<{ readonly url: string }>,
+) => ({ fetchProjectLogAccess: acquire });
 const QUERY = { buildServiceStackId: "build-1", appVersionId: "version-1" };
 
 function deferred<A>() {
@@ -114,11 +118,10 @@ describe("build log transport", () => {
       },
     ];
     const transport = makeBuildLogTransport({
-      scope: scope(),
-      acquireGrant: async (ref) => {
-        grantCalls.push(ref.projectId);
+      client: client(async (projectId) => {
+        grantCalls.push(projectId);
         return { url: `https://logs.example.test/api/rest/log?signature=${grants.shift()}` };
-      },
+      }),
       fetchImpl: async (url) => {
         fetchUrls.push(url);
         return { ok: true, json: async () => bodies.shift() };
@@ -126,16 +129,16 @@ describe("build log transport", () => {
       WebSocketCtor: FakeSocket,
     });
 
-    const initial = await transport.loadPage({ project: project(), query: QUERY, limit: 20 });
+    const initial = await transport.loadPage({ projectId: PROJECT, query: QUERY, limit: 20 });
     const older = await transport.loadPage({
-      project: project(),
+      projectId: PROJECT,
       query: QUERY,
       limit: 20,
       beforeLineId: "l2",
     });
     const events = callbacks();
     const follow = await transport.openFollow({
-      project: project(),
+      projectId: PROJECT,
       query: QUERY,
       fromLineId: "l2",
       callbacks: events,
@@ -169,8 +172,7 @@ describe("build log transport", () => {
     FakeSocket.instances = [];
     const fetchUrls: string[] = [];
     const transport = makeBuildLogTransport({
-      scope: scope(),
-      acquireGrant: async () => ({ url: "https://logs.example.test/api/rest/log?signature=s" }),
+      client: client(async () => ({ url: "https://logs.example.test/api/rest/log?signature=s" })),
       fetchImpl: async (url) => {
         fetchUrls.push(url);
         return { ok: true, json: async () => ({ items: [] }) };
@@ -179,9 +181,9 @@ describe("build log transport", () => {
     });
     const query = { ...QUERY, fromIso: "2026-09-08T00:00:00.000Z" };
 
-    await transport.loadPage({ project: project(), query, limit: 20 });
+    await transport.loadPage({ projectId: PROJECT, query, limit: 20 });
     await transport.openFollow({
-      project: project(),
+      projectId: PROJECT,
       query,
       ...(fromLineId === undefined ? {} : { fromLineId }),
       callbacks: callbacks(),
@@ -202,13 +204,12 @@ describe("build log transport", () => {
     FakeSocket.instances = [];
     const events = callbacks();
     const transport = makeBuildLogTransport({
-      scope: scope(),
-      acquireGrant: async () => ({ url: "https://logs.example.test/log?signature=secret" }),
+      client: client(async () => ({ url: "https://logs.example.test/log?signature=secret" })),
       fetchImpl: async () => ({ ok: true, json: async () => ({ items: [] }) }),
       WebSocketCtor: FakeSocket,
     });
     const handle = await transport.openFollow({
-      project: project(),
+      projectId: PROJECT,
       query: QUERY,
       callbacks: events,
     });
@@ -250,16 +251,15 @@ describe("build log transport", () => {
     const grant = deferred<{ readonly url: string }>();
     let grantSignal: AbortSignal | undefined;
     const transport = makeBuildLogTransport({
-      scope: scope(),
-      acquireGrant: (_project, signal) => {
+      client: client((_projectId, signal) => {
         grantSignal = signal;
         return grant.promise;
-      },
+      }),
       fetchImpl: async () => ({ ok: true, json: async () => ({ items: [] }) }),
       WebSocketCtor: FakeSocket,
     });
     const opening = transport.openFollow({
-      project: project(),
+      projectId: PROJECT,
       query: QUERY,
       callbacks: callbacks(),
     });
@@ -281,17 +281,16 @@ describe("build log transport", () => {
     const grant = deferred<{ readonly url: string }>();
     let grantSignal: AbortSignal | undefined;
     const transport = makeBuildLogTransport({
-      scope: scope(),
-      acquireGrant: (_project, signal) => {
+      client: client((_projectId, signal) => {
         grantSignal = signal;
         return grant.promise;
-      },
+      }),
       fetchImpl: async () => ({ ok: true, json: async () => ({ items: [] }) }),
       WebSocketCtor: FakeSocket,
     });
     const lease = new AbortController();
     const opening = transport.openFollow({
-      project: project(),
+      projectId: PROJECT,
       query: QUERY,
       callbacks: callbacks(),
       signal: lease.signal,
@@ -309,37 +308,42 @@ describe("build log transport", () => {
     transport.shutdown();
   });
 
-  it("sanitizes rejected grants and foreign-account requests", async () => {
+  it("reads with the browser's own fetch and socket when given none", async () => {
+    FakeSocket.instances = [];
+    const fetched: string[] = [];
+    vi.stubGlobal("fetch", async (url: string) => {
+      fetched.push(url);
+      return { ok: true, json: async () => ({ items: [] }) };
+    });
+    vi.stubGlobal("WebSocket", FakeSocket);
+    try {
+      const transport = makeBuildLogTransport({
+        client: client(async () => ({ url: "https://logs.example.test/log?signature=s" })),
+      });
+      await transport.loadPage({ projectId: PROJECT, query: QUERY, limit: 20 });
+      await transport.openFollow({ projectId: PROJECT, query: QUERY, callbacks: callbacks() });
+      expect(fetched).toHaveLength(1);
+      expect(FakeSocket.instances).toHaveLength(1);
+      transport.shutdown();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("sanitizes rejected grants", async () => {
     const secret = "signed-url-must-not-escape";
     const transport = makeBuildLogTransport({
-      scope: scope(),
-      acquireGrant: async () => {
+      client: client(async () => {
         throw new Error(secret);
-      },
+      }),
       fetchImpl: async () => ({ ok: true, json: async () => ({ items: [] }) }),
       WebSocketCtor: FakeSocket,
     });
     const grantError = await transport
-      .loadPage({ project: project(), query: QUERY, limit: 20 })
+      .loadPage({ projectId: PROJECT, query: QUERY, limit: 20 })
       .catch((cause: unknown) => cause);
-    const foreign = project();
-    const foreignProject = {
-      ...foreign,
-      organization: {
-        ...foreign.organization,
-        account: {
-          ...foreign.organization.account,
-          accountId: ZeropsAccountId.make("other-account"),
-        },
-      },
-    };
-    const accountError = await transport
-      .loadPage({ project: foreignProject, query: QUERY, limit: 20 })
-      .catch((cause: unknown) => cause);
-
     expect((grantError as BuildLogTransportError).kind).toBe("grant");
     expect(String(grantError)).not.toContain(secret);
-    expect((accountError as BuildLogTransportError).kind).toBe("account-fence");
   });
 
   it("sanitizes a socket-constructor error that embeds the signed URL", async () => {
@@ -347,16 +351,15 @@ describe("build log transport", () => {
       throw new TypeError(`Cannot open ${url}`);
     }
     const transport = makeBuildLogTransport({
-      scope: scope(),
-      acquireGrant: async () => ({
+      client: client(async () => ({
         url: "https://logs.example.test/log?signature=constructor-secret",
-      }),
+      })),
       fetchImpl: async () => ({ ok: true, json: async () => ({ items: [] }) }),
       WebSocketCtor: ThrowingSocket as never,
     });
 
     const error = await transport
-      .openFollow({ project: project(), query: QUERY, callbacks: callbacks() })
+      .openFollow({ projectId: PROJECT, query: QUERY, callbacks: callbacks() })
       .catch((cause: unknown) => cause);
     expect(error).toBeInstanceOf(BuildLogTransportError);
     expect((error as BuildLogTransportError).kind).toBe("socket");
@@ -367,12 +370,11 @@ describe("build log transport", () => {
     FakeSocket.instances = [];
     const events = callbacks();
     const transport = makeBuildLogTransport({
-      scope: scope(),
-      acquireGrant: async () => ({ url: "https://logs.example.test/log?signature=secret" }),
+      client: client(async () => ({ url: "https://logs.example.test/log?signature=secret" })),
       fetchImpl: async () => ({ ok: true, json: async () => ({ items: [] }) }),
       WebSocketCtor: FakeSocket,
     });
-    await transport.openFollow({ project: project(), query: QUERY, callbacks: events });
+    await transport.openFollow({ projectId: PROJECT, query: QUERY, callbacks: events });
     const socket = FakeSocket.instances[0]!;
 
     transport.shutdown();
