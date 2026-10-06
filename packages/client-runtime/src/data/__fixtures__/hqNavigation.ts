@@ -102,6 +102,7 @@ export function seedHqNavigation(store: AccountStore, orgId: string, seed: Seede
     madeBy: mate.madeBy ?? null,
     standupRequestedBy: mate.standupRequestedBy ?? null,
     closedOff: mate.closedOff ?? false,
+    setupMarker: mate.setupMarker ?? null,
     keyWider: mate.keyWider ?? false,
     ...(mate.birthId == null ? {} : { birthId: mate.birthId }),
   });

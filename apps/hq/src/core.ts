@@ -117,6 +117,7 @@ const services = (options: CoreOptions) => {
     personGitCredentialsLayer,
     structureLayer({
       hqProjectId: options.hqProjectId,
+      credential: options.credential,
       reconcileEvery: options.reconcileEvery ?? Duration.seconds(60),
     }),
     doorLayer({ hqProjectId: options.hqProjectId }),

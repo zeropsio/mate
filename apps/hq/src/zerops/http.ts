@@ -132,6 +132,10 @@ const ServicePage = Schema.Struct({
   list: Schema.Array(ServiceRow),
   total: Schema.optionalKey(Schema.Number),
 });
+const SetupMarkerSearch = Schema.Struct({
+  items: Schema.Array(Schema.Struct({ key: Schema.Literal("MATE_SETUP_RUNTIMES") })),
+  totalHits: Schema.Number,
+});
 const Created = Schema.Struct({ id: Schema.String });
 const Imported = Schema.Struct({
   serviceStacks: Schema.Array(
@@ -321,6 +325,32 @@ export const makeZeropsApiHttp = (
         get("projectEnv", credential, `/project/${projectId}/env-file`, EnvFile).pipe(
           Effect.map(({ value }) => parseEnvFile(value.envFile)),
         ),
+      mateSetupMarker: (orgId, projectId, serviceId) => (credential) =>
+        Effect.gen(function* () {
+          const request = HttpClientRequest.post(`${baseUrl}/user-data/search`).pipe(
+            HttpClientRequest.bodyJsonUnsafe({
+              search: [
+                { name: "clientId", operator: "eq", value: orgId },
+                { name: "projectId", operator: "eq", value: projectId },
+                ...(serviceId === null
+                  ? []
+                  : [{ name: "serviceStackId", operator: "eq", value: serviceId }]),
+                { name: "key", operator: "eq", value: "MATE_SETUP_RUNTIMES" },
+              ],
+              sort: [],
+              limit: 1,
+            }),
+          );
+          const { value } = yield* ask(
+            client,
+            "mateSetupMarker",
+            credential,
+            request,
+            SetupMarkerSearch,
+          );
+          if (value.totalHits !== value.items.length) return null;
+          return value.items.length > 0;
+        }),
       tokenProjects: (orgId, tokenId) => (credential) =>
         get(
           "tokenProjects",

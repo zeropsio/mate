@@ -244,14 +244,28 @@ vi.mock("./zeropsDataContext", () => ({
     projectRef: (organizationId: string, projectId: string) => ({ organizationId, projectId }),
     runtime: {},
   }),
-  // Each container's Mate variables: its press's marker as the case states it, absent unless it says.
-  useZeropsAtomSelections: (selections: ReadonlyArray<readonly [string, unknown]>) =>
-    new Map(
-      selections.map(([serviceId]) => [
-        serviceId,
-        { flag: true, marker: mock.markers.get(serviceId) ?? false },
-      ]),
-    ),
+  // Navigation supplies setup evidence for each project's Mate.
+  useZeropsAtomSelections: (selections: ReadonlyArray<readonly [string, unknown]>) => {
+    const listing = mock.listing.current as {
+      readonly state: string;
+      readonly value?: ReadonlyArray<ZeropsCandidatePresentation>;
+    };
+    return new Map(
+      selections.map(([projectId]) => {
+        const candidate =
+          listing.state === "known"
+            ? listing.value?.find((candidate) => candidate.project.id === projectId)
+            : undefined;
+        return [
+          projectId,
+          {
+            closedOff: candidate?.project.hq?.mate?.closedOff ?? "unknown",
+            marker: mock.markers.get(candidate?.service?.id ?? "") ?? false,
+          },
+        ];
+      }),
+    );
+  },
 }));
 vi.mock("./useZeropsCandidates", () => ({
   useZeropsCandidates: () => ({ listing: mock.listing.current, refresh: () => {} }),

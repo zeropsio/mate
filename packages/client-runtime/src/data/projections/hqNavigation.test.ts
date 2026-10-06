@@ -64,6 +64,7 @@ const mate = {
   madeBy: null,
   standupRequestedBy: null,
   closedOff: false,
+  setupMarker: null,
   keyWider: false,
 };
 const rows: ReadonlyArray<Row> = [

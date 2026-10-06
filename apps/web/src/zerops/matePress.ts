@@ -37,7 +37,7 @@ import {
   severalMatesLine,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import { mateVariablesAtom } from "@t3tools/client-runtime/data";
+import { hqMateSetupAtom, type HqMateSetup } from "@t3tools/client-runtime/data";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import {
   attachToApp,
@@ -46,7 +46,6 @@ import {
   HqError,
   type HqApi,
   type HqEndpoint,
-  type HqPlacement,
   type HqStructure,
 } from "@t3tools/client-runtime/zerops/hq";
 import { useEffect, useMemo } from "react";
@@ -1397,62 +1396,37 @@ async function finishLocked(
 
 interface MarkedCandidate {
   readonly service?: { readonly id: string } | undefined;
-  readonly project: { readonly hq?: HqPlacement | undefined };
+  readonly project: { readonly id: string };
 }
 
-/** Whether HQ's record of the project's Mate says it is closed off. */
-const closedOffAtHq = (candidate: MarkedCandidate): boolean =>
-  candidate.project.hq?.mate?.closedOff === true;
-
-/** Whether HQ's record of the project's Mate says it is not closed off. */
-const openAtHq = (candidate: MarkedCandidate): boolean =>
-  candidate.project.hq?.mate?.closedOff === false;
-
-/**
- * The zcp services of the Mates whose press was interrupted before its close-off: the container
- * carries the press's marker (`MATE_SETUP_RUNTIMES`) while HQ does not know the project closed off
- * — or HQ says it is not, and the marker is not read yet or cannot be. The close-off gate holds
- * that Mate (`closeOffGate` `checking`), and *Finish setup* is its way out: closing off a project
- * already closed off only restarts its services once. A marker read absent (a Mate made before the
- * press) is never one.
- */
+/** Finish setup follows HQ's setup evidence, never a navigation read of container variables. */
 export function interruptedPresses(
   candidates: ReadonlyArray<MarkedCandidate>,
-  markers: ReadonlyMap<string, boolean | "unknown" | "unread">,
+  setups: ReadonlyMap<string, HqMateSetup>,
 ): ReadonlySet<string> {
   return new Set(
     candidates.flatMap((candidate) => {
-      if (candidate.service === undefined || closedOffAtHq(candidate)) return [];
-      const marker = markers.get(candidate.service.id);
-      return marker === true || (marker !== false && marker !== undefined && openAtHq(candidate))
-        ? [candidate.service.id]
-        : [];
+      if (candidate.service === undefined) return [];
+      const setup = setups.get(candidate.project.id);
+      if (setup === undefined || setup.closedOff === true || setup.marker === false) return [];
+      return setup.marker === true || setup.closedOff === false ? [candidate.service.id] : [];
     }),
   );
 }
 
-/**
- * Which of these Mates' presses were interrupted before their close-off, as the account's store
- * states their containers' marker — the organization's Mate variables, which the account's
- * environments read while a listed Mate's marker is undecided — for every Mate HQ does not know
- * closed off.
- */
+/** The organization's already observed navigation is the sole source of setup marker evidence. */
 export function useInterruptedPresses(
   candidates: ReadonlyArray<MarkedCandidate>,
 ): ReadonlySet<string> {
   const selections = useMemo(
     () =>
       candidates.flatMap((candidate) =>
-        candidate.service === undefined || closedOffAtHq(candidate)
+        candidate.service === undefined
           ? []
-          : [[candidate.service.id, mateVariablesAtom(candidate.service.id)] as const],
+          : [[candidate.project.id, hqMateSetupAtom(candidate.project.id)] as const],
       ),
     [candidates],
   );
-  const variables = useZeropsAtomSelections(selections);
-  const markers = useMemo(
-    () => new Map([...variables].map(([serviceId, { marker }]) => [serviceId, marker] as const)),
-    [variables],
-  );
-  return useMemo(() => interruptedPresses(candidates, markers), [candidates, markers]);
+  const setups = useZeropsAtomSelections(selections);
+  return useMemo(() => interruptedPresses(candidates, setups), [candidates, setups]);
 }

@@ -120,6 +120,12 @@ export class ZeropsApi extends Context.Service<
     readonly project: (projectId: string) => Read<ZeropsProject>;
     /** The project's env as the credential reads it: a sensitive value is `REDACTED` to Read only. */
     readonly projectEnv: (projectId: string) => Read<ReadonlyMap<string, string>>;
+    /** Presence only, read by key; no variable content leaves this boundary. */
+    readonly mateSetupMarker: (
+      orgId: string,
+      projectId: string,
+      serviceId: string | null,
+    ) => Read<boolean | null>;
     /** `GET /user/info`, then the token's own record. Refused for a credential that is no token. */
     readonly ownToken: Read<ZeropsOwnToken>;
     /**

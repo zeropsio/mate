@@ -1,3 +1,4 @@
+import { hqMateSetup } from "../projections/hqMateSetup.ts";
 import { describe, expect, it } from "@effect/vitest";
 import type { MateAttention } from "@t3tools/contracts";
 import type { HqScopeDelivery, HqStreamMessage } from "@t3tools/shared/hqStream";
@@ -38,7 +39,14 @@ const project = (projectId: string, appId: string | null, mate = true) => ({
   name: projectId,
   kind: "mate",
   mate: mate
-    ? { face: "", madeBy: null, standupRequestedBy: null, closedOff: false, keyWider: false }
+    ? {
+        face: "",
+        madeBy: null,
+        standupRequestedBy: null,
+        closedOff: false,
+        setupMarker: null,
+        keyWider: false,
+      }
     : null,
   person: {
     role: "DEVELOPER",
@@ -134,6 +142,37 @@ describe("hqNavigationLink", () => {
       expect(readsOfState(store.state()).coverage(hqAppsScope(ORG))).toBe("complete");
       yield* Fiber.interrupt(fiber);
     }),
+  );
+
+  it.effect(
+    "commits setup evidence through navigation and retains it after a corrupt marker or outage",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const fixture = hqFixtureWire();
+        const { fiber } = yield* live(store, fixture);
+        const row = project("ada", "shop");
+        yield* fixture.send(
+          navigation("scope-values", 4, [
+            { key: "project:ada", value: { ...row, mate: { ...row.mate, setupMarker: true } } },
+          ]),
+        );
+        yield* settle;
+        const setup = () =>
+          hqMateSetup.derive(readsOfState(store.state()), { orgId: ORG, projectId: "ada" });
+        expect(setup()).toEqual({ closedOff: false, marker: true });
+        yield* fixture.send(
+          navigation("scope-values", 5, [
+            { key: "project:ada", value: { ...row, mate: { ...row.mate, setupMarker: 17 } } },
+          ]),
+        );
+        yield* settle;
+        expect(setup().marker).toBe(true);
+        yield* fixture.drop({ outcome: "transient", message: "network" });
+        yield* settle;
+        expect(setup()).toEqual({ closedOff: "unknown", marker: true });
+        yield* Fiber.interrupt(fiber);
+      }),
   );
 
   it.effect(

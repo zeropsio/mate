@@ -46,6 +46,7 @@ import {
   environmentNameProblem,
 } from "./environments.ts";
 import { DeployKeys } from "./deployKeys.ts";
+import { makeMateSetupMarkers } from "./mateSetupMarkers.ts";
 import { reachesOnly } from "./deployTokens.ts";
 import { heldOf, lockProject } from "./held.ts";
 import { readEnvironmentSource, type EnvironmentSource } from "./environmentNavigation.ts";
@@ -264,6 +265,8 @@ export interface MateView {
   readonly standupRequestedBy: string | null;
   /** Whether its project is closed off, so its runtimes may be imported. */
   readonly closedOff: boolean;
+  /** Setup marker presence as HQ read it, null until usable evidence. */
+  readonly setupMarker: boolean | null;
   /**
    * The key it last named reads other projects too (`MateCredentials.keyWider`, ADR 0003's
    * fallout): it needs Finish setup, whose harden takes those grants off. Always said, so a client
@@ -628,6 +631,7 @@ const conflictOnUnique = <A, E extends { readonly _tag: string }, R>(
 
 export const structureLayer = (options: {
   readonly hqProjectId: string;
+  readonly credential: Option.Option<Redacted.Redacted>;
   /** How often the leader reconciles with Zerops (SPEC §4); 60 s. */
   readonly reconcileEvery?: Duration.Duration;
 }): Layer.Layer<
@@ -653,6 +657,14 @@ export const structureLayer = (options: {
         OR EXISTS (SELECT 1 FROM hq_repo WHERE app_id = a.id AND name <> ${RECIPE_REPO})`;
       const version = yield* SubscriptionRef.make(0);
       const changed = SubscriptionRef.update(version, (tick) => tick + 1);
+      const setupMarkers = yield* makeMateSetupMarkers(
+        ({ orgId, projectId, serviceId }) =>
+          Option.match(options.credential, {
+            onNone: () => Effect.succeed(null),
+            onSome: (credential) => zerops.mateSetupMarker(orgId, projectId, serviceId)(credential),
+          }),
+        changed,
+      );
       /** After a write that added an environment or kept its key: its deploys are asked for. */
       const changedAsking = Effect.andThen(changed, rollouts.wake);
       const mateChanged = yield* PubSub.unbounded<string>();
@@ -840,16 +852,35 @@ export const structureLayer = (options: {
                 readonly project_id: string;
                 readonly app_id: string | null;
                 readonly kind: string | null;
-                readonly mate: MateView | null;
+                mate: MateView | null;
+                readonly record: string | null;
+                readonly service_id: string | null;
+                readonly import_process_id: string | null;
               }>`
               SELECT COALESCE(p.project_id, m.project_id) AS project_id, p.app_id::text AS app_id, p.kind,
+                     m.seq::text AS record, m.service_id, press.import_process_id,
                      CASE WHEN m.project_id IS NULL THEN NULL ELSE jsonb_build_object(
                        'face', m.face, 'madeBy', m.made_by,
                        'standupRequestedBy', m.standup_requested_by,
-                       'closedOff', m.closed_off_at IS NOT NULL,
+                       'closedOff', m.closed_off_at IS NOT NULL, 'setupMarker', NULL,
                        'keyWider', m.key_wider_token_id IS NOT NULL) || CASE WHEN m.birth_id IS NULL THEN '{}'::jsonb ELSE jsonb_build_object('birthId', m.birth_id::text) END || CASE WHEN m.signers = '{}'::jsonb THEN '{}'::jsonb ELSE jsonb_build_object('signers', m.signers) END END AS mate
               FROM hq_app_project p FULL OUTER JOIN hq_mate m USING (project_id)
+              LEFT JOIN hq_press press ON press.project_id = m.project_id AND press.kind = 'mate'
               ORDER BY p.seq NULLS LAST, m.seq`;
+              setupMarkers.retain(
+                new Set(membership.filter((row) => row.mate !== null).map((row) => row.project_id)),
+              );
+              for (const row of membership) {
+                if (row.mate === null || row.mate.closedOff || row.record === null) continue;
+                const setupMarker = yield* setupMarkers.read({
+                  orgId: view.orgId,
+                  projectId: row.project_id,
+                  record: row.record,
+                  serviceId: row.service_id,
+                  importProcessId: row.import_process_id,
+                });
+                row.mate = { ...row.mate, setupMarker };
+              }
               // One statement sees every placement, including ungrouped Mates: an attach cannot
               // put a record between two reads and manufacture a deletion.
               const rows = membership.flatMap((row) =>

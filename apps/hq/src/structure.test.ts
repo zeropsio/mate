@@ -67,7 +67,12 @@ const project = (id: string, userRoles: ZeropsProject["userRoles"] = []): Zerops
 type Org = Omit<OrgView, "freshness">;
 
 /** A Mate's birth before anything marked it. */
-const UNBORN = { standupRequestedBy: null, closedOff: false, keyWider: false } as const;
+const UNBORN = {
+  setupMarker: null,
+  standupRequestedBy: null,
+  closedOff: false,
+  keyWider: false,
+} as const;
 
 const VIEW: Org = {
   orgId: "ORG",
@@ -155,7 +160,7 @@ const withStructure = <A, E, B = never>(
       views: Stream.never,
     });
     const context = yield* Layer.build(
-      structureLayer({ hqProjectId: "HQ" }).pipe(
+      structureLayer({ hqProjectId: "HQ", credential: Option.some(Redacted.make("org-key")) }).pipe(
         Layer.provide(deployKeysLayer(keySecret)),
         Layer.provideMerge(rolloutsLayer),
         Layer.provideMerge(activeCoreLayer(url)),
@@ -251,6 +256,64 @@ const outcome = <A, E extends { readonly _tag: string }>(effect: Effect.Effect<A
 
 describe("structure", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    for (const marker of [true, false] as const) {
+      it.effect(
+        `shares setup marker ${String(marker)} across authorized navigation recipients`,
+        () =>
+          withStructure((_view, _down, world) =>
+            Effect.gen(function* () {
+              world.projects = [...VIEW.projects];
+              world.tokens.set("org-key", {
+                id: "core",
+                name: "Core",
+                orgId: "ORG",
+                roleCode: "READ_ONLY",
+                canCreateProjects: false,
+                canViewFinances: false,
+                canEditFinances: false,
+                projects: [],
+                createdMs: 0,
+                createdByUser: null,
+              });
+              if (marker) world.setupMarkers.add("zcp");
+              const structure = yield* Structure;
+              yield* structure.createMate("owner", {
+                projectId: "P_OWN",
+                face: "face",
+                serviceId: "zcp",
+              });
+              const told = yield* Stream.runHead(Stream.drop(structure.changes, 1)).pipe(
+                Effect.forkChild,
+              );
+              yield* Effect.yieldNow;
+              yield* structure.navigation;
+              yield* Fiber.join(told);
+              const known = yield* structure.navigation;
+              for (const who of ["owner", "admin", "reader", "maker"])
+                assert.strictEqual(
+                  known.forPerson(who).ungrouped.find((row) => row.projectId === "P_OWN")?.mate
+                    .setupMarker,
+                  marker,
+                );
+              assert.deepStrictEqual(known.forPerson("nobody").ungrouped, []);
+              assert.strictEqual(
+                world.calls.filter((call) => call.startsWith("mateSetupMarker:")).length,
+                1,
+              );
+              yield* structure.navigation;
+              assert.strictEqual(
+                world.calls.filter((call) => call.startsWith("mateSetupMarker:")).length,
+                1,
+              );
+              yield* structure.markClosedOff("owner", "P_OWN");
+              assert.strictEqual(
+                (yield* structure.navigation).forPerson("owner").ungrouped[0]?.mate.closedOff,
+                true,
+              );
+            }),
+          ),
+      );
+    }
     it.effect(
       "a held half-made environment offers finish independently of its occupied add slot",
       () =>
@@ -994,6 +1057,7 @@ describe("structure", () => {
                 madeBy: null,
                 standupRequestedBy: null,
                 closedOff: true,
+                setupMarker: null,
                 keyWider: false,
               });
               assert.deepStrictEqual(yield* mateOf("P_OWN"), {
@@ -1033,6 +1097,7 @@ describe("structure", () => {
             madeBy: "owner",
             standupRequestedBy: "owner",
             closedOff: false,
+            setupMarker: null,
             keyWider: false,
           });
 
@@ -1048,6 +1113,7 @@ describe("structure", () => {
             madeBy: "owner",
             standupRequestedBy: "owner",
             closedOff: true,
+            setupMarker: null,
             keyWider: false,
           });
         }),

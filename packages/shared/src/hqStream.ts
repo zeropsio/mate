@@ -260,6 +260,8 @@ export const HqNavigationMate = Schema.Struct({
   madeBy: Schema.NullOr(Schema.String),
   standupRequestedBy: Schema.NullOr(Schema.String),
   closedOff: Schema.Boolean,
+  /** Presence of the setup press marker; null until HQ has usable evidence. */
+  setupMarker: Schema.NullOr(Schema.Boolean),
   keyWider: Schema.Boolean,
   birthId: Schema.optionalKey(Schema.String),
 });

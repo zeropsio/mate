@@ -1,5 +1,4 @@
 import { describe, expect, it } from "@effect/vitest";
-import { afterEach } from "vite-plus/test";
 import * as Effect from "effect/Effect";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
@@ -9,15 +8,6 @@ import { budgets } from "./dsl.ts";
 const report = (line: string) => process.stdout.write(`${line}\n`);
 
 const names = ["Ada", "Bea", "Cara", "Dora"];
-const reachedTargets = new Set<string>();
-afterEach(({ task }) => {
-  if (task.name.startsWith("target:"))
-    expect(
-      reachedTargets.delete(task.name),
-      "Expected failure must reach its budget assertion",
-    ).toBe(true);
-});
-
 // One registration pair per organization-wide family (project, service, process, app version,
 // public routing): a fixed count that never grows with the projects or Mates shown.
 const REGISTRATIONS = 10;
@@ -261,9 +251,7 @@ describe("H: hosted client budgets", () => {
         expect(projectsAtStart, "Own project rows at start").toBe(0);
         expect(projectsIdle, "Own project rows over one renewal").toBe(0);
         report(`H variables: startup=${variablesAtStart}, idle=${variablesIdle}; 4 Mates`);
-        expect(variablesAtStart, "One variables search per Mate at most").toBeLessThanOrEqual(
-          names.length,
-        );
+        expect(variablesAtStart, "No variables search at menu load").toBe(0);
         expect(variablesIdle, "No variables search while idle").toBe(0);
       }),
     );
@@ -297,9 +285,7 @@ describe("H: hosted client budgets", () => {
         expect(projectsAtStart, "Own project rows at start").toBe(0);
         expect(projectsIdle, "Own project rows over one renewal").toBe(0);
         report(`H variables: startup=${variablesAtStart}, idle=${variablesIdle}; 4 Mates`);
-        expect(variablesAtStart, "One variables search per Mate at most").toBeLessThanOrEqual(
-          names.length,
-        );
+        expect(variablesAtStart, "No variables search at menu load").toBe(0);
         expect(variablesIdle, "No variables search while idle").toBe(0);
       }),
     );
@@ -335,7 +321,7 @@ describe("H: hosted client budgets", () => {
     );
 
     // Targets today's per-Mate startup reads, which make a large organization slow and expensive.
-    it.effect.fails(
+    it.effect(
       "target: browser startup uses at most its organization-wide registrations and eight other requests",
       () =>
         Effect.gen(function* () {
@@ -352,9 +338,6 @@ describe("H: hosted client budgets", () => {
           const otherRequests = sample.otherRequests - before.otherRequests;
           report(
             `H target startup: browser registrations=${registrations}, other=${otherRequests}, total=${registrations + otherRequests}; targets <=${REGISTRATIONS} registrations, <=8 others`,
-          );
-          reachedTargets.add(
-            "target: browser startup uses at most its organization-wide registrations and eight other requests",
           );
           expect(registrations, "Browser startup registrations").toBeLessThanOrEqual(REGISTRATIONS);
           expect(otherRequests, "Browser startup non-registration requests").toBeLessThanOrEqual(8);
@@ -392,7 +375,6 @@ describe("H: hosted client budgets", () => {
         report(
           `H target registrations: 1 Mate=${counts[0]}, 4 Mates + 6 plain projects=${counts[1]}; settled, target <=${REGISTRATIONS} and no growth`,
         );
-        reachedTargets.add("target: menu registrations do not grow from one to four Mates");
         expect(counts[0], "One-Mate menu registration ceiling").toBeLessThanOrEqual(REGISTRATIONS);
         expect(
           counts[1],
@@ -421,7 +403,6 @@ describe("H: hosted client budgets", () => {
         report(
           `H target unchanged segment: ${bytes} menu-state payload bytes; target=0, ignores ping/roles`,
         );
-        reachedTargets.add("target: an unchanged next HQ segment transfers no state payload");
         expect(bytes, "Unchanged HQ segment must not resend state").toBe(0);
       }),
     );

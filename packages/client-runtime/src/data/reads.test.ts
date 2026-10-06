@@ -1,3 +1,4 @@
+import { seedHqNavigation } from "./__fixtures__/hqNavigation.ts";
 import { AtomRegistry } from "effect/unstable/reactivity";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -7,6 +8,7 @@ import { linkKeys } from "./model.ts";
 import { mateVariablesScope } from "./families/mateVariables.ts";
 import {
   accountReadsAtom,
+  hqMateSetupAtom,
   holdProjectHistory,
   holdServiceRead,
   NOT_READ_PROCESSES,
@@ -397,5 +399,38 @@ describe("readMateMarker", () => {
       },
     });
     expect(await readMateMarker(registry, "zcp")).toBe(true);
+  });
+});
+
+describe("hqMateSetupAtom", () => {
+  it("reads navigation evidence without demanding variables or any other detail", () => {
+    const registry = AtomRegistry.make();
+    const store = makeAccountStore(registry);
+    seedHqNavigation(store, ORG, {
+      structure: {
+        apps: [],
+        ungrouped: [
+          { projectId: "p1", name: "Ada", mate: { face: "", closedOff: false, setupMarker: true } },
+        ],
+      },
+    });
+    registry.set(accountReadsAtom, {
+      data: store.data,
+      orgId: ORG,
+      demandDetail: () => {
+        throw new Error("Navigation must never demand detail");
+      },
+      renewHeld: () => {},
+    });
+    expect(registry.get(hqMateSetupAtom("p1"))).toEqual({ closedOff: false, marker: true });
+    expect(registry.get(hqMateSetupAtom("not-known"))).toEqual({
+      closedOff: "unknown",
+      marker: "unknown",
+    });
+    registry.set(accountReadsAtom, null);
+    expect(registry.get(hqMateSetupAtom("p1"))).toEqual({
+      closedOff: "unknown",
+      marker: "unknown",
+    });
   });
 });
