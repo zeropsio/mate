@@ -5,6 +5,11 @@
 > contracts) keep edits minimal so future ports stay cheap. Where the two disagree about product
 > name or scope, the rules above win.
 
+> **IMPORTANT:** The client data layer is being rewritten. Read
+> [`docs/internals/zerops/data-layer.md`](docs/internals/zerops/data-layer.md) before touching
+> client data flow, menu, HQ client, operations or Zerops reads. New code must use the data
+> layer so the in-flight work can count on it.
+
 Before starting work, read `CLAUDE.local.md` when present for this machine's tooling and access
 instructions. In a linked worktree, also check the main checkout listed by `git worktree list`
 for that file. It is local-only; never commit its contents or credentials.
