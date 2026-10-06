@@ -428,6 +428,46 @@ describe("useAccountHq — the official HQ this page holds", () => {
     ]);
   });
 
+  it("an HQ that refuses as not official reads a member list read this session again", async () => {
+    const OLD = { projectId: "P_OLD", address: "https://old.example.test" };
+    // This session read the member list, which named the old HQ, and keeps that verdict.
+    const members = [anchor(OLD.projectId, OLD.address)];
+    const hq = await rendered("org-moved-read", members);
+    expect([hq.reads(), hq.last().hq]).toEqual([1, { kind: "official", ...OLD }]);
+    // An admin moved the anchor: the member list names another HQ now.
+    members.splice(0, 1, anchor("P_NEW", "https://new.example.test"));
+
+    // The kept HQ's door: not serving, and its health says it is not the organization's HQ.
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL) =>
+      String(input).endsWith("/health")
+        ? Response.json({ state: "standby", official: "anchor_elsewhere", build: "b1" })
+        : Response.json({ code: "not_active" }, { status: 503 }),
+    );
+    const client = {
+      accountEpoch: 1,
+      mintThrowaway: async (
+        _input: unknown,
+        options: { readonly beforeMint?: () => Promise<void> },
+      ) => {
+        await options.beforeMint?.();
+        return { id: "t-1", token: "door-token", mintingToken: "minting" };
+      },
+      deleteThrowaway: async () => {},
+    } as unknown as ZeropsApiClient;
+    await act(async () => {
+      await accountHqApi(client, "org-moved-read", OLD)
+        .structure()
+        .catch(() => undefined);
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, LAYER_TURNS_MS));
+    });
+    expect([hq.reads(), hq.last().hq]).toEqual([
+      2,
+      { kind: "official", projectId: "P_NEW", address: "https://new.example.test" },
+    ]);
+  });
+
   it("a stream outage does not silently change the kept HQ verdict", async () => {
     const HQ = { projectId: "P_HQ", address: "https://hq.example.test" };
     keepHqVerdict({ account: scope.account, clientId: "org-out" }, HQ);

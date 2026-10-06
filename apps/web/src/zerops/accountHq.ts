@@ -38,7 +38,7 @@ import {
   zeropsThrowawayPlatform,
 } from "@t3tools/client-runtime/zerops/doorThrowaway";
 import type { ZeropsApiClient, ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
-import { useCallback, useContext, useEffect, useMemo, useSyncExternalStore } from "react";
+import { useCallback, useContext, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 
 import { appBasePath } from "~/basePath";
 import { randomUUID } from "~/lib/utils";
@@ -136,6 +136,15 @@ export function useAccountHq(clientId: string | undefined): AccountHq {
   const account = useAccountDataOptional();
   const revalidate = account?.revalidate;
   const retryDetail = account?.retryDetail;
+  // A verdict this page held and forgot — its HQ said it is not the official one — says the list it
+  // was read from is old: the member list is read again, whenever it was read this session.
+  const heldVerdict = useRef(kept !== undefined);
+  useEffect(() => {
+    const held = kept !== undefined;
+    if (heldVerdict.current && !held && clientId !== undefined)
+      revalidate?.({ family: "organizationMembers", ownerId: clientId });
+    heldVerdict.current = held;
+  }, [clientId, kept, revalidate]);
   const reread = useCallback(() => {
     if (owner === undefined) return;
     const members = { family: "organizationMembers", ownerId: owner.clientId } as const;
