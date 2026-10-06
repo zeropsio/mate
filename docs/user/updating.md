@@ -12,6 +12,13 @@ restore the release selected by zcp.
 The web bundle at `/mate/` ships with that server release, so the normal Zerops web path keeps the
 client and server together.
 
+## HQ
+
+When HQ's Core is older than the navigation protocol the client needs, the Mate menu says
+**HQ needs an update to show all navigation facts.** Projects and Mates remain grouped using the
+facts HQ supplies; missing facts remain unknown. Organization owners and admins can choose
+**Update HQ** on that line to open the existing update dialog.
+
 ## Standalone Server
 
 For a server you installed yourself, download the newer `zerops-mate-<version>.tgz` and

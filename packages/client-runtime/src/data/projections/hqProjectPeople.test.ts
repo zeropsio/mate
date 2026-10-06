@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { hqPeopleScope, placementsScope } from "../families/hqNavigation.ts";
+import { hqPersonFamily, hqPeopleScope, placementsScope } from "../families/hqNavigation.ts";
 import { emptyAccount, linkKeys, type AccountState, type ScopeKey } from "../model.ts";
 import { reduceAccount, type AccountInput, type Row } from "../reducer.ts";
 import { readsOfState } from "../store.ts";
@@ -97,6 +97,34 @@ const removed = apply(read, [
 const people = (state: AccountState) => hqProjectPeople.derive(readsOfState(state), ORG);
 
 describe("hqProjectPeople", () => {
+  it("retains an owner's identity and picture with an unknown name", () => {
+    const person = hqPersonFamily.hq!.decode(
+      { name: 42, avatarUrl: "avatar", clientUserId: "member" },
+      "person:u-jan",
+    )!;
+    const next = apply(read, [
+      {
+        kind: "hq-delivery",
+        scopes: generations,
+        reset: false,
+        rows: [
+          {
+            family: "hqPerson",
+            id: "u-jan",
+            value: person,
+            revision: { ...revision, revision: 2 },
+          },
+        ],
+        removals: [],
+      },
+    ]);
+    expect(people(next).ada?.owner).toEqual({
+      userId: "u-jan",
+      name: "Unknown",
+      avatarUrl: "avatar",
+    });
+  });
+
   it.each([
     {
       name: "an owner HQ names, with their picture",

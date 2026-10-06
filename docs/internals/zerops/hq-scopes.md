@@ -27,7 +27,15 @@ key; remove only keys listed in `removals`, whose reason is `deleted` or `no-acc
 corrupt values preserve previous facts, including during a reset. Do not infer deletion from
 socket closure, silence, an error or a missing key. After a reset accept its incarnation/revision;
 after a delta require the same incarnation and the next revision. `scope-ready` marks the end of
-catchup and carries the resulting cursor; it carries no facts.
+catchup and carries the resulting cursor and `core: { protocol, build? }`. The protocol number
+states which navigation facts Core supports; the build identifies the serving Core. The client
+compares the declared protocol with its required `HQ_NAVIGATION_PROTOCOL`. An absent, unreadable
+or older declaration shows a navigation update notice while retaining readable values.
+
+Navigation app, project, person and nested Mate/person records decode each independent field.
+Missing or unreadable fields are unknown (`undefined`), never fabricated defaults or proof of an
+empty list. The record's other fields remain usable. A wholly unreadable record preserves its
+previous value; explicit removals still govern access and deletion.
 
 A `scope-error` affects only its named scope. `refused` ends the attempt: timers and a same-session
 reconnect do not retry it. A roles or record change clears the refusal and re-evaluates current

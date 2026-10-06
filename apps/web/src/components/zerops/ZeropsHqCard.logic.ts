@@ -208,15 +208,18 @@ const counted = (count: number, one: string, many: string) =>
  */
 function holdings(structure: HqStructure | null, online: number | undefined): string | null {
   if (structure === null) return null;
+  const unknown = structure.apps.some((app) =>
+    app.projects.some((project) => project.mate === undefined),
+  );
   const mates =
     structure.ungrouped.length +
     structure.apps.reduce(
-      (sum, app) => sum + app.projects.filter((project) => project.mate !== null).length,
+      (sum, app) => sum + app.projects.filter((project) => project.mate != null).length,
       0,
     );
   return [
     counted(structure.apps.length, "project", "projects"),
-    counted(mates, "Mate", "Mates"),
+    unknown ? "Mates unknown" : counted(mates, "Mate", "Mates"),
     ...(online === undefined ? [] : [`${String(online)} online`]),
   ].join(" · ");
 }

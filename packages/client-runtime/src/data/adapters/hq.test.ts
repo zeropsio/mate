@@ -16,6 +16,7 @@ import { linkKeys, type StreamKey } from "../model.ts";
 import { factOf, streamOf } from "../reducer.ts";
 import { makeAccountStore, publicRead, readsOfState, type AccountStore } from "../store.ts";
 import { superviseLink } from "../supervisor.ts";
+import { hqNavigation } from "../projections/hqNavigation.ts";
 import { classifyHqClose, HQ_SILENCE_MS, hqNavigationLink } from "./hq.ts";
 
 const ORG = "org";
@@ -59,7 +60,10 @@ const navigation = (
   removals: HqScopeDelivery["removals"] = [],
   incarnation = "i1",
 ): HqStreamMessage => ({ type, scope: NAVIGATION, incarnation, revision, values, removals });
-const ready = (revision: number, incarnation = "i1"): HqStreamMessage => ({
+const ready = (
+  revision: number,
+  incarnation = "i1",
+): Extract<HqStreamMessage, { type: "scope-ready" }> => ({
   type: "scope-ready",
   scope: NAVIGATION,
   incarnation,
@@ -110,6 +114,68 @@ const navigationRequests = (fixture: HqFixtureWire, segment: number) =>
     .map(({ request }) => request);
 
 describe("hqNavigationLink", () => {
+  for (const { name, core, updateRequired } of [
+    { name: "undeclared", core: undefined, updateRequired: true },
+    { name: "unreadable", core: { protocol: "bad" }, updateRequired: true },
+    { name: "older", core: { protocol: 0, build: "old" }, updateRequired: true },
+    { name: "supported", core: { protocol: 1, build: "current" }, updateRequired: false },
+    { name: "newer", core: { protocol: 2, build: "new" }, updateRequired: false },
+  ])
+    it.effect(`reads a ${name} Core declaration without discarding navigation`, () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const fixture = hqFixtureWire();
+        const { fiber } = yield* run(store, fixture);
+        yield* fixture.send(
+          navigation("scope-reset", 1, [{ key: "app:shop", value: app("shop", "Shop") }]),
+        );
+        yield* fixture.send({ ...ready(1), core });
+        yield* settle;
+        expect(hqNavigation.derive(readsOfState(store.state()), ORG)).toMatchObject({
+          updateRequired,
+        });
+        expect(appName(store, "shop")).toBe("Shop");
+        expect(fixture.sent).toHaveLength(1);
+        yield* Fiber.interrupt(fiber);
+      }),
+    );
+
+  it.effect("accepts a Core declaration even when navigation has not changed", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const fixture = hqFixtureWire();
+      const { fiber } = yield* run(store, fixture);
+      yield* fixture.send(ready(1));
+      yield* settle;
+      expect(hqNavigation.derive(readsOfState(store.state()), ORG).updateRequired).toBe(true);
+      yield* fixture.send({ ...ready(1), core: { protocol: 1, build: "current" } });
+      yield* settle;
+      expect(hqNavigation.derive(readsOfState(store.state()), ORG).updateRequired).toBe(false);
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+
+  it.effect("keeps grouping when an older HQ omits a newer fact and reports the upgrade", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const fixture = hqFixtureWire();
+      const { fiber } = yield* run(store, fixture);
+      const { releaseOffer: _offer, ...olderApp } = app("shop", "Shop", ["ada"]);
+      yield* fixture.send(
+        navigation("scope-reset", 1, [
+          { key: "app:shop", value: olderApp },
+          { key: "project:ada", value: project("ada", "shop") },
+        ]),
+      );
+      yield* fixture.send(ready(1));
+      yield* settle;
+      const view = hqNavigation.derive(readsOfState(store.state()), ORG);
+      expect(view.structure?.apps[0]?.projects[0]?.name).toBe("ada");
+      expect(view).toMatchObject({ updateRequired: true });
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+
   it.effect("subscribes the navigation on open and is live once HQ's catchup ends", () =>
     Effect.gen(function* () {
       const store = makeAccountStore(AtomRegistry.make());

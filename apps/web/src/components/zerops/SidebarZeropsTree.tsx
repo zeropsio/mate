@@ -147,6 +147,9 @@ import { useSentAsks } from "~/zerops/sentAsk";
 import { hqDown, hqMatesAtom, hqPlacementsAtom, hqNavigationAtom } from "~/state/zerops";
 import { useMateCrew } from "~/zerops/crew/useCrew";
 import { useCrewAccess } from "~/zerops/crew/useCrewAccess";
+import { mayBearHq } from "@t3tools/shared/zeropsRoles";
+import { useAccountHq, useCarriedCoreBuild } from "~/zerops/accountHq";
+import { ZeropsHqUpdate } from "./ZeropsHqUpdate";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 import { readCollapsedProjects, writeCollapsedProjects } from "~/zerops/collapsedProjects";
 import {
@@ -522,6 +525,8 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
 /** What a change row acts with: the project's flow. */
 type ChangeRows = Pick<SidebarProjectFlow, "onOpenChange">;
 
+const ignoreUpdateState = (_state: boolean) => {};
+
 export function SidebarZeropsTree<T extends RosterCandidate>({
   candidates,
   onSelect,
@@ -550,6 +555,10 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   getCrew,
 }: SidebarZeropsTreeProps<T>) {
   const structureView = useAtomValue(hqNavigationAtom);
+  const session = useZeropsSessionOptional();
+  const accountHq = useAccountHq(structureView.orgId ?? undefined);
+  const carried = useCarriedCoreBuild();
+  const [followingHqUpdate, setFollowingHqUpdate] = useState(false);
   const hqStale = structureView.structure !== null && hqDown(structureView);
   // Whose each Mate is, as HQ says it (invariant 11).
   const personFacts = useAtomValue(shownHqPersonFactsAtom);
@@ -1641,6 +1650,25 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
       data-zerops-surface="sidebar-environments"
       ref={treeRef}
     >
+      {structureView.updateRequired || followingHqUpdate ? (
+        <div className="px-4 pb-3 text-xs text-sidebar-muted-foreground" role="status">
+          {structureView.updateRequired ? "HQ needs an update to show all navigation facts." : null}
+          {session !== null &&
+          session !== undefined &&
+          mayBearHq(session.activeOrganization ?? undefined) &&
+          accountHq.hq.kind === "official" &&
+          carried !== undefined ? (
+            <ZeropsHqUpdate
+              projectId={accountHq.hq.projectId}
+              carried={carried}
+              answering={structureView.coreBuild}
+              trigger="Update HQ"
+              onBusy={ignoreUpdateState}
+              onFollowing={setFollowingHqUpdate}
+            />
+          ) : null}
+        </div>
+      ) : null}
       <SidebarSelectedBand current={activeProjectId} />
       {groupSections}
       {ungroupedSection}

@@ -30,7 +30,7 @@ export function closeOffWordOf(
   const open = new Set<string>();
   const mates = [...structure.ungrouped, ...structure.apps.flatMap((app) => app.projects)];
   for (const { projectId, mate } of mates) {
-    if (mate === null) continue;
+    if (mate == null) continue;
     if (mate.closedOff === true) closed.add(projectId);
     else if (mate.closedOff === false) open.add(projectId);
   }

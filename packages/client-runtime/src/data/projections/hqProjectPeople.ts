@@ -7,7 +7,7 @@
  *
  * @module data/projections/hqProjectPeople
  */
-import type { HqNavigationProject } from "@t3tools/shared/hqStream";
+import type { PlacementValue } from "../families/hqNavigation.ts";
 
 import { hqPeopleScope, placementsScope } from "../families/hqNavigation.ts";
 import type { Projection, ProjectionReads } from "../store.ts";
@@ -18,26 +18,30 @@ export interface HqMateOwner {
   readonly userId: string;
   readonly name: string;
   /** The platform's picture of them; `null` where they have none. */
-  readonly avatarUrl: string | null;
+  readonly avatarUrl: string | null | undefined;
 }
 
 export interface HqProjectPeople {
   /** HQ names an owner of it (`ownerUserId`), whether or not it sends their person record. */
-  readonly owned: boolean;
+  readonly owned: boolean | undefined;
   readonly owner: HqMateOwner | null;
   /** Its Mate waits on the reader, as HQ says (`waitsOnViewer`). */
-  readonly waitsOnViewer: boolean;
+  readonly waitsOnViewer: boolean | undefined;
   /** Who is signed in to each login now, by login id: whose the composer is. */
-  readonly signedInNow: HqNavigationProject["signedInNow"];
+  readonly signedInNow: PlacementValue["signedInNow"];
   /** Who last signed each login in, by login id, signed out since or not: whether anybody has. */
-  readonly everSignedIn: HqNavigationProject["everSignedIn"];
+  readonly everSignedIn: PlacementValue["everSignedIn"];
 }
 
-function ownerOf(read: ProjectionReads, orgId: string, userId: string | null): HqMateOwner | null {
-  if (userId === null || !read.members(hqPeopleScope(orgId)).ids.includes(userId)) return null;
+function ownerOf(
+  read: ProjectionReads,
+  orgId: string,
+  userId: string | null | undefined,
+): HqMateOwner | null {
+  if (userId == null || !read.members(hqPeopleScope(orgId)).ids.includes(userId)) return null;
   const person = read.fact("hqPerson", userId);
   return person.kind === "known"
-    ? { userId, name: person.value.name, avatarUrl: person.value.avatarUrl }
+    ? { userId, name: person.value.name ?? "Unknown", avatarUrl: person.value.avatarUrl }
     : null;
 }
 
@@ -54,9 +58,9 @@ export const hqProjectPeople: Projection<string, Readonly<Record<string, HqProje
           [
             projectId,
             {
-              owned: person.ownerUserId !== null,
-              owner: ownerOf(read, orgId, person.ownerUserId),
-              waitsOnViewer: person.waitsOnViewer,
+              owned: person?.ownerUserId === undefined ? undefined : person.ownerUserId !== null,
+              owner: ownerOf(read, orgId, person?.ownerUserId),
+              waitsOnViewer: person?.waitsOnViewer,
               signedInNow,
               everSignedIn,
             },

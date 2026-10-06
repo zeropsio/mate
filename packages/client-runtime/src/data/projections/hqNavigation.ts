@@ -8,6 +8,7 @@
  *
  * @module data/projections/hqNavigation
  */
+import { HQ_NAVIGATION_PROTOCOL } from "@t3tools/shared/hqStream";
 import type { HqPeople } from "@t3tools/shared/hqMates";
 
 import type { HqMate, HqStructure } from "../../zerops/hq/client.ts";
@@ -25,6 +26,7 @@ import {
   type HqStatusValue,
   type PlacementValue,
 } from "../families/hqNavigation.ts";
+import { hqProtocolScope } from "../families/hqProtocol.ts";
 import { linkKeys } from "../model.ts";
 import type { Projection, ProjectionReads } from "../store.ts";
 import { retryDelayMs, STREAM_POLICY } from "../streamMachine.ts";
@@ -45,6 +47,9 @@ export interface HqNavigationRead extends Omit<ScopeFreshness, "complete"> {
   readonly refusal: string | null;
   /** HQ does not answer, and its retries are as far apart as they get. */
   readonly capped: boolean;
+  /** A caught-up Core has not proved support for the navigation facts this client needs. */
+  readonly updateRequired: boolean;
+  readonly coreBuild: string | undefined;
 }
 
 /** The ids a navigation scope lists, each with its value. */
@@ -66,14 +71,14 @@ function mateOf(
   signers: PlacementValue["everSignedIn"],
 ): HqMate {
   return {
-    face: mate.face,
+    ...(mate.face === undefined ? {} : { face: mate.face }),
     madeBy: mate.madeBy,
     standupRequestedBy: mate.standupRequestedBy,
     closedOff: mate.closedOff,
     keyWider: mate.keyWider,
     ...(mate.birthId === undefined ? {} : { birthId: mate.birthId }),
     // Who last signed each of its agents in, as HQ's record keeps it (`Mine` without an owner).
-    ...(Object.keys(signers).length === 0 ? {} : { signers }),
+    ...(signers === undefined || Object.keys(signers).length === 0 ? {} : { signers }),
   };
 }
 
@@ -84,6 +89,7 @@ function mateOf(
 function environmentsOfApp(
   environments: HqAppValue["environments"],
 ): Pick<HqStructure["apps"][number], "environments"> {
+  if (environments === undefined) return {};
   if ("refused" in environments) return { environments: { refused: environments.refused } };
   const read = environmentsOf(environments);
   return read === undefined ? {} : { environments: read };
@@ -109,36 +115,41 @@ function structureOf(
     ...(organization === null
       ? {}
       : { can: organization.can, unheld: organization.unheld, tools: organization.tools }),
-    apps: listed(read, "hqApp", hqAppsScope(orgId)).map(({ value: app }) => ({
-      id: app.id,
-      name: app.name,
-      can: app.can,
-      contents: app.contents,
-      births: app.births,
+    apps: listed(read, "hqApp", hqAppsScope(orgId)).map(({ id, value: app }) => ({
+      id,
+      name: app.name ?? "Unknown",
+      ...(app.can === undefined ? {} : { can: app.can }),
+      ...(app.contents === undefined ? {} : { contents: app.contents }),
+      ...(app.births === undefined ? {} : { births: app.births }),
       ...environmentsOfApp(app.environments),
-      projects: app.projectIds.flatMap((projectId) => {
+      projects: (
+        app.projectIds ??
+        [...placements].flatMap(([projectId, placed]) => (placed.appId === id ? [projectId] : []))
+      ).flatMap((projectId) => {
         const placement = placements.get(projectId);
         return placement === undefined
           ? []
           : [
               {
                 projectId,
-                name: placement.name,
-                kind: placement.kind,
+                name: placement.name ?? "Unknown",
+                kind: placement.kind ?? "unknown",
                 mate:
-                  placement.mate === null ? null : mateOf(placement.mate, placement.everSignedIn),
+                  placement.mate == null
+                    ? placement.mate
+                    : mateOf(placement.mate, placement.everSignedIn),
                 ...offersOf(placement),
               },
             ];
       }),
     })),
-    ungrouped: [...placements.values()].flatMap((placement) =>
-      placement.appId !== null || placement.mate === null
+    ungrouped: [...placements].flatMap(([projectId, placement]) =>
+      placement.appId !== null || placement.mate == null
         ? []
         : [
             {
-              projectId: placement.projectId,
-              name: placement.name,
+              projectId,
+              name: placement.name ?? "Unknown",
               mate: mateOf(placement.mate, placement.everSignedIn),
               ...offersOf(placement),
             },
@@ -158,14 +169,30 @@ export const hqNavigation: Projection<string, HqNavigationRead> = {
     const phase = read.stream(scope).phase;
     const link = read.stream(linkKeys.hq(orgId));
     const refused = [link, read.stream(scope)].find((stream) => stream.phase === "refused");
+    const protocol = read.fact("hqProtocol", orgId);
+    const declared =
+      protocol.kind === "known" && read.members(hqProtocolScope(orgId)).ids.includes(orgId)
+        ? protocol.value
+        : null;
     return {
+      updateRequired:
+        declared !== null &&
+        (declared.protocol === undefined || declared.protocol < HQ_NAVIGATION_PROTOCOL),
+      coreBuild: declared?.build,
       structure: structureOf(read, orgId, organization),
       organization,
       presses: Object.fromEntries(
         listed(read, "hqPress", hqPressesScope(orgId)).map(({ id, value }) => [id, value]),
       ),
       people: Object.fromEntries(
-        listed(read, "hqPerson", hqPeopleScope(orgId)).map(({ id, value }) => [id, value]),
+        listed(read, "hqPerson", hqPeopleScope(orgId)).map(({ id, value }) => [
+          id,
+          {
+            name: value.name ?? "Unknown",
+            avatarUrl: value.avatarUrl,
+            ...(value.clientUserId === undefined ? {} : { clientUserId: value.clientUserId }),
+          },
+        ]),
       ),
       read: complete ? "read" : phase === "idle" || phase === "paused" ? "unread" : "reading",
       refusal: refused?.fault?.message ?? null,
@@ -191,7 +218,9 @@ export const hqPersonFacts: Projection<string, Readonly<Record<string, HqPersonF
   keyOf: (orgId) => orgId,
   derive: (read, orgId) =>
     Object.fromEntries(
-      listed(read, "placement", placementsScope(orgId)).map(({ id, value }) => [id, value.person]),
+      listed(read, "placement", placementsScope(orgId)).flatMap(({ id, value }) =>
+        value.person === undefined ? [] : [[id, value.person]],
+      ),
     ),
   equals: sameValue,
 };

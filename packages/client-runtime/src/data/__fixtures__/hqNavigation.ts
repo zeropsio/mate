@@ -152,7 +152,7 @@ export function seedHqNavigation(store: AccountStore, orgId: string, seed: Seede
           appId: app.id,
           name: project.name,
           kind: project.kind,
-          mate: project.mate === null ? null : mateOf(project.mate),
+          mate: project.mate == null ? null : mateOf(project.mate),
           ...(project.can === undefined ? {} : { can: project.can as HqAppValue["can"] }),
           person: seed.person ?? PERSON,
           signedInNow: {},

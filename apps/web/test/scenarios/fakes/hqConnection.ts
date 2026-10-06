@@ -8,6 +8,7 @@ const bytesOf = (data: RawData) =>
 /** A controllable, endpoint-agnostic network in front of REAL Core. */
 export async function hqConnection(coreOrigin: string) {
   let down = false;
+  let mapFrame = (frame: string) => frame;
   let received = false;
   const links = new Map<WebSocket, WebSocket>();
   const events = new NodeEvents.EventEmitter();
@@ -75,7 +76,7 @@ export async function hqConnection(coreOrigin: string) {
         for (const frame of queued) upstream.send(frame.bytes, { binary: frame.binary });
       });
       upstream.on("message", (data, isBinary) => {
-        const frame = bytesOf(data);
+        const frame = isBinary ? bytesOf(data) : Buffer.from(mapFrame(bytesOf(data).toString()));
         counters.wsDownFrames++;
         counters.wsDownBytes += frame.length;
         if (client.readyState === WebSocket.OPEN) client.send(frame, { binary: isBinary });
@@ -97,6 +98,10 @@ export async function hqConnection(coreOrigin: string) {
     ...server,
     links,
     counters,
+    /** Transforms downstream text frames, for source protocol variants in area drivers. */
+    mapFrames: (transform: (frame: string) => string) => {
+      mapFrame = transform;
+    },
     async ready() {
       if (received) return;
       await deadline(

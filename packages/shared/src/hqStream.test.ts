@@ -64,6 +64,7 @@ it("navigation preserves production release standing and deploy evidence", () =>
     contents: { empty: false, deletingProjectIds: [] },
     projectIds: ["production"],
     births: [],
+    releaseOffer: null,
     changes: [
       {
         repo: "appdev",

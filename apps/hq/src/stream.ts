@@ -3,6 +3,7 @@
 import * as NodeCrypto from "node:crypto";
 import {
   HQ_STREAM_SEGMENT_CLOSE,
+  HQ_NAVIGATION_PROTOCOL,
   HQ_STREAM_REFUSED_CLOSE,
   HqStreamRequest,
 } from "@t3tools/shared/hqStream";
@@ -74,7 +75,22 @@ export const serveHqSocket = <R>(
       );
       return yield* serveStructureSocket(
         socket,
-        Stream.merge(connection.messages, checks),
+        Stream.merge(
+          connection.messages.pipe(
+            Stream.map((message) =>
+              message.type === "scope-ready"
+                ? {
+                    ...message,
+                    core: {
+                      protocol: HQ_NAVIGATION_PROTOCOL,
+                      ...(options.build === undefined ? {} : { build: options.build }),
+                    },
+                  }
+                : message,
+            ),
+          ),
+          checks,
+        ),
         options.pingEvery ?? Duration.seconds(20),
         (request) => Queue.offer(requests, request).pipe(Effect.asVoid),
       );
