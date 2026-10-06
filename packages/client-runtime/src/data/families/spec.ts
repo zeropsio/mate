@@ -76,6 +76,20 @@ export interface DetailListing {
   };
 }
 
+/**
+ * A source without realtime (§10.5): the owner's whole value, one `GET` read while a screen demands
+ * it for one owner, and read again while it stays demanded, on the stream machine's sampled
+ * cadence, and at once after our own write. Its scope is never claimed live. Its one fact is keyed
+ * by the owner it is read for.
+ */
+export interface SampledSource<Value> {
+  readonly path: (owner: { readonly orgId: string; readonly ownerId: string }) => string;
+  /** The value the answer says, stripped to what a screen needs; `null` for one it cannot read. */
+  readonly decode: (answer: unknown) => Value | null;
+  /** A new demand reads it again once its last read is this old; `0`, on every new demand. */
+  readonly freshMs: number;
+}
+
 /** An index the reducer keeps for the family: under which key a fact counts now, if any. */
 export interface FamilyIndex<Value> {
   readonly name: string;
@@ -105,6 +119,8 @@ export interface FamilySpec<F extends Family> {
   readonly zerops?: ZeropsFamilySource<FamilyValues[F]>;
   /** For a detail family Zerops observes as one query per owner, instead of `zerops`. */
   readonly zeropsQuery?: ZeropsQuerySource<FamilyValues[F]>;
+  /** A family read whole per owner, never registered: its scope's demand is `detail`. */
+  readonly sampled?: SampledSource<FamilyValues[F]>;
   /**
    * Whether a value is its entity's end, after which it never changes (a process finished): an
    * end that a read or a baseline brings replaces a value that is no end, though the read carries

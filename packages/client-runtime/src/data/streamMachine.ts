@@ -115,6 +115,11 @@ export type StreamEvent =
   | { readonly kind: "deadline" }
   /** The person asked to try again. */
   | { readonly kind: "manual-retry" }
+  /**
+   * A sampled scope's value is old: its revalidation came due, or our own write changed it. It is
+   * read again, under its value; a refusal stays refused.
+   */
+  | { readonly kind: "revalidate" }
   /** An input the refusal was decided over changed (credential, grant, filter). */
   | { readonly kind: "input-changed" }
   /** The single-flight session repair succeeded. */
@@ -312,6 +317,10 @@ export function transition(state: StreamState, event: StreamEvent, now: number):
     case "session-repaired":
       return state.phase === "reauthenticating"
         ? attempt({ ...state, repaired: true }, now)
+        : settle(state);
+    case "revalidate":
+      return state.mode === "sampled" && (state.phase === "live" || state.phase === "recovering")
+        ? attempt(state, now)
         : settle(state);
     case "manual-retry":
     case "input-changed":

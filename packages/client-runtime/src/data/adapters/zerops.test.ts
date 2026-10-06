@@ -20,6 +20,9 @@ import { projectsScope } from "../families/project.ts";
 import { activeScope, versionScope } from "../families/version.ts";
 import { factOf, indexOf } from "../reducer.ts";
 import { linkKeys } from "../model.ts";
+import { detailScopeOf } from "../demand.ts";
+import { membersScope } from "../families/organizationMembers.ts";
+import { STREAM_POLICY } from "../streamMachine.ts";
 
 const PROCESS_SEARCH = "/process/search";
 const PROJECT_SEARCH = "/project/search";
@@ -840,6 +843,222 @@ describe("what a baseline and a read by id may claim", () => {
         value: { source: "NONE", status: "BACKUP" },
       });
       expect(store.state().streams.get(versionScope(ORG, "gone"))?.phase).toBe("refused");
+      expect(store.state().streams.get(linkKeys.zerops(ORG))?.phase).toBe("live");
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+});
+
+describe("a sampled detail", () => {
+  const MEMBERS_PATH = `/client/${ORG}/user/list?limit=100`;
+  const AGENTS_PATH = "/service-stack/s1/env";
+  const MEMBERS = { family: "organizationMembers", ownerId: ORG } as const;
+  const AGENTS = { family: "serviceAgents", ownerId: "s1" } as const;
+  const members = membersScope(ORG);
+  const member = (id: string) => ({ id, user: { fullName: id } });
+  const readsOf = (fixture: ReturnType<typeof fixtureWire>, path: string) =>
+    fixture.requests.filter((request) => request.method === "GET" && request.path === path).length;
+  /** Answers the member list with whatever `list` holds when it is read, and agents' env. */
+  const sampledAnswers =
+    (list: { current: ReadonlyArray<unknown> }, held?: Deferred.Deferred<void>) =>
+    (request: WireRequest): Effect.Effect<unknown, StreamFault> => {
+      if (request.method !== "GET") return answers(() => [])(request);
+      if (request.path === AGENTS_PATH)
+        return Effect.succeed({
+          status: 200,
+          body: {
+            items: [
+              { id: "e1", key: "ZCP_AGENT_OAUTH_CLAUDE_CODE", content: "1" },
+              { id: "e2", key: "SECRET_TOKEN", content: "hunter2" },
+            ],
+          },
+        });
+      const body = { clientUserList: list.current };
+      return held === undefined
+        ? Effect.succeed({ status: 200, body })
+        : Effect.andThen(Deferred.await(held), Effect.succeed({ status: 200, body }));
+    };
+
+  it.effect("reads the owner's whole value as one fact and never claims it live", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const fixture = fixtureWire(sampledAnswers({ current: [member("m1")] }));
+      const { fiber, link } = yield* runLink(store, fixture);
+      link.demandDetail(MEMBERS);
+      yield* settle;
+      expect(readsOf(fixture, MEMBERS_PATH)).toBe(1);
+      expect(store.state().streams.get(members)).toMatchObject({
+        phase: "live",
+        mode: "sampled",
+        next: { kind: "revalidate" },
+      });
+      expect(factOf(store.state(), "organizationMembers", ORG)?.content).toEqual({
+        kind: "value",
+        value: [member("m1")],
+      });
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+
+  it.effect("keeps only the agents of a service's variables, never a variable itself", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const fixture = fixtureWire(sampledAnswers({ current: [] }));
+      const { fiber, link } = yield* runLink(store, fixture);
+      link.demandDetail(AGENTS);
+      yield* settle;
+      expect(factOf(store.state(), "serviceAgents", "s1")?.content).toEqual({
+        kind: "value",
+        value: ["claude-code"],
+      });
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+
+  it.effect("reads it again on its cadence while demanded, its value shown under the read", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const list = { current: [member("m1")] as ReadonlyArray<unknown> };
+      const fixture = fixtureWire(sampledAnswers(list));
+      const { fiber, link } = yield* runLink(store, fixture);
+      link.demandDetail(MEMBERS);
+      yield* settle;
+
+      list.current = [member("m1"), member("m2")];
+      yield* TestClock.adjust(STREAM_POLICY.sampledIntervalMs - 1);
+      yield* settle;
+      expect(readsOf(fixture, MEMBERS_PATH)).toBe(1);
+      yield* TestClock.adjust(1);
+      yield* settle;
+      expect(readsOf(fixture, MEMBERS_PATH)).toBe(2);
+      expect(factOf(store.state(), "organizationMembers", ORG)?.content).toEqual({
+        kind: "value",
+        value: [member("m1"), member("m2")],
+      });
+      expect(store.state().streams.get(members)?.phase).toBe("live");
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+
+  it.effect("keeps the value while a revalidation is under way", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const held = yield* Deferred.make<void>();
+      const fixture = fixtureWire((request) =>
+        request.method === "GET" && readsOf(fixture, MEMBERS_PATH) > 1
+          ? sampledAnswers({ current: [] }, held)(request)
+          : sampledAnswers({ current: [member("m1")] })(request),
+      );
+      const { fiber, link } = yield* runLink(store, fixture);
+      link.demandDetail(MEMBERS);
+      yield* settle;
+      yield* TestClock.adjust(STREAM_POLICY.sampledIntervalMs);
+      yield* settle;
+      expect(store.state().streams.get(members)?.phase).toBe("baselining");
+      expect(factOf(store.state(), "organizationMembers", ORG)?.content).toEqual({
+        kind: "value",
+        value: [member("m1")],
+      });
+      yield* Deferred.succeed(held, undefined);
+      yield* settle;
+      expect(factOf(store.state(), "organizationMembers", ORG)?.content).toEqual({
+        kind: "value",
+        value: [],
+      });
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+
+  it.effect.each([
+    { name: "members within their freshness", demand: MEMBERS, path: MEMBERS_PATH, reads: 1 },
+    { name: "agents, fresh for no time", demand: AGENTS, path: AGENTS_PATH, reads: 2 },
+  ])("a new demand of $name reads $reads time(s) in all", ({ demand, path, reads }) =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const fixture = fixtureWire(sampledAnswers({ current: [member("m1")] }));
+      const { fiber, link } = yield* runLink(store, fixture);
+      const release = link.demandDetail(demand);
+      yield* settle;
+      release();
+      yield* settle;
+      yield* TestClock.adjust(1_000);
+      link.demandDetail(demand);
+      yield* settle;
+      expect(readsOf(fixture, path)).toBe(reads);
+      expect(store.state().streams.get(detailScopeOf(ORG, demand))?.phase).toBe("live");
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+
+  it.effect("reads it again at once after our own write, held or held next", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const fixture = fixtureWire(sampledAnswers({ current: [member("m1")] }));
+      const { fiber, link } = yield* runLink(store, fixture);
+      const release = link.demandDetail(MEMBERS);
+      yield* settle;
+      link.revalidate(MEMBERS);
+      yield* settle;
+      expect(readsOf(fixture, MEMBERS_PATH)).toBe(2);
+
+      release();
+      yield* settle;
+      link.revalidate(MEMBERS);
+      yield* settle;
+      expect(readsOf(fixture, MEMBERS_PATH)).toBe(2);
+      link.demandDetail(MEMBERS);
+      yield* settle;
+      expect(readsOf(fixture, MEMBERS_PATH)).toBe(3);
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+
+  it.effect("a refusal stays refused through its cadence; only the person's again reads it", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      let status = 403;
+      const fixture = fixtureWire((request) =>
+        request.method === "GET"
+          ? Effect.succeed({ status, body: status === 200 ? { clientUserList: [] } : null })
+          : answers(() => [])(request),
+      );
+      const { fiber, link } = yield* runLink(store, fixture);
+      link.demandDetail(MEMBERS);
+      yield* settle;
+      expect(store.state().streams.get(members)?.phase).toBe("refused");
+      status = 200;
+      link.revalidate(MEMBERS);
+      yield* TestClock.adjust(STREAM_POLICY.sampledIntervalMs * 3);
+      yield* settle;
+      expect(readsOf(fixture, MEMBERS_PATH)).toBe(1);
+      link.retryDetail(MEMBERS);
+      yield* settle;
+      expect(readsOf(fixture, MEMBERS_PATH)).toBe(2);
+      expect(store.state().streams.get(members)?.phase).toBe("live");
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+
+  it.effect("an answer it cannot read keeps the last value and retries alone", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      let body: unknown = { clientUserList: [member("m1")] };
+      const fixture = fixtureWire((request) =>
+        request.method === "GET"
+          ? Effect.succeed({ status: 200, body })
+          : answers(() => [])(request),
+      );
+      const { fiber, link } = yield* runLink(store, fixture);
+      link.demandDetail(MEMBERS);
+      yield* settle;
+      body = { clientUserList: "not a list" };
+      link.revalidate(MEMBERS);
+      yield* settle;
+      expect(store.state().streams.get(members)?.phase).toBe("recovering");
+      expect(factOf(store.state(), "organizationMembers", ORG)?.content).toEqual({
+        kind: "value",
+        value: [member("m1")],
+      });
       expect(store.state().streams.get(linkKeys.zerops(ORG))?.phase).toBe("live");
       yield* Fiber.interrupt(fiber);
     }),

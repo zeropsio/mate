@@ -253,3 +253,51 @@ describe("observeAccount — closed with its account", () => {
     }),
   );
 });
+
+describe("readDetail", () => {
+  const AGENTS = { family: "serviceAgents", ownerId: "s1" } as const;
+  const observe = (status: number | "lost") => {
+    const store = makeAccountStore(AtomRegistry.make());
+    const fixture = fixtureWire((request) =>
+      request.method === "GET"
+        ? status === "lost"
+          ? Effect.fail({ outcome: "transient", message: "HTTP 503" } as const)
+          : Effect.succeed({ status, body: status === 200 ? { items: [] } : null })
+        : Effect.succeed(request.body?.wsOutputType === "listStream" ? { items: [] } : {}),
+    );
+    return {
+      store,
+      fixture,
+      account: observeAccount({ store, wire: fixture.wire, repairSession: Effect.void }),
+    };
+  };
+
+  it.live.each([
+    { status: 200, read: true, phase: "paused" },
+    // A refusal is terminal for its input: letting it go leaves it refused, never read again.
+    { status: 403, read: false, phase: "refused" },
+    { status: "lost", read: false, phase: "paused" },
+  ] as const)(
+    "settles a read answered $status as read: $read, then lets it go",
+    ({ status, read, phase }) =>
+      Effect.gen(function* () {
+        const { store, account } = observe(status);
+        account.show("org");
+        const answer = yield* Effect.promise(() => account.readDetail(AGENTS));
+        expect(answer).toBe(read);
+        yield* until(
+          () => streamOf(store.state(), "zerops:org:agents:s1").phase === phase,
+          `the read let go, ${phase}`,
+        );
+        account.stop();
+      }),
+  );
+
+  it.live("answers no read with no organization shown, and reads nothing", () =>
+    Effect.gen(function* () {
+      const { fixture, account } = observe(200);
+      expect(yield* Effect.promise(() => account.readDetail(AGENTS))).toBe(false);
+      expect(fixture.requests).toEqual([]);
+    }),
+  );
+});

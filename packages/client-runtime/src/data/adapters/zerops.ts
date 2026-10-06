@@ -38,7 +38,7 @@ import {
   type Registration,
 } from "../demand.ts";
 import { familySpec, scopeListing, scopeSpec } from "../families/index.ts";
-import { linkKeys, type Family, type LinkKey, type ScopeKey } from "../model.ts";
+import { factKey, linkKeys, type Family, type LinkKey, type ScopeKey } from "../model.ts";
 import { streamOf, type Row, type RuntimeDirective } from "../reducer.ts";
 import type { AccountStore } from "../store.ts";
 import { retryDelayMs, type StreamEvent, type StreamFault } from "../streamMachine.ts";
@@ -169,6 +169,13 @@ export function zeropsNavigationLink(options: {
 }): Pick<LinkOptions, "key" | "scopes" | "details" | "attempt" | "childMoved"> & {
   /** A screen's hold on a detail; the release lets it go once no screen holds it. */
   readonly demandDetail: (demand: DetailDemand) => () => void;
+  /**
+   * Our own write changed a sampled detail: read it again now while it is demanded, and on its
+   * next demand whatever its age.
+   */
+  readonly revalidate: (demand: DetailDemand) => void;
+  /** The person's "try again" on one detail: a failed or refused read is read again. */
+  readonly retryDetail: (demand: DetailDemand) => void;
 } {
   const { orgId, store } = options;
   const demands = makeDetailDemands({
@@ -185,6 +192,20 @@ export function zeropsNavigationLink(options: {
   const familyOf = (scope: ScopeKey) => scopeSpec(scope).family;
   /** Looks at the demanded details again in the attempt under way, if one is. */
   let wakeAttempt: (() => void) | null = null;
+  /**
+   * When each sampled detail was last read whole, across attempts: a new demand inside its
+   * family's `freshMs` reads nothing. Our own write forgets it.
+   */
+  const sampledAt = new Map<ScopeKey, number>();
+  const tellDetail = (demand: DetailDemand, event: StreamEvent) => {
+    const scope = detailScopeOf(orgId, demand);
+    Effect.runSync(
+      Effect.map(Clock.currentTimeMillis, (now) =>
+        store.dispatch({ kind: "stream", key: scope, now, event }),
+      ),
+    );
+    wakeAttempt?.();
+  };
 
   const attempt = (): Effect.Effect<never, StreamFault, Scope.Scope> =>
     Effect.gen(function* () {
@@ -531,13 +552,29 @@ export function zeropsNavigationLink(options: {
       const observeDetail = (scope: ScopeKey): Effect.Effect<void, StreamFault> =>
         Effect.gen(function* () {
           const { spec, detail } = scopeListing(scope);
-          if (detail === null) return yield* observeQuery(scope);
+          const sampled = detail === null ? spec.sampled : undefined;
+          if (detail === null && sampled === undefined) return yield* observeQuery(scope);
           yield* signal(scope, { kind: "attempt" });
           generations.set(scope, streamOf(store.state(), scope).generation);
           yield* signal(scope, { kind: "handshake" });
-          store.dispatch({ kind: "baseline-begin", scope, generation: generationOf(scope) });
           const ownerId = scope.split(":").slice(3).join(":");
-          const answer = yield* link.get(detail.zerops.path({ orgId, ownerId })).pipe(
+          const readAt = sampledAt.get(scope);
+          const now = yield* Clock.currentTimeMillis;
+          // A sampled value read within its freshness is the answer to a new demand: nothing is
+          // read, and its next revalidation comes on the cadence.
+          if (
+            sampled !== undefined &&
+            readAt !== undefined &&
+            now - readAt < sampled.freshMs &&
+            store.state().facts.has(factKey(spec.family, ownerId))
+          )
+            return yield* signal(scope, { kind: "baseline-committed" });
+          store.dispatch({ kind: "baseline-begin", scope, generation: generationOf(scope) });
+          const path =
+            sampled !== undefined
+              ? sampled.path({ orgId, ownerId })
+              : (detail?.zerops.path({ orgId, ownerId }) ?? "");
+          const answer = yield* link.get(path).pipe(
             Effect.map((read) =>
               read.status === 403
                 ? classifyHttp(403)
@@ -553,13 +590,35 @@ export function zeropsNavigationLink(options: {
               fault: answer,
               jitter: yield* Random.next,
             });
-          const items = detail.zerops.items(answer.body);
-          if (items === undefined)
-            return yield* signal(scope, {
+          const malformed = Effect.flatMap(Random.next, (jitter) =>
+            signal(scope, {
               kind: "fault",
               fault: corrupt("A detail baseline answer is malformed."),
-              jitter: yield* Random.next,
+              jitter,
+            }),
+          );
+          if (sampled !== undefined) {
+            const value = sampled.decode(answer.body);
+            if (value === null) return yield* malformed;
+            const row = {
+              family: spec.family,
+              id: ownerId,
+              value,
+              revision: { kind: "zerops", version: null },
+            } as Row;
+            store.dispatch({
+              kind: "baseline-commit",
+              scope,
+              generation: generationOf(scope),
+              via: "zerops-read",
+              members: [ownerId],
+              rows: [row],
             });
+            sampledAt.set(scope, yield* Clock.currentTimeMillis);
+            return yield* signal(scope, { kind: "baseline-committed" });
+          }
+          const items = detail?.zerops.items(answer.body);
+          if (items === undefined) return yield* malformed;
           const rows = rowsOf(spec.family, items);
           yield* carryOut(
             store.dispatch({
@@ -618,6 +677,12 @@ export function zeropsNavigationLink(options: {
             continue;
           }
           if (inFlight.has(scope)) continue;
+          // A sampled detail's revalidation comes due on its cadence while it stays demanded.
+          if (stream.phase === "live" && stream.next.kind === "revalidate") {
+            if (stream.next.at > now) wakeAt = Math.min(wakeAt, stream.next.at);
+            else fresh.push(scope);
+            continue;
+          }
           const seen = observed.get(scope);
           if (
             seen === undefined ||
@@ -663,5 +728,10 @@ export function zeropsNavigationLink(options: {
     // A detail the person tried again, or whose read passed its deadline: look at it now.
     childMoved: () => wakeAttempt?.(),
     demandDetail: (demand) => demands.hold(detailScopeOf(orgId, demand)),
+    revalidate: (demand) => {
+      sampledAt.delete(detailScopeOf(orgId, demand));
+      tellDetail(demand, { kind: "revalidate" });
+    },
+    retryDetail: (demand) => tellDetail(demand, { kind: "manual-retry" }),
   };
 }

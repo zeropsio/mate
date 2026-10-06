@@ -19,6 +19,11 @@ duplicate family, scope name, index name or operation kind when the layer loads.
   `detail`, only while demanded and once per owner id); optional `indexes` (each a `name` and a `keyOf`); for a
   Zerops family, `zerops` (`entity`, the `membership` and `updates` searches, `decode`, and
   `verifyPath` where leaving must ask "deleted or not yours?");
+- for a source without realtime, `sampled` instead of `zerops` (its scope's `demand` is `detail`):
+  the `path` read whole for one owner, a `decode` that keeps only what a screen needs, and
+  `freshMs`. Its one fact is keyed by the owner; its stream runs in sampled mode — read again every
+  `STREAM_POLICY.sampledIntervalMs` while demanded, on a new demand once older than `freshMs`, and
+  at once after our own write (`revalidate`) — and is never claimed live;
 - export its scope helper (`scopeOf(spec, orgId)`);
 - add one line to `FAMILIES`.
 

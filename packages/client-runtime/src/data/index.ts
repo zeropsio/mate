@@ -55,6 +55,13 @@ export {
 } from "./projections/projects.ts";
 export type { UnavailableReason } from "./projections/freshness.ts";
 export { projectCreations } from "./projections/creation.ts";
+export {
+  organizationLocations,
+  organizationMembers,
+  servicesAgents,
+  type SampledRead,
+} from "./projections/sampled.ts";
+export { publicAccess, type PublicAccessView } from "./projections/publicAccess.ts";
 export { makeOperations, type Operations } from "./operations/coordinator.ts";
 export { makeZeropsExecutor } from "./operations/executors/zerops.ts";
 export { restartWay } from "./operations/mateRestart.ts";

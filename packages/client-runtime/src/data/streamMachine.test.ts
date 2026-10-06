@@ -222,6 +222,49 @@ describe("transition", () => {
     expect(sampled.next).toEqual({ kind: "revalidate", at: 5 + STREAM_POLICY.sampledIntervalMs });
   });
 
+  it.each([
+    { mode: "sampled", phase: "live", reads: true },
+    { mode: "sampled", phase: "recovering", reads: true },
+    { mode: "sampled", phase: "refused", reads: false },
+    { mode: "sampled", phase: "paused", reads: false },
+    { mode: "realtime", phase: "live", reads: false },
+  ] as const)(
+    "a revalidation reads a $mode $phase scope again: $reads",
+    ({ mode, phase, reads }) => {
+      const child = initialStream({ parent: "zerops:org", mode });
+      const reached = run(
+        child,
+        phase === "paused"
+          ? [
+              { kind: "demand", demanded: true },
+              { kind: "demand", demanded: false },
+            ]
+          : [
+              { kind: "demand", demanded: true },
+              { kind: "attempt" },
+              { kind: "handshake" },
+              ...(phase === "live"
+                ? [{ kind: "baseline-committed" } as const]
+                : [
+                    {
+                      kind: "fault",
+                      jitter: 0,
+                      fault: {
+                        outcome: phase === "refused" ? "definitive-refusal" : "transient",
+                        message: phase,
+                      },
+                    } as const,
+                  ]),
+            ],
+        0,
+      );
+      expect(reached.phase).toBe(phase);
+      const next = transition(reached, { kind: "revalidate" }, 10).state;
+      expect(next.phase).toBe(reads ? "connecting" : phase);
+      expect(next.generation).toBe(reads ? reached.generation + 1 : reached.generation);
+    },
+  );
+
   it("keeps every reachable phase paired with its own kind of next action, and closed terminal", () => {
     const events: ReadonlyArray<StreamEvent> = [
       { kind: "demand", demanded: true },
@@ -231,6 +274,7 @@ describe("transition", () => {
       { kind: "retry-due" },
       { kind: "deadline" },
       { kind: "manual-retry" },
+      { kind: "revalidate" },
       { kind: "input-changed" },
       { kind: "session-repaired" },
       { kind: "attempt" },
