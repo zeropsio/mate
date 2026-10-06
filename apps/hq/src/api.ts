@@ -58,7 +58,6 @@ import { RASTER_CONTENT_TYPES, rasterContentType } from "@t3tools/shared/hqAttac
  *   itself at `/git/<appId>/<repo>.git`, Basic auth with the user `mate` and the Mate's credential
  *   (`gitHost.ts`).
  * - A person's side of the changes: `GET /api/apps/:appId/repos` → `{ repos }`, its repositories;
- *   `GET /api/apps/:appId/repos/:repo/compare?base=&head=` → what lies between two commits;
  *   `GET /api/apps/:appId/changes` → `{ changes }`; `GET
  *   /api/apps/:appId/changes/:repo/:n` → the change's review; `GET`, `POST …/comments`; `GET
  *   …/attachments/:id` → a picture; `POST …/merge` `{ expectedHead }` and `POST …/close` → the
@@ -102,7 +101,6 @@ import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse";
 import {
   ATTACHMENT_MAX_BYTES,
   ChangeNumber,
-  CompareQuery,
   ChangeDetailQuery,
   EditChangeRequest,
   EnsureRepoRequest,
@@ -473,7 +471,6 @@ const mate = Effect.flatMap(HttpServerRequest.HttpServerRequest, (request) =>
 /** A repository as a path names it, `:repo`, and a comparison as its query asks it. */
 const decodeRepositoryQuery = Schema.decodeUnknownEffect(RepositoryQuery);
 const decodeRepoName = Schema.decodeUnknownEffect(RepoName);
-const decodeCompareQuery = Schema.decodeUnknownEffect(CompareQuery);
 const decodeChangeDetailQuery = Schema.decodeUnknownEffect(ChangeDetailQuery);
 
 /** A recipe's tier as a path names it, `:tier`: `mate`, `stage` or `production`. */
@@ -1276,28 +1273,6 @@ const routes = (
           });
           return json(
             yield* (yield* Changes).repositorySource(userId, params["appId"] ?? "", repo, query),
-            200,
-          );
-        }),
-      ),
-    ),
-    HttpRouter.add(
-      "GET",
-      "/api/apps/:appId/repos/:repo/compare",
-      handle(
-        Effect.gen(function* () {
-          const { userId } = yield* principal;
-          const params = yield* HttpRouter.params;
-          const repo = yield* decodeRepoName(params["repo"]);
-          const search = new URL((yield* HttpServerRequest.HttpServerRequest).url, "http://hq")
-            .searchParams;
-          const base = search.get("base");
-          const query = yield* decodeCompareQuery({
-            ...(base === null ? {} : { base }),
-            head: search.get("head"),
-          });
-          return json(
-            yield* (yield* Changes).compare(userId, params["appId"] ?? "", repo, query),
             200,
           );
         }),

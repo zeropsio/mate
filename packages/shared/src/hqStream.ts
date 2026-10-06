@@ -5,7 +5,7 @@ import { MateOverview } from "./mateLink.ts";
 import { RecipeTierResponse } from "./hqRecipe.ts";
 import { HqDecision } from "./hqOffers.ts";
 import { AppReadValue } from "./hqAppReads.ts";
-import { HqChange } from "./hqChanges.ts";
+import { CompareQuery, CompareResponse, RepoName, HqChange } from "./hqChanges.ts";
 import { EnvironmentBirth, HqDeployOutcome } from "./hqDeploys.ts";
 import { ReleaseRollout } from "./hqRelease.ts";
 
@@ -125,6 +125,13 @@ export const HqStreamRequest = Schema.Union([
     requestId: Schema.String,
     projectId: Schema.String,
   }),
+  Schema.Struct({
+    type: Schema.Literal("compare"),
+    requestId: Schema.String,
+    appId: Schema.String,
+    repo: RepoName,
+    ...CompareQuery.fields,
+  }),
   Schema.Struct({ type: Schema.Literal("pong") }),
 ]);
 export type HqStreamRequest = typeof HqStreamRequest.Type;
@@ -190,6 +197,23 @@ export const HqHandoverCandidatesError = Schema.Struct({
   reason: Schema.NullOr(Schema.String),
   disposition: Schema.Literals(["refused", "transient"]),
 });
+/** On-demand read; the result has the same shape as Changes.compare. Never broadcast. */
+export const HqCompareMessage = Schema.Struct({
+  type: Schema.Literal("compare"),
+  requestId: Schema.String,
+  appId: Schema.String,
+  repo: RepoName,
+  result: CompareResponse,
+});
+export const HqCompareError = Schema.Struct({
+  type: Schema.Literal("compare-error"),
+  requestId: Schema.String,
+  appId: Schema.String,
+  repo: RepoName,
+  code: Schema.String,
+  reason: Schema.NullOr(Schema.String),
+  disposition: Schema.Literals(["refused", "transient"]),
+});
 export const HqStreamMessage = Schema.Union([
   HqScopeDelivery,
   HqScopeFailure,
@@ -198,6 +222,8 @@ export const HqStreamMessage = Schema.Union([
   HqMoveOffersError,
   HqHandoverCandidatesMessage,
   HqHandoverCandidatesError,
+  HqCompareMessage,
+  HqCompareError,
   Schema.Struct({ type: Schema.Literal("ping") }),
 ]);
 export type HqStreamMessage = typeof HqStreamMessage.Type;

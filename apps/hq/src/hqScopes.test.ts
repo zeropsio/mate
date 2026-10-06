@@ -71,6 +71,8 @@ const menuChange = {
 } as const;
 const fixture = Effect.gen(function* () {
   let org = facts;
+  let compareFailure: "forbidden" | "unavailable" | undefined;
+  const compareCalls: Array<ReadonlyArray<unknown>> = [];
   let sourceRefused = false;
   let sourceUnavailable = false;
   let recentRefused = false;
@@ -313,6 +315,29 @@ const fixture = Effect.gen(function* () {
       answeredAt: Effect.succeed(0),
     } as unknown as Roles["Service"]),
     Layer.succeed(Changes, {
+      compare: (
+        userId: string,
+        appId: string,
+        repo: string,
+        query: { base?: string; head: string },
+      ) =>
+        Effect.gen(function* () {
+          compareCalls.push([userId, appId, repo, query]);
+          if (compareFailure === "unavailable")
+            return yield* new ZeropsUnavailable({
+              operation: "organization",
+              message: "Unavailable",
+            });
+          if (compareFailure === "forbidden")
+            return yield* new ChangeRefused({ code: "forbidden", reason: "app_not_seen" });
+          return {
+            base: query.base ?? null,
+            head: query.head,
+            commits: [],
+            total: 0,
+            truncated: false,
+          };
+        }),
       navigation: Effect.sync(() => {
         menuReads += 1;
         const snapshot = menu;
@@ -409,6 +434,10 @@ const fixture = Effect.gen(function* () {
       return { ...client, queue, take, subscribe };
     });
   return {
+    compareCalls,
+    compareFailure: (failure: typeof compareFailure) => {
+      compareFailure = failure;
+    },
     otherApp: () => {
       otherApp = true;
     },
@@ -688,6 +717,50 @@ describe("revisioned HQ values", () => {
       }),
     ),
   );
+  for (const failure of [undefined, "forbidden", "unavailable"] as const) {
+    it.effect(`compare privately correlates ${failure ?? "success"} without subscribing`, () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const f = yield* fixture;
+          f.compareFailure(failure);
+          const client = yield* f.connect("owner"),
+            other = yield* f.connect("reader");
+          const query = { base: "a".repeat(40), head: "b".repeat(40) };
+          yield* client.request({
+            type: "compare",
+            requestId: "r",
+            appId: "A",
+            repo: "appdev",
+            ...query,
+          });
+          const reply = yield* client.take;
+          assert.deepStrictEqual(
+            reply,
+            failure === undefined
+              ? {
+                  type: "compare",
+                  requestId: "r",
+                  appId: "A",
+                  repo: "appdev",
+                  result: { ...query, commits: [], total: 0, truncated: false },
+                }
+              : {
+                  type: "compare-error",
+                  requestId: "r",
+                  appId: "A",
+                  repo: "appdev",
+                  code: failure,
+                  reason: failure === "forbidden" ? "app_not_seen" : null,
+                  disposition: failure === "forbidden" ? "refused" : "transient",
+                },
+          );
+          assert.deepStrictEqual(f.compareCalls, [["owner", "A", "appdev", query]]);
+          assert.strictEqual(yield* Queue.size(other.queue), 0);
+          assert.strictEqual(yield* Ref.get(f.reads), 0);
+        }),
+      ),
+    );
+  }
   it.effect(
     "handover candidates are on request, org-admin-only and never broadcast to another person",
     () =>

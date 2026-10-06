@@ -123,6 +123,20 @@ Invited/suspended members and integration tokens are excluded. Replies are
 `HqHandoverCandidatesError` with `refused` / `transient`. The reply is correlated and delivered
 only to the requesting connection; candidate enumeration is not part of navigation.
 
+Send `{type:"compare", requestId, appId, repo, base?, head}` for an on-demand repository
+comparison. `repo` keeps the repository name; `base` and `head` are full commit SHAs. Omitting
+`base` reads history through `head`. The private correlated reply is
+`{type:"compare", requestId, appId, repo, result: CompareResponse}`: nullable base, head,
+commits (SHA, subject, authorName, at, optional landed change), truncated and total, with the
+same bounds and ordering as before. It requires no scope subscription and creates no journal.
+`Changes.compare` checks this person's `read_change` permission before app/repository existence
+or git reads. A person without access gets the same refusal for hidden and unknown apps.
+Failures are `{type:"compare-error", requestId, appId, repo, code, reason, disposition}`;
+`disposition` is `refused` for denied access, source refusal or missing app/repository/commit,
+and `transient` for outages. `code` and nullable `reason` retain the server's explanation.
+Replies go only to the requesting connection. The HTTP
+`GET /api/apps/:appId/repos/:repo/compare` route is removed; clients use this socket request.
+
 An accepted attention report from a restarted Mate's newest link, with a new source environment
 or incarnation, rotates only that Mate's attention scope journal and sends an atomic `scope-reset`.
 The baseline carries the new source revision (including 0 after 7); subsequent updates are deltas.

@@ -187,3 +187,47 @@ it("defines person ownership separately from who the Mate waits on, and correlat
     expect(readCandidatesError(failure)).toEqual(failure);
   }
 });
+
+for (const base of [undefined, "a".repeat(40)]) {
+  it(`carries a correlated compare ${base === undefined ? "history" : "range"} read`, () => {
+    const request = {
+      type: "compare",
+      requestId: "r",
+      appId: "app",
+      repo: "appdev",
+      ...(base === undefined ? {} : { base }),
+      head: "b".repeat(40),
+    };
+    expect(readRequest(request)).toEqual(request);
+    const reply = {
+      type: "compare",
+      requestId: "r",
+      appId: "app",
+      repo: "appdev",
+      result: { base: base ?? null, head: request.head, commits: [], truncated: false, total: 0 },
+    };
+    expect(readWire(JSON.stringify(reply))).toEqual(reply);
+    for (const disposition of ["refused", "transient"]) {
+      const failure = {
+        type: "compare-error",
+        requestId: "r",
+        appId: "app",
+        repo: "appdev",
+        code: "unavailable",
+        reason: null,
+        disposition,
+      };
+      expect(readWire(JSON.stringify(failure))).toEqual(failure);
+    }
+  });
+}
+it.each([
+  { head: "main" },
+  { base: "--all", head: "a".repeat(40) },
+  { base: "", head: "a".repeat(40) },
+  {},
+])("rejects malformed compare refs %j", (query) => {
+  expect(() =>
+    readRequest({ type: "compare", requestId: "r", appId: "app", repo: "appdev", ...query }),
+  ).toThrow();
+});
