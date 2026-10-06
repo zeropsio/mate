@@ -73,7 +73,7 @@ describe("reduceAccount", () => {
     { key: "mate:p1:link", mode: "sampled" },
     { key: linkKeys.zerops(ORG), mode: "realtime" },
     { key: linkKeys.hq(ORG), mode: "realtime" },
-    { key: `zerops:${ORG}:routing`, mode: "sampled" },
+    { key: `zerops:${ORG}:routings`, mode: "realtime" },
     { key: `zerops:${ORG}:members`, mode: "once" },
   ] as const)("runs $key in its declared $mode mode", ({ key, mode }) => {
     expect(streamOf(emptyAccount, key).mode).toBe(mode);

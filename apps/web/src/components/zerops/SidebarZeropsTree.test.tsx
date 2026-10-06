@@ -606,8 +606,8 @@ describe("SidebarZeropsTree", () => {
   it.each([
     ["syncing", false, null, false],
     ["syncing", true, null, false],
-    ["last-known", false, "HQ last known", false],
-    ["last-known", true, "HQ last known", true],
+    ["last-known", false, "HQ is not reachable — showing what it last said", false],
+    ["last-known", true, "HQ is not reachable — showing what it last said", true],
     ["unavailable", false, "HQ unavailable", false],
     ["unavailable", true, "HQ unavailable", true],
   ] as const)("the header's HQ standing: %s, a retry offered %s", (kind, offered, words, again) => {

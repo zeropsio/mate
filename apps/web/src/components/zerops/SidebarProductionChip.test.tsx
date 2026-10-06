@@ -21,6 +21,7 @@ import {
 vi.mock("~/zerops/accountForge", () => ({
   againStopDeployment: () => {},
   useStopDeploymentDemand: () => {},
+  useStopDeployments: () => new Map(),
 }));
 
 const PROBLEM: FixProblem = {
