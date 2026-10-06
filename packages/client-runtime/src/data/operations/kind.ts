@@ -53,8 +53,14 @@ export interface OperationKind<Kind extends keyof OperationIntents & string> {
    * For an owner that keeps no request ids (Zerops, a Mate): the handles in its facts that would
    * show this intent's effect (the processes running for the service). After a lost answer, the
    * coordinator adopts exactly one that was absent at the send and no other operation holds.
+   *
+   * `null` where the owner's facts cannot say yet (its listing not wholly read): what they show
+   * then could have been there before, so nothing is adopted.
    */
-  readonly effectHandles?: (read: ProjectionReads, intent: IntentOf<Kind>) => ReadonlyArray<string>;
+  readonly effectHandles?: (
+    read: ProjectionReads,
+    intent: IntentOf<Kind>,
+  ) => ReadonlyArray<string> | null;
   /**
    * Where the kind declares a result: the one an adopted effect handle stands for (the project id
    * a lost create answered), so a lost answer leaves its caller what a receipt would have.
@@ -82,7 +88,7 @@ export interface RegisteredOperationKind {
     intent: OperationIntent,
     receipt: OperationReceipt,
   ): Settlement | null;
-  effectHandles?(read: ProjectionReads, intent: OperationIntent): ReadonlyArray<string>;
+  effectHandles?(read: ProjectionReads, intent: OperationIntent): ReadonlyArray<string> | null;
   observedIn?(intent: OperationIntent, receipt: OperationReceipt): DetailDemand | null;
   adoptedResult?(handle: string): OperationResult;
 }

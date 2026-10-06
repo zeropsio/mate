@@ -68,10 +68,14 @@ export const createProject: OperationKind<"create-project"> = {
       : { family: "process", listing: "history", ownerId: projectOf(receipt) },
   // After a lost answer: a project of its name in the organization; one already there at the send
   // is never it.
-  effectHandles: (read, intent) =>
-    read.members(projectsScope(intent.orgId)).ids.filter((id) => {
+  effectHandles: (read, intent) => {
+    // Only a wholly read listing says which projects were there before the send.
+    const listed = read.members(projectsScope(intent.orgId));
+    if (listed.coverage !== "complete") return null;
+    return listed.ids.filter((id) => {
       const project = read.fact("project", id);
       return project.kind === "known" && project.value.name === intent.name;
-    }),
+    });
+  },
   adoptedResult: (projectId) => ({ projectId }),
 };

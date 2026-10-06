@@ -175,6 +175,36 @@ describe("create-project", () => {
     }),
   );
 
+  it.effect("a lost answer adopts none of two new projects of its name: it stays uncertain", () =>
+    Effect.gen(function* () {
+      const store = account();
+      const { operations } = operationsOf(store, async () => {
+        projectAppears(store, "p9", "shop-stage");
+        projectAppears(store, "p8", "shop-stage");
+        throw new ZeropsApiError("No answer.", "uncertain");
+      });
+      yield* operations.submit(CREATE);
+      expect(progress(store)).toEqual({ stage: "uncertain", next: "ask-owner-again" });
+    }),
+  );
+
+  it.effect(
+    "adopts nothing where the organization's projects were not wholly read at the send",
+    () =>
+      Effect.gen(function* () {
+        // No listing read yet: a project of its name there now may be one it held already.
+        const store = makeAccountStore(AtomRegistry.make());
+        const { operations } = operationsOf(store, async () => {
+          liveZerops({ running: [], projects: [{ id: "p9", name: "shop-stage" }] }).forEach(
+            store.dispatch,
+          );
+          throw new ZeropsApiError("No answer.", "uncertain");
+        });
+        yield* operations.submit(CREATE);
+        expect(progress(store)).toEqual({ stage: "uncertain", next: "ask-owner-again" });
+      }),
+  );
+
   it.effect("a lost answer with no new project of its name stays uncertain, never sent again", () =>
     Effect.gen(function* () {
       const store = account();
