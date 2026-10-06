@@ -239,16 +239,23 @@ export function easeRooms({
       held.push([holder, holder.style.height]);
       holder.style.height = "";
     }
-    // Each scroll is put back where it stood, always: the clamp was this
-    // reading's own layout, never the person's move (the p43 verification:
-    // a keydown in the composer left the clamp, read next as a move of
-    // theirs, and the history stopped following).
     const own = box.element.style.height;
     box.element.style.height = "";
     const height = heightOf(box.element);
     box.element.style.height = own;
     for (const [holder, height] of held) holder.style.height = height;
-    for (const [scroll, top] of tops) if (scroll.scrollTop !== top) scroll.scrollTop = top;
+    // Each scroll is put back where it stood: the clamp was this reading's
+    // own layout, never the person's move (the p43 verification: a keydown
+    // in the composer left the clamp, read next as a move of theirs, and the
+    // history stopped following). Not while the person moves it — a write
+    // cuts a smooth scroll of theirs short (PageUp, a wheel's tick), and the
+    // clamp is then read with their move.
+    const card = cardOf(box.element);
+    for (const [scroll, top] of tops) {
+      if (scroll.scrollTop !== top && !personActedWithin(PERSON_INPUT_MS, card)) {
+        scroll.scrollTop = top;
+      }
+    }
     return height;
   };
   const release = (box: Box) => {
