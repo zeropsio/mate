@@ -167,6 +167,16 @@ function admits(
   row: Row,
 ): boolean {
   if (supersedes(current.revision, row.revision, input.method)) return true;
+  // An end a read brings is the owner's last word, over a value that is no end (`FamilySpec.ended`).
+  const ended = familySpec(row.family).ended as ((value: unknown) => boolean) | undefined;
+  if (
+    ended !== undefined &&
+    input.method !== "push" &&
+    current.content.kind === "value" &&
+    ended(row.value) &&
+    !ended(current.content.value)
+  )
+    return true;
   if (current.content.kind !== "purged") return false;
   if (supersedes(row.revision, current.revision, input.method)) return false;
   return (

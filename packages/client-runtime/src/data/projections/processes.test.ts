@@ -94,6 +94,24 @@ const ids = (state: AccountState) =>
   projectProcesses.derive(readsOfState(state), KEY).processes?.map((process) => process.id);
 
 describe("projectProcesses", () => {
+  it("leaves out a process that stopped running unseen, its end never pushed", () => {
+    // A rotation, an outage, a laptop asleep: the running scope's next baseline lists it no more.
+    const ended = apply(live(), [
+      event(runningScope(ORG), { kind: "parent-lost" }),
+      event(runningScope(ORG), { kind: "attempt" }),
+      { kind: "baseline-begin", scope: runningScope(ORG), generation: 2 },
+      {
+        kind: "baseline-commit",
+        scope: runningScope(ORG),
+        generation: 2,
+        via: "zerops-realtime",
+        members: [],
+        rows: [],
+      },
+    ]);
+    expect(ids(ended)).toEqual(["ended"]);
+  });
+
   it("names apart what runs now: listed running, never an ended or a restarted-elsewhere one", () => {
     const read = projectProcesses.derive(readsOfState(live()), KEY);
     expect(read.running.map((process) => process.id)).toEqual(["build"]);

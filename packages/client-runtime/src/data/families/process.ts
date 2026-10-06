@@ -25,6 +25,9 @@ const HISTORY = "history";
 const RUNNING_PROCESS_STATUSES = ["PENDING", "RUNNING", "ROLLBACKING", "CANCELING"] as const;
 const RUNNING: ReadonlySet<string> = new Set(RUNNING_PROCESS_STATUSES);
 
+/** Whether a status says the process still runs; anything else is its end. */
+export const runsStill = (status: string): boolean => RUNNING.has(status);
+
 /** The row's `_version`, the platform's ordering of its observations; `null` where it has none. */
 const versionOf = (raw: unknown): number | null =>
   typeof raw === "object" && raw !== null && "_version" in raw && typeof raw._version === "number"
@@ -65,6 +68,7 @@ export const processFamily: FamilySpec<"process"> = {
       return value === undefined ? null : { id: value.id, value, version: versionOf(raw) };
     },
   },
+  ended: (value) => !runsStill(value.status),
   details: [
     {
       suffix: HISTORY,

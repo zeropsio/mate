@@ -342,6 +342,56 @@ describe("reduceAccount", () => {
     });
   });
 
+  describe("an end read after an outage", () => {
+    const history = historyScope(ORG, "x");
+    const commitHistory = (status: string, version: number | null): AccountInput => ({
+      kind: "baseline-commit",
+      scope: history,
+      generation: 1,
+      via: "zerops-read",
+      members: ["q"],
+      rows: [
+        {
+          family: "process",
+          id: "q",
+          value: processValue({ id: "q", projectId: "x", status }),
+          revision: { kind: "zerops", version },
+        },
+      ],
+    });
+    const pushedThen = (status: string) =>
+      apply(attached(), [
+        pushRows([row("q", 3, status)]),
+        { kind: "stream", key: history, now: 0, event: { kind: "demand", demanded: true } },
+        { kind: "stream", key: history, now: 0, event: { kind: "attempt" } },
+        { kind: "baseline-begin", scope: history, generation: 1 },
+      ]);
+
+    it.each([
+      {
+        name: "a read's end over a stale running push",
+        pushed: "RUNNING",
+        read: "FINISHED",
+        is: "FINISHED",
+      },
+      {
+        name: "never a read's running over a pushed end",
+        pushed: "FAILED",
+        read: "RUNNING",
+        is: "FAILED",
+      },
+      {
+        name: "never an unversioned running over a running push",
+        pushed: "RUNNING",
+        read: "PENDING",
+        is: "RUNNING",
+      },
+    ])("takes $name", ({ pushed, read, is }) => {
+      const state = apply(pushedThen(pushed), [commitHistory(read, null)]);
+      expect(factOf(state, "process", "q")?.content).toMatchObject({ value: { status: is } });
+    });
+  });
+
   describe("supersedes", () => {
     const zerops = (version: number | null): Revision => ({ kind: "zerops", version });
     const hq = (generation: number, sequence: number): Revision => ({

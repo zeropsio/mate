@@ -7,7 +7,7 @@
  *
  * @module data/projections/processes
  */
-import { historyScope, runningScope, type ProcessValue } from "../families/process.ts";
+import { historyScope, runningScope, runsStill, type ProcessValue } from "../families/process.ts";
 import { linkKeys } from "../model.ts";
 import type { Projection, ProjectionReads } from "../store.ts";
 import type { StreamState } from "../streamMachine.ts";
@@ -134,10 +134,16 @@ export const projectProcesses: Projection<ProjectKey, ProjectProcesses> = {
           return fact.kind === "known" ? [fact.value] : [];
         })
         .sort(newestFirst);
-    const held = valuesOf(read.index("project", projectId));
+    const running = read.index("running", projectId);
+    // One whose row still says it runs, though the running scope let it go — its end happened
+    // while nobody watched — is no process anyone can follow: it is left out, its end invented by
+    // nobody.
+    const held = valuesOf(read.index("project", projectId)).filter(
+      (process) => !runsStill(process.status) || running.has(process.id),
+    );
     return {
       processes: complete || held.length > 0 ? held : undefined,
-      running: valuesOf(read.index("running", projectId)),
+      running: valuesOf(running),
       ...fresh,
       history,
     };

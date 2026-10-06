@@ -84,6 +84,12 @@ export interface FamilySpec<F extends Family> {
    */
   readonly indexes?: ReadonlyArray<FamilyIndex<FamilyValues[F]>>;
   readonly zerops?: ZeropsFamilySource<FamilyValues[F]>;
+  /**
+   * Whether a value is its entity's end, after which it never changes (a process finished): an
+   * end that a read or a baseline brings replaces a value that is no end, though the read carries
+   * no revision to compare — the end is the evidence. A push never needs it: it carries one.
+   */
+  readonly ended?: (value: FamilyValues[F]) => boolean;
   readonly details?: ReadonlyArray<DetailListing>;
 }
 
