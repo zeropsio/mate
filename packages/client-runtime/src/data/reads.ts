@@ -147,3 +147,25 @@ export function holdProjectHistory(
     release = null;
   };
 }
+
+/**
+ * Holds one service's own read from outside React, through whichever account is mounted in
+ * `registry`: moved to a newly mounted one, let go on release.
+ */
+export function holdServiceRead(
+  registry: AtomRegistry.AtomRegistry,
+  serviceId: string,
+): () => void {
+  let release: (() => void) | null = null;
+  const hold = (account: AccountReads | null) => {
+    release?.();
+    release =
+      account?.demandDetail({ family: "service", listing: "service", ownerId: serviceId }) ?? null;
+  };
+  const unsubscribe = registry.subscribe(accountReadsAtom, hold, { immediate: true });
+  return () => {
+    unsubscribe();
+    release?.();
+    release = null;
+  };
+}

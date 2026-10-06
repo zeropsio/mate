@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { liveZerops, ORG, serviceValue, zeropsVersion } from "../__fixtures__/account.ts";
+import {
+  liveZerops,
+  ORG,
+  projectValue,
+  serviceValue,
+  zeropsVersion,
+} from "../__fixtures__/account.ts";
+import { projectsScope } from "../families/project.ts";
 import { servicesScope } from "../families/service.ts";
 import { emptyAccount, linkKeys, type AccountState } from "../model.ts";
 import { reduceAccount, type AccountInput } from "../reducer.ts";
@@ -73,9 +80,49 @@ describe("projectServices", () => {
       expected: { services: ["api", "db", "zcp"] },
     },
     {
-      name: "a service that left the listing: none of the project's",
+      name: "a service that left the listing: kept until its owner says it is gone",
       state: () => apply(live(), [delta([], ["db"])]),
+      expected: { services: ["db", "zcp"] },
+    },
+    {
+      name: "a service its owner proved deleted: none of the project's",
+      state: () =>
+        apply(live(), [
+          delta([], ["db"]),
+          { kind: "proven-deletion", family: "service", id: "db", evidence: "404" },
+        ]),
       expected: { services: ["zcp"] },
+    },
+    {
+      name: "a project of another organization: not known here, never empty",
+      state: () =>
+        apply(live(), [
+          {
+            kind: "rows",
+            scope: projectsScope(ORG),
+            generation: 1,
+            method: "push",
+            via: "zerops-realtime",
+            rows: [
+              {
+                family: "project",
+                id: "p1",
+                value: projectValue({ id: "p1", clientId: "org-b" }),
+                revision: zeropsVersion(2),
+              },
+            ],
+          },
+        ]),
+      expected: { services: undefined },
+    },
+    {
+      name: "a project not listed yet: not known here, never empty",
+      state: () =>
+        apply(
+          emptyAccount,
+          liveZerops({ running: [], services: [{ id: "zcp", projectId: "p1" }] }),
+        ),
+      expected: { services: undefined },
     },
     {
       name: "a project the owner withholds from the viewer: none of its services shows",
@@ -121,7 +168,7 @@ describe("projectServices", () => {
 });
 
 describe("projectsServices", () => {
-  it("reads each listed project's services by its id, in one value", () => {
+  it("reads each listed project's services by its id, in one value; an unlisted one is not known", () => {
     const derived = projectsServices.derive(readsOfState(live()), {
       orgId: ORG,
       projectIds: ["p1", "p2", "p3"],
@@ -130,6 +177,6 @@ describe("projectsServices", () => {
       Object.fromEntries(
         Object.entries(derived).map(([id, read]) => [id, read.services?.map(({ id }) => id)]),
       ),
-    ).toEqual({ p1: ["db", "zcp"], p2: ["web"], p3: [] });
+    ).toEqual({ p1: ["db", "zcp"], p2: ["web"], p3: undefined });
   });
 });

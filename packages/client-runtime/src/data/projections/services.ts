@@ -3,7 +3,8 @@
  * listing's first baseline, then every service the project has now, each as its newest row says
  * it. An outage keeps what was read and says it is catching up. A project its owner withholds from
  * the viewer shows none of its services: the services' own leaving comes only with their next
- * change.
+ * change. A project this organization does not list — another's, or one not listed yet — is not
+ * known here.
  *
  * @module data/projections/services
  */
@@ -30,6 +31,10 @@ export const projectServices: Projection<ProjectKey, ProjectServices> = {
     const project = read.fact("project", projectId);
     if (project.kind === "withheld" && project.reason === "denied")
       return { services: undefined, ...freshness, unavailableReason: "forbidden" };
+    // Only a project this organization lists has its services here: another organization's, or
+    // one not listed yet, is not known — never an empty list.
+    if (project.kind !== "known" || project.value.clientId !== orgId)
+      return { services: undefined, ...freshness };
     const services: ServiceValue[] = [];
     for (const id of read.index("serviceProject", projectId)) {
       const fact = read.fact("service", id);

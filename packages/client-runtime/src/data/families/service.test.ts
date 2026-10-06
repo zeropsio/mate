@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
 
+import { liveZerops, ORG, zeropsVersion } from "../__fixtures__/account.ts";
 import { zeropsNavigation } from "../demand.ts";
+import { emptyAccount } from "../model.ts";
+import { reduceAccount, type AccountInput } from "../reducer.ts";
+import { readsOfState } from "../store.ts";
 import { serviceFamily, servicesScope } from "./service.ts";
 
 const decode = serviceFamily.zerops!.decode;
@@ -94,10 +98,120 @@ describe("services in the organization's navigation", () => {
     ]);
   });
 
+  it("asks the owner whether a service that left the listing is gone", () => {
+    expect(serviceFamily.scope.leaving).toBe("absent-unverified");
+    expect(serviceFamily.zerops?.verifyPath?.("s1")).toBe("/service-stack/s1");
+    expect(serviceFamily.zerops?.organizationOf?.({ id: "s1", clientId: "org-b" })).toBe("org-b");
+  });
+
+  it("reads one service by its id while a screen demands it: its answer is the row", () => {
+    const listing = serviceFamily.details!.find((detail) => detail.suffix === "service")!;
+    expect(listing.zerops.path({ orgId: "org", ownerId: "s1" })).toBe("/service-stack/s1");
+    expect(listing.zerops.items({ id: "s1", name: "zcp" })).toEqual([{ id: "s1", name: "zcp" }]);
+    expect(listing.zerops.items(null)).toBeUndefined();
+  });
+
   it("indexes each service under its project", () => {
     const index = serviceFamily.indexes!.find((entry) => entry.name === "serviceProject")!;
     expect(index.keyOf({ id: "s1", projectId: "p1", name: "db", status: "ACTIVE" }, "member")).toBe(
       "p1",
     );
+  });
+});
+
+describe("a pushed service row", () => {
+  it("folds into the held row: a push that names part of the row keeps the rest", () => {
+    const live = liveZerops({
+      running: [],
+      projects: [{ id: "p1" }],
+      services: [
+        {
+          id: "zcp",
+          projectId: "p1",
+          subdomainAccess: true,
+          serviceStackTypeInfo: { serviceStackTypeVersionName: "zcp@1" },
+        },
+      ],
+    });
+    const state = [
+      ...live,
+      {
+        kind: "rows",
+        scope: servicesScope(ORG),
+        generation: 1,
+        method: "push",
+        via: "zerops-realtime",
+        rows: [
+          {
+            family: "service",
+            id: "zcp",
+            value: { id: "zcp", projectId: "p1", name: "zcp", status: "STOPPED" },
+            revision: zeropsVersion(2),
+          },
+        ],
+      } as AccountInput,
+    ].reduce((current, input) => reduceAccount(current, input).state, emptyAccount);
+    expect(readsOfState(state).fact("service", "zcp")).toMatchObject({
+      kind: "known",
+      value: {
+        status: "STOPPED",
+        subdomainAccess: true,
+        serviceStackTypeInfo: { serviceStackTypeVersionName: "zcp@1" },
+      },
+    });
+  });
+});
+
+describe("a service read by its id", () => {
+  const read = (lastUpdate: string): AccountInput => ({
+    kind: "rows",
+    scope: servicesScope(ORG),
+    generation: 1,
+    method: "read",
+    via: "zerops-read",
+    rows: [
+      {
+        family: "service",
+        id: "zcp",
+        value: {
+          id: "zcp",
+          projectId: "p1",
+          name: "zcp",
+          status: "ACTIVE",
+          subdomainAccess: true,
+          lastUpdate,
+        },
+        revision: { kind: "zerops", version: null },
+      },
+    ],
+  });
+  const held = () =>
+    liveZerops({
+      running: [],
+      projects: [{ id: "p1" }],
+      services: [
+        { id: "zcp", projectId: "p1", subdomainAccess: false, lastUpdate: "2026-10-02T12:01:40Z" },
+      ],
+    });
+
+  it.each([
+    {
+      name: "updated after the row held: it replaces it",
+      at: "2026-10-02T12:01:50Z",
+      access: true,
+    },
+    {
+      name: "no newer than the row held: it changes nothing",
+      at: "2026-10-02T12:01:40Z",
+      access: false,
+    },
+  ])("$name", ({ at, access }) => {
+    const state = [...held(), read(at)].reduce(
+      (current, input) => reduceAccount(current, input).state,
+      emptyAccount,
+    );
+    expect(readsOfState(state).fact("service", "zcp")).toMatchObject({
+      value: { subdomainAccess: access },
+    });
   });
 });

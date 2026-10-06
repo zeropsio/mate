@@ -1,9 +1,10 @@
 /**
- * Zerops services: every service of the organization, each as the platform's whole row says it,
+ * Zerops services: every service of the organization, each as the platform's rows say it,
  * observed by one registration pair for the whole organization — never one read per project. A
- * service that leaves the organization's listing is no longer one of its projects' services; that
- * says nothing of why (deleted, or its project taken from the viewer), so it claims no deletion:
- * the project family's own answer says which.
+ * push folds into the row held (`merge`): the recorded update frames carry a service's identity and
+ * status alone. A service that leaves the organization's listing stays one of its project's until
+ * its owner says it is gone (its not-found) or not the viewer's (403): one listing that omits it
+ * deletes nothing.
  *
  * @module data/families/service
  */
@@ -49,15 +50,38 @@ function valueOf(raw: Readonly<Record<string, unknown>>): ServiceValue {
 
 const organization = (orgId: string) => [{ name: "clientId", operator: "eq", value: orgId }];
 
+const ClientRow = Schema.Struct({ clientId: Schema.optionalKey(Schema.NullOr(Schema.String)) });
+const decodeClient = Schema.decodeUnknownOption(ClientRow);
+
 export const serviceFamily: FamilySpec<"service"> = {
   family: "service",
   authority: "zerops",
-  scope: { source: "zerops", suffix: "services", leaving: "removed", demand: "navigation" },
+  scope: {
+    source: "zerops",
+    suffix: "services",
+    leaving: "absent-unverified",
+    demand: "navigation",
+  },
   indexes: [
-    /** The services each project has now: one that left the listing is none of them. */
+    /** The services each project has: one its owner proved deleted is dropped with its fact. */
+    { name: "serviceProject", keyOf: (value) => value.projectId },
+  ],
+  merge: (held, pushed) => ({ ...held, ...pushed }),
+  // A row read by its id carries no `_version`: Zerops' own `lastUpdate` orders it.
+  readIsNewer: (held, read) =>
+    read.lastUpdate !== undefined &&
+    (held.lastUpdate === undefined || Date.parse(read.lastUpdate) > Date.parse(held.lastUpdate)),
+  details: [
     {
-      name: "serviceProject",
-      keyOf: (value, listed) => (listed === "removed" ? null : value.projectId),
+      // One service's own row, read while a screen demands it: the record after its address was
+      // turned on, which no push is promised to bring (8c076ec029).
+      suffix: "service",
+      leaving: "absent-unverified",
+      zerops: {
+        path: ({ ownerId }) => `/service-stack/${encodeURIComponent(ownerId ?? "")}`,
+        items: (answer) =>
+          typeof answer === "object" && answer !== null && "id" in answer ? [answer] : undefined,
+      },
     },
   ],
   zerops: {
@@ -72,6 +96,12 @@ export const serviceFamily: FamilySpec<"service"> = {
           value: valueOf(raw as Readonly<Record<string, unknown>>),
           version: row._version ?? null,
         }),
+      }),
+    verifyPath: (id) => `/service-stack/${encodeURIComponent(id)}`,
+    organizationOf: (answer) =>
+      Option.match(decodeClient(answer), {
+        onNone: () => null,
+        onSome: (row) => row.clientId ?? null,
       }),
   },
 };

@@ -75,7 +75,7 @@ export function liveProjects(
       rows: projects.map((project) => ({
         family: "project",
         id: project.id,
-        value: projectValue(project),
+        value: projectValue({ clientId: orgId, ...project }),
         revision: zeropsVersion(1),
       })),
     },

@@ -5,6 +5,7 @@ import { liveZerops, ORG } from "./__fixtures__/account.ts";
 import {
   accountReadsAtom,
   holdProjectHistory,
+  holdServiceRead,
   NOT_READ_PROCESSES,
   NOT_READ_SERVICES,
   projectProcessesAtom,
@@ -33,7 +34,11 @@ describe("projectServicesAtom", () => {
   it("reads a project's services through the mounted account, and nothing without one", () => {
     const registry = AtomRegistry.make();
     const store = makeAccountStore(registry);
-    liveZerops({ running: [], services: [{ id: "zcp", projectId: "p1" }] }).forEach(store.dispatch);
+    liveZerops({
+      running: [],
+      projects: [{ id: "p1" }],
+      services: [{ id: "zcp", projectId: "p1" }],
+    }).forEach(store.dispatch);
     const atom = projectServicesAtom("p1");
     expect(registry.get(atom)).toEqual(NOT_READ_SERVICES);
 
@@ -51,6 +56,7 @@ describe("projectsServicesAtom", () => {
     const store = makeAccountStore(registry);
     liveZerops({
       running: [],
+      projects: [{ id: "p1" }, { id: "p2" }],
       services: [
         { id: "zcp", projectId: "p1" },
         { id: "db", projectId: "p2" },
@@ -83,6 +89,26 @@ describe("holdProjectHistory", () => {
     expect(held).toEqual(["first p1"]);
     registry.set(accountReadsAtom, reads("second"));
     expect(held).toEqual(["second p1"]);
+    release();
+    release();
+    expect(held).toEqual([]);
+  });
+});
+
+describe("holdServiceRead", () => {
+  it("holds one service's own read through the mounted account, and lets go once", () => {
+    const registry = AtomRegistry.make();
+    const held: string[] = [];
+    registry.set(accountReadsAtom, {
+      data: makeAccountStore(registry).data,
+      orgId: ORG,
+      demandDetail: (demand: { readonly listing?: string; readonly ownerId: string }) => {
+        held.push(`${demand.listing} ${demand.ownerId}`);
+        return () => void held.splice(held.indexOf(`${demand.listing} ${demand.ownerId}`), 1);
+      },
+    });
+    const release = holdServiceRead(registry, "s1");
+    expect(held).toEqual(["service s1"]);
     release();
     release();
     expect(held).toEqual([]);

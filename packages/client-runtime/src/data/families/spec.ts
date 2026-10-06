@@ -95,6 +95,18 @@ export interface FamilySpec<F extends Family> {
    * no revision to compare — the end is the evidence. A push never needs it: it carries one.
    */
   readonly ended?: (value: FamilyValues[F]) => boolean;
+  /**
+   * How a pushed row folds into the value held for it, where a push may name only part of a row
+   * (a service's update frames, as recorded, carry its identity and status alone): the fields it
+   * names replace the held ones, the rest stay. Without it, a push replaces the value whole.
+   */
+  readonly merge?: (held: FamilyValues[F], pushed: FamilyValues[F]) => FamilyValues[F];
+  /**
+   * The owner's own ordering of a read that carries no revision: whether the value it read is
+   * newer than the one held (a service's `lastUpdate`, on Zerops' clock). Without it, such a read
+   * never replaces a revisioned value.
+   */
+  readonly readIsNewer?: (held: FamilyValues[F], read: FamilyValues[F]) => boolean;
   readonly details?: ReadonlyArray<DetailListing>;
 }
 

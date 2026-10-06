@@ -51,7 +51,7 @@ export function mountRoster(
     projects.map((project) => ({
       family: "project",
       id: project.id,
-      value: project,
+      value: { clientId: orgId, ...project },
       revision: { kind: "zerops", version: 1 },
     })),
   );
