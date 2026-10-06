@@ -2312,14 +2312,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/zerops/creationMemory.ts",
-    "kind": "retired-token",
-    "fingerprint": "saveCreations(",
-    "owner": "data-layer rewrite: operations",
-    "reason": "creations and sent asks are kept by the app; the operations adapter feeds the store",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/zerops/crew/useCrewHome.ts",
     "kind": "retired-token",
     "fingerprint": "void readFiles().then",
@@ -2610,22 +2602,6 @@
   {
     "path": "apps/web/src/zerops/newProjectBirth.ts",
     "kind": "retired-token",
-    "fingerprint": "saveCreations(",
-    "owner": "data-layer rewrite: operations",
-    "reason": "creations and sent asks are kept by the app; the operations adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/newProjectBirth.ts",
-    "kind": "retired-token",
-    "fingerprint": "saveCreations(",
-    "owner": "data-layer rewrite: operations",
-    "reason": "creations and sent asks are kept by the app; the operations adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/newProjectBirth.ts",
-    "kind": "retired-token",
     "fingerprint": "useNewMate",
     "owner": "data-layer rewrite: operations",
     "reason": "births are tracked by app hooks; the operations adapter feeds the store",
@@ -2635,30 +2611,6 @@
     "path": "apps/web/src/zerops/newProjectBirth.ts",
     "kind": "retired-token",
     "fingerprint": "useNewMate",
-    "owner": "data-layer rewrite: operations",
-    "reason": "births are tracked by app hooks; the operations adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/newProjectBirth.ts",
-    "kind": "retired-token",
-    "fingerprint": "useNewProjectBirths",
-    "owner": "data-layer rewrite: operations",
-    "reason": "births are tracked by app hooks; the operations adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/newProjectBirth.ts",
-    "kind": "retired-token",
-    "fingerprint": "useNewProjectBirths",
-    "owner": "data-layer rewrite: operations",
-    "reason": "births are tracked by app hooks; the operations adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/newProjectBirth.ts",
-    "kind": "retired-token",
-    "fingerprint": "useNewProjectBirths",
     "owner": "data-layer rewrite: operations",
     "reason": "births are tracked by app hooks; the operations adapter feeds the store",
     "expires": "never"

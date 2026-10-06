@@ -1396,67 +1396,23 @@ describe("an Add's HQ intent in its creation progress", () => {
   });
 });
 
-// Reload is an account close/open with the same tab's non-secret personal context retained.
+// Reload is an account close/open: what the tab made lived in its memory alone (HANDOFF §4.4).
 describe("creation context across reload", () => {
-  beforeEach(() => {
-    const entries = new Map<string, string>();
-    vi.stubGlobal("window", {
-      sessionStorage: {
-        getItem: (key: string) => entries.get(key) ?? null,
-        setItem: (key: string, value: string) => entries.set(key, value),
-      },
-    });
-    openAccountLifetime("u-reload");
-  });
   afterEach(() => {
     closeAccountLifetime();
-    vi.unstubAllGlobals();
   });
 
-  it("keeps a refused creation's route, progress and reason and retries manually from that step", async () => {
-    const fake = ports({ createProject: () => Promise.reject(new Error("No room.")) }).ports;
+  it("keeps nothing of a creation once its account closes, and writes nothing again", async () => {
+    openAccountLifetime("u-reload");
+    const createProject = vi.fn(() => Promise.reject(new Error("No room.")));
+    const fake = ports({ createProject }).ports;
     beginNewProjectBirth({ ask: ASK, hq: HQ, ports: fake, now: PRESSED_AT });
     await vi.waitFor(() =>
       expect(useNewProjectBirths.getState().births[ASK.birthId]?.failed?.reason).toBe("No room."),
     );
-    const before = useNewProjectBirths.getState().births[ASK.birthId]!;
     closeAccountLifetime();
     openAccountLifetime("u-reload");
-    const restored = useNewProjectBirths.getState().births[ASK.birthId]!;
-    expect(restored).toMatchObject({
-      appId: before.appId,
-      intent: before.intent,
-      startedAt: PRESSED_AT,
-      failed: before.failed,
-    });
-    expect(creationSubsteps(restored)).toEqual(creationSubsteps(before));
-    const again = ports().ports;
-    retryNewProjectBirth(ASK.birthId, again);
-    await vi.waitFor(() =>
-      expect(useNewProjectBirths.getState().births[ASK.birthId]?.projectId).toBe("p-vera"),
-    );
-    expect(again.registerGroup).not.toHaveBeenCalled();
-    expect(again.recordBirth).not.toHaveBeenCalled();
-  });
-
-  it("ends an interrupted write visibly as uncertain and never replays it on reload or retry", async () => {
-    const fake = ports({
-      createProject: vi.fn(
-        () => new Promise<{ readonly project: { readonly id: string } }>(() => undefined),
-      ),
-    }).ports;
-    beginNewProjectBirth({ ask: ASK, hq: HQ, ports: fake, now: PRESSED_AT });
-    await vi.waitFor(() => expect(fake.createProject).toHaveBeenCalledOnce());
-    closeAccountLifetime();
-    openAccountLifetime("u-reload");
-    const restored = useNewProjectBirths.getState().births[ASK.birthId]!;
-    expect(restored?.failed).toMatchObject({ uncertain: true });
-    expect(newProjectComing(restored)).toMatchObject({ verb: "go-to-projects" });
-    const again = ports().ports;
-    retryNewProjectBirth(ASK.birthId, again);
-    expect(again.createProject).not.toHaveBeenCalled();
-    closeAccountLifetime();
-    openAccountLifetime("u-other");
     expect(useNewProjectBirths.getState().births).toEqual({});
+    expect(createProject).toHaveBeenCalledOnce();
   });
 });

@@ -52,12 +52,7 @@ import type {
   BirthLineStep,
 } from "../components/zerops/ZeropsBirthProgress.logic";
 import { COMING_UP_LINE, NOT_SET_UP_LINE } from "../components/zerops/ZeropsProjectRow.logic";
-import {
-  captureAccountLifetime,
-  onAccountLifetimeClose,
-  onAccountLifetimeOpen,
-} from "./accountLifetime";
-import { restoreCreations, saveCreations } from "./creationMemory";
+import { captureAccountLifetime, onAccountLifetimeClose } from "./accountLifetime";
 import type { ArrivalSubstep } from "./mateArrival";
 import { asSentence, type MateComing } from "./mateComing";
 import { newMateView, useNewMate, type NewMateAgain } from "./newMate";
@@ -666,21 +661,10 @@ export function newProjectBirthOf(
   return Object.values(births).find((birth) => birth.projectId === projectId);
 }
 
-let clearingCreations = false;
-useNewProjectBirths.subscribe((state) => {
-  if (!clearingCreations) saveCreations(state.births);
-});
-onAccountLifetimeOpen(() => {
-  useNewProjectBirths.setState({ births: restoreCreations() });
-});
-
+// What this tab made lives in its memory alone: a reload, or another account, starts with none.
 onAccountLifetimeClose(() => {
-  saveCreations(useNewProjectBirths.getState().births);
   driving.clear();
-  // Clearing the renderer must not erase the tab's saved context.
-  clearingCreations = true;
   useNewProjectBirths.setState({ births: {} });
-  clearingCreations = false;
 });
 
 /** The managed services a recipe's yaml names, in its order: none where it names none. */
