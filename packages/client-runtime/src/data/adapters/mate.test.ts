@@ -345,4 +345,67 @@ describe("makeMateAdapter", () => {
     expect(probes.length).toBeGreaterThan(0);
     expect(probes.length).toBeLessThanOrEqual(6);
   });
+
+  // The owner's trace, 2026-10-06: every drawn Mate's descriptor was read again every 2 s.
+  it.each([
+    { name: "answering", reading: undefined, answers: true },
+    { name: "not answering", reading: { kind: "unreachable" } as const, answers: false },
+  ])(
+    "ten drawn Mates, $name, are read only by their connection attempts over 60 s idle",
+    async (row) => {
+      const mates = Array.from({ length: 10 }, (_, at) => `d${at}`);
+      const { adapter, clock, probes, exchanges } = rig({
+        ...(row.reading === undefined ? {} : { reading: () => row.reading }),
+        ...(row.answers
+          ? {}
+          : {
+              answer: () => ({
+                ok: false,
+                failure: { class: "retryable", cause: { kind: "descriptor-unreachable" } },
+                descriptor: null,
+              }),
+            }),
+      });
+      adapter.setTargets(mates.map((id) => target(id)));
+      adapter.setDemand(
+        "drawn",
+        mates.map((id) => `${id}:zcp`),
+      );
+      await flush();
+      await clock.advance(60_000);
+      // No probe of its own: each read is its door's, once per connection attempt.
+      expect(probes).toEqual([]);
+      const perMate = mates.map((id) => exchanges.filter(({ key }) => key === `${id}:zcp`).length);
+      if (row.answers) expect(perMate).toEqual(mates.map(() => 1));
+      // Not answering, each attempt waits out the backoff ladder (2, 4, 8, 15, 30 s…).
+      else for (const attempts of perMate) expect(attempts).toBeLessThanOrEqual(6);
+    },
+  );
+
+  it("reads a Mate the person waits on while it is starting, backing off, never every two seconds", async () => {
+    const { adapter, clock, probes } = rig({
+      reading: () => ({ kind: "initializing", initAt: null }),
+    });
+    adapter.setTargets([target("p1", { platform: { project: "ACTIVE", service: "ACTIVE" } })]);
+    adapter.setDemand("screen", ["p1:zcp"]);
+    await flush();
+    expect(adapter.intend("p1:zcp", { kind: "restart", initAt: "init-1" })).toBe(true);
+    await flush();
+    await clock.advance(60_000);
+    expect(probes.length).toBeGreaterThan(0);
+    expect(probes.length).toBeLessThanOrEqual(8);
+  });
+
+  it("reads a Mate again when Zerops pushes a change of its container's status", async () => {
+    const { adapter, probes } = rig();
+    adapter.setTargets([target("p1")]);
+    adapter.setDemand("route", ["p1:zcp"]);
+    await flush();
+    const before = probes.length;
+    adapter.setTargets([target("p1", { platform: { project: "ACTIVE", service: "RESTARTING" } })]);
+    await flush();
+    adapter.setTargets([target("p1")]);
+    await flush();
+    expect(probes.length).toBe(before + 1);
+  });
 });

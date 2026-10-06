@@ -5,9 +5,11 @@
  *
  * - A descriptor's `zerops.identity` keeps `unknown` apart from `failed`: `failed` means the Mate
  *   could not check, never a refusal.
- * - Reads are pulled: every 2 s while a container comes up, 10 s rising to 60 s once that is
- *   overdue or while only failed probes say it is coming up, and once more whenever a push, a
- *   connect failure or a wake asks. Each probe ends by `PROBE_DEADLINE_MS` as `unreachable`.
+ * - A Mate is read once per connection attempt — its door's descriptor read — and polled only
+ *   while it comes up or the person waits on it: from 2 s backing off to 60 s
+ *   (`POLL_INTERVALS_MS`), from 10 s once that is overdue (`OVERDUE_POLL_INTERVALS_MS`). A push of
+ *   its status, a connect failure or a wake reads it once more. Never at a fixed interval. Each
+ *   probe ends by `PROBE_DEADLINE_MS` as `unreachable`.
  * - A tab hidden for `HIDDEN_PROBE_PAUSE_MS` probes nothing until it is shown again.
  */
 import type { Instant } from "../data/access/grant.ts";
@@ -48,7 +50,10 @@ export type ProbeCadence =
   | { readonly kind: "none" };
 
 export const PROBE_DEADLINE_MS = 8_000;
-export const POLL_INTERVAL_MS = 2_000;
+/** A container coming up is polled at these intervals, staying on the last. */
+export const POLL_INTERVALS_MS: ReadonlyArray<number> = [
+  2_000, 4_000, 8_000, 15_000, 30_000, 60_000,
+];
 /** An overdue poll reads at these intervals, staying on the last. */
 export const OVERDUE_POLL_INTERVALS_MS: ReadonlyArray<number> = [10_000, 20_000, 40_000, 60_000];
 export const HIDDEN_PROBE_PAUSE_MS = 60_000;

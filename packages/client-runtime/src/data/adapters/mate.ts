@@ -82,7 +82,7 @@ import {
 import {
   HIDDEN_PROBE_PAUSE_MS,
   OVERDUE_POLL_INTERVALS_MS,
-  POLL_INTERVAL_MS,
+  POLL_INTERVALS_MS,
   PROBE_DEADLINE_MS,
   type ProbeAnswer,
   type ProbeAsk,
@@ -323,6 +323,12 @@ const inFlightAttempt = (machine: EnvironmentMachine): number | null => {
 const polls = (cadence: ProbeCadence): cadence is Extract<ProbeCadence, { kind: "poll" }> =>
   cadence.kind === "poll";
 
+/** The platform or our verb says the container is on its way up: it is polled until it is. */
+const comingUp = (machine: ContainerMachine): boolean =>
+  (machine.state.level === "booting" && !machine.state.guessed) ||
+  machine.state.level === "restarting" ||
+  machine.state.level === "updating";
+
 /** The platform's status as last read: a service the listing could not say keeps its last. */
 interface KnownStatus {
   readonly project: string;
@@ -359,7 +365,7 @@ interface Entry {
   /** Whether the last probe found its Mate answering; undefined before one. */
   answering: boolean | undefined;
   /** Edges of the environment machine that read the container once as they rise. */
-  readonly edges: { failing: boolean; backingOff: boolean };
+  readonly edges: { failing: boolean };
   /** The value last written to the store; null before the first. */
   written: MateLinkValue | null;
 }
@@ -373,7 +379,7 @@ interface Origin {
   requestedFresh: boolean;
   /** When the cadence reads it next; null while it does not poll. */
   pollAt: Instant | null;
-  overdueRung: number;
+  rung: number;
   /** The last probe's `sentAt`; null before one. */
   lastSentAt: Instant | null;
   waiting: Array<(reading: ProbeReading) => void>;
@@ -445,7 +451,7 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
       readingFlag: false,
       socket: false,
       answering: undefined,
-      edges: { failing: false, backingOff: false },
+      edges: { failing: false },
       written: null,
     };
     entries.set(key, created);
@@ -481,6 +487,10 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
   /** Something waits on the target's container: a demand, a lease, or our verb's intent. */
   const watched = (entry: Entry): boolean =>
     wantedBy(entry.key).length > 0 || entry.container.intent !== null;
+
+  /** The person waits on it: the route, the screen, their action or Connect, or our verb. */
+  const personWaits = (entry: Entry): boolean =>
+    asked(entry.key) || entry.container.intent !== null;
 
   const reasonFor = (entry: Entry): IdentityExchangeReason => {
     const credential = entry.environment.credential;
@@ -824,7 +834,7 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
       requested: false,
       requestedFresh: false,
       pollAt: null,
-      overdueRung: 0,
+      rung: 0,
       lastSentAt: null,
       waiting: [],
       answering: [],
@@ -833,12 +843,13 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
     return created;
   };
 
+  /** The next poll on the cadence's backoff ladder; each poll climbs it, a status push resets it. */
   const nextPollAt = (origin: Origin, from: Instant): Instant | null => {
     if (!polls(origin.cadence)) return null;
-    if (!origin.cadence.overdue) return after(from, POLL_INTERVAL_MS);
-    const last = OVERDUE_POLL_INTERVALS_MS.length - 1;
-    const interval = OVERDUE_POLL_INTERVALS_MS[Math.min(origin.overdueRung, last)] ?? 0;
-    origin.overdueRung = Math.min(origin.overdueRung + 1, last);
+    const ladder = origin.cadence.overdue ? OVERDUE_POLL_INTERVALS_MS : POLL_INTERVALS_MS;
+    const last = ladder.length - 1;
+    const interval = ladder[Math.min(origin.rung, last)] ?? 0;
+    origin.rung = Math.min(origin.rung + 1, last);
     return after(from, interval);
   };
 
@@ -849,8 +860,13 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
     const byOrigin = new Map<string, ProbeCadence>();
     for (const entry of entries.values()) {
       if (entry.origin === null || !watched(entry)) continue;
-      // A container that does not answer is read on the overdue ladder, the route's too.
-      const cadence = probeCadence(entry.container, true);
+      // A container that does not answer is read on the overdue ladder, the route's too — but
+      // only while it comes up, or the person waits on it: the background is read by its door.
+      const own = probeCadence(entry.container, true);
+      const cadence: ProbeCadence =
+        own.kind === "poll" && !comingUp(entry.container) && !personWaits(entry)
+          ? { kind: "none" }
+          : own;
       const held = byOrigin.get(entry.origin);
       if (held === undefined || order(cadence) > order(held)) byOrigin.set(entry.origin, cadence);
     }
@@ -882,15 +898,15 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
       if (!polls(before)) {
         // A container that starts coming up is read at once; one only failed probes say is, at
         // the backing-off intervals from the probe that said so.
-        origin.overdueRung = 0;
+        origin.rung = 0;
         origin.pollAt =
           cadence.overdue && origin.lastSentAt !== null && origin.inFlight === null
             ? nextPollAt(origin, origin.lastSentAt)
             : clock.now();
       } else if (cadence.overdue !== before.overdue) {
-        origin.overdueRung = 0;
+        origin.rung = 0;
         if (!cadence.overdue && origin.pollAt !== null && origin.lastSentAt !== null) {
-          const timely = after(origin.lastSentAt, POLL_INTERVAL_MS);
+          const timely = after(origin.lastSentAt, POLL_INTERVALS_MS[0] ?? 0);
           if (timely.mono < origin.pollAt.mono) origin.pollAt = timely;
         }
       }
@@ -998,8 +1014,11 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
         if (now && !entry.edges[name]) requestFor(entry, ask);
         entry.edges[name] = now;
       };
-      edge("failing", entry.environment.link.phase === "backoff", { fresh: true });
-      edge("backingOff", entry.environment.credential.kind === "backoff", { fresh: true });
+      // A link the person waits on that drops reads its container once: its exchange, if it
+      // backs off, reads the door again on its own next attempt.
+      edge("failing", entry.environment.link.phase === "backoff" && personWaits(entry), {
+        fresh: true,
+      });
     }
   };
 
@@ -1362,9 +1381,11 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
         const now = clock.now();
         for (const entry of entries.values()) {
           transition(entry, { type: "TICK" });
-          // A container read on demand is read again once its last reading says nothing any more.
+          // A container the person waits on, read on demand, is read again once its last reading
+          // says nothing any more.
           if (
             wakeVisible &&
+            personWaits(entry) &&
             probeCadence(entry.container).kind === "on-demand" &&
             unreadSince(entry.container, now)
           )
