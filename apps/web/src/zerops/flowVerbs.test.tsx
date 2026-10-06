@@ -49,6 +49,7 @@ vi.mock("./accountOperations", async (importOriginal) => {
         registry,
         client as never,
         () => () => {},
+        () => {},
       );
     },
   };

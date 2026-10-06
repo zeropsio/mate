@@ -12,7 +12,7 @@ import { useFinishGroupEnvironment } from "./useFinishGroupEnvironment";
 import { useAccountOrgId, useProjection } from "./ZeropsAccountData";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
-const NONE = Atom.make<ReadonlyArray<HalfMadeGroupEnvironment>>([]);
+const NONE = Atom.make<ReadonlyArray<HalfMadeGroupEnvironment & { readonly finish: boolean }>>([]);
 
 export function useEnvironmentSetup(projectIds: ReadonlyArray<string>) {
   const orgId = useAccountOrgId();

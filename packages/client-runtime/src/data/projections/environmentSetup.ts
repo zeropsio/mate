@@ -20,7 +20,7 @@ import { hqNavigation } from "./hqNavigation.ts";
 
 export const environmentSetup: Projection<
   { readonly orgId: string; readonly projectIds: ReadonlyArray<string> },
-  ReadonlyArray<HalfMadeGroupEnvironment>
+  ReadonlyArray<HalfMadeGroupEnvironment & { readonly finish: boolean }>
 > = {
   name: "environmentSetup",
   keyOf: ({ orgId, projectIds }) => `${orgId}/${projectIds.join(",")}`,
@@ -56,6 +56,16 @@ export const environmentSetup: Projection<
           unavailableSince: null,
         }).kind === "allowed",
       pressing: (projectId) => Object.hasOwn(navigation.presses, projectId),
+    }).map((entry) => {
+      const project = read.fact("placement", entry.projectId);
+      return {
+        ...entry,
+        finish:
+          hqOffer(project.kind === "known" ? project.value.can : undefined, "finish", {
+            current: navigation.live,
+            unavailableSince: null,
+          }).kind === "allowed",
+      };
     });
   },
 };

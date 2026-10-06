@@ -119,7 +119,7 @@ describe("environmentSetup", () => {
     {
       name: "a key still missing",
       state: placed,
-      expected: [{ groupId: "shop", projectId: "stage", tier: "stage" }],
+      expected: [{ groupId: "shop", projectId: "stage", tier: "stage", finish: false }],
     },
     { name: "unread navigation", state: project, expected: [] },
     {
@@ -133,7 +133,7 @@ describe("environmentSetup", () => {
     {
       name: "a partial navigation reset",
       state: apply(placed, { ...deliver([]), reset: true }),
-      expected: [{ groupId: "shop", projectId: "stage", tier: "stage" }],
+      expected: [{ groupId: "shop", projectId: "stage", tier: "stage", finish: false }],
     },
     {
       name: "an attached, keyed environment",
@@ -161,6 +161,26 @@ describe("environmentSetup", () => {
       expected: [],
     },
   ])("reads $name", ({ state, expected }) => expect(of(state)).toEqual(expected));
+
+  it.each([true, false])("preserves HQ's finish offer: %s", (allow) => {
+    const previous = readsOfState(placed).fact("placement", "stage");
+    if (previous.kind !== "known") throw new Error("Missing stage placement");
+    const state = apply(
+      placed,
+      deliver([
+        {
+          family: "placement",
+          id: "stage",
+          revision: { ...revision, revision: 2 },
+          value: {
+            ...previous.value,
+            can: { finish: allow ? { allow: true } : { allow: false, reason: "read_only" } },
+          },
+        },
+      ]),
+    );
+    expect(of(state)[0]?.finish).toBe(allow);
+  });
 
   it("does not offer keeping a key while HQ cannot verify its offer", () => {
     const outage = apply(placed, {
