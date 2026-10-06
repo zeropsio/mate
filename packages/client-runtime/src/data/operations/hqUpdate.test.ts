@@ -4,6 +4,7 @@ import { AtomRegistry } from "effect/unstable/reactivity";
 
 import { liveZerops, ORG, processValue, zeropsVersion } from "../__fixtures__/account.ts";
 import { runningScope } from "../families/process.ts";
+import { operationResult } from "../model.ts";
 import { operationProgress } from "../projections/operation.ts";
 import { makeAccountStore, readsOfState, type AccountStore } from "../store.ts";
 import { ZeropsApiError } from "../../zerops/api.ts";
@@ -112,6 +113,9 @@ describe("hq-update", () => {
           "deploy v1 hq zerops: []",
         ]);
         expect(progress(store)).toEqual({ stage: "accepted", operationId: "proc-build" });
+        expect(operationResult(store.state().operations.get("r1"), "hq-update")).toEqual({
+          processId: "proc-build",
+        });
         deployRow(store, "RUNNING", 1);
         expect(progress(store)).toEqual({ stage: "reflected", operationId: "proc-build" });
         deployRow(store, status, 2);
@@ -167,6 +171,9 @@ describe("hq-update", () => {
       yield* operations.submit(UPDATE);
       expect(calls).toHaveLength(3);
       expect(progress(store)).toEqual({ stage: "reflected", operationId: "proc-build" });
+      expect(operationResult(store.state().operations.get("r1"), "hq-update")).toEqual({
+        processId: "proc-build",
+      });
       deployRow(store, "FINISHED", 2);
       expect(progress(store)).toMatchObject({ stage: "done", outcome: "succeeded" });
     }),

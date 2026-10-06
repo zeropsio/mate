@@ -51,7 +51,7 @@ export function hqUpdateExecutor(platform: {
         executor: "zerops",
         affected: [{ family: "process", id: processId }],
         handles: [processId],
-        acceptance: { kind: "accepted" },
+        acceptance: { kind: "accepted", result: { processId } },
         outcome: { kind: "pending" },
       }),
     );

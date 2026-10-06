@@ -22,6 +22,10 @@ declare module "../model.ts" {
       readonly running: string;
     };
   }
+  interface OperationResults {
+    /** The build's process, which ends it. */
+    readonly "hq-update": { readonly processId: string };
+  }
 }
 
 const DEPLOY_ACTIONS: ReadonlySet<string> = new Set(["stack.build", "stack.deploy"]);
@@ -49,4 +53,5 @@ export const hqUpdate: OperationKind<"hq-update"> = {
         (process.appVersion?.name === undefined ||
           process.appVersion.name.startsWith(HQ_CORE_VERSION_PREFIX)),
     ),
+  adoptedResult: (processId) => ({ processId }),
 };
