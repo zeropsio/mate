@@ -1,6 +1,6 @@
 import type { ZeropsDataPolicy } from "./policy.ts";
 import { commandTarget } from "./commands.ts";
-import { wantStaleVariables } from "./deployedVersion.ts";
+import { observeServiceDeploys, type ServiceDeployObserved } from "./deployedVersion.ts";
 import {
   denyInventoryScope,
   makeInitialInventoryState,
@@ -143,7 +143,13 @@ export type RuntimeControlInput =
       readonly serviceIds: ReadonlyArray<string>;
       readonly atMs: number;
     }
-  | { readonly kind: "inactive-queries-released"; readonly queryKeys: ReadonlyArray<QueryKey> };
+  | { readonly kind: "inactive-queries-released"; readonly queryKeys: ReadonlyArray<QueryKey> }
+  /** What the services whose variables are held run now, as the account's store holds them. */
+  | {
+      readonly kind: "service-deploys-observed";
+      readonly deploys: ReadonlyArray<ServiceDeployObserved>;
+      readonly atMs: number;
+    };
 
 export type ZeropsDataModelInput = IngestionInput | RuntimeControlInput;
 
@@ -974,6 +980,9 @@ function applyControl(state: ZeropsDataState, input: RuntimeControlInput): Zerop
   if (input.kind === "inactive-queries-released") {
     return releaseInactiveQueries(state, input.queryKeys);
   }
+  if (input.kind === "service-deploys-observed") {
+    return observeServiceDeploys(state, input.deploys, input.atMs);
+  }
   const sharedReads = new Map(state.sharedReads);
   if (!sharedReads.delete(input.requestId)) return state;
   return cancelPendingReads(
@@ -1395,7 +1404,8 @@ export function reduceZeropsDataState(
     input.kind === "shared-read-upserted" ||
     input.kind === "shared-read-released" ||
     input.kind === "inactive-queries-released" ||
-    input.kind === "metadata-retry-requested"
+    input.kind === "metadata-retry-requested" ||
+    input.kind === "service-deploys-observed"
   ) {
     const state = trimDiagnostics(applyControl(applyPendingRetention(initial), input), policy);
     return { state, followUps: [] };
@@ -1418,9 +1428,6 @@ export function reduceZeropsDataState(
   state = { ...state, lastReceiptOrdinal: stamp.receiptOrdinal };
   state = trimDiagnostics(state, policy);
   state = scheduleRetention(state, policy);
-  if (input.kind === "observation") {
-    state = wantStaleVariables(state, stamp.receiptOrdinal, stamp.observedAtMs);
-  }
   const followUps: ZeropsDataFollowUp[] = [];
   for (const query of state.inventory.queries.values()) {
     if (query.unresolvedMemberKeys.length > 0) {

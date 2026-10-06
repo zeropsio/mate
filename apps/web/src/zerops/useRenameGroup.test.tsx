@@ -56,11 +56,7 @@ function hook(held: ReadonlyArray<ZeropsProject>): () => GroupRenaming {
   act(() => {
     mounted.push(
       create(
-        createElement(
-          HeldInventoryContext,
-          { value: { projects: held, services: new Map() } },
-          createElement(Probe),
-        ),
+        createElement(HeldInventoryContext, { value: { projects: held } }, createElement(Probe)),
       ),
     );
   });

@@ -14,7 +14,7 @@ import { Link } from "@tanstack/react-router";
 import { useState, type ReactElement, type ReactNode } from "react";
 
 import { useProjectActivity } from "~/zerops/activity/useProjectActivity";
-import { useZeropsInventory } from "~/zerops/inventoryContext";
+import { useProjectServices } from "~/zerops/ZeropsAccountData";
 import { inFirstSeenOrder } from "~/zerops/mateArrival";
 import type { ArrivalService } from "~/zerops/mateArrival";
 import { mateLinkProcesses } from "~/zerops/mateLinkProcesses";
@@ -31,11 +31,10 @@ export function MateLinkProcesses({
   readonly projectId: string;
   readonly mateServiceId: string | undefined;
 }) {
-  const inventory = useZeropsInventory();
-  const outcome = inventory.services.get(projectId);
+  const { services } = useProjectServices(projectId);
   const { processes } = useProjectActivity(projectId);
   const read = mateLinkProcesses({
-    services: outcome?.status === "resolved" ? outcome.services : undefined,
+    services,
     processes,
     mateServiceId,
   });

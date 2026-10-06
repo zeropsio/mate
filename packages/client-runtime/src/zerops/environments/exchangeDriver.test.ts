@@ -198,7 +198,6 @@ function rig(
     retryLink: (environmentId) => {
       retriedLinks.push(environmentId);
     },
-    refreshPresence: () => undefined,
     retire: () => undefined,
     log: (key, diagnostic) => {
       logs.push({ key, diagnostic });

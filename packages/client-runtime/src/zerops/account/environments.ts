@@ -103,7 +103,7 @@ import {
 import type { ExchangeAnswer } from "../identityExchange.ts";
 import type { InvalidationBus } from "../knowledge/invalidation.ts";
 import type { PlatformSignal } from "../knowledge/signals.ts";
-import { finishedEnableAt, heldCandidates, type CandidateRow } from "../projections/candidates.ts";
+import { heldCandidates, type CandidateRow } from "../projections/candidates.ts";
 
 // ── Ports ────────────────────────────────────────────────────────────────────────────────────
 
@@ -403,24 +403,6 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
   const installing = new Map<string, number>();
   /** The origin each target's latest exchange ran at. */
   const exchangedAt = new Map<TargetKey, string>();
-  /**
-   * The confirming read of each project an absence waits on (§9 C19): held until no absence in
-   * the project waits, read again whenever one asks for it again.
-   */
-  const checks = new Map<string, () => void>();
-  const confirmAbsence = (projectId: string) => {
-    const project = projectRefOf(projectId);
-    if (project === undefined || closed) return;
-    checks.get(projectId)?.();
-    const lease = run(
-      Effect.scoped(
-        data
-          .acquire({ kind: "project-services-check", project })
-          .pipe(Effect.andThen(Effect.never)),
-      ).pipe(Effect.ignore),
-    );
-    checks.set(projectId, () => run(Fiber.interrupt(lease)));
-  };
   /** What runs in each booting target's project, as the account's store holds it: followed. */
   const activity = new Map<string, { readonly stop: () => void }>();
   const listeners = new Set<() => void>();
@@ -716,17 +698,6 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     readDescriptor: ports.door.readDescriptor,
     ...(ports.door.kept === undefined ? {} : { kept: ports.door.kept }),
     retryLink: ports.door.retryLink,
-    refreshPresence: (key) => {
-      const organizationId = organizationOf(key) ?? activeOrganization;
-      if (organizationId === null) return;
-      run(
-        data.refreshPresence({
-          kind: "project",
-          organization: organizationRef(organizationId),
-          projectId: ZeropsProjectId.make(targetProject(key)),
-        }),
-      );
-    },
     // A Mate gone from where the platform lists it — or removed by its person — leaves the
     // catalog, and its record and kept session with it: no later load reads it again.
     retire: (key, environmentId) => {
@@ -739,8 +710,9 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
   // ── Feeding the stores ─────────────────────────────────────────────────────────────────────
 
   /**
-   * Every target, its presence and its container. An absence that begins a wait has its project's services read on their own, lag-free (§9 C19): the
-   * organization's search may trail a service it lacks.
+   * Every target, its presence and its container. IN TRANSIT (SVC → PROJ's absence checks): no
+   * project's services are read on their own any more — the organization's services listing is
+   * live — so an absence's wait for such a read (`listed.confirm`) asks nothing.
    */
   const updateTargets = () => {
     if (stores === null || closed) return;
@@ -754,17 +726,6 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     });
     absences = listed.absences;
     stores.containers.setTargets(containerTargetsOf(rows, listed.targets, routeKey));
-    for (const key of listed.confirm) confirmAbsence(targetProject(key));
-    const waiting = new Set(
-      [...absences].flatMap(([key, absence]) =>
-        absence.kind === "waiting" ? [targetProject(key)] : [],
-      ),
-    );
-    for (const [projectId, release] of checks) {
-      if (waiting.has(projectId)) continue;
-      release();
-      checks.delete(projectId);
-    }
     stores.driver.setTargets(
       listed.targets.map((target) => ({
         ...target,
@@ -969,58 +930,27 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
    * Reads the processes — running, and the newest history — of every listed project of the active
    * organization with a container ACTIVE without its address, for as long as it lacks one: its
    * address landing, the project leaving the listing or the organization leaving view lets the
-   * read go. Each time an enable of such a container is read as finished, its project's services
-   * are read again, directly, after it.
+   * read go. The container's record catching up arrives by itself, in the organization's live
+   * services listing.
    */
   const updateAddressWatch = () => {
     if (closed) return;
-    const lacking = new Map<string, ProjectRef>();
+    const lacking = new Set<string>();
     for (const row of rows) {
       if (row.presence !== "known" || row.service?.status !== "ACTIVE") continue;
       if (row.containerOrigin !== undefined || lacking.has(row.project.id)) continue;
       const ref = projectRefOf(row.project.id);
       if (ref !== undefined && ref.organization.organizationId === activeOrganization)
-        lacking.set(row.project.id, ref);
+        lacking.add(row.project.id);
     }
     for (const [projectId, stop] of addressWatch) {
       if (lacking.has(projectId)) continue;
       addressWatch.delete(projectId);
       stop();
     }
-    for (const [projectId, project] of lacking) {
+    for (const projectId of lacking) {
       if (addressWatch.has(projectId)) continue;
-      const releaseHistory = holdProjectHistory(atomRegistry, projectId);
-      // One direct read of its services after each enable read as finished: a fresher record.
-      let checkedAfter: string | null = null;
-      let check: Fiber.Fiber<void> | null = null;
-      const recheck = (read: ProjectProcesses) => {
-        if (closed) return;
-        let ended: string | null = null;
-        for (const row of rows) {
-          if (row.project.id !== projectId || row.service === undefined) continue;
-          if (row.containerOrigin !== undefined) continue;
-          const at = finishedEnableAt(read, row.service.id);
-          if (at !== null && (ended === null || at > ended)) ended = at;
-        }
-        if (ended === null || ended === checkedAfter) return;
-        checkedAfter = ended;
-        if (check !== null) run(Fiber.interrupt(check));
-        check = run(
-          Effect.scoped(
-            data
-              .acquire({ kind: "project-services-check", project })
-              .pipe(Effect.andThen(Effect.never)),
-          ).pipe(Effect.ignore),
-        );
-      };
-      const unsubscribe = atomRegistry.subscribe(projectProcessesAtom(projectId), recheck, {
-        immediate: true,
-      });
-      addressWatch.set(projectId, () => {
-        unsubscribe();
-        releaseHistory();
-        if (check !== null) run(Fiber.interrupt(check));
-      });
+      addressWatch.set(projectId, holdProjectHistory(atomRegistry, projectId));
     }
   };
 
@@ -1299,8 +1229,6 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         markers.clear();
         recent?.disarm();
         actions.clear();
-        for (const release of checks.values()) release();
-        checks.clear();
         for (const fiber of detailLeases.values()) run(Fiber.interrupt(fiber));
         detailLeases.clear();
         for (const stop of addressWatch.values()) stop();

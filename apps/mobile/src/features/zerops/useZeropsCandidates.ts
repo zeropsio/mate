@@ -1,15 +1,6 @@
 import {
-  knownServicesOf,
-  projectKeyOf,
-  ZeropsOrganizationId,
-  ZeropsProjectId,
-  type CollectionRead,
-  type InterestLease,
-  type ProjectRef,
-  type ServiceRecord,
-} from "@t3tools/client-runtime/zerops/data";
-import {
   knownRoster,
+  knownServices,
   type EnvironmentMachine,
   type TargetKey,
 } from "@t3tools/client-runtime/zerops/environments";
@@ -24,9 +15,6 @@ import {
   type AddressMemory,
   type CandidateRow,
 } from "@t3tools/client-runtime/zerops/projections";
-import * as Effect from "effect/Effect";
-import * as Exit from "effect/Exit";
-import * as Scope from "effect/Scope";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { mobileCandidates, type MobileCandidate } from "./candidate-listing";
@@ -35,8 +23,9 @@ import { useZeropsSession } from "./ZeropsSessionProvider";
 import {
   NOT_READ_PROJECTS,
   projectProcessesAtom,
+  projectServicesAtom,
   shownProjectsAtom,
-  type OrganizationProjects,
+  type ProjectServices,
 } from "@t3tools/client-runtime/data";
 
 /** A read, and the moment this device saw it change (`known.ts` dates a read with no value by it). */
@@ -45,13 +34,9 @@ interface StampedRead<Read> {
   readonly atMs: number;
 }
 
-/** The reads the listing is made of, as last published. */
+/** The listing, as last published. */
 interface InventoryReads {
-  /** The active organization's projects, as the account's store lists them. */
-  readonly projects: StampedRead<OrganizationProjects>;
-  /** The services of each project this view holds the inventory of, by project key. */
-  readonly services: ReadonlyMap<string, StampedRead<CollectionRead<ServiceRecord>>>;
-  /** The organization's candidates, derived from these reads at `atMs`. */
+  /** The organization's candidates, derived from the store's reads at `atMs`. */
   readonly listing: Known<ReadonlyArray<CandidateRow>>;
   readonly atMs: number;
 }
@@ -66,7 +51,7 @@ function stamped<Read>(previous: StampedRead<Read> | undefined, read: Read): Sta
   return previous !== undefined && previous.read === read ? previous : { read, atMs: Date.now() };
 }
 
-export function useZeropsCandidates(openedProjectId: string | null = null): {
+export function useZeropsCandidates(): {
   /**
    * The active organization's candidates as knowledge (DESIGN §3), each with its Mate's reachability:
    * "no projects" is only ever read off a known, complete listing (`candidatePickerBody`).
@@ -75,156 +60,69 @@ export function useZeropsCandidates(openedProjectId: string | null = null): {
   /** When the listing's reads last changed: the moment its notice is worded at. */
   readonly readAtMs: number;
   readonly error: string | null;
-  /** Makes a manual attempt for the active organization's held inventory demand. */
+  /** The person's "try now" for what the account observes. */
   readonly refresh: () => void;
 } {
   const { status, activeOrganization } = useZeropsSession();
   const { binding, environments, error: runtimeError } = useZeropsData();
   const [reads, setReads] = useState<InventoryReads | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [demandAttempt, setDemandAttempt] = useState(0);
   const organizationId = activeOrganization?.id ?? "";
   // What this view saw of each container's address, for as long as it lives: one seen with its
   // address never waits for it again, and one watched coming up stays watched (`AddressMemory`).
   // Read and written only where the rows are derived, in the demand's publish.
   const addresses = useRef<AddressMemory>(NO_ADDRESS_MEMORY);
 
-  // Navigation is the account store's roster; service detail follows the opened project.
+  // The organization's projects and every project's services are the account store's.
   useEffect(() => {
     if (status !== "signed-in" || binding === null) {
       setReads(null);
-      setError(runtimeError?.message ?? null);
       return;
     }
 
-    const { runtime, registry } = binding;
+    const { registry } = binding;
     let cancelled = false;
-    let scope: Scope.Closeable | null = null;
-    let scopeClosed = false;
-    const inventoryLeases = new Map<string, InterestLease>();
-    const pendingInventory = new Map<string, Promise<InterestLease>>();
-    const serviceUnsubscribes = new Map<string, () => void>();
-    const activityUnsubscribes = new Map<string, () => void>();
-    let desiredInventory = new Map<string, ProjectRef>();
-    let projectsRead: StampedRead<OrganizationProjects> | undefined;
+    const projectUnsubscribes = new Map<string, () => void>();
     let rosterWay = "";
     let rosterSince = 0;
-    let serviceReads = new Map<string, StampedRead<CollectionRead<ServiceRecord>>>();
+    let serviceReads = new Map<string, StampedRead<ProjectServices>>();
 
-    // Scope creation is asynchronous. Cleanup can win that race, so closing is
-    // centralized and guarded before this hook starts any demand acquisition.
-    const closeScope = (target: Scope.Closeable) => {
-      if (scopeClosed) return;
-      scopeClosed = true;
-      void Effect.runPromise(Scope.close(target, Exit.void));
-    };
-
-    const unsubscribeAll = () => {
-      for (const unsubscribe of serviceUnsubscribes.values()) unsubscribe();
-      serviceUnsubscribes.clear();
-      for (const unsubscribe of activityUnsubscribes.values()) unsubscribe();
-      activityUnsubscribes.clear();
-    };
-
-    const refused = (cause: unknown) =>
-      setError(cause instanceof Error ? cause.message : "Could not load Zerops projects.");
-
-    const reconcileInventoryDemand = () => {
-      for (const [key, lease] of inventoryLeases) {
-        if (desiredInventory.has(key)) continue;
-        inventoryLeases.delete(key);
-        void Effect.runPromise(lease.release);
-      }
-      if (scope === null) return;
-      for (const [key, project] of desiredInventory) {
-        if (inventoryLeases.has(key) || pendingInventory.has(key)) continue;
-        const pending = Effect.runPromise(
-          runtime.acquire({ kind: "project-inventory", project }).pipe(Scope.provide(scope)),
-        );
-        pendingInventory.set(key, pending);
-        void pending.then(
-          (lease) => {
-            pendingInventory.delete(key);
-            if (cancelled || !desiredInventory.has(key)) {
-              void Effect.runPromise(lease.release);
-              return;
-            }
-            inventoryLeases.set(key, lease);
-            publish();
-          },
-          (cause: unknown) => {
-            pendingInventory.delete(key);
-            if (!cancelled) refused(cause);
-          },
-        );
-      }
-    };
-
-    const synchronizeServiceSubscriptions = () => {
-      for (const [key, unsubscribe] of serviceUnsubscribes) {
-        if (desiredInventory.has(key)) continue;
+    /** Each active project's services and processes, heard while the roster lists it. */
+    const follow = (projectIds: ReadonlySet<string>) => {
+      for (const [projectId, unsubscribe] of projectUnsubscribes) {
+        if (projectIds.has(projectId)) continue;
         unsubscribe();
-        serviceUnsubscribes.delete(key);
+        projectUnsubscribes.delete(projectId);
       }
-      for (const [key, project] of desiredInventory) {
-        if (serviceUnsubscribes.has(key)) continue;
-        serviceUnsubscribes.set(
-          key,
-          registry.subscribe(runtime.reads.servicesOf(project), publish, {
-            immediate: false,
-          }),
-        );
-      }
-      // Whether a container's address is being turned on is its project's processes' word: the
-      // account runtime reads them while a container of it lacks one (`account/environments.ts`).
-      for (const [key, unsubscribe] of activityUnsubscribes) {
-        if (desiredInventory.has(key)) continue;
-        unsubscribe();
-        activityUnsubscribes.delete(key);
-      }
-      for (const [key, project] of desiredInventory) {
-        if (activityUnsubscribes.has(key)) continue;
-        activityUnsubscribes.set(
-          key,
-          registry.subscribe(projectProcessesAtom(project.projectId), publish, {
-            immediate: false,
-          }),
-        );
+      for (const projectId of projectIds) {
+        if (projectUnsubscribes.has(projectId)) continue;
+        const services = registry.subscribe(projectServicesAtom(projectId), publish, {
+          immediate: false,
+        });
+        // Whether a container's address is being turned on is its project's processes' word.
+        const activity = registry.subscribe(projectProcessesAtom(projectId), publish, {
+          immediate: false,
+        });
+        projectUnsubscribes.set(projectId, () => {
+          services();
+          activity();
+        });
       }
     };
-
-    const refOf = (projectId: string): ProjectRef => ({
-      kind: "project",
-      organization: {
-        kind: "organization",
-        account: binding.account.account,
-        organizationId: ZeropsOrganizationId.make(organizationId),
-      },
-      projectId: ZeropsProjectId.make(projectId),
-    });
 
     function publish(): void {
       if (cancelled) return;
       // The store's roster of the organization this view reads; another one's is not read here.
       const shown = registry.get(shownProjectsAtom);
       const roster = shown.orgId === organizationId ? shown : NOT_READ_PROJECTS;
-      projectsRead = stamped(projectsRead, roster);
-      desiredInventory = new Map(
-        roster.projects
-          .filter(({ id, status }) => status === "ACTIVE" && id === openedProjectId)
-          .map(({ id }) => [projectKeyOf(refOf(id)), refOf(id)] as const),
+      const active = new Set(
+        roster.projects.filter(({ status }) => status === "ACTIVE").map(({ id }) => id),
       );
-      synchronizeServiceSubscriptions();
-      reconcileInventoryDemand();
-      // A project's services are this listing's only while it holds their inventory: the
-      // organization's roster alone cannot say which containers a project has.
+      follow(active);
       serviceReads = new Map(
-        [...desiredInventory]
-          .filter(([key]) => inventoryLeases.has(key))
-          .map(([key, project]) => [
-            key,
-            stamped(serviceReads.get(key), registry.get(runtime.reads.servicesOf(project))),
-          ]),
+        [...active].map((projectId) => [
+          projectId,
+          stamped(serviceReads.get(projectId), registry.get(projectServicesAtom(projectId))),
+        ]),
       );
       const atMs = Date.now();
       // The roster's own way of waiting or falling behind dates it: a new way, a new moment.
@@ -233,54 +131,38 @@ export function useZeropsCandidates(openedProjectId: string | null = null): {
         rosterWay = way;
         rosterSince = atMs;
       }
-      const opened = new Map(
-        [...desiredInventory.values()].map((project) => [project.projectId as string, project]),
-      );
       const facts = addressFactsOf(addresses.current, atMs, (projectId, serviceId) => {
-        const project = opened.get(projectId);
-        if (project === undefined) return undefined;
-        const services = serviceReads.get(projectKeyOf(project));
+        const services = serviceReads.get(projectId);
+        if (services === undefined) return undefined;
         return subdomainEnableIn(
-          registry.get(projectProcessesAtom(project.projectId)),
+          registry.get(projectProcessesAtom(projectId)),
           serviceId,
-          serviceUpdatedAtIn(services?.read ?? null, serviceId),
+          serviceUpdatedAtIn(services.read.services, serviceId),
         );
       });
       const listing = selectCandidates(
         knownRoster(roster, rosterSince),
         (project) => {
-          const services = serviceReads.get(projectKeyOf(refOf(project.id)));
-          return services === undefined ? UNREAD : knownServicesOf(services.read, services.atMs);
+          const services = serviceReads.get(project.id);
+          return services === undefined ? UNREAD : knownServices(services.read, services.atMs);
         },
         facts,
       );
       addresses.current = learnAddresses(addresses.current, [listing]).memory;
-      setReads({ projects: projectsRead, services: serviceReads, listing, atMs });
+      setReads({ listing, atMs });
     }
 
-    setError(null);
     setReads(null);
-
     const unsubscribeRoster = registry.subscribe(shownProjectsAtom, publish, { immediate: false });
-    void Effect.runPromise(Scope.make()).then((nextScope) => {
-      scope = nextScope;
-      if (cancelled) {
-        closeScope(nextScope);
-        return;
-      }
-      publish();
-    });
+    publish();
 
     return () => {
       cancelled = true;
       unsubscribeRoster();
-      unsubscribeAll();
-      desiredInventory = new Map();
-      for (const lease of inventoryLeases.values()) void Effect.runPromise(lease.release);
-      inventoryLeases.clear();
-      if (scope !== null) closeScope(scope);
+      for (const unsubscribe of projectUnsubscribes.values()) unsubscribe();
+      projectUnsubscribes.clear();
     };
-  }, [binding, demandAttempt, organizationId, openedProjectId, runtimeError, status]);
+  }, [binding, organizationId, status]);
 
   const organizationListing = reads?.listing ?? null;
 
@@ -302,14 +184,10 @@ export function useZeropsCandidates(openedProjectId: string | null = null): {
     [machines, organizationListing, reads, status],
   );
 
-  // The person's "try now": the account's observation, and the demand again after an error.
+  // The person's "try now": the account's observation.
   const refresh = useCallback(() => {
-    if (error !== null) {
-      setDemandAttempt((attempt) => attempt + 1);
-      return;
-    }
     binding?.accountData.observation.retry();
-  }, [binding, error]);
+  }, [binding]);
 
-  return { listing, readAtMs: reads?.atMs ?? 0, error, refresh };
+  return { listing, readAtMs: reads?.atMs ?? 0, error: runtimeError?.message ?? null, refresh };
 }

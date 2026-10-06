@@ -1,14 +1,14 @@
 /**
  * The account's Mate listing (DESIGN §2.B B4): the organization the account observes, its projects
  * as the account's store lists them (`organizationProjects`), each joined with its services as the
- * data runtime reads them, through `selectCandidates`' rules. The account's environments and every
+ * organization's services listing holds them (`projectServices`), through `selectCandidates`' rules. The account's environments and every
  * surface read the same listing, one per data runtime.
  *
  * - The projects are the store's: a project created anywhere is listed as soon as the roster says
  *   it, an outage keeps what was read and says it is catching up, and a project leaves only on its
  *   owner's word (`data/projections/projects.ts`).
  * - A recompute costs what changed: a project's rows are derived again only when its value or its
- *   services read is a new object, and rows that come out the same keep their objects. A recompute
+ *   services are a new object, and rows that come out the same keep their objects. A recompute
  *   that changed no listing returns the listings it returned before, so nothing reading them hears
  *   of it.
  * - A container ACTIVE before its address landed is on its way to it while the platform turns its
@@ -23,7 +23,9 @@ import { Atom } from "effect/unstable/reactivity";
 import type { ProjectValue } from "../../data/families/project.ts";
 import type { ProjectProcesses } from "../../data/projections/processes.ts";
 import type { OrganizationProjects } from "../../data/projections/projects.ts";
-import { projectProcessesAtom, shownProjectsAtom } from "../../data/reads.ts";
+import type { ProjectServices } from "../../data/projections/services.ts";
+import { projectProcessesAtom, projectServicesAtom, shownProjectsAtom } from "../../data/reads.ts";
+import type { ZeropsService } from "../api.ts";
 
 import {
   evidenceProjectRefs,
@@ -31,16 +33,13 @@ import {
   pendingDenials,
 } from "../data/access/grantProjects.ts";
 import type { Evidence, GrantMachine } from "../data/access/grant.ts";
-import { knownServicesOf, servicesCheckOrdinalOf } from "../data/known.ts";
 import type { ManagedZeropsDataRuntime } from "../data/runtime.ts";
 import {
   projectKeyOf,
   ZeropsOrganizationId,
   ZeropsProjectId,
-  type CollectionRead,
   type OrganizationRef,
   type ProjectRef,
-  type ServiceRecord,
 } from "../data/types.ts";
 import type { Freshness, Known } from "../knowledge/known.ts";
 import {
@@ -62,8 +61,8 @@ export interface OrganizationListing {
   readonly organizationId: string;
   readonly listing: Known<ReadonlyArray<CandidateRow>>;
   /**
-   * The receipt ordinal of each of its projects' latest complete direct read of their services:
-   * the one the interest that observes them crossed when it last established.
+   * IN TRANSIT (SVC → PROJ's absence checks): no project's services are read directly any more —
+   * the organization's services listing observes them all — so none is named here.
    */
   readonly directReads: ReadonlyMap<string, number>;
 }
@@ -130,14 +129,13 @@ interface ProjectEntry {
   readonly project: ProjectValue;
   /** Whether the grant admits the project: only then are its services its Mates'. */
   readonly admitted: boolean;
-  /** Its services read; null for a project whose status reads no services. */
-  readonly services: CollectionRead<ServiceRecord> | null;
+  /** Its services as last read; null for a project whose status reads no services. */
+  readonly services: ProjectServices | null;
   /** Its processes as read for a container lacking its address; null where none was asked. */
   readonly activity: ProjectProcesses | null;
   readonly rows: ReadonlyArray<CandidateRow>;
   /** When the first of its rows' arrival poses ends, wall ms; null when none is shown. */
   readonly arrivalEnds: number | null;
-  readonly directRead: number | null;
 }
 
 /** The organization as last derived. */
@@ -153,7 +151,38 @@ const NO_DIRECT_READS: ReadonlyMap<string, number> = new Map();
 const NO_LISTINGS: ReadonlyArray<OrganizationListing> = [];
 
 /** A project the grant does not admit: its services say nothing of a Mate of this person's. */
-const UNREAD_SERVICES: Known<ReadonlyArray<ServiceRecord>> = { state: "unread", waitingFor: null };
+const UNREAD_SERVICES: Known<ReadonlyArray<ZeropsService>> = { state: "unread", waitingFor: null };
+
+/** A project's services as knowledge: as current as the organization's services listing. */
+export function knownServices(
+  read: ProjectServices,
+  since: number,
+): Known<ReadonlyArray<ZeropsService>> {
+  if (read.services === undefined)
+    return read.unavailableReason === undefined
+      ? { state: "reading", sinceMs: since, attempt: 1 }
+      : {
+          state: "failed",
+          failure:
+            read.unavailableReason === "refused"
+              ? { kind: "refused", code: "refused", words: "Zerops refused the services list." }
+              : { kind: "unauthorized" },
+          atMs: since,
+          attempt: 1,
+          retryAtMs: null,
+        };
+  return {
+    state: "known",
+    value: read.services,
+    asOf: { ordinal: 0, atMs: since },
+    coverage: "complete",
+    freshness: read.live
+      ? { kind: "live" }
+      : read.reconnecting
+        ? { kind: "stale", reason: { kind: "source-recovering", retryAtMs: null }, sinceMs: since }
+        : { kind: "revalidating", sinceMs: since },
+  };
+}
 
 const sameJson = (left: unknown, right: unknown): boolean =>
   JSON.stringify(left) === JSON.stringify(right);
@@ -164,18 +193,6 @@ const sameShell = <T>(left: Known<T>, right: Known<T>): boolean =>
 
 const sameItems = <T>(left: ReadonlyArray<T>, right: ReadonlyArray<T>): boolean =>
   left.length === right.length && left.every((item, index) => item === right[index]);
-
-const sameReads = (left: ReadonlyMap<string, number>, right: ReadonlyMap<string, number>) =>
-  left.size === right.size && [...left].every(([key, read]) => right.get(key) === read);
-
-/** The receipt ordinal of a complete services read its observing interest crossed. */
-const directReadOf = (
-  read: CollectionRead<ServiceRecord>,
-  services: Known<ReadonlyArray<ServiceRecord>>,
-): number | null =>
-  services.state === "known" && services.coverage === "complete"
-    ? servicesCheckOrdinalOf(read)
-    : null;
 
 const listings = new WeakMap<
   ManagedZeropsDataRuntime,
@@ -251,27 +268,27 @@ export function mateListingsAtom(
     const derive = (
       project: ProjectValue,
       before: ProjectEntry | undefined,
-      known: CollectionRead<ServiceRecord> | null,
+      known: ProjectServices | null,
       isAdmitted: boolean,
     ): ProjectEntry => {
-      const ref = refOf(project.id);
-      let services: CollectionRead<ServiceRecord> | null = null;
-      let directRead: number | null = null;
+      let services: ProjectServices | null = null;
       let activity: ProjectProcesses | null = null;
       const rows = projectCandidates(
         project,
         () => {
           if (!isAdmitted) return UNREAD_SERVICES;
-          const read = known ?? get(data.reads.servicesOf(ref));
-          const value = knownServicesOf(read, nowMs);
+          const read = known ?? get(projectServicesAtom(project.id));
           services = read;
-          directRead = directReadOf(read, value);
-          return value;
+          return knownServices(read, nowMs);
         },
         addressFactsOf(addresses, nowMs, (_projectId, serviceId) => {
           activity = get(projectProcessesAtom(project.id));
           // Its record, last updated after its enable ended on Zerops' clock, says it caught up.
-          return subdomainEnableIn(activity, serviceId, serviceUpdatedAtIn(services, serviceId));
+          return subdomainEnableIn(
+            activity,
+            serviceId,
+            serviceUpdatedAtIn(services?.services, serviceId),
+          );
         }),
       );
       addresses = rememberAddresses(addresses, rows);
@@ -282,18 +299,17 @@ export function mateListingsAtom(
         services,
         activity,
         rows: same ? before.rows : rows,
-        directRead,
         arrivalEnds: arrivalEnd(rows),
       };
     };
 
-    /** One project, derived again only from a new value, a new services read or admission. */
+    /** One project, derived again only from a new value, new services or admission. */
     const projectEntry = (project: ProjectValue, before: ProjectEntry | undefined) => {
       const isAdmitted = admitted.has(projectKeyOf(refOf(project.id)));
       const arrivalOver = before?.arrivalEnds != null && before.arrivalEnds <= nowMs;
       if (before?.project === project && before.admitted === isAdmitted && !arrivalOver) {
         if (before.services === null) return before;
-        const read = get(data.reads.servicesOf(refOf(project.id)));
+        const read = get(projectServicesAtom(project.id));
         const activityMoved =
           before.activity !== null && get(projectProcessesAtom(project.id)) !== before.activity;
         if (read === before.services && !activityMoved) return before;
@@ -315,12 +331,8 @@ export function mateListingsAtom(
       next = { roster, way, since, entries: new Map(), listed };
     } else {
       const entries = new Map<string, ProjectEntry>();
-      const directReads = new Map<string, number>();
-      for (const project of projects.value) {
-        const entry = projectEntry(project, before?.entries.get(project.id));
-        entries.set(project.id, entry);
-        if (entry.directRead !== null) directReads.set(project.id, entry.directRead);
-      }
+      for (const project of projects.value)
+        entries.set(project.id, projectEntry(project, before?.entries.get(project.id)));
       const listing = candidateListing(
         projects,
         [...entries.values()].map((entry) => entry.rows),
@@ -330,14 +342,15 @@ export function mateListingsAtom(
         previous !== undefined &&
         previous.listing.state === "known" &&
         sameShell(previous.listing, listing) &&
-        sameItems(previous.listing.value, listing.value) &&
-        sameReads(previous.directReads, directReads);
+        sameItems(previous.listing.value, listing.value);
       next = {
         roster,
         way,
         since,
         entries,
-        listed: unchanged ? previous : { organizationId: orgId, listing, directReads },
+        listed: unchanged
+          ? previous
+          : { organizationId: orgId, listing, directReads: NO_DIRECT_READS },
       };
     }
     organization = next;

@@ -5,7 +5,7 @@ import { servicesScope } from "../families/service.ts";
 import { emptyAccount, linkKeys, type AccountState } from "../model.ts";
 import { reduceAccount, type AccountInput } from "../reducer.ts";
 import { readsOfState } from "../store.ts";
-import { projectServices, type ProjectServices } from "./services.ts";
+import { projectServices, projectsServices, type ProjectServices } from "./services.ts";
 
 const SCOPE = servicesScope(ORG);
 const apply = (state: AccountState, inputs: ReadonlyArray<AccountInput>) =>
@@ -78,6 +78,12 @@ describe("projectServices", () => {
       expected: { services: ["zcp"] },
     },
     {
+      name: "a project the owner withholds from the viewer: none of its services shows",
+      state: () =>
+        apply(live(), [{ kind: "access", family: "project", id: "p1", access: "denied" }]),
+      expected: { services: undefined, unavailableReason: "forbidden" },
+    },
+    {
       name: "an outage: what was read stays, catching up",
       state: () =>
         apply(live(), [
@@ -111,5 +117,19 @@ describe("projectServices", () => {
     if (statuses !== undefined)
       expect(derived.services?.map((service) => service.status)).toEqual(statuses);
     expect(derived).toMatchObject(rest);
+  });
+});
+
+describe("projectsServices", () => {
+  it("reads each listed project's services by its id, in one value", () => {
+    const derived = projectsServices.derive(readsOfState(live()), {
+      orgId: ORG,
+      projectIds: ["p1", "p2", "p3"],
+    });
+    expect(
+      Object.fromEntries(
+        Object.entries(derived).map(([id, read]) => [id, read.services?.map(({ id }) => id)]),
+      ),
+    ).toEqual({ p1: ["db", "zcp"], p2: ["web"], p3: [] });
   });
 });

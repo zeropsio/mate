@@ -180,7 +180,6 @@ async function boundDriver(rig: Rig) {
     retryLink: (id) => {
       retried.push(id);
     },
-    refreshPresence: () => undefined,
     retire: () => undefined,
   });
   const unbind = bindContainerStore(rig.store, driver);
@@ -374,7 +373,6 @@ describe("container store (DESIGN §4.5)", () => {
       install: async () => ({ ok: true }),
       readDescriptor: () => new Promise(() => undefined),
       retryLink: () => undefined,
-      refreshPresence: () => undefined,
       retire: () => undefined,
     });
     const unbind = bindContainerStore(store, driver);
@@ -437,7 +435,6 @@ describe("container store (DESIGN §4.5)", () => {
       install: async () => ({ ok: true }),
       readDescriptor: () => new Promise(() => undefined),
       retryLink: () => undefined,
-      refreshPresence: () => undefined,
       retire: () => undefined,
     });
     const unbind = bindContainerStore(store, driver);

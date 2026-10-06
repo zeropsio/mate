@@ -10,6 +10,7 @@ import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
 import type { DetailDemand } from "./demand.ts";
 import { projectProcesses, type ProjectProcesses } from "./projections/processes.ts";
 import type { ProjectValue } from "./families/project.ts";
+import { projectServices, projectsServices, type ProjectServices } from "./projections/services.ts";
 import {
   listedProject,
   organizationProjects,
@@ -47,6 +48,41 @@ export const projectProcessesAtom = Atom.family((projectId: string) =>
     if (account === null || account.orgId === null) return NOT_READ_PROCESSES;
     return get(account.data.project(projectProcesses, { orgId: account.orgId, projectId }));
   }).pipe(Atom.withLabel(`data:project-processes:${projectId}`)),
+);
+
+export const NOT_READ_SERVICES: ProjectServices = {
+  services: undefined,
+  live: false,
+  reconnecting: false,
+};
+
+/** One project's services as the mounted account holds them; not read without one. */
+export const projectServicesAtom = Atom.family((projectId: string) =>
+  Atom.make((get): ProjectServices => {
+    const account = get(accountReadsAtom);
+    if (account === null || account.orgId === null) return NOT_READ_SERVICES;
+    return get(account.data.project(projectServices, { orgId: account.orgId, projectId }));
+  }).pipe(Atom.withLabel(`data:project-services:${projectId}`)),
+);
+
+const NO_PROJECTS_SERVICES: Readonly<Record<string, ProjectServices>> = {};
+
+/**
+ * Several projects' services at once, as the mounted account holds them, by project id; nothing
+ * without one. Keyed by the ids joined with `,`.
+ */
+export const projectsServicesAtom = Atom.family((projectIds: string) =>
+  Atom.make((get): Readonly<Record<string, ProjectServices>> => {
+    const account = get(accountReadsAtom);
+    if (account === null || account.orgId === null || projectIds === "")
+      return NO_PROJECTS_SERVICES;
+    return get(
+      account.data.project(projectsServices, {
+        orgId: account.orgId,
+        projectIds: projectIds.split(","),
+      }),
+    );
+  }).pipe(Atom.withLabel(`data:projects-services:${projectIds}`)),
 );
 
 export const NOT_READ_PROJECTS: OrganizationProjects = {

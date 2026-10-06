@@ -87,6 +87,28 @@ export const versionValue = (
   patch: Pick<VersionValue, "id" | "serviceId"> & Partial<VersionValue>,
 ): VersionValue => ({ projectId: "p1", status: "ACTIVE", source: "GIT", ...patch });
 
+/** An organization's services read and live: these services, as their rows read. */
+export function liveServices(
+  orgId: string,
+  services: ReadonlyArray<
+    Readonly<Record<string, unknown>> & { readonly id: string; readonly projectId: string }
+  >,
+): ReadonlyArray<AccountInput> {
+  return liveScopes(linkKeys.zerops(orgId), [
+    {
+      scope: servicesScope(orgId),
+      via: "zerops-realtime",
+      members: services.map((service) => service.id),
+      rows: services.map((service) => ({
+        family: "service",
+        id: service.id,
+        value: serviceValue(service),
+        revision: zeropsVersion(1),
+      })),
+    },
+  ]);
+}
+
 /** A service as its whole row reads: what a test does not name is an active runtime. */
 export const serviceValue = (
   patch: Pick<ServiceValue, "id" | "projectId"> & Partial<ServiceValue>,

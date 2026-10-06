@@ -18,7 +18,6 @@ import {
   decodeEntityDirectResponse,
   decodeEntityQueryPages,
   decodeRegistrationResponse,
-  knownServicesOf,
   makeZeropsApiOrigin,
   makeZeropsDataRuntime,
   ZeropsAccountId,
@@ -31,6 +30,7 @@ import {
   type ZeropsDataAdapter,
 } from "@t3tools/client-runtime/zerops/data";
 import {
+  knownServices,
   REGISTRATION_RECORDS_KEY,
   type ProbeReading,
   type RegistrationRecord,
@@ -47,6 +47,7 @@ import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
 import { AtomRegistry } from "effect/unstable/reactivity";
+import { projectServicesAtom, servicesScope } from "@t3tools/client-runtime/data";
 
 import { hqAbsent, loadAccountRecords, memoryIntents } from "./account-ports";
 import { mobileCandidates } from "./candidate-listing";
@@ -141,7 +142,12 @@ const platform = () => {
     execute: () => Effect.succeed({ observations: [] }),
     closeReceiver: () => Effect.void,
   };
-  return { adapter, projectRow, setService: (status: string) => void (state.service = status) };
+  return {
+    adapter,
+    projectRow,
+    serviceRow,
+    setService: (status: string) => void (state.service = status),
+  };
 };
 
 /** A grant whose first round waits for the test, then verifies the one project as its owner. */
@@ -291,11 +297,11 @@ const openMobileAccount = Effect.fnUntraced(function* (clock: DeadlineClock) {
     });
   }).pipe(Effect.provideService(Clock.Clock, clock));
   yield* Effect.addFinalizer(() => built.close("application-close"));
-  // The organization's roster, as the account's store reads it; the opened project's services.
-  mountRoster(registry, ORGANIZATION_ID, [place.projectRow]);
-  yield* built.data
-    .acquire({ kind: "project-inventory", project })
-    .pipe(Effect.provideService(Clock.Clock, clock));
+  // The organization's roster and services, as the account's store reads them.
+  const store = mountRoster(registry, ORGANIZATION_ID, [place.projectRow], {
+    services: [place.serviceRow()],
+  });
+  let serviceVersion = 1;
 
   /** The Mate's row in the picker, as it reads the runtime's machines now. */
   const row = (environments: AccountEnvironments) => {
@@ -310,7 +316,7 @@ const openMobileAccount = Effect.fnUntraced(function* (clock: DeadlineClock) {
             coverage: "complete",
             freshness: { kind: "live" },
           },
-          () => knownServicesOf(registry.get(built.data.reads.servicesOf(project)), nowMs),
+          () => knownServices(registry.get(projectServicesAtom(PROJECT_ID)), nowMs),
         ),
       ],
       machines: environments.machines(),
@@ -320,13 +326,26 @@ const openMobileAccount = Effect.fnUntraced(function* (clock: DeadlineClock) {
     return candidate === undefined ? undefined : zeropsCandidatePresentation(candidate, nowMs);
   };
 
-  /** The platform reports the service's status, and the account reads its inventory again. */
+  /** The platform pushes the service's new status to the organization's services listing. */
   const serviceStatus = (status: string) =>
     Effect.gen(function* () {
       place.setService(status);
-      yield* built.invalidations
-        .invalidate({ topic: "inventory", organization })
-        .pipe(Effect.provideService(Clock.Clock, clock));
+      serviceVersion += 1;
+      store.dispatch({
+        kind: "rows",
+        scope: servicesScope(ORGANIZATION_ID),
+        generation: 1,
+        method: "push",
+        via: "zerops-realtime",
+        rows: [
+          {
+            family: "service",
+            id: "service-a",
+            value: place.serviceRow(),
+            revision: { kind: "zerops", version: serviceVersion },
+          },
+        ],
+      });
       yield* settle;
       yield* clock.advance(SECOND);
       yield* settle;

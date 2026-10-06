@@ -288,7 +288,7 @@ function ProjectPickerSurface(props: { readonly onDone: (environmentId: Environm
   } = useZeropsSession();
   const { environments } = useZeropsData();
   const [openedProjectId, setOpenedProjectId] = useState<string | null>(null);
-  const { listing, readAtMs, error, refresh } = useZeropsCandidates(openedProjectId);
+  const { listing, readAtMs, error, refresh } = useZeropsCandidates();
   const connectingRef = useRef(false);
   const [connectingKey, setConnectingKey] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);

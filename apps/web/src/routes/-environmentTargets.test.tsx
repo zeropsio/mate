@@ -47,6 +47,7 @@ import {
 import { RouteGateView } from "./-routeGate";
 import { bindAccountEnvironments } from "../zerops/accountEnvironments";
 import { InventoryContext, type Inventory } from "../zerops/inventoryContext";
+import { mountRoster } from "@t3tools/client-runtime/zerops/testing";
 import { useMateVoice } from "../zerops/mateVoiceContext";
 import type { ZeropsOrganizationStatus } from "../zerops/ZeropsSessionProvider";
 
@@ -156,9 +157,6 @@ const zcp = (status: string) =>
 
 const inventory = (status: string | null): Inventory => ({
   projects: status === null ? [] : [project],
-  services: new Map(
-    status === null ? [] : [["project-1", { status: "resolved", services: [zcp(status)] }]],
-  ),
   isLoading: false,
   error: null,
   projectRefs: new Map(),
@@ -185,6 +183,10 @@ beforeEach(() => {
   container = document.createElement("div");
   root = createRoot(container as unknown as Element);
   atoms = AtomRegistry.make();
+  // The organization's services listing holds the project's zcp container.
+  mountRoster(atoms, "org-1", [project], {
+    services: [{ ...zcp("ACTIVE"), projectId: "project-1" }],
+  });
   shell.environments = [];
   shell.records = [];
   shell.routes = [];
@@ -246,7 +248,6 @@ function exchangeDriver(): ExchangeDriver {
     install: async () => ({ ok: true }),
     readDescriptor: () => new Promise(() => undefined),
     retryLink: () => undefined,
-    refreshPresence: () => undefined,
     retire: () => undefined,
   });
 }
@@ -951,7 +952,6 @@ function descriptorRig(
     install: async () => ({ ok: true }),
     readDescriptor: () => new Promise(() => undefined),
     retryLink: () => undefined,
-    refreshPresence: () => undefined,
     retire: (key) => {
       retired.push(key);
     },

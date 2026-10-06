@@ -27,6 +27,12 @@ export const RETIRED_MECHANISMS: ReadonlyArray<RetiredMechanism> = [
       "the inventory's in-transit bridge to the project family; the inventory reads the store's projections and the bridge goes with ZeropsInventoryProvider",
   },
   {
+    token: "runtimeServicesRead",
+    family: "services",
+    reason:
+      "the data runtime's in-transit bridge to the services family; the runtime's readers move to the store's projections and the bridge goes with the runtime",
+  },
+  {
     token: "useInterestLeases",
     family: "projects",
     reason:

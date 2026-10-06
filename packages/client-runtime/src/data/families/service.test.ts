@@ -8,7 +8,7 @@ const decode = serviceFamily.zerops!.decode;
 describe("serviceFamily.decode", () => {
   it.each<{ readonly name: string; readonly raw: unknown; readonly row: unknown }>([
     {
-      name: "keeps the whole row: its project, type, ports and running version",
+      name: "keeps the whole row as it states it: its project, type, ports and running version",
       raw: {
         id: "s1",
         clientId: "org",
@@ -44,6 +44,7 @@ describe("serviceFamily.decode", () => {
             serviceStackTypeVersionName: "zcp@1",
             serviceStackTypeCategory: "USER",
           },
+          mode: null,
           created: "2026-10-05T18:49:08Z",
         },
       },

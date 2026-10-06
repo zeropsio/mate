@@ -23,6 +23,8 @@ export {
 export { endIssuedSession } from "./adapters/issuedSessions.ts";
 export { historyScope, runningScope, type ProcessValue } from "./families/process.ts";
 export { projectsScope, type ProjectValue } from "./families/project.ts";
+export { servicesScope, type ServiceValue } from "./families/service.ts";
+export { projectServices, projectsServices, type ProjectServices } from "./projections/services.ts";
 export {
   buildsUnderWay,
   projectProcesses,
@@ -53,8 +55,11 @@ export {
   NOT_READ_PROCESSES,
   listedProjectAtom,
   NOT_READ_PROJECTS,
+  NOT_READ_SERVICES,
   projectGoneAtom,
   projectProcessesAtom,
+  projectServicesAtom,
+  projectsServicesAtom,
   shownProjectsAtom,
   type AccountReads,
 } from "./reads.ts";

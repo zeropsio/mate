@@ -36,7 +36,7 @@ import {
 } from "@t3tools/client-runtime/zerops/agentLogin";
 import type { KnownMessage } from "@t3tools/client-runtime/zerops/knowledge";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
-import { Fragment, useContext, useEffect, useId, useMemo, useRef, type ReactNode } from "react";
+import { Fragment, useEffect, useId, useMemo, useRef, type ReactNode } from "react";
 
 import { MATE_SHAPE_OF_TINT, MATE_TINT_IDS } from "@t3tools/shared/brand";
 import { cn } from "~/lib/utils";
@@ -56,7 +56,7 @@ import {
   type MateStandUpPhase,
 } from "../../zerops/mateStandUp";
 import { useZeropsEnvironmentProject } from "../../zerops/useZeropsEnvironmentProject";
-import { InventoryContext } from "../../zerops/inventoryContext";
+import { useProjectServices } from "../../zerops/ZeropsAccountData";
 import { useZeropsAgentAuth } from "../../zerops/useZeropsFeeds";
 import { useNowMs } from "../../zerops/useNowMs";
 import { useZeropsMemberNames } from "../../zerops/useZeropsMateOwners";
@@ -181,13 +181,10 @@ export function useMateEmptyState({
     phase === null && signInRequired && adder !== undefined && adder !== viewerSubject;
   const project = useZeropsEnvironmentProject(environmentId);
   // Its runtimes as its project's read lists them: the sign-in names the ones still coming up.
-  const inventory = useContext(InventoryContext);
-  const listed = inventory?.services.get(projectId ?? project?.projectId ?? "");
+  const listed = useProjectServices(projectId ?? project?.projectId).services;
   const runtimes = useMemo(
     () =>
-      listed?.status === "resolved"
-        ? (birthRuntimesFacts({ services: listed.services })?.runtimes ?? [])
-        : undefined,
+      listed === undefined ? undefined : (birthRuntimesFacts({ services: listed })?.runtimes ?? []),
     [listed],
   );
   const nameOf = useZeropsMemberNames({ clientId: project?.orgId, enabled: colleague });

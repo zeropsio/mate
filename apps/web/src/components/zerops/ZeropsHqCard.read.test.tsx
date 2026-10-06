@@ -1,11 +1,18 @@
 /**
- * HQ's card reads HQ's project from Zerops — its services and its builds — once each time an admin
- * opens it, never while it is closed and never again on its own: not when HQ answers with another
- * Core, which it weighs its read against anew. A read that failed says so. The projects page holds
- * no read of HQ's project (it draws none of its stops), so nothing comes from the inventory.
+ * HQ's card shows HQ's services as the organization's services listing holds them, and holds HQ's
+ * project's newest builds — its process history, a detail of the account's store — only while it
+ * is open. It weighs them anew when HQ answers with another Core, reading nothing again. A listing
+ * that was refused says so.
  */
+import {
+  accountReadsAtom,
+  historyScope,
+  servicesScope,
+  type AccountStore,
+} from "@t3tools/client-runtime/data";
 import type { ZeropsService } from "@t3tools/client-runtime/zerops";
 import type { ActivityProcess } from "@t3tools/client-runtime/zerops/activity/dto";
+import { mountRoster } from "@t3tools/client-runtime/zerops/testing";
 import { RegistryContext } from "@effect/atom-react";
 import { type Atom, AtomRegistry } from "effect/unstable/reactivity";
 import { act } from "react";
@@ -20,17 +27,12 @@ import { ZeropsHqCard } from "./ZeropsHqCard";
 const RUNS = "20261003T080500Z.ba9876543210";
 const CARRIED = "20261004T100000Z.0123456789ab";
 
-const zerops = vi.hoisted(() => ({
-  listProjectServices: vi.fn<(projectId: string) => Promise<ReadonlyArray<unknown>>>(),
-  listProjectProcesses: vi.fn<(projectId: string) => Promise<ReadonlyArray<unknown>>>(),
-}));
 /** The Core HQ's health answers with. */
 const health = vi.hoisted(() => ({ build: "20261003T080500Z.ba9876543210" }));
 
 vi.mock("~/zerops/ZeropsSessionProvider", () => ({
   useZeropsSession: () => ({
     activeOrganization: { id: "org1", membershipId: "m1", roleCode: "OWNER" },
-    client: zerops,
     user: { id: "u1" },
   }),
 }));
@@ -53,7 +55,7 @@ vi.mock("~/hooks/useSettings", () => ({
 }));
 
 /**
- * HQ's services as `GET /project/{id}/service-stack` lists them, shaped as the live listing is
+ * HQ's services as the organization's services listing holds them, shaped as the live listing is
  * (client-runtime `__fixtures__/z3-eval.service-stack.json`): the project's system `core` among
  * them, an active version embedded without its name (KRLS, 2026-10-04), a managed service with none.
  */
@@ -110,12 +112,56 @@ const BUILDING: ActivityProcess = {
 const mounted: ReactTestRenderer[] = [];
 afterEach(() => {
   for (const tree of mounted.splice(0)) act(() => tree.unmount());
-  zerops.listProjectServices.mockReset();
-  zerops.listProjectProcesses.mockReset();
   health.build = RUNS;
 });
 
-const registry = AtomRegistry.make();
+let registry = AtomRegistry.make();
+let store: AccountStore;
+/** The details the card holds now, by scope owner. */
+let held: string[] = [];
+
+/** The account's store: HQ's project and its services listed, its history held by demand. */
+function account(services: ReadonlyArray<ZeropsService> = SERVICES) {
+  registry = AtomRegistry.make();
+  held = [];
+  store = mountRoster(registry, "org1", [{ id: "hq1", name: "hq", status: "ACTIVE" }], {
+    services: services.map((service) => ({ ...service, projectId: "hq1" })),
+  });
+  registry.set(accountReadsAtom, {
+    data: store.data,
+    orgId: "org1",
+    demandDetail: ({ ownerId }) => {
+      held.push(ownerId);
+      return () => void held.splice(held.indexOf(ownerId), 1);
+    },
+  });
+}
+
+/** HQ's project's newest processes, read for the held history. */
+const historyRead = (processes: ReadonlyArray<ActivityProcess>) => {
+  const scope = historyScope("org1", "hq1");
+  for (const event of [
+    { kind: "demand", demanded: true },
+    { kind: "attempt" },
+    { kind: "handshake" },
+  ] as const)
+    store.dispatch({ kind: "stream", key: scope, now: 0, event });
+  store.dispatch({ kind: "baseline-begin", scope, generation: 1 });
+  store.dispatch({
+    kind: "baseline-commit",
+    scope,
+    generation: 1,
+    via: "zerops-read",
+    members: processes.map(({ id }) => id),
+    rows: processes.map((process) => ({
+      family: "process",
+      id: process.id,
+      value: process,
+      revision: { kind: "zerops", version: 1 },
+    })),
+  });
+  store.dispatch({ kind: "stream", key: scope, now: 0, event: { kind: "baseline-committed" } });
+};
 /** HQ's stream saying HQ serves on the Core `build`, its parts quiet. */
 const serving = (build: string) =>
   registry.set(hqStandingAtom as unknown as Atom.Writable<HqStanding>, {
@@ -154,23 +200,16 @@ const press = async (tree: ReactTestRenderer) => {
   });
 };
 
-/** Zerops answering with HQ's services and `processes`. */
-const answering = (processes: ReadonlyArray<ActivityProcess>) => {
-  zerops.listProjectServices.mockResolvedValue(SERVICES);
-  zerops.listProjectProcesses.mockResolvedValue(processes);
-};
-
 describe("ZeropsHqCard — HQ's project in Zerops", () => {
-  it("is read once each time an admin opens the card, and never while it is closed", async () => {
-    answering([BUILDING]);
+  it("holds HQ's builds only while an admin has the card open", async () => {
+    account();
     const tree = await mount();
-    expect(zerops.listProjectServices).not.toHaveBeenCalled();
-    expect(zerops.listProjectProcesses).not.toHaveBeenCalled();
+    expect(held).toEqual([]);
     expect(text(tree)).toContain("Healthy");
 
     await press(tree);
-    expect(zerops.listProjectServices.mock.calls).toEqual([["hq1"]]);
-    expect(zerops.listProjectProcesses.mock.calls).toEqual([["hq1"]]);
+    expect(held).toEqual(["hq1"]);
+    await act(async () => historyRead([BUILDING]));
     expect(text(tree)).toContain("hq · Active");
     expect(text(tree)).toContain("db · Active");
     expect(text(tree)).not.toContain("core · Active");
@@ -180,16 +219,14 @@ describe("ZeropsHqCard — HQ's project in Zerops", () => {
     );
 
     await press(tree);
-    expect(zerops.listProjectServices).toHaveBeenCalledTimes(1);
-    await press(tree);
-    expect(zerops.listProjectServices).toHaveBeenCalledTimes(2);
-    expect(zerops.listProjectProcesses).toHaveBeenCalledTimes(2);
+    expect(held).toEqual([]);
   });
 
-  it("is weighed anew, not read again, once HQ answers with the Core being deployed", async () => {
-    answering([BUILDING]);
+  it("is weighed anew, reading nothing again, once HQ answers with the Core being deployed", async () => {
+    account();
     const tree = await mount();
     await press(tree);
+    await act(async () => historyRead([BUILDING]));
     expect(text(tree)).toContain("Updating");
 
     await act(async () => {
@@ -197,16 +234,23 @@ describe("ZeropsHqCard — HQ's project in Zerops", () => {
     });
     expect(text(tree)).toContain("Healthy");
     expect(text(tree)).not.toContain("Updating");
-    expect(zerops.listProjectServices).toHaveBeenCalledTimes(1);
-    expect(zerops.listProjectProcesses).toHaveBeenCalledTimes(1);
+    expect(held).toEqual(["hq1"]);
   });
 
-  it("that could not be read says so, and is not read again", async () => {
-    zerops.listProjectServices.mockRejectedValue(new Error("Zerops refused."));
-    zerops.listProjectProcesses.mockResolvedValue([]);
+  it("a services listing Zerops refused says so", async () => {
+    account();
+    store.dispatch({
+      kind: "stream",
+      key: servicesScope("org1"),
+      now: 0,
+      event: {
+        kind: "fault",
+        fault: { outcome: "authoritative-denial", message: "HTTP 403" },
+        jitter: 0,
+      },
+    });
     const tree = await mount();
     await press(tree);
-    expect(text(tree)).toContain("Couldn't read HQ from Zerops: Zerops refused.");
-    expect(zerops.listProjectServices).toHaveBeenCalledTimes(1);
+    expect(text(tree)).toContain("Couldn't read HQ from Zerops: Zerops refused to say.");
   });
 });

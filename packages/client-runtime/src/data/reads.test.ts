@@ -6,7 +6,10 @@ import {
   accountReadsAtom,
   holdProjectHistory,
   NOT_READ_PROCESSES,
+  NOT_READ_SERVICES,
   projectProcessesAtom,
+  projectServicesAtom,
+  projectsServicesAtom,
 } from "./reads.ts";
 import { makeAccountStore } from "./store.ts";
 
@@ -23,6 +26,42 @@ describe("projectProcessesAtom", () => {
 
     registry.set(accountReadsAtom, { data: store.data, orgId: null, demandDetail: () => () => {} });
     expect(registry.get(atom)).toEqual(NOT_READ_PROCESSES);
+  });
+});
+
+describe("projectServicesAtom", () => {
+  it("reads a project's services through the mounted account, and nothing without one", () => {
+    const registry = AtomRegistry.make();
+    const store = makeAccountStore(registry);
+    liveZerops({ running: [], services: [{ id: "zcp", projectId: "p1" }] }).forEach(store.dispatch);
+    const atom = projectServicesAtom("p1");
+    expect(registry.get(atom)).toEqual(NOT_READ_SERVICES);
+
+    registry.set(accountReadsAtom, { data: store.data, orgId: ORG, demandDetail: () => () => {} });
+    expect(registry.get(atom).services?.map((service) => service.id)).toEqual(["zcp"]);
+
+    registry.set(accountReadsAtom, { data: store.data, orgId: null, demandDetail: () => () => {} });
+    expect(registry.get(atom)).toEqual(NOT_READ_SERVICES);
+  });
+});
+
+describe("projectsServicesAtom", () => {
+  it("reads several projects' services at once through the mounted account", () => {
+    const registry = AtomRegistry.make();
+    const store = makeAccountStore(registry);
+    liveZerops({
+      running: [],
+      services: [
+        { id: "zcp", projectId: "p1" },
+        { id: "db", projectId: "p2" },
+      ],
+    }).forEach(store.dispatch);
+    const atom = projectsServicesAtom("p1,p2");
+    expect(registry.get(atom)).toEqual({});
+
+    registry.set(accountReadsAtom, { data: store.data, orgId: ORG, demandDetail: () => () => {} });
+    const read = registry.get(atom);
+    expect([read.p1?.services?.[0]?.id, read.p2?.services?.[0]?.id]).toEqual(["zcp", "db"]);
   });
 });
 

@@ -20,7 +20,7 @@ import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { captureAccountLifetime, onAccountLifetimeClose } from "./accountLifetime";
 import {
   findInventoryProjectRef,
-  inventoryCandidates,
+  useInventoryCandidates,
   useZeropsInventory,
 } from "./inventoryContext";
 import { intendContainer, readContainerInitAt, useTargetContainer } from "./zeropsContainers";
@@ -45,6 +45,7 @@ export function useZeropsUpgradeRestart(
   const { runtime } = useZeropsData();
   const capabilities = useMemo(() => grantCapabilities(runtime.access), [runtime]);
   const inventory = useZeropsInventory();
+  const candidates = useInventoryCandidates();
   const [state, setState] = useState<UpgradeRecovery["state"]>("idle");
   const [error, setError] = useState<string | null>(null);
   /** The restart this hook is waiting on is ours to follow: the intent landed on its container. */
@@ -66,7 +67,7 @@ export function useZeropsUpgradeRestart(
   const candidate =
     origin === null
       ? undefined
-      : inventoryCandidates(inventory).find(
+      : candidates.find(
           (entry) =>
             entry.containerOrigin &&
             normalizeOrigin(entry.containerOrigin) === normalizeOrigin(origin),

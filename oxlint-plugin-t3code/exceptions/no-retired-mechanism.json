@@ -1026,22 +1026,6 @@
   {
     "path": "apps/web/src/components/zerops/ZeropsHqCard.tsx",
     "kind": "retired-token",
-    "fingerprint": "client.listProjectProcesses(projectId)",
-    "owner": "data-layer rewrite: services",
-    "reason": "a component lists services and processes itself; the services adapter owns the read",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsHqCard.tsx",
-    "kind": "retired-token",
-    "fingerprint": "client.listProjectServices(projectId)",
-    "owner": "data-layer rewrite: services",
-    "reason": "a component lists services and processes itself; the services adapter owns the read",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsHqCard.tsx",
-    "kind": "retired-token",
     "fingerprint": "hqMatesViewAtom",
     "owner": "data-layer rewrite: HQ structure/apps",
     "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
@@ -2357,30 +2341,6 @@
     "fingerprint": "ZeropsDataProvider(",
     "owner": "data-layer rewrite: projects",
     "reason": "the app's data provider wires I/O in the view tree; adapters own I/O",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsInventoryProvider.tsx",
-    "kind": "retired-token",
-    "fingerprint": "prevServiceOutcomesRef",
-    "owner": "data-layer rewrite: services",
-    "reason": "inventory atoms and trouble refs remember a verdict; the services projection reads the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsInventoryProvider.tsx",
-    "kind": "retired-token",
-    "fingerprint": "prevServiceOutcomesRef",
-    "owner": "data-layer rewrite: services",
-    "reason": "inventory atoms and trouble refs remember a verdict; the services projection reads the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsInventoryProvider.tsx",
-    "kind": "retired-token",
-    "fingerprint": "prevServiceOutcomesRef",
-    "owner": "data-layer rewrite: services",
-    "reason": "inventory atoms and trouble refs remember a verdict; the services projection reads the store",
     "expires": "never"
   },
   {
@@ -4040,22 +4000,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/zerops/useZeropsCandidates.ts",
-    "kind": "retired-token",
-    "fingerprint": "zeropsInventoryAtom",
-    "owner": "data-layer rewrite: services",
-    "reason": "inventory atoms and trouble refs remember a verdict; the services projection reads the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsCandidates.ts",
-    "kind": "retired-token",
-    "fingerprint": "zeropsInventoryAtom",
-    "owner": "data-layer rewrite: services",
-    "reason": "inventory atoms and trouble refs remember a verdict; the services projection reads the store",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/zerops/useZeropsChangeComments.ts",
     "kind": "retired-token",
     "fingerprint": "new LRUCache<ReadonlyArray<HqChangeComment>>",
@@ -5229,6 +5173,30 @@
     "fingerprint": "organizationProjectsRead",
     "owner": "data-layer rewrite: services",
     "reason": "the inventory reads the organization projects through the in-transit bridge to the project family until the services slice replaces the inventory",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/data/atoms.ts",
+    "kind": "retired-token",
+    "fingerprint": "runtimeServicesRead",
+    "owner": "data-layer rewrite: Zerops runtime deletion",
+    "reason": "the runtime's readers take a project's services through the in-transit bridge to the services family until the runtime is deleted",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/data/atoms.ts",
+    "kind": "retired-token",
+    "fingerprint": "runtimeServicesRead",
+    "owner": "data-layer rewrite: Zerops runtime deletion",
+    "reason": "the runtime's readers take a project's services through the in-transit bridge to the services family until the runtime is deleted",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/data/serviceBridge.ts",
+    "kind": "retired-token",
+    "fingerprint": "runtimeServicesRead",
+    "owner": "data-layer rewrite: Zerops runtime deletion",
+    "reason": "the runtime's readers take a project's services through the in-transit bridge to the services family until the runtime is deleted",
     "expires": "never"
   }
 ]

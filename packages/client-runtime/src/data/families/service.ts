@@ -14,10 +14,15 @@ import type { ZeropsService } from "../../zerops/api.ts";
 import type { ScopeKey } from "../model.ts";
 import { scopeOf, type FamilySpec } from "./spec.ts";
 
-/** A service as its row says it, with the project it belongs to. */
+/**
+ * A service as its row says it, with the project it belongs to. A field the row states as `null`
+ * is kept: a service whose active version is `null` runs nothing, which is not unsaid.
+ */
 export interface ServiceValue extends ZeropsService {
   readonly projectId: string;
   readonly clientId?: string;
+  /** The service's variables, where the row carries them. */
+  readonly userData?: ReadonlyArray<{ readonly key?: string; readonly content?: string | null }>;
 }
 
 declare module "../model.ts" {
@@ -36,12 +41,10 @@ const Row = Schema.Struct({
 });
 const decodeRow = Schema.decodeUnknownOption(Row);
 
-/** The row's fields, a `null` one left out as unsaid. */
+/** The row's fields, as it states them. */
 function valueOf(raw: Readonly<Record<string, unknown>>): ServiceValue {
   const { _version: _ignored, ...fields } = raw;
-  return Object.fromEntries(
-    Object.entries(fields).filter(([, value]) => value !== null),
-  ) as unknown as ServiceValue;
+  return fields as unknown as ServiceValue;
 }
 
 const organization = (orgId: string) => [{ name: "clientId", operator: "eq", value: orgId }];

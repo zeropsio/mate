@@ -362,8 +362,6 @@ export type EnvironmentOp =
   | { readonly kind: "read-descriptor"; readonly origin: string }
   /** The supervisor's `retryNow`: a link in backoff tries again at once. */
   | { readonly kind: "retry-link"; readonly environmentId: EnvironmentId }
-  /** The inventory re-reads this target's presence. */
-  | { readonly kind: "refresh-presence" }
   /** `catalog.remove`, the door's logout and the record's deletion; drafts keep their keys. */
   | { readonly kind: "retire"; readonly environmentId: EnvironmentId | null };
 
@@ -599,21 +597,10 @@ const backoff = (
   };
 };
 
-const refuse = (
-  machine: EnvironmentMachine,
-  reason: RefusalReason,
-  out: Effects,
-): EnvironmentMachine => {
-  if (reason.kind === "project-mismatch") {
-    out.push({ kind: "run", attempt: machine.nextAttempt, op: { kind: "refresh-presence" } });
-    return {
-      ...machine,
-      nextAttempt: machine.nextAttempt + 1,
-      credential: { kind: "refused", reason },
-    };
-  }
-  return { ...machine, credential: { kind: "refused", reason } };
-};
+const refuse = (machine: EnvironmentMachine, reason: RefusalReason): EnvironmentMachine => ({
+  ...machine,
+  credential: { kind: "refused", reason },
+});
 
 // ── Descriptor ────────────────────────────────────────────────────────────────────────────────
 
@@ -737,7 +724,7 @@ const onBlocked = (
           kind: "log",
           diagnostic: { kind: "auth-loop", rejections: authRejections.length },
         });
-        return refuse(next, { kind: "credential" }, out);
+        return refuse(next, { kind: "credential" });
       }
       // A reconnect only once a link was lost; a first link blocked is still a first connect.
       return { ...next, credential: { kind: "none", reconnect: next.linkLostAt !== null } };
@@ -748,7 +735,7 @@ const onBlocked = (
       return machine;
     case "permission":
     case "read-only":
-      if (machine.permissionRetried) return refuse(machine, { kind: "role" }, out);
+      if (machine.permissionRetried) return refuse(machine, { kind: "role" });
       return {
         ...machine,
         permissionRetried: true,
@@ -781,7 +768,7 @@ const judgeDescriptorBlock = (
   const block = link.reason;
   if (block !== "configuration" && block !== "unsupported") return machine;
   if (block === "unsupported" && machine.descriptor !== null) {
-    return refuse(machine, { kind: "version" }, out);
+    return refuse(machine, { kind: "version" });
   }
   const origin = originOf(machine.presence);
   if (origin === null) return machine;
@@ -833,16 +820,12 @@ const onLink = (
         }
       : next;
   }
-  // A park closes the link on purpose: only a link lost while the registry holds it open drops.
+  // A park closes the link on purpose: only a link lost while the registry holds it open drops. A
+  // restart the platform reports on a drop (the service RESTARTING) reaches the inventory by itself,
+  // in the organization's live services listing.
   const dropped = machine.link.phase === "connected" && phase.phase !== "idle";
-  // A drop is a question for the platform: its inventory is read again at once, so a restart it
-  // reports (the service RESTARTING) reads as one within a read's time, whatever a push does.
-  if (dropped) {
-    out.push({ kind: "run", attempt: machine.nextAttempt, op: { kind: "refresh-presence" } });
-  }
   const next: EnvironmentMachine = {
     ...machine,
-    ...(dropped ? { nextAttempt: machine.nextAttempt + 1 } : {}),
     link: phase,
     linkLostAt: dropped ? ctx.now : machine.linkLostAt,
     credential,
@@ -991,8 +974,7 @@ const apply = (
           credential: { kind: "none", reconnect: false },
         };
       }
-      if (credential.rereading.block === "unsupported")
-        return refuse(next, { kind: "version" }, out);
+      if (credential.rereading.block === "unsupported") return refuse(next, { kind: "version" });
       // The same environment behind a configuration block: another exchange may clear it, but a
       // block that keeps coming back only spends throwaways.
       const configurationBlocks = next.configurationBlocks + 1;
@@ -1001,7 +983,7 @@ const apply = (
           kind: "log",
           diagnostic: { kind: "configuration-loop", blocks: configurationBlocks },
         });
-        return refuse({ ...next, configurationBlocks }, { kind: "configuration" }, out);
+        return refuse({ ...next, configurationBlocks }, { kind: "configuration" });
       }
       return {
         ...next,
@@ -1045,7 +1027,7 @@ const apply = (
       if (event.failure.reason.kind === "version" && next.descriptor === null) {
         return backoff(next, { kind: "descriptor-unreachable" }, credential.reconnect, ctx);
       }
-      return refuse(next, event.failure.reason, out);
+      return refuse(next, event.failure.reason);
     }
     case "INSTALLED":
       if (

@@ -1478,8 +1478,6 @@ export type RuntimeInterestDescriptor =
   | { readonly kind: "project-record"; readonly project: ProjectRef }
   /** A visible permission decision demands its access facts; the grant owns the sole read. */
   | { readonly kind: "project-access"; readonly project: ProjectRef }
-  /** A project's services read on their own, lag-free, to confirm one is gone (§9 C19). */
-  | { readonly kind: "project-services-check"; readonly project: ProjectRef }
   | { readonly kind: "project-current-metrics"; readonly project: ProjectRef }
   | {
       readonly kind: "project-metric-history";
@@ -2116,8 +2114,6 @@ export interface ZeropsDataRuntime {
   >;
   /** An explicit attempt re-establishes held demand in this org or project, retaining its values. */
   readonly refresh: (scope: OrganizationRef | ProjectRef) => Effect.Effect<void>;
-  /** Re-reads one project and its services, sharing an outstanding check per project. */
-  readonly refreshPresence: (project: ProjectRef) => Effect.Effect<void>;
   /**
    * Idempotent. It closes admission and advances the account fence before
    * interrupting work, closing receivers and clearing retained grants/model state.

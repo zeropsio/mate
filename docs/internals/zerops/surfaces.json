@@ -1078,7 +1078,6 @@
         "apps/web/src/zerops/ZeropsInventoryProvider.test.ts",
         "apps/web/src/zerops/useProjectTopology.test.ts",
         "packages/client-runtime/src/zerops/data/inventory.test.ts",
-        "packages/client-runtime/src/zerops/data/projection.test.ts",
         "packages/client-runtime/src/zerops/identityExchange.test.ts",
         "packages/client-runtime/src/zerops/projectFlow.test.ts",
         "packages/client-runtime/src/zerops/hq/menuRows.test.ts",

@@ -1,14 +1,12 @@
 import {
   DEFAULT_ZEROPS_DATA_POLICY,
   createZeropsDataAtoms,
-  decodeEntityQueryResponse,
   makeInitialZeropsDataState,
   projectKeyOf,
   interestKeyOf,
   reduceZeropsDataState,
   type HistoryReadView,
   type ManagedZeropsDataRuntime,
-  type ProtocolDecodeResult,
   type UsageRead,
   type ZeropsDataReads,
 } from "@t3tools/client-runtime/zerops/data";
@@ -30,12 +28,10 @@ import { mountRoster } from "@t3tools/client-runtime/zerops/testing";
 import type { InventoryProjection } from "./inventoryContext";
 import {
   desiredInterest,
-  directTicket,
   identity,
   organization,
   project,
   scope,
-  stamp,
 } from "./__fixtures__/platformData";
 
 const owner = project();
@@ -46,7 +42,6 @@ const inventoryWith = (
   account: InventoryProjection["account"] = { kind: "authorized" },
 ): InventoryProjection => ({
   projects: [],
-  services: new Map(),
   projectRefs: new Map([[projectKeyOf(owner), owner]]),
   authority: new Map([[projectKeyOf(owner), authority]]),
   account,
@@ -63,55 +58,27 @@ function pushedRuntime(overrides: Partial<ZeropsDataReads> = {}) {
     ).state,
   );
   const registry = AtomRegistry.make();
-  let ordinal = 1;
-  const push = (decoded: ProtocolDecodeResult) => {
-    for (const input of decoded.observations) {
-      registry.set(
-        stateAtom,
-        reduceZeropsDataState(
-          registry.get(stateAtom),
-          {
-            kind: "observation",
-            observation: { input, stamp: stamp(++ordinal), accessEvidence: null },
-          },
-          DEFAULT_ZEROPS_DATA_POLICY,
-        ).state,
-      );
-    }
-  };
   const { reads } = createZeropsDataAtoms(stateAtom);
   registry.set(zeropsDataRuntimeAtom, {
     reads: { ...reads, ...overrides },
   } as unknown as ManagedZeropsDataRuntime);
   registry.set(zeropsInventoryAtom, inventoryWith({ kind: "authorized" }));
-  // The project is the account store's: its roster lists it.
-  const pushProject = () =>
-    void mountRoster(registry, owner.organization.organizationId, [
-      {
-        id: owner.projectId,
-        clientId: owner.organization.organizationId,
-        name: "acme-docs-dev",
-        status: "ACTIVE",
-      },
-    ]);
-  const pushServices = (list: ReadonlyArray<object>) => {
-    const query = {
-      kind: "services-of-project" as const,
-      project: owner,
-      schemaVersion: 1 as const,
-    };
-    push(
-      decodeEntityQueryResponse(
-        query,
-        directTicket({ kind: "query", descriptor: query }, id, 3, 3),
-        {
-          list: list.map((row) => ({ ...row, projectId: owner.projectId })),
-          totalCount: list.length,
-        },
-        "direct-read",
-      ),
-    );
+  // The project and its services are the account store's: its roster and the organization's
+  // services listing list them.
+  const projectRow = {
+    id: owner.projectId,
+    clientId: owner.organization.organizationId,
+    name: "acme-docs-dev",
+    status: "ACTIVE",
   };
+  const pushProject = () =>
+    void mountRoster(registry, owner.organization.organizationId, [projectRow]);
+  const pushServices = (
+    list: ReadonlyArray<{ readonly id: string; readonly name: string; readonly status: string }>,
+  ) =>
+    void mountRoster(registry, owner.organization.organizationId, [projectRow], {
+      services: list.map((row) => ({ ...row, projectId: owner.projectId })),
+    });
   const snapshots: Array<ProjectTopologySnapshot> = [];
   const release = registry.subscribe(
     projectTopologyAtom(owner),

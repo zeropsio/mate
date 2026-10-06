@@ -22,6 +22,7 @@ import {
   type CandidateRow,
   type TakenBotNames,
 } from "@t3tools/client-runtime/zerops/projections";
+import { projectServicesAtom } from "@t3tools/client-runtime/data";
 import { Atom } from "effect/unstable/reactivity";
 
 import {
@@ -29,7 +30,6 @@ import {
   candidateListingWholeAtom,
   takenBotNamesAtom,
   zeropsEnvironmentsAtom,
-  zeropsInventoryAtom,
 } from "../state/zerops";
 import { invalidateZerops } from "./accountInvalidations";
 import { useAccountDataOptional } from "./ZeropsAccountData";
@@ -114,26 +114,21 @@ const NO_SERVICES: ZeropsEnvironmentServices = {
 /**
  * The active organization's candidates as knowledge (DESIGN §3): the rows
  * (`mateRowsAtom`), each ready one joined with the environment connected
- * at its origin, and presented with its routes and services off the account's
- * inventory; withheld as the rows are. Derived, with no writer: it reads the
+ * at its origin, and presented with its routes and services off the organization's
+ * services listing; withheld as the rows are. Derived, with no writer: it reads the
  * account's registry, which starts over when the account closes.
  */
 export const candidateListingAtom = Atom.make(
   (get): Shown<ReadonlyArray<ZeropsCandidatePresentation>> => {
     const rows = get(mateRowsAtom);
-    const inventory = get(zeropsInventoryAtom);
     const environments = get(zeropsEnvironmentsAtom);
     const connectedOrigins = authenticatedZeropsOrigins(environments);
     const connectionsByOrigin = zeropsConnectionsByOrigin(environments);
     return presentCandidates(rows, (row): ZeropsCandidatePresentation => {
       const candidate = withZeropsConnection(row, connectedOrigins);
-      const project = inventory?.projects.find((entry) => entry.id === candidate.project.id);
-      const outcome = inventory?.services.get(candidate.project.id);
-      const resolved = outcome?.status === "resolved" ? outcome.services : null;
+      const resolved = get(projectServicesAtom(candidate.project.id)).services ?? null;
       const routes =
-        project === undefined || resolved === null
-          ? undefined
-          : derivePublicRoutes(project, resolved);
+        resolved === null ? undefined : derivePublicRoutes(candidate.project, resolved);
       const routeOffers = resolved === null ? undefined : derivePublicRouteOffers(resolved);
       const held = resolved === null ? undefined : summarizeEnvironmentServices(resolved);
       const origin = candidate.containerOrigin ? normalizeOrigin(candidate.containerOrigin) : null;

@@ -62,6 +62,9 @@ export function budgets(s: Scenario) {
     },
     measure: {
       browser: observation.browser.sample,
+      /** One project's own services read, `GET /project/{id}/service-stack`, and its preflight. */
+      projectServiceReads: () =>
+        observation.browser.matching(/^(GET|OPTIONS) \/project\/[^/]+\/service-stack(\?|$)/u),
       hqSegments: () => observation.hq.segments,
       firstData: (after = 0) => {
         const samples = observation.hq.segments.slice(after).map((segment) => {

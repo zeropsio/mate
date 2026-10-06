@@ -43,7 +43,6 @@ const inventory = (
   lost: ReadonlyArray<string> = [],
 ): Inventory => ({
   projects: [],
-  services: new Map(),
   isLoading: false,
   error: null,
   projectRefs: new Map([[inventoryProjectRefKey(ref), ref]]),

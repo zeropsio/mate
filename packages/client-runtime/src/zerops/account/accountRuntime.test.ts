@@ -32,7 +32,6 @@ import {
   ZeropsServiceId,
   type MembershipQueryDescriptor,
   type ProjectRef,
-  type ReceiverEvent,
   type ZeropsDataAdapter,
 } from "../data/types.ts";
 import type { DescriptorFacts } from "../environments/environmentMachine.ts";
@@ -56,7 +55,7 @@ import {
   type DoorCredential,
   type DoorRequest,
 } from "./accountRuntime.ts";
-import { liveProjects } from "../../data/__fixtures__/account.ts";
+import { liveProjects, liveServices } from "../../data/__fixtures__/account.ts";
 import { accountReadsAtom } from "../../data/reads.ts";
 import { makeAccountStore } from "../../data/store.ts";
 
@@ -1404,6 +1403,8 @@ describe("the post-grant stage's Mate environments", () => {
     policy = makeZeropsDataPolicy(),
     /** The roster is not read until the case releases it. */
     rosterHeld = false,
+    /** The services listing does not answer until the case releases it. */
+    servicesHeld = false,
   ) {
     const clock = yield* makeDeadlineClock({ startWallMs: START_WALL_MS });
     const registry = AtomRegistry.make();
@@ -1442,18 +1443,62 @@ describe("the post-grant stage's Mate environments", () => {
     yield* Effect.addFinalizer(() => built.close("application-close"));
     // The account's store, its organization's roster read: the Mates' projects.
     const store = makeAccountStore(registry);
-    const releaseRoster = () =>
+    let rosterReleased = false;
+    let servicesReleased = false;
+    /** The organization's services listing answers: after the roster, once the grant answered. */
+    const releaseServices = () => {
+      if (servicesReleased || !rosterReleased || servicesHeld) return;
+      servicesReleased = true;
+      liveServices(
+        organization.organizationId,
+        mates.map(({ service }) => service),
+      ).forEach(store.dispatch);
+    };
+    const releaseRoster = () => {
+      rosterReleased = true;
       liveProjects(
         organization.organizationId,
         mates.map(({ project }) => project),
       ).forEach(store.dispatch);
+      if (grant.rounds() > 0 && answeredOnce) releaseServices();
+    };
+    let answeredOnce = false;
     if (!rosterHeld) releaseRoster();
     registry.set(accountReadsAtom, {
       data: store.data,
       orgId: organization.organizationId,
       demandDetail: () => () => undefined,
     });
-    return { clock, page, grant, rig, built, registry, store, releaseRoster };
+    // As a page loads: the services listing lands once the account's first grant is in.
+    const answered = {
+      ...grant,
+      answer: (failure: GrantFailure | null = null) =>
+        grant.answer(failure).pipe(
+          Effect.andThen(
+            Effect.sync(() => {
+              answeredOnce = true;
+              releaseServices();
+            }),
+          ),
+          Effect.andThen(settle),
+        ),
+    };
+    return {
+      clock,
+      page,
+      grant: answered,
+      rig,
+      built,
+      registry,
+      store,
+      releaseRoster,
+      /** The held services listing answers now. */
+      releaseHeldServices: () => {
+        servicesHeld = false;
+        answeredOnce = true;
+        releaseServices();
+      },
+    };
   });
 
   /** `openAccount` past the epoch's first grant, with its post-grant stage. */
@@ -1464,6 +1509,7 @@ describe("the post-grant stage's Mate environments", () => {
     admitted: ReadonlyArray<Mate> = mates,
     extra: Partial<AccountEnvironmentPorts> = {},
     rosterHeld = false,
+    servicesHeld = false,
   ) {
     const opened = yield* openAccount(
       remembered,
@@ -1473,6 +1519,7 @@ describe("the post-grant stage's Mate environments", () => {
       extra,
       undefined,
       rosterHeld,
+      servicesHeld,
     );
     yield* opened.grant.answer();
     yield* opened.clock.advance(SECOND);
@@ -1520,7 +1567,6 @@ describe("the post-grant stage's Mate environments", () => {
         yield* settle;
         const failure = environments.detailFailure(A_MATE.projectId);
         expect(failure).toMatchObject({ reason: "account-capacity" });
-        expect(opened.rig.exchanges).toEqual([]);
         yield* opened.clock.advance(10 * SECOND);
         yield* settle;
         expect(environments.detailFailure(A_MATE.projectId)).toBe(failure);
@@ -1569,36 +1615,6 @@ describe("the post-grant stage's Mate environments", () => {
         }),
       ),
   );
-
-  /**
-   * A platform whose reads of the kinds named wait: `release` lets every one of them through, and
-   * those never released never answer.
-   */
-  const heldQueries = (
-    platform: ZeropsDataAdapter,
-    kinds: ReadonlyArray<MembershipQueryDescriptor["kind"]>,
-  ) => {
-    let release: () => void = () => undefined;
-    const opened = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    const held = (descriptor: unknown) =>
-      kinds.includes((descriptor as MembershipQueryDescriptor).kind);
-    const adapter: ZeropsDataAdapter = {
-      ...platform,
-      register: (receiver, request, context) =>
-        request.descriptor.kind === "query-membership" && held(request.descriptor.query)
-          ? Effect.promise(() => opened).pipe(
-              Effect.andThen(platform.register(receiver, request, context)),
-            )
-          : platform.register(receiver, request, context),
-      read: (ticket, context) =>
-        ticket.target.kind === "query" && held(ticket.target.descriptor)
-          ? Effect.promise(() => opened).pipe(Effect.andThen(platform.read(ticket, context)))
-          : platform.read(ticket, context),
-    };
-    return { adapter, release: () => release() };
-  };
 
   /** The descriptor a Mate serving this environment answers with. */
   const describing = (environmentId: EnvironmentId): DescriptorFacts => ({
@@ -1697,146 +1713,6 @@ describe("the post-grant stage's Mate environments", () => {
         expect(rig.unparked()).toEqual([ENV_B]);
       }),
     ),
-  );
-
-  it.effect.each([1, 3])(
-    "%s Mate link drops read only those projects, coalescing concurrent checks without receiver churn",
-    (count) =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const mates = Array.from({ length: count }, (_, index) => mate(String(index)));
-          const remembered = mates.map((mate, index) => ({
-            ...REMEMBERED_A,
-            targetKey: mate.key,
-            environmentId: EnvironmentId.make(`env-${index}`),
-            origin: mate.origin,
-            projectRef: { projectId: mate.projectId, orgId: "org-1" },
-          }));
-          const platform = platformAdapter(mates);
-          const events = yield* PubSub.unbounded<ReceiverEvent>();
-          let opens = 0;
-          let registrations = 0;
-          const reads: Array<string> = [];
-          const release = yield* Deferred.make<void>();
-          let checking = false;
-          const adapter: ZeropsDataAdapter = {
-            ...platform,
-            openReceiver: (...args) =>
-              Effect.sync(() => {
-                opens += 1;
-              }).pipe(
-                Effect.andThen(platform.openReceiver(...args)),
-                Effect.map((handle) => ({ ...handle, events: Stream.fromPubSub(events) })),
-              ),
-            register: (...args) =>
-              Effect.sync(() => {
-                registrations += 1;
-              }).pipe(Effect.andThen(platform.register(...args))),
-            read: (ticket, context) =>
-              Effect.gen(function* () {
-                if (checking) {
-                  reads.push(
-                    ticket.target.kind === "query"
-                      ? `${ticket.target.descriptor.kind}:${"project" in ticket.target.descriptor ? ticket.target.descriptor.project.projectId : "organization"}`
-                      : `${ticket.target.kind}:${ticket.target.ref.kind === "project" ? ticket.target.ref.projectId : "other"}`,
-                  );
-                  yield* Deferred.await(release);
-                }
-                return yield* (
-                  checking
-                    ? platformAdapter(
-                        mates.map((mate) => ({
-                          ...mate,
-                          project: { ...mate.project, name: "fresh project" },
-                          service: { ...mate.service, status: "STOPPED" },
-                        })),
-                      )
-                    : platform
-                ).read(ticket, context);
-              }),
-          };
-          const { clock, rig, built, environments } = yield* granted(remembered, mates, adapter);
-          rig
-            .catalog()
-            .environments(
-              remembered.map(({ environmentId, origin }) => ({ environmentId, origin })),
-            );
-          for (const { environmentId } of remembered) environments.hold(environmentId);
-          yield* settle;
-          for (const exchange of rig.exchanges) {
-            const index = mates.findIndex(({ key }) => key === exchange.input.key);
-            exchange.answer(admitted(remembered[index]!.environmentId, async () => ({ ok: true })));
-          }
-          yield* settle;
-          for (const { projectId } of mates) {
-            yield* built.data.acquire({
-              kind: "project-topology",
-              project: project(projectId),
-            });
-          }
-          yield* settle;
-          const before = { opens, registrations };
-          const heard: Array<Invalidation> = [];
-          const subscription = yield* built.invalidations.subscribe;
-          yield* Stream.fromSubscription(subscription).pipe(
-            Stream.runForEach((invalidation) => Effect.sync(() => heard.push(invalidation))),
-            Effect.forkScoped,
-          );
-          checking = true;
-          for (let repeat = 0; repeat < 3; repeat += 1) {
-            for (const { environmentId } of remembered) {
-              rig.catalog().link(environmentId, { phase: "connected" });
-              rig.catalog().link(environmentId, { phase: "backoff", retryAtMs: 10_000 });
-            }
-            yield* clock.advance(250);
-            yield* settle;
-          }
-          expect({ opens, registrations }).toEqual(before);
-          expect(heard).toEqual([]);
-          yield* Deferred.succeed(release, undefined);
-          yield* settle;
-          expect(mates.map(({ key }) => environments.machines().get(key)?.presence.kind)).toEqual(
-            mates.map(() => "inactive"),
-          );
-          expect(reads.toSorted()).toEqual(
-            mates
-              .flatMap(({ projectId }) => [
-                `project:${projectId}`,
-                `services-of-project:${projectId}`,
-              ])
-              .toSorted(),
-          );
-          checking = false;
-          yield* PubSub.publish(events, { kind: "closed", reason: "real receiver close" });
-          yield* settle;
-          expect(opens).toBe(before.opens);
-          const reconnecting = [...(yield* built.data.state).interests.values()].filter(
-            ({ interest }) => interest.status === "failed" && interest.retryAtMs !== null,
-          );
-          const receivers = new Set(
-            reconnecting.map(({ interest }) => interest.identity.receiver.receiverId),
-          );
-          expect(receivers.size).toBeGreaterThan(0);
-          expect(
-            reconnecting.every(
-              ({ interest }) =>
-                interest.status === "failed" && interest.retryAtMs === clock.wallMs() + 1_000,
-            ),
-          ).toBe(true);
-          yield* clock.advance(1_000);
-          yield* settle;
-          expect(opens).toBe(before.opens + receivers.size);
-          expect(registrations).toBeGreaterThan(before.registrations);
-          const recovered = yield* built.data.state;
-          expect(
-            reconnecting.every(
-              ({ key, interest }) =>
-                recovered.interests.get(key)?.interest.identity.receiver.receiverId !==
-                interest.identity.receiver.receiverId,
-            ),
-          ).toBe(true);
-        }),
-      ),
   );
 
   // A park closes a link nothing holds: it is no drop, so the platform is asked nothing.
@@ -2475,11 +2351,14 @@ describe("the post-grant stage's Mate environments", () => {
     () =>
       Effect.scoped(
         Effect.gen(function* () {
-          const platform = heldQueries(platformAdapter([A_MATE]), ["services-of-project"]);
           const { rig, built, registry, environments } = yield* granted(
             [REMEMBERED_A],
             [A_MATE],
-            platform.adapter,
+            undefined,
+            undefined,
+            undefined,
+            false,
+            true,
           );
           // Opened, a remembered Mate is exchanged where its record kept it (A16).
           environments.setRoute(ENV_A);
@@ -2725,6 +2604,10 @@ describe("the post-grant stage's Mate environments", () => {
                 subscribe: () => () => undefined,
               },
             },
+            undefined,
+            false,
+            // Their services not listed yet: each is looked for where its record kept it (A16).
+            true,
           );
           yield* opened.grant.answer();
           yield* settle;
@@ -2953,37 +2836,6 @@ describe("the post-grant stage's Mate environments", () => {
       ),
   );
 
-  /**
-   * A platform whose projects' services are read directly once, as `first` lists them. Every
-   * later direct read of them waits for `release` and answers as `after` does, and so does every
-   * registration from then on.
-   */
-  const heldServicesReads = (first: ZeropsDataAdapter, after: ZeropsDataAdapter) => {
-    let reads = 0;
-    let released = false;
-    let release: () => void = () => undefined;
-    const opened = new Promise<void>((resolve) => {
-      release = () => {
-        released = true;
-        resolve();
-      };
-    });
-    // A project's own services read is the confirming read an absence asks for: it answers only
-    // once released.
-    const adapter: ZeropsDataAdapter = {
-      ...first,
-      register: (receiver, request, context) =>
-        (released ? after : first).register(receiver, request, context),
-      read: (ticket, context) =>
-        ticket.target.kind === "query" &&
-        (ticket.target.descriptor as MembershipQueryDescriptor).kind === "services-of-project" &&
-        ++reads > 0
-          ? Effect.promise(() => opened).pipe(Effect.andThen(after.read(ticket, context)))
-          : (released ? after : first).read(ticket, context),
-    };
-    return { adapter, reads: () => reads, release };
-  };
-
   it.effect(
     "a ready Mate in a project the person has no access to is never a target: no address, no probe",
     () =>
@@ -3128,86 +2980,20 @@ describe("the post-grant stage's Mate environments", () => {
       ),
   );
 
-  it.effect("a deleted service loses its Mate only after a confirming read (§9 C19, MC-14)", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const ENV_DELETED = EnvironmentId.make("env-deleted");
-        const deleted: RegistrationRecord = {
-          ...REMEMBERED_A,
-          targetKey: `${A_MATE.projectId}:service-deleted`,
-          environmentId: ENV_DELETED,
-          origin: "https://zcp-deleted-8080.prg1.zerops.app",
-        };
-        const platform = heldServicesReads(platformAdapter([A_MATE]), platformAdapter([A_MATE]));
-        const { clock, rig, environments } = yield* granted([deleted], [A_MATE], platform.adapter);
-        yield* clock.advance(SECOND);
-        yield* settle;
-
-        // The services were read without it: a direct read of them is asked for, and until it
-        // answers the Mate is kept, however long it takes.
-        expect(environments.machines().get(deleted.targetKey)?.presence.kind).not.toBe("gone");
-        expect(rig.removed).toEqual([]);
-        expect(platform.reads()).toBeGreaterThan(0);
-
-        platform.release();
-        yield* clock.advance(SECOND);
-        yield* settle;
-
-        // The direct read lacks it too: the Mate leaves the catalog.
-        expect(environments.machines().get(deleted.targetKey)?.presence).toEqual({
-          kind: "gone",
-          evidence: "complete-scope-omits-verified",
-        });
-        expect(rig.removed).toEqual([ENV_DELETED]);
-        // Its record and its kept session go with it: no later load reads a Mate that is gone.
-        expect(rig.records().map((record) => record.targetKey)).not.toContain(deleted.targetKey);
-        expect(rig.forgotten).toEqual([deleted.targetKey]);
-        // The listed Mate beside it is untouched.
-        expect(environments.machines().get(MATE)?.presence.kind).toBe("present");
-      }),
-    ),
-  );
-
-  it.effect(
-    "a service one listing drops keeps its Mate when the direct read finds it (MC-14)",
-    () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const platform = heldServicesReads(
-            platformAdapter([{ ...A_MATE, service: { ...A_MATE.service, id: "service-other" } }]),
-            platformAdapter([A_MATE]),
-          );
-          const { clock, rig, environments } = yield* granted(
-            [REMEMBERED_A],
-            [A_MATE],
-            platform.adapter,
-          );
-          yield* clock.advance(SECOND);
-          yield* settle;
-          // Listed without it: the Mate is kept while a direct read of the services is asked for.
-          expect(environments.machines().get(MATE)?.presence.kind).not.toBe("gone");
-          expect(platform.reads()).toBeGreaterThan(0);
-
-          platform.release();
-          yield* clock.advance(SECOND);
-          yield* settle;
-
-          expect(environments.machines().get(MATE)?.presence).toEqual({
-            kind: "present",
-            origin: MATE_ORIGIN,
-          });
-          expect(rig.removed).toEqual([]);
-        }),
-      ),
-  );
-
   it.effect(
     "a remembered route target is probed and exchanged at the grant, before its project's services are read",
     () =>
       Effect.scoped(
         Effect.gen(function* () {
-          const platform = heldQueries(platformAdapter([A_MATE]), ["services-of-project"]);
-          const { rig, environments } = yield* granted([REMEMBERED_A], [A_MATE], platform.adapter);
+          const { rig, environments } = yield* granted(
+            [REMEMBERED_A],
+            [A_MATE],
+            undefined,
+            undefined,
+            undefined,
+            false,
+            true,
+          );
           environments.setRoute(ENV_A);
           yield* settle;
 
@@ -3265,13 +3051,13 @@ describe("the post-grant stage's Mate environments", () => {
     Effect.scoped(
       Effect.gen(function* () {
         const { mates, route, environment, records } = routeScene();
-        const services = heldQueries(platformAdapter(mates), ["services-of-project"]);
         const { rig, environments, releaseRoster } = yield* granted(
           records.filter(({ environmentId }) => environmentId !== environment),
           mates,
-          services.adapter,
           undefined,
           undefined,
+          undefined,
+          true,
           true,
         );
         environments.setRoute(environment);
@@ -3296,8 +3082,15 @@ describe("the post-grant stage's Mate environments", () => {
     Effect.scoped(
       Effect.gen(function* () {
         const { mates, route, environment, records } = routeScene();
-        const services = heldQueries(platformAdapter(mates), ["services-of-project"]);
-        const { rig, environments } = yield* granted([], mates, services.adapter);
+        const { rig, environments } = yield* granted(
+          [],
+          mates,
+          undefined,
+          undefined,
+          undefined,
+          false,
+          true,
+        );
         environments.setRoute(environment);
         yield* settle;
         expect(rig.probes.map(({ input }) => input)).not.toContain("unknown-environment");

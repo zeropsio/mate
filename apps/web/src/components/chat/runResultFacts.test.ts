@@ -34,21 +34,7 @@ const pull = (number: number, title: string, merged = false): FlowPullRequest =>
     mateProjectId: PROJECT,
   }) as FlowPullRequest;
 
-const inventory = (services: ReadonlyArray<ZeropsService> | "failed" | null) => ({
-  projects: [project],
-  services: new Map(
-    services === null
-      ? []
-      : [
-          [
-            PROJECT,
-            services === "failed"
-              ? { status: "failed" as const }
-              : { status: "resolved" as const, services },
-          ],
-        ],
-  ),
-});
+const inventory = { projects: [project] };
 
 describe("readRunResultFacts", () => {
   // The run's Mate is found from its thread's environment: its project, the
@@ -57,10 +43,11 @@ describe("readRunResultFacts", () => {
   it("reads the Mate's services, its project's changes and its crew's tasks", () => {
     const facts = readRunResultFacts({
       projectId: PROJECT,
-      inventory: inventory([
+      inventory,
+      services: [
         zeropsService("appdev", "ACTIVE", "2026-09-29T20:00:00.000Z"),
         zeropsService("appstage", "STOPPED"),
-      ]),
+      ],
       flows: new Map([
         [
           GROUP,
@@ -109,7 +96,8 @@ describe("readRunResultFacts", () => {
   ])("$name", ({ flows, changes }) => {
     const facts = readRunResultFacts({
       projectId: PROJECT,
-      inventory: inventory(null),
+      inventory,
+      services: undefined,
       flows,
       crew: null,
     });
@@ -117,14 +105,12 @@ describe("readRunResultFacts", () => {
   });
 
   // A fact that is not read yet is undefined, so a row stays as the run left
-  // it: a service list that failed or was never read says nothing.
-  it.each([
-    { name: "services never read", services: null },
-    { name: "services that failed to read", services: "failed" as const },
-  ])("says nothing of $name", ({ services }) => {
+  // it: a service list not read, or refused, says nothing.
+  it("says nothing of services not read", () => {
     const facts = readRunResultFacts({
       projectId: PROJECT,
-      inventory: inventory(services),
+      inventory,
+      services: undefined,
       flows: undefined,
       crew: null,
     });
@@ -136,6 +122,7 @@ describe("readRunResultFacts", () => {
       readRunResultFacts({
         projectId: undefined,
         inventory: null,
+        services: undefined,
         flows: undefined,
         crew: null,
       }),

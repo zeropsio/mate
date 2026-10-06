@@ -2,13 +2,15 @@ import { Atom, AtomRegistry } from "effect/unstable/reactivity";
 
 import type { ProjectProcesses } from "../../data/projections/processes.ts";
 import type { OrganizationProjects } from "../../data/projections/projects.ts";
+import type { ProjectServices } from "../../data/projections/services.ts";
 import { accountReadsAtom, type AccountReads } from "../../data/reads.ts";
 import type { ActivityProcess } from "../activity/dto.ts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { organization, project, service, stamp } from "../data/__fixtures__/index.ts";
+import type { ZeropsService } from "../api.ts";
+import { organization, project } from "../data/__fixtures__/index.ts";
 import type { ManagedZeropsDataRuntime } from "../data/runtime.ts";
-import { ZeropsOrganizationId, type ServiceRecord } from "../data/types.ts";
+import { ZeropsOrganizationId } from "../data/types.ts";
 import type { Known } from "../knowledge/known.ts";
 import { knownRoster, mateListingsAtom } from "./listings.ts";
 
@@ -94,26 +96,6 @@ describe("mateListingsAtom: a container ACTIVE before its address landed", () =>
   const CREATED_AT = "2026-10-02T12:00:00.000Z";
   const CREATED = Date.parse(CREATED_AT);
 
-  const admission = {
-    lastNativeReceiptOrdinal: null,
-    lastAppliedAuthoritativeDispatchOrdinal: null,
-    hasAuthoritativeObservation: true,
-  };
-  const observed = <Fields>(fields: Fields) => ({
-    knowledge: "observed" as const,
-    fields,
-    unresolvedRequiredFields: [] as const,
-    source: "direct-read" as const,
-    stamp: stamp(1),
-    admission,
-  });
-  const unresolved = {
-    knowledge: "unresolved",
-    fields: {},
-    unresolvedRequiredFields: [],
-    admission,
-  };
-
   const shop = {
     id: project().projectId,
     name: "shop",
@@ -124,38 +106,28 @@ describe("mateListingsAtom: a container ACTIVE before its address landed", () =>
     mode: "LIGHT",
   };
 
-  /** The project's zcp service, ACTIVE, its address enabled or not yet. */
   /** The project's zcp service, ACTIVE, its address enabled or not, its record last updated then. */
-  const zcp = (subdomainAccess: boolean, updatedAt: string | null = null): ServiceRecord =>
-    ({
-      ref: service("service-1", project()),
-      identity: observed({
-        hostname: "zcp",
-        type: { versionName: "zcp@1", displayName: "Zerops Mate", category: "runtime" },
-      }),
-      lifecycle: observed({ status: "ACTIVE", createdAt: CREATED_AT, updatedAt }),
-      routing: observed({
-        subdomainAccess,
-        ports: [{ port: 8080, protocol: "TCP", scheme: "http", httpSupport: true }],
-      }),
-      deployment: unresolved,
-      scaling: unresolved,
-    }) as unknown as ServiceRecord;
+  const zcp = (subdomainAccess: boolean, lastUpdate?: string): ZeropsService => ({
+    id: "service-1",
+    name: "zcp",
+    status: "ACTIVE",
+    created: CREATED_AT,
+    ...(lastUpdate === undefined ? {} : { lastUpdate }),
+    serviceStackTypeInfo: {
+      serviceStackTypeName: "Zerops Mate",
+      serviceStackTypeVersionName: "zcp@1",
+      serviceStackTypeCategory: "USER",
+    },
+    subdomainAccess,
+    ports: [{ port: 8080, protocol: "TCP", scheme: "http", httpSupport: true }],
+  });
 
-  /** A read the platform answered whole. */
-  const read = <R>(records: ReadonlyArray<R>, slice?: ReturnType<typeof project>) =>
-    ({
-      value: records.map((record) => ({ knowledge: "observed", record })),
-      query: {
-        status: "observed",
-        unresolvedMemberKeys: [],
-        stamp: stamp(1),
-        coverage: { kind: "exhausted-traversal" },
-        descriptor: { organization },
-      },
-      observation: { required: [], optional: [] },
-      ...(slice === undefined ? {} : { project: slice }),
-    }) as unknown;
+  /** The project's services as the organization's services listing holds them, live. */
+  const read = (services: ReadonlyArray<ZeropsService>): ProjectServices => ({
+    services: services.map((service) => ({ ...service, projectId: project().projectId })),
+    live: true,
+    reconnecting: false,
+  });
 
   /** The organization's projects as the account's store holds them. */
   const roster = (projects: ReadonlyArray<typeof shop>): OrganizationProjects => ({
@@ -195,7 +167,7 @@ describe("mateListingsAtom: a container ACTIVE before its address landed", () =>
 
   const listingOver = () => {
     const registry = AtomRegistry.make();
-    const servicesRead = Atom.make<unknown>(read([], project()));
+    const servicesRead = Atom.make<ProjectServices>(read([]));
     const projectsRead = Atom.make<OrganizationProjects>(roster([shop]));
     const access = Atom.make<unknown>(admitted(true));
     const activity = Atom.make<ProjectProcesses>(activityOf(null, false));
@@ -203,7 +175,11 @@ describe("mateListingsAtom: a container ACTIVE before its address landed", () =>
     registry.set(accountReadsAtom, {
       data: {
         project: (projection: { readonly name: string }) =>
-          projection.name === "organizationProjects" ? projectsRead : activity,
+          projection.name === "organizationProjects"
+            ? projectsRead
+            : projection.name === "projectServices"
+              ? servicesRead
+              : activity,
       } as unknown as AccountReads["data"],
       orgId: organization.organizationId,
       demandDetail: () => () => {},
@@ -225,10 +201,7 @@ describe("mateListingsAtom: a container ACTIVE before its address landed", () =>
           },
         }),
       },
-      reads: {
-        access,
-        servicesOf: () => servicesRead,
-      },
+      reads: { access },
     } as unknown as ManagedZeropsDataRuntime;
     const listings = mateListingsAtom(data);
     registry.mount(listings);
@@ -237,22 +210,19 @@ describe("mateListingsAtom: a container ACTIVE before its address landed", () =>
         switch (event) {
           case "address-off":
           case "address-on":
-            return registry.set(servicesRead, read([zcp(event === "address-on")], project()));
+            return registry.set(servicesRead, read([zcp(event === "address-on")]));
           case "updated-before-its-end":
           case "updated-after-its-end":
             return registry.set(
               servicesRead,
-              read(
-                [
-                  zcp(
-                    false,
-                    event === "updated-before-its-end"
-                      ? "2026-10-02T12:01:44.000Z"
-                      : "2026-10-02T12:01:50.000Z",
-                  ),
-                ],
-                project(),
-              ),
+              read([
+                zcp(
+                  false,
+                  event === "updated-before-its-end"
+                    ? "2026-10-02T12:01:44.000Z"
+                    : "2026-10-02T12:01:50.000Z",
+                ),
+              ]),
             );
           case "enabled-read-again":
             return registry.set(activity, { ...activityOf("FINISHED"), live: false });
@@ -454,7 +424,7 @@ describe("mateListingsAtom: one listing per organization the grant names", () =>
           },
         }),
       },
-      reads: { access: Atom.make({ status: "unverified" }), servicesOf: () => Atom.make(null) },
+      reads: { access: Atom.make({ status: "unverified" }) },
     } as unknown as ManagedZeropsDataRuntime;
     return registry.get(mateListingsAtom(data));
   };

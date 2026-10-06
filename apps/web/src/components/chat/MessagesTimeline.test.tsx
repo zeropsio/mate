@@ -1170,7 +1170,6 @@ describe("MessagesTimeline", () => {
     // static render never acquires an interest, so empty stand-ins suffice.
     const inventory: Inventory = {
       projects: [],
-      services: new Map(),
       isLoading: false,
       error: null,
       projectRefs: new Map(),
@@ -1256,7 +1255,6 @@ describe("MessagesTimeline — the conversation", () => {
   const zeropsStandIns = (children: ReactNode) => {
     const inventory: Inventory = {
       projects: [],
-      services: new Map(),
       isLoading: false,
       error: null,
       projectRefs: new Map(),

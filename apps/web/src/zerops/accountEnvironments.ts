@@ -39,9 +39,8 @@ import { useAtomCommand } from "../state/use-atom-command";
 import { hqMatesAtom, hqProjectOf, hqProjectAtom } from "../state/zerops";
 import { invalidateZerops } from "./accountInvalidations";
 import { onAccountLifetimeClose } from "./accountLifetime";
-import { inventoryCandidates } from "./inventoryContext";
+import { useInventoryCandidates } from "./inventoryContext";
 import { batchedPerTask } from "./taskBatch";
-import { useZeropsInventory } from "./ZeropsInventoryProvider";
 
 // ── The binding ──────────────────────────────────────────────────────────────────────────────
 
@@ -464,11 +463,11 @@ export function useTryMateAgain(): (environmentId: EnvironmentId) => void {
 /** The user's Connect as a surface asks it; `reason` names the exchange in diagnostics. */
 export function useConnectMate(reason: IdentityExchangeReason) {
   const environments = useAccountEnvironments();
-  const inventory = useZeropsInventory();
+  const candidates = useInventoryCandidates();
 
   return useCallback(
     (target: MateConnectTarget): Promise<ZeropsIdentityExchangeResult> =>
-      connectMate({ environments, candidates: inventoryCandidates(inventory), target, reason }),
-    [environments, inventory, reason],
+      connectMate({ environments, candidates, target, reason }),
+    [environments, candidates, reason],
   );
 }

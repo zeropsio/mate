@@ -506,7 +506,6 @@ describe("ZeropsNextStepStrip", () => {
 /** A reload's first render: the inventory, the registry and HQ all still unread. */
 const UNREAD: Inventory = {
   projects: [],
-  services: new Map(),
   isLoading: true,
   error: null,
   projectRefs: new Map(),

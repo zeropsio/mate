@@ -28,7 +28,9 @@ import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates"
 import { ZeropsServiceId, type AgentsCellRequest } from "@t3tools/client-runtime/zerops/data";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import type { HqApi } from "@t3tools/client-runtime/zerops/hq";
-import { useCallback, useEffect, useRef } from "react";
+import { RegistryContext } from "@effect/atom-react";
+import { projectServicesAtom } from "@t3tools/client-runtime/data";
+import { useCallback, useContext } from "react";
 
 import type { EnvironmentCreationChoice } from "../components/zerops/ZeropsEnvironmentCreationDialog";
 import { accountHqApi, officialHq, useAccountHq } from "./accountHq";
@@ -36,7 +38,6 @@ import { invalidateZerops } from "./accountInvalidations";
 import { captureAccountLifetime } from "./accountLifetime";
 import { beginPress, pressHold, pressPlatform, pressRegistration, runPress } from "./matePress";
 import { readZeropsCellOnce } from "./readZeropsCell";
-import { useZeropsInventory } from "./ZeropsInventoryProvider";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 import { useZeropsData } from "./zeropsDataContext";
 
@@ -147,11 +148,7 @@ export function useEnvironmentCreation(): (
 ) => Promise<EnvironmentCreationRun> {
   const { activeOrganization, client } = useZeropsSession();
   const { organizationRef, projectRef, runtime } = useZeropsData();
-  const inventory = useZeropsInventory();
-  const inventoryRef = useRef(inventory);
-  useEffect(() => {
-    inventoryRef.current = inventory;
-  }, [inventory]);
+  const registry = useContext(RegistryContext);
   const accountHq = useAccountHq(activeOrganization?.id);
 
   /**
@@ -256,12 +253,13 @@ export function useEnvironmentCreation(): (
         ),
         hq,
         hold,
-        // Reads the latest shared-model projection; no platform request.
+        // Reads the organization's services listing as the account's store holds it.
+        // Not listed yet: none observed.
         readObservedServices: async (projectId) => {
-          const services = inventoryRef.current.services.get(projectId);
-          return services?.status === "resolved"
-            ? services.services.map((service) => ({ name: service.name, status: service.status }))
-            : [];
+          const listed = registry.get(projectServicesAtom(projectId)).services;
+          return listed === undefined
+            ? []
+            : listed.map((service) => ({ name: service.name, status: service.status }));
         },
       });
 
@@ -301,6 +299,15 @@ export function useEnvironmentCreation(): (
       });
       return { kind: "ran", outcome, withAgent };
     },
-    [accountHq, activeOrganization, client, organizationRef, projectRef, readGroupAgents, runtime],
+    [
+      accountHq,
+      activeOrganization,
+      client,
+      organizationRef,
+      projectRef,
+      readGroupAgents,
+      registry,
+      runtime,
+    ],
   );
 }

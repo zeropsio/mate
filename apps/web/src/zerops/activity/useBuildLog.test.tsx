@@ -234,7 +234,6 @@ class FakeLogs implements BuildLogRegistry {
 function inventory(project: ProjectRef | null = PROJECT): Inventory {
   return {
     projects: [],
-    services: new Map(),
     isLoading: false,
     error: null,
     projectRefs: project === null ? new Map() : new Map([[project.projectId, project]]),

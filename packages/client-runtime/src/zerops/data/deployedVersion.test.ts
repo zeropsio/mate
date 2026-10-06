@@ -4,18 +4,13 @@ import {
   selectDeployedVersion,
   selectMateFlag,
   selectSetupMarker,
+  observeServiceDeploys,
   statedDeployKey,
-  wantStaleVariables,
 } from "./deployedVersion.ts";
 import { reduceTableObservation, SERVICE_VARIABLE_KEYS, tableRowsWanted } from "./entityTable.ts";
 import { makeUnresolvedService } from "./inventory.ts";
 import { decodeEntityQueryResponse } from "./platformProtocol.ts";
-import { DEFAULT_ZEROPS_DATA_POLICY } from "./policy.ts";
-import {
-  makeInitialZeropsDataState,
-  reduceZeropsDataState,
-  type ZeropsDataState,
-} from "./state.ts";
+import { makeInitialZeropsDataState, type ZeropsDataState } from "./state.ts";
 import type {
   DesiredInterestState,
   ServiceDeployInfo,
@@ -27,7 +22,6 @@ import { InterestKey, ReceiptOrdinal, serviceKeyOf } from "./types.ts";
 import {
   desiredInterest,
   directTicket,
-  entityRegistration,
   identity,
   organization,
   queryTicket,
@@ -79,6 +73,17 @@ const withService = (
   });
   return { ...state, interests, inventory: { ...state.inventory, services } };
 };
+
+/** The service's record as the store holds it, kept in the test's state beside its variables. */
+const held = (state: ZeropsDataState) => state.inventory.services.get(serviceKeyOf(ref));
+
+/** The store's row of the service names `deployId` as of receipt `receipt`. */
+const moveTo = (state: ZeropsDataState, deployId: string, receipt: number, nowMs: number) =>
+  observeServiceDeploys(
+    { ...state, lastReceiptOrdinal: ReceiptOrdinal.make(receipt - 1) },
+    [{ organization, serviceId: ref.serviceId, deployId }],
+    nowMs,
+  );
 
 /** The service as a read found it gone. */
 const withGoneService = (state: ZeropsDataState) => {
@@ -280,7 +285,9 @@ describe("what a service runs, as the account's store states it (A14)", () => {
   ];
   for (const testCase of cases) {
     it(testCase.name, () => {
-      expect(selectDeployedVersion(testCase.state, ref)).toMatchObject(testCase.expected);
+      expect(selectDeployedVersion(testCase.state, ref, held(testCase.state))).toMatchObject(
+        testCase.expected,
+      );
     });
   }
 });
@@ -349,7 +356,7 @@ describe("the press's marker, as the account's store states it", () => {
   ];
   for (const testCase of cases) {
     it(testCase.name, () => {
-      expect(selectSetupMarker(testCase.state, ref)).toBe(testCase.expected);
+      expect(selectSetupMarker(testCase.state, ref, held(testCase.state))).toBe(testCase.expected);
     });
   }
   // A container the stream has not delivered a single variable of yet, made within five minutes
@@ -384,7 +391,7 @@ describe("the press's marker, as the account's store states it", () => {
       answered(empty, variables, [{ ...variable("ZCP_MATE_ENABLED", "1"), serviceId: "s-other" }]),
       createdAt,
     );
-    expect(selectSetupMarker(state, ref)).toBe(expected);
+    expect(selectSetupMarker(state, ref, held(state))).toBe(expected);
   });
 
   it("is absent for a young container whose other variables arrived", () => {
@@ -392,7 +399,7 @@ describe("the press's marker, as the account's store states it", () => {
       answered(empty, variables, [variable("ZCP_MATE_ENABLED", "1")]),
       MINUTE_BEFORE,
     );
-    expect(selectSetupMarker(state, ref)).toBe(false);
+    expect(selectSetupMarker(state, ref, held(state))).toBe(false);
   });
 });
 
@@ -448,10 +455,13 @@ describe("a service's variables heard before it moved to another version", () =>
 
   it("are read again by id, and then name the version the service runs", () => {
     // Checked, not nameless, while they are read again: "none" was the stage's word for it.
-    expect(selectDeployedVersion(deployed, ref)).toEqual({ state: "unread", waitingFor: null });
-    let state = wantStaleVariables(deployed, 4, 1_000);
+    expect(selectDeployedVersion(deployed, ref, held(deployed))).toEqual({
+      state: "unread",
+      waitingFor: null,
+    });
+    let state = moveTo(deployed, "v-2", 4, 1_000);
     expect(tableRowsWanted(state.table)).toMatchObject([
-      { entity: "user-data", ids: ["u-appVersionId", "u-appVersionName"] },
+      { entity: "user-data", ids: ["u-appVersionId", "u-appVersionName"], dueAtMs: 1_000 },
     ]);
     state = readById(
       state,
@@ -459,67 +469,22 @@ describe("a service's variables heard before it moved to another version", () =>
       6,
       2_000,
     );
-    expect(selectDeployedVersion(state, ref)).toMatchObject({
+    expect(selectDeployedVersion(state, ref, held(state))).toMatchObject({
       state: "known",
       value: { activeId: "v-2", source: "CLI", name: "main 6aeae99" },
     });
-    expect(tableRowsWanted(wantStaleVariables(state, 7, 3_000).table)).toEqual([]);
+    expect(tableRowsWanted(moveTo(state, "v-2", 7, 3_000).table)).toEqual([]);
   });
 
-  it("are asked for by the push that moves the service, without a reload", () => {
-    const id = identity();
-    const watched = reduceZeropsDataState(
-      makeInitialZeropsDataState(scope()),
-      { kind: "interest-upserted", interest: desiredInterest(id) },
-      DEFAULT_ZEROPS_DATA_POLICY,
-    ).state;
-    const before = withService(
-      answered(watched, variables, [
-        variable("appVersionId", "v-import"),
-        variable("appVersionName", ""),
-      ]),
-      deploy({ id: "v-import" }),
-    );
-    const moved = reduceZeropsDataState(
-      before,
-      {
-        kind: "observation",
-        observation: {
-          stamp: stamp(4, 1_000),
-          accessEvidence: null,
-          input: {
-            kind: "service-deployment-observed",
-            ref,
-            observation: {
-              source: "native-push",
-              registration: entityRegistration("service", id),
-              fields: { activeDeploy: deploy({ id: "v-2", source: "CLI" }) },
-              metadata: {},
-            },
-          },
-        },
-      },
-      DEFAULT_ZEROPS_DATA_POLICY,
-    );
-    expect(moved.followUps).toContainEqual({
-      kind: "read-table-rows",
-      entity: "user-data",
-      organization,
-      ids: ["u-appVersionId", "u-appVersionName"],
-      dueAtMs: 1_000,
-    });
-    expect(selectDeployedVersion(moved.state, ref).state).toBe("unread");
-  });
-
-  it("stand when a later push of the service leaves it on the version it ran: no move, no read", () => {
+  it("stand when the service's row stays on the version it ran: no move, no read", () => {
     // The service moved to v-2 at receipt 3; a build started since named v-3 in the variables at
-    // 5 and failed; a push at 9 that changes nothing of what it runs moves nothing.
-    const moved = wantStaleVariables(
+    // 5 and failed; its row at 9 changes nothing of what it runs and moves nothing.
+    const moved = moveTo(
       withService(
         answered(makeInitialZeropsDataState(scope()), variables, []),
         deploy({ id: "v-2", source: "CLI" }),
-        stamp(3),
       ),
+      "v-2",
       3,
       1_000,
     );
@@ -528,34 +493,30 @@ describe("a service's variables heard before it moved to another version", () =>
       [variable("appVersionId", "v-3"), variable("appVersionName", "main 7e2d4c1")],
       5,
     );
-    const later = wantStaleVariables(
-      withService(started, deploy({ id: "v-2", source: "CLI" }), stamp(9)),
-      9,
-      2_000,
-    );
+    const later = moveTo(started, "v-2", 9, 2_000);
     expect(tableRowsWanted(later.table)).toEqual([]);
-    expect(selectDeployedVersion(later, ref)).toMatchObject({
+    expect(selectDeployedVersion(later, ref, held(later))).toMatchObject({
       state: "known",
       value: { activeId: "v-2", name: null },
     });
   });
 
   it("are read again once per move, never in a loop, whatever the read answers", () => {
-    let state = wantStaleVariables(deployed, 4, 1_000);
+    let state = moveTo(deployed, "v-2", 4, 1_000);
     state = readById(
       state,
       [variable("appVersionId", "v-import"), variable("appVersionName", "")],
       6,
       2_000,
     );
-    expect(tableRowsWanted(wantStaleVariables(state, 7, 3_000).table)).toEqual([]);
+    expect(tableRowsWanted(moveTo(state, "v-2", 7, 3_000).table)).toEqual([]);
   });
 
   it.each([
     {
       name: "a build started since: the variables name the newer version first (A11)",
       state: pushed(
-        deployed,
+        moveTo(deployed, "v-2", 3, 1_000),
         [variable("appVersionId", "v-3"), variable("appVersionName", "main 7e2d4c1")],
         5,
       ),
@@ -574,12 +535,8 @@ describe("a service's variables heard before it moved to another version", () =>
       name: "the organization's variables have not answered yet",
       state: withService(makeInitialZeropsDataState(scope()), deploy({ id: "v-2", source: "CLI" })),
     },
-    {
-      name: "the service runs nothing",
-      state: withService(loaded, null),
-    },
   ])("are not read again when $name", ({ state }) => {
-    expect(tableRowsWanted(wantStaleVariables(state, 9, 1_000).table)).toEqual([]);
+    expect(tableRowsWanted(moveTo(state, "v-2", 9, 1_000).table)).toEqual([]);
   });
 });
 
@@ -648,7 +605,7 @@ describe("a production on the import's no-code version, as the platform answers 
       ] as never),
       activeDeploy,
     );
-    expect(selectDeployedVersion(state, ref)).toMatchObject({
+    expect(selectDeployedVersion(state, ref, held(state))).toMatchObject({
       state: "known",
       value: { activeId: VERSION, source: null, name: null },
     });

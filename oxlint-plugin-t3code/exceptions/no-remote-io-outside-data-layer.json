@@ -80,22 +80,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/components/zerops/ZeropsHqCard.tsx",
-    "kind": "CallExpression",
-    "fingerprint": "client.listProjectProcesses",
-    "owner": "data-layer rewrite: Zerops platform",
-    "reason": "only the data layer's adapters reach a remote: a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsHqCard.tsx",
-    "kind": "CallExpression",
-    "fingerprint": "client.listProjectServices",
-    "owner": "data-layer rewrite: Zerops platform",
-    "reason": "only the data layer's adapters reach a remote: a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/components/zerops/ZeropsHqGate.tsx",
     "kind": "CallExpression",
     "fingerprint": "client.listOrganizationMembers",

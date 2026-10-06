@@ -3,9 +3,7 @@ import type { ActivityProcess } from "../activity/dto.ts";
 import { describe, expect, it } from "@effect/vitest";
 
 import type { Known, Shown } from "../knowledge/known.ts";
-import type { ZeropsProject } from "../api.ts";
-import type { FacetAdmission, ProjectRef, ServiceRecord } from "../data/types.ts";
-import { project, service, stamp } from "../data/__fixtures__/index.ts";
+import type { ZeropsProject, ZeropsService } from "../api.ts";
 import type { ZeropsCandidate } from "../candidates.ts";
 import {
   admittedOnly,
@@ -23,21 +21,6 @@ import {
   subdomainEnableIn,
 } from "./candidates.ts";
 
-const admission: FacetAdmission = {
-  lastNativeReceiptOrdinal: null,
-  lastAppliedAuthoritativeDispatchOrdinal: null,
-  hasAuthoritativeObservation: true,
-};
-
-const observed = <Fields>(fields: Fields) => ({
-  knowledge: "observed" as const,
-  fields,
-  unresolvedRequiredFields: [] as const,
-  source: "direct-read" as const,
-  stamp: stamp(1),
-  admission,
-});
-
 function projectRecord(id = "project-1", status = "ACTIVE"): ZeropsProject {
   return {
     id,
@@ -50,20 +33,18 @@ function projectRecord(id = "project-1", status = "ACTIVE"): ZeropsProject {
   };
 }
 
-function zcpRecord(owner: ProjectRef): ServiceRecord {
+function zcpService(): ZeropsService {
   return {
-    ref: service("service-1", owner),
-    identity: observed({
-      hostname: "zcp",
-      type: { versionName: "zcp@1", displayName: "Zerops Mate", category: "runtime" },
-    }),
-    lifecycle: observed({ status: "ACTIVE", createdAt: null, updatedAt: null }),
-    routing: observed({
-      subdomainAccess: true,
-      ports: [{ port: 8080, protocol: "TCP", scheme: "http", httpSupport: true }],
-    }),
-    deployment: { knowledge: "unresolved", fields: {}, unresolvedRequiredFields: [], admission },
-    scaling: { knowledge: "unresolved", fields: {}, unresolvedRequiredFields: [], admission },
+    id: "service-1",
+    name: "zcp",
+    status: "ACTIVE",
+    serviceStackTypeInfo: {
+      serviceStackTypeName: "Zerops Mate",
+      serviceStackTypeVersionName: "zcp@1",
+      serviceStackTypeCategory: "USER",
+    },
+    subdomainAccess: true,
+    ports: [{ port: 8080, protocol: "TCP", scheme: "http", httpSupport: true }],
   };
 }
 
@@ -101,11 +82,11 @@ describe("selectCandidates", () => {
     expect(row).not.toHaveProperty("missingContainer");
   });
 
-  const unread = (): Known<ReadonlyArray<ServiceRecord>> => ({ state: "unread", waitingFor: null });
+  const unread = (): Known<ReadonlyArray<ZeropsService>> => ({ state: "unread", waitingFor: null });
 
   it.each<{
     readonly name: string;
-    readonly services: Known<ReadonlyArray<ServiceRecord>>;
+    readonly services: Known<ReadonlyArray<ZeropsService>>;
     readonly row: object;
   }>([
     {
@@ -126,7 +107,7 @@ describe("selectCandidates", () => {
     },
     {
       name: "a partial services listing that holds a zcp container is present at its origin",
-      services: known([zcpRecord(project())], "partial"),
+      services: known([zcpService()], "partial"),
       row: {
         key: "project-1:service-1",
         group: "ready",
@@ -136,7 +117,7 @@ describe("selectCandidates", () => {
     },
     {
       name: "a complete listing with a zcp container is present at its origin, not connected",
-      services: known([zcpRecord(project())]),
+      services: known([zcpService()]),
       row: {
         key: "project-1:service-1",
         group: "ready",
@@ -195,13 +176,13 @@ describe("selectCandidates", () => {
   it.each<{
     readonly name: string;
     readonly listing: Known<ReadonlyArray<ZeropsProject>>;
-    readonly services: Known<ReadonlyArray<ServiceRecord>>;
+    readonly services: Known<ReadonlyArray<ZeropsService>>;
     readonly complete: boolean;
   }>([
     {
       name: "a complete listing whose every presence is known",
       listing: known([projectRecord()]),
-      services: known([zcpRecord(project())]),
+      services: known([zcpService()]),
       complete: true,
     },
     {
@@ -213,7 +194,7 @@ describe("selectCandidates", () => {
     {
       name: "a partial listing",
       listing: known([projectRecord()], "partial"),
-      services: known([zcpRecord(project())]),
+      services: known([zcpService()]),
       complete: false,
     },
     {

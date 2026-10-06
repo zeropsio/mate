@@ -32,7 +32,8 @@ import {
   type ZeropsSessionView,
 } from "../state/zerops";
 import { bindAccountFlow } from "./accountForge";
-import { type InventoryServiceOutcome, HeldInventoryContext } from "./inventoryContext";
+import { mountRoster } from "@t3tools/client-runtime/zerops/testing";
+import { HeldInventoryContext } from "./inventoryContext";
 import { useZeropsProjectFlow, type ZeropsProjectFlowValue } from "./projectFlowContext";
 import {
   HQ_CHANGES_UNANSWERED,
@@ -71,7 +72,6 @@ vi.mock("./ZeropsSessionProvider", () => ({
  */
 const inventoryRefs = vi.hoisted(() => ({
   refs: new Map<string, ProjectRef>(),
-  services: new Map<string, InventoryServiceOutcome>(),
   detail: new Set<string>(),
   projects: [] as ReadonlyArray<{
     readonly id: string;
@@ -97,7 +97,6 @@ vi.mock("./accountEnvironments", () => ({ useDetailProjects: () => inventoryRefs
 vi.mock("./ZeropsInventoryProvider", () => ({
   useZeropsInventory: () => ({
     projects: inventoryRefs.projects,
-    services: inventoryRefs.services,
     projectRefs: inventoryRefs.refs,
     authority: inventoryRefs.authority,
     account: access.account,
@@ -361,7 +360,6 @@ describe("ZeropsProjectFlowProvider", () => {
   afterEach(() => {
     access.account = { kind: "authorized" };
     inventoryRefs.refs = new Map();
-    inventoryRefs.services = new Map();
     inventoryRefs.detail = new Set();
     inventoryRefs.projects = [];
     inventoryRefs.authority = new Map();
@@ -403,8 +401,6 @@ describe("ZeropsProjectFlowProvider", () => {
       [projectKeyOf(loose), loose],
       [projectKeyOf(unread), unread],
     ]);
-    inventoryRefs.services.set(loose.projectId, { status: "resolved", services: [] });
-    inventoryRefs.services.set(unread.projectId, { status: "resolved", services: [] });
     inventoryRefs.detail.add(loose.projectId);
     const running: Shown<ReadonlyArray<StopService>> = {
       state: "known",
@@ -658,7 +654,6 @@ describe("ZeropsProjectFlowProvider", () => {
           hq: { appId: "g1", appName: "Harbor", kind: "production", mate: null },
         } as ZeropsProject,
       ],
-      services: new Map(),
     };
     recipes.read = new Map([
       [
@@ -817,9 +812,15 @@ describe("ZeropsProjectFlowProvider", () => {
             hq: { appId: "g1", appName: "Harbor", kind: "production", mate: null },
           } as ZeropsProject,
         ],
-        services: new Map([["prod-1", { status: "resolved", services }]]),
       };
       const atoms = signedInAtoms();
+      // Its services, as the organization's services listing holds them.
+      mountRoster(atoms, "org-1", held.projects, {
+        services: services.map((service) => ({
+          ...(service as object),
+          projectId: "prod-1",
+        })) as never,
+      });
       atoms.set(hqStructureAtom, structureWith([environment("prod-1", "production")]));
       const root = createRoot(document.createElement("div") as unknown as Element);
       const render = () =>

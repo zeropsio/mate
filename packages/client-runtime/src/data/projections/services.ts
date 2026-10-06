@@ -1,7 +1,9 @@
 /**
  * One project's services as the organization's services listing holds them: not known until that
  * listing's first baseline, then every service the project has now, each as its newest row says
- * it. An outage keeps what was read and says it is catching up.
+ * it. An outage keeps what was read and says it is catching up. A project its owner withholds from
+ * the viewer shows none of its services: the services' own leaving comes only with their next
+ * change.
  *
  * @module data/projections/services
  */
@@ -25,6 +27,9 @@ export const projectServices: Projection<ProjectKey, ProjectServices> = {
   derive: (read, { orgId, projectId }) => {
     const { complete, ...freshness } = scopeFreshness(read, orgId, servicesScope(orgId));
     if (!complete) return { services: undefined, ...freshness };
+    const project = read.fact("project", projectId);
+    if (project.kind === "withheld" && project.reason === "denied")
+      return { services: undefined, ...freshness, unavailableReason: "forbidden" };
     const services: ServiceValue[] = [];
     for (const id of read.index("serviceProject", projectId)) {
       const fact = read.fact("service", id);
@@ -32,5 +37,22 @@ export const projectServices: Projection<ProjectKey, ProjectServices> = {
     }
     return { services: services.sort(byName), ...freshness };
   },
+  equals: sameValue,
+};
+
+/** Several projects' services at once: what a surface weighing a whole app's projects reads. */
+export const projectsServices: Projection<
+  { readonly orgId: string; readonly projectIds: ReadonlyArray<string> },
+  Readonly<Record<string, ProjectServices>>
+> = {
+  name: "projectsServices",
+  keyOf: ({ orgId, projectIds }) => `${orgId}/${projectIds.join(",")}`,
+  derive: (read, { orgId, projectIds }) =>
+    Object.fromEntries(
+      projectIds.map((projectId) => [
+        projectId,
+        projectServices.derive(read, { orgId, projectId }),
+      ]),
+    ),
   equals: sameValue,
 };
