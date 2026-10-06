@@ -218,7 +218,7 @@ describe("A: sign-in, session and organizations", () => {
     );
 
     // Catches tab B signing out tab A; its separate known disposal errors are audited explicitly.
-    it.effect.fails("sign-out in tab B leaves tab A's session usable", () =>
+    it.effect("sign-out in tab B leaves tab A's session usable", () =>
       Effect.gen(function* () {
         const name = "sign-out in tab B leaves tab A's session usable";
         const reachedVisible = startExpectedFailure(name);

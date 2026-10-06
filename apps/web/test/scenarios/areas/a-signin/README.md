@@ -1,8 +1,8 @@
 # Sign-in scenarios
 
 The area drives the actual hosted client through account hand-over, organization choices,
-reload, a second tab, session recovery and logout. Six green cases preserve current behavior;
-four `.fails` cases name today's bugs. No scenario is skipped. Desktop/mobile are outside the
+reload, a second tab, session recovery and logout. Eight green cases preserve current behavior;
+two `.fails` cases name today's bugs. No scenario is skipped. Desktop/mobile are outside the
 shared hosted-web contract.
 
 The green expiry case waits for either the renamed row or the HQ Try again button. It clicks
@@ -16,10 +16,9 @@ session; outage renames the session relation until database rollbacks show Core 
 read, then restores it in `finally`. Outage setup requires no close code or outage banner.
 This is a session-query failure, not a full database/role outage; no HQ response/frame is fabricated.
 
-Logout currently clears the account UI and stays signed out on reload, then fails the copied
-browser-error assertion with `registry is disposed`. Tab B's logout also clears tab A's account
-menu, which is its visible failure. Removing `.fails` from both cases proves those distinct
-reasons. Their one/two known disposal errors are accounted for locally only after the target
+Logout clears the account UI and stays signed out on reload, with no `registry is disposed`
+browser error. Tab B's logout leaves tab A signed in with its menu: a sign-out is its own tab's.
+Their one/two known disposal errors are accounted for locally only after the target
 assertion is reached and after a clean pre-logout browser-health check. The exact accepted message is:
 
 ```text
@@ -35,8 +34,8 @@ The raw messages remain in `web.errors` and the area's diagnostic audit. Only th
 are removed from the shared health list; `afterAll` rejects excess counts (one/two), while the
 foundation's independent `afterAll` rejects every unmatched error and blocked request. Zero known
 errors is allowed so fixing disposal does not introduce a new setup failure. In the tab-B case,
-known disposal errors cannot substitute for the missing-account failure: if tab A remains usable,
-the body passes and `.fails` reports an unexpected pass. The area retains its started/target guard
+known disposal errors cannot substitute for tab A's account: the body asserts tab A's person and
+menu row after the logout. The area retains its started/target guard
 because setup errors must not masquerade as domain failures; filtered tests do not start it.
 An injected uncaught browser error proved that unmatched diagnostics still fail the shared
 `afterAll`, despite the logout body being an expected failure. A temporary Try again input also made the outage row assertion pass and `.fails` report an
