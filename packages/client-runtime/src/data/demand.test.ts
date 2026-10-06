@@ -40,6 +40,8 @@ describe("zeropsRegistrations", () => {
       "zerops:org:projects",
       "zerops:org:running",
       "zerops:org:running",
+      "zerops:org:active",
+      "zerops:org:active",
     ]);
   });
 

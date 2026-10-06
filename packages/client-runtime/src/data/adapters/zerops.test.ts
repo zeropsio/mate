@@ -217,7 +217,7 @@ describe("zeropsNavigationLink", () => {
       expect(fixture.opens()).toBe(2);
       expect(
         fixture.requests.filter((request) => request.body?.receiverId === "receiver-2"),
-      ).toHaveLength(4);
+      ).toHaveLength(6);
       // One project was taken from the viewer meanwhile: every scope is registered once more.
       const again = store.state().streams.get(linkKeys.zerops(ORG));
       yield* TestClock.adjust(again?.next.kind === "retry" ? again.next.at : 0);
