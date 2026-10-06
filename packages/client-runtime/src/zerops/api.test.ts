@@ -2063,21 +2063,16 @@ describe("ZeropsApiClient.listIntegrationTokens", () => {
   });
 });
 
-describe("ZeropsApiClient.stopService and readProcessStatus", () => {
-  it("stops a service and answers the stop's process, then reads where it stands", async () => {
-    const stub = recordingFetch((request) =>
-      request.url.endsWith("/stop")
-        ? jsonResponse(200, { id: "process-stop", status: "PENDING" })
-        : jsonResponse(200, { id: "process-stop", status: "FINISHED" }),
-    );
+describe("ZeropsApiClient.stopService", () => {
+  it("stops a service and answers the stop's process", async () => {
+    const stub = recordingFetch(() => jsonResponse(200, { id: "process-stop", status: "PENDING" }));
     const client = new ZeropsApiClient({ fetch: stub.fetch });
     client.restoreSession(SESSION);
 
     expect(await client.stopService("svc-1")).toEqual({ processId: "process-stop" });
-    expect(await client.readProcessStatus("process-stop")).toBe("FINISHED");
     expect(
       stub.requests.map((request) => `${request.method} ${request.url.split("/public")[1]}`),
-    ).toEqual(["PUT /service-stack/svc-1/stop", "GET /process/process-stop"]);
+    ).toEqual(["PUT /service-stack/svc-1/stop"]);
   });
 });
 
@@ -2609,68 +2604,6 @@ describe("ZeropsApiClient — a project's public HTTP routing", () => {
       domains: ["abc.zerops.app"],
       locations: [{ path: "/", port: 8080, serviceStackId: "svc-hq" }],
     });
-  });
-});
-
-describe("ZeropsApiClient.readProjectCreation", () => {
-  it("searches the project's processes and answers its newest project.create", async () => {
-    const stub = recordingFetch(() =>
-      jsonResponse(200, {
-        items: [
-          {
-            id: "j2cJQm8VSTSyMQEZvm4e9g",
-            actionName: "project.create",
-            status: "FAILED",
-            created: "2026-09-16T20:21:18.151Z",
-            projectId: "txRlx5AcRbexBQEkAUIDLg",
-            clientId: "org-1",
-            error: { code: "internalServerError", message: "unexpected internal server error" },
-          },
-          {
-            id: "l5mjyAAIRfiGsiHlLX1t9A",
-            actionName: "stack.build",
-            status: "FAILED",
-            created: "2026-09-16T20:21:19.000Z",
-            projectId: "txRlx5AcRbexBQEkAUIDLg",
-            clientId: "org-1",
-            error: { code: "pipelineFailed", message: "pipeline failed" },
-          },
-        ],
-      }),
-    );
-    const client = new ZeropsApiClient({ fetch: stub.fetch });
-    client.restoreSession(SESSION);
-
-    await expect(
-      client.readProjectCreation({ clientId: "org-1", projectId: "txRlx5AcRbexBQEkAUIDLg" }),
-    ).resolves.toEqual({
-      processId: "j2cJQm8VSTSyMQEZvm4e9g",
-      status: "FAILED",
-      error: { code: "internalServerError", message: "unexpected internal server error" },
-    });
-    expect(stub.requests).toHaveLength(1);
-    expect(stub.requests[0]).toMatchObject({
-      method: "POST",
-      url: expect.stringMatching(/\/process\/search$/),
-      authorization: "Bearer access-1",
-    });
-    expect(JSON.parse(stub.requests[0]!.body!)).toEqual({
-      search: [
-        { name: "clientId", operator: "eq", value: "org-1" },
-        { name: "projectId", operator: "eq", value: "txRlx5AcRbexBQEkAUIDLg" },
-      ],
-      sort: [{ name: "created", ascending: false }],
-      limit: 20,
-    });
-  });
-
-  it("answers nothing while the process has not appeared", async () => {
-    const stub = recordingFetch(() => jsonResponse(200, { items: [] }));
-    const client = new ZeropsApiClient({ fetch: stub.fetch });
-    client.restoreSession(SESSION);
-    await expect(
-      client.readProjectCreation({ clientId: "org-1", projectId: "proj-1" }),
-    ).resolves.toBeUndefined();
   });
 });
 

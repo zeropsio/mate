@@ -152,12 +152,6 @@ export const RETIRED_MECHANISMS: ReadonlyArray<RetiredMechanism> = [
     reason: "a hook polls creation verdicts itself; the operations adapter owns the read",
   },
   {
-    token: "client.readProjectCreation(",
-    family: "projects",
-    reason: "a hook polls creation verdicts itself; the operations adapter owns the read",
-    paths: ["apps/web/src/zerops/matePress.ts", "apps/web/src/zerops/useZeropsCreationVerdicts.ts"],
-  },
-  {
     token: "ZeropsDataProvider(",
     family: "projects",
     reason: "the app's data provider wires I/O in the view tree; adapters own I/O",

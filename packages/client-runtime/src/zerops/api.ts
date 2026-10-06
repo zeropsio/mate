@@ -23,12 +23,7 @@ import {
 } from "./containerAddress.ts";
 import { withMateProjectRole } from "./mateAccess.ts";
 import { planProjectIsolation, type ProjectEnvEntry } from "./projectIsolation.ts";
-import {
-  pickProjectCreation,
-  projectProcessSearchBody,
-  zcpCreationUnderWay,
-  type ZeropsProjectCreation,
-} from "./projectCreation.ts";
+import { projectProcessSearchBody, zcpCreationUnderWay } from "./projectCreation.ts";
 import {
   findHeldMateKey,
   makeTokenWriteLock,
@@ -1759,34 +1754,6 @@ export class ZeropsApiClient {
   }
 
   /**
-   * `POST /process/search` — the platform's verdict on a project's creation:
-   * its newest `project.create` process, or nothing while none has appeared
-   * (`projectCreation.ts`).
-   *
-   * The creation call above answers 200 before the platform has built
-   * anything; this is what says whether it did (measured 2026-09-16: the
-   * process settles within about a second of the POST, FINISHED or FAILED).
-   */
-  async readProjectCreation(
-    input: { readonly clientId: string; readonly projectId: string },
-    signal?: AbortSignal,
-  ): Promise<ZeropsProjectCreation | undefined> {
-    const response = await this.#request<{ readonly items?: ReadonlyArray<unknown> }>(
-      "/process/search",
-      {
-        method: "POST",
-        signal: signal ?? null,
-        body: JSON.stringify(projectProcessSearchBody(input)),
-      },
-      { operationKind: "read" },
-    );
-    return pickProjectCreation(
-      Array.isArray(response.items) ? response.items : [],
-      input.projectId,
-    );
-  }
-
-  /**
    * `DELETE /project/{id}` — takes a project off the account. The platform
    * answers with the deleting process and the project is gone shortly after
    * (measured 2026-09-16). What the product deletes through this is a project
@@ -2755,16 +2722,6 @@ export class ZeropsApiClient {
       );
     }
     return processes;
-  }
-
-  /** `GET /process/{id}` — where one process stands (`PENDING`, `RUNNING`, `FINISHED`, …). */
-  async readProcessStatus(processId: string, signal?: AbortSignal): Promise<string | undefined> {
-    const process = await this.#request<{ readonly status?: unknown }>(
-      `/process/${processId}`,
-      { signal: signal ?? null },
-      { operationKind: "read" },
-    );
-    return typeof process?.status === "string" ? process.status : undefined;
   }
 
   /**

@@ -178,7 +178,7 @@ describe("t3code/no-remote-io-outside-data-layer", () => {
       `export function useReads(client, hq, options) {`,
       `  const zerops = new ZeropsApiClient(options);`,
       `  const api = makeHqApi(options);`,
-      `  void client.readProjectCreation("p");`,
+      `  void client.readProjectEnv("o", "p");`,
       `  void hq.api.compare("a", "b");`,
       `  return [zerops, api];`,
       `}`,

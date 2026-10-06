@@ -98,52 +98,6 @@ export function projectProcessSearchBody(input: {
   };
 }
 
-function nonEmptyString(value: unknown): value is string {
-  return typeof value === "string" && value.length > 0;
-}
-
-function processError(value: unknown): ZeropsProcessError | null {
-  if (typeof value !== "object" || value === null) return null;
-  const code = "code" in value && nonEmptyString(value.code) ? value.code : "";
-  const message = "message" in value && typeof value.message === "string" ? value.message : "";
-  return code === "" && message === "" ? null : { code, message };
-}
-
-/**
- * The newest `project.create` of the given project among a search's items.
- * The search is sorted by the platform, but a process list is not trusted to
- * arrive that way: `created` decides, and an item that is not this project's
- * creation — another action, another project — is not a candidate at all.
- */
-export function pickProjectCreation(
-  items: ReadonlyArray<unknown>,
-  projectId: string,
-): ZeropsProjectCreation | undefined {
-  let newest: { readonly createdAt: number; readonly creation: ZeropsProjectCreation } | undefined;
-  for (const item of items) {
-    if (typeof item !== "object" || item === null) continue;
-    if (!("actionName" in item) || item.actionName !== PROJECT_CREATE_ACTION) continue;
-    if ("projectId" in item && item.projectId !== undefined && item.projectId !== projectId) {
-      continue;
-    }
-    if (!("id" in item) || !nonEmptyString(item.id)) continue;
-    if (!("status" in item) || !nonEmptyString(item.status)) continue;
-    const created = "created" in item && nonEmptyString(item.created) ? item.created : undefined;
-    const createdAt = created === undefined ? Number.NEGATIVE_INFINITY : Date.parse(created);
-    const at = Number.isNaN(createdAt) ? Number.NEGATIVE_INFINITY : createdAt;
-    if (newest !== undefined && at <= newest.createdAt) continue;
-    newest = {
-      createdAt: at,
-      creation: {
-        processId: item.id,
-        status: item.status,
-        error: processError("error" in item ? item.error : null),
-      },
-    };
-  }
-  return newest?.creation;
-}
-
 const UNDER_WAY = new Set(["PENDING", "RUNNING"]);
 const ZCP_SERVICE_NAME = /^zcp\d*$/u;
 
