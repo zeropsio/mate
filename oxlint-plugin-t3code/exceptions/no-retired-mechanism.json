@@ -264,14 +264,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/components/Sidebar.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsMateOwners()",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "member names and Mate owners come from the member list; HQ sends them finished",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/components/chat/ChatComposer.tsx",
     "kind": "retired-token",
     "fingerprint": "useZeropsDataCatalogStore",
@@ -3109,14 +3101,6 @@
     "fingerprint": "useZeropsLandedChange",
     "owner": "data-layer rewrite: changes/review",
     "reason": "a hook reads a landed change itself; the changes adapter owns the read",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsMateOwners.ts",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsMateOwners()",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "member names and Mate owners come from the member list; HQ sends them finished",
     "expires": "never"
   },
   {
