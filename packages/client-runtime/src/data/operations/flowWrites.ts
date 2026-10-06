@@ -109,7 +109,12 @@ const changeOf = (read: ProjectionReads, link: ChangeLink): HqChange | undefined
 /** The jobs HQ's navigation lists for one of the application's environments. */
 const jobsOf = (read: ProjectionReads, appId: string, projectId: string) => {
   const app = read.fact("hqApp", appId);
-  if (app.kind !== "known" || "refused" in app.value.environments) return undefined;
+  if (
+    app.kind !== "known" ||
+    app.value.environments === undefined ||
+    "refused" in app.value.environments
+  )
+    return undefined;
   return environmentsOf(app.value.environments)?.find((entry) => entry.projectId === projectId);
 };
 

@@ -201,6 +201,8 @@ export function holdProjectHistory(
 }
 
 export const NOT_READ_HQ: HqNavigationRead = {
+  updateRequired: false,
+  coreBuild: undefined,
   structure: null,
   organization: null,
   presses: {},

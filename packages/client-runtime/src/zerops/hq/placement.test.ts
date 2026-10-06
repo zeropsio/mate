@@ -18,6 +18,26 @@ interface Listed {
   readonly hq?: HqPlacement;
 }
 
+it("retains a project's application placement when its kind is unknown", () => {
+  const placements = placementsOf({
+    ungrouped: [],
+    apps: [
+      {
+        id: "app",
+        name: "Shop",
+        projects: [{ projectId: "ada", name: "Ada", kind: "unknown", mate: { face: "ada" } }],
+      },
+    ],
+  });
+  expect(placements.get("ada")).toEqual({
+    appId: "app",
+    appName: "Shop",
+    kind: "unknown",
+    mate: { face: "ada" },
+  });
+  expect(heldOf({ hq: placements.get("ada") })).toBe("unknown");
+});
+
 const STRUCTURE = {
   ungrouped: [{ projectId: "p-ada", name: "Ada", mate: { face: "sky:flower" } }],
   apps: [

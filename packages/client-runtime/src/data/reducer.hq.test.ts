@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  hqAppFamily,
   hqAppsScope,
   placementsScope,
   type HqAppValue,
@@ -95,6 +96,28 @@ const appName = (state: AccountState, id: string) => {
 const members = (state: AccountState, scope: ScopeKey) => readsOfState(state).members(scope);
 
 describe("an HQ scope's delivery", () => {
+  it.each([undefined, "bad", { head: 42 }])(
+    "commits readable facts while the offered release is unknown: %s",
+    (releaseOffer) => {
+      const decoded = hqAppFamily.hq!.decode({ ...app("shop", "Shop"), releaseOffer }, "app:shop")!;
+      const state = apply(attached(), [
+        delivery({
+          reset: true,
+          revision: 1,
+          rows: [{ family: "hqApp", id: "shop", value: app("shop", "Before") }],
+        }),
+        delivery({ revision: 2, rows: [{ family: "hqApp", id: "shop", value: decoded }] }),
+      ]);
+      const fact = readsOfState(state).fact("hqApp", "shop");
+      expect(fact).toMatchObject({
+        kind: "known",
+        value: { name: "Shop", environments: [], projectIds: [] },
+      });
+      if (fact.kind === "known") expect(fact.value.releaseOffer).toBeUndefined();
+      expect(members(state, apps).ids).toContain("shop");
+    },
+  );
+
   it("commits every family's records of one delivery together", () => {
     const state = apply(attached(), [
       delivery({

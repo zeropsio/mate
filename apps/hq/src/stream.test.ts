@@ -4,12 +4,15 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
+import * as Schema from "effect/Schema";
 import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 import * as Socket from "effect/unstable/socket/Socket";
 import { liveSocketsLayer, serveHqSocket, serveStructureSocket } from "./stream.ts";
 import { HqScopes } from "./hqScopes.ts";
+const decodeFrame = Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Unknown));
+
 describe("serveStructureSocket: who ended a socket, and with what code", () => {
   /** A socket whose client stays until `closeBy` closes it with a code; it answers every ping. */
   const clientSocket = Effect.gen(function* () {
@@ -50,6 +53,47 @@ describe("serveStructureSocket: who ended a socket, and with what code", () => {
       yield* TestClock.adjust("1 millis");
       assert.deepStrictEqual(closes, [{ code: 4410, reason: "segment over" }]);
       assert.deepStrictEqual(yield* Fiber.join(serving), { by: "hq", code: 4410 });
+    }).pipe(Effect.provide(liveSocketsLayer)),
+  );
+
+  it.effect("scope-ready declares the serving Core build and navigation protocol", () =>
+    Effect.gen(function* () {
+      const written = yield* Queue.unbounded<string>();
+      const socket = Socket.make({
+        reader: Effect.succeed({ pull: Effect.never, upgrade: () => Effect.void }),
+        writer: Effect.succeed({
+          write: (frame) =>
+            typeof frame === "string"
+              ? Queue.offer(written, frame).pipe(Effect.asVoid)
+              : Effect.void,
+          writeAll: () => Effect.void,
+        }),
+      });
+      const hub = Layer.succeed(HqScopes, {
+        open: () =>
+          Effect.succeed({
+            messages: Stream.succeed({
+              type: "scope-ready" as const,
+              scope: { kind: "navigation" as const },
+              incarnation: "i",
+              revision: 1,
+            }),
+            request: () => Effect.void,
+          }),
+      });
+      const serving = yield* Effect.forkChild(
+        serveHqSocket(socket, "owner", Effect.succeed(undefined), { build: "core-build" }).pipe(
+          Effect.provide(hub),
+        ),
+      );
+      assert.deepStrictEqual(yield* decodeFrame(yield* Queue.take(written)), {
+        type: "scope-ready",
+        scope: { kind: "navigation" },
+        incarnation: "i",
+        revision: 1,
+        core: { protocol: 1, build: "core-build" },
+      });
+      yield* Fiber.interrupt(serving);
     }).pipe(Effect.provide(liveSocketsLayer)),
   );
 

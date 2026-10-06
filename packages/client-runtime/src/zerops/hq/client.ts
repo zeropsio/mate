@@ -84,26 +84,26 @@ export interface HqMateSetUp extends HqNewMate {
  * A Mate as HQ reads it: its record, its birth, and — joined from HQ's overview of it, where the
  * reader may observe it (`hqMates.ts`) — its agents' logins.
  */
-export interface HqMate extends HqMateRecord {
+export interface HqMate extends Partial<HqMateRecord> {
   readonly birthId?: string | null;
   readonly signers?: Readonly<Record<string, string>>;
   /**
    * Who made it — whoever set its record up: a Mate recorded before HQ kept it is null; an older
    * HQ says nothing.
    */
-  readonly madeBy?: string | null;
+  readonly madeBy?: string | null | undefined;
   /** Who asked for its stand-up, with its record: nobody is null; an older HQ says nothing. */
-  readonly standupRequestedBy?: string | null;
+  readonly standupRequestedBy?: string | null | undefined;
   /** Whether its project is closed off (`recordClosedOff`); an older HQ says nothing. */
-  readonly closedOff?: boolean;
+  readonly closedOff?: boolean | undefined;
   /** HQ’s read of the setup press marker; null while unknown. */
-  readonly setupMarker?: boolean | null;
+  readonly setupMarker?: boolean | null | undefined;
   /**
    * The key it last named reads other projects too — READ_ONLY grants on siblings an earlier client
    * gave it (ADR 0003's fallout): it needs *Finish setup*, whose harden takes them off. Absent where
    * it does not, and from an older HQ.
    */
-  readonly keyWider?: boolean;
+  readonly keyWider?: boolean | undefined;
   /** Who signed each of its agents' logins in, as its overview says; absent where HQ holds none. */
   readonly logins?: OverviewLogins;
   /** A ready agent outside Mate's sign-in flow, relayed in its overview. */
@@ -157,7 +157,7 @@ export interface HqStructure {
         readonly projectId: string;
         readonly name: string;
         readonly kind: string;
-        readonly mate: HqMate | null;
+        readonly mate: HqMate | null | undefined;
       } & HqMateOffers
     >;
     /** What the reader may do with it: its changes, its deploys, its release; absent where none. */

@@ -98,11 +98,14 @@ export interface ZeropsMembership {
   readonly birth?: string | undefined;
 }
 
-const ROLE_OF_KIND: Readonly<Record<RoleProjectKind, ZeropsEnvironmentRole>> = {
+const ROLE_OF_KIND: Readonly<
+  Record<RoleProjectKind | "unknown", ZeropsEnvironmentRole | undefined>
+> = {
   mate: "dev",
   devstage: "devstage",
   stage: "stage",
   production: "prod",
+  unknown: undefined,
 };
 
 const KIND_OF_ROLE: Readonly<Record<ZeropsEnvironmentRole, RoleProjectKind>> = {
@@ -138,8 +141,7 @@ export function readZeropsMembership(
     label: label === undefined || label === "" ? undefined : label,
     standUp: asker === undefined || asker === "" ? undefined : { by: asker },
     madeBy: maker === undefined || maker === "" ? undefined : maker,
-    face:
-      placed?.mate === null || placed === undefined ? undefined : readMateFace(placed.mate.face),
+    face: placed?.mate?.face === undefined ? undefined : readMateFace(placed.mate.face),
     birth: placed?.mate?.birthId ?? undefined,
   };
 }

@@ -33,7 +33,7 @@ export function closeOffWordOf(
   const markers = new Map<string, boolean>();
   const mates = [...structure.ungrouped, ...structure.apps.flatMap((app) => app.projects)];
   for (const { projectId, mate } of mates) {
-    if (mate === null) continue;
+    if (mate == null) continue;
     if (typeof mate.setupMarker === "boolean") markers.set(projectId, mate.setupMarker);
     if (mate.closedOff === true) closed.add(projectId);
     else if (mate.closedOff === false) open.add(projectId);

@@ -33,7 +33,7 @@ function attentionOf(read: ProjectionReads, orgId: string, projectId: string): M
   const placement = read.fact("placement", projectId);
   const unseen =
     placement.kind === "known" && read.members(placementsScope(orgId)).ids.includes(projectId)
-      ? placement.value.person.unseen
+      ? (placement.value.person?.unseen ?? null)
       : null;
   const fact = read.fact("mateAttention", projectId);
   if (fact.kind !== "known") return { attention: null, live: false, unseen };

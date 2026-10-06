@@ -136,7 +136,7 @@ export function ZeropsHqUpdate({
   readonly carried: string;
   /** The Core HQ's stream names; `undefined` where it names none, and Zerops says it. */
   readonly answering: string | undefined;
-  readonly trigger: "Update available" | "Up to date";
+  readonly trigger: "Update available" | "Up to date" | "Update HQ";
   /** Told when an update pressed here starts and ends. */
   readonly onBusy: (busy: boolean) => void;
   /** Told whether the person follows it: its dialog open, or its update running. */

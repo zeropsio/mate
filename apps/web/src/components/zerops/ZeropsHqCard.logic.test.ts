@@ -248,6 +248,22 @@ describe("hqCardView — what HQ holds", () => {
       { structure: { ungrouped: [], apps: [STRUCTURE.apps[1]!] }, online: undefined },
       "1 project · 1 Mate",
     ],
+    [
+      "a project whose Mate fact is unknown",
+      {
+        structure: {
+          ungrouped: [],
+          apps: [
+            {
+              id: "a1",
+              name: "Links",
+              projects: [{ projectId: "p1", name: "links", kind: "mate", mate: undefined }],
+            },
+          ],
+        },
+      },
+      "1 project · Mates unknown",
+    ],
   ])("%s", (_name, overrides, counts) => {
     expect(hqCardView(input(overrides)).counts).toBe(counts);
   });
