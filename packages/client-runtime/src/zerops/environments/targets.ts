@@ -97,9 +97,16 @@ export function listTargets(input: {
   readonly lastPresence: (key: TargetKey) => Presence | null;
 }): ListedTargets {
   const rows = input.listings.flatMap(({ listing }) => heldCandidates(listing).rows);
-  const settled = input.listings.every(
-    ({ listing }) => listing.state === "known" && listing.coverage === "complete",
-  );
+  // No listing says nothing: an organization not read, or none chosen, settles no absence.
+  const settled =
+    input.listings.length > 0 &&
+    input.listings.every(
+      ({ listing }) => listing.state === "known" && listing.coverage === "complete",
+    );
+  /** The record's own organization has no listing here: nothing here may say it is gone. */
+  const unlistedOrganization = (record: RegistrationRecord | undefined): boolean =>
+    record?.projectRef != null &&
+    !input.listings.some(({ organizationId }) => organizationId === record.projectRef!.orgId);
   /**
    * The record's organization's listing, or any listing for a record that kept no organization,
    * that no read has answered yet: the projects it will name are not read either.
@@ -145,6 +152,10 @@ export function listTargets(input: {
     // Its project's services were read without it, or its organization's complete listing lacks
     // the project: where its record kept it no longer answers (A16), and anything else it was is
     // held.
+    if (unlistedOrganization(record)) {
+      if (held !== undefined) absences.set(key, held);
+      return remembered ?? input.lastPresence(key);
+    }
     const omitted =
       input.lastPresence(key)?.kind === "remembered" ? ({ kind: "unknown" } as const) : null;
     if (!settled) {

@@ -7,10 +7,13 @@ import { act, createElement } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { AppAtomRegistryProvider } from "../rpc/atomRegistry";
+import { accountReadsAtom } from "@t3tools/client-runtime/data";
+
+import { AppAtomRegistryProvider, appAtomRegistry } from "../rpc/atomRegistry";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
 import { useDetailDemand, ZeropsAccountData } from "./ZeropsAccountData";
 
+const shown = vi.hoisted(() => ({ id: "org-1" }));
 vi.mock("./ZeropsSessionProvider", () => {
   // The session's client: its socket login never answers, so the link stays connecting.
   const client = {
@@ -23,7 +26,7 @@ vi.mock("./ZeropsSessionProvider", () => {
     useZeropsSession: () => ({
       client,
       status: "signed-in",
-      activeOrganization: { id: "org-1", name: "Org", membershipId: "m-1" },
+      activeOrganization: { id: shown.id, name: "Org", membershipId: "m-1" },
     }),
   };
 });
@@ -73,5 +76,28 @@ describe("ZeropsAccountData — signing out", () => {
     tree = undefined;
     expect(thrown).toBeNull();
     expect(errors.filter((args) => String(args).includes("Cannot access Atom"))).toEqual([]);
+  });
+});
+
+describe("ZeropsAccountData — another organization shown", () => {
+  it("hands the account's reads over to it, never leaving them unset between", async () => {
+    shown.id = "org-1";
+    const app = () =>
+      createElement(AppAtomRegistryProvider, null, createElement(ZeropsAccountData, null));
+    await act(async () => {
+      tree = create(app());
+    });
+    const heard: Array<string | null | undefined> = [];
+    const stop = appAtomRegistry.subscribe(accountReadsAtom, (reads) => heard.push(reads?.orgId));
+    shown.id = "org-2";
+    await act(async () => {
+      tree?.update(app());
+    });
+    stop();
+    expect(heard).toEqual(["org-2"]);
+    await act(async () => {
+      tree?.unmount();
+    });
+    tree = undefined;
   });
 });

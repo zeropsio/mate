@@ -42,14 +42,22 @@ export function ZeropsAccountData({
           },
     [activeOrganizationId, binding],
   );
+  // The account's reads move to each new value as it comes, never unset between: a moment without
+  // them would read every organization's listing as gone. They go only with the account's
+  // registry, or this mount.
   useEffect(() => {
     if (value === null || observation === null || observation.closed()) return;
     value.registry.set(accountReadsAtom, value);
-    return () => {
-      // A closed account's registry may already be gone.
-      if (!observation.closed()) value.registry.set(accountReadsAtom, null);
-    };
   }, [observation, value]);
+  const registry = binding?.registry ?? null;
+  useEffect(
+    () => () => {
+      // A closed account's registry may already be gone.
+      if (registry !== null && observation !== null && !observation.closed())
+        registry.set(accountReadsAtom, null);
+    },
+    [observation, registry],
+  );
   return <AccountDataContext value={value}>{children}</AccountDataContext>;
 }
 

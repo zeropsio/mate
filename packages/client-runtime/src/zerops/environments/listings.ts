@@ -183,8 +183,8 @@ const listings = new WeakMap<
 >();
 
 /**
- * The account's listing over this data runtime: the organization the account observes, the one
- * entry; none while it observes none. The same atom for every reader.
+ * The account's listings over this data runtime: one per organization the grant names — the one
+ * the account observes as its store reads it, every other unread. The same atom for every reader.
  */
 export function mateListingsAtom(
   data: ManagedZeropsDataRuntime,
@@ -196,14 +196,37 @@ export function mateListingsAtom(
   // address (`AddressMemory`).
   let addresses: AddressMemory = NO_ADDRESS_MEMORY;
   let published: ReadonlyArray<OrganizationListing> = NO_LISTINGS;
+  const unreadListings = new Map<string, OrganizationListing>();
 
   const atom = Atom.make((get): ReadonlyArray<OrganizationListing> => {
     const nowMs = systemExchangeClock.now().wall;
     const { orgId, ...roster } = get(shownProjectsAtom);
+    const evidence = heldEvidence(get(data.access.view).machine);
+    // Every organization the grant names has its listing: the one observed as read, every other
+    // unread until it is — never absent, which would say nothing of what it holds.
+    const granted = (evidence?.account.organizations ?? []).map(
+      ({ organization: granted }) => granted.organizationId as string,
+    );
+    const unreadOf = (organizationId: string): OrganizationListing =>
+      unreadListings.get(organizationId) ??
+      unreadListings
+        .set(organizationId, {
+          organizationId,
+          listing: { state: "unread", waitingFor: null },
+          directReads: NO_DIRECT_READS,
+        })
+        .get(organizationId)!;
+    const publish = (shown: OrganizationListing | null) => {
+      const next = [
+        ...(shown === null ? [] : [shown]),
+        ...granted.filter((id) => id !== shown?.organizationId).map(unreadOf),
+      ];
+      if (!sameItems(published, next)) published = next;
+      return published;
+    };
     if (orgId === null) {
       organization = null;
-      published = NO_LISTINGS;
-      return published;
+      return publish(null);
     }
     const organizationRef: OrganizationRef = {
       kind: "organization",
@@ -215,7 +238,6 @@ export function mateListingsAtom(
       organization: organizationRef,
       projectId: ZeropsProjectId.make(projectId),
     });
-    const evidence = heldEvidence(get(data.access.view).machine);
     // The projects the grant admits (what the inventory demands): only an admitted project's
     // services are its Mates'. Another's Mate gets no address, no probe and no connection, as when
     // its services were never read at all.
@@ -331,8 +353,7 @@ export function mateListingsAtom(
         ),
       );
     }
-    if (published[0] !== next.listed) published = [next.listed];
-    return published;
+    return publish(next.listed);
   });
   listings.set(data, atom);
   return atom;

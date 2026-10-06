@@ -68,13 +68,17 @@ export function ZeropsAccountData({ children }: { readonly children: ReactNode }
     () => accountOperations(store, registry, client, observation.demandDetail),
     [client, observation, registry, store],
   );
+  // The account's reads move to each new value as it comes, never unset between: a moment without
+  // them would read every organization's listing as gone. They go only with this mount.
   useEffect(() => {
-    if (observation.closed()) return;
-    registry.set(accountReadsAtom, value);
-    return () => {
-      if (!observation.closed()) registry.set(accountReadsAtom, null);
-    };
+    if (!observation.closed()) registry.set(accountReadsAtom, value);
   }, [observation, registry, value]);
+  useEffect(
+    () => () => {
+      if (!observation.closed()) registry.set(accountReadsAtom, null);
+    },
+    [observation, registry],
+  );
   return (
     <AccountDataContext value={value}>
       <AccountOperationsContext value={operations}>{children}</AccountOperationsContext>

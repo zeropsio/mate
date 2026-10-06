@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 
 import { organization, project, service, stamp } from "../data/__fixtures__/index.ts";
 import type { ManagedZeropsDataRuntime } from "../data/runtime.ts";
-import type { ServiceRecord } from "../data/types.ts";
+import { ZeropsOrganizationId, type ServiceRecord } from "../data/types.ts";
 import type { Known } from "../knowledge/known.ts";
 import { knownRoster, mateListingsAtom } from "./listings.ts";
 
@@ -423,5 +423,55 @@ describe("mateListingsAtom: a container ACTIVE before its address landed", () =>
         expect({ atMs, group: row?.group }).toEqual({ atMs, group: seen.group });
       }
     }
+  });
+});
+
+describe("mateListingsAtom: one listing per organization the grant names", () => {
+  const other = { ...organization, organizationId: ZeropsOrganizationId.make("org-2") };
+  const over = (orgId: string | null) => {
+    const registry = AtomRegistry.make();
+    registry.set(accountReadsAtom, {
+      data: {
+        project: () => Atom.make<OrganizationProjects>({ ...ROSTER, projects: [] }),
+      } as unknown as AccountReads["data"],
+      orgId,
+      demandDetail: () => () => {},
+    });
+    const data = {
+      scope: { account: organization.account },
+      access: {
+        view: Atom.make({
+          machine: {
+            phase: {
+              phase: "granted",
+              evidence: {
+                account: { organizations: [{ organization }, { organization: other }] },
+                projects: new Map(),
+                unverified: new Map(),
+                closedProjects: new Map(),
+              },
+            },
+          },
+        }),
+      },
+      reads: { access: Atom.make({ status: "unverified" }), servicesOf: () => Atom.make(null) },
+    } as unknown as ManagedZeropsDataRuntime;
+    return registry.get(mateListingsAtom(data));
+  };
+
+  it("lists the organization shown as read, every other as unread until it is", () => {
+    expect(
+      over(organization.organizationId).map(({ organizationId, listing }) => [
+        organizationId,
+        listing.state,
+      ]),
+    ).toEqual([
+      [organization.organizationId, "known"],
+      ["org-2", "unread"],
+    ]);
+  });
+
+  it("lists every organization unread while none is shown", () => {
+    expect(over(null).map(({ listing }) => listing.state)).toEqual(["unread", "unread"]);
   });
 });

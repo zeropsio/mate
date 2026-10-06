@@ -375,6 +375,25 @@ describe("listTargets: region P from the listings and the records (§4.4, §9 C1
   });
 });
 
+describe("listTargets: a record is gone only on its own organization's word", () => {
+  it.each([
+    { name: "no listing at all (no organization chosen, or none read)", listings: [] },
+    {
+      name: "only another organization's listing, complete",
+      listings: [{ organizationId: "org-2", listing: known([]) }],
+    },
+  ])("$name: kept where its record kept it", ({ listings }) => {
+    const listed = listTargets({
+      listings,
+      records: [remembered(KEY)],
+      directReads: new Map(),
+      absences: new Map(),
+      lastPresence: () => null,
+    });
+    expect(listed.targets).toEqual([{ key: KEY, presence: REMEMBERED, record: ENV }]);
+  });
+});
+
 describe("containerTargetsOf", () => {
   it("names each row's origin and platform statuses", () => {
     expect(containerTargetsOf([mateRow("ACTIVE"), unreadRow], [], null)).toEqual([
