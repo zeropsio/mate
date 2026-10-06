@@ -104,6 +104,10 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --glass-blur: 12px;
   --glass-opacity: 80%;
   --glass-saturation: 1.14;
+  /* What glass does to what is behind it; none when the glass is opaque
+     (`GlassAppearanceSync`), where it shows nothing and still cost a
+     backdrop pass behind every glass surface. */
+  --glass-backdrop: blur(var(--glass-blur)) saturate(var(--glass-saturation));
   --desktop-window-right-resize-inset: 0px;
   /* The top bar: every page's header and the menu's logo row beside it, one
      height, so the logo, the header's content and their bottom edges stand
@@ -139,6 +143,7 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     --app-scrollbar-thumb-hover: rgb(255 255 255 / 12%);
     --glass-blur: 16px;
     --glass-saturation: 1.08;
+    --glass-backdrop: blur(var(--glass-blur)) saturate(var(--glass-saturation));
   }
 }
 
@@ -444,8 +449,8 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
 
 @utility surface-glass {
   background: color-mix(in srgb, var(--background) var(--glass-opacity), transparent);
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
-  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+  -webkit-backdrop-filter: var(--glass-backdrop);
+  backdrop-filter: var(--glass-backdrop);
 
   @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
     background: var(--background) !important;
@@ -460,8 +465,8 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
       color-mix(in srgb, var(--alert-glass-tint) 4%, transparent)
     ),
     color-mix(in srgb, var(--background) var(--glass-opacity), transparent) !important;
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
-  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+  -webkit-backdrop-filter: var(--glass-backdrop);
+  backdrop-filter: var(--glass-backdrop);
 
   &[data-variant="error"] {
     --alert-glass-tint: var(--destructive);
@@ -486,8 +491,8 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
 
 @utility dialog-glass {
   background: color-mix(in srgb, var(--background) var(--glass-opacity), transparent);
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
-  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+  -webkit-backdrop-filter: var(--glass-backdrop);
+  backdrop-filter: var(--glass-backdrop);
   border-color: color-mix(in srgb, var(--contrast-foreground) 10%, transparent);
   box-shadow: 0 24px 64px -24px rgb(0 0 0 / 65%);
 
@@ -519,8 +524,8 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     var(--popover) 18%,
     color-mix(in srgb, var(--popover) var(--glass-opacity), transparent)
   );
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
-  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+  -webkit-backdrop-filter: var(--glass-backdrop);
+  backdrop-filter: var(--glass-backdrop);
   border: 1px solid color-mix(in srgb, var(--contrast-foreground) 10%, transparent);
 
   @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
@@ -678,8 +683,8 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
       var(--chat-composer-glass-surface, var(--card)) var(--glass-opacity),
       transparent
     );
-    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
-    backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+    -webkit-backdrop-filter: var(--glass-backdrop);
+    backdrop-filter: var(--glass-backdrop);
     box-shadow: 0 -8px 24px -18px rgb(0 0 0 / 45%);
 
     @variant dark {
@@ -702,8 +707,8 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
       var(--chat-composer-attached-surface) var(--glass-opacity),
       transparent
     );
-    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
-    backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+    -webkit-backdrop-filter: var(--glass-backdrop);
+    backdrop-filter: var(--glass-backdrop);
 
     @variant dark {
       --chat-composer-attached-surface: var(
@@ -799,8 +804,8 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     background:
       linear-gradient(var(--chat-composer-attached-tint), var(--chat-composer-attached-tint)),
       color-mix(in srgb, var(--chat-composer-attached-surface) var(--glass-opacity), transparent);
-    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
-    backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+    -webkit-backdrop-filter: var(--glass-backdrop);
+    backdrop-filter: var(--glass-backdrop);
     -webkit-mask-image: linear-gradient(
       to top,
       transparent 0 var(--chat-composer-attachment-overlap),
@@ -1051,8 +1056,8 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
         var(--chat-composer-glass-surface) var(--glass-opacity),
         transparent
       );
-      -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
-      backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+      -webkit-backdrop-filter: var(--glass-backdrop);
+      backdrop-filter: var(--glass-backdrop);
     }
 
     @variant dark {
@@ -1083,8 +1088,8 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
         var(--chat-composer-glass-surface) var(--glass-opacity),
         transparent
       );
-      -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
-      backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+      -webkit-backdrop-filter: var(--glass-backdrop);
+      backdrop-filter: var(--glass-backdrop);
     }
 
     .chat-composer-context-strip {
