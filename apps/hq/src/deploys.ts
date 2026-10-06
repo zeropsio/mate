@@ -1070,10 +1070,7 @@ export const deploysLayer = (
           WHERE id = ${job.id}::bigint AND ended_at IS NULL
             AND evidence IS DISTINCT FROM (coalesce(evidence, '{"processes":[],"version":null}'::jsonb) || ${patch}::jsonb)
           RETURNING 1`)
-          .pipe(
-            Effect.flatMap((rows) => (rows.length === 0 ? Effect.void : tick)),
-            Effect.orDie,
-          );
+          .pipe(Effect.flatMap((rows) => (rows.length === 0 ? Effect.void : tick)));
       };
 
       /** Current owner state at registration, then only relevant pushes; loss re-registers. */
@@ -1081,10 +1078,12 @@ export const deploysLayer = (
         job: Job,
         processIds: ReadonlyArray<string>,
         versionId: string | null,
-        read: (signal: OperationSignal) => Effect.Effect<A | undefined, OperationError>,
-      ): Effect.Effect<A | Stopped> => {
+        read: (
+          signal: OperationSignal,
+        ) => Effect.Effect<A | undefined, OperationError | SqlError | NotLeader>,
+      ): Effect.Effect<A | Stopped, SqlError | NotLeader> => {
         let retries = 0;
-        const attempt = (): Effect.Effect<A | Stopped> =>
+        const attempt = (): Effect.Effect<A | Stopped, SqlError | NotLeader> =>
           observer.watch({ projectId: job.project_id, processIds, versionId }).pipe(
             Stream.mapEffect((signal) =>
               record(job, signal).pipe(
@@ -1102,10 +1101,12 @@ export const deploysLayer = (
             Effect.catch((error) =>
               error._tag === "ZeropsRefused"
                 ? Effect.succeed(unresolved(`HQ cannot follow the operation: ${error.code}`))
-                : record(job, { phase: "recovering", processes: [], version: null }).pipe(
-                    Effect.andThen(operationBackoff(retries++, error.retryAfterMs)),
-                    Effect.andThen(Effect.suspend(attempt)),
-                  ),
+                : error._tag === "ZeropsUnavailable"
+                  ? record(job, { phase: "recovering", processes: [], version: null }).pipe(
+                      Effect.andThen(operationBackoff(retries++, error.retryAfterMs)),
+                      Effect.andThen(Effect.suspend(attempt)),
+                    )
+                  : Effect.fail(error),
             ),
           );
         return attempt();
@@ -1135,20 +1136,27 @@ export const deploysLayer = (
               if (VERSION_FAILURES.has(status)) return failed(`failed: the version is ${status}`);
               if (status === "UPLOADING" && job.upload_recorded && !job.uploaded)
                 return unresolved("HQ's archive upload went unanswered; no build was asked for");
+              if (status === "UPLOADING")
+                return unresolved(
+                  "HQ has no process handle and cannot verify build acceptance; inspect the recorded version before asking Run again",
+                );
               if (status !== "ACTIVE" && status !== "BACKUP") return undefined;
             }
             const service = yield* zerops.service(serviceId)(token);
-            if (service.activeVersionId !== versionId && service.named?.id === versionId)
+            // Version and process updates may arrive before the service's REST projection catches up.
+            const active =
+              signal.version?.id === versionId &&
+              signal.version.status === "ACTIVE" &&
+              service.named?.id === versionId;
+            if (service.activeVersionId !== versionId && service.named?.id === versionId && !active)
               return undefined;
-            if (service.activeVersionId !== versionId)
+            if (service.activeVersionId !== versionId && !active)
               return unresolved(
                 "The process finished but the expected running version is not verified",
               );
-            yield* leader
-              .write(
-                sql`UPDATE hq_deploy_job SET verified_version_id = ${versionId} WHERE id = ${job.id}::bigint`,
-              )
-              .pipe(Effect.orDie);
+            yield* leader.write(
+              sql`UPDATE hq_deploy_job SET verified_version_id = ${versionId} WHERE id = ${job.id}::bigint`,
+            );
             return { state: "live", service } as const;
           }),
         );
