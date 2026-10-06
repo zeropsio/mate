@@ -505,7 +505,44 @@ function WatchedToItsEnd({
   );
 }
 
-const BROKE_OFF = "Claude Code stopped unexpectedly. Send a message to pick up where it left off.";
+const BROKE_OFF = {
+  reason: "Claude Code stopped unexpectedly.",
+  next: "Send a message to pick up where it left off.",
+};
+
+/**
+ * A run that broke off, then the next run begins: its line drops what to do
+ * next, and keeps that sentence's room while it stays on screen. Narrow, so
+ * the line wraps as on a phone.
+ */
+function BrokeOffThenNext() {
+  const [next, setNext] = useState(false);
+  return (
+    <div className="grid max-w-[360px] gap-3">
+      <div className="flex gap-2">
+        <Button data-harness-next-run="" disabled={next} onClick={() => setNext(true)} size="sm">
+          The next run begins
+        </Button>
+        <Button onClick={() => setNext(false)} size="sm" variant="outline">
+          Back
+        </Button>
+      </div>
+      <Turn
+        row={record("status-broke-off-narrow", {
+          live: false,
+          status: status({
+            live: false,
+            face: "brokeOff",
+            startedAt: ago(61 * 60),
+            endedAt: ago(0),
+            brokeOff: next ? { ...BROKE_OFF, next: null } : BROKE_OFF,
+          }),
+          outcome: OUTCOME,
+        })}
+      />
+    </div>
+  );
+}
 
 /** A command longer than its line: a route written with a heredoc. */
 const ROUTE_SCRIPT = [
@@ -714,6 +751,12 @@ export function CardStates() {
         note="End the run: the line settles to its stopped words, and the room for why opens under it, eased — the card never jumps."
       >
         <WatchedToItsEnd brokeOff />
+      </CardState>
+      <CardState
+        label="Its agent stopped, then the next run begins"
+        note="Phone width: what to do next leaves the earlier run's line, and its room stays while the line is on screen — the card never shrinks."
+      >
+        <BrokeOffThenNext />
       </CardState>
       <CardState
         label="Its agent stopped under it"

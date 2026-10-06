@@ -1154,8 +1154,15 @@ describe("activityCounts", () => {
 });
 
 /** What the server records where an agent's process died under its turn (`runtime.error`). */
-function crashed(id: string, turnId: string, minute: number, words: string): TimelineEntry {
+function crashed(
+  id: string,
+  turnId: string,
+  minute: number,
+  words: string,
+  turnEnd?: WorkLogEntry["turnEnd"],
+): TimelineEntry {
   return tool(id, turnId, minute, {
+    ...(turnEnd === undefined ? {} : { turnEnd }),
     label: "Runtime error",
     tone: "error",
     detail: words,
@@ -1213,7 +1220,10 @@ describe("a run that broke off", () => {
         taskStopped("k1", "t1", 5),
       ],
       latest: { id: "t1", state: "error", completed: true },
-      brokeOff: STOPPED,
+      brokeOff: {
+        reason: "Codex stopped unexpectedly.",
+        next: "Send a message to pick up where it left off.",
+      },
       answer: null,
       face: "brokeOff",
     },
@@ -1229,7 +1239,7 @@ describe("a run that broke off", () => {
       ],
       latest: { id: "t2", state: "completed", completed: true },
       // Only the latest run says what to do next.
-      brokeOff: "Codex stopped unexpectedly.",
+      brokeOff: { reason: "Codex stopped unexpectedly.", next: null },
       answer: null,
       face: "brokeOff",
     },
@@ -1241,7 +1251,7 @@ describe("a run that broke off", () => {
         crashed("e1", "t1", 2, "API Error: 500 Internal server error"),
       ],
       latest: { id: "t1", state: "error", completed: true },
-      brokeOff: "API Error: 500 Internal server error",
+      brokeOff: { reason: "API Error: 500 Internal server error", next: null },
       answer: null,
       face: "brokeOff",
     },
@@ -1300,11 +1310,27 @@ describe("a run that broke off", () => {
     },
   ] as const)("$name", ({ entries, latest, brokeOff, answer, face }) => {
     const [first] = structure([...entries], { latest }).turns;
-    expect(first!.brokeOff).toBe(brokeOff);
+    expect(first!.brokeOff).toEqual(brokeOff);
     expect(first!.answer?.id ?? null).toBe(answer);
     expect(
       stretchFace({ stretch: first!.stretches.at(-1)!, turn: first!, pausedHere: false }),
     ).toBe(face);
+  });
+
+  // Every driver's usage limit is typed by the server: a pause, never a
+  // break, whatever its words — the client reads none of them for it.
+  it.each([
+    ["codex", "Codex usage limit reached. Try again at 9:20 PM."],
+    ["claudeAgent", "Claude usage limit reached. Send the message again once the limit resets."],
+    ["opencode", "Rate limit exceeded: 429"],
+    ["grok", "Grok usage limit reached. Try again later."],
+  ])("reads %s's usage limit as a pause", (_driver, words) => {
+    const [only] = structure(
+      [user("m0", 0), tool("w1", "t1", 1), crashed("e1", "t1", 12, words, "usage-limit")],
+      { latest: { id: "t1", state: "error", completed: true } },
+    ).turns;
+    expect(only!.brokeOff).toBeNull();
+    expect(only!.limit).not.toBeNull();
   });
 
   it("is not over while it runs", () => {

@@ -55,6 +55,7 @@ import {
   type OutcomeModel,
   type SlashCommand,
   type Stretch,
+  type BrokeOff,
   type WorkLineFace,
 } from "./conversation.logic";
 import {
@@ -478,7 +479,7 @@ export interface RunStatus {
   /** It did something — a call, a helper, an operation: it "worked", never only "thought". */
   readonly worked: boolean;
   /** It broke off: what its card says under its line (`ConversationTurn.brokeOff`). */
-  readonly brokeOff?: string | undefined;
+  readonly brokeOff?: BrokeOff | undefined;
 }
 
 type MessagesTimelineRowBody =

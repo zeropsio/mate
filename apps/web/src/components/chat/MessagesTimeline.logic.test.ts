@@ -3041,9 +3041,43 @@ describe("a run that broke off", () => {
       ],
       settled: "t1",
     });
-    expect(statusOf(list)).toMatchObject({ live: false, face: "brokeOff", brokeOff: words });
+    expect(statusOf(list)).toMatchObject({
+      live: false,
+      face: "brokeOff",
+      brokeOff: {
+        reason: "Codex stopped unexpectedly.",
+        next: "Send a message to pick up where it left off.",
+      },
+    });
     expect(list.filter((row) => row.kind === "message").map((row) => row.id)).toEqual(["m0"]);
     expect(allItems(list).some((item) => item.kind === "note")).toBe(true);
+  });
+});
+
+describe("a run the usage limit stopped", () => {
+  // Codex's limit in its own words, typed by the server: the run reads
+  // "stopped at the usage limit", with the pause under it — never a break.
+  it("pauses, whatever the driver's words", () => {
+    const list = rows({
+      entries: [
+        user("m0", 0),
+        tool("w1", "t1", 1),
+        tool("e1", "t1", 12, {
+          label: "Runtime error",
+          tone: "error",
+          detail: "Codex usage limit reached. Try again at 9:20 PM.",
+          turnEnd: "usage-limit",
+          command: undefined as never,
+          toolCallId: undefined as never,
+          toolLifecycleStatus: undefined as never,
+          sourceActivityKind: "runtime.error",
+        }),
+      ],
+      settled: "t1",
+    });
+    expect(statusOf(list)).toMatchObject({ face: "paused" });
+    expect(statusOf(list)?.brokeOff).toBeUndefined();
+    expect(list.some((row) => row.kind === "pause")).toBe(true);
   });
 });
 
