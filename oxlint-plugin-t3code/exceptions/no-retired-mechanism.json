@@ -1636,7 +1636,7 @@
     "kind": "retired-token",
     "fingerprint": "settlePress(",
     "owner": "data-layer rewrite: operations",
-    "reason": "a press is held and renewed on a timer in the app; the operation's stream settles it",
+    "reason": "kept (D42, orchestrator 2026-10-06): a press's hold at HQ is a lease and its renewal liveness — HQ lets a hold go once it is not renewed; no outcome is decided by it, and the press's writes are the account's operations",
     "expires": "never"
   },
   {
@@ -1644,7 +1644,7 @@
     "kind": "retired-token",
     "fingerprint": "settlePress(",
     "owner": "data-layer rewrite: operations",
-    "reason": "a press is held and renewed on a timer in the app; the operation's stream settles it",
+    "reason": "kept (D42, orchestrator 2026-10-06): a press's hold at HQ is a lease and its renewal liveness — HQ lets a hold go once it is not renewed; no outcome is decided by it, and the press's writes are the account's operations",
     "expires": "never"
   },
   {
@@ -2452,7 +2452,7 @@
     "kind": "retired-token",
     "fingerprint": "pressHold(",
     "owner": "data-layer rewrite: operations",
-    "reason": "a press is held and renewed on a timer in the app; the operation's stream settles it",
+    "reason": "kept (D42, orchestrator 2026-10-06): a press's hold at HQ is a lease and its renewal liveness — HQ lets a hold go once it is not renewed; no outcome is decided by it, and the press's writes are the account's operations",
     "expires": "never"
   },
   {
@@ -2460,7 +2460,7 @@
     "kind": "retired-token",
     "fingerprint": "pressHold(",
     "owner": "data-layer rewrite: operations",
-    "reason": "a press is held and renewed on a timer in the app; the operation's stream settles it",
+    "reason": "kept (D42, orchestrator 2026-10-06): a press's hold at HQ is a lease and its renewal liveness — HQ lets a hold go once it is not renewed; no outcome is decided by it, and the press's writes are the account's operations",
     "expires": "never"
   },
   {
@@ -2468,7 +2468,7 @@
     "kind": "retired-token",
     "fingerprint": "setInterval(renewNow, PRESS_RENEW_MS)",
     "owner": "data-layer rewrite: operations",
-    "reason": "a press is held and renewed on a timer in the app; the operation's stream settles it",
+    "reason": "kept (D42, orchestrator 2026-10-06): a press's hold at HQ is a lease and its renewal liveness — HQ lets a hold go once it is not renewed; no outcome is decided by it, and the press's writes are the account's operations",
     "expires": "never"
   },
   {
@@ -2476,7 +2476,7 @@
     "kind": "retired-token",
     "fingerprint": "settlePress(",
     "owner": "data-layer rewrite: operations",
-    "reason": "a press is held and renewed on a timer in the app; the operation's stream settles it",
+    "reason": "kept (D42, orchestrator 2026-10-06): a press's hold at HQ is a lease and its renewal liveness — HQ lets a hold go once it is not renewed; no outcome is decided by it, and the press's writes are the account's operations",
     "expires": "never"
   },
   {
@@ -2484,7 +2484,7 @@
     "kind": "retired-token",
     "fingerprint": "settlePress(",
     "owner": "data-layer rewrite: operations",
-    "reason": "a press is held and renewed on a timer in the app; the operation's stream settles it",
+    "reason": "kept (D42, orchestrator 2026-10-06): a press's hold at HQ is a lease and its renewal liveness — HQ lets a hold go once it is not renewed; no outcome is decided by it, and the press's writes are the account's operations",
     "expires": "never"
   },
   {
@@ -2492,7 +2492,7 @@
     "kind": "retired-token",
     "fingerprint": "settlePress(",
     "owner": "data-layer rewrite: operations",
-    "reason": "a press is held and renewed on a timer in the app; the operation's stream settles it",
+    "reason": "kept (D42, orchestrator 2026-10-06): a press's hold at HQ is a lease and its renewal liveness — HQ lets a hold go once it is not renewed; no outcome is decided by it, and the press's writes are the account's operations",
     "expires": "never"
   },
   {
@@ -2500,7 +2500,7 @@
     "kind": "retired-token",
     "fingerprint": "settlePress(",
     "owner": "data-layer rewrite: operations",
-    "reason": "a press is held and renewed on a timer in the app; the operation's stream settles it",
+    "reason": "kept (D42, orchestrator 2026-10-06): a press's hold at HQ is a lease and its renewal liveness — HQ lets a hold go once it is not renewed; no outcome is decided by it, and the press's writes are the account's operations",
     "expires": "never"
   },
   {
@@ -2508,7 +2508,7 @@
     "kind": "retired-token",
     "fingerprint": "settlePress(",
     "owner": "data-layer rewrite: operations",
-    "reason": "a press is held and renewed on a timer in the app; the operation's stream settles it",
+    "reason": "kept (D42, orchestrator 2026-10-06): a press's hold at HQ is a lease and its renewal liveness — HQ lets a hold go once it is not renewed; no outcome is decided by it, and the press's writes are the account's operations",
     "expires": "never"
   },
   {
@@ -2516,7 +2516,7 @@
     "kind": "retired-token",
     "fingerprint": "settlePress(",
     "owner": "data-layer rewrite: operations",
-    "reason": "a press is held and renewed on a timer in the app; the operation's stream settles it",
+    "reason": "kept (D42, orchestrator 2026-10-06): a press's hold at HQ is a lease and its renewal liveness — HQ lets a hold go once it is not renewed; no outcome is decided by it, and the press's writes are the account's operations",
     "expires": "never"
   },
   {
@@ -2524,7 +2524,7 @@
     "kind": "retired-token",
     "fingerprint": "settlePress(",
     "owner": "data-layer rewrite: operations",
-    "reason": "a press is held and renewed on a timer in the app; the operation's stream settles it",
+    "reason": "kept (D42, orchestrator 2026-10-06): a press's hold at HQ is a lease and its renewal liveness — HQ lets a hold go once it is not renewed; no outcome is decided by it, and the press's writes are the account's operations",
     "expires": "never"
   },
   {
@@ -2532,7 +2532,7 @@
     "kind": "retired-token",
     "fingerprint": "settlePress(",
     "owner": "data-layer rewrite: operations",
-    "reason": "a press is held and renewed on a timer in the app; the operation's stream settles it",
+    "reason": "kept (D42, orchestrator 2026-10-06): a press's hold at HQ is a lease and its renewal liveness — HQ lets a hold go once it is not renewed; no outcome is decided by it, and the press's writes are the account's operations",
     "expires": "never"
   },
   {
@@ -2540,7 +2540,7 @@
     "kind": "retired-token",
     "fingerprint": "settlePress(",
     "owner": "data-layer rewrite: operations",
-    "reason": "a press is held and renewed on a timer in the app; the operation's stream settles it",
+    "reason": "kept (D42, orchestrator 2026-10-06): a press's hold at HQ is a lease and its renewal liveness — HQ lets a hold go once it is not renewed; no outcome is decided by it, and the press's writes are the account's operations",
     "expires": "never"
   },
   {
@@ -2548,7 +2548,7 @@
     "kind": "retired-token",
     "fingerprint": "settlePress(",
     "owner": "data-layer rewrite: operations",
-    "reason": "a press is held and renewed on a timer in the app; the operation's stream settles it",
+    "reason": "kept (D42, orchestrator 2026-10-06): a press's hold at HQ is a lease and its renewal liveness — HQ lets a hold go once it is not renewed; no outcome is decided by it, and the press's writes are the account's operations",
     "expires": "never"
   },
   {
@@ -2556,7 +2556,7 @@
     "kind": "retired-token",
     "fingerprint": "settlePress(",
     "owner": "data-layer rewrite: operations",
-    "reason": "a press is held and renewed on a timer in the app; the operation's stream settles it",
+    "reason": "kept (D42, orchestrator 2026-10-06): a press's hold at HQ is a lease and its renewal liveness — HQ lets a hold go once it is not renewed; no outcome is decided by it, and the press's writes are the account's operations",
     "expires": "never"
   },
   {
@@ -2868,7 +2868,7 @@
     "kind": "retired-token",
     "fingerprint": "pressHold(",
     "owner": "data-layer rewrite: operations",
-    "reason": "a press is held and renewed on a timer in the app; the operation's stream settles it",
+    "reason": "kept (D42, orchestrator 2026-10-06): a press's hold at HQ is a lease and its renewal liveness — HQ lets a hold go once it is not renewed; no outcome is decided by it, and the press's writes are the account's operations",
     "expires": "never"
   },
   {
