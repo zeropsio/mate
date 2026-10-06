@@ -43,6 +43,37 @@ it("rejects malformed attention without losing the prior value", () => {
 });
 
 it.each([
+  { name: "first report", heldEpoch: null, nextEpoch: undefined, revision: 9, kept: false },
+  {
+    name: "newer uncounted revision",
+    heldEpoch: 0,
+    nextEpoch: undefined,
+    revision: 9,
+    kept: false,
+  },
+  { name: "older uncounted revision", heldEpoch: 0, nextEpoch: undefined, revision: 1, kept: true },
+  { name: "uncounted after counted", heldEpoch: 1, nextEpoch: undefined, revision: 9, kept: true },
+  { name: "counted after uncounted", heldEpoch: 0, nextEpoch: 1, revision: 0, kept: false },
+])("orders a missing epoch as zero: $name", ({ heldEpoch, nextEpoch, revision, kept }) => {
+  const held =
+    heldEpoch === null ? null : decode({ ...value, source: { ...value.source, epoch: heldEpoch } });
+  const incoming = {
+    ...value,
+    source: {
+      environmentId: "env",
+      incarnation: "boot",
+      revision,
+      ...(nextEpoch === undefined ? {} : { epoch: nextEpoch }),
+    },
+    working: 1,
+  };
+  const accepted = acceptAttention(held, incoming, true);
+  expect(accepted).toEqual(
+    kept ? held : { ...incoming, source: { ...incoming.source, epoch: nextEpoch ?? 0 } },
+  );
+});
+
+it.each([
   { ...value, source: { ...value.source, environmentId: "", revision: 3 } },
   { ...value, source: { ...value.source, incarnation: "  ", revision: 3 } },
   {

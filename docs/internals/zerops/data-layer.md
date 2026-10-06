@@ -174,7 +174,9 @@ feed the same family and reducer.
 
 Within one environment, the persisted start epoch increases on each server start. A higher epoch
 wins over an earlier run regardless of arrival path or live/stored status. Within the same epoch
-and incarnation, the higher revision wins; a conflicting incarnation is not ordered by its string
+and incarnation, the higher revision wins. An absent epoch decodes to zero, below every counted
+start, so a container awaiting its Mate update still participates in the same ordering. A
+conflicting incarnation is not ordered by its string
 or receipt time. Distinct environment identities have no comparable epoch; a live source is needed
 to establish replacement. HQ's scope cursor orders delivery, not Mate's source value.
 

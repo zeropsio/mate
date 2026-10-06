@@ -18,12 +18,12 @@
  * @module zeropsAttention
  */
 import * as Schema from "effect/Schema";
+import * as Effect from "effect/Effect";
 
 import {
   EnvironmentId,
   IsoDateTime,
   NonNegativeInt,
-  PositiveInt,
   ThreadId,
   TrimmedNonEmptyString,
   TurnId,
@@ -36,9 +36,10 @@ export const MateAttentionSource = Schema.Struct({
   environmentId: EnvironmentId,
   /**
    * The Mate's start count inside its environment, saved beside the environment id and raised by
-   * one at every start: a higher epoch is a later run, whatever reached a reader first.
+   * one at every start: a higher epoch is a later run, whatever reached a reader first. A Mate
+   * that has not counted its starts yet supplies no epoch and decodes to the lowest, zero.
    */
-  epoch: PositiveInt,
+  epoch: NonNegativeInt.pipe(Schema.withDecodingDefaultKey(Effect.succeed(0))),
   /** One run of the Mate's server: revisions order values only inside the same incarnation. */
   incarnation: TrimmedNonEmptyString,
   revision: NonNegativeInt,

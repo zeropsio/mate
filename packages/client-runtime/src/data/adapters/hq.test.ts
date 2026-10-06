@@ -398,7 +398,7 @@ describe("asking HQ on the open socket", () => {
 describe("a Mate's attention, relayed", () => {
   const ATTENTION = { kind: "attention", projectId: "ada" } as const;
   const presence = { online: true, since: "2026-10-06T00:00:00Z", overview: "live" } as const;
-  const relayed = (value: MateAttention | null, state: "live" | "stored") => ({
+  const relayed = (value: unknown, state: "live" | "stored") => ({
     presence,
     overview: null,
     attention: value,
@@ -407,7 +407,7 @@ describe("a Mate's attention, relayed", () => {
   const relay = (
     type: HqScopeDelivery["type"],
     revision: number,
-    value: MateAttention | null,
+    value: unknown,
     state: "live" | "stored" = "live",
   ): HqStreamMessage => ({
     type,
@@ -442,6 +442,63 @@ describe("a Mate's attention, relayed", () => {
       ],
     });
   const held = (store: AccountStore) => factOf(store.state(), "mateAttention", "ada");
+
+  it.effect.each([
+    {
+      name: "baseline",
+      firstEpoch: undefined,
+      nextEpoch: undefined,
+      firstRevision: 1,
+      nextRevision: 2,
+      epoch: 0,
+      revision: 2,
+    },
+    {
+      name: "uncounted then counted",
+      firstEpoch: undefined,
+      nextEpoch: 1,
+      firstRevision: 9,
+      nextRevision: 0,
+      epoch: 1,
+      revision: 0,
+    },
+    {
+      name: "counted then uncounted",
+      firstEpoch: 1,
+      nextEpoch: undefined,
+      firstRevision: 0,
+      nextRevision: 9,
+      epoch: 1,
+      revision: 0,
+    },
+  ])(
+    "decodes missing epochs into the reducer as zero: $name",
+    ({ firstEpoch, nextEpoch, firstRevision, nextRevision, epoch, revision }) =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const fixture = hqFixtureWire();
+        const { fiber } = yield* live(store, fixture);
+        const raw = (epoch: number | undefined, revision: number) => ({
+          ...attention("m1", revision),
+          source: {
+            environmentId: "env",
+            incarnation: "m1",
+            revision,
+            ...(epoch === undefined ? {} : { epoch }),
+          },
+        });
+        yield* fixture.send(relay("scope-reset", 1, raw(firstEpoch, firstRevision)));
+        yield* settle;
+        expect(held(store)?.revision).toMatchObject({ epoch: firstEpoch ?? 0 });
+        yield* fixture.send(relay("scope-values", 2, raw(nextEpoch, nextRevision)));
+        yield* settle;
+        expect(held(store)).toMatchObject({
+          content: { value: { source: { epoch, revision } } },
+          revision: { kind: "mate-attention", epoch, revision },
+        });
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
 
   it.effect("holds the attention HQ relays by the Mate's own revision, beside HQ's record", () =>
     Effect.gen(function* () {

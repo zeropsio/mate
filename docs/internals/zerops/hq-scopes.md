@@ -191,7 +191,8 @@ Today's overview frames continue to ingest. New Mate frames use
 `MateLinkUp` attention frames, with the canonical `MateAttention` from
 `packages/contracts/src/zeropsAttention.ts` (also re-exported as `HqAttentionValue`). Ingest orders by source:
 inside one environment a higher epoch (the Mate's start count, saved beside its environment id)
-always wins, from whichever link brings it, and a lower one never does; an equal epoch orders by
+always wins, from whichever link brings it, and a lower one never does. An absent epoch decodes
+to zero, the lowest, for containers whose Mate has not counted its starts yet; an equal epoch orders by
 incarnation and revision, from the link HQ hears. HQ hears a Mate's newest link that no later run
 outranks: once a later epoch is held, a link of an earlier run — still open, or reconnected after a
 partition — is passed by for attention and overview alike. Between two environments there is no

@@ -1,4 +1,5 @@
-import type { MateAttention } from "@t3tools/contracts";
+import { MateAttention } from "@t3tools/contracts";
+import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 
 import { attention } from "../__fixtures__/mateAttention.ts";
@@ -14,6 +15,7 @@ import { matesAttention } from "./mateAttention.ts";
 const ORG = "org";
 const P = "ada";
 const hqRevision = (revision: number) => ({ kind: "hq", incarnation: "a1", revision }) as const;
+const decodeAttention = Schema.decodeSync(MateAttention);
 
 const apply = (state: AccountState, inputs: ReadonlyArray<AccountInput>) =>
   inputs.reduce((next, input) => reduceAccount(next, input).state, state);
@@ -151,6 +153,80 @@ const read = (inputs: ReadonlyArray<AccountInput>) =>
   })[P];
 
 describe("matesAttention", () => {
+  it.each([
+    {
+      name: "uncounted baseline",
+      firstEpoch: undefined,
+      nextEpoch: undefined,
+      firstRevision: 1,
+      nextRevision: 2,
+      expectedEpoch: 0,
+      expectedRevision: 2,
+    },
+    {
+      name: "counted replaces uncounted",
+      firstEpoch: undefined,
+      nextEpoch: 1,
+      firstRevision: 9,
+      nextRevision: 0,
+      expectedEpoch: 1,
+      expectedRevision: 0,
+    },
+    {
+      name: "uncounted cannot replace counted",
+      firstEpoch: 1,
+      nextEpoch: undefined,
+      firstRevision: 0,
+      nextRevision: 9,
+      expectedEpoch: 1,
+      expectedRevision: 0,
+    },
+    {
+      name: "explicit zero shares uncounted ordering",
+      firstEpoch: 0,
+      nextEpoch: undefined,
+      firstRevision: 1,
+      nextRevision: 2,
+      expectedEpoch: 0,
+      expectedRevision: 2,
+    },
+    {
+      name: "older uncounted revision is ignored",
+      firstEpoch: undefined,
+      nextEpoch: 0,
+      firstRevision: 2,
+      nextRevision: 1,
+      expectedEpoch: 0,
+      expectedRevision: 2,
+    },
+  ])(
+    "reduces and projects missing epochs as zero: $name",
+    ({ firstEpoch, nextEpoch, firstRevision, nextRevision, expectedEpoch, expectedRevision }) => {
+      const decoded = (epoch: number | undefined, revision: number) =>
+        decodeAttention({
+          ...attention("m1", revision),
+          source: {
+            environmentId: "env",
+            incarnation: "m1",
+            revision,
+            ...(epoch === undefined ? {} : { epoch }),
+          },
+        });
+      for (const firstPath of [direct, relay]) {
+        const next = direct(decoded(nextEpoch, nextRevision));
+        const inputs = [
+          ...firstPath(decoded(firstEpoch, firstRevision)),
+          ...(firstPath === direct ? next.slice(-1) : next),
+        ];
+        expect(read(inputs)?.attention?.source).toEqual({
+          environmentId: "env",
+          incarnation: "m1",
+          epoch: expectedEpoch,
+          revision: expectedRevision,
+        });
+      }
+    },
+  );
   it.each([
     {
       name: "nothing said of a Mate yet",
