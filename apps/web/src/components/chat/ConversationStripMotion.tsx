@@ -93,7 +93,7 @@ interface LineSeen {
   readonly still?: true;
 }
 
-const NOTHING_SEEN: ReadonlyMap<never, never> = new Map();
+const NOTHING_SEEN: ReadonlyMap<string, never> = new Map<string, never>();
 
 /** How long after a move set off something on the line may still be moving. */
 const MOVING_MS = TRAVEL_MS + 60;
