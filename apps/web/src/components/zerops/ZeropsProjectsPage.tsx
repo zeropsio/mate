@@ -1,4 +1,5 @@
 import { RestartMateWarning } from "~/zerops/RestartMateConfirmation";
+import { shownHqMateOwnersAtom } from "@t3tools/client-runtime/data";
 import { ZeropsThrowawayCleanup } from "./ZeropsThrowawayCleanup";
 import { captureAccountLifetime } from "~/zerops/accountLifetime";
 import { useZeropsUpgradeRestart, type UpgradeRecovery } from "~/zerops/useZeropsUpgradeRestart";
@@ -15,7 +16,7 @@ import * as DateTime from "effect/DateTime";
 import { useNavigate, useRouteContext, useSearch } from "@tanstack/react-router";
 import type { EnvironmentId } from "@t3tools/contracts";
 import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
-import { ZeropsServiceId, type OrganizationRef } from "@t3tools/client-runtime/zerops/data";
+import { type OrganizationRef } from "@t3tools/client-runtime/zerops/data";
 import type * as React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -27,7 +28,7 @@ import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../
 import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { environmentsWithSnapshotAtom } from "~/state/shell";
-import { hqPeopleAtom, hqPlacementsAtom, hqNavigationAtom } from "~/state/zerops";
+import { hqPlacementsAtom, hqNavigationAtom } from "~/state/zerops";
 import {
   PROJECT_ORDER_CHOICES,
   readProjectsOnScreen,
@@ -43,7 +44,6 @@ import {
 } from "@t3tools/client-runtime/zerops/candidates";
 import {
   mateIsViewers,
-  resolveMateOwnerPerson,
   resolveMateVisibility,
   type RoleMateVisibility,
 } from "@t3tools/client-runtime/zerops/mateAccess";
@@ -951,7 +951,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   const mateOffersOf = useMateOffers();
   const orgOffer = useOrgOffers();
   // Whose a Mate this person may see and not open is, named from HQ's people: no member list read.
-  const people = useAtomValue(hqPeopleAtom);
+  const owners = useAtomValue(shownHqMateOwnersAtom);
 
   /** A press of the organization on show: the page is not empty while one is on its way. */
   const activeBirths = presses.some((press) => press.organizationId === activeOrganization?.id);
@@ -1005,10 +1005,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     role?: ZeropsEnvironmentRole | undefined,
   ): ZeropsRowInput => {
     const visibility = visibilityOf(candidate);
-    const ownerName =
-      visibility === "listed"
-        ? resolveMateOwnerPerson({ project: candidate.project, people })?.name
-        : undefined;
+    const ownerName = visibility === "listed" ? owners[candidate.project.id]?.name : undefined;
     const waiting = candidate.group !== "connected" && waitedOn(candidate);
     const mateFlag = candidateMateFlags.get(candidate.key);
     return {

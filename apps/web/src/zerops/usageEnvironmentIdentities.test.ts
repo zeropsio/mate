@@ -2,7 +2,7 @@ import type { ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 import { EnvironmentId } from "@t3tools/contracts";
-import type { HqPeople } from "@t3tools/shared/hqMates";
+import type { MateOwnerPerson } from "@t3tools/client-runtime/zerops/mateAccess";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -15,11 +15,6 @@ const LENA = EnvironmentId.make("env-lena");
 const OTTO = EnvironmentId.make("env-otto");
 const FEN = EnvironmentId.make("env-fen");
 
-/** The people HQ names for the view: each by user id, with the member id an OWNER entry names. */
-const PEOPLE: HqPeople = {
-  "user-jan": { name: "Jan Novak", clientUserId: "member-jan" },
-  "user-eva": { name: "Eva Dvorak", clientUserId: "member-eva" },
-};
 // HQ keeps no picture: an owner the member list has none for wears their initials.
 const JAN_OWNER = { id: "user-jan", name: "Jan Novak", initials: "JN", avatarUrl: null };
 const EVA_OWNER = { id: "user-eva", name: "Eva Dvorak", initials: "ED", avatarUrl: null };
@@ -72,7 +67,7 @@ describe("usageEnvironmentIdentities", () => {
   const cases: ReadonlyArray<{
     readonly name: string;
     readonly candidates: ReadonlyArray<ZeropsCandidate>;
-    readonly people?: HqPeople;
+    readonly owners?: Readonly<Record<string, MateOwnerPerson>>;
     readonly members?: ReadonlyArray<ZeropsOrganizationMember>;
     readonly viewerUserId?: string | null;
     readonly registeredOrigins?: ReadonlyMap<string, EnvironmentId>;
@@ -111,7 +106,12 @@ describe("usageEnvironmentIdentities", () => {
           ownerMemberId: "member-eva",
         }),
       ],
-      people: PEOPLE,
+      owners: {
+        "titan-dev": { userId: "user-jan", name: "Jan Novak" },
+        "titan-otto": { userId: "user-eva", name: "Eva Dvorak" },
+        "docs-dev": { userId: "user-jan", name: "Jan Novak" },
+        "docs-fen": { userId: "user-eva", name: "Eva Dvorak" },
+      },
       viewerUserId: "user-eva",
       expected: [
         [
@@ -152,7 +152,12 @@ describe("usageEnvironmentIdentities", () => {
           ownerMemberId: "member-eva",
         }),
       ],
-      people: PEOPLE,
+      owners: {
+        "titan-dev": { userId: "user-jan", name: "Jan Novak" },
+        "titan-otto": { userId: "user-eva", name: "Eva Dvorak" },
+        "docs-dev": { userId: "user-jan", name: "Jan Novak" },
+        "docs-fen": { userId: "user-eva", name: "Eva Dvorak" },
+      },
       members: [
         {
           id: "member-jan",
@@ -219,7 +224,7 @@ describe("usageEnvironmentIdentities", () => {
     },
     {
       // In no project, so HQ records no name for it: it goes by its project's.
-      name: "an owner HQ does not name is nobody",
+      name: "an owner HQ has not named has no badge",
       candidates: [
         candidate({
           id: "gone-dev",
@@ -228,12 +233,17 @@ describe("usageEnvironmentIdentities", () => {
           ownerMemberId: "member-left",
         }),
       ],
-      people: PEOPLE,
+      owners: {
+        "titan-dev": { userId: "user-jan", name: "Jan Novak" },
+        "titan-otto": { userId: "user-eva", name: "Eva Dvorak" },
+        "docs-dev": { userId: "user-jan", name: "Jan Novak" },
+        "docs-fen": { userId: "user-eva", name: "Eva Dvorak" },
+      },
       viewerUserId: "user-jan",
       expected: [[LENA, { mateName: "gone-dev", projectName: null, owner: null }]],
     },
     {
-      name: "two people's Mates across two projects, an owner named by the agent's signer",
+      name: "two people's Mates across two projects, owners named by HQ",
       candidates: [
         candidate({
           id: "titan-dev",
@@ -259,7 +269,12 @@ describe("usageEnvironmentIdentities", () => {
           environmentId: FEN,
         }),
       ],
-      people: PEOPLE,
+      owners: {
+        "titan-dev": { userId: "user-jan", name: "Jan Novak" },
+        "titan-otto": { userId: "user-eva", name: "Eva Dvorak" },
+        "docs-dev": { userId: "user-jan", name: "Jan Novak" },
+        "docs-fen": { userId: "user-eva", name: "Eva Dvorak" },
+      },
       viewerUserId: "user-jan",
       expected: [
         [
@@ -287,7 +302,7 @@ describe("usageEnvironmentIdentities", () => {
       const identities = usageEnvironmentIdentities({
         candidates: entry.candidates,
         registeredOrigins: entry.registeredOrigins ?? NO_ORIGINS,
-        people: entry.people ?? null,
+        owners: entry.owners ?? {},
         members: entry.members ?? [],
         viewerUserId: entry.viewerUserId ?? null,
       });

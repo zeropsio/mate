@@ -31,6 +31,7 @@
  * *Change face…* writes the Mate's face to HQ, where every surface reads it from, where HQ's rule
  * lets them: its dialog open until HQ answers, a refusal said there.
  */
+import { shownHqMateOwnersAtom } from "@t3tools/client-runtime/data";
 import { useAtomValue } from "@effect/atom-react";
 import {
   assignCandidateMateTints,
@@ -53,7 +54,6 @@ import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { heldOf, type HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 import {
   mateIsViewers,
-  resolveMateOwnerPerson,
   resolveMateVerbs,
   resolveMateVisibility,
 } from "@t3tools/client-runtime/zerops/mateAccess";
@@ -100,7 +100,7 @@ import {
 import { currentAccountEnvironments } from "./accountEnvironments";
 import { useEnvironmentLinks } from "../routes/-environmentTargets";
 import { resolveThreadRouteTarget } from "../threadRoutes";
-import { hqPeopleAtom, hqPlacementsAtom, hqNavigationAtom } from "../state/zerops";
+import { hqPlacementsAtom, hqNavigationAtom } from "../state/zerops";
 import { invalidateZerops } from "./accountInvalidations";
 import {
   deletingMates,
@@ -288,7 +288,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   // Whether HQ's structure is known: only then does a Mate it places nowhere have no record.
   const hqPlacements = useAtomValue(hqPlacementsAtom);
   const hqStructure = useAtomValue(hqNavigationAtom);
-  const people = useAtomValue(hqPeopleAtom);
+  const owners = useAtomValue(shownHqMateOwnersAtom);
   const hqKnown = hqPlacements !== null && hqStructure.live;
   const presses = useMatePresses();
   // What this tab made: a registration it saw refused is finished at once (`registrationUnfinished`).
@@ -808,10 +808,10 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   /** Whose Mate it is, where that is a colleague: "Ada's Mate", as its row says it. */
   const colleagueOf = useCallback(
     (candidate: ZeropsCandidatePresentation): string | undefined => {
-      const owner = resolveMateOwnerPerson({ project: candidate.project, people });
+      const owner = owners[candidate.project.id];
       return owner === undefined || owner.userId === user?.id ? undefined : owner.name;
     },
-    [people, user?.id],
+    [owners, user?.id],
   );
 
   /**

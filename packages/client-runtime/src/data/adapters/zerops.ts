@@ -663,7 +663,10 @@ export function zeropsNavigationLink(options: {
           }
           if (inFlight.has(scope)) continue;
           // Our write landed while its last read was under way: it is read once more, now.
-          if (stream.phase === "live" && (written.delete(scope) || (renewed && observed.has(scope)))) {
+          if (
+            stream.phase === "live" &&
+            (written.delete(scope) || (renewed && observed.has(scope)))
+          ) {
             sampledAt.delete(scope);
             yield* signal(scope, { kind: "revalidate" });
             fresh.push(scope);
@@ -773,8 +776,13 @@ export function zeropsNavigationLink(options: {
     revalidate: (demand) => {
       const scope = detailScopeOf(orgId, demand);
       sampledAt.delete(scope);
-      const { phase } = streamOf(store.state(), scope);
-      if (phase === "connecting" || phase === "baselining") written.add(scope);
+      const { phase, mode } = streamOf(store.state(), scope);
+      if (
+        phase === "connecting" ||
+        phase === "baselining" ||
+        (phase === "live" && mode === "realtime")
+      )
+        written.add(scope);
       tellDetail(demand, { kind: "revalidate" });
     },
     retryDetail: (demand) => tellDetail(demand, { kind: "manual-retry" }),

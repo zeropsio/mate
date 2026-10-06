@@ -34,7 +34,7 @@ import { buttonsLabelled, press } from "./__fixtures__/testDom";
 import { invalidateZerops, onZeropsInvalidation } from "./accountInvalidations";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
 import { ZeropsDataProvider } from "./ZeropsDataProvider";
-import { inventoryProjectRefKey, useZeropsInventory, type Inventory } from "./inventoryContext";
+import { useZeropsInventory, type Inventory } from "./inventoryContext";
 import { projectsScope } from "@t3tools/client-runtime/data";
 import { mountRoster } from "@t3tools/client-runtime/zerops/testing";
 import { mountHqNavigation } from "./__fixtures__/hqNavigation";

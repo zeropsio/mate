@@ -561,7 +561,7 @@ describe("a demanded detail", () => {
             : answers(() => [])(request),
         );
         const { fiber, link } = yield* runLink(store, fixture);
-        link.readAgain(DEMAND);
+        link.revalidate(DEMAND);
         yield* settle;
         expect(historyReads(fixture)).toBe(0);
 
@@ -570,7 +570,7 @@ describe("a demanded detail", () => {
         yield* settle;
         expect(historyReads(fixture)).toBe(1);
 
-        link.readAgain(DEMAND);
+        link.revalidate(DEMAND);
         yield* settle;
         expect(historyReads(fixture)).toBe(2);
         expect(store.state().streams.get(history)?.phase).toBe("live");

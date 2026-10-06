@@ -22,7 +22,7 @@ export function holdStandingDemands(options: {
   readonly store: AccountStore;
   readonly demandDetail: (demand: DetailDemand) => () => void;
   /** Reads a held detail again after our own write to it. */
-  readonly readAgain: (demand: DetailDemand) => void;
+  readonly revalidate: (demand: DetailDemand) => void;
   /** The operation kinds; the account's registry unless a test brings its own. */
   readonly kinds?: ReadonlyArray<RegisteredOperationKind>;
 }): () => void {
@@ -65,7 +65,7 @@ export function holdStandingDemands(options: {
         for (const { family, id } of receipt.affected)
           for (const listing of familySpec(family).details ?? [])
             if (listing.member === true)
-              options.readAgain({ family, listing: listing.suffix, ownerId: id });
+              options.revalidate({ family, listing: listing.suffix, ownerId: id });
       }
       const stage = progress.derive(read, requestId).stage;
       if (stage === "done" || stage === "refused") continue;

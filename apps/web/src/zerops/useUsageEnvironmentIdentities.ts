@@ -5,6 +5,7 @@
  * signed in to Zerops; `owners` says whether that emptiness is final yet
  * (`usageOwnersStatus`).
  */
+import { shownHqMateOwnersAtom } from "@t3tools/client-runtime/data";
 import { useAtomValue } from "@effect/atom-react";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { useMemo } from "react";
@@ -36,6 +37,7 @@ export function useUsageEnvironmentIdentities(): {
   const { listing } = useZeropsCandidates();
   const environments = useAtomValue(zeropsEnvironmentsAtom);
   const people = useAtomValue(hqPeopleAtom);
+  const mateOwners = useAtomValue(shownHqMateOwnersAtom);
   const hqAnswered = useAtomValue(hqNavigationAtom).live;
   const peopleStatus: UsagePeopleStatus =
     !signedIn || session.activeOrganization === null
@@ -56,12 +58,12 @@ export function useUsageEnvironmentIdentities(): {
         ? usageEnvironmentIdentities({
             candidates: heldCandidates(listing).rows,
             registeredOrigins: registeredZeropsOrigins(environments),
-            people,
+            owners: mateOwners,
             members,
             viewerUserId,
           })
         : NONE,
-    [signedIn, listing, environments, people, members, viewerUserId],
+    [signedIn, listing, environments, mateOwners, members, viewerUserId],
   );
   const owners = usageOwnersStatus({
     session: session.status,

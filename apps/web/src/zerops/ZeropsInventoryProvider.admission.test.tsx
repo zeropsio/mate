@@ -216,115 +216,57 @@ describe("ZeropsInventoryProvider grants", () => {
     expect(tab.text()).toContain(`grants ${JSON.stringify([["p1", grants]])}`);
   });
 
-  // F12, F11 for the real Developer (e2e, 2026-10-03): NO_ACCESS in the organization, they are
-  // refused its project list and read it through `/project/search`, whose rows carry only their
-  // own grant; each project's own read names everyone's, so Cyd's row names them its OWNER. What
-  // they may do with its changes is HQ's to stream (`useChangeOffers`).
-  // Expected to fail until HQ person facts land (lane PERM): a Mate's owner comes from HQ, and a
-  // Developer reads no own row of a project its listing names their grant on.
-  it.fails("names the Developer, refused the organization's list, the owner of a project they own", async () => {
-    const developer: ZeropsUser = {
-      id: "user-dev",
-      email: "developer@example.test",
-      clientUserList: [{ id: "cu-dev", clientId: "org-1", roleCode: "NO_ACCESS" }],
+  it.each([
+    {
+      name: "names the Developer who owns a project from HQ",
+      role: "NO_ACCESS",
+      viewer: "user-dev",
+      handover: null,
+    },
+    {
+      name: "names the menu row's owner from HQ despite incomplete listing grants",
+      role: "OWNER",
+      viewer: "user-1",
+      handover: null,
+    },
+    {
+      name: "shows our hand-over's new owner when HQ publishes it",
+      role: "OWNER",
+      viewer: "user-1",
+      handover: "ours",
+    },
+    {
+      name: "shows another admin's hand-over when HQ publishes it",
+      role: "OWNER",
+      viewer: "user-1",
+      handover: "theirs",
+    },
+  ] as const)("$name", async ({ role, viewer, handover }) => {
+    const user: ZeropsUser = {
+      id: viewer,
+      email: "viewer@example.test",
+      clientUserList: [
+        { id: viewer === "user-dev" ? "cu-dev" : "cu-1", clientId: "org-1", roleCode: role },
+      ],
     };
-    const grants = [
-      { clientUserId: "cu-mate", roleCode: "BASIC_USER" },
-      { clientUserId: "cu-dev", roleCode: "OWNER" },
-    ];
     const harness = makeAccountHarness({
-      people: [{ user: developer, password: "secret" }],
-      projects: [{ ...CYD, userRoles: grants }],
-      signedIn: "user-dev",
+      people: [{ user, password: "secret" }],
+      projects: [
+        {
+          ...CYD,
+          userRoles: [{ clientUserId: handover === null ? "cu-dev" : "cu-1", roleCode: "OWNER" }],
+        },
+      ],
+      signedIn: viewer,
     });
-    const tab = await mountTab(harness, harness.browser.openTab(), {
-      page: async () => {
-        const { AccountProduct } = await import("./__fixtures__/accountProduct");
-        const { useContext } = await import("react");
-        const { useAtomValue } = await import("@effect/atom-react");
-        const { heldCandidates } = await import("@t3tools/client-runtime/zerops/projections");
-        const { mateRowsAtom } = await import("../state/zerops");
-        const { InventoryContext } = await import("./inventoryContext");
-        const { useMatesInventory } = await import("./useMatesInventory");
-        function Developer() {
-          // The Mate is drawn: its project's own row is read, which names everybody's grants.
-          useMatesInventory(["p1"]);
-          const inventory = useContext(InventoryContext);
-          const rows = heldCandidates(useAtomValue(mateRowsAtom)).rows;
-          if (inventory === null || inventory.isLoading) return "reading";
-          const owner = rows[0]?.project.userRoles?.find(({ roleCode }) => roleCode === "OWNER");
-          return `owner ${owner?.clientUserId ?? "none"}`;
-        }
-        return (
-          <AccountProduct datastream={harness.datastream} demandedProjects={["p1"]}>
-            <Developer />
-          </AccountProduct>
-        );
-      },
-    });
-    await settle();
-
-    expect(harness.rest.requests().map(({ route }) => route)).toEqual(
-      expect.arrayContaining(["POST /project/search", "GET /project/p1"]),
-    );
-    expect(tab.text()).toContain("owner cu-dev");
-  });
-
-  // F11 (e2e, 2026-10-03): after Hand over, a Mate's owner is its OWNER grant (#12), which the
-  // menu's rows read — never only whoever signed its agent in.
-  // Expected to fail until HQ person facts land (lane PERM): a Mate's owner comes from HQ, and an organization member reads no project's own row.
-  it.fails("carries them onto the menu's rows, where a Mate's owner is read", async () => {
-    const grants = [
-      { clientUserId: "cu-1", roleCode: "BASIC_USER" },
-      { clientUserId: "cu-dev", roleCode: "OWNER" },
-    ];
-    const harness = makeAccountHarness({
-      people: [{ user: person, password: "secret" }],
-      projects: [{ ...CYD, userRoles: grants }],
-      signedIn: "user-1",
-    });
+    let publishOwner: (userId: string) => void = () => {};
+    let handOver: () => Promise<{ readonly progress: unknown }> = async () => ({ progress: null });
     const tab = await mountTab(harness, harness.browser.openTab(), {
       page: async () => {
         const { AccountProduct } = await import("./__fixtures__/accountProduct");
         const { useAtomValue } = await import("@effect/atom-react");
-        const { heldCandidates } = await import("@t3tools/client-runtime/zerops/projections");
-        const { mateRowsAtom } = await import("../state/zerops");
-        const { useMatesInventory } = await import("./useMatesInventory");
-        function Rows() {
-          // The Mate is drawn: its project's own row is read, which names everybody's grants.
-          useMatesInventory(["p1"]);
-          const rows = heldCandidates(useAtomValue(mateRowsAtom)).rows;
-          return `rows ${JSON.stringify(rows.map(({ project }) => [project.id, project.userRoles ?? null]))}`;
-        }
-        return (
-          <AccountProduct datastream={harness.datastream} demandedProjects={["p1"]}>
-            <Rows />
-          </AccountProduct>
-        );
-      },
-    });
-    await settle();
-
-    expect(tab.text()).toContain(`rows ${JSON.stringify([["p1", grants]])}`);
-  });
-
-  // F11: Hand over writes the project's OWNER grant, which only the project's own row names: the
-  // operation's answer reads the drawn Mate's own row again, so its row shows the new owner.
-  // Expected to fail until HQ person facts land (lane PERM): a Mate's owner comes from HQ, and an organization member reads no project's own row.
-  it.fails("shows a hand over's new OWNER on the menu's row once the operation is answered", async () => {
-    const before = [{ clientUserId: "cu-1", roleCode: "OWNER" }];
-    const harness = makeAccountHarness({
-      people: [{ user: person, password: "secret" }],
-      projects: [{ ...CYD, userRoles: before }],
-      signedIn: "user-1",
-    });
-    let handOver: () => Promise<unknown> = async () => {};
-    const tab = await mountTab(harness, harness.browser.openTab(), {
-      page: async () => {
-        const { AccountProduct } = await import("./__fixtures__/accountProduct");
-        const { useAtomValue } = await import("@effect/atom-react");
-        const { heldCandidates } = await import("@t3tools/client-runtime/zerops/projections");
-        const { mateRowsAtom } = await import("../state/zerops");
+        const { shownHqMateOwnersAtom } = await import("@t3tools/client-runtime/data");
+        const { seedHqNavigation } = await import("@t3tools/client-runtime/data/fixtures");
         const { useMatesInventory } = await import("./useMatesInventory");
         const { useAccountOperations } = await import("./accountOperations");
         function Owner() {
@@ -337,67 +279,59 @@ describe("ZeropsInventoryProvider grants", () => {
               projectId: "p1",
               clientUserId: "cu-dev",
             });
-          const rows = heldCandidates(useAtomValue(mateRowsAtom)).rows;
-          const owner = rows[0]?.project.userRoles?.find(({ roleCode }) => roleCode === "OWNER");
-          return `owner ${owner?.clientUserId ?? "none"}`;
+          return `owner ${useAtomValue(shownHqMateOwnersAtom)["p1"]?.userId ?? "none"}`;
         }
         return (
-          <AccountProduct datastream={harness.datastream} demandedProjects={["p1"]}>
+          <AccountProduct
+            datastream={harness.datastream}
+            demandedProjects={["p1"]}
+            onStore={(store) => {
+              publishOwner = (ownerUserId) =>
+                seedHqNavigation(store, "org-1", {
+                  structure: {
+                    apps: [],
+                    ungrouped: [{ projectId: "p1", name: CYD.name, mate: { face: "" } }],
+                  },
+                  people: { "user-1": { name: "Ada" }, "user-dev": { name: "Dev" } },
+                  person: {
+                    role,
+                    mayWrite: true,
+                    mine: ownerUserId === viewer,
+                    ownerUserId,
+                    waitsOnViewer: false,
+                    unseen: null,
+                  },
+                });
+              publishOwner(viewer);
+            }}
+          >
             <Owner />
           </AccountProduct>
         );
       },
     });
     await settle();
-    expect(tab.text()).toContain("owner cu-1");
-
-    await tab.run(() => handOver());
-    await settle();
-    expect(tab.text()).toContain("owner cu-dev");
-  });
-
-  // Another admin hands the Mate over: no push brings a project's grants, so the access grant's
-  // renewal reads the drawn Mate's own row again, and its row shows the new owner.
-  // Expected to fail until HQ person facts land (lane PERM): a Mate's owner comes from HQ, and an organization member reads no project's own row.
-  it.fails("shows another admin's hand over on the menu's row once the grant renews", async () => {
-    vi.useFakeTimers({
-      toFake: ["Date", "performance", "setTimeout", "clearTimeout"],
-      shouldAdvanceTime: true,
-    });
-    const harness = makeAccountHarness({
-      people: [{ user: person, password: "secret" }],
-      projects: [{ ...CYD, userRoles: [{ clientUserId: "cu-1", roleCode: "OWNER" }] }],
-      signedIn: "user-1",
-    });
-    const tab = await mountTab(harness, harness.browser.openTab(), {
-      page: async () => {
-        const { AccountProduct } = await import("./__fixtures__/accountProduct");
-        const { useAtomValue } = await import("@effect/atom-react");
-        const { heldCandidates } = await import("@t3tools/client-runtime/zerops/projections");
-        const { mateRowsAtom } = await import("../state/zerops");
-        const { useMatesInventory } = await import("./useMatesInventory");
-        function Owner() {
-          useMatesInventory(["p1"]);
-          const rows = heldCandidates(useAtomValue(mateRowsAtom)).rows;
-          const owner = rows[0]?.project.userRoles?.find(({ roleCode }) => roleCode === "OWNER");
-          return `owner ${owner?.clientUserId ?? "none"}`;
-        }
-        return (
-          <AccountProduct datastream={harness.datastream} demandedProjects={["p1"]}>
-            <Owner />
-          </AccountProduct>
-        );
-      },
-    });
-    await settle();
-    expect(tab.text()).toContain("owner cu-1");
-
-    harness.rest.addProject({ ...CYD, userRoles: [{ clientUserId: "cu-dev", roleCode: "OWNER" }] });
-    await settle();
-    expect(tab.text()).toContain("owner cu-1");
-
-    await tab.run(() => vi.advanceTimersByTimeAsync(13 * 60_000));
-    await settle();
-    expect(tab.text()).toContain("owner cu-dev");
+    expect(tab.text()).toContain(`owner ${viewer}`);
+    const projectReads = () =>
+      harness.rest.requests().filter(({ route }) => route === "GET /project/p1").length;
+    expect(projectReads()).toBe(0);
+    if (handover !== null) {
+      if (handover === "ours") {
+        const receipt = await tab.run(() => handOver());
+        expect(receipt.progress).toMatchObject({ stage: "done", outcome: "succeeded" });
+      } else
+        harness.rest.addProject({
+          ...CYD,
+          userRoles: [{ clientUserId: "cu-dev", roleCode: "OWNER" }],
+        });
+      await settle();
+      // The transfer may read back its writes; showing HQ's owner adds no project read.
+      const afterWrite = projectReads();
+      // A write receipt or changed platform grants alone cannot invent HQ's owner decision.
+      expect(tab.text()).toContain(`owner ${viewer}`);
+      await tab.run(() => publishOwner("user-dev"));
+      expect(tab.text()).toContain("owner user-dev");
+      expect(projectReads()).toBe(afterWrite);
+    }
   });
 });

@@ -34,7 +34,6 @@ import {
   ZeropsServiceId,
   type AccountScope,
   type AdapterError,
-  type InterestLease,
   type ProjectRef,
   type PlatformObservation,
   type ReceiverEvent,

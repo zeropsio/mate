@@ -268,7 +268,7 @@ export function observeAccount(options: {
       stopStanding ??= holdStandingDemands({
         store: options.store,
         demandDetail: observation.demandDetail,
-        readAgain: (demand) => shown?.link.revalidate(demand),
+        revalidate: (demand) => shown?.link.revalidate(demand),
         ...(options.kinds === undefined ? {} : { kinds: options.kinds }),
       });
       const link = startZeropsNavigation({ ...options, orgId });
@@ -311,9 +311,12 @@ export function observeAccount(options: {
     renewHeld: () => {
       if (shown === null) return;
       for (const { demand } of holds)
-        if (familySpec(demand.family).details?.some(
-          ({ suffix, member }) => suffix === demand.listing && member === true,
-        ) === true) shown.link.renew(demand);
+        if (
+          familySpec(demand.family).details?.some(
+            ({ suffix, member }) => suffix === demand.listing && member === true,
+          ) === true
+        )
+          shown.link.renew(demand);
     },
     readDetail: (demand) =>
       new Promise((resolve) => {

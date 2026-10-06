@@ -90,7 +90,7 @@ describe("holdStandingDemands", () => {
         store,
         kinds,
         demandDetail: link.demandDetail,
-        readAgain: link.readAgain,
+        revalidate: link.revalidate,
       });
       const requestId = yield* makeOperations({
         store,
@@ -179,7 +179,7 @@ describe("holdStandingDemands", () => {
       const stop = holdStandingDemands({
         store,
         demandDetail: link.demandDetail,
-        readAgain: link.readAgain,
+        revalidate: link.revalidate,
       });
       const requestId = yield* makeOperations({
         store,

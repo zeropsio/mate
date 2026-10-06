@@ -80,26 +80,6 @@ describe("zeropsRegistrations", () => {
 });
 
 describe("makeDetailDemands", () => {
-  it("marks a held scope to be read again once, and asks nothing of one no screen holds", () => {
-    let heard = 0;
-    const demands = makeDetailDemands({ demanded: () => {} });
-    demands.onChange(() => (heard += 1));
-    demands.again("zerops:org:project:p1");
-    expect(heard).toBe(0);
-    expect(demands.takeAgain("zerops:org:project:p1")).toBe(false);
-
-    const release = demands.hold("zerops:org:project:p1");
-    heard = 0;
-    demands.again("zerops:org:project:p1");
-    expect(heard).toBe(1);
-    expect(demands.takeAgain("zerops:org:project:p1")).toBe(true);
-    expect(demands.takeAgain("zerops:org:project:p1")).toBe(false);
-
-    demands.again("zerops:org:project:p1");
-    release();
-    expect(demands.takeAgain("zerops:org:project:p1")).toBe(false);
-  });
-
   it("marks a held scope to be renewed once, and nothing no screen holds or let go", () => {
     const demands = makeDetailDemands({ demanded: () => {} });
     demands.renew("zerops:org:project:p1");
@@ -107,7 +87,6 @@ describe("makeDetailDemands", () => {
 
     const release = demands.hold("zerops:org:project:p1");
     demands.renew("zerops:org:project:p1");
-    expect(demands.takeAgain("zerops:org:project:p1")).toBe(false);
     expect(demands.takeRenewal("zerops:org:project:p1")).toBe(true);
     expect(demands.takeRenewal("zerops:org:project:p1")).toBe(false);
 

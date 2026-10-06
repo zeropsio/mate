@@ -5,7 +5,7 @@
  *
  * Every name is the one the left menu draws: the Mate by its project's name, the
  * project by the group header `buildZeropsGroupTree` derives, the owner by
- * `resolveMateOwnerPerson` over HQ's people, wearing the platform's picture off
+ * `hqMateOwners` from HQ's person facts, wearing the platform's picture off
  * the member list (`zeropsMateOwnerOf`). An environment no Mate lives in is
  * left out.
  */
@@ -17,12 +17,8 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
-import {
-  resolveMateOwnerPerson,
-  type MateOwnerPerson,
-} from "@t3tools/client-runtime/zerops/mateAccess";
+import { type MateOwnerPerson } from "@t3tools/client-runtime/zerops/mateAccess";
 import type { EnvironmentId } from "@t3tools/contracts";
-import type { HqPeople } from "@t3tools/shared/hqMates";
 
 import { groupNameUnread } from "~/components/zerops/ZeropsGroupTree.logic";
 
@@ -76,8 +72,8 @@ function usageOwner(
 export function usageEnvironmentIdentities(input: {
   readonly candidates: ReadonlyArray<ZeropsCandidate>;
   readonly registeredOrigins: ReadonlyMap<string, EnvironmentId>;
-  /** The people HQ names for the view (`hqPeopleAtom`); null while it names none. */
-  readonly people: HqPeople | null;
+  /** The owners named by the HQ owner projection, keyed by project. */
+  readonly owners: Readonly<Record<string, MateOwnerPerson>>;
   /** The organization's members, for each owner's picture; empty until read. */
   readonly members: ReadonlyArray<ZeropsOrganizationMember>;
   /** The signed-in Zerops user's id; null when nobody is. */
@@ -92,11 +88,7 @@ export function usageEnvironmentIdentities(input: {
     identities.set(environmentId, {
       mateName: projectNameInApp(candidate.project),
       projectName: projectNames.get(candidate.project.id) ?? null,
-      owner: usageOwner(
-        resolveMateOwnerPerson({ project: candidate.project, people: input.people }),
-        input.viewerUserId,
-        input.members,
-      ),
+      owner: usageOwner(input.owners[candidate.project.id], input.viewerUserId, input.members),
     });
   }
   return identities;
