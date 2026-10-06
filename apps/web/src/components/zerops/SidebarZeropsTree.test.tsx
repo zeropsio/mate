@@ -4142,7 +4142,7 @@ describe("a Mate on its way off Zerops", () => {
     status: null,
     face: "idle",
     subject: "Speed up the photo gallery",
-    at: "2026-09-29T08:00:00.000Z",
+    at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
     snippet: "Thumbnails load lazily now.",
     unread: false,
     pausedUntil: undefined,
