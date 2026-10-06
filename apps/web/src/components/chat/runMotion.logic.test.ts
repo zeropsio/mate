@@ -6,6 +6,7 @@ import {
   ROOM_TAU_MS,
   SETTLED_PX,
   approach,
+  glideStep,
   keepsFoot,
   LONG_GONE_MS,
   movesAsPerson,
@@ -276,5 +277,32 @@ describe("spendStep", () => {
   it("lets a frame long gone stand at its target", () => {
     const budget = { at: -1, grow: 0, shrink: 0 };
     expect(spendStep(budget, 1000, LONG_GONE_MS, 400)).toBe(400);
+  });
+});
+
+// A glide to the foot chased a foot the history's ease kept moving, and hid
+// up to 0.37 of the growth, about 22 px, for 200 ms (the p43 verification):
+// the foot's own move is taken at once, and only the glide's way eases.
+describe("glideStep", () => {
+  it.each([
+    { what: "the foot stands still", at: 100, lastFoot: 300, foot: 300 },
+    { what: "the foot moves on 20 px as a height eases", at: 100, lastFoot: 300, foot: 320 },
+    { what: "the foot moves on 60 px", at: 250, lastFoot: 300, foot: 360 },
+    { what: "the foot comes back 10 px", at: 100, lastFoot: 300, foot: 290 },
+  ])("$what: what is left is the glide's own way, eased", ({ at, lastFoot, foot }) => {
+    const next = glideStep({ at, lastFoot, foot, dtMs: FRAME_MS });
+    // As if the foot had stood still: its move never widens the gap.
+    expect(foot - next).toBeCloseTo(lastFoot - approach(at, lastFoot, FRAME_MS, FOLLOW_TAU_MS), 6);
+  });
+
+  it("lands on the foot", () => {
+    let at = 0;
+    let foot = 200;
+    for (let frame = 0; frame < 40; frame += 1) {
+      const lastFoot = foot;
+      foot += frame < 10 ? 6 : 0;
+      at = glideStep({ at, lastFoot, foot, dtMs: FRAME_MS });
+    }
+    expect(at).toBe(foot);
   });
 });

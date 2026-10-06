@@ -83,6 +83,27 @@ export function spendStep(budget: EaseBudget, now: number, dtMs: number, step: n
   return -taken;
 }
 
+/**
+ * Where a glide to a run's foot stands a frame `dtMs` on: the foot's own
+ * move since its last frame (`lastFoot` to `foot`, a height easing as it
+ * glides) is taken at once, and only what was left of the glide's way eases
+ * — chasing the moving foot hid up to 0.37 of the growth, about 22 px, for
+ * 200 ms (the p43 verification).
+ */
+export function glideStep({
+  at,
+  lastFoot,
+  foot,
+  dtMs,
+}: {
+  readonly at: number;
+  readonly lastFoot: number;
+  readonly foot: number;
+  readonly dtMs: number;
+}): number {
+  return approach(at + (foot - lastFoot), foot, dtMs, FOLLOW_TAU_MS);
+}
+
 /** How long after the person's input a move of a run's scroll is still theirs. */
 export const PERSON_INPUT_MS = 500;
 

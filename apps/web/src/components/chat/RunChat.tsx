@@ -141,9 +141,9 @@ import { useRunEffortWords } from "./runResultFacts";
 import { foldWork } from "./foldWork";
 import {
   type EaseBudget,
-  FOLLOW_TAU_MS,
   ROOM_TAU_MS,
   approach,
+  glideStep,
   keepsFoot,
   movesAsPerson,
 } from "./runMotion.logic";
@@ -4285,7 +4285,7 @@ function RunScroll({
       Math.max(0, footTop(position) - Math.max(0, roomRef.current?.pending() ?? 0));
     // The glide to the foot, while one runs: where it stands (the browser
     // rounds what it is given), and the frame it waits for.
-    const gliding = { frame: 0, at: 0, last: 0 };
+    const gliding = { frame: 0, at: 0, last: 0, foot: 0 };
     /**
      * Glides it to its foot on the room's curve, retargeted each frame as the
      * foot moves on; a move of the person's up stops it (`followAfter`).
@@ -4301,6 +4301,7 @@ function RunScroll({
       }
       gliding.at = element.scrollTop;
       gliding.last = 0;
+      gliding.foot = footOf(positionOf(element));
       const tick = (now: number) => {
         gliding.frame = 0;
         const element = scrollRef.current;
@@ -4308,12 +4309,15 @@ function RunScroll({
         // Moved since by something else: it glides on from there.
         if (Math.abs(element.scrollTop - gliding.at) > 2) gliding.at = element.scrollTop;
         const target = footOf(positionOf(element));
-        gliding.at = approach(
-          gliding.at,
-          target,
-          gliding.last === 0 ? 1000 / 60 : now - gliding.last,
-          FOLLOW_TAU_MS,
-        );
+        // The foot's own move since — a height easing as it glides — is
+        // taken at once; only the glide's way eases (`glideStep`).
+        gliding.at = glideStep({
+          at: gliding.at,
+          lastFoot: gliding.foot,
+          foot: target,
+          dtMs: gliding.last === 0 ? 1000 / 60 : now - gliding.last,
+        });
+        gliding.foot = target;
         gliding.last = now;
         putAt(element, gliding.at);
         markEdges(element);
