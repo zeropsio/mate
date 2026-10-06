@@ -21,14 +21,18 @@ export const makeScopeJournal = (
   const history: HqScopeDelivery[] = [];
   return {
     keys: () => [...values.keys()],
-    commit: (updates: ReadonlyArray<HqValue>, removed: ReadonlyArray<HqRemoval> = []) => {
+    commit: (
+      updates: ReadonlyArray<HqValue>,
+      removed: ReadonlyArray<HqRemoval> = [],
+      baseline = false,
+    ) => {
       const moved = updates.filter(
         (entry) => JSON.stringify(values.get(entry.key)?.value) !== JSON.stringify(entry.value),
       );
       const gone = removed.filter(
         (entry) => values.has(entry.key) || removals.get(entry.key)?.reason !== entry.reason,
       );
-      if (moved.length === 0 && gone.length === 0) return undefined;
+      if (moved.length === 0 && gone.length === 0 && !baseline) return undefined;
       for (const entry of moved) {
         values.set(entry.key, entry);
         removals.delete(entry.key);
@@ -37,7 +41,7 @@ export const makeScopeJournal = (
         values.delete(entry.key);
         removals.set(entry.key, entry);
       }
-      const rotated = removals.size > removalRetention;
+      const rotated = baseline || removals.size > removalRetention;
       if (rotated) {
         while (removals.size > removalRetention) removals.delete(removals.keys().next().value!);
         generation += 1;

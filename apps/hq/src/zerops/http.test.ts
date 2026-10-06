@@ -19,7 +19,11 @@ const MEMBERS = {
       roleCode: "READ_ONLY",
       status: "ACTIVE",
       canCreateProjects: false,
-      user: { fullName: "mate-hq-org:P1", email: "token-abc@zerops.io" },
+      user: {
+        fullName: "mate-hq-org:P1",
+        avatarUrl: "https://avatar.test/member",
+        email: "token-abc@zerops.io",
+      },
     },
   ],
 };
@@ -90,6 +94,7 @@ describe("makeZeropsApiHttp", () => {
           userId: "T1",
           clientUserId: "C1",
           canCreateProjects: false,
+          avatarUrl: "https://avatar.test/member",
         },
       ]);
       assert.strictEqual(api.requests(), 1);

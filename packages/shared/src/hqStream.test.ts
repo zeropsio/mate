@@ -8,6 +8,10 @@ import {
   HqNavigationStatus,
   HqNavigationApp,
   HqNavigationPress,
+  HqPersonFacts,
+  HqNavigationPerson,
+  HqHandoverCandidatesMessage,
+  HqHandoverCandidatesError,
 } from "./hqStream.ts";
 
 it.each([
@@ -121,4 +125,36 @@ it("navigation preserves production release standing and deploy evidence", () =>
     importProcessId: "import",
   };
   expect(readPress(press)).toEqual(press);
+});
+
+const readFacts = Schema.decodeUnknownSync(HqPersonFacts);
+const readPerson = Schema.decodeUnknownSync(HqNavigationPerson);
+const readCandidates = Schema.decodeUnknownSync(HqHandoverCandidatesMessage);
+const readCandidatesError = Schema.decodeUnknownSync(HqHandoverCandidatesError);
+it("defines person ownership separately from who the Mate waits on, and correlated candidates", () => {
+  const facts = {
+    role: "OWNER",
+    mayWrite: true,
+    mine: true,
+    ownerUserId: "owner",
+    waitsOnViewer: false,
+    unseen: 0,
+  };
+  expect(readFacts(facts)).toEqual(facts);
+  const person = { name: "Ada", clientUserId: "client-user", avatarUrl: null };
+  expect(readPerson(person)).toEqual(person);
+  const request = { type: "handover-candidates", requestId: "request", projectId: "project" };
+  expect(readRequest(request)).toEqual(request);
+  const reply = { ...request, candidates: [{ ...person, userId: "ada" }] };
+  expect(readCandidates(reply)).toEqual(reply);
+  for (const disposition of ["refused", "transient"]) {
+    const failure = {
+      ...request,
+      type: "handover-candidates-error",
+      code: "unavailable",
+      reason: null,
+      disposition,
+    };
+    expect(readCandidatesError(failure)).toEqual(failure);
+  }
 });

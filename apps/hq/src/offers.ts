@@ -77,8 +77,46 @@ const CHANGE_VERBS = [
   "redeploy",
 ] as const;
 
-export type AppVerb = (typeof CHANGE_VERBS)[number] | "release";
+export type AppVerb = (typeof CHANGE_VERBS)[number] | "release" | "add_stage" | "add_production";
 
+/** The create flow's prospective project is owned by its creator; this is never write evidence. */
+const newEnvironmentOffer = (
+  userId: string,
+  projects: ReadonlyArray<AppProjectRow>,
+  facts: Facts,
+  tier: "stage" | "production",
+): Decision => {
+  const member = facts.members.find(
+    (member) => member.userId === userId && member.status === "ACTIVE",
+  );
+  const writer = offer(userId, "create_app", null, facts);
+  if (member === undefined) return writer;
+  if (!writer.allow && !member.canCreateProjects) return writer;
+  const slotTaken = projects.some(
+    (row) =>
+      (row.kind === tier || (tier === "stage" && row.kind === "devstage")) &&
+      facts.projects.some((project) => project.id === row.project_id),
+  );
+  const decision = offer(
+    userId,
+    "attach",
+    {
+      projectId: "",
+      held: "none",
+      to: tier,
+      appProjectIds: appTarget(projects).projectIds,
+      slotTaken,
+    },
+    {
+      ...facts,
+      projects: [
+        ...facts.projects,
+        { id: "", userRoles: [{ clientUserId: member.clientUserId, roleCode: "OWNER" }] },
+      ],
+    },
+  );
+  return decision.allow && slotTaken ? { allow: false, reason: "slot_taken" } : decision;
+};
 /** What the person may do with an application of `projects`. */
 export const appOffers = (
   userId: string,
@@ -89,6 +127,8 @@ export const appOffers = (
     CHANGE_VERBS.map((verb) => [verb, offer(userId, verb, appTarget(projects), facts)]),
   ) as HqOffersOf<(typeof CHANGE_VERBS)[number]>),
   release: offer(userId, "release", releaseTarget(projects), facts),
+  add_stage: newEnvironmentOffer(userId, projects, facts, "stage"),
+  add_production: newEnvironmentOffer(userId, projects, facts, "production"),
 });
 
 /** What the person may do with the environment of `projectId`. */

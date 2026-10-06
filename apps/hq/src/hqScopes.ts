@@ -4,6 +4,7 @@ import {
   HQ_ZEROPS_REFUSED,
   HqNavigationApp,
   HqNavigationProject,
+  HqAttentionValue,
   hqScopeKey,
   type HqScope,
   type HqScopeFailure,
@@ -13,7 +14,7 @@ import {
   type HqValue,
   type HqRemoval,
 } from "@t3tools/shared/hqStream";
-import { asOrgRole } from "@t3tools/shared/zeropsRoles";
+import { asOrgRole, roleAtLeast } from "@t3tools/shared/zeropsRoles";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -119,6 +120,9 @@ const refusalDisposition = (code: string) =>
     ? ("refused" as const)
     : ("transient" as const);
 const json = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
+const readAttentionSource = Schema.decodeUnknownOption(
+  Schema.Struct({ attention: Schema.NullOr(HqAttentionValue) }),
+);
 
 export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
   Layer.effect(
@@ -151,6 +155,7 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
         one: Semaphore.Semaphore;
         generation: number;
         sourceVersion: number;
+        attentionSource?: string;
         refreshing: boolean;
         subscribing: number;
         failure?: Extract<HqStreamMessage, { type: "scope-error" }>;
@@ -338,6 +343,26 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
                 ),
               { discard: true, concurrency: "unbounded" },
             );
+            const listed = [...view.ungrouped, ...view.apps.flatMap((app) => app.projects)];
+            const signersFor = (projectId: string) => {
+              if (!observable.some((project) => project.projectId === projectId)) return {};
+              const login = all.get(projectId)?.overview?.logins;
+              const saved = listed.find((project) => project.projectId === projectId)?.mate
+                ?.signers;
+              const signers: { "claude-code"?: string; codex?: string } = {};
+              for (const key of ["claude-code", "codex"] as const) {
+                const id = login?.[key]?.signedInBy ?? login?.[key]?.lastSignedInBy ?? saved?.[key];
+                if (
+                  typeof id === "string" &&
+                  id.length > 0 &&
+                  !current.facts.members.some(
+                    (member) => member.kind === "token" && member.userId === id,
+                  )
+                )
+                  signers[key] = id;
+              }
+              return signers;
+            };
             const person = (projectId: string) => {
               const project = current.facts.projects.find((project) => project.id === projectId);
               const role = asOrgRole(
@@ -350,28 +375,20 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
               const attention = observable.some((project) => project.projectId === projectId)
                 ? all.get(projectId)?.attention
                 : null;
+              const signers = signersFor(projectId);
+              const ownerUserId =
+                owner !== undefined
+                  ? (current.facts.members.find(
+                      (member) =>
+                        member.kind === "person" && member.clientUserId === owner.clientUserId,
+                    )?.userId ?? null)
+                  : (signers["claude-code"] ?? signers.codex ?? null);
               return {
                 role,
+                ownerUserId,
+                waitsOnViewer: (signers["claude-code"] ?? signers.codex) === entry.userId,
                 mayWrite: observable.some((project) => project.projectId === projectId),
-                mine:
-                  owner !== undefined
-                    ? owner.clientUserId === member?.clientUserId
-                    : (() => {
-                        const login = all.get(projectId)?.overview?.logins;
-                        const project = [
-                          ...view.ungrouped,
-                          ...view.apps.flatMap((app) => app.projects),
-                        ].find((project) => project.projectId === projectId);
-                        const signers = project?.mate?.signers;
-                        const signer =
-                          login?.["claude-code"]?.signedInBy ??
-                          login?.["claude-code"]?.lastSignedInBy ??
-                          signers?.["claude-code"] ??
-                          login?.codex?.signedInBy ??
-                          login?.codex?.lastSignedInBy ??
-                          signers?.codex;
-                        return signer !== undefined && signer !== null && signer === entry.userId;
-                      })(),
+                mine: ownerUserId === entry.userId,
                 unseen:
                   attention == null
                     ? null
@@ -398,6 +415,7 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
                   ...project,
                   appId: app.id,
                   person: person(project.projectId),
+                  signers: signersFor(project.projectId),
                 });
                 if (Option.isSome(read))
                   values.push({ key: `project:${project.projectId}`, value: read.value });
@@ -410,6 +428,7 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
                 kind: "mate",
                 appId: null,
                 person: person(project.projectId),
+                signers: signersFor(project.projectId),
               });
               if (Option.isSome(read))
                 values.push({ key: `project:${project.projectId}`, value: read.value });
@@ -418,21 +437,26 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
               for (const [projectId, press] of Object.entries(view.presses)) {
                 values.push({ key: `press:${projectId}`, value: press });
               }
+            const relevant = listed.filter(
+              (project) => projects === undefined || projects.has(project.projectId),
+            );
             const named = new Set([
-              ...[...view.ungrouped, ...view.apps.flatMap((app) => app.projects)].flatMap(
-                (project) => [project.mate?.madeBy, project.mate?.standupRequestedBy],
-              ),
-              ...observable.flatMap((project) =>
-                Object.values(all.get(project.projectId)?.overview?.logins ?? {}).flatMap(
-                  (login) => [login.signedInBy, login.lastSignedInBy],
-                ),
-              ),
-              ...current.facts.projects
+              ...relevant.flatMap((project) => [
+                project.mate?.madeBy,
+                project.mate?.standupRequestedBy,
+                ...Object.values(signersFor(project.projectId)),
+              ]),
+              ...observable
                 .filter((project) =>
-                  [...view.ungrouped, ...view.apps.flatMap((app) => app.projects)].some(
-                    (listed) => listed.projectId === project.id,
-                  ),
+                  relevant.some((listed) => listed.projectId === project.projectId),
                 )
+                .flatMap((project) =>
+                  Object.values(all.get(project.projectId)?.overview?.logins ?? {}).flatMap(
+                    (login) => [login.signedInBy, login.lastSignedInBy],
+                  ),
+                ),
+              ...current.facts.projects
+                .filter((project) => relevant.some((listed) => listed.projectId === project.id))
                 .flatMap((project) =>
                   project.userRoles
                     .filter((role) => role.roleCode === "OWNER")
@@ -443,13 +467,16 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
                     ),
                 ),
             ]);
-            if (projects === undefined)
-              for (const member of current.facts.members)
-                if (member.kind === "person" && named.has(member.userId))
-                  values.push({
-                    key: `person:${member.userId}`,
-                    value: { name: member.name, clientUserId: member.clientUserId },
-                  });
+            for (const member of current.facts.members)
+              if (member.kind === "person" && named.has(member.userId))
+                values.push({
+                  key: `person:${member.userId}`,
+                  value: {
+                    name: member.name,
+                    clientUserId: member.clientUserId,
+                    avatarUrl: member.avatarUrl ?? null,
+                  },
+                });
           } else if (scope.kind === "attention") {
             const mate = all.get(scope.projectId);
             if (mate !== undefined) values.push({ key: scope.projectId, value: mate });
@@ -560,7 +587,19 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
             const data = yield* load(entry);
             yield* sourceNow;
             if (generation !== entry.generation || version !== sourceVersion) continue;
-            const message = entry.journal.commit(data.values, data.removals);
+            let baseline = false;
+            if (entry.scope.kind === "attention") {
+              const read = readAttentionSource(data.values[0]?.value);
+              if (Option.isSome(read) && read.value.attention !== null) {
+                const next = json([
+                  read.value.attention.source.environmentId,
+                  read.value.attention.source.incarnation,
+                ]);
+                baseline = next !== entry.attentionSource;
+                entry.attentionSource = next;
+              }
+            }
+            const message = entry.journal.commit(data.values, data.removals, baseline);
             entry.sourceVersion = version;
             entry.dirty = generation !== entry.generation;
             delete entry.failure;
@@ -1094,6 +1133,58 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
                           const facts = metadata(error);
                           return Queue.offer(queue, {
                             type: "move-offers-error",
+                            requestId: request.requestId,
+                            projectId: request.projectId,
+                            code: facts.code ?? "unavailable",
+                            reason: facts.reason ?? null,
+                            disposition: refusalDisposition(facts.code ?? "unavailable"),
+                          });
+                        }),
+                      );
+                      return;
+                    }
+                    case "handover-candidates": {
+                      yield* Effect.gen(function* () {
+                        const current = yield* sourceNow;
+                        if (
+                          !current.facts.members.some(
+                            (member) =>
+                              member.kind === "person" &&
+                              member.status === "ACTIVE" &&
+                              roleAtLeast(member.roleCode, "ADMIN") &&
+                              member.userId === userId,
+                          ) ||
+                          !observedProjects(viewFor(current, userId)).some(
+                            (project) => project.projectId === request.projectId,
+                          )
+                        )
+                          return yield* new ScopeReadRefused({
+                            code: "forbidden",
+                            reason: "no-access",
+                          });
+                        return current.facts.members
+                          .filter(
+                            (member) => member.kind === "person" && member.status === "ACTIVE",
+                          )
+                          .map((member) => ({
+                            userId: member.userId,
+                            clientUserId: member.clientUserId,
+                            name: member.name,
+                            avatarUrl: member.avatarUrl ?? null,
+                          }));
+                      }).pipe(
+                        Effect.flatMap((candidates) =>
+                          Queue.offer(queue, {
+                            type: "handover-candidates",
+                            requestId: request.requestId,
+                            projectId: request.projectId,
+                            candidates,
+                          }),
+                        ),
+                        Effect.catch((error) => {
+                          const facts = metadata(error);
+                          return Queue.offer(queue, {
+                            type: "handover-candidates-error",
                             requestId: request.requestId,
                             projectId: request.projectId,
                             code: facts.code ?? "unavailable",

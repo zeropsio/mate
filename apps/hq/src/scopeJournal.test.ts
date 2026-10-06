@@ -22,6 +22,21 @@ describe("scope revision journal", () => {
       },
     ]);
   });
+  it("a source baseline rotates only this journal and cannot replay its retired source", () => {
+    const journal = makeScopeJournal({ kind: "attention", projectId: "P" }, "core");
+    journal.commit([{ key: "P", value: { source: "old", revision: 7 } }]);
+    const baseline = journal.commit(
+      [{ key: "P", value: { source: "new", revision: 0 } }],
+      [],
+      true,
+    )!;
+    expect(baseline.type).toBe("scope-reset");
+    expect(baseline.incarnation).not.toBe("core");
+    expect(journal.resume({ incarnation: "core", revision: 0 })).toEqual([baseline]);
+    expect(
+      journal.resume({ incarnation: baseline.incarnation, revision: baseline.revision }),
+    ).toEqual([]);
+  });
   it("omission leaves values intact; explicit removal preserves its reason on reset", () => {
     const journal = makeScopeJournal(scope, "core-1", 1);
     journal.commit([

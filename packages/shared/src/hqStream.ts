@@ -120,6 +120,11 @@ export const HqStreamRequest = Schema.Union([
     requestId: Schema.String,
     projectId: Schema.String,
   }),
+  Schema.Struct({
+    type: Schema.Literal("handover-candidates"),
+    requestId: Schema.String,
+    projectId: Schema.String,
+  }),
   Schema.Struct({ type: Schema.Literal("pong") }),
 ]);
 export type HqStreamRequest = typeof HqStreamRequest.Type;
@@ -160,12 +165,39 @@ export const HqMoveOffersError = Schema.Struct({
   reason: Schema.NullOr(Schema.String),
   disposition: Schema.Literals(["refused", "transient"]),
 });
+export const HqNavigationPerson = Schema.Struct({
+  name: Schema.String,
+  clientUserId: Schema.String,
+  avatarUrl: Schema.NullOr(Schema.String),
+});
+export type HqNavigationPerson = typeof HqNavigationPerson.Type;
+export const HqHandoverCandidate = Schema.Struct({
+  userId: Schema.String,
+  ...HqNavigationPerson.fields,
+});
+export type HqHandoverCandidate = typeof HqHandoverCandidate.Type;
+export const HqHandoverCandidatesMessage = Schema.Struct({
+  type: Schema.Literal("handover-candidates"),
+  requestId: Schema.String,
+  projectId: Schema.String,
+  candidates: Schema.Array(HqHandoverCandidate),
+});
+export const HqHandoverCandidatesError = Schema.Struct({
+  type: Schema.Literal("handover-candidates-error"),
+  requestId: Schema.String,
+  projectId: Schema.String,
+  code: Schema.String,
+  reason: Schema.NullOr(Schema.String),
+  disposition: Schema.Literals(["refused", "transient"]),
+});
 export const HqStreamMessage = Schema.Union([
   HqScopeDelivery,
   HqScopeFailure,
   HqScopeReady,
   HqMoveOffersMessage,
   HqMoveOffersError,
+  HqHandoverCandidatesMessage,
+  HqHandoverCandidatesError,
   Schema.Struct({ type: Schema.Literal("ping") }),
 ]);
 export type HqStreamMessage = typeof HqStreamMessage.Type;
@@ -189,6 +221,8 @@ export const HqPersonFacts = Schema.Struct({
   role: Schema.String,
   mayWrite: Schema.Boolean,
   mine: Schema.Boolean,
+  ownerUserId: Schema.NullOr(Schema.String),
+  waitsOnViewer: Schema.Boolean,
   /** Today's overview does not prove result identities: unknown until source attention arrives. */
   unseen: Schema.NullOr(Schema.Int),
 });
@@ -202,7 +236,6 @@ export const HqNavigationMate = Schema.Struct({
   closedOff: Schema.Boolean,
   keyWider: Schema.Boolean,
   birthId: Schema.optionalKey(Schema.String),
-  signers: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
 });
 /** Bounded environment jobs, retaining the latest live job for each service too. */
 export const HqNavigationJob = Schema.Struct({
@@ -282,6 +315,10 @@ export const HqNavigationProject = Schema.Struct({
   mate: Schema.NullOr(HqNavigationMate),
   can: Schema.optionalKey(Decisions),
   person: HqPersonFacts,
+  signers: Schema.Struct({
+    "claude-code": Schema.optionalKey(Schema.String),
+    codex: Schema.optionalKey(Schema.String),
+  }),
 });
 export type HqNavigationProject = typeof HqNavigationProject.Type;
 /** Independent app-detail record values, keyed as documented in hq-scopes.md. */
