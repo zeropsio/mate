@@ -102,24 +102,17 @@ function forgetEchoRow(
   return true;
 }
 
-/** Takes a completion's echoes out of the array it just joined, from the tail. */
-function withoutEchoes(
-  activities: OrchestrationThreadActivity[],
-  echoes: ReadonlyArray<OrchestrationThreadActivity>,
-  ids: Set<string>,
-  rows: Map<string, ReadonlyArray<OrchestrationThreadActivity>>,
-  key: string | null,
-): void {
-  if (echoes.length === 0 || key === null) return;
-  for (const echo of echoes) {
-    const at = activities.lastIndexOf(echo);
-    if (at >= 0) activities.splice(at, 1);
-    ids.delete(echo.id);
+/** The array without `rows`, each found from the tail, where an echo stands. */
+function withoutRows(
+  activities: ReadonlyArray<OrchestrationThreadActivity>,
+  rows: ReadonlyArray<OrchestrationThreadActivity>,
+): ReadonlyArray<OrchestrationThreadActivity> {
+  const kept = [...activities];
+  for (const row of rows) {
+    const at = kept.lastIndexOf(row);
+    if (at >= 0) kept.splice(at, 1);
   }
-  rows.set(
-    key,
-    (rows.get(key) ?? []).filter((row) => !echoes.includes(row)),
-  );
+  return kept;
 }
 
 /**
@@ -696,24 +689,30 @@ export function applyThreadDetailEvent(
       const supersedesContextWindow = isResolvableContextWindowActivity(activity);
       // Live streams append in order: an unseen id sorting at/after the tail
       // of a known-sorted array appends without re-filtering and re-sorting
-      // the whole history on every event. The id set and the echo rows move
-      // forward to the new array; a superseded array falls back to the sorting
-      // path, and its echo rows are read anew when next asked for.
+      // the whole history on every event. A completion's echoes come off the
+      // tail first: an echo of the same instant may sort just above it (the
+      // ids are random), and the completion then appends where it stood. The
+      // id set and the echo rows move forward to the new array; a superseded
+      // array falls back to the sorting path, and its echo rows are read anew
+      // when next asked for.
       const ids = activityIdIndex.get(thread.activities);
-      const lastActivity = thread.activities.at(-1);
+      const base = echoes.length === 0 ? thread.activities : withoutRows(thread.activities, echoes);
+      const lastActivity = base.at(-1);
       if (
         !supersedesContextWindow &&
         ids !== undefined &&
         (lastActivity === undefined || activityOrder(lastActivity, activity) <= 0) &&
         !ids.has(activity.id)
       ) {
-        const activities = Arr.append(thread.activities, activity);
+        const activities = Arr.append(base, activity);
         const rows = echoRowsOf(thread.activities);
         activityIdIndex.delete(thread.activities);
         echoRowsIndex.delete(thread.activities);
         ids.add(activity.id);
-        if (echoKey !== null) rows.set(echoKey, [...(peers ?? []), activity]);
-        withoutEchoes(activities, echoes, ids, rows, echoKey);
+        for (const echo of echoes) ids.delete(echo.id);
+        if (echoKey !== null) {
+          rows.set(echoKey, [...(peers ?? []).filter((row) => !echoes.includes(row)), activity]);
+        }
         activityIdIndex.set(activities, ids);
         echoRowsIndex.set(activities, rows);
         return {
