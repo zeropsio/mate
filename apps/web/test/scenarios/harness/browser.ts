@@ -79,6 +79,8 @@ export async function openBrowser(
   const browser = await puppeteer.launch({
     executablePath,
     headless: true,
+    // CDP uses the owned child's pipe; no separate WebSocket startup handshake can stall.
+    pipe: true,
     // The driver creates its own routed page; Chrome's unused startup tab is no receipt.
     waitForInitialPage: false,
     timeout: waitBudget(scenarioPolicy.testMs),
