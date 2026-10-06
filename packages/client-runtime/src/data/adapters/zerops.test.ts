@@ -544,6 +544,53 @@ describe("a demanded detail", () => {
     }),
   );
 
+  it.effect(
+    "takes a service read by its id over the listing's row when Zerops updated it since",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const zcp = {
+          id: "s1",
+          clientId: ORG,
+          projectId: PROBE_PROJECT_ID,
+          name: "zcp",
+          status: "ACTIVE",
+        };
+        const fixture = fixtureWire((request) =>
+          request.method === "GET" && request.path === "/service-stack/s1"
+            ? // Its own row, after its address was turned on: no `_version`, a newer lastUpdate.
+              Effect.succeed({
+                status: 200,
+                body: { ...zcp, subdomainAccess: true, lastUpdate: "2026-10-02T12:01:50Z" },
+              })
+            : request.path === "/service-stack/search" &&
+                request.body?.wsOutputType === "listStream"
+              ? Effect.succeed({
+                  items: [
+                    {
+                      ...zcp,
+                      subdomainAccess: false,
+                      lastUpdate: "2026-10-02T12:01:40Z",
+                      _version: 3,
+                    },
+                  ],
+                })
+              : answers(() => [])(request),
+        );
+        const { fiber, link } = yield* runLink(store, fixture);
+        expect(factOf(store.state(), "service", "s1")?.content).toMatchObject({
+          value: { subdomainAccess: false },
+        });
+
+        link.demandDetail({ family: "service", listing: "service", ownerId: "s1" });
+        yield* settle;
+        expect(factOf(store.state(), "service", "s1")?.content).toMatchObject({
+          value: { subdomainAccess: true },
+        });
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
+
   it.effect("goes stale with its link and reads every demanded history again when it returns", () =>
     Effect.gen(function* () {
       const store = makeAccountStore(AtomRegistry.make());

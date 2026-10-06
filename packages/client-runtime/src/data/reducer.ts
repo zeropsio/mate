@@ -179,13 +179,14 @@ function admits(
   row: Row,
 ): boolean {
   if (supersedes(current.revision, row.revision, input.method)) return true;
-  // A read with no revision, newer by the owner's own word (`FamilySpec.readIsNewer`).
+  // A read with no revision — a by-id read, or a detail listing's baseline read — newer by the
+  // owner's own word (`FamilySpec.readIsNewer`). A push always carries its revision.
   const readIsNewer = familySpec(row.family).readIsNewer as
     | ((held: unknown, read: unknown) => boolean)
     | undefined;
   if (
     readIsNewer !== undefined &&
-    input.method === "read" &&
+    input.method !== "push" &&
     row.revision.kind === "zerops" &&
     row.revision.version === null &&
     current.content.kind === "value" &&

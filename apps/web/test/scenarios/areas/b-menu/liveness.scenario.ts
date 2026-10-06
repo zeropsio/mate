@@ -107,6 +107,52 @@ describe("B: menu liveness", () => {
       }),
     );
 
+    // Catches a Mate whose address was turned on staying unreachable: its record is not promised
+    // to arrive by a push, so its own row is read once its enable finishes.
+    it.effect("a Mate opens once its address is turned on, its record never pushed", () =>
+      Effect.gen(function* () {
+        const s = yield* menuScenario();
+        yield* s.given.project("Bea", { mate: true, app: "Shop" });
+        const zerops = s.drivers.zerops;
+        const zcp = zerops.rows("service-stack").find((row) => row.id === "service-Bea")!;
+        zerops.put("service-stack", {
+          ...zcp,
+          subdomainAccess: false,
+          lastUpdate: "2026-10-06T12:00:00.000Z",
+        });
+        yield* s.given.signedIn;
+        yield* s.then.menu.row("Bea").appears();
+        // Zerops turns its address on: the enable finishes, and the service's record changes
+        // with no push of it.
+        zerops.faults.set("service-stack:push", { silence: true });
+        zerops.put("service-stack", {
+          ...zcp,
+          subdomainAccess: true,
+          lastUpdate: "2026-10-06T12:01:50.000Z",
+        });
+        zerops.put("process", {
+          id: "enable-bea",
+          clientId: "ORG",
+          projectId: "Bea",
+          actionName: "stack.enableSubdomainAccess",
+          status: "FINISHED",
+          created: "2026-10-06T12:01:40.000Z",
+          started: "2026-10-06T12:01:40.000Z",
+          finished: "2026-10-06T12:01:45.000Z",
+          lastUpdate: "2026-10-06T12:01:45.000Z",
+          executorTag: "USER",
+          serviceStackId: "service-Bea",
+          serviceStacks: [{ id: "service-Bea" }],
+          error: null,
+          appVersion: null,
+        });
+        yield* s.when.menu.opensMate("Bea");
+        yield* s.then.conversation.appears;
+        yield* s.then.noReload;
+        yield* s.then.noExternalNetwork;
+      }),
+    );
+
     // Catches a detached Mate becoming unreachable when it leaves its application.
     it.effect("detaching a Mate keeps its row outside the application", () =>
       Effect.gen(function* () {

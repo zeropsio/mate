@@ -102,7 +102,8 @@ export interface FamilySpec<F extends Family> {
    */
   readonly merge?: (held: FamilyValues[F], pushed: FamilyValues[F]) => FamilyValues[F];
   /**
-   * The owner's own ordering of a read that carries no revision: whether the value it read is
+   * The owner's own ordering of a read that carries no revision (a by-id read, or a detail
+   * listing's baseline): whether the value it read is
    * newer than the one held (a service's `lastUpdate`, on Zerops' clock). Without it, such a read
    * never replaces a revisioned value.
    */
