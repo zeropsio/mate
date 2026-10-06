@@ -136,6 +136,44 @@ describe("stopWork", () => {
     expect(work.lastBuilds["app"]).toEqual(ended);
   });
 
+  it("says how a build seen running ended though its end came in a history read after an outage", () => {
+    const history = historyScope(ORG, "p1");
+    const ended = apply(live([build("b1", { serviceStackIds: ["app"] })]), [
+      // The socket breaks while it builds; the next baseline no longer lists it.
+      event(runningScope(ORG), { kind: "parent-lost" }),
+      event(runningScope(ORG), { kind: "attempt" }),
+      { kind: "baseline-begin", scope: runningScope(ORG), generation: 2 },
+      {
+        kind: "baseline-commit",
+        scope: runningScope(ORG),
+        generation: 2,
+        via: "zerops-realtime",
+        members: [],
+        rows: [],
+      },
+      // Opening the stop reads its history, which brings the end.
+      event(history, { kind: "demand", demanded: true }),
+      event(history, { kind: "attempt" }),
+      { kind: "baseline-begin", scope: history, generation: 1 },
+      {
+        kind: "baseline-commit",
+        scope: history,
+        generation: 1,
+        via: "zerops-read",
+        members: ["b1"],
+        rows: [
+          {
+            family: "process",
+            id: "b1",
+            value: build("b1", { serviceStackIds: ["app"], status: "FAILED" }),
+            revision: zeropsVersion(9),
+          },
+        ],
+      },
+    ]);
+    expect(derive(ended).lastBuilds["app"]).toEqual({ processId: "b1", status: "FAILED" });
+  });
+
   it("says nothing of a build only a history read showed: it was never seen running", () => {
     const history = historyScope(ORG, "p1");
     const read = apply(live(), [

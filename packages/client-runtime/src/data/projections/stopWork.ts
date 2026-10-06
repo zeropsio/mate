@@ -102,12 +102,14 @@ export const stopWork: Projection<StopWorkKey, StopWork> = {
     `${orgId}/${projectId}/${services.map((entry) => `${entry.serviceId}=${entry.versionId ?? ""}`).join(",")}`,
   derive: (read, { orgId, projectId, services }) => {
     const running = runningScope(orgId);
+    const seen = read.index("seenRunning", projectId);
     const held: Array<{ readonly process: ProcessValue; readonly seenRunning: boolean }> = [];
     for (const id of read.index("project", projectId)) {
       const fact = read.fact("process", id);
       if (fact.kind !== "known") continue;
-      // Observed through the running work's scope: seen while it ran, or its end pushed.
-      held.push({ process: fact.value, seenRunning: fact.scope === running });
+      // Seen while it ran — listed by the running work, or its end pushed through its updates —
+      // whichever read brought its end.
+      held.push({ process: fact.value, seenRunning: seen.has(id) || fact.scope === running });
     }
     const builds: Array<StopBuild> = [];
     for (const id of read.index("running", projectId)) {

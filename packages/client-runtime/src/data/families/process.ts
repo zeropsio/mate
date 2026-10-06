@@ -54,6 +54,15 @@ export const processFamily: FamilySpec<"process"> = {
     },
     /** Every process this account holds, by project: running, ended, or read in a history. */
     { name: "project", keyOf: (value) => value.projectId },
+    /**
+     * Every process the organization's running work showed, by project: one running now, or one
+     * its running scope listed, whatever ended it since and whichever read brought that end.
+     */
+    {
+      name: "seenRunning",
+      keyOf: (value, listed) =>
+        listed !== undefined || RUNNING.has(value.status) ? value.projectId : null,
+    },
   ],
   zerops: {
     entity: "process",
