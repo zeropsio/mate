@@ -17,7 +17,7 @@ afterEach(() => {
 
 describe("F: creation through the hosted client", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
-    // Catches creating the first Mate under the application's name or losing its conversation hand-off.
+    // Catches a wrong full Zerops name, leaking its application prefix into the Mate UI, or losing the conversation hand-off.
     it.effect("new project creates its named first Mate", () =>
       Effect.gen(function* () {
         const s = yield* createScenario([installCreation]);
@@ -27,7 +27,7 @@ describe("F: creation through the hosted client", () => {
         yield* c.submitProject;
         yield* c.text("Nova");
         yield* s.then.conversation.appears;
-        yield* c.acceptedOnce("Nova");
+        yield* c.acceptedOnce("Garden - Nova");
         yield* s.then.menu.row("Garden").appears();
         yield* c.mateAppearsInProject("Nova", "Garden");
         yield* s.then.noExternalNetwork;
@@ -44,7 +44,7 @@ describe("F: creation through the hosted client", () => {
         yield* c.fill("Name", "Nova");
         yield* c.click("Add Nova to Shop");
         yield* s.then.conversation.appears;
-        yield* c.acceptedOnce("Nova");
+        yield* c.acceptedOnce("Shop - Nova");
         yield* s.then.menu.row("Shop").appears();
         yield* s.then.menu.row("Nova").appears();
         yield* c.mateAppearsInProject("Nova", "Shop");
@@ -131,7 +131,7 @@ describe("F: creation through the hosted client", () => {
         yield* c.submitProject;
         yield* c.text("Go to projects");
         yield* c.pastRetryWindow;
-        yield* c.acceptedOnce("Nova");
+        yield* c.acceptedOnce("Garden - Nova");
         expect(c.writes()).toBe(1);
         yield* Effect.promise(() => s.clock.advance(60_000));
         yield* c.pastRetryWindow;
@@ -141,7 +141,7 @@ describe("F: creation through the hosted client", () => {
         yield* s.then.menu.row("Garden").appears();
         yield* Effect.promise(() => s.clock.advance(60_000));
         yield* c.pastRetryWindow;
-        yield* c.acceptedOnce("Nova");
+        yield* c.acceptedOnce("Garden - Nova");
         expect(c.writes()).toBe(1);
         yield* s.then.noExternalNetwork;
       }),
