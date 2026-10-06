@@ -169,6 +169,7 @@ const DEPLOY_TONES: Record<HqJob["state"], GroupRowTone> = {
   live: "good",
   failed: "bad",
   refused: "bad",
+  unresolved: "neutral",
   skipped: "neutral",
   superseded: "neutral",
 };
@@ -182,13 +183,15 @@ const DEPLOY_TONES: Record<HqJob["state"], GroupRowTone> = {
  */
 export function deployTone(services: ReadonlyArray<EnvironmentServiceState>): GroupRowTone {
   let seen: GroupRowTone = "neutral";
+  let unresolved = false;
   for (const { deploy } of services) {
     if (deploy === undefined) continue;
+    unresolved ||= deploy.latest.state === "unresolved";
     const tone = DEPLOY_TONES[deploy.latest.state];
     if (tone === "bad") return "bad";
     if (tone === "pending" || seen !== "pending") seen = tone;
   }
-  return seen;
+  return unresolved && seen === "good" ? "neutral" : seen;
 }
 
 /**

@@ -12,8 +12,24 @@ import { shortCommit } from "../release.ts";
 import type { HqJob } from "./environments.ts";
 import { deployLogTarget, type DeployLogTarget } from "./deployLog.ts";
 
+/** Operation-scope evidence, when supplied alongside the request's deploy answer. */
+interface DeployObservation {
+  readonly evidence?: {
+    readonly nextActor: "hq" | "person" | "none";
+    readonly nextAction: string;
+  } | null;
+  readonly appVersionId?: string | null;
+  readonly verifiedVersionId?: string | null;
+  readonly steps?: ReadonlyArray<unknown>;
+}
+
+export type ObservedDeployOutcome = HqDeployOutcome & DeployObservation;
+type ObservedDeployAnswer = Omit<HqDeployAnswer, "jobs"> & {
+  readonly jobs: ReadonlyArray<ObservedDeployOutcome>;
+};
+
 /** One job of the answer, said. */
-export interface DeployAnswerJob {
+export interface DeployAnswerJob extends DeployObservation {
   readonly jobId: string | null;
   readonly deployLog: DeployLogTarget | undefined;
   readonly state: HqDeployOutcome["state"];
@@ -36,14 +52,14 @@ export interface DeployAnswerSaid {
 }
 
 /** What a job deploys, as its line names it: a service at its commit, or the recipe's delta. */
-const subjectOf = (outcome: HqDeployOutcome) =>
+const subjectOf = (outcome: ObservedDeployOutcome) =>
   outcome.kind === "delta"
     ? "The recipe's services"
     : `${outcome.service ?? "A service"}${outcome.sha === null ? "" : ` ${shortCommit(outcome.sha)}`}`;
 
 const jobText = (
-  outcome: HqDeployOutcome,
-  answer: HqDeployAnswer,
+  outcome: ObservedDeployOutcome,
+  answer: ObservedDeployAnswer,
   subject = subjectOf(outcome),
 ): string => {
   const reason = outcome.reason?.trim() || undefined;
@@ -68,6 +84,15 @@ const jobText = (
       return reason === undefined
         ? `HQ refused${subject === "" ? "" : ` ${subject}`}`
         : `HQ refused${subject === "" ? "" : ` ${subject}`}: ${reason}`;
+    case "unresolved": {
+      const action = outcome.evidence?.nextAction.trim();
+      const actor = outcome.evidence?.nextActor;
+      const next = action
+        ? `${actor === "hq" ? "HQ acts next" : actor === "person" ? "A person acts next" : "No next actor is assigned"}: ${action}`
+        : (reason ??
+          "A person must inspect the original handles in Zerops before asking Run again.");
+      return `${subject === "" ? "" : `${subject}: `}HQ could not follow this deploy to its end. ${next}`;
+    }
     case "skipped":
       return reason === undefined ? `${prefix}skipped` : `${prefix}skipped: ${reason}`;
     case "superseded":
@@ -76,12 +101,18 @@ const jobText = (
 };
 
 /** The answer by environment, in the order HQ named them. */
-export function deployAnswerSaid(answer: HqDeployAnswer): DeployAnswerSaid {
+export function deployAnswerSaid(answer: ObservedDeployAnswer): DeployAnswerSaid {
   const environments = new Map<string, Array<DeployAnswerJob>>();
   for (const outcome of answer.jobs) {
     const jobs = environments.get(outcome.environment) ?? [];
     jobs.push({
       jobId: outcome.job,
+      ...(outcome.evidence === undefined ? {} : { evidence: outcome.evidence }),
+      ...(outcome.appVersionId === undefined ? {} : { appVersionId: outcome.appVersionId }),
+      ...(outcome.verifiedVersionId === undefined
+        ? {}
+        : { verifiedVersionId: outcome.verifiedVersionId }),
+      ...(outcome.steps === undefined ? {} : { steps: outcome.steps }),
       deployLog:
         outcome.job === null
           ? undefined
@@ -89,7 +120,7 @@ export function deployAnswerSaid(answer: HqDeployAnswer): DeployAnswerSaid {
               id: outcome.job,
               kind: outcome.kind,
               processId: outcome.processId,
-              appVersionId: null,
+              appVersionId: outcome.appVersionId ?? null,
             }),
       state: outcome.state,
       service: outcome.service,
@@ -113,9 +144,9 @@ export function deployAnswerSaid(answer: HqDeployAnswer): DeployAnswerSaid {
  * truth, and a job the stream does not carry keeps what it was answered.
  */
 export function deployAnswerFollowing(
-  answer: HqDeployAnswer,
-  streamed: ReadonlyMap<string, Pick<HqJob, "state" | "reason" | "processId">>,
-): HqDeployAnswer {
+  answer: ObservedDeployAnswer,
+  streamed: ReadonlyMap<string, Pick<HqJob, "state" | "reason" | "processId"> & DeployObservation>,
+): ObservedDeployAnswer {
   return {
     ...answer,
     jobs: answer.jobs.map((outcome) => {
@@ -127,6 +158,10 @@ export function deployAnswerFollowing(
             state: job.state,
             reason: job.reason,
             processId: job.processId ?? outcome.processId,
+            ...(job.evidence == null ? {} : { evidence: job.evidence }),
+            ...(job.appVersionId == null ? {} : { appVersionId: job.appVersionId }),
+            ...(job.verifiedVersionId == null ? {} : { verifiedVersionId: job.verifiedVersionId }),
+            ...(job.steps === undefined ? {} : { steps: job.steps }),
           };
     }),
   };

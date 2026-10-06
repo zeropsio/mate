@@ -173,6 +173,17 @@ describe("deployTone", () => {
     { name: "a job that went live", states: ["live"], expected: "good" },
     { name: "a job whose build failed", states: ["failed"], expected: "bad" },
     { name: "a job HQ refused", states: ["refused"], expected: "bad" },
+    { name: "a deploy HQ did not follow to its end", states: ["unresolved"], expected: "neutral" },
+    {
+      name: "an unresolved deploy before a live service",
+      states: ["unresolved", "live"],
+      expected: "neutral",
+    },
+    {
+      name: "an unresolved deploy after a live service",
+      states: ["live", "unresolved"],
+      expected: "neutral",
+    },
     {
       // Averaging a failure away is how a screen says "configured" for a
       // broken setup.
@@ -244,6 +255,36 @@ describe("environmentRow", () => {
     });
     expect(row.line).toBe("main · 3f9c1b2");
     expect(row.tone).toBe("bad");
+  });
+
+  it("retains the known version and operation steps of an unresolved deploy", () => {
+    const operation = {
+      ...deployRecord("unresolved"),
+      appVersionId: "version-observed",
+      evidence: {
+        nextActor: "person",
+        nextAction: "Inspect version-observed in Zerops before asking Run again",
+      },
+      steps: [
+        {
+          processes: [{ id: "process-1", status: "FINISHED" }],
+          version: { id: "version-observed", status: "BUILDING" },
+        },
+      ],
+    };
+    const row = environmentRow({
+      ...base,
+      sources: ["main"],
+      services: [
+        {
+          ...service("api", "unresolved", { version: SHA }),
+          deploy: { latest: operation, live: null },
+        },
+      ],
+    });
+    expect(row.tone).toBe("neutral");
+    expect(row.version.sha).toBe(SHA);
+    expect(row.deploys[0]).toEqual(operation);
   });
 
   it("joins several sources into one line", () => {

@@ -1,7 +1,11 @@
 import type { HqDeployOutcome } from "@t3tools/shared/hqDeploys";
 import { describe, expect, it } from "vite-plus/test";
 
-import { deployAnswerFollowing, deployAnswerSaid } from "./deployAnswer.ts";
+import {
+  deployAnswerFollowing,
+  deployAnswerSaid,
+  type ObservedDeployOutcome,
+} from "./deployAnswer.ts";
 
 const WEB = "5c3ea18b00000000000000000000000000000000";
 const API = "b21d904c00000000000000000000000000000000";
@@ -20,8 +24,38 @@ const outcome = (over: Partial<HqDeployOutcome>): HqDeployOutcome => ({
 });
 
 describe("deployAnswerSaid — what an event's answer says of its deploys", () => {
-  it.each<{ readonly name: string; readonly job: HqDeployOutcome; readonly text: string }>([
+  it.each<{ readonly name: string; readonly job: ObservedDeployOutcome; readonly text: string }>([
     { name: "building", job: outcome({}), text: "web 5c3ea18 building" },
+    {
+      name: "unresolved, with the next actor and action from its evidence",
+      job: {
+        ...outcome({ state: "unresolved", reason: "Observation was interrupted" }),
+        evidence: {
+          nextActor: "person",
+          nextAction: "Inspect the original version in Zerops before asking Run again",
+        },
+      },
+      text: "web 5c3ea18: HQ could not follow this deploy to its end. A person acts next: Inspect the original version in Zerops before asking Run again",
+    },
+    {
+      name: "unresolved, with HQ still assigned the named next action",
+      job: {
+        ...outcome({ state: "unresolved" }),
+        evidence: {
+          nextActor: "hq",
+          nextAction: "Read the original process handle after authorization is restored",
+        },
+      },
+      text: "web 5c3ea18: HQ could not follow this deploy to its end. HQ acts next: Read the original process handle after authorization is restored",
+    },
+    {
+      name: "unresolved from the job answer before operation evidence arrives",
+      job: outcome({
+        state: "unresolved",
+        reason: "A person must inspect the original version in Zerops",
+      }),
+      text: "web 5c3ea18: HQ could not follow this deploy to its end. A person must inspect the original version in Zerops",
+    },
     {
       name: "its submission's answer lost",
       job: outcome({ state: "submitting", processId: null }),
@@ -155,7 +189,75 @@ it("retains the deploy answer's job and process for inspection", () => {
   });
 });
 
+it("retains unresolved operation evidence, known versions and steps beside the inspection handle", () => {
+  const job = {
+    ...outcome({ state: "unresolved" }),
+    appVersionId: "v7",
+    verifiedVersionId: "v6",
+    evidence: { nextActor: "person" as const, nextAction: "Inspect v7 in Zerops" },
+    steps: [
+      {
+        processes: [{ id: "process-1", status: "FINISHED" }],
+        version: { id: "v7", status: "BUILDING" },
+      },
+    ],
+  };
+  const said = deployAnswerSaid({ jobs: [job], note: null }).environments[0]!.jobs[0]!;
+  expect(said).toMatchObject({
+    state: "unresolved",
+    appVersionId: "v7",
+    verifiedVersionId: "v6",
+    evidence: job.evidence,
+    steps: job.steps,
+    deployLog: { jobId: "1", processId: "process-1", appVersionId: "v7" },
+  });
+});
+
 describe("deployAnswerFollowing — HQ's stream over the request's snapshot", () => {
+  it.each(["supplied", "missing"] as const)(
+    "keeps known facts while following unresolved evidence that is %s",
+    (coverage) => {
+      const prior = {
+        ...outcome({}),
+        appVersionId: "v6",
+        verifiedVersionId: "v5",
+        evidence: { nextActor: "hq" as const, nextAction: "Read the original process" },
+        steps: [{ processes: [{ id: "process-1", status: "RUNNING" }] }],
+      };
+      const observed = {
+        state: "unresolved" as const,
+        reason: "HQ could no longer observe this operation",
+        processId: null,
+        ...(coverage === "missing"
+          ? { evidence: null, appVersionId: null, verifiedVersionId: null }
+          : {
+              appVersionId: "v7",
+              verifiedVersionId: "v6",
+              evidence: {
+                nextActor: "person" as const,
+                nextAction: "Inspect v7 in Zerops before asking Run again",
+              },
+              steps: [...prior.steps, { processes: [{ id: "process-1", status: "FINISHED" }] }],
+            }),
+      };
+      const followed = deployAnswerFollowing(
+        { jobs: [prior], note: null },
+        new Map([["1", observed]]),
+      );
+      expect(followed.jobs[0]).toMatchObject({
+        state: "unresolved",
+        processId: "process-1",
+        appVersionId: observed.appVersionId ?? prior.appVersionId,
+        verifiedVersionId: observed.verifiedVersionId ?? prior.verifiedVersionId,
+        evidence: observed.evidence ?? prior.evidence,
+        steps: "steps" in observed ? observed.steps : prior.steps,
+      });
+      expect(deployAnswerSaid(followed).environments[0]?.jobs[0]?.text).toContain(
+        (observed.evidence ?? prior.evidence).nextAction,
+      );
+    },
+  );
+
   it("takes the streamed state of a job it finds by id, and keeps the rest as answered", () => {
     const answer = {
       jobs: [
