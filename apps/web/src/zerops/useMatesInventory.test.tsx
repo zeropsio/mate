@@ -199,13 +199,26 @@ describe("a drawn Mate's own project row", () => {
     const rowsHeld: string[] = [];
     const roster = Atom.make({
       projects: [
-        { id: "p-ada", name: "Ada", status: "ACTIVE", viewerRoleCode: "BASIC_USER" },
-        { id: "p-bo", name: "Bo", status: "ACTIVE", viewerRoleCode: "BASIC_USER" },
+        {
+          id: "p-ada",
+          name: "Ada",
+          status: "ACTIVE",
+          viewerRoleCode: "BASIC_USER",
+          listingNamesGrants: true,
+        },
+        {
+          id: "p-bo",
+          name: "Bo",
+          status: "ACTIVE",
+          viewerRoleCode: "BASIC_USER",
+          listingNamesGrants: true,
+        },
         {
           id: "p-cy",
           name: "Cy",
           status: "ACTIVE",
           ...(own === undefined ? {} : { viewerRoleCode: own }),
+          listingNamesGrants: own !== undefined,
         },
       ],
       read: "read",

@@ -1,3 +1,4 @@
+import { ownRowWanted } from "../projections/projects.ts";
 import { describe, expect, it } from "vite-plus/test";
 
 import { liveZerops, ORG, zeropsVersion } from "../__fixtures__/account.ts";
@@ -224,6 +225,50 @@ describe("a project's own row", () => {
     const { userRoles, viewerRoleCode, name } = fact.value;
     return { name, userRoles, viewerRoleCode };
   };
+
+  it.each([
+    { name: "listing names nobody, own read names grants", listing: {}, own: grants, wanted: true },
+    {
+      name: "listing names grants, own read removes them",
+      listing: { userRoles: grants },
+      own: [],
+      wanted: false,
+    },
+    {
+      name: "listing names a viewer grant, own read retires it",
+      listing: { viewerRoleCode: "OWNER" },
+      own: grants,
+      wanted: false,
+    },
+    {
+      name: "listing names nobody, own read names nobody",
+      listing: { userRoles: [] },
+      own: [],
+      wanted: true,
+    },
+  ])("own-row demand follows the listing: $name", ({ listing, own, wanted }) => {
+    const fact = reduce([
+      ...held(),
+      listingRead({ ...row, ...listing }),
+      ownRead(row.lastUpdate, own),
+    ]);
+    expect(fact.kind).toBe("known");
+    if (fact.kind === "known") expect(ownRowWanted("NO_ACCESS", fact.value)).toBe(wanted);
+  });
+
+  it.each([
+    { name: "a rename leaves the listing's grant unchanged", listing: {}, wanted: false },
+    { name: "a listing explicitly names no grant", listing: { userRoles: [] }, wanted: true },
+  ])("$name", ({ listing, wanted }) => {
+    const fact = reduce([
+      ...held(),
+      listingRead({ ...row, viewerRoleCode: "OWNER" }),
+      ownRead(row.lastUpdate),
+      listingPush({ ...row, ...listing }),
+    ]);
+    expect(fact.kind).toBe("known");
+    if (fact.kind === "known") expect(ownRowWanted("NO_ACCESS", fact.value)).toBe(wanted);
+  });
 
   it.each<{
     readonly name: string;

@@ -124,5 +124,5 @@ export const projectStanding: Projection<
  */
 export const ownRowWanted = (
   viewerRole: string | undefined,
-  listed: Pick<ProjectValue, "viewerRoleCode" | "userRoles"> | null,
-): boolean => viewerRole === "NO_ACCESS" && listed?.viewerRoleCode === undefined;
+  listed: Pick<ProjectValue, "listingNamesGrants"> | null,
+): boolean => viewerRole === "NO_ACCESS" && listed?.listingNamesGrants !== true;

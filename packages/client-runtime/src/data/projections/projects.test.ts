@@ -255,7 +255,7 @@ describe("ownRowWanted", () => {
       id: "p1",
       name: "p1",
       status: "ACTIVE",
-      ...(own === undefined ? {} : { viewerRoleCode: own }),
+      listingNamesGrants: own !== undefined,
     };
     expect(ownRowWanted(role, listed)).toBe(wanted);
   });
@@ -263,7 +263,8 @@ describe("ownRowWanted", () => {
   it.each([{ userRoles: [] }, { userRoles: [{ clientUserId: "cu-1", roleCode: "BASIC_USER" }] }])(
     "keeps demand after an own row supplies grants: %j",
     ({ userRoles }) => {
-      expect(ownRowWanted("NO_ACCESS", { userRoles })).toBe(true);
+      const held = { userRoles, listingNamesGrants: false };
+      expect(ownRowWanted("NO_ACCESS", held)).toBe(true);
     },
   );
 

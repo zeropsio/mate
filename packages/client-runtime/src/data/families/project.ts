@@ -26,6 +26,8 @@ import { scopeOf, type FamilySpec } from "./spec.ts";
 export type ProjectValue = Omit<ZeropsProject, "hq" | "hqTool"> & {
   readonly lastUpdate?: string;
   readonly viewerRoleCode?: string;
+  /** Whether the listing named grants; own-row answers never change this demand input. */
+  readonly listingNamesGrants?: boolean;
 };
 
 declare module "../model.ts" {
@@ -102,12 +104,13 @@ export const projectFamily: FamilySpec<"project"> = {
     return { ...rest, ...pushed };
   },
   keepUnsaid: (held, row, own) => {
-    const { userRoles, viewerRoleCode, ...fields } = row;
+    const { userRoles, viewerRoleCode, listingNamesGrants: _listed, ...fields } = row;
     // The own row is Zerops' whole word on everybody's grants: none named takes them away, and the
     // viewer's own grant a listing named is retired by it.
     if (own)
       return {
         ...fields,
+        listingNamesGrants: held?.listingNamesGrants ?? false,
         ...(userRoles === undefined ? {} : { userRoles }),
         ...(viewerRoleCode === undefined ? {} : { viewerRoleCode }),
       };
@@ -119,6 +122,12 @@ export const projectFamily: FamilySpec<"project"> = {
     const kept = viewerRoleCode ?? held?.viewerRoleCode;
     return {
       ...fields,
+      listingNamesGrants:
+        viewerRoleCode !== undefined || (userRoles !== undefined && userRoles.length > 0)
+          ? true
+          : userRoles !== undefined
+            ? false
+            : (held?.listingNamesGrants ?? false),
       ...(everybody === undefined ? {} : { userRoles: everybody }),
       ...(kept === undefined ? {} : { viewerRoleCode: kept }),
     };
