@@ -6,11 +6,9 @@
  *
  * @module data/operations/createProject
  */
-import type { ProcessValue } from "../families/process.ts";
 import type { OperationReceipt } from "../model.ts";
-import type { ProjectionReads } from "../store.ts";
+import { projectCreations } from "../projections/creation.ts";
 import {
-  PROJECT_CREATE_ACTION,
   projectCreationFailureSentence,
   projectCreationOutcome,
 } from "../../zerops/projectCreation.ts";
@@ -33,29 +31,15 @@ declare module "../model.ts" {
 
 const projectOf = (receipt: OperationReceipt) => receipt.handles[0] ?? "";
 
-/** The project's newest `project.create` process the account holds; `undefined` before one. */
-function creationOf(read: ProjectionReads, projectId: string): ProcessValue | undefined {
-  let newest: ProcessValue | undefined;
-  for (const id of read.index("project", projectId)) {
-    const fact = read.fact("process", id);
-    if (fact.kind !== "known" || fact.value.actionName !== PROJECT_CREATE_ACTION) continue;
-    if (newest === undefined || fact.value.created > newest.created) newest = fact.value;
-  }
-  return newest;
-}
-
 export const createProject: OperationKind<"create-project"> = {
   kind: "create-project",
   executor: "zerops",
   reflected: (read, _intent, receipt) => read.fact("project", projectOf(receipt)).kind === "known",
-  settledBy: (read, _intent, receipt) => {
-    const process = creationOf(read, projectOf(receipt));
-    if (process === undefined) return null;
-    const outcome = projectCreationOutcome({
-      processId: process.id,
-      status: process.status,
-      error: process.error ?? null,
-    });
+  settledBy: (read, intent, receipt) => {
+    const projectId = projectOf(receipt);
+    const outcome = projectCreationOutcome(
+      projectCreations.derive(read, { orgId: intent.orgId, projectIds: [projectId] })[projectId],
+    );
     if (outcome.kind === "running") return null;
     return outcome.kind === "finished"
       ? { kind: "succeeded" }
