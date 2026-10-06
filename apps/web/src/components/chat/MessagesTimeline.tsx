@@ -1,4 +1,4 @@
-import { AssetImage } from "~/assets/AssetImage";
+import { AssetImage, ImageUnavailable } from "~/assets/AssetImage";
 import {
   deriveTimelineMinimapItems,
   resolveTimelineMinimapPreview,
@@ -106,7 +106,7 @@ import {
   terminalContextsBySegment,
   unplacedMessageFiles,
 } from "./messagePictures.logic";
-import { useAssetUrls } from "../../assets/assetUrls";
+import { useAssetUrlStates } from "../../assets/assetUrls";
 import { ProposedPlanCard } from "./ProposedPlanCard";
 import {
   describeTimelineAnchor,
@@ -2648,17 +2648,22 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
     () => selectMessageImageResources(row.message.attachments),
     [row.message.attachments],
   );
-  const previewUrls = useAssetUrls(ctx.activeThreadEnvironmentId, resources);
+  const previewStates = useAssetUrlStates(ctx.activeThreadEnvironmentId, resources);
+  const pictureStates = useMemo(
+    () =>
+      new Map(resources.map((resource, index) => [resource.attachmentId, previewStates[index]!])),
+    [previewStates, resources],
+  );
   const [projectPreviews] = useState(createMessageAttachmentPreviewProjector);
   const messageWithPreviews = useMemo(() => {
     const urlsById = new Map(
       resources.flatMap((resource, index) => {
-        const url = previewUrls[index];
-        return url ? [[resource.attachmentId, url] as const] : [];
+        const state = previewStates[index];
+        return state?._tag === "Success" ? [[resource.attachmentId, state.url] as const] : [];
       }),
     );
     return projectPreviews(row.message, (attachment) => urlsById.get(attachment.id));
-  }, [previewUrls, projectPreviews, resources, row.message]);
+  }, [previewStates, projectPreviews, resources, row.message]);
   const userImages = (messageWithPreviews.attachments ?? []).filter(isImageAttachment);
   // The client's own placeholder for an image-only message is nothing the person wrote.
   const displayedUserMessage = deriveDisplayedUserMessageState(
@@ -2719,34 +2724,39 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
         <MessageAuthorHeading>You</MessageAuthorHeading>
         {imagesAbove.length > 0 && (
           <div className="mb-2 grid max-w-[420px] grid-cols-2 gap-2">
-            {imagesAbove.map((image: ChatImageAttachment) => (
-              <div
-                key={image.id}
-                className="overflow-hidden rounded-lg border border-border/80 bg-background/70"
-              >
-                {image.previewUrl ? (
-                  <button
-                    type="button"
-                    className="h-full w-full cursor-zoom-in"
-                    aria-label={`Preview ${image.name}`}
-                    onClick={() => expandImage(image)}
-                  >
-                    <AssetImage
-                      loading="lazy"
-                      decoding="async"
-                      src={image.previewUrl}
-                      alt={image.name}
-                      className="block max-h-[220px] w-full object-contain"
-                      style={{ aspectRatio: `${image.width ?? 16} / ${image.height ?? 9}` }}
-                    />
-                  </button>
-                ) : (
-                  <div className="flex min-h-[72px] items-center justify-center px-2 py-3 text-center text-secondary-label text-2xs">
-                    {image.name}
-                  </div>
-                )}
-              </div>
-            ))}
+            {imagesAbove.map((image: ChatImageAttachment) => {
+              const state = pictureStates.get(image.id);
+              return (
+                <div
+                  key={image.id}
+                  className="overflow-hidden rounded-lg border border-border/80 bg-background/70"
+                >
+                  {state?._tag === "Failure" ? (
+                    <ImageUnavailable reason={state.reason} />
+                  ) : image.previewUrl ? (
+                    <button
+                      type="button"
+                      className="h-full w-full cursor-zoom-in"
+                      aria-label={`Preview ${image.name}`}
+                      onClick={() => expandImage(image)}
+                    >
+                      <AssetImage
+                        loading="lazy"
+                        decoding="async"
+                        src={image.previewUrl}
+                        alt={image.name}
+                        className="block max-h-[220px] w-full object-contain"
+                        style={{ aspectRatio: `${image.width ?? 16} / ${image.height ?? 9}` }}
+                      />
+                    </button>
+                  ) : (
+                    <div className="flex min-h-[72px] items-center justify-center px-2 py-3 text-center text-secondary-label text-2xs">
+                      {image.name}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
         <MessageFilesAbove files={filesAbove} urls={fileUrls} />
@@ -2754,6 +2764,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
           <MessagePictureBody
             segments={placedPictures.segments}
             dimensions={pictureDimensions}
+            states={pictureStates}
             onOpen={expandImage}
             fileUrls={fileUrls}
             renderText={(segment) => (
@@ -3775,7 +3786,7 @@ function QuestionAnswerHistory({
       })),
     [attachments],
   );
-  const urls = useAssetUrls(activeThreadEnvironmentId, resources);
+  const states = useAssetUrlStates(activeThreadEnvironmentId, resources);
   return (
     <div className="ms-7 mt-2 space-y-2" onClick={stopRowToggle}>
       {[
@@ -3796,7 +3807,8 @@ function QuestionAnswerHistory({
           </p>
           <div className="flex flex-wrap gap-2">
             {(answer.attachmentsByQuestionId[questionId] ?? []).map((attachment) => {
-              const url = urls[attachments.indexOf(attachment)];
+              const state = states[attachments.indexOf(attachment)];
+              const url = state?._tag === "Success" ? state.url : undefined;
               return (
                 <a
                   key={attachment.id}
@@ -3805,7 +3817,9 @@ function QuestionAnswerHistory({
                   rel="noreferrer"
                   className="text-sm underline"
                 >
-                  {attachment.type === "image" && url ? (
+                  {attachment.type === "image" && state?._tag === "Failure" ? (
+                    <ImageUnavailable reason={state.reason} />
+                  ) : attachment.type === "image" && url ? (
                     <AssetImage
                       loading="lazy"
                       decoding="async"

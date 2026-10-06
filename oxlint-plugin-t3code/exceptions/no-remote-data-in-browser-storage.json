@@ -62,29 +62,5 @@
     "owner": "data-layer rewrite: operations",
     "reason": "source data stays out of browser storage: this tab's own container intents (restart, update it started), not a source's answer; moves to an allowlisted module",
     "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/gonePictureMemory.ts",
-    "kind": "CallExpression",
-    "fingerprint": "accountLocalStorage.getItem(GONE_PICTURE_MEMORY_STORAGE_KEY)",
-    "owner": "data-layer rewrite: result pictures",
-    "reason": "source data stays out of browser storage: remembers which of a conversation's result pictures the workspace said are not there; the result's read paints the first frame",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/gonePictureMemory.ts",
-    "kind": "CallExpression",
-    "fingerprint": "accountLocalStorage.removeItem(GONE_PICTURE_MEMORY_STORAGE_KEY)",
-    "owner": "data-layer rewrite: result pictures",
-    "reason": "source data stays out of browser storage: remembers which of a conversation's result pictures the workspace said are not there; the result's read paints the first frame",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/gonePictureMemory.ts",
-    "kind": "CallExpression",
-    "fingerprint": "accountLocalStorage.setItem(GONE_PICTURE_MEMORY_STORAGE_KEY)",
-    "owner": "data-layer rewrite: result pictures",
-    "reason": "source data stays out of browser storage: remembers which of a conversation's result pictures the workspace said are not there; the result's read paints the first frame",
-    "expires": "never"
   }
 ]

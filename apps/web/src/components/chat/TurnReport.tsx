@@ -15,9 +15,8 @@
  * 40 ms apart, when the run finished while the person watched (T5); read
  * later, they are simply there.
  */
-import { AssetImage } from "~/assets/AssetImage";
+import { AssetImage, ImageUnavailable } from "~/assets/AssetImage";
 import type { EnvironmentId, ThreadId, TurnId } from "@t3tools/contracts";
-import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { ArrowUpRightIcon, GitPullRequestIcon, TriangleAlertIcon, UsersIcon } from "lucide-react";
 import {
   useCallback,
@@ -34,7 +33,6 @@ import { useAssetUrlStates, type AssetUrlState } from "../../assets/assetUrls";
 import { formatDayAwareTimestamp } from "../../timestampFormat";
 import { runFixMate, useFixMates } from "../../zerops/fixMates";
 import { useAskMateToFix, type FixProblem } from "../../zerops/fixRequest";
-import { rememberedGonePictures, rememberGonePicture } from "../../zerops/gonePictureMemory";
 import { useOpenReview } from "../../zerops/review";
 import { useZeropsSessionOptional } from "../../zerops/sessionContext";
 import { ServiceBrowserLink } from "../ServiceBrowserLink";
@@ -207,8 +205,6 @@ function RowEnd({ row, mate }: { readonly row: ResultRow; readonly mate: MateOfR
 export type ResultFiles = ReadonlyMap<string, AssetUrlState>;
 
 const LOADING: AssetUrlState = { _tag: "Loading" };
-const GONE: AssetUrlState = { _tag: "Failure" };
-
 const NO_FILES: ResultFiles = new Map();
 
 /**
@@ -218,7 +214,7 @@ const NO_FILES: ResultFiles = new Map();
  * before the bytes: a check's from the check, a file's from the size the
  * workspace read off its header with its address, else as it loads. While
  * its file is read, a quiet tile in a desktop's room; a file that is gone
- * has no tile (`standingPictures`). The last tile of a run with more says
+ * keeps that room and says why. The last tile of a run with more says
  * how many more over its picture.
  */
 function PictureTile({
@@ -234,8 +230,14 @@ function PictureTile({
   /** Opens the viewer here; null where nothing here can be opened yet. */
   readonly onOpen: (() => void) | null;
 }) {
-  const status = state._tag === "Success" ? "ready" : "loading";
-  const said = more > 0 ? `${picture.label}, and ${more} more` : picture.label;
+  const [failedUrl, setFailedUrl] = useState<string>();
+  const unavailable =
+    state._tag === "Failure" || (state._tag === "Success" && failedUrl === state.url);
+  const status = unavailable ? "unavailable" : state._tag === "Success" ? "ready" : "loading";
+  const reason = state._tag === "Failure" ? state.reason : undefined;
+  const said =
+    (more > 0 ? `${picture.label}, and ${more} more` : picture.label) +
+    (unavailable ? `. Image unavailable${reason ? ` · ${reason}` : ""}` : "");
   const failed = (picture.kind === "check" && picture.failed) || undefined;
   const size = state._tag === "Success" ? state.imageDimensions : undefined;
   const known =
@@ -254,7 +256,7 @@ function PictureTile({
     <Tooltip>
       <TooltipTrigger
         render={
-          onOpen === null ? (
+          onOpen === null || (unavailable && more === 0) ? (
             <span
               aria-label={said}
               className="run-result-tile"
@@ -276,8 +278,15 @@ function PictureTile({
           )
         }
       >
-        {state._tag === "Success" ? (
-          <AssetImage loading="lazy" decoding="async" alt="" onLoad={learn} src={state.url} />
+        {unavailable ? (
+          <ImageUnavailable reason={reason} />
+        ) : state._tag === "Success" ? (
+          <AssetImage
+            alt=""
+            onLoad={learn}
+            src={state.url}
+            onError={() => setFailedUrl(state.url)}
+          />
         ) : null}
         {more > 0 ? <span className="run-result-more">+{more}</span> : null}
       </TooltipTrigger>
@@ -418,27 +427,10 @@ function WorkspaceReport({
     [paths, threadId],
   );
   const read = useAssetUrlStates(environmentId, resources);
-  // A picture this conversation found gone before is left out from the first paint, before its
-  // read answers: a reload paints no tile it then takes back.
-  const threadKey = scopedThreadKey(scopeThreadRef(environmentId, threadId));
-  const remembered = useMemo(() => rememberedGonePictures(threadKey), [threadKey]);
   const files = useMemo<ResultFiles>(
-    () =>
-      new Map(
-        paths.map((path, index) => {
-          const state = read[index] ?? LOADING;
-          return [path, state._tag === "Loading" && remembered.has(path) ? GONE : state] as const;
-        }),
-      ),
-    [paths, read, remembered],
+    () => new Map(paths.map((path, index) => [path, read[index] ?? LOADING])),
+    [paths, read],
   );
-  useEffect(() => {
-    paths.forEach((path, index) => {
-      const state = read[index];
-      if (state?._tag === "Failure") rememberGonePicture(threadKey, path, true);
-      if (state?._tag === "Success") rememberGonePicture(threadKey, path, false);
-    });
-  }, [paths, read, threadKey]);
   return <Report {...props} files={files} />;
 }
 
@@ -456,19 +448,11 @@ function Report({
   const read = useRunResultFacts(outcome);
   const now = facts ?? read;
   const rows = useMemo(() => resultRows(outcome, now), [now, outcome]);
-  const gone = useMemo(
-    () =>
-      new Set(
-        [...(files ?? NO_FILES)].flatMap(([path, state]) =>
-          state._tag === "Failure" ? [path] : [],
-        ),
-      ),
-    [files],
-  );
   // Every picture of a service stands under its row; the rest in the strip.
+  const hasWorkspace = files !== null;
   const placed = useMemo(
-    () => placeResultPictures(outcome, rows, files === null ? null : gone),
-    [files, gone, outcome, rows],
+    () => placeResultPictures(outcome, rows, hasWorkspace),
+    [hasWorkspace, outcome, rows],
   );
   const pictures = placed.rest;
   // What the strip draws, for the card's steps to leave to it (`resultStripFiles`).

@@ -12,7 +12,7 @@ export { resolveAssetUrl } from "@t3tools/client-runtime/state/assets";
 
 export type AssetUrlState =
   | { readonly _tag: "Loading" }
-  | { readonly _tag: "Failure" }
+  | { readonly _tag: "Failure"; readonly reason?: string | undefined }
   | {
       readonly _tag: "Success";
       readonly url: string;
@@ -32,7 +32,8 @@ export const SIGN_RETRY_DELAYS_MS: ReadonlyArray<number> = [1_000, 2_000, 4_000,
 
 /** What the server says is not there: no try again finds it. */
 const NOT_THERE = new Set([
-  "AssetWorkspaceResolutionError",
+  "AssetWorkspaceAssetNotFoundError",
+  "AssetWorkspaceContextNotFoundError",
   "AssetAttachmentNotFoundError",
   "AssetProjectFaviconNotFoundError",
 ]);
@@ -43,6 +44,35 @@ export function signingSaysNotThere(cause: Cause.Cause<unknown>): boolean {
   if (Option.isNone(error)) return false;
   const tag = (error.value as { readonly _tag?: unknown } | null)?._tag;
   return typeof tag === "string" && NOT_THERE.has(tag);
+}
+
+/** Only typed owner evidence supplies a reason; transport failures never claim deletion. */
+function signingFailure(cause: Cause.Cause<unknown>): AssetUrlState {
+  const error = Cause.findErrorOption(cause);
+  const tag = Option.isSome(error)
+    ? (error.value as { readonly _tag?: unknown } | null)?._tag
+    : undefined;
+  const reasons: Readonly<Record<string, string>> = {
+    AssetWorkspaceAssetNotFoundError: "File no longer exists",
+    AssetAttachmentNotFoundError: "Attachment no longer exists",
+    AssetProjectFaviconNotFoundError: "File no longer exists",
+    AssetWorkspaceContextNotFoundError: "Conversation workspace is unavailable",
+    AssetWorkspacePathValidationError: "File path is not allowed",
+    AssetPreviewTypeValidationError: "File type cannot be previewed",
+    AssetWorkspaceResolutionError: "Workspace could not be resolved",
+    EnvironmentRpcUnavailableError: "Mate is disconnected",
+    RpcClientError: "Mate did not respond",
+  };
+  return { _tag: "Failure", reason: typeof tag === "string" ? reasons[tag] : undefined };
+}
+
+function signingCanRetry(cause: Cause.Cause<unknown>): boolean {
+  if (signingSaysNotThere(cause)) return false;
+  const error = Cause.findErrorOption(cause);
+  const tag = Option.isSome(error)
+    ? (error.value as { readonly _tag?: unknown } | null)?._tag
+    : undefined;
+  return tag !== "AssetWorkspacePathValidationError" && tag !== "AssetPreviewTypeValidationError";
 }
 
 export function useAssetUrlState(
@@ -66,7 +96,7 @@ export function useAssetUrlState(
   const retrying =
     options?.retry === true &&
     result._tag === "Failure" &&
-    !signingSaysNotThere(result.cause) &&
+    signingCanRetry(result.cause) &&
     done < SIGN_RETRY_DELAYS_MS.length;
   useEffect(() => {
     if (!retrying) return;
@@ -77,7 +107,7 @@ export function useAssetUrlState(
     return () => clearTimeout(timer);
   }, [retrying, key, done, refresh]);
   if (result._tag === "Failure") {
-    return retrying ? { _tag: "Loading" } : { _tag: "Failure" };
+    return retrying ? { _tag: "Loading" } : signingFailure(result.cause);
   }
   if (preparedConnection._tag === "None" || result._tag !== "Success") {
     return { _tag: "Loading" };
@@ -120,9 +150,8 @@ export function useAssetUrls(
 }
 
 /**
- * One signing's state, as a picture read with others takes it: gone only where the server says the
- * file is not there (`signingSaysNotThere`); any other failure — a Mate asleep, offline or
- * reconnecting, which the query refuses on purpose — is a picture still on its way.
+ * One signing's state: missing files and refused paths fail immediately; transient failures
+ * keep their room while the caller's bounded retry schedule is active.
  */
 export function assetUrlStateOf(
   result: AsyncResult.AsyncResult<
@@ -134,9 +163,12 @@ export function assetUrlStateOf(
     unknown
   >,
   httpBaseUrl: string | null,
+  retrying = true,
 ): AssetUrlState {
   if (AsyncResult.isFailure(result)) {
-    return signingSaysNotThere(result.cause) ? { _tag: "Failure" } : { _tag: "Loading" };
+    return retrying && signingCanRetry(result.cause)
+      ? { _tag: "Loading" }
+      : signingFailure(result.cause);
   }
   if (httpBaseUrl === null || !AsyncResult.isSuccess(result)) return { _tag: "Loading" };
   const url = resolveAssetUrl(httpBaseUrl, result.value.relativeUrl);
@@ -153,8 +185,8 @@ export function assetUrlStateOf(
 
 /**
  * Each resource's state, read together (`assetUrlStateOf`). A signing that failed for a moment is
- * tried again on `SIGN_RETRY_DELAYS_MS`, as `useAssetUrlState`'s `retry` does, and stays loading
- * meanwhile and after: the Mate's link coming back asks again by itself.
+ * tried again on `SIGN_RETRY_DELAYS_MS`, as `useAssetUrlState`'s `retry` does. It stays loading
+ * during those attempts, then reports unavailable; a repaired link can supply fresh evidence.
  */
 export function useAssetUrlStates(
   environmentId: EnvironmentId,
@@ -169,7 +201,7 @@ export function useAssetUrlStates(
   // The ones that may come back: failed, and not for want of the file.
   const passing = results
     .flatMap((result, index) =>
-      AsyncResult.isFailure(result) && !signingSaysNotThere(result.cause) ? [index] : [],
+      AsyncResult.isFailure(result) && signingCanRetry(result.cause) ? [index] : [],
     )
     .join(",");
   const retrying = passing !== "" && done < SIGN_RETRY_DELAYS_MS.length;
@@ -189,7 +221,7 @@ export function useAssetUrlStates(
   const httpBaseUrl =
     preparedConnection._tag === "None" ? null : preparedConnection.value.httpBaseUrl;
   return useMemo(
-    () => results.map((result) => assetUrlStateOf(result, httpBaseUrl)),
-    [httpBaseUrl, results],
+    () => results.map((result) => assetUrlStateOf(result, httpBaseUrl, retrying)),
+    [httpBaseUrl, results, retrying],
   );
 }

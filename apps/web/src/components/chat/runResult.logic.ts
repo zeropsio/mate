@@ -735,34 +735,17 @@ export function resultPictures(outcome: OutcomeModel): ReadonlyArray<ResultPictu
   );
 }
 
-/**
- * The pictures that stand as a run's result (run 11: a symbol the turn
- * downloaded and looked at stood as its result, a muted "Gone" box): a file
- * that can no longer be read is left out, with no room held for it; one
- * still being read keeps its tile; a check's own pixels never go.
- */
-export function standingPictures(
-  pictures: ReadonlyArray<ResultPicture>,
-  gone: ReadonlySet<string>,
-): ReadonlyArray<ResultPicture> {
-  return pictures.filter((picture) => picture.kind !== "file" || !gone.has(picture.path));
-}
-
-/**
- * A result's pictures as it draws them: those that stand (`standingPictures`) — only what the
- * checks took where there is no workspace to read a file from (`gone` null) — each service's
- * under its row, the rest in the strip (`rowPictures`).
- */
+/** All result pictures keep their place, including files that are now unavailable. */
 export function placeResultPictures(
   outcome: OutcomeModel,
   rows: ReadonlyArray<ResultRow>,
-  gone: ReadonlySet<string> | null,
+  hasWorkspace: boolean,
 ): ReturnType<typeof rowPictures> {
   const all = resultPictures(outcome);
   return rowPictures(
     outcome,
     rows,
-    gone === null ? all.filter((picture) => picture.kind === "check") : standingPictures(all, gone),
+    hasWorkspace ? all : all.filter((picture) => picture.kind === "check"),
   );
 }
 

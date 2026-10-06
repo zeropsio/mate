@@ -16,13 +16,6 @@ import { TurnReport } from "./TurnReport";
 /** What the workspace answers for each picture's file, by its path: loading unless told. */
 const workspace = vi.hoisted(() => ({
   files: new Map<string, AssetUrlState>(),
-  /** The pictures this conversation remembers gone (`gonePictureMemory`). */
-  gone: new Set<string>() as ReadonlySet<string>,
-}));
-
-vi.mock("../../zerops/gonePictureMemory", () => ({
-  rememberedGonePictures: () => workspace.gone,
-  rememberGonePicture: () => undefined,
 }));
 
 // A tile's tooltip, drawn in place of its popup: the words a pointer reads.
@@ -230,7 +223,6 @@ const tilesOf = (renderer: ReactTestRenderer) =>
 
 describe("TurnReport's pictures", () => {
   beforeEach(() => {
-    workspace.gone = new Set();
     workspace.files = new Map(
       ["home-mobile.png", "world-mobile.png", "map-landscape.png"].map((name) => [
         `/var/www/app/.shots/${name}`,
@@ -340,10 +332,8 @@ describe("TurnReport's pictures", () => {
     });
   });
 
-  // A file on its way is a quiet tile of its size; one that can no longer be
-  // read is no result (run 11: a muted "Gone" box stood as a turn's result):
-  // it has no tile and no room, and neither is in the viewer.
-  it("keeps a tile for a file still read, leaves one gone out, and the viewer skips both", () => {
+  // Missing files retain their tile with an explicit state; only loaded files open.
+  it("keeps unavailable and loading tiles with explicit status, and the viewer skips both", () => {
     workspace.files.set("/var/www/app/.shots/world-mobile.png", { _tag: "Failure" });
     const onOpenImage = vi.fn();
     const tiles = tilesOf(
@@ -361,10 +351,11 @@ describe("TurnReport's pictures", () => {
       tiles.map((tile) => [tile.type, tile.props["data-result-picture"], tile.props["aria-label"]]),
     ).toEqual([
       ["button", "ready", "home-mobile.png. Open the picture"],
+      ["span", "unavailable", "world-mobile.png. Image unavailable"],
       ["span", "loading", "draft-mobile.png"],
       ["button", "ready", "/status in the browser. Open the picture"],
     ]);
-    act(() => tiles[2]!.props.onClick());
+    act(() => tiles[3]!.props.onClick());
     expect(onOpenImage).toHaveBeenCalledWith({
       images: [
         { src: served("home-mobile.png"), name: "home-mobile.png" },
@@ -374,38 +365,30 @@ describe("TurnReport's pictures", () => {
     });
   });
 
-  // A gone file gives its place to the next: the strip counts only what stands.
-  it("counts only the pictures that stand toward the strip's six and its more", () => {
+  // A missing final tile still reaches a loaded picture beyond the strip.
+  it("counts unavailable pictures in the strip and keeps the more tile readable", () => {
     workspace.files.set("/var/www/app/.shots/world-mobile.png", { _tag: "Failure" });
     const pictures = [
       ...["a", "b", "c", "d", "e"].map((name) => checkPicture(`op:${name}`, `/${name}`)),
       filePicture("world-mobile.png"),
       filePicture("map-landscape.png"),
     ];
-    const tiles = tilesOf(renderPictures(pictures));
+    const onOpenImage = vi.fn();
+    const tiles = tilesOf(renderPictures(pictures, { onOpenImage }));
     expect(tiles).toHaveLength(6);
-    expect(tiles.at(-1)!.props["aria-label"]).toBe("map-landscape.png. Open the picture");
-    // No tile says "+N": nothing stands past the six.
+    expect(tiles.at(-1)!.props["aria-label"]).toBe(
+      "world-mobile.png, and 1 more. Image unavailable. Open the pictures",
+    );
+    // The overlay must not hide the unavailable label.
     const said = (node: ReactTestInstance): string =>
       node.children.map((child) => (typeof child === "string" ? child : said(child))).join("");
-    expect(tiles.map(said).filter((words) => /\+\d/.test(words))).toEqual([]);
+    expect(tiles.map(said).filter((words) => /\+\d/.test(words))).toEqual(["Image unavailable+1"]);
+    act(() => tiles.at(-1)!.props.onClick());
+    expect(onOpenImage.mock.calls[0]?.[0].index).toBe(5);
+    expect(onOpenImage.mock.calls[0]?.[0].images[5].src).toBe(served("map-landscape.png"));
   });
 
-  // A reload paints nothing it takes back: a file this conversation found gone before is left
-  // out from the first paint, while its read is still on its way.
-  it("leaves out a picture remembered gone before its read answers", () => {
-    workspace.gone = new Set(["/var/www/app/.shots/world-mobile.png"]);
-    workspace.files.delete("/var/www/app/.shots/world-mobile.png");
-    const tiles = tilesOf(
-      renderPictures([filePicture("home-mobile.png"), filePicture("world-mobile.png")]),
-    );
-    expect(tiles.map((tile) => tile.props["aria-label"])).toEqual([
-      "home-mobile.png. Open the picture",
-    ]);
-  });
-
-  // The card's steps leave to the result what its strip draws: here the seventh file, once the
-  // second is gone, and never the gone one.
+  // The opened card leaves the first six files to the strip, including missing ones.
   it("hands the card the files its strip draws", () => {
     workspace.files.set("/var/www/app/.shots/world-mobile.png", { _tag: "Failure" });
     const names = [
@@ -426,23 +409,18 @@ describe("TurnReport's pictures", () => {
     act(() => {
       create(<Card />);
     });
-    expect(seen.at(-1)).toEqual(
-      names
-        .filter((name) => name !== "world-mobile.png")
-        .map((name) => `/var/www/app/.shots/${name}`),
-    );
+    expect(seen.at(-1)).toEqual(names.slice(0, 6).map((name) => `/var/www/app/.shots/${name}`));
   });
 
-  // Every result picture gone: nothing of them shows — no strip, and a run
-  // that left no row leaves no result.
+  // Even when every file is gone the strip explains why.
   it.each([
-    { name: "under the rows, no strip", live: OUTCOME.live, report: true },
+    { name: "under the result rows", live: OUTCOME.live, report: true },
     {
-      name: "with no row, no result",
+      name: "with no other result row",
       live: [] as OutcomeModel["live"],
       report: false,
     },
-  ])("shows nothing of a run's pictures when every one is gone: $name", ({ live, report }) => {
+  ])("shows explicit unavailable tiles when every image is gone: $name", ({ live, report }) => {
     workspace.files.set("/var/www/app/.shots/world-mobile.png", { _tag: "Failure" });
     workspace.files.set("/var/www/app/.shots/map-landscape.png", { _tag: "Failure" });
     const renderer = renderPictures(
@@ -455,13 +433,35 @@ describe("TurnReport's pictures", () => {
         },
       },
     );
-    expect(tilesOf(renderer)).toEqual([]);
-    expect(renderer.root.findAll((node) => node.props["data-result-strip"] !== undefined)).toEqual(
-      [],
-    );
+    expect(tilesOf(renderer).map((tile) => tile.props["data-result-picture"])).toEqual([
+      "unavailable",
+      "unavailable",
+    ]);
+    expect(
+      renderer.root.findAll((node) => node.props["data-result-strip"] !== undefined),
+    ).toHaveLength(1);
     expect(
       renderer.root.findAll((node) => node.props["data-turn-report"] !== undefined).length > 0,
-    ).toBe(report);
+    ).toBe(true);
+  });
+
+  it("shows the owner's missing-file reason and marks failed bytes unavailable", () => {
+    workspace.files.set("/var/www/app/.shots/world-mobile.png", {
+      _tag: "Failure",
+      reason: "File no longer exists",
+    });
+    const renderer = renderPictures([
+      filePicture("home-mobile.png"),
+      filePicture("world-mobile.png"),
+    ]);
+    expect(JSON.stringify(renderer.toJSON())).toContain("File no longer exists");
+    const img = tilesOf(renderer)[0]!.findByType("img");
+    act(() => img.props.onError({ currentTarget: {} }));
+    expect(tilesOf(renderer).map((tile) => tile.props["data-result-picture"])).toEqual([
+      "unavailable",
+      "unavailable",
+    ]);
+    expect(renderer.root.findAllByType("img")).toHaveLength(0);
   });
 
   // Each tile takes its picture's shape at the strip's one height, from its

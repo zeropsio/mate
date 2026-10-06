@@ -4132,16 +4132,15 @@ medium < high < xhigh` (a driver's own order does not rank: Grok reports its lev
   Codex's helpers were already named by their nickname or path. Where the launch named none, or
   aged out, the task's words stand as before. Cursor, Grok, Antigravity and OpenCode report no
   named helpers.
-- **2026-10-06** — **A result picture that can no longer load is no result** (N2, run 11: a muted
-  "Gone" tile stood as a Noibit turn's result). A file the workspace says is not there leaves the
-  result strip with no room held: the next picture takes its place, the strip's six and its "+N"
-  count only what stands, and a run whose pictures are all gone shows nothing of them (no strip;
-  no result where it left no row). Only the server's "not there" makes a picture gone: one whose
-  Mate is asleep, offline or reconnecting stays a quiet tile and is asked again on the signing's
-  retry schedule. A conversation remembers its gone pictures per account (`gonePictureMemory`), so
-  a reload leaves them out before their reads answer and paints no tile it takes back; one that
-  loads again is forgotten. The opened card's steps leave to the result exactly the files its strip
-  draws, as the result itself placed them (`resultStripFiles`).
+- **2026-10-07** — **Unavailable conversation images explain their failure and keep their place.**
+  Supersedes N2's removal of missing result pictures. A missing workspace asset or attachment is
+  unavailable immediately, with the owner's reason; a transient signing failure gets the bounded
+  backoff schedule before becoming unavailable. Failed image requests or decoding also say
+  "Image unavailable". The strip retains its tiles and count; an unavailable "+N" tile can still
+  open later loaded pictures. Missing-file verdicts are no longer persisted in browser storage.
+  Web and desktop share this behavior. Mobile already shows unavailable for signing and byte
+  failures and has no run-result strip; no wire or provider contracts change. Workspace images
+  remain references to their source files, including `/tmp`; this change cannot recover deleted bytes.
 - **2026-10-06** — **A written or edited file's row opens onto what the agent wrote, and "Open in
   Files" shows a file it wrote outside the workspace as it wrote it** (D9, the owner: "Are these
   unclickable on purpose?", "Why can't this be opened in the Files tab?"). The row opens onto a
