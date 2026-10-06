@@ -29,6 +29,7 @@ import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import { ZeropsRefused, type ZeropsError } from "./zerops/api.ts";
 import { Changes } from "./changes.ts";
+import type { ChangeNavigationSource } from "./changeNavigation.ts";
 import { pruneIdleScopes } from "./scopeRetention.ts";
 import { Deploys } from "./deploys.ts";
 import type { EnvironmentSource } from "./environmentNavigation.ts";
@@ -143,6 +144,7 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
         Effect.provideContext(yield* Effect.context<Effect.Services<typeof healthParts>>()),
       );
       const sourceOne = yield* Semaphore.make(1);
+      const changeOne = yield* Semaphore.make(1);
       const incarnation = NodeCrypto.randomUUID();
       type Journal = ReturnType<typeof makeScopeJournal>;
       type Entry = {
@@ -188,6 +190,23 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
       >();
       let source: StructureSource | undefined;
       let environmentSource: EnvironmentSource | undefined;
+      let changeSource: ChangeNavigationSource | undefined;
+      let publishedChanges: ChangeNavigationSource | undefined;
+      let changeVersion = 0;
+      const changeFence = makeSourceFence();
+      const changeSourceNow = changeOne.withPermits(1)(
+        Effect.gen(function* () {
+          while (changeSource === undefined || changeFence.dirty()) {
+            const started = changeFence.capture();
+            const fresh = yield* changes.navigation;
+            if (!changeFence.accept(started)) continue;
+            changeSource = fresh;
+            publishedChanges ??= fresh;
+            changeVersion += 1;
+          }
+          return changeSource;
+        }),
+      );
       const sourceFence = makeSourceFence();
       let sourceVersion = 0;
       const personViews = new Map<string, StructureRead>();
@@ -231,6 +250,9 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
         const { projects, ...navigation } = app;
         return decodeApp({
           ...navigation,
+          changes: app.can.read_change.allow
+            ? (changeSource?.forApp(app.id) ?? [])
+            : { refused: app.can.read_change.reason },
           environments: (environmentSource ?? current.environmentSource).forApp(
             userId,
             app.id,
@@ -584,9 +606,16 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
             if (!entry.dirty) return;
             const generation = entry.generation;
             const version = sourceVersion;
+            if (entry.scope.kind === "navigation") yield* changeSourceNow;
+            const menuVersion = changeVersion;
             const data = yield* load(entry);
             yield* sourceNow;
             if (generation !== entry.generation || version !== sourceVersion) continue;
+            if (
+              entry.scope.kind === "navigation" &&
+              (changeFence.dirty() || menuVersion !== changeVersion)
+            )
+              continue;
             let baseline = false;
             if (entry.scope.kind === "attention") {
               const read = readAttentionSource(data.values[0]?.value);
@@ -670,6 +699,7 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
       const invalidate = (kind: "structure" | "detail" | "roles") =>
         Effect.gen(function* () {
           if (kind === "structure" || kind === "roles") sourceFence.invalidate();
+          if (kind === "structure") changeFence.invalidate();
           if (kind === "detail" || kind === "structure") contents.clear();
           for (const entry of journals.values()) {
             const affected =
@@ -722,18 +752,12 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
             }
           }
         });
-      const refreshEnvironments = Effect.gen(function* () {
-        if (source === undefined || sourceFence.dirty()) return;
-        const version = sourceVersion;
-        const fresh = yield* structure.environments;
-        if (sourceFence.dirty() || version !== sourceVersion) return;
-        const changed = new Set(
-          [...source.appIds].filter(
-            (appId) => fresh.fingerprints.get(appId) !== environmentSource?.fingerprints.get(appId),
-          ),
-        );
-        environmentSource = fresh;
-        if (changed.size === 0) return;
+      const refreshAppValues = Effect.fnUntraced(function* (
+        changed: ReadonlySet<string>,
+        version: number,
+        menuVersion?: number,
+      ) {
+        if (source === undefined) return;
         for (const entry of journals.values()) {
           if (entry.scope.kind !== "navigation" || entry.failure !== undefined) continue;
           const apps = viewFor(source, entry.userId).apps.filter(
@@ -751,9 +775,14 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
                 version !== sourceVersion ||
                 sourceFence.dirty() ||
                 entry.sourceVersion !== sourceVersion ||
-                entry.dirty
-              )
+                entry.dirty ||
+                (menuVersion !== undefined &&
+                  (changeFence.dirty() || menuVersion !== changeVersion))
+              ) {
+                entry.dirty = true;
+                entry.generation += 1;
                 return yield* scheduleRefresh(entry);
+              }
               const values = apps.flatMap((app) => {
                 const read = navigationApp(source!, entry.userId, app);
                 return Option.isSome(read) ? [{ key: `app:${app.id}`, value: read.value }] : [];
@@ -763,28 +792,53 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
             }),
           );
         }
-      }).pipe(
-        Effect.catch((error) =>
-          Effect.gen(function* () {
-            for (const entry of journals.values()) {
-              if (entry.scope.kind !== "navigation" || entry.failure !== undefined) continue;
-              entry.dirty = true;
-              entry.generation += 1;
-              if (demanded(entry))
-                yield* send(entry, [
-                  {
-                    type: "scope-error",
-                    scope: entry.scope,
-                    code: "unavailable",
-                    reason: null,
-                    disposition: "transient",
-                  },
-                ]);
-            }
-            yield* Effect.logWarning("Environment navigation read unavailable", error);
-          }),
-        ),
-      );
+      });
+      const navigationUnavailable = (label: string) => (error: unknown) =>
+        Effect.gen(function* () {
+          for (const entry of journals.values()) {
+            if (entry.scope.kind !== "navigation" || entry.failure !== undefined) continue;
+            entry.dirty = true;
+            entry.generation += 1;
+            if (demanded(entry))
+              yield* send(entry, [
+                {
+                  type: "scope-error",
+                  scope: entry.scope,
+                  code: "unavailable",
+                  reason: null,
+                  disposition: "transient",
+                },
+              ]);
+          }
+          yield* Effect.logWarning(label, error);
+        });
+      const refreshChanges = Effect.gen(function* () {
+        if (source === undefined || sourceFence.dirty()) return;
+        const version = sourceVersion;
+        const fresh = yield* changeSourceNow;
+        if (sourceFence.dirty() || version !== sourceVersion) return;
+        const changed = new Set(
+          [...source.appIds].filter(
+            (appId) => fresh.fingerprints.get(appId) !== publishedChanges?.fingerprints.get(appId),
+          ),
+        );
+        publishedChanges = fresh;
+        if (changed.size > 0) yield* refreshAppValues(changed, version, changeVersion);
+      }).pipe(Effect.catch(navigationUnavailable("Change navigation read unavailable")));
+      const refreshEnvironments = Effect.gen(function* () {
+        if (source === undefined || sourceFence.dirty()) return;
+        const version = sourceVersion;
+        const fresh = yield* structure.environments;
+        if (sourceFence.dirty() || version !== sourceVersion) return;
+        const changed = new Set(
+          [...source.appIds].filter(
+            (appId) => fresh.fingerprints.get(appId) !== environmentSource?.fingerprints.get(appId),
+          ),
+        );
+        environmentSource = fresh;
+        if (changed.size === 0) return;
+        yield* refreshAppValues(changed, version);
+      }).pipe(Effect.catch(navigationUnavailable("Environment navigation read unavailable")));
       type Signal =
         | { kind: "structure" | "detail" | "roles" | "environment" }
         | { kind: "attention" | "forget"; projectId: string };
@@ -795,7 +849,12 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
             Stream.filter((seen) => fingerprint(seen.view) !== rolesFingerprint),
             Stream.map((): Signal => ({ kind: "roles" })),
           ),
-          changes.changes.pipe(Stream.map((): Signal => ({ kind: "detail" }))),
+          changes.changes.pipe(
+            Stream.map((): Signal => {
+              changeFence.invalidate();
+              return { kind: "detail" };
+            }),
+          ),
           releases.changes.pipe(Stream.map((): Signal => ({ kind: "environment" }))),
           deploys.changes.pipe(Stream.map((): Signal => ({ kind: "environment" }))),
           overviews.changes.pipe(
@@ -835,7 +894,9 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
               ? refreshAttention(signal.projectId, signal.kind === "forget")
               : signal.kind === "environment"
                 ? Effect.andThen(invalidate("detail"), refreshEnvironments)
-                : invalidate(signal.kind);
+                : signal.kind === "detail"
+                  ? Effect.andThen(invalidate("detail"), refreshChanges)
+                  : invalidate(signal.kind);
           }),
         ),
         { startImmediately: true },
