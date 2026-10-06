@@ -343,7 +343,10 @@ export function zeropsNavigationLink(options: {
       const observeDemanded = Effect.suspend(() => {
         const demanded = new Set(demands.scopes());
         for (const scope of observed) if (!demanded.has(scope)) observed.delete(scope);
-        const fresh = [...demanded].filter((scope) => !observed.has(scope));
+        // A scope let go and held again before this ran is stale again: it is read again too.
+        const fresh = [...demanded].filter(
+          (scope) => !observed.has(scope) || streamOf(store.state(), scope).phase === "stale",
+        );
         for (const scope of fresh) observed.add(scope);
         return Effect.forEach(fresh, observeDetail, { concurrency: "unbounded", discard: true });
       });

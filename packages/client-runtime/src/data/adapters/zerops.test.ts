@@ -395,4 +395,25 @@ describe("a demanded detail", () => {
       yield* Fiber.interrupt(fiber);
     }),
   );
+
+  it.effect("reads a history again that a screen let go and held again in one tick", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const fixture = fixtureWire((request) =>
+        request.method === "GET"
+          ? Effect.succeed({ status: 200, body: { list: [finished] } })
+          : answers(() => [])(request),
+      );
+      const { fiber, link } = yield* runLink(store, fixture);
+      const release = link.demandDetail(DEMAND);
+      yield* settle;
+      // A card unmounts and the next one mounts in the same commit.
+      release();
+      link.demandDetail(DEMAND);
+      yield* settle;
+      expect(historyReads(fixture)).toBe(2);
+      expect(store.state().streams.get(history)?.phase).toBe("live");
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
 });
