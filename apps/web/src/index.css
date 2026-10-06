@@ -2649,11 +2649,14 @@ code {
    1.58× the top slice's side took one device column and the middle slice's
    two, and the side jogged at every joint (2026-09-29). So every slice and
    strip takes a radius, the middle ones one nobody can see, and all their
-   sides are drawn the same way. A card drawn whole has no joints. */
+   sides are drawn the same way. A card drawn whole has no joints. The row
+   is the list's own bare div, so the test runs on every div: it looks for
+   the timeline's row root first, so on any other div it stops at its
+   children. */
 .timeline-legend-list
   .legend-list-content-container
   > div
-  > div:has(> div > :is([data-card-slice="top"], [data-card-slice="middle"])) {
+  > div:has(> [data-timeline-root] > :is([data-card-slice="top"], [data-card-slice="middle"])) {
   contain: layout style !important;
 }
 
