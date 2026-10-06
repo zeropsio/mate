@@ -141,7 +141,7 @@ import {
   useGroupPendingEnvironments,
   useMayAddEnvironment,
 } from "~/zerops/useAddEnvironment";
-import { useHalfMadeEnvironments } from "~/zerops/useHalfMadeEnvironments";
+import { useEnvironmentSetup } from "~/zerops/useEnvironmentSetup";
 import { ZeropsReadFailure } from "./ZeropsReadFailure";
 import { useRepositoryHistory, type ZeropsHistoryState } from "~/zerops/useRepositoryHistory";
 import { cn } from "~/lib/utils";
@@ -749,7 +749,9 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
   const devstages = useDevstages(groupId);
   const pendingEnvironments = useGroupPendingEnvironments(groupId);
   const { listing } = useZeropsCandidates();
-  const { halfMade, finishing } = useHalfMadeEnvironments(heldCandidates(listing).rows);
+  const { halfMade, finishing } = useEnvironmentSetup(
+    useMemo(() => heldCandidates(listing).rows.map(({ project }) => project.id), [listing]),
+  );
 
   if (flow === undefined) {
     return (

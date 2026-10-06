@@ -140,3 +140,5 @@ export {
   shownHqStatusAtom,
   type AccountReads,
 } from "./reads.ts";
+
+export { environmentSetup } from "./projections/environmentSetup.ts";

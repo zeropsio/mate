@@ -706,14 +706,6 @@
   {
     "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
     "kind": "retired-token",
-    "fingerprint": "useHalfMadeEnvironments(",
-    "owner": "data-layer rewrite: releases/environments",
-    "reason": "half-made environments are found by a hook's own reads; the projection reads the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
-    "kind": "retired-token",
     "fingerprint": "useMatesInventory",
     "owner": "data-layer rewrite: services",
     "reason": "the Mates inventory prepares containers, services and variables for every listed Mate; read on open",
@@ -1197,14 +1189,6 @@
     "fingerprint": "useChangeOffers",
     "owner": "data-layer rewrite: permissions/members",
     "reason": "offers are read and decided by app hooks; HQ sends what the person may do",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useHalfMadeEnvironments(",
-    "owner": "data-layer rewrite: releases/environments",
-    "reason": "half-made environments are found by a hook's own reads; the projection reads the store",
     "expires": "never"
   },
   {
@@ -2592,15 +2576,7 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/zerops/useHalfMadeEnvironments.ts",
-    "kind": "retired-token",
-    "fingerprint": "useChangeOffers",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "offers are read and decided by app hooks; HQ sends what the person may do",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useHalfMadeEnvironments.ts",
+    "path": "apps/web/src/zerops/useEnvironmentSetup.ts",
     "kind": "retired-token",
     "fingerprint": "useFinishGroupEnvironment",
     "owner": "data-layer rewrite: operations",
@@ -2608,7 +2584,7 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/zerops/useHalfMadeEnvironments.ts",
+    "path": "apps/web/src/zerops/useEnvironmentSetup.ts",
     "kind": "retired-token",
     "fingerprint": "useFinishGroupEnvironment",
     "owner": "data-layer rewrite: operations",
@@ -2616,43 +2592,11 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/zerops/useHalfMadeEnvironments.ts",
+    "path": "apps/web/src/zerops/useEnvironmentSetup.ts",
     "kind": "retired-token",
     "fingerprint": "useFinishGroupEnvironment",
     "owner": "data-layer rewrite: operations",
     "reason": "upgrade restart and finish-environment hooks poll themselves; the operations adapter owns them",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useHalfMadeEnvironments.ts",
-    "kind": "retired-token",
-    "fingerprint": "useHalfMadeEnvironments(",
-    "owner": "data-layer rewrite: releases/environments",
-    "reason": "half-made environments are found by a hook's own reads; the projection reads the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useHalfMadeEnvironments.ts",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsRegistry",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "registry, recipes and releases are read by app hooks; the HQ adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useHalfMadeEnvironments.ts",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsRegistry",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "registry, recipes and releases are read by app hooks; the HQ adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useHalfMadeEnvironments.ts",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsRegistry",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "registry, recipes and releases are read by app hooks; the HQ adapter feeds the store",
     "expires": "never"
   },
   {

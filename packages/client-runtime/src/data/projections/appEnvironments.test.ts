@@ -47,7 +47,7 @@ const apply = (state: AccountState, inputs: ReadonlyArray<AccountInput>) =>
 const deliver = (
   rows: ReadonlyArray<Row>,
   removals: ReadonlyArray<{ family: "hqApp"; id: string; reason: "deleted" | "no-access" }> = [],
-): AccountInput => ({
+): Extract<AccountInput, { readonly kind: "hq-delivery" }> => ({
   kind: "hq-delivery",
   scopes: [{ scope: SCOPE, generation: 1 }],
   reset: false,
@@ -72,6 +72,21 @@ const outage = apply(told, [
     event: { kind: "fault", fault: { outcome: "transient", message: "down" }, jitter: 0 },
   },
 ]);
+const partial = apply(told, [
+  { ...deliver([app("blog", { refused: "read_change" })]), reset: true },
+]);
+const refused = apply(told, [
+  {
+    kind: "stream",
+    key: SCOPE,
+    now: 1,
+    event: {
+      kind: "fault",
+      fault: { outcome: "definitive-refusal", message: "Refused" },
+      jitter: 0,
+    },
+  },
+]);
 const removed = apply(told, [deliver([], [{ family: "hqApp", id: "shop", reason: "no-access" }])]);
 
 const of = (state: AccountState, appId: string) =>
@@ -84,6 +99,18 @@ describe("appEnvironments", () => {
     {
       name: "told, then HQ went down",
       state: outage,
+      appId: "shop",
+      environments: [STAGE, PRODUCTION],
+    },
+    {
+      name: "a partial reset omitted it",
+      state: partial,
+      appId: "shop",
+      environments: [STAGE, PRODUCTION],
+    },
+    {
+      name: "the stream refused",
+      state: refused,
       appId: "shop",
       environments: [STAGE, PRODUCTION],
     },

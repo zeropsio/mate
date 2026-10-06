@@ -166,7 +166,7 @@ import { useChangeOffers } from "~/zerops/useChangeOffers";
 import { useMateOffers, useOrgOffers } from "~/zerops/useHqOffers";
 import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
 import { officialHq, useAccountHq } from "~/zerops/accountHq";
-import { useHalfMadeEnvironments } from "~/zerops/useHalfMadeEnvironments";
+import { useEnvironmentSetup } from "~/zerops/useEnvironmentSetup";
 import { useZeropsRegistry } from "~/zerops/useZeropsRegistry";
 import { useFlowVerbs } from "~/zerops/flowVerbs";
 import { useProjectFlows, useStopDeploymentsShown } from "~/zerops/projectFlows";
@@ -1916,8 +1916,10 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   );
 
   // A stage or a production whose creation lost its last writes is said on its project's row and
-  // finished from its menu, when the person asks (`useHalfMadeEnvironments`).
-  const { halfMade, finishing } = useHalfMadeEnvironments(candidates);
+  // finished from its menu, when the person asks (`useEnvironmentSetup`).
+  const { halfMade, finishing } = useEnvironmentSetup(
+    useMemo(() => candidates.map(({ project }) => project.id), [candidates]),
+  );
 
   // Persisted cleanup debt is restored after a crash, once inventory admits the account.
   const throwawayCleanup = useZeropsThrowawaySweep({
