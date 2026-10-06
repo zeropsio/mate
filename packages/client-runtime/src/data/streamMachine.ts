@@ -5,8 +5,10 @@
  * {@link OutcomeClass}; this module alone owns retry, backoff and refusal.
  *
  * A root stream (a connection, `parent: null`) owns recovery. A child scope (a registration, an HQ
- * scope) never retries on its own: a transient fault leaves it `stale`, waiting for its parent's
- * next attempt. A definitive refusal is terminal for unchanged input at either level.
+ * scope, a detail read) waits for its parent's next attempt when the parent goes down. Its own read
+ * failing transiently on a live parent is its own to retry, on the same policy, opening nothing:
+ * the link and its other scopes stay. A definitive refusal is terminal for unchanged input at
+ * either level.
  *
  * @module data/streamMachine
  */
@@ -210,8 +212,10 @@ function fail(
   if (!state.demanded)
     return settle({ ...state, phase: "paused", fault, next: { kind: "await-demand" } });
   const failures = state.failures + 1;
-  // A child's session and transport are its parent's: it waits for the parent's next attempt.
-  if (state.parent !== null) return awaitParent({ ...state, failures, fault });
+  // A child's session is its parent's: it waits for the parent's next attempt. Its own read
+  // failing transiently is its own: it retries alone, on the one policy.
+  if (state.parent !== null && fault.outcome !== "transient")
+    return awaitParent({ ...state, failures, fault });
   if (fault.outcome === "recoverable-session") {
     if (state.repaired || state.phase === "reauthenticating") return refuse();
     return {

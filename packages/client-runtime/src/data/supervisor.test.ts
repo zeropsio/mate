@@ -7,7 +7,7 @@ import { AtomRegistry } from "effect/unstable/reactivity";
 import { makeAccountStore } from "./store.ts";
 import { STREAM_POLICY, type StreamFault } from "./streamMachine.ts";
 import { superviseLink } from "./supervisor.ts";
-import { runningScope } from "./families/process.ts";
+import { historyScope, runningScope } from "./families/process.ts";
 import { linkKeys } from "./model.ts";
 
 const LINK = linkKeys.zerops("org");
@@ -142,6 +142,47 @@ describe("superviseLink", () => {
         for (let turn = 0; turn < 50; turn += 1) yield* Effect.yieldNow;
         expect(repairs).toBe(1);
         expect(store.state().streams.get(LINK)?.phase).toBe("refused");
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
+
+  it.effect(
+    "lets a detail whose read never answers retry alone at its deadline, the link stays",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const detail = historyScope("org", "p1");
+        const supervisor = yield* superviseLink({
+          key: LINK,
+          scopes: [],
+          details: () => [detail],
+          store,
+          attempt: () =>
+            Effect.gen(function* () {
+              store.dispatch({ kind: "stream", key: LINK, now: 0, event: { kind: "handshake" } });
+              store.dispatch({
+                kind: "stream",
+                key: LINK,
+                now: 0,
+                event: { kind: "baseline-committed" },
+              });
+              store.dispatch({
+                kind: "stream",
+                key: detail,
+                now: 0,
+                event: { kind: "demand", demanded: true },
+              });
+              store.dispatch({ kind: "stream", key: detail, now: 0, event: { kind: "attempt" } });
+              return yield* Effect.never;
+            }),
+          repairSession: Effect.void,
+        });
+        const fiber = yield* Effect.forkChild(supervisor.run);
+        yield* Effect.yieldNow;
+        expect(store.state().streams.get(detail)?.phase).toBe("connecting");
+        yield* TestClock.adjust(STREAM_POLICY.handshakeTimeoutMs);
+        expect(store.state().streams.get(detail)?.phase).toBe("recovering");
+        expect(store.state().streams.get(LINK)?.phase).toBe("live");
         yield* Fiber.interrupt(fiber);
       }),
   );

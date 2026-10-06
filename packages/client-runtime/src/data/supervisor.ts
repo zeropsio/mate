@@ -33,6 +33,11 @@ export interface LinkOptions {
   readonly scopes: ReadonlyArray<ScopeKey>;
   /** The details screens demand now: children of the link like its scopes, held by demand. */
   readonly details?: () => ReadonlyArray<ScopeKey>;
+  /**
+   * Told when a child moved without the attempt hearing it — the person's signal reached it, or
+   * its read passed its deadline: the attempt under way may read it again.
+   */
+  readonly childMoved?: () => void;
   readonly store: AccountStore;
   /** One attempt: open, register, deliver; it ends only by failing with its classified fault. */
   readonly attempt: (generation: number) => Effect.Effect<never, StreamFault, Scope.Scope>;
@@ -104,17 +109,20 @@ export const superviseLink = (options: LinkOptions): Effect.Effect<LinkSuperviso
       });
     /**
      * The demanded details' deadlines, whichever are demanded now: a detail demanded during the
-     * attempt is looked at within the time its handshake may take.
+     * attempt is looked at within the time its handshake may take. A detail's read that passes its
+     * deadline is that detail's to retry alone; the link's attempt goes on.
      */
-    const watchDetails: Effect.Effect<never, Deadline> = Effect.gen(function* () {
+    const watchDetails: Effect.Effect<never> = Effect.gen(function* () {
       while (true) {
         const now = yield* Clock.currentTimeMillis;
         let wake = now + STREAM_POLICY.handshakeTimeoutMs;
         for (const scope of options.details?.() ?? []) {
           const { next } = streamOf(store.state(), scope);
           if (next.kind !== "await-handshake" && next.kind !== "await-baseline") continue;
-          if (now >= next.deadlineAt) return yield* Effect.fail({ deadline: scope });
-          wake = Math.min(wake, next.deadlineAt);
+          if (now >= next.deadlineAt) {
+            yield* dispatch({ kind: "deadline" }, scope);
+            options.childMoved?.();
+          } else wake = Math.min(wake, next.deadlineAt);
         }
         yield* Effect.sleep(wake - now);
       }
@@ -198,6 +206,7 @@ export const superviseLink = (options: LinkOptions): Effect.Effect<LinkSuperviso
       signal: (signal) =>
         Effect.gen(function* () {
           for (const scope of children()) yield* dispatch({ kind: signal }, scope);
+          options.childMoved?.();
           yield* Queue.offer(signals, signal);
         }),
     };

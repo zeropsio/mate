@@ -476,7 +476,7 @@ const runLink = (
     const supervisor = yield* superviseLink({ ...link, store, repairSession: Effect.void });
     const fiber = yield* Effect.forkChild(supervisor.run);
     yield* settle;
-    return { fiber, link };
+    return { fiber, link, supervisor };
   });
 
 const run = (store: ReturnType<typeof makeAccountStore>, fixture: ReturnType<typeof fixtureWire>) =>
@@ -586,7 +586,7 @@ describe("a demanded detail", () => {
       }),
   );
 
-  it.effect("ends the attempt when a demanded history's read is lost on the way", () =>
+  it.effect("retries a demanded history whose read is lost on the way alone, the link stays", () =>
     Effect.gen(function* () {
       const store = makeAccountStore(AtomRegistry.make());
       const fixture = fixtureWire((request) =>
@@ -597,8 +597,8 @@ describe("a demanded detail", () => {
       const { fiber, link } = yield* runLink(store, fixture);
       link.demandDetail(DEMAND);
       yield* settle;
-      expect(store.state().streams.get(linkKeys.zerops(ORG))?.phase).toBe("recovering");
-      expect(store.state().streams.get(history)?.phase).toBe("stale");
+      expect(store.state().streams.get(linkKeys.zerops(ORG))?.phase).toBe("live");
+      expect(store.state().streams.get(history)?.phase).toBe("recovering");
       yield* Fiber.interrupt(fiber);
     }),
   );
@@ -663,30 +663,106 @@ describe("what a baseline and a read by id may claim", () => {
     }),
   );
 
-  it.effect("a read by id that fails ends the attempt: the link tries again and reads anew", () =>
-    Effect.gen(function* () {
-      const store = makeAccountStore(AtomRegistry.make());
-      let failing = true;
-      const fixture = fixtureWire((request) =>
-        request.body?.wsOutputType === undefined && request.path === PROCESS_SEARCH && failing
-          ? Effect.fail<StreamFault>({ outcome: "transient", message: "HTTP 503" })
-          : answers(() => [])(request),
-      );
-      const fiber = yield* run(store, fixture);
-      yield* fixture.push(fixture.subscription(PROCESS_SEARCH, "listStream"), {
-        add: ["J3TU3gE0SvCFrPDutSacqw"],
-        delete: [],
-      });
-      yield* settle;
-      const link = store.state().streams.get(linkKeys.zerops(ORG));
-      expect(link?.phase).toBe("recovering");
-      failing = false;
-      yield* TestClock.adjust(link?.next.kind === "retry" ? link.next.at : 0);
-      yield* settle;
-      expect(fixture.opens()).toBe(2);
-      expect(store.state().streams.get(linkKeys.zerops(ORG))?.phase).toBe("live");
-      yield* Fiber.interrupt(fiber);
-    }),
+  it.effect(
+    "a read by id that fails is tried again alone: the link and its registrations stay",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        let failing = true;
+        const fixture = fixtureWire((request) =>
+          request.body?.wsOutputType === undefined && request.path === PROCESS_SEARCH && failing
+            ? Effect.fail<StreamFault>({
+                outcome: "transient",
+                message: "HTTP 503",
+                retryAfterMs: 5_000,
+              })
+            : answers(() => [])(request),
+        );
+        const fiber = yield* run(store, fixture);
+        const registered = fixture.requests.filter((request) => request.body?.wsOutputType).length;
+        yield* fixture.push(fixture.subscription(PROCESS_SEARCH, "listStream"), {
+          add: ["J3TU3gE0SvCFrPDutSacqw"],
+          delete: [],
+        });
+        yield* settle;
+        expect(store.state().streams.get(linkKeys.zerops(ORG))?.phase).toBe("live");
+        failing = false;
+        // Not before what Zerops asked for.
+        yield* TestClock.adjust(4_000);
+        yield* settle;
+        expect(factOf(store.state(), "process", "J3TU3gE0SvCFrPDutSacqw")).toBeUndefined();
+        yield* TestClock.adjust(6_000);
+        yield* settle;
+        expect(factOf(store.state(), "process", "J3TU3gE0SvCFrPDutSacqw")).toBeDefined();
+        expect(fixture.opens()).toBe(1);
+        expect(fixture.requests.filter((request) => request.body?.wsOutputType)).toHaveLength(
+          registered,
+        );
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
+
+  it.effect(
+    "a detail read that fails retries itself on the retry policy, the link stays live",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        let failing = true;
+        const fixture = fixtureWire((request) =>
+          request.method === "GET" && request.path === "/app-version/v9"
+            ? failing
+              ? Effect.fail<StreamFault>({
+                  outcome: "transient",
+                  message: "HTTP 429",
+                  retryAfterMs: 3_000,
+                })
+              : Effect.succeed({ status: 200, body: version("v9") })
+            : answers(() => [])(request),
+        );
+        const { fiber, link } = yield* runLink(store, fixture);
+        link.demandDetail({ family: "version", listing: "version", ownerId: "v9" });
+        yield* settle;
+        expect(store.state().streams.get(versionScope(ORG, "v9"))?.phase).toBe("recovering");
+        expect(store.state().streams.get(linkKeys.zerops(ORG))?.phase).toBe("live");
+        failing = false;
+        yield* TestClock.adjust(3_000);
+        yield* settle;
+        expect(store.state().streams.get(versionScope(ORG, "v9"))?.phase).toBe("live");
+        expect(factOf(store.state(), "version", "v9")).toBeDefined();
+        expect(fixture.opens()).toBe(1);
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
+
+  it.effect(
+    "a refused detail stays refused across link attempts, until the person asks again",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const fixture = fixtureWire((request) =>
+          request.method === "GET" && request.path === "/app-version/gone"
+            ? Effect.fail<StreamFault>({ outcome: "definitive-refusal", message: "HTTP 400" })
+            : answers(() => [])(request),
+        );
+        const { fiber, link, supervisor } = yield* runLink(store, fixture);
+        link.demandDetail({ family: "version", listing: "version", ownerId: "gone" });
+        yield* settle;
+        const reads = () =>
+          fixture.requests.filter((request) => request.path === "/app-version/gone");
+        expect(reads()).toHaveLength(1);
+        yield* fixture.drop({ outcome: "transient", message: "socket closed" });
+        yield* settle;
+        const down = store.state().streams.get(linkKeys.zerops(ORG));
+        yield* TestClock.adjust(down?.next.kind === "retry" ? down.next.at : 0);
+        yield* settle;
+        expect(fixture.opens()).toBe(2);
+        expect(reads()).toHaveLength(1);
+        expect(store.state().streams.get(versionScope(ORG, "gone"))?.phase).toBe("refused");
+        yield* supervisor.signal("manual-retry");
+        yield* settle;
+        expect(reads()).toHaveLength(2);
+        yield* Fiber.interrupt(fiber);
+      }),
   );
 
   it.effect("a version read by id is held; one the platform does not have refuses its read", () =>

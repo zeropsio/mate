@@ -24,6 +24,7 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
+import * as Random from "effect/Random";
 import * as Schema from "effect/Schema";
 import type * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
@@ -40,7 +41,7 @@ import { familySpec, scopeListing, scopeSpec } from "../families/index.ts";
 import { linkKeys, type Family, type LinkKey, type ScopeKey } from "../model.ts";
 import { streamOf, type Row, type RuntimeDirective } from "../reducer.ts";
 import type { AccountStore } from "../store.ts";
-import type { StreamEvent, StreamFault } from "../streamMachine.ts";
+import { retryDelayMs, type StreamEvent, type StreamFault } from "../streamMachine.ts";
 import type { LinkOptions } from "../supervisor.ts";
 
 /** One open receiver: its frames, and requests made on its behalf. */
@@ -142,7 +143,7 @@ export function zeropsNavigationLink(options: {
   readonly store: AccountStore;
   /** A fresh subscription name. */
   readonly makeId: () => string;
-}): Pick<LinkOptions, "key" | "scopes" | "details" | "attempt"> & {
+}): Pick<LinkOptions, "key" | "scopes" | "details" | "attempt" | "childMoved"> & {
   /** A screen's hold on a detail; the release lets it go once no screen holds it. */
   readonly demandDetail: (demand: DetailDemand) => () => void;
 } {
@@ -159,6 +160,8 @@ export function zeropsNavigationLink(options: {
   const registrations = zeropsNavigation(orgId);
   const scopes = [...new Set(registrations.map((registration) => registration.scope))];
   const familyOf = (scope: ScopeKey) => scopeSpec(scope).family;
+  /** Looks at the demanded details again in the attempt under way, if one is. */
+  let wakeAttempt: (() => void) | null = null;
 
   const attempt = (): Effect.Effect<never, StreamFault, Scope.Scope> =>
     Effect.gen(function* () {
@@ -174,6 +177,15 @@ export function zeropsNavigationLink(options: {
       const generationOf = (scope: ScopeKey) => generations.get(scope) ?? -1;
       /** What ends this attempt from its side work: the credential refused, or access changed. */
       const ended = yield* Deferred.make<never, StreamFault>();
+      /**
+       * A read beside the frames whose credential no longer passes ends the attempt: the session
+       * and access are the link's. A read that fails transiently is tried again alone; one the
+       * owner refuses is its own.
+       */
+      const sessionEnds = (fault: StreamFault): Effect.Effect<void> =>
+        fault.outcome === "recoverable-session" || fault.outcome === "authoritative-denial"
+          ? Deferred.fail(ended, fault)
+          : Effect.void;
 
       /**
        * The runtime work a reduction asks for, run beside the frames, never blocking them. A read
@@ -196,16 +208,28 @@ export function zeropsNavigationLink(options: {
                   : Effect.void,
             );
           return Effect.void;
-        }).pipe(
+        }).pipe(Effect.catch(sessionEnds), Effect.forkIn(attemptScope), Effect.asVoid);
+
+      /**
+       * A read by id that fails transiently is tried again alone, on the one retry policy with
+       * `Retry-After` as its floor, for as long as the attempt lasts: the link and its
+       * registrations stay.
+       */
+      const readAgain = <A>(
+        read: Effect.Effect<A, StreamFault>,
+        failures = 0,
+      ): Effect.Effect<A, StreamFault> =>
+        read.pipe(
           Effect.catch((fault) =>
-            fault.outcome === "transient" ||
-            fault.outcome === "recoverable-session" ||
-            fault.outcome === "authoritative-denial"
-              ? Deferred.fail(ended, fault)
-              : Effect.void,
+            fault.outcome !== "transient"
+              ? Effect.fail(fault)
+              : Effect.flatMap(Random.next, (jitter) =>
+                  Effect.andThen(
+                    Effect.sleep(retryDelayMs(failures + 1, jitter, fault.retryAfterMs)),
+                    readAgain(read, failures + 1),
+                  ),
+                ),
           ),
-          Effect.forkIn(attemptScope),
-          Effect.asVoid,
         );
 
       const resolveRows = (
@@ -216,14 +240,16 @@ export function zeropsNavigationLink(options: {
           const family = familyOf(scope);
           const entity = familySpec(family).zerops?.entity;
           if (entity === undefined) return;
-          const answer = yield* link.post(`/${entity}/search`, {
-            search: [
-              { name: "clientId", operator: "eq", value: orgId },
-              { name: "id", operator: "in", value: ids },
-            ],
-            sort: [],
-            limit: ids.length,
-          });
+          const answer = yield* readAgain(
+            link.post(`/${entity}/search`, {
+              search: [
+                { name: "clientId", operator: "eq", value: orgId },
+                { name: "id", operator: "in", value: ids },
+              ],
+              sort: [],
+              limit: ids.length,
+            }),
+          );
           const items = Option.getOrUndefined(decodeList(answer))?.items ?? [];
           yield* carryOut(
             store.dispatch({
@@ -300,7 +326,7 @@ export function zeropsNavigationLink(options: {
 
       yield* signal(key, { kind: "handshake" });
       yield* signal(key, { kind: "baseline-committed" });
-      const reading = yield* Effect.forkIn(Stream.runForEach(link.frames, onFrame), attemptScope);
+      const frames = yield* Effect.forkIn(Stream.runForEach(link.frames, onFrame), attemptScope);
 
       for (const scope of scopes) {
         yield* signal(scope, { kind: "attempt" });
@@ -341,8 +367,9 @@ export function zeropsNavigationLink(options: {
       }
       /**
        * One demanded detail listing, read while the receiver is up: its answer is the scope's
-       * baseline. The owner refusing that one read refuses that scope alone; a failure the link
-       * would recover from ends the attempt, and the next one reads every demanded detail again.
+       * baseline. The owner refusing that one read refuses that scope alone; a transient failure,
+       * or an answer it cannot read, leaves that scope to retry alone on the one policy; a session
+       * that ended ends the attempt.
        */
       const observeDetail = (scope: ScopeKey): Effect.Effect<void, StreamFault> =>
         Effect.gen(function* () {
@@ -361,17 +388,21 @@ export function zeropsNavigationLink(options: {
                   ? classifyHttp(404)
                   : read,
             ),
-            Effect.catchIf(
-              (fault) =>
-                fault.outcome === "definitive-refusal" || fault.outcome === "authoritative-denial",
-              Effect.succeed,
-            ),
+            Effect.catchIf((fault) => fault.outcome !== "recoverable-session", Effect.succeed),
           );
           if ("outcome" in answer)
-            return yield* signal(scope, { kind: "fault", fault: answer, jitter: 0 });
+            return yield* signal(scope, {
+              kind: "fault",
+              fault: answer,
+              jitter: yield* Random.next,
+            });
           const items = detail.zerops.items(answer.body);
           if (items === undefined)
-            return yield* Effect.fail(corrupt("A detail baseline answer is malformed."));
+            return yield* signal(scope, {
+              kind: "fault",
+              fault: corrupt("A detail baseline answer is malformed."),
+              jitter: yield* Random.next,
+            });
           const rows = rowsOf(spec.family, items);
           yield* carryOut(
             store.dispatch({
@@ -387,26 +418,79 @@ export function zeropsNavigationLink(options: {
           yield* signal(scope, { kind: "baseline-committed" });
         });
 
-      // Every detail demanded now is read once in this attempt, and each one demanded later.
-      const observed = new Set<ScopeKey>();
-      const changes = yield* Queue.unbounded<void>();
-      const stopListening = demands.onChange(() => Queue.offerUnsafe(changes, undefined));
-      yield* Effect.addFinalizer(() => Effect.sync(stopListening));
-      const observeDemanded = Effect.suspend(() => {
+      /**
+       * Every detail demanded now is read once in this attempt, and each one demanded later. One
+       * whose own read failed is read again when its retry comes due; one refused is never read
+       * again by itself — only the person's try again or a changed input moves it (to a new
+       * generation), and then it is read again.
+       */
+      const observed = new Map<ScopeKey, number>();
+      const inFlight = new Set<ScopeKey>();
+      const wakes = yield* Queue.sliding<void>(1);
+      const wake = () => Queue.offerUnsafe(wakes, undefined);
+      const stopListening = demands.onChange(wake);
+      wakeAttempt = wake;
+      yield* Effect.addFinalizer(() =>
+        Effect.sync(() => {
+          stopListening();
+          if (wakeAttempt === wake) wakeAttempt = null;
+        }),
+      );
+      const observeDemanded = Effect.gen(function* () {
+        const now = yield* Clock.currentTimeMillis;
         const demanded = new Set(demands.scopes());
-        for (const scope of observed) if (!demanded.has(scope)) observed.delete(scope);
-        // A scope let go and held again before this ran is stale again: it is read again too.
-        const fresh = [...demanded].filter(
-          (scope) => !observed.has(scope) || streamOf(store.state(), scope).phase === "stale",
-        );
-        for (const scope of fresh) observed.add(scope);
-        return Effect.forEach(fresh, observeDetail, { concurrency: "unbounded", discard: true });
+        for (const scope of observed.keys()) if (!demanded.has(scope)) observed.delete(scope);
+        const fresh: Array<ScopeKey> = [];
+        let wakeAt = Number.POSITIVE_INFINITY;
+        for (const scope of demanded) {
+          const stream = streamOf(store.state(), scope);
+          if (stream.phase === "refused") continue;
+          // A read that passed its deadline may still hang: its retry does not wait for it, and
+          // its late answer is fenced out by the new generation.
+          if (stream.phase === "recovering" && stream.next.kind === "retry") {
+            if (stream.next.at > now) {
+              wakeAt = Math.min(wakeAt, stream.next.at);
+              continue;
+            }
+            yield* signal(scope, { kind: "retry-due" });
+            fresh.push(scope);
+            continue;
+          }
+          if (inFlight.has(scope)) continue;
+          const seen = observed.get(scope);
+          if (
+            seen === undefined ||
+            stream.phase === "stale" ||
+            (stream.phase === "connecting" && stream.generation !== seen)
+          )
+            fresh.push(scope);
+        }
+        for (const scope of fresh) {
+          inFlight.add(scope);
+          yield* observeDetail(scope).pipe(
+            Effect.catch(sessionEnds),
+            Effect.ensuring(
+              Effect.sync(() => {
+                inFlight.delete(scope);
+                observed.set(scope, streamOf(store.state(), scope).generation);
+                wake();
+              }),
+            ),
+            Effect.forkIn(attemptScope),
+          );
+        }
+        return wakeAt;
       });
-      yield* Effect.raceAllFirst([
-        Fiber.join(reading),
-        Effect.forever(Effect.andThen(observeDemanded, Queue.take(changes))),
-        Deferred.await(ended),
-      ]);
+      const observeForever = Effect.forever(
+        Effect.gen(function* () {
+          const wakeAt = yield* observeDemanded;
+          const now = yield* Clock.currentTimeMillis;
+          yield* Number.isFinite(wakeAt)
+            ? Effect.raceFirst(Queue.take(wakes), Effect.sleep(Math.max(0, wakeAt - now)))
+            : Queue.take(wakes);
+        }),
+      );
+      yield* Effect.raceAllFirst([Fiber.join(frames), observeForever, Deferred.await(ended)]);
       return yield* Effect.fail(corrupt("The receiver's socket closed."));
     });
 
@@ -415,6 +499,8 @@ export function zeropsNavigationLink(options: {
     scopes,
     details: demands.scopes,
     attempt,
+    // A detail the person tried again, or whose read passed its deadline: look at it now.
+    childMoved: () => wakeAttempt?.(),
     demandDetail: (demand) => demands.hold(detailScopeOf(orgId, demand)),
   };
 }

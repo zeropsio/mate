@@ -162,7 +162,7 @@ describe("transition", () => {
     expect(state).toMatchObject({ phase, next: { kind: next } });
   });
 
-  it("lets a child scope wait for its parent instead of retrying on its own", () => {
+  it("lets a child scope wait for its parent's attempts, and retry only its own failed read", () => {
     const child = initialStream({ parent: "zerops:org", mode: "realtime" });
     const demanded = transition(child, { kind: "demand", demanded: true }, 0);
     expect(demanded.state).toMatchObject({ phase: "stale", next: { kind: "await-parent" } });
@@ -180,13 +180,26 @@ describe("transition", () => {
       phase: "stale",
       next: { kind: "await-parent" },
     });
+    // Its own read failing is its own: it retries alone on the one policy, Retry-After a floor,
+    // and opens nothing — the read runs on its parent's connection.
     const faulted = transition(
       live,
-      { kind: "fault", jitter: 0, fault: { outcome: "transient", message: "registration" } },
+      {
+        kind: "fault",
+        jitter: 0,
+        fault: { outcome: "transient", message: "HTTP 429", retryAfterMs: 3_000 },
+      },
       0,
     );
-    expect(faulted.state.phase).toBe("stale");
+    expect(faulted.state).toMatchObject({
+      phase: "recovering",
+      failures: 1,
+      next: { kind: "retry", at: 3_000 },
+    });
     expect(faulted.directives).toEqual([]);
+    const retried = transition(faulted.state, { kind: "retry-due" }, 3_000);
+    expect(retried.state).toMatchObject({ phase: "connecting", generation: 2 });
+    expect(retried.directives).toEqual([]);
 
     const refused = run(
       live,

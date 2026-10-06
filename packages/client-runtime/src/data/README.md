@@ -61,9 +61,12 @@ baseline, and ends only by failing with a classified fault. Run it under
 - Every connection and every scope runs the one stream machine. Its phase is a readable fact; no
   screen infers "loading" from missing data.
 - An adapter only classifies a failure. Retry, backoff, session repair and refusal belong to the
-  machine and the supervisor.
+  machine and the supervisor. A read beside a live link (a detail, a row by id) that fails
+  transiently is retried alone on the same policy (`retryDelayMs`, `Retry-After` a floor): the link
+  and its registrations stay.
 - A definitive refusal is final until the person tries again or an input changes. Focus, remount,
-  socket rotation and time do not revive it. A refused link refuses its scopes.
+  socket rotation, a link's next attempt and time do not revive it. A refused link refuses its
+  scopes.
 - Every wait has a deadline or a named next action.
 - One family, one reducer, one writer. An operation's receipts go through the same reducer.
 - A transport event never deletes a fact. Leaving a scope changes membership, never existence;
@@ -95,6 +98,7 @@ baseline, and ends only by failing with a classified fault. Run it under
   registered per owner by `zeropsRegistrations`), or a family's `details` listing (one read is its
   baseline; its members' later changes arrive through the family's own updates). A screen holds a
   detail through `demandDetail({ family, listing?, ownerId })` while it is drawn and releases it on
-  unmount; the Zerops adapter reads each demanded listing once per attempt, and the supervisor
-  treats demanded details as children of the link. Registering and releasing a detail family's
+  unmount; the Zerops adapter reads each demanded listing once per attempt — never one refused —
+  and again when its own retry comes due, and the supervisor treats demanded details as children
+  of the link. Registering and releasing a detail family's
   own pair while live comes with the first such family.
