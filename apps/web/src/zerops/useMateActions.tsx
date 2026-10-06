@@ -95,7 +95,7 @@ import {
 import { currentAccountEnvironments } from "./accountEnvironments";
 import { useEnvironmentLinks } from "../routes/-environmentTargets";
 import { resolveThreadRouteTarget } from "../threadRoutes";
-import { shownHqProjectPeopleAtom } from "@t3tools/client-runtime/data";
+import { shownHqProjectPeopleAtom, type HqHandoverCandidates } from "@t3tools/client-runtime/data";
 import { hqPlacementsAtom, hqNavigationAtom } from "../state/zerops";
 import { invalidateZerops } from "./accountInvalidations";
 import {
@@ -115,7 +115,6 @@ import {
   useZeropsCandidates,
   type ZeropsCandidatePresentation,
 } from "./useZeropsCandidates";
-import { useZeropsOrganizationMembersRead } from "./useZeropsMateOwners";
 import { finishSetupContainer } from "./finishSetup.logic";
 import { usePressesElsewhere } from "./usePressesElsewhere";
 import {
@@ -366,12 +365,29 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
     },
     [mateOffersOf],
   );
-  // The member list is read only once a hand-over's picker opens: a load reads none, and a Mate
-  // about to be deleted says whose it is as HQ names its owner.
-  const { members, status: membersStatus } = useZeropsOrganizationMembersRead({
-    clientId: activeOrganization?.id,
-    enabled: dialog?.kind === "assign",
-  });
+  const askHandoverCandidates = useAccountDataOptional()?.handoverCandidates;
+  // Whom a Mate may be handed over to is HQ's answer, asked once its picker opens: a load asks
+  // nothing (D49). HQ alone decides who may hand over and to whom; its refusal is a failed read.
+  const [handover, setHandover] = useState<{
+    readonly projectId: string;
+    readonly read:
+      | { readonly kind: "reading" }
+      | { readonly kind: "read"; readonly candidates: HqHandoverCandidates }
+      | { readonly kind: "failed" };
+  } | null>(null);
+  const askHandover = useCallback(
+    (projectId: string) => {
+      if (askHandoverCandidates === undefined) return;
+      setHandover({ projectId, read: { kind: "reading" } });
+      const settle = (read: NonNullable<typeof handover>["read"]) =>
+        setHandover((now) => (now?.projectId === projectId ? { projectId, read } : now));
+      askHandoverCandidates(projectId).then(
+        (candidates) => settle({ kind: "read", candidates }),
+        () => settle({ kind: "failed" }),
+      );
+    },
+    [askHandoverCandidates],
+  );
 
   /** One write, with its busy key and its refusal, wherever it came from. */
   const write = useCallback(
@@ -1084,6 +1100,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
                 onSelect: () => {
                   setPress(UNPRESSED);
                   setDialog({ kind: "assign", candidate });
+                  askHandover(candidate.project.id);
                 },
               },
             ]
@@ -1159,6 +1176,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       ];
     },
     [
+      askHandover,
       busyKey,
       changeFace,
       deleting,
@@ -1269,15 +1287,18 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
         <ZeropsAssignMateDialog
           error={press.error}
           key={`assign:${dialog.candidate.key}`}
-          members={members}
+          candidates={handover?.read.kind === "read" ? handover.read.candidates : []}
           readingOrganization={
-            membersStatus === "loading" && members.length === 0
+            handover === null || handover.read.kind === "reading"
               ? activeOrganization?.name
               : undefined
           }
           readFailed={
-            membersStatus === "failed" && members.length === 0 && activeOrganization !== null
-              ? { organization: activeOrganization.name, onReadAgain: accountHq.reread }
+            handover?.read.kind === "failed" && activeOrganization !== null
+              ? {
+                  organization: activeOrganization.name,
+                  onReadAgain: () => askHandover(dialog.candidate.project.id),
+                }
               : undefined
           }
           onCancel={close}

@@ -24,6 +24,7 @@ import type { ZeropsCandidatePresentation } from "./useZeropsCandidates";
 import { mountHqNavigation } from "~/zerops/__fixtures__/hqNavigation";
 
 interface AssignDialogProps {
+  readonly candidates: ReadonlyArray<{ readonly clientUserId: string; readonly name: string }>;
   readonly readingOrganization?: string | undefined;
   readonly readFailed?:
     | { readonly organization: string; readonly onReadAgain: () => void }
@@ -127,10 +128,10 @@ const mock = vi.hoisted(() => ({
   asked: [] as Array<string>,
   /** The organization's token list, as the platform would answer it were it read. */
   tokens: [] as Array<unknown>,
-  /** Whether the member list was to be read, at each render that asked. */
-  membersEnabled: [] as Array<boolean>,
-  /** The member list's read, as it stands. */
-  membersStatus: "ready" as "idle" | "loading" | "ready" | "failed",
+  /** The Mates HQ was asked whom to hand over to, in order. */
+  handoverAsked: [] as Array<string>,
+  /** HQ's answer of whom a Mate may be handed over to. */
+  handoverAnswer: (): Promise<ReadonlyArray<unknown>> => Promise.resolve([]),
   /** The account HQ's read of the member list again. */
   reread: vi.fn(),
   /** The Move dialog as the hook mounts it: where it offers the Mate to go. */
@@ -155,7 +156,13 @@ vi.mock("./useHqOffers", () => ({
       : { kind: "refused", reason: "not_structure_writer" },
 }));
 vi.mock("./ZeropsAccountData", () => ({
-  useAccountDataOptional: () => ({ moveOffers: () => Promise.resolve(mock.moveTo) }),
+  useAccountDataOptional: () => ({
+    moveOffers: () => Promise.resolve(mock.moveTo),
+    handoverCandidates: (projectId: string) => {
+      mock.handoverAsked.push(projectId);
+      return mock.handoverAnswer();
+    },
+  }),
 }));
 vi.mock("./deleteProject", () => ({
   useDeleteProject: () => mock.deleteProject,
@@ -272,13 +279,6 @@ vi.mock("./inventoryContext", async () => {
   const { useState } = await import("react");
   return { useProjectDialog: () => useState(null) };
 });
-vi.mock("./useZeropsMateOwners", () => ({
-  useZeropsOrganizationMembersRead: (input: { readonly enabled: boolean }) => {
-    mock.membersEnabled.push(input.enabled);
-    return { members: [], status: input.enabled ? mock.membersStatus : "idle", settled: false };
-  },
-  zeropsMateOwner: () => undefined,
-}));
 // The organization's official HQ, where a Mate's face is written.
 vi.mock("./accountHq", async (original) => ({
   officialHq: (await original<typeof import("./accountHq")>()).officialHq,
@@ -406,8 +406,8 @@ beforeEach(() => {
   mock.completeProjectDeletion.mockReset().mockResolvedValue(undefined);
   mock.deleteProject.mockReset().mockResolvedValue({ value: undefined });
   mock.setDeleting.mockReset();
-  mock.membersEnabled = [];
-  mock.membersStatus = "ready";
+  mock.handoverAsked = [];
+  mock.handoverAnswer = () => Promise.resolve([]);
   mock.reread.mockReset();
   mock.mateKey = null;
   mock.deleteDialog.current = null;
@@ -619,29 +619,47 @@ describe("useMateActions — Hand this Mate over", () => {
     });
   };
 
-  it("reads the organization's members once its picker opens, never on load", () => {
+  // Whom a Mate may be handed over to is HQ's answer, asked as the picker opens (D49).
+  it("asks HQ whom to hand it to once its picker opens, never on load", () => {
     mount();
-    expect(mock.membersEnabled).not.toContain(true);
+    expect(mock.handoverAsked).toEqual([]);
     openAssign();
-    expect(mock.membersEnabled.at(-1)).toBe(true);
+    expect(mock.handoverAsked).toEqual([FEN.project.id]);
+  });
+
+  it("lists the people HQ answers", async () => {
+    const ADA = { userId: "u-ada", clientUserId: "cu-ada", name: "Ada", avatarUrl: null };
+    mock.handoverAnswer = () => Promise.resolve([ADA]);
+    mount();
+    await act(async () => {
+      verbs(FEN)
+        .find((verb) => verb.id === "assign")!
+        .onSelect();
+    });
+    expect(mock.assignDialog.current?.candidates).toEqual([ADA]);
+    expect(mock.assignDialog.current?.readingOrganization).toBeUndefined();
   });
 
   it("says it reads the organization until its people are there to pick", () => {
-    mock.membersStatus = "loading";
+    mock.handoverAnswer = () => new Promise(() => {});
     mount();
     openAssign();
     expect(mock.assignDialog.current?.readingOrganization).toBe("Acme");
   });
 
-  it("says it could not read the organization's people, and reads them again on Try again", () => {
-    mock.membersStatus = "failed";
+  it("says it could not read the organization's people, and asks again on Try again", async () => {
+    mock.handoverAnswer = () => Promise.reject(new Error("refused"));
     mount();
-    openAssign();
+    await act(async () => {
+      verbs(FEN)
+        .find((verb) => verb.id === "assign")!
+        .onSelect();
+    });
     expect(mock.assignDialog.current?.readFailed?.organization).toBe("Acme");
-    act(() => {
+    await act(async () => {
       mock.assignDialog.current!.readFailed!.onReadAgain();
     });
-    expect(mock.reread).toHaveBeenCalledTimes(1);
+    expect(mock.handoverAsked).toEqual([FEN.project.id, FEN.project.id]);
   });
 
   const answered = (progress: unknown, evidence: string | null = null) => ({

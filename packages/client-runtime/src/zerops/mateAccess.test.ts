@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
-  handOverCandidates,
   mateMemberName,
   mateOnlyOwnerOpensIt,
   mateOwnerRecords,
@@ -226,33 +225,6 @@ describe("the verbs a Mate offers (guide 0.8)", () => {
 
 // The E2E run (F8): the list held 200 rows, nearly all integration tokens, and a token was its
 // default. A Mate is handed to a person, a member who has joined.
-describe("handOverCandidates — whom a Mate may be handed to", () => {
-  it.each([
-    { who: "a person who joined", email: "ada@example.com", status: "ACTIVE", listed: true },
-    {
-      who: "an integration token",
-      email: "token-abc123@zerops.io",
-      status: "ACTIVE",
-      listed: false,
-    },
-    {
-      who: "a token, in capitals",
-      email: "TOKEN-ABC123@ZEROPS.IO",
-      status: "ACTIVE",
-      listed: false,
-    },
-    {
-      who: "a person still invited",
-      email: "eva@example.com",
-      status: "WAITING_AUTHORIZATION",
-      listed: false,
-    },
-  ])("lists $who: $listed", ({ email, status, listed }) => {
-    const member = { id: "cu-1", status, user: { email } };
-    expect(handOverCandidates([member])).toEqual(listed ? [member] : []);
-  });
-});
-
 describe("withMateProjectRole — handing a Mate over", () => {
   it("sets this project's role and leaves the person's other projects alone", () => {
     expect(

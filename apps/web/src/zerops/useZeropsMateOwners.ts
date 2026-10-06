@@ -7,8 +7,7 @@
  * record of goes without a name, and a face without a badge.
  *
  * The member list itself is read only where a surface needs the organization's people beyond what
- * HQ names (`useZeropsOrganizationMembersRead`): verifying the organization's official HQ, and a
- * hand-over's picker.
+ * HQ names (`useZeropsOrganizationMembersRead`): verifying the organization's official HQ.
  */
 
 import { useAtomValue } from "@effect/atom-react";

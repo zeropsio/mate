@@ -2752,22 +2752,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/zerops/useMateActions.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsOrganizationMembersRead",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "the client reads organization members for owners and admins; HQ sends them finished",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useMateActions.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsOrganizationMembersRead",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "the client reads organization members for owners and admins; HQ sends them finished",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/zerops/useMateSetup.ts",
     "kind": "retired-token",
     "fingerprint": "MATE_SETUP_POLL_MS",

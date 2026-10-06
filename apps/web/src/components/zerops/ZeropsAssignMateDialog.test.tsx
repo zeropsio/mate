@@ -1,7 +1,6 @@
 /**
- * Handing a Mate over (E2E F8): the list is the organization's people, never one of its integration
- * tokens, and nobody is picked until the person picks — pressing *Hand it over* without looking
- * once handed a Mate to a token.
+ * Handing a Mate over (E2E F8): the list is the people HQ answers, and nobody is picked until the
+ * person picks — pressing *Hand it over* without looking once handed a Mate to a token.
  */
 import type { ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -12,23 +11,15 @@ import { ZeropsAssignMateForm } from "./ZeropsAssignMateDialog";
 
 type FormProps = Parameters<typeof ZeropsAssignMateForm>[0];
 
-const ADA = {
-  id: "cu-ada",
-  status: "ACTIVE",
-  user: { fullName: "Ada Lovelace", email: "ada@example.com" },
-};
-const TOKEN = {
-  id: "cu-token",
-  status: "ACTIVE",
-  user: { fullName: "zcp-laravel-showcase-agent", email: "token-abc123@zerops.io" },
-};
+const ADA = { userId: "u-ada", clientUserId: "cu-ada", name: "Ada Lovelace", avatarUrl: null };
+const EVA = { userId: "u-eva", clientUserId: "cu-eva", name: "Eva Dvořák", avatarUrl: null };
 
 function form(props: Partial<FormProps> = {}): ReactElement {
   // The title and the description are Base UI's, and both need the dialog's context.
   return (
     <Dialog open onOpenChange={() => {}}>
       <ZeropsAssignMateForm
-        members={[TOKEN, ADA]}
+        candidates={[ADA, EVA]}
         onCancel={() => {}}
         onSubmit={() => {}}
         pending={false}
@@ -41,12 +32,12 @@ function form(props: Partial<FormProps> = {}): ReactElement {
 }
 
 describe("ZeropsAssignMateForm", () => {
-  it("lists the organization's people and none of its tokens", () => {
+  it("lists the people HQ answers, each by name, picked by their member id", () => {
     const html = renderToStaticMarkup(form());
     expect(html).toContain('value="cu-ada"');
     expect(html).toContain("Ada Lovelace");
-    expect(html).not.toContain("cu-token");
-    expect(html).not.toContain("zcp-laravel-showcase-agent");
+    expect(html).toContain('value="cu-eva"');
+    expect(html).toContain("Eva Dvořák");
   });
 
   // E2E F7: a refused hand-over closed its dialog and said nothing.
@@ -61,16 +52,16 @@ describe("ZeropsAssignMateForm", () => {
     expect(html).toMatch(/<button type="submit"[^>]*aria-busy="true"/u);
   });
 
-  // F27: the member list is read once the dialog opens, and KRLS's took seconds.
+  // F27: whom to hand over to is asked once the dialog opens, and KRLS's took seconds.
   it("says it reads the organization while there is nobody to pick yet", () => {
-    const html = renderToStaticMarkup(form({ members: [], readingOrganization: "Acme" }));
+    const html = renderToStaticMarkup(form({ candidates: [], readingOrganization: "Acme" }));
     expect(html).toMatch(/<select(?=[^>]*aria-busy="true")(?=[^>]*disabled="")/u);
     expect(html).toMatch(/<option(?=[^>]*selected="")[^>]*>Reading Acme…<\/option>/u);
   });
 
   it("says it could not read the organization's people, with the way to read them again", () => {
     const html = renderToStaticMarkup(
-      form({ members: [], readFailed: { organization: "Acme", onReadAgain: () => {} } }),
+      form({ candidates: [], readFailed: { organization: "Acme", onReadAgain: () => {} } }),
     );
     expect(html).toMatch(
       /role="alert"[^>]*>Couldn(&#x27;|')t read Acme(&#x27;|')s members from Zerops\.</u,

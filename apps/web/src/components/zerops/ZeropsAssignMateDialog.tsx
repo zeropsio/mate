@@ -6,15 +6,16 @@
  * being reassigned needs somebody to say whose it is now. That somebody is an
  * org owner or admin, and what they write is a per-project role override.
  *
- * One list, one verb. The list is the org's people (`handOverCandidates`),
- * never one of its integration tokens, and nobody is picked until the person
- * picks; picking one raises them to `OWNER` here, which is what makes the Mate
- * open for them and theirs to rename. Nothing else on the project moves. The
- * dialog stays while the platform answers, and says its refusal.
+ * One list, one verb. The list is the org's people as HQ answers them as the
+ * picker opens (`handoverCandidates`: its active people, never one of its
+ * integration tokens), and nobody is picked until the person picks; picking one
+ * raises them to `OWNER` here, which is what makes the Mate open for them and
+ * theirs to rename. Nothing else on the project moves. The dialog stays while
+ * the platform answers, and says its refusal.
  */
+import type { HqHandoverCandidate } from "@t3tools/shared/hqStream";
 import { useId, useState } from "react";
 
-import { handOverCandidates, mateMemberName } from "@t3tools/client-runtime/zerops/mateAccess";
 import { Button } from "../ui/button";
 import {
   Dialog,
@@ -27,29 +28,9 @@ import {
 } from "../ui/dialog";
 import { Label } from "../ui/label";
 
-export interface AssignableMember {
-  /** The `clientUser` id — what a project's `userRoles` names. */
-  readonly id: string;
-  /** `ACTIVE` once the person has joined the organization. */
-  readonly status?: string | undefined;
-  readonly user?:
-    | {
-        readonly fullName?: string | undefined;
-        readonly firstName?: string | undefined;
-        readonly lastName?: string | undefined;
-        readonly email?: string | undefined;
-      }
-    | undefined;
-}
-
-/** What to call a member in the list. Never a blank row, never a guess. */
-export function assignableMemberLabel(member: AssignableMember): string {
-  return mateMemberName(member) ?? member.id;
-}
-
 export function ZeropsAssignMateForm({
   projectName,
-  members,
+  candidates,
   onCancel,
   onSubmit,
   pending,
@@ -58,7 +39,8 @@ export function ZeropsAssignMateForm({
   readFailed,
 }: {
   readonly projectName: string;
-  readonly members: ReadonlyArray<AssignableMember>;
+  /** Whom HQ lets the Mate be handed over to. */
+  readonly candidates: ReadonlyArray<HqHandoverCandidate>;
   /** The organization whose people are still being read, while there is nobody to pick yet. */
   readonly readingOrganization?: string | undefined;
   /** The organization whose people could not be read, and the way to read them again. */
@@ -111,9 +93,9 @@ export function ZeropsAssignMateForm({
                 ? "Pick a person"
                 : `Reading ${readingOrganization}…`}
             </option>
-            {handOverCandidates(members).map((member) => (
-              <option key={member.id} value={member.id}>
-                {assignableMemberLabel(member)}
+            {candidates.map((candidate) => (
+              <option key={candidate.clientUserId} value={candidate.clientUserId}>
+                {candidate.name}
               </option>
             ))}
           </select>

@@ -303,16 +303,6 @@ export function isTokenMember(member: {
 }
 
 /**
- * Whom a Mate may be handed to: the organization's people who have joined it. Its integration
- * tokens are members too (`isTokenMember`), and a person still invited is not one yet.
- */
-export function handOverCandidates<
-  M extends MateOwnerCandidate & { readonly status?: string | undefined },
->(members: ReadonlyArray<M>): ReadonlyArray<M> {
-  return members.filter((member) => member.status === "ACTIVE" && !isTokenMember(member));
-}
-
-/**
  * Handing a Mate over: one person's project role list with this project's
  * role set — or, `null`, gone from it — and their every other project's
  * untouched (guide 0.8, D11).
