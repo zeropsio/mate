@@ -857,16 +857,6 @@ export const RETIRED_MECHANISMS: ReadonlyArray<RetiredMechanism> = [
       "who may write in a conversation is remembered in browser storage; the footer waits for the live answer",
   },
   {
-    token: "useHqOffers",
-    family: "permissions/members",
-    reason: "offers are read and decided by app hooks; HQ sends what the person may do",
-  },
-  {
-    token: "useChangeOffers",
-    family: "permissions/members",
-    reason: "offers are read and decided by app hooks; HQ sends what the person may do",
-  },
-  {
     token: "useZeropsMemberNames(",
     family: "permissions/members",
     reason: "member names and Mate owners come from the member list; HQ sends them finished",
