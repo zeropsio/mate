@@ -25,6 +25,7 @@ import { createContext, useContext, useEffect, useMemo, type ReactNode } from "r
 
 import { onAccountLifetimeClose } from "./accountLifetime";
 import { accountOperations, AccountOperationsContext } from "./accountOperations";
+import { useMateResultsSeen, useOpenMatesAttention } from "./mateAttentionLinks";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
 /**
@@ -77,6 +78,9 @@ export function ZeropsAccountData({ children }: { readonly children: ReactNode }
     }),
     [observation, orgId, store],
   );
+  // Each open Mate's attention straight from it, and what the person saw of its results to HQ.
+  useOpenMatesAttention(store);
+  useMateResultsSeen(orgId, observation.seen);
   // The operations are built here, over the store this mount owns: no screen reaches its writer.
   const operations = useMemo(
     () => accountOperations(store, registry, client, observation.demandDetail),

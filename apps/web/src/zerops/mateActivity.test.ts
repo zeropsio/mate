@@ -12,7 +12,7 @@ import { MateLiveView } from "@t3tools/shared/hqMates";
 import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 
-import { matesActivityOf, type MatesActivityInput } from "./mateActivity";
+import { matesActivityOf, seenResultsOf, type MatesActivityInput } from "./mateActivity";
 
 const ASKED = "2026-10-03T09:00:00.000Z";
 const DONE = "2026-10-03T09:05:00.000Z";
@@ -241,5 +241,23 @@ describe("matesActivityOf — a Mate from before the attention value", () => {
     });
     expect(socket(false, new Map([["p-vera", VERA]]))?.remembered).toBeUndefined();
     expect(socket(true, new Map([["p-vera", stored]]))).toMatchObject({ kind: "working" });
+  });
+});
+
+describe("seenResultsOf — what the person saw of a Mate's results", () => {
+  const results = [
+    { threadId: "t1", turnId: "turn-2", completedAt: DONE },
+    { threadId: "t2", turnId: "turn-9", completedAt: DONE },
+  ] as never;
+  it.each([
+    {
+      name: "a chat visited since its turn ended",
+      visits: { "env-vera:t1": "2026-10-03T09:06:00.000Z" },
+      seen: ["turn-2"],
+    },
+    { name: "a chat visited before its turn ended", visits: { "env-vera:t1": ASKED }, seen: [] },
+    { name: "a chat never visited", visits: {}, seen: [] },
+  ])("$name", ({ visits, seen }) => {
+    expect(seenResultsOf(said({ results }), visits)).toEqual(seen);
   });
 });

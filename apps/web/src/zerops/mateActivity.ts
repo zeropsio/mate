@@ -177,3 +177,21 @@ function legacyActivity(input: {
   if (socket === undefined) return undefined;
   return input.standing.has(input.environmentId) ? socket : restingActivity(socket);
 }
+
+/**
+ * The results of a Mate the person has seen: each whose chat they visited since its turn ended —
+ * what HQ is told, so it counts the person's unseen from what they saw on any device.
+ */
+export function seenResultsOf(
+  attention: MateAttention,
+  lastVisitedAtById: Readonly<Record<string, string>>,
+): ReadonlyArray<string> {
+  const environmentId = attention.source.environmentId;
+  return attention.results.flatMap((result) => {
+    const visitedAt =
+      lastVisitedAtById[scopedThreadKey(scopeThreadRef(environmentId, result.threadId))];
+    return visitedAt !== undefined && Date.parse(visitedAt) >= Date.parse(result.completedAt)
+      ? [result.turnId]
+      : [];
+  });
+}
