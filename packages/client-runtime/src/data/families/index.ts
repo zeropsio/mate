@@ -14,6 +14,7 @@ import {
   placementFamily,
 } from "./hqNavigation.ts";
 import { hqMateFamily } from "./hqMate.ts";
+import { mateAttentionFamily } from "./mateAttention.ts";
 import { processFamily } from "./process.ts";
 import { projectFamily } from "./project.ts";
 import { versionFamily } from "./version.ts";
@@ -50,6 +51,7 @@ export const FAMILIES = defineFamilies([
   hqPressFamily,
   hqMateFamily,
   serviceFamily,
+  mateAttentionFamily,
 ]);
 
 const byFamily = new Map<string, AnyFamilySpec>(FAMILIES.map((spec) => [spec.family, spec]));
