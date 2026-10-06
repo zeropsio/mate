@@ -30,6 +30,7 @@ import { ZeropsRefused, type ZeropsError } from "./zerops/api.ts";
 import { Changes } from "./changes.ts";
 import { pruneIdleScopes } from "./scopeRetention.ts";
 import { Deploys } from "./deploys.ts";
+import type { EnvironmentSource } from "./environmentNavigation.ts";
 import { healthParts } from "./health.ts";
 import { Leader } from "./leader.ts";
 import { MateOverviews, type MateOverviewEntry } from "./mateOverviews.ts";
@@ -181,6 +182,7 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
         { userId: string; projectId: string; epoch: number; ids: Set<string> }
       >();
       let source: StructureSource | undefined;
+      let environmentSource: EnvironmentSource | undefined;
       const sourceFence = makeSourceFence();
       let sourceVersion = 0;
       const personViews = new Map<string, StructureRead>();
@@ -199,6 +201,7 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
             const started = sourceFence.capture();
             yield* recomputes.count;
             source = yield* structure.navigation;
+            environmentSource = source.environmentSource;
             sourceFence.accept(started);
             sourceVersion += 1;
             personViews.clear();
@@ -214,6 +217,23 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
           personViews.set(userId, view);
         }
         return view;
+      };
+      const navigationApp = (
+        current: StructureSource,
+        userId: string,
+        app: StructureRead["apps"][number],
+      ) => {
+        const { projects, ...navigation } = app;
+        return decodeApp({
+          ...navigation,
+          environments: (environmentSource ?? current.environmentSource).forApp(
+            userId,
+            app.id,
+            current.facts,
+            app.can.read_change,
+          ),
+          projectIds: projects.map((project) => project.projectId),
+        });
       };
       const permitted = (scope: HqScope, current: StructureSource, userId: string) => {
         const view = viewFor(current, userId);
@@ -368,12 +388,8 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
               values.push(yield* statusValue);
             }
             for (const app of view.apps) {
-              const { environments: _environments, projects: appProjects, ...navigation } = app;
               if (projects === undefined) {
-                const read = decodeApp({
-                  ...navigation,
-                  projectIds: appProjects.map((project) => project.projectId),
-                });
+                const read = navigationApp(current, entry.userId, app);
                 if (Option.isSome(read)) values.push({ key: `app:${app.id}`, value: read.value });
               }
               for (const project of app.projects) {
@@ -400,8 +416,7 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
             }
             if (projects === undefined)
               for (const [projectId, press] of Object.entries(view.presses)) {
-                const { heldForMs: _heldForMs, ...value } = press;
-                values.push({ key: `press:${projectId}`, value });
+                values.push({ key: `press:${projectId}`, value: press });
               }
             const named = new Set([
               ...[...view.ungrouped, ...view.apps.flatMap((app) => app.projects)].flatMap(
@@ -668,8 +683,71 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
             }
           }
         });
+      const refreshEnvironments = Effect.gen(function* () {
+        if (source === undefined || sourceFence.dirty()) return;
+        const version = sourceVersion;
+        const fresh = yield* structure.environments;
+        if (sourceFence.dirty() || version !== sourceVersion) return;
+        const changed = new Set(
+          [...source.appIds].filter(
+            (appId) => fresh.fingerprints.get(appId) !== environmentSource?.fingerprints.get(appId),
+          ),
+        );
+        environmentSource = fresh;
+        if (changed.size === 0) return;
+        for (const entry of journals.values()) {
+          if (entry.scope.kind !== "navigation" || entry.failure !== undefined) continue;
+          const apps = viewFor(source, entry.userId).apps.filter(
+            (app) => changed.has(app.id) && app.can.read_change.allow,
+          );
+          if (apps.length === 0) continue;
+          if (!demanded(entry)) {
+            entry.dirty = true;
+            entry.generation += 1;
+            continue;
+          }
+          yield* entry.one.withPermits(1)(
+            Effect.gen(function* () {
+              if (
+                version !== sourceVersion ||
+                sourceFence.dirty() ||
+                entry.sourceVersion !== sourceVersion ||
+                entry.dirty
+              )
+                return yield* scheduleRefresh(entry);
+              const values = apps.flatMap((app) => {
+                const read = navigationApp(source!, entry.userId, app);
+                return Option.isSome(read) ? [{ key: `app:${app.id}`, value: read.value }] : [];
+              });
+              const message = entry.journal.commit(values);
+              if (message !== undefined) yield* send(entry, [message]);
+            }),
+          );
+        }
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.gen(function* () {
+            for (const entry of journals.values()) {
+              if (entry.scope.kind !== "navigation" || entry.failure !== undefined) continue;
+              entry.dirty = true;
+              entry.generation += 1;
+              if (demanded(entry))
+                yield* send(entry, [
+                  {
+                    type: "scope-error",
+                    scope: entry.scope,
+                    code: "unavailable",
+                    reason: null,
+                    disposition: "transient",
+                  },
+                ]);
+            }
+            yield* Effect.logWarning("Environment navigation read unavailable", error);
+          }),
+        ),
+      );
       type Signal =
-        | { kind: "structure" | "detail" | "roles" }
+        | { kind: "structure" | "detail" | "roles" | "environment" }
         | { kind: "attention" | "forget"; projectId: string };
       const pulls = yield* Effect.forEach(
         [
@@ -679,8 +757,8 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
             Stream.map((): Signal => ({ kind: "roles" })),
           ),
           changes.changes.pipe(Stream.map((): Signal => ({ kind: "detail" }))),
-          releases.changes.pipe(Stream.map((): Signal => ({ kind: "detail" }))),
-          deploys.changes.pipe(Stream.map((): Signal => ({ kind: "detail" }))),
+          releases.changes.pipe(Stream.map((): Signal => ({ kind: "environment" }))),
+          deploys.changes.pipe(Stream.map((): Signal => ({ kind: "environment" }))),
           overviews.changes.pipe(
             Stream.map((projectId): Signal => ({ kind: "attention", projectId })),
           ),
@@ -716,7 +794,9 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
             pending.delete(json(signal));
             return signal.kind === "attention" || signal.kind === "forget"
               ? refreshAttention(signal.projectId, signal.kind === "forget")
-              : invalidate(signal.kind);
+              : signal.kind === "environment"
+                ? Effect.andThen(invalidate("detail"), refreshEnvironments)
+                : invalidate(signal.kind);
           }),
         ),
         { startImmediately: true },

@@ -5,10 +5,16 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Stream from "effect/Stream";
+import * as Schema from "effect/Schema";
+import { HqNavigationApp } from "@t3tools/shared/hqStream";
 import { sealedFor } from "../test/harness/deployKeys.ts";
 import { sessionFor, startCore, ticketFor, untilHealth } from "../test/harness/runningCore.ts";
 import { tempPostgresLayer } from "../test/harness/tempPostgres.ts";
 import type { OperationRecord } from "./operations.ts";
+
+const readApp = Schema.decodeUnknownSync(HqNavigationApp);
+const environmentsOf = (app: HqNavigationApp) =>
+  "refused" in app.environments ? [] : app.environments;
 
 describe("HQ operation scope", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
@@ -94,34 +100,25 @@ describe("HQ operation scope", () => {
             const receiving = yield* Effect.forkScoped(
               Effect.promise(
                 () =>
-                  new Promise<Array<OperationRecord>>((resolve, reject) => {
-                    const timeout = setTimeout(
-                      () => reject(new Error("no operation scope receipt")),
-                      5000,
-                    );
-                    const values: Array<OperationRecord> = [];
-                    socket.addEventListener("message", (event) => {
-                      const message = JSON.parse(String(event.data)) as {
-                        type: string;
-                        scope?: { kind: string; appId?: string };
-                        values?: Array<{ key: string; value: OperationRecord }>;
-                      };
-                      if (message.type === "ping") socket.send('{"type":"pong"}');
-                      if (message.type === "scope-error") {
-                        clearTimeout(timeout);
-                        reject(new Error(String(event.data)));
-                      }
-                      if (message.scope?.kind !== "operation" || message.scope.appId !== appId)
-                        return;
-                      for (const value of message.values ?? []) {
-                        if (value.value.kind !== "deploy") continue;
-                        if (value.key !== `${appId}:${value.value.id}`) {
-                          clearTimeout(timeout);
-                          reject(new Error(`unexpected operation key ${value.key}`));
-                          return;
-                        }
-                        values.push(value.value);
-                        if (value.value.state === "building" && value.value.handle !== null) {
+                  new Promise<{ operations: Array<OperationRecord>; apps: Array<HqNavigationApp> }>(
+                    (resolve, reject) => {
+                      const timeout = setTimeout(
+                        () => reject(new Error("no operation scope receipt")),
+                        5000,
+                      );
+                      const values: Array<OperationRecord> = [];
+                      const apps: Array<HqNavigationApp> = [];
+                      const jobs = () =>
+                        apps.flatMap((app) =>
+                          environmentsOf(app).flatMap((environment) => environment.jobs),
+                        );
+                      const progress = () => {
+                        if (
+                          values.some(
+                            (value) => value.state === "building" && value.handle !== null,
+                          ) &&
+                          jobs().some((job) => job.state === "building")
+                        ) {
                           if (end === "unresolved") {
                             service.named = { id: "V-other", name: "another deployment" };
                             Object.defineProperty(service, "activeVersionId", {
@@ -132,19 +129,55 @@ describe("HQ operation scope", () => {
                           }
                           core.fake.outcome = () => "ACTIVE";
                         }
-                        if (value.value.state === end) {
+                        if (
+                          values.some((value) => value.state === end) &&
+                          jobs().some((job) => job.state === end)
+                        ) {
                           clearTimeout(timeout);
-                          resolve(values);
+                          resolve({ operations: values, apps });
                         }
-                      }
-                    });
-                    socket.send(
-                      JSON.stringify({
-                        type: "subscribe",
-                        scopes: [{ scope: { kind: "operation", appId } }],
-                      }),
-                    );
-                  }),
+                      };
+                      socket.addEventListener("message", (event) => {
+                        const message = JSON.parse(String(event.data)) as {
+                          type: string;
+                          scope?: { kind: string; appId?: string };
+                          values?: Array<{ key: string; value: OperationRecord }>;
+                        };
+                        if (message.type === "ping") socket.send('{"type":"pong"}');
+                        if (message.type === "scope-error") {
+                          clearTimeout(timeout);
+                          reject(new Error(String(event.data)));
+                        }
+                        if (message.scope?.kind === "navigation") {
+                          for (const value of message.values ?? [])
+                            if (value.key === `app:${appId}`) apps.push(readApp(value.value));
+                          progress();
+                          return;
+                        }
+                        if (message.scope?.kind !== "operation" || message.scope.appId !== appId)
+                          return;
+                        for (const value of message.values ?? []) {
+                          if (value.value.kind !== "deploy") continue;
+                          if (value.key !== `${appId}:${value.value.id}`) {
+                            clearTimeout(timeout);
+                            reject(new Error(`unexpected operation key ${value.key}`));
+                            return;
+                          }
+                          values.push(value.value);
+                          progress();
+                        }
+                      });
+                      socket.send(
+                        JSON.stringify({
+                          type: "subscribe",
+                          scopes: [
+                            { scope: { kind: "navigation" } },
+                            { scope: { kind: "operation", appId } },
+                          ],
+                        }),
+                      );
+                    },
+                  ),
               ),
             );
             yield* git.commitFiles({ appId, id: "web" }, "refs/heads/main", {
@@ -155,7 +188,20 @@ describe("HQ operation scope", () => {
                 "zerops.yaml": "zerops:\n  - setup: web\n    run:\n      start: node index.js\n",
               },
             });
-            const delivered = yield* Fiber.join(receiving);
+            const received = yield* Fiber.join(receiving);
+            const delivered = received.operations;
+            const environment = received.apps
+              .flatMap(environmentsOf)
+              .findLast((environment) => environment.jobs.some((job) => job.state === end))!;
+            assert.strictEqual(environment.tier, "stage");
+            assert.strictEqual(environment.keyHeld, true);
+            assert.strictEqual(environment.keyInvalid, false);
+            assert.isNull(environment.release);
+            const job = environment.jobs.find((job) => job.state === end)!;
+            assert.strictEqual(job.evidence?.phase, "closed");
+            assert.strictEqual(job.evidence?.nextActor, end === "live" ? "none" : "person");
+            assert.strictEqual(job.evidence?.processes?.[0]?.status, "FINISHED");
+            assert.isAbove(job.steps?.length ?? 0, 0);
             assert.isTrue(
               delivered.some((value) => value.state === "building" && value.handle !== null),
             );
