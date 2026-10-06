@@ -2729,7 +2729,16 @@ code {
    once. Idle and asleep it is still: a menu of faces must not fidget; waking,
    on its way up, it breathes, slow and low. Its own motion is transform and
    opacity (the morph eases the eyes' and the mouth's geometry), each Mate on
-   its own beat (`--mate-face-phase`) so a menu of them never ticks in unison. */
+   its own beat (`--mate-face-phase`) so a menu of them never ticks in unison.
+
+   What moves is an HTML box, never an SVG element: Chrome composites no
+   animation on SVG, so a face turning there cost a style recalc and a repaint
+   every frame (~60 a second for one face, measured 2026-10-03). Each part that
+   moves on its own — the hop, the body's turn, the look, the glance — is a box
+   laid over the whole face holding its own drawing in the same 100-box, so a
+   unit of the drawing is a percent of its box: the turn's pivot, the hop's
+   feet and every step of the eyes are written in percent. The boxes hold the
+   face's box exactly, whatever an icon rule around it does to an svg. */
 :root {
   /* A spring: 8 % past the mark and back, settled by two thirds of its time. */
   --ease-spring: linear(
@@ -2761,17 +2770,36 @@ code {
   --ease-out-strong: cubic-bezier(0.23, 1, 0.32, 1);
 }
 
-:is([data-mate-face-hop], [data-mate-face-body], [data-mate-face-look], [data-mate-face-glance]) {
-  transform-box: view-box;
+[data-zerops-primitive="mate-face"]
+  :is(
+    [data-mate-face-hop],
+    [data-mate-face-body],
+    [data-mate-face-look],
+    [data-mate-face-glance],
+    [data-mate-face-layer]
+  ) {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: visible;
 }
 
 [data-mate-face-body] {
-  transform-origin: var(--mate-face-origin, 50px 50px);
+  transform-origin: var(--mate-face-origin, 50% 50%);
 }
 
 /* It hops from its feet. */
 [data-mate-face-hop] {
-  transform-origin: 50px 96px;
+  transform-origin: 50% 96%;
+}
+
+/* A face stands where an icon would: a menu item that pulls its icons 2 px
+   into its padding pulls a face too. */
+[data-slot="menu-item"] > [data-zerops-primitive="mate-face"] {
+  margin-inline: calc(var(--spacing) * -0.5);
 }
 
 [data-mate-face-eye] {
@@ -2802,11 +2830,11 @@ code {
 
 /* Thinking, it looks up and aside; writing, down along its line. */
 [data-mate-face-gaze="up"] [data-mate-face-look] {
-  translate: 5px -5px;
+  translate: 5% -5%;
 }
 
 [data-mate-face-gaze="down"] [data-mate-face-look] {
-  translate: 0 4px;
+  translate: 0 4%;
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -2839,15 +2867,12 @@ code {
   /* A Mate's row under the pointer: its face looks up at you. Pressed, the
      face gives a little under the finger and springs back as it lets go. */
   [data-zerops-surface="sidebar-mate"]:hover [data-mate-face-look] {
-    translate: 0 -5px;
+    translate: 0 -5%;
   }
 
   /* Waking — on its way up, until its first sign-in — it breathes: asleep's closed eyes, the whole
-     face swelling from its feet once every three seconds. It is not free: Chrome composites no
-     animation on an SVG element, the outer <svg> included, so while a face wakes it costs a style
-     recalc and a repaint of the face every frame (measured 2026-10-03: ~60 recalcs/s, no layout).
-     Moving it to the face's HTML wrapper would hand it to the compositor. With reduced motion it
-     stands still, and its words say it is coming up. */
+     face swelling from its feet once every three seconds, on the face's own box. With reduced
+     motion it stands still, and its words say it is coming up. */
   [data-zerops-primitive="mate-face"][data-mate-face-state="waking"] {
     transform-origin: 50% 96%;
     animation: mate-face-breathe 3s ease-in-out infinite;
@@ -2883,12 +2908,12 @@ code {
   }
   36%,
   54% {
-    translate: -5px 0;
+    translate: -5% 0;
     animation-timing-function: cubic-bezier(0.65, 0, 0.35, 1);
   }
   62%,
   80% {
-    translate: 5px 0;
+    translate: 5% 0;
     animation-timing-function: cubic-bezier(0.65, 0, 0.35, 1);
   }
   86%,
@@ -2920,7 +2945,7 @@ code {
     animation-timing-function: cubic-bezier(0.2, 0.8, 0.4, 1);
   }
   14% {
-    translate: 0 -13px;
+    translate: 0 -13%;
     scale: 0.96 1.05;
     animation-timing-function: cubic-bezier(0.6, 0, 0.8, 0.6);
   }
@@ -3121,7 +3146,7 @@ code {
   /* A Mate that is not the viewer's — a colleague's, or nobody's yet — wears
      its colour at 55 %, its eyes and mouth in full ink, so the owner's picture
      is the strongest mark on its row (the owner's board, 2026-09-30, A). */
-  .menu-face-pale [data-mate-face-body] > path {
+  .menu-face-pale [data-mate-face-body] path {
     fill-opacity: 0.55;
   }
 
@@ -4228,7 +4253,7 @@ code {
 }
 /* The face stands in the middle of the column, over the chat's glyphs and
    the result's marks. */
-.run-now > svg:first-child {
+.run-now > [data-zerops-primitive="mate-face"]:first-child {
   justify-self: center;
 }
 .run-now-words {
@@ -7395,7 +7420,7 @@ button.rv-relrow:hover .rv-relrow-go {
 }
 @media (prefers-reduced-motion: no-preference) {
   button.rv-relrow:hover [data-mate-face-look] {
-    translate: 0 -5px;
+    translate: 0 -5%;
   }
   button.rv-relrow [data-mate-face-hop] {
     transition: scale 220ms var(--ease-spring);

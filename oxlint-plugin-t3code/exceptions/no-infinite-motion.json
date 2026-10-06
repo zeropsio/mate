@@ -196,7 +196,7 @@
     "kind": "css-declaration",
     "fingerprint": "[data-mate-face-state=\"working\"] [data-mate-face-body]{animation:mate-face-turn 2.4s infinite}",
     "owner": "ales",
-    "reason": "A Mate's face moves only while its state holds (at work it turns and glances, needing you it hops): transform-only, stopped by reduced motion; the owner asked for the motion (2026-09-29)",
+    "reason": "A Mate's face moves only while its state holds (at work it turns and glances, needing you it hops): transform-only on the face's HTML layer boxes, composited, stopped by reduced motion; the owner asked for the motion (2026-09-29)",
     "expires": "never"
   },
   {
@@ -204,7 +204,7 @@
     "kind": "css-declaration",
     "fingerprint": "[data-mate-face-state=\"working\"] [data-mate-face-glance]{animation:mate-face-glance 5.6s infinite}",
     "owner": "ales",
-    "reason": "A Mate's face moves only while its state holds (at work it turns and glances, needing you it hops): transform-only, stopped by reduced motion; the owner asked for the motion (2026-09-29)",
+    "reason": "A Mate's face moves only while its state holds (at work it turns and glances, needing you it hops): transform-only on the face's HTML layer boxes, composited, stopped by reduced motion; the owner asked for the motion (2026-09-29)",
     "expires": "never"
   },
   {
@@ -212,7 +212,7 @@
     "kind": "css-declaration",
     "fingerprint": "[data-zerops-primitive=\"mate-face\"][data-mate-face-state=\"waking\"]{animation:mate-face-breathe 3s ease-in-out infinite}",
     "owner": "ales",
-    "reason": "A Mate on its way up breathes while it arrives (waking): transform-only (not composited: Chrome composites no animation on SVG, so a style recalc and a repaint per frame), at most 30 minutes from its creation, stopped by reduced motion; the owner left this call to the lead (2026-10-03)",
+    "reason": "A Mate on its way up breathes while it arrives (waking): scale on the face's HTML box, composited, at most 30 minutes from its creation, stopped by reduced motion; the owner left this call to the lead (2026-10-03)",
     "expires": "never"
   },
   {

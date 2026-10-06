@@ -51,7 +51,7 @@ const SHUT_EYE_HEIGHT = 0.3 * MATE_FACE.eyeUnit;
  */
 type MateFaceGaze = "up" | "down";
 
-type MateFaceProps = Omit<React.ComponentProps<"svg">, "children" | "viewBox"> & {
+type MateFaceProps = Omit<React.ComponentProps<"span">, "children"> & {
   readonly tint: MateTintId;
   /** The silhouette its Mate chose (HQ's record); the tint's own (`MATE_SHAPE_OF_TINT`) when absent. */
   readonly shape?: MateShapeId | undefined;
@@ -162,16 +162,19 @@ function MateFace({
   const shutY = MATE_FACE.eyeCentreY;
   const faceStyle = {
     "--mate-face-step": `${shape.step}deg`,
-    "--mate-face-origin": `${shape.origin[0]}px ${shape.origin[1]}px`,
+    // In the face's own box: its 100-box is the box, so a unit of the drawing is a percent of it.
+    "--mate-face-origin": `${shape.origin[0]}% ${shape.origin[1]}%`,
     // Mates at work do not turn in step: each its own beat in the cycle.
     "--mate-face-phase": String(MATE_TINT_IDS.indexOf(tint)),
     ...style,
   } as CSSProperties;
+  // Each part that moves on its own is an HTML box over the whole face holding its own drawing
+  // in the same 100-box: Chrome composites an animation on an HTML box, never on an SVG element.
   return (
-    <svg
+    <span
       {...props}
       aria-hidden="true"
-      className={cn("shrink-0 overflow-visible", SIZE_CLASS[size], className)}
+      className={cn("relative block shrink-0", SIZE_CLASS[size], className)}
       data-mate-face-arrived={arrived}
       data-mate-face-gaze={gaze}
       data-mate-face-shape={shapeId}
@@ -180,83 +183,88 @@ function MateFace({
       data-mate-face-tint={tint}
       data-zerops-primitive="mate-face"
       style={faceStyle}
-      viewBox={MATE_FACE.viewBox}
     >
-      <g data-mate-face-hop="">
-        <g data-mate-face-body="">
-          <path className={TINT_CLASS[tint]} d={shape.d} />
-        </g>
-        <g data-mate-face-look="">
-          <g data-mate-face-glance="">
-            <g className="fill-[var(--zerops-mate-face-ink)]">
-              {pills.map((eye, index) => (
-                <rect
-                  data-mate-face-eye=""
-                  height={eye.height}
-                  key={MATE_FACE.eyeCentres[index]}
-                  opacity={parts.eyes.length > 0 && !shut ? 1 : 0}
-                  rx={eye.rx}
-                  width={eye.width}
-                  x={eye.x}
-                  y={eye.y}
-                />
-              ))}
-            </g>
+      <span data-mate-face-hop="">
+        <span data-mate-face-body="">
+          <svg data-mate-face-layer="" viewBox={MATE_FACE.viewBox}>
+            <path className={TINT_CLASS[tint]} d={shape.d} />
+          </svg>
+        </span>
+        <span data-mate-face-look="">
+          <span data-mate-face-glance="">
+            <svg data-mate-face-layer="" viewBox={MATE_FACE.viewBox}>
+              <g className="fill-[var(--zerops-mate-face-ink)]">
+                {pills.map((eye, index) => (
+                  <rect
+                    data-mate-face-eye=""
+                    height={eye.height}
+                    key={MATE_FACE.eyeCentres[index]}
+                    opacity={parts.eyes.length > 0 && !shut ? 1 : 0}
+                    rx={eye.rx}
+                    width={eye.width}
+                    x={eye.x}
+                    y={eye.y}
+                  />
+                ))}
+              </g>
+              <g
+                className="stroke-[var(--zerops-mate-face-ink)]"
+                fill="none"
+                strokeLinecap="round"
+                strokeWidth={strokeWidth}
+              >
+                {MATE_FACE.eyeCentres.map((cx) => (
+                  <line
+                    data-mate-face-shut=""
+                    key={cx}
+                    opacity={shut ? 1 : 0}
+                    vectorEffect="non-scaling-stroke"
+                    x1={cx - MATE_FACE.eyeUnit / 2}
+                    x2={cx + MATE_FACE.eyeUnit / 2}
+                    y1={shutY}
+                    y2={shutY}
+                  />
+                ))}
+                {MATE_FACE.eyeCentres.map((cx) => (
+                  <path
+                    d={MATE_FACE_STROKES.arc}
+                    data-mate-face-arc=""
+                    key={cx}
+                    opacity={parts.arcs.length > 0 ? 1 : 0}
+                    transform={`translate(${cx},${MATE_FACE.eyeCentreY + 0.05 * MATE_FACE.eyeUnit})`}
+                    vectorEffect="non-scaling-stroke"
+                  />
+                ))}
+              </g>
+            </svg>
+          </span>
+          <svg data-mate-face-layer="" viewBox={MATE_FACE.viewBox}>
             <g
               className="stroke-[var(--zerops-mate-face-ink)]"
               fill="none"
               strokeLinecap="round"
               strokeWidth={strokeWidth}
             >
-              {MATE_FACE.eyeCentres.map((cx) => (
-                <line
-                  data-mate-face-shut=""
-                  key={cx}
-                  opacity={shut ? 1 : 0}
-                  vectorEffect="non-scaling-stroke"
-                  x1={cx - MATE_FACE.eyeUnit / 2}
-                  x2={cx + MATE_FACE.eyeUnit / 2}
-                  y1={shutY}
-                  y2={shutY}
-                />
-              ))}
-              {MATE_FACE.eyeCentres.map((cx) => (
-                <path
-                  d={MATE_FACE_STROKES.arc}
-                  data-mate-face-arc=""
-                  key={cx}
-                  opacity={parts.arcs.length > 0 ? 1 : 0}
-                  transform={`translate(${cx},${MATE_FACE.eyeCentreY + 0.05 * MATE_FACE.eyeUnit})`}
-                  vectorEffect="non-scaling-stroke"
-                />
-              ))}
+              <circle
+                cx="50"
+                cy={MATE_FACE.mouth.y}
+                data-mate-face-mouth="o"
+                opacity={parts.mouth === "o" ? 1 : 0}
+                r={parts.mouth === "o" ? MATE_FACE.mouth.r : 0}
+                vectorEffect="non-scaling-stroke"
+              />
+              <path
+                d={MATE_FACE_STROKES.smile}
+                data-mate-face-mouth="smile"
+                opacity={parts.mouth === "smile" ? 1 : 0}
+                transform={`translate(50,${MATE_FACE.mouth.y})`}
+                vectorEffect="non-scaling-stroke"
+              />
             </g>
-          </g>
-          <g
-            className="stroke-[var(--zerops-mate-face-ink)]"
-            fill="none"
-            strokeLinecap="round"
-            strokeWidth={strokeWidth}
-          >
-            <circle
-              cx="50"
-              cy={MATE_FACE.mouth.y}
-              data-mate-face-mouth="o"
-              opacity={parts.mouth === "o" ? 1 : 0}
-              r={parts.mouth === "o" ? MATE_FACE.mouth.r : 0}
-              vectorEffect="non-scaling-stroke"
-            />
-            <path
-              d={MATE_FACE_STROKES.smile}
-              data-mate-face-mouth="smile"
-              opacity={parts.mouth === "smile" ? 1 : 0}
-              transform={`translate(50,${MATE_FACE.mouth.y})`}
-              vectorEffect="non-scaling-stroke"
-            />
-          </g>
-        </g>
-      </g>
-    </svg>
+          </svg>
+        </span>
+      </span>
+    </span>
   );
 }
 
