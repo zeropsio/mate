@@ -13,10 +13,8 @@ import { makeAccountStore } from "./store.ts";
 /** The navigation runs on its own runtime: real time passes for it, so a test waits on the state it expects, not on a delay. */
 const until = (condition: () => boolean, what: string) =>
   Effect.gen(function* () {
-    const deadline = Date.now() + 5_000;
-    while (!condition()) {
-      if (Date.now() > deadline)
-        return yield* Effect.die(new Error(`timed out waiting for ${what}`));
+    for (let waited = 0; !condition(); waited += 2) {
+      if (waited > 5_000) return yield* Effect.die(new Error(`timed out waiting for ${what}`));
       yield* Effect.sleep(2);
     }
   });
