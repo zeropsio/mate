@@ -32,7 +32,6 @@ import {
   type AccountScope,
   type InterestIdentity,
   type OrganizationRef,
-  type PlatformCommand,
   type ReadTicket,
   type RegistrationRequest,
   type RequestContext,

@@ -24,18 +24,8 @@ export type ProjectTagWrite =
   /** The project already held it: nothing was written. */
   | { readonly kind: "unchanged"; readonly project: ZeropsProject };
 
-export interface ProjectWriteOptions {
-  readonly signal?: AbortSignal | undefined;
-  /** Runs before each PUT: the write's admission, asked again at the moment it is sent. */
-  readonly beforeWrite?: (() => Promise<void>) | undefined;
-}
-
 export interface ProjectTagWriter {
-  readonly write: (
-    projectId: string,
-    patch: ProjectTagPatch,
-    options?: ProjectWriteOptions,
-  ) => Promise<ProjectTagWrite>;
+  readonly write: (projectId: string, patch: ProjectTagPatch) => Promise<ProjectTagWrite>;
   /**
    * Names the project `name`, its tags put back as a fresh read holds them. With `from`, only a
    * project that is still named so: one renamed since is refused before anything is written.
@@ -43,7 +33,7 @@ export interface ProjectTagWriter {
   readonly rename: (
     projectId: string,
     name: string,
-    options?: ProjectWriteOptions & { readonly from?: string | undefined },
+    options?: { readonly from?: string | undefined },
   ) => Promise<ProjectTagWrite>;
 }
 
@@ -90,37 +80,26 @@ export function makeProjectTagWriter(options: {
   };
 
   return {
-    write: (projectId, patch, writeOptions = {}) =>
+    write: (projectId, patch) =>
       serialized(projectId, async () => {
-        const { signal, beforeWrite } = writeOptions;
-        const project = await source.fetchProject(projectId, signal);
+        const project = await source.fetchProject(projectId);
         const next = applyProjectTagPatch(project.tagList ?? [], patch);
         if (sameProjectTags(next, project.tagList ?? [])) return { kind: "unchanged", project };
-        await source.writeProject(
-          project,
-          { name: project.name, tagList: next },
-          signal,
-          beforeWrite,
-        );
-        const confirmed = await source.fetchProject(projectId, signal);
+        await source.writeProject(project, { name: project.name, tagList: next });
+        const confirmed = await source.fetchProject(projectId);
         if (!sameProjectTags(confirmed.tagList ?? [], next)) throw replacedTooOften("tags");
         return { kind: "written", project: confirmed };
       }),
     rename: (projectId, name, writeOptions = {}) =>
       serialized(projectId, async () => {
-        const { signal, beforeWrite, from } = writeOptions;
-        const project = await source.fetchProject(projectId, signal);
+        const { from } = writeOptions;
+        const project = await source.fetchProject(projectId);
         if (project.name === name) return { kind: "unchanged", project };
         if (from !== undefined && project.name.trim() !== from.trim()) throw renamedSince;
         // Every tag the fresh read — under the lock, just before the PUT — holds goes back as it
         // is: a rename writes no tag.
-        await source.writeProject(
-          project,
-          { name, tagList: project.tagList ?? [] },
-          signal,
-          beforeWrite,
-        );
-        const confirmed = await source.fetchProject(projectId, signal);
+        await source.writeProject(project, { name, tagList: project.tagList ?? [] });
+        const confirmed = await source.fetchProject(projectId);
         if (confirmed.name !== name) throw replacedTooOften("name");
         // Another record written over ours may have dropped the Mate's marker: said, never kept.
         const marked = (tags: ReadonlyArray<string> | undefined) => tags?.includes("mate") === true;

@@ -1300,14 +1300,11 @@ export class ZeropsApiClient {
   async writeProject(
     project: ZeropsProject,
     record: { readonly name: string; readonly tagList: ReadonlyArray<string> },
-    signal?: AbortSignal,
-    beforeWrite?: () => Promise<void>,
   ): Promise<ZeropsProject> {
     return this.#request<ZeropsProject>(
       `/project/${project.id}`,
       {
         method: "PUT",
-        signal: signal ?? null,
         body: JSON.stringify(
           projectWriteBody({
             name: record.name,
@@ -1318,10 +1315,7 @@ export class ZeropsApiClient {
           }),
         ),
       },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
+      { operationKind: "project-write" },
     );
   }
 
@@ -1344,16 +1338,12 @@ export class ZeropsApiClient {
    * theirs. What it answers is the project as the platform holds it after the
    * write.
    */
-  async setProjectMemberRole(
-    input: {
-      readonly projectId: string;
-      /** The `clientUser` id — what a project's `userRoles` names. */
-      readonly clientUserId: string;
-      readonly roleCode: ZeropsProjectRole | null;
-    },
-    signal?: AbortSignal,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<ZeropsProject> {
+  async setProjectMemberRole(input: {
+    readonly projectId: string;
+    /** The `clientUser` id — what a project's `userRoles` names. */
+    readonly clientUserId: string;
+    readonly roleCode: ZeropsProjectRole | null;
+  }): Promise<ZeropsProject> {
     const generation = this.#generation;
     this.#assertGeneration(generation);
     const roles = `/client-user/${input.clientUserId}/roles`;
@@ -1362,13 +1352,12 @@ export class ZeropsApiClient {
         readonly projectId: string;
         readonly roleCode: string;
       }>;
-    }>(roles, { signal: signal ?? null }, { operationKind: "read" });
+    }>(roles, {}, { operationKind: "read" });
     this.#assertGeneration(generation);
     await this.#request(
       roles,
       {
         method: "PUT",
-        signal: signal ?? null,
         body: JSON.stringify({
           projectRoleList: withMateProjectRole(
             held.projectRoleList,
@@ -1377,13 +1366,10 @@ export class ZeropsApiClient {
           ),
         }),
       },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
+      { operationKind: "project-write" },
     );
     this.#assertGeneration(generation);
-    return this.fetchProject(input.projectId, signal);
+    return this.fetchProject(input.projectId);
   }
 
   /**
@@ -2651,18 +2637,11 @@ export class ZeropsApiClient {
    * three Mates after a platform outage, 2026-10-01). Answers the stop's
    * process id, which the caller waits on before the start.
    */
-  async stopService(
-    serviceId: string,
-    signal?: AbortSignal,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<{ readonly processId: string | undefined }> {
+  async stopService(serviceId: string): Promise<{ readonly processId: string | undefined }> {
     const process = await this.#request<{ readonly id?: unknown }>(
       `/service-stack/${serviceId}/stop`,
-      { method: "PUT", signal: signal ?? null },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
+      { method: "PUT" },
+      { operationKind: "project-write" },
     );
     return { processId: typeof process?.id === "string" ? process.id : undefined };
   }
@@ -2765,18 +2744,11 @@ export class ZeropsApiClient {
    * `PUT /service-stack/{id}/start` with the user's own token — starts a
    * STOPPED service (a zcp container included). Answers the start's process id.
    */
-  async startService(
-    serviceId: string,
-    signal?: AbortSignal,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<{ readonly processId: string | undefined }> {
+  async startService(serviceId: string): Promise<{ readonly processId: string | undefined }> {
     const process = await this.#request<{ readonly id?: unknown }>(
       `/service-stack/${serviceId}/start`,
-      { method: "PUT", signal: signal ?? null },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
+      { method: "PUT" },
+      { operationKind: "project-write" },
     );
     return { processId: typeof process?.id === "string" ? process.id : undefined };
   }
@@ -2785,18 +2757,11 @@ export class ZeropsApiClient {
    * `PUT /project/{id}/start` with the user's own token — starts every
    * STOPPED service in a STOPPED project.
    */
-  async startProject(
-    projectId: string,
-    signal?: AbortSignal,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<void> {
+  async startProject(projectId: string): Promise<void> {
     await this.#request(
       `/project/${projectId}/start`,
-      { method: "PUT", signal: signal ?? null },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
+      { method: "PUT" },
+      { operationKind: "project-write" },
     );
   }
 
