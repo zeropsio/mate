@@ -9,6 +9,8 @@ import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import type { TargetKey } from "@t3tools/client-runtime/zerops/environments";
 import { useCallback } from "react";
 
+import { toastManager } from "~/components/ui/toast";
+
 import { useAccountOperations } from "./accountOperations";
 import { useAccountData } from "./ZeropsAccountData";
 import { useZeropsCandidates } from "./useZeropsCandidates";
@@ -81,14 +83,20 @@ export function useReviveFailedMate(): (serviceId: string | undefined) => boolea
       if (candidate?.service === undefined) return false;
       if (restartWay(candidate.service.status) !== "stop-then-start") return false;
       intendContainer(candidate.key, { kind: "restart" });
-      // What it came to is said by its row and its link once the listing reads it again.
-      void operations.submit({
-        kind: "mate-restart",
-        orgId,
-        projectId: candidate.project.id,
-        serviceId,
-        way: "stop-then-start",
-      });
+      // A restart Zerops took is said by its row and its link once the listing reads it again;
+      // one it did not, or a stop it could not follow, is said here, as the menu says it.
+      void operations
+        .submit({
+          kind: "mate-restart",
+          orgId,
+          projectId: candidate.project.id,
+          serviceId,
+          way: "stop-then-start",
+        })
+        .then(({ progress }) => {
+          const refusal = restartRefusal(progress);
+          if (refusal !== null) toastManager.add({ type: "error", title: refusal });
+        });
       return true;
     },
     [listing, operations, orgId],
