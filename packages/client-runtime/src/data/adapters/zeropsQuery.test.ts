@@ -235,6 +235,7 @@ describe("a demanded query detail", () => {
       const { fiber, link } = yield* runLink(store, fixture);
       link.demandDetail(USAGE);
       yield* settle;
+      yield* fixture.push(subscriptionOf(fixture, CURRENT), { items: [container("c3", 0.1)] });
       yield* fixture.push(subscriptionOf(fixture, CURRENT), { items: [container("c2", 0.7)] });
       yield* settle;
       expect(store.state().streams.get(usage)?.phase).toBe("baselining");
@@ -244,6 +245,7 @@ describe("a demanded query detail", () => {
       const members = store.state().memberships.get(usage)?.members;
       expect(members?.get("c2")).toBe("member");
       expect(members?.get("c1")).toBe("removed");
+      expect(members?.get("c3")).toBe("removed");
       expect(store.state().streams.get(usage)?.phase).toBe("live");
       yield* Fiber.interrupt(fiber);
     }),

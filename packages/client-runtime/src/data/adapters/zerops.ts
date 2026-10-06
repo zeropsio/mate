@@ -485,9 +485,10 @@ export function zeropsNavigationLink(options: {
           }
           yield* commitQuery(query, listing.items);
           yield* signal(scope, { kind: "baseline-committed" });
+          // Drained in order: a frame arriving meanwhile waits behind the older ones.
           const held = query.held ?? [];
+          while (held.length > 0) yield* onQueryFrame({ ...query, held: null }, held.shift());
           query.held = null;
-          for (const data of held) yield* onQueryFrame(query, data);
         });
       /** Forgets a scope's query registrations: their frames are dropped from now on. */
       const forgetQueries = (scope: ScopeKey) => {
