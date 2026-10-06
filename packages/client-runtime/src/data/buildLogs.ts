@@ -106,11 +106,6 @@ export interface BuildLogPolicy {
   readonly retainedLogBytesPerSession: number;
   readonly activeLogSessionsPerAccount: number;
   readonly logPublicationCoalescingMs: number;
-  /**
-   * How long a build log's stream stands open with no frame before it counts
-   * as live: its first frame replays what was written since the backfill.
-   */
-  readonly logStreamSettleMs: number;
 }
 
 export const BUILD_LOG_POLICY: BuildLogPolicy = {
@@ -120,7 +115,6 @@ export const BUILD_LOG_POLICY: BuildLogPolicy = {
   retainedLogBytesPerSession: 5 * 1_024 * 1_024,
   activeLogSessionsPerAccount: 32,
   logPublicationCoalescingMs: 100,
-  logStreamSettleMs: 1_000,
 };
 
 export interface BuildLogRegistryOptions {
@@ -186,9 +180,7 @@ class BuildLogSession implements SharedBuildLogSession {
   #pendingOlderGap = false;
   #pendingNewerGap = false;
   #flushHandle: unknown;
-  /** The open stream's settle, pending from its handshake until it stood a moment or answered. */
-  #settleHandle: unknown;
-  /** The stream answered before it settled: the flush carrying its lines makes it live. */
+  /** The first valid source frame and its lines are published together. */
   #liveWithFlush = false;
 
   constructor(
@@ -322,23 +314,10 @@ class BuildLogSession implements SharedBuildLogSession {
           ? {}
           : { fromLineId: this.#snapshot.cursor.newestLineId }),
         callbacks: {
-          // Live once the stream stood a moment after its handshake, or with
-          // the lines of its first frame — never in between, when a frame may
-          // be on its way with the lines written since the backfill.
-          onOpen: () => {
-            if (!this.#isFollowCurrent(lifecycle, follow)) return;
-            this.#clearSettle();
-            this.#settleHandle = this.#setTimer(() => {
-              this.#settleHandle = undefined;
-              if (!this.#isFollowCurrent(lifecycle, follow)) return;
-              this.#goLive();
-            }, this.#policy.logStreamSettleMs);
-          },
           onLines: (lines, rejectedItems) => {
             if (!this.#isFollowCurrent(lifecycle, follow)) return;
             this.#reopening = false;
-            if (this.#snapshot.status !== "live" && lines.length > 0) {
-              this.#clearSettle();
+            if (this.#snapshot.status !== "live") {
               this.#liveWithFlush = true;
             }
             this.#acceptFollowLines(lines, rejectedItems);
@@ -354,7 +333,6 @@ class BuildLogSession implements SharedBuildLogSession {
             const handle = this.#followHandle;
             this.#followHandle = undefined;
             this.#followGeneration += 1;
-            this.#clearSettle();
             this.#liveWithFlush = false;
             handle?.close();
             this.#publish({
@@ -367,7 +345,6 @@ class BuildLogSession implements SharedBuildLogSession {
           onClose: () => {
             if (!this.#isFollowCurrent(lifecycle, follow)) return;
             this.#followHandle = undefined;
-            this.#clearSettle();
             this.#liveWithFlush = false;
             if (this.#reopening) {
               this.#reopening = false;
@@ -379,7 +356,7 @@ class BuildLogSession implements SharedBuildLogSession {
               });
               return;
             }
-            // The stream it reopens is not live until its own handshake.
+            // The reopened stream waits for its own source frame.
             const hasCursor = this.#snapshot.cursor.newestLineId !== null;
             this.#publish({
               ...this.#snapshot,
@@ -410,25 +387,9 @@ class BuildLogSession implements SharedBuildLogSession {
     this.#track(operation);
   }
 
-  #goLive(): void {
-    this.#publish({
-      ...this.#snapshot,
-      status: "live",
-      error: null,
-      gaps: { ...this.#snapshot.gaps, newer: false },
-    });
-  }
-
-  #clearSettle(): void {
-    if (this.#settleHandle === undefined) return;
-    this.#clearTimer(this.#settleHandle);
-    this.#settleHandle = undefined;
-  }
-
   #stopFollow(): void {
     this.#followGeneration += 1;
     this.#reopening = false;
-    this.#clearSettle();
     this.#liveWithFlush = false;
     this.#followHandle?.close();
     this.#followHandle = undefined;
@@ -464,8 +425,8 @@ class BuildLogSession implements SharedBuildLogSession {
     if (!this.#canRead()) return;
     const batch = this.#pending.slice(0, this.#policy.logPublishBatchLines);
     this.#pending = this.#pending.slice(batch.length);
-    if (batch.length > 0 || this.#pendingOlderGap || this.#pendingNewerGap) {
-      if (this.#liveWithFlush && batch.length > 0) {
+    if (this.#liveWithFlush || batch.length > 0 || this.#pendingOlderGap || this.#pendingNewerGap) {
+      if (this.#liveWithFlush) {
         // Its first frame's lines and its being live reach readers together.
         this.#liveWithFlush = false;
         this.#snapshot = {
