@@ -147,7 +147,7 @@ import {
   keepsFoot,
   movesAsPerson,
 } from "./runMotion.logic";
-import { easeRooms, forgetScrollTop, noteScrollTop, type Rooms } from "./runRoom";
+import { easeRooms, forgetScrollTop, noteScrollTop, type Rooms, unclamp } from "./runRoom";
 import { StatusBar } from "./StatusBar";
 import { versionText } from "../zerops/operation/version";
 import { ImportDetail } from "./ImportDetail";
@@ -4385,6 +4385,10 @@ function RunScroll({
     const keep = () => {
       const element = scrollRef.current;
       if (element === null) return;
+      // A draw laid out before its boxes held their heights (a row leaving
+      // the slot) clamped it, and the rooms put that back only once every
+      // set has heard the draw: a landing keeps it before then.
+      unclamp(element);
       const position = positionOf(element);
       read(position);
       const grew = laid.height !== null && position.scrollHeight > laid.height + 0.5;

@@ -79,7 +79,9 @@ export function forgetScrollTop(scroll: HTMLElement): void {
  * clamped down: read from the few scrolls noted, never by walking the card,
  * which a long run fills with thousands of rows.
  */
-function unclamp(element: HTMLElement): void {
+export function unclamp(element: HTMLElement): void {
+  // Drawn outside a page (a test's stand-in), nothing laid it out.
+  if (typeof element.closest !== "function") return;
   const card = cardOf(element);
   // A move the person just made in the card is theirs to keep; typing in
   // the composer is no move of it.
