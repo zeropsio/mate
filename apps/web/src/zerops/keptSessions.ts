@@ -7,6 +7,7 @@
  * a tab's sign-out is its own and the sessions are its neighbours' too.
  */
 import type { BearerConnectionRegistration } from "@t3tools/client-runtime/connection";
+import { endIssuedSession } from "@t3tools/client-runtime/data";
 import {
   HQ_SESSIONS,
   makeKeptSessions,
@@ -40,11 +41,7 @@ const ended = new Set<string>();
 export function endMateSession(logout: { readonly url: string; readonly token: string }): void {
   if (ended.has(logout.token)) return;
   ended.add(logout.token);
-  void fetch(logout.url, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${logout.token}` },
-    keepalive: true,
-  }).catch(() => undefined);
+  endIssuedSession({ url: logout.url, method: "POST", token: logout.token });
 }
 
 /**
@@ -67,11 +64,11 @@ export function endKeptSession(registration: BearerConnectionRegistration): void
 export function endHqSession(session: KeptHqSession): void {
   if (ended.has(session.token)) return;
   ended.add(session.token);
-  void fetch(`${session.address.replace(/\/+$/, "")}/api/session`, {
+  endIssuedSession({
+    url: `${session.address.replace(/\/+$/, "")}/api/session`,
     method: "DELETE",
-    headers: { Authorization: `Bearer ${session.token}` },
-    keepalive: true,
-  }).catch(() => undefined);
+    token: session.token,
+  });
 }
 
 /**

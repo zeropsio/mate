@@ -32,62 +32,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/mobile/src/features/zerops/ZeropsSessionProvider.tsx",
-    "kind": "CallExpression",
-    "fingerprint": "client.fetchUser",
-    "owner": "data-layer rewrite: sign-in/session",
-    "reason": "only the data layer's adapters reach a remote: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
-    "expires": "never"
-  },
-  {
-    "path": "apps/mobile/src/features/zerops/ZeropsSessionProvider.tsx",
-    "kind": "CallExpression",
-    "fingerprint": "client.fetchUser",
-    "owner": "data-layer rewrite: sign-in/session",
-    "reason": "only the data layer's adapters reach a remote: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
-    "expires": "never"
-  },
-  {
-    "path": "apps/mobile/src/features/zerops/ZeropsSessionProvider.tsx",
-    "kind": "CallExpression",
-    "fingerprint": "client.fetchUser",
-    "owner": "data-layer rewrite: sign-in/session",
-    "reason": "only the data layer's adapters reach a remote: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
-    "expires": "never"
-  },
-  {
-    "path": "apps/mobile/src/features/zerops/ZeropsSessionProvider.tsx",
-    "kind": "CallExpression",
-    "fingerprint": "client.login",
-    "owner": "data-layer rewrite: sign-in/session",
-    "reason": "only the data layer's adapters reach a remote: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
-    "expires": "never"
-  },
-  {
-    "path": "apps/mobile/src/features/zerops/ZeropsSessionProvider.tsx",
-    "kind": "CallExpression",
-    "fingerprint": "client.logout",
-    "owner": "data-layer rewrite: sign-in/session",
-    "reason": "only the data layer's adapters reach a remote: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
-    "expires": "never"
-  },
-  {
-    "path": "apps/mobile/src/features/zerops/ZeropsSessionProvider.tsx",
-    "kind": "CallExpression",
-    "fingerprint": "client.verifyTotp",
-    "owner": "data-layer rewrite: sign-in/session",
-    "reason": "only the data layer's adapters reach a remote: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
-    "expires": "never"
-  },
-  {
-    "path": "apps/mobile/src/features/zerops/ZeropsSessionProvider.tsx",
-    "kind": "NewExpression",
-    "fingerprint": "new ZeropsApiClient",
-    "owner": "data-layer rewrite: sign-in/session",
-    "reason": "only the data layer's adapters reach a remote: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
-    "expires": "never"
-  },
-  {
     "path": "apps/mobile/src/features/zerops/environment-ports.ts",
     "kind": "CallExpression",
     "fingerprint": "globalThis.fetch",
@@ -353,106 +297,10 @@
   },
   {
     "path": "apps/web/src/zerops/ZeropsSessionProvider.tsx",
-    "kind": "CallExpression",
-    "fingerprint": "client.adoptSession",
-    "owner": "data-layer rewrite: sign-in/session",
-    "reason": "only the data layer's adapters reach a remote: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsSessionProvider.tsx",
-    "kind": "CallExpression",
-    "fingerprint": "client.adoptSession",
-    "owner": "data-layer rewrite: sign-in/session",
-    "reason": "only the data layer's adapters reach a remote: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsSessionProvider.tsx",
-    "kind": "CallExpression",
-    "fingerprint": "client.fetchUser",
-    "owner": "data-layer rewrite: sign-in/session",
-    "reason": "only the data layer's adapters reach a remote: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsSessionProvider.tsx",
-    "kind": "CallExpression",
-    "fingerprint": "client.fetchUser",
-    "owner": "data-layer rewrite: sign-in/session",
-    "reason": "only the data layer's adapters reach a remote: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsSessionProvider.tsx",
-    "kind": "CallExpression",
-    "fingerprint": "client.fetchUser",
-    "owner": "data-layer rewrite: sign-in/session",
-    "reason": "only the data layer's adapters reach a remote: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsSessionProvider.tsx",
-    "kind": "CallExpression",
-    "fingerprint": "client.fetchUser",
-    "owner": "data-layer rewrite: sign-in/session",
-    "reason": "only the data layer's adapters reach a remote: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsSessionProvider.tsx",
-    "kind": "CallExpression",
-    "fingerprint": "client.fetchUser",
-    "owner": "data-layer rewrite: sign-in/session",
-    "reason": "only the data layer's adapters reach a remote: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsSessionProvider.tsx",
-    "kind": "CallExpression",
-    "fingerprint": "client.fetchUser",
-    "owner": "data-layer rewrite: sign-in/session",
-    "reason": "only the data layer's adapters reach a remote: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsSessionProvider.tsx",
-    "kind": "CallExpression",
-    "fingerprint": "client.login",
-    "owner": "data-layer rewrite: sign-in/session",
-    "reason": "only the data layer's adapters reach a remote: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsSessionProvider.tsx",
-    "kind": "CallExpression",
-    "fingerprint": "client.register",
-    "owner": "data-layer rewrite: sign-in/session",
-    "reason": "only the data layer's adapters reach a remote: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsSessionProvider.tsx",
-    "kind": "CallExpression",
-    "fingerprint": "client.verifyTotp",
-    "owner": "data-layer rewrite: sign-in/session",
-    "reason": "only the data layer's adapters reach a remote: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsSessionProvider.tsx",
     "kind": "MemberExpression",
     "fingerprint": "globalThis.fetch",
     "owner": "data-layer rewrite: Mate identity/connection",
     "reason": "only the data layer's adapters reach a remote: the app hands the network to a client it builds; the adapter is given fetch, not the view",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsSessionProvider.tsx",
-    "kind": "NewExpression",
-    "fingerprint": "new ZeropsApiClient",
-    "owner": "data-layer rewrite: sign-in/session",
-    "reason": "only the data layer's adapters reach a remote: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
     "expires": "never"
   },
   {
@@ -768,22 +616,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/zerops/keptSessions.ts",
-    "kind": "CallExpression",
-    "fingerprint": "fetch",
-    "owner": "data-layer rewrite: sign-in/session",
-    "reason": "only the data layer's adapters reach a remote: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/keptSessions.ts",
-    "kind": "CallExpression",
-    "fingerprint": "fetch",
-    "owner": "data-layer rewrite: sign-in/session",
-    "reason": "only the data layer's adapters reach a remote: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/zerops/mateDescriptors.ts",
     "kind": "CallExpression",
     "fingerprint": "globalThis.fetch",
@@ -1053,14 +885,6 @@
     "fingerprint": "hq.api.change",
     "owner": "data-layer rewrite: HQ",
     "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/account/session.ts",
-    "kind": "NewExpression",
-    "fingerprint": "new ZeropsApiClient",
-    "owner": "data-layer rewrite: sign-in/session",
-    "reason": "only the data layer's adapters reach a remote: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
     "expires": "never"
   },
   {

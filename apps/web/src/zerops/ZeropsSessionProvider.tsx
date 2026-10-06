@@ -11,12 +11,11 @@
 
 import {
   ZEROPS_SESSION_STORAGE_KEY,
-  ZeropsApiClient,
+  type ZeropsApiClient,
   clearZeropsSession,
   loadZeropsSelection,
   loadZeropsSession,
   parseZeropsSession,
-  requiresZeropsTwoFactor,
   resolveActiveZeropsOrganization,
   saveZeropsSelection,
   saveZeropsSession,
@@ -33,12 +32,12 @@ import {
   ZEROPS_SESSION_OWNER_STORAGE_KEY,
   makeZeropsSessionDriver,
   parseZeropsSessionOwner,
-  probeZeropsPrincipal,
   unavailableVerdict,
   type ZeropsSessionDriver,
   type ZeropsSessionOwner,
   type ZeropsSessionState,
 } from "@t3tools/client-runtime/zerops/account";
+import { makeZeropsSessionCalls, probeZeropsPrincipal } from "@t3tools/client-runtime/data";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
 import { rememberBootFrame } from "./bootFrame";
 // Its account hooks hold the account open and end its kept sessions: loaded before any account opens.
@@ -164,7 +163,7 @@ function makeSession(storage: ZeropsStorageAdapter) {
   let driver!: ZeropsSessionDriver;
   /** True while the person's own sign-out runs: its session end is no refusal. */
   let signingOut = false;
-  const client = new ZeropsApiClient({
+  const calls = makeZeropsSessionCalls({
     // The client's own token writes hold the same locks as every other writer in this browser.
     holdToken: tokenWrites,
     fetch,
@@ -180,12 +179,13 @@ function makeSession(storage: ZeropsStorageAdapter) {
     },
     renewSession: (stale, refresh) => driver.renew(stale, refresh),
   });
+  const { client } = calls;
   driver = makeZeropsSessionDriver({
     loadStored: () => loadZeropsSession(storage),
     verify: async (session) => {
       client.restoreSession(session);
       try {
-        return { kind: "user", user: await client.fetchUser() };
+        return { kind: "user", user: await calls.readUser() };
       } catch (cause) {
         // The client has already cleared a session the API refused.
         if (client.session !== null) return unavailableVerdict(cause);
@@ -218,7 +218,7 @@ function makeSession(storage: ZeropsStorageAdapter) {
       signingOut = false;
     }
   };
-  return { client, driver, signOutLocally };
+  return { calls, client, driver, signOutLocally };
 }
 
 export function ZeropsSessionProvider({
@@ -233,7 +233,7 @@ export function ZeropsSessionProvider({
   const [organizationStatus, setOrganizationStatus] = useState<ZeropsOrganizationStatus>("idle");
   const preferredClientIdRef = useRef<string | null>(null);
 
-  const { client, driver, signOutLocally } = useMemo(() => makeSession(storage), [storage]);
+  const { calls, client, driver, signOutLocally } = useMemo(() => makeSession(storage), [storage]);
   const machine = useSyncExternalStore(driver.subscribe, driver.state);
   const status = statusOf(machine);
   const retrying = machine.status === "verifying" && machine.retry === true;
@@ -243,10 +243,9 @@ export function ZeropsSessionProvider({
   useEffect(
     () =>
       installDevHooks(async (session) => {
-        await client.adoptSession(session);
-        driver.signedIn(await client.fetchUser());
+        driver.signedIn((await calls.adoptToken(session)).user);
       }),
-    [client, driver],
+    [calls, driver],
   );
   // The next load's first frame (`bootFrame.ts`): the app's once the session is signed in, the
   // sign-in's once it is signed out. Written as the state changes, ahead of any reload it causes.
@@ -382,8 +381,7 @@ export function ZeropsSessionProvider({
       verifyAgain: () => driver.send({ type: "VERIFY_AGAIN" }),
       retrying,
       adoptHandover: async ({ token, zcpClaimed }) => {
-        const session = await client.adoptSession({ accessToken: token });
-        const adopted = await client.fetchUser();
+        const { session, user: adopted } = await calls.adoptToken({ accessToken: token });
         driver.signedIn(adopted);
         if (zcpClaimed) {
           // The picker reads this to enter the provisioning wait for the
@@ -395,23 +393,19 @@ export function ZeropsSessionProvider({
         }
       },
       signIn: async (email, password) => {
-        const response = await client.login(email, password);
-        if (requiresZeropsTwoFactor(response.auth)) {
-          driver.send({ type: "SECOND_FACTOR_REQUIRED" });
-          return;
-        }
-        driver.signedIn(response.user ?? (await client.fetchUser()));
+        const signedIn = await calls.signIn(email, password);
+        if (signedIn === null) driver.send({ type: "SECOND_FACTOR_REQUIRED" });
+        else driver.signedIn(signedIn);
       },
       register: async (input) => {
-        const response = await client.register(input);
+        const { response, user: registered } = await calls.signUp(input);
         preferredClientIdRef.current = response.clientId ?? null;
-        driver.signedIn(response.user ?? (await client.fetchUser()));
+        driver.signedIn(registered);
         setLastRegistration(response);
         return response;
       },
       verifyTotp: async (code) => {
-        await client.verifyTotp(code);
-        driver.signedIn(await client.fetchUser());
+        driver.signedIn((await calls.confirmSecondFactor(code)).user);
       },
       signOut: async () => {
         setLastRegistration(null);
@@ -427,6 +421,7 @@ export function ZeropsSessionProvider({
     }),
     [
       activeOrganization,
+      calls,
       client,
       driver,
       lastRegistration,

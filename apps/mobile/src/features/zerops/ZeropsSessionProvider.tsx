@@ -1,11 +1,11 @@
+import { makeZeropsSessionCalls } from "@t3tools/client-runtime/data";
 import {
-  ZeropsApiClient,
   ZeropsApiError,
   clearZeropsSession,
   loadZeropsSession,
-  requiresZeropsTwoFactor,
   saveZeropsSession,
   zeropsClientsFromUser,
+  type ZeropsApiClient,
   type ZeropsOrganization,
   type ZeropsSession,
   type ZeropsUser,
@@ -44,9 +44,9 @@ export function ZeropsSessionProvider({ children }: { readonly children: ReactNo
   const [restoreAttempt, setRestoreAttempt] = useState(0);
   const [newRecoveryToken, setNewRecoveryToken] = useState<string | null>(null);
 
-  const client = useMemo(
+  const calls = useMemo(
     () =>
-      new ZeropsApiClient({
+      makeZeropsSessionCalls({
         onSessionChange: (session: ZeropsSession | null) => {
           if (session === null) {
             setStatus("signed-out");
@@ -60,6 +60,7 @@ export function ZeropsSessionProvider({ children }: { readonly children: ReactNo
       }),
     [],
   );
+  const { client } = calls;
 
   useEffect(() => {
     let cancelled = false;
@@ -71,8 +72,8 @@ export function ZeropsSessionProvider({ children }: { readonly children: ReactNo
           setStatus("signed-out");
           return;
         }
-        client.restoreSession(session);
-        const restored = await client.fetchUser();
+        calls.client.restoreSession(session);
+        const restored = await calls.readUser();
         if (cancelled) return;
         setUser(restored);
         setStatus("signed-in");
@@ -85,7 +86,7 @@ export function ZeropsSessionProvider({ children }: { readonly children: ReactNo
           // The API client normally clears an explicitly expired session
           // itself. Keep this fallback for injected/alternate clients while
           // avoiding a duplicate SecureStore write in the common path.
-          if (client.session) await client.signOutLocally();
+          if (calls.client.session) await calls.client.signOutLocally();
           if (cancelled) return;
           setRestoreError(null);
           setStatus("signed-out");
@@ -102,7 +103,7 @@ export function ZeropsSessionProvider({ children }: { readonly children: ReactNo
     return () => {
       cancelled = true;
     };
-  }, [client, restoreAttempt]);
+  }, [calls, restoreAttempt]);
 
   const organizations = useMemo(() => (user ? zeropsClientsFromUser(user) : []), [user]);
   const activeOrganization =
@@ -128,31 +129,32 @@ export function ZeropsSessionProvider({ children }: { readonly children: ReactNo
       },
       signIn: async (email, password) => {
         setNewRecoveryToken(null);
-        const response = await client.login(email, password);
-        if (requiresZeropsTwoFactor(response.auth)) {
+        const signedIn = await calls.signIn(email, password);
+        if (signedIn === null) {
           setStatus("totp-required");
           return;
         }
-        setUser(response.user ?? (await client.fetchUser()));
+        setUser(signedIn);
         setStatus("signed-in");
       },
       verifyTotp: async (code) => {
-        const session = await client.verifyTotp(code);
+        const { session, user: verified } = await calls.confirmSecondFactor(code);
         setNewRecoveryToken(session.newRecoveryToken?.trim() || null);
-        setUser(await client.fetchUser());
+        setUser(verified);
         setStatus("signed-in");
       },
-      signOut: async () => {
-        try {
-          await client.logout();
-        } catch {
-          // logout clears the held session in a finally block. A network error
-          // must not trap the user on the account screen after that local exit.
-          await client.signOutLocally();
-        }
-      },
+      signOut: calls.signOutAtPlatform,
     }),
-    [client, newRecoveryToken, restoreError, status, user, organizations, activeOrganization],
+    [
+      calls,
+      client,
+      newRecoveryToken,
+      restoreError,
+      status,
+      user,
+      organizations,
+      activeOrganization,
+    ],
   );
 
   return (

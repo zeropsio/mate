@@ -7,7 +7,6 @@ import {
   ZEROPS_SESSION_OWNER_STORAGE_KEY,
   makeZeropsSessionDriver,
   parseZeropsSessionOwner,
-  probeZeropsPrincipal,
   transitionZeropsSession,
   type ZeropsPrincipalVerdict,
   type ZeropsSessionEffect,
@@ -537,23 +536,6 @@ const flush = async () => {
   for (let turn = 0; turn < 10; turn++) await Promise.resolve();
 };
 
-describe("probeZeropsPrincipal", () => {
-  it.each([
-    [429, { "retry-after": "20" }, { kind: "unavailable", retryAfterMs: 20_000 }],
-    [503, {}, { kind: "unavailable" }],
-    [401, {}, { kind: "unauthorized" }],
-  ] as const)("reads a %i as %j", async (status, headers, verdict) => {
-    const answer = await probeZeropsPrincipal(
-      {
-        fetch: async () => new Response("{}", { status, headers }),
-        baseUrl: "https://api.example.test",
-      },
-      stored,
-    );
-    expect(answer).toEqual(verdict);
-  });
-});
-
 describe("makeZeropsSessionDriver", () => {
   it("retries a boot the platform could not answer when its retry time comes", async () => {
     const origin = makeOrigin({ session: stored, owner: null });
@@ -815,51 +797,5 @@ describe("makeZeropsSessionDriver", () => {
       expect(renewed).toEqual([next, next]);
       expect(refreshes).toBe(1);
     });
-  });
-});
-
-describe("probeZeropsPrincipal", () => {
-  const answering = (status: number) => {
-    const sent: Array<{ readonly path: string; readonly authorization: string | null }> = [];
-    const fetch = async (input: string, init?: RequestInit) => {
-      sent.push({
-        path: new URL(input).pathname,
-        authorization: new Headers(init?.headers).get("Authorization"),
-      });
-      return new Response(JSON.stringify(status === 200 ? person : { error: { code: "x" } }), {
-        status,
-        headers: { "Content-Type": "application/json" },
-      });
-    };
-    return { fetch, sent };
-  };
-
-  it.each([
-    [200, user(person)],
-    [401, unauthorized],
-    [503, unavailable],
-  ] as const)("reads one user/info with the access token alone (%s)", async (status, verdict) => {
-    const { fetch, sent } = answering(status);
-
-    const answer = await probeZeropsPrincipal({ fetch, baseUrl: "https://api.example.test" }, next);
-
-    expect(answer).toEqual(verdict);
-    expect(sent).toEqual([
-      { path: "/api/rest/public/user/info", authorization: "Bearer access-2" },
-    ]);
-  });
-
-  it("answers unavailable when the network fails", async () => {
-    const answer = await probeZeropsPrincipal(
-      {
-        fetch: async () => {
-          throw new TypeError("Failed to fetch");
-        },
-        baseUrl: "https://api.example.test",
-      },
-      next,
-    );
-
-    expect(answer).toEqual(unavailable);
   });
 });

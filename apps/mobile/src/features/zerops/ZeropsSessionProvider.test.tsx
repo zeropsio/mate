@@ -32,13 +32,24 @@ vi.mock("react", async (importOriginal) => {
   };
 });
 
-vi.mock("@t3tools/client-runtime/zerops", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@t3tools/client-runtime/zerops")>();
+// The session's calls build their client behind the data layer, from the client runtime's API module.
+vi.mock("../../../../../packages/client-runtime/src/zerops/api.ts", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("../../../../../packages/client-runtime/src/zerops/api.ts")
+    >();
   return {
     ...actual,
     ZeropsApiClient: function ZeropsApiClient() {
       return runtime.client;
     },
+  };
+});
+
+vi.mock("@t3tools/client-runtime/zerops", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@t3tools/client-runtime/zerops")>();
+  return {
+    ...actual,
     clearZeropsSession: runtime.clearSession,
     loadZeropsSession: runtime.loadSession,
     saveZeropsSession: runtime.saveSession,

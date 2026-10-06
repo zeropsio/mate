@@ -19,12 +19,7 @@
  *
  * UI-free and platform-free: storage, locks, timers and the network are ports.
  */
-import {
-  ZeropsApiClient,
-  ZeropsApiError,
-  type FetchImplementation,
-  type ZeropsUser,
-} from "../api.ts";
+import { ZeropsApiError, type ZeropsUser } from "../api.ts";
 import {
   INITIAL_BACKOFF,
   backoffOn,
@@ -694,29 +689,9 @@ export function makeZeropsSessionDriver(ports: ZeropsSessionPorts): ZeropsSessio
   };
 }
 
-/**
- * The `probe` port over the platform: one `user/info` with the session's
- * access token alone, so a 401 never spends the refresh token another tab
- * shares, and never touches the tab's own client.
- */
 /** Zerops did not answer `cause`: a 429 carries the Retry-After the next check waits out. */
 export function unavailableVerdict(cause: unknown): ZeropsPrincipalVerdict {
   return cause instanceof ZeropsApiError && cause.status === 429 && cause.retryAfterMs !== null
     ? { kind: "unavailable", retryAfterMs: cause.retryAfterMs }
     : { kind: "unavailable" };
-}
-
-export async function probeZeropsPrincipal(
-  options: { readonly fetch: FetchImplementation; readonly baseUrl: string },
-  session: ZeropsSession,
-): Promise<ZeropsPrincipalVerdict> {
-  const probe = new ZeropsApiClient({ fetch: options.fetch, baseUrl: options.baseUrl });
-  probe.restoreSession({ accessToken: session.accessToken });
-  try {
-    return { kind: "user", user: await probe.fetchUser() };
-  } catch (cause) {
-    return cause instanceof ZeropsApiError && cause.status === 401
-      ? { kind: "unauthorized" }
-      : unavailableVerdict(cause);
-  }
 }

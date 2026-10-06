@@ -1,6 +1,7 @@
 /**
  * The data layer's one door for the apps: the account's store, the organization's navigation, the
- * Zerops wire over today's transport, and the projections components read.
+ * Zerops wire over today's transport, the session's own calls to the platform and to the issuers
+ * of its kept sessions, and the projections components read.
  *
  * @module data
  */
@@ -12,6 +13,12 @@ export {
   repairZeropsSession,
   type ZeropsWireClient,
 } from "../zerops/data/zeropsWire.ts";
+export {
+  makeZeropsSessionCalls,
+  probeZeropsPrincipal,
+  type ZeropsSessionCalls,
+} from "../zerops/data/zeropsSession.ts";
+export { endIssuedSession } from "./adapters/issuedSessions.ts";
 export { historyScope, runningScope, type ProcessValue } from "./families/process.ts";
 export {
   buildsUnderWay,
