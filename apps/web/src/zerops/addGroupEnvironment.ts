@@ -21,7 +21,6 @@
  */
 
 import type { GroupEnvironmentTier } from "@t3tools/client-runtime/zerops";
-import type { HqEndpoint } from "@t3tools/client-runtime/zerops/hq";
 
 import { HQ_UNFOLLOWED, type AccountOperations } from "./accountOperations";
 
@@ -38,8 +37,6 @@ export async function addGroupEnvironment(input: {
   /** The account's operations, and HQ's navigation as the account observes it. */
   readonly operations: Pick<AccountOperations, "run" | "untilEnvironment">;
   readonly orgId: string;
-  /** The organization's HQ, where the registry and the key live. */
-  readonly hq: HqEndpoint;
   readonly groupId: string;
   readonly environment: {
     readonly tier: GroupEnvironmentTier;
@@ -47,7 +44,7 @@ export async function addGroupEnvironment(input: {
     readonly project: string;
   };
 }): Promise<AddGroupEnvironmentOutcome> {
-  const { operations, orgId, hq, groupId } = input;
+  const { operations, orgId, groupId } = input;
   const projectId = input.environment.project;
   const done: Array<AddGroupEnvironmentStep> = [];
   const stop = (step: AddGroupEnvironmentStep, reason: string): AddGroupEnvironmentOutcome => ({
@@ -62,7 +59,6 @@ export async function addGroupEnvironment(input: {
       {
         kind: "attach-project",
         orgId,
-        hq,
         appId: groupId,
         attach: { projectId, kind: input.environment.tier, created: true },
       },
@@ -81,7 +77,6 @@ export async function addGroupEnvironment(input: {
         {
           kind: "keep-deploy-key",
           orgId,
-          hq,
           appId: groupId,
           projectId,
           environmentName: recorded.name,

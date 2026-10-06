@@ -8,7 +8,7 @@
  * @module data/operations/hqWrites
  */
 import { hqAppsScope, type HqAppValue } from "../families/hqNavigation.ts";
-import type { HqAttach, HqEndpoint, HqMateSetUp } from "../../zerops/hq/client.ts";
+import type { HqAttach, HqMateSetUp } from "../../zerops/hq/client.ts";
 import type { OperationIntent } from "../model.ts";
 import type { ProjectionReads } from "../store.ts";
 import type { IntentOf, OperationKind } from "./kind.ts";
@@ -18,42 +18,35 @@ declare module "../model.ts" {
   interface OperationIntents {
     readonly "create-app": {
       readonly orgId: string;
-      readonly hq: HqEndpoint;
       readonly name: string;
     };
     readonly "record-birth": {
       readonly orgId: string;
-      readonly hq: HqEndpoint;
       readonly appId: string;
       readonly face: string;
       readonly standUp?: boolean;
     };
     readonly "bind-birth": {
       readonly orgId: string;
-      readonly hq: HqEndpoint;
       readonly appId: string;
       readonly birthId: string;
       readonly projectId: string;
     };
     readonly "attach-project": {
       readonly orgId: string;
-      readonly hq: HqEndpoint;
       readonly appId: string;
       readonly attach: HqAttach;
     };
     readonly "create-mate-record": {
       readonly orgId: string;
-      readonly hq: HqEndpoint;
       readonly mate: { readonly projectId: string } & HqMateSetUp;
     };
     readonly "mark-closed-off": {
       readonly orgId: string;
-      readonly hq: HqEndpoint;
       readonly projectId: string;
     };
     readonly "keep-deploy-key": {
       readonly orgId: string;
-      readonly hq: HqEndpoint;
       readonly appId: string;
       /** The environment's project, which its token is granted on alone. */
       readonly projectId: string;

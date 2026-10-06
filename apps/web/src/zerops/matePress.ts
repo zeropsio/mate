@@ -767,7 +767,6 @@ export function pressRegistration(
   serviceId?: string,
 ): (projectId: string) => Promise<void> {
   const orgId = inputs.organizationId;
-  const { hq } = registration;
   const service = serviceId === undefined ? {} : { serviceId };
   const run: <Intent extends Parameters<PressInputs["operations"]["run"]>[0]>(
     intent: Intent,
@@ -778,7 +777,6 @@ export function pressRegistration(
       await run({
         kind: "create-mate-record",
         orgId,
-        hq,
         mate: { projectId, ...registration.record, standUp: registration.standUp, ...service },
       });
       return;
@@ -788,7 +786,6 @@ export function pressRegistration(
         await run({
           kind: "bind-birth",
           orgId,
-          hq,
           appId: registration.groupId,
           birthId: registration.intent,
           projectId,
@@ -796,7 +793,6 @@ export function pressRegistration(
       await run({
         kind: "attach-project",
         orgId,
-        hq,
         appId: registration.groupId,
         attach: {
           projectId,
@@ -816,7 +812,6 @@ export function pressRegistration(
     const added = await addGroupEnvironment({
       operations: inputs.operations,
       orgId,
-      hq,
       groupId: registration.groupId,
       environment: { tier: registration.kind, project: projectId },
     });
@@ -854,7 +849,7 @@ export function pressPlatform(
     markClosedOff: async (projectId) => {
       if (options.hq === null) return;
       await inputs.operations.run(
-        { kind: "mark-closed-off", orgId: organizationId, hq: options.hq, projectId },
+        { kind: "mark-closed-off", orgId: organizationId, projectId },
         { orgId: organizationId, unobserved: HQ_UNFOLLOWED },
       );
     },

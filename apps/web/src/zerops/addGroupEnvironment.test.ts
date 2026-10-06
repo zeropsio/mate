@@ -9,8 +9,6 @@ import { describe, expect, it } from "vite-plus/test";
 import type { AccountOperations } from "./accountOperations";
 import { addGroupEnvironment } from "./addGroupEnvironment";
 
-const HQ = { projectId: "hq-project", address: "https://hq.test" };
-
 /** The account's operations as a test stands them in: each write recorded, each answered. */
 function operationsOf(options: {
   readonly recorded?: { readonly name: string; readonly keyed: boolean } | Error;
@@ -38,7 +36,6 @@ const add = (operations: Pick<AccountOperations, "run" | "untilEnvironment">) =>
   addGroupEnvironment({
     operations,
     orgId: "org-1",
-    hq: HQ,
     groupId: "g-1",
     environment: { tier: "stage", project: "p-stage" },
   });
@@ -55,7 +52,6 @@ describe("addGroupEnvironment", () => {
       {
         kind: "attach-project",
         orgId: "org-1",
-        hq: HQ,
         appId: "g-1",
         attach: { projectId: "p-stage", kind: "stage", created: true },
       },
@@ -63,7 +59,6 @@ describe("addGroupEnvironment", () => {
       {
         kind: "keep-deploy-key",
         orgId: "org-1",
-        hq: HQ,
         appId: "g-1",
         projectId: "p-stage",
         environmentName: "acme-stage",

@@ -15,9 +15,7 @@ import { operationProgress } from "../projections/operation.ts";
 import { makeAccountStore, readsOfState, type AccountStore } from "../store.ts";
 import { HqError, type HqStructure } from "../../zerops/hq/client.ts";
 import { makeOperations } from "./coordinator.ts";
-import { makeHqExecutor, type HqWritesApi } from "./executors/hq.ts";
-
-const HQ = { projectId: "hq-project", address: "https://hq.test" };
+import { makeHqExecutor, type HqWrites } from "./executors/hq.ts";
 
 type App = HqStructure["apps"][number];
 const app = (patch: Partial<App> = {}): App =>
@@ -35,12 +33,12 @@ const hqSays = (store: AccountStore, apps: ReadonlyArray<App>) =>
 
 const lost = new HqError({ kind: "uncertain", code: "network", message: "HQ's answer was lost." });
 
-function operationsOf(store: AccountStore, api: Partial<HqWritesApi>, zerops = fakeZerops()) {
+function operationsOf(store: AccountStore, api: Partial<HqWrites>, zerops = fakeZerops()) {
   const calls: string[] = [];
   const asked = (name: string) => () => Promise.reject(new Error(`${name} was not expected`));
   const executor = makeHqExecutor({
-    hqOf: (orgId, hq) => {
-      calls.push(`hq ${orgId} ${hq.address}`);
+    apiOf: (orgId) => {
+      calls.push(`hq ${orgId}`);
       return {
         createApp: asked("createApp"),
         recordBirth: asked("recordBirth"),
@@ -49,6 +47,7 @@ function operationsOf(store: AccountStore, api: Partial<HqWritesApi>, zerops = f
         createMate: asked("createMate"),
         recordClosedOff: asked("recordClosedOff"),
         keepDeployToken: asked("keepDeployToken"),
+        commentOnChange: asked("commentOnChange"),
         ...api,
       };
     },
@@ -82,9 +81,9 @@ describe("a creation's writes at HQ", () => {
   it.effect("are done once HQ answers, each with what it answered", () =>
     Effect.gen(function* () {
       const said: string[] = [];
-      const cases: ReadonlyArray<readonly [OperationIntent, Partial<HqWritesApi>, unknown]> = [
+      const cases: ReadonlyArray<readonly [OperationIntent, Partial<HqWrites>, unknown]> = [
         [
-          { kind: "create-app", orgId: ORG, hq: HQ, name: "Garden" },
+          { kind: "create-app", orgId: ORG, name: "Garden" },
           {
             createApp: async (name) => {
               said.push(`app ${name}`);
@@ -94,7 +93,7 @@ describe("a creation's writes at HQ", () => {
           { appId: "app-9" },
         ],
         [
-          { kind: "record-birth", orgId: ORG, hq: HQ, appId: "app-1", face: "tint:shape" },
+          { kind: "record-birth", orgId: ORG, appId: "app-1", face: "tint:shape" },
           {
             recordBirth: async (birth) => {
               said.push(`birth ${birth.appId} ${birth.face}`);
@@ -107,7 +106,6 @@ describe("a creation's writes at HQ", () => {
           {
             kind: "bind-birth",
             orgId: ORG,
-            hq: HQ,
             appId: "app-1",
             birthId: "b1",
             projectId: "p1",
@@ -123,7 +121,6 @@ describe("a creation's writes at HQ", () => {
           {
             kind: "attach-project",
             orgId: ORG,
-            hq: HQ,
             appId: "app-1",
             attach: { projectId: "p1", kind: "stage", created: true },
           },
@@ -135,7 +132,7 @@ describe("a creation's writes at HQ", () => {
           undefined,
         ],
         [
-          { kind: "create-mate-record", orgId: ORG, hq: HQ, mate: { projectId: "p1", face: "" } },
+          { kind: "create-mate-record", orgId: ORG, mate: { projectId: "p1", face: "" } },
           {
             createMate: async (mate) => {
               said.push(`mate ${mate.projectId}`);
@@ -144,7 +141,7 @@ describe("a creation's writes at HQ", () => {
           undefined,
         ],
         [
-          { kind: "mark-closed-off", orgId: ORG, hq: HQ, projectId: "p1" },
+          { kind: "mark-closed-off", orgId: ORG, projectId: "p1" },
           {
             recordClosedOff: async (projectId) => {
               said.push(`closed-off ${projectId}`);
@@ -157,7 +154,7 @@ describe("a creation's writes at HQ", () => {
         const store = account();
         const { operations, calls } = operationsOf(store, api);
         yield* operations.submit(intent);
-        expect(calls).toEqual([`hq ${ORG} https://hq.test`]);
+        expect(calls).toEqual([`hq ${ORG}`]);
         expect(progress(store)).toMatchObject({ stage: "done", outcome: "succeeded" });
         if (result !== undefined)
           expect(operationResult(record(store), intent.kind as never)).toEqual(result);
@@ -178,16 +175,16 @@ describe("a creation's writes at HQ", () => {
     () =>
       Effect.gen(function* () {
         const cases: ReadonlyArray<
-          readonly [OperationIntent, Partial<HqWritesApi>, ReadonlyArray<App>, unknown]
+          readonly [OperationIntent, Partial<HqWrites>, ReadonlyArray<App>, unknown]
         > = [
           [
-            { kind: "create-app", orgId: ORG, hq: HQ, name: "Garden" },
+            { kind: "create-app", orgId: ORG, name: "Garden" },
             { createApp: () => Promise.reject(lost) },
             [app(), app({ id: "app-9", name: "Garden" })],
             { appId: "app-9" },
           ],
           [
-            { kind: "record-birth", orgId: ORG, hq: HQ, appId: "app-1", face: "tint:shape" },
+            { kind: "record-birth", orgId: ORG, appId: "app-1", face: "tint:shape" },
             { recordBirth: () => Promise.reject(lost) },
             [app({ births: [{ id: "birth-1", face: "tint:shape" }] })],
             { birthId: "birth-1" },
@@ -196,7 +193,6 @@ describe("a creation's writes at HQ", () => {
             {
               kind: "attach-project",
               orgId: ORG,
-              hq: HQ,
               appId: "app-1",
               attach: { projectId: "p1", kind: "stage", created: true },
             },
@@ -244,7 +240,7 @@ describe("a creation's writes at HQ", () => {
           sent += 1;
           return Promise.reject(lost);
         },
-      }).operations.submit({ kind: "create-app", orgId: ORG, hq: HQ, name: "Garden" });
+      }).operations.submit({ kind: "create-app", orgId: ORG, name: "Garden" });
       expect(sent).toBe(1);
       expect(progress(store)).toEqual({ stage: "uncertain", next: "ask-owner-again" });
       expect(record(store)?.uncertainBecause).toBe("HQ's answer was lost.");
@@ -267,7 +263,6 @@ describe("a creation's writes at HQ", () => {
         yield* operationsOf(store, { createApp: () => Promise.reject(error) }).operations.submit({
           kind: "create-app",
           orgId: ORG,
-          hq: HQ,
           name: "Garden",
         });
         expect(progress(store)).toEqual(stage);
@@ -283,7 +278,7 @@ describe("a write HQ answers as already done", () => {
       Effect.gen(function* () {
         for (const [intent, api] of [
           [
-            { kind: "create-mate-record", orgId: ORG, hq: HQ, mate: { projectId: "p1", face: "" } },
+            { kind: "create-mate-record", orgId: ORG, mate: { projectId: "p1", face: "" } },
             {
               createMate: () =>
                 Promise.reject(
@@ -292,7 +287,7 @@ describe("a write HQ answers as already done", () => {
             },
           ],
           [
-            { kind: "mark-closed-off", orgId: ORG, hq: HQ, projectId: "p1" },
+            { kind: "mark-closed-off", orgId: ORG, projectId: "p1" },
             {
               recordClosedOff: () =>
                 Promise.reject(
@@ -317,7 +312,6 @@ describe("keep-deploy-key", () => {
   const KEY = {
     kind: "keep-deploy-key",
     orgId: ORG,
-    hq: HQ,
     appId: "app-1",
     projectId: "p-stage",
     environmentName: "stage",

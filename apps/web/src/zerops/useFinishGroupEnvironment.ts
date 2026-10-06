@@ -74,7 +74,6 @@ export function useFinishGroupEnvironment(input: {
           const outcome = await addGroupEnvironment({
             operations,
             orgId: clientId,
-            hq,
             groupId: entry.groupId,
             environment: { tier: entry.tier, project: entry.projectId },
           });

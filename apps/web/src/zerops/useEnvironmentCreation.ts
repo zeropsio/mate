@@ -255,7 +255,7 @@ export function useEnvironmentCreation(): (
         const record = async (birth: Parameters<Parameters<typeof addedMateBirth>[0]>[0]) =>
           (
             await operations.run(
-              { kind: "record-birth", orgId: organization.id, hq, ...birth },
+              { kind: "record-birth", orgId: organization.id, ...birth },
               { orgId: organization.id, unobserved: HQ_UNFOLLOWED },
             )
           ).birthId;
@@ -344,7 +344,6 @@ export function useEnvironmentCreation(): (
               {
                 kind: "bind-birth",
                 orgId: organization.id,
-                hq,
                 appId: group.groupId,
                 birthId: intent,
                 projectId,

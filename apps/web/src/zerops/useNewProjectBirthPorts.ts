@@ -24,15 +24,15 @@ export function useNewProjectBirthPorts(): (ask: NewProjectAsk) => NewProjectPor
     const organization = organizationRef(organizationId);
     const isCurrent = captureAccountLifetime();
     return {
-      registerGroup: ({ hq, name: groupName }) =>
+      registerGroup: ({ name: groupName }) =>
         operations.run(
-          { kind: "create-app", orgId: organizationId, hq, name: groupName },
+          { kind: "create-app", orgId: organizationId, name: groupName },
           { orgId: organizationId, unobserved: HQ_UNFOLLOWED },
         ),
-      recordBirth: async ({ hq, ...birth }) => ({
+      recordBirth: async ({ appId, face }) => ({
         id: (
           await operations.run(
-            { kind: "record-birth", orgId: organizationId, hq, ...birth },
+            { kind: "record-birth", orgId: organizationId, appId, face },
             { orgId: organizationId, unobserved: HQ_UNFOLLOWED },
           )
         ).birthId,

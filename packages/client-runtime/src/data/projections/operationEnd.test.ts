@@ -13,7 +13,6 @@ const INTENT = { kind: "delete-project", orgId: ORG, projectId: "p1" } as const;
 const BIND = {
   kind: "bind-birth",
   orgId: ORG,
-  hq: { projectId: "hq", address: "https://hq.test" },
   appId: "app-1",
   birthId: "b1",
   projectId: "p1",
