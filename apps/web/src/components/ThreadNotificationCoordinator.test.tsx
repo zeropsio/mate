@@ -117,6 +117,11 @@ vi.mock("../hooks/useSettings", () => ({
   getClientSettings: () => ({ notificationMode: state.mode }),
 }));
 vi.mock("../state/zerops", () => ({ hqMatesAtom: "hq-mates" }));
+// No Mate here publishes its attention: each rings off HQ's overview of it.
+vi.mock("../zerops/ZeropsAccountData", () => ({
+  useAccountOrgId: () => null,
+  useProjection: () => ({}),
+}));
 vi.mock("../threadNotifications", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../threadNotifications")>()),
   playNotificationSound: state.sound,
