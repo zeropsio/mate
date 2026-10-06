@@ -44,6 +44,7 @@
  * Everything else about the account lives on the projects screen. This is
  * where you work; that is where you manage.
  */
+import { RunShimmer } from "../chat/RunShimmer";
 import { useWarmIntent } from "../chat/warmTimeline";
 import {
   assignCandidateMateTints,
@@ -3286,7 +3287,9 @@ function MateReply({
         data-zerops-surface="sidebar-mate-live-step"
         key={`live:${reply.words}`}
       >
-        <span data-run-shimmer="">{reply.words}</span>
+        <RunShimmer inline sweeps>
+          {reply.words}
+        </RunShimmer>
       </span>
     );
   }

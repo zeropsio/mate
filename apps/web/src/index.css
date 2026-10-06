@@ -2688,35 +2688,104 @@ code {
 }
 
 /* A call the Mate is running now: a band of light sweeps across its words,
-   left to right, in their own inks (a mask, not a colour, so the verb stays
+   left to right, in their own inks (an alpha, not a colour, so the verb stays
    muted and the file name full), until the call returns — as a rule one call,
    and a command still running beside it sweeps too. With reduced motion the
-   words simply stand. */
+   words simply stand.
+
+   It runs on the compositor (RunShimmer.tsx): the words stand at 70 % of
+   their ink; a window three times their width slides across by `translate`
+   holding a copy of them that slides back by as much, so the copy stands
+   still, and the window's band adds the other 30 % where it passes — added,
+   not laid over (`plus-lighter` inside the words' own group), so the sum is
+   the ink a mask of 70 % → 100 % → 70 % made of it. The band is the mask's
+   own gradient on a box the mask's size (three widths, at 100deg), moved
+   from two widths left to none: the travel `mask-position` made, 2 s a sweep.
+   Both slides start in the same style change, so they never drift. */
+[data-sweep-band] {
+  display: none;
+}
+
 @media (prefers-reduced-motion: no-preference) {
   [data-run-shimmer] {
-    /* A mask reads only alpha: the words' own ink, at 70 % and whole. */
-    --run-shimmer-mask: linear-gradient(
-      100deg,
-      color-mix(in srgb, currentColor 70%, transparent) 40%,
-      currentColor 50%,
-      color-mix(in srgb, currentColor 70%, transparent) 60%
+    position: relative;
+    isolation: isolate;
+    /* The mask clipped the words to their box; so does this, and it keeps
+       the window's three widths out of any scroll. */
+    overflow: clip;
+  }
+
+  /* Words on a line cut with an ellipsis: a box as wide as they are, cut
+     where the line would cut them, so the copy is cut there too. */
+  [data-run-shimmer][data-sweep-cut] {
+    display: inline-block;
+    max-width: 100%;
+    text-overflow: ellipsis;
+    vertical-align: baseline;
+  }
+
+  [data-run-shimmer] > [data-sweep-words] {
+    -webkit-mask-image: linear-gradient(
+      color-mix(in srgb, currentColor 70%, transparent),
+      color-mix(in srgb, currentColor 70%, transparent)
     );
-    -webkit-mask-image: var(--run-shimmer-mask);
-    mask-image: var(--run-shimmer-mask);
-    -webkit-mask-size: 300% 100%;
-    mask-size: 300% 100%;
+    mask-image: linear-gradient(
+      color-mix(in srgb, currentColor 70%, transparent),
+      color-mix(in srgb, currentColor 70%, transparent)
+    );
+  }
+
+  [data-sweep-band] {
+    position: absolute;
+    top: 0;
+    left: 0;
+    display: block;
+    width: 300%;
+    height: 100%;
+    text-overflow: inherit;
+    pointer-events: none;
+    user-select: none;
+    mix-blend-mode: plus-lighter;
+    --run-shimmer-band: linear-gradient(
+      100deg,
+      transparent 40%,
+      color-mix(in srgb, currentColor 30%, transparent) 50%,
+      transparent 60%
+    );
+    -webkit-mask-image: var(--run-shimmer-band);
+    mask-image: var(--run-shimmer-band);
     animation: run-shimmer 2s linear infinite;
+  }
+
+  [data-sweep-copy] {
+    position: absolute;
+    top: 0;
+    left: 0;
+    display: block;
+    width: calc(100% / 3);
+    height: 100%;
+    overflow: clip;
+    text-overflow: inherit;
+    animation: run-shimmer-hold 2s linear infinite;
   }
 }
 
 @keyframes run-shimmer {
   from {
-    -webkit-mask-position: 100% 0;
-    mask-position: 100% 0;
+    translate: calc(-200% / 3) 0;
   }
   to {
-    -webkit-mask-position: 0% 0;
-    mask-position: 0% 0;
+    translate: 0 0;
+  }
+}
+
+/* The copy slides back by what the window slides, so it stands still. */
+@keyframes run-shimmer-hold {
+  from {
+    translate: 200% 0;
+  }
+  to {
+    translate: 0 0;
   }
 }
 

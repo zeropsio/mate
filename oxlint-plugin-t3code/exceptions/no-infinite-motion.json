@@ -234,9 +234,17 @@
   {
     "path": "apps/web/src/index.css",
     "kind": "css-declaration",
-    "fingerprint": "[data-run-shimmer]{animation:run-shimmer 2s linear infinite}",
+    "fingerprint": "[data-sweep-band]{animation:run-shimmer 2s linear infinite}",
     "owner": "ales",
-    "reason": "A light sweeps across the words of each call a Mate is running now, until it returns: the card's live moment, on small elements, stopped by reduced motion",
+    "reason": "A light sweeps across the words of each call a Mate is running now, until it returns: the card's live moment, a window sliding by translate on an HTML box, composited, stopped by reduced motion",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/index.css",
+    "kind": "css-declaration",
+    "fingerprint": "[data-sweep-copy]{animation:run-shimmer-hold 2s linear infinite}",
+    "owner": "ales",
+    "reason": "The sweep's copy of the words slides back by what its window slides, so it stands still under it: translate on an HTML box, composited, only while the window runs, stopped by reduced motion",
     "expires": "never"
   }
 ]
