@@ -24,6 +24,7 @@ import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as HttpServer from "effect/unstable/http/HttpServer";
+import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import { Backup, directoryStore } from "../../src/backup.ts";
 import { Changes } from "../../src/changes.ts";
@@ -382,6 +383,7 @@ export const startCore = (
         };
       });
     return {
+      sql: Context.get(context, SqlClient.SqlClient),
       call,
       fake,
       url,

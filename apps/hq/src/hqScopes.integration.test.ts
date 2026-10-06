@@ -21,10 +21,13 @@ const readAttention = Schema.decodeEffect(HqAttentionValue);
 describe("HQ scoped socket", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
     it.effect(
-      "five concurrent readers get navigation within budget; unchanged segments send no values",
+      "five distinct people get cold navigation with Mate facts within budget; unchanged resumes send no values",
       () =>
         Effect.gen(function* () {
-          const core = yield* startCore(true, { reconcileEvery: Duration.hours(1) });
+          const core = yield* startCore(true, {
+            reconcileEvery: Duration.hours(1),
+            viewTtl: Duration.zero,
+          });
           yield* untilHealth(core.call, "active");
           const session = yield* sessionFor(core.call, "door-owner");
           const created = yield* core.call("POST", "/api/apps", {
@@ -32,16 +35,96 @@ describe("HQ scoped socket", () => {
             body: { name: "Alpha" },
           });
           assert.strictEqual(created.status, 201);
+          const people = ["owner", "person-1", "person-2", "person-3", "person-4"];
+          for (const userId of people.slice(1)) {
+            core.fake.members.get("ORG")!.push({
+              name: userId,
+              userId,
+              clientUserId: `C-${userId}`,
+              kind: "person",
+              status: "ACTIVE",
+              roleCode: "OWNER",
+              canCreateProjects: false,
+            });
+            core.fake.tokens.set(`door-${userId}`, {
+              ...core.fake.tokens.get("door-owner")!,
+              id: `door-${userId}`,
+              createdByUser: userId,
+            });
+          }
+          const projects = Array.from({ length: 30 }, (_, index) =>
+            index === 0 ? "P_MATE" : `P_MATE_${index}`,
+          );
+          for (const id of projects.slice(1))
+            core.fake.projects.push({
+              ...core.fake.projects.find((project) => project.id === "P_MATE")!,
+              id,
+              name: id,
+              publicZone: `${id}.zone`,
+              userRoles: [{ clientUserId: "C-owner", roleCode: "OWNER" }],
+            });
           yield* Effect.forEach(
-            Array.from({ length: 29 }, (_, index) => index),
-            (index) => core.call("POST", "/api/apps", { session, body: { name: `App ${index}` } }),
+            projects,
+            (projectId, index) =>
+              Effect.gen(function* () {
+                const app =
+                  index === 0
+                    ? created
+                    : yield* core.call("POST", "/api/apps", {
+                        session,
+                        body: { name: `App ${index}` },
+                      });
+                assert.strictEqual(app.status, 201);
+                const appId = (app.body as { id: string }).id;
+                assert.strictEqual(
+                  (yield* core.call("POST", "/api/mates", {
+                    session,
+                    body: { projectId, face: "face" },
+                  })).status,
+                  201,
+                );
+                assert.strictEqual(
+                  (yield* core.call("PUT", `/api/projects/${projectId}/app`, {
+                    session,
+                    body: { appId, kind: "mate" },
+                  })).status,
+                  200,
+                );
+                const link = yield* core.overviews.connect(projectId);
+                yield* core.overviews.report(projectId, link, {
+                  type: "overview",
+                  full: true,
+                  overview: overviewOf(),
+                });
+                yield* core.overviews.reportAttention(projectId, link, {
+                  source: { environmentId: `env-${index}`, incarnation: "boot", revision: 1 },
+                  mainThreadId: "thread",
+                  lastThreadId: "thread",
+                  working: 1,
+                  waiting: 0,
+                  results: [
+                    {
+                      threadId: "thread",
+                      turnId: "result",
+                      completedAt: "2026-10-06T00:00:00.000Z",
+                    },
+                  ],
+                  questions: [],
+                  truncated: false,
+                });
+              }),
             { concurrency: 4 },
           );
+          const sessions = yield* Effect.forEach(people, (userId) =>
+            userId === "owner" ? Effect.succeed(session) : sessionFor(core.call, `door-${userId}`),
+          );
+          assert.strictEqual(new Set(sessions).size, 5);
           const tickets = yield* Effect.forEach(
-            [0, 1, 2, 3, 4],
-            () => ticketFor(core.call, session),
+            sessions,
+            (personSession) => ticketFor(core.call, personSession),
             { concurrency: "unbounded" },
           );
+          const coldReads = core.fake.calls.filter((call) => call === "members:hq").length;
           const samples = yield* Effect.promise(() =>
             Promise.all(
               tickets.map(
@@ -52,6 +135,7 @@ describe("HQ scoped socket", () => {
                     cursor: { incarnation: string; revision: number };
                   }>((resolve, reject) => {
                     const began = performance.now();
+                    let firstData: number | undefined;
                     const ws = new WebSocket(
                       `${core.origin.replace("http:", "ws:")}/api/structure/ws?ticket=${ticket}`,
                     );
@@ -71,13 +155,15 @@ describe("HQ scoped socket", () => {
                     ws.addEventListener("message", (event) => {
                       const message = JSON.parse(String(event.data)) as Record<string, unknown>;
                       if (message.type === "ping") ws.send('{"type":"pong"}');
-                      if (message.type === "scope-reset" || message.type === "scope-values")
+                      if (message.type === "scope-reset" || message.type === "scope-values") {
+                        firstData ??= performance.now() - began;
                         deliveries.push(message);
+                      }
                       if (message.type === "scope-ready") {
                         clearTimeout(timeout);
                         ws.close();
                         resolve({
-                          elapsed: performance.now() - began,
+                          elapsed: firstData!,
                           deliveries,
                           cursor: {
                             incarnation: String(message.incarnation),
@@ -91,9 +177,14 @@ describe("HQ scoped socket", () => {
               ),
             ),
           );
+          assert.isAbove(
+            core.fake.calls.filter((call) => call === "members:hq").length,
+            coldReads,
+            "roles view was cold",
+          );
           const times = samples.map((sample) => sample.elapsed).sort((a, b) => a - b);
-          console.info(
-            `HQ five subscribers p50=${times[2]?.toFixed(1)}ms p95=${times[4]?.toFixed(1)}ms`,
+          process.stdout.write(
+            `HQ five people / 30 Mates / cold roles: p50=${times[2]?.toFixed(1)}ms p95=${times[4]?.toFixed(1)}ms\n`,
           );
           assert.isAtMost(times[2]!, 300);
           assert.isAtMost(times[4]!, 600);
@@ -101,6 +192,8 @@ describe("HQ scoped socket", () => {
             assert.lengthOf(sample.deliveries, 1);
             const payload = JSON.stringify(sample.deliveries);
             assert.include(payload, "Alpha");
+            assert.include(payload, "project:P_MATE");
+            assert.include(payload, '"person":{"role":');
             assert.notInclude(payload, '"recipes"');
             assert.notInclude(payload, '"releases"');
             assert.notInclude(payload, '"repos"');
@@ -252,6 +345,22 @@ describe("HQ scoped socket", () => {
           assert.strictEqual(
             yield* navigation(restarted.origin, yield* ticketFor(restarted.call, other)),
             null,
+          );
+          assert.strictEqual(
+            (yield* restarted.sql`SELECT * FROM hq_attention_seen WHERE project_id = ${"P_MATE"}`)
+              .length,
+            1,
+          );
+          yield* restarted.overviews.forget(["P_MATE"]);
+          assert.strictEqual(
+            (yield* restarted.sql`SELECT * FROM hq_attention_seen WHERE project_id = ${"P_MATE"}`)
+              .length,
+            0,
+          );
+          yield* report(restarted);
+          assert.strictEqual(
+            yield* navigation(restarted.origin, yield* ticketFor(restarted.call, owner)),
+            1,
           );
         }),
       ),
