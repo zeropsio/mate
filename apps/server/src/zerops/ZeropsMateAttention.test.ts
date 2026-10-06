@@ -6,6 +6,7 @@ import {
   type MateAttention,
   type ThreadId,
 } from "@t3tools/contracts";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Option from "effect/Option";
@@ -13,7 +14,11 @@ import * as PubSub from "effect/PubSub";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 
-import { type AttentionEvent, makeZeropsMateAttention } from "./ZeropsMateAttention.ts";
+import {
+  type AttentionEvent,
+  makeZeropsMateAttention,
+  MATE_ATTENTION_MOVED_MAX,
+} from "./ZeropsMateAttention.ts";
 
 const decodeShell = Schema.decodeUnknownSync(OrchestrationThreadShell);
 
@@ -54,6 +59,12 @@ const projectionOf = (threads: ReadonlyArray<OrchestrationThreadShell>) => {
     lookups: { project: 0 },
     /** The chats whose read fails. */
     failing: new Set<string>(),
+    /** Held until opened: the whole read waits on it. */
+    gate: {
+      whole: undefined as Deferred.Deferred<void> | undefined,
+      /** Held until opened: a read of one chat waits on it. */
+      one: undefined as Deferred.Deferred<void> | undefined,
+    },
   };
 };
 
@@ -69,16 +80,17 @@ const attentionFor = (projection: ReturnType<typeof projectionOf>, idle = false)
         return projection.project.current;
       }),
       threadsOf: (projectId) =>
-        Effect.sync(() => {
+        Effect.gen(function* () {
+          if (projection.gate.whole !== undefined) yield* Deferred.await(projection.gate.whole);
           projection.asked.whole += 1;
           return [...projection.rows.values()].filter((thread) => thread.projectId === projectId);
         }),
       thread: (threadId: ThreadId) =>
-        Effect.suspend(() => {
+        Effect.gen(function* () {
+          if (projection.gate.one !== undefined) yield* Deferred.await(projection.gate.one);
           projection.asked.one.push(threadId);
-          return projection.failing.has(threadId)
-            ? Effect.fail("projection unavailable")
-            : Effect.succeed(Option.fromNullishOr(projection.rows.get(threadId)));
+          if (projection.failing.has(threadId)) return yield* Effect.fail("projection unavailable");
+          return Option.fromNullishOr(projection.rows.get(threadId));
         }),
       domainEvents: Stream.fromPubSub(events),
     });
@@ -207,6 +219,59 @@ describe("ZeropsMateAttention", () => {
       assert.deepStrictEqual(
         { before, after: projection.asked.whole, revision: first.source.revision },
         { before: { lookups: 0, whole: 0 }, after: 1, revision: 0 },
+      );
+    }),
+  );
+
+  it.effect("finishes its start for the next reader when the first one goes away mid-start", () =>
+    Effect.gen(function* () {
+      const projection = projectionOf([shell("a")]);
+      const gate = yield* Deferred.make<void>();
+      projection.gate.whole = gate;
+      const { attention } = yield* attentionFor(projection, true);
+      const first = yield* Effect.forkChild(attention.current, { startImmediately: true });
+      yield* Effect.yieldNow;
+      yield* Fiber.interrupt(first);
+      yield* Deferred.succeed(gate, undefined);
+      const next = yield* attention.current;
+      assert.deepStrictEqual(
+        { last: next.lastThreadId, revision: next.source.revision, whole: projection.asked.whole },
+        { last: "a", revision: 0, whole: 1 },
+      );
+    }),
+  );
+
+  it.effect("reads each chat that moved once, however many events it had meanwhile", () =>
+    Effect.gen(function* () {
+      const projection = projectionOf([shell("a")]);
+      const { attention, threadMoved } = yield* attentionFor(projection);
+      const gate = yield* Deferred.make<void>();
+      projection.gate.one = gate;
+      yield* threadMoved("a");
+      yield* Effect.yieldNow;
+      for (const id of ["b", "b", "b", "c", "b"]) yield* threadMoved(id);
+      projection.rows.set("c", shell("c", { createdAt: "2026-10-02T00:00:00Z" }));
+      yield* Deferred.succeed(gate, undefined);
+      yield* atRevision(attention.changes, 1);
+      assert.deepStrictEqual(projection.asked.one.toSorted(), ["a", "b", "c"]);
+    }),
+  );
+
+  it.effect("reads every chat whole again once more chats moved than it follows one by one", () =>
+    Effect.gen(function* () {
+      const projection = projectionOf([shell("a")]);
+      const { attention, threadMoved } = yield* attentionFor(projection);
+      const gate = yield* Deferred.make<void>();
+      projection.gate.one = gate;
+      yield* threadMoved("a");
+      yield* Effect.yieldNow;
+      for (let n = 0; n <= MATE_ATTENTION_MOVED_MAX; n += 1) yield* threadMoved(`m-${n}`);
+      projection.rows.set("z", shell("z", { createdAt: "2026-10-02T00:00:00Z" }));
+      yield* Deferred.succeed(gate, undefined);
+      const next = yield* atRevision(attention.changes, 1);
+      assert.deepStrictEqual(
+        { last: next.lastThreadId, whole: projection.asked.whole, one: projection.asked.one },
+        { last: "z", whole: 2, one: ["a"] },
       );
     }),
   );

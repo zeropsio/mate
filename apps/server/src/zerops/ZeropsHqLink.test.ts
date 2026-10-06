@@ -420,6 +420,25 @@ describe("ZeropsHqLink", () => {
     ),
   );
 
+  it.effect("links again after a link fails, whatever failed in it", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        let subscriptions = 0;
+        const { sockets } = yield* rig({
+          enrolled: true,
+          attention: Stream.suspend(() => {
+            subscriptions += 1;
+            return subscriptions === 1 ? Stream.die("the attention could not start") : Stream.never;
+          }),
+        });
+        yield* opened(sockets, 0);
+        yield* TestClock.adjust(Duration.millis(30));
+        const second = yield* opened(sockets, 1);
+        assert.isTrue(second.sent.some((frame) => frame.type === "overview"));
+      }),
+    ),
+  );
+
   it.effect("sends only the sections that changed, at most once per 500 ms", () =>
     Effect.scoped(
       Effect.gen(function* () {

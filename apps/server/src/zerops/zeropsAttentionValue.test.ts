@@ -4,6 +4,7 @@ import {
   MateAttention,
   OrchestrationThreadShell,
 } from "@t3tools/contracts";
+import { linkFrameBytes, MATE_LINK_FRAME_MAX } from "@t3tools/shared/mateLink";
 import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -128,7 +129,7 @@ describe("mateAttentionOf", () => {
   it.each([
     { name: "no chats", threads: [], main: null, last: null },
     {
-      name: "the spoken-to chat is main, the newest created is last",
+      name: "the spoken-to chat is main, the last of the person's in the Mate's order is last",
       threads: [
         shell("spoken", { latestUserMessageAt: "2026-10-01T00:05:00Z" }),
         shell("newest", { createdAt: "2026-10-02T00:00:00Z" }),
@@ -197,5 +198,49 @@ describe("mateAttentionOf", () => {
 
   it("starts an incarnation at revision 0", () => {
     expect(attentionOf([]).source).toEqual({ ...SOURCE, revision: 0 });
+  });
+
+  it("raises its revision for a chat new to it, whatever time its creation is stamped with", () => {
+    const later = shell("a", { createdAt: "2026-10-05T00:00:00Z" });
+    const previous = mateAttentionOf([later], undefined, SOURCE);
+    const next = mateAttentionOf(
+      [later, shell("b", { createdAt: "2026-10-01T00:00:00Z" })],
+      previous,
+      SOURCE,
+    );
+    expect({ last: next.lastThreadId, revision: next.source.revision }).toEqual({
+      last: "b",
+      revision: 1,
+    });
+  });
+
+  it("drops the oldest entries, marked cut, until the value fits one frame of the link", () => {
+    const long = (prefix: string, n: number) => `${prefix}-${n}-${"x".repeat(1_500)}`;
+    const minute = (n: number) => `2026-10-01T00:${String(n).padStart(2, "0")}:00Z`;
+    const attention = attentionOf([
+      ...Array.from({ length: 30 }, (_, n) =>
+        shell(long("done", n), {
+          latestTurn: turn(long("turn", n), "completed", minute(n)),
+          updatedAt: minute(n),
+        }),
+      ),
+      ...Array.from({ length: 30 }, (_, n) =>
+        shell(long("asks", n), { hasPendingUserInput: true, updatedAt: minute(n) }),
+      ),
+    ]);
+    const frame = JSON.stringify({ type: "attention", attention });
+    expect({
+      fits: linkFrameBytes(frame) <= MATE_LINK_FRAME_MAX,
+      truncated: attention.truncated,
+      newestResult: attention.results[0]?.threadId,
+      newestQuestion: attention.questions[0]?.threadId,
+      waiting: attention.waiting,
+    }).toEqual({
+      fits: true,
+      truncated: true,
+      newestResult: long("done", 29),
+      newestQuestion: long("asks", 29),
+      waiting: 30,
+    });
   });
 });

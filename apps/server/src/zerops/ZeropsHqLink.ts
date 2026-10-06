@@ -396,7 +396,11 @@ export const makeZeropsHqLink = (
         let attempt = 0;
         for (;;) {
           const enrollment = yield* options.readEnrollment;
-          const opened = Option.isSome(enrollment) ? yield* runOnce(enrollment.value) : false;
+          // A link that failed, whatever failed in it, is tried again after a growing wait: the loop
+          // never ends.
+          const opened = Option.isSome(enrollment)
+            ? yield* runOnce(enrollment.value).pipe(Effect.catchCause(() => Effect.succeed(false)))
+            : false;
           attempt = opened ? 0 : attempt + 1;
           const delay = delays[Math.min(Math.max(attempt - 1, 0), delays.length - 1)] ?? 1_000;
           // Up to a quarter more, so Mates that lost one HQ do not all knock on the next at once.

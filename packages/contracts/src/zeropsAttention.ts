@@ -71,7 +71,7 @@ export const MateAttention = Schema.Struct({
   source: MateAttentionSource,
   /** The person's main chat (`resolvePrimaryConversation`); none before the first. */
   mainThreadId: Schema.NullOr(ThreadId),
-  /** The person's newest chat by creation; none before the first. */
+  /** The person's newest chat, the last the Mate learned of; none before the first. */
   lastThreadId: Schema.NullOr(ThreadId),
   /** The person's chats the agent is on: connecting, working, monitoring. */
   working: NonNegativeInt,
