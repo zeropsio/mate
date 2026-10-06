@@ -447,7 +447,14 @@ const testsSettled = status({ live: false, face: "idle", startedAt: ago(12), end
  * or, with nothing to report, into the line alone. Run it again starts it
  * over.
  */
-function WatchedToItsEnd({ reports = true }: { readonly reports?: boolean }) {
+function WatchedToItsEnd({
+  reports = true,
+  brokeOff = false,
+}: {
+  readonly reports?: boolean;
+  /** Its agent dies as it ends: the line says it stopped, and why under it. */
+  readonly brokeOff?: boolean;
+}) {
   const [round, setRound] = useState(0);
   const [ended, setEnded] = useState(false);
   const run = `${reports ? "status" : "tests"}-watched-${round}`;
@@ -456,7 +463,7 @@ function WatchedToItsEnd({ reports = true }: { readonly reports?: boolean }) {
     <div className="grid gap-3">
       <div className="flex gap-2">
         <Button
-          data-harness-end={reports ? "" : "alone"}
+          data-harness-end={brokeOff ? "broke" : reports ? "" : "alone"}
           disabled={ended}
           onClick={() => setEnded(true)}
           size="sm"
@@ -476,23 +483,29 @@ function WatchedToItsEnd({ reports = true }: { readonly reports?: boolean }) {
         </Button>
       </div>
       <Turn
-        answer={reports ? ANSWER : TESTS_ANSWER}
+        answer={brokeOff ? null : reports ? ANSWER : TESTS_ANSWER}
         {...(reports ? {} : { ask: TESTS_ASK })}
-        result={reports && ended}
+        result={reports && ended && !brokeOff}
         row={
           ended
             ? record(run, {
                 items,
                 live: false,
-                status: reports ? settled : testsSettled,
+                status: brokeOff
+                  ? { ...settled, face: "brokeOff", brokeOff: BROKE_OFF }
+                  : reports
+                    ? settled
+                    : testsSettled,
                 outcome: reports ? OUTCOME : TESTS_OUTCOME,
               })
-            : record(run, { items, answering: true })
+            : record(run, { items, answering: !brokeOff })
         }
       />
     </div>
   );
 }
+
+const BROKE_OFF = "Claude Code stopped unexpectedly. Send a message to pick up where it left off.";
 
 /** A command longer than its line: a route written with a heredoc. */
 const ROUTE_SCRIPT = [
@@ -697,6 +710,12 @@ export function CardStates() {
         />
       </CardState>
       <CardState
+        label="Its agent stopped while you watch"
+        note="End the run: the line settles to its stopped words, and the room for why opens under it, eased — the card never jumps."
+      >
+        <WatchedToItsEnd brokeOff />
+      </CardState>
+      <CardState
         label="Its agent stopped under it"
         note="Its agent's process died mid-run: the line says it stopped, and why stands under it in the server's words, never a stack. Its last words stay in its work: no answer under the card."
       >
@@ -708,8 +727,7 @@ export function CardStates() {
               face: "brokeOff",
               startedAt: ago(61 * 60),
               endedAt: ago(0),
-              brokeOff:
-                "Claude Code stopped unexpectedly. Send a message to pick up where it left off.",
+              brokeOff: BROKE_OFF,
             }),
             outcome: OUTCOME,
           })}

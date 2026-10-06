@@ -3050,14 +3050,20 @@ function NowLine({
       </div>
       {status.live ? <RunTicker status={status} /> : (end ?? <span />)}
       {/* A run that broke off ends on why, under its line, in the words the
-          server gave it: never a stack. */}
+          server gave it: never a stack. Watched as it ends, its room opens
+          as the line settles — never a jump of the card. */}
       {!status.live && status.brokeOff !== undefined ? (
-        <p
-          className="min-w-0 pt-0.5 text-sm leading-5 text-status-failed-text [grid-column:2/-1]"
+        <div
+          className={cn(
+            "grid min-w-0 [grid-column:2/-1]",
+            risesIn && "motion-safe:animate-room-open",
+          )}
           data-run-broke-off
         >
-          {status.brokeOff}
-        </p>
+          <p className="min-h-0 min-w-0 overflow-hidden pt-0.5 text-sm leading-5 text-status-failed-text">
+            {status.brokeOff}
+          </p>
+        </div>
       ) : null}
     </div>
   );

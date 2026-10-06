@@ -20,12 +20,8 @@ import {
   type ZeropsOperation,
 } from "@t3tools/client-runtime/zerops/model";
 
-import {
-  workEntrySignalsSevereFailure,
-  workLogEntryIsToolLike,
-  type TimelineEntry,
-  type WorkLogEntry,
-} from "../../session-logic";
+import { brokeOffReason } from "@t3tools/shared/threadStatus";
+import { workLogEntryIsToolLike, type TimelineEntry, type WorkLogEntry } from "../../session-logic";
 import type { ChatMessage, TurnDiffSummary } from "../../types";
 import {
   CREW_CARD_OPENER,
@@ -692,19 +688,19 @@ function lastOwnEntry(entries: ReadonlyArray<TimelineEntry>): TimelineEntry | un
   );
 }
 
-const BROKE_OFF_WORDS = "It stopped unexpectedly. Send a message to pick up where it left off.";
-
 /**
  * The words a settled run broke off on, or null for one that ended by itself:
- * its last own entry is the server's error — an agent's process that died
- * (`runtime.error`), a turn that failed (`*.failed`) — or the server says the
- * latest turn failed. A usage limit is a pause, never a break.
+ * its last own entry is the server's record of the break (`runtime.error`) —
+ * an agent's process that died, a turn that failed, in the turn's own words.
+ * Any other failure the server notes after the Mate's last word (a
+ * checkpoint it could not take, a Stop or an answer that did not reach the
+ * agent) leaves the run finished. A usage limit is a pause, never a break.
+ * Only the conversation's latest run says what to do next.
  */
 function brokeOffOn(input: {
   readonly entries: ReadonlyArray<TimelineEntry>;
-  /** The server's word that this, the latest turn, failed. */
-  readonly failed: boolean;
   readonly terminal: MessageEntry | null;
+  readonly latest: boolean;
 }): string | null {
   const limited =
     usageLimitErrorNotice(input.entries) !== null ||
@@ -712,10 +708,9 @@ function brokeOffOn(input: {
       readUsageLimitNotice(input.terminal.message.text, input.terminal.createdAt) !== null);
   if (limited) return null;
   const last = lastOwnEntry(input.entries);
-  if (last?.kind === "work" && workEntrySignalsSevereFailure(last.entry)) {
-    return last.entry.detail?.trim() || BROKE_OFF_WORDS;
-  }
-  return input.failed ? BROKE_OFF_WORDS : null;
+  if (last?.kind !== "work" || last.entry.sourceActivityKind !== "runtime.error") return null;
+  const words = last.entry.detail?.trim() || last.entry.label;
+  return input.latest ? words : brokeOffReason(words);
 }
 
 /** A background task or a helper reporting in: the task's word, never the Mate's step. */
@@ -977,8 +972,8 @@ export function deriveConversationStructure(given: {
         ? null
         : brokeOffOn({
             entries: turnEntries,
-            failed: isLatestTurn && input.latestTurn?.state === "error",
             terminal: span.terminalEntry,
+            latest: span === spans.at(-1),
           });
     const answer = live || waiting || brokeOff !== null ? null : span.terminalEntry;
     // Words still streaming, nothing after them: the working row's, as they

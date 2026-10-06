@@ -1178,9 +1178,29 @@ function taskStopped(id: string, turnId: string, minute: number): TimelineEntry 
   });
 }
 
+/** A failure the server notes in a turn that is not the turn breaking off. */
+function serverNoted(
+  id: string,
+  turnId: string,
+  minute: number,
+  kind:
+    | "checkpoint.capture.failed"
+    | "provider.turn.interrupt.failed"
+    | "provider.approval.respond.failed",
+): TimelineEntry {
+  return tool(id, turnId, minute, {
+    label: "Checkpoint failed",
+    tone: "error",
+    detail: "No checkpoint for this workspace: it has untracked files.",
+    command: undefined as never,
+    toolCallId: undefined as never,
+    toolLifecycleStatus: undefined as never,
+    sourceActivityKind: kind,
+  });
+}
+
 describe("a run that broke off", () => {
   const STOPPED = "Codex stopped unexpectedly. Send a message to pick up where it left off.";
-  const NO_WORDS = "It stopped unexpectedly. Send a message to pick up where it left off.";
   it.each([
     {
       name: "its agent died after its last words, a task stopping with it",
@@ -1208,18 +1228,43 @@ describe("a run that broke off", () => {
         assistant("a2", "t2", 11, "Picked it up."),
       ],
       latest: { id: "t2", state: "completed", completed: true },
-      brokeOff: STOPPED,
+      // Only the latest run says what to do next.
+      brokeOff: "Codex stopped unexpectedly.",
       answer: null,
       face: "brokeOff",
     },
     {
-      name: "its turn failed with no error recorded",
-      entries: [user("m0", 0), tool("w1", "t1", 1)],
+      name: "its turn failed without a crash, in the turn's own words",
+      entries: [
+        user("m0", 0),
+        tool("w1", "t1", 1),
+        crashed("e1", "t1", 2, "API Error: 500 Internal server error"),
+      ],
       latest: { id: "t1", state: "error", completed: true },
-      brokeOff: NO_WORDS,
+      brokeOff: "API Error: 500 Internal server error",
       answer: null,
       face: "brokeOff",
     },
+    ...(
+      [
+        "checkpoint.capture.failed",
+        "provider.turn.interrupt.failed",
+        "provider.approval.respond.failed",
+      ] as const
+    ).map((kind) => ({
+      name: `a finished run the server noted ${kind} after`,
+      entries: [
+        user("m0", 0),
+        tool("w1", "t1", 1),
+        assistant("a1", "t1", 2, "Done."),
+        serverNoted("x1", "t1", 3, kind),
+      ],
+      latest: { id: "t1", state: "completed", completed: true } as const,
+      brokeOff: null,
+      answer: "a1",
+      // An error it did not work past still marks the run's face; its line says it worked.
+      face: "failed",
+    })),
     {
       name: "an error it worked past",
       entries: [
