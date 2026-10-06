@@ -96,7 +96,7 @@ export function makeOperations(options: {
       onSuccess: (answer) => admit(answer, requestId),
       onFailure: (fault) => {
         if (fault.outcome === "uncertain-acceptance") {
-          store.dispatch({ kind: "operation-uncertain", requestId });
+          store.dispatch({ kind: "operation-uncertain", requestId, reason: fault.message });
           return reconcile(requestId, intent, resend);
         }
         if (fault.outcome === "definitive-refusal" || fault.outcome === "authoritative-denial")
@@ -195,6 +195,7 @@ export function makeOperations(options: {
       });
     if (executor.lookup === undefined) {
       const adopted = adoptable(requestId, intent);
+      const resultOf = kindOf(intent).adoptedResult;
       return admit(
         adopted === null
           ? null
@@ -204,7 +205,10 @@ export function makeOperations(options: {
               executor: owner,
               affected: [],
               handles: [adopted],
-              acceptance: { kind: "accepted" },
+              acceptance: {
+                kind: "accepted",
+                ...(resultOf === undefined ? {} : { result: resultOf(adopted) }),
+              },
               outcome: { kind: "pending" },
             },
         requestId,

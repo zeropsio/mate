@@ -6,9 +6,14 @@
  */
 import type { OperationIntent } from "../model.ts";
 import { assignMateOwner } from "./assignMateOwner.ts";
+import { createProject } from "./createProject.ts";
 import { deleteProject } from "./deleteProject.ts";
 import { enableSubdomainAccess } from "./enableSubdomainAccess.ts";
 import { enableZeropsMate } from "./enableZeropsMate.ts";
+import { hardenProject } from "./hardenProject.ts";
+import { importContainer } from "./importContainer.ts";
+import { importProject } from "./importProject.ts";
+import { importServices } from "./importServices.ts";
 import type { RegisteredOperationKind } from "./kind.ts";
 import { mateRestart } from "./mateRestart.ts";
 import { renameProject } from "./renameProject.ts";
@@ -40,6 +45,11 @@ export const OPERATION_KINDS = defineOperationKinds([
   renameProject,
   updateProjectTags,
   assignMateOwner,
+  createProject,
+  importProject,
+  importServices,
+  importContainer,
+  hardenProject,
 ]);
 
 /** The kind an intent belongs to, in a registry: the account's, or a test's own. */

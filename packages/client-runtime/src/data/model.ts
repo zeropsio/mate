@@ -114,6 +114,15 @@ export type OperationIntent = [DeclaredIntent] extends [never]
   ? { readonly kind: never }
   : DeclaredIntent;
 
+/**
+ * What an owner answers an accepted operation with, by its kind — the project it made, the service
+ * it imported. Empty here: a kind whose callers need its answer adds its own entry
+ * (`declare module "../model.ts"`).
+ */
+export interface OperationResults {}
+/** Every declared result; none until a kind declares one. */
+export type OperationResult = OperationResults[keyof OperationResults];
+
 /** The owner's word on a request: accepted or refused, and later how it ended. */
 export interface OperationReceipt {
   readonly requestId: string;
@@ -123,7 +132,11 @@ export interface OperationReceipt {
   /** The owner's external handles for it — a Zerops process id — to follow it and to ask by. */
   readonly handles: ReadonlyArray<string>;
   readonly acceptance:
-    | { readonly kind: "accepted" }
+    | {
+        readonly kind: "accepted";
+        /** What the owner answered with, where its kind declares a result. */
+        readonly result?: OperationResult;
+      }
     | { readonly kind: "refused"; readonly reason: string };
   readonly outcome:
     | { readonly kind: "pending" }
@@ -171,6 +184,20 @@ export interface OperationRecord {
   readonly unresolved: Unobservable | null;
   /** Why it was not taken, where its owner or the door before it said: its words, shown as is. */
   readonly unsentBecause?: string;
+  /** What the send said where its answer was lost: shown beside asking the owner again. */
+  readonly uncertainBecause?: string;
+}
+
+/** The result an accepted operation of `kind` was answered with; `undefined` before or without one. */
+export function operationResult<Kind extends keyof OperationResults & string>(
+  record: OperationRecord | undefined,
+  kind: Kind,
+): OperationResults[Kind] | undefined {
+  if (record === undefined || record.intent.kind !== kind) return undefined;
+  const acceptance = record.receipt?.acceptance;
+  return acceptance?.kind === "accepted"
+    ? (acceptance.result as OperationResults[Kind] | undefined)
+    : undefined;
 }
 
 /** A fact's key in the one facts map: its family and its domain id. */

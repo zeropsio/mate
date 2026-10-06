@@ -40,14 +40,18 @@ export type OperationProgress =
       readonly reason?: string;
     };
 
-/** Progress over a registry of operation kinds: the account's, or a test's own. */
+/**
+ * Progress over a registry of operation kinds: the account's, or a test's own. The registry is
+ * read when it derives — the kinds read projections, which read this — never as it loads.
+ */
 export const operationProgressOf = (
-  kinds: ReadonlyArray<RegisteredOperationKind>,
+  kindsOf: ReadonlyArray<RegisteredOperationKind> | (() => ReadonlyArray<RegisteredOperationKind>),
 ): Projection<string, OperationProgress> => ({
   name: "operationProgress",
   keyOf: (requestId) => requestId,
   equals: sameValue,
   derive: (read, requestId) => {
+    const kinds = typeof kindsOf === "function" ? kindsOf() : kindsOf;
     const record = read.operation(requestId);
     if (record === undefined) return { stage: "unknown" };
     const { receipt } = record;
@@ -98,4 +102,4 @@ export const operationProgressOf = (
   },
 });
 
-export const operationProgress = operationProgressOf(OPERATION_KINDS);
+export const operationProgress = operationProgressOf(() => OPERATION_KINDS);

@@ -5,7 +5,14 @@
  *
  * @module data/operations/kind
  */
-import type { Authority, OperationIntent, OperationIntents, OperationReceipt } from "../model.ts";
+import type {
+  Authority,
+  OperationIntent,
+  OperationIntents,
+  OperationReceipt,
+  OperationResult,
+  OperationResults,
+} from "../model.ts";
 import type { DetailDemand } from "../demand.ts";
 import type { ProjectionReads } from "../store.ts";
 
@@ -48,6 +55,13 @@ export interface OperationKind<Kind extends keyof OperationIntents & string> {
    * coordinator adopts exactly one that was absent at the send and no other operation holds.
    */
   readonly effectHandles?: (read: ProjectionReads, intent: IntentOf<Kind>) => ReadonlyArray<string>;
+  /**
+   * Where the kind declares a result: the one an adopted effect handle stands for (the project id
+   * a lost create answered), so a lost answer leaves its caller what a receipt would have.
+   */
+  readonly adoptedResult?: (
+    handle: string,
+  ) => Kind extends keyof OperationResults ? OperationResults[Kind] : never;
 }
 
 export type Settlement =
@@ -70,4 +84,5 @@ export interface RegisteredOperationKind {
   ): Settlement | null;
   effectHandles?(read: ProjectionReads, intent: OperationIntent): ReadonlyArray<string>;
   observedIn?(intent: OperationIntent, receipt: OperationReceipt): DetailDemand | null;
+  adoptedResult?(handle: string): OperationResult;
 }

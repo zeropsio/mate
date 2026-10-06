@@ -13,7 +13,9 @@ import { makeProjectTagWriter, type ProjectTagLocks } from "../../../zerops/data
 import type { DetailDemand } from "../../demand.ts";
 import type { AccountStore } from "../../store.ts";
 import type { OperationExecutor } from "../coordinator.ts";
+import { createProjectExecutor } from "./createProject.ts";
 import { deleteProjectExecutor } from "./deleteProject.ts";
+import { creationWritesExecutor } from "./creationWrites.ts";
 import { mateRestartOwner } from "./mateRestart.ts";
 import {
   assignMateOwnerExecutor,
@@ -42,6 +44,12 @@ type ZeropsOperationsClient = Pick<
   | "fetchProject"
   | "writeProject"
   | "setProjectMemberRole"
+  | "createProject"
+  | "importProject"
+  | "importServicesIntoProject"
+  | "importDevelopmentContainer"
+  | "hardenMate"
+  | "readProjectEnv"
 >;
 
 export function makeZeropsExecutor(input: {
@@ -69,6 +77,18 @@ export function makeZeropsExecutor(input: {
   });
   const remove = deleteProjectExecutor({
     deleteProject: (projectId) => client.deleteProject(projectId),
+  });
+  const create = createProjectExecutor({
+    createProject: (input) => client.createProject(input),
+  });
+  const creationWrite = creationWritesExecutor({
+    importProject: (clientId, yaml) => client.importProject(clientId, yaml),
+    importServicesIntoProject: (projectId, yaml) =>
+      client.importServicesIntoProject(projectId, yaml),
+    importDevelopmentContainer: (input) => client.importDevelopmentContainer(input),
+    hardenMate: (clientId, projectId, keyTokenId) =>
+      client.hardenMate(clientId, projectId, undefined, undefined, keyTokenId),
+    readProjectEnv: (clientId, projectId) => client.readProjectEnv(clientId, projectId),
   });
   const sweep = throwawaySweepExecutor({
     platform: {
@@ -127,6 +147,13 @@ export function makeZeropsExecutor(input: {
           return retag(requestId, intent);
         case "assign-mate-owner":
           return assign(requestId, intent);
+        case "create-project":
+          return create(requestId, intent);
+        case "import-project":
+        case "import-services":
+        case "import-container":
+        case "harden-project":
+          return creationWrite(requestId, intent);
       }
     },
   };
