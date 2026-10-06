@@ -776,8 +776,7 @@ function EnvironmentsFrame({
         halfMade: [],
         recipeTiers: ["stage", "production"],
         recipeRead: true,
-        mayAdd: true,
-        writer: false,
+        offered: { stage: true, production: true },
         productionRuns: "unknown",
         waiting: { count: waiting.total, atLeast: false },
         mainHasCode: true,
@@ -1021,14 +1020,17 @@ function Harness() {
       >
         <EnvironmentsFrame
           environments={[]}
-          facts={{ halfMade: [{ id: "shop-prod", tier: "production" }] }}
+          facts={{ halfMade: [{ id: "shop-prod", tier: "production", finish: true }] }}
         />
       </State>
       <State
-        label="Environments · a person who may not add"
+        label="Environments · a person HQ offers no tier"
         note="The same two empty slots, drawn without any Add."
       >
-        <EnvironmentsFrame environments={[]} facts={{ mayAdd: false }} />
+        <EnvironmentsFrame
+          environments={[]}
+          facts={{ offered: { stage: false, production: false } }}
+        />
       </State>
 
       <State

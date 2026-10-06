@@ -74,7 +74,6 @@ import {
   type ListedStop,
   type MissingEnvironmentRow,
   missingEnvironmentRows,
-  type ZeropsOrganization,
   type StopComing,
   type ZeropsEnvironmentRole,
   type ZeropsEnvironmentServices,
@@ -87,7 +86,7 @@ import type { EnvironmentConnectionPresentation } from "@t3tools/client-runtime/
 import { useAtomValue } from "@effect/atom-react";
 import { shownHqPersonFactsAtom } from "@t3tools/client-runtime/data";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import { mateIsViewers, mateOwnerRecords } from "@t3tools/client-runtime/zerops/mateAccess";
+import { mateOwnerRecords } from "@t3tools/client-runtime/zerops/mateAccess";
 import { deployActivatedAt } from "@t3tools/client-runtime/zerops/flow";
 import type { KnownAffordance } from "@t3tools/client-runtime/zerops/knowledge";
 import type { CandidatesNotice } from "@t3tools/client-runtime/zerops/projections";
@@ -154,7 +153,12 @@ import {
   rememberProjectsOnScreen,
   useProjectOrder,
 } from "~/zerops/projectOrderPreference";
-import type { ZeropsMateOwner } from "~/zerops/useZeropsMateOwners";
+import { useEnvironmentOffers } from "~/zerops/useAddEnvironment";
+import {
+  useHqProjectPeopleOf,
+  useWaitsOnViewer,
+  type ZeropsMateOwner,
+} from "~/zerops/useZeropsMateOwners";
 import { compactSidebarTimeLabel } from "../Sidebar.logic";
 import { SidebarCrewLine, type SidebarCrewRead } from "./crew/SidebarCrewLine";
 import { SidebarSelectedBand } from "./SidebarSelectedBand";
@@ -452,12 +456,6 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
    * shape and simply carries none of what the flow says: no change row.
    */
   readonly getFlow?: ((groupId: string) => SidebarProjectFlow | undefined) | undefined;
-  /**
-   * The organization the person is signed in to: whether *Add stage* and *Add production* are
-   * offered in a project's menu is `mayAddEnvironment`'s answer over it. Absent, they are never
-   * offered on a guess.
-   */
-  readonly organization?: ZeropsOrganization | null | undefined;
   readonly className?: string;
   /**
    * The listing is known and complete, and every row's presence is read
@@ -534,7 +532,6 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   getConversationsRead,
   getOwner,
   getFlow,
-  organization = null,
   complete,
   notice = null,
   reading = false,
@@ -590,8 +587,10 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   // in step without either one owning the other. In *Custom* the headings
   // take a grip, and every heading's menu moves its project up or down.
   const projectOrder = useProjectOrder();
-  // Who is looking: only their own Mates wait on them (`mateIsViewers`).
-  const viewer = useZeropsSessionOptional()?.user?.id;
+  // Only the Mates HQ says wait on the viewer wait on them (`waitsOnViewer`).
+  const waitsOnViewer = useWaitsOnViewer();
+  // Whether *Add stage* and *Add production* stand in a project's menu: HQ's offer of each.
+  const environmentOffers = useEnvironmentOffers();
   const treeRef = useRef<HTMLElement>(null);
   const reorder = useProjectReorder(treeRef);
   // A Mate opened from elsewhere — Add landing on the new Mate, a link, a
@@ -900,7 +899,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
           connected: mateAwake(item, hqMates),
           activity: getActivity?.(item),
           reviewWaits: mateReviewWaits(input.flow, item.project.id),
-          mine: mateIsViewers(item.project, viewer),
+          mine: waitsOnViewer(item.project.id),
           pose: matePoseOf(item, minuteMs, mateLifeOf(getComing?.(item))),
         }),
       );
@@ -992,7 +991,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
           entries,
           (item) => getActivity?.(item),
           () => false,
-          viewer,
+          waitsOnViewer,
         ),
         flow: flow === undefined ? undefined : groupFlowReadsOf(flow),
         deployments,
@@ -1180,7 +1179,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
               connected: mateAwake(item, hqMates),
               activity: live,
               reviewWaits: reviewWaits(item),
-              mine: mateIsViewers(item.project, viewer),
+              mine: waitsOnViewer(item.project.id),
               pose: matePoseOf(item, minuteMs, mateLifeOf(coming)),
             });
             const view = coming === undefined ? read : mateComingRowView(read, coming);
@@ -1394,7 +1393,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                 {/* Its crew, one line right under it, before its changes — as HQ
                     holds it, at rest while HQ's answer is not now. */}
                 <SidebarCrewLine
-                  mine={mateIsViewers(item.project, viewer)}
+                  mine={waitsOnViewer(item.project.id)}
                   projectId={item.project.id}
                   read={getCrew?.(item)}
                 />
@@ -1520,7 +1519,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
             group={group}
             missing={missingEnvironmentRows({
               tiersOnMain: tiersAddable({
-                organization,
+                offered: environmentOffers(group.groupId),
                 group,
                 hq: [...(getFlow?.(group.groupId)?.environments.values() ?? [])].map((row) => ({
                   id: row.projectId,
@@ -2513,12 +2512,14 @@ function MateRow<T extends RosterCandidate>({
   // remembers the row saying. A Mate still coming up says only that
   // (`mateComingRowView`).
   const viewer = useZeropsSessionOptional()?.user?.id;
+  const waitsOnViewer = useWaitsOnViewer();
+  const hqPeopleOf = useHqProjectPeopleOf();
   const nowMs = useNowMs();
   const read = mateRowReading({
     connected: up,
     activity,
     reviewWaits,
-    mine: mateIsViewers(candidate.project, viewer),
+    mine: waitsOnViewer(candidate.project.id),
     // Waking while it comes up and arrives (`mateFaceFor`).
     pose: matePoseOf(candidate, nowMs, deleting ? "deleting" : mateLifeOf(coming)),
   });
@@ -2537,11 +2538,15 @@ function MateRow<T extends RosterCandidate>({
   useEffect(() => drawn?.(), [drawn]);
   // Whose seat it is, and whether anybody has signed its agent in — read off
   // its own records, so from the first paint (`mateOwnerView`).
-  const records = mateOwnerRecords(candidate.project);
+  const hqPeople = hqPeopleOf(candidate.project.id);
+  const records = mateOwnerRecords(candidate.project, hqPeople?.owned);
+  const signers = hqPeople?.everSignedIn;
   const seated = mateOwnerView({
     owner,
     records,
     asked: view.ask !== undefined,
+    hqSigners:
+      signers === undefined ? undefined : Object.keys(signers).length > 0 ? "some" : "none",
     standUpBy: tags.standUp?.by,
     madeBy: tags.madeBy,
     viewer,
@@ -3489,6 +3494,7 @@ const COMING_SEAT: BadgeSeat | null = ownerBadge(
     owner: undefined,
     records: { named: false, signedIn: false },
     asked: true,
+    hqSigners: "none",
   }).seat,
   false,
 );

@@ -4104,7 +4104,6 @@ export default function Sidebar() {
               activeProjectId={activeZeropsProjectId}
               births={zeropsPlacedBirths}
               candidates={zeropsCandidates}
-              organization={zeropsSession.activeOrganization}
               className="mb-2"
               complete={zeropsHeld.complete}
               notice={zeropsNotice}

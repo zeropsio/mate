@@ -7,7 +7,6 @@
  */
 import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
 
-import type { MateOwnerPerson } from "../zerops/mateAccess.ts";
 import type { DetailDemand } from "./demand.ts";
 import { projectProcesses, type ProjectProcesses } from "./projections/processes.ts";
 import type { ProjectValue } from "./families/project.ts";
@@ -26,7 +25,6 @@ import {
   hqAppChanges,
   hqNavigation,
   hqPersonFacts,
-  hqMateOwners,
   hqStatus,
   type HqNavigationRead,
 } from "./projections/hqNavigation.ts";
@@ -232,14 +230,6 @@ export const shownHqPersonFactsAtom = Atom.make((get): Readonly<Record<string, H
   if (account === null || account.orgId === null) return NO_PERSON_FACTS;
   return get(account.data.project(hqPersonFacts, account.orgId));
 }).pipe(Atom.withLabel("data:shown-hq-person-facts"));
-
-/** The owners HQ names for the Mates in the organization shown. */
-export const shownHqMateOwnersAtom = Atom.make((get): Readonly<Record<string, MateOwnerPerson>> => {
-  const account = get(accountReadsAtom);
-  return account === null || account.orgId === null
-    ? {}
-    : get(account.data.project(hqMateOwners, account.orgId));
-}).pipe(Atom.withLabel("data:shown-hq-mate-owners"));
 
 /** How the organization shown's HQ stands, as its navigation says it; `null` before it said. */
 export const shownHqStatusAtom = Atom.make((get): HqStatusValue | null => {

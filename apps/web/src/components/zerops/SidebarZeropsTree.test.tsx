@@ -95,6 +95,30 @@ vi.mock("~/zerops/ZeropsSessionProvider", async (original) => ({
   useZeropsSessionOptional: () =>
     session.viewer === undefined ? null : { user: { id: session.viewer } },
 }));
+// Whom each Mate waits on, as HQ says it (`waitsOnViewer`): the viewer who signed its agent in.
+const signerOf = vi.hoisted(() => new Map<string, string>());
+// Who HQ says signed each Mate's agent in (`signers`): nobody, unless a test says whom or that HQ
+// has not said.
+const hqSigners = vi.hoisted(() => ({ said: true }));
+// The Mates HQ names an owner of (`ownerUserId`).
+const ownedBy = vi.hoisted(() => new Set<string>());
+vi.mock("~/zerops/useZeropsMateOwners", async (original) => ({
+  ...(await original<typeof import("~/zerops/useZeropsMateOwners")>()),
+  useWaitsOnViewer: () => (projectId: string) =>
+    session.viewer !== undefined && signerOf.get(projectId) === session.viewer,
+  useHqProjectPeopleOf: () => (projectId: string) => {
+    if (!hqSigners.said) return undefined;
+    const signer = signerOf.get(projectId);
+    const signers = signer === undefined ? {} : { "claude-code": signer };
+    return {
+      owned: ownedBy.has(projectId),
+      owner: null,
+      waitsOnViewer: false,
+      signedInNow: signers,
+      everSignedIn: signers,
+    };
+  },
+}));
 afterEach(() => {
   // A tree left mounted would answer the next test's asks of the one menu.
   for (const tree of mountedTrees.splice(0)) {
@@ -105,6 +129,9 @@ afterEach(() => {
   stored.collapsed = new Set();
   stored.written = undefined;
   session.viewer = undefined;
+  signerOf.clear();
+  hqSigners.said = true;
+  ownedBy.clear();
   hqCrews.clear();
   demandedStops.clear();
   vi.unstubAllGlobals();
@@ -207,6 +234,7 @@ const signedBy = (signer: string): Partial<HqMate> => ({
 
 /** A Mate signed in by `u-ada` — the viewer's own, where a test makes her the viewer. */
 function mine(item: ZeropsCandidate, signer = SIGNER): ZeropsCandidate {
+  signerOf.set(item.project.id, signer);
   return {
     ...item,
     project: { ...item.project, hq: recorded(item.project.hq!, signedBy(signer)) },
@@ -798,6 +826,20 @@ describe("a Mate with no owner, or nobody signed in", () => {
     expect(html).toContain("No owner yet. Whoever signs in its coding agent owns it.");
   });
 
+  // Whether a Mate is nobody's is HQ's word (`ownerUserId`), never Zerops' project roles.
+  it.each([
+    {
+      case: "HQ names an owner it sends no person of: a neutral seat",
+      owned: true,
+      seat: undefined,
+    },
+    { case: "HQ names no owner: the empty seat", owned: false, seat: "nobody" },
+  ])("$case", ({ owned, seat: expected }) => {
+    const item = mate(null, { group: "connected" });
+    if (owned) ownedBy.add(item.project.id);
+    expect(seat(render([item], { getOwner: () => undefined }))).toBe(expected);
+  });
+
   it.each([
     { case: "nobody's, open here", group: "connected", roles: [], owner: undefined },
     { case: "nobody's, not open here yet", group: "ready", roles: [], owner: undefined },
@@ -818,6 +860,20 @@ describe("a Mate with no owner, or nobody signed in", () => {
       expect(html).not.toContain("sidebar-mate-sign-in-verb");
     },
   );
+
+  // The owner, 2026-10-06: every row said "Nobody has signed in yet" of Mates in use. The line
+  // reads HQ's signers of the project: it stands only where HQ names nobody.
+  it.each([
+    { case: "HQ names a signer", said: true, signer: "u-eva", shown: false },
+    { case: "HQ names nobody", said: true, signer: undefined, shown: true },
+    { case: "HQ has not said", said: false, signer: undefined, shown: false },
+  ])("says nobody has signed in only where HQ names nobody: $case", ({ said, signer, shown }) => {
+    hqSigners.said = said;
+    const item = mate(null, { group: "connected" });
+    if (signer !== undefined) signerOf.set(item.project.id, signer);
+    const html = render([item], { getOwner: () => undefined });
+    expect(html.includes("Nobody has signed in yet")).toBe(shown);
+  });
 
   // E2E 2026-10-03 (F6): a `mate` project whose press stopped before its container read "Nobody
   // has signed in yet" after a reload — a Mate nobody can sign in, its container never made, or
@@ -2823,7 +2879,7 @@ describe("the sidebar and the projects page read one group the same way", () => 
           group.environments,
           () => undefined,
           () => false,
-          undefined,
+          () => false,
         ),
         flow: groupReads,
         deployments: new Map(),
@@ -3167,6 +3223,7 @@ describe("a Mate's row says more without words", () => {
   ])("draws $case", ({ activity, face, dot, third }) => {
     // The viewer's own Mate: what it waits on waits on them.
     session.viewer = "u-ada";
+    signerOf.set(SIGNED_IN.project.id, SIGNER);
     const html = render([SIGNED_IN], { getActivity: () => activity });
     expect(html).toContain(`data-mate-face-state="${face}"`);
     if (dot === undefined) expect(html).not.toContain("sidebar-mate-dot");

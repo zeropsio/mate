@@ -3,17 +3,14 @@
  * has no HQ: an owner or an admin sees it born — each step, the one it is on, and the one that
  * stopped it, with the way on — and anybody else whom to ask, and nothing more.
  */
-import {
-  findOfficialHq,
-  HQ_BIRTH_DOING,
-  HQ_BIRTH_STEPS,
-  runHqBirth,
-} from "@t3tools/client-runtime/zerops/hq";
+import { HQ_BIRTH_DOING, HQ_BIRTH_STEPS, runHqBirth } from "@t3tools/client-runtime/zerops/hq";
 import { CheckIcon, CircleAlertIcon } from "lucide-react";
-import { useCallback, useEffect } from "react";
+import { useCallback, useContext, useEffect } from "react";
 
 import { cn } from "~/lib/utils";
-import { hqBirthDeps, hqBirthSite, useAccountHq } from "~/zerops/accountHq";
+import { hqBirthDeps, hqBirthSite, readOfficialHqNow, useAccountHq } from "~/zerops/accountHq";
+import { RegistryContext } from "@effect/atom-react";
+import { useAccountDataOptional } from "~/zerops/ZeropsAccountData";
 import { bearHq, hqBirthView, useHqBirths, type HqBirthView } from "~/zerops/hqBirth";
 import type { HqGate } from "~/zerops/hqGate";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
@@ -30,6 +27,8 @@ export function ZeropsHqGate({ gate }: { readonly gate: ClosedGate }) {
   const accountHq = useAccountHq(activeOrganization?.id);
   const held = useHqBirths((state) => state.byOrg[clientId]);
   const { reread } = accountHq;
+  const data = useAccountDataOptional();
+  const registry = useContext(RegistryContext);
   const bear = useCallback(
     (again: boolean) =>
       bearHq({
@@ -43,13 +42,18 @@ export function ZeropsHqGate({ gate }: { readonly gate: ClosedGate }) {
             moved,
             again: manualAgain,
           }),
-        alreadyBorn: async () =>
-          findOfficialHq(await client.listOrganizationMembers(clientId)).kind === "official",
+        // Another admin may have set an HQ up since this page decided there is none: the member
+        // list is read afresh at every attempt, and an HQ it names ends the birth as made.
+        alreadyBorn: async () => {
+          if (data === null) throw new Error("No account data is available to verify this HQ.");
+          if (again) data.retryDetail({ family: "organizationMembers", ownerId: clientId });
+          return (await readOfficialHqNow(data, registry, clientId)).kind === "official";
+        },
         // Its anchor is in the member list now: the gate opens once it is read again.
         onBorn: reread,
         again,
       }),
-    [client, clientId, reread],
+    [client, clientId, data, registry, reread],
   );
   const birthDue = gate.kind === "birth" && held === undefined;
   useEffect(() => {

@@ -1,5 +1,4 @@
 import { RestartMateWarning } from "~/zerops/RestartMateConfirmation";
-import { shownHqMateOwnersAtom } from "@t3tools/client-runtime/data";
 import { ZeropsThrowawayCleanup } from "./ZeropsThrowawayCleanup";
 import { captureAccountLifetime } from "~/zerops/accountLifetime";
 import { useZeropsUpgradeRestart, type UpgradeRecovery } from "~/zerops/useZeropsUpgradeRestart";
@@ -28,6 +27,8 @@ import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../
 import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { environmentsWithSnapshotAtom } from "~/state/shell";
+import { shownHqProjectPeopleAtom } from "@t3tools/client-runtime/data";
+import { useEnvironmentOffers } from "~/zerops/useAddEnvironment";
 import { hqPlacementsAtom, hqNavigationAtom } from "~/state/zerops";
 import {
   PROJECT_ORDER_CHOICES,
@@ -43,7 +44,6 @@ import {
   type ZeropsCandidate,
 } from "@t3tools/client-runtime/zerops/candidates";
 import {
-  mateIsViewers,
   resolveMateVisibility,
   type RoleMateVisibility,
 } from "@t3tools/client-runtime/zerops/mateAccess";
@@ -188,7 +188,6 @@ import {
   changesUnknownOf,
   flowStepsAwaiting,
   groupFlowInputOf,
-  mayAddEnvironment,
   groupMemberFactsOf,
   lastMergedCode,
   parseProjectsSearch,
@@ -950,8 +949,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   // What HQ offers of each row's project (`mateRowCan`), and of the organization.
   const mateOffersOf = useMateOffers();
   const orgOffer = useOrgOffers();
-  // Whose a Mate this person may see and not open is, named from HQ's people: no member list read.
-  const owners = useAtomValue(shownHqMateOwnersAtom);
+  // Whose a Mate this person may see and not open is, as HQ names its owner: no member list read.
+  const projectPeople = useAtomValue(shownHqProjectPeopleAtom);
 
   /** A press of the organization on show: the page is not empty while one is on its way. */
   const activeBirths = presses.some((press) => press.organizationId === activeOrganization?.id);
@@ -1005,7 +1004,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     role?: ZeropsEnvironmentRole | undefined,
   ): ZeropsRowInput => {
     const visibility = visibilityOf(candidate);
-    const ownerName = visibility === "listed" ? owners[candidate.project.id]?.name : undefined;
+    const ownerName =
+      visibility === "listed" ? projectPeople[candidate.project.id]?.owner?.name : undefined;
     const waiting = candidate.group !== "connected" && waitedOn(candidate);
     const mateFlag = candidateMateFlags.get(candidate.key);
     return {
@@ -1537,19 +1537,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     [candidateHealth, groupTree.groups],
   );
 
-  // Whether this person may add a stage or a production to the group (`mayAddEnvironment`).
-  const mayAddFor = useCallback(
-    (group: ZeropsGroup) =>
-      activeOrganization !== null &&
-      mayAddEnvironment({
-        organization: activeOrganization,
-        projects: (
-          groupTree.groups.find((entry) => entry.group.groupId === group.groupId)?.environments ??
-          []
-        ).map(({ item }) => item.project),
-      }),
-    [activeOrganization, groupTree.groups],
-  );
+  // Which tiers HQ offers this person to add to the group (`add_stage` / `add_production`).
+  const environmentOffers = useEnvironmentOffers();
 
   // "Add stage" opens the form; the form's answer is what gets created.
   const [creationRequest, setCreationRequest] = useState<{
@@ -1608,7 +1597,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         groupId === undefined ? undefined : projectFlow.flows.get(groupId),
         candidate.project.id,
       ),
-      mine: mateIsViewers(candidate.project, user?.id),
+      mine: projectPeople[candidate.project.id]?.waitsOnViewer === true,
       // Waking while it comes up and arrives, as its row in the menu.
       pose: matePoseOf(candidate, nowMs),
     });
@@ -2254,8 +2243,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
    * A project's own quiet actions: its name, and the environments a person
    * adds to it — another Mate, and a stage and a production as equals: neither
    * is optional, neither comes before the other, and each is offered where the
-   * role is still there to take (`creatableRoles`) and this person may add one
-   * (`mayAddEnvironment`).
+   * role is still there to take (`creatableRoles`) and HQ offers it to this
+   * person (`useEnvironmentOffers`).
    */
   const renderGroupMenu = ({ group, flow }: ProjectsFlowGroup<ZeropsCandidatePresentation>) => {
     // Each Mate's preview, where its pair has one: a link out, so the menu's, not the row's.
@@ -2298,7 +2287,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
                 },
               ]
             : []),
-          ...(addsOfferedFor(group) && mayAddFor(group)
+          ...(addsOfferedFor(group) && environmentOffers(group.groupId)?.stage === true
             ? [
                 {
                   id: "add-stage",
@@ -2310,7 +2299,9 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
                 },
               ]
             : []),
-          ...(mayAddFor(group) && !groupIsEmpty(group) && creatableRoles(group).includes("prod")
+          ...(environmentOffers(group.groupId)?.production === true &&
+          !groupIsEmpty(group) &&
+          creatableRoles(group).includes("prod")
             ? [
                 {
                   id: "add-production",
@@ -2322,9 +2313,10 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
                 },
               ]
             : []),
-          // A stage or a production whose setup is not finished, finished as the person asks.
+          // A stage or a production whose setup is not finished, finished as the person asks —
+          // where HQ offers them finishing it (`can.finish`), as on the application's own page.
           ...halfMade
-            .filter((entry) => entry.groupId === group.groupId)
+            .filter((entry) => entry.groupId === group.groupId && entry.finish)
             .map((entry) => ({
               id: `finish-${entry.tier}`,
               label: `Finish setting up ${entry.tier}`,
@@ -2467,7 +2459,12 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       });
       const conversationsRead = (item: ZeropsCandidatePresentation) =>
         item.environmentId !== undefined && withConversations.has(item.environmentId);
-      const members = groupMemberFactsOf(environments, activityOf, conversationsRead, user?.id);
+      const members = groupMemberFactsOf(
+        environments,
+        activityOf,
+        conversationsRead,
+        (projectId) => projectPeople[projectId]?.waitsOnViewer === true,
+      );
       const isStop = (role: ZeropsEnvironmentRole | undefined) =>
         role === "stage" || role === "prod";
       const placeholder = groupNameUnread(group);

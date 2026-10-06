@@ -226,30 +226,6 @@
   {
     "path": "apps/web/src/components/ChatView.tsx",
     "kind": "retired-token",
-    "fingerprint": "rememberWriter(",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "who may write in a conversation is remembered in browser storage; the footer waits for the live answer",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/ChatView.tsx",
-    "kind": "retired-token",
-    "fingerprint": "rememberedWriter",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "who may write in a conversation is remembered in browser storage; the footer waits for the live answer",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/ChatView.tsx",
-    "kind": "retired-token",
-    "fingerprint": "rememberedWriter",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "who may write in a conversation is remembered in browser storage; the footer waits for the live answer",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/ChatView.tsx",
-    "kind": "retired-token",
     "fingerprint": "useSentAsks",
     "owner": "data-layer rewrite: operations",
     "reason": "creations and sent asks are kept by the app; the operations adapter feeds the store",
@@ -269,14 +245,6 @@
     "fingerprint": "useSentAsks",
     "owner": "data-layer rewrite: operations",
     "reason": "creations and sent asks are kept by the app; the operations adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/Sidebar.tsx",
-    "kind": "retired-token",
-    "fingerprint": "shownInScope(",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "the Mine filter and owner records are computed in the client; HQ sends them finished",
     "expires": "never"
   },
   {
@@ -293,14 +261,6 @@
     "fingerprint": "useNewProjectBirths",
     "owner": "data-layer rewrite: operations",
     "reason": "births are tracked by app hooks; the operations adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/Sidebar.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsMateOwners()",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "member names and Mate owners come from the member list; HQ sends them finished",
     "expires": "never"
   },
   {
@@ -448,38 +408,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/components/zerops/ConversationFooterStandIn.tsx",
-    "kind": "retired-token",
-    "fingerprint": "rememberedWriter",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "who may write in a conversation is remembered in browser storage; the footer waits for the live answer",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ConversationFooterStandIn.tsx",
-    "kind": "retired-token",
-    "fingerprint": "rememberedWriter",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "who may write in a conversation is remembered in browser storage; the footer waits for the live answer",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/RouteStandIn.tsx",
-    "kind": "retired-token",
-    "fingerprint": "rememberedComposerControl",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "the composer's model label is remembered in browser storage; the catalog's projection replaces it",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/RouteStandIn.tsx",
-    "kind": "retired-token",
-    "fingerprint": "rememberedComposerControl",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "the composer's model label is remembered in browser storage; the catalog's projection replaces it",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/components/zerops/SidebarComingEnds.tsx",
     "kind": "retired-token",
     "fingerprint": "useNewProjectBirths",
@@ -498,54 +426,6 @@
   {
     "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
     "kind": "retired-token",
-    "fingerprint": "mateIsViewers(",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "the Mine filter and owner records are computed in the client; HQ sends them finished",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
-    "kind": "retired-token",
-    "fingerprint": "mateIsViewers(",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "the Mine filter and owner records are computed in the client; HQ sends them finished",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
-    "kind": "retired-token",
-    "fingerprint": "mateIsViewers(",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "the Mine filter and owner records are computed in the client; HQ sends them finished",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
-    "kind": "retired-token",
-    "fingerprint": "mateIsViewers(",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "the Mine filter and owner records are computed in the client; HQ sends them finished",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
-    "kind": "retired-token",
-    "fingerprint": "mateOwnerRecords(",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "the Mine filter and owner records are computed in the client; HQ sends them finished",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
-    "kind": "retired-token",
-    "fingerprint": "tiersAddable(",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "tiers addable are computed from the organization role in the client; HQ sends it",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
-    "kind": "retired-token",
     "fingerprint": "useSentAsks",
     "owner": "data-layer rewrite: operations",
     "reason": "creations and sent asks are kept by the app; the operations adapter feeds the store",
@@ -565,14 +445,6 @@
     "fingerprint": "useSentAsks",
     "owner": "data-layer rewrite: operations",
     "reason": "creations and sent asks are kept by the app; the operations adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsAgentSignIn.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsMemberNames(",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "member names and Mate owners come from the member list; HQ sends them finished",
     "expires": "never"
   },
   {
@@ -610,30 +482,6 @@
   {
     "path": "apps/web/src/components/zerops/ZeropsGitPage.tsx",
     "kind": "retired-token",
-    "fingerprint": "useChangeOffers",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "offers are read and decided by app hooks; HQ sends what the person may do",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsGitPage.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useChangeOffers",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "offers are read and decided by app hooks; HQ sends what the person may do",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsGitPage.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useChangeOffers",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "offers are read and decided by app hooks; HQ sends what the person may do",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsGitPage.tsx",
-    "kind": "retired-token",
     "fingerprint": "useZeropsRegistry",
     "owner": "data-layer rewrite: HQ structure/apps",
     "reason": "registry, recipes and releases are read by app hooks; the HQ adapter feeds the store",
@@ -669,38 +517,6 @@
     "fingerprint": "useZeropsGitRemoteProbes",
     "owner": "data-layer rewrite: Mate identity/connection",
     "reason": "a component probes git remotes itself; the adapter owns the read",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
-    "kind": "retired-token",
-    "fingerprint": "mateIsViewers(",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "the Mine filter and owner records are computed in the client; HQ sends them finished",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useChangeOffers",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "offers are read and decided by app hooks; HQ sends what the person may do",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useChangeOffers",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "offers are read and decided by app hooks; HQ sends what the person may do",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useChangeOffers",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "offers are read and decided by app hooks; HQ sends what the person may do",
     "expires": "never"
   },
   {
@@ -733,22 +549,6 @@
     "fingerprint": "useMatesInventory",
     "owner": "data-layer rewrite: services",
     "reason": "the Mates inventory prepares containers, services and variables for every listed Mate; read on open",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useMayAddEnvironment",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "add-environment facts are computed in the client; HQ sends what the person may do",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useMayAddEnvironment",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "add-environment facts are computed in the client; HQ sends what the person may do",
     "expires": "never"
   },
   {
@@ -827,14 +627,6 @@
     "path": "apps/web/src/components/zerops/ZeropsHqGate.tsx",
     "kind": "retired-token",
     "fingerprint": "bear(false)",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "the client lists organization members for permissions; HQ computes them",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsHqGate.tsx",
-    "kind": "retired-token",
-    "fingerprint": "client.listOrganizationMembers(clientId)",
     "owner": "data-layer rewrite: permissions/members",
     "reason": "the client lists organization members for permissions; HQ computes them",
     "expires": "never"
@@ -976,14 +768,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/components/zerops/ZeropsMateEmptyState.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsMemberNames(",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "member names and Mate owners come from the member list; HQ sends them finished",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/components/zerops/ZeropsMateUpdateControl.tsx",
     "kind": "retired-token",
     "fingerprint": "useZeropsMateUpdate",
@@ -1080,30 +864,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/components/zerops/ZeropsNewProjectHost.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useHqOffers",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "offers are read and decided by app hooks; HQ sends what the person may do",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsNewProjectHost.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useHqOffers",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "offers are read and decided by app hooks; HQ sends what the person may do",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsNewProjectHost.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useHqOffers",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "offers are read and decided by app hooks; HQ sends what the person may do",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/components/zerops/ZeropsNextStepBanner.tsx",
     "kind": "retired-token",
     "fingerprint": "rememberComposerTop",
@@ -1149,22 +909,6 @@
     "fingerprint": "rememberedComposerTop",
     "owner": "data-layer rewrite: changes/review",
     "reason": "the composer's change strip is remembered in browser storage; the change projection paints it",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsPanel.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsMemberNames(",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "member names and Mate owners come from the member list; HQ sends them finished",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsProjectRenameMenu.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useHqOffers",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "offers are read and decided by app hooks; HQ sends what the person may do",
     "expires": "never"
   },
   {
@@ -1178,22 +922,6 @@
   {
     "path": "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
     "kind": "retired-token",
-    "fingerprint": "mateIsViewers(",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "the Mine filter and owner records are computed in the client; HQ sends them finished",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
-    "kind": "retired-token",
-    "fingerprint": "mayAddEnvironment(",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "whether an environment may be added is computed from roles in the client; HQ sends it",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
-    "kind": "retired-token",
     "fingerprint": "setHandoffTo",
     "owner": "data-layer rewrite: releases/environments",
     "reason": "the review hand-off is decided in the app; the operation's result says where to go",
@@ -1213,30 +941,6 @@
     "fingerprint": "setHandoffTo",
     "owner": "data-layer rewrite: releases/environments",
     "reason": "the review hand-off is decided in the app; the operation's result says where to go",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useChangeOffers",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "offers are read and decided by app hooks; HQ sends what the person may do",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useChangeOffers",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "offers are read and decided by app hooks; HQ sends what the person may do",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useChangeOffers",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "offers are read and decided by app hooks; HQ sends what the person may do",
     "expires": "never"
   },
   {
@@ -1245,14 +949,6 @@
     "fingerprint": "useHalfMadeEnvironments(",
     "owner": "data-layer rewrite: releases/environments",
     "reason": "half-made environments are found by a hook's own reads; the projection reads the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useHqOffers",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "offers are read and decided by app hooks; HQ sends what the person may do",
     "expires": "never"
   },
   {
@@ -1384,46 +1080,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/components/zerops/projects/projectsView.logic.ts",
-    "kind": "retired-token",
-    "fingerprint": "const writer = roleAtLeast(organization.roleCode, \"ADMIN\")",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "tiers addable are computed from the organization role in the client; HQ sends it",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/projects/projectsView.logic.ts",
-    "kind": "retired-token",
-    "fingerprint": "mateIsViewers(",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "the Mine filter and owner records are computed in the client; HQ sends them finished",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/projects/projectsView.logic.ts",
-    "kind": "retired-token",
-    "fingerprint": "mayAddEnvironment(",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "whether an environment may be added is computed from roles in the client; HQ sends it",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/projects/projectsView.logic.ts",
-    "kind": "retired-token",
-    "fingerprint": "mayAddEnvironment(",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "whether an environment may be added is computed from roles in the client; HQ sends it",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/projects/projectsView.logic.ts",
-    "kind": "retired-token",
-    "fingerprint": "tiersAddable(",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "tiers addable are computed from the organization role in the client; HQ sends it",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/components/zerops/review/ReviewDescription.tsx",
     "kind": "retired-token",
     "fingerprint": "useChangePicture",
@@ -1450,30 +1106,6 @@
   {
     "path": "apps/web/src/components/zerops/review/ZeropsChangeReview.tsx",
     "kind": "retired-token",
-    "fingerprint": "useChangeOffers",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "offers are read and decided by app hooks; HQ sends what the person may do",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/review/ZeropsChangeReview.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useChangeOffers",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "offers are read and decided by app hooks; HQ sends what the person may do",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/review/ZeropsChangeReview.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useChangeOffers",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "offers are read and decided by app hooks; HQ sends what the person may do",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/review/ZeropsChangeReview.tsx",
-    "kind": "retired-token",
     "fingerprint": "useChangePicture",
     "owner": "data-layer rewrite: changes/review",
     "reason": "a hook reads change pictures itself; the changes adapter owns the read",
@@ -1482,22 +1114,6 @@
   {
     "path": "apps/web/src/components/zerops/review/ZeropsChangeReview.tsx",
     "kind": "retired-token",
-    "fingerprint": "useEnvironmentQuestionFacts",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "add-environment facts are computed in the client; HQ sends what the person may do",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/review/ZeropsChangeReview.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useEnvironmentQuestionFacts",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "add-environment facts are computed in the client; HQ sends what the person may do",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/review/ZeropsChangeReview.tsx",
-    "kind": "retired-token",
     "fingerprint": "useZeropsLandedChange",
     "owner": "data-layer rewrite: changes/review",
     "reason": "a hook reads a landed change itself; the changes adapter owns the read",
@@ -1517,14 +1133,6 @@
     "fingerprint": "useZeropsLandedChange",
     "owner": "data-layer rewrite: changes/review",
     "reason": "a hook reads a landed change itself; the changes adapter owns the read",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/review/ZeropsChangeReview.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsMemberNames(",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "member names and Mate owners come from the member list; HQ sends them finished",
     "expires": "never"
   },
   {
@@ -1573,22 +1181,6 @@
     "fingerprint": "useChangePicture",
     "owner": "data-layer rewrite: changes/review",
     "reason": "a hook reads change pictures itself; the changes adapter owns the read",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/design/reviewHarnessStates.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useChangeOffers",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "offers are read and decided by app hooks; HQ sends what the person may do",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/design/sidebarHarness.tsx",
-    "kind": "retired-token",
-    "fingerprint": "shownInScope(",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "the Mine filter and owner records are computed in the client; HQ sends them finished",
     "expires": "never"
   },
   {
@@ -1989,14 +1581,6 @@
     "fingerprint": "setAwaiting",
     "owner": "data-layer rewrite: releases/environments",
     "reason": "a lost grant empties every flow and hooks read on their own; hide the project when it is read",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useChangeOffers",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "offers are read and decided by app hooks; HQ sends what the person may do",
     "expires": "never"
   },
   {
@@ -2456,14 +2040,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/zerops/mateScope.ts",
-    "kind": "retired-token",
-    "fingerprint": "shownInScope(",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "the Mine filter and owner records are computed in the client; HQ sends them finished",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/zerops/newMate.ts",
     "kind": "retired-token",
     "fingerprint": "useNewMate",
@@ -2626,38 +2202,6 @@
   {
     "path": "apps/web/src/zerops/useAddEnvironment.ts",
     "kind": "retired-token",
-    "fingerprint": "mayAddEnvironment(",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "whether an environment may be added is computed from roles in the client; HQ sends it",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useAddEnvironment.ts",
-    "kind": "retired-token",
-    "fingerprint": "useEnvironmentQuestionFacts",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "add-environment facts are computed in the client; HQ sends what the person may do",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useAddEnvironment.ts",
-    "kind": "retired-token",
-    "fingerprint": "useMayAddEnvironment",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "add-environment facts are computed in the client; HQ sends what the person may do",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useAddEnvironment.ts",
-    "kind": "retired-token",
-    "fingerprint": "useMayAddEnvironment",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "add-environment facts are computed in the client; HQ sends what the person may do",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useAddEnvironment.ts",
-    "kind": "retired-token",
     "fingerprint": "useNewProjectBirths",
     "owner": "data-layer rewrite: operations",
     "reason": "births are tracked by app hooks; the operations adapter feeds the store",
@@ -2669,54 +2213,6 @@
     "fingerprint": "useNewProjectBirths",
     "owner": "data-layer rewrite: operations",
     "reason": "births are tracked by app hooks; the operations adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useChangeOffers.ts",
-    "kind": "retired-token",
-    "fingerprint": "useChangeOffers",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "offers are read and decided by app hooks; HQ sends what the person may do",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useChangeOffers.ts",
-    "kind": "retired-token",
-    "fingerprint": "useHqOffers",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "offers are read and decided by app hooks; HQ sends what the person may do",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useChangeOffers.ts",
-    "kind": "retired-token",
-    "fingerprint": "useHqOffers",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "offers are read and decided by app hooks; HQ sends what the person may do",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useChangeOffers.ts",
-    "kind": "retired-token",
-    "fingerprint": "useHqOffers",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "offers are read and decided by app hooks; HQ sends what the person may do",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useChangeOffers.ts",
-    "kind": "retired-token",
-    "fingerprint": "useHqOffers",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "offers are read and decided by app hooks; HQ sends what the person may do",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useChangeOffers.ts",
-    "kind": "retired-token",
-    "fingerprint": "useHqOffers",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "offers are read and decided by app hooks; HQ sends what the person may do",
     "expires": "never"
   },
   {
@@ -2757,14 +2253,6 @@
     "fingerprint": "ReturnType<typeof makeGitCredentialStore>",
     "owner": "data-layer rewrite: HQ structure/apps",
     "reason": "repository and git-credential stores are built in the app; the HQ adapter owns them",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useHalfMadeEnvironments.ts",
-    "kind": "retired-token",
-    "fingerprint": "useChangeOffers",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "offers are read and decided by app hooks; HQ sends what the person may do",
     "expires": "never"
   },
   {
@@ -2824,30 +2312,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/zerops/useHqOffers.ts",
-    "kind": "retired-token",
-    "fingerprint": "useHqOffers",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "offers are read and decided by app hooks; HQ sends what the person may do",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useHqOffers.ts",
-    "kind": "retired-token",
-    "fingerprint": "useHqOffers",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "offers are read and decided by app hooks; HQ sends what the person may do",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useHqOffers.ts",
-    "kind": "retired-token",
-    "fingerprint": "useHqOffers",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "offers are read and decided by app hooks; HQ sends what the person may do",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/zerops/useInterestLeases.ts",
     "kind": "retired-token",
     "fingerprint": "useInterestLeases",
@@ -2858,22 +2322,6 @@
   {
     "path": "apps/web/src/zerops/useMateActions.tsx",
     "kind": "retired-token",
-    "fingerprint": "mateIsViewers(",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "the Mine filter and owner records are computed in the client; HQ sends them finished",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useMateActions.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useHqOffers",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "offers are read and decided by app hooks; HQ sends what the person may do",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useMateActions.tsx",
-    "kind": "retired-token",
     "fingerprint": "useNewProjectBirths",
     "owner": "data-layer rewrite: operations",
     "reason": "births are tracked by app hooks; the operations adapter feeds the store",
@@ -2885,22 +2333,6 @@
     "fingerprint": "useNewProjectBirths",
     "owner": "data-layer rewrite: operations",
     "reason": "births are tracked by app hooks; the operations adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useMateActions.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsOrganizationMembersRead",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "the client reads organization members for owners and admins; HQ sends them finished",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useMateActions.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsOrganizationMembersRead",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "the client reads organization members for owners and admins; HQ sends them finished",
     "expires": "never"
   },
   {
@@ -3088,27 +2520,11 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/zerops/useSidebarWaiting.ts",
-    "kind": "retired-token",
-    "fingerprint": "mateIsViewers(",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "the Mine filter and owner records are computed in the client; HQ sends them finished",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/zerops/useUsageEnvironmentIdentities.ts",
     "kind": "retired-token",
     "fingerprint": "useMatesSettled()",
     "owner": "data-layer rewrite: HQ structure/apps",
     "reason": "a settled flag for HQ Mates stands in for the stream's state; read the stream state",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useUsageEnvironmentIdentities.ts",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsOrganizationMembers(",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "the client reads organization members for owners and admins; HQ sends them finished",
     "expires": "never"
   },
   {
@@ -3210,54 +2626,6 @@
   {
     "path": "apps/web/src/zerops/useZeropsMateOwners.ts",
     "kind": "retired-token",
-    "fingerprint": "useZeropsMateOwners()",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "member names and Mate owners come from the member list; HQ sends them finished",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsMateOwners.ts",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsMemberNames(",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "member names and Mate owners come from the member list; HQ sends them finished",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsMateOwners.ts",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsOrganizationMembers(",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "the client reads organization members for owners and admins; HQ sends them finished",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsMateOwners.ts",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsOrganizationMembers(",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "the client reads organization members for owners and admins; HQ sends them finished",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsMateOwners.ts",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsOrganizationMembers(",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "the client reads organization members for owners and admins; HQ sends them finished",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsMateOwners.ts",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsOrganizationMembersRead",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "the client reads organization members for owners and admins; HQ sends them finished",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsMateOwners.ts",
-    "kind": "retired-token",
     "fingerprint": "useZeropsOrganizationMembersRead",
     "owner": "data-layer rewrite: permissions/members",
     "reason": "the client reads organization members for owners and admins; HQ sends them finished",
@@ -3309,30 +2677,6 @@
     "fingerprint": "useZeropsUpgradeRestart",
     "owner": "data-layer rewrite: operations",
     "reason": "upgrade restart and finish-environment hooks poll themselves; the operations adapter owns them",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/writerMemory.ts",
-    "kind": "retired-token",
-    "fingerprint": "mate:zerops:conversation-writers",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "who may write in a conversation is remembered in browser storage; the footer waits for the live answer",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/writerMemory.ts",
-    "kind": "retired-token",
-    "fingerprint": "rememberWriter(",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "who may write in a conversation is remembered in browser storage; the footer waits for the live answer",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/writerMemory.ts",
-    "kind": "retired-token",
-    "fingerprint": "rememberedWriter",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "who may write in a conversation is remembered in browser storage; the footer waits for the live answer",
     "expires": "never"
   },
   {
@@ -3981,22 +3325,6 @@
     "fingerprint": "ownersAndAdmins(",
     "owner": "data-layer rewrite: permissions/members",
     "reason": "the client reads organization members for owners and admins; HQ sends them finished",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/mateAccess.ts",
-    "kind": "retired-token",
-    "fingerprint": "mateIsViewers(",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "the Mine filter and owner records are computed in the client; HQ sends them finished",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/mateAccess.ts",
-    "kind": "retired-token",
-    "fingerprint": "mateOwnerRecords(",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "the Mine filter and owner records are computed in the client; HQ sends them finished",
     "expires": "never"
   },
   {

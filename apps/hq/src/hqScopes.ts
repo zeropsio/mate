@@ -422,17 +422,29 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
                 ? all.get(projectId)?.attention
                 : null;
               const { signedInNow, everSignedIn } = signersFor(projectId);
+              const runsWithoutSignIn =
+                observable.some((project) => project.projectId === projectId) &&
+                all.get(projectId)?.overview?.identity.runsWithoutSignIn === true;
+              const mate = listed.find((project) => project.projectId === projectId)?.mate;
               const ownerUserId =
                 owner !== undefined
                   ? (current.facts.members.find(
                       (member) =>
                         member.kind === "person" && member.clientUserId === owner.clientUserId,
                     )?.userId ?? null)
-                  : (everSignedIn["claude-code"] ?? everSignedIn.codex ?? null);
+                  : (everSignedIn["claude-code"] ??
+                    everSignedIn.codex ??
+                    (runsWithoutSignIn
+                      ? (mate?.madeBy ?? mate?.standupRequestedBy ?? null)
+                      : null));
+              const waitsOn =
+                signedInNow["claude-code"] ??
+                signedInNow.codex ??
+                (runsWithoutSignIn ? ownerUserId : null);
               return {
                 role,
                 ownerUserId,
-                waitsOnViewer: (signedInNow["claude-code"] ?? signedInNow.codex) === entry.userId,
+                waitsOnViewer: waitsOn === entry.userId,
                 mayWrite: observable.some((project) => project.projectId === projectId),
                 mine: ownerUserId === entry.userId,
                 unseen:

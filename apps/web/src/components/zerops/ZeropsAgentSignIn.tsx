@@ -51,7 +51,7 @@ import { useAgentLoginSubmitCode } from "~/zerops/useAgentLoginSubmitCode";
 import { useUsualAgent } from "~/zerops/useUsualAgent";
 import { useZeropsEnvironmentProject } from "~/zerops/useZeropsEnvironmentProject";
 import { useZeropsAgentAuth } from "~/zerops/useZeropsFeeds";
-import { useZeropsMemberNames } from "~/zerops/useZeropsMateOwners";
+import { useHqPersonNames } from "~/zerops/useZeropsMateOwners";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 
 import { ArrivalSpinner } from "./ZeropsArrivalSteps";
@@ -722,17 +722,7 @@ export function ZeropsAgentSignIn({
   const usual = useUsualAgent(project?.projectId);
   const viewerSubject = useZeropsSessionOptional()?.user?.id;
   // Whose sign-in a dialog's login replaces, by name: read only where it is somebody else's.
-  const nameOf = useZeropsMemberNames({
-    clientId: project?.orgId,
-    enabled:
-      agentId !== null &&
-      (snapshot?.agents ?? []).some(
-        (agent) =>
-          agent.agentId === agentId &&
-          agent.authorizedBy !== undefined &&
-          agent.authorizedBy.subject !== viewerSubject,
-      ),
-  });
+  const nameOf = useHqPersonNames(project?.orgId);
   const start = useAgentLogin(threadRef, { terminalSurface: "embedded" });
   const cancel = useAgentLoginCancel(threadRef);
   const submitCode = useAgentLoginSubmitCode(threadRef);

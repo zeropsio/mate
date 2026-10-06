@@ -26,7 +26,6 @@ export {
   hqAppChanges,
   hqNavigation,
   hqPersonFacts,
-  hqMateOwners,
   hqStatus,
   type HqNavigationRead,
 } from "./projections/hqNavigation.ts";
@@ -133,7 +132,12 @@ export {
   shownHqNavigationAtom,
   shownHqAppChangesAtom,
   shownHqPersonFactsAtom,
-  shownHqMateOwnersAtom,
   shownHqStatusAtom,
   type AccountReads,
 } from "./reads.ts";
+export { shownHqProjectPeopleAtom } from "./personReads.ts";
+export {
+  hqProjectPeople,
+  type HqMateOwner,
+  type HqProjectPeople,
+} from "./projections/hqProjectPeople.ts";

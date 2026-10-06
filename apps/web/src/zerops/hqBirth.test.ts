@@ -39,6 +39,16 @@ describe("HQ gate birth", () => {
     expect(held()?.record.step).toBe("done");
   });
 
+  it("ends as done and rereads when another admin already created HQ", async () => {
+    const run = vi.fn(async () => BORN);
+    const onBorn = vi.fn();
+    bearHq({ clientId: "org-1", run, alreadyBorn: async () => true, onBorn });
+    await vi.waitFor(() => expect(onBorn).toHaveBeenCalledOnce());
+    expect(held()?.record.step).toBe("done");
+    expect(held()?.running).toBe(false);
+    expect(run).not.toHaveBeenCalled();
+  });
+
   it("the project's journal is authority; the gate never reads or writes browser storage", async () => {
     const getItem = vi.fn(() => null);
     const setItem = vi.fn();

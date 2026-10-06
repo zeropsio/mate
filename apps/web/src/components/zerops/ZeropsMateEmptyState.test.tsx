@@ -46,7 +46,7 @@ vi.mock("../../zerops/useZeropsEnvironmentProject", () => ({
 }));
 
 vi.mock("../../zerops/useZeropsMateOwners", () => ({
-  useZeropsMemberNames: () => (userId: string) => feedState.names.get(userId),
+  useHqPersonNames: () => (userId: string) => feedState.names.get(userId),
 }));
 
 // The sign-in module is its own (`ZeropsAgentSignIn.test.tsx`): here only where it stands.

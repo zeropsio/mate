@@ -737,6 +737,49 @@ describe("revisioned HQ values", () => {
       }),
     ),
   );
+  for (const runsWithoutSignIn of [false, true]) {
+    it.effect(`sign-in-free=${runsWithoutSignIn}: attention waits on the operating owner`, () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const f = yield* fixture;
+          yield* f.roles({
+            ...facts,
+            projects: facts.projects.map((project) => ({ ...project, userRoles: [] })),
+          });
+          const link = yield* f.overviews.connect("P");
+          yield* f.overviews.report("P", link, {
+            type: "overview",
+            full: true,
+            overview: overviewOf({
+              identity: { ...overviewOf().identity, runsWithoutSignIn },
+            }),
+          });
+          for (const userId of ["owner", "reader"]) {
+            const client = yield* f.connect(userId);
+            yield* client.subscribe([{ scope: nav }]);
+            const delivery = resetOf(yield* client.take);
+            yield* client.take;
+            const project = delivery.values.find((value) => value.key === "project:P")!.value as {
+              person: { ownerUserId: string | null; waitsOnViewer: boolean };
+              signedInNow: unknown;
+              everSignedIn: unknown;
+            };
+            assert.strictEqual(
+              project.person.waitsOnViewer,
+              runsWithoutSignIn && userId === "owner",
+            );
+            assert.strictEqual(
+              project.person.ownerUserId,
+              runsWithoutSignIn && userId === "owner" ? "owner" : null,
+            );
+            assert.deepStrictEqual(project.signedInNow, {});
+            assert.deepStrictEqual(project.everSignedIn, {});
+          }
+        }),
+      ),
+    );
+  }
+
   it.effect("navigation separates current login holders from historical and saved signers", () =>
     Effect.scoped(
       Effect.gen(function* () {

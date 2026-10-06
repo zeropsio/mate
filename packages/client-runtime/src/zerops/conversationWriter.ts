@@ -6,8 +6,8 @@
  * and never collapses into another: an agent sign-in feed not read yet, a conversation whose
  * instance is not read yet, a signed-in agent the snapshot does not list, a viewer not known yet —
  * each is unknown, not "nobody's" and not the viewer's. A surface that does not know shows nothing
- * it may take back (no composer, no Send, no "nobody can run it"): the last answer this browser
- * knew, or the room held quietly (`conversationFooter`).
+ * it may take back (no composer, no Send, no "nobody can run it"): HQ's word of the agent's signer,
+ * or the room held quietly (`conversationFooter`).
  *
  * How a known answer is decided is not this module's: `resolveAgentOwnership` decides it over the
  * login the conversation spends (`resolveSpentLogin`), and the server decides what runs (D6). This
@@ -15,7 +15,11 @@
  *
  * @module conversationWriter
  */
-import type { ZeropsAgentAuthSnapshot } from "@t3tools/contracts";
+import {
+  agentIdForProviderInstance,
+  type ZeropsAgentAuthSnapshot,
+  type ZeropsAgentId,
+} from "@t3tools/contracts";
 
 import { resolveOwnedAgentId, type ZeropsAgentOwnership } from "./agentOwnership.ts";
 import type { Known } from "./knowledge/known.ts";
@@ -49,6 +53,18 @@ const YOU: ConversationWriter = { kind: "you" };
 const SOMEONE: ConversationWriter = { kind: "someone" };
 const NOBODY_YET: ConversationWriter = { kind: "nobody-yet" };
 
+/**
+ * Whether the agent an instance runs is told at all: the providers name the instance, or its id is
+ * one of the two agents' own. While the environment's providers load, it is not — and an agent not
+ * told is unknown, never one nobody signs in to.
+ */
+const agentTold = (
+  instanceId: string,
+  providers: ReadonlyArray<{ readonly instanceId: string }>,
+): boolean =>
+  providers.some((provider) => provider.instanceId === instanceId) ||
+  agentIdForProviderInstance(instanceId) !== undefined;
+
 export function resolveConversationWriter(input: ConversationWriterInput): ConversationWriter {
   const { feed } = input;
   // No environment: no Mate, nothing anybody signs in to.
@@ -64,7 +80,8 @@ export function resolveConversationWriter(input: ConversationWriterInput): Conve
   const spent = resolveSpentLogin(input.instanceId, snapshot, input.providers);
   if (spent === undefined) {
     // An agent Mate never signs anybody in to has no signer to wait for; one it does, missing
-    // from the snapshot, is not read yet.
+    // from the snapshot, is not read yet — and one the providers do not name yet is not told.
+    if (!agentTold(input.instanceId, input.providers)) return UNKNOWN;
     return resolveOwnedAgentId(input.instanceId, input.providers) === undefined ? YOU : UNKNOWN;
   }
   // A token belongs to the project, not to a person.
@@ -90,43 +107,54 @@ export function signInReadSettled(feed: ConversationWriterInput["feed"]): boolea
   return feed !== undefined && feed.state !== "unread" && feed.state !== "reading";
 }
 
-/** A known answer, as this browser keeps it for the next time it is not known yet. */
-export type RememberedWriter = Exclude<ConversationWriter["kind"], "unknown">;
-
 /**
- * What an answer leaves to remember: only one a read snapshot gave. An unknown answer leaves
- * nothing, and so does a read that failed — its "nobody yet" is no answer, and must not overwrite
- * the one this browser knew.
+ * Who writes in a conversation as HQ's navigation says it, before the Mate's own sign-in is read:
+ * the signer HQ records of the agent the conversation spends (`signers` of the Mate's project in
+ * HQ's navigation). Only an agent's own login is HQ's to say; a login beside it has its own signer,
+ * which only the Mate knows. An agent Mate signs nobody in to is the viewer's to run.
  */
-export function rememberableWriter(
-  writer: ConversationWriter,
-  feed: ConversationWriterInput["feed"],
-): RememberedWriter | undefined {
-  if (feed?.state !== "known" || writer.kind === "unknown") return undefined;
-  return writer.kind;
+export function hqConversationWriter(input: {
+  /** The provider instance the conversation spends; `undefined` while it is not read. */
+  readonly instanceId: string | undefined;
+  readonly providers: ReadonlyArray<{ readonly instanceId: string; readonly driver: string }>;
+  /** Who HQ records signed each agent's own login in; `undefined` while HQ has not said. */
+  readonly signers: Readonly<Partial<Record<ZeropsAgentId, string>>> | undefined;
+  /** The signed-in Zerops user's id; `undefined` while the session is not read. */
+  readonly viewerSubject: string | undefined;
+}): ConversationWriter {
+  if (input.instanceId === undefined || !agentTold(input.instanceId, input.providers)) {
+    return UNKNOWN;
+  }
+  if (resolveOwnedAgentId(input.instanceId, input.providers) === undefined) return YOU;
+  const agent = agentIdForProviderInstance(input.instanceId);
+  if (agent === undefined || input.signers === undefined) return UNKNOWN;
+  if (input.viewerSubject === undefined || input.viewerSubject.length === 0) return UNKNOWN;
+  const signer = input.signers[agent];
+  if (signer === undefined) return NOBODY_YET;
+  return signer === input.viewerSubject ? YOU : SOMEONE;
 }
 
 /**
  * What stands in the conversation's footer: the composer, the read-only strip (someone else's
  * agent), or the composer's room held empty — no field, no caret, no words, no buttons.
  *
- * Unknown paints the last known answer where this browser has one, and only the viewer's own
- * paints a composer: a field the person types into must not turn out to be someone else's.
+ * The Mate's own sign-in decides once it is read; before it, HQ's word (`hqConversationWriter`)
+ * paints at once; and while neither has said, the room is held — never a composer that may turn
+ * out to be someone else's.
  */
 export type ConversationFooter = "composer" | "read-only" | "held";
 
 export function conversationFooter(
-  writer: ConversationWriter,
-  remembered: RememberedWriter | undefined,
+  mate: ConversationWriter,
+  hq: ConversationWriter,
 ): ConversationFooter {
-  switch (writer.kind === "unknown" ? remembered : writer.kind) {
+  switch ((mate.kind === "unknown" ? hq : mate).kind) {
     case "someone":
       return "read-only";
     case "you":
-      return "composer";
     case "nobody-yet":
-      return writer.kind === "unknown" ? "held" : "composer";
-    case undefined:
+      return "composer";
+    case "unknown":
       return "held";
   }
 }

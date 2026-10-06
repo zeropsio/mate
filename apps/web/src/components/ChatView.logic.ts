@@ -563,17 +563,17 @@ export function composerOpenFocus(input: {
   return input.composerShown && (!input.late || !input.focusElsewhere);
 }
 
-/** Someone else's conversation as its footer says it, before the answer is read again. */
-export const REMEMBERED_READ_ONLY: ZeropsConversationReadOnly = {
+/** Someone else's conversation as HQ's word paints it, before the Mate's own sign-in is read. */
+export const HQ_SAID_READ_ONLY: ZeropsConversationReadOnly = {
   notice: agentOwnershipComposerNotice("someone-else")!,
   waitingLabel: "Waiting for the agent's owner",
 };
 
 /**
- * The read-only strip the footer shows (`conversationFooter`), and whether it rests on a read
- * answer. Only a read answer is acted on: a strip painted from this browser's memory says whose
- * agent it was, but offers no sign-in and names no owner over a pending request — those come with
- * the read answer.
+ * The read-only strip the footer shows (`conversationFooter`), and whether it rests on the Mate's
+ * own sign-in. Only that answer is acted on: a strip painted from HQ's word says whose agent it
+ * is, but offers no sign-in and names no owner over a pending request — those come with the
+ * Mate's answer.
  */
 export function zeropsReadOnlyFooter(input: {
   readonly footer: ConversationFooter;
@@ -581,7 +581,7 @@ export function zeropsReadOnlyFooter(input: {
 }): { readonly readOnly: ZeropsConversationReadOnly; readonly answered: boolean } | null {
   if (input.footer !== "read-only") return null;
   return input.readOnly === null
-    ? { readOnly: REMEMBERED_READ_ONLY, answered: false }
+    ? { readOnly: HQ_SAID_READ_ONLY, answered: false }
     : { readOnly: input.readOnly, answered: true };
 }
 

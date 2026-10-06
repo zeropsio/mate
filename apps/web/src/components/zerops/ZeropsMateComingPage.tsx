@@ -25,11 +25,7 @@
  * on the account — says why here, with the way to the projects: nothing here hands the person to
  * another screen on its own (the owner, 2026-09-30: "it just throws me at /zerops page").
  */
-import {
-  parseScopedThreadKey,
-  scopedThreadKey,
-  scopeThreadRef,
-} from "@t3tools/client-runtime/environment";
+import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
   assignCandidateMateTints,
   FINISH_MATE_SETUP_VERB,
@@ -56,7 +52,7 @@ import { mateArriving } from "@t3tools/client-runtime/zerops";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/serviceMap";
 import { stageSpeaks } from "~/zerops/mateOpeningStage";
-import { ConversationFooterStandIn, standInFooter } from "./ConversationFooterStandIn";
+import { ConversationFooterStandIn } from "./ConversationFooterStandIn";
 import type { EnvironmentId } from "@t3tools/contracts";
 import type { MateMarkState } from "@t3tools/shared/brand";
 import { Link, useNavigate } from "@tanstack/react-router";
@@ -146,12 +142,11 @@ import { ZeropsProjectLink } from "../chat/ChatHeader";
 import { Button } from "../ui/button";
 import { SidebarInset } from "../ui/sidebar";
 import { WorkspacePageHeader } from "../WorkspacePageHeader";
-import { ComposerStandIn, type StandInTyped } from "../chat/ComposerStandIn";
 import { PanelLayoutControls } from "../chat/PanelLayoutControls";
 import { EllipsisIcon } from "lucide-react";
 import { useZeropsThreadActivity } from "~/zerops/useZeropsAgentActivity";
 import { useComposerDraftStore } from "~/composerDraftStore";
-import { draftWithTyped, handOverMateConversation } from "~/zerops/mateHandOver";
+import { handOverMateConversation } from "~/zerops/mateHandOver";
 import type { BirthLineProgress } from "./ZeropsBirthProgress.logic";
 import { NOT_SET_UP_LINE } from "./ZeropsProjectRow.logic";
 import { ZeropsArrivalSteps, type ArrivalYou } from "./ZeropsArrivalSteps";
@@ -172,8 +167,6 @@ const NO_FACE: ZeropsMateFace = { tint: "slate", shape: "squircle" };
 
 /** The hand-over's own length: the stage's words and slot handing over (`ArrivalSwap`), then the route. */
 const HAND_OVER_MS = 280;
-
-const NOTHING_TYPED: StandInTyped = { text: "", caret: 0 };
 
 /** How long a connected Mate's conversation may take to be read live before it hands over anyway. */
 const LIVE_GRACE_MS = 3_000;
@@ -371,59 +364,20 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   const [handing, setHanding] = useState(false);
   if (up && !handing) setHanding(true);
   const handingOver = useNewMate((state) => state.handingOver);
-  // What the person types into the composer standing in while it connects: the conversation's
-  // draft, the caret where they left it (`mateHandOver`). The conversation its menu row stands
-  // for is known before it connects — its draft is typed into as its own composer would; else
-  // what is typed joins the conversation's draft as it opens.
   const liveActivity = useZeropsThreadActivity(threadRef);
+  // The draft of the conversation it opens on, which the held room lays out at its height.
+  const draft = useComposerDraftStore((state) =>
+    threadRef === null ? "" : (state.getComposerDraft(threadRef)?.prompt ?? ""),
+  );
   // Until its conversation is read here: HQ's last word of it, as its menu row reads it.
   const toldActivity = useToldActivity(projectId);
-  const standInKey = liveActivity?.threadKey ?? toldActivity?.threadKey ?? null;
-  // Where the typing went, fixed as it began: the conversation the row named then, or nowhere
-  // yet — then it is the view's own until it moves into the conversation's draft.
-  const [typing, setTyping] = useState<{
-    readonly typed: StandInTyped;
-    readonly into: string | null;
-    readonly touched: boolean;
-  }>({ typed: NOTHING_TYPED, into: null, touched: false });
-  const shownKey = typing.touched ? typing.into : standInKey;
-  const shownDraft = useComposerDraftStore((state) =>
-    shownKey === null ? "" : (state.draftsByThreadKey[shownKey]?.prompt ?? ""),
-  );
-  const typed: StandInTyped =
-    shownKey === null ? typing.typed : { text: shownDraft, caret: typing.typed.caret };
-  const type = (next: StandInTyped) => {
-    const into = typing.touched ? typing.into : standInKey;
-    const intoRef = into === null ? null : parseScopedThreadKey(into);
-    if (intoRef !== null) useComposerDraftStore.getState().setPrompt(intoRef, next.text);
-    setTyping({ typed: next, into, touched: true });
-  };
-  const typedRef = useRef({ typed, touched: typing.touched, key: typing.into });
-  useEffect(() => {
-    typedRef.current = { typed, touched: typing.touched, key: typing.into };
-  });
   useEffect(() => {
     if (!handing || environmentId === null || threadRef === null) return;
     // Kept read from above every view while the route changes under it.
     if (cameUp) handingOver(threadRef);
     const timer = setTimeout(
       () => {
-        const written = typedRef.current;
-        const conversation = scopedThreadKey(threadRef);
-        let caret: number | null = written.touched ? written.typed.caret : null;
-        if (written.touched && written.key !== conversation && written.typed.text.length > 0) {
-          // Typed where no conversation was known, or into another than the one that opened.
-          const drafts = useComposerDraftStore.getState();
-          const draft = draftWithTyped(
-            drafts.getComposerDraft(threadRef)?.prompt ?? "",
-            written.typed,
-          );
-          drafts.setPrompt(threadRef, draft.prompt);
-          const typedInto = written.key === null ? null : parseScopedThreadKey(written.key);
-          if (typedInto !== null) drafts.setPrompt(typedInto, "");
-          caret = draft.caret;
-        }
-        handOverMateConversation(conversation, { nowMs: Date.now(), caret });
+        handOverMateConversation(scopedThreadKey(threadRef), Date.now());
         takeMateConversation(projectId)?.(threadRef);
         void navigate({
           to: "/$environmentId/$threadId",
@@ -742,17 +696,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
     return <MateDetailFailure message={detailFailure.message} again={readAgain} />;
   return (
     <MateComingFrame
-      composer={
-        standsInComposer ? (
-          <ConversationFooterStandIn
-            composer={<ComposerStandIn onType={type} typed={typed} />}
-            draft={typed.text}
-            // The remembered answer of the conversation it opens on; before that is known, the
-            // room held — never the menu row's chat, whose writer may be another login's.
-            footer={standInFooter(threadRef)}
-          />
-        ) : null
-      }
+      composer={standsInComposer ? <ConversationFooterStandIn draft={draft} /> : null}
       header={
         <MateComingHeader
           arriving={shown !== undefined && !handingArrival}
@@ -801,7 +745,7 @@ export function MateComingFrame({
   children,
 }: {
   readonly header: ReactNode;
-  /** The composer standing where its conversation's will (`ComposerStandIn`). */
+  /** What stands where its conversation's composer will (`ConversationFooterStandIn`). */
   readonly composer?: ReactNode;
   readonly children: ReactNode;
 }) {

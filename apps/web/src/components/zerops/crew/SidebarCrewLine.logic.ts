@@ -60,7 +60,7 @@ export function crewFaces(crew: CrewDigest, mine: boolean): ReadonlyArray<CrewLi
 export function crewLine(
   crew: CrewDigest,
   /**
-   * Its Mate is the viewer's own (`mateIsViewers`). Under another's Mate the crew waits on its
+   * Its Mate is the viewer's own (HQ's `waitsOnViewer`). Under another's Mate the crew waits on its
    * owner: no face needs the viewer and the line never says so — its finished work still offers
    * its Review, for anybody with write on the group.
    */

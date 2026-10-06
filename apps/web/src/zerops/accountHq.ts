@@ -37,6 +37,8 @@ import {
   connectThroughThrowaway,
   zeropsThrowawayPlatform,
 } from "@t3tools/client-runtime/zerops/doorThrowaway";
+import { organizationMembers } from "@t3tools/client-runtime/data";
+import type { AtomRegistry } from "effect/unstable/reactivity";
 import type { ZeropsApiClient, ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
 import { useCallback, useContext, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 
@@ -57,7 +59,7 @@ import {
 } from "./hqVerdict";
 import { endHqSession, keptHqSessions } from "./keptSessions";
 import { useZeropsOrganizationMembersRead } from "./useZeropsMateOwners";
-import { useAccountDataOptional } from "./ZeropsAccountData";
+import { useAccountDataOptional, type AccountData } from "./ZeropsAccountData";
 import { whenShown } from "./whenShown";
 import { ZeropsDataContext } from "./zeropsDataContext";
 import { useZeropsSessionOptional } from "./ZeropsSessionProvider";
@@ -220,6 +222,25 @@ function forgetKeptHq(clientId: string, hq: HqEndpoint): void {
 
 const apis = new Map<string, HqApi>();
 onAccountLifetimeClose(() => apis.clear());
+
+/** The official HQ from the account's current member fact, refreshed for this birth attempt. */
+export async function readOfficialHqNow(
+  account: AccountData,
+  registry: AtomRegistry.AtomRegistry,
+  clientId: string,
+): Promise<OfficialHq> {
+  const orgId = account.orgId;
+  if (orgId === null) throw new Error("No organization is observed for this account.");
+  const demand = { family: "organizationMembers", ownerId: clientId } as const;
+  account.revalidate(demand);
+  if (!(await account.readDetail(demand))) {
+    throw new Error("Couldn't verify this organization's official HQ from Zerops.");
+  }
+  const read = registry.get(account.data.project(organizationMembers, { orgId, clientId }));
+  if (read.status !== "ready")
+    throw new Error("Couldn't verify this organization's official HQ from Zerops.");
+  return findOfficialHq(read.members);
+}
 
 /**
  * The organization's HQ, for a write in the product: the product opens only over an official HQ

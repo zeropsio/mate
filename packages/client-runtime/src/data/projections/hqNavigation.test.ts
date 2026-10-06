@@ -1,3 +1,4 @@
+import { hqProjectPeople } from "./hqProjectPeople.ts";
 import { describe, expect, it } from "vite-plus/test";
 
 import { hqMateScope } from "../families/hqMate.ts";
@@ -14,13 +15,7 @@ import { reduceAccount, type AccountInput, type Row } from "../reducer.ts";
 import { readsOfState } from "../store.ts";
 import type { StreamEvent } from "../streamMachine.ts";
 import { hqMates } from "./hqMates.ts";
-import {
-  hqAppChanges,
-  hqMateOwners,
-  hqNavigation,
-  hqPersonFacts,
-  hqStatus,
-} from "./hqNavigation.ts";
+import { hqAppChanges, hqNavigation, hqPersonFacts, hqStatus } from "./hqNavigation.ts";
 
 const ORG = "org";
 const NAV: ReadonlyArray<ScopeKey> = [
@@ -353,7 +348,13 @@ describe("hqAppChanges", () => {
   });
 });
 
-describe("hqMateOwners", () => {
+describe("HQ-computed Mate owners", () => {
+  const owners = (read: ReturnType<typeof readsOfState>, orgId: string) =>
+    Object.fromEntries(
+      Object.entries(hqProjectPeople.derive(read, orgId)).flatMap(([id, entry]) =>
+        entry.owner === null ? [] : [[id, { userId: entry.owner.userId, name: entry.owner.name }]],
+      ),
+    );
   const owned = (state: AccountState, ownerUserId: string | null) =>
     apply(state, [
       {
@@ -397,13 +398,13 @@ describe("hqMateOwners", () => {
     { name: "partial person coverage", state: read, owner: "unknown", expected: {} },
     { name: "HQ names no owner despite a saved signer", state: read, owner: null, expected: {} },
   ])("$name", ({ state, owner, expected }) => {
-    expect(hqMateOwners.derive(readsOfState(owned(state, owner)), ORG)).toEqual(expected);
+    expect(owners(readsOfState(owned(state, owner)), ORG)).toEqual(expected);
   });
   it("withholds an owner when HQ denies their person fact", () => {
     const state = apply(owned(read, "u1"), [
       { kind: "access", family: "hqPerson", id: "u1", access: "denied" },
     ]);
-    expect(hqMateOwners.derive(readsOfState(state), ORG)).toEqual({});
+    expect(owners(readsOfState(state), ORG)).toEqual({});
   });
   it("moves the owner on newer HQ evidence without reading project grants", () => {
     const before = owned(read, "u1");
@@ -432,9 +433,9 @@ describe("hqMateOwners", () => {
         ],
       },
     ]);
-    expect(hqMateOwners.derive(readsOfState(before), ORG)).toEqual({
+    expect(owners(readsOfState(before), ORG)).toEqual({
       ada: { userId: "u1", name: "Jan" },
     });
-    expect(hqMateOwners.derive(readsOfState(after), ORG)).toEqual({});
+    expect(owners(readsOfState(after), ORG)).toEqual({});
   });
 });

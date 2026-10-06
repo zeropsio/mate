@@ -154,7 +154,7 @@ describe("mateOwnerView — whose seat, and whether anybody signed its agent in"
       line: LINE,
     },
   ])("$case", ({ owner, records, asked, seat, line }) => {
-    const view = mateOwnerView({ owner, records, asked });
+    const view = mateOwnerView({ owner, records, asked, hqSigners: "none" });
     expect(view.seat.kind).toBe(seat);
     expect(view.signInLine).toBe(line);
   });
@@ -210,12 +210,43 @@ describe("mateOwnerView — whose seat, and whether anybody signed its agent in"
       owner: undefined,
       records,
       asked: false,
+      hqSigners: "none",
       standUpBy,
       viewer,
       linked: true,
     });
     expect(view.signInLine).toBe(line);
     expect(view.waitsOnViewer).toBe(waits);
+  });
+
+  // HQ's signers decide whether anybody signed its agent in (the owner, 2026-10-06: every row said
+  // "Nobody has signed in yet" of Mates in use): the line stands only where HQ says nobody did,
+  // never while HQ has not said.
+  it.each([
+    { case: "HQ names a signer: no line", hqSigners: "some", line: undefined },
+    { case: "HQ names nobody: the line", hqSigners: "none", line: LINE },
+    { case: "HQ has not said: nothing", hqSigners: undefined, line: undefined },
+  ] as const)("$case", ({ hqSigners, line }) => {
+    const view = mateOwnerView({
+      owner: undefined,
+      records: OWNED_UNSIGNED,
+      asked: false,
+      hqSigners,
+    });
+    expect(view.signInLine).toBe(line);
+  });
+
+  it("waits for nobody's sign-in while HQ has not said who signed in", () => {
+    const view = mateOwnerView({
+      owner: undefined,
+      records: NOBODY,
+      asked: false,
+      hqSigners: undefined,
+      standUpBy: "user-petra",
+      viewer: "user-petra",
+      linked: true,
+    });
+    expect(view).toMatchObject({ signInLine: undefined, waitsOnViewer: false });
   });
 
   // The row follows what the page knows (the owner, 2026-09-30, Pia: the row asked for the
@@ -229,6 +260,7 @@ describe("mateOwnerView — whose seat, and whether anybody signed its agent in"
       owner: undefined,
       records: NOBODY,
       asked: false,
+      hqSigners: "none",
       standUpBy: "user-petra",
       viewer: "user-petra",
       linked,
@@ -266,6 +298,7 @@ describe("mateOwnerView — whose seat, and whether anybody signed its agent in"
       owner: undefined,
       records: NOBODY,
       asked: false,
+      hqSigners: "none",
       madeBy,
       standUpBy,
       viewer: "user-petra",
@@ -296,6 +329,7 @@ describe("mateOwnerView — whose seat, and whether anybody signed its agent in"
       owner,
       records: { named, signedIn: false, runsWithoutSignIn: true },
       asked: false,
+      hqSigners: "none",
       madeBy: "user-petra",
       viewer: "user-petra",
       linked: true,
@@ -304,11 +338,15 @@ describe("mateOwnerView — whose seat, and whether anybody signed its agent in"
   });
 
   it("says the empty seat in words, and draws a person as their mark", () => {
-    expect(mateOwnerView({ owner: undefined, records: NOBODY, asked: true }).seat).toEqual({
+    expect(
+      mateOwnerView({ owner: undefined, records: NOBODY, asked: true, hqSigners: "none" }).seat,
+    ).toEqual({
       kind: "nobody",
       label: "No owner yet. Whoever signs in its coding agent owns it.",
     });
-    expect(mateOwnerView({ owner: KAREL, records: SIGNED, asked: true }).seat).toEqual({
+    expect(
+      mateOwnerView({ owner: KAREL, records: SIGNED, asked: true, hqSigners: "some" }).seat,
+    ).toEqual({
       kind: "person",
       mark: ownerMark(KAREL),
     });

@@ -136,7 +136,7 @@ import { useHqRecipeFailure } from "~/zerops/useHqAppDetail";
 import {
   useAddEnvironment,
   useGroupPendingEnvironments,
-  useMayAddEnvironment,
+  useEnvironmentOffers,
 } from "~/zerops/useAddEnvironment";
 import { useHalfMadeEnvironments } from "~/zerops/useHalfMadeEnvironments";
 import { ZeropsReadFailure } from "./ZeropsReadFailure";
@@ -148,8 +148,7 @@ import {
   WorkspaceBreadcrumbItem,
   WorkspaceBreadcrumbSeparator,
 } from "../WorkspaceBreadcrumb";
-import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
-import { mateIsViewers } from "@t3tools/client-runtime/zerops/mateAccess";
+import { useWaitsOnViewer } from "~/zerops/useZeropsMateOwners";
 import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
 import { ZeropsRoleTag } from "./ZeropsEnvironmentRow";
 import { ZeropsHistoryView, type HistoryChange, type HistoryNames } from "./ZeropsHistoryView";
@@ -380,8 +379,8 @@ function useGroupMates(groupId: string): {
   const updates = useZeropsMateUpdateStates();
   const nowMs = useNowMs();
   const flow = useZeropsProjectFlowOptional()?.flows.get(groupId);
-  // Who is looking: only their own Mates wait on them (`mateIsViewers`).
-  const viewer = useZeropsSession().user?.id;
+  // Only the Mates HQ says wait on the viewer wait on them (`waitsOnViewer`).
+  const waitsOnViewer = useWaitsOnViewer();
   const mates = useMemo(() => {
     const candidates = heldCandidates(listing).rows;
     const tints = assignCandidateMateTints(candidates);
@@ -403,11 +402,11 @@ function useGroupMates(groupId: string): {
           mates: hqMates,
           tint: tints.get(item.project.id) ?? "slate",
           reviewWaits: mateReviewWaits(flow, item.project.id),
-          mine: mateIsViewers(item.project, viewer),
+          mine: waitsOnViewer(item.project.id),
           update: mateUpdateStatus(updates.of(item)),
         }),
       );
-  }, [activityOf, flow, groupId, hqMates, listing, updates, viewer, nowMs]);
+  }, [activityOf, flow, groupId, hqMates, listing, updates, waitsOnViewer, nowMs]);
   const patient = useListingPatience(listing);
   const notice = useMemo(
     () => candidatesNotice(listing, GROUP_MATES_SURFACE, nowMs, { patient }),
@@ -727,7 +726,7 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
     notLiveAtLeast: waiting.atLeast,
     canRelease: release.offered,
   });
-  const { mayAdd, writer } = useMayAddEnvironment()(groupId);
+  const offered = useEnvironmentOffers()(groupId);
   const addEnvironment = useAddEnvironment();
   const devstages = useDevstages(groupId);
   const pendingEnvironments = useGroupPendingEnvironments(groupId);
@@ -759,11 +758,14 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
         environments: environments.map((entry) => ({ id: entry.projectId, tier: entry.tier })),
         devstages,
         pending: pendingEnvironments,
-        halfMade: halfMadeHere.map((entry) => ({ id: entry.projectId, tier: entry.tier })),
+        halfMade: halfMadeHere.map((entry) => ({
+          id: entry.projectId,
+          tier: entry.tier,
+          finish: entry.finish,
+        })),
         recipeTiers: flow.recipeTiers,
         recipeRead: flow.recipeRead,
-        mayAdd,
-        writer,
+        offered: offered ?? { stage: false, production: false },
         productionRuns:
           production === undefined
             ? "unknown"
@@ -2361,7 +2363,7 @@ export function groupMateOf(input: {
   readonly mates?: ReadonlyMap<string, Pick<MateLiveView, "presence">> | null;
   readonly tint: MateTintId;
   readonly reviewWaits: boolean;
-  /** The viewer's own Mate (`mateIsViewers`). */
+  /** Its Mate waits on the viewer, as HQ says it (`waitsOnViewer`). */
   readonly mine: boolean;
   readonly update: MateUpdateStatus | null | undefined;
 }): GroupMate {

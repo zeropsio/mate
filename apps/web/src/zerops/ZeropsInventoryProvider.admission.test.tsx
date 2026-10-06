@@ -265,7 +265,7 @@ describe("ZeropsInventoryProvider grants", () => {
       page: async () => {
         const { AccountProduct } = await import("./__fixtures__/accountProduct");
         const { useAtomValue } = await import("@effect/atom-react");
-        const { shownHqMateOwnersAtom } = await import("@t3tools/client-runtime/data");
+        const { shownHqProjectPeopleAtom } = await import("@t3tools/client-runtime/data");
         const { seedHqNavigation } = await import("@t3tools/client-runtime/data/fixtures");
         const { useMatesInventory } = await import("./useMatesInventory");
         const { useAccountOperations } = await import("./accountOperations");
@@ -279,7 +279,7 @@ describe("ZeropsInventoryProvider grants", () => {
               projectId: "p1",
               clientUserId: "cu-dev",
             });
-          return `owner ${useAtomValue(shownHqMateOwnersAtom)["p1"]?.userId ?? "none"}`;
+          return `owner ${useAtomValue(shownHqProjectPeopleAtom)["p1"]?.owner?.userId ?? "none"}`;
         }
         return (
           <AccountProduct

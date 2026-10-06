@@ -2180,7 +2180,7 @@ describe("zeropsReadOnlyFooter", () => {
   it.each([
     ["a read answer: its strip, answered", "read-only", known, { readOnly: known, answered: true }],
     [
-      "a remembered answer: the strip, not answered yet",
+      "HQ's word alone: the strip, not answered yet",
       "read-only",
       null,
       { readOnly: known, answered: false },

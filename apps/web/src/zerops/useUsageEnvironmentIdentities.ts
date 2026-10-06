@@ -1,12 +1,12 @@
 /**
  * Who each usage environment belongs to (`usageEnvironmentIdentities.ts`),
- * off the same candidate listing, registered environments, HQ's people and
- * member list (for pictures) the left menu reads. Empty while nobody is
+ * off the same candidate listing, registered environments and HQ's owners the
+ * left menu reads. Empty while nobody is
  * signed in to Zerops; `owners` says whether that emptiness is final yet
  * (`usageOwnersStatus`).
  */
-import { shownHqMateOwnersAtom } from "@t3tools/client-runtime/data";
 import { useAtomValue } from "@effect/atom-react";
+import { shownHqProjectPeopleAtom } from "@t3tools/client-runtime/data";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { useMemo } from "react";
 
@@ -21,7 +21,6 @@ import {
 } from "./usageEnvironmentIdentities";
 import { useMatesSettled } from "./useMatesSettled";
 import { useZeropsCandidates } from "./useZeropsCandidates";
-import { useZeropsOrganizationMembers } from "./useZeropsMateOwners";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
 const NONE: UsageEnvironmentIdentities = new Map();
@@ -37,7 +36,6 @@ export function useUsageEnvironmentIdentities(): {
   const { listing } = useZeropsCandidates();
   const environments = useAtomValue(zeropsEnvironmentsAtom);
   const people = useAtomValue(hqPeopleAtom);
-  const mateOwners = useAtomValue(shownHqMateOwnersAtom);
   const hqAnswered = useAtomValue(hqNavigationAtom).live;
   const peopleStatus: UsagePeopleStatus =
     !signedIn || session.activeOrganization === null
@@ -47,10 +45,14 @@ export function useUsageEnvironmentIdentities(): {
         : hqAnswered
           ? "failed"
           : "loading";
-  const members = useZeropsOrganizationMembers({
-    clientId: session.activeOrganization?.id,
-    enabled: signedIn && people !== null && Object.keys(people).length > 0,
-  });
+  const projectPeople = useAtomValue(shownHqProjectPeopleAtom);
+  const mateOwners = useMemo(
+    () =>
+      Object.fromEntries(
+        Object.entries(projectPeople).map(([projectId, entry]) => [projectId, entry.owner]),
+      ),
+    [projectPeople],
+  );
   const viewerUserId = session.user?.id ?? null;
   const identities = useMemo(
     () =>
@@ -59,11 +61,10 @@ export function useUsageEnvironmentIdentities(): {
             candidates: heldCandidates(listing).rows,
             registeredOrigins: registeredZeropsOrigins(environments),
             owners: mateOwners,
-            members,
             viewerUserId,
           })
         : NONE,
-    [signedIn, listing, environments, mateOwners, members, viewerUserId],
+    [signedIn, listing, environments, mateOwners, viewerUserId],
   );
   const owners = usageOwnersStatus({
     session: session.status,
