@@ -61,7 +61,7 @@ export class HqScopes extends Context.Service<
   }
 >()("@t3tools/hq/hqScopes") {}
 
-/** PC may supply durable operation values here without changing the multiplexed socket. */
+/** Core binds Deploys' durable operations; isolated scope tests may substitute a reader. */
 export const HqOperationReader = Context.Reference<{
   readonly read?: (
     userId: string,

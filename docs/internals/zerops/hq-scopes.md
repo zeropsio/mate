@@ -61,7 +61,7 @@ to sign in manually. PA's HTTP refusal is `HQ_ZEROPS_REFUSED` (`403 zerops_refus
 | change     | `<repo>:<number>`: existing change detail value                                                                                                                                                                                                                                                                |
 | discussion | `<repo>:<number>`: `{ comments }`                                                                                                                                                                                                                                                                              |
 | attention  | `<projectId>`: `HqAttentionScopeValue`, including presence, today's overview and source attention                                                                                                                                                                                                              |
-| operation  | `<appId>:<operationId>`: values supplied by the operation reader                                                                                                                                                                                                                                               |
+| operation  | `<appId>:<operationId>`: durable `OperationRecord` values from `Deploys.operations(appId)`                                                                                                                                                                                                                     |
 
 Navigation has no recipes, repositories, releases or move destinations. Project `person` facts
 are already computed for the recipient: role, mayWrite, mine and unseen. Mine uses a project OWNER
@@ -97,16 +97,16 @@ live, stored and absent evidence. Overview persists as before; source attention 
 after Core restart. The link reader and scope value share that schema; there is no parallel
 structural attention codec.
 
-PC binds `HqOperationReader` with `read(userId, appId)` returning keyed operation values.
-Until bound, an operation scope answers a refused `unsupported` error with
-`operation_reader_not_installed`; it does not manufacture an empty result or delete retained keys.
-PB checks `read_change` access to the app before invoking the reader. PC supplies the operation
-records from `Deploys.operations(appId)`; bind the reader at integration and key records by
-`<appId>:<operationId>`. PC must authorize any narrower operation-specific facts within that read. Future explicit operation
-removals should extend the reader result rather than treating omission as deletion.
+Core provides `hqOperationReaderLayer` to `hqScopesLayer`, binding `HqOperationReader` to
+`Deploys.operations(appId)`. The hub checks the recipient's `read_change` access before reading
+operations and subscribes to `Deploys.changes` for revisioned updates. Each record is keyed by
+`<appId>:<operationId>` and carries its executor, kind, state, original handles, version IDs,
+retained evidence, steps and reason (`OperationRecord` in `apps/hq/src/operations.ts`). Successful
+and unresolved ends are delivered as values; unresolved evidence names the person and their next
+action. Omission never deletes a retained operation. Future explicit removals should extend the
+reader result. Isolated scope tests may replace the reader; an unbound reader refuses
+`unsupported` / `operation_reader_not_installed` rather than manufacturing an empty result.
 
-At the PC merge, provide the reader to `hqScopesLayer` before assembling `coreApp`, and use
-`Deploys.changes` for invalidation (the hub already subscribes to this stream). Resolve PC's deletion
-of `test/harness/coreWithDeployTimings.ts` by deleting it; retain `hqScopesLayer` in the surviving
-Core composition. Reconcile both lanes' shrinking `no-retired-mechanism.json` entries. The distinct
-`0046_*.sql` migration names coexist. PC reader wiring is deliberately deferred to that merge.
+The production Core composition is shared by the running-Core harness. The retired
+`test/harness/coreWithDeployTimings.ts` remains deleted. Both distinct `0046_*.sql` migrations
+coexist, and guard exceptions are reconciled against the combined source.

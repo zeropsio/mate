@@ -1,4 +1,5 @@
 import { hqScopesLayer } from "./hqScopes.ts";
+import { hqOperationReaderLayer } from "./hqOperations.ts";
 import { observationLayer } from "./observation.ts";
 /**
  * Core, composed once for `main.ts` and the tests: the routes served over its services, and the
@@ -158,7 +159,9 @@ const services = (options: CoreOptions) => {
       ),
     )
     .pipe((base) =>
-      hqScopesLayer(options.build, options.streamRecheck).pipe(Layer.provideMerge(base)),
+      hqScopesLayer(options.build, options.streamRecheck).pipe(
+        Layer.provideMerge(hqOperationReaderLayer.pipe(Layer.provideMerge(base))),
+      ),
     );
 };
 

@@ -29,7 +29,6 @@ import * as SqlClient from "effect/unstable/sql/SqlClient";
 import { Backup, directoryStore } from "../../src/backup.ts";
 import { Changes } from "../../src/changes.ts";
 import { coreApp } from "../../src/core.ts";
-import * as SqlClient from "effect/unstable/sql/SqlClient";
 import { OperationObserver, makeOperationWatch } from "../../src/operationWatch.ts";
 import { makeOperationWire } from "../../src/operationWire.ts";
 import { fakeOperationWatch } from "./operationWatch.ts";
@@ -387,7 +386,6 @@ export const startCore = (
       call,
       fake,
       url,
-      sql: Context.get(context, SqlClient.SqlClient),
       gitRoot,
       origin: `http://${base}`,
       stop,
