@@ -89,7 +89,7 @@ function addressesOf(
   services: ReadonlyArray<ServiceValue>,
   routings: ReadonlyArray<PublicRoutingValue>,
 ): Pick<PublicAccess, "routes" | "pending"> {
-  const live = new Map(derivePublicRoutes(project, services).map((route) => [route.url, route]));
+  const live = new Map<string, ZeropsPublicRoute>();
   const pending = new Map<string, ZeropsPublicRoute>();
   const byId = new Map(
     services
@@ -117,6 +117,10 @@ function addressesOf(
         }
       }
     }
+  // A service switch only corroborates publication. Without its routing, the expected address
+  // is still pending (including the gap between a routing delete and the service's off push).
+  for (const route of derivePublicRoutes(project, services))
+    if (!live.has(route.url) && !pending.has(route.url)) pending.set(route.url, route);
   return {
     routes: [...live.values()].sort(byServiceThenPort),
     pending: [...pending.values()].sort(byServiceThenPort),

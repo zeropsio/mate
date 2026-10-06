@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
 
+import {
+  RECORDED_ROUTING,
+  RECORDED_SERVICE,
+  REMOVED_ROUTING,
+  ROUTING_PROJECT,
+} from "../__fixtures__/publicRouting.ts";
 import { liveZerops, ORG, zeropsVersion } from "../__fixtures__/account.ts";
 import {
   projectRoutingsScope,
@@ -95,7 +101,13 @@ describe("publicAccess", () => {
   }>([
     {
       name: "the subdomain and a synced domain serve: both are live addresses",
-      inputs: [...navigation(), ...baselined(routingsScope(ORG), { r1: routing() })],
+      inputs: [
+        ...navigation(),
+        ...baselined(routingsScope(ORG), {
+          r0: routing({ domains: [{ domainName: SUBDOMAIN.host }] }),
+          r1: routing(),
+        }),
+      ],
       expected: {
         state: "ready",
         routes: [SUBDOMAIN, DOMAIN],
@@ -108,7 +120,10 @@ describe("publicAccess", () => {
       name: "a routing not synced yet is pending, never a live address",
       inputs: [
         ...navigation(),
-        ...baselined(routingsScope(ORG), { r1: routing({ isSynced: false }) }),
+        ...baselined(routingsScope(ORG), {
+          r0: routing({ domains: [{ domainName: SUBDOMAIN.host }] }),
+          r1: routing({ isSynced: false }),
+        }),
       ],
       expected: {
         state: "ready",
@@ -138,7 +153,10 @@ describe("publicAccess", () => {
       name: "a routing the listing let go serves nothing",
       inputs: [
         ...navigation(),
-        ...baselined(routingsScope(ORG), { r1: routing() }),
+        ...baselined(routingsScope(ORG), {
+          r0: routing({ domains: [{ domainName: SUBDOMAIN.host }] }),
+          r1: routing(),
+        }),
         {
           kind: "membership",
           scope: routingsScope(ORG),
@@ -174,7 +192,10 @@ describe("publicAccess", () => {
       name: "an outage keeps what was read: the routings stay while the link catches up",
       inputs: [
         ...navigation(),
-        ...baselined(routingsScope(ORG), { r1: routing() }),
+        ...baselined(routingsScope(ORG), {
+          r0: routing({ domains: [{ domainName: SUBDOMAIN.host }] }),
+          r1: routing(),
+        }),
         event(linkKeys.zerops(ORG), {
           kind: "fault",
           fault: { outcome: "transient", message: "socket closed" },
@@ -213,7 +234,10 @@ describe("publicAccess", () => {
       inputs: [
         ...navigation(),
         ...refused(routingsScope(ORG)),
-        ...baselined(projectRoutingsScope(ORG, "p1"), { r1: routing() }),
+        ...baselined(projectRoutingsScope(ORG, "p1"), {
+          r0: routing({ domains: [{ domainName: SUBDOMAIN.host }] }),
+          r1: routing(),
+        }),
       ],
       expected: {
         state: "ready",
@@ -237,5 +261,53 @@ describe("publicAccess", () => {
     expect(publicAccess.derive(readsOfState(state), { orgId: ORG, projectId: "p1" })).toEqual(
       expected,
     );
+  });
+});
+
+describe("recorded subdomain changes", () => {
+  it.each([
+    {
+      name: "routing removed before service push",
+      listed: false,
+      enabled: true,
+      live: 0,
+      pending: 1,
+    },
+    { name: "routing removed and service off", listed: false, enabled: false, live: 0, pending: 0 },
+    {
+      name: "routing created before service push",
+      listed: true,
+      enabled: false,
+      live: 1,
+      pending: 0,
+    },
+    { name: "routing and service both on", listed: true, enabled: true, live: 1, pending: 0 },
+  ])("$name", ({ listed, enabled, live, pending }) => {
+    const state = apply(emptyAccount, [
+      ...liveZerops({
+        running: [],
+        projects: [
+          { id: ROUTING_PROJECT, publicZone: "zone.prg1-zerops.zone", zeropsSubdomainHost: "demo" },
+        ],
+        services: [{ ...RECORDED_SERVICE, subdomainAccess: enabled }],
+      }),
+      ...baselined(routingsScope(ORG), { [REMOVED_ROUTING]: RECORDED_ROUTING }),
+      ...(listed
+        ? []
+        : [
+            {
+              kind: "membership",
+              scope: routingsScope(ORG),
+              generation: 1,
+              delta: { add: [], remove: [REMOVED_ROUTING] },
+            } satisfies AccountInput,
+          ]),
+    ]);
+    const access = publicAccess.derive(readsOfState(state), {
+      orgId: ORG,
+      projectId: ROUTING_PROJECT,
+    });
+    expect(access.routes).toHaveLength(live);
+    expect(access.pending).toHaveLength(pending);
   });
 });
