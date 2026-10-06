@@ -2770,6 +2770,51 @@ export function computeStableMessagesTimelineRows(
 }
 
 /**
+ * Whether two values the derivation built hold the same: what `Equal.equals`
+ * says of plain data, read without hashing it. The rows are rebuilt on every
+ * streamed update and mostly hold the same entries and messages by identity,
+ * so an identical branch ends the walk at once; hashing each fresh row walked
+ * every output and every long text it holds, on every update. What is not
+ * plain data — a Map, a Date, something with its own equality — is
+ * `Equal.equals`'s to say.
+ */
+export function sameValue(a: unknown, b: unknown, depth = 0): boolean {
+  if (a === b) return true;
+  if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) {
+    return typeof a === "number" && typeof b === "number" && Number.isNaN(a) && Number.isNaN(b);
+  }
+  // Data this deep is no row's: whatever it is, the general rule reads it.
+  if (depth > 32) return Equal.equals(a, b);
+  if (Array.isArray(a) || Array.isArray(b)) {
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+    for (let index = 0; index < a.length; index += 1) {
+      if (!sameValue(a[index], b[index], depth + 1)) return false;
+    }
+    return true;
+  }
+  if (!isPlainRecord(a) || !isPlainRecord(b)) return Equal.equals(a, b);
+  const keys = Reflect.ownKeys(a);
+  if (keys.length !== Reflect.ownKeys(b).length) return false;
+  for (const key of keys) {
+    if (!Object.hasOwn(b, key)) return false;
+    if (
+      !sameValue(
+        (a as Record<PropertyKey, unknown>)[key],
+        (b as Record<PropertyKey, unknown>)[key],
+        depth + 1,
+      )
+    )
+      return false;
+  }
+  return true;
+}
+
+function isPlainRecord(value: object): boolean {
+  const proto = Object.getPrototypeOf(value);
+  return (proto === Object.prototype || proto === null) && !(Equal.symbol in value);
+}
+
+/**
  * Whether a freshly derived row draws the same as the one already on screen,
  * so the list keeps the old object and the row does not re-render. Messages
  * compare by identity (a streamed message is a new object); everything the
@@ -2784,6 +2829,7 @@ function sameFold(a: FoldsFrom | undefined, b: FoldsFrom | undefined): boolean {
  * identity (a streamed message is a new object), the rest by what it holds.
  */
 function sameRecordItem(a: RecordItem, b: RecordItem): boolean {
+  if (a === b) return true;
   if (a.kind !== b.kind || a.key !== b.key || a.at !== b.at) return false;
   switch (a.kind) {
     case "note":
@@ -2801,11 +2847,12 @@ function sameRecordItem(a: RecordItem, b: RecordItem): boolean {
       return a.message === bp.message && a.words === bp.words && a.imageOnly === bp.imageOnly;
     }
     default:
-      return Equal.equals(a, b);
+      return sameValue(a, b);
   }
 }
 
 function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean {
+  if (a === b) return true;
   if (
     a.kind !== b.kind ||
     a.id !== b.id ||
@@ -2834,10 +2881,10 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
       return (
         a.live === br.live &&
         a.answering === br.answering &&
-        Equal.equals(a.now, br.now) &&
+        sameValue(a.now, br.now) &&
         // Its now line's clock and its worked line's effort.
-        Equal.equals(a.status, br.status) &&
-        Equal.equals(a.outcome, br.outcome) &&
+        sameValue(a.status, br.status) &&
+        sameValue(a.outcome, br.outcome) &&
         a.items.length === br.items.length &&
         a.items.every((item, index) => sameRecordItem(item, br.items[index]!))
       );
@@ -2851,7 +2898,7 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
     default:
       // The rest are rebuilt on every derive from fresh reads (operations,
       // work entries, landings): compare what they hold, not their identity.
-      return Equal.equals(a, b);
+      return sameValue(a, b);
   }
 }
 
