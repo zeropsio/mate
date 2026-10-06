@@ -15,23 +15,21 @@
 import { useEffect, useState } from "react";
 
 import { useNowMinute } from "~/hooks/useNowMinute";
+import { subscribeSecond } from "~/lib/secondTicker";
 
 export function useNowMs(): number {
   return Date.parse(`${useNowMinute()}:00Z`);
 }
 
 /**
- * The clock in milliseconds, moving once a second while `active`, for what counts seconds (a
+ * The clock in milliseconds, moving on each wall-clock second while `active`, for what counts seconds (a
  * running operation's elapsed time, a live read's age). It is state, never a `Date.now()` read in
  * the render: the React Compiler memoises such a read on the render's other inputs, so a
  * running card would keep the second it was first drawn at.
  */
 export function useSecondsNowMs(active: boolean): number {
   const [nowMs, setNowMs] = useState(() => Date.now());
-  useEffect(() => {
-    if (!active) return;
-    const id = setInterval(() => setNowMs(Date.now()), 1_000);
-    return () => clearInterval(id);
-  }, [active]);
+  // The one second clock (`subscribeSecond`): every counting surface ticks in the same pass.
+  useEffect(() => (active ? subscribeSecond(setNowMs) : undefined), [active]);
   return nowMs;
 }

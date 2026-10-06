@@ -141,7 +141,7 @@ import type { MateComing } from "~/zerops/mateComing";
 import { useZeropsProjectFlowOptional } from "~/zerops/projectFlowContext";
 import { useStopDeploymentDemand } from "~/zerops/accountForge";
 import { findInventoryProjectRef, InventoryContext } from "~/zerops/inventoryContext";
-import { useNowMs } from "~/zerops/useNowMs";
+import { useNowMs, useSecondsNowMs } from "~/zerops/useNowMs";
 import { useMateLinkedInHq } from "~/zerops/useMenuMateReadings";
 import type { FixProblem } from "~/zerops/fixRequest";
 import { useOpenReview } from "~/zerops/review";
@@ -3145,15 +3145,7 @@ function MateWorkingTime({
   readonly tint: MateTintId;
   readonly className?: string | undefined;
 }) {
-  const [nowMs, setNowMs] = useState(Date.now);
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setNowMs(Date.now());
-    }, 1000);
-    return () => {
-      clearInterval(timer);
-    };
-  }, []);
+  const nowMs = useSecondsNowMs(true);
   return (
     <span
       className={cn("menu-clock shrink-0 text-line leading-5 tabular-nums", className)}
@@ -3422,17 +3414,7 @@ function MateComingLine({ line }: { readonly line: MateBornLine }) {
 
 /** Now, stepping once a second while `ticking`: a step, never a continuous repaint (R6). */
 function useSecondTick(ticking: boolean): number {
-  const [nowMs, setNowMs] = useState(Date.now);
-  useEffect(() => {
-    if (!ticking) return;
-    const timer = setInterval(() => {
-      setNowMs(Date.now());
-    }, 1000);
-    return () => {
-      clearInterval(timer);
-    };
-  }, [ticking]);
-  return nowMs;
+  return useSecondsNowMs(ticking);
 }
 
 /**

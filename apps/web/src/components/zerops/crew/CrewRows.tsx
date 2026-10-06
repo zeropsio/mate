@@ -50,6 +50,7 @@ import { useUiStateStore } from "~/uiStateStore";
 import { agentActivitySnippet, threadAgentActivity } from "~/zerops/agentActivity";
 import { useCrewTry } from "~/zerops/crew/useCrewTry";
 import { createLiveStepPacer, type ShownLiveSteps, type LiveStepWords } from "~/zerops/liveStep";
+import { useSecondsNowMs } from "~/zerops/useNowMs";
 
 import { formatRelativeTimeLabel } from "../../../timestampFormat";
 import { compactSidebarTimeLabel } from "../../Sidebar.logic";
@@ -278,12 +279,7 @@ function RowLine({
 
 /** The row's right edge: its working clock in ink, ticking once a second, or when it last did something. */
 function RowTime({ slot }: { readonly slot: CrewRowSlot }) {
-  const [nowMs, setNowMs] = useState(Date.now);
-  useEffect(() => {
-    if (slot.kind !== "clock") return;
-    const timer = setInterval(() => setNowMs(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, [slot.kind]);
+  const nowMs = useSecondsNowMs(slot.kind === "clock");
   switch (slot.kind) {
     case "none":
       return null;
