@@ -174,8 +174,26 @@ const judgeProject = (
   membership: ZeropsOrganization,
 ): ProjectOutcome => {
   switch (standing.kind) {
-    case "listed":
-      return projectOutcome(project, standing.project, membership);
+    case "listed": {
+      // A listing row names the viewer's own grant without whose it is: theirs, as a grant.
+      const { viewerRoleCode, ...row } = standing.project;
+      const named = row.userRoles?.some(
+        ({ clientUserId }) => clientUserId === membership.membershipId,
+      );
+      return projectOutcome(
+        project,
+        viewerRoleCode === undefined || named === true
+          ? row
+          : {
+              ...row,
+              userRoles: [
+                ...(row.userRoles ?? []),
+                { clientUserId: membership.membershipId, roleCode: viewerRoleCode },
+              ],
+            },
+        membership,
+      );
+    }
     case "denied":
       return { kind: "denied", evidence: "direct-forbidden" };
     case "deleted":

@@ -3,11 +3,14 @@
  * services are the organization's services listing's, read for every project at once; what the
  * held inventory still demands is the Mate's container's variables (its setup marker and Mate
  * flag), read only for the Mates drawn: the projects page's, a project page's own, the left
- * menu's rows as they are mounted.
+ * menu's rows as they are mounted. Each drawn Mate's project's own row is held as well: only it
+ * names everybody's grants on the project, whose `OWNER` makes the Mate somebody's.
  */
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import { useAtomValue } from "@effect/atom-react";
+import { accountReadsAtom } from "@t3tools/client-runtime/data";
 import { isMateKind } from "@t3tools/shared/zeropsRoles";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { findInventoryProjectRef, projectAuthority, useZeropsInventory } from "./inventoryContext";
 import { useInterestLeases } from "./useInterestLeases";
@@ -45,6 +48,38 @@ export function useMatesInventory(projectIds: ReadonlyArray<string>): void {
       () => projects.map((project) => ({ kind: "project-inventory" as const, project })),
       [projects],
     ),
+  );
+  // Each row held once while its Mate is drawn: one drawn or let go moves no other's hold.
+  const demandDetail = useAtomValue(accountReadsAtom)?.demandDetail;
+  const rows = useRef(new Map<string, () => void>());
+  const heldBy = useRef(demandDetail);
+  useEffect(() => {
+    const held = rows.current;
+    // Another account's reads hold nothing of the one before.
+    if (heldBy.current !== demandDetail) {
+      for (const release of held.values()) release();
+      held.clear();
+      heldBy.current = demandDetail;
+    }
+    const drawn = new Set<string>(
+      demandDetail === undefined ? [] : projects.map((p) => p.projectId),
+    );
+    for (const [ownerId, release] of held) {
+      if (drawn.has(ownerId)) continue;
+      release();
+      held.delete(ownerId);
+    }
+    for (const ownerId of drawn) {
+      if (!held.has(ownerId))
+        held.set(ownerId, demandDetail!({ family: "project", listing: "project", ownerId }));
+    }
+  }, [demandDetail, projects]);
+  useEffect(
+    () => () => {
+      for (const release of rows.current.values()) release();
+      rows.current.clear();
+    },
+    [],
   );
 }
 

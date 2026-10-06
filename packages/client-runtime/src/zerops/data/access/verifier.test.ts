@@ -153,6 +153,33 @@ describe("the access verifier's round", () => {
     }),
   );
 
+  it.effect("judges a Developer's project on the own grant its listing row names", () =>
+    Effect.gen(function* () {
+      const developer: ZeropsUser = {
+        ...user,
+        clientUserList: [{ id: "membership", clientId: orgId, roleCode: "NO_ACCESS" }],
+      };
+      const events: GrantEvent[] = [];
+      const verifier = makeRestAccessVerifier({
+        client: { fetchUser: async () => developer },
+        standing: (ref) => ({
+          kind: "listed",
+          project: { ...project(ref.projectId), viewerRoleCode: "OWNER" },
+        }),
+        account,
+        onUser: () => {},
+      });
+      yield* verifier.verifyRound({
+        round: 1,
+        carried: [projectRef("a")],
+        report: (event) => Effect.sync(() => events.push(event)),
+      });
+      expect(events.find((event) => event.type === "ROUND_PROJECT")).toMatchObject({
+        outcome: { kind: "verified", access: { role: "OWNER", mutationsAllowed: true } },
+      });
+    }),
+  );
+
   it.effect.each([
     ["denied", "direct-forbidden"],
     ["deleted", "direct-not-found"],

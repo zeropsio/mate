@@ -195,7 +195,8 @@ describe("H: hosted client budgets", () => {
     );
 
     // Catches a per-project services or access read: at start, or repeated over an idle session
-    // that outlasts the old access grant's renewal.
+    // that outlasts the old access grant's renewal. Each drawn Mate's own project row is read once
+    // (and its preflight): the menu shows whose each Mate is, which only that row names.
     it.effect("an idle session reads no project's services or own row on its own", () =>
       Effect.gen(function* () {
         const s = yield* createScenario([installBudget]);
@@ -217,13 +218,16 @@ describe("H: hosted client budgets", () => {
         yield* s.then.noExternalNetwork;
         expect(servicesAtStart, "Per-project services reads at start").toBe(0);
         expect(servicesIdle, "Per-project services reads while idle").toBe(0);
-        expect(projectsAtStart, "Per-project own reads at start").toBe(0);
+        expect(projectsAtStart, "Own project rows at start: one per drawn Mate").toBe(
+          2 * names.length,
+        );
         expect(projectsIdle, "Per-project own reads while idle").toBe(0);
       }),
     );
 
     // Catches the per-project reads Mate s.r.o.'s start made on 2026-10-06 (229 requests): each
     // project's own row, its services and its public routing, read for no surface that shows them.
+    // Only a drawn Mate's own row is read, once (and its preflight): the menu shows whose it is.
     it.effect(
       "a Mate s.r.o.-like menu starts with no per-project row, services or routing read",
       () =>
@@ -237,13 +241,15 @@ describe("H: hosted client budgets", () => {
           yield* b.when.menuReady(names);
           yield* b.when.browserSettled;
           const own = b.measure.projectReads();
+          const others = b.measure.projectReads(["Staging", "Production", "Plain1", "Plain2"]);
           const services = b.measure.projectServiceReads();
           const routing = b.measure.projectRoutingReads();
           report(
-            `H start, 8 projects (4 Mates, stage, production, 2 plain), with preflights: GET project=${own}, GET service-stack=${services}, GET public-http-routing=${routing}`,
+            `H start, 8 projects (4 Mates, stage, production, 2 plain), with preflights: GET project=${own} (of which not a Mate's ${others}), GET service-stack=${services}, GET public-http-routing=${routing}`,
           );
           yield* s.then.noExternalNetwork;
-          expect(own, "Per-project own reads at start").toBe(0);
+          expect(own, "Own project rows at start: one per drawn Mate").toBe(2 * names.length);
+          expect(others, "Own rows of projects no Mate is drawn for").toBe(0);
           expect(services, "Per-project services reads at start").toBe(0);
           expect(routing, "Per-project public routing reads at start").toBe(0);
         }),

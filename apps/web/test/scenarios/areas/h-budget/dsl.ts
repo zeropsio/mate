@@ -79,9 +79,13 @@ export function budgets(s: Scenario) {
       /** One project's own services read, `GET /project/{id}/service-stack`, and its preflight. */
       projectServiceReads: () =>
         observation.browser.matching(/^(GET|OPTIONS) \/project\/[^/]+\/service-stack(\?|$)/u),
-      /** One project's own row, `GET /project/{id}`, and its preflight; never the search's. */
-      projectReads: () =>
-        observation.browser.matching(/^(GET|OPTIONS) \/project\/(?!search(\?|$))[^/?]+(\?|$)/u),
+      /** Projects' own rows, `GET /project/{id}`, and their preflights; never the search's. */
+      projectReads: (ids?: ReadonlyArray<string>) =>
+        observation.browser.matching(
+          ids === undefined
+            ? /^(GET|OPTIONS) \/project\/(?!search(\?|$))[^/?]+(\?|$)/u
+            : new RegExp(`^(GET|OPTIONS) /project/(${ids.join("|")})(\\?|$)`, "u"),
+        ),
       /** One project's public HTTP routing, `GET /project/{id}/public-http-routing`, and its preflight. */
       projectRoutingReads: () =>
         observation.browser.matching(/^(GET|OPTIONS) \/project\/[^/]+\/public-http-routing(\?|$)/u),

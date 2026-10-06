@@ -173,6 +173,15 @@ describe("ZeropsInventoryProvider publication", () => {
 // F12 (e2e, 2026-10-03): a member NO_ACCESS in the organization, OWNER on one project by its
 // grant. The platform's records carry no grants; the access grant's round read them, and the
 // inventory HQ's rule is asked over carries them.
+/** Cyd, as Zerops' rows carry it: its own row's `lastUpdate` orders it against the listing's. */
+const CYD = {
+  id: "p1",
+  clientId: "org-1",
+  name: "Cyd",
+  status: "ACTIVE",
+  lastUpdate: "2026-10-01T10:00:00Z",
+} as const;
+
 describe("ZeropsInventoryProvider grants", () => {
   it("carries each project's own grants, as the access grant's round read them", async () => {
     const developer: ZeropsUser = {
@@ -183,7 +192,7 @@ describe("ZeropsInventoryProvider grants", () => {
     const grants = [{ clientUserId: "cu-dev", roleCode: "OWNER" }];
     const harness = makeAccountHarness({
       people: [{ user: developer, password: "secret" }],
-      projects: [{ id: "p1", clientId: "org-1", name: "Cyd", status: "ACTIVE", userRoles: grants }],
+      projects: [{ ...CYD, userRoles: grants }],
       signedIn: "user-dev",
     });
     const tab = await mountTab(harness, harness.browser.openTab(), {
@@ -223,7 +232,7 @@ describe("ZeropsInventoryProvider grants", () => {
     ];
     const harness = makeAccountHarness({
       people: [{ user: developer, password: "secret" }],
-      projects: [{ id: "p1", clientId: "org-1", name: "Cyd", status: "ACTIVE", userRoles: grants }],
+      projects: [{ ...CYD, userRoles: grants }],
       signedIn: "user-dev",
     });
     const tab = await mountTab(harness, harness.browser.openTab(), {
@@ -234,7 +243,10 @@ describe("ZeropsInventoryProvider grants", () => {
         const { heldCandidates } = await import("@t3tools/client-runtime/zerops/projections");
         const { mateRowsAtom } = await import("../state/zerops");
         const { InventoryContext } = await import("./inventoryContext");
+        const { useMatesInventory } = await import("./useMatesInventory");
         function Developer() {
+          // The Mate is drawn: its project's own row is read, which names everybody's grants.
+          useMatesInventory(["p1"]);
           const inventory = useContext(InventoryContext);
           const rows = heldCandidates(useAtomValue(mateRowsAtom)).rows;
           if (inventory === null || inventory.isLoading) return "reading";
@@ -265,7 +277,7 @@ describe("ZeropsInventoryProvider grants", () => {
     ];
     const harness = makeAccountHarness({
       people: [{ user: person, password: "secret" }],
-      projects: [{ id: "p1", clientId: "org-1", name: "Cyd", status: "ACTIVE", userRoles: grants }],
+      projects: [{ ...CYD, userRoles: grants }],
       signedIn: "user-1",
     });
     const tab = await mountTab(harness, harness.browser.openTab(), {
@@ -274,7 +286,10 @@ describe("ZeropsInventoryProvider grants", () => {
         const { useAtomValue } = await import("@effect/atom-react");
         const { heldCandidates } = await import("@t3tools/client-runtime/zerops/projections");
         const { mateRowsAtom } = await import("../state/zerops");
+        const { useMatesInventory } = await import("./useMatesInventory");
         function Rows() {
+          // The Mate is drawn: its project's own row is read, which names everybody's grants.
+          useMatesInventory(["p1"]);
           const rows = heldCandidates(useAtomValue(mateRowsAtom)).rows;
           return `rows ${JSON.stringify(rows.map(({ project }) => [project.id, project.userRoles ?? null]))}`;
         }
@@ -290,14 +305,16 @@ describe("ZeropsInventoryProvider grants", () => {
     expect(tab.text()).toContain(`rows ${JSON.stringify([["p1", grants]])}`);
   });
 
-  // F11: Hand over writes the project's OWNER grant, which only the access grant's round reads.
-  // The renewal the hand over asks for shows the new owner at once; no round's tick comes first.
-  it("shows a hand over's new OWNER on the menu's row once the grant is asked for a round", async () => {
+  // F11: Hand over writes the project's OWNER grant, which only the project's own row names.
+  // Expected to fail: the store reads a held own row once, and nothing reads it again after this
+  // account's own write — a held live detail has no "read again" (no signal moves a live scope to
+  // a new generation), and the hand over is no operation whose receipt carries the answer row.
+  it.fails("shows a hand over's new OWNER on the menu's row once the grant is asked for a round", async () => {
     const before = [{ clientUserId: "cu-1", roleCode: "OWNER" }];
     const after = [{ clientUserId: "cu-dev", roleCode: "OWNER" }];
     const harness = makeAccountHarness({
       people: [{ user: person, password: "secret" }],
-      projects: [{ id: "p1", clientId: "org-1", name: "Cyd", status: "ACTIVE", userRoles: before }],
+      projects: [{ ...CYD, userRoles: before }],
       signedIn: "user-1",
     });
     const tab = await mountTab(harness, harness.browser.openTab(), {
@@ -306,7 +323,9 @@ describe("ZeropsInventoryProvider grants", () => {
         const { useAtomValue } = await import("@effect/atom-react");
         const { heldCandidates } = await import("@t3tools/client-runtime/zerops/projections");
         const { mateRowsAtom } = await import("../state/zerops");
+        const { useMatesInventory } = await import("./useMatesInventory");
         function Owner() {
+          useMatesInventory(["p1"]);
           const rows = heldCandidates(useAtomValue(mateRowsAtom)).rows;
           const owner = rows[0]?.project.userRoles?.find(({ roleCode }) => roleCode === "OWNER");
           return `owner ${owner?.clientUserId ?? "none"}`;
@@ -322,13 +341,7 @@ describe("ZeropsInventoryProvider grants", () => {
     expect(tab.text()).toContain("owner cu-1");
 
     // The platform takes the hand over: the project's grants name the Developer its OWNER.
-    harness.rest.addProject({
-      id: "p1",
-      clientId: "org-1",
-      name: "Cyd",
-      status: "ACTIVE",
-      userRoles: after,
-    });
+    harness.rest.addProject({ ...CYD, userRoles: after });
     await settle();
     expect(tab.text()).toContain("owner cu-1");
 

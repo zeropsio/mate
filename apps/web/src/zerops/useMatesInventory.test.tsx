@@ -14,7 +14,10 @@ import {
   type RuntimeInterestDescriptor,
   type ScopeAuthority,
 } from "@t3tools/client-runtime/zerops/data";
+import { RegistryContext } from "@effect/atom-react";
+import { accountReadsAtom } from "@t3tools/client-runtime/data";
 import * as Effect from "effect/Effect";
+import { AtomRegistry } from "effect/unstable/reactivity";
 import { act, createElement, useLayoutEffect } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -163,6 +166,45 @@ describe("useMatesInventory", () => {
     );
     await render([ADA, CY]);
     expect(runtime.held).toEqual(["p-cy"]);
+  });
+});
+
+describe("a drawn Mate's own project row", () => {
+  // Whose a Mate is — its project's OWNER grant — comes only with the project's own row: it is
+  // read while the Mate is drawn, and let go with it.
+  it("is held while the Mate is drawn, for Mates only", async () => {
+    const registry = AtomRegistry.make();
+    const rowsHeld: string[] = [];
+    /** Every hold taken, in order: a Mate still drawn is never held again. */
+    const holds: string[] = [];
+    registry.set(accountReadsAtom, {
+      data: {} as never,
+      orgId: "org-1",
+      demandDetail: (demand) => {
+        const key = `${demand.family}/${demand.listing}/${demand.ownerId}`;
+        rowsHeld.push(key);
+        holds.push(key);
+        return () => rowsHeld.splice(rowsHeld.indexOf(key), 1);
+      },
+    });
+    const probe = (candidates: ReadonlyArray<ZeropsCandidate>) =>
+      createElement(
+        RegistryContext.Provider,
+        { value: registry },
+        createElement(Probe, { candidates }),
+      );
+    await act(async () => {
+      tree = create(probe([ADA, BO, CY]));
+    });
+    expect(rowsHeld.toSorted()).toEqual(["project/project/p-ada", "project/project/p-cy"]);
+
+    await act(async () => tree?.update(probe([CY])));
+    expect(rowsHeld).toEqual(["project/project/p-cy"]);
+    expect(holds).toHaveLength(2);
+
+    await act(async () => tree?.unmount());
+    tree = undefined;
+    expect(rowsHeld).toEqual([]);
   });
 });
 
