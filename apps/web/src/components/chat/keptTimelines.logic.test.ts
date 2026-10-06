@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { keepTimelines, warmingTimeline, type KeptTimeline } from "./keptTimelines.logic";
+import {
+  keepTimelines,
+  keptRests,
+  warmingTimeline,
+  type KeptTimeline,
+} from "./keptTimelines.logic";
 
 const slots = (...entries: Array<[string, number]>): ReadonlyArray<KeptTimeline> =>
   entries.map(([key, openedAt]) => ({ key, openedAt }));
@@ -66,5 +71,32 @@ describe("warmingTimeline", () => {
     { case: "while the open one is still being placed", asked: "c", placing: true, warms: null },
   ])("$case", ({ asked, placing, warms }) => {
     expect(warmingTimeline({ asked, open: "b", kept, placing })).toBe(warms);
+  });
+});
+
+// A kept list rests unlaid only once nothing it reads can still need placing:
+// out of sight, nobody about to open it, no run going on, nothing read lately.
+describe("keptRests", () => {
+  const quietHidden = { hidden: true, readsLive: false, working: false, quiet: true };
+  it.each([
+    { name: "out of sight and gone quiet: it rests", input: quietHidden, rests: true },
+    { name: "shown: it is laid out", input: { ...quietHidden, hidden: false }, rests: false },
+    {
+      name: "someone rests on its menu row: laid out before the press",
+      input: { ...quietHidden, readsLive: true },
+      rests: false,
+    },
+    {
+      name: "a run going on in it reads again within the second: laid out",
+      input: { ...quietHidden, working: true },
+      rests: false,
+    },
+    {
+      name: "it read a moment ago: laid out until its list has placed it",
+      input: { ...quietHidden, quiet: false },
+      rests: false,
+    },
+  ])("$name", ({ input, rests }) => {
+    expect(keptRests(input)).toBe(rests);
   });
 });

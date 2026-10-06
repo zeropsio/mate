@@ -7,11 +7,14 @@
  * rows that come meanwhile are placed at its end before it shows again.
  *
  * Out of sight and nobody about to open it, a kept list reads its
- * conversation only as a turn starts or ends (`useWarmTimeline`'s hold), so a
- * run streaming in a Mate the person left costs nothing per word; resting on
- * its menu row lets it read live again, before the press. Once it has placed
- * what it read, it is not laid out until it shows (`content-visibility`): its
- * rows keep where they stand, and what moves in it is not restyled unseen.
+ * conversation at once as a turn starts or ends, and what streams there about
+ * once a second (`useWarmTimeline`'s hold), not on every word: whichever way
+ * the person comes back — the menu, ⌘K, a shortcut, back — its rows were
+ * placed out of sight at most a second behind. Resting on its menu row lets
+ * it read live again, before the press. Gone quiet — nothing read for a
+ * while, no run going on — it is not laid out until it shows
+ * (`content-visibility`, `keptRests`): its rows keep where they stand, and
+ * what moves in it is not restyled unseen.
  *
  * Not `<Activity mode="hidden">`: under it a list is `display: none` with
  * its effects gone, so a list warming (a conversation about to open) could
@@ -40,7 +43,13 @@ import {
   KeptTimelineContext,
   type KeptTimelineState,
 } from "./keptTimelineContext";
-import { keepTimelines, warmingTimeline, type KeptTimeline } from "./keptTimelines.logic";
+import {
+  KEPT_RESTS_AFTER_MS,
+  keepTimelines,
+  keptRests,
+  warmingTimeline,
+  type KeptTimeline,
+} from "./keptTimelines.logic";
 import { useWarmTimeline, type WarmTimelineProps } from "./useWarmTimeline";
 import { rememberedTimelineInset } from "./timelineInsets";
 import { MessagesTimeline } from "./MessagesTimeline";
@@ -219,12 +228,6 @@ export function KeptTimelines({
 
 const nothing = () => undefined;
 
-/**
- * How long a kept list stays laid out after it read its conversation: its
- * list measures and places the rows it took, a few frames, before it rests.
- */
-const KEPT_PLACES_MS = 600;
-
 /** A kept list at rest out of sight: skipped by layout and style until it shows. */
 const SKIPPED = { contentVisibility: "hidden" } as const;
 
@@ -291,14 +294,19 @@ const TimelineSlot = memo(function TimelineSlot({
   const opened = mode === "open" || mode === "remembered" || mode === "settling";
   if (opened && warmed !== null) setWarmed(null);
   const shown = mode === "open" || (mode === "remembered" && !changedAway);
-  // Kept out of sight with what it last read placed: not laid out until it shows.
-  const [placedRead, setPlacedRead] = useState<WarmTimelineProps | null>(null);
+  // Kept out of sight, gone quiet: not laid out until it shows.
+  const [quietSince, setQuietSince] = useState<WarmTimelineProps | null>(null);
   useEffect(() => {
     if (mode !== "hidden" || warmed === null) return;
-    const placed = setTimeout(() => setPlacedRead(warmed), KEPT_PLACES_MS);
-    return () => clearTimeout(placed);
+    const quiet = setTimeout(() => setQuietSince(warmed), KEPT_RESTS_AFTER_MS);
+    return () => clearTimeout(quiet);
   }, [mode, warmed]);
-  const skipped = mode === "hidden" && warmed !== null && placedRead === warmed;
+  const skipped = keptRests({
+    hidden: mode === "hidden",
+    readsLive,
+    working: warmed?.isWorking === true || warmed?.runningTurnId != null,
+    quiet: warmed !== null && quietSince === warmed,
+  });
   const props: TimelineProps | null = opened
     ? timeline
     : mode === "hidden"

@@ -4,94 +4,132 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 
 import { useHeld } from "./heldRead";
 
+const EVERY = 1000;
+
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.useFakeTimers();
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
-interface Step {
-  readonly live: { readonly words: string };
-  readonly hold: boolean;
-  readonly beat: string;
+interface Words {
+  readonly words: string;
 }
 
-function Probe({ step, seen }: { readonly step: Step; readonly seen: Array<string> }) {
-  const value = useHeld(step.live, step.hold, step.beat);
-  seen.push(value.words);
-  return null;
-}
-
-/** What each draw read, its last pass, through the steps. */
-async function readThrough(steps: ReadonlyArray<Step>) {
-  const read: string[] = [];
-  let renderer: ReactTestRenderer | undefined;
-  for (const step of steps) {
-    const seen: string[] = [];
-    await act(() => {
-      if (renderer === undefined) renderer = create(<Probe seen={seen} step={step} />);
-      else renderer.update(<Probe seen={seen} step={step} />);
-    });
-    read.push(seen.at(-1)!);
+/** A held reader drawn as its conversation changes; what it read is what it drew last. */
+function reader() {
+  const reads: Words[] = [];
+  function Probe({ live, hold, beat }: { live: Words; hold: boolean; beat: string }) {
+    reads.push(useHeld(live, hold, beat, EVERY));
+    return null;
   }
-  await act(() => renderer?.unmount());
-  return read;
+  let renderer: ReactTestRenderer | undefined;
+  return {
+    draw(words: string, { hold = true, beat = "turn-1 running" } = {}) {
+      const live = { words };
+      act(() => {
+        const node = <Probe beat={beat} hold={hold} live={live} />;
+        if (renderer === undefined) renderer = create(node);
+        else renderer.update(node);
+      });
+      return live;
+    },
+    wait(ms: number) {
+      act(() => vi.advanceTimersByTime(ms));
+    },
+    read: () => reads.at(-1)?.words,
+    readValue: () => reads.at(-1),
+    unmount: () => act(() => renderer?.unmount()),
+  };
 }
-
-const at = (words: string, hold: boolean, beat = "turn-1 running"): Step => ({
-  live: { words },
-  hold,
-  beat,
-});
 
 describe("useHeld", () => {
-  it.each([
-    {
-      name: "live, it reads every change",
-      steps: [at("a", false), at("ab", false), at("abc", false)],
-      read: ["a", "ab", "abc"],
-    },
-    {
-      name: "held, it keeps what stood as the hold began through the turn's words",
-      steps: [at("a", false), at("ab", true), at("abc", true), at("abcd", true)],
-      read: ["a", "ab", "ab", "ab"],
-    },
-    {
-      name: "held, it takes the turn's end",
-      steps: [at("a", true), at("ab", true), at("abc!", true, "turn-1 completed")],
-      read: ["a", "a", "abc!"],
-    },
-    {
-      name: "let go, it catches up at once",
-      steps: [at("a", true), at("ab", true), at("abc", false), at("abcd", false)],
-      read: ["a", "a", "abc", "abcd"],
-    },
-    {
-      name: "held again, it holds from where it was let go",
-      steps: [at("a", true), at("ab", false), at("abc", true), at("abcd", true)],
-      read: ["a", "ab", "abc", "abc"],
-    },
-  ])("$name", async ({ steps, read }) => {
-    expect(await readThrough(steps)).toEqual(read);
+  it("live, it reads every change", () => {
+    const page = reader();
+    for (const words of ["a", "ab", "abc"]) {
+      page.draw(words, { hold: false });
+      expect(page.read()).toBe(words);
+    }
+    page.unmount();
   });
 
-  it("hands back the very value it holds, so nothing derived from it is derived again", async () => {
+  // A run streaming in a Mate the person left: its words come many times a
+  // second; the held list takes them about once a second, and the last always.
+  it("held, it takes a burst of words at most once a wait, and the last one once the wait runs out", () => {
+    const page = reader();
+    page.draw("a");
+    page.wait(EVERY);
+    const drawnBefore: string[] = [];
+    for (const words of ["ab", "abc", "abcd", "abcde"]) {
+      page.draw(words);
+      drawnBefore.push(page.read()!);
+      page.wait(100);
+    }
+    // The first word after a quiet wait is taken in the same moment, after its
+    // draw; the rest wait their turn.
+    expect(drawnBefore).toEqual(["a", "ab", "ab", "ab"]);
+    page.wait(EVERY);
+    expect(page.read()).toBe("abcde");
+    page.unmount();
+  });
+
+  it("held, it takes a turn starting or ending at once", () => {
+    const page = reader();
+    page.draw("a");
+    page.draw("ab");
+    expect(page.read()).toBe("a");
+    page.draw("abc!", { beat: "turn-1 completed" });
+    expect(page.read()).toBe("abc!");
+    page.unmount();
+  });
+
+  it("let go, it catches up at once, and held again it holds from there", () => {
+    const page = reader();
+    page.draw("a");
+    page.draw("ab");
+    page.draw("abc", { hold: false });
+    expect(page.read()).toBe("abc");
+    page.draw("abcd");
+    page.draw("abcde");
+    expect(page.read()).toBe("abcd");
+    page.unmount();
+  });
+
+  // The guarantee a kept list stands on: whatever streamed while it was out
+  // of sight is what it holds a wait later, revealed by any way in.
+  it("after any number of words, a wait later it holds exactly the live value", () => {
+    const page = reader();
+    let live = page.draw("");
+    for (let index = 0; index < 37; index += 1) {
+      live = page.draw("word ".repeat(index + 1));
+      page.wait(40);
+    }
+    page.wait(EVERY);
+    expect(page.readValue()).toBe(live);
+    page.unmount();
+  });
+
+  it("holding still, it takes nothing again", () => {
+    const page = reader();
     const live = { words: "a" };
-    const values: unknown[] = [];
-    function Same({ step }: { readonly step: Step }) {
-      values.push(useHeld(step.live, step.hold, step.beat));
+    const reads: Words[] = [];
+    function Same() {
+      reads.push(useHeld(live, true, "b", EVERY));
       return null;
     }
-    let renderer: ReactTestRenderer | undefined;
-    await act(() => {
-      renderer = create(<Same step={{ live, hold: true, beat: "b" }} />);
+    let renderer!: ReactTestRenderer;
+    act(() => {
+      renderer = create(<Same />);
     });
-    await act(() =>
-      renderer!.update(<Same step={{ live: { words: "ab" }, hold: true, beat: "b" }} />),
-    );
-    expect(values.at(-1)).toBe(live);
-    await act(() => renderer?.unmount());
+    const settled = reads.length;
+    act(() => vi.advanceTimersByTime(EVERY * 5));
+    expect(reads).toHaveLength(settled);
+    expect(reads.at(-1)).toBe(live);
+    act(() => renderer.unmount());
+    page.unmount();
   });
 });

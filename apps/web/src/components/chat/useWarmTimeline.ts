@@ -29,7 +29,7 @@ import {
 } from "../../session-logic";
 import type { EnvironmentThread } from "@t3tools/client-runtime/state/models";
 
-import { useHeld } from "./heldRead";
+import { HELD_READ_EVERY_MS, useHeld } from "./heldRead";
 import { useThread, useThreadDetail, useThreadShell, useThreadStatus } from "../../state/entities";
 import { useEnvironmentThread } from "../../state/threads";
 import { deriveZeropsThreadModel } from "../../state/zerops";
@@ -100,8 +100,9 @@ export function warmReadBeat(thread: EnvironmentThread | null): string {
 /**
  * `openEnvironmentId` stands in for its pictures' environment until its key
  * is read. `hold`: a list out of sight that nobody is about to open reads its
- * conversation only as a turn starts or ends (`warmReadBeat`), never on every
- * word of a run streaming there; let go, it reads live at once.
+ * conversation at once as a turn starts or ends (`warmReadBeat`), and what
+ * streams there about once a second (`HELD_READ_EVERY_MS`), never on every
+ * word; let go, it reads live at once.
  */
 export function useWarmTimeline(
   threadKey: string | null,
@@ -113,16 +114,19 @@ export function useWarmTimeline(
     [threadKey],
   );
   const liveThread = useThread(ref);
+  const liveDetail = useThreadDetail(ref);
+  const liveShell = useThreadShell(ref);
+  const liveStatus = useThreadStatus(ref);
+  const live = useMemo(
+    () => ({ thread: liveThread, detail: liveDetail, shell: liveShell, status: liveStatus }),
+    [liveThread, liveDetail, liveShell, liveStatus],
+  );
   const read = useHeld(
-    {
-      thread: liveThread,
-      detail: useThreadDetail(ref),
-      shell: useThreadShell(ref),
-      status: useThreadStatus(ref),
-    },
+    live,
     // Until its conversation has loaded, it reads every change: it fills.
     hold && liveThread?.checkpoints !== undefined,
     warmReadBeat(liveThread),
+    HELD_READ_EVERY_MS,
   );
   const { thread, detail, shell, status } = read;
   const environmentId = ref?.environmentId ?? null;
