@@ -43,7 +43,8 @@ const project = (projectId: string, appId: string | null, mate = true) => ({
     waitsOnViewer: false,
     unseen: null,
   },
-  signers: {},
+  signedInNow: {},
+  everSignedIn: {},
 });
 
 const navigation = (

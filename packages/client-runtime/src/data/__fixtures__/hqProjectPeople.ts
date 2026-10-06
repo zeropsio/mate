@@ -15,7 +15,10 @@ export interface SeededProjectPerson {
   readonly ownerUserId?: string | null;
   readonly waitsOnViewer?: boolean;
   readonly mine?: boolean;
-  readonly signers?: HqNavigationProject["signers"];
+  /** Who is signed in to each login now. */
+  readonly signedInNow?: HqNavigationProject["signedInNow"];
+  /** Who last signed each login in; who is signed in now, unless a test says otherwise. */
+  readonly everSignedIn?: HqNavigationProject["everSignedIn"];
 }
 
 export interface SeededProjectPeople {
@@ -72,7 +75,8 @@ export function seedHqProjectPeople(
           waitsOnViewer: person.waitsOnViewer ?? false,
           unseen: null,
         },
-        signers: person.signers ?? {},
+        signedInNow: person.signedInNow ?? {},
+        everSignedIn: person.everSignedIn ?? person.signedInNow ?? {},
       },
     })),
     ...Object.entries(seed.people ?? {}).map(([userId, person]): Row => ({

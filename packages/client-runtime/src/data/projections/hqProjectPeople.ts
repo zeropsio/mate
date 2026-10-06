@@ -27,10 +27,10 @@ export interface HqProjectPeople {
   readonly owner: HqMateOwner | null;
   /** Its Mate waits on the reader: they signed its agent in (HQ's `waitsOnViewer`). */
   readonly waitsOnViewer: boolean;
-  /** Who is signed in to each agent's own login now, by Zerops user id: whose the composer is. */
-  readonly signedInNow: HqNavigationProject["signers"];
-  /** Who ever signed each agent's own login in, by Zerops user id: whether anybody has. */
-  readonly everSignedIn: HqNavigationProject["signers"];
+  /** Who is signed in to each login now, by login id: whose the composer is. */
+  readonly signedInNow: HqNavigationProject["signedInNow"];
+  /** Who last signed each login in, by login id, signed out since or not: whether anybody has. */
+  readonly everSignedIn: HqNavigationProject["everSignedIn"];
 }
 
 function ownerOf(read: ProjectionReads, orgId: string, userId: string | null): HqMateOwner | null {
@@ -49,7 +49,7 @@ export const hqProjectPeople: Projection<string, Readonly<Record<string, HqProje
       read.members(placementsScope(orgId)).ids.flatMap((projectId) => {
         const placement = read.fact("placement", projectId);
         if (placement.kind !== "known") return [];
-        const { person, signers } = placement.value;
+        const { person, signedInNow, everSignedIn } = placement.value;
         return [
           [
             projectId,
@@ -57,10 +57,8 @@ export const hqProjectPeople: Projection<string, Readonly<Record<string, HqProje
               owned: person.ownerUserId !== null,
               owner: ownerOf(read, orgId, person.ownerUserId),
               waitsOnViewer: person.waitsOnViewer,
-              // One record today, `signers`, says who ever signed in; HQ is splitting it into
-              // who is now and who ever was.
-              signedInNow: signers,
-              everSignedIn: signers,
+              signedInNow,
+              everSignedIn,
             },
           ],
         ];

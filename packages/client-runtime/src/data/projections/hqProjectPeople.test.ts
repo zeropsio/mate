@@ -21,7 +21,8 @@ const person = (fields: { ownerUserId: string | null; waitsOnViewer: boolean }) 
 const placement = (
   projectId: string,
   fields: Parameters<typeof person>[0],
-  signers: Record<string, string>,
+  signedInNow: Record<string, string>,
+  everSignedIn: Record<string, string> = signedInNow,
 ): Row => ({
   family: "placement",
   id: projectId,
@@ -33,12 +34,14 @@ const placement = (
     kind: "mate",
     mate: null,
     person: person(fields),
-    signers,
+    signedInNow,
+    everSignedIn,
   } as never,
 });
 const rows: ReadonlyArray<Row> = [
   placement("ada", { ownerUserId: "u-jan", waitsOnViewer: true }, { "claude-code": "u-jan" }),
-  placement("bob", { ownerUserId: "u-eva", waitsOnViewer: false }, { codex: "u-eva" }),
+  // Eva signed Codex out since: nobody holds it now, she did once.
+  placement("bob", { ownerUserId: "u-eva", waitsOnViewer: false }, {}, { codex: "u-eva" }),
   placement("nobody", { ownerUserId: null, waitsOnViewer: false }, {}),
   // HQ named an owner it sends no person record of: nobody is drawn.
   placement("ghost", { ownerUserId: "u-ghost", waitsOnViewer: false }, {}),
@@ -107,13 +110,13 @@ describe("hqProjectPeople", () => {
       },
     },
     {
-      name: "an owner without a picture",
+      name: "an owner without a picture, signed out since",
       project: "bob",
       expected: {
         owned: true,
         owner: { userId: "u-eva", name: "Eva", avatarUrl: null },
         waitsOnViewer: false,
-        signedInNow: { codex: "u-eva" },
+        signedInNow: {},
         everSignedIn: { codex: "u-eva" },
       },
     },

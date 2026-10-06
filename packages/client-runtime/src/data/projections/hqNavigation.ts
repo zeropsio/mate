@@ -62,7 +62,7 @@ function listed<F extends "hqApp" | "placement" | "hqPerson" | "hqPress">(
 /** A Mate's record as the old surfaces read it: what HQ leaves unsaid is absent. */
 function mateOf(
   mate: NonNullable<PlacementValue["mate"]>,
-  signers: PlacementValue["signers"],
+  everSignedIn: PlacementValue["everSignedIn"],
 ): HqMate {
   return {
     face: mate.face,
@@ -72,7 +72,7 @@ function mateOf(
     keyWider: mate.keyWider,
     ...(mate.birthId === undefined ? {} : { birthId: mate.birthId }),
     // Who last signed each of its agents in, as HQ's record keeps it (`Mine` without an owner).
-    ...(Object.keys(signers).length === 0 ? {} : { signers }),
+    ...(Object.keys(everSignedIn).length === 0 ? {} : { signers: everSignedIn }),
   };
 }
 
@@ -124,7 +124,8 @@ function structureOf(
                 projectId,
                 name: placement.name,
                 kind: placement.kind,
-                mate: placement.mate === null ? null : mateOf(placement.mate, placement.signers),
+                mate:
+                  placement.mate === null ? null : mateOf(placement.mate, placement.everSignedIn),
                 ...offersOf(placement),
               },
             ];
@@ -137,7 +138,7 @@ function structureOf(
             {
               projectId: placement.projectId,
               name: placement.name,
-              mate: mateOf(placement.mate, placement.signers),
+              mate: mateOf(placement.mate, placement.everSignedIn),
               ...offersOf(placement),
             },
           ],
