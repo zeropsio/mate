@@ -5,7 +5,11 @@
  */
 import type { ActivityProcess } from "@t3tools/client-runtime/zerops/activity/dto";
 import type { HistoryRead, ProjectProcesses } from "@t3tools/client-runtime/data";
-import { projectProcesses, projectsProcesses } from "@t3tools/client-runtime/data";
+import {
+  NOT_READ_PROCESSES,
+  projectProcesses,
+  projectsProcesses,
+} from "@t3tools/client-runtime/data";
 import { Atom } from "effect/unstable/reactivity";
 import { useMemo } from "react";
 
@@ -30,14 +34,7 @@ export const EMPTY_PROJECT_ACTIVITY_SNAPSHOT: ProjectActivitySnapshot = {
   processHistory: "unread",
 };
 
-const NOT_READ: ProjectProcesses = {
-  processes: undefined,
-  running: [],
-  live: false,
-  reconnecting: false,
-  history: "unread",
-};
-const NOT_READ_ATOM = Atom.make(NOT_READ);
+const NOT_READ_ATOM = Atom.make(NOT_READ_PROCESSES);
 const NONE_READ_ATOM = Atom.make<Readonly<Record<string, ProjectProcesses>>>({});
 
 export function projectActivitySnapshotOf(read: ProjectProcesses): ProjectActivitySnapshot {
