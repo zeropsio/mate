@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { liveZerops, ORG } from "./__fixtures__/account.ts";
 import { detailScopeOf } from "./demand.ts";
+import { linkKeys } from "./model.ts";
 import { mateVariablesScope } from "./families/mateVariables.ts";
 import {
   accountReadsAtom,
@@ -266,6 +267,21 @@ describe("readMateFlag", () => {
       },
     });
     expect(await flag).toBe("unknown");
+  });
+
+  it("with the organization's link down, unknown at once, never a wait", async () => {
+    const { registry, store } = mounted();
+    store.dispatch({
+      kind: "stream",
+      key: linkKeys.zerops(ORG),
+      now: 0,
+      event: {
+        kind: "fault",
+        fault: { outcome: "transient", message: "socket closed" },
+        jitter: 0,
+      },
+    });
+    expect(await settled(readMateFlag(registry, "zcp"))).toBe("unknown");
   });
 
   it("without a mounted account, unknown", async () => {

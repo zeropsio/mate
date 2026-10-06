@@ -8,6 +8,7 @@
 import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
 
 import type { DetailDemand } from "./demand.ts";
+import { linkKeys } from "./model.ts";
 import { mateVariablesScope } from "./families/mateVariables.ts";
 import { mateVariables, type MateVariables } from "./projections/mateVariables.ts";
 import { projectProcesses, type ProjectProcesses } from "./projections/processes.ts";
@@ -303,11 +304,15 @@ const variableNow = Atom.family((key: string) =>
       const value = read[which];
       return typeof value === "boolean" ? value : "unknown";
     }
-    return stream.phase === "refused" ||
-      stream.phase === "recovering" ||
-      stream.phase === "reauthenticating"
-      ? "unknown"
-      : "waiting";
+    // Waits only for a read the live link will make; a link down or refused is no answer.
+    const link = get(account.data.stream(linkKeys.zerops(account.orgId)));
+    if (link.phase !== "live") return "unknown";
+    return stream.phase === "connecting" ||
+      stream.phase === "baselining" ||
+      stream.phase === "stale" ||
+      stream.phase === "idle"
+      ? "waiting"
+      : "unknown";
   }),
 );
 
