@@ -10,7 +10,6 @@ import {
   entityKeyOf,
   makeZeropsApiOrigin,
   projectKeyOf,
-  queryKeyOf,
   serviceKeyOf,
   type AccountRef,
   type OrganizationRef,

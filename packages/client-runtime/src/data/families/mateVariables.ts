@@ -39,7 +39,10 @@ const Variable = Schema.Struct({
   content: Schema.optionalKey(Schema.NullOr(Schema.String)),
   sensitive: Schema.optionalKey(Schema.Boolean),
 });
-const Answer = Schema.Struct({ items: Schema.optionalKey(Schema.Array(Schema.Unknown)) });
+const Answer = Schema.Struct({
+  items: Schema.Array(Schema.Unknown),
+  totalHits: Schema.optionalKey(Schema.Number),
+});
 const decodeAnswer = Schema.decodeUnknownOption(Answer);
 const decodeVariable = Schema.decodeUnknownOption(Variable);
 
@@ -71,13 +74,22 @@ export const mateVariablesFamily: FamilySpec<"mateVariables"> = {
     decode: (answer) =>
       Option.match(decodeAnswer(answer), {
         onNone: () => null,
-        onSome: ({ items }) => {
+        onSome: ({ items, totalHits }) => {
+          if (totalHits !== undefined && totalHits > items.length) return null;
           let flag: boolean | null = null;
           let marker = false;
-          for (const raw of items ?? []) {
+          const seen = new Set<string>();
+          for (const raw of items) {
             const variable = Option.getOrUndefined(decodeVariable(raw));
-            if (variable?.key === MATE_ENABLED) flag = flagOn(variable);
-            if (variable?.key === SETUP_MARKER) marker = true;
+            if (variable === undefined) return null;
+            if (!KEYS.includes(variable.key)) continue;
+            if (seen.has(variable.key)) return null;
+            seen.add(variable.key);
+            if (variable.key === MATE_ENABLED) {
+              if (variable.content === undefined && variable.sensitive !== true) return null;
+              flag = flagOn(variable);
+            }
+            if (variable.key === SETUP_MARKER) marker = true;
           }
           return { flag, marker };
         },

@@ -61,7 +61,6 @@ import type {
   PlatformCommandResult,
   PlatformObservation,
   ProjectRef,
-  QueryDescriptor,
   QueryKey,
   ReadCompletionInput,
   ReadFailureKind,

@@ -39,6 +39,32 @@ describe("a Mate's container's variables, as one search answers them", () => {
       expected: { flag: null, marker: false },
     },
     { name: "an answer it cannot read", answer: "nonsense", expected: null },
+    { name: "a missing list proves no absence", answer: {}, expected: null },
+    {
+      name: "a damaged flag proves neither off nor absent",
+      answer: { items: [row("ZCP_MATE_ENABLED", 1)] },
+      expected: null,
+    },
+    {
+      name: "a flag without its content proves neither off nor absent",
+      answer: { items: [{ key: "ZCP_MATE_ENABLED" }] },
+      expected: null,
+    },
+    {
+      name: "a damaged marker does not disappear beside a valid flag",
+      answer: { items: [row("ZCP_MATE_ENABLED", "1"), row("MATE_SETUP_RUNTIMES", 123)] },
+      expected: null,
+    },
+    {
+      name: "two rows of the same key have no arrival-order winner",
+      answer: { items: [row("ZCP_MATE_ENABLED", "0"), row("ZCP_MATE_ENABLED", "1")] },
+      expected: null,
+    },
+    {
+      name: "a truncated list proves no absence",
+      answer: { items: [row("ZCP_MATE_ENABLED", "1")], totalHits: 2 },
+      expected: null,
+    },
   ])("$name", ({ answer, expected }) => {
     expect(decode(answer)).toEqual(expected);
   });
