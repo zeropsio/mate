@@ -100,9 +100,6 @@ export function budgets(s: Scenario) {
             ? /^(GET|OPTIONS) \/project\/(?!search(\?|$))[^/?]+(\?|$)/u
             : new RegExp(`^(GET|OPTIONS) /project/(${ids.join("|")})(\\?|$)`, "u"),
         ),
-      /** One project's public HTTP routing, `GET /project/{id}/public-http-routing`, and its preflight. */
-      projectRoutingReads: () =>
-        observation.browser.matching(/^(GET|OPTIONS) \/project\/[^/]+\/public-http-routing(\?|$)/u),
       /** The organization's Mate variables read by key, `POST /user-data/search`. */
       variableReads: () => observation.browser.matching(/^POST \/user-data\/search(\?|$)/u),
       hqSegments: () => observation.hq.segments,
