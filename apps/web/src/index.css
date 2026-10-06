@@ -2873,10 +2873,16 @@ code {
   transform-origin: 50% 96%;
 }
 
-/* A face stands where an icon would: a menu item that pulls its icons 2 px
-   into its padding pulls a face too. */
+/* A face stands where an icon would: a menu item does to a face what it does
+   to its icons (`[&>svg]` in ui/menu.tsx) — 2 px into its padding, at 80 %,
+   out of the pointer's way. */
 [data-slot="menu-item"] > [data-zerops-primitive="mate-face"] {
   margin-inline: calc(var(--spacing) * -0.5);
+  pointer-events: none;
+}
+
+[data-slot="menu-item"] > [data-zerops-primitive="mate-face"]:not([class*="opacity-"]) {
+  opacity: 0.8;
 }
 
 [data-mate-face-eye] {
