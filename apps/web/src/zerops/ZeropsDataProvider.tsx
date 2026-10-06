@@ -43,6 +43,7 @@ import { ZeropsFrameWait } from "../components/zerops/landing/ZeropsLandingShell
 import { bindAccountEnvironments, useAccountEnvironments } from "./accountEnvironments";
 import { bindAccountFlow } from "./accountForge";
 import { bindAccountInvalidations } from "./accountInvalidations";
+import { holdRegistryUntil } from "../rpc/atomRegistry";
 import { currentAccountEpoch, onAccountLifetimeClose } from "./accountLifetime";
 import { browserPlatformSignals, signalsVisibility } from "./browserSignals";
 import { makeBrowserDataScheduler } from "./dataScheduler";
@@ -286,8 +287,10 @@ export function ZeropsDataProvider({
           (built) => {
             // A cleanup before the account runtime stood closes it through `shutdown`.
             if (cancelled) return;
+            // The account's registry outlives its runtime's shutdown: a grant closing still
+            // publishes its last view.
             removeLifetimeClose = onAccountLifetimeClose(() => {
-              void shutdown(created, "logout");
+              holdRegistryUntil(shutdown(created, "logout"));
             });
             accountOwner.current = built;
             built.selectOrganization(activeId.current);

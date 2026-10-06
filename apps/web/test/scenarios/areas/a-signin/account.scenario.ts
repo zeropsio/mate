@@ -190,7 +190,7 @@ describe("A: sign-in, session and organizations", () => {
       }),
     );
     // Catches sign-out raising "registry is disposed" after clearing the account UI.
-    it.effect.fails("sign-out clears the account without registry disposal", () =>
+    it.effect("sign-out clears the account without registry disposal", () =>
       Effect.gen(function* () {
         const name = "sign-out clears the account without registry disposal";
         const reachedVisible = startExpectedFailure(name);
