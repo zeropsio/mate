@@ -178,6 +178,33 @@ describe("no kept session outlives the login it was opened under", () => {
     expect([...values.keys()].some((key) => key.endsWith(KEPT_SESSIONS_KEY))).toBe(false);
   });
 
+  // L08: the connection catalog's Mate logouts follow the same rule, from a closer of their own.
+  it.each([
+    ["ends them once this tab let the account go", false, ["ended"]],
+    ["leaves them to another tab that holds the account open", true, []],
+  ] as const)("a closer's session ends %s", async (_name, otherTabHolds, expected) => {
+    const locks = fakeLocks();
+    vi.stubGlobal("navigator", { locks });
+    if (otherTabHolds)
+      void locks.request(
+        "mate:account-open:person-1",
+        { mode: "shared" },
+        () => new Promise(() => {}),
+      );
+    const ends: string[] = [];
+    lifetime.openAccountLifetime("person-1");
+    // Registered after the kept sessions' own closer, so it runs before this tab lets go.
+    const unregister = lifetime.onAccountLifetimeClose(() =>
+      kept.endWhenAccountLeft(() => ends.push("ended")),
+    );
+
+    lifetime.closeAccountLifetime();
+    await settleLocks();
+    unregister();
+
+    expect(ends).toEqual(expected);
+  });
+
   it("the account's close ends every live kept session at its Mate, each once", async () => {
     lifetime.openAccountLifetime("person-1");
     kept.keptSessions.keep("p1:zcp", session("shop"));

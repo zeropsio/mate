@@ -27,7 +27,7 @@ import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 
 import { currentAccountId, onAccountLifetimeClose } from "../zerops/accountLifetime";
-import { endMateSession } from "../zerops/keptSessions";
+import { endMateSession, endWhenAccountLeft } from "../zerops/keptSessions";
 
 const jsonCatalog = Schema.fromJsonString(ConnectionCatalogDocument);
 const catalogError = (cause: unknown) =>
@@ -175,9 +175,12 @@ export const connectionStorageLayer = Layer.effectContext(
         ),
     });
     const unregisterLogout = onAccountLifetimeClose(() => {
-      // Start requests before disposing the Effect runtime. Each request uses
-      // a captured credential; none can touch a subsequent login's catalog.
-      for (const logout of accountCloseLogouts(currentCatalog, Date.now())) endMateSession(logout);
+      // The credentials are captured before the Effect runtime is disposed; none can touch a
+      // subsequent login's catalog. They end once no other tab holds the account open.
+      const logouts = accountCloseLogouts(currentCatalog, Date.now());
+      endWhenAccountLeft(() => {
+        for (const logout of logouts) endMateSession(logout);
+      });
     });
     yield* Effect.addFinalizer(() => Effect.sync(unregisterLogout));
     const targetStore = ConnectionTargetStore.of({

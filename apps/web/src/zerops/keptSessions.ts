@@ -61,7 +61,7 @@ export function endKeptSession(registration: BearerConnectionRegistration): void
 }
 
 /** Revokes a session HQ issued (`DELETE /api/session`); nothing waits on it, as for a Mate's. */
-export function endHqSession(session: KeptHqSession): void {
+function endHqSession(session: KeptHqSession): void {
   if (ended.has(session.token)) return;
   ended.add(session.token);
   endIssuedSession({
@@ -90,8 +90,15 @@ function webLocks(): LockManager | undefined {
   return typeof navigator === "undefined" ? undefined : navigator.locks;
 }
 
-/** This tab's hold on the account it has open, let go as the account closes. */
-let openHold: { readonly release: () => void; readonly released: Promise<void> } | null = null;
+/**
+ * This tab's hold on the account it has open. It stays the last one as the account closes, so a
+ * closer that runs before the hold is let go still waits for it.
+ */
+let hold: {
+  readonly accountId: string;
+  readonly release: () => void;
+  readonly released: Promise<void>;
+} | null = null;
 
 onAccountLifetimeOpen(() => {
   const locks = webLocks();
@@ -107,8 +114,26 @@ onAccountLifetimeOpen(() => {
       () => undefined,
       () => undefined,
     );
-  openHold = { release, released };
+  hold = { accountId, release, released };
 });
+
+/**
+ * Called as the account closes: runs `end` — the end of sessions the account kept — once this tab
+ * has let the account go and no other tab of this origin holds it open. A neighbouring tab still
+ * on the account uses those sessions, and its own close ends them. Without Web Locks, at once.
+ */
+export function endWhenAccountLeft(end: () => void): void {
+  const accountId = currentAccountId();
+  const locks = webLocks();
+  if (accountId === null) return;
+  if (locks === undefined) return end();
+  const own = hold?.accountId === accountId ? hold.released : Promise.resolve();
+  void own.then(() =>
+    locks.request(accountOpenLock(accountId), { ifAvailable: true }, (lock) => {
+      if (lock !== null) end();
+    }),
+  );
+}
 
 /** The sessions of one kind kept under `key`, still readable once their account has closed. */
 function keptUnder<T, E>(key: string, kind: KeptSessionKind<T, E>) {
@@ -127,23 +152,13 @@ function keptUnder<T, E>(key: string, kind: KeptSessionKind<T, E>) {
 // session it kept, whether or not this tab ever built a connection runtime or reached HQ; where
 // another tab still holds the account open, that tab's close does.
 onAccountLifetimeClose(() => {
-  const accountId = currentAccountId();
   const mateKey = accountStorageKey(MATE_SESSIONS.storageKey);
   const hqKey = accountStorageKey(HQ_SESSIONS.storageKey);
-  if (accountId === null || mateKey === null || hqKey === null) return;
-  const endKept = () => {
+  if (mateKey === null || hqKey === null) return;
+  endWhenAccountLeft(() => {
     for (const registration of keptUnder(mateKey, MATE_SESSIONS).drain())
       endKeptSession(registration);
     for (const session of keptUnder(hqKey, HQ_SESSIONS).drain()) endHqSession(session);
-  };
-  const hold = openHold;
-  openHold = null;
+  });
   hold?.release();
-  const locks = webLocks();
-  if (locks === undefined) return endKept();
-  void (hold?.released ?? Promise.resolve()).then(() =>
-    locks.request(accountOpenLock(accountId), { ifAvailable: true }, (lock) => {
-      if (lock !== null) endKept();
-    }),
-  );
 });
