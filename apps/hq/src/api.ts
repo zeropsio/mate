@@ -1169,7 +1169,12 @@ const routes = (
           const leader = yield* Leader;
           const ending = Effect.gen(function* () {
             if ((yield* leader.status).state !== "active") return "lead" as const;
-            return (yield* Effect.isSuccess(holderOf(token))) ? undefined : ("session" as const);
+            // Only a session HQ no longer takes ends it: one it cannot check now is still held.
+            return yield* holderOf(token).pipe(
+              Effect.as(undefined),
+              Effect.catchTag("SessionRequired", () => Effect.succeed("session" as const)),
+              Effect.orElseSucceed(() => undefined),
+            );
           });
           const socket = yield* request.upgrade;
           const ended = yield* serveStructureSocket(

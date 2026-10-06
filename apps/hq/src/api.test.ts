@@ -101,6 +101,9 @@ describe("HQ's failures", () => {
   );
 });
 
+/** A statement on Core's database, as an operator would run it. */
+const query = (url: string, statement: string) => rowsWhere(url, statement, () => true);
+
 const ALLOW = { allow: true } as const;
 const refusedFor = (reason: string) => ({ allow: false, reason }) as const;
 /** Each of `verbs` decided as `decision`. */
@@ -1569,6 +1572,25 @@ describe("HQ API", () => {
           silent.pings.answering = false;
           assert.strictEqual(yield* silent.closedWith, 4408);
         }),
+    );
+
+    // A session ends only when it expires or is revoked: a session check that cannot be read is
+    // HQ's trouble, and the socket stays its holder's.
+    it.effect("keeps a socket open through a session check that cannot be read", () =>
+      Effect.gen(function* () {
+        const { call, socket, url } = yield* startCore(true);
+        yield* untilHealth(call, "active");
+        const session = yield* sessionFor(call, "door-owner");
+        const open = yield* socket(`/api/structure/ws?ticket=${yield* ticketFor(call, session)}`);
+        yield* open.next("snapshot");
+        yield* query(url, "ALTER TABLE hq_session RENAME TO hq_session_unreadable");
+        // Several rechecks (200 ms each) meet the unreadable session relation.
+        yield* Effect.sleep(Duration.seconds(1));
+        yield* query(url, "ALTER TABLE hq_session_unreadable RENAME TO hq_session");
+        yield* call("POST", "/api/apps", { session, body: { name: "Kept" } });
+        const change = yield* open.next("change");
+        assert.strictEqual((change.value as { readonly name: string }).name, "Kept");
+      }),
     );
 
     it.effect(

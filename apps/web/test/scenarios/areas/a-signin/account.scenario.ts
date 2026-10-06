@@ -170,12 +170,9 @@ describe("A: sign-in, session and organizations", () => {
       }),
     );
 
-    // Targets transient HQ session-database failure permanently stopping live updates after recovery.
-    it.effect.fails("HQ session-check outage recovers without user intervention", () =>
+    // Catches a transient HQ session-database failure permanently stopping live updates after recovery.
+    it.effect("HQ session-check outage recovers without user intervention", () =>
       Effect.gen(function* () {
-        const reachedVisible = startExpectedFailure(
-          "HQ session-check outage recovers without user intervention",
-        );
         const s = yield* accountScenario(true);
         yield* s.given.project("Ada", { mate: true, app: "Shop" });
         yield* Effect.promise(() => s.clock.install());
@@ -184,7 +181,6 @@ describe("A: sign-in, session and organizations", () => {
         yield* sessionEnds(s, "outage");
         yield* s.when.hq.colleague.renamesProject("Shop", "HQ returned");
         yield* allowHqRetries(s, "HQ returned", s.receivedReplies);
-        reachedVisible();
         yield* s.then.menu
           .row("HQ returned")
           .appears({ within: 10_000 })
