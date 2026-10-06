@@ -8,11 +8,14 @@ import {
   holdServiceRead,
   NOT_READ_PROCESSES,
   NOT_READ_SERVICES,
+  NOT_READ_USAGE,
   projectProcessesAtom,
+  projectUsageAtom,
   projectServicesAtom,
   projectsServicesAtom,
 } from "./reads.ts";
 import { makeAccountStore } from "./store.ts";
+import { usageScope } from "./families/usage.ts";
 
 describe("projectProcessesAtom", () => {
   it("reads a project's processes through the mounted account, and nothing without one", () => {
@@ -47,6 +50,32 @@ describe("projectServicesAtom", () => {
 
     registry.set(accountReadsAtom, { data: store.data, orgId: null, demandDetail: () => () => {} });
     expect(registry.get(atom)).toEqual(NOT_READ_SERVICES);
+  });
+});
+
+describe("projectUsageAtom", () => {
+  it("reads a project's resources through the mounted account, and nothing without one", () => {
+    const registry = AtomRegistry.make();
+    const store = makeAccountStore(registry);
+    const atom = projectUsageAtom("p1");
+    expect(registry.get(atom)).toEqual(NOT_READ_USAGE);
+
+    registry.set(accountReadsAtom, { data: store.data, orgId: ORG, demandDetail: () => () => {} });
+    expect(registry.get(atom)).toEqual(NOT_READ_USAGE);
+    store.dispatch({
+      kind: "stream",
+      key: usageScope(ORG, "p1"),
+      now: 0,
+      event: {
+        kind: "fault",
+        jitter: 0,
+        fault: { outcome: "definitive-refusal", message: "HTTP 400" },
+      },
+    });
+    expect(registry.get(atom).failure).toBe("HTTP 400");
+
+    registry.set(accountReadsAtom, { data: store.data, orgId: null, demandDetail: () => () => {} });
+    expect(registry.get(atom)).toEqual(NOT_READ_USAGE);
   });
 });
 

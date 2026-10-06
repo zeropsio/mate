@@ -25,6 +25,7 @@ export { historyScope, runningScope, type ProcessValue } from "./families/proces
 export { projectsScope, type ProjectValue } from "./families/project.ts";
 export { servicesScope, type ServiceValue } from "./families/service.ts";
 export { projectServices, projectsServices, type ProjectServices } from "./projections/services.ts";
+export type { ProjectUsage } from "./projections/usage.ts";
 export {
   buildsUnderWay,
   projectProcesses,
@@ -56,10 +57,12 @@ export {
   listedProjectAtom,
   NOT_READ_PROJECTS,
   NOT_READ_SERVICES,
+  NOT_READ_USAGE,
   projectGoneAtom,
   projectProcessesAtom,
   projectServicesAtom,
   projectsServicesAtom,
+  projectUsageAtom,
   shownProjectsAtom,
   type AccountReads,
 } from "./reads.ts";

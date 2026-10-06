@@ -44,6 +44,13 @@ import type { AccountStore } from "../store.ts";
 import { retryDelayMs, type StreamEvent, type StreamFault } from "../streamMachine.ts";
 import type { LinkOptions } from "../supervisor.ts";
 
+/** A demanded query's registration on the receiver; `held` its frames until its answer lands. */
+interface QuerySubscription {
+  readonly scope: ScopeKey;
+  readonly generation: number;
+  held: Array<unknown> | null;
+}
+
 /** One open receiver: its frames, and requests made on its behalf. */
 export interface ZeropsLink {
   readonly receiverId: string;
@@ -102,7 +109,8 @@ const decodeIdentified = Schema.decodeUnknownOption(Identified);
 
 /** Each row its family decodes; a damaged row is refused alone, its neighbours admitted. */
 function rowsOf(family: Family, raw: ReadonlyArray<unknown>): ReadonlyArray<Row> {
-  const decode = familySpec(family).zerops?.decode;
+  const spec = familySpec(family);
+  const decode = spec.zerops?.decode ?? spec.zeropsQuery?.decode;
   if (decode === undefined) return [];
   return raw.flatMap((input): Row[] => {
     const row = decode(input);
@@ -291,10 +299,74 @@ export function zeropsNavigationLink(options: {
         });
 
       const subscriptions = new Map<string, Registration>();
+      /**
+       * Each demanded query's registration, by its subscription: the scope and generation it was
+       * made for, and its frames held back until its answer is the scope's baseline. A released
+       * one is forgotten — the platform cannot unsubscribe, so its frames go on arriving on this
+       * receiver and are dropped here.
+       */
+      const queries = new Map<string, QuerySubscription>();
+      const onQueryFrame = (query: QuerySubscription, data: unknown): Effect.Effect<void> => {
+        if (query.held !== null) {
+          query.held.push(data);
+          return Effect.void;
+        }
+        const { family, zeropsQuery } = scopeListing(query.scope).spec;
+        if (zeropsQuery?.frames === "listing") {
+          const listing = Option.getOrUndefined(decodeList(data));
+          return listing === undefined ? Effect.void : commitQuery(query, listing.items);
+        }
+        const updates = Option.getOrUndefined(decodeUpdates(data));
+        if (updates === undefined) return Effect.void;
+        const rows = rowsOf(family, updates.update);
+        // A bucket the window did not hold yet joins it: the hour that began.
+        store.dispatch({
+          kind: "rows",
+          scope: query.scope,
+          generation: query.generation,
+          method: "push",
+          via: "zerops-realtime",
+          rows,
+        });
+        return carryOut(
+          store.dispatch({
+            kind: "membership",
+            scope: query.scope,
+            generation: query.generation,
+            delta: { add: rows.map((row) => row.id), remove: [] },
+          }),
+        );
+      };
+      /** A query's whole answer, or a frame listing it again, as the scope's baseline. */
+      const commitQuery = (
+        query: QuerySubscription,
+        items: ReadonlyArray<unknown>,
+      ): Effect.Effect<void> => {
+        const rows = rowsOf(scopeListing(query.scope).spec.family, items);
+        store.dispatch({
+          kind: "baseline-begin",
+          scope: query.scope,
+          generation: query.generation,
+        });
+        return carryOut(
+          store.dispatch({
+            kind: "baseline-commit",
+            scope: query.scope,
+            generation: query.generation,
+            via: "zerops-realtime",
+            members: rows.map((row) => row.id),
+            rows,
+            // A row it cannot read is refused alone: what it lacks has not left the scope.
+            partial: rows.length < items.length,
+          }),
+        );
+      };
       const onFrame = (encoded: string): Effect.Effect<void> =>
         Effect.suspend(() => {
           const frame = Option.getOrUndefined(decodeFrame(encoded));
           if (frame === undefined || frame.type !== "search") return Effect.void;
+          const query = queries.get(frame.subscriptionName ?? "");
+          if (query !== undefined) return onQueryFrame(query, frame.data);
           const registration = subscriptions.get(frame.subscriptionName ?? "");
           if (registration === undefined) return Effect.void;
           const { scope } = registration;
@@ -371,10 +443,61 @@ export function zeropsNavigationLink(options: {
        * or an answer it cannot read, leaves that scope to retry alone on the one policy; a session
        * that ended ends the attempt.
        */
+      /**
+       * A demanded detail family Zerops observes as one query: registered on this receiver, its
+       * answer the scope's baseline. The owner refusing it refuses that scope alone; a session that
+       * ended ends the attempt.
+       */
+      const observeQuery = (scope: ScopeKey): Effect.Effect<void, StreamFault> =>
+        Effect.gen(function* () {
+          const source = scopeListing(scope).spec.zeropsQuery;
+          if (source === undefined) return;
+          yield* signal(scope, { kind: "attempt" });
+          const generation = streamOf(store.state(), scope).generation;
+          generations.set(scope, generation);
+          yield* signal(scope, { kind: "handshake" });
+          forgetQueries(scope);
+          const subscriptionName = options.makeId();
+          const query: QuerySubscription = { scope, generation, held: [] };
+          queries.set(subscriptionName, query);
+          const ownerId = scope.split(":").slice(3).join(":");
+          const answer = yield* link
+            .post(source.path, {
+              ...source.body({ orgId, ownerId }),
+              receiverId: link.receiverId,
+              subscriptionName,
+            })
+            .pipe(
+              Effect.catchIf((fault) => fault.outcome !== "recoverable-session", Effect.succeed),
+            );
+          const listing =
+            typeof answer === "object" && answer !== null && "outcome" in answer
+              ? (answer as StreamFault)
+              : (Option.getOrUndefined(decodeList(answer)) ??
+                corrupt("A query's baseline answer is malformed."));
+          if ("outcome" in listing) {
+            queries.delete(subscriptionName);
+            return yield* signal(scope, {
+              kind: "fault",
+              fault: listing,
+              jitter: yield* Random.next,
+            });
+          }
+          yield* commitQuery(query, listing.items);
+          yield* signal(scope, { kind: "baseline-committed" });
+          const held = query.held ?? [];
+          query.held = null;
+          for (const data of held) yield* onQueryFrame(query, data);
+        });
+      /** Forgets a scope's query registrations: their frames are dropped from now on. */
+      const forgetQueries = (scope: ScopeKey) => {
+        for (const [name, query] of queries) if (query.scope === scope) queries.delete(name);
+      };
+
       const observeDetail = (scope: ScopeKey): Effect.Effect<void, StreamFault> =>
         Effect.gen(function* () {
           const { spec, detail } = scopeListing(scope);
-          if (detail === null) return;
+          if (detail === null) return yield* observeQuery(scope);
           yield* signal(scope, { kind: "attempt" });
           generations.set(scope, streamOf(store.state(), scope).generation);
           yield* signal(scope, { kind: "handshake" });
@@ -439,7 +562,11 @@ export function zeropsNavigationLink(options: {
       const observeDemanded = Effect.gen(function* () {
         const now = yield* Clock.currentTimeMillis;
         const demanded = new Set(demands.scopes());
-        for (const scope of observed.keys()) if (!demanded.has(scope)) observed.delete(scope);
+        for (const scope of observed.keys())
+          if (!demanded.has(scope)) {
+            observed.delete(scope);
+            forgetQueries(scope);
+          }
         const fresh: Array<ScopeKey> = [];
         let wakeAt = Number.POSITIVE_INFINITY;
         for (const scope of demanded) {

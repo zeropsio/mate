@@ -46,6 +46,20 @@ export interface ZeropsFamilySource<Value> {
 }
 
 /**
+ * A detail family Zerops observes as one query for its owner (one project's current use): a
+ * registration whose answer is the scope's baseline. Its frames either list the whole scope again
+ * (`listing`, `data.items`) or carry the rows that changed (`rows`, `data.update`). Its rows carry
+ * no `_version`: each newer answer replaces the one before.
+ */
+export interface ZeropsQuerySource<Value> {
+  readonly path: string;
+  /** The search, without the receiver and the subscription the adapter adds. */
+  readonly body: (owner: ScopeOwner) => Readonly<Record<string, unknown>>;
+  readonly frames: "listing" | "rows";
+  readonly decode: (raw: unknown) => ZeropsRow<Value> | null;
+}
+
+/**
  * A further listing of a family's members, observed only while a screen demands it for one owner
  * (one project's newest processes): its own scope under the link, `…:<suffix>:<ownerId>`. Its
  * baseline is one read; its members' later changes reach the family through its own scope's
@@ -89,6 +103,8 @@ export interface FamilySpec<F extends Family> {
    */
   readonly indexes?: ReadonlyArray<FamilyIndex<FamilyValues[F]>>;
   readonly zerops?: ZeropsFamilySource<FamilyValues[F]>;
+  /** For a detail family Zerops observes as one query per owner, instead of `zerops`. */
+  readonly zeropsQuery?: ZeropsQuerySource<FamilyValues[F]>;
   /**
    * Whether a value is its entity's end, after which it never changes (a process finished): an
    * end that a read or a baseline brings replaces a value that is no end, though the read carries

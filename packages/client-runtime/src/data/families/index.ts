@@ -9,6 +9,8 @@ import { processFamily } from "./process.ts";
 import { projectFamily } from "./project.ts";
 import { versionFamily } from "./version.ts";
 import { serviceFamily } from "./service.ts";
+import { usageFamily } from "./usage.ts";
+import { usageHistoryFamily } from "./usageHistory.ts";
 import type { AnyFamilySpec, DetailListing } from "./spec.ts";
 
 /** The registry, checked once at startup: a family, a scope name and an index name each once. */
@@ -34,6 +36,8 @@ export const FAMILIES = defineFamilies([
   processFamily,
   versionFamily,
   serviceFamily,
+  usageFamily,
+  usageHistoryFamily,
 ]);
 
 const byFamily = new Map<string, AnyFamilySpec>(FAMILIES.map((spec) => [spec.family, spec]));
