@@ -674,6 +674,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     };
   }, [listRef, rows]);
 
+  // Which rows stand where: what the list's containers are drawn again for.
+  const rowOrder = useMemo(() => rows.map((row) => row.id).join("\n"), [rows]);
   const livePauseId = useMemo(
     () => rows.findLast((row) => row.kind === "pause" && row.resumedAt === null)?.id ?? null,
     [rows],
@@ -1508,13 +1510,16 @@ export const MessagesTimeline = memo(function MessagesTimeline({
             <LegendList<MessagesTimelineRow>
               ref={listRef}
               data={rows}
-              // Each container reads its row again whenever the rows change.
-              // LegendList (3.3.5) draws `data[indexByKey(key)]` once per
-              // container and keeps it until that container's own data
-              // changes: read while a row was being inserted, the index was
-              // the old one, and the container went on drawing the row that
-              // slid into it — a row twice, a card's edge gone (Rhea, run 11).
-              extraData={rows}
+              // Each container reads its row again whenever a row comes, goes
+              // or moves. LegendList (3.3.5) draws `data[indexByKey(key)]`
+              // once per container and keeps it until that container's own
+              // data changes: read while a row was being inserted, the index
+              // was the old one, and the container went on drawing the row
+              // that slid into it — a row twice, a card's edge gone (Rhea,
+              // run 11). A row that only changed in place is its container's
+              // own data, which the list hands it: the rest are not drawn
+              // again for it, on every streamed update.
+              extraData={rowOrder}
               keyExtractor={keyExtractor}
               getItemType={getItemType}
               renderItem={renderItem}
