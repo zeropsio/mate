@@ -364,12 +364,51 @@ function spilledReadPhrase(
   tracked: TrackedCommands,
   running: boolean,
 ): StepPhrase | null {
+  const spilled = spilledReadOf(entry);
+  if (spilled === null) return null;
+  const { verb, target } = spilledOutputPhrase(spilled, spilledTitle(spilled, tracked), running);
+  return { verb, targets: target === null ? [] : [target], more: 0, code: false };
+}
+
+const spilledReadByEntry = new WeakMap<WorkLogEntry, SpilledOutput | null>();
+
+/** The saved output a call reads, if it reads one — read once per entry, which never changes. */
+function spilledReadOf(entry: WorkLogEntry): SpilledOutput | null {
+  const known = spilledReadByEntry.get(entry);
+  if (known !== undefined) return known;
   const file = entry.callInput?.filePath ?? detailFile(entry.detail) ?? null;
   const spilled = file === null ? null : spilledOutputOf(file);
-  if (spilled === null) return null;
+  spilledReadByEntry.set(entry, spilled);
+  return spilled;
+}
+
+function spilledTitle(spilled: SpilledOutput, tracked: TrackedCommands): string | undefined {
   const titles = spilled.kind === "job" ? tracked.jobTitles : tracked.spillTitles;
-  const { verb, target } = spilledOutputPhrase(spilled, titles?.get(spilled.id), running);
-  return { verb, targets: target === null ? [] : [target], more: 0, code: false };
+  return titles?.get(spilled.id);
+}
+
+/**
+ * Everything `stepOf` reads of the thread's tracked commands for one call,
+ * beyond the call itself: a step drawn again with the same reads draws the
+ * same (`deriveMessagesTimelineRows` keeps a settled run's lines by them).
+ */
+export function trackedReadsOf(
+  entry: WorkLogEntry,
+  tracked: TrackedCommands,
+): readonly [
+  task: WorkLogEntry | undefined,
+  description: string | undefined,
+  tracker: boolean,
+  spilledTitle: string | undefined,
+] {
+  const track = tracked.byCommand.get(entry.id);
+  const spilled = spilledReadOf(entry);
+  return [
+    track?.task,
+    track?.description,
+    tracked.trackers.has(entry.id),
+    spilled === null ? undefined : spilledTitle(spilled, tracked),
+  ];
 }
 
 /**

@@ -127,6 +127,7 @@ import {
 import { MessageCopyButton } from "./MessageCopyButton";
 import {
   computeStableMessagesTimelineRows,
+  createMessagesTimelineRowsCache,
   conversationSpeaker,
   deriveMessagesTimelineRows,
   earlierTurnsAnchor,
@@ -536,9 +537,12 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // Whether something runs alongside the live run: its card is then drawn a
   // slice a row, its panel one of them.
   const alongside = dockDraws(working);
+  // What the last derive read and drew: a streamed update reads the live run again, no other.
+  const [rowsCache] = useState(createMessagesTimelineRowsCache);
   const rawRows = useMemo(
     () =>
       deriveMessagesTimelineRows({
+        cache: rowsCache,
         nowMs,
         newSince,
         timelineEntries,
@@ -571,6 +575,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       helperFinishes,
       alongside,
       provider,
+      rowsCache,
     ],
   );
   const stableRows = useStableRows(rawRows);
