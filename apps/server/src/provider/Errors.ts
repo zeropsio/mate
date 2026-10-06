@@ -203,12 +203,34 @@ export class ProviderSessionDirectoryPersistenceError extends Schema.TaggedError
   }
 }
 
+/**
+ * ProviderAdapterTurnEndedError - The send opened a turn and failed under it,
+ * and the adapter ended that turn itself (a failed `turn.completed`, its
+ * record kept by ingestion). Its failure is the turn's, never a failure to
+ * start: the caller says nothing more of it.
+ */
+export class ProviderAdapterTurnEndedError extends Schema.TaggedError<ProviderAdapterTurnEndedError>()(
+  "ProviderAdapterTurnEndedError",
+  {
+    provider: Schema.String,
+    threadId: Schema.String,
+    turnId: Schema.String,
+    detail: Schema.String,
+    cause: Schema.optional(Schema.Defect()),
+  },
+) {
+  override get message(): string {
+    return `Provider turn ended with its send's failure (${this.provider}) for thread ${this.threadId}, turn ${this.turnId}: ${this.detail}`;
+  }
+}
+
 export type ProviderAdapterError =
   | ProviderAdapterValidationError
   | ProviderAdapterSessionNotFoundError
   | ProviderAdapterSessionClosedError
   | ProviderAdapterRequestError
-  | ProviderAdapterProcessError;
+  | ProviderAdapterProcessError
+  | ProviderAdapterTurnEndedError;
 
 export type ProviderServiceError =
   | ProviderValidationError

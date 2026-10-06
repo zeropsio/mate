@@ -111,6 +111,7 @@ import {
   formatWorkDuration,
   operationLineWords,
   operationUnreturnedWords,
+  type BrokeOff,
   type BrowserStripModel,
   type IncidentModel,
   type OutcomeModel,
@@ -3064,6 +3065,48 @@ function NowLine({
         ) : null}
       </div>
       {status.live ? <RunTicker status={status} /> : (end ?? <span />)}
+      {/* A run that broke off ends on why, under its line, in the words the
+          server gave it: never a stack. Watched as it ends, its room opens
+          as the line settles — never a jump of the card. */}
+      {!status.live && status.brokeOff !== undefined ? (
+        <BrokeOffLine brokeOff={status.brokeOff} rises={risesIn} />
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Why a run broke off, under its line, and on the latest run what to do
+ * next. When a later run begins, what to do next leaves; its words keep their
+ * room, unseen, while the line stays on screen — a wrapped line never shrinks
+ * the card under the person's eyes. Drawn anew, the line is its reason alone.
+ */
+function BrokeOffLine({
+  brokeOff,
+  rises,
+}: {
+  readonly brokeOff: BrokeOff;
+  /** Watched as the run ends: its room opens as the line settles. */
+  readonly rises: boolean;
+}) {
+  const [heldNext, setHeldNext] = useState(brokeOff.next);
+  if (brokeOff.next !== null && brokeOff.next !== heldNext) setHeldNext(brokeOff.next);
+  return (
+    <div
+      className={cn("grid min-w-0 [grid-column:2/-1]", rises && "motion-safe:animate-room-open")}
+      data-run-broke-off
+    >
+      <p className="min-h-0 min-w-0 overflow-hidden pt-0.5 text-sm leading-5 text-status-failed-text">
+        {brokeOff.reason}
+        {heldNext === null ? null : (
+          <span
+            aria-hidden={brokeOff.next === null ? true : undefined}
+            className={brokeOff.next === null ? "invisible" : undefined}
+          >
+            {` ${heldNext}`}
+          </span>
+        )}
+      </p>
     </div>
   );
 }

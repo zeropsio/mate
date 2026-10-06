@@ -2,6 +2,8 @@ import { describe, expect, it } from "@effect/vitest";
 import { TurnId } from "@t3tools/contracts";
 
 import {
+  agentStoppedUnexpectedly,
+  brokeOffReason,
   hasUnseenCompletion,
   kindForAwarenessPhase,
   mateMarkStateForThread,
@@ -110,5 +112,43 @@ describe("thread status facts", () => {
       hasUnseenCompletion({ latestTurn: turn, lastVisitedAt: "2026-03-09T10:04:00.000Z" }),
     ).toBe(true);
     expect(hasUnseenCompletion({ latestTurn: turn })).toBe(false);
+  });
+});
+
+describe("a run that broke off", () => {
+  it.each([
+    [
+      "claudeAgent",
+      "Claude Code stopped unexpectedly. Send a message to pick up where it left off.",
+    ],
+    ["codex", "Codex stopped unexpectedly. Send a message to pick up where it left off."],
+    ["cursor", "Cursor stopped unexpectedly. Send a message to pick up where it left off."],
+    ["opencode", "OpenCode stopped unexpectedly. Send a message to pick up where it left off."],
+    ["grok", "Grok stopped unexpectedly. Send a message to pick up where it left off."],
+    [
+      "antigravity",
+      "Antigravity stopped unexpectedly. Send a message to pick up where it left off.",
+    ],
+    ["someday", "The agent stopped unexpectedly. Send a message to pick up where it left off."],
+  ])("says %s stopped in plain words", (driver, words) => {
+    expect(agentStoppedUnexpectedly(driver)).toBe(words);
+  });
+
+  it.each([
+    [
+      "Codex stopped unexpectedly. Send a message to pick up where it left off.",
+      "Codex stopped unexpectedly.",
+    ],
+    [
+      "Claude's sign-in has expired. Sign Claude in again, then send a message to pick up where it left off.",
+      "Claude's sign-in has expired.",
+    ],
+    ["API Error: 500 Internal server error", "API Error: 500 Internal server error"],
+    [
+      "Send a message to pick up where it left off.",
+      "Send a message to pick up where it left off.",
+    ],
+  ])("keeps only why on an earlier run: %s", (words, reason) => {
+    expect(brokeOffReason(words)).toBe(reason);
   });
 });

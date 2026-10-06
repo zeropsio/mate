@@ -55,6 +55,7 @@ import {
   type OutcomeModel,
   type SlashCommand,
   type Stretch,
+  type BrokeOff,
   type WorkLineFace,
 } from "./conversation.logic";
 import {
@@ -477,6 +478,8 @@ export interface RunStatus {
   readonly waitingSince: string | null;
   /** It did something — a call, a helper, an operation: it "worked", never only "thought". */
   readonly worked: boolean;
+  /** It broke off: what its card says under its line (`ConversationTurn.brokeOff`). */
+  readonly brokeOff?: BrokeOff | undefined;
 }
 
 type MessagesTimelineRowBody =
@@ -2445,6 +2448,7 @@ export function deriveMessagesTimelineRows(input: {
       face: waiting ? "working" : stretchFace({ stretch: last, turn, pausedHere }),
       startedAt: first.startedAt,
       endedAt: waiting ? null : last.endedAt,
+      ...(turn.brokeOff === null || waiting ? {} : { brokeOff: turn.brokeOff }),
       ...waitedOn(turn),
       // A question it asked is work too: a run that only asked read "thought".
       worked:

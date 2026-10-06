@@ -20,6 +20,28 @@ const signalled = (signal: string) =>
 
 const NEXT = "Send a message to pick up where it left off.";
 
+/** What a Bun-built Claude Code writes to stderr as it aborts (its crash handler). */
+const BUN_REPORT = (panic: string) =>
+  [
+    "============================================================",
+    "Bun v1.3.2 (b131639c) Linux x64 (baseline)",
+    "Linux Kernel v6.1.0 | glibc v2.36",
+    "CPU: sse42 popcnt avx avx2",
+    `Args: "claude" "--mcp-config" "{\\"zcp\\":{\\"headers\\":{\\"authorization\\":\\"Bearer ${HEX40}\\"}}}"`,
+    "Features: jsc spawn(4) fetch(212) abort_signal(9)",
+    "Elapsed: 3661042ms | User: 912345ms | Sys: 81234ms",
+    "RSS: 1.95GB | Peak: 2.10GB | Commit: 1.95GB | Faults: 12 | Machine: 2.15GB",
+    "",
+    `panic(main thread): ${panic}`,
+    "oh no: Bun has crashed. This indicates a bug in Bun, not your code.",
+    "",
+    "To send a redacted crash report to Bun's team,",
+    "please file a GitHub issue using the link below:",
+    "",
+    ` https://bun.report/1.3.2/lr1b131639cAggggE+7X${"A".repeat(40)}`,
+    "",
+  ].join("\n");
+
 describe("describeClaudeStreamFailure", () => {
   const cases: ReadonlyArray<{
     readonly name: string;
@@ -37,40 +59,57 @@ describe("describeClaudeStreamFailure", () => {
       reason: "Claude Code ran out of memory.",
     },
     {
+      name: "Bun's own crash report, out of memory",
+      error: signalled("SIGABRT"),
+      stderr: `${BUN_REPORT("Bun has run out of memory.")}`,
+      reason: "Claude Code ran out of memory.",
+    },
+    {
+      name: "Bun's own crash report, a fault",
+      error: signalled("SIGABRT"),
+      stderr: `${BUN_REPORT("Segmentation fault at address 0x0")}`,
+      reason: "Claude Code stopped unexpectedly.",
+    },
+    {
+      name: "aborted with nothing on stderr",
+      error: signalled("SIGABRT"),
+      reason: "Claude Code stopped unexpectedly.",
+    },
+    {
       name: "killed by the system, an overloaded API line beside it",
       error: signalled("SIGKILL"),
       stderr: "API Error: 529 overloaded, retrying\n",
-      reason: "Claude Code was stopped by the system (SIGKILL), most often for lack of memory.",
+      reason: "Claude Code was stopped by the system, most often for lack of memory.",
     },
     {
       name: "an exit code over a stack that names a status",
       error: exited(1),
       stderr: "TypeError: x is undefined\n    at handleError (/$bunfs/root/claude:512:33)\n",
-      reason: "Claude Code exited (code 1).",
+      reason: "Claude Code stopped unexpectedly.",
     },
     {
       name: "an exit code over a line that says 500ms",
       error: exited(1),
       stderr: "Error: ENOENT: no such file, status 500ms\n",
-      reason: "Claude Code exited (code 1).",
+      reason: "Claude Code stopped unexpectedly.",
     },
     {
       name: "a signal over an MCP server's own hang-up",
       error: signalled("SIGTERM"),
       stderr: "[MCP] zcp: Error: socket hang up (recovered)\n",
-      reason: "Claude Code was stopped (SIGTERM).",
+      reason: "Claude Code stopped unexpectedly.",
     },
     {
       name: "a signal over an MCP server's 502",
       error: signalled("SIGTERM"),
       stderr: 'MCP server "zcp" error: HTTP 502 Bad Gateway\n',
-      reason: "Claude Code was stopped (SIGTERM).",
+      reason: "Claude Code stopped unexpectedly.",
     },
     {
       name: "an exit over a parse error",
       error: exited(1),
       stderr: "SyntaxError: Unexpected token } in JSON at position 512\n",
-      reason: "Claude Code exited (code 1).",
+      reason: "Claude Code stopped unexpectedly.",
     },
     {
       name: "an expired sign-in",
@@ -142,6 +181,26 @@ describe("describeClaudeStreamFailure", () => {
     });
   });
 
+  it("logs what Bun's crash report says, never its arguments or its link", () => {
+    const failure = describeClaudeStreamFailure({
+      error: signalled("SIGABRT"),
+      stderr: BUN_REPORT("Bun has run out of memory."),
+    });
+    expect(failure.log).toEqual({
+      error: "Claude Code process terminated by signal SIGABRT",
+      exitCode: null,
+      signal: "SIGABRT",
+      crashLines: [
+        "Bun v1.3.2 (b131639c) Linux x64 (baseline)",
+        "Elapsed: 3661042ms | User: 912345ms | Sys: 81234ms",
+        "RSS: 1.95GB | Peak: 2.10GB | Commit: 1.95GB | Faults: 12 | Machine: 2.15GB",
+        "panic(main thread): Bun has run out of memory.",
+        "oh no: Bun has crashed. This indicates a bug in Bun, not your code.",
+      ],
+      stack: null,
+    });
+  });
+
   it("logs a defect's own message and stack", () => {
     const defect = new TypeError("Cannot read properties of undefined (reading 'type')");
     const failure = describeClaudeStreamFailure({ error: defect, stderr: "", defect: true });
@@ -186,6 +245,10 @@ describe("crashLines never lets a secret through", () => {
     `FATAL ERROR: ${ANT}`,
     `API Error: 401 ${ANT}`,
     `Claude Code process exited with code 1. stderr: ${HEX40}`,
+    `panic(main thread): token=${HEX40}`,
+    `oh no: Bun has crashed ${GH}`,
+    `Bun v1.3.2 (b131639c) Linux x64 ${ANT}`,
+    `RSS: 1.95GB | ${PASS}`,
   ];
   for (const line of leaks) {
     it(line.slice(0, 48), () => {

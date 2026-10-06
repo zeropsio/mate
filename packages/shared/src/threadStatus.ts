@@ -1,7 +1,9 @@
-import type {
-  OrchestrationLatestTurn,
-  OrchestrationSession,
-  OrchestrationThreadShell,
+import {
+  PROVIDER_DISPLAY_NAMES,
+  type OrchestrationLatestTurn,
+  type OrchestrationSession,
+  type OrchestrationThreadShell,
+  type ProviderDriverKind,
 } from "@t3tools/contracts";
 import type { RelayAgentAwarenessPhase } from "@t3tools/contracts/relay";
 import type { MateMarkState } from "./brand.ts";
@@ -211,4 +213,45 @@ export function kindForAwarenessPhase(phase: RelayAgentAwarenessPhase): ThreadSt
     case "stale":
       return "idle";
   }
+}
+
+// ---------------------------------------------------------------------------
+// A run that broke off
+// ---------------------------------------------------------------------------
+
+/** What the person does next about a run that broke off: said on the latest run only. */
+export const PICK_UP_NEXT = "Send a message to pick up where it left off.";
+
+/** The agent as the person knows it: the product it runs, not its driver's id. */
+const AGENT_NAMES: Partial<Record<string, string>> = { claudeAgent: "Claude Code" };
+
+/**
+ * What the conversation says when an agent's process died in the middle of
+ * its turn, whatever the driver: that it stopped, and what to do next. Its
+ * exit code, signal and stderr are the log's, never the person's.
+ */
+export function agentStoppedUnexpectedly(provider: ProviderDriverKind | string): string {
+  const name =
+    AGENT_NAMES[provider] ?? PROVIDER_DISPLAY_NAMES[provider as ProviderDriverKind] ?? "The agent";
+  return `${name} stopped unexpectedly. ${PICK_UP_NEXT}`;
+}
+
+/** What the conversation says of a picture the agent could not be given. */
+export const ATTACHED_PICTURE_UNREADABLE =
+  "A picture you attached could not be read. Attach it again and send.";
+
+/** What the conversation says of a file the agent could not be given. */
+export const ATTACHED_FILE_UNREADABLE =
+  "A file you attached could not be read. Attach it again and send.";
+
+/** The trailing sentence that says what to do next about a run that broke off. */
+const NEXT_STEP = /\s*[^.!?]*pick up where it left off\.$/u;
+
+/**
+ * Why a run broke off, without what to do next: an earlier run, once a later
+ * one followed, says only what happened ("Codex stopped unexpectedly.").
+ */
+export function brokeOffReason(words: string): string {
+  const reason = words.replace(NEXT_STEP, "").trim();
+  return reason.length > 0 ? reason : words;
 }

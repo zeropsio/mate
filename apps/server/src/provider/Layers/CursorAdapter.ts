@@ -48,7 +48,10 @@ import {
   ProviderAdapterRequestError,
   ProviderAdapterSessionNotFoundError,
   ProviderAdapterValidationError,
+  ProviderAdapterTurnEndedError,
+  type ProviderAdapterError,
 } from "../Errors.ts";
+import { ATTACHED_PICTURE_UNREADABLE } from "@t3tools/shared/threadStatus";
 import { acpPermissionOutcome, mapAcpToAdapterError } from "../acp/AcpAdapterSupport.ts";
 import type * as AcpSessionRuntime from "../acp/AcpSessionRuntime.ts";
 import {
@@ -478,7 +481,10 @@ export function makeCursorAdapter(
       return Effect.succeed(ctx);
     };
 
-    const stopSessionInternal = (ctx: CursorSessionContext) =>
+    const stopSessionInternal = (
+      ctx: CursorSessionContext,
+      exitKind: "graceful" | "error" = "graceful",
+    ) =>
       Effect.gen(function* () {
         if (ctx.stopped) return;
         ctx.stopped = true;
@@ -494,7 +500,7 @@ export function makeCursorAdapter(
           ...(yield* makeEventStamp()),
           provider: PROVIDER,
           threadId: ctx.threadId,
-          payload: { exitKind: "graceful" },
+          payload: { exitKind },
         });
       });
 
@@ -811,6 +817,11 @@ export function makeCursorAdapter(
                     return;
                   case "ModeChanged":
                     return;
+                  case "ConnectionTerminated":
+                    // Its process died: the session goes, so the next message
+                    // starts a new one. Forked: the stop interrupts this fiber.
+                    yield* stopSessionInternal(ctx, "error").pipe(Effect.forkDetach);
+                    return;
                   case "AvailableCommandsUpdated":
                     yield* (
                       options?.onAvailableCommands?.(event.availableCommands, cwd) ?? Effect.void
@@ -973,6 +984,8 @@ export function makeCursorAdapter(
         // resolving from here on does not settle the turn; the matching
         // decrement is the `ensuring` below.
         ctx.promptsInFlight += 1;
+        // Once its turn is open, a failure is that turn's: it ends failed.
+        let turnOpened = false;
 
         return yield* Effect.gen(function* () {
           const turnProfile = yield* acpTurnProfile(
@@ -1018,6 +1031,7 @@ export function makeCursorAdapter(
               turnId,
               payload: { model: resolvedModel },
             });
+            turnOpened = true;
           }
 
           const promptParts: Array<EffectAcpSchema.ContentBlock> = [];
@@ -1059,7 +1073,8 @@ export function makeCursorAdapter(
                 return yield* new ProviderAdapterRequestError({
                   provider: PROVIDER,
                   method: "session/prompt",
-                  detail: `Invalid attachment id '${attachment.id}'.`,
+                  detail: ATTACHED_PICTURE_UNREADABLE,
+                  cause: `Invalid attachment id '${attachment.id}'.`,
                 });
               }
               const bytes = yield* fileSystem.readFile(attachmentPath).pipe(
@@ -1068,7 +1083,7 @@ export function makeCursorAdapter(
                     new ProviderAdapterRequestError({
                       provider: PROVIDER,
                       method: "session/prompt",
-                      detail: cause.message,
+                      detail: ATTACHED_PICTURE_UNREADABLE,
                       cause,
                     }),
                 ),
@@ -1160,6 +1175,39 @@ export function makeCursorAdapter(
             resumeCursor: ctx.session.resumeCursor,
           };
         }).pipe(
+          // Once its turn is open — opened by this send, or steered into — a
+          // failure of the last prompt in flight ends that turn failed, in the
+          // failure's own words, and the send fails typed as that turn's.
+          Effect.catch((error): Effect.Effect<never, ProviderAdapterError> =>
+            (turnOpened || steeringTurnId !== undefined) &&
+            ctx.promptsInFlight === 1 &&
+            ctx.activeTurnId === turnId
+              ? Effect.gen(function* () {
+                  const detail = "detail" in error ? error.detail : error.message;
+                  yield* offerRuntimeEvent({
+                    type: "turn.completed",
+                    ...(yield* makeEventStamp()),
+                    provider: PROVIDER,
+                    threadId: input.threadId,
+                    turnId,
+                    payload: {
+                      state: "failed",
+                      errorMessage: detail,
+                      ...(error._tag === "ProviderAdapterProcessError"
+                        ? { terminalReason: "process_exit" }
+                        : {}),
+                    },
+                  });
+                  return yield* new ProviderAdapterTurnEndedError({
+                    provider: PROVIDER,
+                    threadId: input.threadId,
+                    turnId,
+                    detail,
+                    cause: error,
+                  });
+                })
+              : Effect.fail(error),
+          ),
           Effect.ensuring(
             Effect.sync(() => {
               ctx.promptsInFlight = Math.max(0, ctx.promptsInFlight - 1);
@@ -1260,10 +1308,10 @@ export function makeCursorAdapter(
       });
 
     const stopAll: CursorAdapterShape["stopAll"] = () =>
-      Effect.forEach(sessions.values(), stopSessionInternal, { discard: true });
+      Effect.forEach(sessions.values(), (ctx) => stopSessionInternal(ctx), { discard: true });
 
     yield* Effect.addFinalizer(() =>
-      Effect.forEach(sessions.values(), stopSessionInternal, { discard: true }).pipe(
+      Effect.forEach(sessions.values(), (ctx) => stopSessionInternal(ctx), { discard: true }).pipe(
         Effect.catch((cause) =>
           Effect.logError("Failed to emit Cursor session shutdown event.", { cause }),
         ),

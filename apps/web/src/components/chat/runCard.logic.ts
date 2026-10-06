@@ -345,7 +345,10 @@ function workedMs(status: RunStatus): number {
  */
 export function workedWords(speaker: string, status: RunStatus): string {
   const took = formatWorkDuration(workedMs(status));
-  if (status.face === "stopped") return `${speaker} stopped after ${took}`;
+  // Stopped by the person, or broken off: the run's card says why under it.
+  if (status.face === "stopped" || status.face === "brokeOff") {
+    return `${speaker} stopped after ${took}`;
+  }
   // Its turn ended for the person's message, not by their Stop (run 11).
   if (status.face === "interrupted") {
     return `${speaker} ${status.worked ? "worked" : "thought"} ${took} until your message`;
@@ -625,6 +628,7 @@ const SETTLED_FACE: Record<RunStatus["face"], MateMarkState> = {
   paused: "sleep",
   stopped: "idle",
   interrupted: "idle",
+  brokeOff: "idle",
 };
 
 /**

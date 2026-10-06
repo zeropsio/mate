@@ -472,23 +472,27 @@ function isOpenCodeNativeFilePart(input: {
   );
 }
 
+/** The attachments OpenCode takes as file parts: images, text and PDFs, never pasted text. */
+export function openCodeFileAttachments(
+  attachments: ReadonlyArray<ChatAttachment> | undefined,
+): Array<ChatAttachment> {
+  return (attachments ?? []).filter(
+    (attachment) =>
+      !(
+        attachment.type === "file" &&
+        "source" in attachment &&
+        attachment.source?._tag === "pasted-text"
+      ) && isOpenCodeNativeFilePart(attachment),
+  );
+}
+
 export function toOpenCodeFileParts(input: {
   readonly attachments: ReadonlyArray<ChatAttachment> | undefined;
   readonly resolveAttachmentPath: (attachment: ChatAttachment) => string | null;
 }): Array<FilePartInput> {
   const parts: Array<FilePartInput> = [];
 
-  for (const attachment of input.attachments ?? []) {
-    if (
-      attachment.type === "file" &&
-      "source" in attachment &&
-      attachment.source?._tag === "pasted-text"
-    ) {
-      continue;
-    }
-    if (!isOpenCodeNativeFilePart(attachment)) {
-      continue;
-    }
+  for (const attachment of openCodeFileAttachments(input.attachments)) {
     const attachmentPath = input.resolveAttachmentPath(attachment);
     if (!attachmentPath) {
       continue;

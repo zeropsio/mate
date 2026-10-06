@@ -7,6 +7,7 @@
  *
  * @module CodexAdapterLive
  */
+import { ATTACHED_PICTURE_UNREADABLE } from "@t3tools/shared/threadStatus";
 import {
   EventId,
   type CanonicalItemType,
@@ -1922,7 +1923,7 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
                   type: "runtime.error",
                   payload: {
                     message: usageLimitMessage,
-                    class: "provider_error",
+                    class: "usage_limit",
                     ...(turnError.message ? { detail: turnError.message } : {}),
                   },
                 };
@@ -1950,6 +1951,13 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
               return;
             }
             yield* Queue.offerAll(runtimeEventQueue, runtimeEvents);
+            // Its app server exited unasked, whatever the code: the session
+            // goes, so the next message starts a new one on the conversation.
+            // Forked: the stop interrupts this fiber.
+            if (event.method === "session/exited") {
+              const dead = sessions.get(input.threadId);
+              if (dead !== undefined) yield* stopSessionInternal(dead).pipe(Effect.forkDetach);
+            }
           }),
         ).pipe(Effect.forkIn(sessionScope));
 
@@ -1998,7 +2006,8 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
       return yield* new ProviderAdapterRequestError({
         provider: PROVIDER,
         method: "turn/start",
-        detail: `Invalid attachment id '${attachment.id}'.`,
+        detail: ATTACHED_PICTURE_UNREADABLE,
+        cause: `Invalid attachment id '${attachment.id}'.`,
       });
     }
     return {
