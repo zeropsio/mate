@@ -919,11 +919,6 @@ export const RETIRED_MECHANISMS: ReadonlyArray<RetiredMechanism> = [
     reason: "the Mine filter and owner records are computed in the client; HQ sends them finished",
   },
   {
-    token: "mateOwnerRecords(",
-    family: "permissions/members",
-    reason: "the Mine filter and owner records are computed in the client; HQ sends them finished",
-  },
-  {
     token: "mayAddEnvironment(",
     family: "permissions/members",
     reason: "whether an environment may be added is computed from roles in the client; HQ sends it",
