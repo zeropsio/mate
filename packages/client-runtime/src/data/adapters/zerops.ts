@@ -165,10 +165,16 @@ export function zeropsNavigationLink(options: {
         Effect.forEach(directives, (directive) => {
           if (directive.kind === "resolve-rows") return resolveRows(directive.key, directive.ids);
           if (directive.kind === "verify-absence")
-            return Effect.forEach(
-              directive.ids,
-              (id) => verifyAbsence(familyOf(directive.key), id),
-              { discard: true },
+            // Every member gone is asked about first; access that changed ends the attempt once.
+            return Effect.flatMap(
+              Effect.forEach(directive.ids, (id) => verifyAbsence(familyOf(directive.key), id)),
+              (denied) =>
+                denied.some(Boolean)
+                  ? Deferred.fail(ended, {
+                      outcome: "transient",
+                      message: "The viewer's access changed: every scope is registered again.",
+                    })
+                  : Effect.void,
             );
           return Effect.void;
         }).pipe(
@@ -210,11 +216,14 @@ export function zeropsNavigationLink(options: {
           );
         });
 
-      /** A member gone from its scope: deleted, or no longer the viewer's — the owner says. */
-      const verifyAbsence = (family: Family, id: string): Effect.Effect<void, StreamFault> =>
+      /**
+       * A member gone from its scope: deleted, or no longer the viewer's — the owner says. Whether
+       * the viewer's access to it was taken.
+       */
+      const verifyAbsence = (family: Family, id: string): Effect.Effect<boolean, StreamFault> =>
         Effect.gen(function* () {
           const path = familySpec(family).zerops?.verifyPath?.(id);
-          if (path === undefined) return;
+          if (path === undefined) return false;
           const { status } = yield* link.get(path);
           if (status === 404)
             store.dispatch({
@@ -223,14 +232,9 @@ export function zeropsNavigationLink(options: {
               id,
               evidence: `GET ${path} answered 404`,
             });
-          else if (status === 403) {
-            store.dispatch({ kind: "access", family, id, access: "denied" });
-            // The viewer's access changed; what else it took, only a fresh baseline says.
-            yield* Deferred.fail(ended, {
-              outcome: "transient",
-              message: "The viewer's access changed: every scope is registered again.",
-            });
-          }
+          // The viewer's access changed; what else it took, only a fresh baseline says.
+          else if (status === 403) store.dispatch({ kind: "access", family, id, access: "denied" });
+          return status === 403;
         });
 
       const subscriptions = new Map<string, Registration>();

@@ -326,6 +326,36 @@ describe("zeropsNavigationLink", () => {
       }),
   );
 
+  it.effect("registers again once for several projects taken at once, each withheld", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      let listed = ["kept", "a", "b"];
+      const fixture = fixtureWire((request) =>
+        request.method === "GET"
+          ? Effect.succeed({ status: 403, body: null })
+          : answers(
+              () => [],
+              () => listed.map((id) => ({ id, name: id, status: "ACTIVE", _version: 1 })),
+            )(request),
+      );
+      const fiber = yield* run(store, fixture);
+      listed = ["kept"];
+      yield* fixture.push(fixture.subscription(PROJECT_SEARCH, "listStream"), {
+        add: [],
+        delete: ["a", "b"],
+      });
+      yield* settle;
+      expect(factOf(store.state(), "project", "a")?.content.kind).toBe("purged");
+      expect(factOf(store.state(), "project", "b")?.content.kind).toBe("purged");
+      const link = store.state().streams.get(linkKeys.zerops(ORG));
+      yield* TestClock.adjust(link?.next.kind === "retry" ? link.next.at : 0);
+      yield* settle;
+      expect(fixture.opens()).toBe(2);
+      expect(store.state().streams.get(projectsScope(ORG))?.phase).toBe("live");
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+
   it.effect("ends the attempt when a read of a member answers 401: the session is repaired", () =>
     Effect.gen(function* () {
       const store = makeAccountStore(AtomRegistry.make());
