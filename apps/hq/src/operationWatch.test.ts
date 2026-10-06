@@ -54,6 +54,98 @@ const collect = (wire: OperationWire) =>
 
 describe("HQ operation observation", () => {
   it.live(
+    "discovers only the accepted version's process when it appears after an UPLOADING baseline",
+    () =>
+      Effect.gen(function* () {
+        let sequence = 0;
+        let updates = "";
+        const watch = makeOperationWatch({
+          makeId: () => `registration-${sequence++}`,
+          open: Effect.succeed({
+            receiverId: "R",
+            post: (path, body) => {
+              if (path === "/process/search" && body.wsOutputType === "updateStream")
+                updates = body.subscriptionName;
+              return Effect.succeed(
+                body.wsOutputType === "listStream"
+                  ? {
+                      items:
+                        path === "/app-version/search" ? [{ id: "V", status: "UPLOADING" }] : [],
+                    }
+                  : { success: true },
+              );
+            },
+            get: () => Effect.die("no original handle to read"),
+            frames: Stream.unwrap(
+              Effect.sync(() =>
+                Stream.fromIterable(
+                  [
+                    { id: "other", status: "FINISHED", appVersion: { id: "other-version" } },
+                    { id: "accepted", status: "RUNNING", appVersion: { id: "V" } },
+                    { id: "accepted", status: "FINISHED", appVersion: { id: "V" } },
+                  ].map((row) =>
+                    JSON.stringify({ subscriptionName: updates, data: { update: [row] } }),
+                  ),
+                ),
+              ),
+            ),
+          }),
+        });
+        const signals = yield* watch.watch({ projectId: "P", processIds: [], versionId: "V" }).pipe(
+          Stream.takeUntil((signal) => signal.processes.some((p) => p.status === "FINISHED")),
+          Stream.runCollect,
+          Effect.scoped,
+          Effect.timeout(500),
+        );
+        assert.strictEqual(signals.at(-1)?.processes[0]?.id, "accepted");
+        assert.isFalse(signals.some((signal) => signal.processes.some((p) => p.id === "other")));
+      }),
+  );
+
+  it.live("reads a newly discovered process by id after it finishes during a socket gap", () =>
+    Effect.gen(function* () {
+      let opens = 0;
+      let sequence = 0;
+      const reads: Array<string> = [];
+      const watch = makeOperationWatch({
+        makeId: () => `registration-${sequence++}`,
+        open: Effect.sync(() => {
+          const first = ++opens === 1;
+          return {
+            receiverId: "R",
+            post: (path, body) =>
+              Effect.succeed(
+                body.wsOutputType === "listStream"
+                  ? {
+                      items:
+                        path === "/app-version/search"
+                          ? [{ id: "V", status: "BUILDING" }]
+                          : first
+                            ? [{ id: "accepted", status: "RUNNING", appVersion: { id: "V" } }]
+                            : [],
+                    }
+                  : { success: true },
+              ),
+            get: (path) => {
+              reads.push(path);
+              return Effect.succeed({ status: "FINISHED" });
+            },
+            frames: Stream.fail(new ZeropsUnavailable({ operation: "socket", message: "gap" })),
+          };
+        }),
+      });
+      const signals = yield* watch.watch({ projectId: "P", processIds: [], versionId: "V" }).pipe(
+        Stream.takeUntil((signal) => signal.processes.some((p) => p.status === "FINISHED")),
+        Stream.runCollect,
+        Effect.scoped,
+        Effect.timeout(1_000),
+      );
+      assert.deepStrictEqual(reads, ["/process/accepted"]);
+      assert.strictEqual(signals.at(-1)?.processes[0]?.appVersion?.id, "V");
+    }),
+  );
+
+  it.live(
     "registers unfiltered updates before taking the running baseline and accepts a terminal push",
     () =>
       Effect.gen(function* () {

@@ -100,6 +100,27 @@ describe("a job's state", () => {
 });
 
 describe("environmentsOf", () => {
+  it("keeps operation evidence and steps through the environment decode", () => {
+    const environment = {
+      ...STAGE,
+      jobs: [
+        {
+          ...job("1", "app", "unresolved"),
+          evidence: {
+            phase: "closed",
+            nextActor: "person",
+            nextAction: "Inspect the original version in Zerops",
+            processes: [{ id: "p1", status: "FINISHED" }],
+            version: { id: "v1", status: "BUILDING" },
+          },
+          steps: [{ processes: [{ id: "p1", status: "RUNNING" }] }],
+          verifiedVersionId: null,
+        },
+      ],
+    };
+    expect(environmentsOf([environment])).toEqual([environment]);
+  });
+
   it("reads an environment with its jobs", () => {
     const environment = { ...STAGE, jobs: [job("1", "app", "live")] };
     expect(environmentsOf([environment])).toEqual([environment]);

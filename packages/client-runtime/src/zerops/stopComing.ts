@@ -28,6 +28,7 @@
  */
 import type { EnvironmentBirth } from "@t3tools/shared/hqDeploys";
 
+import { deployFollowText } from "./hq/deployAnswer.ts";
 import { type HqJob, jobInFlight } from "./hq/environments.ts";
 
 /** Where an environment coming up has got. */
@@ -63,7 +64,9 @@ export type FirstDeploy =
    * Zerops ended a build of it HQ did not make failed with nothing running
    * (`Deployment.failedBuild`), or HQ says its build failed, or HQ refused it.
    */
-  | { readonly kind: "failed"; readonly reason?: string | undefined };
+  | { readonly kind: "failed"; readonly reason?: string | undefined }
+  /** Following ended without an owner outcome; the next actor/action remains visible. */
+  | { readonly kind: "unresolved"; readonly reason: string };
 
 /** Whether HQ is still bringing an environment up: its birth told, and not ended. */
 const beingBorn = (birth: EnvironmentBirth | null | undefined): boolean => birth?.ended === false;
@@ -93,6 +96,9 @@ export function firstDeploy(input: {
   if (input.keyGap) return { kind: "held" };
   const refused = input.deploys.find(({ state }) => state === "refused");
   if (refused !== undefined) return failedFirst(refused);
+  const unresolved = input.deploys.find(({ state }) => state === "unresolved");
+  if (unresolved !== undefined)
+    return { kind: "unresolved", reason: deployFollowText(unresolved)! };
   return input.deploys.some(jobInFlight) ? { kind: "on-its-way" } : { kind: "awaited" };
 }
 
@@ -209,6 +215,8 @@ export function stopComing(input: {
         return coming("awaiting-key");
       case "failed":
         return { kind: "failed", reason: "its first deploy failed" };
+      case "unresolved":
+        return undefined;
     }
   }
   if (runtimes.some(({ status }) => !running(status))) return coming("build");
@@ -368,6 +376,8 @@ export function firstDeployLine(first: FirstDeploy | undefined): string | undefi
       return FIRST_DEPLOY_AWAITS_KEY;
     case "failed":
       return FIRST_DEPLOY_FAILED;
+    case "unresolved":
+      return first.reason;
     case "setting-up":
       return STAGE_SETTING_UP;
     default:

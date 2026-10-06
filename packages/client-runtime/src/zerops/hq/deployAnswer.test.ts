@@ -1,11 +1,7 @@
 import type { HqDeployOutcome } from "@t3tools/shared/hqDeploys";
 import { describe, expect, it } from "vite-plus/test";
 
-import {
-  deployAnswerFollowing,
-  deployAnswerSaid,
-  type ObservedDeployOutcome,
-} from "./deployAnswer.ts";
+import { deployAnswerFollowing, deployAnswerSaid } from "./deployAnswer.ts";
 
 const WEB = "5c3ea18b00000000000000000000000000000000";
 const API = "b21d904c00000000000000000000000000000000";
@@ -24,8 +20,20 @@ const outcome = (over: Partial<HqDeployOutcome>): HqDeployOutcome => ({
 });
 
 describe("deployAnswerSaid — what an event's answer says of its deploys", () => {
-  it.each<{ readonly name: string; readonly job: ObservedDeployOutcome; readonly text: string }>([
+  it.each<{ readonly name: string; readonly job: HqDeployOutcome; readonly text: string }>([
     { name: "building", job: outcome({}), text: "web 5c3ea18 building" },
+    {
+      name: "waiting for Zerops to start its build, with a person’s next action",
+      job: {
+        ...outcome({ state: "submitting" }),
+        evidence: {
+          phase: "waiting-for-build",
+          nextActor: "person",
+          nextAction: "Inspect the original version in Zerops; use Run again if no build started",
+        },
+      },
+      text: "web 5c3ea18: Waiting for Zerops to start the build. A person acts next: Inspect the original version in Zerops; use Run again if no build started",
+    },
     {
       name: "unresolved, with the next actor and action from its evidence",
       job: {

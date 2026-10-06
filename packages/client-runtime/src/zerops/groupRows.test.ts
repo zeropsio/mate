@@ -262,7 +262,7 @@ describe("environmentRow", () => {
       ...deployRecord("unresolved"),
       appVersionId: "version-observed",
       evidence: {
-        nextActor: "person",
+        nextActor: "person" as const,
         nextAction: "Inspect version-observed in Zerops before asking Run again",
       },
       steps: [

@@ -1055,12 +1055,34 @@ export const deploysLayer = (
 
       /** Persist only the evidence of the accepted operation, never a platform inventory. */
       const record = (job: Job, signal: OperationSignal) => {
-        const evidence = evidenceOf(signal);
+        const discovered =
+          job.kind === "deploy" && job.process_id === null && signal.phase === "live"
+            ? (signal.processes.find((process) => process.appVersion?.id === job.app_version_id)
+                ?.id ?? null)
+            : null;
+        const waiting =
+          signal.phase === "live" &&
+          job.kind === "deploy" &&
+          job.process_id === null &&
+          signal.processes.length === 0 &&
+          signal.version?.status === "UPLOADING" &&
+          (job.uploaded || !job.upload_recorded);
+        const evidence = waiting
+          ? {
+              ...evidenceOf(signal),
+              phase: "waiting-for-build",
+              nextActor: "person" as const,
+              nextAction:
+                "Inspect the original version in Zerops; use Run again if no build started",
+            }
+          : evidenceOf(signal);
         const step = encodeEvidence(stepOf(signal));
         const patch = signal.phase === "live" ? encodeEvidence(evidence) : encodePhase(evidence);
         return leader
           .write(sql`
           UPDATE hq_deploy_job SET
+            process_id = coalesce(process_id, ${discovered}),
+            state = CASE WHEN ${discovered}::text IS NOT NULL THEN 'building' ELSE state END,
             evidence = coalesce(evidence, '{"processes":[],"version":null}'::jsonb) || ${patch}::jsonb,
             steps = CASE WHEN ${signal.phase === "live"} AND
               (steps->-1->'processes', steps->-1->'version') IS DISTINCT FROM
@@ -1088,6 +1110,17 @@ export const deploysLayer = (
             Stream.mapEffect((signal) =>
               record(job, signal).pipe(
                 Effect.andThen(signal.phase === "live" ? read(signal) : Effect.succeed(undefined)),
+              ),
+            ),
+            Stream.interruptWhen(
+              SubscriptionRef.changes(ticks).pipe(
+                Stream.mapEffect(
+                  () =>
+                    sql`SELECT 1 FROM hq_deploy_job WHERE id = ${job.id}::bigint AND ended_at IS NOT NULL`,
+                ),
+                Stream.filter((rows) => rows.length !== 0),
+                Stream.take(1),
+                Stream.runDrain,
               ),
             ),
             Stream.filter((answer): answer is A => answer !== undefined),
@@ -1123,7 +1156,9 @@ export const deploysLayer = (
         observed(job, processId === null ? [] : [processId], versionId, (signal) =>
           Effect.gen(function* () {
             const process =
-              processId === null ? undefined : signal.processes.find((row) => row.id === processId);
+              processId === null
+                ? signal.processes.find((row) => row.appVersion?.id === versionId)
+                : signal.processes.find((row) => row.id === processId);
             if (process !== undefined) {
               if (["FAILED", "CANCELED", "CANCELLED"].includes(process.status))
                 return failed(
@@ -1136,10 +1171,6 @@ export const deploysLayer = (
               if (VERSION_FAILURES.has(status)) return failed(`failed: the version is ${status}`);
               if (status === "UPLOADING" && job.upload_recorded && !job.uploaded)
                 return unresolved("HQ's archive upload went unanswered; no build was asked for");
-              if (status === "UPLOADING")
-                return unresolved(
-                  "HQ has no process handle and cannot verify build acceptance; inspect the recorded version before asking Run again",
-                );
               if (status !== "ACTIVE" && status !== "BACKUP") return undefined;
             }
             const service = yield* zerops.service(serviceId)(token);
@@ -1589,11 +1620,15 @@ export const deploysLayer = (
             readonly sha: string | null;
             readonly state: HqDeployOutcome["state"];
             readonly process_id: string | null;
+            readonly evidence: NonNullable<HqDeployOutcome["evidence"]> | null;
+            readonly app_version_id: string | null;
+            readonly verified_version_id: string | null;
+            readonly steps: ReadonlyArray<unknown>;
             readonly behind: string | null;
             readonly reason: string | null;
           }>`
             SELECT j.id::text AS id, j.kind, e.name AS environment, j.service, j.sha, j.state,
-              j.process_id, j.reason,
+              j.process_id, j.reason, j.evidence, j.app_version_id, j.verified_version_id, j.steps,
               CASE WHEN j.state = 'queued' THEN (
                 SELECT o.id::text FROM hq_deploy_job o
                 WHERE o.project_id = j.project_id AND o.ended_at IS NULL AND o.id <> j.id
@@ -1619,6 +1654,10 @@ export const deploysLayer = (
               job: job.id,
               state: job.state,
               processId: job.process_id,
+              evidence: job.evidence,
+              appVersionId: job.app_version_id,
+              verifiedVersionId: job.verified_version_id,
+              steps: job.steps,
               behind: job.behind,
               reason: job.reason,
             })),
@@ -1763,8 +1802,11 @@ export const deploysLayer = (
                     readonly label: string | null;
                     readonly ord: number;
                     readonly newest: boolean;
+                    readonly waiting: boolean;
                   }>`
-                    SELECT id::text AS id, state, repo, label, ord, id = (
+                    SELECT id::text AS id, state, repo, label, ord,
+                      coalesce(evidence->>'phase' = 'waiting-for-build' AND process_id IS NULL AND ended_at IS NULL, false) AS waiting,
+                      id = (
                       SELECT max(id) FROM hq_deploy_job
                       WHERE project_id = ${environment.project_id} AND kind = 'deploy'
                         AND service = ${service}
@@ -1775,7 +1817,20 @@ export const deploysLayer = (
                     ORDER BY id DESC LIMIT 1`;
                   if (repeated === undefined) return { refused: "deploy_not_found" } as const;
                   if (!repeated.newest) return { refused: "deploy_superseded" } as const;
-                  if (IN_FLIGHT.has(repeated.state)) return { refused: "deploy_running" } as const;
+                  if (IN_FLIGHT.has(repeated.state) && !repeated.waiting)
+                    return { refused: "deploy_running" } as const;
+                  if (repeated.waiting) {
+                    const superseded = yield* sql`
+                      UPDATE hq_deploy_job
+                      SET state = 'superseded', ended_at = now(), updated_at = now(),
+                        reason = 'A person explicitly asked Run again while waiting for Zerops to start the build',
+                        evidence = evidence || jsonb_build_object('phase', 'closed',
+                          'nextActor', 'none', 'nextAction', 'Superseded by explicit Run again')
+                      WHERE id = ${repeated.id}::bigint AND process_id IS NULL AND ended_at IS NULL
+                        AND evidence->>'phase' = 'waiting-for-build'
+                      RETURNING id`;
+                    if (superseded.length === 0) return { refused: "deploy_running" } as const;
+                  }
                   const [rollout] = yield* sql<{ readonly id: string }>`
                     INSERT INTO hq_rollout (app_id, cause, project_id, service, sha, by, planned_at)
                     VALUES (${appId}::uuid, 'run_again', ${environment.project_id}, ${service},

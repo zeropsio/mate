@@ -2001,6 +2001,18 @@ function StopServiceLine({
           data-zerops-job-state={row.job.state}
         >
           <span className="truncate">{row.job.line}</span>
+          {row.job.redeploy === undefined || deployAgain === undefined ? null : (
+            <Button
+              disabled={deployAgain.running(row.job.redeploy.service)}
+              onClick={() =>
+                row.job?.redeploy !== undefined && deployAgain.onDeployAgain(row.job.redeploy)
+              }
+              size="compact"
+              variant="outline"
+            >
+              {flowVerbLabel("redeploy", deployAgain.running(row.job.redeploy.service))}
+            </Button>
+          )}
           {row.job.reason === undefined || row.job.reason === said ? null : (
             <span>{row.job.reason}</span>
           )}

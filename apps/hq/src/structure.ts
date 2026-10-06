@@ -22,7 +22,7 @@ import { type FactsFor, type Targets, type Verb, can } from "./permissions.ts";
 import type { MateChanges } from "@t3tools/shared/hqChanges";
 import type { HqOffersOf } from "@t3tools/shared/hqOffers";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
-import type { EnvironmentBirth } from "@t3tools/shared/hqDeploys";
+import type { EnvironmentBirth, HqDeployEvidence } from "@t3tools/shared/hqDeploys";
 import type { ReleaseRollout } from "@t3tools/shared/hqRelease";
 import type { MateState } from "@t3tools/shared/mateLink";
 import { type RoleProjectKind, isMateKind } from "@t3tools/shared/zeropsRoles";
@@ -188,6 +188,9 @@ export interface JobView {
   /** The platform's version and job it is followed by: its log. */
   readonly appVersionId: string | null;
   readonly processId: string | null;
+  readonly evidence?: HqDeployEvidence | null;
+  readonly steps?: ReadonlyArray<unknown>;
+  readonly verifiedVersionId?: string | null;
   /** Who asked for it, where a person did; none while only HQ asked. */
   readonly requestedBy: string | null;
   /** When it was asked for, and when it ended; ISO 8601. */
@@ -1510,6 +1513,9 @@ export const structureLayer = (options: {
               readonly reason: string | null;
               readonly app_version_id: string | null;
               readonly process_id: string | null;
+              readonly evidence: HqDeployEvidence | null;
+              readonly steps: ReadonlyArray<unknown>;
+              readonly verified_version_id: string | null;
               readonly requested_by: string | null;
               readonly at: string;
               readonly ended_at: string | null;
@@ -1527,7 +1533,7 @@ export const structureLayer = (options: {
               SELECT j.project_id, j.id::text AS id, j.kind, j.service, j.sha, j.state, r.cause,
                      CASE r.cause WHEN 'merge' THEN r.sha WHEN 'release' THEN r.tag END AS ref,
                      j.reason,
-                     j.app_version_id, j.process_id, j.requested_by,
+                     j.app_version_id, j.process_id, j.evidence, j.steps, j.verified_version_id, j.requested_by,
                      ${sql.literal(iso("j.created_at"))} AS at,
                      ${sql.literal(iso("j.ended_at"))} AS ended_at,
                      j.superseded_by::text AS superseded_by
@@ -1652,6 +1658,9 @@ export const structureLayer = (options: {
                   reason: job.reason,
                   appVersionId: job.app_version_id,
                   processId: job.process_id,
+                  evidence: job.evidence,
+                  steps: job.steps,
+                  verifiedVersionId: job.verified_version_id,
                   requestedBy: job.requested_by,
                   at: job.at,
                   endedAt: job.ended_at,

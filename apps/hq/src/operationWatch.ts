@@ -11,6 +11,7 @@ import { type ZeropsError, ZeropsUnavailable } from "./zerops/api.ts";
 export const ProcessEvidence = Schema.Struct({
   id: Schema.String,
   status: Schema.String,
+  appVersion: Schema.optionalKey(Schema.NullOr(Schema.Struct({ id: Schema.String }))),
   _version: Schema.optionalKey(Schema.Number),
   error: Schema.optionalKey(
     Schema.NullOr(
@@ -126,7 +127,15 @@ export function makeOperationWatch(wire: OperationWire): OperationWatch {
           let version: VersionEvidence | null = null;
           let attempt = 0;
           const keepProcess = (row: ProcessEvidence) => {
-            if (!target.processIds.includes(row.id)) return;
+            if (
+              !target.processIds.includes(row.id) &&
+              !(
+                target.processIds.length === 0 &&
+                target.versionId !== null &&
+                row.appVersion?.id === target.versionId
+              )
+            )
+              return;
             const prior = processes.get(row.id);
             if (
               prior !== undefined &&
@@ -193,11 +202,16 @@ export function makeOperationWatch(wire: OperationWire): OperationWatch {
                     Effect.flatMap((body) => decode(ProcessPage, body)),
                   );
                   for (const row of baseline.items) keepProcess(row);
-                  for (const id of target.processIds) {
+                  for (const id of new Set([...target.processIds, ...processes.keys()])) {
                     if (baseline.items.some((row) => row.id === id)) continue;
                     const body = yield* link.get(`/process/${id}`);
                     const row = yield* decode(ProcessRead, body);
-                    processes.set(id, { ...row, id });
+                    const appVersion = row.appVersion ?? processes.get(id)?.appVersion;
+                    processes.set(id, {
+                      ...row,
+                      id,
+                      ...(appVersion === undefined ? {} : { appVersion }),
+                    });
                   }
                   if (target.versionId !== null) {
                     yield* register("app-version", "updateStream");
@@ -225,7 +239,12 @@ export function makeOperationWatch(wire: OperationWire): OperationWatch {
                         for (const value of frame?.data?.update ?? []) {
                           if (entity === "process") {
                             const row = Option.getOrUndefined(decodeProcess(value));
-                            if (row !== undefined && target.processIds.includes(row.id)) {
+                            if (
+                              row !== undefined &&
+                              (target.processIds.includes(row.id) ||
+                                (target.processIds.length === 0 &&
+                                  row.appVersion?.id === target.versionId))
+                            ) {
                               keepProcess(row);
                               changed = true;
                             }

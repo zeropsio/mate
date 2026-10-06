@@ -18,6 +18,8 @@ import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
 import type { OperationSignal } from "./operationWatch.ts";
 import * as Redacted from "effect/Redacted";
+import * as Schema from "effect/Schema";
+import { HqDeployAnswer as DeployAnswerSchema } from "@t3tools/shared/hqDeploys";
 import * as Schedule from "effect/Schedule";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
@@ -47,6 +49,8 @@ import { Roles } from "./roles.ts";
 import { environmentBirths } from "./births.ts";
 import { type RolloutCause, Rollouts, addRollout, rolloutsLayer } from "./rollouts.ts";
 import { ZeropsApi, ZeropsDeploy, ZeropsRefused, type ZeropsMember } from "./zerops/api.ts";
+
+const decodeDeployAnswer = Schema.decodeUnknownEffect(DeployAnswerSchema);
 
 const AUTHOR = { name: "Ada", email: "ada@mate.test" };
 /** A `zerops.yaml` carrying `setup`. */
@@ -196,6 +200,7 @@ interface Rig {
   readonly request: (event: RolloutCause) => Effect.Effect<HqDeployAnswer>;
   /** Waits until every rollout is planned. */
   readonly planned: Effect.Effect<void>;
+  readonly again: (userId: string, sha: string) => Effect.Effect<HqDeployAnswer>;
   /**
    * The Core stopped, `meanwhile` done while none leads, and another leading over the same
    * database, git and Zerops.
@@ -380,6 +385,10 @@ const withDeploys = <A, E>(
       ask,
       request,
       planned,
+      again: (userId, sha) =>
+        Context.get(core.context, Deploys)
+          .redeploy(userId, appId, "shop-stage", "web", sha)
+          .pipe(Effect.orDie),
       takeover,
     }).pipe(Effect.provide(Context.merge(core.context, testSql)));
   });
@@ -1827,6 +1836,59 @@ describe("deploys", () => {
       );
     }
 
+    it.effect(
+      "B9: an accepted build reads UPLOADING before it appears and is followed to its end",
+      () =>
+        withDeploys(({ appId, world, tiers, commit, until }) =>
+          Effect.gen(function* () {
+            const service = yield* Deploys;
+            tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
+            world.uploadTakes = 200;
+            world.buildSeenAfter = 500;
+            world.outcome = () => "BUILDING";
+            world.lost.add("buildAndDeploy");
+            yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+            yield* service.changes.pipe(
+              Stream.mapEffect(() => service.operations(appId)),
+              Stream.filter((rows) => rows[0]?.evidence?.phase === "waiting-for-build"),
+              Stream.take(1),
+              Stream.runDrain,
+              Effect.timeout(2000),
+            );
+            const waiting = (yield* service.operations(appId))[0]!;
+            assert.strictEqual(waiting.state, "submitting");
+            assert.strictEqual(waiting.evidence?.nextActor, "person");
+            assert.include(waiting.evidence!.nextAction, "Run again");
+            world.outcome = () => "ACTIVE";
+            yield* until(settled("live"));
+            assert.lengthOf(versions(world), 1);
+          }),
+        ),
+    );
+
+    it.effect(
+      "carries unresolved operation evidence and known facts in the decoded server answer",
+      () =>
+        withDeploys(({ appId, world, tiers, commit, until }) =>
+          Effect.gen(function* () {
+            tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
+            world.lost.add("upload");
+            yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+            yield* until(settled("unresolved"));
+            const service = yield* Deploys;
+            const [row] = yield* (yield* SqlClient.SqlClient)<{
+              id: string;
+            }>`SELECT rollout_id::text AS id FROM hq_deploy_job LIMIT 1`;
+            const answer = yield* decodeDeployAnswer(yield* service.run(row!.id));
+            const operation = (yield* service.operations(appId))[0]!;
+            assert.deepStrictEqual(answer.jobs[0]?.evidence, operation.evidence);
+            assert.deepStrictEqual(answer.jobs[0]?.steps, operation.steps);
+            assert.strictEqual(answer.jobs[0]?.appVersionId, operation.versionId);
+            assert.strictEqual(answer.jobs[0]?.evidence?.nextActor, "person");
+          }),
+        ),
+    );
+
     it.effect("keeps a running build after 75 minutes and follows its owner's end", () =>
       withDeploys(({ appId, world, tiers, commit, deploys, until, takeover }) =>
         Effect.gen(function* () {
@@ -1858,8 +1920,7 @@ describe("deploys", () => {
           world.outcome = () => "BUILDING";
           world.lost.add("buildAndDeploy");
           yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
-          yield* until(settled("submitting"));
-          yield* Effect.sleep(Duration.millis(300));
+          yield* until(settled("building"));
           assert.lengthOf(versions(world), 1);
           world.outcome = () => "ACTIVE";
           yield* until(settled("live"));
@@ -1877,9 +1938,16 @@ describe("deploys", () => {
           world.outcome = () => "BUILDING";
           world.lost.add("buildAndDeploy");
           yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
-          yield* until(settled("submitting"));
+          yield* until(settled("building"));
           world.unanswered.add("appVersion");
-          yield* Effect.sleep(Duration.millis(300));
+          const service = yield* Deploys;
+          yield* service.changes.pipe(
+            Stream.mapEffect(() => service.operations(appId)),
+            Stream.filter((rows) => rows[0]?.evidence?.phase === "recovering"),
+            Stream.take(1),
+            Stream.runDrain,
+            Effect.timeout("2 seconds"),
+          );
           world.unanswered.clear();
           world.outcome = () => "ACTIVE";
           yield* until(settled("live"));
@@ -1921,24 +1989,28 @@ describe("deploys", () => {
     );
 
     it.effect(
-      "ends an unobservable build after an answered upload without blocking its queue",
+      "an unobservable build stays pending across restart and explicit Run again supersedes the wait",
       () =>
-        withDeploys(({ appId, world, tiers, commit, deploys, until, takeover }) =>
+        withDeploys(({ appId, world, tiers, commit, deploys, until, takeover, again }) =>
           Effect.gen(function* () {
             tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
             world.unanswered.add("buildAndDeploy");
-            yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
-            yield* until(settled("unresolved"));
-            assert.strictEqual(world.jobs.size, 0);
-            const operation = (yield* (yield* Deploys).operations(appId))[0]!;
-            assert.strictEqual(operation.evidence?.nextActor, "person");
-            assert.include(operation.evidence!.nextAction, "Run again");
-            assert.include((yield* deploys)[0]!.reason!, "build acceptance");
+            const sha = yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+            const sql = yield* SqlClient.SqlClient;
+            const waiting =
+              sql`SELECT 1 FROM hq_deploy_job WHERE evidence->>'phase' = 'waiting-for-build'`.pipe(
+                Effect.filterOrFail((rows) => rows.length === 1),
+                Effect.retry(Schedule.spaced("20 millis")),
+                Effect.timeout("2 seconds"),
+              );
+            yield* waiting;
+            assert.strictEqual((yield* deploys)[0]?.state, "submitting");
             yield* takeover();
-            assert.strictEqual((yield* deploys)[0]?.state, "unresolved");
+            yield* waiting;
             world.unanswered.clear();
-            yield* commit("web", { "index.js": 'console.log("next deploy");' });
-            yield* until((rows) => rows.at(-1)?.state === "live");
+            yield* again("owner", sha);
+            yield* until((rows) => rows.length === 2 && rows.at(-1)?.state === "live");
+            assert.strictEqual((yield* deploys)[0]?.state, "superseded");
             assert.lengthOf(versions(world), 2);
           }),
         ),
@@ -2058,19 +2130,13 @@ describe("deploys", () => {
       readonly ends: readonly [string, string | null];
     }>([
       {
-        name: "its build may appear later: a person must inspect its recorded version",
+        name: "its build appears later: followed to its owner’s end",
         seenAfter: 100,
-        ends: [
-          "unresolved",
-          "HQ has no process handle and cannot verify build acceptance; inspect the recorded version before asking Run again; a person must inspect the original handle in Zerops",
-        ],
+        ends: ["live", null],
       },
       {
-        name: "its archive may be missing: a person must inspect its recorded version",
-        ends: [
-          "unresolved",
-          "HQ has no process handle and cannot verify build acceptance; inspect the recorded version before asking Run again; a person must inspect the original handle in Zerops",
-        ],
+        name: "its build has not appeared: still pending with a person’s next action",
+        ends: ["submitting", null],
       },
     ])(
       "a submission left from before HQ recorded uploads, at takeover: $name",

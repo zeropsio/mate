@@ -12,6 +12,33 @@ import * as Schema from "effect/Schema";
 /** HQ's words for a deploy Zerops did not answer, with what Zerops failed at. */
 export const zeropsDidNotAnswer = (detail: string): string => `Zerops did not answer: ${detail}`;
 
+/** The retained owner facts and the next actor/action of one deploy operation. */
+export const HqDeployEvidence = Schema.Struct({
+  phase: Schema.optionalKey(Schema.String),
+  processes: Schema.optionalKey(
+    Schema.Array(
+      Schema.Struct({
+        id: Schema.String,
+        status: Schema.String,
+        _version: Schema.optionalKey(Schema.Number),
+        error: Schema.optionalKey(Schema.Unknown),
+      }),
+    ),
+  ),
+  version: Schema.optionalKey(
+    Schema.NullOr(
+      Schema.Struct({
+        id: Schema.String,
+        status: Schema.String,
+        _version: Schema.optionalKey(Schema.Number),
+      }),
+    ),
+  ),
+  nextActor: Schema.Literals(["hq", "person", "none"]),
+  nextAction: Schema.String,
+});
+export type HqDeployEvidence = typeof HqDeployEvidence.Type;
+
 /**
  * One job the event asked for, in one environment, as it stands once HQ submitted what it could:
  * `building` (its build's process), `submitting` (Zerops' answer lost: HQ reads the version it
@@ -41,6 +68,10 @@ export const HqDeployOutcome = Schema.Struct({
   /** The job it waits behind, while queued. */
   behind: Schema.NullOr(Schema.String),
   reason: Schema.NullOr(Schema.String),
+  evidence: Schema.optionalKey(Schema.NullOr(HqDeployEvidence)),
+  appVersionId: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  verifiedVersionId: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  steps: Schema.optionalKey(Schema.Array(Schema.Unknown)),
 });
 export type HqDeployOutcome = typeof HqDeployOutcome.Type;
 

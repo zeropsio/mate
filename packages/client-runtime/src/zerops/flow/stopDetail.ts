@@ -24,6 +24,7 @@ import {
   type GroupRowTone,
 } from "../groupRows.ts";
 import { type HqJob, jobFailed, jobInFlight } from "../hq/environments.ts";
+import { deployFollowText } from "../hq/deployAnswer.ts";
 import { deployLogTarget, type DeployLogTarget } from "../hq/deployLog.ts";
 import type { Shown } from "../knowledge/known.ts";
 import { cannotTellWhatRuns, changesNotLive } from "../projectAttention.ts";
@@ -366,6 +367,8 @@ export interface StopServiceJob {
   readonly state: HqJob["state"];
   readonly line: string;
   readonly reason: string | undefined;
+  /** Explicit new operation while following waits or ended unresolved. */
+  readonly redeploy?: RunAgain;
 }
 
 /**
@@ -395,8 +398,26 @@ export function jobOf(
   switch (job.state) {
     case "queued":
       return { state: job.state, line: `${commit} queued`, reason: undefined };
-    case "submitting":
-      return { state: job.state, line: `Submitting ${commit}`, reason: undefined };
+    case "submitting": {
+      const waiting = deployFollowText(job);
+      return {
+        state: job.state,
+        line: waiting === undefined ? `Submitting ${commit}` : `${commit}: ${waiting}`,
+        reason: undefined,
+        ...(waiting === undefined || job.service === null
+          ? {}
+          : { redeploy: { service: job.service, sha: job.sha, after: job.id } }),
+      };
+    }
+    case "unresolved":
+      return {
+        state: job.state,
+        line: `${commit}: ${deployFollowText(job)}`,
+        reason: undefined,
+        ...(job.service === null
+          ? {}
+          : { redeploy: { service: job.service, sha: job.sha, after: job.id } }),
+      };
     case "building":
       return { state: job.state, line: `Building ${commit}`, reason: undefined };
     case "failed":

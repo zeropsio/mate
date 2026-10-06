@@ -987,6 +987,39 @@ describe("jobOf — a service's newest job, said where it is not live", () => {
   const age = (iso: string) => `at ${iso}`;
   it.each<{ name: string; job: HqJob | undefined; expected: ReturnType<typeof jobOf> }>([
     { name: "no job", job: undefined, expected: undefined },
+    {
+      name: "unresolved remains visible after the deploy answer closes",
+      job: deployRecord("unresolved", {
+        sha: SHA,
+        evidence: {
+          nextActor: "person",
+          nextAction: "Inspect the original version in Zerops before asking Run again",
+        },
+      }),
+      expected: {
+        state: "unresolved",
+        line: "5c3ea18: HQ could not follow this deploy to its end. A person acts next: Inspect the original version in Zerops before asking Run again",
+        reason: undefined,
+        redeploy: { service: "api", sha: SHA, after: "1" },
+      },
+    },
+    {
+      name: "pending with no observed build",
+      job: deployRecord("submitting", {
+        sha: SHA,
+        evidence: {
+          phase: "waiting-for-build",
+          nextActor: "person",
+          nextAction: "Inspect the original version in Zerops; Run again if no build started",
+        },
+      }),
+      expected: {
+        state: "submitting",
+        line: "5c3ea18: Waiting for Zerops to start the build. A person acts next: Inspect the original version in Zerops; Run again if no build started",
+        reason: undefined,
+        redeploy: { service: "api", sha: SHA, after: "1" },
+      },
+    },
     { name: "live", job: deployRecord("live", { sha: SHA }), expected: undefined },
     {
       name: "superseded",

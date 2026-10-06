@@ -14,7 +14,7 @@
  * @module hq/environments
  */
 import { HqOffers } from "@t3tools/shared/hqOffers";
-import { EnvironmentBirth } from "@t3tools/shared/hqDeploys";
+import { EnvironmentBirth, HqDeployEvidence } from "@t3tools/shared/hqDeploys";
 import { ReleaseRollout } from "@t3tools/shared/hqRelease";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
@@ -57,6 +57,9 @@ export const HqJob = Schema.Struct({
   ref: Schema.NullOr(Schema.String),
   /** HQ's words for how it ended. */
   reason: Schema.NullOr(Schema.String),
+  evidence: Schema.optionalKey(Schema.NullOr(HqDeployEvidence)),
+  verifiedVersionId: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  steps: Schema.optionalKey(Schema.Array(Schema.Unknown)),
   /** The platform's version and job it is followed by: its log. */
   appVersionId: Schema.NullOr(Schema.String),
   processId: Schema.NullOr(Schema.String),

@@ -28,6 +28,25 @@ describe("HqDeployAnswer — where each job an event asked for stands once HQ su
   it.each([
     { name: "building", deploys: [outcome] },
     {
+      name: "the evidence, version and steps of a pending operation",
+      deploys: [
+        {
+          ...outcome,
+          state: "submitting",
+          appVersionId: "v1",
+          verifiedVersionId: null,
+          evidence: {
+            phase: "waiting-for-build",
+            nextActor: "person",
+            nextAction: "Inspect v1 in Zerops; Run again if no build started",
+            version: { id: "v1", status: "UPLOADING" },
+            processes: [],
+          },
+          steps: [{ version: { id: "v1", status: "UPLOADING" }, processes: [] }],
+        },
+      ],
+    },
+    {
       name: "unresolved with the next actor",
       deploys: [
         {

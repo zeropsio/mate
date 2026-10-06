@@ -11,6 +11,8 @@ import type { EnvironmentBirth } from "@t3tools/shared/hqDeploys";
 import {
   comingLine,
   firstDeploy,
+  firstDeployLine,
+  firstDeployTone,
   listedStopComing,
   stopComing,
   stopDeployed,
@@ -296,6 +298,23 @@ describe("firstDeploy — where a stage's first deploy stands by HQ's jobs of it
     job({ state, endedAt: ago(30_000), ...over });
   it.each([
     { case: "HQ has no job", deploys: [], first: { kind: "awaited" } },
+    {
+      case: "unresolved, naming the next actor and action",
+      deploys: [
+        job({
+          state: "unresolved",
+          evidence: {
+            nextActor: "person",
+            nextAction: "Inspect the original version in Zerops before asking Run again",
+          },
+        }),
+      ],
+      first: {
+        kind: "unresolved",
+        reason:
+          "HQ could not follow this deploy to its end. A person acts next: Inspect the original version in Zerops before asking Run again",
+      },
+    },
     { case: "queued", deploys: [job({})], first: { kind: "on-its-way" } },
     {
       case: "submitting",
@@ -576,4 +595,25 @@ describe("stopImport — where an environment's own import has got, the one orde
         : undefined;
     expect(said).toBe(step);
   });
+});
+
+it("does not turn an unresolved first deploy into awaiting-deploy forever", () => {
+  const reason =
+    "HQ could not follow this deploy to its end. A person acts next: Inspect the original version in Zerops";
+  const first = { kind: "unresolved", reason } as const;
+  expect(firstDeployLine(first)).toBe(reason);
+  expect(firstDeployTone(first)).toBe("off");
+  expect(
+    stopComing({
+      tier: "stage",
+      pending: false,
+      projectStatus: "ACTIVE",
+      birth: { ended: false },
+      services: [{ hostname: "app", status: "READY_TO_DEPLOY", runtime: true }],
+      building: false,
+      deployed: false,
+      routes: 0,
+      firstDeploy: first,
+    }),
+  ).toBeUndefined();
 });
