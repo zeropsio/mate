@@ -570,7 +570,7 @@ describe("revisioned HQ values", () => {
     ),
   );
   it.effect(
-    "handover candidates are on request, operator-only and never broadcast to another person",
+    "handover candidates are on request, org-admin-only and never broadcast to another person",
     () =>
       Effect.scoped(
         Effect.gen(function* () {
@@ -617,6 +617,72 @@ describe("revisioned HQ values", () => {
         }),
       ),
   );
+  for (const [userId, allowed] of [
+    ["signer", false],
+    ["owner", true],
+  ] as const)
+    it.effect(
+      `handover candidates ${allowed ? "allow org ADMIN" : "refuse org NO_ACCESS with project Basic access"}`,
+      () =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const f = yield* fixture;
+            const members = facts.members.map((member) => ({
+              ...member,
+              roleCode: member.userId === "owner" ? "ADMIN" : member.roleCode,
+              avatarUrl: `avatar-${member.userId}`,
+            }));
+            yield* f.roles({
+              ...facts,
+              members,
+              projects: facts.projects.map((project) => ({
+                ...project,
+                userRoles: [
+                  ...project.userRoles,
+                  { clientUserId: "C-signer", roleCode: "BASIC_USER" },
+                ],
+              })),
+            });
+            const client = yield* f.connect(userId);
+            yield* client.subscribe([{ scope: nav }]);
+            const navigation = resetOf(yield* client.take);
+            yield* client.take;
+            const project = navigation.values.find((value) => value.key === "project:P")!.value as {
+              can: { observe_mate: { allow: boolean } };
+            };
+            assert.isTrue(project.can.observe_mate.allow);
+            yield* client.request({
+              type: "handover-candidates",
+              requestId: "handover",
+              projectId: "P",
+            });
+            const reply = yield* client.take;
+            assert.deepStrictEqual(
+              reply,
+              allowed
+                ? {
+                    type: "handover-candidates",
+                    requestId: "handover",
+                    projectId: "P",
+                    candidates: members.map((member) => ({
+                      userId: member.userId,
+                      clientUserId: member.clientUserId,
+                      name: member.name,
+                      avatarUrl: member.avatarUrl,
+                    })),
+                  }
+                : {
+                    type: "handover-candidates-error",
+                    requestId: "handover",
+                    projectId: "P",
+                    code: "forbidden",
+                    reason: "no-access",
+                    disposition: "refused",
+                  },
+            );
+          }),
+        ),
+    );
   it.effect("saved agent signer facts are withheld from a reader who cannot operate the Mate", () =>
     Effect.scoped(
       Effect.gen(function* () {

@@ -104,9 +104,11 @@ is `move-offers` with `moveTo`, or `move-offers-error`. Destination enumeration 
 the eventual write still checks current permissions.
 
 Send `handover-candidates` with `requestId` and `projectId` when the handover opens. HQ checks
-that the requester is an ACTIVE person and may observe that Mate, before returning every ACTIVE
-org person with userId, clientUserId, name and nullable avatarUrl. Invited/suspended members and
-integration tokens are excluded. Replies are `HqHandoverCandidatesMessage` with `candidates`, or
+that the requester is an ACTIVE person with org OWNER/ADMIN role and may observe that Mate,
+before returning every ACTIVE org person with userId, clientUserId, name and nullable avatarUrl.
+Project access alone is insufficient; other requesters receive a `refused` error without candidates.
+Invited/suspended members and integration tokens are excluded. Replies are
+`HqHandoverCandidatesMessage` with `candidates`, or
 `HqHandoverCandidatesError` with `refused` / `transient`. The reply is correlated and delivered
 only to the requesting connection; candidate enumeration is not part of navigation.
 

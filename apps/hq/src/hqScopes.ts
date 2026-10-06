@@ -14,7 +14,7 @@ import {
   type HqValue,
   type HqRemoval,
 } from "@t3tools/shared/hqStream";
-import { asOrgRole } from "@t3tools/shared/zeropsRoles";
+import { asOrgRole, roleAtLeast } from "@t3tools/shared/zeropsRoles";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -1151,6 +1151,7 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
                             (member) =>
                               member.kind === "person" &&
                               member.status === "ACTIVE" &&
+                              roleAtLeast(member.roleCode, "ADMIN") &&
                               member.userId === userId,
                           ) ||
                           !observedProjects(viewFor(current, userId)).some(
