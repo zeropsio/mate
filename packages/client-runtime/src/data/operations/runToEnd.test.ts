@@ -97,6 +97,14 @@ describe("runToEnd", () => {
     expect(seen).toEqual([{ projectId: "p9" }]);
   });
 
+  it("records it under the id its caller names", async () => {
+    const { store, run } = setUp(accepted);
+    const ran = run(CREATE, { orgId: ORG, unobserved: "", requestId: "birth-1:project" });
+    creation(store, "FINISHED");
+    await ran;
+    expect(store.state().operations.has("birth-1:project")).toBe(true);
+  });
+
   it("stops with what ended it otherwise, uncertain only where it may have landed", async () => {
     const cases: ReadonlyArray<
       readonly [string, OperationExecutor["submit"], (store: AccountStore) => void, unknown]

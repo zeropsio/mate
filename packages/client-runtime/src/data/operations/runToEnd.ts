@@ -27,6 +27,8 @@ export type RunToEnd = <Intent extends OperationIntent>(
     readonly orgId: string;
     /** What the step says where its end can no longer be followed. */
     readonly unobserved: string;
+    /** The id it is recorded under, where the caller finds it again by it (a creation's step). */
+    readonly requestId?: string;
     /** Told the owner's result once it accepted, before its end: what it made already exists. */
     readonly accepted?: (result: ResultOf<Intent["kind"]>) => void;
   },
@@ -58,8 +60,8 @@ export function runToEnd(input: {
       store.state().operations.get(requestId),
       kind as keyof OperationResults & string,
     ) as never;
-  return async (intent, { orgId, unobserved, accepted }) => {
-    const requestId = await Effect.runPromise(input.operations.submit(intent));
+  return async (intent, { orgId, unobserved, accepted, requestId: named }) => {
+    const requestId = await Effect.runPromise(input.operations.submit(intent, named));
     if (store.state().operations.get(requestId)?.receipt?.acceptance.kind === "accepted")
       accepted?.(resultOf(requestId, intent.kind));
     const end = await until(requestId, orgId);
