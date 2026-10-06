@@ -817,28 +817,6 @@ export const RETIRED_MECHANISMS: ReadonlyArray<RetiredMechanism> = [
     ],
   },
   {
-    token: "mate:zerops:projects-risen",
-    family: "Mate attention/overview",
-    reason:
-      "risen project rows are remembered in browser storage; the attention projection decides on load",
-  },
-  {
-    token: "lastRowRisen",
-    family: "Mate attention/overview",
-    reason:
-      "risen project rows are remembered in browser storage; the attention projection decides on load",
-    paths: [
-      "apps/web/src/components/zerops/projects/ProjectList.tsx",
-      "apps/web/src/components/zerops/projects/rowRiseMemory.ts",
-    ],
-  },
-  {
-    token: "useRememberRisenRows",
-    family: "Mate attention/overview",
-    reason:
-      "risen project rows are remembered in browser storage; the attention projection decides on load",
-  },
-  {
     token: "mate:zerops:conversation-writers",
     family: "permissions/members",
     reason:
