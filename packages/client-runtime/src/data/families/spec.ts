@@ -117,7 +117,7 @@ export interface DetailListing {
 }
 
 /**
- * A source without realtime (§10.5): the owner's whole value, one read while a screen demands it
+ * A source without realtime: the owner's whole value, one read while a screen demands it
  * for one owner, read again while it stays demanded on the stream machine's sampled cadence (unless
  * time never ages it), and at once after our own write. Its scope is never claimed live. Its one
  * fact is keyed by the owner it is read for.
