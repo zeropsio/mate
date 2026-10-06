@@ -404,10 +404,25 @@ function toolDetailTextLooksLikeFailure(text: string): boolean {
   return false;
 }
 
+// A work-log entry never changes once derived (`derivedWorkLogEntryByActivity`
+// keeps each one for its activity): what its output says is read once. The
+// timeline asks on every streamed update, of every call of the conversation.
+const toolFailureByEntry = new WeakMap<WorkLogEntry, boolean>();
+const displayedToolFailureByEntry = new WeakMap<WorkLogEntry, boolean>();
+
 function workEntryIndicatesToolFailureFromOutput(
   entry: WorkLogEntry,
   includeCommand: boolean,
 ): boolean {
+  const known = includeCommand ? toolFailureByEntry : displayedToolFailureByEntry;
+  const read = known.get(entry);
+  if (read !== undefined) return read;
+  const failed = readToolFailureFromOutput(entry, includeCommand);
+  known.set(entry, failed);
+  return failed;
+}
+
+function readToolFailureFromOutput(entry: WorkLogEntry, includeCommand: boolean): boolean {
   if (entry.tone === "error") {
     return true;
   }
