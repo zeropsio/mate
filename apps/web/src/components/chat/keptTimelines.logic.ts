@@ -68,3 +68,29 @@ export function warmingTimeline(input: {
   if (input.asked === null || input.placing || input.asked === input.open) return null;
   return input.kept.some((slot) => slot.key === input.asked) ? null : input.asked;
 }
+
+/**
+ * How long a kept list out of sight stays laid out after it last read its
+ * conversation: its list measures and places what it read, and a run going
+ * on reads again within it (`HELD_READ_EVERY_MS`).
+ */
+export const KEPT_RESTS_AFTER_MS = 3000;
+
+/**
+ * Whether a kept list out of sight rests unlaid (`content-visibility`) until
+ * it shows. Only once it has gone quiet — nothing read for a while, no run
+ * going on in it — and nobody is about to open it: whatever it reads it is
+ * laid out for, so its rows are placed before it shows, by any way back.
+ */
+export function keptRests(input: {
+  /** Kept out of sight, its conversation not open. */
+  readonly hidden: boolean;
+  /** Someone rests on its menu row: it may open any moment. */
+  readonly readsLive: boolean;
+  /** A run goes on in it, by what it last read. */
+  readonly working: boolean;
+  /** Nothing read for `KEPT_RESTS_AFTER_MS`. */
+  readonly quiet: boolean;
+}): boolean {
+  return input.hidden && !input.readsLive && !input.working && input.quiet;
+}

@@ -2288,15 +2288,17 @@ describe("KeptTimelines — a conversation seen a moment ago", () => {
       readonly insetMeasured?: boolean;
       readonly insetRemembered?: boolean;
       readonly warm?: string | null;
+      readonly Reader?: typeof Reader;
     } = {},
   ) => {
     const { KeptTimelines } = await import("./KeptTimelines");
+    const { Reader: reader = Reader, ...said } = inset;
     return (
       <KeptTimelines
         open={open}
         alive={alive}
-        {...inset}
-        Reader={Reader}
+        {...said}
+        Reader={reader}
         crewTimeline={null}
         timeline={{
           ...buildProps(),
@@ -2492,6 +2494,72 @@ describe("KeptTimelines — a conversation seen a moment ago", () => {
       await act(async () => renderer!.update(await pane(KEY_B, undefined, {}, { warm: KEY_A })));
       expect(holds.get(KEY_A)).toBe(false);
     } finally {
+      await act(() => renderer?.unmount());
+    }
+  });
+
+  // Mate A streams through one turn while the person reads B; they come back
+  // by ⌘K, a shortcut or back — no menu row rested on, so no warm intent. Its
+  // list was placed out of sight with what streamed: nothing lands as it shows.
+  it("shows a kept list opened without a warm intent with what streamed while away, already placed", async () => {
+    const { useHeld, HELD_READ_EVERY_MS } = await import("./heldRead");
+    // The production reader's hold, over the store the test tells.
+    const HeldReader = ({
+      threadKey,
+      hold,
+      onRead,
+    }: {
+      readonly threadKey: string;
+      readonly hold: boolean;
+      readonly onRead: (props: never) => void;
+    }) => {
+      const live = useSyncExternalStore(
+        (listener) => {
+          readers.add(listener);
+          return () => readers.delete(listener);
+        },
+        () => read.get(threadKey) ?? null,
+      );
+      const props = useHeld(live, hold, "turn-a running", HELD_READ_EVERY_MS);
+      useLayoutEffect(() => onRead(props as never), [onRead, props]);
+      return null;
+    };
+    const place = await settle();
+    const held = { Reader: HeldReader };
+    let renderer: ReactTestRenderer | undefined;
+    await act(async () => {
+      renderer = create(await pane(KEY_A, undefined, {}, held));
+    });
+    // Its waits only: the list's own clock stays the page's.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      await place(renderer!);
+      await act(async () => renderer!.update(await pane(KEY_B, undefined, {}, held)));
+      const words = [
+        "Here",
+        "Here is",
+        "Here is where",
+        "Here is where we",
+        "Here is where we were.",
+      ];
+      for (const said of words) {
+        await act(() =>
+          tell(KEY_A, {
+            timelineEntries: [
+              buildUserTimelineEntry(`Where were we in ${KEY_A}?`),
+              { ...buildAssistantTimelineEntry(said), id: "entry-answer" },
+            ],
+          }),
+        );
+        await act(() => vi.advanceTimersByTime(120));
+      }
+      await act(() => vi.advanceTimersByTime(HELD_READ_EVERY_MS));
+      // Out of sight, before the frame it shows in: the rows it will show.
+      const { LegendList } = await import("@legendapp/list/react");
+      const rowsOfA = JSON.stringify(listOf(renderer!, KEY_A).findByType(LegendList).props.data);
+      expect(rowsOfA).toContain("Here is where we were.");
+    } finally {
+      vi.useRealTimers();
       await act(() => renderer?.unmount());
     }
   });
