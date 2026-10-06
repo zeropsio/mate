@@ -32,7 +32,7 @@ describe("deployAnswerSaid — what an event's answer says of its deploys", () =
           nextAction: "Inspect the original version in Zerops; use Run again if no build started",
         },
       },
-      text: "web 5c3ea18: Waiting for Zerops to start the build. A person acts next: Inspect the original version in Zerops; use Run again if no build started",
+      text: "web 5c3ea18: Waiting for Zerops to start the build. Check it in Zerops, or run it again.",
     },
     {
       name: "unresolved, with the next actor and action from its evidence",
@@ -43,7 +43,7 @@ describe("deployAnswerSaid — what an event's answer says of its deploys", () =
           nextAction: "Inspect the original version in Zerops before asking Run again",
         },
       },
-      text: "web 5c3ea18: HQ could not follow this deploy to its end. A person acts next: Inspect the original version in Zerops before asking Run again",
+      text: "web 5c3ea18: HQ lost track of this deploy. Check it in Zerops, or run it again.",
     },
     {
       name: "unresolved, with HQ still assigned the named next action",
@@ -54,7 +54,7 @@ describe("deployAnswerSaid — what an event's answer says of its deploys", () =
           nextAction: "Read the original process handle after authorization is restored",
         },
       },
-      text: "web 5c3ea18: HQ could not follow this deploy to its end. HQ acts next: Read the original process handle after authorization is restored",
+      text: "web 5c3ea18: HQ lost track of this deploy. HQ is checking its status.",
     },
     {
       name: "unresolved from the job answer before operation evidence arrives",
@@ -62,7 +62,18 @@ describe("deployAnswerSaid — what an event's answer says of its deploys", () =
         state: "unresolved",
         reason: "A person must inspect the original version in Zerops",
       }),
-      text: "web 5c3ea18: HQ could not follow this deploy to its end. A person must inspect the original version in Zerops",
+      text: "web 5c3ea18: HQ lost track of this deploy. Check it in Zerops, or run it again.",
+    },
+    {
+      name: "unresolved with operator diagnostics and no assigned next actor",
+      job: {
+        ...outcome({
+          state: "unresolved",
+          reason: "operation_observation_refused: original handles",
+        }),
+        evidence: { nextActor: "none", nextAction: "Internal operator instructions" },
+      },
+      text: "web 5c3ea18: HQ lost track of this deploy. Check it in Zerops.",
     },
     {
       name: "its submission's answer lost",
@@ -260,8 +271,10 @@ describe("deployAnswerFollowing — HQ's stream over the request's snapshot", ()
         evidence: observed.evidence ?? prior.evidence,
         steps: "steps" in observed ? observed.steps : prior.steps,
       });
-      expect(deployAnswerSaid(followed).environments[0]?.jobs[0]?.text).toContain(
-        (observed.evidence ?? prior.evidence).nextAction,
+      expect(deployAnswerSaid(followed).environments[0]?.jobs[0]?.text).toBe(
+        coverage === "missing"
+          ? "web 5c3ea18: HQ lost track of this deploy. HQ is checking its status."
+          : "web 5c3ea18: HQ lost track of this deploy. Check it in Zerops, or run it again.",
       );
     },
   );

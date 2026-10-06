@@ -251,8 +251,8 @@ describe("a review's deploy answer belongs to its service in Where", () => {
   );
 });
 
-describe("a roll back that hasn't landed", () => {
-  // A roll back that hasn't landed hands it to the person's own Mate, as a release's does (S6).
+describe("a roll back whose deploy outcome is unconfirmed", () => {
+  // The same lost follow as a release: the person's own Mate can check the deploy (S6).
   const stalled = (fixer: string | undefined) =>
     renderRollback({
       fixer,
@@ -261,10 +261,10 @@ describe("a roll back that hasn't landed", () => {
       press: { kind: "done" },
     });
 
-  it("says so, and offers the person's Mate to find out why", () => {
+  it("says so, and offers the person's Mate to check it", () => {
     const markup = stalled("Juno");
-    expect(markup).toContain("v0.1.58 hasn&#x27;t landed");
-    expect(markup).toContain("Ask Juno to find out why");
+    expect(markup).toContain("Deploy status unknown for v0.1.58");
+    expect(markup).toContain("Ask Juno to check it");
   });
 
   it("offers no Mate when the person has none", () => {

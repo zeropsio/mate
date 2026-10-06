@@ -116,8 +116,7 @@ export function releaseFollows(input: {
   readonly tagged: FlowReleaseRow | undefined;
   readonly releasing: boolean;
   /**
-   * HQ ended its deploy and it is neither live nor failed: the wait is over, and the review says
-   * the tag hasn't landed.
+   * HQ ended its follow and it is neither live nor failed: the review says its outcome is unknown.
    */
   readonly stalled: boolean;
   /**
@@ -145,7 +144,11 @@ export function releaseFollows(input: {
     newer === undefined
       ? undefined
       : { by: newer.tag, live: input.releases.find((entry) => entry.standing === "live")?.tag };
-  const stalled = releasing && superseded === undefined && stalledAt(tagged, input.stalled);
+  const stalled =
+    releasing &&
+    input.inFlight !== tag &&
+    superseded === undefined &&
+    stalledAt(tagged, input.stalled);
   return {
     tag,
     tagged,

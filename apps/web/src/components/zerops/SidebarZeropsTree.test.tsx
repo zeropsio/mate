@@ -1156,7 +1156,7 @@ describe("a Mate's face follows its work in the menu", () => {
     status: null,
     face: "working",
     subject: "Add a size guide to the product page",
-    at: "2026-09-29T20:10:00.000Z",
+    at: new Date().toISOString(),
     snippet: undefined,
     awaitingWords: true,
     unread: false,
@@ -1185,7 +1185,7 @@ describe("a Mate's face follows its work in the menu", () => {
       dots: true,
     },
     {
-      case: "a running Mate with HQ's last word at rest, its socket not open yet",
+      case: "a running Mate with HQ's recent last word at rest, its socket not open yet",
       group: "ready",
       activity: restingActivity(working),
       face: "idle",
