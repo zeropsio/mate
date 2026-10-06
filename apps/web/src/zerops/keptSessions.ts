@@ -63,7 +63,7 @@ export function endKeptSession(registration: BearerConnectionRegistration): void
 }
 
 /** Revokes a session HQ issued (`DELETE /api/session`); nothing waits on it, as for a Mate's. */
-function endHqSession(session: KeptHqSession): void {
+export function endHqSession(session: KeptHqSession): void {
   if (ended.has(session.token)) return;
   ended.add(session.token);
   endIssuedSession({

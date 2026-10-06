@@ -82,6 +82,11 @@ export function useZeropsOrganizationMembersRead(input: {
   readonly status: ZeropsOrganizationMembersStatus;
   /** The members are what a read settled, not ones being read again. */
   readonly settled: boolean;
+  /**
+   * The read ended with no answer and nothing reads it again on its own: refused, gone, or
+   * failed until a person's again.
+   */
+  readonly refusedForGood: boolean;
 } {
   // A surface outside the account's data (a render test in isolation) reads nobody, and its rows
   // say the same thing without names.
@@ -110,7 +115,11 @@ export function useZeropsOrganizationMembersRead(input: {
   const members = answered ?? NO_MEMBERS;
   const status: ZeropsOrganizationMembersStatus =
     !enabled || clientId === undefined ? "idle" : request === null ? "loading" : read.status;
-  return { members, status, settled: settledValue(shown) !== null };
+  const refusedForGood =
+    shown.state === "gone" ||
+    (shown.state === "failed" && shown.retryAtMs === null) ||
+    (shown.state === "withheld" && shown.reason === "access-denied");
+  return { members, status, settled: settledValue(shown) !== null, refusedForGood };
 }
 
 export function useZeropsOrganizationMembers(input: {

@@ -800,6 +800,11 @@ export function makeHqApi(input: {
    * the first call presents the kept one before any door, every session the door opens is kept,
    * and one HQ no longer takes is forgotten. Absent: the session lives in this page only.
    */
+  /**
+   * Waits until a write may be sent to this HQ, or fails it before anything is sent: the page may
+   * read an HQ it has not yet verified official, but writes nothing to it. Absent: at once.
+   */
+  readonly beforeWrite?: () => Promise<void>;
   readonly kept?: {
     /** The kept session's token; null when none is kept, or it ends too soon to present. */
     readonly read: () => string | null;
@@ -863,6 +868,7 @@ export function makeHqApi(input: {
     init: RequestInit = {},
     write = false,
   ): Promise<Response> => {
+    if (write) await input.beforeWrite?.();
     let renewed = false;
     for (;;) {
       const held = session ?? restore() ?? enter();

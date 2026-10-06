@@ -53,10 +53,11 @@ import {
   keepNoHqVerdict,
   noHq,
   useHqVerdict,
+  subscribeHqVerdicts,
   verdictNames,
   type HqVerdictOwner,
 } from "./hqVerdict";
-import { keptHqSessions } from "./keptSessions";
+import { endHqSession, keptHqSessions } from "./keptSessions";
 import { useZeropsOrganizationMembersRead } from "./useZeropsMateOwners";
 import { whenShown } from "./whenShown";
 import { ZeropsDataContext } from "./zeropsDataContext";
@@ -89,7 +90,7 @@ export function useAccountHq(clientId: string | undefined): AccountHq {
     [clientId, data],
   );
   const kept = useHqVerdict(owner);
-  const { members, status, settled } = useZeropsOrganizationMembersRead({
+  const { members, status, settled, refusedForGood } = useZeropsOrganizationMembersRead({
     clientId,
     enabled: clientId !== undefined && kept === undefined,
   });
@@ -117,6 +118,11 @@ export function useAccountHq(clientId: string | undefined): AccountHq {
     )
       forgetKeptHq(owner.clientId, trusted);
   }, [named, owner, settled, trusted]);
+  // A member list refused for good verifies nothing: the kept HQ is trusted no more here.
+  useEffect(() => {
+    if (clientId !== undefined && kept === undefined && refusedForGood && trusted !== undefined)
+      distrustKeptHq(clientId);
+  }, [clientId, kept, refusedForGood, trusted]);
   const hq = useMemo<OfficialHq>(
     () =>
       kept !== undefined
@@ -152,6 +158,13 @@ const keptHqKey = (clientId: string, hq: HqEndpoint) => `${clientId}:${hq.projec
 
 /** Who hears that a kept HQ session was forgotten here: the HQ it named is trusted no more. */
 const keptHqListeners = new Set<() => void>();
+/** The organizations whose member list this page could not read: their kept HQ is not trusted. */
+const distrusted = new Set<string>();
+onAccountLifetimeClose(() => distrusted.clear());
+const distrustKeptHq = (clientId: string) => {
+  distrusted.add(clientId);
+  for (const listener of keptHqListeners) listener();
+};
 const subscribeKeptHq = (listener: () => void) => {
   keptHqListeners.add(listener);
   return () => keptHqListeners.delete(listener);
@@ -166,6 +179,7 @@ const forgetKeptHqSession = (key: string, token: string) => {
  * `<projectId>:<address>`; none where it keeps none, or sessions of more than one HQ.
  */
 function keptHqOf(clientId: string): string | undefined {
+  if (distrusted.has(clientId)) return undefined;
   const prefix = `${clientId}:`;
   const found = new Set(
     keptHqSessions
@@ -184,11 +198,16 @@ function endpointOf(named: string | undefined): HqEndpoint | undefined {
     : { projectId: named.slice(0, split), address: named.slice(split + 1) };
 }
 
-/** Forgets the session the account kept for `hq`, which the member list does not name. */
+/**
+ * Forgets the session the account kept for `hq`, which the member list does not name, and revokes
+ * it at the HQ that issued it.
+ */
 function forgetKeptHq(clientId: string, hq: HqEndpoint): void {
   const key = keptHqKey(clientId, hq);
   const session = keptHqSessions.read(key);
-  if (session !== null) forgetKeptHqSession(key, session.token);
+  if (session === null) return;
+  forgetKeptHqSession(key, session.token);
+  endHqSession(session);
 }
 
 const apis = new Map<string, HqApi>();
@@ -234,23 +253,51 @@ export function saysNotOfficial(health: HqHealth): boolean {
 }
 
 /**
+ * A write waits until the member list names `hq`: the page may read the HQ whose session the
+ * account kept before it verified it, but writes nothing there. One it names not refuses the
+ * write; trust ending without a verdict (the list refused for good, the session refused) fails it
+ * as not yet checked.
+ */
+function writeChecked(clientId: string, hq: HqEndpoint): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const trustedKey = `${hq.projectId}:${hq.address}`;
+    const settle = () => {
+      const named = verdictNames(clientId, hq);
+      if (named === undefined && keptHqOf(clientId) === trustedKey) return;
+      unhear();
+      if (named === true) resolve();
+      else reject(named === false ? notOfficial() : unverified());
+    };
+    const unheard = [subscribeHqVerdicts(settle), subscribeKeptHq(settle)];
+    const unhear = () => {
+      for (const stop of unheard) stop();
+    };
+    settle();
+  });
+}
+
+const unverified = () =>
+  new HqError({
+    kind: "unavailable",
+    code: "hq_unverified",
+    message: "Mate is still checking this organization's HQ.",
+  });
+
+const notOfficial = () =>
+  new HqError({
+    kind: "refused",
+    code: "hq_not_official",
+    message: "This HQ is no longer the organization's official HQ.",
+  });
+
+/**
  * A door is entered only into an HQ the member list named: a kept HQ not yet verified behind is
  * still being checked (try again shortly), and one it named not is refused.
  */
 async function doorChecked(clientId: string, hq: HqEndpoint): Promise<void> {
   const named = verdictNames(clientId, hq);
   if (named === true) return;
-  throw named === undefined
-    ? new HqError({
-        kind: "unavailable",
-        code: "hq_unverified",
-        message: "Mate is still checking this organization's HQ.",
-      })
-    : new HqError({
-        kind: "refused",
-        code: "hq_not_official",
-        message: "This HQ is no longer the organization's official HQ.",
-      });
+  throw named === undefined ? unverified() : notOfficial();
 }
 
 /**
@@ -288,6 +335,7 @@ export function accountHqApi(client: ZeropsApiClient, clientId: string, hq: HqEn
       forget: (token) => forgetKeptHqSession(keptKey, token),
     },
     fetch: (input, init) => fetch(input, init),
+    beforeWrite: () => writeChecked(clientId, hq),
     throughDoor: (use) =>
       doorChecked(clientId, hq).then(() =>
         connectThroughThrowaway({

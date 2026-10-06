@@ -91,6 +91,12 @@ export function forgetHqVerdict(clientId: string, hq: HqEndpoint): void {
   if (kept.length !== verdicts.length) write(kept);
 }
 
+/** Hears every change of what this page holds; answers how to stop hearing. */
+export function subscribeHqVerdicts(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
 /** Whether this page holds a verdict for the organization `clientId`, and it names `hq`. */
 export function verdictNames(clientId: string, hq: HqEndpoint): boolean | undefined {
   const held = verdicts.find((entry) => entry.clientId === clientId);
@@ -101,12 +107,5 @@ export function verdictNames(clientId: string, hq: HqEndpoint): boolean | undefi
 export function useHqVerdict(owner: HqVerdictOwner | undefined): HqVerdict | undefined {
   const current = () =>
     owner === undefined ? undefined : verdicts.find((entry) => owns(entry, owner));
-  return useSyncExternalStore(
-    (listener) => {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
-    },
-    current,
-    current,
-  );
+  return useSyncExternalStore(subscribeHqVerdicts, current, current);
 }

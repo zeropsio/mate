@@ -464,12 +464,14 @@ describe("useAccountHq — the HQ whose session the account kept, verified behin
   /** `useAccountHq` for `clientId` whose member list answers only once `answer` is called. */
   async function pending(clientId: string) {
     let answer: (members: ReadonlyArray<ZeropsOrganizationMember>) => void = () => undefined;
+    let refuse: (cause: unknown) => void = () => undefined;
     const cells = await makeMemberCells({
       scope,
       organization: organizationRef(clientId),
       members: () =>
-        new Promise((resolve) => {
+        new Promise((resolve, reject) => {
           answer = resolve;
+          refuse = reject;
         }),
     });
     const data = {
@@ -498,8 +500,44 @@ describe("useAccountHq — the HQ whose session the account kept, verified behin
           await new Promise((resolve) => setTimeout(resolve, 0));
         });
       },
+      refuse: async (cause: unknown) => {
+        await act(async () => {
+          refuse(cause);
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        });
+      },
     };
   }
+
+  /** HQ's API calls, as the page sends them. */
+  const heard = () => {
+    const calls: Array<{
+      readonly method: string;
+      readonly url: string;
+      readonly auth: string | null;
+    }> = [];
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({
+        method: init?.method ?? "GET",
+        url: String(input),
+        auth: new Headers(init?.headers).get("authorization"),
+      });
+      const path = new URL(String(input)).pathname;
+      if (path === "/api/structure") return Response.json({ apps: [] });
+      if (path === "/api/apps")
+        return Response.json({ id: "app-1", name: "Acme" }, { status: 201 });
+      return new Response(null, { status: 204 });
+    });
+    return calls;
+  };
+  const noDoorClient = (accountEpoch: number) =>
+    ({
+      accountEpoch,
+      mintThrowaway: async () => {
+        throw new Error("no door in this test");
+      },
+      deleteThrowaway: async () => {},
+    }) as unknown as ZeropsApiClient;
 
   const keepSession = (clientId: string, hq: typeof KEPT) =>
     keptHqSessions.keep(`${clientId}:${hq.projectId}:${hq.address}`, {
@@ -551,6 +589,53 @@ describe("useAccountHq — the HQ whose session the account kept, verified behin
     });
     expect(mints).toBe(0);
     expect([hq.last().status, hq.last().hq.kind]).toEqual(["loading", "none"]);
+  });
+
+  it("reads the kept HQ at once, but writes to it only once the member list names it", async () => {
+    keepSession("org-kept-w", KEPT);
+    const hq = await pending("org-kept-w");
+    const calls = heard();
+    const api = accountHqApi(noDoorClient(902), "org-kept-w", KEPT);
+    await api.structure();
+    const created = api.createApp("Acme");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(calls.map((call) => `${call.method} ${new URL(call.url).pathname}`)).toEqual([
+      "GET /api/structure",
+    ]);
+    await hq.answer([anchor(KEPT.projectId, KEPT.address)]);
+    await expect(created).resolves.toMatchObject({ id: "app-1" });
+  });
+
+  it("refuses a write held for a kept HQ the member list then names not", async () => {
+    keepSession("org-kept-x", KEPT);
+    const hq = await pending("org-kept-x");
+    heard();
+    const created = accountHqApi(noDoorClient(903), "org-kept-x", KEPT).createApp("Acme");
+    const outcome = created.catch((cause: unknown) => cause);
+    await hq.answer([anchor("P_NEW", "https://new.example.test")]);
+    expect(await outcome).toMatchObject({ kind: "refused", code: "hq_not_official" });
+  });
+
+  it("ends the trust visibly when the member list is refused for good", async () => {
+    keepSession("org-kept-f", KEPT);
+    const hq = await pending("org-kept-f");
+    await hq.refuse(new Error("insufficientPermissions"));
+    expect([hq.last().status, hq.last().hq.kind]).toEqual(["failed", "none"]);
+  });
+
+  it("revokes at the kept HQ the session it drops on a mismatch", async () => {
+    keepSession("org-kept-v", KEPT);
+    const hq = await pending("org-kept-v");
+    const calls = heard();
+    await hq.answer([anchor("P_NEW", "https://new.example.test")]);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(calls).toContainEqual({
+      method: "DELETE",
+      url: `${KEPT.address}/api/session`,
+      auth: "Bearer session-org-kept-v",
+    });
   });
 
   it("without a kept session waits for the member list, as before", async () => {
