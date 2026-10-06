@@ -27,11 +27,7 @@ import type { ProjectServices } from "../../data/projections/services.ts";
 import { projectProcessesAtom, projectServicesAtom, shownProjectsAtom } from "../../data/reads.ts";
 import type { ZeropsService } from "../api.ts";
 
-import {
-  evidenceProjectRefs,
-  inventoryProjectRefs,
-  pendingDenials,
-} from "../data/access/grantProjects.ts";
+import { pendingDenials, projectsNeverSeen } from "../data/access/grantProjects.ts";
 import type { Evidence, GrantMachine } from "../data/access/grant.ts";
 import type { ManagedZeropsDataRuntime } from "../data/runtime.ts";
 import {
@@ -255,15 +251,17 @@ export function mateListingsAtom(
       organization: organizationRef,
       projectId: ZeropsProjectId.make(projectId),
     });
-    // The projects the grant admits (what the inventory demands): only an admitted project's
-    // services are its Mates'. Another's Mate gets no address, no probe and no connection, as when
-    // its services were never read at all.
+    // Every project the organization's roster lists is the viewer's: Zerops filters the
+    // organization-wide listing and its pushes by the viewer's token, so being listed is the
+    // evidence of access, and no grant round has to name it first. Only a project the grant knows
+    // this person can never see — NO_ACCESS, or denied — keeps its services from being its Mates':
+    // its Mate gets no address, no probe and no connection.
     const withheld = pendingDenials(evidence);
-    const admitted = new Set(
-      inventoryProjectRefs(evidenceProjectRefs(evidence), get(data.reads.access))
-        .map((ref) => projectKeyOf(ref))
-        .filter((key) => !withheld.has(key)),
-    );
+    const neverSeen = projectsNeverSeen({
+      evidence,
+      access: get(data.reads.access),
+      withheld: (projectId) => withheld.has(projectKeyOf(refOf(projectId))),
+    });
 
     const derive = (
       project: ProjectValue,
@@ -305,7 +303,7 @@ export function mateListingsAtom(
 
     /** One project, derived again only from a new value, new services or admission. */
     const projectEntry = (project: ProjectValue, before: ProjectEntry | undefined) => {
-      const isAdmitted = admitted.has(projectKeyOf(refOf(project.id)));
+      const isAdmitted = !neverSeen(project.id);
       const arrivalOver = before?.arrivalEnds != null && before.arrivalEnds <= nowMs;
       if (before?.project === project && before.admitted === isAdmitted && !arrivalOver) {
         if (before.services === null) return before;

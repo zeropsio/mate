@@ -137,11 +137,6 @@ describe("mateListingsAtom: a container ACTIVE before its address landed", () =>
   /** The roster not read (again) yet: the listing holds no rows. */
   const unreadProjects: OrganizationProjects = { ...ROSTER, read: "reading", live: false };
 
-  const admitted = (yes: boolean) => ({
-    status: "verified",
-    projects: yes ? [{ project: project(), role: "OWNER" }] : [],
-  });
-
   /**
    * The project's `stack.enableSubdomainAccess` for its zcp service, in this status: one that
    * finished ended at 12:01:45 on Zerops' clock.
@@ -169,7 +164,8 @@ describe("mateListingsAtom: a container ACTIVE before its address landed", () =>
     const registry = AtomRegistry.make();
     const servicesRead = Atom.make<ProjectServices>(read([]));
     const projectsRead = Atom.make<OrganizationProjects>(roster([shop]));
-    const access = Atom.make<unknown>(admitted(true));
+    /** The grant's projects denied since, awaiting their owner's word; none at first. */
+    const denied = Atom.make<ReadonlyMap<string, unknown>>(new Map());
     const activity = Atom.make<ProjectProcesses>(activityOf(null, false));
     // The account's store, as far as the listing reads it: the roster and this project's processes.
     registry.set(accountReadsAtom, {
@@ -187,7 +183,8 @@ describe("mateListingsAtom: a container ACTIVE before its address landed", () =>
     const data = {
       scope: { account: organization.account },
       access: {
-        view: Atom.make({
+        // The grant names no project of the organization: the roster's listing admits them.
+        view: Atom.make((get) => ({
           machine: {
             phase: {
               phase: "granted",
@@ -195,13 +192,13 @@ describe("mateListingsAtom: a container ACTIVE before its address landed", () =>
                 account: { organizations: [{ organization }] },
                 projects: new Map(),
                 unverified: new Map(),
-                closedProjects: new Map(),
+                closedProjects: get(denied),
               },
             },
           },
-        }),
+        })),
       },
-      reads: { access },
+      reads: { access: Atom.make({ status: "unverified" }) },
     } as unknown as ManagedZeropsDataRuntime;
     const listings = mateListingsAtom(data);
     registry.mount(listings);
@@ -238,9 +235,16 @@ describe("mateListingsAtom: a container ACTIVE before its address landed", () =>
             return registry.set(projectsRead, unreadProjects);
           case "projects-back":
             return registry.set(projectsRead, roster([shop]));
-          case "not-admitted":
+          case "denied":
           case "admitted":
-            return registry.set(access, admitted(event === "admitted"));
+            return registry.set(
+              denied,
+              event === "denied"
+                ? new Map([
+                    [project().projectId, { project: project(), confirmation: { status: "due" } }],
+                  ])
+                : new Map(),
+            );
           case "tick":
             return undefined;
         }
@@ -267,7 +271,8 @@ describe("mateListingsAtom: a container ACTIVE before its address landed", () =>
     | "not-enabling"
     | "projects-unread"
     | "projects-back"
-    | "not-admitted"
+    /** Its project denied since the grant's last round, then its denial lifted. */
+    | "denied"
     | "admitted"
     /** Nothing read changes: only the clock runs. */
     | "tick";
@@ -373,7 +378,7 @@ describe("mateListingsAtom: a container ACTIVE before its address landed", () =>
       steps: [
         [110_000, "enabling", { group: "unavailable" }],
         [110_000, "address-off", { group: "provisioning" }],
-        [112_000, "not-admitted", { presence: "unknown" }],
+        [112_000, "denied", { presence: "unknown" }],
         [114_000, "admitted", { group: "provisioning" }],
       ],
     },

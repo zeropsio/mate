@@ -5,8 +5,8 @@ import { createScenario } from "../../harness/scenario.ts";
 
 describe("foundation: the real hosted client", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
-    // Targets the missing menu row after a Zerops-only colleague addition, without waiting for HQ.
-    it.effect.fails("B: Zerops-only project appears in the menu within 5 s without HQ", () =>
+    // Catches a missing menu row after a Zerops-only colleague addition, without waiting for HQ.
+    it.effect("B: Zerops-only project appears in the menu within 5 s without HQ", () =>
       Effect.gen(function* () {
         const { given, when, then } = yield* createScenario();
         yield* given.project("Ada", { mate: true });
