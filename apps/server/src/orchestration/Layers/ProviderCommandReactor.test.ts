@@ -3537,7 +3537,7 @@ describe("ProviderCommandReactor", () => {
         const harness = await createHarness();
         const threadId = ThreadId.make("thread-1");
         const start = (suffix: string) =>
-          Effect.runPromise(
+          harness.runEffect(
             harness.engine.dispatch({
               type: "thread.turn.start",
               commandId: CommandId.make(`cmd-turn-start-after-crash-${suffix}`),
@@ -3562,7 +3562,7 @@ describe("ProviderCommandReactor", () => {
         } else if (testCase.adapterSession === "dropped") {
           harness.runtimeSessions.splice(0);
         }
-        await Effect.runPromise(
+        await harness.runEffect(
           harness.engine.dispatch({
             type: "thread.session.set",
             commandId: CommandId.make("cmd-session-crashed"),
@@ -3589,128 +3589,208 @@ describe("ProviderCommandReactor", () => {
     }
   });
 
-  // Cursor's send holds the whole turn: its agent dying mid-turn fails the
-  // send, a turn that broke off — never a turn that failed to start.
-  describe("a send that fails because its agent died mid-turn", () => {
+  // Cursor's, Grok's and Antigravity's send holds the whole turn: a failure
+  // of it under the turn the message opened is that turn's, which the adapter
+  // ends itself and ingestion records once. Any failure before the turn
+  // opened, or of a message sent into a turn already running, is the
+  // message's failure to start, and the person hears it.
+  describe("a send that fails", () => {
     const WORDS = "Cursor stopped unexpectedly. Send a message to pick up where it left off.";
+    const ATTACHMENT = "The attachment could not be read.";
     const cases: ReadonlyArray<{
       readonly name: string;
-      /** The session's exit reached the conversation before the send's failure. */
-      readonly exitFirst: boolean;
-      /** The send failed for another reason than a dead process. */
-      readonly notDead?: boolean;
+      readonly driver: "cursor" | "grok" | "antigravity";
+      /** Its process died, else an ordinary failure. */
+      readonly died: boolean;
+      /** The message's own turn had opened when the send failed. */
+      readonly turnOpened: boolean;
       /** The message went into a turn already running, which it did not start. */
       readonly intoRunningTurn?: boolean;
-      /** What the conversation keeps: the turn's break, or the message's failure to start. */
-      readonly keeps: "break" | "nothing" | "start-failure";
+      /** What the reactor says: nothing (the turn's own end says it), or the message's failure to start. */
+      readonly says: "nothing" | "start-failure";
     }> = [
+      ...(["cursor", "grok", "antigravity"] as const).flatMap((driver) => [
+        {
+          name: `${driver}: its process dies under the turn the message opened`,
+          driver,
+          died: true,
+          turnOpened: true,
+          says: "nothing" as const,
+        },
+        {
+          name: `${driver}: an ordinary failure under the turn the message opened`,
+          driver,
+          died: false,
+          turnOpened: true,
+          says: "nothing" as const,
+        },
+      ]),
       {
-        name: "its failure first: the turn's record says it broke off",
-        exitFirst: false,
-        keeps: "break",
+        name: "a bad attachment, read before the turn opened",
+        driver: "cursor",
+        died: false,
+        turnOpened: false,
+        says: "start-failure",
       },
       {
-        name: "its session's exit first: what that said stands",
-        exitFirst: true,
-        keeps: "nothing",
-      },
-      {
-        name: "a send that failed for another reason: its message did not go",
-        exitFirst: false,
-        notDead: true,
-        keeps: "start-failure",
-      },
-      {
-        name: "a message sent into a turn it did not start: its message did not go",
-        exitFirst: false,
+        name: "a message sent into a turn it did not start",
+        driver: "cursor",
+        died: true,
+        turnOpened: false,
         intoRunningTurn: true,
-        keeps: "start-failure",
+        says: "start-failure",
       },
     ];
     for (const testCase of cases) {
       it(testCase.name, async () => {
         const threadId = ThreadId.make("thread-1");
-        const turnId = asTurnId("turn-cursor");
+        const turnId = asTurnId("turn-opened");
         const setSession = (status: "running" | "error", at: string) =>
           harness.engine.dispatch({
             type: "thread.session.set",
-            commandId: CommandId.make(`cmd-cursor-session-${status}`),
+            commandId: CommandId.make(`cmd-send-fails-session-${status}-${at}`),
             threadId,
             session: {
               threadId,
               status,
-              providerName: "cursor",
+              providerName: testCase.driver,
               providerInstanceId: ProviderInstanceId.make("codex"),
               runtimeMode: "approval-required",
               activeTurnId: status === "running" ? turnId : null,
-              lastError: status === "error" ? WORDS : null,
+              lastError: null,
               updatedAt: at,
             },
             createdAt: at,
           });
         const harness: Awaited<ReturnType<typeof createHarness>> = await createHarness({
           sendTurnFailure: () =>
-            testCase.notDead
-              ? new ProviderAdapterRequestError({
-                  provider: "cursor",
-                  method: "session/prompt",
-                  detail: "The attachment could not be read.",
+            testCase.died
+              ? new ProviderAdapterProcessError({
+                  provider: testCase.driver,
+                  threadId,
+                  detail: WORDS,
                 })
-              : new ProviderAdapterProcessError({ provider: "cursor", threadId, detail: WORDS }),
+              : new ProviderAdapterRequestError({
+                  provider: testCase.driver,
+                  method: "session/prompt",
+                  detail: ATTACHMENT,
+                }),
           whileSendFails: () =>
-            (testCase.intoRunningTurn
-              ? Effect.void
-              : setSession("running", "2026-01-01T00:00:01.000Z")
-            ).pipe(
-              Effect.andThen(
-                testCase.exitFirst ? setSession("error", "2026-01-01T00:00:02.000Z") : Effect.void,
-              ),
-              Effect.asVoid,
-              Effect.orDie,
-            ),
+            (testCase.turnOpened
+              ? setSession("running", "2026-01-01T00:00:01.000Z")
+              : Effect.void
+            ).pipe(Effect.asVoid, Effect.orDie),
         });
         if (testCase.intoRunningTurn) {
-          await Effect.runPromise(setSession("running", "2026-01-01T00:00:01.000Z"));
+          await harness.runEffect(setSession("running", "2026-01-01T00:00:01.000Z"));
         }
-        await Effect.runPromise(
+        await harness.runEffect(
           harness.engine.dispatch({
             type: "thread.turn.start",
-            commandId: CommandId.make("cmd-turn-start-cursor-crash"),
+            commandId: CommandId.make("cmd-turn-start-send-fails"),
             threadId,
             message: {
-              messageId: asMessageId("user-message-cursor-crash"),
+              messageId: asMessageId("user-message-send-fails"),
               role: "user",
               text: "work on it",
               attachments: [],
             },
             interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
             runtimeMode: "approval-required",
-            createdAt: testCase.intoRunningTurn
-              ? "2026-01-01T00:00:05.000Z"
-              : "2026-01-01T00:00:00.000Z",
+            createdAt: "2026-01-01T00:00:05.000Z",
           }),
         );
-        await waitFor(async () => {
-          const thread = (await harness.readModel()).threads.find((entry) => entry.id === threadId);
-          return thread?.session?.status === "error" && thread.latestTurn?.state === "error";
-        });
-        await Effect.runPromise(Effect.sleep("50 millis"));
+        await waitFor(() => harness.sendTurn.mock.calls.length >= 1);
+        const startFailures = async () =>
+          (
+            (await harness.readModel()).threads.find((entry) => entry.id === threadId)
+              ?.activities ?? []
+          ).filter((activity) => activity.kind === "provider.turn.start.failed");
+        if (testCase.says === "start-failure") {
+          await waitFor(async () => (await startFailures()).length === 1);
+        } else {
+          await harness.runEffect(Effect.sleep("300 millis"));
+        }
         const thread = (await harness.readModel()).threads.find((entry) => entry.id === threadId)!;
-        expect(
-          thread.activities.filter((activity) => activity.kind === "provider.turn.start.failed")
-            .length,
-        ).toBe(testCase.keeps === "start-failure" ? 1 : 0);
-        expect(
-          thread.activities
-            .filter((activity) => activity.kind === "runtime.error")
-            .map((activity) => ({
-              turnId: activity.turnId,
-              message: (activity.payload as { readonly message?: unknown }).message,
-            })),
-        ).toEqual(testCase.keeps === "break" ? [{ turnId, message: WORDS }] : []);
-        if (testCase.keeps !== "start-failure") expect(thread.session?.lastError).toBe(WORDS);
+        expect((await startFailures()).length).toBe(testCase.says === "start-failure" ? 1 : 0);
+        // The reactor never writes a turn's break: ingestion keeps its one record.
+        expect(thread.activities.filter((activity) => activity.kind === "runtime.error")).toEqual(
+          [],
+        );
+        if (testCase.says === "start-failure") {
+          expect(thread.session?.status).toBe("error");
+          expect(thread.session?.lastError).toContain(testCase.died ? WORDS : ATTACHMENT);
+        } else {
+          // The turn stays the adapter's to end: running here until its end arrives.
+          expect(thread.session?.lastError ?? null).toBeNull();
+        }
       });
     }
+
+    // Codex crashed on turn A; the person's next message restarts it, and the
+    // restart itself dies: no turn opened, so the message failed to start,
+    // and the person hears it — however the earlier turn ended.
+    it("a restart that dies after an earlier crash: the message failed to start", async () => {
+      const threadId = ThreadId.make("thread-1");
+      const harness = await createHarness({
+        startSessionEffect: () =>
+          Effect.fail(
+            new ProviderAdapterProcessError({
+              provider: "codex",
+              threadId,
+              detail: "Codex App Server failed to start.",
+            }),
+          ),
+      });
+      const at = (second: number) => `2026-01-01T00:00:0${second}.000Z`;
+      const session = (status: "running" | "error", second: number) =>
+        harness.runEffect(
+          harness.engine.dispatch({
+            type: "thread.session.set",
+            commandId: CommandId.make(`cmd-earlier-turn-${status}`),
+            threadId,
+            session: {
+              threadId,
+              status,
+              providerName: "codex",
+              providerInstanceId: ProviderInstanceId.make("codex"),
+              runtimeMode: "approval-required",
+              activeTurnId: status === "running" ? asTurnId("turn-a") : null,
+              lastError: status === "error" ? "Codex stopped unexpectedly." : null,
+              updatedAt: at(second),
+            },
+            createdAt: at(second),
+          }),
+        );
+      await session("running", 1);
+      await session("error", 2);
+      await harness.runEffect(
+        harness.engine.dispatch({
+          type: "thread.turn.start",
+          commandId: CommandId.make("cmd-turn-start-after-crash-restart-dies"),
+          threadId,
+          message: {
+            messageId: asMessageId("user-message-after-crash-restart-dies"),
+            role: "user",
+            text: "go on",
+            attachments: [],
+          },
+          interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+          runtimeMode: "approval-required",
+          createdAt: at(5),
+        }),
+      );
+      await waitFor(async () =>
+        (
+          (await harness.readModel()).threads.find((entry) => entry.id === threadId)?.activities ??
+          []
+        ).some((activity) => activity.kind === "provider.turn.start.failed"),
+      );
+      const thread = (await harness.readModel()).threads.find((entry) => entry.id === threadId)!;
+      expect(thread.session?.status).toBe("error");
+      expect(thread.session?.lastError).toContain("Codex App Server failed to start.");
+      expect(harness.sendTurn.mock.calls.length).toBe(0);
+    });
   });
 
   it("restarts an existing Codex thread on a compatible requested instance", async () => {

@@ -208,6 +208,31 @@ function maxCheckpointTurnCount(
  */
 type RuntimeErrorTurnEnd = "crash" | "failed" | "usage-limit";
 
+/** The one id of a turn's break record, whoever writes it: a later writer replaces it. */
+function turnBreakActivityId(threadId: ThreadId, turnId: TurnId): EventId {
+  return EventId.make(`broke-off:${threadId}:${turnId}`);
+}
+
+/** A runtime.error record's words, as kept. */
+function recordWords(activity: { readonly payload: unknown }): string | null {
+  const message = (activity.payload as { readonly message?: unknown } | null)?.message;
+  return typeof message === "string" ? message.trim() : null;
+}
+
+/** How a runtime.error record says its turn ended, when it says. */
+function recordTurnEnd(activity: { readonly payload: unknown }): unknown {
+  return (activity.payload as { readonly turnEnd?: unknown } | null)?.turnEnd;
+}
+
+/** How an adapter's error class says its turn ended: a break, or nothing said. */
+function turnEndOfErrorClass(errorClass: string | undefined): RuntimeErrorTurnEnd | undefined {
+  return errorClass === "usage_limit"
+    ? "usage-limit"
+    : errorClass === "process_exit"
+      ? "crash"
+      : undefined;
+}
+
 function truncateDetail(value: string, limit = 180): string {
   return value.length > limit ? `${value.slice(0, limit - 3)}...` : value;
 }
@@ -661,9 +686,9 @@ export function runtimeEventToActivities(
           summary: "Runtime error",
           payload: {
             message: truncateDetail(event.payload.message),
-            ...(event.payload.class === "usage_limit"
-              ? { turnEnd: "usage-limit" satisfies RuntimeErrorTurnEnd }
-              : {}),
+            ...(turnEndOfErrorClass(event.payload.class) === undefined
+              ? {}
+              : { turnEnd: turnEndOfErrorClass(event.payload.class) }),
           },
           turnId: toTurnId(event.turnId) ?? null,
           ...maybeSequence,
@@ -1871,35 +1896,40 @@ const make = Effect.gen(function* () {
     },
   );
 
+  /** A turn's runtime.error records, newest last. */
+  const turnErrorRecords = Effect.fnUntraced(function* (threadId: ThreadId, turnId: TurnId) {
+    const recorded = yield* projectionThreadActivityRepository.listByThreadId({
+      threadId,
+      activityKinds: ["runtime.error"],
+      limit: 50,
+    });
+    return recorded.filter((activity) => activity.turnId === turnId);
+  });
+
   /**
-   * Whether the turn holds a runtime.error record already — in these words,
-   * as its record keeps them (cut and trimmed), or any when no words are
-   * given. One break is one record, whichever event says it first.
+   * Whether the turn holds a runtime.error record in these words already, as
+   * a record keeps them (cut and trimmed). One error is one record, whichever
+   * event says it first.
    */
   const runtimeErrorRecorded = Effect.fnUntraced(function* (input: {
     readonly threadId: ThreadId;
     readonly turnId: TurnId;
-    readonly message: string | null;
+    readonly message: string;
   }) {
-    const recorded = yield* projectionThreadActivityRepository.listByThreadId({
-      threadId: input.threadId,
-      activityKinds: ["runtime.error"],
-      limit: 20,
-    });
-    const kept = input.message === null ? null : truncateDetail(input.message).trim();
-    return recorded.some((activity) => {
-      if (activity.turnId !== input.turnId) return false;
-      if (kept === null) return true;
-      const message = (activity.payload as { readonly message?: unknown } | null)?.message;
-      return typeof message === "string" && message.trim() === kept;
-    });
+    const kept = truncateDetail(input.message).trim();
+    return (yield* turnErrorRecords(input.threadId, input.turnId)).some(
+      (activity) => recordWords(activity) === kept,
+    );
   });
 
   /**
-   * The record of where a turn broke off — its agent's process died, or the
-   * turn failed — in its own words: one per turn and words, whichever event
-   * says it first (the adapter's runtime.error, the session's exit, the
-   * turn's failure). It is what the conversation reads, after a reload too.
+   * The record of where a turn broke off — its agent's process died, the
+   * turn failed, or the usage limit refused it — one per turn, under one id
+   * (`turnBreakActivityId`) whoever writes it: the adapter's error, the
+   * session's exit, the turn's failure. A crash told after a plain failure
+   * upgrades it to a crash; nothing else rewrites it. Words an adapter said
+   * already for the turn are that record. It is what the conversation reads,
+   * after a reload too.
    */
   const recordBreak = Effect.fnUntraced(function* (input: {
     readonly event: ProviderRuntimeEvent;
@@ -1910,19 +1940,26 @@ const make = Effect.gen(function* () {
     /** Words of no one's own (a failure with no message): only where the turn holds no record. */
     readonly unlessRecorded?: boolean;
   }) {
-    const recorded = yield* runtimeErrorRecorded({
-      threadId: input.threadId,
-      turnId: input.turnId,
-      message: input.unlessRecorded === true ? null : input.words,
-    });
-    if (recorded) return;
+    const records = yield* turnErrorRecords(input.threadId, input.turnId);
+    if (input.unlessRecorded === true && records.length > 0) return;
+    const breakId = turnBreakActivityId(input.threadId, input.turnId);
+    const kept = truncateDetail(input.words).trim();
+    const standing =
+      records.find((activity) => activity.activityId === breakId) ??
+      records.find((activity) => recordWords(activity) === kept);
+    const upgrades =
+      standing !== undefined &&
+      input.turnEnd === "crash" &&
+      recordTurnEnd(standing) !== "crash" &&
+      recordTurnEnd(standing) !== "usage-limit";
+    if (standing !== undefined && !upgrades) return;
     yield* orchestrationEngine.dispatch({
       type: "thread.activity.append",
       commandId: yield* providerCommandId(input.event, "turn-break-activity-append"),
       threadId: input.threadId,
       activity: {
-        id: EventId.make(`${input.event.eventId}:broke-off`),
-        createdAt: input.event.createdAt,
+        id: standing?.activityId ?? breakId,
+        createdAt: standing?.createdAt ?? input.event.createdAt,
         tone: "error",
         kind: "runtime.error",
         summary: "Runtime error",
@@ -2107,7 +2144,12 @@ const make = Effect.gen(function* () {
                 threadId: thread.id,
                 turnId: failedTurnId,
                 words: event.payload.errorMessage ?? "The turn failed.",
-                turnEnd: event.payload.terminalReason === "usage_limit" ? "usage-limit" : "failed",
+                turnEnd:
+                  event.payload.terminalReason === "usage_limit"
+                    ? "usage-limit"
+                    : event.payload.terminalReason === "process_exit"
+                      ? "crash"
+                      : "failed",
                 unlessRecorded: event.payload.errorMessage === undefined,
               });
             }
@@ -2834,7 +2876,22 @@ const make = Effect.gen(function* () {
               message: event.payload.message,
             })
           : false;
-      yield* Effect.forEach(repeatsRecord ? [] : activities, (activity) =>
+      // An adapter's error that says its turn broke off — its process died,
+      // the usage limit refused it — is that turn's one break record.
+      const breakEnd =
+        event.type === "runtime.error" && eventTurnId !== undefined
+          ? turnEndOfErrorClass(event.payload.class)
+          : undefined;
+      if (event.type === "runtime.error" && eventTurnId !== undefined && breakEnd !== undefined) {
+        yield* recordBreak({
+          event,
+          threadId: thread.id,
+          turnId: eventTurnId,
+          words: event.payload.message,
+          turnEnd: breakEnd,
+        });
+      }
+      yield* Effect.forEach(repeatsRecord || breakEnd !== undefined ? [] : activities, (activity) =>
         providerCommandId(event, "thread-activity-append").pipe(
           Effect.flatMap((commandId) =>
             orchestrationEngine.dispatch({
