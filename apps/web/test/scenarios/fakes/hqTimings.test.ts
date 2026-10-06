@@ -69,7 +69,6 @@ it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
                   changed();
                 }),
                 "Core ping/reconcile/role-check timer scheduling",
-                5000,
               ),
             );
             // Observe the clock boundary of running Core, not a copy of its configuration object.

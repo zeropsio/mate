@@ -50,7 +50,7 @@ export const installBudget: ScenarioExtension = async (drivers) => {
     mateReady: (name) => {
       const receipt = connected.get(name);
       if (!receipt) throw new Error(`No Mate fixture ${name}`);
-      return deadline(receipt, `${name} first Mate RPC`, 15_000);
+      return deadline(receipt, `${name} first Mate RPC`);
     },
   });
 };

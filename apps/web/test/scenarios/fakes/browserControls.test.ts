@@ -128,7 +128,10 @@ it.each(["held reply", "default HTTP settling"])(
       ]);
       expect(requests).toBe(2);
       await web.page.evaluate(() => {
-        setTimeout(() => Object.assign(window, { nextReceipt: Date.now() }), 2117);
+        setTimeout(
+          () => setTimeout(() => Object.assign(window, { nextReceipt: Date.now() }), 1),
+          2117,
+        );
       });
       await clock.advanceUntil(
         () => web.page.evaluate(() => "nextReceipt" in window),

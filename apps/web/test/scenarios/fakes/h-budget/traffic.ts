@@ -143,7 +143,6 @@ export async function observeTraffic(origin: string) {
             check();
           }),
           `${count} HQ socket opens`,
-          15_000,
         );
       } finally {
         events.off("open", check);
@@ -164,7 +163,6 @@ export async function observeTraffic(origin: string) {
             check();
           }),
           `${count} HQ segments with first data`,
-          15_000,
         );
       } finally {
         events.off("data", check);

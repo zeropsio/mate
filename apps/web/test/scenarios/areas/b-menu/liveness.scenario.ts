@@ -318,7 +318,7 @@ describe("B: menu liveness", () => {
         yield* s.then.menu.row("Ada").appears();
         yield* s.then.menu.row("Bea").appears();
         yield* s.colleague.deletes("Ada");
-        yield* Effect.promise(() => s.clock.advance(12 * 60_000));
+        yield* s.colleague.settlesDeletion("Ada");
         yield* s.menu.absent("Ada");
         yield* s.then.menu.row("Bea").appears();
         yield* s.then.noReload;
@@ -338,7 +338,7 @@ describe("B: menu liveness", () => {
         yield* s.then.menu.row("Bea").appears();
         const retained = yield* s.then.menu.keepsRows(["Ada"]);
         yield* s.colleague.deletes("Bea");
-        yield* Effect.promise(() => s.clock.advance(12 * 60_000));
+        yield* s.colleague.settlesDeletion("Bea");
         yield* s.menu.absent("Bea");
         // Keep observing through any delayed confirmation reads and their rendered results.
         yield* s.colleague.settlesRefusal;

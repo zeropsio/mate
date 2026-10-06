@@ -2218,10 +2218,7 @@ describe("deploys", () => {
                   ${sha}, 0, 'submitting', now(), 'V-legacy', false)`;
               }).pipe(Effect.orDie),
             );
-            yield* until(
-              (rows) =>
-                rows.length === 2 && (seenAfter === undefined || rows[1]?.state !== "submitting"),
-            );
+            yield* until((rows) => rows.length === 2 && rows[1]?.state === ends[0]);
             const legacy = (yield* deploys)[1];
             assert.deepStrictEqual([legacy?.state, legacy?.reason ?? null], [...ends]);
           }),

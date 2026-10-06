@@ -43,7 +43,6 @@ it("publishes typed requests and response receipts on the real wire and retains 
           notify = resolve;
         }),
         "chat wire receipt",
-        5000,
       );
   };
   try {

@@ -1,6 +1,7 @@
 import type { CDPSession, Page } from "puppeteer-core";
 import { completedHttp } from "./completedHttp.ts";
 import { deadline } from "./http.ts";
+import { remainingTestBudget } from "./waits.ts";
 
 export interface SteppedAdvanceOptions {
   /** Override the default completed-HTTP condition, e.g. to release held replies and await receipts. */
@@ -18,10 +19,14 @@ export function clientClock(page: Page, wallClock?: ScenarioWallClock) {
   const settleHttp = completedHttp(page);
   let installed = false;
   let frozenSession: CDPSession | undefined;
+  const lifecycle = { freeze: () => {}, resume: () => {} };
   let refreshEpoch = async () => {};
   const install = async () => {
     if (installed) return;
     installed = true;
+    await page.exposeFunction("scenarioClockLifecycle", (state: "freeze" | "resume") =>
+      lifecycle[state](),
+    );
     const initialTime = wallClock?.currentTimeMillis();
     if (wallClock) {
       wallClock.setTime(initialTime!);
@@ -31,6 +36,14 @@ export function clientClock(page: Page, wallClock?: ScenarioWallClock) {
     }
     const registerDocument = (initialTime?: number) =>
       page.evaluateOnNewDocument((initialTime) => {
+        for (const state of ["freeze", "resume"] as const)
+          document.addEventListener(state, () => {
+            void (
+              window as unknown as {
+                scenarioClockLifecycle(state: "freeze" | "resume"): Promise<void>;
+              }
+            ).scenarioClockLifecycle(state);
+          });
         const NativeDate = Date;
         const nativeTimeout = window.setTimeout.bind(window);
         const nativeClear = window.clearTimeout.bind(window);
@@ -149,7 +162,7 @@ export function clientClock(page: Page, wallClock?: ScenarioWallClock) {
               [...timers.values()]
                 .filter((timer) => timer.interval === undefined && timer.at <= now + maxStep)
                 .reduce<number | null>(
-                  (next, timer) => (next === null ? timer.at : Math.max(next, timer.at)),
+                  (next, timer) => (next === null ? timer.at : Math.min(next, timer.at)),
                   null,
                 ),
           },
@@ -235,34 +248,47 @@ export function clientClock(page: Page, wallClock?: ScenarioWallClock) {
           }
         })(),
         what,
+        remainingTestBudget(),
       );
     },
     async sleep() {
       if (!installed) throw new Error("Install clientClock before sign-in/navigation");
       const cdp = await deadline(page.createCDPSession(), "Chrome freeze session attached");
+      const frozen = new Promise<void>((resolve) => {
+        lifecycle.freeze = resolve;
+      });
       try {
         await deadline(
           cdp.send("Page.setWebLifecycleState", { state: "frozen" }),
           "Chrome page frozen",
         );
+        await deadline(frozen, "document freeze event");
         // Attaching another session can wait on the frozen renderer. Keep the session that
         // froze it until that same session resumes it.
         frozenSession = cdp;
       } catch (error) {
         await deadline(cdp.detach(), "Chrome freeze session detached");
         throw error;
+      } finally {
+        lifecycle.freeze = () => {};
       }
     },
     async wake(elapsedMs: number) {
       const cdp =
         frozenSession ?? (await deadline(page.createCDPSession(), "Chrome wake session attached"));
+      const wasFrozen = frozenSession !== undefined;
+      const resumed = new Promise<void>((resolve) => {
+        lifecycle.resume = resolve;
+      });
       try {
         await deadline(
           cdp.send("Page.setWebLifecycleState", { state: "active" }),
           "Chrome page active",
         );
+        if (wasFrozen) await deadline(resumed, "document resume event");
       } finally {
         frozenSession = undefined;
+        lifecycle.resume = () => {};
         await deadline(cdp.detach(), "Chrome wake session detached");
       }
       await advance(elapsedMs, true);

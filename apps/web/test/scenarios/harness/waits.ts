@@ -13,10 +13,14 @@ afterEach(() => {
 
 /** A receipt/render poll uses the condition budget plus the protocol delay it must cross,
  * capped by the live test's remaining time. Changing test policy changes every wait together. */
-export function waitBudget(expectedDelay = 0) {
+export function remainingTestBudget() {
   const total = current?.context.task.timeout ?? scenarioPolicy.testMs;
   const remaining = current ? total - (performance.now() - current.started) : total;
-  return Math.max(1, Math.min(remaining, scenarioPolicy.conditionMs + expectedDelay));
+  return Math.max(1, remaining);
+}
+
+export function waitBudget(expectedDelay = 0) {
+  return Math.min(remainingTestBudget(), scenarioPolicy.conditionMs + expectedDelay);
 }
 
 export function boundPageWaits(page: Page) {

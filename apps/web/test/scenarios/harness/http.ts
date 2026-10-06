@@ -1,5 +1,5 @@
 // @effect-diagnostics nodeBuiltinImport:off -- real HTTP sockets are the black-box test boundary.
-import { waitBudget } from "./waits.ts";
+import { remainingTestBudget, waitBudget } from "./waits.ts";
 import * as NodeHttp from "node:http";
 import * as NodeNet from "node:net";
 import { WebSocketServer, type WebSocket } from "ws";
@@ -102,7 +102,7 @@ export async function deadline<A>(
       new Promise<never>((_, reject) => {
         timer = setTimeout(
           () => reject(new Error(`Timed out: ${what}`)),
-          Math.min(timeout, waitBudget()),
+          Math.min(timeout, remainingTestBudget()),
         );
       }),
     ]);

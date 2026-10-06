@@ -80,6 +80,7 @@ export async function openBrowser(
     executablePath,
     headless: true,
     timeout: waitBudget(scenarioPolicy.testMs),
+    protocolTimeout: waitBudget(),
     args: [
       "--disable-background-networking",
       "--disable-component-update",

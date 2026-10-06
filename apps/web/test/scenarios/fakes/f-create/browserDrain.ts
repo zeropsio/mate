@@ -33,7 +33,6 @@ export function creationNetwork(page: Page) {
             waiters.add(done);
           }),
           "creation platform requests drained",
-          15_000,
         );
       } catch (cause) {
         throw new Error(

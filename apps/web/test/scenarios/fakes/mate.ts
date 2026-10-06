@@ -442,7 +442,6 @@ export class MateFake {
           this.receipts.on("message", listener);
         }),
         `Mate accepted message: ${text}`,
-        8000,
       );
     } finally {
       this.receipts.off("message", listener);

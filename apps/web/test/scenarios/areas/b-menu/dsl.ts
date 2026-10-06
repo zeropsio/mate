@@ -1,5 +1,6 @@
 import type { MateFake } from "../../fakes/mate.ts";
 import * as Effect from "effect/Effect";
+import { DEFAULT_ZEROPS_GRANT_POLICY } from "@t3tools/client-runtime/zerops/data";
 import { clickText } from "../../harness/browser.ts";
 import { completedHttp } from "../../harness/completedHttp.ts";
 import type { ScenarioExtension } from "../../harness/scenario.ts";
@@ -20,6 +21,17 @@ import {
   holdDetails,
   releaseDetails,
 } from "./fake.ts";
+
+const rowAbsent = (name: string) =>
+  ![
+    ...document.querySelectorAll<HTMLElement>(
+      '[data-zerops-surface="sidebar-mate-name"], [data-zerops-surface="sidebar-project-toggle"]',
+    ),
+  ].some(
+    (row) =>
+      row.getBoundingClientRect().height > 0 &&
+      row.innerText.split("\n").some((line) => line.trim() === name),
+  );
 
 export const menuScenario = Effect.fn("menu.scenario")(function* (
   extensions: ScenarioExtension[] = [],
@@ -105,16 +117,7 @@ export const menuScenario = Effect.fn("menu.scenario")(function* (
     absent: (name: string) =>
       Effect.promise(async () => {
         await s.page.waitForFunction(
-          (name) =>
-            ![
-              ...document.querySelectorAll<HTMLElement>(
-                '[data-zerops-surface="sidebar-mate-name"], [data-zerops-surface="sidebar-project-toggle"]',
-              ),
-            ].some(
-              (row) =>
-                row.getBoundingClientRect().height > 0 &&
-                row.innerText.split("\n").some((line) => line.trim() === name),
-            ),
+          rowAbsent,
           { timeout: s.page.getDefaultTimeout(), polling: "raf" },
           name,
         );
@@ -194,7 +197,18 @@ export const menuScenario = Effect.fn("menu.scenario")(function* (
       moves: (name: string, app: string | null) => moveMate(s.drivers, name, app),
       deletes: (name: string) => removeProject(s.drivers, name),
       denies: (name: string) => denyProjectRead(s.drivers, name),
-      settlesRefusal: settleProjectRefusal(s.clock.advance, completedHttp(s.page)),
+      settlesRefusal: settleProjectRefusal(
+        (ms) => s.clock.advance(ms, true),
+        completedHttp(s.page),
+      ),
+      settlesDeletion: (name: string) =>
+        Effect.promise(() =>
+          s.clock.advanceUntil(
+            () => s.page.evaluate(rowAbsent, name),
+            `deleted project ${name} removed after access renewal`,
+            DEFAULT_ZEROPS_GRANT_POLICY.windowMs,
+          ),
+        ),
       builds: (name: string) => startStageBuild(s.drivers, name),
     },
   };
