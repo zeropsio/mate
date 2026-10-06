@@ -127,6 +127,7 @@ import {
 import { MessageCopyButton } from "./MessageCopyButton";
 import {
   computeStableMessagesTimelineRows,
+  createMessagesTimelineRowsCache,
   conversationSpeaker,
   deriveMessagesTimelineRows,
   earlierTurnsAnchor,
@@ -536,9 +537,12 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // Whether something runs alongside the live run: its card is then drawn a
   // slice a row, its panel one of them.
   const alongside = dockDraws(working);
+  // What the last derive read and drew: a streamed update reads the live run again, no other.
+  const [rowsCache] = useState(createMessagesTimelineRowsCache);
   const rawRows = useMemo(
     () =>
       deriveMessagesTimelineRows({
+        cache: rowsCache,
         nowMs,
         newSince,
         timelineEntries,
@@ -571,6 +575,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       helperFinishes,
       alongside,
       provider,
+      rowsCache,
     ],
   );
   const stableRows = useStableRows(rawRows);
@@ -669,6 +674,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     };
   }, [listRef, rows]);
 
+  // Which rows stand where: what the list's containers are drawn again for.
+  const rowOrder = useMemo(() => rows.map((row) => row.id).join("\n"), [rows]);
   const livePauseId = useMemo(
     () => rows.findLast((row) => row.kind === "pause" && row.resumedAt === null)?.id ?? null,
     [rows],
@@ -1212,11 +1219,15 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     );
   }, [shown]);
 
+  // Its own memo: a ref made afresh with every other change of the rows'
+  // shared state handed every message's markdown a new prop, and each was
+  // parsed again.
+  const threadRef = useMemo(() => parseScopedThreadKey(routeThreadKey), [routeThreadKey]);
   const sharedState = useMemo<TimelineRowSharedState>(
     () => ({
       timestampFormat,
       routeThreadKey,
-      threadRef: parseScopedThreadKey(routeThreadKey),
+      threadRef,
       markdownCwd,
       resolvedTheme,
       workspaceRoot,
@@ -1245,6 +1256,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     [
       timestampFormat,
       routeThreadKey,
+      threadRef,
       markdownCwd,
       resolvedTheme,
       workspaceRoot,
@@ -1501,13 +1513,16 @@ export const MessagesTimeline = memo(function MessagesTimeline({
             <LegendList<MessagesTimelineRow>
               ref={listRef}
               data={rows}
-              // Each container reads its row again whenever the rows change.
-              // LegendList (3.3.5) draws `data[indexByKey(key)]` once per
-              // container and keeps it until that container's own data
-              // changes: read while a row was being inserted, the index was
-              // the old one, and the container went on drawing the row that
-              // slid into it — a row twice, a card's edge gone (Rhea, run 11).
-              extraData={rows}
+              // Each container reads its row again whenever a row comes, goes
+              // or moves. LegendList (3.3.5) draws `data[indexByKey(key)]`
+              // once per container and keeps it until that container's own
+              // data changes: read while a row was being inserted, the index
+              // was the old one, and the container went on drawing the row
+              // that slid into it — a row twice, a card's edge gone (Rhea,
+              // run 11). A row that only changed in place is its container's
+              // own data, which the list hands it: the rest are not drawn
+              // again for it, on every streamed update.
+              extraData={rowOrder}
               keyExtractor={keyExtractor}
               getItemType={getItemType}
               renderItem={renderItem}

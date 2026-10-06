@@ -86,6 +86,29 @@ function laterIso(a: string | null, b: string | null): string | null {
   return bMs > aMs ? b : a;
 }
 
+/**
+ * The latest end of `entries` (`timelineEntryEnd`), as folding them with
+ * `laterIso` says it — each end read once, not again at every step;
+ * `skipTaskReports`, a helper's or a task's report aside.
+ */
+function latestEndOf(
+  entries: ReadonlyArray<TimelineEntry>,
+  skipTaskReports: boolean,
+): string | null {
+  let end: string | null = null;
+  let endMs: number | null = null;
+  for (const entry of entries) {
+    if (skipTaskReports && isTaskReport(entry)) continue;
+    const at = timelineEntryEnd(entry);
+    const atMs = parseMs(at);
+    if (endMs === null || (atMs !== null && atMs > endMs)) {
+      end = at;
+      endMs = atMs;
+    }
+  }
+  return end;
+}
+
 // ---------------------------------------------------------------------------
 // What the person typed
 // ---------------------------------------------------------------------------
@@ -943,7 +966,7 @@ export function deriveConversationStructure(given: {
 
   const stretchByIndex = new Map<number, Stretch>();
   const turns: ConversationTurn[] = [];
-  for (const span of spans) {
+  for (const [spanIndex, span] of spans.entries()) {
     const members = membersBySpan.get(span) ?? [];
     const live = span === liveSpan;
     const turnEntries = members
@@ -959,7 +982,7 @@ export function deriveConversationStructure(given: {
       ((isLatestTurn && input.latestTurn?.state === "interrupted") || endedOnAStep(turnEntries));
     // The person's next message came while it ran: their message interrupted
     // it, never their Stop (Noibit, run 11: "stopped after 8m 11s").
-    const next = spans[spans.indexOf(span) + 1];
+    const next = spans[spanIndex + 1];
     const lastOwn = turnEntries.at(-1);
     // The person's Stop ends every task the run started (stop-everything);
     // their message leaves them running.
@@ -1038,12 +1061,7 @@ export function deriveConversationStructure(given: {
     // the latest or not, so its "worked for" never changes after the fact. A
     // helper or a background task it left working reports in on the turn,
     // but that is the task's time, not the Mate's.
-    const turnEnd = live
-      ? null
-      : (turnEntries.reduce<string | null>(
-          (end, entry) => (isTaskReport(entry) ? end : laterIso(end, timelineEntryEnd(entry))),
-          null,
-        ) ?? turnStart);
+    const turnEnd = live ? null : (latestEndOf(turnEntries, true) ?? turnStart);
 
     // Split at the person's messages, and where a turn nobody wrote to start
     // took the run on.
@@ -1079,9 +1097,9 @@ export function deriveConversationStructure(given: {
         position > 0 && draft.lead === null && stretchEntries.length === 0
           ? laterIso(
               input.activeTurnStartedAt,
-              members.reduce<string | null>(
-                (end, index) => laterIso(end, timelineEntryEnd(entries[index]!)),
-                null,
+              latestEndOf(
+                members.map((index) => entries[index]!),
+                false,
               ),
             )
           : null;
@@ -1098,10 +1116,7 @@ export function deriveConversationStructure(given: {
           : (turnEnd ?? startedAt)
         : (next!.lead?.createdAt ??
           // As a run's own end: a helper reporting in is the helper's time.
-          stretchEntries.reduce<string | null>(
-            (end, entry) => (isTaskReport(entry) ? end : laterIso(end, timelineEntryEnd(entry))),
-            null,
-          ) ??
+          latestEndOf(stretchEntries, true) ??
           startedAt);
       const woke =
         draft.lead === null && position > 0
