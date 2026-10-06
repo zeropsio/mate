@@ -4,7 +4,7 @@ import { liveZerops, ORG, zeropsVersion } from "../__fixtures__/account.ts";
 import { emptyAccount } from "../model.ts";
 import { reduceAccount, type AccountInput } from "../reducer.ts";
 import { readsOfState } from "../store.ts";
-import { projectFamily, projectsScope } from "./project.ts";
+import { projectFamily, projectsScope, type ProjectValue } from "./project.ts";
 
 const decode = projectFamily.zerops!.decode;
 
@@ -158,5 +158,67 @@ describe("a project's own row", () => {
   it("keeps everybody's grants under a later push, which names none", () => {
     const fact = reduce([...held(), ownRead("2026-10-06T10:00:00Z"), push]);
     expect(fact).toMatchObject({ kind: "known", value: { name: "Renamed", userRoles: grants } });
+  });
+
+  // The roster read again from its start (an outage, a transient fault, a restarted attempt).
+  const scope = projectsScope(ORG);
+  const rebaseline = (value: ProjectValue): ReadonlyArray<AccountInput> => [
+    {
+      kind: "stream",
+      key: scope,
+      now: 0,
+      event: { kind: "fault", fault: { outcome: "transient", message: "gone" }, jitter: 0 },
+    },
+    { kind: "stream", key: scope, now: 99_999, event: { kind: "retry-due" } },
+    { kind: "stream", key: scope, now: 99_999, event: { kind: "attempt" } },
+    { kind: "stream", key: scope, now: 99_999, event: { kind: "handshake" } },
+    { kind: "baseline-begin", scope, generation: 3 },
+    {
+      kind: "baseline-commit",
+      scope,
+      generation: 3,
+      via: "zerops-realtime",
+      members: ["p1"],
+      rows: [{ family: "project", id: "p1", value, revision: zeropsVersion(3) }],
+    },
+  ];
+  const listingRead = (value: ProjectValue): AccountInput => ({
+    kind: "rows",
+    scope,
+    generation: 1,
+    method: "read",
+    via: "zerops-read",
+    rows: [{ family: "project", id: "p1", value, revision: zeropsVersion(3) }],
+  });
+  const row = { id: "p1", name: "Renamed", status: "ACTIVE", lastUpdate: "2026-10-06T10:05:00Z" };
+  const grantsOf = (inputs: ReadonlyArray<AccountInput>) => {
+    const fact = reduce(inputs);
+    if (fact.kind !== "known") return null;
+    const { userRoles, viewerRoleCode, name } = fact.value;
+    return { name, userRoles, viewerRoleCode };
+  };
+
+  it.each<{
+    readonly name: string;
+    readonly after: ReadonlyArray<AccountInput>;
+    readonly grants: ReturnType<typeof grantsOf>;
+  }>([
+    {
+      name: "the roster's baseline read again, naming no grants, keeps everybody's",
+      after: rebaseline(row),
+      grants: { name: "Renamed", userRoles: grants, viewerRoleCode: undefined },
+    },
+    {
+      name: "a listing's read naming no grants keeps everybody's",
+      after: [listingRead(row)],
+      grants: { name: "Renamed", userRoles: grants, viewerRoleCode: undefined },
+    },
+    {
+      name: "a baseline naming the viewer's own grant keeps everybody's beside it",
+      after: rebaseline({ ...row, viewerRoleCode: "READ_ONLY" }),
+      grants: { name: "Renamed", userRoles: grants, viewerRoleCode: "READ_ONLY" },
+    },
+  ])("$name", ({ after, grants: expected }) => {
+    expect(grantsOf([...held(), ownRead("2026-10-06T10:00:00Z"), ...after])).toEqual(expected);
   });
 });

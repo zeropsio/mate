@@ -188,6 +188,12 @@ export interface FamilySpec<F extends Family> {
    */
   readonly merge?: (held: FamilyValues[F], pushed: FamilyValues[F]) => FamilyValues[F];
   /**
+   * What a row of any kind — a push, a read, a baseline — may leave unsaid that the value held
+   * says (a project's listing never names everybody's grants): the held part stays under it.
+   * Without it, a row that is not merged replaces the value whole.
+   */
+  readonly keepUnsaid?: (held: FamilyValues[F], row: FamilyValues[F]) => FamilyValues[F];
+  /**
    * The owner's own ordering of a read that carries no revision (a by-id read, or a detail
    * listing's baseline): whether the value it read is
    * newer than the one held (a service's `lastUpdate`, on Zerops' clock). Without it, such a read

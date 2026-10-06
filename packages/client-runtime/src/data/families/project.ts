@@ -7,7 +7,7 @@
  * NO_ACCESS member's) or none at all (`[]`, an organization member's; read 2026-10-06): everybody's
  * grants — whose `OWNER` makes a Mate somebody's — come only with the project's own row, read
  * while a screen shows it. A list a row does not carry is unsaid, so a push or a listing never
- * takes the grants an own read brought.
+ * takes the grants an own read brought — nor does the roster read again from its start.
  *
  * @module data/families/project
  */
@@ -92,6 +92,18 @@ export const projectFamily: FamilySpec<"project"> = {
     demand: "navigation",
   },
   merge: (held, pushed) => ({ ...held, ...pushed }),
+  // A row naming no list of grants keeps the one held, and one naming no grant at all keeps the
+  // viewer's own one held beside it: whichever a row names is the newest word on it.
+  keepUnsaid: (held, row) => {
+    const { userRoles, viewerRoleCode } = held;
+    if (row.userRoles !== undefined) return row;
+    const named = row.viewerRoleCode !== undefined;
+    return {
+      ...row,
+      ...(userRoles === undefined ? {} : { userRoles }),
+      ...(named || viewerRoleCode === undefined ? {} : { viewerRoleCode }),
+    };
+  },
   // A row read by its id carries no `_version`: Zerops' own `lastUpdate` orders it. One as current
   // as the row held is taken: a change of grants alone leaves `lastUpdate` as it was.
   readIsNewer: (held, read) =>
