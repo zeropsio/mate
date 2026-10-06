@@ -3,7 +3,7 @@ import type { MateAttention } from "@t3tools/contracts";
 
 export const attention = (incarnation: string, revision: number, working = 0): MateAttention =>
   ({
-    source: { environmentId: "env-ada", incarnation, revision },
+    source: { environmentId: "env-ada", epoch: 1, incarnation, revision },
     mainThreadId: "t-main",
     lastThreadId: "t-main",
     working,

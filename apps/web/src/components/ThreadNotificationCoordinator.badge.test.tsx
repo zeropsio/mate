@@ -278,7 +278,7 @@ it("badges background failures with in-app notifications enabled", async () => {
 it("badges a Mate's attention while it is of now, whatever HQ's overview says", async () => {
   const said = (questions: ReadonlyArray<unknown>, live = true) => ({
     attention: {
-      source: { environmentId: "one", incarnation: "m1", revision: questions.length },
+      source: { environmentId: "one", epoch: 1, incarnation: "m1", revision: questions.length },
       mainThreadId: "thread",
       lastThreadId: "thread",
       working: 0,

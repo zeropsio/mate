@@ -1100,7 +1100,7 @@ describe("revisioned HQ values", () => {
           const f = yield* fixture;
           const oldLink = yield* f.overviews.connect("P");
           const value = {
-            source: { environmentId: "env", incarnation: "first", revision: 7 },
+            source: { environmentId: "env", epoch: 1, incarnation: "first", revision: 7 },
             mainThreadId: null,
             lastThreadId: null,
             working: 1,
@@ -1352,7 +1352,7 @@ describe("revisioned HQ values", () => {
         const f = yield* fixture;
         const link = yield* f.overviews.connect("P");
         const value = {
-          source: { environmentId: "env", incarnation: "boot", revision: 1 },
+          source: { environmentId: "env", epoch: 1, incarnation: "boot", revision: 1 },
           mainThreadId: "thread",
           lastThreadId: "thread",
           working: 0,
@@ -2064,7 +2064,7 @@ describe("revisioned HQ values", () => {
         });
         const link = yield* f.overviews.connect("P");
         yield* f.overviews.reportAttention("P", link, {
-          source: { environmentId: "env", incarnation: "boot", revision: 1 },
+          source: { environmentId: "env", epoch: 1, incarnation: "boot", revision: 1 },
           mainThreadId: "main",
           lastThreadId: "main",
           working: 0,

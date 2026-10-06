@@ -236,7 +236,7 @@ describe("mateLink", () => {
     const attention = (results: number) => ({
       type: "attention",
       attention: {
-        source: { environmentId: "env-1", incarnation: id(0), revision: 7 },
+        source: { environmentId: "env-1", epoch: 1, incarnation: id(0), revision: 7 },
         mainThreadId: id(0),
         lastThreadId: id(1),
         working: 3,

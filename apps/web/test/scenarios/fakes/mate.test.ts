@@ -130,7 +130,7 @@ it("publishes its attention: whole on subscribe, then each new revision, a messa
       }),
     );
     expect(await next()).toMatchObject({
-      source: { incarnation: "fake-Ada", revision: 0 },
+      source: { epoch: 1, incarnation: "fake-Ada", revision: 0 },
       mainThreadId: "thread-Ada",
       working: 0,
     });
@@ -148,15 +148,15 @@ it("revises its attention for its link to HQ alone, and starts it over when it r
   const fake = new MateFake("Ada", "Ada");
   fake.publishAttention({ working: 1 });
   expect(fake.reviseAttention({ working: 0 })).toMatchObject({
-    source: { incarnation: "fake-Ada", revision: 2 },
+    source: { epoch: 1, incarnation: "fake-Ada", revision: 2 },
     working: 0,
   });
   fake.restart();
   expect(fake.attention()).toMatchObject({
-    source: { incarnation: "fake-Ada:1", revision: 0 },
+    source: { epoch: 2, incarnation: "fake-Ada:1", revision: 0 },
     working: 0,
   });
   expect(fake.publishAttention()).toMatchObject({
-    source: { incarnation: "fake-Ada:1", revision: 1 },
+    source: { epoch: 2, incarnation: "fake-Ada:1", revision: 1 },
   });
 });

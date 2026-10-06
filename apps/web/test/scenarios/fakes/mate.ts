@@ -245,6 +245,7 @@ export class MateFake {
     return decodeMateAttention({
       source: {
         environmentId: this.descriptor.environmentId,
+        epoch: this.restarts + 1,
         incarnation: this.attentionIncarnation,
         revision: this.attentionRevision,
       },
@@ -276,7 +277,7 @@ export class MateFake {
           this.chunk(socket, id, [encodeMateAttention(value)]);
     return value;
   }
-  /** Its server restarted: its attention goes on, a new incarnation from revision 0. */
+  /** Its server restarted: its attention goes on in the next epoch, a new incarnation from revision 0. */
   restart(): void {
     this.restarts += 1;
     this.attentionIncarnation = `fake-${this.projectId}:${this.restarts}`;

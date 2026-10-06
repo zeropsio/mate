@@ -270,7 +270,7 @@ it.effect("attention keeps source order and becomes live again on an unchanged n
     Effect.gen(function* () {
       const overviews = yield* makeMateOverviews(memoryStore().store);
       const value = {
-        source: { environmentId: "env", incarnation: "boot", revision: 2 },
+        source: { environmentId: "env", epoch: 1, incarnation: "boot", revision: 2 },
         mainThreadId: "main",
         lastThreadId: "last",
         working: 0,

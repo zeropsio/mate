@@ -3,7 +3,7 @@ import { acceptAttention } from "./attentionIngest.ts";
 import { HqAttentionValue } from "@t3tools/shared/hqStream";
 import * as Schema from "effect/Schema";
 const value = Schema.decodeSync(HqAttentionValue)({
-  source: { environmentId: "env", incarnation: "boot", revision: 2 },
+  source: { environmentId: "env", epoch: 1, incarnation: "boot", revision: 2 },
   mainThreadId: "main",
   lastThreadId: "new",
   working: 0,
