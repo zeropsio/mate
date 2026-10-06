@@ -36,7 +36,15 @@ export const environmentsWithSnapshotAtom = Atom.make((get): ReadonlySet<Environ
     }
   }
   return ids;
-}).pipe(Atom.withLabel("web-environments-with-snapshot"));
+}).pipe(
+  // Every shell event makes a new snapshot; the set changes only when one arrives or goes.
+  Atom.withEquality(
+    (previous: ReadonlySet<EnvironmentId>, next: ReadonlySet<EnvironmentId>) =>
+      previous.size === next.size &&
+      [...next].every((environmentId) => previous.has(environmentId)),
+  ),
+  Atom.withLabel("web-environments-with-snapshot"),
+);
 
 export const allEnvironmentShellsBootstrappedAtom = Atom.make((get) => {
   const catalog = AsyncResult.value(get(environmentCatalog.catalogAtom));

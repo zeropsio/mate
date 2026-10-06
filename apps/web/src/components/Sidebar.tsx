@@ -30,6 +30,7 @@ import {
   threadSearchMatchKey,
   type EnvironmentThreadSearchMatch,
 } from "@t3tools/client-runtime/state/thread-search";
+import { arrayElementsEqual } from "@t3tools/client-runtime/state/entities";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import {
   parseScopedThreadKey,
@@ -92,6 +93,7 @@ import {
 } from "../keybindings";
 import { useShortcutModifierState } from "../shortcutModifierState";
 import { useTerminalFocus } from "../hooks/useTerminalFocus";
+import { subscribeSecond } from "../lib/secondTicker";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import { isModelPickerOpen } from "../modelPickerVisibility";
 import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
@@ -244,6 +246,7 @@ import {
   SidebarNewProject,
   SidebarZeropsTree,
   type SidebarProjectFlow,
+  type SidebarZeropsTreeProps,
 } from "./zerops/SidebarZeropsTree";
 import { newProjectOffered } from "./zerops/SidebarProjects.logic";
 import { releaseFailureOf } from "./zerops/SidebarProductionChip.logic";
@@ -312,14 +315,14 @@ function JumpHintBadge(props: { label: string }) {
   );
 }
 
-// Self-ticking so only this span re-renders each second, not the whole row.
+// Self-ticking so only this span re-renders each second, not the whole row — on the one second
+// clock (`subscribeSecond`), with every other counting duration.
 function WorkingDuration(props: { startedAt: string | null }) {
   const startedMs = props.startedAt !== null ? Date.parse(props.startedAt) : Number.NaN;
   const [, setTick] = useState(0);
   useEffect(() => {
     if (Number.isNaN(startedMs)) return;
-    const id = window.setInterval(() => setTick((tick) => tick + 1), 1_000);
-    return () => window.clearInterval(id);
+    return subscribeSecond(() => setTick((tick) => tick + 1));
   }, [startedMs]);
   if (Number.isNaN(startedMs)) return null;
   return <span className="tabular-nums">{formatWorkingDurationLabel(Date.now() - startedMs)}</span>;
@@ -1773,6 +1776,20 @@ const ZEROPS_SIDEBAR_SURFACE = {
   negative: null,
 } as const;
 
+/** A reader of successive arrays giving back the last one while its elements are the same. */
+function createElementsKeeper<A>(): (next: ReadonlyArray<A>) => ReadonlyArray<A> {
+  let last: ReadonlyArray<A> = [];
+  return (next) => {
+    if (!arrayElementsEqual(last, next)) last = next;
+    return last;
+  };
+}
+
+/** What one of the Mate tree's verbs is called with. */
+type TreeVerbArgs<K extends "onNoticeAct" | "onSetUp" | "onAskToFix"> = Parameters<
+  NonNullable<SidebarZeropsTreeProps<never>[K]>
+>;
+
 export default function Sidebar() {
   const projects = useProjects();
   const projectOrder = useUiStateStore((store) => store.projectOrder);
@@ -2027,6 +2044,17 @@ export default function Sidebar() {
     () => new Set(environments.map((environment) => environment.environmentId)),
     [environments],
   );
+  // The threads T3's tree lists: none of a Zerops environment's. The same array while those stay
+  // the same objects, so a streaming Mate's chat — a Zerops one — never re-buckets or re-sorts
+  // the tree.
+  const [keepLegacyThreads] = useState(createElementsKeeper<EnvironmentThreadShell>);
+  const legacyThreads = useMemo(
+    () =>
+      keepLegacyThreads(
+        threads.filter((thread) => !zeropsEnvironmentIds.has(thread.environmentId)),
+      ),
+    [keepLegacyThreads, threads, zeropsEnvironmentIds],
+  );
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const clearSelection = useThreadSelectionStore((s) => s.clearSelection);
   const setSelectionAnchor = useThreadSelectionStore((s) => s.setAnchor);
@@ -2101,8 +2129,9 @@ export default function Sidebar() {
     ],
   );
   const projectGroups = useMemo(
-    () => sortLogicalProjectsForSidebar(unsortedProjectGroups, threads, sidebarProjectSortOrder),
-    [sidebarProjectSortOrder, threads, unsortedProjectGroups],
+    () =>
+      sortLogicalProjectsForSidebar(unsortedProjectGroups, legacyThreads, sidebarProjectSortOrder),
+    [legacyThreads, sidebarProjectSortOrder, unsortedProjectGroups],
   );
   // Nothing but the roster: a Zerops account whose every environment is a
   // roster row, with no local project alongside.
@@ -2358,6 +2387,47 @@ export default function Sidebar() {
       ),
     [activeZeropsProjectId, zeropsPersonFacts, zeropsMateScope],
   );
+  // The tree's verbs, the same functions from render to render: the tree and its rows are
+  // memoised, and a streaming Mate re-renders this whole menu on every shell event.
+  const onZeropsNoticeAct = useCallback(
+    (...[affordance]: TreeVerbArgs<"onNoticeAct">) => {
+      if (affordance.kind === "go-to-projects") navigateToZeropsProjects();
+      else refreshZeropsCandidates();
+    },
+    [navigateToZeropsProjects, refreshZeropsCandidates],
+  );
+  const onZeropsSetUp = useCallback(
+    (...[groupId, tier]: TreeVerbArgs<"onSetUp">) => {
+      askSetUp(groupId, tier);
+      navigateToZeropsProjects();
+    },
+    [askSetUp, navigateToZeropsProjects],
+  );
+  const onZeropsAskToFix = useCallback(
+    (...[mateProjectId, problem]: TreeVerbArgs<"onAskToFix">) => {
+      if (isMobile) setOpenMobile(false);
+      askMateToFix(mateProjectId, problem);
+    },
+    [askMateToFix, isMobile, setOpenMobile],
+  );
+  const onZeropsSelect = useCallback(
+    (candidate: (typeof zeropsCandidates)[number]) => {
+      if (isMobile) {
+        setOpenMobile(false);
+      }
+      openMate(candidate);
+    },
+    [isMobile, openMate, setOpenMobile],
+  );
+  const onZeropsOpenCrew = useCallback(
+    (candidate: (typeof zeropsCandidates)[number], setUp: boolean) => {
+      if (isMobile) setOpenMobile(false);
+      openMate(candidate, (conversation) => {
+        openCrewTab(conversation, { setUp });
+      });
+    },
+    [isMobile, openMate, setOpenMobile],
+  );
   // The Mates waiting on the viewer, for the header's faces and ⌥↓: each read as its row reads it.
   const zeropsWaiting = useSidebarWaiting({
     candidates: zeropsCandidates,
@@ -2392,11 +2462,10 @@ export default function Sidebar() {
     void snoozeWakeTick;
     const preciseNow = new Date().toISOString();
     // A crewmate's thread is the crew's, never an ordinary row.
-    const visible = threads.filter(
+    const visible = legacyThreads.filter(
       (thread) =>
         thread.archivedAt === null &&
         thread.crew === undefined &&
-        !zeropsEnvironmentIds.has(thread.environmentId) &&
         (scopedProjectKeys === null ||
           scopedProjectKeys.has(`${thread.environmentId}:${thread.projectId}`)),
     );
@@ -2474,8 +2543,7 @@ export default function Sidebar() {
     scopedProjectKeys,
     serverConfigs,
     snoozeWakeTick,
-    threads,
-    zeropsEnvironmentIds,
+    legacyThreads,
   ]);
 
   const threadSearchInputRef = useRef<HTMLInputElement>(null);
@@ -4112,22 +4180,13 @@ export default function Sidebar() {
               complete={zeropsMenuComplete}
               notice={zeropsNotice}
               reading={zeropsSession.organizationStatus === "selected" && !zeropsMenuComplete}
-              onNoticeAct={(affordance) => {
-                if (affordance.kind === "go-to-projects") navigateToZeropsProjects();
-                else refreshZeropsCandidates();
-              }}
+              onNoticeAct={onZeropsNoticeAct}
               onAddMate={addMate}
-              onSetUp={(groupId, tier) => {
-                askSetUp(groupId, tier);
-                navigateToZeropsProjects();
-              }}
+              onSetUp={onZeropsSetUp}
               getComing={zeropsComing}
               onOpenComing={openComingMate}
               onBrowseProjects={navigateToZeropsProjects}
-              onAskToFix={(mateProjectId, problem) => {
-                if (isMobile) setOpenMobile(false);
-                askMateToFix(mateProjectId, problem);
-              }}
+              onAskToFix={onZeropsAskToFix}
               getFlow={zeropsSidebarFlowWithPages}
               getOwner={zeropsMateOwner}
               getMateActions={zeropsMateMenus.getMateActions}
@@ -4136,18 +4195,8 @@ export default function Sidebar() {
               onOpenGroup={openGroup}
               getActivity={zeropsRowActivity}
               getConversationsRead={zeropsConversationsRead}
-              onSelect={(candidate) => {
-                if (isMobile) {
-                  setOpenMobile(false);
-                }
-                openMate(candidate);
-              }}
-              onOpenCrew={(candidate, setUp) => {
-                if (isMobile) setOpenMobile(false);
-                openMate(candidate, (conversation) => {
-                  openCrewTab(conversation, { setUp });
-                });
-              }}
+              onSelect={onZeropsSelect}
+              onOpenCrew={onZeropsOpenCrew}
             />
           ) : null}
           {/* The dialogs a Mate's own menu opens: rename, hand over, move. */}

@@ -12,6 +12,7 @@ import {
   applyProjectCreationVerdict,
   type ZeropsCandidate,
 } from "@t3tools/client-runtime/zerops/candidates";
+import { Atom } from "effect/unstable/reactivity";
 import { useCallback, useMemo } from "react";
 
 import { environmentsWithSnapshotAtom } from "../state/shell";
@@ -19,7 +20,14 @@ import { hqMatesAtom } from "../state/zerops";
 import { overviewAgentActivity, type ZeropsAgentActivity } from "./agentActivity";
 import type { MatesActivity } from "./useZeropsAgentActivity";
 import { useEnvironmentLinks } from "../routes/-environmentTargets";
-import { arrivalAwaitsAnswer, arrivalLinkHolds, mateComing, type MateComing } from "./mateComing";
+import {
+  arrivalAwaitsAnswer,
+  arrivalLinkHolds,
+  mateComing,
+  mateComingDeadlines,
+  type MateComing,
+} from "./mateComing";
+import { useWakeAt } from "./useNowMs";
 import { useCreations } from "./creations";
 import { madeOf } from "./newProjectBirth";
 import { useProjectCreations } from "./useProjectCreations";
@@ -63,6 +71,21 @@ export function useHqMainChats(): (projectId: string) => ScopedThreadRef | undef
 }
 
 /**
+ * Whether HQ relays now that a Mate's link to it is open: one answer per Mate, so a row redraws
+ * when its own link opens or closes, not on every word HQ relays of any Mate.
+ */
+const mateLinkedInHqAtom = Atom.family((projectId: string) =>
+  Atom.make((get) => {
+    const hq = get(hqMatesAtom);
+    return hq?.current === true && hq.mates.get(projectId)?.presence.online === true;
+  }).pipe(Atom.withLabel(`mate-linked-in-hq:${projectId}`)),
+);
+
+export function useMateLinkedInHq(projectId: string): boolean {
+  return useAtomValue(mateLinkedInHqAtom(projectId));
+}
+
+/**
  * What HQ last told of a Mate, as its menu row reads it, at rest — the conversation its row stands
  * for and what it is on; undefined where HQ holds no overview of it, or it has no main chat yet.
  */
@@ -81,16 +104,29 @@ export function useToldActivity(projectId: string): ZeropsAgentActivity | undefi
  */
 export function useMateConversationsRead(): (candidate: ZeropsCandidate) => boolean {
   const read = useAtomValue(environmentsWithSnapshotAtom);
-  const hq = useAtomValue(hqMatesAtom);
+  const toldKey = useAtomValue(hqMatesWithMainAtom);
+  const told = useMemo(() => new Set(toldKey.split("\n")), [toldKey]);
   return useCallback(
     (candidate: ZeropsCandidate) =>
-      hq?.mates?.get(candidate.project.id)?.main !== undefined ||
+      told.has(candidate.project.id) ||
       (candidate.group === "connected" &&
         candidate.environmentId !== undefined &&
         read.has(candidate.environmentId)),
-    [hq, read],
+    [told, read],
   );
 }
+
+/**
+ * The Mates whose main chat HQ's overview names, as one key: it changes when one gains or loses
+ * it, not on every word HQ relays.
+ */
+const hqMatesWithMainAtom = Atom.make((get) => {
+  const ids: string[] = [];
+  for (const [projectId, mate] of get(hqMatesAtom)?.mates ?? []) {
+    if (mate.main !== undefined) ids.push(projectId);
+  }
+  return ids.join("\n");
+}).pipe(Atom.withLabel("hq-mates-with-main"));
 
 /**
  * Whether a Mate the menu lists is still in its first minutes, as its row says it: its press made
@@ -109,6 +145,7 @@ export function useMateComingOf(
   const verdicts = useProjectCreations(candidates);
   const firstBuilds = useZeropsFirstBuilds(candidates);
   const pressOf = usePressesElsewhere(candidates);
+  const wokeAt = useComingClock(candidates);
   return useCallback(
     (candidate: ZeropsCandidate) => {
       const { press, setUpFailed } = pressComingInput(presses, candidate.project.id);
@@ -127,7 +164,9 @@ export function useMateComingOf(
           : undefined,
         candidate: applyProjectCreationVerdict(candidate, verdicts.get(candidate.project.id)),
         setUpFailed,
-        nowMs: Date.now(),
+        // A new getter at each deadline (`useComingClock`): the menu is memoised, and nothing
+        // else may change then.
+        nowMs: Math.max(Date.now(), wokeAt),
         created,
         linkHolds: created ? arrivalLinkHolds(mateLink(candidate)) : undefined,
         answerAwaited:
@@ -136,6 +175,14 @@ export function useMateComingOf(
         pressElsewhere: pressOf(candidate.project.id),
       });
     },
-    [presses, creations, firstBuilds, mateLink, pressOf, verdicts, closeOffHolds],
+    [presses, creations, firstBuilds, mateLink, pressOf, verdicts, closeOffHolds, wokeAt],
   );
+}
+
+/**
+ * The moment a listed Mate's coming-up line may last have changed by time alone
+ * (`mateComingDeadlines`): its arrival's window closing, its first build's grace running out.
+ */
+export function useComingClock(candidates: ReadonlyArray<ZeropsCandidate>): number {
+  return useWakeAt(useMemo(() => candidates.flatMap(mateComingDeadlines), [candidates]));
 }

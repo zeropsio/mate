@@ -10,6 +10,7 @@ import {
   hasProviderUsageLimits,
   isUsageLimitsCommand,
 } from "@t3tools/shared/usageLimits";
+import { keptAgentPanelModel } from "./chat/keptAgentPanelModel";
 import { usageLimitsBannerItem } from "./chat/ComposerUsageLimits";
 import { ServiceBrowserScope } from "./ServiceBrowserLink";
 import { feedbackBannerItem } from "./chat/ComposerFeedback";
@@ -619,8 +620,12 @@ const SCRIPT_TERMINAL_COLS = 120;
 const SCRIPT_TERMINAL_ROWS = 30;
 
 function isCompactCommandMessage(message: ChatMessage): boolean {
-  const text = message.text.trim().toLowerCase();
-  return message.role === "user" && text === "/compact" && !message.attachments?.length;
+  // The role first: the Mate's words run long, and are never a command.
+  return (
+    message.role === "user" &&
+    !message.attachments?.length &&
+    message.text.trim().toLowerCase() === "/compact"
+  );
 }
 
 type ChatViewProps =
@@ -2538,10 +2543,13 @@ export default function ChatView(props: ChatViewProps) {
   const agentSessionLive = phase !== "disconnected";
   const agentPanelModel = useMemo(
     () =>
-      deriveAgentPanelModel({
-        agents: foldSubagentActivities(threadActivities, { sessionLive: agentSessionLive }),
-      }),
-    [agentSessionLive, threadActivities],
+      keptAgentPanelModel(
+        activeThreadKey,
+        deriveAgentPanelModel({
+          agents: foldSubagentActivities(threadActivities, { sessionLive: agentSessionLive }),
+        }),
+      ),
+    [activeThreadKey, agentSessionLive, threadActivities],
   );
   const { approvals: pendingApprovals, userInputs: pendingUserInputs } = useMemo(
     () => derivePendingRequests(threadActivities),

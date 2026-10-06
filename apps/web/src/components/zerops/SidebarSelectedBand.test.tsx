@@ -46,6 +46,9 @@ function laidOut(element: Element): DOMRect {
 /** The list's observers, so a test can say when the list changed size. */
 const observers: Array<() => void> = [];
 
+/** Whether the page gets laid out after a draw; a test holds it to see what the draw itself read. */
+let layoutDone = true;
+
 let root: Root | undefined;
 
 beforeEach(() => {
@@ -56,10 +59,17 @@ beforeEach(() => {
   vi.stubGlobal(
     "ResizeObserver",
     class {
+      #callback: () => void;
       constructor(callback: () => void) {
+        this.#callback = callback;
         observers.push(callback);
       }
-      observe() {}
+      // As the browser does: a target observed anew is reported once, after
+      // the page is laid out.
+      observe() {
+        if (layoutDone) queueMicrotask(this.#callback);
+      }
+      unobserve() {}
       disconnect() {}
     },
   );
@@ -69,6 +79,7 @@ afterEach(async () => {
   await act(() => root?.unmount());
   root = undefined;
   observers.length = 0;
+  layoutDone = true;
   document.body.innerHTML = "";
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
@@ -202,5 +213,33 @@ describe("the selected band over the open Mate", () => {
     expect(band().hasAttribute("data-sliding")).toBe(true);
     expect(band().style.transform).toBe("translate(0px, 308px)");
     expect(band().style.height).toBe("108px");
+  });
+
+  // A click on a menu row draws the whole page: a box read in the draw itself
+  // forced the style and layout of every element before the draw was done.
+  it("reads no box while a draw is written, and lands once the page is laid out", async () => {
+    function Menu({ open }: { readonly open: string }) {
+      return (
+        <>
+          <SidebarSelectedBand current={open} />
+          <div data-zerops-surface="sidebar-project-rows">
+            <Mate crew={false} id="enzo" top={212} />
+            <Mate crew id="fen" top={400} />
+          </div>
+        </>
+      );
+    }
+    await draw(<Menu open="enzo" />);
+    const read = vi.mocked(Element.prototype.getBoundingClientRect);
+    read.mockClear();
+    layoutDone = false;
+    await act(() => root!.render(<Menu open="fen" />));
+    expect(read).not.toHaveBeenCalled();
+    await act(() => {
+      for (const laidOutNow of observers) laidOutNow();
+    });
+    expect(band().style.transform).toBe("translate(0px, 308px)");
+    expect(band().style.height).toBe("108px");
+    expect(band().hasAttribute("data-sliding")).toBe(true);
   });
 });

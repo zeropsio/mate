@@ -1605,8 +1605,11 @@ describe("MessagesTimeline — the conversation", () => {
     // In the live slot, as the row it becomes: said plainly, sweeping.
     expect(markup.match(/data-chat-kind="step:web"/g)).toHaveLength(1);
     expect(markup).toContain('data-mate-face-state="working"');
-    // Once in the slot, and once more for a screen reader, in its words alone.
-    expect(markup.match(/docs\.example\.dev\/guides/g)).toHaveLength(2);
+    // Once in the slot, and once more for a screen reader, in its words alone; the sweep's
+    // copy of the words is hidden from readers and repeats them where they stand.
+    const said = markup.replace(/<span data-sweep-copy="">.*?<\/span><\/span>/gu, "");
+    expect(markup).toMatch(/aria-hidden="true" data-sweep-band="" inert="">/u);
+    expect(said.match(/docs\.example\.dev\/guides/g)).toHaveLength(2);
     expect(markup).toContain(
       '<span class="sr-only" role="status">Reading docs.example.dev/guides</span>',
     );
@@ -2253,13 +2256,18 @@ describe("KeptTimelines — a conversation seen a moment ago", () => {
     read.set(key, props);
     for (const reader of readers) reader();
   };
+  /** Whether each kept list's reader was last asked to hold. */
+  const holds = new Map<string, boolean>();
   const Reader = ({
     threadKey,
+    hold,
     onRead,
   }: {
     readonly threadKey: string;
+    readonly hold: boolean;
     readonly onRead: (props: never) => void;
   }) => {
+    holds.set(threadKey, hold);
     const props = useSyncExternalStore(
       (listener) => {
         readers.add(listener);
@@ -2275,15 +2283,21 @@ describe("KeptTimelines — a conversation seen a moment ago", () => {
     open: string,
     alive: (key: string) => boolean = () => true,
     extra: Partial<Parameters<typeof MessagesTimeline>[0]> = {},
-    inset: { readonly insetMeasured?: boolean; readonly insetRemembered?: boolean } = {},
+    inset: {
+      readonly insetMeasured?: boolean;
+      readonly insetRemembered?: boolean;
+      readonly warm?: string | null;
+      readonly Reader?: typeof Reader;
+    } = {},
   ) => {
     const { KeptTimelines } = await import("./KeptTimelines");
+    const { Reader: reader = Reader, ...said } = inset;
     return (
       <KeptTimelines
         open={open}
         alive={alive}
-        {...inset}
-        Reader={Reader}
+        {...said}
+        Reader={reader}
         crewTimeline={null}
         timeline={{
           ...buildProps(),
@@ -2460,6 +2474,91 @@ describe("KeptTimelines — a conversation seen a moment ago", () => {
         ).length > 0;
       expect(outOfSightNow).toBe(changed);
     } finally {
+      await act(() => renderer?.unmount());
+    }
+  });
+
+  // A run streaming in a Mate the person left is not read word by word out
+  // of sight; resting on its menu row reads it live again, before the press.
+  it("holds a kept list's read out of sight until someone is about to open it", async () => {
+    const place = await settle();
+    let renderer: ReactTestRenderer | undefined;
+    await act(async () => {
+      renderer = create(await pane(KEY_A));
+    });
+    try {
+      await place(renderer!);
+      await act(async () => renderer!.update(await pane(KEY_B)));
+      expect(holds.get(KEY_A)).toBe(true);
+      await act(async () => renderer!.update(await pane(KEY_B, undefined, {}, { warm: KEY_A })));
+      expect(holds.get(KEY_A)).toBe(false);
+    } finally {
+      await act(() => renderer?.unmount());
+    }
+  });
+
+  // Mate A streams through one turn while the person reads B; they come back
+  // by ⌘K, a shortcut or back — no menu row rested on, so no warm intent. Its
+  // list was placed out of sight with what streamed: nothing lands as it shows.
+  it("shows a kept list opened without a warm intent with what streamed while away, already placed", async () => {
+    const { useHeld, HELD_READ_EVERY_MS } = await import("./heldRead");
+    // The production reader's hold, over the store the test tells.
+    const HeldReader = ({
+      threadKey,
+      hold,
+      onRead,
+    }: {
+      readonly threadKey: string;
+      readonly hold: boolean;
+      readonly onRead: (props: never) => void;
+    }) => {
+      const live = useSyncExternalStore(
+        (listener) => {
+          readers.add(listener);
+          return () => readers.delete(listener);
+        },
+        () => read.get(threadKey) ?? null,
+      );
+      const props = useHeld(live, hold, "turn-a running", HELD_READ_EVERY_MS);
+      useLayoutEffect(() => onRead(props as never), [onRead, props]);
+      return null;
+    };
+    const place = await settle();
+    const held = { Reader: HeldReader };
+    let renderer: ReactTestRenderer | undefined;
+    await act(async () => {
+      renderer = create(await pane(KEY_A, undefined, {}, held));
+    });
+    // Its waits only: the list's own clock stays the page's.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      await place(renderer!);
+      await act(async () => renderer!.update(await pane(KEY_B, undefined, {}, held)));
+      const words = [
+        "Here",
+        "Here is",
+        "Here is where",
+        "Here is where we",
+        "Here is where we were.",
+      ];
+      for (const said of words) {
+        await act(() =>
+          tell(KEY_A, {
+            timelineEntries: [
+              buildUserTimelineEntry(`Where were we in ${KEY_A}?`),
+              { ...buildAssistantTimelineEntry(said), id: "entry-answer" },
+            ],
+          }),
+        );
+        await act(() => vi.advanceTimersByTime(120));
+      }
+      await act(() => vi.advanceTimersByTime(HELD_READ_EVERY_MS));
+      // Out of sight, before the frame it shows in: the rows it will show.
+      const { LegendList } = await import("@legendapp/list/react");
+      const rowsOfA = JSON.stringify(listOf(renderer!, KEY_A).findByType(LegendList).props.data);
+      expect(rowsOfA).toContain("Here is where we were.");
+    } finally {
+      vi.useRealTimers();
       await act(() => renderer?.unmount());
     }
   });

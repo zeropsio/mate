@@ -1,6 +1,10 @@
 import { EnvironmentId } from "@t3tools/contracts";
 import type { ZeropsProject, ZeropsService } from "@t3tools/client-runtime/zerops";
-import { ARRIVAL_MS, deriveZeropsCandidates } from "@t3tools/client-runtime/zerops/candidates";
+import {
+  ARRIVAL_MS,
+  deriveZeropsCandidates,
+  FIRST_BUILD_GRACE_MS,
+} from "@t3tools/client-runtime/zerops/candidates";
 import {
   CONTAINER_CAPS_MS,
   IDLE_GUARDS,
@@ -22,6 +26,7 @@ import {
   arrivalAwaitsAnswer,
   arrivalLinkHolds,
   mateComing,
+  mateComingDeadlines,
   mateComingHeadlineClauses,
   mateComingPage,
   mateConnectKey,
@@ -1545,5 +1550,27 @@ describe("a Mate whose address landed, not answering yet, in a window that did n
     expect(read).toBeUndefined();
     const [reloaded] = replay([STEPS[3]!]);
     expect(reloaded).toBeUndefined();
+  });
+});
+
+describe("mateComingDeadlines — when a Mate's coming-up line changes by time alone", () => {
+  const CREATED = "2026-10-07T09:00:00.000Z";
+  it.each<[string, Parameters<typeof mateComingDeadlines>[0], ReadonlyArray<number>]>([
+    ["nothing listed", undefined, []],
+    ["listed, nothing timed", { group: "ready" }, []],
+    ["arriving: its listing's clock", { group: "ready", arriving: { until: 5_000 } }, [5_000]],
+    [
+      "on its first build: the build's grace",
+      { group: "ready", service: { status: "READY_TO_DEPLOY", created: CREATED } },
+      [Date.parse(CREATED) + FIRST_BUILD_GRACE_MS],
+    ],
+    ["deployed: no grace", { group: "ready", service: { status: "ACTIVE", created: CREATED } }, []],
+    [
+      "on its first build with no birth time: no grace",
+      { group: "ready", service: { status: "READY_TO_DEPLOY" } },
+      [],
+    ],
+  ])("%s", (_, candidate, deadlines) => {
+    expect(mateComingDeadlines(candidate)).toEqual(deadlines);
   });
 });

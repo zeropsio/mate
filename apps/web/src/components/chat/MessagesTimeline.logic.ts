@@ -1,5 +1,5 @@
-import * as Equal from "effect/Equal";
 import type { MateTintId } from "@t3tools/shared/brand";
+import { sameValue } from "../../lib/sameValue";
 import {
   batchesByTiming,
   liveBatch,
@@ -66,6 +66,7 @@ import {
   stepOf,
   backgroundJobOf,
   trackCommands,
+  trackedReadsOf,
   type BackgroundJob,
   type TrackedCommands,
   type WorkStep,
@@ -1894,6 +1895,120 @@ function crewSeamRow(
   return { kind: "crew-seam", id, createdAt: work.createdAt, seam, words: work.label };
 }
 
+interface Remembered<T> {
+  readonly reads: ReadonlyArray<unknown>;
+  readonly value: T;
+  used: number;
+}
+
+/**
+ * What one conversation's derive keeps for the next: each run's batch and
+ * each stretch's record, with everything it read to draw them. A streamed
+ * update changes the live run's reads alone, so only the live run is read
+ * again; every settled run keeps its lines, the same objects as before.
+ */
+export interface MessagesTimelineRowsCache {
+  generation: number;
+  readonly batches: Map<string, Remembered<LiveBatch<BatchEntry>>>;
+  readonly records: Map<string, Remembered<{ items: RecordItem[]; rows: MessagesTimelineRow[] }>>;
+  /** By run: what its calls came to (`turnActivity`), read off its entries alone. */
+  readonly activities: Map<string, Remembered<OutcomeActivity[]>>;
+}
+
+export function createMessagesTimelineRowsCache(): MessagesTimelineRowsCache {
+  return { generation: 0, batches: new Map(), records: new Map(), activities: new Map() };
+}
+
+function sameReads(left: ReadonlyArray<unknown>, right: ReadonlyArray<unknown>): boolean {
+  if (left.length !== right.length) return false;
+  for (let index = 0; index < left.length; index += 1) {
+    if (!Object.is(left[index], right[index])) return false;
+  }
+  return true;
+}
+
+/** `compute()`, or what it gave last time for the same `key` from the same `reads`. */
+function remembered<T>(
+  store: Map<string, Remembered<T>> | undefined,
+  generation: number,
+  key: string,
+  readsOf: () => ReadonlyArray<unknown>,
+  compute: () => T,
+): T {
+  if (store === undefined) return compute();
+  const reads = readsOf();
+  const known = store.get(key);
+  if (known !== undefined && sameReads(known.reads, reads)) {
+    known.used = generation;
+    return known.value;
+  }
+  const value = compute();
+  store.set(key, { reads, value, used: generation });
+  return value;
+}
+
+/** What the last derive did not draw is not kept: the cache holds one conversation. */
+function forgetUnused(cache: MessagesTimelineRowsCache): void {
+  for (const store of [cache.batches, cache.records, cache.activities] as const) {
+    for (const [key, known] of store) if (known.used !== cache.generation) store.delete(key);
+  }
+}
+
+/** Whether a call returned elsewhere in the thread: `startOfAReturnedCall`'s read of `returned`. */
+function returnedRead(entry: TimelineEntry, reading: BatchReading): boolean {
+  return (
+    (entry.kind === "work" || entry.kind === "generic-call") &&
+    entry.entry.toolCallId !== undefined &&
+    reading.returned.has(entry.entry.toolCallId)
+  );
+}
+
+/** Everything `stretchBatch` reads of a run: its entries, and the thread's word on their calls. */
+function batchReads(
+  entries: ReadonlyArray<TimelineEntry>,
+  reading: BatchReading,
+): ReadonlyArray<unknown> {
+  const reads: unknown[] = [reading.byTiming, entries.length];
+  for (const entry of entries) reads.push(entry, returnedRead(entry, reading));
+  return reads;
+}
+
+/**
+ * Everything `stretchRecord` reads, its pause row aside: the stretch's own
+ * entries and clock, the run's, and what the thread says of each of its calls
+ * — the commands tracking them, the tasks' and the saved outputs' words, the
+ * calls returned elsewhere, the batch. A read added to `stretchRecord` is
+ * added here, or a settled run keeps a stale line.
+ */
+function recordReads(input: {
+  stretch: Stretch;
+  answer: MessageEntry | null;
+  writing: MessageEntry | null;
+  tracked: TrackedCommands;
+  until: string | null;
+  reading: BatchReading;
+  batch: LiveBatch<BatchEntry>;
+}): ReadonlyArray<unknown> {
+  const { stretch, tracked } = input;
+  const reads: unknown[] = [
+    stretch.live,
+    stretch.startedAt,
+    stretch.endedAt,
+    input.answer,
+    input.writing,
+    input.until,
+    input.batch,
+    tracked.liveJobs ?? null,
+    stretch.entries.length,
+  ];
+  for (const entry of stretch.entries) {
+    reads.push(entry);
+    if (entry.kind !== "work" && entry.kind !== "generic-call") continue;
+    reads.push(returnedRead(entry, input.reading), ...trackedReadsOf(entry.entry, tracked));
+  }
+  return reads;
+}
+
 /**
  * A quiet stretch of the conversation this long draws a time line: minutes
  * apart are one conversation, and a line between them split it in pieces.
@@ -1927,8 +2042,16 @@ export function deriveMessagesTimelineRows(input: {
    * (`batchesByTiming`); not known, nothing does.
    */
   provider?: string | null;
+  /**
+   * What the last derive of this conversation read and drew
+   * (`createMessagesTimelineRowsCache`): a run whose reads are the same draws
+   * the same, and is not read again. The rows are the same with it or without.
+   */
+  cache?: MessagesTimelineRowsCache;
 }): MessagesTimelineRow[] {
   const entries = input.timelineEntries;
+  const cache = input.cache;
+  if (cache !== undefined) cache.generation += 1;
   const reading = batchReadingOf(entries, { byTiming: batchesByTiming(input.provider) });
   const structure = deriveConversationStructure({
     timelineEntries: entries,
@@ -2196,9 +2319,28 @@ export function deriveMessagesTimelineRows(input: {
     if (at < 0) return null;
     return helperQueue.splice(at, 1)[0] ?? null;
   };
+  // The tasks that finished in a turn, each a line of its own, in the order
+  // they finished: read once, and each run asks only of its own moments.
+  const finishedTasks = entries
+    .flatMap((entry, index) => {
+      if (
+        entry.kind !== "work" ||
+        entry.entry.sourceActivityKind !== "task.completed" ||
+        structure.looseIndexes.has(index) ||
+        // A command's own task is told on its command's card.
+        tracked.trackers.has(entry.entry.id) ||
+        (entry.entry.agentSpawn?.agentTaskIds.length ?? 1) > 1
+      ) {
+        return [];
+      }
+      const ms = finishedAt(entry.entry);
+      return Number.isNaN(ms) ? [] : [{ work: entry.entry, ms }];
+    })
+    .toSorted((left, right) => left.ms - right.ms);
   /** When the run before `turn` ended: what finished since is what may have woken it. */
+  const turnIndex = new Map(structure.turns.map((turn, index) => [turn, index] as const));
   const previousEndMs = (turn: ConversationTurn): number => {
-    const previous = structure.turns[structure.turns.indexOf(turn) - 1];
+    const previous = structure.turns[(turnIndex.get(turn) ?? -1) - 1];
     return previous === undefined
       ? -Infinity
       : Date.parse(previous.stretches.at(-1)?.endedAt ?? "");
@@ -2227,20 +2369,18 @@ export function deriveMessagesTimelineRows(input: {
     const fromMs = lagging ? startMs : previousEndMs;
     const untilMs = lagging ? startMs + WOKE_LAG_MS : startMs;
     if (!Number.isFinite(untilMs) || Number.isNaN(fromMs)) return [];
-    return entries
-      .flatMap((entry, index) =>
-        entry.kind === "work" &&
-        entry.entry.sourceActivityKind === "task.completed" &&
-        !structure.looseIndexes.has(index) &&
-        // A command's own task is told on its command's card.
-        !tracked.trackers.has(entry.entry.id) &&
-        (entry.entry.agentSpawn?.agentTaskIds.length ?? 1) <= 1 &&
-        finishedAt(entry.entry) > fromMs &&
-        finishedAt(entry.entry) <= untilMs
-          ? [entry.entry]
-          : [],
-      )
-      .toSorted((left, right) => finishedAt(left) - finishedAt(right));
+    let low = 0;
+    let high = finishedTasks.length;
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      if (finishedTasks[middle]!.ms > fromMs) high = middle;
+      else low = middle + 1;
+    }
+    const found: WorkLogEntry[] = [];
+    for (let at = low; at < finishedTasks.length && finishedTasks[at]!.ms <= untilMs; at += 1) {
+      found.push(finishedTasks[at]!.work);
+    }
+    return found;
   };
   /**
    * One run of the Mate as the conversation draws it — a turn, from the
@@ -2333,9 +2473,13 @@ export function deriveMessagesTimelineRows(input: {
     const items: RecordItem[] = [];
     // The batch rule reads the whole run: a call left open before the person
     // wrote into it goes stale too.
-    const batch = stretchBatch(
-      { entries: turn.stretches.flatMap((part) => part.entries) },
-      reading,
+    const runEntries = turn.stretches.flatMap((part) => part.entries);
+    const batch = remembered(
+      cache?.batches,
+      cache?.generation ?? 0,
+      turn.key,
+      () => batchReads(runEntries, reading),
+      () => stretchBatch({ entries: runEntries }, reading),
     );
     turn.stretches.forEach((stretch, index) => {
       const wake = wakes.get(stretch.key);
@@ -2368,16 +2512,25 @@ export function deriveMessagesTimelineRows(input: {
           imageOnly: person.kind === "message" && person.imageOnly,
         });
       }
-      const built = stretchRecord({
+      const recordInput = {
         stretch,
         answer: turn.answer,
         writing: turn.writing,
-        pauseRow: stretch === last ? pause : null,
         tracked,
         until: turn.live ? null : last.endedAt,
         reading,
         batch,
-      });
+      };
+      const record = remembered(
+        cache?.records,
+        cache?.generation ?? 0,
+        `${turn.key}\u0000${stretch.key}`,
+        () => recordReads(recordInput),
+        () => stretchRecord({ ...recordInput, pauseRow: null }),
+      );
+      // A pause is the last of its stretch's rows, and drawn afresh each time.
+      const pauseRow = stretch === last ? pause : null;
+      const built = pauseRow === null ? record : { ...record, rows: [...record.rows, pauseRow] };
       // What woke the run is said once, over it (`wokeBy`), never again as its line.
       items.push(
         ...built.items.filter((item) => item.kind !== "task" || !wokeIds.has(item.entry.id)),
@@ -2403,7 +2556,13 @@ export function deriveMessagesTimelineRows(input: {
             turn,
             landed: landedByTurnKey.get(turn.key) ?? [],
             diffs,
-            activity: turnActivity(turn),
+            activity: remembered(
+              cache?.activities,
+              cache?.generation ?? 0,
+              turn.key,
+              () => [turn.live, ...runEntries],
+              () => turnActivity(turn),
+            ),
             later: turnsAfter(structure, turn.key),
           });
     // What the result draws under the line: an outcome of what its calls came
@@ -2735,6 +2894,7 @@ export function deriveMessagesTimelineRows(input: {
       for (let index = start; index < end; index += 1) whole.add(index);
     }
   }
+  if (cache !== undefined) forgetUnused(cache);
   return rows.map((row, index) => {
     const card = cards.get(index);
     // A card's edge is not a row of the conversation: the row after it keeps
@@ -2784,6 +2944,7 @@ function sameFold(a: FoldsFrom | undefined, b: FoldsFrom | undefined): boolean {
  * identity (a streamed message is a new object), the rest by what it holds.
  */
 function sameRecordItem(a: RecordItem, b: RecordItem): boolean {
+  if (a === b) return true;
   if (a.kind !== b.kind || a.key !== b.key || a.at !== b.at) return false;
   switch (a.kind) {
     case "note":
@@ -2801,11 +2962,12 @@ function sameRecordItem(a: RecordItem, b: RecordItem): boolean {
       return a.message === bp.message && a.words === bp.words && a.imageOnly === bp.imageOnly;
     }
     default:
-      return Equal.equals(a, b);
+      return sameValue(a, b);
   }
 }
 
 function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean {
+  if (a === b) return true;
   if (
     a.kind !== b.kind ||
     a.id !== b.id ||
@@ -2834,10 +2996,10 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
       return (
         a.live === br.live &&
         a.answering === br.answering &&
-        Equal.equals(a.now, br.now) &&
+        sameValue(a.now, br.now) &&
         // Its now line's clock and its worked line's effort.
-        Equal.equals(a.status, br.status) &&
-        Equal.equals(a.outcome, br.outcome) &&
+        sameValue(a.status, br.status) &&
+        sameValue(a.outcome, br.outcome) &&
         a.items.length === br.items.length &&
         a.items.every((item, index) => sameRecordItem(item, br.items[index]!))
       );
@@ -2851,7 +3013,7 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
     default:
       // The rest are rebuilt on every derive from fresh reads (operations,
       // work entries, landings): compare what they hold, not their identity.
-      return Equal.equals(a, b);
+      return sameValue(a, b);
   }
 }
 

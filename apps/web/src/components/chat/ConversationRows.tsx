@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, type ReactNode } from "react";
 
+import { subscribeSecond } from "~/lib/secondTicker";
 import { cn } from "~/lib/utils";
 import { formatChatTimestampTooltip, formatDayAwareTimestamp } from "../../timestampFormat";
 import { Switch } from "../ui/switch";
@@ -92,8 +93,8 @@ export function ElapsedSince({
       if (ref.current) ref.current.textContent = elapsedSince(since, leftOutMs, standingSince);
     };
     update();
-    const id = setInterval(update, 1000);
-    return () => clearInterval(id);
+    // The one second clock (`subscribeSecond`): every counting duration writes in the same pass.
+    return subscribeSecond(update);
   }, [since, leftOutMs, standingSince]);
   return (
     <span ref={ref} className="tabular-nums">

@@ -104,6 +104,10 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --glass-blur: 12px;
   --glass-opacity: 80%;
   --glass-saturation: 1.14;
+  /* What glass does to what is behind it; none when the glass is opaque
+     (`GlassAppearanceSync`), where it shows nothing and still cost a
+     backdrop pass behind every glass surface. */
+  --glass-backdrop: blur(var(--glass-blur)) saturate(var(--glass-saturation));
   --desktop-window-right-resize-inset: 0px;
   /* The top bar: every page's header and the menu's logo row beside it, one
      height, so the logo, the header's content and their bottom edges stand
@@ -139,6 +143,7 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     --app-scrollbar-thumb-hover: rgb(255 255 255 / 12%);
     --glass-blur: 16px;
     --glass-saturation: 1.08;
+    --glass-backdrop: blur(var(--glass-blur)) saturate(var(--glass-saturation));
   }
 }
 
@@ -201,19 +206,19 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --animate-ghost-pulse: ghost-pulse 2.4s infinite;
   --animate-status-ping: status-ping 2s infinite;
   /* A verb arriving in a row: it fades into the place a skeleton held, once. */
-  --animate-zerops-appear: zerops-appear 220ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  --animate-zerops-appear: zerops-appear 220ms cubic-bezier(0.23, 1, 0.32, 1) backwards;
   /* The Mate at work. Its panel after the turn rises in once; a status bar
      arriving opens its room; the result settles where the bars were. All
      once. */
-  --animate-panel-in: panel-in 420ms cubic-bezier(0.32, 0.72, 0, 1) both;
+  --animate-panel-in: panel-in 420ms cubic-bezier(0.32, 0.72, 0, 1) backwards;
   --animate-room-in: room-in 420ms cubic-bezier(0.32, 0.72, 0, 1) both;
   /* Reduced motion's arrival: a fade only (`run-fade`). */
-  --animate-run-fade: run-fade 200ms ease both;
-  --animate-report-in: report-in 480ms cubic-bezier(0.32, 0.72, 0, 1) both;
+  --animate-run-fade: run-fade 200ms ease backwards;
+  --animate-report-in: report-in 480ms cubic-bezier(0.32, 0.72, 0, 1) backwards;
   /* The run's chat. A bubble that arrives while the person watches rises in
      from the spine, once — quick, since one arrives every few seconds; what
      a bar or a bubble holds opens its room at the pace of a click. */
-  --animate-bubble-in: bubble-in 200ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  --animate-bubble-in: bubble-in 200ms cubic-bezier(0.23, 1, 0.32, 1) backwards;
   --animate-room-open: room-in 220ms cubic-bezier(0.23, 1, 0.32, 1) both;
   /* The Mate composing: three dots rising and brightening in turn, a wave
      rather than a blink — the one continuous motion on the card while it
@@ -224,13 +229,13 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --animate-typing-second: typing-wave 1.3s cubic-bezier(0.45, 0, 0.55, 1) -1.14s infinite;
   --animate-typing-third: typing-wave 1.3s cubic-bezier(0.45, 0, 0.55, 1) -0.98s infinite;
   /* A status line's new words: in from just below, out of a blur, once. */
-  --animate-words-in: words-in 260ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  --animate-words-in: words-in 260ms cubic-bezier(0.23, 1, 0.32, 1) backwards;
   /* The Mate's answer arriving while the person watches: up from just
      below, once. */
-  --animate-rise-in: rise-in 300ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  --animate-rise-in: rise-in 300ms cubic-bezier(0.23, 1, 0.32, 1) backwards;
   /* What a call returned, opened: down out of its header, once. The room it
      takes opens at once, so the chat can still bring its end into sight. */
-  --animate-detail-in: detail-in 220ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  --animate-detail-in: detail-in 220ms cubic-bezier(0.23, 1, 0.32, 1) backwards;
   --color-warning-foreground: var(--warning-foreground);
   --color-warning: var(--warning);
   --color-warning-surface: var(--warning-surface);
@@ -444,8 +449,8 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
 
 @utility surface-glass {
   background: color-mix(in srgb, var(--background) var(--glass-opacity), transparent);
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
-  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+  -webkit-backdrop-filter: var(--glass-backdrop);
+  backdrop-filter: var(--glass-backdrop);
 
   @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
     background: var(--background) !important;
@@ -460,8 +465,8 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
       color-mix(in srgb, var(--alert-glass-tint) 4%, transparent)
     ),
     color-mix(in srgb, var(--background) var(--glass-opacity), transparent) !important;
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
-  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+  -webkit-backdrop-filter: var(--glass-backdrop);
+  backdrop-filter: var(--glass-backdrop);
 
   &[data-variant="error"] {
     --alert-glass-tint: var(--destructive);
@@ -486,8 +491,8 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
 
 @utility dialog-glass {
   background: color-mix(in srgb, var(--background) var(--glass-opacity), transparent);
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
-  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+  -webkit-backdrop-filter: var(--glass-backdrop);
+  backdrop-filter: var(--glass-backdrop);
   border-color: color-mix(in srgb, var(--contrast-foreground) 10%, transparent);
   box-shadow: 0 24px 64px -24px rgb(0 0 0 / 65%);
 
@@ -519,8 +524,8 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     var(--popover) 18%,
     color-mix(in srgb, var(--popover) var(--glass-opacity), transparent)
   );
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
-  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+  -webkit-backdrop-filter: var(--glass-backdrop);
+  backdrop-filter: var(--glass-backdrop);
   border: 1px solid color-mix(in srgb, var(--contrast-foreground) 10%, transparent);
 
   @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
@@ -678,8 +683,8 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
       var(--chat-composer-glass-surface, var(--card)) var(--glass-opacity),
       transparent
     );
-    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
-    backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+    -webkit-backdrop-filter: var(--glass-backdrop);
+    backdrop-filter: var(--glass-backdrop);
     box-shadow: 0 -8px 24px -18px rgb(0 0 0 / 45%);
 
     @variant dark {
@@ -702,8 +707,8 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
       var(--chat-composer-attached-surface) var(--glass-opacity),
       transparent
     );
-    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
-    backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+    -webkit-backdrop-filter: var(--glass-backdrop);
+    backdrop-filter: var(--glass-backdrop);
 
     @variant dark {
       --chat-composer-attached-surface: var(
@@ -799,8 +804,8 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     background:
       linear-gradient(var(--chat-composer-attached-tint), var(--chat-composer-attached-tint)),
       color-mix(in srgb, var(--chat-composer-attached-surface) var(--glass-opacity), transparent);
-    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
-    backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+    -webkit-backdrop-filter: var(--glass-backdrop);
+    backdrop-filter: var(--glass-backdrop);
     -webkit-mask-image: linear-gradient(
       to top,
       transparent 0 var(--chat-composer-attachment-overlap),
@@ -1051,8 +1056,8 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
         var(--chat-composer-glass-surface) var(--glass-opacity),
         transparent
       );
-      -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
-      backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+      -webkit-backdrop-filter: var(--glass-backdrop);
+      backdrop-filter: var(--glass-backdrop);
     }
 
     @variant dark {
@@ -1083,8 +1088,8 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
         var(--chat-composer-glass-surface) var(--glass-opacity),
         transparent
       );
-      -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
-      backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+      -webkit-backdrop-filter: var(--glass-backdrop);
+      backdrop-filter: var(--glass-backdrop);
     }
 
     .chat-composer-context-strip {
@@ -2644,11 +2649,14 @@ code {
    1.58× the top slice's side took one device column and the middle slice's
    two, and the side jogged at every joint (2026-09-29). So every slice and
    strip takes a radius, the middle ones one nobody can see, and all their
-   sides are drawn the same way. A card drawn whole has no joints. */
+   sides are drawn the same way. A card drawn whole has no joints. The row
+   is the list's own bare div, so the test runs on every div: it looks for
+   the timeline's row root first, so on any other div it stops at its
+   children. */
 .timeline-legend-list
   .legend-list-content-container
   > div
-  > div:has(> div > :is([data-card-slice="top"], [data-card-slice="middle"])) {
+  > div:has(> [data-timeline-root] > :is([data-card-slice="top"], [data-card-slice="middle"])) {
   contain: layout style !important;
 }
 
@@ -2688,35 +2696,110 @@ code {
 }
 
 /* A call the Mate is running now: a band of light sweeps across its words,
-   left to right, in their own inks (a mask, not a colour, so the verb stays
+   left to right, in their own inks (an alpha, not a colour, so the verb stays
    muted and the file name full), until the call returns — as a rule one call,
    and a command still running beside it sweeps too. With reduced motion the
-   words simply stand. */
+   words simply stand.
+
+   It runs on the compositor (RunShimmer.tsx): the words stand at 70 % of
+   their ink; a window three times their width slides across by `translate`
+   holding a copy of them that slides back by as much, so the copy stands
+   still, and the window's band adds the other 30 % where it passes — added,
+   not laid over (`plus-lighter` inside the words' own group), so the sum is
+   the ink a mask of 70 % → 100 % → 70 % made of it. The band is the mask's
+   own gradient on a box the mask's size (three widths, at 100deg), moved
+   from two widths left to none: the travel `mask-position` made, 2 s a sweep.
+   Both slides start in the same style change, so they never drift. */
+[data-sweep-band] {
+  display: none;
+}
+
 @media (prefers-reduced-motion: no-preference) {
   [data-run-shimmer] {
-    /* A mask reads only alpha: the words' own ink, at 70 % and whole. */
-    --run-shimmer-mask: linear-gradient(
-      100deg,
-      color-mix(in srgb, currentColor 70%, transparent) 40%,
-      currentColor 50%,
-      color-mix(in srgb, currentColor 70%, transparent) 60%
+    position: relative;
+    isolation: isolate;
+    /* It keeps the window's three widths out of any scroll; across only, so
+       no glyph is cut above or below. */
+    overflow-x: clip;
+  }
+
+  /* Words on a line cut with an ellipsis: a box as wide as they are, cut
+     where the line would cut them, so the copy is cut there too. */
+  [data-run-shimmer][data-sweep-cut] {
+    display: inline-block;
+    max-width: 100%;
+    text-overflow: ellipsis;
+    vertical-align: baseline;
+  }
+
+  [data-run-shimmer] > [data-sweep-words] {
+    -webkit-mask-image: linear-gradient(
+      color-mix(in srgb, currentColor 70%, transparent),
+      color-mix(in srgb, currentColor 70%, transparent)
     );
-    -webkit-mask-image: var(--run-shimmer-mask);
-    mask-image: var(--run-shimmer-mask);
-    -webkit-mask-size: 300% 100%;
-    mask-size: 300% 100%;
+    mask-image: linear-gradient(
+      color-mix(in srgb, currentColor 70%, transparent),
+      color-mix(in srgb, currentColor 70%, transparent)
+    );
+  }
+
+  [data-sweep-band] {
+    position: absolute;
+    top: 0;
+    left: 0;
+    display: block;
+    width: 300%;
+    height: 100%;
+    text-overflow: inherit;
+    pointer-events: none;
+    user-select: none;
+    mix-blend-mode: plus-lighter;
+    --run-shimmer-band: linear-gradient(
+      100deg,
+      transparent 40%,
+      color-mix(in srgb, currentColor 30%, transparent) 50%,
+      transparent 60%
+    );
+    -webkit-mask-image: var(--run-shimmer-band);
+    mask-image: var(--run-shimmer-band);
     animation: run-shimmer 2s linear infinite;
+  }
+
+  [data-sweep-copy] {
+    position: absolute;
+    top: 0;
+    left: 0;
+    display: block;
+    width: calc(100% / 3);
+    height: 100%;
+    overflow-x: clip;
+    text-overflow: inherit;
+    /* Its own ellipsis in no ink: the line's stands steady under the light. */
+    -webkit-text-fill-color: transparent;
+    animation: run-shimmer-hold 2s linear infinite;
+  }
+
+  [data-sweep-ink] {
+    -webkit-text-fill-color: currentColor;
   }
 }
 
 @keyframes run-shimmer {
   from {
-    -webkit-mask-position: 100% 0;
-    mask-position: 100% 0;
+    translate: calc(-200% / 3) 0;
   }
   to {
-    -webkit-mask-position: 0% 0;
-    mask-position: 0% 0;
+    translate: 0 0;
+  }
+}
+
+/* The copy slides back by what the window slides, so it stands still. */
+@keyframes run-shimmer-hold {
+  from {
+    translate: 200% 0;
+  }
+  to {
+    translate: 0 0;
   }
 }
 
@@ -2729,7 +2812,16 @@ code {
    once. Idle and asleep it is still: a menu of faces must not fidget; waking,
    on its way up, it breathes, slow and low. Its own motion is transform and
    opacity (the morph eases the eyes' and the mouth's geometry), each Mate on
-   its own beat (`--mate-face-phase`) so a menu of them never ticks in unison. */
+   its own beat (`--mate-face-phase`) so a menu of them never ticks in unison.
+
+   What moves is an HTML box, never an SVG element: Chrome composites no
+   animation on SVG, so a face turning there cost a style recalc and a repaint
+   every frame (~60 a second for one face, measured 2026-10-03). Each part that
+   moves on its own — the hop, the body's turn, the look, the glance — is a box
+   laid over the whole face holding its own drawing in the same 100-box, so a
+   unit of the drawing is a percent of its box: the turn's pivot, the hop's
+   feet and every step of the eyes are written in percent. The boxes hold the
+   face's box exactly, whatever an icon rule around it does to an svg. */
 :root {
   /* A spring: 8 % past the mark and back, settled by two thirds of its time. */
   --ease-spring: linear(
@@ -2761,17 +2853,42 @@ code {
   --ease-out-strong: cubic-bezier(0.23, 1, 0.32, 1);
 }
 
-:is([data-mate-face-hop], [data-mate-face-body], [data-mate-face-look], [data-mate-face-glance]) {
-  transform-box: view-box;
+[data-zerops-primitive="mate-face"]
+  :is(
+    [data-mate-face-hop],
+    [data-mate-face-body],
+    [data-mate-face-look],
+    [data-mate-face-glance],
+    [data-mate-face-layer]
+  ) {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: visible;
 }
 
 [data-mate-face-body] {
-  transform-origin: var(--mate-face-origin, 50px 50px);
+  transform-origin: var(--mate-face-origin, 50% 50%);
 }
 
 /* It hops from its feet. */
 [data-mate-face-hop] {
-  transform-origin: 50px 96px;
+  transform-origin: 50% 96%;
+}
+
+/* A face stands where an icon would: a menu item does to a face what it does
+   to its icons (`[&>svg]` in ui/menu.tsx) — 2 px into its padding, at 80 %,
+   out of the pointer's way. */
+[data-slot="menu-item"] > [data-zerops-primitive="mate-face"] {
+  margin-inline: calc(var(--spacing) * -0.5);
+  pointer-events: none;
+}
+
+[data-slot="menu-item"] > [data-zerops-primitive="mate-face"]:not([class*="opacity-"]) {
+  opacity: 0.8;
 }
 
 [data-mate-face-eye] {
@@ -2802,11 +2919,11 @@ code {
 
 /* Thinking, it looks up and aside; writing, down along its line. */
 [data-mate-face-gaze="up"] [data-mate-face-look] {
-  translate: 5px -5px;
+  translate: 5% -5%;
 }
 
 [data-mate-face-gaze="down"] [data-mate-face-look] {
-  translate: 0 4px;
+  translate: 0 4%;
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -2839,15 +2956,12 @@ code {
   /* A Mate's row under the pointer: its face looks up at you. Pressed, the
      face gives a little under the finger and springs back as it lets go. */
   [data-zerops-surface="sidebar-mate"]:hover [data-mate-face-look] {
-    translate: 0 -5px;
+    translate: 0 -5%;
   }
 
   /* Waking — on its way up, until its first sign-in — it breathes: asleep's closed eyes, the whole
-     face swelling from its feet once every three seconds. It is not free: Chrome composites no
-     animation on an SVG element, the outer <svg> included, so while a face wakes it costs a style
-     recalc and a repaint of the face every frame (measured 2026-10-03: ~60 recalcs/s, no layout).
-     Moving it to the face's HTML wrapper would hand it to the compositor. With reduced motion it
-     stands still, and its words say it is coming up. */
+     face swelling from its feet once every three seconds, on the face's own box. With reduced
+     motion it stands still, and its words say it is coming up. */
   [data-zerops-primitive="mate-face"][data-mate-face-state="waking"] {
     transform-origin: 50% 96%;
     animation: mate-face-breathe 3s ease-in-out infinite;
@@ -2883,12 +2997,12 @@ code {
   }
   36%,
   54% {
-    translate: -5px 0;
+    translate: -5% 0;
     animation-timing-function: cubic-bezier(0.65, 0, 0.35, 1);
   }
   62%,
   80% {
-    translate: 5px 0;
+    translate: 5% 0;
     animation-timing-function: cubic-bezier(0.65, 0, 0.35, 1);
   }
   86%,
@@ -2920,7 +3034,7 @@ code {
     animation-timing-function: cubic-bezier(0.2, 0.8, 0.4, 1);
   }
   14% {
-    translate: 0 -13px;
+    translate: 0 -13%;
     scale: 0.96 1.05;
     animation-timing-function: cubic-bezier(0.6, 0, 0.8, 0.6);
   }
@@ -3121,7 +3235,7 @@ code {
   /* A Mate that is not the viewer's — a colleague's, or nobody's yet — wears
      its colour at 55 %, its eyes and mouth in full ink, so the owner's picture
      is the strongest mark on its row (the owner's board, 2026-09-30, A). */
-  .menu-face-pale [data-mate-face-body] > path {
+  .menu-face-pale [data-mate-face-body] path {
     fill-opacity: 0.55;
   }
 
@@ -3215,13 +3329,13 @@ code {
    reduced motion it only fades in (T8). */
 @media (prefers-reduced-motion: no-preference) {
   .menu-dot[data-arrived] {
-    animation: menu-dot-in 220ms var(--ease-out-strong) both;
+    animation: menu-dot-in 220ms var(--ease-out-strong) backwards;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .menu-dot[data-arrived] {
-    animation: menu-dot-fade 220ms ease-out both;
+    animation: menu-dot-fade 220ms ease-out backwards;
   }
 }
 
@@ -3291,7 +3405,7 @@ code {
 /* p26/row — the row's stop, armed: "Stop?" crossfades in where the ■ stood (140 ms). */
 @media (prefers-reduced-motion: no-preference) {
   .menu-stop-armed {
-    animation: zerops-appear 140ms ease-out both;
+    animation: zerops-appear 140ms ease-out backwards;
   }
 }
 
@@ -4041,7 +4155,7 @@ code {
 
 @media (prefers-reduced-motion: no-preference) {
   .zerops-envpop-draft {
-    animation: zerops-envpop-rise 240ms var(--ease-out-strong) both;
+    animation: zerops-envpop-rise 240ms var(--ease-out-strong) backwards;
   }
 }
 
@@ -4080,13 +4194,13 @@ code {
    onto is simply there (`HeadingFaceMark`). */
 @media (prefers-reduced-motion: no-preference) {
   .zerops-heading-dot[data-arrived] {
-    animation: zerops-heading-dot-in 220ms var(--ease-out-strong) both;
+    animation: zerops-heading-dot-in 220ms var(--ease-out-strong) backwards;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .zerops-heading-dot[data-arrived] {
-    animation: zerops-heading-dot-fade 220ms ease-out both;
+    animation: zerops-heading-dot-fade 220ms ease-out backwards;
   }
 }
 
@@ -4228,7 +4342,7 @@ code {
 }
 /* The face stands in the middle of the column, over the chat's glyphs and
    the result's marks. */
-.run-now > svg:first-child {
+.run-now > [data-zerops-primitive="mate-face"]:first-child {
   justify-self: center;
 }
 .run-now-words {
@@ -4262,7 +4376,7 @@ code {
 }
 @media (prefers-reduced-motion: no-preference) {
   .run-now-head[data-run-now-change] {
-    animation: run-now-in 180ms var(--ease-out-strong) both;
+    animation: run-now-in 180ms var(--ease-out-strong) backwards;
   }
   .run-now-leaving {
     animation: run-now-out 140ms var(--ease-out-strong) both;
@@ -4357,18 +4471,20 @@ code {
   flex-direction: column;
   gap: 12px;
 }
+/* Stood on the line by `translate`, not `top`: a move of the line moves them
+   on the compositor, with no layout. */
 .run-slot-face,
 .run-slot-clock {
   position: absolute;
-  top: var(--run-slot-line, 26px);
-  translate: 0 -50%;
+  top: 0;
+  translate: 0 calc(var(--run-slot-line, 26px) - 50%);
   z-index: 1;
 }
 /* They follow the first line once placed, never from where a first paint
    guessed it. */
 .run-slot[data-placed] > .run-slot-face,
 .run-slot[data-placed] > .run-slot-clock {
-  transition: top 240ms var(--ease-out-strong);
+  transition: translate 240ms var(--ease-out-strong);
 }
 .run-slot-face {
   left: 0;
@@ -4424,7 +4540,7 @@ code {
 /* "Thinking" between steps comes a moment late, so a quick gap between two
    steps never flashes it (the delay is set where it is drawn). */
 .run-slot-later {
-  animation: run-fade 200ms ease both;
+  animation: run-fade 200ms ease backwards;
 }
 .run-slot-more {
   padding-left: 36px;
@@ -4874,7 +4990,7 @@ button.run-bar:focus-visible {
   }
 }
 .run-rise {
-  animation: run-rise 320ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  animation: run-rise 320ms cubic-bezier(0.23, 1, 0.32, 1) backwards;
 }
 @media (prefers-reduced-motion: reduce) {
   .run-rise {
@@ -5164,7 +5280,7 @@ button.run-result-tile:hover::after {
 }
 .run-result-row[data-rising],
 .run-result-pictures[data-rising] {
-  animation: run-result-rise 320ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  animation: run-result-rise 320ms cubic-bezier(0.23, 1, 0.32, 1) backwards;
   animation-delay: calc(var(--row-index, 0) * 40ms);
 }
 @media (prefers-reduced-motion: reduce) {
@@ -6781,7 +6897,7 @@ a.message-file:focus-visible {
 }
 @media (prefers-reduced-motion: no-preference) {
   .rv-pic[data-fresh] img {
-    animation: rv-pic-in 180ms var(--ease-out-strong) both;
+    animation: rv-pic-in 180ms var(--ease-out-strong) backwards;
   }
 }
 @keyframes rv-pic-in {
@@ -7395,7 +7511,7 @@ button.rv-relrow:hover .rv-relrow-go {
 }
 @media (prefers-reduced-motion: no-preference) {
   button.rv-relrow:hover [data-mate-face-look] {
-    translate: 0 -5px;
+    translate: 0 -5%;
   }
   button.rv-relrow [data-mate-face-hop] {
     transition: scale 220ms var(--ease-spring);
@@ -7662,7 +7778,7 @@ button.rv-relrow:hover .rv-relrow-go {
 }
 
 .arrival-swap[data-arrival-swap="words"] > [data-swap-layer="entering"] {
-  animation: arrival-words-in 180ms var(--ease-out-strong) 40ms both;
+  animation: arrival-words-in 180ms var(--ease-out-strong) 40ms backwards;
 }
 
 .arrival-swap[data-arrival-swap="words"] > [data-swap-layer="leaving"] {
@@ -7670,7 +7786,7 @@ button.rv-relrow:hover .rv-relrow-go {
 }
 
 .arrival-swap[data-arrival-swap="slot"] > [data-swap-layer="entering"] {
-  animation: arrival-fade-in 200ms var(--ease-out-strong) 60ms both;
+  animation: arrival-fade-in 200ms var(--ease-out-strong) 60ms backwards;
 }
 
 .arrival-swap[data-arrival-swap="slot"] > [data-swap-layer="leaving"] {
@@ -8056,7 +8172,7 @@ button.rv-relrow:hover .rv-relrow-go {
 }
 
 .arrival-sign-in[data-arrives] {
-  animation: arrival-fade-in 200ms var(--ease-out-strong) both;
+  animation: arrival-fade-in 200ms var(--ease-out-strong) backwards;
 }
 
 .arrival-cards {
@@ -8463,7 +8579,7 @@ button.rv-relrow:hover .rv-relrow-go {
 /* A crewless Mate's subject arriving after its line stands — the first
    words sent — fades in where it stays: the name before it never moves. */
 .conversation-subject[data-arrived] {
-  animation: conversation-subject-in 180ms var(--ease-out-strong) both;
+  animation: conversation-subject-in 180ms var(--ease-out-strong) backwards;
 }
 
 @keyframes conversation-subject-in {
@@ -9215,26 +9331,29 @@ button.rv-relrow:hover .rv-relrow-go {
    `data-enter` are set only for a change the tab watched. */
 @media (prefers-reduced-motion: no-preference) {
   /* A need arriving: its words and presses unfold from the top. */
+  /* Its fill holds: the reveal ends clipped to its own box (inset(0)), and
+     the box's ring, shadow and its presses' focus rings have always been cut
+     there; one answer box keeps the one layer that costs. */
   .crew-reveal[data-arrived] {
     animation: crew-reveal 220ms var(--ease-out-strong) both;
   }
 
   /* A view slides 24 px in from the right; back, the column from the left. */
   .crew-view[data-enter="forward"] {
-    animation: crew-view-forward 220ms var(--ease-out-strong) both;
+    animation: crew-view-forward 220ms var(--ease-out-strong) backwards;
   }
 
   .crew-view[data-enter="back"] {
-    animation: crew-view-back 220ms var(--ease-out-strong) both;
+    animation: crew-view-back 220ms var(--ease-out-strong) backwards;
   }
 
   /* The mode line's words change in place: its height never moves. */
   .crew-mode[data-arrived] {
-    animation: crew-fade 180ms var(--ease-out-strong) both;
+    animation: crew-fade 180ms var(--ease-out-strong) backwards;
   }
 
   .crew-dot[data-arrived] {
-    animation: crew-dot-in 220ms var(--ease-out-strong) both;
+    animation: crew-dot-in 220ms var(--ease-out-strong) backwards;
   }
 }
 
@@ -9243,7 +9362,7 @@ button.rv-relrow:hover .rv-relrow-go {
   .crew-view[data-enter],
   .crew-mode[data-arrived],
   .crew-dot[data-arrived] {
-    animation: crew-fade 180ms ease-out both;
+    animation: crew-fade 180ms ease-out backwards;
   }
 }
 

@@ -5,12 +5,19 @@ import * as Schema from "effect/Schema";
 import { AtomRegistry } from "effect/unstable/reactivity";
 import { act } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { mateRowReading } from "~/components/zerops/SidebarMateRow.logic";
 
 import { zeropsSessionAtom } from "../state/zerops";
-import { useMateConversationsRead, useMateRowActivity } from "./useMenuMateReadings";
+import { COMING_UP_LINE } from "~/components/zerops/ZeropsProjectRow.logic";
+
+import { mateComing } from "./mateComing";
+import {
+  useComingClock,
+  useMateConversationsRead,
+  useMateRowActivity,
+} from "./useMenuMateReadings";
 import { useMatesActivity } from "./useZeropsAgentActivity";
 import { mountHqNavigation } from "~/zerops/__fixtures__/hqNavigation";
 
@@ -108,5 +115,43 @@ describe("useMenuMateReadings — a Mate HQ tells of, no socket to it", () => {
   it("a Mate HQ told of has its conversations read without a socket", () => {
     const read = mountedOver(told({ ...VERA, main: null }), useMateConversationsRead);
     expect(read(UNOPENED)).toBe(true);
+  });
+});
+
+/** What the menu's getter asks of an arriving Mate, as it asks it: now, at the call. */
+function lineAt(candidate: ZeropsCandidate, wokeAt: number): string | undefined {
+  const nowMs = Math.max(Date.now(), wokeAt);
+  return mateComing({ press: undefined, candidate, answerAwaited: true, nowMs })?.line;
+}
+
+describe("useComingClock — a coming-up line moves on at its deadline", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("redraws a Mate whose arrival window ends at T, at T, with nothing else changing", () => {
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.parse("2026-10-07T09:00:00.000Z"));
+    const until = Date.now() + 90_000;
+    const arriving = { ...UNOPENED, arriving: { until } } as ZeropsCandidate;
+    const candidates = [arriving];
+    const lines: Array<string | undefined> = [];
+    function Row() {
+      lines.push(lineAt(arriving, useComingClock(candidates)));
+      return null;
+    }
+    act(() => {
+      mounted.push(create(<Row />));
+    });
+    expect(lines.at(-1)).toBe(COMING_UP_LINE);
+    act(() => {
+      vi.advanceTimersByTime(89_999);
+    });
+    expect(lines.at(-1)).toBe(COMING_UP_LINE);
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+    expect(lines.at(-1)).toBeUndefined();
   });
 });

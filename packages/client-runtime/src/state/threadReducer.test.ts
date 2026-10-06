@@ -12,7 +12,7 @@ import {
 } from "@t3tools/contracts";
 import type { OrchestrationThread } from "@t3tools/contracts";
 
-import { applyThreadDetailEvent } from "./threadReducer.ts";
+import { activityOrder, applyThreadDetailEvent } from "./threadReducer.ts";
 
 const baseEventFields = {
   eventId: EventId.make("event-1"),
@@ -1352,6 +1352,78 @@ describe("applyThreadDetailEvent", () => {
         // Same-turn resolvable rows collapse to the newest; the other turn's
         // row and the malformed row are untouched.
         expect(ids).toEqual(["activity-other-turn", "activity-cw-malformed", "activity-cw-3"]);
+      }
+    });
+
+    it("streams context-window updates to the same history a from-scratch fold gives", () => {
+      type Activity = OrchestrationThread["activities"][number];
+      const resolvable = (activity: Activity) => {
+        const used = (activity.payload as { usedTokens?: unknown } | null)?.usedTokens;
+        return (
+          activity.kind === "context-window.updated" &&
+          typeof used === "number" &&
+          Number.isFinite(used) &&
+          used >= 0
+        );
+      };
+      // The rule as it reads: a redelivery replaces its row, a resolvable
+      // update replaces the same turn's resolvable ones, all in activity order.
+      const reference = (activities: ReadonlyArray<Activity>, next: Activity) =>
+        [
+          ...activities.filter(
+            (entry) =>
+              entry.id !== next.id &&
+              !(resolvable(next) && entry.turnId === next.turnId && resolvable(entry)),
+          ),
+          next,
+        ].toSorted(activityOrder);
+      const row = (index: number, turn: string, kind: string, usedTokens?: unknown): Activity => ({
+        id: EventId.make(`activity-${index}`),
+        tone: "info",
+        kind,
+        summary: kind,
+        payload: kind === "context-window.updated" ? { usedTokens } : {},
+        turnId: TurnId.make(turn),
+        sequence: index,
+        createdAt: `2026-04-01T11:00:${String(index).padStart(2, "0")}.000Z`,
+      });
+      const stream: Activity[] = [];
+      for (let index = 1; index <= 40; index += 1) {
+        const turn = index <= 20 ? "turn-1" : "turn-2";
+        stream.push(
+          index % 7 === 0
+            ? row(index, turn, "context-window.updated", Number.NaN)
+            : index % 3 === 0
+              ? row(index, turn, "tool.started")
+              : row(index, turn, "context-window.updated", index * 100),
+        );
+      }
+      // A late row for the first turn, and a redelivery.
+      stream.push(row(41, "turn-1", "context-window.updated", 9_000));
+      stream.push({ ...row(41, "turn-1", "context-window.updated", 9_500) });
+
+      let thread: OrchestrationThread = baseThread;
+      let expected: ReadonlyArray<Activity> = [];
+      for (const [index, activity] of stream.entries()) {
+        const result = applyThreadDetailEvent(thread, {
+          ...baseEventFields,
+          sequence: 100 + index,
+          occurredAt: "2026-04-01T11:05:00.000Z",
+          aggregateKind: "thread",
+          aggregateId: ThreadId.make("thread-1"),
+          type: "thread.activity-appended",
+          payload: { threadId: ThreadId.make("thread-1"), activity },
+        });
+        expect(result.kind).toBe("updated");
+        if (result.kind !== "updated") return;
+        const previous = thread.activities;
+        expected = reference(expected, activity);
+        expect(result.thread.activities).toEqual(expected);
+        // Rows the update did not replace are the same objects.
+        for (const entry of result.thread.activities) {
+          if (entry !== activity) expect(previous).toContain(entry);
+        }
+        thread = result.thread;
       }
     });
 

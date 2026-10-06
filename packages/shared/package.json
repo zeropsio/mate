@@ -35,6 +35,10 @@
       "types": "./src/projectFavicon.ts",
       "import": "./src/projectFavicon.ts"
     },
+    "./structuralSharing": {
+      "types": "./src/structuralSharing.ts",
+      "import": "./src/structuralSharing.ts"
+    },
     "./messagePreview": {
       "types": "./src/messagePreview.ts",
       "import": "./src/messagePreview.ts"

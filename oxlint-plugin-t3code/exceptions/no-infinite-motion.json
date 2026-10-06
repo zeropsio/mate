@@ -196,7 +196,7 @@
     "kind": "css-declaration",
     "fingerprint": "[data-mate-face-state=\"working\"] [data-mate-face-body]{animation:mate-face-turn 2.4s infinite}",
     "owner": "ales",
-    "reason": "A Mate's face moves only while its state holds (at work it turns and glances, needing you it hops): transform-only, stopped by reduced motion; the owner asked for the motion (2026-09-29)",
+    "reason": "A Mate's face moves only while its state holds (at work it turns and glances, needing you it hops): transform-only on the face's HTML layer boxes, composited, stopped by reduced motion; the owner asked for the motion (2026-09-29)",
     "expires": "never"
   },
   {
@@ -204,7 +204,7 @@
     "kind": "css-declaration",
     "fingerprint": "[data-mate-face-state=\"working\"] [data-mate-face-glance]{animation:mate-face-glance 5.6s infinite}",
     "owner": "ales",
-    "reason": "A Mate's face moves only while its state holds (at work it turns and glances, needing you it hops): transform-only, stopped by reduced motion; the owner asked for the motion (2026-09-29)",
+    "reason": "A Mate's face moves only while its state holds (at work it turns and glances, needing you it hops): transform-only on the face's HTML layer boxes, composited, stopped by reduced motion; the owner asked for the motion (2026-09-29)",
     "expires": "never"
   },
   {
@@ -212,7 +212,7 @@
     "kind": "css-declaration",
     "fingerprint": "[data-zerops-primitive=\"mate-face\"][data-mate-face-state=\"waking\"]{animation:mate-face-breathe 3s ease-in-out infinite}",
     "owner": "ales",
-    "reason": "A Mate on its way up breathes while it arrives (waking): transform-only (not composited: Chrome composites no animation on SVG, so a style recalc and a repaint per frame), at most 30 minutes from its creation, stopped by reduced motion; the owner left this call to the lead (2026-10-03)",
+    "reason": "A Mate on its way up breathes while it arrives (waking): scale on the face's HTML box, composited, at most 30 minutes from its creation, stopped by reduced motion; the owner left this call to the lead (2026-10-03)",
     "expires": "never"
   },
   {
@@ -234,9 +234,17 @@
   {
     "path": "apps/web/src/index.css",
     "kind": "css-declaration",
-    "fingerprint": "[data-run-shimmer]{animation:run-shimmer 2s linear infinite}",
+    "fingerprint": "[data-sweep-band]{animation:run-shimmer 2s linear infinite}",
     "owner": "ales",
-    "reason": "A light sweeps across the words of each call a Mate is running now, until it returns: the card's live moment, on small elements, stopped by reduced motion",
+    "reason": "A light sweeps across the words of each call a Mate is running now, until it returns: the card's live moment, a window sliding by translate on an HTML box, composited, stopped by reduced motion",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/index.css",
+    "kind": "css-declaration",
+    "fingerprint": "[data-sweep-copy]{animation:run-shimmer-hold 2s linear infinite}",
+    "owner": "ales",
+    "reason": "The sweep's copy of the words slides back by what its window slides, so it stands still under it: translate on an HTML box, composited, only while the window runs, stopped by reduced motion",
     "expires": "never"
   }
 ]
