@@ -11,7 +11,7 @@ import {
 import { ChevronRightIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
-import type { ComparedCommits } from "~/zerops/useZeropsCompares";
+import type { ComparedCommits } from "~/zerops/useReleaseComparisons";
 import { ZeropsReadFailure } from "./ZeropsReadFailure";
 import { cn } from "~/lib/utils";
 import { useNowMs } from "~/zerops/useNowMs";

@@ -883,7 +883,7 @@ describe("a creation under way on the projects page", () => {
       projectsPageSource.indexOf("const trouble ="),
       projectsPageSource.indexOf(";", projectsPageSource.indexOf("const trouble =")),
     );
-    expect(trouble).toContain("projectFlow.trouble");
+    expect(trouble).toContain("verbs.trouble");
     expect(projectsPageSource).toContain(
       '<p className="text-sm text-[var(--zerops-status-failed-text)]">{trouble}</p>',
     );

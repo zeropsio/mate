@@ -36,7 +36,7 @@ import { useThreadDetail, useThreadStatus } from "~/state/entities";
 import { officialHq, useAccountHq } from "~/zerops/accountHq";
 import { hqNavigationAtom } from "~/state/zerops";
 import { useNewMate, type NewMateAgain } from "~/zerops/newMate";
-import { useZeropsProjectFlowOptional } from "~/zerops/projectFlowContext";
+import { useAppsChanges, useMateNames } from "~/zerops/projectFlows";
 import {
   addCreateProject,
   beginNewProjectBirth,
@@ -134,9 +134,10 @@ function NewMateDialog({
       }).groups.find((candidate) => candidate.group.groupId === groupId),
     [activeOrganization?.id, presses, candidates, groupId, hqStructure],
   );
-  // The account's flow: the application's changes, open and landed, as HQ's stream last said them.
-  const flow = useZeropsProjectFlowOptional();
-  const groupFlow = flow?.flows.get(groupId);
+  // The application's changes, open and landed, held while the door is drawn.
+  const { changes } = useAppsChanges(useMemo(() => [groupId], [groupId]));
+  const appChanges = changes.get(groupId);
+  const mateNames = useMateNames();
   const recipe = useZeropsGroupRecipe({
     appId: groupId,
     tier: "mate",
@@ -168,9 +169,9 @@ function NewMateDialog({
     recipe: recipe.state,
     mates,
     change: newMateRecipeChange({
-      flow: groupFlow,
+      flow: appChanges === undefined ? undefined : { ...appChanges, changesKnown: true },
       mateName: (projectId) =>
-        mates.find((mate) => mate.projectId === projectId)?.name ?? flow?.mateNames.get(projectId),
+        mates.find((mate) => mate.projectId === projectId)?.name ?? mateNames.get(projectId),
     }),
     rereading: recipe.rereading,
   });

@@ -255,7 +255,7 @@ import { openCrewTab } from "../zerops/crew/crewTab";
 import { useOpenMate } from "../zerops/useOpenMate";
 import { SidebarWaitingStack } from "./zerops/SidebarWaitingStack";
 
-import { useZeropsProjectFlowOptional } from "../zerops/projectFlowContext";
+import { useProjectFlows } from "../zerops/projectFlows";
 import { placedPressesIn, useForgetConnectedPresses, useMatePresses } from "../zerops/matePress";
 import type { EnvironmentRow } from "@t3tools/client-runtime/zerops";
 import {
@@ -1823,13 +1823,13 @@ export default function Sidebar() {
   // A Mate's conversation, from its row — the jump box opens it the same way.
   const openMate = useOpenMate();
   // Each project's flow — what its Mates have waiting, what its environments
-  // run, whether there is something to release — read once for the account
-  // (`ZeropsProjectFlowProvider`) and drawn under the project as a timeline.
-  const zeropsProjectFlow = useZeropsProjectFlowOptional();
+  // run — drawn under the project as a timeline. What a release would put live
+  // is no part of the menu: it is compared where a release is shown.
+  const zeropsProjectFlows = useProjectFlows("every").flows;
   const zeropsSidebarFlow = useCallback(
     (groupId: string): SidebarProjectFlow | undefined => {
-      const flow = zeropsProjectFlow?.flows.get(groupId);
-      if (zeropsProjectFlow === null || flow === undefined) return undefined;
+      const flow = zeropsProjectFlows.get(groupId);
+      if (flow === undefined) return undefined;
       return {
         pullRequests: flow.pullRequests,
         // Until HQ tells them, the tree draws the change rows it remembers.
@@ -1859,7 +1859,7 @@ export default function Sidebar() {
         releaseInFlight: flow.release.inFlight,
       };
     },
-    [zeropsProjectFlow],
+    [zeropsProjectFlows],
   );
   const router = useRouter();
   const { isMobile, setOpenMobile } = useSidebar();

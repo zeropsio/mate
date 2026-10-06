@@ -47,9 +47,9 @@ import {
 } from "react";
 
 import { ZeropsFrameWait } from "../components/zerops/landing/ZeropsLandingShell";
+import { useAppsEnvironments, useEveryAppId } from "./projectFlows";
 import {
   hqPlacementsAtom,
-  hqEnvironmentsAtom,
   zeropsDataRuntimeAtom,
   zeropsInventoryAtom,
   zeropsSessionAtom,
@@ -367,7 +367,7 @@ export function ZeropsInventoryProvider({
     [organizationDescriptors],
   );
   const organizationReads = useZeropsAtomSelections(organizationReadEntries);
-  const hqEnvironments = useAtomValue(hqEnvironmentsAtom);
+  const hqEnvironments = useAppsEnvironments(useEveryAppId());
   const knownProjectRefs = useMemo(() => {
     const refs = new Map(
       inventoryProjectRefs(evidenceProjectRefs(evidence), access)
@@ -393,9 +393,9 @@ export function ZeropsInventoryProvider({
     }
     // HQ supplies relations by project id, including projects absent from the search listing.
     // Naming their refs does not read them: a visible stop's deployment demand owns the read.
-    if (activeOrganization !== null && hqEnvironments !== null) {
-      for (const environments of hqEnvironments.values()) {
-        for (const { projectId } of environments) {
+    if (activeOrganization !== null) {
+      for (const { environments } of Object.values(hqEnvironments)) {
+        for (const { projectId } of environments ?? []) {
           if (lost.has(ZeropsProjectId.make(projectId))) continue;
           const ref = projectRef(activeOrganization.id, projectId);
           refs.set(inventoryProjectRefKey(ref), ref);

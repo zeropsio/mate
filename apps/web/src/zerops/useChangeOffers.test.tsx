@@ -11,7 +11,7 @@ import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
 import { zeropsSessionAtom } from "../state/zerops";
-import { useChangeOffers, useKeepDeployKeyOffer, useReleasePermission } from "./useChangeOffers";
+import { useChangeOffers, useKeepDeployKeyOffer } from "./useChangeOffers";
 import { mountHqNavigation } from "~/zerops/__fixtures__/hqNavigation";
 
 const mounted: ReactTestRenderer[] = [];
@@ -185,34 +185,6 @@ describe("useChangeOffers", () => {
     )("app-shop");
     expect([offers?.read, offers?.merge, offers?.readRefused]).toEqual([false, false, false]);
     expect(offers?.why.merge).toMatch(/^HQ unavailable since .+\.$/u);
-  });
-});
-
-describe("useReleasePermission", () => {
-  it("refuses in HQ's words what HQ refuses, and says nothing before it has said", () => {
-    const permission = answerOf(STREAMED, useReleasePermission);
-    expect(permission("app-shop")).toMatchObject({ allowed: false });
-    expect((permission("app-shop") as { readonly reason: string } | undefined)?.reason).toMatch(
-      /^You need at least Basic user access to this project's production to release it\./u,
-    );
-    expect(permission("app-seed")).toEqual({ allowed: false, reason: "HQ has not said yet." });
-    expect(permission("app-other")).toBeUndefined();
-  });
-
-  it("offers what HQ offers", () => {
-    const shop = { ...SHOP, can: { ...SHOP.can, release: ALLOW } };
-    expect(
-      answerOf({ structure: { ungrouped: [], apps: [shop] } }, useReleasePermission)("app-shop"),
-    ).toEqual({ allowed: true });
-  });
-
-  it("is unavailable while HQ does not answer", () => {
-    expect(
-      answerOf(
-        { ...STREAMED, current: false, unavailableSince: 5_000 },
-        useReleasePermission,
-      )("app-shop"),
-    ).toMatchObject({ allowed: false, reason: expect.stringMatching(/^HQ unavailable since /u) });
   });
 });
 

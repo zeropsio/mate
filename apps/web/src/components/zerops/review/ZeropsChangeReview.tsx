@@ -42,11 +42,8 @@ import { Button } from "~/components/ui/button";
 import { buildThreadRouteParams } from "~/threadRoutes";
 import { useAskMateToFix, type FixProblem } from "~/zerops/fixRequest";
 import { useHqAppDetailHold } from "~/zerops/useHqAppDetail";
-import {
-  useZeropsProjectFlowOptional,
-  type ZeropsProjectFlow,
-  type ZeropsProjectFlowValue,
-} from "~/zerops/projectFlowContext";
+import { useFlowVerbs } from "~/zerops/flowVerbs";
+import { useMateNames, useProjectFlows, type ZeropsProjectFlow } from "~/zerops/projectFlows";
 import type { ReviewTarget } from "~/zerops/review";
 import { useAskMate } from "~/zerops/useAskMate";
 import { useAddEnvironment, useEnvironmentQuestionFacts } from "~/zerops/useAddEnvironment";
@@ -94,6 +91,9 @@ const RUN_WORDS_WAIT_MS = 3_000;
 
 type ChangeTarget = Extract<ReviewTarget, { readonly kind: "change" }>;
 
+/** The review shows whether a release is offered: what it would put live is compared while drawn. */
+const COMPARED = { compare: true } as const;
+
 export function ZeropsChangeReview({
   frame = "dialog",
   target,
@@ -116,7 +116,11 @@ export function ZeropsChangeReview({
   useHqAppDetailHold([target.groupId]);
   const reviewOffers = useChangeOffers()(target.groupId);
   const router = useRouter();
-  const flowValue = useZeropsProjectFlowOptional();
+  // The application's flow, what a release would put live compared while the review is drawn.
+  const flows = useProjectFlows(
+    useMemo(() => [target.groupId], [target.groupId]),
+    COMPARED,
+  );
   // The dialog's way to the same review at the change's own address.
   const onOpenPage =
     frame === "page"
@@ -132,7 +136,7 @@ export function ZeropsChangeReview({
             },
           });
         };
-  const flow = flowValue?.flows.get(target.groupId);
+  const flow = flows.flows.get(target.groupId);
   const matches = (pull: FlowPullRequest) =>
     pull.repository === target.repository && pull.number === target.number;
   const open = flow?.pullRequests.find(matches);
@@ -151,7 +155,7 @@ export function ZeropsChangeReview({
   if (current !== undefined && current !== held) setHeld(current);
   const pull = current ?? held;
 
-  if (flowValue === null || pull === undefined) {
+  if (pull === undefined) {
     return (
       <ZeropsReviewSurface
         back={back}
@@ -177,10 +181,8 @@ export function ZeropsChangeReview({
           repository: target.repository,
           number: target.number,
           read: landed.kind === "read" ? { kind: "reading" } : landed,
-          provided: flowValue !== null,
-          failure: flowValue?.readFailure,
-          projectKnown:
-            flowValue?.groupsRead === true ? flowValue.knownGroups?.has(target.groupId) : undefined,
+          failure: flows.readFailure,
+          projectKnown: flows.groupsRead ? flows.knownGroups.has(target.groupId) : undefined,
         })}
       />
     );
@@ -189,7 +191,7 @@ export function ZeropsChangeReview({
     <ChangeReviewData
       reviewOffers={reviewOffers}
       flow={flow}
-      flowValue={flowValue}
+      hqAddress={flows.hqAddress}
       frame={frame}
       back={back}
       onOpenPage={onOpenPage}
@@ -204,7 +206,7 @@ export function ZeropsChangeReview({
 function ChangeReviewData({
   reviewOffers,
   flow,
-  flowValue,
+  hqAddress,
   frame,
   onOpenPage,
   back,
@@ -216,8 +218,8 @@ function ChangeReviewData({
   readonly reviewOffers: ZeropsChangeOffers | undefined;
   /** The project's flow; `undefined` while it waits its turn to be read. */
   readonly flow: ZeropsProjectFlow | undefined;
-  /** The account's flow, which holds this one. */
-  readonly flowValue: ZeropsProjectFlowValue;
+  /** The organization's official HQ, whose addresses name its changes. */
+  readonly hqAddress: string | undefined;
   readonly frame: ReviewFrame;
   readonly onOpenPage: (() => void) | undefined;
   readonly back: ReviewButton | undefined;
@@ -234,13 +236,15 @@ function ChangeReviewData({
   const pictures = useHqPictureSource();
   const addEnvironment = useAddEnvironment();
   const question = useEnvironmentQuestionFacts(target.groupId, flow);
+  const verbs = useFlowVerbs();
+  const mateNames = useMateNames();
   const [press, setPress] = useState<ReviewPress>({ kind: "idle" });
   const [closing, setClosing] = useState<ReviewClose>({ kind: "idle" });
   const change = { repository: pull.repository, number: pull.number };
   const merge = async () => {
     setPress({ kind: "running" });
     // The head the review shows: its files were read for it, and one pushed since HQ refuses.
-    const outcome = await flowValue.merge(target.groupId, change, pull.headSha);
+    const outcome = await verbs.merge(target.groupId, change, pull.headSha);
     setPress(
       outcome.ok
         ? { kind: "done", deploys: outcome.deploys }
@@ -249,7 +253,7 @@ function ChangeReviewData({
   };
   const close = async () => {
     setClosing({ kind: "running" });
-    const outcome = await flowValue.close(target.groupId, change);
+    const outcome = await verbs.close(target.groupId, change);
     setClosing(outcome.ok ? { kind: "done" } : { kind: "refused", reason: outcome.reason });
   };
 
@@ -316,7 +320,7 @@ function ChangeReviewData({
         onClose();
       }}
       frame={frame}
-      hqAddress={flowValue.hqAddress}
+      hqAddress={hqAddress}
       back={back}
       onOpenPage={onOpenPage}
       live={flow?.releases.find((entry) => entry.standing === "live")?.tag}
@@ -324,7 +328,7 @@ function ChangeReviewData({
       mate={
         mate === undefined
           ? {
-              name: flowValue.mateNames.get(pull.mateProjectId) ?? "the Mate",
+              name: mateNames.get(pull.mateProjectId) ?? "the Mate",
               tint: undefined,
               mine,
             }

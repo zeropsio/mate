@@ -10,7 +10,7 @@ import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { makeSampledAccount } from "./__fixtures__/sampledAccount";
-import { useZeropsCompares, type ZeropsCompares } from "./useZeropsCompares";
+import { useReleaseComparisons, type AppCompares } from "./useReleaseComparisons";
 import { AccountDataContext, type AccountData } from "./ZeropsAccountData";
 
 const OLD = "1".repeat(40);
@@ -72,7 +72,7 @@ const READ: CompareRead = {
 const KEY = JSON.stringify(["appdev", OLD, HEAD]);
 
 /** What the hook said, render by render. */
-const renders: ZeropsCompares[] = [];
+const renders: AppCompares[] = [];
 const seen = () => renders.at(-1);
 
 function Probe({ asks }: { readonly asks: ReadonlyMap<string, ReadonlyArray<CompareRead>> }) {
@@ -84,7 +84,7 @@ function Probe({ asks }: { readonly asks: ReadonlyMap<string, ReadonlyArray<Comp
 }
 
 function Reader({ asks }: { readonly asks: ReadonlyMap<string, ReadonlyArray<CompareRead>> }) {
-  renders.push(useZeropsCompares(asks));
+  renders.push(useReleaseComparisons(asks));
   return null;
 }
 
@@ -114,7 +114,7 @@ async function mount(element: ReactElement): Promise<ReactTestRenderer> {
   return tree!;
 }
 
-describe("useZeropsCompares", () => {
+describe("useReleaseComparisons", () => {
   it("asks HQ each comparison of an application once, and holds its answer", async () => {
     await mount(<Probe asks={new Map([["a-todo", [READ]]])} />);
     expect(hq.state.asked).toEqual(["a-todo appdev"]);

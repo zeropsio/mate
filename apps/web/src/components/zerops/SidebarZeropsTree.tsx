@@ -137,7 +137,7 @@ import {
 } from "~/zerops/agentActivity";
 import { useBuildsUnderWay } from "~/zerops/ZeropsAccountData";
 import type { MateComing } from "~/zerops/mateComing";
-import { useZeropsProjectFlowOptional } from "~/zerops/projectFlowContext";
+import { useStopDeploymentsShown } from "~/zerops/projectFlows";
 import { useStopDeploymentDemand } from "~/zerops/accountForge";
 import { findInventoryProjectRef, InventoryContext } from "~/zerops/inventoryContext";
 import { useNowMs } from "~/zerops/useNowMs";
@@ -769,8 +769,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   }, [activeProjectId]);
   // What each stop runs, read once per render and handed to `groupFlow`, so
   // the chip and the page never read two different answers for one project.
-  const projectFlows = useZeropsProjectFlowOptional();
-  const deployments = projectFlows?.deployments;
+  const deployments = useStopDeploymentsShown();
 
   // Until the rows below are drawn, the jump box finds nothing here.
   jumpIndex.current = EMPTY_JUMP_INDEX;

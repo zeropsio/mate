@@ -59,7 +59,7 @@ import {
   type ReleaseOffer,
 } from "~/components/zerops/ZeropsGroupDetail";
 import type { CompareCommit } from "@t3tools/shared/hqChanges";
-import type { ZeropsHistoryState } from "~/zerops/useZeropsHistory";
+import type { ZeropsHistoryState } from "~/zerops/useRepositoryHistory";
 
 import { SidebarProvider } from "~/components/ui/sidebar";
 import "../index.css";

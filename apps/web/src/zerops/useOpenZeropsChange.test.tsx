@@ -2,7 +2,6 @@ import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { TestNode } from "./__fixtures__/testDom";
-import type { ZeropsProjectFlowValue } from "./projectFlowContext";
 
 const HQ = "https://hq.example.test";
 
@@ -27,10 +26,7 @@ vi.mock("../rightPanelStore", () => ({
     }),
   },
 }));
-vi.mock("./projectFlowContext", () => ({
-  useZeropsProjectFlowOptional: () =>
-    ({ hqAddress: went.hqAddress }) as unknown as ZeropsProjectFlowValue,
-}));
+vi.mock("./projectFlows", () => ({ useHqAddress: () => went.hqAddress }));
 
 function installTestDom(): TestNode {
   const document = new TestNode("#document", null, 9);

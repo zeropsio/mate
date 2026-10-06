@@ -20,7 +20,6 @@ import {
 import {
   placeListing,
   placementsOf,
-  type HqEnvironment,
   type HqMates,
   type HqPlacement,
 } from "@t3tools/client-runtime/zerops/hq";
@@ -167,26 +166,6 @@ export const hqPlacementsAtom = Atom.make((get): ReadonlyMap<string, HqPlacement
         navigation.presses,
       );
 }).pipe(Atom.withLabel("zerops:hq-placements"));
-
-/**
- * Each application's stage and production as HQ's navigation says them, with their deploys, by its
- * id (SPEC §3.2b); an application whose environments HQ refused the reader, or sent none this build
- * can read, is missing. Null while nothing is known of the organization's structure.
- */
-export const hqEnvironmentsAtom = Atom.make(
-  (get): ReadonlyMap<string, ReadonlyArray<HqEnvironment>> | null => {
-    const structure = get(shownHqNavigationAtom).structure;
-    return structure === null
-      ? null
-      : new Map(
-          structure.apps.flatMap((app) =>
-            app.environments === undefined || "refused" in app.environments
-              ? []
-              : [[app.id, app.environments] as const],
-          ),
-        );
-  },
-).pipe(Atom.withLabel("zerops:hq-environments"));
 
 /**
  * The Mates the reader may observe, as HQ relays them (`hqMates`): each by its project, its

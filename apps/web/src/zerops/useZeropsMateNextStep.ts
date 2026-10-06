@@ -21,9 +21,10 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
+import { useMemo } from "react";
 
 import { zeropsMateAt } from "./mateIdentities";
-import { useZeropsProjectFlowOptional } from "./projectFlowContext";
+import { useAppsChanges, useMateNames } from "./projectFlows";
 import { useRegistrationRecord } from "./registrationRecords";
 import type { ReviewTarget } from "./review";
 import { useZeropsInventory } from "./ZeropsInventoryProvider";
@@ -53,21 +54,25 @@ const NOTHING: ZeropsMateNextStep = { kind: "none" };
 const UNKNOWN: ZeropsMateNextStep = { kind: "unknown" };
 
 export function useZeropsMateNextStep(threadRef: ScopedThreadRef | null): ZeropsMateNextStep {
-  const flow = useZeropsProjectFlowOptional();
   const inventory = useZeropsInventory();
   const projectId = useRegistrationRecord(threadRef?.environmentId)?.projectRef?.projectId;
   const mates = useZeropsMateDirectory();
+  const mateNames = useMateNames();
 
   const project = inventory.projects.find((entry) => entry.id === projectId);
   const groupId = readZeropsMembership(project).groupId;
-  const projectFlow = groupId === undefined ? undefined : flow?.flows.get(groupId);
+  // The Mate's application's changes, held while its conversation is drawn.
+  const { changes } = useAppsChanges(
+    useMemo(() => (groupId === undefined ? [] : [groupId]), [groupId]),
+  );
+  const appChanges = groupId === undefined ? undefined : changes.get(groupId);
 
   if (threadRef === null) return NOTHING;
-  if (groupId === undefined || projectFlow?.changesKnown !== true) return UNKNOWN;
+  if (groupId === undefined || appChanges === undefined) return UNKNOWN;
   const step = mateNextStep({
-    pullRequests: projectFlow.pullRequests,
+    pullRequests: appChanges.pullRequests,
     mateProjectId: projectId,
-    mateName: projectId === undefined ? undefined : flow?.mateNames.get(projectId),
+    mateName: projectId === undefined ? undefined : mateNames.get(projectId),
   });
   if (step.kind === "none") return NOTHING;
   const mate = zeropsMateAt(mates, threadRef.environmentId);

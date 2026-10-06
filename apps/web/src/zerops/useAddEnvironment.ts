@@ -21,7 +21,7 @@ import { questionFactsOf } from "./addEnvironment.logic";
 import { HeldInventoryContext } from "./inventoryContext";
 import { placedPressesIn, useMatePresses } from "./matePress";
 import { useNewProjectBirths } from "./newProjectBirth";
-import type { ZeropsProjectFlow } from "./projectFlowContext";
+import type { ZeropsProjectFlow } from "./projectFlows";
 import { useSetUpEnvironment } from "./setUpEnvironment";
 import { useZeropsCandidates } from "./useZeropsCandidates";
 import { useZeropsInventory } from "./ZeropsInventoryProvider";

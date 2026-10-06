@@ -28,7 +28,7 @@ import { useAccountDataOptional } from "~/zerops/ZeropsAccountData";
 import { appBasePath } from "~/basePath";
 import { ZeropsRepositoryBrowser } from "./ZeropsRepositoryBrowser";
 import { StatusDot } from "./primitives";
-import { useZeropsProjectFlow } from "~/zerops/projectFlowContext";
+import { useMateNames, useProjectFlows } from "~/zerops/projectFlows";
 import { useChangeOffers } from "~/zerops/useChangeOffers";
 import { useZeropsRegistry } from "~/zerops/useZeropsRegistry";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
@@ -206,7 +206,8 @@ export function ZeropsGitPage() {
   const { activeOrganization, organizations, organizationStatus, selectOrganization, status } =
     useZeropsSession();
   const retryAccount = useAccountDataOptional()?.retry;
-  const flow = useZeropsProjectFlow();
+  const flow = useProjectFlows("every");
+  const mateNames = useMateNames();
   const registry = useZeropsRegistry();
   const offersOf = useChangeOffers();
   const inventory = useContext(InventoryContext);
@@ -238,7 +239,7 @@ export function ZeropsGitPage() {
     appsKnown: !registry.loading,
     apps,
     failure: flow.readFailure ?? inventory?.error ?? undefined,
-    mateName: (projectId) => flow.mateNames.get(projectId),
+    mateName: (projectId) => mateNames.get(projectId),
   });
   const scoped =
     status === "signed-in" && organizationStatus === "selected" && activeOrganization !== null;

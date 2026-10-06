@@ -11,15 +11,15 @@ import { RuntimeStopPublicAccess, StopPublicAccessStatus } from "./StopPublicAcc
  * "I imagine the group and the prod/stage detail to be in place of the chat"
  * (the owner, 2026-09-19).
  *
- * Nothing here is fetched twice: the flow is the account-wide read every
- * Zerops surface shares (`projectFlowContext`), and the history and what each
- * release carried are HQ's comparisons, asked once and held (`useZeropsCompares`).
+ * The flow is the application's, read while the page is drawn (`projectFlows`),
+ * and the history and what each release carried are HQ's comparisons, asked
+ * while they are shown (`useReleaseComparisons`).
  *
  * Structural only — what a row says is `projectFlow.ts`'s and
  * `groupHistory.ts`'s (rule R5).
  */
 import { useAtomValue } from "@effect/atom-react";
-import { hqEnvironmentsAtom, hqMatesAtom } from "~/state/zerops";
+import { hqMatesAtom } from "~/state/zerops";
 import { StopReadAgain } from "./StopReadAgain";
 import {
   cannotTellWhatRuns,
@@ -124,14 +124,17 @@ import { useNowMs } from "~/zerops/useNowMs";
 import { mateUpdateStatus, type MateUpdateStatus } from "~/zerops/mateUpdate";
 import { useZeropsMateUpdateStates } from "~/zerops/useZeropsMateUpdate";
 import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
+import { useFlowVerbs, type FlowVerbOutcome } from "~/zerops/flowVerbs";
 import {
-  type FlowVerbOutcome,
+  useAppsEnvironments,
+  useMateNames,
+  useProjectFlows,
+  useStopDeploymentsShown,
   type ZeropsProjectFlow,
-  useZeropsProjectFlowOptional,
-} from "~/zerops/projectFlowContext";
+} from "~/zerops/projectFlows";
 import { useChangeOffers, useKeepDeployKeyOffer } from "~/zerops/useChangeOffers";
 import { REVIEW_RELEASE_LABEL, useOpenReview } from "~/zerops/review";
-import { useZeropsCompares, type ComparedCommits } from "~/zerops/useZeropsCompares";
+import { useReleaseComparisons, type ComparedCommits } from "~/zerops/useReleaseComparisons";
 import { useHqRecipeFailure } from "~/zerops/useHqAppDetail";
 import {
   useAddEnvironment,
@@ -140,7 +143,7 @@ import {
 } from "~/zerops/useAddEnvironment";
 import { useHalfMadeEnvironments } from "~/zerops/useHalfMadeEnvironments";
 import { ZeropsReadFailure } from "./ZeropsReadFailure";
-import { useZeropsHistory, type ZeropsHistoryState } from "~/zerops/useZeropsHistory";
+import { useRepositoryHistory, type ZeropsHistoryState } from "~/zerops/useRepositoryHistory";
 import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
 import {
@@ -339,10 +342,12 @@ function groupRepository(environments: ReadonlyArray<EnvironmentRow>): string | 
   return undefined;
 }
 
+/** A surface that shows what a release would put live: it compares it while drawn. */
+const COMPARED = { compare: true } as const;
+
 /** What a history may call a Mate: its name rather than its bot login. */
 function useHistoryNames(): HistoryNames {
-  const flowValue = useZeropsProjectFlowOptional();
-  const mateNames = flowValue?.mateNames;
+  const mateNames = useMateNames();
   return useMemo(() => ({ mateNames }), [mateNames]);
 }
 
@@ -365,7 +370,10 @@ const GROUP_MATES_SURFACE = {
  * the group, the activity feed for what each is on, and `mateTints` for the
  * colour its face wears — so a Mate is the same Mate on both surfaces.
  */
-function useGroupMates(groupId: string): {
+function useGroupMates(
+  groupId: string,
+  flow: ZeropsProjectFlow | undefined,
+): {
   readonly mates: ReadonlyArray<GroupMate>;
   readonly notice: CandidatesNotice | null;
   /** Reads the listing again: the notice's *Try again*. */
@@ -379,7 +387,6 @@ function useGroupMates(groupId: string): {
   const hqMates = hqView?.current === true ? hqView.mates : null;
   const updates = useZeropsMateUpdateStates();
   const nowMs = useNowMs();
-  const flow = useZeropsProjectFlowOptional()?.flows.get(groupId);
   // Who is looking: only their own Mates wait on them (`mateIsViewers`).
   const viewer = useZeropsSession().user?.id;
   const mates = useMemo(() => {
@@ -444,8 +451,7 @@ function useProjectAttention(
   readonly items: ReadonlyArray<ProjectAttentionItem>;
   readonly onAct: (item: ProjectAttentionItem) => void;
 } {
-  const flowValue = useZeropsProjectFlowOptional();
-  const mateNames = flowValue?.mateNames;
+  const mateNames = useMateNames();
   const openMate = useOpenMateOf();
   const navigate = useNavigate();
   const { environments, pullRequests, notLive, notLiveAtLeast, canRelease } = input;
@@ -516,9 +522,8 @@ function useOpenProjects(): () => void {
 }
 
 /** The release the flow offers on a group, read the way the menu row reads it. */
-function useReleaseOffer(groupId: string): ReleaseOffer {
-  const flowValue = useZeropsProjectFlowOptional();
-  const flow = flowValue?.flows.get(groupId);
+function useReleaseOffer(groupId: string, flow: ZeropsProjectFlow | undefined): ReleaseOffer {
+  const { pending } = useFlowVerbs();
   const openReview = useOpenReview();
   const onReview = useCallback(
     (from: HTMLElement) => {
@@ -532,7 +537,7 @@ function useReleaseOffer(groupId: string): ReleaseOffer {
     reason: gate === undefined || gate.allowed ? undefined : gate.reason,
     releasing:
       flow?.release.inFlight !== undefined ||
-      (flowValue?.pending.has(flowVerbKey({ kind: "release", groupId })) ?? false),
+      pending.has(flowVerbKey({ kind: "release", groupId })),
     tag: flow?.release.suggestion,
     onReview,
   };
@@ -549,7 +554,12 @@ export function ZeropsReleaseVerb({
   readonly groupId: string;
   readonly label: string;
 }) {
-  const release = useReleaseOffer(groupId);
+  // What a release would put live is compared while the step is drawn.
+  const { flows } = useProjectFlows(
+    useMemo(() => [groupId], [groupId]),
+    COMPARED,
+  );
+  const release = useReleaseOffer(groupId, flows.get(groupId));
   // The projects page's verbs are all one height; this one is theirs.
   return <ReleaseAction label={label} release={release} size="compact" />;
 }
@@ -559,10 +569,11 @@ export function ZeropsReleaseVerb({
  * (`stageFirstDeploy`), as its cell on the projects page and the menu say it: from what the
  * platform runs, HQ's jobs of its deploys, and whether HQ is still bringing it up.
  */
-function useStageFirstDeploys(groupId: string): (projectId: string) => FirstDeploy | undefined {
+function useStageFirstDeploys(
+  flow: ZeropsProjectFlow | undefined,
+): (projectId: string) => FirstDeploy | undefined {
   const { listing } = useZeropsCandidates();
-  const flowValue = useZeropsProjectFlowOptional();
-  const flow = flowValue?.flows.get(groupId);
+  const deployments = useStopDeploymentsShown();
   return (projectId) => {
     const row = flow?.environments.find(
       (entry) => entry.projectId === projectId && entry.tier === "stage",
@@ -572,7 +583,7 @@ function useStageFirstDeploys(groupId: string): (projectId: string) => FirstDepl
       birth: row?.birth,
       projectStatus: candidate?.project.status,
       services: candidate?.services === undefined ? undefined : candidate.services.statuses,
-      deployment: flowValue?.deployments.get(projectId),
+      deployment: deployments.get(projectId),
       deploys: row?.deploys,
       keyGap: row?.keyGap ?? false,
     });
@@ -633,7 +644,7 @@ function useDevstages(
 function useRuntimeStops(groupId: string): ReadonlyArray<RuntimeStopIdentity> {
   const inventory = useZeropsInventory();
   const held = useContext(HeldInventoryContext);
-  const declared = useAtomValue(hqEnvironmentsAtom)?.get(groupId);
+  const declared = useAppsEnvironments(useMemo(() => [groupId], [groupId]))[groupId]?.environments;
   return runtimeStopsOf(groupId, held?.projects ?? inventory.projects, declared);
 }
 
@@ -695,13 +706,19 @@ export function ZeropsRuntimeStops({
 
 export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string }) {
   const recipeFailure = useHqRecipeFailure(groupId);
-  const flowValue = useZeropsProjectFlowOptional();
-  const flow = flowValue?.flows.get(groupId);
+  // The application's flow, what a release would put live compared while the page is drawn.
+  const { flows } = useProjectFlows(
+    useMemo(() => [groupId], [groupId]),
+    COMPARED,
+  );
+  const flow = flows.get(groupId);
+  const deployments = useStopDeploymentsShown();
+  const verbs = useFlowVerbs();
   const runtimeStops = useRuntimeStops(groupId);
   const navigate = useNavigate();
   const environments = flow?.environments ?? [];
   const repo = groupRepository(environments);
-  const history = useZeropsHistory({ appId: groupId, repo, repos: flow?.repos });
+  const history = useRepositoryHistory({ appId: groupId, repo, repos: flow?.repos });
   const tags = useReleaseTags(flow?.releases);
   const openChange = useOpenChange(groupId, repo);
   const waiting = releaseContentsSummary(flow?.release.contents ?? [], 20);
@@ -711,15 +728,15 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
   const addMate = useAddMate();
   const actions = useGroupActions(groupId);
   const mates_ = useMateMenus();
-  const release = useReleaseOffer(groupId);
+  const release = useReleaseOffer(groupId, flow);
   const crumbs = useCrumbs();
   const names = useHistoryNames();
-  const { mates, notice: matesNotice, refresh: rereadMates } = useGroupMates(groupId);
+  const { mates, notice: matesNotice, refresh: rereadMates } = useGroupMates(groupId, flow);
   // Each Mate drawn here has its project read: its menu's Restart stands on its container.
   useMatesInventory(useMemo(() => mates.map((mate) => mate.projectId), [mates]));
   const openMate = useOpenMateOf();
   const { withheldNotice, shown } = useWithheldStops(environments);
-  const firstDeployOf = useStageFirstDeploys(groupId);
+  const firstDeployOf = useStageFirstDeploys(flow);
   const attention = useProjectAttention(groupId, mates, {
     environments: shown,
     pullRequests: flow?.pullRequests ?? EMPTY_PULLS,
@@ -739,7 +756,7 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
       <DetailShell crumbs={crumbs} title={groupName}>
         <ZeropsRuntimeStops
           stops={runtimeStops}
-          deployments={flowValue?.deployments}
+          deployments={deployments}
           onOpen={(projectId) => {
             void navigate({ to: "/group/$groupId/$projectId", params: { groupId, projectId } });
           }}
@@ -767,7 +784,7 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
         productionRuns:
           production === undefined
             ? "unknown"
-            : productionRunsOf(flowValue?.deployments.get(production.projectId)),
+            : productionRunsOf(deployments.get(production.projectId)),
         waiting: { count: waiting.total, atLeast: waiting.atLeast },
         // Entries are what `main` would put in a release: none says it holds no code, once the
         // repositories and the recipe that names their services are both read.
@@ -1152,8 +1169,14 @@ export function ZeropsStopDetailPage({
   readonly projectId: string;
 }) {
   const recipeFailure = useHqRecipeFailure(groupId);
-  const flowValue = useZeropsProjectFlowOptional();
-  const flow = flowValue?.flows.get(groupId);
+  // The application's flow, what a release would put live compared while the page is drawn.
+  const { flows } = useProjectFlows(
+    useMemo(() => [groupId], [groupId]),
+    COMPARED,
+  );
+  const flow = flows.get(groupId);
+  const deployments = useStopDeploymentsShown();
+  const verbs = useFlowVerbs();
   const runtimeStops = useRuntimeStops(groupId).filter((entry) => entry.projectId === projectId);
   const stop = flow?.environments.find((entry) => entry.projectId === projectId);
   const declared = flow?.environmentInputs.find((entry) => entry.projectId === projectId);
@@ -1168,7 +1191,7 @@ export function ZeropsStopDetailPage({
   const production = stop?.tier === "production";
   // Only a stage draws its deploys: a production moves by release, and its
   // releases are the list it is read by.
-  const history = useZeropsHistory({
+  const history = useRepositoryHistory({
     appId: groupId,
     repo: stage ? repo : undefined,
     repos: flow?.repos,
@@ -1185,7 +1208,7 @@ export function ZeropsStopDetailPage({
     flow?.releases,
     production && withheld === null ? declared?.services : undefined,
   );
-  const release = useReleaseOffer(groupId);
+  const release = useReleaseOffer(groupId, flow);
   const openReview = useOpenReview();
   const stopGroupName = useGroupName(groupId);
   const crumbs = useCrumbs({ groupId, name: stopGroupName });
@@ -1202,7 +1225,7 @@ export function ZeropsStopDetailPage({
   // the page was first drawn is enough, as it is for the left menu's rows.
   const [nowMs] = useState(Date.now);
   // Where a stage that runs nothing stands on its first deploy, as its cell and the menu say it.
-  const firstDeployOf = useStageFirstDeploys(groupId);
+  const firstDeployOf = useStageFirstDeploys(flow);
   const firstDeploy = stop?.tier === "stage" ? firstDeployOf(projectId) : undefined;
   // A withheld stop lists no service, so no build of one is read either.
   const services =
@@ -1240,10 +1263,10 @@ export function ZeropsStopDetailPage({
     });
   };
 
-  if (flowValue === null || flow === undefined || stop === undefined) {
+  if (flow === undefined || stop === undefined) {
     return (
       <DetailShell crumbs={crumbs} title={runtimeStops?.[0]?.name}>
-        <ZeropsRuntimeStops stops={runtimeStops} deployments={flowValue?.deployments} />
+        <ZeropsRuntimeStops stops={runtimeStops} deployments={deployments} />
         <UnreadDetail groupId={groupId} />
       </DetailShell>
     );
@@ -1256,7 +1279,7 @@ export function ZeropsStopDetailPage({
     );
   }
 
-  const deployment = flowValue.deployments.get(projectId) ?? UNREAD_DEPLOYMENT;
+  const deployment = deployments.get(projectId) ?? UNREAD_DEPLOYMENT;
   const view = stopView({ deployment, row: stop, nowMs });
   const live = flow.releases.find((entry) => entry.standing === "live");
   const releasedAge = live?.taggedAt === undefined ? "" : formatRelativeTimeLabel(live.taggedAt);
@@ -1306,7 +1329,7 @@ export function ZeropsStopDetailPage({
         onRollBack={(tag, from) => {
           openReview({ kind: "rollback", groupId, tag }, { from });
         }}
-        pending={flowValue.pending}
+        pending={verbs.pending}
         release={release}
         releases={production ? flow.releases : NO_RELEASES}
         repo={repo}
@@ -1316,10 +1339,8 @@ export function ZeropsStopDetailPage({
           mayRunAgain
             ? {
                 running: (service) =>
-                  flowValue.pending.has(
-                    flowVerbKey({ kind: "redeploy", groupId, projectId, service }),
-                  ),
-                onDeployAgain: (again) => said(flowValue.redeploy(groupId, projectId, again)),
+                  verbs.pending.has(flowVerbKey({ kind: "redeploy", groupId, projectId, service })),
+                onDeployAgain: (again) => said(verbs.redeploy(flow, projectId, again)),
               }
             : undefined
         }
@@ -1327,10 +1348,10 @@ export function ZeropsStopDetailPage({
           mayRunAgain
             ? {
                 running: (service) =>
-                  flowValue.pending.has(
+                  verbs.pending.has(
                     flowVerbKey({ kind: "add-service", groupId, projectId, service }),
                   ),
-                onAdd: (service) => said(flowValue.addService(groupId, projectId, service)),
+                onAdd: (service) => said(verbs.addService(flow, projectId, service)),
               }
             : undefined
         }
@@ -1344,17 +1365,17 @@ export function ZeropsStopDetailPage({
           redeploy === undefined || !mayRunAgain
             ? undefined
             : {
-                running: flowValue.pending.has(
+                running: verbs.pending.has(
                   flowVerbKey({ kind: "redeploy", groupId, projectId, service: redeploy.service }),
                 ),
                 refused: runAgainRefused,
-                onRunAgain: () => said(flowValue.redeploy(groupId, projectId, redeploy)),
+                onRunAgain: () => said(verbs.redeploy(flow, projectId, redeploy)),
               }
         }
         services={services}
         stop={stop}
         tags={tags}
-        trouble={flowValue.trouble}
+        trouble={verbs.trouble}
         verdict={verdict}
         view={view}
         untold={production ? flow.release.untold : NO_UNTOLD}
@@ -1487,7 +1508,7 @@ function useStopCarried(
     () => (reads === undefined ? NO_ASKS : new Map([[groupId, [...reads.values()].flat()]])),
     [groupId, reads],
   );
-  const compares = useZeropsCompares(asks);
+  const compares = useReleaseComparisons(asks);
   return useMemo(() => {
     if (reads === undefined) return undefined;
     const answered = compares.get(groupId);
@@ -2507,9 +2528,11 @@ function StopLine({
   readonly firstDeploy?: FirstDeploy | undefined;
 }) {
   const navigate = useNavigate();
-  const deployments = useZeropsProjectFlowOptional()?.deployments;
+  const deployments = useStopDeploymentsShown(
+    useMemo(() => [environment.projectId], [environment.projectId]),
+  );
   // The one rule every surface words a stop by (`stopTone`), with the platform's answer beside it.
-  const deployment = deployments?.get(environment.projectId);
+  const deployment = deployments.get(environment.projectId);
   const tone = stopTone(deployment, environment);
   // No word for what runs and a first deploy asked for: the line its cell and its page say.
   const said = deployWord(tone);
@@ -2622,15 +2645,12 @@ export interface Crumb {
  * it, and its own words where nothing will (`unreadFlowWords`) — HQ is unavailable, a project not here any more, or reads that failed.
  */
 function UnreadDetail({ groupId }: { readonly groupId: string }) {
-  const flowValue = useZeropsProjectFlowOptional();
-  const words =
-    flowValue === null
-      ? null
-      : unreadFlowWords({
-          failure: flowValue.readFailure,
-          groupsRead: flowValue.groupsRead === true,
-          groupKnown: flowValue.knownGroups?.has(groupId) === true,
-        });
+  const flows = useProjectFlows(useMemo(() => [groupId], [groupId]));
+  const words = unreadFlowWords({
+    failure: flows.readFailure,
+    groupsRead: flows.groupsRead,
+    groupKnown: flows.knownGroups.has(groupId),
+  });
   if (words !== null) return <Note>{words}</Note>;
   return <PageWaitLine delayMs={BOOT_WAIT_LINE_MS} from="mount" text={READING_PROJECTS_LINE} />;
 }

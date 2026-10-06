@@ -21,7 +21,7 @@ import { useCallback, useEffect, useMemo } from "react";
 import type { WaitingMate } from "~/components/zerops/SidebarWaitingStack";
 
 import { mateFaceOf, mateReviewWaits, type ZeropsAgentActivity } from "./agentActivity";
-import { useZeropsProjectFlowOptional } from "./projectFlowContext";
+import { useAppsChanges, useEveryAppId } from "./projectFlows";
 import { nextWaitingMate, useSidebarReveal } from "./sidebarReveal";
 import { useZeropsSessionOptional } from "./ZeropsSessionProvider";
 
@@ -94,17 +94,17 @@ export function useSidebarWaiting<T extends ZeropsCandidate>(input: {
   const tints = useMemo(() => assignCandidateMateTints(input.candidates), [input.candidates]);
   const { activityOf, candidates, shown, activeProjectId, beforeReveal, enabled } = input;
   // Its change waiting for your review, read off the project flow the row reads.
-  const flows = useZeropsProjectFlowOptional()?.flows;
+  const { changes } = useAppsChanges(useEveryAppId());
   const viewer = useZeropsSessionOptional()?.user?.id;
   const reviewWaits = useCallback(
     (candidate: T) => {
       const groupId = readZeropsMembership(candidate.project).groupId;
       return mateReviewWaits(
-        groupId === undefined ? undefined : flows?.get(groupId),
+        groupId === undefined ? undefined : changes.get(groupId),
         candidate.project.id,
       );
     },
-    [flows],
+    [changes],
   );
   const mates = useMemo(
     () => waitingMatesOf({ candidates, activityOf, reviewWaits, viewer, tints, order, shown }),

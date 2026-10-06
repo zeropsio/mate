@@ -20,7 +20,7 @@ import { useContext, useMemo } from "react";
 import { useCrew } from "../../zerops/crew/useCrew";
 import { InventoryContext } from "../../zerops/inventoryContext";
 import { useProjectServices } from "../../zerops/ZeropsAccountData";
-import { useZeropsProjectFlowOptional } from "../../zerops/projectFlowContext";
+import { useAppsChanges } from "../../zerops/projectFlows";
 import { useRegistrationRecord } from "../../zerops/registrationRecords";
 import type { OutcomeModel } from "./conversation.logic";
 import { runEffortWords, type ResultChange, type ResultFacts } from "./runResult.logic";
@@ -122,6 +122,8 @@ export function readRunResultFacts(input: {
  * Outside a conversation (a harness, a test) and outside a Zerops project it
  * knows nothing, and the rows stand as the run left them.
  */
+const NO_APPS: ReadonlyArray<string> = [];
+
 export function useRunResultFacts(outcome: OutcomeModel | null | undefined): ResultFacts {
   // The row context is absent where a result is drawn on its own.
   const row = useContext(TimelineRowCtx) as TimelineRowSharedState | null;
@@ -129,7 +131,20 @@ export function useRunResultFacts(outcome: OutcomeModel | null | undefined): Res
   const projectId = useRegistrationRecord(environmentId)?.projectRef?.projectId;
   const inventory = useContext(InventoryContext);
   const services = useProjectServices(projectId).services;
-  const flows = useZeropsProjectFlowOptional()?.flows;
+  // The Mate's application's changes, held while its result is drawn.
+  const project = inventory?.projects.find((entry) => entry.id === projectId);
+  const groupId = project === undefined ? undefined : readZeropsMembership(project).groupId;
+  const appIds = useMemo(() => (groupId === undefined ? NO_APPS : [groupId]), [groupId]);
+  const { changes } = useAppsChanges(appIds);
+  const flows = useMemo(
+    () =>
+      inventory === null
+        ? undefined
+        : new Map(
+            [...changes].map(([appId, app]) => [appId, { ...app, changesKnown: true }] as const),
+          ),
+    [changes, inventory],
+  );
   // The crew's feed only for a run that worked a crew task.
   const crew = useCrew((outcome?.crewTask ?? null) === null ? null : environmentId);
   const tasks = crew.snapshot?.board.tasks;

@@ -1,7 +1,7 @@
 /**
  * What has happened to a codebase, drawn the way the menu draws a project.
  *
- * HQ answers it (`useZeropsHistory`): every commit up to `main`'s head, newest first and bounded,
+ * HQ answers it (`useRepositoryHistory`): every commit up to `main`'s head, newest first and bounded,
  * each naming the change of HQ's that landed it. A commit a change landed opens that change's
  * review; one none did — a person's, a recipe's — is a line, and nothing more.
  *
@@ -23,7 +23,7 @@ import {
 import { RUNNING_HERE } from "@t3tools/client-runtime/zerops/flow";
 import { ChevronRightIcon } from "lucide-react";
 
-import type { ZeropsHistoryState } from "~/zerops/useZeropsHistory";
+import type { ZeropsHistoryState } from "~/zerops/useRepositoryHistory";
 import { useNowMs } from "~/zerops/useNowMs";
 
 import { ZeropsReadFailure } from "./ZeropsReadFailure";

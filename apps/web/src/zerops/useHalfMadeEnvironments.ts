@@ -10,13 +10,11 @@
  */
 import { halfMadeGroupEnvironments } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import { useAtomValue } from "@effect/atom-react";
 import { useMemo } from "react";
-
-import { hqEnvironmentsAtom } from "~/state/zerops";
 
 import { useAccountHq } from "./accountHq";
 import { useKeepDeployKeyOffer } from "./useChangeOffers";
+import { useAppsEnvironments, useEveryAppId } from "./projectFlows";
 import { useFinishGroupEnvironment } from "./useFinishGroupEnvironment";
 import { usePressesElsewhere } from "./usePressesElsewhere";
 import { useZeropsRegistry } from "./useZeropsRegistry";
@@ -27,22 +25,30 @@ export function useHalfMadeEnvironments(candidates: ReadonlyArray<ZeropsCandidat
   const accountHq = useAccountHq(activeOrganization?.id);
   const hq = accountHq.hq.kind === "official" ? accountHq.hq : undefined;
   const registryState = useZeropsRegistry();
-  const heldEnvironments = useAtomValue(hqEnvironmentsAtom);
+  const told = useAppsEnvironments(useEveryAppId());
+  // Only an application whose environments HQ said says what it holds.
+  const heldEnvironments = useMemo(
+    () =>
+      new Map(
+        Object.entries(told).flatMap(([appId, { environments }]) =>
+          environments === undefined ? [] : [[appId, environments] as const],
+        ),
+      ),
+    [told],
+  );
   const mayKeepKey = useKeepDeployKeyOffer();
   // A press still at a project — this browser's or another's, as HQ holds it — is its own to finish.
   const pressOf = usePressesElsewhere(candidates);
   const halfMade = useMemo(
     () =>
-      heldEnvironments === null
-        ? []
-        : halfMadeGroupEnvironments({
-            projects: candidates.map((candidate) => candidate.project),
-            registry: registryState.registry,
-            environments: heldEnvironments,
-            // A key is minted only by somebody HQ offers keeping it (`keep_deploy_token`).
-            mayKey: (projectId) => mayKeepKey(projectId) === true,
-            pressing: (projectId) => pressOf(projectId) === "pressing",
-          }),
+      halfMadeGroupEnvironments({
+        projects: candidates.map((candidate) => candidate.project),
+        registry: registryState.registry,
+        environments: heldEnvironments,
+        // A key is minted only by somebody HQ offers keeping it (`keep_deploy_token`).
+        mayKey: (projectId) => mayKeepKey(projectId) === true,
+        pressing: (projectId) => pressOf(projectId) === "pressing",
+      }),
     [candidates, heldEnvironments, mayKeepKey, pressOf, registryState.registry],
   );
   const finishing = useFinishGroupEnvironment({ client, clientId: activeOrganization?.id, hq });

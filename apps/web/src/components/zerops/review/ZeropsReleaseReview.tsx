@@ -57,12 +57,13 @@ import { Input } from "~/components/ui/input";
 import { useFixMates } from "~/zerops/fixMates";
 import { useHqAppDetailHold } from "~/zerops/useHqAppDetail";
 import { useAskMateToFix, type FixProblem } from "~/zerops/fixRequest";
-import { useZeropsProjectFlowOptional, type ZeropsProjectFlow } from "~/zerops/projectFlowContext";
+import { useFlowVerbs } from "~/zerops/flowVerbs";
+import { useMateNames, useProjectFlows, type ZeropsProjectFlow } from "~/zerops/projectFlows";
 import type { ReviewTarget } from "~/zerops/review";
 import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
 import { useNowMs, useSecondsNowMs } from "~/zerops/useNowMs";
 import { ZeropsReadFailure } from "../ZeropsReadFailure";
-import { useZeropsCompares, type ComparedCommits } from "~/zerops/useZeropsCompares";
+import { useReleaseComparisons, type ComparedCommits } from "~/zerops/useReleaseComparisons";
 import { useZeropsReviewMates, type ZeropsReviewMate } from "~/zerops/useZeropsReviewMates";
 
 import { ZeropsChangeReview } from "./ZeropsChangeReview";
@@ -97,6 +98,9 @@ function useGroupName(groupId: string): string | undefined {
   );
 }
 
+/** The review shows what a release would put live: it compares it while drawn. */
+const COMPARED = { compare: true } as const;
+
 export function ZeropsReleaseReview({
   target,
   titleId,
@@ -108,8 +112,12 @@ export function ZeropsReleaseReview({
 }) {
   // What a release lists and compares is its application's detail: held while it is drawn.
   useHqAppDetailHold([target.groupId]);
-  const flowValue = useZeropsProjectFlowOptional();
-  const flow = flowValue?.flows.get(target.groupId);
+  // What production runs and what a release would put live, compared while the review is drawn.
+  const { flows } = useProjectFlows(
+    useMemo(() => [target.groupId], [target.groupId]),
+    COMPARED,
+  );
+  const flow = flows.get(target.groupId);
   const name = useGroupName(target.groupId);
   const kind = target.kind === "release" ? "release" : "rollback";
   if (flow === undefined) {
@@ -247,7 +255,8 @@ function ReleaseData({
   readonly onClose: () => void;
   readonly onOpenChange: (row: ReviewReleaseRow) => void;
 }) {
-  const flowValue = useZeropsProjectFlowOptional();
+  const verbs = useFlowVerbs();
+  const mateNames = useMateNames();
   const mates = useZeropsReviewMates(flow.groupId);
   const askMateToFix = useAskMateToFix();
   const now = useNowMs();
@@ -326,7 +335,7 @@ function ReleaseData({
   );
   const rows = reviewRowsOf(releaseChangeRows({ moved: facts.contents, marks }), {
     mates,
-    mateNames: flowValue?.mateNames,
+    mateNames,
     now,
   });
   // A failed release is anybody's to fix: the person's own Mate in the project, the one they
@@ -337,12 +346,12 @@ function ReleaseData({
   });
 
   const release = async () => {
-    if (flowValue === null || chosen.tag === undefined || chosen.error !== undefined) return;
+    if (chosen.tag === undefined || chosen.error !== undefined) return;
     // Capture the offer in the press. HQ's stream may change it before React draws "running".
     setHeld({ ...facts, tag: chosen.tag });
     setMade(chosen.tag);
     setPress({ kind: "running" });
-    const answer = await flowValue.release(flow.groupId, chosen.tag);
+    const answer = await verbs.release(flow, chosen.tag);
     setPress(
       answer.ok
         ? { kind: "done", deploys: answer.deploys }
@@ -633,7 +642,7 @@ function useRollbackLists(
       reads === undefined ? NO_ASKS : new Map([[groupId, [...reads.leaving, ...reads.comingBack]]]),
     [groupId, reads],
   );
-  const compares = useZeropsCompares(asks);
+  const compares = useReleaseComparisons(asks);
   return useMemo(() => {
     if (reads === undefined) return LISTS_UNREAD;
     const answered = compares.get(groupId);
@@ -667,7 +676,8 @@ function RollbackData({
   readonly onClose: () => void;
   readonly onOpenChange: (row: ReviewReleaseRow) => void;
 }) {
-  const flowValue = useZeropsProjectFlowOptional();
+  const verbs = useFlowVerbs();
+  const mateNames = useMateNames();
   const mates = useZeropsReviewMates(flow.groupId);
   const askMateToFix = useAskMateToFix();
   const now = useNowMs();
@@ -720,7 +730,7 @@ function RollbackData({
           state: "known",
           rows: reviewRowsOf(releaseChangeRows({ moved: moved.moved, marks: NO_MARKS }), {
             mates,
-            mateNames: flowValue?.mateNames,
+            mateNames,
             now,
           }),
           ...movedCount(moved.moved),
@@ -732,10 +742,9 @@ function RollbackData({
     groupId: flow.groupId,
   });
   const rollBack = async () => {
-    if (flowValue === null) return;
     setAsked({ runs: flow.release.runs, tag: flow.release.suggestion });
     setPress({ kind: "running" });
-    const answer = await flowValue.rollBack(flow.groupId, tag);
+    const answer = await verbs.rollBack(flow, tag);
     setPress(
       answer.ok
         ? { kind: "done", deploys: answer.deploys }

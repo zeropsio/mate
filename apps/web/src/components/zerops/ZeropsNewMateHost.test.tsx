@@ -33,7 +33,10 @@ vi.mock("~/zerops/useZeropsRegistry", () => ({
   useZeropsRegistry: () => ({ registry: undefined, loading: false }),
   registryGroupSlug: () => undefined,
 }));
-vi.mock("~/zerops/projectFlowContext", () => ({ useZeropsProjectFlowOptional: () => undefined }));
+vi.mock("~/zerops/projectFlows", () => ({
+  useAppsChanges: () => ({ hqAddress: undefined, changes: new Map() }),
+  useMateNames: () => new Map(),
+}));
 vi.mock("~/zerops/useZeropsGroupRecipe", () => ({
   useZeropsGroupRecipe: () => ({
     state: "absent",

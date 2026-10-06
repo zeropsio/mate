@@ -1,9 +1,14 @@
 import type { ReviewPress } from "@t3tools/client-runtime/zerops";
 import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
-import { ZeropsProjectFlowContext, type ZeropsProjectFlowValue } from "~/zerops/projectFlowContext";
+/** HQ's navigation as the answer follows it: each application's environments with their jobs. */
+const navigation = vi.hoisted(() => ({ environments: {} as Record<string, unknown> }));
+vi.mock("~/zerops/projectFlows", () => ({
+  useEveryAppId: () => Object.keys(navigation.environments),
+  useAppsEnvironments: () => navigation.environments,
+}));
 
 import { answeredDeploys, ZeropsDeployAnswer } from "./ZeropsDeployAnswer";
 
@@ -87,54 +92,27 @@ const job = {
   processId: "p3",
   appVersionId: "v3",
 };
-const flow = {
-  flows: new Map([
-    [
-      "app",
-      {
-        environmentInputs: [
-          {
-            projectId: "prod-id",
-            environment: "renamed",
-            services: [{ deploy: { latest: job, live: null } }],
-          },
-        ],
-      },
-    ],
-  ]),
-} as unknown as ZeropsProjectFlowValue;
-
+const environmentsWith = (streamed: object) => ({
+  app: {
+    environments: [{ projectId: "prod-id", name: "renamed", jobs: [streamed] }],
+    refused: null,
+  },
+});
 it("offers the answered job's inspection through its HQ project id, even after a rename", () => {
+  navigation.environments = environmentsWith(job);
   const markup = renderToStaticMarkup(
-    <ZeropsProjectFlowContext.Provider value={flow}>
-      <ZeropsDeployAnswer
-        answer={{ ...ANSWER, jobs: [{ ...ANSWER.jobs[0]!, state: "building", processId: "p3" }] }}
-      />
-    </ZeropsProjectFlowContext.Provider>,
+    <ZeropsDeployAnswer
+      answer={{ ...ANSWER, jobs: [{ ...ANSWER.jobs[0]!, state: "building", processId: "p3" }] }}
+    />,
   );
   expect(markup).toContain("View deploy");
   expect(markup).toContain('data-zerops-deploy-job="3"');
 });
 
-// HQ's stream is the source of truth: the answer said where a job stood when the request ended.
+// HQ's navigation is the source of truth: the answer said where a job stood when the request ended.
 describe("an answered job follows HQ's stream to its end", () => {
   const streamed = (state: string, reason: string | null = null) =>
-    ({
-      flows: new Map([
-        [
-          "app",
-          {
-            environmentInputs: [
-              {
-                projectId: "prod-id",
-                environment: "stage",
-                services: [{ deploy: { latest: { ...job, state, reason }, live: null } }],
-              },
-            ],
-          },
-        ],
-      ]),
-    }) as unknown as ZeropsProjectFlowValue;
+    environmentsWith({ ...job, state, reason });
   const building: HqDeployAnswer = {
     ...ANSWER,
     jobs: [{ ...ANSWER.jobs[0]!, state: "building", processId: "p3" }],
@@ -144,11 +122,8 @@ describe("an answered job follows HQ's stream to its end", () => {
     ["live", null, "5c3ea18 live"],
     ["failed", "build broke", "5c3ea18 failed: build broke"],
   ])("says %s once HQ's job has ended", (state, reason, said) => {
-    const markup = renderToStaticMarkup(
-      <ZeropsProjectFlowContext.Provider value={streamed(state, reason)}>
-        <ZeropsDeployAnswer answer={building} />
-      </ZeropsProjectFlowContext.Provider>,
-    );
+    navigation.environments = streamed(state, reason);
+    const markup = renderToStaticMarkup(<ZeropsDeployAnswer answer={building} />);
     expect(markup).toContain(said);
     expect(markup).toContain(`data-zerops-job-state="${state}"`);
     expect(markup).not.toContain("building");
