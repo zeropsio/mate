@@ -349,13 +349,13 @@ export function holdMateVariables(
 /** Where a read of one of a Mate's container's variables stands for one that asks now. */
 const variableNow = Atom.family((key: string) =>
   Atom.make((get): boolean | "unknown" | "waiting" => {
-    const [which, serviceId = ""] = key.split(":") as ["flag" | "marker", string];
+    const serviceId = key;
     const account = get(accountReadsAtom);
     if (account === null || account.orgId === null) return "unknown";
     const stream = get(account.data.stream(mateVariablesScope(account.orgId, serviceId)));
     if (stream.phase === "live") {
       const read = get(account.data.project(mateVariables, { orgId: account.orgId, serviceId }));
-      const value = read[which];
+      const value = read.flag;
       return typeof value === "boolean" ? value : "unknown";
     }
     // Waits only for a read the live link will make; a link down or refused is no answer.
@@ -378,7 +378,6 @@ const variableNow = Atom.family((key: string) =>
 function readMateVariable(
   registry: AtomRegistry.AtomRegistry,
   serviceId: string,
-  which: "flag" | "marker",
 ): Promise<boolean | "unknown"> {
   const release = holdMateVariables(registry, serviceId);
   return new Promise((resolve) => {
@@ -391,7 +390,7 @@ function readMateVariable(
       release();
       resolve(now);
     };
-    unsubscribe = registry.subscribe(variableNow(`${which}:${serviceId}`), answer, {
+    unsubscribe = registry.subscribe(variableNow(serviceId), answer, {
       immediate: true,
     });
     if (settled) unsubscribe();
@@ -400,11 +399,7 @@ function readMateVariable(
 
 /** `ZCP_MATE_ENABLED` on one service — off is a fact a row offers Enable on. */
 export const readMateFlag = (registry: AtomRegistry.AtomRegistry, serviceId: string) =>
-  readMateVariable(registry, serviceId, "flag");
-
-/** Whether one Mate's container carries the press's marker (`MATE_SETUP_RUNTIMES`). */
-export const readMateMarker = (registry: AtomRegistry.AtomRegistry, serviceId: string) =>
-  readMateVariable(registry, serviceId, "marker");
+  readMateVariable(registry, serviceId);
 
 /** A Mate’s setup evidence, already delivered by the organization’s navigation. No detail demand. */
 export const hqMateSetupAtom = Atom.family((projectId: string) =>

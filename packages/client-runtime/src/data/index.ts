@@ -156,7 +156,6 @@ export {
   listedProjectAtom,
   mateVariablesAtom,
   hqMateSetupAtom,
-  readMateMarker,
   NOT_READ_PROJECTS,
   NOT_READ_SERVICES,
   NOT_READ_USAGE,

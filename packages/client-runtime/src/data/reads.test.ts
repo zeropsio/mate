@@ -15,7 +15,6 @@ import {
   NOT_READ_SERVICES,
   NOT_READ_USAGE,
   readMateFlag,
-  readMateMarker,
   projectProcessesAtom,
   projectUsageAtom,
   projectServicesAtom,
@@ -353,52 +352,6 @@ describe("readMateFlag", () => {
 
   it("without a mounted account, unknown", async () => {
     expect(await readMateFlag(AtomRegistry.make(), "zcp")).toBe("unknown");
-  });
-});
-
-describe("readMateMarker", () => {
-  it("reads whether a container carries the press's marker for the asking", async () => {
-    const registry = AtomRegistry.make();
-    const store = makeAccountStore(registry);
-    liveZerops({ running: [], services: [{ id: "zcp", projectId: "p1" }] }).forEach(store.dispatch);
-    registry.set(accountReadsAtom, {
-      renewHeld: () => {},
-      data: store.data,
-      orgId: ORG,
-      demandDetail: (demand) => {
-        const scope = detailScopeOf(ORG, demand);
-        for (const event of [
-          { kind: "demand", demanded: true },
-          { kind: "attempt" },
-          { kind: "handshake" },
-        ] as const)
-          store.dispatch({ kind: "stream", key: scope, now: 0, event });
-        store.dispatch({ kind: "baseline-begin", scope, generation: 1 });
-        store.dispatch({
-          kind: "baseline-commit",
-          scope,
-          generation: 1,
-          via: "zerops-read",
-          members: [demand.ownerId],
-          rows: [
-            {
-              family: "mateVariables",
-              id: demand.ownerId,
-              value: { flag: true, marker: true },
-              revision: { kind: "zerops", version: null },
-            },
-          ],
-        });
-        store.dispatch({
-          kind: "stream",
-          key: scope,
-          now: 0,
-          event: { kind: "baseline-committed" },
-        });
-        return () => undefined;
-      },
-    });
-    expect(await readMateMarker(registry, "zcp")).toBe(true);
   });
 });
 

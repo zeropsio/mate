@@ -3,7 +3,7 @@ import {
   resolveMateVisibility,
   type RoleMateVisibility,
 } from "@t3tools/client-runtime/zerops/mateAccess";
-import { readMateMarker } from "@t3tools/client-runtime/data";
+import { hqMateSetupAtom } from "@t3tools/client-runtime/data";
 import type { CandidatesNotice } from "@t3tools/client-runtime/zerops/projections";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { useCallback, useMemo, useRef, useState } from "react";
@@ -35,7 +35,7 @@ import { useZeropsCandidates } from "./useZeropsCandidates";
 import { useZeropsData } from "./ZeropsDataProvider";
 import { checkCloseOff, closeOffFacts } from "./close-off";
 import { useAccountData } from "./ZeropsAccountData";
-import { PROJECT_ENV_ISOLATION_KEY, projectNameInApp } from "@t3tools/client-runtime/zerops";
+import { projectNameInApp } from "@t3tools/client-runtime/zerops";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
 type ZeropsConnectSurfaceProps = {
@@ -279,7 +279,6 @@ function ListingNotice(props: { readonly notice: CandidatesNotice; readonly onRe
 
 function ProjectPickerSurface(props: { readonly onDone: (environmentId: EnvironmentId) => void }) {
   const {
-    client,
     user,
     signOut,
     newRecoveryToken,
@@ -338,30 +337,18 @@ function ProjectPickerSurface(props: { readonly onDone: (environmentId: Environm
     })).filter((section) => section.rows.length > 0);
   }, [body, readAtMs, visibilityOf]);
 
-  // A Mate's close-off, read once as the person opens it (`close-off.ts`).
-  const organizationId = activeOrganization?.id;
+  // Opening reads the organization's already observed navigation, without detail demand.
   const accountData = useAccountData();
   const closeOffOf = useCallback(
     (candidate: MobileCandidate): (() => Promise<"held" | "clear">) | undefined => {
-      const serviceId = candidate.service?.id;
-      if (organizationId === undefined || serviceId === undefined || accountData === null)
-        return undefined;
-      return () =>
+      if (candidate.service === undefined || accountData === null) return undefined;
+      return async () =>
         checkCloseOff(closeOffFacts, {
           projectId: candidate.project.id,
-          readIsolation: async () =>
-            (await client.readProjectEnv(organizationId, candidate.project.id)).find(
-              (entry) => entry.key === PROJECT_ENV_ISOLATION_KEY,
-            )?.content,
-          // The account's read of the container's variables, by key (`families/mateVariables`).
-          readMarker: async () => {
-            const marker = await readMateMarker(accountData.registry, serviceId);
-            if (marker === "unknown") throw new Error("The press's marker could not be read.");
-            return marker;
-          },
+          setup: accountData.registry.get(hqMateSetupAtom(candidate.project.id)),
         });
     },
-    [accountData, client, organizationId],
+    [accountData],
   );
 
   // The row's verb: Open a connected Mate, else the account's Connect on its target (§4.4).
