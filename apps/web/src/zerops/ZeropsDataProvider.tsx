@@ -98,8 +98,6 @@ export const defaultMakeZeropsDataRuntime: MakeZeropsDataRuntime = ({
   signals,
   signal,
 }) => {
-  // A browser without Web Locks has its tag writes serialized within the page only.
-  const locks: LockManager | undefined = globalThis.navigator?.locks;
   const adapter = makeZeropsDataAdapter({
     client,
     makeSocket: connectZeropsDataSocket,
@@ -107,7 +105,6 @@ export const defaultMakeZeropsDataRuntime: MakeZeropsDataRuntime = ({
       setTimer: (callback, delayMs) => window.setTimeout(callback, delayMs),
       clearTimer: (handle) => window.clearTimeout(handle as number),
     },
-    ...(locks === undefined ? {} : { locks }),
   });
   const logTimers = {
     setTimer: (callback: () => void, delayMs: number) => window.setTimeout(callback, delayMs),

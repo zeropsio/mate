@@ -6,9 +6,6 @@ import {
   decodeNativeFrame,
   decodeProjectCommandResponse,
   decodeRegistrationResponse,
-  decodeRestartServiceResponse,
-  decodeStartProjectResponse,
-  decodeStartServiceResponse,
 } from "./platformProtocol.ts";
 import {
   AccountEpoch,
@@ -60,40 +57,6 @@ const interest: InterestIdentity = {
   interestEpoch: InterestEpoch.make(1),
   key: InterestKey.make("interest"),
 };
-const restartCommand: PlatformCommand = {
-  kind: "restart-service",
-  service: {
-    kind: "service",
-    project,
-    serviceId: ZeropsServiceId.make("service"),
-  },
-  attemptId: ZeropsCommandAttemptId.make("restart-attempt"),
-  accountEpoch: AccountEpoch.make(1),
-  startedAtReceiptOrdinal: ReceiptOrdinal.make(7),
-  dispatchOrdinal: DispatchOrdinal.make(8),
-};
-
-const startServiceCommand: PlatformCommand = {
-  kind: "start-service",
-  service: {
-    kind: "service",
-    project,
-    serviceId: ZeropsServiceId.make("service"),
-  },
-  attemptId: ZeropsCommandAttemptId.make("start-service-attempt"),
-  accountEpoch: AccountEpoch.make(1),
-  startedAtReceiptOrdinal: ReceiptOrdinal.make(7),
-  dispatchOrdinal: DispatchOrdinal.make(8),
-};
-const startProjectCommand: PlatformCommand = {
-  kind: "start-project",
-  project,
-  attemptId: ZeropsCommandAttemptId.make("start-project-attempt"),
-  accountEpoch: AccountEpoch.make(1),
-  startedAtReceiptOrdinal: ReceiptOrdinal.make(7),
-  dispatchOrdinal: DispatchOrdinal.make(8),
-};
-
 function ticket(descriptor: MembershipQueryDescriptor): ReadTicket {
   return {
     kind: "baseline",
@@ -342,120 +305,12 @@ describe("Zerops platform protocol decoding", () => {
     ).toMatchObject({ kind: "malformed", subscriptionName: request.subscriptionName });
   });
 
-  it("accepts the measured direct restart Process for the command's service", () => {
-    const result = decodeRestartServiceResponse(restartCommand, {
-      id: "independent-process-id",
-      projectId: "project",
-      serviceStackId: "service",
-      serviceStacks: [{ id: "service" }],
-      actionName: "stack.restart",
-      status: "PENDING",
-      sequence: 0,
-      created: "2026-09-04T12:41:00.728Z",
-      lastUpdate: "2026-09-04T12:41:00.728Z",
-      started: null,
-      finished: null,
-      appVersion: null,
-    });
-
-    expect(result).toEqual({ observations: [], issues: [] });
-  });
-
-  it("rejects a restart body that cannot prove the returned Process belongs to the command", () => {
-    const result = decodeRestartServiceResponse(restartCommand, {
-      id: "unrelated-process",
-      projectId: "project",
-      serviceStackId: "another-service",
-      actionName: "stack.restart",
-      status: "PENDING",
-      created: "2026-09-04T12:41:00.728Z",
-    });
-
-    expect(result).toEqual({
-      observations: [],
-      issues: [expect.objectContaining({ kind: "malformed-row" })],
-    });
-  });
-
-  it("accepts a start-service Process response scoped to the command's service", () => {
-    const result = decodeStartServiceResponse(startServiceCommand, {
-      id: "start-process",
-      projectId: "project",
-      serviceStackId: "service",
-      actionName: "stack.start",
-      status: "PENDING",
-      created: "2026-09-04T12:41:00.728Z",
-    });
-
-    expect(result.issues).toEqual([]);
-    expect(result.actionNameMismatch).toBe(false);
-  });
-
-  it("accepts a start-service response with an unexpected actionName, flagging the mismatch instead of failing", () => {
-    const result = decodeStartServiceResponse(startServiceCommand, {
-      id: "start-process",
-      projectId: "project",
-      serviceStackId: "service",
-      actionName: "stack.something-else",
-      status: "PENDING",
-      created: "2026-09-04T12:41:00.728Z",
-    });
-
-    expect(result.issues).toEqual([]);
-    expect(result.actionNameMismatch).toBe(true);
-  });
-
-  it("rejects a start-service response for another service", () => {
-    const result = decodeStartServiceResponse(startServiceCommand, {
-      id: "start-process",
-      projectId: "project",
-      serviceStackId: "another-service",
-      actionName: "stack.start",
-      status: "PENDING",
-      created: "2026-09-04T12:41:00.728Z",
-    });
-
-    expect(result).toEqual({
-      observations: [],
-      actionNameMismatch: false,
-      issues: [expect.objectContaining({ kind: "malformed-row" })],
-    });
-  });
-
-  it("accepts a start-project Process response scoped to the command's project", () => {
-    const result = decodeStartProjectResponse(startProjectCommand, {
-      id: "start-process",
-      projectId: "project",
-      actionName: "project.start",
-      status: "PENDING",
-      created: "2026-09-04T12:41:00.728Z",
-    });
-
-    expect(result.issues).toEqual([]);
-    expect(result.actionNameMismatch).toBe(false);
-  });
-
-  it("rejects a start-project response for another project", () => {
-    const result = decodeStartProjectResponse(startProjectCommand, {
-      id: "start-process",
-      projectId: "another-project",
-      actionName: "project.start",
-      status: "PENDING",
-      created: "2026-09-04T12:41:00.728Z",
-    });
-
-    expect(result).toEqual({
-      observations: [],
-      actionNameMismatch: false,
-      issues: [expect.objectContaining({ kind: "malformed-row" })],
-    });
-  });
-
-  it("turns a validated Project mutation response into command-linked facets", () => {
+  it("turns a validated Project creation response into command-linked facets", () => {
     const command: PlatformCommand = {
-      kind: "update-project-tags",
-      project,
-      patch: { kind: "mate" },
+      kind: "create-project",
+      organization: project.organization,
+      name: "application",
+      tagList: ["mate"],
       attemptId: ZeropsCommandAttemptId.make("declare-attempt"),
       accountEpoch: AccountEpoch.make(1),
       startedAtReceiptOrdinal: ReceiptOrdinal.make(2),
@@ -477,50 +332,6 @@ describe("Zerops platform protocol decoding", () => {
     expect(result.observations[0]).toMatchObject({
       ref: project,
       observation: { source: "command-response", command },
-    });
-  });
-
-  it("rejects a Project mutation response for another project", () => {
-    const command: PlatformCommand = {
-      kind: "update-project-tags",
-      project,
-      patch: { kind: "mate" },
-      attemptId: ZeropsCommandAttemptId.make("tags-attempt"),
-      accountEpoch: AccountEpoch.make(1),
-      startedAtReceiptOrdinal: ReceiptOrdinal.make(2),
-      dispatchOrdinal: DispatchOrdinal.make(3),
-    };
-    expect(
-      decodeProjectCommandResponse(command, {
-        id: "other-project",
-        name: "application",
-        status: "ACTIVE",
-      }),
-    ).toEqual({
-      observations: [],
-      issues: [expect.objectContaining({ kind: "malformed-row" })],
-    });
-  });
-
-  it.each([
-    ["process", { id: " " }],
-    ["parent metadata", { parentId: "" }],
-  ])("rejects a restart response with an invalid %s id", (_label, invalidFields) => {
-    const decode = () =>
-      decodeRestartServiceResponse(restartCommand, {
-        id: "process",
-        projectId: "project",
-        serviceStackId: "service",
-        actionName: "stack.restart",
-        status: "PENDING",
-        created: "2026-09-04T12:41:00.728Z",
-        ...invalidFields,
-      });
-
-    expect(decode).not.toThrow();
-    expect(decode()).toEqual({
-      observations: [],
-      issues: [expect.objectContaining({ kind: "malformed-row" })],
     });
   });
 

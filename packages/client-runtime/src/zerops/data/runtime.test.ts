@@ -1683,9 +1683,17 @@ describe("makeZeropsDataRuntime", () => {
         Queue.offerUnsafe(states, state);
       });
 
-      const first = yield* runtime.commands.startCommand({ kind: "restart-service", service });
+      const first = yield* runtime.commands.startCommand({
+        kind: "import-services",
+        project: service.project,
+        yaml: "services: []",
+      });
       yield* Deferred.await(firstWriteStarted);
-      const second = yield* runtime.commands.startCommand({ kind: "restart-service", service });
+      const second = yield* runtime.commands.startCommand({
+        kind: "import-services",
+        project: service.project,
+        yaml: "services: []",
+      });
       expect((yield* runtime.state).commands.get(second.attemptId)?.status).toBe("pending");
 
       yield* runtime.observeAccess({
@@ -1773,8 +1781,9 @@ describe("makeZeropsDataRuntime", () => {
         Queue.offerUnsafe(states, state);
       });
       const attempt = yield* runtime.commands.startCommand({
-        kind: "enable-zerops-mate",
-        service,
+        kind: "import-services",
+        project: service.project,
+        yaml: "services: []",
       });
       yield* Deferred.await(firstWriteFinished);
       yield* runtime.observeAccess({
@@ -1852,7 +1861,7 @@ describe("makeZeropsDataRuntime", () => {
           },
         });
         const execution = yield* Effect.forkChild(
-          Effect.flip(runtime.commands.enableZeropsMate(service)),
+          Effect.flip(runtime.commands.importServices(service.project, "services: []")),
         );
         yield* Deferred.await(firstWriteFinished);
         yield* runtime.observeAccess({
@@ -1924,8 +1933,9 @@ describe("makeZeropsDataRuntime", () => {
         serviceId: ZeropsServiceId.make("service-a"),
       };
       const oldAttempt = yield* oldRuntime.commands.startCommand({
-        kind: "restart-service",
-        service,
+        kind: "import-services",
+        project: service.project,
+        yaml: "services: []",
       });
       yield* Deferred.await(oldStarted);
       yield* oldRuntime.shutdown("account-replaced");
@@ -1938,8 +1948,9 @@ describe("makeZeropsDataRuntime", () => {
         initialAccess: initialAccess(2),
       });
       const newAttempt = yield* newRuntime.commands.startCommand({
-        kind: "restart-service",
-        service,
+        kind: "import-services",
+        project: service.project,
+        yaml: "services: []",
       });
       yield* Effect.yieldNow;
       yield* Effect.yieldNow;
@@ -4408,67 +4419,6 @@ it.effect.each(["release", "shutdown", "refresh"] as const)(
         registry.dispose();
       }),
     ),
-);
-
-it.effect("publishing a subdomain refreshes the drawn stop's public access once", () =>
-  Effect.gen(function* () {
-    const registry = AtomRegistry.make();
-    const ref = variablesDescriptor.project;
-    const target: ServiceRef = {
-      kind: "service",
-      project: ref,
-      serviceId: ZeropsServiceId.make("app"),
-    };
-    let reads = 0;
-    const base = makeAdapterHarness();
-    const runtime = yield* makeZeropsDataRuntime({
-      scope: runtimeScope,
-      atomRegistry: registry,
-      makeOpaqueId: makeIdFactory(),
-      initialAccess: {
-        status: "verified",
-        account: runtimeScope.account,
-        accountEpoch: runtimeScope.epoch,
-        verifiedAtMs: 0,
-        deadlineMs: Number.MAX_SAFE_INTEGER,
-        mutationsAllowed: true,
-        organizations: [{ organization: ref.organization, mutationsAllowed: true }],
-        projects: [{ project: ref, role: "ADMIN", mutationsAllowed: true }],
-      },
-      adapter: {
-        ...base.adapter,
-        execute: () =>
-          Effect.succeed({
-            observations: [],
-            result: { kind: "enable-subdomain-access", value: undefined },
-          }),
-        cells: {
-          readProjectPublicAccess: () =>
-            Effect.sync(() => {
-              reads++;
-              return { routes: [], offers: [] };
-            }),
-          readOrganizationLocations: () => Effect.never,
-          readServiceAuthorizedAgents: () => Effect.never,
-          readServiceMateFlag: () => Effect.never,
-          readOrganizationIntegrationTokens: () => Effect.never,
-          readOrganizationMembers: () => Effect.never,
-        },
-      },
-    });
-    const lease = yield* runtime.cells.acquire({
-      kind: "public-access",
-      account: runtimeScope,
-      project: ref,
-    });
-    yield* lease.awaitSettled;
-    expect(reads).toBe(1);
-    yield* runtime.commands.enableSubdomainAccess(target);
-    yield* lease.awaitSettled;
-    expect(reads).toBe(2);
-    yield* runtime.shutdown("application-close");
-    registry.dispose();
-  }),
 );
 
 describe("an interest that fails alone recovers alone", () => {

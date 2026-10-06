@@ -16,9 +16,6 @@ import {
   decodeMetricRead,
   decodeNativeFrame,
   decodeRegistrationResponse,
-  decodeRestartServiceResponse,
-  decodeStartProjectResponse,
-  decodeStartServiceResponse,
   decodeSearchListPage,
   isRowIssue,
   type ProtocolDecodeIssue,
@@ -45,7 +42,6 @@ import { decodeTableSearch } from "./tableProtocol.ts";
 import { ZeropsApiError, type ZeropsApiClient } from "../api.ts";
 import type { ZeropsIntegrationToken } from "../groupReach.ts";
 import type { PlatformWatchSocket, PlatformWatchTimers } from "./platformSocket.ts";
-import { makeProjectTagWriter, type ProjectTagLocks } from "./tagWriter.ts";
 import type {
   ZeropsCellAdapter,
   ZeropsCellSourceError,
@@ -60,11 +56,6 @@ export interface ZeropsDataAdapterOptions {
   /** Injected so tests and the runtime own all handshake deadlines. */
   readonly timers: PlatformWatchTimers;
   readonly policy?: ZeropsDataPolicy;
-  /**
-   * The page's exclusive locks, which serialize tag writes across the browser's tabs
-   * (`mate:tags:<projectId>`, DESIGN §6.7). Absent where the platform has none.
-   */
-  readonly locks?: ProjectTagLocks;
 }
 
 type BufferedReceiverItem =
@@ -494,7 +485,6 @@ function decodeRead(ticket: PlatformReadRequest, body: unknown) {
  */
 export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): ZeropsDataAdapter {
   const policy = options.policy ?? DEFAULT_ZEROPS_DATA_POLICY;
-  const tags = makeProjectTagWriter({ source: options.client, locks: options.locks });
   const openReceivers = new WeakMap<ReceiverHandle, OpenReceiverInternals>();
   let accountBufferedEvents = 0;
   let accountBufferedBytes = 0;
@@ -1067,11 +1057,7 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
     command: Extract<
       PlatformCommand,
       {
-        readonly kind:
-          | "update-project-tags"
-          | "rename-project"
-          | "set-project-member-role"
-          | "create-project";
+        readonly kind: "create-project";
       }
     >,
     project: unknown,
@@ -1093,134 +1079,7 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
   };
 
   const execute: ZeropsDataAdapter["execute"] = (command, context) => {
-    if (command.kind === "restart-service") {
-      const path = `/service-stack/${command.service.serviceId}/restart`;
-      return requestEffect(
-        options.client,
-        {
-          path,
-          method: "PUT",
-          operationKind: "project-write",
-          background: false,
-          ...(context.beforeProjectWrite === undefined
-            ? {}
-            : { beforeWrite: context.beforeProjectWrite }),
-        },
-        context,
-        policy.httpDeadlineMs,
-        options.timers,
-        "uncertain",
-      ).pipe(
-        Effect.flatMap((body) => {
-          const decoded = decodeRestartServiceResponse(command, body);
-          if (decoded.issues.length > 0)
-            return Effect.fail(
-              adapterError(
-                "uncertain",
-                `Zerops accepted the restart but its Process response was malformed: ${decoded.issues[0]!.message}`,
-                false,
-              ),
-            );
-          return Effect.succeed<PlatformCommandReceipt>({
-            observations: decoded.observations,
-            result: { kind: command.kind, value: undefined },
-          });
-        }),
-        Effect.mapError(uncertainCommandError),
-      );
-    }
-
-    if (command.kind === "start-service" || command.kind === "start-project") {
-      const path =
-        command.kind === "start-service"
-          ? `/service-stack/${command.service.serviceId}/start`
-          : `/project/${command.project.projectId}/start`;
-      return requestEffect(
-        options.client,
-        {
-          path,
-          method: "PUT",
-          operationKind: "project-write",
-          background: false,
-          ...(context.beforeProjectWrite === undefined
-            ? {}
-            : { beforeWrite: context.beforeProjectWrite }),
-        },
-        context,
-        policy.httpDeadlineMs,
-        options.timers,
-        "uncertain",
-      ).pipe(
-        Effect.flatMap((body) => {
-          // The exact actionName was not measured for either endpoint, so a
-          // mismatch there (decoded.actionNameMismatch) is never a failure
-          // here — only an identity mismatch (decoded.issues) is.
-          const decoded =
-            command.kind === "start-service"
-              ? decodeStartServiceResponse(command, body)
-              : decodeStartProjectResponse(command, body);
-          if (decoded.issues.length > 0)
-            return Effect.fail(
-              adapterError(
-                "uncertain",
-                `Zerops accepted the start but its Process response was malformed: ${decoded.issues[0]!.message}`,
-                false,
-              ),
-            );
-          return Effect.succeed<PlatformCommandReceipt>({
-            observations: decoded.observations,
-            result: { kind: command.kind, value: undefined },
-          });
-        }),
-        Effect.mapError(uncertainCommandError),
-      );
-    }
-
     switch (command.kind) {
-      case "update-project-tags":
-        return executeApi(context, (signal) =>
-          tags.write(command.project.projectId, command.patch, {
-            signal,
-            beforeWrite: context.beforeProjectWrite,
-          }),
-        ).pipe(
-          // The read that confirmed the write — or found nothing to write — is the project as
-          // the platform holds it now: the re-read after our own write (DESIGN §6.2).
-          Effect.flatMap((value) =>
-            projectCommandReceipt(command, value.project, { kind: command.kind, value }),
-          ),
-          Effect.mapError(uncertainCommandError),
-        );
-      case "rename-project":
-        return executeApi(context, (signal) =>
-          tags.rename(command.project.projectId, command.name, {
-            from: command.from,
-            signal,
-            beforeWrite: context.beforeProjectWrite,
-          }),
-        ).pipe(
-          Effect.flatMap((value) =>
-            projectCommandReceipt(command, value.project, { kind: command.kind, value }),
-          ),
-          Effect.mapError(uncertainCommandError),
-        );
-      case "set-project-member-role":
-        return executeApi(context, (signal) =>
-          options.client.setProjectMemberRole(
-            {
-              projectId: command.project.projectId,
-              clientUserId: command.clientUserId,
-              roleCode: command.roleCode,
-            },
-            signal,
-            context.beforeProjectWrite,
-          ),
-        ).pipe(
-          Effect.flatMap((value) =>
-            projectCommandReceipt(command, value, { kind: command.kind, value }),
-          ),
-          Effect.mapError(uncertainCommandError),
-        );
       case "import-development-container":
         return executeApi(
           context,
@@ -1240,34 +1099,6 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
               context.beforeProjectWrite,
             ),
           commandDeadlineMs(command.kind, policy),
-        ).pipe(
-          Effect.map((value): PlatformCommandReceipt => ({
-            observations: [],
-            result: { kind: command.kind, value },
-          })),
-          Effect.mapError(uncertainCommandError),
-        );
-      case "enable-zerops-mate":
-        return executeApi(context, (signal) =>
-          options.client.enableZeropsMate(
-            command.service.serviceId,
-            signal,
-            context.beforeProjectWrite,
-          ),
-        ).pipe(
-          Effect.map((value): PlatformCommandReceipt => ({
-            observations: [],
-            result: { kind: command.kind, value },
-          })),
-          Effect.mapError(uncertainCommandError),
-        );
-      case "enable-subdomain-access":
-        return executeApi(context, (signal) =>
-          options.client.enableSubdomainAccess(
-            command.service.serviceId,
-            signal,
-            context.beforeProjectWrite,
-          ),
         ).pipe(
           Effect.map((value): PlatformCommandReceipt => ({
             observations: [],
@@ -1342,16 +1173,6 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
                   result: { kind: command.kind, value: undefined },
                 });
           }),
-          Effect.mapError(uncertainCommandError),
-        );
-      case "delete-project":
-        return executeApi(context, (signal) =>
-          options.client.deleteProject(command.projectId, signal, context.beforeProjectWrite),
-        ).pipe(
-          Effect.map((): PlatformCommandReceipt => ({
-            observations: [],
-            result: { kind: command.kind, value: undefined },
-          })),
           Effect.mapError(uncertainCommandError),
         );
       case "harden-mate":

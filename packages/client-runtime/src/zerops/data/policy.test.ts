@@ -37,7 +37,6 @@ describe("Zerops data runtime policy", () => {
   it.each([
     ["import-development-container", 60_000],
     ["create-project", 15_000],
-    ["restart-service", 15_000],
   ] as const)("gives %s %i ms", (kind, deadline) => {
     expect(commandDeadlineMs(kind, DEFAULT_ZEROPS_DATA_POLICY)).toBe(deadline);
   });

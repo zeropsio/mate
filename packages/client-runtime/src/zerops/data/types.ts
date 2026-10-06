@@ -11,8 +11,6 @@ import type { ZeropsProject } from "../api.ts";
 import type { Shown } from "../knowledge/known.ts";
 import type { ZeropsServiceDeployedVersion } from "./deployedVersion.ts";
 import type { ZeropsAgentType } from "../newProject.ts";
-import type { ProjectTagPatch } from "./tagPatch.ts";
-import type { ProjectTagWrite } from "./tagWriter.ts";
 
 /**
  * Stable platform identities. Adapters decode untrusted values with these
@@ -1422,23 +1420,14 @@ export const ENTITY_UNAVAILABLE_ADMISSION = Object.freeze({
   timeoutServerDecode: "read-failure-never-unavailable",
 } as const);
 
-export type CommandTarget = OrganizationRef | ProjectRef | ServiceRef;
+export type CommandTarget = OrganizationRef | ProjectRef;
 
 export type PlatformCommandKind =
-  | "restart-service"
-  | "start-service"
-  | "start-project"
-  | "update-project-tags"
-  | "rename-project"
-  | "set-project-member-role"
   | "import-development-container"
-  | "enable-zerops-mate"
-  | "enable-subdomain-access"
   | "create-project"
   | "import-project"
   | "import-services"
-  | "harden-mate"
-  | "delete-project";
+  | "harden-mate";
 
 interface CommandAttemptBase {
   readonly attemptId: ZeropsCommandAttemptId;
@@ -1667,56 +1656,6 @@ export interface PlatformReadResult {
   readonly observations: ReadonlyArray<PlatformObservation>;
 }
 
-export interface RestartServiceCommandIntent {
-  readonly kind: "restart-service";
-  readonly service: ServiceRef;
-}
-
-export interface StartServiceCommandIntent {
-  readonly kind: "start-service";
-  readonly service: ServiceRef;
-}
-
-export interface StartProjectCommandIntent {
-  readonly kind: "start-project";
-  readonly project: ProjectRef;
-}
-
-/** The one write of a project's `tagList`: a patch the TagWriter applies to a fresh read (B2). */
-export interface UpdateProjectTagsCommandIntent {
-  readonly kind: "update-project-tags";
-  readonly project: ProjectRef;
-  readonly patch: ProjectTagPatch;
-}
-
-/**
- * The one write of a project's name — a Mate's (D3): put on a fresh read by the TagWriter, which
- * keeps the project's record, so a rename and a tag write never undo each other.
- */
-export interface RenameProjectCommandIntent {
-  readonly kind: "rename-project";
-  readonly project: ProjectRef;
-  readonly name: string;
-  /** The name the rename was planned from: a project renamed since is refused, nothing written. */
-  readonly from?: string | undefined;
-}
-
-/** The five roles a project override may carry (`groupReach.ts`'s vocabulary). */
-export type MateProjectRoleCode = "OWNER" | "ADMIN" | "BASIC_USER" | "READ_ONLY" | "NO_ACCESS";
-
-/**
- * Handing a Mate to a person — a per-project role override (guide 0.8, D11).
- * Lowered, the same command takes a Mate away; `null` takes the project off the
- * person's list, as a hand over does to the Mate's previous owner (F23).
- */
-export interface SetProjectMemberRoleCommandIntent {
-  readonly kind: "set-project-member-role";
-  readonly project: ProjectRef;
-  /** The `clientUser` id — what a project's `userRoles` names. */
-  readonly clientUserId: string;
-  readonly roleCode: MateProjectRoleCode | null;
-}
-
 export interface ImportDevelopmentContainerCommandIntent {
   readonly kind: "import-development-container";
   readonly project: ProjectRef;
@@ -1726,16 +1665,6 @@ export interface ImportDevelopmentContainerCommandIntent {
   readonly agents?: ReadonlyArray<ZeropsAgentType>;
   /** The tier's runtimes, for zcp to import on boot (`MATE_SETUP_RUNTIMES`). */
   readonly setupRuntimesYaml?: string;
-}
-
-export interface EnableZeropsMateCommandIntent {
-  readonly kind: "enable-zerops-mate";
-  readonly service: ServiceRef;
-}
-
-export interface EnableSubdomainAccessCommandIntent {
-  readonly kind: "enable-subdomain-access";
-  readonly service: ServiceRef;
 }
 
 export interface CreateProjectCommandIntent {
@@ -1774,41 +1703,12 @@ export interface HardenMateCommandIntent {
   readonly keyTokenId?: string;
 }
 
-/**
- * `DELETE /project/{id}` — a project the platform failed to create, taken
- * off the account. Admitted on the organization the way its creation was:
- * a project left NEW by a failed `project.create` has no role record of its
- * own to admit against.
- */
-export interface DeleteProjectCommandIntent {
-  readonly kind: "delete-project";
-  readonly organization: OrganizationRef;
-  readonly projectId: string;
-}
-
 export type PlatformCommandIntent =
-  | RestartServiceCommandIntent
-  | StartServiceCommandIntent
-  | StartProjectCommandIntent
-  | UpdateProjectTagsCommandIntent
-  | RenameProjectCommandIntent
-  | SetProjectMemberRoleCommandIntent
   | ImportDevelopmentContainerCommandIntent
-  | EnableZeropsMateCommandIntent
-  | EnableSubdomainAccessCommandIntent
   | CreateProjectCommandIntent
   | ImportProjectCommandIntent
   | ImportServicesCommandIntent
-  | HardenMateCommandIntent
-  | DeleteProjectCommandIntent;
-
-export interface RestartServiceCommand extends RestartServiceCommandIntent {
-  readonly attemptId: ZeropsCommandAttemptId;
-  readonly accountEpoch: AccountEpoch;
-  readonly startedAtReceiptOrdinal: ReceiptOrdinal;
-  /** Allocated from the same account-wide counter as ReadTicket.dispatchOrdinal. */
-  readonly dispatchOrdinal: DispatchOrdinal;
-}
+  | HardenMateCommandIntent;
 
 export type PlatformCommand = PlatformCommandIntent & {
   readonly attemptId: ZeropsCommandAttemptId;
@@ -1832,12 +1732,6 @@ export const COMMAND_EXECUTION_ADMISSION = Object.freeze({
 } as const);
 
 export type PlatformCommandResult =
-  | { readonly kind: "restart-service"; readonly value: void }
-  | { readonly kind: "start-service"; readonly value: void }
-  | { readonly kind: "start-project"; readonly value: void }
-  | { readonly kind: "update-project-tags"; readonly value: ProjectTagWrite }
-  | { readonly kind: "rename-project"; readonly value: ProjectTagWrite }
-  | { readonly kind: "set-project-member-role"; readonly value: ZeropsProject }
   | {
       readonly kind: "import-development-container";
       readonly value: {
@@ -1846,8 +1740,6 @@ export type PlatformCommandResult =
         readonly processId?: string;
       };
     }
-  | { readonly kind: "enable-zerops-mate"; readonly value: void }
-  | { readonly kind: "enable-subdomain-access"; readonly value: void }
   | { readonly kind: "create-project"; readonly value: ZeropsProject }
   | { readonly kind: "import-project"; readonly value: { readonly projectId: string } }
   | { readonly kind: "import-services"; readonly value: void }
@@ -1861,8 +1753,7 @@ export type PlatformCommandResult =
         readonly isolationSteps: number;
         readonly restarted: boolean;
       };
-    }
-  | { readonly kind: "delete-project"; readonly value: void };
+    };
 
 export interface PlatformCommandReceipt {
   readonly observations: ReadonlyArray<PlatformObservation>;
@@ -2007,42 +1898,6 @@ export interface ZeropsDataCommands {
   readonly startCommand: (
     intent: PlatformCommandIntent,
   ) => Effect.Effect<CommandAttemptRef, CommandAdmissionError>;
-  readonly restartService: (
-    service: ServiceRef,
-  ) => Effect.Effect<CommandExecution<void>, CommandAdmissionError | AdapterError>;
-  readonly startService: (
-    service: ServiceRef,
-  ) => Effect.Effect<CommandExecution<void>, CommandAdmissionError | AdapterError>;
-  readonly startProject: (
-    project: ProjectRef,
-  ) => Effect.Effect<CommandExecution<void>, CommandAdmissionError | AdapterError>;
-  /**
-   * Writes a project's Mate marker, its one tag (`tagPatch.ts`): applied to a fresh read, serialized
-   * per project across this browser's tabs, and verified by reading back. A project that holds it
-   * already is `unchanged`, nothing written; a write that fails is the adapter's failure, for a
-   * manual Again.
-   */
-  readonly updateProjectTags: (
-    project: ProjectRef,
-    patch: ProjectTagPatch,
-  ) => Effect.Effect<CommandExecution<ProjectTagWrite>, CommandAdmissionError | AdapterError>;
-  /**
-   * Names a project — a Mate's name is its project's (D3) — on a fresh read, its tags put back as
-   * that read holds them, serialized with every tag write to it and verified by reading back.
-   */
-  readonly renameProject: (
-    project: ProjectRef,
-    name: string,
-    from?: string,
-  ) => Effect.Effect<CommandExecution<ProjectTagWrite>, CommandAdmissionError | AdapterError>;
-  /**
-   * Hands a Mate to a person, or takes it away (guide 0.8, D11) — the one
-   * command that writes a role override, on the person's own role list.
-   */
-  readonly setProjectMemberRole: (
-    project: ProjectRef,
-    input: Omit<SetProjectMemberRoleCommandIntent, "kind" | "project">,
-  ) => Effect.Effect<CommandExecution<ZeropsProject>, CommandAdmissionError | AdapterError>;
   readonly importDevelopmentContainer: (
     input: Omit<ImportDevelopmentContainerCommandIntent, "kind" | "project"> & {
       readonly project: ProjectRef;
@@ -2055,12 +1910,6 @@ export interface ZeropsDataCommands {
     }>,
     CommandAdmissionError | AdapterError
   >;
-  readonly enableZeropsMate: (
-    service: ServiceRef,
-  ) => Effect.Effect<CommandExecution<void>, CommandAdmissionError | AdapterError>;
-  readonly enableSubdomainAccess: (
-    service: ServiceRef,
-  ) => Effect.Effect<CommandExecution<void>, CommandAdmissionError | AdapterError>;
   readonly createProject: (
     input: Omit<CreateProjectCommandIntent, "kind" | "organization"> & {
       readonly organization: OrganizationRef;

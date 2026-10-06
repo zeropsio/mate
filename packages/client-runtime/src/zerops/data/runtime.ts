@@ -3873,88 +3873,12 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
 
   const commands: ZeropsDataRuntime["commands"] = {
     startCommand,
-    restartService: (service) =>
-      runCommand({ kind: "restart-service", service }).pipe(
-        Effect.flatMap(({ attempt, result }) =>
-          result.kind === "restart-service"
-            ? Effect.succeed({ attempt, value: result.value })
-            : Effect.fail(missingCommandResult()),
-        ),
-      ),
-    startService: (service) =>
-      runCommand({ kind: "start-service", service }).pipe(
-        Effect.flatMap(({ attempt, result }) =>
-          result.kind === "start-service"
-            ? Effect.succeed({ attempt, value: result.value })
-            : Effect.fail(missingCommandResult()),
-        ),
-      ),
-    startProject: (project) =>
-      runCommand({ kind: "start-project", project }).pipe(
-        Effect.flatMap(({ attempt, result }) =>
-          result.kind === "start-project"
-            ? Effect.succeed({ attempt, value: result.value })
-            : Effect.fail(missingCommandResult()),
-        ),
-      ),
-    updateProjectTags: (project, patch) =>
-      runCommand({ kind: "update-project-tags", project, patch }).pipe(
-        Effect.flatMap(({ attempt, result }) =>
-          result.kind === "update-project-tags"
-            ? Effect.succeed({ attempt, value: result.value })
-            : Effect.fail(missingCommandResult()),
-        ),
-      ),
-    renameProject: (project, name, from) =>
-      runCommand({
-        kind: "rename-project",
-        project,
-        name,
-        ...(from === undefined ? {} : { from }),
-      }).pipe(
-        Effect.flatMap(({ attempt, result }) =>
-          result.kind === "rename-project"
-            ? Effect.succeed({ attempt, value: result.value })
-            : Effect.fail(missingCommandResult()),
-        ),
-      ),
-    setProjectMemberRole: (project, input) =>
-      runCommand({ kind: "set-project-member-role", project, ...input }).pipe(
-        Effect.flatMap(({ attempt, result }) =>
-          result.kind === "set-project-member-role"
-            ? Effect.succeed({ attempt, value: result.value })
-            : Effect.fail(missingCommandResult()),
-        ),
-      ),
     importDevelopmentContainer: (input) =>
       runCommand({ kind: "import-development-container", ...input }).pipe(
         Effect.flatMap(({ attempt, result }) =>
           result.kind === "import-development-container"
             ? Effect.succeed({ attempt, value: result.value })
             : Effect.fail(missingCommandResult()),
-        ),
-      ),
-    enableZeropsMate: (service) =>
-      runCommand({ kind: "enable-zerops-mate", service }).pipe(
-        Effect.flatMap(({ attempt, result }) =>
-          result.kind === "enable-zerops-mate"
-            ? Effect.succeed({ attempt, value: result.value })
-            : Effect.fail(missingCommandResult()),
-        ),
-      ),
-    enableSubdomainAccess: (service) =>
-      runCommand({ kind: "enable-subdomain-access", service }).pipe(
-        Effect.flatMap(({ attempt, result }) =>
-          result.kind === "enable-subdomain-access"
-            ? Effect.succeed({ attempt, value: result.value })
-            : Effect.fail(missingCommandResult()),
-        ),
-        Effect.tap(() =>
-          cells.invalidate({
-            kind: "public-access",
-            account: options.scope,
-            project: service.project,
-          }),
         ),
       ),
     createProject: (input) =>
