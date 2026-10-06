@@ -18,6 +18,10 @@ afterEach(({ task }) => {
     ).toBe(true);
 });
 
+// One registration pair per organization-wide family (project, service, process, app version,
+// public routing): a fixed count that never grows with the projects or Mates shown.
+const REGISTRATIONS = 10;
+
 describe("H: hosted client budgets", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
     // Catches a request storm that prevents a populated organization menu becoming usable.
@@ -332,7 +336,7 @@ describe("H: hosted client budgets", () => {
 
     // Targets today's per-Mate startup reads, which make a large organization slow and expensive.
     it.effect.fails(
-      "target: browser startup uses at most eight registrations and eight other requests",
+      "target: browser startup uses at most its organization-wide registrations and eight other requests",
       () =>
         Effect.gen(function* () {
           const s = yield* createScenario([installBudget]);
@@ -347,12 +351,12 @@ describe("H: hosted client budgets", () => {
           const registrations = sample.registrations - before.registrations;
           const otherRequests = sample.otherRequests - before.otherRequests;
           report(
-            `H target startup: browser registrations=${registrations}, other=${otherRequests}, total=${registrations + otherRequests}; targets <=8 each`,
+            `H target startup: browser registrations=${registrations}, other=${otherRequests}, total=${registrations + otherRequests}; targets <=${REGISTRATIONS} registrations, <=8 others`,
           );
           reachedTargets.add(
-            "target: browser startup uses at most eight registrations and eight other requests",
+            "target: browser startup uses at most its organization-wide registrations and eight other requests",
           );
-          expect(registrations, "Browser startup registrations").toBeLessThanOrEqual(8);
+          expect(registrations, "Browser startup registrations").toBeLessThanOrEqual(REGISTRATIONS);
           expect(otherRequests, "Browser startup non-registration requests").toBeLessThanOrEqual(8);
         }),
     );
@@ -386,14 +390,14 @@ describe("H: hosted client budgets", () => {
           );
         }
         report(
-          `H target registrations: 1 Mate=${counts[0]}, 4 Mates + 6 plain projects=${counts[1]}; settled, target <=8 and no growth`,
+          `H target registrations: 1 Mate=${counts[0]}, 4 Mates + 6 plain projects=${counts[1]}; settled, target <=${REGISTRATIONS} and no growth`,
         );
         reachedTargets.add("target: menu registrations do not grow from one to four Mates");
-        expect(counts[0], "One-Mate menu registration ceiling").toBeLessThanOrEqual(8);
+        expect(counts[0], "One-Mate menu registration ceiling").toBeLessThanOrEqual(REGISTRATIONS);
         expect(
           counts[1],
           "Four-Mate and plain-project menu registration ceiling",
-        ).toBeLessThanOrEqual(8);
+        ).toBeLessThanOrEqual(REGISTRATIONS);
         expect(
           counts[1],
           "Menu registration cost must be independent of Mate count",
