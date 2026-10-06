@@ -81,9 +81,12 @@ describe("H: hosted client budgets", () => {
             concurrency: "unbounded",
           });
           yield* b.when.hqFirstData(receivedBefore + 5);
-          yield* Effect.forEach(tabs, (tab) => tab.then.menu.row("Shop").appears(), {
-            concurrency: "unbounded",
-          });
+          // Chrome pauses animation-frame assertions in background tabs. All five HQ answers
+          // have arrived; inspect each tab in front without changing the delivery measurement.
+          for (const tab of tabs) {
+            yield* Effect.promise(() => tab.page.bringToFront());
+            yield* tab.then.menu.row("Shop").appears();
+          }
           yield* Effect.promise(() => s.hq.ready());
           for (const [index, count] of connections.counts().entries())
             expect(
@@ -297,11 +300,11 @@ describe("H: hosted client budgets", () => {
       }),
     );
 
-    // Catches the per-project reads Mate s.r.o.'s start made on 2026-10-06 (229 requests): each
-    // project's own row, its services and its public routing, read for no surface that shows them.
+    // Catches reading each project's own row, services and public routing when no surface
+    // shows them.
     // An owner reads no project's own row: whose a Mate is comes from HQ.
     it.effect(
-      "a Mate s.r.o.-like menu starts with no per-project row, services or routing read",
+      "an eight-project menu starts with no per-project row, services or routing read",
       () =>
         Effect.gen(function* () {
           const s = yield* createScenario([installBudget]);
