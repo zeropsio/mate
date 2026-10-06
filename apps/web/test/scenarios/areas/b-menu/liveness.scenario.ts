@@ -72,6 +72,41 @@ describe("B: menu liveness", () => {
       }),
     );
 
+    // Catches a deleted Mate container kept in the menu: its read's 400 serviceStackNotFound
+    // must prove it gone.
+    it.effect("a Mate whose container is deleted leaves the menu without reload", () =>
+      Effect.gen(function* () {
+        const s = yield* menuScenario();
+        yield* s.given.project("Ada", { mate: true, app: "Shop" });
+        yield* s.given.project("Bea", { mate: true, registered: false });
+        yield* s.given.signedIn;
+        /** Whether a line of the menu names Bea: as a Mate, or as a project without one. */
+        const named = (shown: boolean) =>
+          Effect.promise(() =>
+            s.page.waitForFunction(
+              (shown) =>
+                [
+                  ...document.querySelectorAll<HTMLElement>(
+                    '[data-zerops-surface="sidebar-environments"]',
+                  ),
+                ].some((menu) =>
+                  menu.innerText.split("\n").some((line) => line.trim() === "Bea"),
+                ) === shown,
+              { timeout: 10_000, polling: 100 },
+              shown,
+            ),
+          );
+        yield* named(true);
+        // Zerops deletes Bea's container: its listing drops it, and a read of it answers
+        // 400 serviceStackNotFound.
+        s.drivers.zerops.remove("service-stack", "service-Bea");
+        yield* named(false);
+        yield* s.then.menu.row("Ada").appears();
+        yield* s.then.noReload;
+        yield* s.then.noExternalNetwork;
+      }),
+    );
+
     // Catches a detached Mate becoming unreachable when it leaves its application.
     it.effect("detaching a Mate keeps its row outside the application", () =>
       Effect.gen(function* () {

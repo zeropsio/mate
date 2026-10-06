@@ -93,6 +93,18 @@ const receiverId: Effect.Effect<string> = Effect.map(
   },
 );
 
+/**
+ * The code Zerops answers a read of a gone entity with (`400 <entity>NotFound`, measured): only the
+ * entity a path reads is proven gone by its own code, never by another's.
+ */
+const NOT_FOUND_CODES: ReadonlyArray<readonly [RegExp, string]> = [
+  [/^\/project\/[^/?]+$/u, "projectNotFound"],
+  [/^\/service-stack\/[^/?]+$/u, "serviceStackNotFound"],
+];
+
+const notFoundCodeOf = (path: string): string | undefined =>
+  NOT_FOUND_CODES.find(([pattern]) => pattern.test(path))?.[1];
+
 export function makeZeropsWire(options: {
   readonly client: ZeropsWireClient;
   readonly makeSocket?: (url: string) => PlatformWatchSocket;
@@ -117,7 +129,7 @@ export function makeZeropsWire(options: {
       catch: (cause): RequestFailure => ({
         status:
           cause instanceof ZeropsApiError
-            ? cause.code === "projectNotFound"
+            ? cause.code !== undefined && notFoundCodeOf(path) === cause.code
               ? 404
               : cause.status
             : null,
