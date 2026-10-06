@@ -1,6 +1,6 @@
 import { act, createElement, StrictMode } from "react";
 import { create } from "react-test-renderer";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { RegistryContext } from "@effect/atom-react";
 import {
@@ -269,15 +269,6 @@ describe("useZeropsMemberNames", () => {
   });
   const HQ = { projectId: "P_HQ", address: "https://hq.example.test" };
 
-  // This browser's storage, for the HQ verdict it keeps.
-  beforeEach(() => {
-    const stored = new Map<string, string>();
-    vi.stubGlobal("localStorage", {
-      getItem: (key: string) => stored.get(key) ?? null,
-      setItem: (key: string, value: string) => stored.set(key, value),
-      removeItem: (key: string) => stored.delete(key),
-    });
-  });
   afterEach(() => {
     vi.unstubAllGlobals();
   });
@@ -290,7 +281,7 @@ describe("useZeropsMemberNames", () => {
     const clientId = `org-${verdict}-${String(unavailableSince)}`;
     const owner = { account: scope.account, clientId };
     if (verdict === "official") keepHqVerdict(owner, HQ);
-    else keepNoHqVerdict(owner, Date.now());
+    else keepNoHqVerdict(owner);
     let read = 0;
     const cells = await makeMemberCells({
       scope,

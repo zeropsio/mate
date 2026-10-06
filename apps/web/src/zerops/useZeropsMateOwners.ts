@@ -43,7 +43,7 @@ import {
 } from "~/components/zerops/landing/ZeropsAccountControl.logic";
 
 import { hqPeopleAtom, hqPeopleViewAtom, hqStructureAtom } from "../state/zerops";
-import { keptNoHq, useKeptHqVerdict, type HqVerdictOwner } from "./hqVerdict";
+import { noHq, useHqVerdict, type HqVerdictOwner } from "./hqVerdict";
 import { useKnown, ZeropsDataContext } from "./zeropsDataContext";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
@@ -139,14 +139,14 @@ export function useZeropsMemberNames(input: {
         : { account: data.runtime.scope.account, clientId },
     [clientId, data],
   );
-  const kept = useKeptHqVerdict(owner);
+  const kept = useHqVerdict(owner);
   const structure = useAtomValue(hqStructureAtom);
   const peopleView = useAtomValue(hqPeopleViewAtom);
   const down =
     structure !== null &&
     structure.organizationId === clientId &&
     structure.unavailableSince !== null;
-  const hqWord = kept !== undefined && !keptNoHq(kept) && !down;
+  const hqWord = kept !== undefined && !noHq(kept) && !down;
   const people =
     peopleView !== null && peopleView.organizationId === clientId ? peopleView.people : null;
   const members = useZeropsOrganizationMembers({ clientId, enabled: enabled && !hqWord });

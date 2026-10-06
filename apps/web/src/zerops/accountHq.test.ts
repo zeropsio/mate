@@ -29,7 +29,7 @@ import {
   type HqStanding,
 } from "./accountHq";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
-import { keepHqVerdict, keepNoHqVerdict, NO_HQ_RECHECK_MS } from "./hqVerdict";
+import { keepHqVerdict } from "./hqVerdict";
 import { ZeropsDataContext, type ZeropsDataContextValue } from "./zeropsDataContext";
 import { ZeropsSessionContext } from "./sessionContext";
 import type { ZeropsSessionValue } from "./ZeropsSessionProvider";
@@ -165,8 +165,8 @@ describe("readBundledCore — Core as this build carries it", () => {
 });
 
 // Step A, open question 1: the member list names the official HQ, and KRLS's took tens of seconds
-// to read. A browser keeps the verdict per account and organization, and reads the list again only
-// on first use, or after HQ refuses as not official.
+// to read. A page holds the verdict per account and organization in memory, and reads the list
+// again only on first use, or after HQ refuses as not official.
 /** The anchor an org admin minted for the HQ at `address`: what the member list names it by. */
 const anchor = (projectId: string, address: string) =>
   ({
@@ -219,7 +219,7 @@ describe("useCarriedCoreBuild — the Core this app carries", () => {
   });
 });
 
-describe("useAccountHq — the official HQ this browser keeps", () => {
+describe("useAccountHq — the official HQ this page holds", () => {
   const scope: AccountScope = {
     account: {
       apiOrigin: makeZeropsApiOrigin("https://api.example.test"),
@@ -233,15 +233,6 @@ describe("useAccountHq — the official HQ this browser keeps", () => {
     organizationId: ZeropsOrganizationId.make(organizationId),
   });
 
-  // This browser's storage, for the verdict kept between loads.
-  beforeEach(() => {
-    const stored = new Map<string, string>();
-    vi.stubGlobal("localStorage", {
-      getItem: (key: string) => stored.get(key) ?? null,
-      setItem: (key: string, value: string) => stored.set(key, value),
-      removeItem: (key: string) => stored.delete(key),
-    });
-  });
   afterEach(() => {
     vi.unstubAllGlobals();
   });
@@ -348,7 +339,24 @@ describe("useAccountHq — the official HQ this browser keeps", () => {
     });
   });
 
-  it("a load with a kept verdict reads no member list", async () => {
+  // HANDOFF §5: source data stays out of browser storage — the verdict lives in this page alone.
+  it("keeps what the member list said in this page's memory, never in browser storage", async () => {
+    const written: Array<string> = [];
+    vi.stubGlobal("localStorage", {
+      getItem: () => null,
+      setItem: (key: string) => written.push(key),
+      removeItem: () => undefined,
+    });
+    const hq = await rendered("org-memory", [anchor("P_HQ", "https://hq.example.test")]);
+    expect(hq.last().hq).toEqual({
+      kind: "official",
+      projectId: "P_HQ",
+      address: "https://hq.example.test",
+    });
+    expect(written).toEqual([]);
+  });
+
+  it("a reader while this page holds the verdict reads no member list", async () => {
     keepHqVerdict(
       { account: scope.account, clientId: "org-kept" },
       {
@@ -590,15 +598,6 @@ describe("useAccountHq — no official HQ, kept too", () => {
     organizationId: ZeropsOrganizationId.make(organizationId),
   });
 
-  // This browser's storage, for the verdict kept between loads.
-  beforeEach(() => {
-    const stored = new Map<string, string>();
-    vi.stubGlobal("localStorage", {
-      getItem: (key: string) => stored.get(key) ?? null,
-      setItem: (key: string, value: string) => stored.set(key, value),
-      removeItem: (key: string) => stored.delete(key),
-    });
-  });
   afterEach(() => {
     vi.unstubAllGlobals();
   });
@@ -635,7 +634,7 @@ describe("useAccountHq — no official HQ, kept too", () => {
     return { reads: () => reads, last: () => seen.at(-1)! };
   }
 
-  it("a load of an organization its member list said has no HQ reads no member list", async () => {
+  it("a second reader of an organization its member list said has no HQ reads no member list", async () => {
     const first = await loaded("org-none", () => []);
     expect([first.reads(), first.last().status, first.last().hq.kind]).toEqual([
       1,
@@ -645,54 +644,6 @@ describe("useAccountHq — no official HQ, kept too", () => {
 
     const next = await loaded("org-none", () => []);
     expect([next.reads(), next.last().status, next.last().hq.kind]).toEqual([0, "ready", "none"]);
-  });
-
-  it("reads the member list again once a day, on a load or in an open tab", async () => {
-    keepNoHqVerdict({ account: scope.account, clientId: "org-day" }, Date.now() - NO_HQ_RECHECK_MS);
-    expect((await loaded("org-day", () => [])).reads()).toBe(1);
-    // Read again, and kept for another day from then.
-    expect((await loaded("org-day", () => [])).reads()).toBe(0);
-
-    keepNoHqVerdict(
-      { account: scope.account, clientId: "org-open" },
-      Date.now() - NO_HQ_RECHECK_MS + 30,
-    );
-    const open = await loaded("org-open", () => []);
-    expect(open.reads()).toBe(0);
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 60));
-    });
-    expect([open.reads(), open.last().hq.kind]).toEqual([1, "none"]);
-  });
-
-  it("waits for the tab to be shown before the day's read, and reads once then", async () => {
-    const listeners = new Set<() => void>();
-    const page = {
-      visibilityState: "hidden" as DocumentVisibilityState,
-      addEventListener: (_type: string, listener: () => void) => listeners.add(listener),
-      removeEventListener: (_type: string, listener: () => void) => listeners.delete(listener),
-    };
-    vi.stubGlobal("document", page);
-    try {
-      keepNoHqVerdict(
-        { account: scope.account, clientId: "org-hidden" },
-        Date.now() - NO_HQ_RECHECK_MS + 30,
-      );
-      const open = await loaded("org-hidden", () => []);
-      await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 60));
-      });
-      expect(open.reads()).toBe(0);
-      await act(async () => {
-        page.visibilityState = "visible";
-        for (const listener of listeners) listener();
-        await new Promise((resolve) => setTimeout(resolve, 0));
-      });
-      expect([open.reads(), open.last().hq.kind]).toEqual([1, "none"]);
-      expect(listeners.size).toBe(0);
-    } finally {
-      vi.unstubAllGlobals();
-    }
   });
 
   it("reads it again at once for this browser's own birth or a press, and keeps what it names", async () => {

@@ -3,8 +3,8 @@
  *
  * - **Which HQ:** the one its anchor names in the org's member list (`findOfficialHq`), read with
  *   the person's own token — never a project's name or tag, which anybody who can create a
- *   project could copy. The verdict — that HQ, or that there is none — is kept in this browser
- *   (`hqVerdict.ts`), and a load that keeps one reads no member list.
+ *   project could copy. The verdict — that HQ, or that there is none — is held in this page's
+ *   memory (`hqVerdict.ts`), and a reader while it holds one reads no member list.
  * - **Through its door:** HQ's API answers a session HQ issued for a throwaway named for its
  *   project (`mate-door:<hqProjectId>:<nonce>`), deleted once the door takes it — one a try was
  *   not served with is presented again on the next, while young, and mints nothing. One API per account, org and
@@ -51,9 +51,8 @@ import {
   forgetNoHqVerdict,
   keepHqVerdict,
   keepNoHqVerdict,
-  keptNoHq,
-  NO_HQ_RECHECK_MS,
-  useKeptHqVerdict,
+  noHq,
+  useHqVerdict,
   type HqVerdictOwner,
 } from "./hqVerdict";
 import { keptHqSessions } from "./keptSessions";
@@ -64,7 +63,7 @@ import { useZeropsSessionOptional } from "./ZeropsSessionProvider";
 
 export interface AccountHq {
   /**
-   * `ready` once the member list was read, or while this browser keeps the verdict: only then is
+   * `ready` once the member list was read, or while this page holds the verdict: only then is
    * `none` an answer to act on.
    */
   readonly status: "idle" | "loading" | "ready" | "failed";
@@ -72,13 +71,13 @@ export interface AccountHq {
   /** The org's owners and admins: who sets an HQ up, and whom everybody else asks. */
   readonly admins: ReadonlyArray<ZeropsOrganizationMember>;
   /**
-   * Reads the member list again, a kept verdict of no official HQ forgotten — after a birth minted
+   * Reads the member list again, a held verdict of no official HQ forgotten — after a birth minted
    * the anchor.
    */
   readonly reread: () => void;
 }
 
-/** The organization's HQ, as this browser keeps it, or else as its member list names it. */
+/** The organization's HQ, as this page holds it, or else as its member list names it. */
 export function useAccountHq(clientId: string | undefined): AccountHq {
   const data = useContext(ZeropsDataContext);
   const owner = useMemo<HqVerdictOwner | undefined>(
@@ -88,24 +87,24 @@ export function useAccountHq(clientId: string | undefined): AccountHq {
         : { account: data.runtime.scope.account, clientId },
     [clientId, data],
   );
-  const kept = useKeptHqVerdict(owner);
+  const kept = useHqVerdict(owner);
   const { members, status, settled } = useZeropsOrganizationMembersRead({
     clientId,
     enabled: clientId !== undefined && kept === undefined,
   });
   const named = useMemo(() => findOfficialHq(members), [members]);
-  // What a read of the member list settles is this browser's verdict from then on: the official
+  // What a read of the member list settles is this page's verdict from then on: the official
   // HQ it names, or that it names none — never a list being read again.
   useEffect(() => {
     if (owner === undefined || !settled) return;
     if (named.kind === "official") keepHqVerdict(owner, named);
-    if (named.kind === "none") keepNoHqVerdict(owner, Date.now());
+    if (named.kind === "none") keepNoHqVerdict(owner);
   }, [named, owner, settled]);
   const hq = useMemo<OfficialHq>(
     () =>
       kept === undefined
         ? named
-        : keptNoHq(kept)
+        : noHq(kept)
           ? { kind: "none" }
           : { kind: "official", projectId: kept.projectId, address: kept.address },
     [kept, named],
@@ -121,23 +120,6 @@ export function useAccountHq(clientId: string | undefined): AccountHq {
     Effect.runFork(data.runtime.cells.invalidate(request));
     forgetNoHqVerdict(owner);
   }, [data, owner]);
-  // A verdict of no official HQ stands a day, then the member list is read again — in a hidden
-  // tab, once it is shown again.
-  const keptNone = kept !== undefined && keptNoHq(kept) ? kept : undefined;
-  useEffect(() => {
-    if (keptNone === undefined) return;
-    let unwait: () => void = () => undefined;
-    const timer = setTimeout(
-      () => {
-        unwait = whenShown(reread);
-      },
-      Math.max(0, keptNone.noneAt + NO_HQ_RECHECK_MS - Date.now()),
-    );
-    return () => {
-      clearTimeout(timer);
-      unwait();
-    };
-  }, [keptNone, reread]);
   return { status: kept === undefined ? status : "ready", hq, admins, reread };
 }
 
@@ -186,7 +168,7 @@ export function saysNotOfficial(health: HqHealth): boolean {
 /**
  * HQ's API for this account and org, with the session the account kept for this HQ, else entered
  * through its door on the first call. A door that answers not serving, from an HQ whose health says
- * it is not the official one, makes this browser forget its verdict, so the member list is read
+ * it is not the official one, makes this page forget its verdict, so the member list is read
  * again.
  */
 export function accountHqApi(client: ZeropsApiClient, clientId: string, hq: HqEndpoint): HqApi {

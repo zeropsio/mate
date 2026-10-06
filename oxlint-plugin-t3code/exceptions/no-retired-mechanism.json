@@ -2714,22 +2714,6 @@
   {
     "path": "apps/web/src/zerops/accountHq.ts",
     "kind": "retired-token",
-    "fingerprint": "NO_HQ_RECHECK_MS",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "the official-HQ verdict is remembered in browser storage for a day; HQ says which is official",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/accountHq.ts",
-    "kind": "retired-token",
-    "fingerprint": "NO_HQ_RECHECK_MS",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "the official-HQ verdict is remembered in browser storage for a day; HQ says which is official",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/accountHq.ts",
-    "kind": "retired-token",
     "fingerprint": "const apis = new Map<string, HqApi>()",
     "owner": "data-layer rewrite: HQ structure/apps",
     "reason": "the app keeps its own HQ clients and sockets; the HQ adapter owns them",
@@ -2765,22 +2749,6 @@
     "fingerprint": "sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms))",
     "owner": "data-layer rewrite: operations",
     "reason": "the HQ update panel sleeps between its own polls; the operation's stream drives it",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/accountHq.ts",
-    "kind": "retired-token",
-    "fingerprint": "useKeptHqVerdict",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "the official-HQ verdict is remembered in browser storage for a day; HQ says which is official",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/accountHq.ts",
-    "kind": "retired-token",
-    "fingerprint": "useKeptHqVerdict",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "the official-HQ verdict is remembered in browser storage for a day; HQ says which is official",
     "expires": "never"
   },
   {
@@ -3205,38 +3173,6 @@
     "fingerprint": "let view: HqStructureView",
     "owner": "data-layer rewrite: HQ structure/apps",
     "reason": "a module-level HQ structure view duplicates the store; HQ's stream feeds one reducer",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/hqVerdict.ts",
-    "kind": "retired-token",
-    "fingerprint": "NO_HQ_RECHECK_MS",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "the official-HQ verdict is remembered in browser storage for a day; HQ says which is official",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/hqVerdict.ts",
-    "kind": "retired-token",
-    "fingerprint": "NO_HQ_RECHECK_MS",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "the official-HQ verdict is remembered in browser storage for a day; HQ says which is official",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/hqVerdict.ts",
-    "kind": "retired-token",
-    "fingerprint": "useKeptHqVerdict",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "the official-HQ verdict is remembered in browser storage for a day; HQ says which is official",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/hqVerdict.ts",
-    "kind": "retired-token",
-    "fingerprint": "zerops-mate.hq-verdict.v1",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "the official-HQ verdict is remembered in browser storage for a day; HQ says which is official",
     "expires": "never"
   },
   {
@@ -4397,22 +4333,6 @@
     "fingerprint": "hqStructureAtom",
     "owner": "data-layer rewrite: HQ structure/apps",
     "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsMateOwners.ts",
-    "kind": "retired-token",
-    "fingerprint": "useKeptHqVerdict",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "the official-HQ verdict is remembered in browser storage for a day; HQ says which is official",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsMateOwners.ts",
-    "kind": "retired-token",
-    "fingerprint": "useKeptHqVerdict",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "the official-HQ verdict is remembered in browser storage for a day; HQ says which is official",
     "expires": "never"
   },
   {

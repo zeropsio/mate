@@ -136,22 +136,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/zerops/hqVerdict.ts",
-    "kind": "CallExpression",
-    "fingerprint": "localStorage.getItem(STORAGE_KEY)",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "source data stays out of browser storage: remembers which HQ is official, or that none is, for a day; HQ's own answer replaces the verdict",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/hqVerdict.ts",
-    "kind": "CallExpression",
-    "fingerprint": "localStorage.setItem(STORAGE_KEY)",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "source data stays out of browser storage: remembers which HQ is official, or that none is, for a day; HQ's own answer replaces the verdict",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/zerops/writerMemory.ts",
     "kind": "CallExpression",
     "fingerprint": "accountLocalStorage.getItem(WRITER_MEMORY_KEY)",
