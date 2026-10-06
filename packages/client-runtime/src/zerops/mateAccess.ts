@@ -219,7 +219,7 @@ export function mateMemberName(member: MateOwnerCandidate): string | undefined {
 
 /**
  * What a Mate's own records say of its person before anybody is looked up, as
- * facts: whether they name anybody at all (an `OWNER` entry, or the signer of
+ * facts: whether they name anybody at all (an owner HQ names, or the signer of
  * its agent), and whether anybody has
  * signed its agent in (D6's signer of the agent's own login; a login added
  * beside it names only who uses that one).
@@ -229,7 +229,11 @@ export function mateMemberName(member: MateOwnerCandidate): string | undefined {
  * is nobody's whether or not anybody is named yet, and the first person to sign
  * its agent in makes it theirs. A viewer HQ sends no overview to sees no signer.
  */
-export function mateOwnerRecords(project: Pick<MateAccessProject, "hq" | "userRoles">): {
+export function mateOwnerRecords(
+  project: Pick<MateAccessProject, "hq">,
+  /** Whether HQ names an owner of it (`ownerUserId`); `undefined` while HQ has not said. */
+  owned: boolean | undefined,
+): {
   readonly named: boolean | undefined;
   readonly signedIn: boolean;
   /** The Zerops user id who signed its agent in, where somebody did. */
@@ -240,7 +244,6 @@ export function mateOwnerRecords(project: Pick<MateAccessProject, "hq" | "userRo
   readonly runsWithoutSignIn: boolean;
 } {
   const records = matePerson(project);
-  const owned = project.userRoles?.some((entry) => entry.roleCode === "OWNER");
   return { named: records.signedIn || records.person !== undefined || owned, ...records };
 }
 

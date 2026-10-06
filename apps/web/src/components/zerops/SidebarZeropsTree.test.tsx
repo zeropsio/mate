@@ -100,14 +100,23 @@ const signerOf = vi.hoisted(() => new Map<string, string>());
 // Who HQ says signed each Mate's agent in (`signers`): nobody, unless a test says whom or that HQ
 // has not said.
 const hqSigners = vi.hoisted(() => ({ said: true }));
+// The Mates HQ names an owner of (`ownerUserId`).
+const ownedBy = vi.hoisted(() => new Set<string>());
 vi.mock("~/zerops/useZeropsMateOwners", async (original) => ({
   ...(await original<typeof import("~/zerops/useZeropsMateOwners")>()),
   useWaitsOnViewer: () => (projectId: string) =>
     session.viewer !== undefined && signerOf.get(projectId) === session.viewer,
-  useHqSignersOf: () => (projectId: string) => {
+  useHqProjectPeopleOf: () => (projectId: string) => {
     if (!hqSigners.said) return undefined;
     const signer = signerOf.get(projectId);
-    return signer === undefined ? {} : { "claude-code": signer };
+    const signers = signer === undefined ? {} : { "claude-code": signer };
+    return {
+      owned: ownedBy.has(projectId),
+      owner: null,
+      waitsOnViewer: false,
+      signedInNow: signers,
+      everSignedIn: signers,
+    };
   },
 }));
 afterEach(() => {
@@ -122,6 +131,7 @@ afterEach(() => {
   session.viewer = undefined;
   signerOf.clear();
   hqSigners.said = true;
+  ownedBy.clear();
   hqCrews.clear();
   demandedStops.clear();
   vi.unstubAllGlobals();
@@ -814,6 +824,20 @@ describe("a Mate with no owner, or nobody signed in", () => {
     expect(ring).toContain("stroke-dasharray");
     expect(ring).not.toMatch(/<img|>[A-Z]</u);
     expect(html).toContain("No owner yet. Whoever signs in its coding agent owns it.");
+  });
+
+  // Whether a Mate is nobody's is HQ's word (`ownerUserId`), never Zerops' project roles.
+  it.each([
+    {
+      case: "HQ names an owner it sends no person of: a neutral seat",
+      owned: true,
+      seat: undefined,
+    },
+    { case: "HQ names no owner: the empty seat", owned: false, seat: "nobody" },
+  ])("$case", ({ owned, seat: expected }) => {
+    const item = mate(null, { group: "connected" });
+    if (owned) ownedBy.add(item.project.id);
+    expect(seat(render([item], { getOwner: () => undefined }))).toBe(expected);
   });
 
   it.each([

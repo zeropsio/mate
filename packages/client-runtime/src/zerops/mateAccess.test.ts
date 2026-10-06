@@ -126,57 +126,52 @@ const placedWith = (signers: Readonly<Record<string, string>>): HqPlacement => (
 // A7: the owner named from HQ's people (`hqMates.ts`), never a member list read — HQ names exactly
 // the people the reader's view names, a token never.
 describe("mateOwnerRecords — what a Mate's own records say of its person", () => {
-  const OWNER = { clientUserId: "cu-jan", roleCode: "OWNER" };
-  const SERVICE = { clientUserId: "cu-zcp", roleCode: "BASIC_USER" };
   it.each([
     {
-      name: "an OWNER entry and its agent's signer",
-      userRoles: [OWNER],
+      name: "HQ names an owner, and its agent's signer",
+      owned: true,
       signers: { "claude-code": "u-jan" },
       records: { named: true, signedIn: true, signer: "u-jan" },
     },
     {
-      name: "an OWNER entry, nobody signed in (a creator below ADMIN, a hand-over)",
-      userRoles: [OWNER, SERVICE],
+      name: "HQ names an owner, nobody signed in (a creator below ADMIN, a hand-over)",
+      owned: true,
       signers: {},
       records: { named: true, signedIn: false },
     },
     {
-      name: "no OWNER entry, the signer names the person (an org owner's Mate)",
-      userRoles: [SERVICE],
+      name: "HQ names no owner, the signer names the person (an org owner's Mate)",
+      owned: false,
       signers: { codex: "u-eva" },
       records: { named: true, signedIn: true, signer: "u-eva" },
     },
     {
-      name: "no OWNER entry and nobody signed in: nobody's",
-      userRoles: [SERVICE],
+      name: "HQ names no owner and nobody signed in: nobody's",
+      owned: false,
       signers: {},
       records: { named: false, signedIn: false },
     },
     {
       name: "only a login added beside the agents: nobody's",
-      userRoles: [],
+      owned: false,
       signers: { "claudeAgent-work": "u-jan" },
       records: { named: false, signedIn: false },
     },
     {
       name: "a signer that names no user",
-      userRoles: undefined,
+      owned: undefined,
       signers: { codex: "" },
       records: { named: undefined, signedIn: false },
     },
     {
       name: "no overview relayed: no signer known",
-      userRoles: undefined,
+      owned: undefined,
       signers: undefined,
       records: { named: undefined, signedIn: false },
     },
-  ])("$name", ({ userRoles, signers, records }) => {
+  ])("$name", ({ owned, signers, records }) => {
     expect(
-      mateOwnerRecords({
-        userRoles,
-        ...(signers === undefined ? {} : { hq: placedWith(signers) }),
-      }),
+      mateOwnerRecords(signers === undefined ? {} : { hq: placedWith(signers) }, owned),
     ).toEqual({
       ...records,
       person: "signer" in records ? records.signer : undefined,
@@ -271,8 +266,8 @@ describe("a ready agent's person from HQ", () => {
         mate: { ...placement.mate!, madeBy: "u-maker", runsWithoutSignIn: ready },
       },
     };
-    expect(mateOwnerRecords(project).person).toBe(person);
-    expect(mateOwnerRecords(project).runsWithoutSignIn).toBe(ready);
+    expect(mateOwnerRecords(project, undefined).person).toBe(person);
+    expect(mateOwnerRecords(project, undefined).runsWithoutSignIn).toBe(ready);
   });
 });
 
@@ -296,7 +291,7 @@ it.each([false, true])(
       },
     };
     const project = { id: PROJECT, clientId: ORG, userRoles: [], hq };
-    expect(mateOwnerRecords(project)).toEqual({
+    expect(mateOwnerRecords(project, false)).toEqual({
       named: true,
       signedIn: false,
       signer: "u-eva",
@@ -317,7 +312,7 @@ it("logout keeps Claude's badge priority when Codex remains signed in by someone
       },
     },
   };
-  expect(mateOwnerRecords({ hq, userRoles: [] })).toEqual({
+  expect(mateOwnerRecords({ hq }, false)).toEqual({
     named: true,
     signedIn: true,
     signer: "u-eva",

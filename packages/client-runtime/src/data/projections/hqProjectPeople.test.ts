@@ -99,29 +99,45 @@ describe("hqProjectPeople", () => {
       name: "an owner HQ names, with their picture",
       project: "ada",
       expected: {
+        owned: true,
         owner: { userId: "u-jan", name: "Jan Novák", avatarUrl: "https://img/jan.png" },
         waitsOnViewer: true,
-        signers: { "claude-code": "u-jan" },
+        signedInNow: { "claude-code": "u-jan" },
+        everSignedIn: { "claude-code": "u-jan" },
       },
     },
     {
       name: "an owner without a picture",
       project: "bob",
       expected: {
+        owned: true,
         owner: { userId: "u-eva", name: "Eva", avatarUrl: null },
         waitsOnViewer: false,
-        signers: { codex: "u-eva" },
+        signedInNow: { codex: "u-eva" },
+        everSignedIn: { codex: "u-eva" },
       },
     },
     {
       name: "nobody's Mate",
       project: "nobody",
-      expected: { owner: null, waitsOnViewer: false, signers: {} },
+      expected: {
+        owned: false,
+        owner: null,
+        waitsOnViewer: false,
+        signedInNow: {},
+        everSignedIn: {},
+      },
     },
     {
-      name: "an owner HQ sends no person of",
+      name: "an owner HQ sends no person of: owned, nobody drawn",
       project: "ghost",
-      expected: { owner: null, waitsOnViewer: false, signers: {} },
+      expected: {
+        owned: true,
+        owner: null,
+        waitsOnViewer: false,
+        signedInNow: {},
+        everSignedIn: {},
+      },
     },
   ])("$name", ({ project, expected }) => {
     expect(people(read)[project]).toEqual(expected);

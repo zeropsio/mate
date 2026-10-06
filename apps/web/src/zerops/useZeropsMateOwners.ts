@@ -153,10 +153,10 @@ export function useWaitsOnViewer(): (projectId: string) => boolean {
 }
 
 /**
- * Who HQ says signed each agent's own login in, by project id (its `signers`); `undefined` while
- * HQ has not said of the project.
+ * What HQ computed of the reader for a project, by its id (`hqProjectPeople`): whether it names an
+ * owner, who ever signed its agents in; `undefined` while HQ has not said of the project.
  */
-export function useHqSignersOf(): (projectId: string) => HqProjectPeople["signers"] | undefined {
+export function useHqProjectPeopleOf(): (projectId: string) => HqProjectPeople | undefined {
   const people = useAtomValue(shownHqProjectPeopleAtom);
-  return useCallback((projectId: string) => people[projectId]?.signers, [people]);
+  return useCallback((projectId: string) => people[projectId], [people]);
 }

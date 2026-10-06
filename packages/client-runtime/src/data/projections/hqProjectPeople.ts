@@ -1,7 +1,7 @@
 /**
  * Who each project HQ places is, for the reader, as HQ computed it (HANDOFF §5 invariant 11): its
  * owner — named and pictured from HQ's person records —, whether its Mate waits on the reader, and
- * who signed each agent's own login in. Nothing is computed here from member lists or roles; an
+ * who is signed in to each agent's own login now and who ever was. Nothing is computed here from member lists or roles; an
  * owner HQ names no person record of is drawn as nobody's. A project HQ removed, or withheld, is in
  * none of it.
  *
@@ -22,11 +22,15 @@ export interface HqMateOwner {
 }
 
 export interface HqProjectPeople {
+  /** HQ names an owner of it (`ownerUserId`), whether or not it sends their person record. */
+  readonly owned: boolean;
   readonly owner: HqMateOwner | null;
   /** Its Mate waits on the reader: they signed its agent in (HQ's `waitsOnViewer`). */
   readonly waitsOnViewer: boolean;
-  /** Who signed each agent's own login in, by Zerops user id. */
-  readonly signers: HqNavigationProject["signers"];
+  /** Who is signed in to each agent's own login now, by Zerops user id: whose the composer is. */
+  readonly signedInNow: HqNavigationProject["signers"];
+  /** Who ever signed each agent's own login in, by Zerops user id: whether anybody has. */
+  readonly everSignedIn: HqNavigationProject["signers"];
 }
 
 function ownerOf(read: ProjectionReads, orgId: string, userId: string | null): HqMateOwner | null {
@@ -50,9 +54,13 @@ export const hqProjectPeople: Projection<string, Readonly<Record<string, HqProje
           [
             projectId,
             {
+              owned: person.ownerUserId !== null,
               owner: ownerOf(read, orgId, person.ownerUserId),
               waitsOnViewer: person.waitsOnViewer,
-              signers,
+              // One record today, `signers`, says who ever signed in; HQ is splitting it into
+              // who is now and who ever was.
+              signedInNow: signers,
+              everSignedIn: signers,
             },
           ],
         ];

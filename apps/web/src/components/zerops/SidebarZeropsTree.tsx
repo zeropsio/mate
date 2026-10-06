@@ -155,7 +155,7 @@ import {
 } from "~/zerops/projectOrderPreference";
 import { useEnvironmentOffers } from "~/zerops/useAddEnvironment";
 import {
-  useHqSignersOf,
+  useHqProjectPeopleOf,
   useWaitsOnViewer,
   type ZeropsMateOwner,
 } from "~/zerops/useZeropsMateOwners";
@@ -2513,7 +2513,7 @@ function MateRow<T extends RosterCandidate>({
   // (`mateComingRowView`).
   const viewer = useZeropsSessionOptional()?.user?.id;
   const waitsOnViewer = useWaitsOnViewer();
-  const hqSignersOf = useHqSignersOf();
+  const hqPeopleOf = useHqProjectPeopleOf();
   const nowMs = useNowMs();
   const read = mateRowReading({
     connected: up,
@@ -2538,8 +2538,9 @@ function MateRow<T extends RosterCandidate>({
   useEffect(() => drawn?.(), [drawn]);
   // Whose seat it is, and whether anybody has signed its agent in — read off
   // its own records, so from the first paint (`mateOwnerView`).
-  const records = mateOwnerRecords(candidate.project);
-  const signers = hqSignersOf(candidate.project.id);
+  const hqPeople = hqPeopleOf(candidate.project.id);
+  const records = mateOwnerRecords(candidate.project, hqPeople?.owned);
+  const signers = hqPeople?.everSignedIn;
   const seated = mateOwnerView({
     owner,
     records,
