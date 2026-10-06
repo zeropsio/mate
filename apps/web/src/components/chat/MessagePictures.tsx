@@ -8,6 +8,7 @@
  * that holds no labels (an older one, one from a phone) keeps its pictures
  * above its words as before.
  */
+import { AssetImage } from "~/assets/AssetImage";
 import { useAtomValue } from "@effect/atom-react";
 import type { AssetResource, EnvironmentId } from "@t3tools/contracts";
 import { AsyncResult } from "effect/unstable/reactivity";
@@ -98,24 +99,41 @@ function MessagePicture(props: {
   readonly onOpen: (image: ChatImageAttachment) => void;
 }) {
   const { segment, dimensions } = props;
-  const box = reservedPictureBox(segment.image, dimensions, props.maxHeight);
+  const box = reservedPictureBox(segment.image, dimensions, props.maxHeight) ?? {
+    width: `min(100%, ${props.maxHeight ?? 300}px)`,
+    aspectRatio: "16 / 9",
+  };
+  const size =
+    segment.image.width !== undefined && segment.image.height !== undefined
+      ? { width: segment.image.width, height: segment.image.height }
+      : dimensions;
+  const maxHeight = props.maxHeight ?? 300;
+  const reservedWidth =
+    size === undefined
+      ? maxHeight
+      : Math.round(Math.min(size.width, (maxHeight * size.width) / size.height));
   return (
-    <figure className="message-picture">
+    <figure className="message-picture" style={{ width: reservedWidth, maxWidth: "100%" }}>
       {segment.image.previewUrl ? (
         <button
           type="button"
           className="message-picture-open"
+          style={{ width: "100%" }}
           aria-label={`Open picture ${segment.n}`}
           onClick={() => props.onOpen(segment.image)}
         >
-          <img
+          <AssetImage
+            loading="lazy"
+            decoding="async"
             className="message-picture-img"
             src={segment.image.previewUrl}
             alt={`Picture ${segment.n}`}
-            style={box ?? undefined}
+            width={segment.image.width ?? dimensions?.width ?? 300}
+            height={segment.image.height ?? dimensions?.height ?? 169}
+            style={box}
           />
         </button>
-      ) : box ? (
+      ) : (
         // Its room, held until its address arrives: nothing moves when it does.
         <span
           className="message-picture-img message-picture-pending"
@@ -123,8 +141,6 @@ function MessagePicture(props: {
           aria-label={`Picture ${segment.n}`}
           style={box}
         />
-      ) : (
-        <span className="message-picture-original">{segment.image.name}</span>
       )}
       {segment.notes.length > 0 ? (
         <ol className="message-picture-notes" aria-label={`Notes on picture ${segment.n}`}>

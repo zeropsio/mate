@@ -1,3 +1,4 @@
+import { AssetImage } from "~/assets/AssetImage";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { ChevronLeftIcon, ChevronRightIcon, XIcon } from "lucide-react";
 import { Button } from "../ui/button";
@@ -91,7 +92,9 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
           <XIcon />
         </Button>
         {failedImageSrc === item.src ? (
-          <img
+          <AssetImage
+            loading="lazy"
+            decoding="async"
             src={item.src}
             alt={item.name}
             className="max-h-[var(--media-height)] max-w-[var(--media-width)] select-none rounded-lg border border-border/70 bg-background object-contain shadow-2xl"

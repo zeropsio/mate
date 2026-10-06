@@ -1,3 +1,4 @@
+import { AssetImage } from "~/assets/AssetImage";
 import {
   deriveTimelineMinimapItems,
   resolveTimelineMinimapPreview,
@@ -2712,10 +2713,13 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
                     aria-label={`Preview ${image.name}`}
                     onClick={() => expandImage(image)}
                   >
-                    <img
+                    <AssetImage
+                      loading="lazy"
+                      decoding="async"
                       src={image.previewUrl}
                       alt={image.name}
-                      className="block h-auto max-h-[220px] w-full object-cover"
+                      className="block max-h-[220px] w-full object-contain"
+                      style={{ aspectRatio: `${image.width ?? 16} / ${image.height ?? 9}` }}
                     />
                   </button>
                 ) : (
@@ -3784,10 +3788,12 @@ function QuestionAnswerHistory({
                   className="text-sm underline"
                 >
                   {attachment.type === "image" && url ? (
-                    <img
+                    <AssetImage
+                      loading="lazy"
+                      decoding="async"
                       src={url}
                       alt={attachment.name}
-                      className="h-20 max-w-32 rounded object-contain"
+                      className="h-20 w-32 rounded object-contain"
                     />
                   ) : (
                     attachment.name

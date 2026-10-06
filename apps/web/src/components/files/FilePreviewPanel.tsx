@@ -1,3 +1,4 @@
+import { AssetImage } from "~/assets/AssetImage";
 import type {
   EditorId,
   EnvironmentId,
@@ -139,8 +140,16 @@ function WorkspaceImagePreview(props: {
 
   return assetUrl._tag === "Success" ? (
     <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto p-4">
-      <img
+      <AssetImage
+        loading="lazy"
+        decoding="async"
         className="max-h-full max-w-full object-contain"
+        style={{
+          width: "100%",
+          aspectRatio: assetUrl.imageDimensions
+            ? `${assetUrl.imageDimensions.width} / ${assetUrl.imageDimensions.height}`
+            : "16 / 9",
+        }}
         src={assetUrl.url}
         alt={props.alt}
         onError={() => setFailedUrl(assetUrl.url)}

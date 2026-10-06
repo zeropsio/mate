@@ -1,3 +1,4 @@
+import { AssetImage } from "~/assets/AssetImage";
 import type { EnvironmentId } from "@t3tools/contracts";
 import {
   getProjectFaviconCacheKey,
@@ -89,7 +90,9 @@ function ProjectFaviconImage({
         <ProjectFaviconFallback className={className} icon={FallbackIcon} />
       ) : null}
       {displayedSrc ? (
-        <img
+        <AssetImage
+          loading="lazy"
+          decoding="async"
           src={displayedSrc}
           alt=""
           className={cn("size-3.5 shrink-0 rounded-[25%] object-contain", className)}
@@ -97,7 +100,9 @@ function ProjectFaviconImage({
         />
       ) : null}
       {isLoading ? (
-        <img
+        <AssetImage
+          loading="lazy"
+          decoding="async"
           src={src}
           alt=""
           className="hidden"

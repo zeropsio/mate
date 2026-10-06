@@ -12,6 +12,7 @@
  * read fails; one without a size stands as the line alone. A picture anywhere else stays a plain
  * link, never read with the person's session.
  */
+import { useNearViewport } from "../../../hooks/useNearViewport";
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import { ChevronLeftIcon, ChevronRightIcon, ImageIcon, XIcon } from "lucide-react";
 import { useCallback, useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
@@ -165,13 +166,20 @@ function HqPicture({
   readonly source: ChangePictureSource | undefined;
   readonly onOpen: (view: PictureView) => void;
 }) {
-  const state = useChangePicture(source, url);
+  const { ref, near } = useNearViewport<HTMLSpanElement>();
+  const state = useChangePicture(source, url, near);
   // Only a picture seen arriving fades in: one already read stands as it was.
   const [arriving] = useState(state.kind === "reading");
   const box = reviewPictureBox(width, height);
-  if (box === null && state.kind !== "read") return <PictureLine alt={alt} />;
+  if (box === null && state.kind !== "read")
+    return (
+      <span ref={ref}>
+        <PictureLine alt={alt} />
+      </span>
+    );
   return (
     <span
+      ref={ref}
       className="rv-pic"
       data-box={box === null ? undefined : ""}
       data-fresh={arriving && state.kind === "read" ? "" : undefined}
@@ -188,6 +196,8 @@ function HqPicture({
           type="button"
         >
           <img
+            loading="lazy"
+            decoding="async"
             alt={alt}
             data-review-picture=""
             draggable={false}
@@ -272,7 +282,7 @@ function PictureViewer({
             data-slot="dialog-popup"
             onKeyDown={onKeyDown}
           >
-            <img alt={picture.alt} src={picture.src} />
+            <img loading="lazy" decoding="async" alt={picture.alt} src={picture.src} />
             {picture.alt.length > 0 || count > 1 ? (
               <p className="rv-viewer-words">
                 {picture.alt}

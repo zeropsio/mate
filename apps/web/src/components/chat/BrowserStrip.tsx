@@ -38,6 +38,7 @@ import {
 } from "./conversation.logic";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 import { CheckRead } from "./CheckRead";
+import { useNearViewport } from "../../hooks/useNearViewport";
 import { useTakeThumbnail } from "./takeThumbnail";
 
 const DEVICE_WORD: Record<BrowserDevice, string> = {
@@ -108,8 +109,18 @@ function takeFindings(check: ZeropsOperation): string | null {
 
 /** A take's picture, its content cropped in when the page is mostly empty. */
 function TakeThumbnail({ src, aspect }: { readonly src: string; readonly aspect: number }) {
-  const thumbnail = useTakeThumbnail(src, aspect);
-  return <img alt="" className="block size-full object-cover object-top" src={thumbnail} />;
+  const { ref, near } = useNearViewport<HTMLImageElement>();
+  const thumbnail = useTakeThumbnail(near ? src : undefined, aspect);
+  return (
+    <img
+      ref={ref}
+      loading="lazy"
+      decoding="async"
+      alt=""
+      className="block size-full object-cover object-top"
+      src={thumbnail}
+    />
+  );
 }
 
 export function BrowserStrip({
@@ -246,7 +257,13 @@ export function BrowserStrip({
             read={onStage.browserRead}
           />
         ) : stageSrc && onStage === latest && running ? (
-          <img alt="" className="block size-full object-cover object-top" src={stageSrc} />
+          <img
+            loading="lazy"
+            decoding="async"
+            alt=""
+            className="block size-full object-cover object-top"
+            src={stageSrc}
+          />
         ) : stageSrc ? (
           <TakeThumbnail aspect={TAKE_ASPECT[device]} src={stageSrc} />
         ) : (
@@ -539,6 +556,8 @@ function LiveTake({
     >
       {frame === undefined ? null : (
         <img
+          loading="lazy"
+          decoding="async"
           alt=""
           className="block size-full object-cover object-top"
           src={frameImageSrc(frame)}

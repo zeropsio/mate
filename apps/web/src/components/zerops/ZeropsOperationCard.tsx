@@ -29,6 +29,7 @@
  *
  * See `../../../../../../zcp/plans/mate-chat-output-concept-2026-09-03.md` §5.
  */
+import { AssetImage } from "~/assets/AssetImage";
 import { useState, type ComponentProps, type JSX, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -482,7 +483,9 @@ function BrowserThumbnail({
         }
       >
         {image !== undefined ? (
-          <img
+          <AssetImage
+            loading="lazy"
+            decoding="async"
             alt={live ? `Live view of ${subject}` : "Screenshot"}
             className="block size-full object-cover object-top"
             data-zerops-browser-image
