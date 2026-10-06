@@ -19,6 +19,7 @@ import { hqMateFamily } from "./hqMate.ts";
 import { mateAttentionFamily } from "./mateAttention.ts";
 import { organizationLocationsFamily } from "./organizationLocations.ts";
 import { organizationMembersFamily } from "./organizationMembers.ts";
+import { mateLinkFamily } from "./mateLink.ts";
 import { processFamily } from "./process.ts";
 import { projectFamily } from "./project.ts";
 import { versionFamily } from "./version.ts";
@@ -70,6 +71,7 @@ export const FAMILIES = defineFamilies([
   serviceAgentsFamily,
   publicRoutingFamily,
   hqAppDetailFamily,
+  mateLinkFamily,
 ]);
 
 const byFamily = new Map<string, AnyFamilySpec>(FAMILIES.map((spec) => [spec.family, spec]));
@@ -107,6 +109,7 @@ export function scopeListing(scope: ScopeKey): ScopeListing {
  * once where time never ages it; the rest realtime.
  */
 export function streamMode(key: string): "realtime" | "sampled" | "once" {
+  if (key.startsWith("mate:")) return "sampled";
   const sampled = bySuffix.get(key.split(":")[2] ?? "")?.spec.sampled;
   if (sampled === undefined) return "realtime";
   return sampled.freshMs === null ? "once" : "sampled";
