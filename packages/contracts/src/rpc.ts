@@ -182,6 +182,7 @@ import {
   ZeropsMateUpdateError,
   ZeropsMateUpdateResult,
 } from "./zerops.ts";
+import { MateAttention } from "./zeropsAttention.ts";
 import {
   CrewCommand,
   CrewCommandError,
@@ -375,6 +376,7 @@ export const WS_METHODS = {
   subscribeResourceTelemetry: "subscribeResourceTelemetry",
   subscribeZeropsLifecycle: "subscribeZeropsLifecycle",
   subscribeZeropsAgentAuth: "subscribeZeropsAgentAuth",
+  subscribeZeropsAttention: "subscribeZeropsAttention",
   subscribeZeropsBrowserStream: "subscribeZeropsBrowserStream",
   subscribeZeropsDataConsole: "subscribeZeropsDataConsole",
   subscribeZeropsCrew: "subscribeZeropsCrew",
@@ -1020,6 +1022,14 @@ const WsSubscribeZeropsAgentAuthRpc = Rpc.make(WS_METHODS.subscribeZeropsAgentAu
   stream: true,
 });
 
+/** The Mate's attention (`MateAttention`) now, then each new revision. */
+const WsSubscribeZeropsAttentionRpc = Rpc.make(WS_METHODS.subscribeZeropsAttention, {
+  payload: Schema.Struct({}),
+  success: MateAttention,
+  error: EnvironmentAuthorizationError,
+  stream: true,
+});
+
 /**
  * Starts (or, for an agent that already has one running, re-attaches to) a
  * server-driven login session for `agentId` in `threadId`'s dedicated
@@ -1302,6 +1312,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsZeropsStandUpRetryRpc,
   WsSubscribeZeropsLifecycleRpc,
   WsSubscribeZeropsAgentAuthRpc,
+  WsSubscribeZeropsAttentionRpc,
   WsZeropsAgentLoginStartRpc,
   WsZeropsAgentAuthCheckRpc,
   WsZeropsAgentLoginCancelRpc,

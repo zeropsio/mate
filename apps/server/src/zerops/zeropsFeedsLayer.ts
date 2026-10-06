@@ -181,6 +181,8 @@ const liveLayer = Layer.mergeAll(
     ),
   ),
   ZeropsHqLinkLive,
+  // The same instance the link reads (memoized by reference), for the Mate's own clients.
+  ZeropsMateAttentionModule.layer,
   ZeropsBrowserStreamModule.layer,
   ZeropsMateUpdateLive,
   ZeropsDataConsoleModule.layer,

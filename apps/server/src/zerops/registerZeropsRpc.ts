@@ -32,6 +32,7 @@ import * as ZeropsDataConsoleModule from "./ZeropsDataConsole.ts";
 import type * as ZeropsGitRemoteProbeModule from "./ZeropsGitRemoteProbe.ts";
 import * as ZeropsLifecycle from "./ZeropsLifecycle.ts";
 import * as ZeropsLoginsModule from "./ZeropsLogins.ts";
+import type * as ZeropsMateAttentionModule from "./ZeropsMateAttention.ts";
 import type * as ZeropsSignOutModule from "./ZeropsSignOut.ts";
 
 type ZeropsRpcTag =
@@ -46,6 +47,7 @@ type ZeropsRpcTag =
   | typeof WS_METHODS.zeropsLoginRemove
   | typeof WS_METHODS.subscribeZeropsLifecycle
   | typeof WS_METHODS.subscribeZeropsAgentAuth
+  | typeof WS_METHODS.subscribeZeropsAttention
   | typeof WS_METHODS.subscribeZeropsBrowserStream
   | typeof WS_METHODS.zeropsBrowserInput
   | typeof WS_METHODS.zeropsMateUpdate
@@ -74,6 +76,8 @@ export interface RegisterZeropsRpcDeps {
   readonly zeropsAgentLogin: ZeropsAgentLoginModule.ZeropsAgentLogin["Service"];
   readonly zeropsSignOut: ZeropsSignOutModule.ZeropsSignOut["Service"];
   readonly zeropsLogins: ZeropsLoginsModule.ZeropsLogins["Service"];
+  /** The Mate's attention, the same instance the link to HQ sends up. */
+  readonly zeropsMateAttention: ZeropsMateAttentionModule.ZeropsMateAttention["Service"];
   readonly zeropsBrowserStream: ZeropsBrowserStreamModule.ZeropsBrowserStream["Service"];
   readonly zeropsCli: ZeropsCli["Service"];
   readonly zeropsMateUpdate: ZeropsMateUpdate["Service"];
@@ -255,6 +259,7 @@ export const registerZeropsRpc = (deps: RegisterZeropsRpcDeps): ZeropsRpcHandler
     zeropsSignOut,
     zeropsLogins,
     zeropsBrowserStream,
+    zeropsMateAttention,
     zeropsDataConsole,
     zeropsGitRemoteProbe,
     subject,
@@ -376,6 +381,10 @@ export const registerZeropsRpc = (deps: RegisterZeropsRpcDeps): ZeropsRpcHandler
         ),
         { "rpc.aggregate": "zerops" },
       ),
+    [WS_METHODS.subscribeZeropsAttention]: (_input) =>
+      observeRpcStream(WS_METHODS.subscribeZeropsAttention, zeropsMateAttention.changes, {
+        "rpc.aggregate": "zerops",
+      }),
     [WS_METHODS.subscribeZeropsBrowserStream]: (_input) =>
       observeRpcStream(
         WS_METHODS.subscribeZeropsBrowserStream,

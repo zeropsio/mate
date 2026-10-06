@@ -160,6 +160,7 @@ import * as ZeropsSignOutModule from "./zerops/ZeropsSignOut.ts";
 import * as ZeropsTurnAdmissionModule from "./zerops/ZeropsTurnAdmission.ts";
 import { layer as providerInstancesLayer } from "./spi/providerInstances.ts";
 import * as ZeropsBrowserStreamModule from "./zerops/ZeropsBrowserStream.ts";
+import { ZeropsMateAttention } from "./zerops/ZeropsMateAttention.ts";
 import * as ZeropsCliModule from "./zerops/ZeropsCli.ts";
 import * as ZeropsDataConsoleModule from "./zerops/ZeropsDataConsole.ts";
 import * as ZeropsGitRemoteProbeModule from "./zerops/ZeropsGitRemoteProbe.ts";
@@ -171,7 +172,7 @@ import * as ZeropsMateKeyModule from "./zerops/ZeropsMateKey.ts";
 import * as ZeropsOrgReadModule from "./zerops/ZeropsOrgRead.ts";
 import * as ZeropsProjectAccessModule from "./zerops/ZeropsProjectAccess.ts";
 import * as ZeropsMateUpdateModule from "./zerops/ZeropsMateUpdate.ts";
-import { makeFixtureZeropsLayer } from "./zerops/ZeropsFixtureFeeds.ts";
+import { FIXTURE_ATTENTION, makeFixtureZeropsLayer } from "./zerops/ZeropsFixtureFeeds.ts";
 import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
 import * as ServerSettings from "./serverSettings.ts";
 import * as TerminalManager from "./terminal/Manager.ts";
@@ -552,6 +553,7 @@ const buildAppUnderTest = (options?: {
     | ZeropsSignOutModule.ZeropsSignOut
     | ZeropsLoginsModule.ZeropsLogins
     | ZeropsBrowserStreamModule.ZeropsBrowserStream
+    | ZeropsMateAttention
     | ZeropsCliModule.ZeropsCli
     | ZeropsMateUpdateModule.ZeropsMateUpdate
     | ZeropsDataConsoleModule.ZeropsDataConsole
@@ -1222,6 +1224,10 @@ const buildAppUnderTest = (options?: {
               subscribe: Effect.succeed(Stream.make({ type: "state", status: "no-browser" })),
               sendInput: () => Effect.void,
               ...options?.layers?.zeropsBrowserStream,
+            }),
+            Layer.mock(ZeropsMateAttention)({
+              current: Effect.succeed(FIXTURE_ATTENTION),
+              changes: Stream.make(FIXTURE_ATTENTION),
             }),
             // A test machine has no `zcp` binary — mocked so the suite never
             // spawns a doomed child process, matching MU-3: outside a Zerops
@@ -6100,6 +6106,10 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
                 Stream.runHead,
                 Effect.map(Option.getOrThrow),
               ),
+              attention: client[WS_METHODS.subscribeZeropsAttention]({}).pipe(
+                Stream.runHead,
+                Effect.map(Option.getOrThrow),
+              ),
             },
             { concurrency: "unbounded" },
           ),
@@ -6112,6 +6122,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       );
 
       assert.deepEqual(snapshots.lifecycle, scene.lifecycle);
+      assert.deepEqual(snapshots.attention, FIXTURE_ATTENTION);
       // The agent rows exactly as the scene has them, and the two default
       // logins they are: a fixture keeps no other login.
       assert.deepEqual(

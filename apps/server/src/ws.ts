@@ -156,6 +156,7 @@ import serverPackageJson from "../package.json" with { type: "json" };
 import { CrewEngine } from "./zerops/crew/CrewEngine.ts";
 import { registerCrewRpc } from "./zerops/crew/registerCrewRpc.ts";
 import { registerZeropsRpc } from "./zerops/registerZeropsRpc.ts";
+import { ZeropsMateAttention } from "./zerops/ZeropsMateAttention.ts";
 import * as AnalyticsService from "./telemetry/AnalyticsService.ts";
 import * as UsageLimitSources from "./usage/UsageLimitSources.ts";
 import * as UsageService from "./usage/UsageService.ts";
@@ -664,6 +665,7 @@ const makeWsRpcLayer = (
             );
       const zeropsSignOut = yield* ZeropsSignOutModule.ZeropsSignOut;
       const zeropsBrowserStream = yield* ZeropsBrowserStreamModule.ZeropsBrowserStream;
+      const zeropsMateAttention = yield* ZeropsMateAttention;
       const zeropsCli = yield* ZeropsCli;
       const zeropsMateUpdate = yield* ZeropsMateUpdate;
       const zeropsDataConsole = yield* ZeropsDataConsoleModule.ZeropsDataConsole;
@@ -2264,6 +2266,7 @@ const makeWsRpcLayer = (
           zeropsSignOut,
           zeropsLogins,
           zeropsBrowserStream,
+          zeropsMateAttention,
           zeropsCli,
           zeropsMateUpdate,
           isZeropsEnvironment: isZeropsEnvironment(config),

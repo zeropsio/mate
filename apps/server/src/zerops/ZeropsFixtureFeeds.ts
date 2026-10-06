@@ -1,11 +1,12 @@
 import type {
+  MateAttention,
   ThreadId,
   ZeropsAgentAuthSnapshot,
   ZeropsAgentId,
   ZeropsAgentLoginState,
   ZeropsLifecycle as ZeropsLifecycleSnapshot,
 } from "@t3tools/contracts";
-import { ZeropsAgentLoginError } from "@t3tools/contracts";
+import { EnvironmentId, ZeropsAgentLoginError } from "@t3tools/contracts";
 import {
   loadShowcaseScene,
   SHOWCASE_SCENE_IDS,
@@ -47,6 +48,7 @@ import * as ZeropsCliModule from "./ZeropsCli.ts";
 import * as ZeropsDataConsoleModule from "./ZeropsDataConsole.ts";
 import * as ZeropsLifecycle from "./ZeropsLifecycle.ts";
 import * as ZeropsLoginsModule from "./ZeropsLogins.ts";
+import * as ZeropsMateAttentionModule from "./ZeropsMateAttention.ts";
 import * as ZeropsSignOutModule from "./ZeropsSignOut.ts";
 import * as ZeropsMateUpdateModule from "./ZeropsMateUpdate.ts";
 
@@ -516,6 +518,21 @@ const loginsFixtureLayer = Layer.effect(
   ZeropsLoginsModule.unavailable,
 );
 
+/**
+ * A fixture scene's attention: one fixed value, nothing at work or waiting. A scene follows no
+ * chats of its own, and a revision that never moves claims nothing it did not see.
+ */
+export const FIXTURE_ATTENTION: MateAttention = {
+  source: { environmentId: EnvironmentId.make("fixture"), incarnation: "fixture", revision: 0 },
+  mainThreadId: null,
+  lastThreadId: null,
+  working: 0,
+  waiting: 0,
+  results: [],
+  questions: [],
+  truncated: false,
+};
+
 export const makeFixtureZeropsLayer = (scene: ShowcaseScene) => {
   const auth = agentAuthLayer(scene);
   const login = agentLoginLayer(scene);
@@ -534,6 +551,13 @@ export const makeFixtureZeropsLayer = (scene: ShowcaseScene) => {
     signOutFixtureLayer,
     loginsFixtureLayer,
     browserStreamLayer(),
+    Layer.succeed(
+      ZeropsMateAttentionModule.ZeropsMateAttention,
+      ZeropsMateAttentionModule.ZeropsMateAttention.of({
+        current: Effect.succeed(FIXTURE_ATTENTION),
+        changes: Stream.make(FIXTURE_ATTENTION),
+      }),
+    ),
     zeropsCliFixtureLayer(),
     zeropsMateUpdateFixtureLayer(),
     dataConsoleLayer(),
