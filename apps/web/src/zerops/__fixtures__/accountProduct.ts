@@ -19,7 +19,6 @@ import {
 import type { PlatformWatchSocket } from "@t3tools/client-runtime/zerops/data";
 import type { Instant } from "@t3tools/client-runtime/zerops/data";
 import type { Link } from "@t3tools/client-runtime/zerops/environments";
-import { selectLocationChoice, type ZeropsCellAdapter } from "@t3tools/client-runtime/zerops/data";
 import { candidatesNotice, heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import type { FakeDatastream } from "@t3tools/client-runtime/zerops/testing";
 import * as Effect from "effect/Effect";
@@ -36,19 +35,16 @@ import { useZeropsSession } from "../ZeropsSessionProvider";
 import { useNowMs } from "../useNowMs";
 import { useZeropsCandidates } from "../useZeropsCandidates";
 import { ZeropsInventoryProvider } from "../ZeropsInventoryProvider";
-import { useKnown, useZeropsData, useZeropsDataInterest } from "../zeropsDataContext";
+import { useZeropsData, useZeropsDataInterest } from "../zeropsDataContext";
 import { harnessRuntime } from "./harnessRuntime";
 
 export function AccountProduct({
   datastream,
-  cellAdapter,
   overRest,
   demandedProjects = [],
   children,
 }: {
   readonly datastream: FakeDatastream;
-  /** Where the runtime's cells read; every cell is unavailable without one. */
-  readonly cellAdapter?: ZeropsCellAdapter;
   /** Cells, commands and token writes through the harness's REST platform (`harnessRuntime`). */
   readonly overRest?: boolean;
   readonly children: ReactNode;
@@ -56,7 +52,7 @@ export function AccountProduct({
 }) {
   const [registry] = useState(() => AtomRegistry.make());
   const [makeRuntime] = useState(() =>
-    harnessRuntime(datastream, cellAdapter, overRest === undefined ? {} : { overRest }),
+    harnessRuntime(datastream, overRest === undefined ? {} : { overRest }),
   );
   return createElement(RegistryContext, {
     value: registry,
@@ -181,22 +177,6 @@ export function ProjectNames() {
     .projects.map(({ name }) => name)
     .join(", ");
   return `projects: ${names}`;
-}
-
-/** What the organization's locations demand shows, as `locations: <state>[ <names>]`. */
-export function OrganizationLocations({ organizationId }: { readonly organizationId: string }) {
-  const { runtime, organizationRef } = useZeropsData();
-  const request = useMemo(
-    () => ({
-      kind: "locations" as const,
-      account: runtime.scope,
-      organization: organizationRef(organizationId),
-    }),
-    [organizationId, organizationRef, runtime.scope],
-  );
-  const shown = useKnown(runtime.cells.known(request));
-  const names = selectLocationChoice(shown).locations.map(({ name }) => name);
-  return [`locations: ${shown.state}`, ...names].join(" ");
 }
 
 /** How the menu's Mate tree names the listing it is drawn from, as the sidebar names it. */

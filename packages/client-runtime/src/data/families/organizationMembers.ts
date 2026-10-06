@@ -50,5 +50,6 @@ export const organizationMembersFamily: FamilySpec<"organizationMembers"> = {
   },
 };
 
-export const membersScope = (orgId: string): ScopeKey =>
-  scopeOf(organizationMembersFamily, orgId, orgId);
+/** The members of `clientId` — by default the organization shown — read under `orgId`'s link. */
+export const membersScope = (orgId: string, clientId = orgId): ScopeKey =>
+  scopeOf(organizationMembersFamily, orgId, clientId);

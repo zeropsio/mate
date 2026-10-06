@@ -6,6 +6,7 @@
  * @module data
  */
 export { observeAccount, type AccountObservation } from "./account.ts";
+export type { ZeropsWire } from "./adapters/zerops.ts";
 export type { DetailDemand } from "./demand.ts";
 export { makeAccountStore, type AccountStore, type Projection } from "./store.ts";
 export {
@@ -59,6 +60,8 @@ export {
   organizationLocations,
   organizationMembers,
   servicesAgents,
+  type LocationsRead,
+  type MembersRead,
   type SampledRead,
 } from "./projections/sampled.ts";
 export { publicAccess, type PublicAccessView } from "./projections/publicAccess.ts";

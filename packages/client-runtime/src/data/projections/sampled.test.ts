@@ -14,7 +14,7 @@ import {
   organizationLocations,
   organizationMembers,
   servicesAgents,
-  type SampledRead,
+  type MembersRead,
 } from "./sampled.ts";
 
 const apply = (state: AccountState, inputs: ReadonlyArray<AccountInput>) =>
@@ -57,22 +57,22 @@ describe("a sampled read, as a screen reads it", () => {
   it.each<{
     readonly name: string;
     readonly inputs: ReadonlyArray<AccountInput>;
-    readonly expected: SampledRead<ReadonlyArray<unknown>>;
+    readonly expected: MembersRead;
   }>([
     {
       name: "nothing demanded: loading, no value",
       inputs: [],
-      expected: { value: undefined, status: "loading", settled: false, refused: false },
+      expected: { members: [], status: "loading", settled: false, refused: false },
     },
     {
       name: "being read the first time: loading",
       inputs: begun(MEMBERS),
-      expected: { value: undefined, status: "loading", settled: false, refused: false },
+      expected: { members: [], status: "loading", settled: false, refused: false },
     },
     {
       name: "answered: ready and settled",
       inputs: [...begun(MEMBERS), ...answered(MEMBERS, "organizationMembers", [ANNA])],
-      expected: { value: [ANNA], status: "ready", settled: true, refused: false },
+      expected: { members: [ANNA], status: "ready", settled: true, refused: false },
     },
     {
       name: "read again on its cadence: its value shown, not settled",
@@ -81,12 +81,12 @@ describe("a sampled read, as a screen reads it", () => {
         ...answered(MEMBERS, "organizationMembers", [ANNA]),
         revalidating(MEMBERS),
       ],
-      expected: { value: [ANNA], status: "ready", settled: false, refused: false },
+      expected: { members: [ANNA], status: "ready", settled: false, refused: false },
     },
     {
       name: "its read lost on the way, nothing read: failed, retried",
       inputs: [...begun(MEMBERS), failed(MEMBERS, "transient")],
-      expected: { value: undefined, status: "failed", settled: false, refused: false },
+      expected: { members: [], status: "failed", settled: false, refused: false },
     },
     {
       name: "a revalidation lost on the way: the value stays, not settled",
@@ -96,16 +96,16 @@ describe("a sampled read, as a screen reads it", () => {
         revalidating(MEMBERS),
         failed(MEMBERS, "transient"),
       ],
-      expected: { value: [ANNA], status: "ready", settled: false, refused: false },
+      expected: { members: [ANNA], status: "ready", settled: false, refused: false },
     },
     {
       name: "refused by its owner: failed for good",
       inputs: [...begun(MEMBERS), failed(MEMBERS, "authoritative-denial")],
-      expected: { value: undefined, status: "failed", settled: false, refused: true },
+      expected: { members: [], status: "failed", settled: false, refused: true },
     },
   ])("$name", ({ inputs, expected }) => {
     const reads = readsOfState(apply(emptyAccount, inputs));
-    expect(organizationMembers.derive(reads, ORG)).toEqual(expected);
+    expect(organizationMembers.derive(reads, { orgId: ORG, clientId: ORG })).toEqual(expected);
   });
 
   it("reads an organization's locations the same way, under their own scope", () => {
@@ -114,11 +114,11 @@ describe("a sampled read, as a screen reads it", () => {
     const reads = readsOfState(
       apply(emptyAccount, [...begun(scope), ...answered(scope, "organizationLocations", [place])]),
     );
-    expect(organizationLocations.derive(reads, ORG)).toMatchObject({
-      value: [place],
+    expect(organizationLocations.derive(reads, ORG)).toEqual({
+      locations: [place],
       status: "ready",
     });
-    expect(organizationMembers.derive(reads, ORG).status).toBe("loading");
+    expect(organizationMembers.derive(reads, { orgId: ORG, clientId: ORG }).status).toBe("loading");
   });
 
   it("answers each service's agents apart: read, failed, and not read yet", () => {

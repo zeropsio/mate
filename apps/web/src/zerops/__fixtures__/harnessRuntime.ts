@@ -9,7 +9,6 @@
 import {
   makeZeropsDataAdapter,
   makeZeropsDataRuntime,
-  type ZeropsCellAdapter,
   type ZeropsDataAdapter,
 } from "@t3tools/client-runtime/zerops/data";
 import type { FakeDatastream } from "@t3tools/client-runtime/zerops/testing";
@@ -22,13 +21,11 @@ import type { MakeZeropsDataRuntime } from "../ZeropsDataProvider";
 import { tabClock } from "../tabClock";
 
 /**
- * `cellAdapter` is where the runtime's cells read; `overRest` reads them, runs its commands and
- * hears its token writes through the harness's REST platform instead, as the browser's REST
- * adapter does, so a test counts what reached the platform.
+ * `overRest` reads the runtime's cells and runs its commands through the harness's REST platform,
+ * as the browser's REST adapter does, so a test counts what reached the platform.
  */
 export function harnessRuntime(
   datastream: FakeDatastream,
-  cellAdapter?: ZeropsCellAdapter,
   options: { readonly overRest?: boolean } = {},
 ): MakeZeropsDataRuntime {
   let opaque = 0;
@@ -73,7 +70,6 @@ export function harnessRuntime(
         scope,
         adapter: {
           ...datastream.adapter,
-          ...(cellAdapter === undefined ? {} : { cells: cellAdapter }),
           ...rest,
         },
         atomRegistry: registry,

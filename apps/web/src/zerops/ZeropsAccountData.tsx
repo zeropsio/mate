@@ -15,6 +15,7 @@ import {
   repairZeropsSession,
   accountReadsAtom,
   type ProjectServices,
+  type AccountObservation,
   type AccountReads,
   type BuildLogRegistry,
   type DetailDemand,
@@ -36,9 +37,16 @@ export interface AccountData extends AccountReads {
   readonly retry: () => void;
   /** `null` until the mount has made them. */
   readonly logs: BuildLogRegistry | null;
+  /** A detail held until its read settles: `true` once read, `false` once it failed or was refused. */
+  readonly readDetail: AccountObservation["readDetail"];
+  /** Our own write changed a sampled detail: it is read again. */
+  readonly revalidate: AccountObservation["revalidate"];
+  /** The person's "try again" on one detail. */
+  readonly retryDetail: AccountObservation["retryDetail"];
 }
 
-const AccountDataContext = createContext<AccountData | null>(null);
+/** The mounted account's data; a test mounts its own account's here. */
+export const AccountDataContext = createContext<AccountData | null>(null);
 
 export function ZeropsAccountData({ children }: { readonly children: ReactNode }) {
   const { client, status, activeOrganization } = useZeropsSession();
@@ -68,6 +76,9 @@ export function ZeropsAccountData({ children }: { readonly children: ReactNode }
       data: store.data,
       orgId,
       demandDetail: observation.demandDetail,
+      readDetail: observation.readDetail,
+      revalidate: observation.revalidate,
+      retryDetail: observation.retryDetail,
       retry: observation.retry,
       logs,
     }),

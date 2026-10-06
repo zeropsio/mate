@@ -46,25 +46,59 @@ export function sampledRead<F extends Family>(
   };
 }
 
-/** An organization's members, read for its official HQ's anchor and for whom HQ does not name. */
+/**
+ * An organization's members as a screen names people from them: nobody until a read answered —
+ * `status` says whether one is under way, failed or refused.
+ */
+export interface MembersRead extends Omit<SampledRead<unknown>, "value"> {
+  readonly members: FamilyValues["organizationMembers"];
+}
+
+const NO_MEMBERS: FamilyValues["organizationMembers"] = [];
+
+/**
+ * An organization's members — by default the one shown — read for its official HQ's anchor and for
+ * whom HQ does not name.
+ */
 export const organizationMembers: Projection<
-  string,
-  SampledRead<FamilyValues["organizationMembers"]>
+  { readonly orgId: string; readonly clientId: string },
+  MembersRead
 > = {
   name: "organizationMembers",
-  keyOf: (orgId) => orgId,
-  derive: (read, orgId) => sampledRead(read, "organizationMembers", membersScope(orgId), orgId),
+  keyOf: ({ orgId, clientId }) => `${orgId}/${clientId}`,
+  derive: (read, { orgId, clientId }) => {
+    const { value, ...standing } = sampledRead(
+      read,
+      "organizationMembers",
+      membersScope(orgId, clientId),
+      clientId,
+    );
+    return { members: value ?? NO_MEMBERS, ...standing };
+  },
   equals: sameValue,
 };
 
+/** The places a new project may be put in: none to offer until a read answered them. */
+export interface LocationsRead {
+  readonly status: SampledRead<unknown>["status"];
+  readonly locations: FamilyValues["organizationLocations"];
+}
+
+const NO_LOCATIONS: FamilyValues["organizationLocations"] = [];
+
 /** Where the organization may put a new project. */
-export const organizationLocations: Projection<
-  string,
-  SampledRead<FamilyValues["organizationLocations"]>
-> = {
+export const organizationLocations: Projection<string, LocationsRead> = {
   name: "organizationLocations",
   keyOf: (orgId) => orgId,
-  derive: (read, orgId) => sampledRead(read, "organizationLocations", locationsScope(orgId), orgId),
+  derive: (read, orgId) => {
+    const { value, status } = sampledRead(
+      read,
+      "organizationLocations",
+      locationsScope(orgId),
+      orgId,
+    );
+    return { status, locations: value ?? NO_LOCATIONS };
+  },
   equals: sameValue,
 };
 

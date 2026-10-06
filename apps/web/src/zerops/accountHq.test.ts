@@ -8,16 +8,14 @@ import {
   AccountEpoch,
   makeZeropsApiOrigin,
   ZeropsAccountId,
-  ZeropsOrganizationId,
   type AccountScope,
-  type OrganizationRef,
 } from "@t3tools/client-runtime/zerops/data";
 import { hqAnchorName } from "@t3tools/client-runtime/zerops/hq";
 import { AtomRegistry } from "effect/unstable/reactivity";
 
 import { hqStructureAtom } from "~/state/zerops";
 
-import { makeMemberCells } from "./__fixtures__/memberCells";
+import { LAYER_TURNS_MS, makeMemberAccount } from "./__fixtures__/sampledAccount";
 import {
   accountHqApi,
   nextHqStanding,
@@ -31,6 +29,7 @@ import {
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
 import { keepHqVerdict } from "./hqVerdict";
 import { keptHqSessions } from "./keptSessions";
+import { AccountDataContext } from "./ZeropsAccountData";
 import { ZeropsDataContext, type ZeropsDataContextValue } from "./zeropsDataContext";
 import { ZeropsSessionContext } from "./sessionContext";
 import type { ZeropsSessionValue } from "./ZeropsSessionProvider";
@@ -228,11 +227,6 @@ describe("useAccountHq — the official HQ this page holds", () => {
     },
     epoch: AccountEpoch.make(1),
   };
-  const organizationRef = (organizationId: string): OrganizationRef => ({
-    kind: "organization",
-    account: scope.account,
-    organizationId: ZeropsOrganizationId.make(organizationId),
-  });
 
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -258,17 +252,16 @@ describe("useAccountHq — the official HQ this page holds", () => {
       unavailableSince,
     });
     let reads = 0;
-    const cells = await makeMemberCells({
-      scope,
-      organization: organizationRef(clientId),
+    const account = makeMemberAccount({
+      registry,
+      orgId: clientId,
       members: async () => {
         reads += 1;
         return members;
       },
     });
     const data = {
-      runtime: { scope, cells },
-      organizationRef,
+      runtime: { scope },
     } as unknown as ZeropsDataContextValue;
     const seen: Array<AccountHq> = [];
     function Probe() {
@@ -280,9 +273,21 @@ describe("useAccountHq — the official HQ this page holds", () => {
         createElement(
           RegistryContext.Provider,
           { value: registry },
-          createElement(ZeropsDataContext.Provider, { value: data }, createElement(Probe)),
+          createElement(
+            ZeropsDataContext.Provider,
+            { value: data },
+            createElement(
+              AccountDataContext.Provider,
+              { value: account.value },
+              createElement(Probe),
+            ),
+          ),
         ),
       );
+    });
+    // The account's data layer runs on its own runtime: its first read lands a few turns later.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, LAYER_TURNS_MS));
     });
     return { reads: () => reads, last: () => seen.at(-1)! };
   }
@@ -290,14 +295,14 @@ describe("useAccountHq — the official HQ this page holds", () => {
   it("keeps the official HQ effect identity when the anchor still names the same address and API", async () => {
     const owner = { account: scope.account, clientId: "org-stable" };
     const endpoint = { projectId: "P_STABLE", address: "https://stable.example.test" };
-    const cells = await makeMemberCells({
-      scope,
-      organization: organizationRef(owner.clientId),
+    const registry = AtomRegistry.make();
+    const account = makeMemberAccount({
+      registry,
+      orgId: owner.clientId,
       members: async () => [anchor(endpoint.projectId, endpoint.address)],
     });
     const data = {
-      runtime: { scope, cells },
-      organizationRef,
+      runtime: { scope },
     } as unknown as ZeropsDataContextValue;
     const session = {
       client: { accountEpoch: "stable-account" },
@@ -313,14 +318,26 @@ describe("useAccountHq — the official HQ this page holds", () => {
       tree = create(
         createElement(
           RegistryContext.Provider,
-          { value: AtomRegistry.make() },
+          { value: registry },
           createElement(
             ZeropsDataContext.Provider,
             { value: data },
-            createElement(ZeropsSessionContext.Provider, { value: session }, createElement(Probe)),
+            createElement(
+              ZeropsSessionContext.Provider,
+              { value: session },
+              createElement(
+                AccountDataContext.Provider,
+                { value: account.value },
+                createElement(Probe),
+              ),
+            ),
           ),
         ),
       );
+    });
+    // The account's data layer runs on its own runtime: its first read lands a few turns later.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, LAYER_TURNS_MS));
     });
     const first = seen.find((hq) => hq !== null);
     expect(first).toBeDefined();
@@ -403,7 +420,7 @@ describe("useAccountHq — the official HQ this page holds", () => {
         .catch(() => undefined);
     });
     await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, LAYER_TURNS_MS));
     });
     expect([hq.reads(), hq.last().hq]).toEqual([
       1,
@@ -420,7 +437,7 @@ describe("useAccountHq — the official HQ this page holds", () => {
       Date.now() - 11 * 60_000,
     );
     await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, LAYER_TURNS_MS));
     });
     // Reconnecting the stream must not silently rediscover or change the official HQ.
     expect([hq.reads(), hq.last().hq]).toEqual([0, { kind: "official", ...HQ }]);
@@ -438,11 +455,6 @@ describe("useAccountHq — the HQ whose session the account kept, verified behin
     },
     epoch: AccountEpoch.make(1),
   };
-  const organizationRef = (organizationId: string): OrganizationRef => ({
-    kind: "organization",
-    account: scope.account,
-    organizationId: ZeropsOrganizationId.make(organizationId),
-  });
   const KEPT = { projectId: "P_KEPT", address: "https://kept.example.test" };
 
   beforeEach(() => {
@@ -465,9 +477,10 @@ describe("useAccountHq — the HQ whose session the account kept, verified behin
   async function pending(clientId: string) {
     let answer: (members: ReadonlyArray<ZeropsOrganizationMember>) => void = () => undefined;
     let refuse: (cause: unknown) => void = () => undefined;
-    const cells = await makeMemberCells({
-      scope,
-      organization: organizationRef(clientId),
+    const registry = AtomRegistry.make();
+    const account = makeMemberAccount({
+      registry,
+      orgId: clientId,
       members: () =>
         new Promise((resolve, reject) => {
           answer = resolve;
@@ -475,8 +488,7 @@ describe("useAccountHq — the HQ whose session the account kept, verified behin
         }),
     });
     const data = {
-      runtime: { scope, cells },
-      organizationRef,
+      runtime: { scope },
     } as unknown as ZeropsDataContextValue;
     const seen: Array<AccountHq> = [];
     function Probe() {
@@ -487,23 +499,35 @@ describe("useAccountHq — the HQ whose session the account kept, verified behin
       create(
         createElement(
           RegistryContext.Provider,
-          { value: AtomRegistry.make() },
-          createElement(ZeropsDataContext.Provider, { value: data }, createElement(Probe)),
+          { value: registry },
+          createElement(
+            ZeropsDataContext.Provider,
+            { value: data },
+            createElement(
+              AccountDataContext.Provider,
+              { value: account.value },
+              createElement(Probe),
+            ),
+          ),
         ),
       );
+    });
+    // The account's data layer runs on its own runtime: its first read lands a few turns later.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, LAYER_TURNS_MS));
     });
     return {
       last: () => seen.at(-1)!,
       answer: async (members: ReadonlyArray<ZeropsOrganizationMember>) => {
         await act(async () => {
           answer(members);
-          await new Promise((resolve) => setTimeout(resolve, 0));
+          await new Promise((resolve) => setTimeout(resolve, LAYER_TURNS_MS));
         });
       },
       refuse: async (cause: unknown) => {
         await act(async () => {
           refuse(cause);
-          await new Promise((resolve) => setTimeout(resolve, 0));
+          await new Promise((resolve) => setTimeout(resolve, LAYER_TURNS_MS));
         });
       },
     };
@@ -598,7 +622,7 @@ describe("useAccountHq — the HQ whose session the account kept, verified behin
     const api = accountHqApi(noDoorClient(902), "org-kept-w", KEPT);
     await api.structure();
     const created = api.createApp("Acme");
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, LAYER_TURNS_MS));
     expect(calls.map((call) => `${call.method} ${new URL(call.url).pathname}`)).toEqual([
       "GET /api/structure",
     ]);
@@ -629,7 +653,7 @@ describe("useAccountHq — the HQ whose session the account kept, verified behin
     const calls = heard();
     await hq.answer([anchor("P_NEW", "https://new.example.test")]);
     await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, LAYER_TURNS_MS));
     });
     expect(calls).toContainEqual({
       method: "DELETE",
@@ -813,7 +837,7 @@ describe("accountHqApi — HQ's session, kept as the Mates' sessions are", () =>
 
     closeAccountLifetime();
     // The close ends the account's sessions once no other tab holds it open.
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, LAYER_TURNS_MS));
 
     expect(calls.at(-1)).toEqual({
       method: "DELETE",
@@ -838,11 +862,6 @@ describe("useAccountHq — no official HQ, kept too", () => {
     },
     epoch: AccountEpoch.make(1),
   };
-  const organizationRef = (organizationId: string): OrganizationRef => ({
-    kind: "organization",
-    account: scope.account,
-    organizationId: ZeropsOrganizationId.make(organizationId),
-  });
 
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -851,17 +870,17 @@ describe("useAccountHq — no official HQ, kept too", () => {
   /** One load of `useAccountHq` for `clientId`, its member list `members()` as each read answers. */
   async function loaded(clientId: string, members: () => ReadonlyArray<ZeropsOrganizationMember>) {
     let reads = 0;
-    const cells = await makeMemberCells({
-      scope,
-      organization: organizationRef(clientId),
+    const registry = AtomRegistry.make();
+    const account = makeMemberAccount({
+      registry,
+      orgId: clientId,
       members: async () => {
         reads += 1;
         return members();
       },
     });
     const data = {
-      runtime: { scope, cells },
-      organizationRef,
+      runtime: { scope },
     } as unknown as ZeropsDataContextValue;
     const seen: Array<AccountHq> = [];
     function Probe() {
@@ -872,10 +891,22 @@ describe("useAccountHq — no official HQ, kept too", () => {
       create(
         createElement(
           RegistryContext.Provider,
-          { value: AtomRegistry.make() },
-          createElement(ZeropsDataContext.Provider, { value: data }, createElement(Probe)),
+          { value: registry },
+          createElement(
+            ZeropsDataContext.Provider,
+            { value: data },
+            createElement(
+              AccountDataContext.Provider,
+              { value: account.value },
+              createElement(Probe),
+            ),
+          ),
         ),
       );
+    });
+    // The account's data layer runs on its own runtime: its first read lands a few turns later.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, LAYER_TURNS_MS));
     });
     return { reads: () => reads, last: () => seen.at(-1)! };
   }
@@ -903,7 +934,7 @@ describe("useAccountHq — no official HQ, kept too", () => {
       hq.last().reread();
     });
     await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, LAYER_TURNS_MS));
     });
     const official = { kind: "official", projectId: "P_HQ", address: "https://hq.example.test" };
     expect([hq.reads(), hq.last().hq]).toEqual([2, official]);

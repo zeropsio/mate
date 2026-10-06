@@ -38,8 +38,6 @@ import {
   zeropsThrowawayPlatform,
 } from "@t3tools/client-runtime/zerops/doorThrowaway";
 import type { ZeropsApiClient, ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
-import type { MembersCellRequest } from "@t3tools/client-runtime/zerops/data";
-import * as Effect from "effect/Effect";
 import { useCallback, useContext, useEffect, useMemo, useSyncExternalStore } from "react";
 
 import { appBasePath } from "~/basePath";
@@ -59,6 +57,7 @@ import {
 } from "./hqVerdict";
 import { endHqSession, keptHqSessions } from "./keptSessions";
 import { useZeropsOrganizationMembersRead } from "./useZeropsMateOwners";
+import { useAccountDataOptional } from "./ZeropsAccountData";
 import { whenShown } from "./whenShown";
 import { ZeropsDataContext } from "./zeropsDataContext";
 import { useZeropsSessionOptional } from "./ZeropsSessionProvider";
@@ -134,16 +133,12 @@ export function useAccountHq(clientId: string | undefined): AccountHq {
     [kept, named, settled, trusted],
   );
   const admins = useMemo(() => ownersAndAdmins(members), [members]);
+  const revalidate = useAccountDataOptional()?.revalidate;
   const reread = useCallback(() => {
-    if (data === null || owner === undefined) return;
-    const request: MembersCellRequest = {
-      kind: "members",
-      account: data.runtime.scope,
-      organization: data.organizationRef(owner.clientId),
-    };
-    Effect.runFork(data.runtime.cells.invalidate(request));
+    if (owner === undefined) return;
+    revalidate?.({ family: "organizationMembers", ownerId: owner.clientId });
     forgetNoHqVerdict(owner);
-  }, [data, owner]);
+  }, [owner, revalidate]);
   return {
     status: kept !== undefined || (!settled && trusted !== undefined) ? "ready" : status,
     hq,
