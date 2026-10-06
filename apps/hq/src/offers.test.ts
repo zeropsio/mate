@@ -299,3 +299,48 @@ describe("a Basic user opens a Mate: HQ's offer and the door agree", () => {
     );
   });
 });
+
+describe("new environment offers", () => {
+  it.each([
+    { who: "owner", projects: [], stage: true, production: true },
+    {
+      who: "owner",
+      projects: [{ project_id: "P_STAGE", kind: "devstage" }],
+      stage: false,
+      production: true,
+    },
+    {
+      who: "owner",
+      projects: [{ project_id: "P_PROD", kind: "production" }],
+      stage: true,
+      production: false,
+    },
+    {
+      who: "owner",
+      projects: [{ project_id: "gone", kind: "production" }],
+      stage: true,
+      production: true,
+    },
+    {
+      who: "dev",
+      projects: [{ project_id: "P_MATE", kind: "mate" }],
+      stage: true,
+      production: true,
+    },
+    { who: "reader", projects: APP, stage: false, production: false },
+    { who: "suspended", projects: [], stage: false, production: false },
+    { who: "nobody", projects: APP, stage: false, production: false },
+  ])("$who: slot and attach rules decide the offer", ({ who, projects, stage, production }) => {
+    const facts = {
+      ...ORG,
+      freshness: "cached",
+      members: ORG.members.map((member) => ({
+        ...member,
+        canCreateProjects: member.userId === "dev",
+      })),
+    } as const;
+    const offered = appOffers(who, projects, facts);
+    expect(offered.add_stage?.allow).toBe(stage);
+    expect(offered.add_production?.allow).toBe(production);
+  });
+});

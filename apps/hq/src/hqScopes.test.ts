@@ -27,7 +27,7 @@ import { Releases } from "./releases.ts";
 import { Roles, type OrgView } from "./roles.ts";
 import { Structure, type StructureRead, type StructureSource } from "./structure.ts";
 import { memoryStore, overviewOf, mainAt } from "../test/harness/overviews.ts";
-import { ZeropsRefused } from "./zerops/api.ts";
+import { ZeropsRefused, ZeropsUnavailable } from "./zerops/api.ts";
 import * as Socket from "effect/unstable/socket/Socket";
 import { liveSocketsLayer, serveHqSocket } from "./stream.ts";
 
@@ -61,8 +61,10 @@ const json = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 const fixture = Effect.gen(function* () {
   let org = facts;
   let sourceRefused = false;
+  let sourceUnavailable = false;
   let recentRefused = false;
   let recentReads = 0;
+  let savedSigners: Readonly<Record<string, string>> | undefined;
   let deleted = false;
   let corrupt = false;
   let appName = "App";
@@ -148,6 +150,8 @@ const fixture = Effect.gen(function* () {
   let rolesGate: Effect.Effect<void> = Effect.void;
   const roleView = Effect.gen(function* () {
     rolesRead += 1;
+    if (sourceUnavailable)
+      return yield* new ZeropsUnavailable({ operation: "organization", message: "Unavailable" });
     if (sourceRefused)
       return yield* new ZeropsRefused({
         operation: "organization",
@@ -227,6 +231,7 @@ const fixture = Effect.gen(function* () {
                     name: "Project",
                     kind: "mate",
                     mate: {
+                      ...(savedSigners === undefined ? {} : { signers: savedSigners }),
                       face: corrupt ? 7 : "face",
                       madeBy: "owner",
                       standupRequestedBy: null,
@@ -370,6 +375,9 @@ const fixture = Effect.gen(function* () {
       return { ...client, queue, take, subscribe };
     });
   return {
+    savedSigners: (value: Readonly<Record<string, string>>) => {
+      savedSigners = value;
+    },
     enableEnvironments: () => {
       environmentsEnabled = true;
     },
@@ -399,6 +407,9 @@ const fixture = Effect.gen(function* () {
       }),
       PubSub.publish(detailsChanged, 1),
     ),
+    unavailableSource: () => {
+      sourceUnavailable = true;
+    },
     refuseSource: () => {
       sourceRefused = true;
     },
@@ -496,6 +507,205 @@ const resetOf = (message: ScopeOutput) => {
 };
 
 describe("revisioned HQ values", () => {
+  it.effect("person owner, viewer signer, avatars and candidates stay isolated at delivery", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const f = yield* fixture;
+        yield* f.roles({
+          ...facts,
+          members: [
+            ...facts.members.map((member) => ({ ...member, avatarUrl: `avatar-${member.userId}` })),
+            { ...facts.members[0]!, userId: "token", clientUserId: "C-token", kind: "token" },
+            {
+              ...facts.members[0]!,
+              userId: "invited",
+              clientUserId: "C-invited",
+              status: "INVITED",
+            },
+          ],
+          projects: facts.projects.map((project) => ({
+            ...project,
+            userRoles: [...project.userRoles, { clientUserId: "C-signer", roleCode: "BASIC_USER" }],
+          })),
+        });
+        const link = yield* f.overviews.connect("P");
+        yield* f.overviews.report("P", link, {
+          type: "overview",
+          full: true,
+          overview: overviewOf({
+            logins: {
+              "claude-code": {
+                signedInBy: "signer",
+                lastSignedInBy: "signer",
+                present: true,
+                token: false,
+              },
+              codex: { signedInBy: "owner", lastSignedInBy: "owner", present: true, token: false },
+            },
+          }),
+        });
+        const owner = yield* f.connect("owner"),
+          signer = yield* f.connect("signer"),
+          reader = yield* f.connect("reader");
+        for (const [client, mine, waits, signers] of [
+          [owner, true, false, { "claude-code": "signer", codex: "owner" }],
+          [signer, false, true, { "claude-code": "signer", codex: "owner" }],
+          [reader, false, false, {}],
+        ] as const) {
+          yield* client.subscribe([{ scope: nav }]);
+          const delivery = resetOf(yield* client.take);
+          yield* client.take;
+          const project = delivery.values.find((value) => value.key === "project:P")!.value as {
+            person: Record<string, unknown>;
+            signers: unknown;
+          };
+          assert.strictEqual(project.person.ownerUserId, "owner");
+          assert.strictEqual(project.person.mine, mine);
+          assert.strictEqual(project.person.waitsOnViewer, waits);
+          assert.deepStrictEqual(project.signers, signers);
+          assert.include(json(delivery.values), '"avatarUrl":"avatar-owner"');
+          if (client === reader) assert.notInclude(json(delivery.values), "avatar-signer");
+        }
+      }),
+    ),
+  );
+  it.effect(
+    "handover candidates are on request, operator-only and never broadcast to another person",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const f = yield* fixture;
+          yield* f.roles({
+            ...facts,
+            members: [
+              ...facts.members.map((member) => ({
+                ...member,
+                avatarUrl: `avatar-${member.userId}`,
+              })),
+              { ...facts.members[0]!, userId: "token", clientUserId: "C-token", kind: "token" },
+              {
+                ...facts.members[0]!,
+                userId: "invited",
+                clientUserId: "C-invited",
+                status: "INVITED",
+              },
+            ],
+          });
+          const owner = yield* f.connect("owner"),
+            reader = yield* f.connect("reader");
+          yield* owner.request({
+            type: "handover-candidates",
+            requestId: "owner-request",
+            projectId: "P",
+          });
+          const candidates = yield* owner.take;
+          assert.strictEqual(candidates.type, "handover-candidates");
+          if (candidates.type === "handover-candidates")
+            assert.deepStrictEqual(
+              candidates.candidates.map((person) => person.userId),
+              ["owner", "reader", "signer"],
+            );
+          assert.strictEqual(yield* Queue.size(reader.queue), 0);
+          yield* reader.request({
+            type: "handover-candidates",
+            requestId: "reader-request",
+            projectId: "P",
+          });
+          const refused = yield* reader.take;
+          assert.strictEqual(refused.type, "handover-candidates-error");
+          assert.notInclude(json(refused), "avatar-signer");
+        }),
+      ),
+  );
+  it.effect("saved agent signer facts are withheld from a reader who cannot operate the Mate", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const f = yield* fixture;
+        f.savedSigners({ "claude-code": "signer", codex: "owner" });
+        const owner = yield* f.connect("owner"),
+          reader = yield* f.connect("reader");
+        yield* owner.subscribe([{ scope: nav }]);
+        yield* reader.subscribe([{ scope: nav }]);
+        assert.include(json(resetOf(yield* owner.take).values), '"claude-code":"signer"');
+        const filtered = resetOf(yield* reader.take);
+        assert.notInclude(json(filtered.values), '"signer"');
+      }),
+    ),
+  );
+  it.effect(
+    "an overview signer change updates project facts and only its newly referenced person",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const f = yield* fixture;
+          yield* f.roles({
+            ...facts,
+            projects: facts.projects.map((project) => ({ ...project, userRoles: [] })),
+          });
+          const link = yield* f.overviews.connect("P");
+          const owner = yield* f.connect("owner"),
+            reader = yield* f.connect("reader");
+          yield* owner.subscribe([{ scope: nav }]);
+          const first = resetOf(yield* owner.take);
+          yield* owner.take;
+          yield* reader.subscribe([{ scope: nav }]);
+          yield* reader.take;
+          yield* reader.take;
+          const reads = yield* Ref.get(f.reads),
+            projections = f.projections(),
+            roles = f.roleReads();
+          yield* f.overviews.report("P", link, {
+            type: "overview",
+            full: true,
+            overview: overviewOf({
+              logins: {
+                codex: { signedInBy: null, lastSignedInBy: "signer", present: false, token: false },
+                github: { signedInBy: "reader", lastSignedInBy: null, present: true, token: false },
+              },
+            }),
+          });
+          const updated = resetOf(yield* owner.take);
+          assert.deepStrictEqual(
+            updated.values.map((value) => value.key),
+            ["project:P", "person:reader", "person:signer"],
+          );
+          const project = updated.values[0]!.value as {
+            person: { ownerUserId: string | null; waitsOnViewer: boolean };
+          };
+          assert.strictEqual(project.person.ownerUserId, "signer");
+          assert.strictEqual(project.person.waitsOnViewer, false);
+          assert.strictEqual(yield* Ref.get(f.reads), reads);
+          assert.strictEqual(f.projections(), projections);
+          assert.strictEqual(f.roleReads(), roles);
+          assert.strictEqual(yield* Queue.size(reader.queue), 0);
+          assert.strictEqual(updated.revision, first.revision + 1);
+        }),
+      ),
+  );
+  it.effect(
+    "handover failure replies distinguish source refusals and outages without exposing candidates",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          for (const unavailable of [false, true]) {
+            const f = yield* fixture;
+            if (unavailable) f.unavailableSource();
+            else f.refuseSource();
+            const client = yield* f.connect("owner");
+            yield* client.request({
+              type: "handover-candidates",
+              requestId: "failure",
+              projectId: "P",
+            });
+            const reply = yield* client.take;
+            assert.strictEqual(reply.type, "handover-candidates-error");
+            if (reply.type === "handover-candidates-error")
+              assert.strictEqual(reply.disposition, unavailable ? "transient" : "refused");
+            assert.notInclude(json(reply), '"candidates"');
+          }
+        }),
+      ),
+  );
   it.effect(
     "a new Mate attention incarnation replaces revision seven with an atomic baseline",
     () =>
@@ -1482,10 +1692,15 @@ describe("revisioned HQ values", () => {
         yield* signer.subscribe([{ scope: nav }]);
         const other = resetOf(yield* signer.take);
         yield* signer.take;
-        assert.include(json(first.values), '"role":"OWNER","mayWrite":true,"mine":true,"unseen":1');
-        assert.include(
-          json(other.values),
-          '"role":"BASIC_USER","mayWrite":true,"mine":false,"unseen":1',
+        assert.deepInclude(
+          (first.values.find((value) => value.key === "project:P")!.value as { person: unknown })
+            .person,
+          { role: "OWNER", mayWrite: true, mine: true, unseen: 1 },
+        );
+        assert.deepInclude(
+          (other.values.find((value) => value.key === "project:P")!.value as { person: unknown })
+            .person,
+          { role: "BASIC_USER", mayWrite: true, mine: false, unseen: 1 },
         );
         yield* owner.request({ type: "seen", projectId: "P", resultIds: ["result", "invented"] });
         assert.include(json(resetOf(yield* owner.take).values), '"unseen":0');

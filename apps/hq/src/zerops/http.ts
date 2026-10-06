@@ -53,6 +53,7 @@ const MemberList = Schema.Struct({
       canCreateProjects: Schema.Boolean,
       user: Schema.Struct({
         fullName: Schema.String,
+        avatarUrl: Schema.optionalKey(Schema.NullOr(Schema.String)),
         email: Schema.optionalKey(Schema.NullOr(Schema.String)),
       }),
     }),
@@ -293,6 +294,7 @@ export const makeZeropsApiHttp = (
           Effect.map(({ value }) =>
             value.clientUserList.map((row): ZeropsMember => ({
               name: row.user.fullName,
+              avatarUrl: row.user.avatarUrl ?? null,
               kind: TOKEN_EMAIL.test(row.user.email ?? "") ? "token" : "person",
               roleCode: row.roleCode,
               status: row.status,

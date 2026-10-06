@@ -19,6 +19,7 @@ import * as Schema from "effect/Schema";
 
 /** A member of the org; an integration token is one too (`kind: "token"`), named by its token name. */
 export interface ZeropsMember {
+  readonly avatarUrl?: string | null;
   readonly name: string;
   readonly kind: "person" | "token";
   readonly roleCode: string;

@@ -2,6 +2,7 @@ import { scopeReset, scopeValue, nextScopeValue, scopeRemoval } from "../test/ha
 import type {
   HqNavigationApp,
   HqNavigationProject,
+  HqNavigationPerson,
   HqAttentionScopeValue,
 } from "@t3tools/shared/hqStream";
 // @effect-diagnostics nodeBuiltinImport:off globalFetch:off globalFetchInEffect:off -- the tests reach Core as a client does: over HTTP and a WebSocket.
@@ -139,7 +140,16 @@ const ORG_VERBS = ["create_app", "rename_app", "delete_app"];
 const ORG_ALLOWED = each(ORG_VERBS, ALLOW);
 const ORG_REFUSED = each(ORG_VERBS, refusedFor("not_structure_writer"));
 const APP_ALLOWED = each(
-  ["read_change", "comment_change", "merge_change", "close_change", "redeploy", "release"],
+  [
+    "read_change",
+    "comment_change",
+    "merge_change",
+    "close_change",
+    "redeploy",
+    "release",
+    "add_stage",
+    "add_production",
+  ],
   ALLOW,
 );
 /** The same where the application has no production: nobody releases it, an org owner neither. */
@@ -993,12 +1003,12 @@ describe("HQ API", () => {
             (value) => value.mate?.face === "sky:flower",
           );
           assert.strictEqual(project.appId, appId);
-          const person = yield* nextScopeValue<{ name: string; clientUserId: string }>(
-            owner,
-            nav,
-            "person:owner",
-          );
-          assert.deepStrictEqual(person, { name: "owner", clientUserId: "C-owner" });
+          const person = yield* nextScopeValue<HqNavigationPerson>(owner, nav, "person:owner");
+          assert.deepStrictEqual(person, {
+            name: "owner",
+            clientUserId: "C-owner",
+            avatarUrl: null,
+          });
           yield* call("PATCH", "/api/mates/P_MATE", { session, body: { face: "rose:seal" } });
           yield* nextScopeValue<HqNavigationProject>(
             owner,

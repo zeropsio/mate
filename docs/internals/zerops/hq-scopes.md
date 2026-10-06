@@ -54,18 +54,25 @@ to sign in manually. PA's HTTP refusal is `HQ_ZEROPS_REFUSED` (`403 zerops_refus
 
 ## Record keys
 
-| Scope      | Keys and values                                                                                                                                                                                                                                                                                                   |
-| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| navigation | `org`: organization offers, unheld project offers, tools, build; `status`: `HqNavigationStatus` with official verdict and health parts; `app:<id>`: `HqNavigationApp`; `project:<id>`: `HqNavigationProject`; `press:<id>`: `HqNavigationPress` including hold duration; `person:<userId>`: name and clientUserId |
-| app-detail | `releases`, `repos`, `recipe:mate`, `recipe:stage`, `recipe:production`, `changes`; decode each using `HqAppDetailFields`                                                                                                                                                                                         |
-| change     | `<repo>:<number>`: existing change detail value                                                                                                                                                                                                                                                                   |
-| discussion | `<repo>:<number>`: `{ comments }`                                                                                                                                                                                                                                                                                 |
-| attention  | `<projectId>`: `HqAttentionScopeValue`, including presence, today's overview and source attention                                                                                                                                                                                                                 |
-| operation  | `<appId>:<operationId>`: durable `OperationRecord` values from `Deploys.operations(appId)`                                                                                                                                                                                                                        |
+| Scope      | Keys and values                                                                                                                                                                                                                                                                                                                                  |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| navigation | `org`: organization offers, unheld project offers, tools, build; `status`: `HqNavigationStatus` with official verdict and health parts; `app:<id>`: `HqNavigationApp`; `project:<id>`: `HqNavigationProject`; `press:<id>`: `HqNavigationPress` including hold duration; `person:<userId>`: `HqNavigationPerson` (name, clientUserId, avatarUrl) |
+| app-detail | `releases`, `repos`, `recipe:mate`, `recipe:stage`, `recipe:production`, `changes`; decode each using `HqAppDetailFields`                                                                                                                                                                                                                        |
+| change     | `<repo>:<number>`: existing change detail value                                                                                                                                                                                                                                                                                                  |
+| discussion | `<repo>:<number>`: `{ comments }`                                                                                                                                                                                                                                                                                                                |
+| attention  | `<projectId>`: `HqAttentionScopeValue`, including presence, today's overview and source attention                                                                                                                                                                                                                                                |
+| operation  | `<appId>:<operationId>`: durable `OperationRecord` values from `Deploys.operations(appId)`                                                                                                                                                                                                                                                       |
 
 Navigation app values include `environments`: stage/production tier, name, sources, order,
 deploy key status and offers, bounded jobs with state, evidence and version handles, environment
 birth, and production release standing. Decode with `HqNavigationApp` / `HqNavigationEnvironment`.
+App `can.add_stage` and `can.add_production` offer the existing create-new-environment flow:
+HQ requires project-creation capability (or a structure writer), then evaluates the existing
+`attach` rule with held `none` for the prospective creator-owned project and the application's
+real projects. This prospective offer is never used as write evidence. A live stage or devstage
+occupies the stage slot, and a live production occupies production; missing Zerops projects free
+the slot. Occupied slots refuse `slot_taken`, including for a writer; replacing remains a separate
+write. Writes still authorize the actual project against fresh Zerops facts.
 The existing per-person `read_change` filter applies: environments are `{ refused: reason }` when
 that person cannot read application changes. Navigation carries no application release catalog,
 recipes, repositories or move destinations; those remain app detail.
@@ -74,8 +81,17 @@ recipes, repositories or move destinations; those remain app detail.
 `until`, kind, optional appId and importProcessId. The client can present elapsed time from the
 received duration; a clock or transport silence never decides whether the press succeeded or ended.
 
-Project `person` facts are already computed for the recipient: role, mayWrite, mine and unseen. Mine uses a project OWNER
-when present, otherwise the current or last Claude signer, then the Codex signer. Unseen is null
+Project `person` facts are already computed for the recipient: role, mayWrite, mine, ownerUserId,
+waitsOnViewer and unseen. `ownerUserId` resolves the project's OWNER to a person; when there is no OWNER grant, it uses the
+current or last Claude signer, then Codex; null when none can be resolved. `mine` compares that
+owner to the viewer. `waitsOnViewer` compares the preferred agent signer to the viewer independently
+of OWNER, using Claude then Codex as today's client does. Each project has a separate `signers`
+value with optional `claude-code` and `codex` user IDs, from current login, last login, then saved
+signer. Signers and signer-derived facts are supplied only to people who may observe the Mate;
+other readers get empty signers and false waitsOnViewer. Saved signers are not duplicated inside
+`mate`. Token identities are excluded. Referenced people carry `avatarUrl` (null when absent).
+A changed overview updates only that project's facts and referenced person values, without
+re-reading structure, roles, recipes or environments. Unseen is null
 until source attention proves result identities and the person may observe the Mate. `seen` takes
 `projectId` and result IDs (attention result `turnId`); HQ accepts only currently published IDs,
 stores acknowledgement by person/project/result, and updates only that person's navigation.
@@ -86,6 +102,13 @@ fences the per-person cache so a recreated Mate cannot inherit an old result ack
 Send `move-offers` with `requestId` and `projectId` when the move dialog opens. The correlated reply
 is `move-offers` with `moveTo`, or `move-offers-error`. Destination enumeration runs only on request;
 the eventual write still checks current permissions.
+
+Send `handover-candidates` with `requestId` and `projectId` when the handover opens. HQ checks
+that the requester is an ACTIVE person and may observe that Mate, before returning every ACTIVE
+org person with userId, clientUserId, name and nullable avatarUrl. Invited/suspended members and
+integration tokens are excluded. Replies are `HqHandoverCandidatesMessage` with `candidates`, or
+`HqHandoverCandidatesError` with `refused` / `transient`. The reply is correlated and delivered
+only to the requesting connection; candidate enumeration is not part of navigation.
 
 An accepted attention report from a restarted Mate's newest link, with a new source environment
 or incarnation, rotates only that Mate's attention scope journal and sends an atomic `scope-reset`.
