@@ -103,7 +103,7 @@ function flowWrite(
 }
 
 /** The writes HQ executes, as its client sends them. */
-export type HqWrites = Pick<HqApi, "commentOnChange"> & FlowWrites;
+export type HqWrites = Pick<HqApi, "commentOnChange" | "renameApp" | "deleteApp"> & FlowWrites;
 
 const FLOW_KINDS: ReadonlySet<string> = new Set(FLOW_WRITE_KINDS.map(({ kind }) => kind));
 
@@ -147,6 +147,25 @@ export function makeHqExecutor(ports: {
           return yield* flowWrite(requestId, api, flow, (call) =>
             Effect.tryPromise({ try: call, catch: faultOf }),
           );
+        }
+        if (intent.kind === "rename-app" || intent.kind === "delete-app") {
+          const api = ports.apiOf(intent.orgId);
+          if (api === null)
+            return yield* Effect.fail<StreamFault>({
+              outcome: "definitive-refusal",
+              message: HQ_NOT_OPEN,
+            });
+          yield* Effect.tryPromise({
+            try: () =>
+              intent.kind === "rename-app"
+                ? api.renameApp(intent.appId, intent.name)
+                : api.deleteApp(intent.appId),
+            catch: faultOf,
+          });
+          return {
+            ...accepted(requestId, intent.appId, [{ family: "hqApp", id: intent.appId }]),
+            outcome: { kind: "succeeded", evidence: "HQ answered the write." },
+          };
         }
         if (intent.kind !== "change-comment")
           return yield* Effect.die(new Error(`HQ executes no ${intent.kind}.`));

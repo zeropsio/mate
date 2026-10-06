@@ -10,6 +10,7 @@ import { changeComment } from "./changeComment.ts";
 import { deleteProject } from "./deleteProject.ts";
 import { enableSubdomainAccess } from "./enableSubdomainAccess.ts";
 import { enableZeropsMate } from "./enableZeropsMate.ts";
+import { renameApp, deleteApp } from "./hqAppWrites.ts";
 import { FLOW_WRITE_KINDS } from "./flowWrites.ts";
 import type { RegisteredOperationKind } from "./kind.ts";
 import { mateRestart } from "./mateRestart.ts";
@@ -43,6 +44,8 @@ export const OPERATION_KINDS = defineOperationKinds([
   updateProjectTags,
   assignMateOwner,
   changeComment,
+  renameApp,
+  deleteApp,
   ...FLOW_WRITE_KINDS,
 ]);
 

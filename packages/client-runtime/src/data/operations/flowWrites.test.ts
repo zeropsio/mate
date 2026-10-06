@@ -137,6 +137,8 @@ function hqOf(answer: () => Promise<unknown>) {
     };
   const writes = {
     commentOnChange: call("commentOnChange"),
+    renameApp: call("renameApp"),
+    deleteApp: call("deleteApp"),
     release: call("release"),
     rollback: call("rollback"),
     redeploy: call("redeploy"),

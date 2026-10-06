@@ -132,6 +132,8 @@ export function makeZeropsExecutor(input: {
           return retag(requestId, intent);
         case "assign-mate-owner":
           return assign(requestId, intent);
+        case "rename-app":
+        case "delete-app":
         case "change-comment":
         case "release":
         case "roll-back":
