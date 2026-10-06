@@ -314,4 +314,105 @@ describe("an account's HQ", () => {
       account.stop();
     }),
   );
+
+  it.live("named again in the same turn it was let go, keeps its one socket", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const account = observeAccount({
+        store,
+        wire: emptyZerops().wire,
+        repairSession: Effect.void,
+      });
+      const hq = hqFixtureWire();
+      account.show("org-a");
+      account.showHq({ orgId: "org-a", wire: hq.wire });
+      yield* turns;
+      // A remount of what names the HQ lets it go and names it again at once.
+      account.showHq(null);
+      account.showHq({ orgId: "org-a", wire: hq.wire });
+      yield* turns;
+      expect(hq.opens()).toBe(1);
+      expect(streamOf(store.state(), hqAppsScope("org-a")).demanded).toBe(true);
+      account.showHq(null);
+      yield* turns;
+      expect(streamOf(store.state(), linkKeys.hq("org-a")).demanded).toBe(false);
+      account.stop();
+    }),
+  );
+});
+
+describe("readDetail", () => {
+  const AGENTS = { family: "serviceAgents", ownerId: "s1" } as const;
+  const observe = (status: number | "lost") => {
+    const store = makeAccountStore(AtomRegistry.make());
+    // A service's agents are read by a search of their keys.
+    const fixture = fixtureWire((request) =>
+      request.path === "/user-data/search"
+        ? status === 200
+          ? Effect.succeed({ items: [] })
+          : Effect.fail(
+              status === "lost"
+                ? ({ outcome: "transient", message: "HTTP 503" } as const)
+                : ({ outcome: "authoritative-denial", message: "HTTP 403" } as const),
+            )
+        : Effect.succeed(request.body?.wsOutputType === "listStream" ? { items: [] } : {}),
+    );
+    return {
+      store,
+      fixture,
+      account: observeAccount({ store, wire: fixture.wire, repairSession: Effect.void }),
+    };
+  };
+
+  it.live.each([
+    { status: 200, read: true, phase: "paused" },
+    // A refusal is terminal for its input: letting it go leaves it refused, never read again.
+    { status: 403, read: false, phase: "refused" },
+    { status: "lost", read: false, phase: "paused" },
+  ] as const)(
+    "settles a read answered $status as read: $read, then lets it go",
+    ({ status, read, phase }) =>
+      Effect.gen(function* () {
+        const { store, account } = observe(status);
+        account.show("org");
+        const answer = yield* Effect.promise(() => account.readDetail(AGENTS));
+        expect(answer).toBe(read);
+        yield* until(
+          () => streamOf(store.state(), "zerops:org:agents:s1").phase === phase,
+          `the read let go, ${phase}`,
+        );
+        account.stop();
+      }),
+  );
+
+  it.live.each([
+    { link: "down", outcome: "transient" },
+    { link: "refused", outcome: "definitive-refusal" },
+  ] as const)(
+    "answers no read at once while the link is $link, never waits for it",
+    ({ outcome }) =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const account = observeAccount({
+          store,
+          wire: { open: Effect.fail({ outcome, message: outcome }) },
+          repairSession: Effect.void,
+        });
+        account.show("org");
+        yield* until(
+          () => streamOf(store.state(), linkKeys.zerops("org")).phase !== "connecting",
+          "the link's first attempt to fail",
+        );
+        expect(yield* Effect.promise(() => account.readDetail(AGENTS))).toBe(false);
+        account.stop();
+      }),
+  );
+
+  it.live("answers no read with no organization shown, and reads nothing", () =>
+    Effect.gen(function* () {
+      const { fixture, account } = observe(200);
+      expect(yield* Effect.promise(() => account.readDetail(AGENTS))).toBe(false);
+      expect(fixture.requests).toEqual([]);
+    }),
+  );
 });

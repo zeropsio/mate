@@ -720,9 +720,25 @@ const added = (over: Partial<Drawn> = {}) =>
     ...over,
   });
 
+/** The operation verdict paired with each creation fixture. */
+function registrationOf(progress: ReadonlyArray<EnvironmentCreationStepProgress> | null) {
+  const step = progress?.find((entry) => entry.step.kind === "register");
+  return step?.state === "failed"
+    ? { attempt: 1, state: "unfinished" as const, reason: step.error ?? "It was refused." }
+    : {
+        attempt: step === undefined ? 0 : 1,
+        state:
+          step?.state === "running"
+            ? ("active" as const)
+            : step?.state === "done"
+              ? ("done" as const)
+              : ("waiting" as const),
+      };
+}
+
 /** Each sub-step as `label:state`, with why where it stopped. */
 const drawnSubsteps = (made: Drawn) =>
-  creationSubsteps(made, made.progress ?? null).map(
+  creationSubsteps(made, made.progress ?? null, registrationOf(made.progress ?? null)).map(
     (step) => `${step.label}:${step.state}${step.why === undefined ? "" : ` (${step.why})`}`,
   );
 

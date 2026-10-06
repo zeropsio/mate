@@ -1,24 +1,14 @@
 import {
   DEFAULT_ZEROPS_DATA_POLICY,
   decodeEntityDirectResponse,
-  decodeMetricRead,
-  decodeNativeFrame,
   makeInitialZeropsDataState,
   reduceZeropsDataState,
   runtimeServicesRead,
-  selectHistory,
   selectTopology,
-  selectUsage,
   serviceRecordToZeropsService,
-  type RegistrationRequest,
-  ZeropsWireSubscriptionName,
   type ProtocolDecodeResult,
 } from "@t3tools/client-runtime/zerops/data";
-import type {
-  ZeropsCurrentStat,
-  ZeropsService,
-  ZeropsStatHistoryItem,
-} from "@t3tools/client-runtime/zerops";
+import type { ZeropsService } from "@t3tools/client-runtime/zerops";
 import { projectTopology } from "@t3tools/client-runtime/zerops/topology";
 import {
   derivePublicRoutes,
@@ -33,7 +23,6 @@ import {
   identity,
   project,
   scope,
-  service,
   stamp,
 } from "./__fixtures__/platformData";
 import { projectTopologySnapshotFromRead } from "../state/zerops";
@@ -111,59 +100,6 @@ const services: ReadonlyArray<ZeropsService> = [
     },
   },
 ];
-const current: ReadonlyArray<ZeropsCurrentStat> = [
-  {
-    serviceStackId: "zcp",
-    containerId: "zcp-1",
-    cpu: { used: 0, limit: 0 },
-    vCpu: { used: 0.076, limit: 2 },
-    ramGBytes: { used: 1.2, limit: 2.75 },
-    diskGBytes: { used: 0.5, limit: 2 },
-  },
-  {
-    serviceStackId: "app",
-    containerId: "app-1",
-    cpu: { used: 0.5, limit: 1 },
-    vCpu: { used: 0.25, limit: 2 },
-    ramGBytes: { used: 0.1, limit: 0.25 },
-    diskGBytes: { used: 0.2, limit: 1 },
-  },
-  {
-    serviceStackId: "app",
-    containerId: "app-2",
-    vCpu: { used: 0.125, limit: 2 },
-    ramGBytes: { used: 0.2, limit: 0.5 },
-    diskGBytes: { used: 0.3, limit: 1 },
-  },
-];
-const history: ReadonlyArray<ZeropsStatHistoryItem> = [1, 2].map((hour) => ({
-  serviceStackId: "app",
-  from: `2026-09-08T0${hour}:00:00Z`,
-  till: `2026-09-08T0${hour + 1}:00:00Z`,
-  containerCount: 2,
-  cpuUsed: 0.5,
-  cpuLimit: 1,
-  vCpuUsed: hour / 4,
-  vCpuLimit: 4,
-  ramUsed: 0.3,
-  ramLimit: 0.75,
-  diskUsed: 0.5,
-  diskLimit: 2,
-}));
-const window = { timeGroupBy: "1h" as const, limit: 24, timeZone: "UTC" };
-const currentQuery = {
-  kind: "current-metrics-of-project" as const,
-  project: owner,
-  groupBy: "containerId" as const,
-  schemaVersion: 1 as const,
-};
-const historyQuery = {
-  kind: "metric-history-of-project" as const,
-  project: owner,
-  groupBy: "serviceStackId" as const,
-  window,
-  schemaVersion: 1 as const,
-};
 
 function fixture() {
   const id = identity();
@@ -195,39 +131,9 @@ function fixture() {
   const pushed = (row: Partial<ZeropsService> & { readonly id: string }) => {
     rows = rows.map((held) => (held.id === row.id ? { ...held, ...row } : held));
   };
-  const metrics = (items: ReadonlyArray<ZeropsCurrentStat>) =>
-    ingest(
-      decodeMetricRead(
-        directTicket({ kind: "query", descriptor: currentQuery }, id, ++ordinal, ordinal),
-        { items },
-      ),
-    );
-  const past = (items: ReadonlyArray<ZeropsStatHistoryItem>) =>
-    ingest(
-      decodeMetricRead(
-        directTicket({ kind: "query", descriptor: historyQuery }, id, ++ordinal, ordinal),
-        { items },
-      ),
-    );
   const snapshot = () =>
-    projectTopologySnapshotFromRead(
-      projectDto,
-      selectTopology(state, owner, listed()),
-      [],
-      new Map(services.map(({ id }) => [id, selectUsage(state, service(id))])),
-      new Map(
-        services.map(({ id }) => [
-          id,
-          selectHistory(state, {
-            service: service(id),
-            groupBy: "serviceStackId",
-            window,
-            schemaVersion: 1,
-          }),
-        ]),
-      ),
-    ).view!;
-  return { ingest, metrics, past, snapshot, id, listed, pushed };
+    projectTopologySnapshotFromRead(projectDto, selectTopology(state, owner, listed()), []).view!;
+  return { snapshot, listed, pushed };
 }
 
 describe("original topology behavior through the central data pipeline", () => {
@@ -261,87 +167,5 @@ describe("original topology behavior through the central data pipeline", () => {
     expect(f.snapshot().services.find((row) => row.serviceId === "app")).toEqual(
       projectTopology(projectDto, services, []).services.find((row) => row.serviceId === "app"),
     );
-  });
-
-  it("sums shared and dedicated CPU across containers like the original projection", () => {
-    const f = fixture();
-    f.metrics(current);
-    for (const row of projectTopology(projectDto, services, [], current).services) {
-      expect(
-        f.snapshot().services.find((actual) => actual.serviceId === row.serviceId)?.usage,
-      ).toEqual(row.usage);
-    }
-  });
-
-  it("distinguishes an answered empty metric query from a pending read", () => {
-    const f = fixture();
-    expect(f.snapshot().usageRead).toBe(false);
-    f.metrics([]);
-    expect(f.snapshot().usageRead).toBe(true);
-    expect(f.snapshot().services.every((row) => row.usage === undefined)).toBe(true);
-  });
-
-  it("restores hourly charts in chronological order and removes replaced history", () => {
-    const f = fixture();
-    f.past(history.toReversed());
-    const expected = projectTopology(projectDto, services, [], undefined, history).services.find(
-      (row) => row.serviceId === "app",
-    )?.history;
-    expect(f.snapshot().services.find((row) => row.serviceId === "app")?.history).toEqual(expected);
-    f.past([history[1]!]);
-    expect(f.snapshot().services.find((row) => row.serviceId === "app")?.history).toEqual(
-      expected?.slice(1),
-    );
-    f.past([]);
-    expect(f.snapshot().services.find((row) => row.serviceId === "app")?.history).toBeUndefined();
-  });
-
-  it("updates current usage and chart buckets from native messages without a second read", () => {
-    const f = fixture();
-    f.metrics(current);
-    f.past(history);
-    const currentRegistration: RegistrationRequest = {
-      identity: f.id,
-      subscriptionName: ZeropsWireSubscriptionName.make("current"),
-      descriptor: { kind: "current-metrics", query: currentQuery },
-      baselineTicket: {
-        ...directTicket({ kind: "query", descriptor: currentQuery }, f.id),
-        kind: "baseline",
-        owner: { kind: "interest", identity: f.id },
-      },
-    };
-    const historyRegistration: RegistrationRequest = {
-      identity: f.id,
-      subscriptionName: ZeropsWireSubscriptionName.make("history"),
-      descriptor: { kind: "metric-history", query: historyQuery },
-      baselineTicket: {
-        ...directTicket({ kind: "query", descriptor: historyQuery }, f.id),
-        kind: "history",
-        owner: { kind: "interest", identity: f.id },
-      },
-    };
-    const registry = new Map(
-      [currentRegistration, historyRegistration].map((r) => [r.subscriptionName, r]),
-    );
-    const updated = [{ ...current[0]!, vCpu: { used: 0.5, limit: 3 } }];
-    const corrected = { ...history[0]!, vCpuUsed: 1.5 };
-    for (const frame of [
-      {
-        type: "search",
-        subscriptionName: currentRegistration.subscriptionName,
-        data: { items: updated },
-      },
-      {
-        type: "search",
-        subscriptionName: historyRegistration.subscriptionName,
-        data: { update: [corrected] },
-      },
-    ]) {
-      const decoded = decodeNativeFrame(JSON.stringify(frame), registry);
-      expect(decoded.kind).toBe("observations");
-      if (decoded.kind === "observations") f.ingest(decoded);
-    }
-    const expected = projectTopology(projectDto, services, [], updated, [corrected, history[1]!]);
-    expect(f.snapshot().services).toEqual(expected.services);
   });
 });

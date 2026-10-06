@@ -41,11 +41,9 @@ import {
   productionMark,
   projectRowLine,
   risenFirst,
-  rowRise,
   stopLine,
   type ProjectRowLine,
 } from "./projectsView.logic";
-import { lastRowRisen, useRememberRisenRows } from "./rowRiseMemory";
 import type { ProjectsFlowGroup, ZeropsProjectsFlowProps } from "./ZeropsProjectsFlow";
 
 const rowId = (groupId: string) => `project-${groupId}`;
@@ -379,13 +377,11 @@ export function ProjectList<T>({
       settled: !entry.awaiting && !entry.changesAwaiting,
       changesUnknown: entry.changesUnknown,
     });
-    return { entry, line, ...rowRise(line, lastRowRisen(entry.group.groupId), entry.matesKnown) };
+    return { entry, line };
   });
-  useRememberRisenRows(
-    rows.map((row) => ({ groupId: row.entry.group.groupId, rises: row.rises, known: row.known })),
-  );
   const shown = groups.some((entry) => entry.group.groupId === focusGroup);
-  const ordered = risenFirst(rows, (row) => row.rises);
+  // A row that needs the person rises, as soon as its answers say so.
+  const ordered = risenFirst(rows, (row) => row.line.kind === "needs-you");
   const orderKey = ordered.map((row) => row.entry.group.groupId).join(",");
   const scrolledTo = useRef<string | undefined>(undefined);
   // The named row stays in view while rows above it rise as their reads answer — until the

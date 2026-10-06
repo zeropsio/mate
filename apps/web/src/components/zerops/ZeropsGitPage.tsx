@@ -8,7 +8,7 @@
  * each, the changes themselves, newest first.
  *
  * Everything on it is HQ's, as the flow holds it: each application's repositories, read with its
- * releases (`useZeropsAppReleases`), and the changes open on them, down its stream. A change's title opens the change's own page, with
+ * releases (`useHqAppReleases`), and the changes open on them, down its stream. A change's title opens the change's own page, with
  * the same word and the same colour its row wears on the projects screen and in the left menu (the
  * owner, 2026-09-19: "all pages are unified in how they look work feel have ux and abilities"). A
  * repository's name opens its source in HQ, at a branch or commit and path.
@@ -22,6 +22,7 @@ import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useContext, useMemo } from "react";
 import { Button } from "../ui/button";
 import { InventoryContext, useAccountTrouble } from "~/zerops/inventoryContext";
+import { useHqAppDetailHold } from "~/zerops/useHqAppDetail";
 import { useAccountDataOptional } from "~/zerops/ZeropsAccountData";
 
 import { appBasePath } from "~/basePath";
@@ -212,6 +213,8 @@ export function ZeropsGitPage() {
   const accountTrouble = useAccountTrouble();
   const navigate = useNavigate();
   const search = useSearch({ from: "/git" });
+  // Each application's repositories and changes are its detail: held while the page draws it.
+  useHqAppDetailHold(registry.registry.groups.map(({ groupId }) => groupId));
   // Every application the person may read the changes of: the one whose changes HQ's rule keeps
   // from them is listed elsewhere, and is not read here.
   const apps = useMemo(

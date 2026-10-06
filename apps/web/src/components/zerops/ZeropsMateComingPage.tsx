@@ -25,6 +25,7 @@
  * on the account — says why here, with the way to the projects: nothing here hands the person to
  * another screen on its own (the owner, 2026-09-30: "it just throws me at /zerops page").
  */
+import { useMateRegistration } from "~/zerops/registration";
 import {
   parseScopedThreadKey,
   scopedThreadKey,
@@ -106,6 +107,7 @@ import { useMateHandOver } from "~/zerops/newMate";
 import {
   comingPlanned,
   creationSubsteps,
+  registrationSubstep,
   madeOf,
   newProjectProgress,
 } from "~/zerops/newProjectBirth";
@@ -193,6 +195,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   const listed = held.rows.find((candidate) => candidate.project.id === projectId);
   // What this tab pressed for it, while it holds it.
   const press = useMatePress(projectId);
+  const registration = useMateRegistration(projectId);
   const { services } = useProjectServices(projectId);
   // The New project or the Add this tab made whose Mate this is, while the tab holds it.
   const creations = useCreations();
@@ -561,10 +564,12 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
           ...(managed === undefined ? {} : { managed }),
           ...(setup === undefined ? {} : { setup }),
           ...(setupFailure === undefined ? {} : { setupFailure }),
-          // Its press's steps while this tab holds the press; once over, its Mate's own line says them.
-          ...(made === undefined || press === undefined
-            ? {}
-            : { press: creationSubsteps(made, press.progress ?? null) }),
+          // A registration's receipt stands after any originating press is gone.
+          ...(press === undefined && registration.state === "unfinished"
+            ? { press: [registrationSubstep(mate.name, registration)] }
+            : made === undefined || press === undefined
+              ? {}
+              : { press: creationSubsteps(made, press.progress ?? null, registration) }),
           ...(empty.agentReady ? { agentReady: true } : {}),
         };
 
@@ -587,7 +592,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   // *Finish setup* running, or through: its steps as the Add dialog draws them, and their end — on
   // a Mate this tab made, its own step under the project's row follows that press instead
   // (`creationSubsteps`), and nothing above it moves.
-  const finish = made === undefined ? finishSetupView(press) : undefined;
+  const finish = made === undefined ? finishSetupView(press, registration) : undefined;
 
   const deleteProject = useDeleteProject();
   const [removing, setRemoving] = useState(false);

@@ -7,6 +7,8 @@ import {
   type OverviewMain,
   type MateThreadKind,
 } from "@t3tools/shared/mateLink";
+import { enrollMate } from "../../../../../hq/test/harness/runningCore.ts";
+import type { MateFake } from "../../fakes/mate.ts";
 import type { ScenarioExtension, ScenarioDrivers } from "../../harness/scenario.ts";
 
 // This area drives the real Mate → HQ link, never the browser's stores.
@@ -61,6 +63,60 @@ export const reportConversation = Effect.fn("menu.reportConversation")(function*
     crew: { status: "off" },
   });
   yield* drivers.links.get(name)!.send(yield* encode({ type: "overview", full: true, overview }));
+  // Its attention says the same, straight to a page that has it open and up its link to HQ.
+  const waits =
+    kind === "approval" || kind === "input" || kind === "failed" || kind === "planReady";
+  const attention = mate.publishAttention({
+    mainThreadId: main.id,
+    lastThreadId: main.id,
+    working: kind === "working" || kind === "connecting" || kind === "monitoring" ? 1 : 0,
+    waiting: waits ? 1 : 0,
+    questions: waits ? [{ threadId: main.id, kind, turnId: main.latestTurn?.turnId ?? null }] : [],
+  });
+  yield* drivers.links.get(name)!.send(yield* encode({ type: "attention", attention }));
+});
+
+/** A new revision of a Mate's attention alone, its overview as it was: what a real Mate sends first. */
+export const reportAttention = Effect.fn("menu.reportAttention")(function* (
+  drivers: Pick<ScenarioDrivers, "mates"> & {
+    links: ReadonlyMap<string, { send: (value: unknown) => Effect.Effect<void> }>;
+  },
+  name: string,
+  says: Parameters<MateFake["publishAttention"]>[0],
+) {
+  const attention = drivers.mates.get(name)!.publishAttention(says);
+  yield* drivers.links.get(name)!.send(yield* encode({ type: "attention", attention }));
+});
+
+/** A new revision of a Mate's attention up its link to HQ alone: no page hears it straight. */
+export const relayAttention = Effect.fn("menu.relayAttention")(function* (
+  drivers: Pick<ScenarioDrivers, "mates"> & {
+    links: ReadonlyMap<string, { send: (value: unknown) => Effect.Effect<void> }>;
+  },
+  name: string,
+  says: Parameters<MateFake["reviseAttention"]>[0],
+) {
+  const attention = drivers.mates.get(name)!.reviseAttention(says);
+  yield* drivers.links.get(name)!.send(yield* encode({ type: "attention", attention }));
+});
+
+/**
+ * A Mate's server restarts: its old link to HQ drops and its new run reaches HQ on a new one,
+ * enrolled the way zcp does it; its attention goes on as a new incarnation.
+ */
+export const restartMate = Effect.fn("menu.restartMate")(function* (
+  drivers: Pick<ScenarioDrivers, "mates" | "core" | "links">,
+  name: string,
+) {
+  drivers.mates.get(name)!.restart();
+  yield* drivers.links.get(name)!.close;
+  const credential = yield* enrollMate(drivers.core.call, drivers.core.fake, name);
+  const { ticket } = (yield* drivers.core.call("POST", "/api/mate/link-ticket", {
+    headers: { authorization: `Mate ${credential}` },
+  })).body as { ticket: string };
+  const link = yield* drivers.core.socket(`/api/mate/link?ticket=${ticket}`);
+  drivers.links.set(name, link);
+  yield* link.next("state");
 });
 
 export const moveMate = Effect.fn("menu.moveMate")(function* (

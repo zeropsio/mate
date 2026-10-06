@@ -15,7 +15,7 @@ import { makeDeadlineClock, type DeadlineClock } from "../../testing/deadlineClo
 import { ZeropsApiError, type ZeropsProject } from "../../api.ts";
 import { account, organization, project, scope, service } from "../__fixtures__/index.ts";
 import { commandAdmissionError } from "../commands.ts";
-import type { AgentsCellRequest, ZeropsCellAdapter } from "../cells.ts";
+import type { MateFlagCellRequest, ZeropsCellAdapter } from "../cells.ts";
 import { makeZeropsDataRuntime } from "../runtime.ts";
 import type { ProjectEffectiveAccess, ProjectRef, ZeropsDataAdapter } from "../types.ts";
 import { grantCapabilities, mate, throwawayCleanup, type CapabilityAsk } from "./capabilities.ts";
@@ -59,14 +59,9 @@ const inertAdapter: ZeropsDataAdapter = {
   closeReceiver: () => Effect.void,
 };
 
-/** Every service resource reads as one agent; nothing else is asked for. */
+/** Every service's flag reads as on; nothing else is asked for. */
 const cellAdapter: ZeropsCellAdapter = {
-  readProjectPublicAccess: () => Effect.never,
-  readOrganizationLocations: () => Effect.succeed([]),
-  readServiceAuthorizedAgents: () => Effect.succeed(["codex"]),
-  readServiceMateFlag: () => Effect.succeed({ enabled: "unknown" }),
-  readOrganizationIntegrationTokens: () => Effect.succeed([]),
-  readOrganizationMembers: () => Effect.succeed([]),
+  readServiceMateFlag: () => Effect.succeed({ enabled: true }),
 };
 
 /** What the platform answers the grant's reads, changeable between steps. */
@@ -172,10 +167,10 @@ const tab = Effect.fnUntraced(function* (platform: Platform, rest?: AccessVerifi
   yield* runtime.access.start({ verifier: rest ?? verifier, hidden: false, online: true });
   yield* settle;
   const resources = new Map(
-    [A, B].map((target): [ProjectRef, AgentsCellRequest] => [
+    [A, B].map((target): [ProjectRef, MateFlagCellRequest] => [
       target,
       {
-        kind: "agents",
+        kind: "mate-flag",
         account: runtime.scope,
         service: service(`service-of-${target.projectId}`, target),
       },

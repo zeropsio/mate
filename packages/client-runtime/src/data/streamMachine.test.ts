@@ -222,6 +222,59 @@ describe("transition", () => {
     expect(sampled.next).toEqual({ kind: "revalidate", at: 5 + STREAM_POLICY.sampledIntervalMs });
   });
 
+  it("names no revalidation for a source read once: only an input change reads it again", () => {
+    const once = run(
+      initialStream({ parent: null, mode: "once" }),
+      [{ kind: "demand", demanded: true }, { kind: "handshake" }, { kind: "baseline-committed" }],
+      5,
+    );
+    expect(once).toMatchObject({ phase: "live", next: { kind: "await-input-change" } });
+    expect(transition(once, { kind: "revalidate" }, 10).state.phase).toBe("connecting");
+  });
+
+  it.each([
+    { mode: "sampled", phase: "live", reads: true },
+    { mode: "sampled", phase: "recovering", reads: true },
+    { mode: "sampled", phase: "refused", reads: false },
+    { mode: "sampled", phase: "paused", reads: false },
+    { mode: "realtime", phase: "live", reads: false },
+  ] as const)(
+    "a revalidation reads a $mode $phase scope again: $reads",
+    ({ mode, phase, reads }) => {
+      const child = initialStream({ parent: "zerops:org", mode });
+      const reached = run(
+        child,
+        phase === "paused"
+          ? [
+              { kind: "demand", demanded: true },
+              { kind: "demand", demanded: false },
+            ]
+          : [
+              { kind: "demand", demanded: true },
+              { kind: "attempt" },
+              { kind: "handshake" },
+              ...(phase === "live"
+                ? [{ kind: "baseline-committed" } as const]
+                : [
+                    {
+                      kind: "fault",
+                      jitter: 0,
+                      fault: {
+                        outcome: phase === "refused" ? "definitive-refusal" : "transient",
+                        message: phase,
+                      },
+                    } as const,
+                  ]),
+            ],
+        0,
+      );
+      expect(reached.phase).toBe(phase);
+      const next = transition(reached, { kind: "revalidate" }, 10).state;
+      expect(next.phase).toBe(reads ? "connecting" : phase);
+      expect(next.generation).toBe(reads ? reached.generation + 1 : reached.generation);
+    },
+  );
+
   it("keeps every reachable phase paired with its own kind of next action, and closed terminal", () => {
     const events: ReadonlyArray<StreamEvent> = [
       { kind: "demand", demanded: true },
@@ -231,6 +284,7 @@ describe("transition", () => {
       { kind: "retry-due" },
       { kind: "deadline" },
       { kind: "manual-retry" },
+      { kind: "revalidate" },
       { kind: "input-changed" },
       { kind: "session-repaired" },
       { kind: "attempt" },
@@ -256,7 +310,8 @@ describe("transition", () => {
     };
     for (const parent of [null, "zerops:org"]) {
       for (let walk = 0; walk < 200; walk += 1) {
-        let state = initialStream({ parent, mode: walk % 2 === 0 ? "realtime" : "sampled" });
+        const mode = (["realtime", "sampled", "once"] as const)[walk % 3]!;
+        let state = initialStream({ parent, mode });
         for (let step = 0; step < 30; step += 1) {
           state = transition(state, events[draw() % events.length]!, step * 1_000).state;
           expect(NEXT_ACTIONS[state.phase]).toContain(state.next.kind);

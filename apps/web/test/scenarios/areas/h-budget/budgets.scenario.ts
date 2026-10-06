@@ -71,11 +71,15 @@ describe("H: hosted client budgets", () => {
         const rounds: ReturnType<typeof b.measure.firstData>[] = [];
         for (let round = 1; round <= 3; round++) {
           const before = b.measure.hqSegments().length;
+          // Earlier sign-in attempts may have closed before upgrading or receiving a frame.
+          const receivedBefore = b.measure
+            .hqSegments()
+            .filter((s) => s.firstDataMs !== null).length;
           const countsBefore = connections.counts();
           yield* Effect.forEach(tabs, (tab) => Effect.promise(() => tab.page.reload()), {
             concurrency: "unbounded",
           });
-          yield* b.when.hqFirstData(before + 5);
+          yield* b.when.hqFirstData(receivedBefore + 5);
           yield* Effect.forEach(tabs, (tab) => tab.then.menu.row("Shop").appears(), {
             concurrency: "unbounded",
           });
@@ -284,8 +288,8 @@ describe("H: hosted client budgets", () => {
       }),
     );
 
-    // Targets retransmitting the whole unchanged HQ menu at every planned segment boundary.
-    it.effect.fails("target: an unchanged next HQ segment transfers no state payload", () =>
+    // Catches retransmitting the whole unchanged HQ menu at every planned segment boundary.
+    it.effect("target: an unchanged next HQ segment transfers no state payload", () =>
       Effect.gen(function* () {
         const s = yield* createScenario([installBudget]);
         const b = budgets(s);

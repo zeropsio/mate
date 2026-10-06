@@ -247,7 +247,7 @@ import {
 } from "./zerops/SidebarZeropsTree";
 import { newProjectOffered } from "./zerops/SidebarProjects.logic";
 import { releaseFailureOf } from "./zerops/SidebarProductionChip.logic";
-import { useZeropsAgentActivity } from "../zerops/useZeropsAgentActivity";
+import { useMatesActivity } from "../zerops/useZeropsAgentActivity";
 import { useSidebarMateMenus } from "../zerops/useSidebarMateMenus";
 import { useSidebarWaiting } from "../zerops/useSidebarWaiting";
 import { shownInScope, useMateScope } from "../zerops/mateScope";
@@ -2303,16 +2303,14 @@ export default function Sidebar() {
     void router.navigate({ to: "/zerops" });
   }, [isMobile, router, setOpenMobile]);
 
-  // What each Mate is doing, as HQ or its socket tells it — the one
-  // derivation the projects screen reads too (`agentActivity.ts`), so a Mate
-  // says the same thing in both places.
-  const zeropsAgentActivity = useZeropsAgentActivity();
+  // What each Mate is doing, off its attention — the one derivation the
+  // projects screen reads too (`mateActivity.ts`), so a Mate says the same
+  // thing in both places.
+  const zeropsAgentActivity = useMatesActivity();
   // Each Mate's own menu: the projects screen's verbs, and this viewer's own.
   const zeropsMateMenus = useSidebarMateMenus({ threads });
-  // What a Mate's row says: HQ's word of it, or its socket's reading, live
-  // while either stands and at rest otherwise (`useMateRowActivity`) — a
-  // reload paints whole rows from HQ's last word, and a Mate at work never
-  // falls asleep for a blink.
+  // What a Mate's row says (`useMateRowActivity`): its attention, at rest
+  // while that word is not of now.
   const zeropsRowActivity = useMateRowActivity(zeropsAgentActivity);
   // Whether a Mate's conversations are read: one with none says nothing was asked yet.
   const zeropsConversationsRead = useMateConversationsRead();

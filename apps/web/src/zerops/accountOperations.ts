@@ -1,10 +1,12 @@
 /**
  * The account's operations: one coordinator per account store and session client, with Zerops
- * wired as the owner of its kinds. A verb submits an intent here and reads where it stands through
+ * and the organization's official HQ wired as the owners of their kinds. A verb submits an intent here and reads where it stands through
  * the operation's progress projection; it never calls the platform itself.
  */
 import {
   creationSteps,
+  mateRegistration,
+  registrationRequestId,
   makeOperations,
   makeHqExecutor,
   makeZeropsExecutor,
@@ -35,12 +37,20 @@ type SessionClient = ZeropsSessionValue["client"];
 
 export interface AccountOperations {
   /** Records and sends one intent; resolves with where it stands once its owner has answered. */
-  readonly submit: (intent: Parameters<Operations["submit"]>[0]) => Promise<{
+  readonly submit: (
+    intent: Parameters<Operations["submit"]>[0],
+    requestId?: string,
+  ) => Promise<{
     readonly requestId: string;
     readonly progress: OperationProgress;
     /** What the owner said of how it ended, once it has; `null` before. */
     readonly evidence: string | null;
   }>;
+  /**
+   * Asks the owner again after a lost answer — by its facts where it keeps no ids: never a send.
+   * What it cannot tell yet stays uncertain.
+   */
+  readonly askAgain: (requestId: string) => Promise<void>;
   /** Resolves once the operation is final for now, or can no longer be followed (`operationEnd`). */
   readonly untilEnd: (requestId: string, orgId: string) => Promise<NonNullable<OperationEnd>>;
   /** Runs one intent to its end: its owner's result, or what stopped it (`runToEnd`). */
@@ -92,6 +102,8 @@ export function accountOperations(
         demandDetail,
         debtOf: () => accountThrowawayDebt(client),
         nowMs: () => Date.now(),
+        makeId: randomUUID,
+        run: (intent, options) => run(intent, options),
         // The Core this build carries, read from its own bundle once HQ's update runs.
         hqCore: readCarriedCore,
         ...(locks === undefined ? {} : { locks }),
@@ -99,6 +111,24 @@ export function accountOperations(
     },
     makeId: randomUUID,
   });
+  const runStep = runToEnd({ operations, store, registry });
+  const run: RunToEnd = (intent, options) => {
+    const projectId =
+      intent.kind === "create-mate-record"
+        ? intent.mate.projectId
+        : intent.kind === "attach-project" && intent.attach.kind === "mate"
+          ? intent.attach.projectId
+          : intent.kind === "bind-birth"
+            ? intent.projectId
+            : null;
+    if (projectId === null || options.requestId !== undefined) return runStep(intent, options);
+    const key = { orgId: options.orgId, projectId };
+    const current = registry.get(store.data.project(mateRegistration, key));
+    return runStep(intent, {
+      ...options,
+      requestId: registrationRequestId(key, current.attempt + 1),
+    });
+  };
   const untilEnd = (requestId: string, orgId: string) =>
     new Promise<NonNullable<OperationEnd>>((resolve) => {
       const atom = store.data.project(operationEnd, { requestId, orgId });
@@ -135,9 +165,10 @@ export function accountOperations(
     untilEnvironment,
     readCreation: (orgId, creationId) =>
       registry.get(store.data.project(creationSteps, { orgId, creationId })),
-    run: runToEnd({ operations, store, registry }),
-    submit: async (intent) => {
-      const requestId = await Effect.runPromise(operations.submit(intent));
+    run,
+    askAgain: (requestId) => Effect.runPromise(operations.retry(requestId)),
+    submit: async (intent, named) => {
+      const requestId = await Effect.runPromise(operations.submit(intent, named));
       const outcome = store.state().operations.get(requestId)?.receipt?.outcome;
       return {
         requestId,

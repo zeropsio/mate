@@ -9,7 +9,15 @@
  */
 import type { HqScope } from "@t3tools/shared/hqStream";
 
-import type { Authority, Family, FamilyValues, MemberState, ScopeKey, Source } from "../model.ts";
+import type {
+  Authority,
+  Family,
+  FamilyValues,
+  MemberState,
+  Revision,
+  ScopeKey,
+  Source,
+} from "../model.ts";
 
 export type SearchTerms = ReadonlyArray<Readonly<Record<string, unknown>>>;
 
@@ -63,8 +71,32 @@ export interface HqFamilySource<Value> {
    * `recipe:stage`); `null` for one this build cannot read, which then changes nothing.
    */
   readonly decode: (raw: unknown, key: string) => Value | null;
-  /** A detail family's scope for one owner (`DetailDemand.ownerId`). */
+  /**
+   * A detail family's scope for one owner (`DetailDemand.ownerId`). A family without one rides
+   * the scope another family demands, from the records of the same kind of scope.
+   */
   readonly wireScope?: (ownerId: string) => HqScope;
+  /**
+   * The value's own revision, for a family HQ only relays (a Mate's attention): its author's
+   * ordering, which the reducer compares with the same value arriving on another path. Without
+   * it a record carries its scope's HQ revision. `raw` is the record as HQ sent it, for what HQ
+   * says of the value beside it.
+   */
+  readonly revisionOf?: (value: Value, raw: unknown) => Revision;
+}
+
+/**
+ * A detail family Zerops observes as one query for its owner (one project's current use): a
+ * registration whose answer is the scope's baseline. Its frames either list the whole scope again
+ * (`listing`, `data.items`) or carry the rows that changed (`rows`, `data.update`). Its rows carry
+ * no `_version`: each newer answer replaces the one before.
+ */
+export interface ZeropsQuerySource<Value> {
+  readonly path: string;
+  /** The search, without the receiver and the subscription the adapter adds. */
+  readonly body: (owner: ScopeOwner) => Readonly<Record<string, unknown>>;
+  readonly frames: "listing" | "rows";
+  readonly decode: (raw: unknown) => ZeropsRow<Value> | null;
 }
 
 /**
@@ -82,6 +114,28 @@ export interface DetailListing {
     readonly path: (owner: ScopeOwner) => string;
     readonly items: (answer: unknown) => ReadonlyArray<unknown> | undefined;
   };
+}
+
+/**
+ * A source without realtime: the owner's whole value, one read while a screen demands it
+ * for one owner, read again while it stays demanded on the stream machine's sampled cadence (unless
+ * time never ages it), and at once after our own write. Its scope is never claimed live. Its one
+ * fact is keyed by the owner it is read for.
+ */
+export interface SampledSource<Value> {
+  readonly path: (owner: { readonly orgId: string; readonly ownerId: string }) => string;
+  /** With a search, the read is a `POST` of it to the path, never a `GET`: only the rows asked. */
+  readonly search?: (owner: {
+    readonly orgId: string;
+    readonly ownerId: string;
+  }) => Readonly<Record<string, unknown>>;
+  /** The value the answer says, stripped to what a screen needs; `null` for one it cannot read. */
+  readonly decode: (answer: unknown) => Value | null;
+  /**
+   * A new demand reads it again once its last read is this old; `0`, on every new demand. `null`:
+   * time never ages it — read once, and again only on our write or the person's again; no cadence.
+   */
+  readonly freshMs: number | null;
 }
 
 /** An index the reducer keeps for the family: under which key a fact counts now, if any. */
@@ -112,6 +166,10 @@ export interface FamilySpec<F extends Family> {
   readonly indexes?: ReadonlyArray<FamilyIndex<FamilyValues[F]>>;
   readonly zerops?: ZeropsFamilySource<FamilyValues[F]>;
   readonly hq?: HqFamilySource<FamilyValues[F]>;
+  /** For a detail family Zerops observes as one query per owner, instead of `zerops`. */
+  readonly zeropsQuery?: ZeropsQuerySource<FamilyValues[F]>;
+  /** A family read whole per owner, never registered: its scope's demand is `detail`. */
+  readonly sampled?: SampledSource<FamilyValues[F]>;
   /**
    * Whether a value is its entity's end, after which it never changes (a process finished): an
    * end that a read or a baseline brings replaces a value that is no end, though the read carries

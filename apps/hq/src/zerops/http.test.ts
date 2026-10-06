@@ -21,7 +21,10 @@ const MEMBERS = {
       canCreateProjects: false,
       user: {
         fullName: "mate-hq-org:P1",
-        avatarUrl: "https://avatar.test/member",
+        avatar: {
+          smallAvatarUrl: "https://avatar.test/member",
+          externalAvatarUrl: "https://avatar.test/external",
+        },
         email: "token-abc@zerops.io",
       },
     },
@@ -29,7 +32,7 @@ const MEMBERS = {
 };
 
 /** A stub API: the first `failures` requests answer `status` with `code`, the rest `MEMBERS`. */
-const stub = (failures: number, status: number, code: string) =>
+const stub = (failures: number, status: number, code: string, body: unknown = MEMBERS) =>
   Effect.acquireRelease(
     Effect.promise(
       () =>
@@ -43,7 +46,7 @@ const stub = (failures: number, status: number, code: string) =>
             requests += 1;
             const failing = requests <= failures;
             response.writeHead(failing ? status : 200, { "content-type": "application/json" });
-            response.end(JSON.stringify(failing ? { error: { code } } : MEMBERS));
+            response.end(JSON.stringify(failing ? { error: { code } } : body));
           });
           server.listen(0, "127.0.0.1", () => {
             const { port } = server.address() as NodeNet.AddressInfo;
@@ -81,6 +84,25 @@ describe("makeZeropsApiHttp", () => {
       assert.strictEqual(api.requests(), 1);
     }),
   );
+
+  for (const [avatar, expected] of [
+    [
+      { smallAvatarUrl: null, externalAvatarUrl: "https://avatar.test/external" },
+      "https://avatar.test/external",
+    ],
+    [{ smallAvatarUrl: null, externalAvatarUrl: null }, null],
+    [null, null],
+  ] as const) {
+    it.live(`decodes nested member avatar ${JSON.stringify(avatar)}`, () =>
+      Effect.gen(function* () {
+        const api = yield* stub(0, 200, "", {
+          clientUserList: [{ ...MEMBERS.clientUserList[0], user: { fullName: "Member", avatar } }],
+        });
+        const rows = yield* read(api.url, "members");
+        assert.strictEqual((rows as Array<{ avatarUrl: string | null }>)[0]!.avatarUrl, expected);
+      }),
+    );
+  }
 
   it.live("reads the member list in one ask", () =>
     Effect.gen(function* () {

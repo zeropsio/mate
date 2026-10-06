@@ -21,7 +21,11 @@
  * the view, with *Try again*, which resumes from that step — except one the platform may have
  * taken anyway (`uncertain`), which a second try could make twice.
  */
-import { creationStepId, type CreationRead } from "@t3tools/client-runtime/data";
+import {
+  creationStepId,
+  type CreationRead,
+  type MateRegistration,
+} from "@t3tools/client-runtime/data";
 import {
   appProjectName,
   formatMateFace,
@@ -589,7 +593,6 @@ const PRESS_KINDS = {
   created: ["create-project", "import-project", "import-managed"],
   container: ["import-container"],
   "closed-off": ["close-off"],
-  registered: ["register"],
 } as const satisfies Record<string, ReadonlyArray<EnvironmentCreationStep["kind"]>>;
 
 /** A step of the press as its entries say it: stopped, through, under way, or not begun. */
@@ -611,6 +614,18 @@ function pressedStep(
   };
 }
 
+/** The registration receipt's line, retained even when the originating press is gone. */
+export function registrationSubstep(name: string, registration: MateRegistration): ArrivalSubstep {
+  return registration.state === "unfinished"
+    ? {
+        id: "registered",
+        label: "Not registered",
+        state: "unfinished",
+        why: asSentence(registration.reason) || REGISTRATION_REFUSED,
+      }
+    : { id: "registered", label: `${name} registered`, state: registration.state };
+}
+
 /**
  * The steps this tab runs for a creation, as its view draws them under its project's row: a New
  * project registered and created, then its Mate registered, its container imported and closed
@@ -621,6 +636,7 @@ function pressedStep(
 export function creationSubsteps(
   birth: NewProjectBirth,
   progress: ReadonlyArray<EnvironmentCreationStepProgress> | null,
+  registration: MateRegistration = { attempt: 0, state: "waiting" },
 ): ReadonlyArray<ArrivalSubstep> {
   const said = (
     id: string,
@@ -633,17 +649,7 @@ export function creationSubsteps(
     if (step === null) return said(id, label, "waiting");
     return said(id, label, step.state, step.state === "failed" ? step.error : undefined);
   };
-  // A refused registration keeps its reason until Finish setup replaces that step.
-  const pressedRegistration = fromPress("registered", `${birth.botName} registered`);
-  const registered =
-    pressedRegistration.state === "failed"
-      ? said(
-          "registered",
-          "Not registered",
-          "unfinished",
-          asSentence(pressedRegistration.why ?? "") || REGISTRATION_REFUSED,
-        )
-      : pressedRegistration;
+  const registered = registrationSubstep(birth.botName, registration);
   if (birth.adds === undefined) {
     const own = (id: string, label: string, step: NewProjectStep): ArrivalSubstep => {
       const state = stateOf(birth, step);

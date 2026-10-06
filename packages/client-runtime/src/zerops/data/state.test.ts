@@ -6,10 +6,8 @@ import {
   AccountEpoch,
   DispatchOrdinal,
   ReceiptOrdinal,
-  ZeropsContainerId,
   ZeropsCommandAttemptId,
   ZeropsSharedReadId,
-  historySeriesKeyOf,
   projectKeyOf,
   queryKeyOf,
   serviceKeyOf,
@@ -402,147 +400,6 @@ describe("Zerops data model coordination", () => {
     expect(state.retention.notices.some((notice) => notice.reason === "service-budget")).toBe(true);
   });
 
-  it("bounds current samples account-wide across queries and history buckets per series", () => {
-    const tiny = makeZeropsDataPolicy({
-      retainedCurrentMetricSamplesPerAccount: 2,
-      retainedHistoryBucketsPerSeries: 2,
-    });
-    const id = identity();
-    let state = reduce(
-      makeInitialZeropsDataState(scope()),
-      { kind: "interest-upserted", interest: desiredInterest(id) },
-      tiny,
-    );
-    const currentDescriptors = [project("metrics-project-1"), project("metrics-project-2")].map(
-      (owner) => ({
-        kind: "current-metrics-of-project" as const,
-        project: owner,
-        groupBy: "containerId" as const,
-        schemaVersion: 1 as const,
-      }),
-    );
-    for (let queryIndex = 0; queryIndex < currentDescriptors.length; queryIndex++) {
-      const descriptor = currentDescriptors[queryIndex]!;
-      const ticket = directTicket(
-        { kind: "query", descriptor },
-        id,
-        queryIndex + 1,
-        queryIndex,
-        queryIndex + 1,
-      );
-      state = reduce(state, { kind: "read-started", ticket }, tiny);
-      state = reduce(
-        state,
-        {
-          kind: "observation",
-          observation: {
-            stamp: stamp(queryIndex + 1),
-            accessEvidence: null,
-            input: {
-              kind: "current-metrics-replaced",
-              source: "direct-read",
-              ticket,
-              coverage: fullCoverage,
-              samples: [0, 1].map((sampleIndex) => ({
-                key: {
-                  service: service(
-                    `metrics-service-${queryIndex}-${sampleIndex}`,
-                    descriptor.project,
-                  ),
-                  containerId: ZeropsContainerId.make(`container-${queryIndex}-${sampleIndex}`),
-                  groupBy: "containerId" as const,
-                  schemaVersion: 1 as const,
-                },
-                cpu: null,
-                virtualCpu: null,
-                memoryGb: null,
-                diskGb: null,
-              })),
-            },
-          },
-        },
-        tiny,
-      );
-    }
-    expect(
-      [...state.observability.current.values()].reduce(
-        (size, query) => size + query.samples.size,
-        0,
-      ),
-    ).toBe(4);
-    expect(
-      state.retention.pending.some((notice) => notice.reason === "current-metric-budget"),
-    ).toBe(true);
-    state = tick(state, 3, tiny);
-    expect(
-      [...state.observability.current.values()].reduce(
-        (size, query) => size + query.samples.size,
-        0,
-      ),
-    ).toBe(2);
-    expect(state.observability.current.get(queryKeyOf(currentDescriptors[0]!))?.coverage).toEqual({
-      kind: "partial",
-      reason: "budget",
-    });
-
-    const historyDescriptor = {
-      kind: "metric-history-of-project" as const,
-      project: project("history-project"),
-      groupBy: "serviceStackId" as const,
-      window: { timeGroupBy: "1h" as const, limit: 3, timeZone: "UTC" },
-      schemaVersion: 1 as const,
-    };
-    const historyTicket = directTicket(
-      { kind: "query", descriptor: historyDescriptor },
-      id,
-      3,
-      3,
-      3,
-    );
-    const series = {
-      service: service("history-service", historyDescriptor.project),
-      groupBy: "serviceStackId" as const,
-      window: historyDescriptor.window,
-      schemaVersion: 1 as const,
-    };
-    state = reduce(state, { kind: "read-started", ticket: historyTicket }, tiny);
-    state = reduce(
-      state,
-      {
-        kind: "observation",
-        observation: {
-          stamp: stamp(4),
-          accessEvidence: null,
-          input: {
-            kind: "metric-history-window-observed",
-            source: "direct-read",
-            ticket: historyTicket,
-            operation: "replace-window",
-            coverage: fullCoverage,
-            buckets: [0, 1, 2].map((index) => ({
-              key: { series, from: `2026-09-0${index + 1}`, till: `2026-09-0${index + 2}` },
-              containers: null,
-              cpu: null,
-              virtualCpu: null,
-              memoryGb: null,
-              diskGb: null,
-            })),
-          },
-        },
-      },
-      tiny,
-    );
-    expect(state.retention.pending).toEqual([
-      expect.objectContaining({ reason: "history-bucket-budget" }),
-    ]);
-    state = tick(state, 5, tiny);
-    expect(state.observability.history.get(historySeriesKeyOf(series))?.buckets.size).toBe(2);
-    expect(state.observability.history.get(historySeriesKeyOf(series))?.coverage).toEqual({
-      kind: "partial",
-      reason: "budget",
-    });
-  });
-
   it("bounds long pending-baseline membership deltas and fails the affected interest for good", () => {
     const tiny = makeZeropsDataPolicy({ membershipMarkersPerQuery: 2 });
     const id = identity();
@@ -765,7 +622,7 @@ describe("Zerops data model coordination", () => {
     }
   });
 
-  it("immediately removes inactive query state and only its unused member refs and history", () => {
+  it("immediately removes inactive query state and only its unused member refs", () => {
     const id = identity();
     let state = reduce(makeInitialZeropsDataState(scope()), {
       kind: "interest-upserted",
@@ -796,126 +653,18 @@ describe("Zerops data model coordination", () => {
       },
     });
 
-    const currentDescriptor = {
-      kind: "current-metrics-of-project" as const,
-      project: project("inactive-current"),
-      groupBy: "containerId" as const,
-      schemaVersion: 1 as const,
-    };
-    const currentTicket = directTicket(
-      { kind: "query", descriptor: currentDescriptor },
-      id,
-      3,
-      2,
-      3,
-    );
-    state = reduce(state, { kind: "read-started", ticket: currentTicket });
-    state = reduce(state, {
-      kind: "observation",
-      observation: {
-        stamp: stamp(3),
-        accessEvidence: null,
-        input: {
-          kind: "current-metrics-replaced",
-          source: "direct-read",
-          ticket: currentTicket,
-          coverage: fullCoverage,
-          samples: [
-            {
-              key: {
-                service: service("inactive-current-service", currentDescriptor.project),
-                containerId: ZeropsContainerId.make("inactive-container"),
-                groupBy: "containerId",
-                schemaVersion: 1,
-              },
-              cpu: null,
-              virtualCpu: null,
-              memoryGb: null,
-              diskGb: null,
-            },
-          ],
-        },
-      },
-    });
-
-    const historyProject = project("history-cleanup-project");
-    const historyDescriptors = (["1h", "1d"] as const).map((timeGroupBy) => ({
-      kind: "metric-history-of-project" as const,
-      project: historyProject,
-      groupBy: "serviceStackId" as const,
-      window: {
-        timeGroupBy,
-        limit: 1,
-        timeZone: "UTC",
-      },
-      schemaVersion: 1 as const,
-    }));
-    const historySeries = historyDescriptors.map((descriptor, index) => ({
-      service: service(`history-cleanup-service-${index}`, descriptor.project),
-      groupBy: "serviceStackId" as const,
-      window: descriptor.window,
-      schemaVersion: 1 as const,
-    }));
-    for (let index = 0; index < historyDescriptors.length; index++) {
-      const ticket = directTicket(
-        { kind: "query", descriptor: historyDescriptors[index]! },
-        id,
-        index + 4,
-        index + 3,
-        index + 4,
-      );
-      state = reduce(state, { kind: "read-started", ticket });
-      state = reduce(state, {
-        kind: "observation",
-        observation: {
-          stamp: stamp(index + 4),
-          accessEvidence: null,
-          input: {
-            kind: "metric-history-window-observed",
-            source: "direct-read",
-            ticket,
-            operation: "replace-window",
-            coverage: fullCoverage,
-            buckets: [
-              {
-                key: {
-                  series: historySeries[index]!,
-                  from: "2026-09-01",
-                  till: "2026-09-02",
-                },
-                containers: null,
-                cpu: null,
-                virtualCpu: null,
-                memoryGb: null,
-                diskGb: null,
-              },
-            ],
-          },
-        },
-      });
-    }
-
-    const retainedHistoryKey = historySeriesKeyOf(historySeries[1]!);
     state = reduce(state, {
       kind: "inactive-queries-released",
-      queryKeys: [
-        queryKeyOf(inventoryDescriptor),
-        queryKeyOf(currentDescriptor),
-        queryKeyOf(historyDescriptors[0]!),
-      ],
+      queryKeys: [queryKeyOf(inventoryDescriptor)],
     });
 
     expect(state.inventory.queries.has(queryKeyOf(inventoryDescriptor))).toBe(false);
-    expect(state.observability.current.has(queryKeyOf(currentDescriptor))).toBe(false);
-    expect(state.observability.history.has(historySeriesKeyOf(historySeries[0]!))).toBe(false);
-    expect(state.observability.history.has(retainedHistoryKey)).toBe(true);
-    expect(state.observability.historyAdmission.has(retainedHistoryKey)).toBe(true);
     expect(state.inventory.memberRefs.has(serviceKeyOf(inventoryMember))).toBe(false);
     expect(state.inventory.services.has(serviceKeyOf(inventoryMember))).toBe(true);
     expect(
       reduce(state, {
         kind: "inactive-queries-released",
-        queryKeys: [queryKeyOf(historyDescriptors[0]!)],
+        queryKeys: [queryKeyOf(inventoryDescriptor)],
       }),
     ).toBe(state);
   });

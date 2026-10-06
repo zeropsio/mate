@@ -19,13 +19,6 @@ import {
   tableRowsWanted,
   type EntityTableState,
 } from "./entityTable.ts";
-import {
-  makeInitialObservabilityState,
-  reduceObservabilityObservation,
-  type CurrentMetricQueryState,
-  type HistoryAdmission,
-  type ObservabilityState,
-} from "./observability.ts";
 import type {
   AccessState,
   AccountRef,
@@ -35,8 +28,6 @@ import type {
   DispatchOrdinal,
   DesiredInterestState,
   IngestionInput,
-  HistorySeriesMapKey,
-  HistorySeriesState,
   InterestIdentity,
   InterestKey,
   InterestProgress,
@@ -71,16 +62,6 @@ export type RetentionTarget =
       readonly keys: ReadonlyArray<string>;
     }
   | {
-      readonly kind: "current-metric";
-      readonly query: QueryKey;
-      readonly keys: ReadonlyArray<string>;
-    }
-  | {
-      readonly kind: "history-bucket";
-      readonly series: string;
-      readonly keys: ReadonlyArray<string>;
-    }
-  | {
       readonly kind: "membership-marker";
       readonly query: QueryKey;
       readonly keys: ReadonlyArray<string>;
@@ -89,12 +70,7 @@ export type RetentionTarget =
 export interface RetentionNotice {
   readonly id: number;
   readonly status: "partial-before-eviction" | "evicted";
-  readonly reason:
-    | "project-budget"
-    | "service-budget"
-    | "current-metric-budget"
-    | "history-bucket-budget"
-    | "membership-marker-budget";
+  readonly reason: "project-budget" | "service-budget" | "membership-marker-budget";
   readonly target: RetentionTarget;
 }
 
@@ -109,7 +85,6 @@ export interface ZeropsDataState {
   readonly closed: boolean;
   readonly access: AccessState;
   readonly inventory: InventoryState;
-  readonly observability: ObservabilityState;
   /** The entities held as the platform sends them (`entityTable.ts`). */
   readonly table: EntityTableState;
   readonly reads: ReadonlyMap<ZeropsRequestId, ReadState>;
@@ -180,7 +155,6 @@ export function makeInitialZeropsDataState(
     closed: false,
     access,
     inventory: makeInitialInventoryState(),
-    observability: makeInitialObservabilityState(),
     table: makeInitialEntityTableState(),
     reads: new Map(),
     readAccumulators: new Map(),
@@ -253,11 +227,7 @@ const observationTicket = (observation: PlatformObservation): ReadTicket | null 
   if (observation.kind === "query-baseline-observed" || observation.kind === "entity-unavailable") {
     return observation.ticket;
   }
-  if (
-    observation.kind === "current-metrics-replaced" ||
-    observation.kind === "metric-history-window-observed" ||
-    observation.kind === "table-rows-observed"
-  ) {
+  if (observation.kind === "table-rows-observed") {
     return observation.source === "direct-read" ? observation.ticket : null;
   }
   if (observation.kind === "table-membership-observed") return null;
@@ -275,11 +245,7 @@ const observationRegistration = (observation: PlatformObservation): Registration
     observation.kind === "table-membership-observed"
   )
     return observation.registration;
-  if (
-    observation.kind === "current-metrics-replaced" ||
-    observation.kind === "metric-history-window-observed" ||
-    observation.kind === "table-rows-observed"
-  ) {
+  if (observation.kind === "table-rows-observed") {
     return observation.source === "native-push" ? observation.registration : null;
   }
   if ("observation" in observation) {
@@ -359,38 +325,15 @@ function accumulateRead(
 function reduceObservation(state: ZeropsDataState, admitted: AdmittedObservation): ZeropsDataState {
   if (!observationIsCurrent(state, admitted)) return state;
   const inventory = reduceInventoryObservation(state.inventory, state.scope, admitted);
-  const observability = reduceObservabilityObservation(state.observability, admitted);
   const table = reduceTableObservation(state.table, admitted);
-  const changed =
-    inventory.state !== state.inventory ||
-    observability.state !== state.observability ||
-    table.state !== state.table;
+  const changed = inventory.state !== state.inventory || table.state !== state.table;
   const outcome: DomainObservationOutcome = {
-    readRequestId:
-      inventory.outcome.readRequestId ??
-      observability.outcome.readRequestId ??
-      table.outcome.readRequestId,
-    applied: mergeUnique(
-      mergeUnique(inventory.outcome.applied, observability.outcome.applied),
-      table.outcome.applied,
-    ),
-    suppressed: mergeUnique(
-      mergeUnique(inventory.outcome.suppressed, observability.outcome.suppressed),
-      table.outcome.suppressed,
-    ),
-    unresolvedRequiredFields: mergeUnique(
-      inventory.outcome.unresolvedRequiredFields,
-      observability.outcome.unresolvedRequiredFields,
-    ),
+    readRequestId: inventory.outcome.readRequestId ?? table.outcome.readRequestId,
+    applied: mergeUnique(inventory.outcome.applied, table.outcome.applied),
+    suppressed: mergeUnique(inventory.outcome.suppressed, table.outcome.suppressed),
+    unresolvedRequiredFields: inventory.outcome.unresolvedRequiredFields,
   };
-  let next = changed
-    ? {
-        ...state,
-        inventory: inventory.state,
-        observability: observability.state,
-        table: table.state,
-      }
-    : state;
+  let next = changed ? { ...state, inventory: inventory.state, table: table.state } : state;
   next = accumulateRead(next, outcome, observationTicket(admitted.input));
   return next;
 }
@@ -818,66 +761,26 @@ function releaseInactiveQueries(
       ticket.target.kind === "query" && released.has(queryKeyOf(ticket.target.descriptor)),
   );
   let inventoryQueries: Map<QueryKey, InventoryQueryState> | null = null;
-  let current: Map<QueryKey, CurrentMetricQueryState> | null = null;
   for (const key of released) {
     if (next.inventory.queries.has(key)) {
       inventoryQueries ??= new Map(next.inventory.queries);
       inventoryQueries.delete(key);
     }
-    if (next.observability.current.has(key)) {
-      current ??= new Map(next.observability.current);
-      current.delete(key);
-    }
   }
 
-  let history: Map<HistorySeriesMapKey, HistorySeriesState> | null = null;
-  let historyAdmission: Map<HistorySeriesMapKey, HistoryAdmission> | null = null;
-  for (const [seriesKey, series] of next.observability.history) {
-    const key = queryKeyOf({
-      kind: "metric-history-of-project",
-      project: series.key.service.project,
-      groupBy: series.key.groupBy,
-      window: series.key.window,
-      schemaVersion: series.key.schemaVersion,
-    });
-    if (!released.has(key)) continue;
-    history ??= new Map(next.observability.history);
-    historyAdmission ??= new Map(next.observability.historyAdmission);
-    history.delete(seriesKey);
-    historyAdmission.delete(seriesKey);
-  }
   const table = releaseTableLists(next.table, released);
   if (table !== next.table) next = { ...next, table };
-  if (inventoryQueries === null && current === null && history === null) return next;
+  if (inventoryQueries === null) return next;
 
-  let inventory = next.inventory;
-  if (inventoryQueries !== null) {
-    const inventoryMemberKeys = new Set<string>();
-    for (const query of inventoryQueries.values()) {
-      for (const key of query.memberKeys) inventoryMemberKeys.add(key);
-      for (const key of query.membershipOperations.keys()) inventoryMemberKeys.add(key);
-    }
-    const memberRefs = new Map(
-      [...inventory.memberRefs].filter(([key]) => inventoryMemberKeys.has(key)),
-    );
-    inventory = { ...inventory, queries: inventoryQueries, memberRefs };
+  const inventoryMemberKeys = new Set<string>();
+  for (const query of inventoryQueries.values()) {
+    for (const key of query.memberKeys) inventoryMemberKeys.add(key);
+    for (const key of query.membershipOperations.keys()) inventoryMemberKeys.add(key);
   }
-
-  const observability =
-    current === null && history === null
-      ? next.observability
-      : {
-          ...next.observability,
-          current: current ?? next.observability.current,
-          history: history ?? next.observability.history,
-          historyAdmission: historyAdmission ?? next.observability.historyAdmission,
-        };
-  next = {
-    ...next,
-    inventory,
-    observability,
-  };
-  return next;
+  const memberRefs = new Map(
+    [...next.inventory.memberRefs].filter(([key]) => inventoryMemberKeys.has(key)),
+  );
+  return { ...next, inventory: { ...next.inventory, queries: inventoryQueries, memberRefs } };
 }
 
 function applyControl(state: ZeropsDataState, input: RuntimeControlInput): ZeropsDataState {
@@ -888,7 +791,6 @@ function applyControl(state: ZeropsDataState, input: RuntimeControlInput): Zerop
       closed: true,
       access: { status: "unverified" },
       inventory: makeInitialInventoryState(),
-      observability: makeInitialObservabilityState(),
       reads: new Map(),
       readAccumulators: new Map(),
       sharedReads: new Map(),
@@ -993,7 +895,6 @@ function applyControl(state: ZeropsDataState, input: RuntimeControlInput): Zerop
 function applyPendingRetention(state: ZeropsDataState): ZeropsDataState {
   if (state.retention.pending.length === 0) return state;
   let inventory = state.inventory;
-  let observability = state.observability;
   const overflowingMembershipQueries = new Set<QueryKey>();
   for (const notice of state.retention.pending) {
     if (notice.target.kind === "entity") {
@@ -1005,32 +906,6 @@ function applyPendingRetention(state: ZeropsDataState): ZeropsDataState {
         const services = new Map(inventory.services);
         for (const key of notice.target.keys) services.delete(key as never);
         inventory = { ...inventory, services };
-      }
-    } else if (notice.target.kind === "current-metric") {
-      const query = observability.current.get(notice.target.query);
-      if (query !== undefined) {
-        const samples = new Map(query.samples);
-        for (const key of notice.target.keys) samples.delete(key as never);
-        const current = new Map(observability.current);
-        current.set(notice.target.query, {
-          ...query,
-          samples,
-          coverage: { kind: "partial", reason: "budget" },
-        });
-        observability = { ...observability, current };
-      }
-    } else if (notice.target.kind === "history-bucket") {
-      const series = observability.history.get(notice.target.series as never);
-      if (series !== undefined) {
-        const buckets = new Map(series.buckets);
-        for (const key of notice.target.keys) buckets.delete(key as never);
-        const history = new Map(observability.history);
-        history.set(notice.target.series as never, {
-          ...series,
-          buckets,
-          coverage: { kind: "partial", reason: "budget" },
-        });
-        observability = { ...observability, history };
       }
     } else {
       overflowingMembershipQueries.add(notice.target.query);
@@ -1057,7 +932,6 @@ function applyPendingRetention(state: ZeropsDataState): ZeropsDataState {
   let next: ZeropsDataState = {
     ...state,
     inventory,
-    observability,
     retention: {
       ...state.retention,
       notices: [
@@ -1200,19 +1074,11 @@ function markRetentionViewsPartial(
   const projectKeys = new Set<string>();
   const serviceKeys = new Set<string>();
   const queryKeys = new Set<QueryKey>();
-  const currentQueryKeys = new Set<QueryKey>();
-  const historySeriesKeys = new Set<string>();
   for (const notice of notices) {
     if (notice.target.kind === "entity") {
       const target = notice.target.entity === "project" ? projectKeys : serviceKeys;
       for (const key of notice.target.keys) target.add(key);
-    } else if (notice.target.kind === "membership-marker") {
-      queryKeys.add(notice.target.query);
-    } else if (notice.target.kind === "current-metric") {
-      currentQueryKeys.add(notice.target.query);
-    } else {
-      historySeriesKeys.add(notice.target.series);
-    }
+    } else queryKeys.add(notice.target.query);
   }
 
   const serviceOrganizations = new Set<string>();
@@ -1237,38 +1103,8 @@ function markRetentionViewsPartial(
       coverage: { kind: "partial", reason: "budget" },
     } as InventoryQueryState);
   }
-
-  let current: Map<QueryKey, CurrentMetricQueryState> | null = null;
-  for (const key of currentQueryKeys) {
-    const query = state.observability.current.get(key);
-    if (query === undefined) continue;
-    current ??= new Map(state.observability.current);
-    current.set(key, { ...query, coverage: { kind: "partial", reason: "budget" } });
-  }
-  let history: Map<HistorySeriesMapKey, HistorySeriesState> | null = null;
-  for (const key of historySeriesKeys) {
-    const series = state.observability.history.get(key as HistorySeriesMapKey);
-    if (series === undefined) continue;
-    history ??= new Map(state.observability.history);
-    history.set(key as HistorySeriesMapKey, {
-      ...series,
-      coverage: { kind: "partial", reason: "budget" },
-    });
-  }
-
-  if (inventoryQueries === null && current === null && history === null) return state;
-  return {
-    ...state,
-    inventory:
-      inventoryQueries === null
-        ? state.inventory
-        : { ...state.inventory, queries: inventoryQueries },
-    observability: {
-      ...state.observability,
-      current: current ?? state.observability.current,
-      history: history ?? state.observability.history,
-    },
-  };
+  if (inventoryQueries === null) return state;
+  return { ...state, inventory: { ...state.inventory, queries: inventoryQueries } };
 }
 
 function scheduleRetention(state: ZeropsDataState, policy: ZeropsDataPolicy): ZeropsDataState {
@@ -1309,53 +1145,6 @@ function scheduleRetention(state: ZeropsDataState, policy: ZeropsDataPolicy): Ze
       entity: "service",
       keys: services
         .slice(0, services.length - policy.retainedServicesPerAccount)
-        .map(([key]) => key),
-    });
-  }
-
-  let totalCurrentSamples = 0;
-  for (const value of state.observability.current.values())
-    totalCurrentSamples += value.samples.size;
-  if (totalCurrentSamples > policy.retainedCurrentMetricSamplesPerAccount) {
-    const currentSamples = [...state.observability.current.entries()]
-      .flatMap(([query, value]) =>
-        [...value.samples.keys()].map((key) => ({
-          query,
-          key,
-          receiptOrdinal: value.stamp.receiptOrdinal,
-        })),
-      )
-      .sort(
-        (left, right) =>
-          Number(left.receiptOrdinal) - Number(right.receiptOrdinal) ||
-          String(left.key).localeCompare(String(right.key)),
-      );
-    const currentExcess = currentSamples.length - policy.retainedCurrentMetricSamplesPerAccount;
-    if (currentExcess > 0) {
-      const keysByQuery = new Map<QueryKey, string[]>();
-      for (const sample of currentSamples.slice(0, currentExcess)) {
-        const keys = keysByQuery.get(sample.query) ?? [];
-        keysByQuery.set(sample.query, [...keys, sample.key]);
-      }
-      for (const [query, keys] of keysByQuery) {
-        addNotice("current-metric-budget", { kind: "current-metric", query, keys });
-      }
-    }
-  }
-
-  for (const [seriesKey, series] of state.observability.history) {
-    if (series.buckets.size <= policy.retainedHistoryBucketsPerSeries) continue;
-    const buckets = [...series.buckets.entries()].sort(
-      ([leftKey, left], [rightKey, right]) =>
-        left.key.from.localeCompare(right.key.from) ||
-        left.key.till.localeCompare(right.key.till) ||
-        String(leftKey).localeCompare(String(rightKey)),
-    );
-    addNotice("history-bucket-budget", {
-      kind: "history-bucket",
-      series: seriesKey,
-      keys: buckets
-        .slice(0, series.buckets.size - policy.retainedHistoryBucketsPerSeries)
         .map(([key]) => key),
     });
   }

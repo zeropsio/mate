@@ -1,12 +1,12 @@
 /**
- * How the left menu reads each Mate it draws: what its row says (`useMateRowActivity` — HQ's word
- * of it or its socket's reading, live while either stands, at rest otherwise) and
+ * How the left menu reads each Mate it draws: what its row says (`useMateRowActivity` — its
+ * attention as the account's store holds it, at rest while that word is not of now) and
  * whether it is still in its first minutes (`mateComing` — its birth, its project on the way up,
  * the platform's verdict on its creation, this tab's creation). The menu, the folded headings and
  * the waiting faces read the same answers; the projects page reads the same words.
  */
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
-import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
+import type { ScopedThreadRef } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import {
   applyProjectCreationVerdict,
@@ -15,8 +15,9 @@ import {
 import { useCallback, useMemo } from "react";
 
 import { environmentsWithSnapshotAtom } from "../state/shell";
-import { hqMatesAtom, zeropsEnvironmentsAtom } from "../state/zerops";
+import { hqMatesAtom } from "../state/zerops";
 import { overviewAgentActivity, type ZeropsAgentActivity } from "./agentActivity";
+import type { MatesActivity } from "./useZeropsAgentActivity";
 import { useEnvironmentLinks } from "../routes/-environmentTargets";
 import { arrivalAwaitsAnswer, arrivalLinkHolds, mateComing, type MateComing } from "./mateComing";
 import { useCreations } from "./creations";
@@ -28,48 +29,19 @@ import { usePressesElsewhere } from "./usePressesElsewhere";
 import { closeOffOpenOf, pressComingInput, useMatePresses } from "./matePress";
 
 /**
- * What a Mate's row says (`useZeropsAgentActivity`), found by its project: through HQ's word of it,
- * else through its connected socket's environment, else through the socket whose server says it
- * runs that project — a reconnecting socket leaves the candidate `ready`.
+ * What a Mate's row says (`useMatesActivity`), for a candidate the menu lists: by its project, else
+ * by the environment its connected socket runs.
  */
-export function useMateActivityByProject(
-  activity: ReadonlyMap<EnvironmentId, ZeropsAgentActivity>,
-): (projectId: string, connected: EnvironmentId | undefined) => ZeropsAgentActivity | undefined {
-  const environments = useAtomValue(zeropsEnvironmentsAtom);
-  const hq = useAtomValue(hqMatesAtom);
-  const sockets = useMemo(
-    () =>
-      new Map(
-        environments.flatMap((environment) =>
-          typeof environment.zeropsProjectId === "string"
-            ? [[environment.zeropsProjectId, environment.environmentId] as const]
-            : [],
-        ),
-      ),
-    [environments],
-  );
-  return useCallback(
-    (projectId: string, connected: EnvironmentId | undefined) => {
-      const environmentId =
-        hq?.mates?.get(projectId)?.identity?.environmentId ?? connected ?? sockets.get(projectId);
-      return environmentId === undefined ? undefined : activity.get(environmentId);
-    },
-    [activity, hq, sockets],
-  );
-}
-
-/** What a Mate's row says (`useMateActivityByProject`), for a candidate the menu lists. */
 export function useMateRowActivity(
-  activity: ReadonlyMap<EnvironmentId, ZeropsAgentActivity>,
+  activity: MatesActivity,
 ): (candidate: ZeropsCandidate) => ZeropsAgentActivity | undefined {
-  const byProject = useMateActivityByProject(activity);
   return useCallback(
     (candidate: ZeropsCandidate) =>
-      byProject(
-        candidate.project.id,
-        candidate.group === "connected" ? candidate.environmentId : undefined,
-      ),
-    [byProject],
+      activity.ofProject(candidate.project.id) ??
+      (candidate.group === "connected" && candidate.environmentId !== undefined
+        ? activity.ofEnvironment(candidate.environmentId)
+        : undefined),
+    [activity],
   );
 }
 

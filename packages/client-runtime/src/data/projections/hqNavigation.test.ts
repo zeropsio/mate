@@ -14,7 +14,7 @@ import { reduceAccount, type AccountInput, type Row } from "../reducer.ts";
 import { readsOfState } from "../store.ts";
 import type { StreamEvent } from "../streamMachine.ts";
 import { hqMates } from "./hqMates.ts";
-import { hqNavigation, hqPersonFacts, hqStatus } from "./hqNavigation.ts";
+import { hqAppChanges, hqNavigation, hqPersonFacts, hqStatus } from "./hqNavigation.ts";
 
 const ORG = "org";
 const NAV: ReadonlyArray<ScopeKey> = [
@@ -27,6 +27,17 @@ const NAV: ReadonlyArray<ScopeKey> = [
 ];
 const revision = { kind: "hq", incarnation: "i", revision: 1 } as const;
 
+const CHANGE = {
+  repo: "app",
+  number: 7,
+  mateProjectId: "ada",
+  title: "Quicker checkout",
+  state: "open",
+  hasHead: true,
+  updatedAt: "2026-10-06T00:00:00.000Z",
+  mergeability: "clean",
+  ready: true,
+} as const;
 const PRESS = {
   kind: "stage",
   appId: "shop",
@@ -73,6 +84,7 @@ const rows: ReadonlyArray<Row> = [
       projectIds: ["ada", "stage"],
       births: [],
       environments: [],
+      changes: [CHANGE],
     },
   },
   {
@@ -86,7 +98,8 @@ const rows: ReadonlyArray<Row> = [
       kind: "mate",
       mate,
       person,
-      signers: {},
+      signedInNow: {},
+      everSignedIn: {},
     },
   },
   {
@@ -100,7 +113,8 @@ const rows: ReadonlyArray<Row> = [
       kind: "stage",
       mate: null,
       person,
-      signers: {},
+      signedInNow: {},
+      everSignedIn: {},
     },
   },
   {
@@ -114,7 +128,8 @@ const rows: ReadonlyArray<Row> = [
       kind: "mate",
       mate,
       person,
-      signers: {},
+      signedInNow: {},
+      everSignedIn: {},
     },
   },
   {
@@ -322,5 +337,12 @@ describe("hqStatus", () => {
       parts: { quarantined: [] },
     });
     expect(hqStatus.derive(readsOfState(emptyAccount), ORG)).toBeNull();
+  });
+});
+
+describe("hqAppChanges", () => {
+  it("is each application's open changes as HQ's navigation says them", () => {
+    expect(hqAppChanges.derive(readsOfState(read), ORG)).toEqual({ shop: [CHANGE] });
+    expect(hqAppChanges.derive(readsOfState(emptyAccount), ORG)).toEqual({});
   });
 });

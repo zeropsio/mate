@@ -18,6 +18,7 @@ import type { ZeropsApiClient } from "../../../zerops/api.ts";
 import { deployTokenMint } from "../../../zerops/deployToken.ts";
 import { HqError, type HqApi } from "../../../zerops/hq/client.ts";
 import { HQ_NOT_OPEN } from "../../../zerops/hq/refusals.ts";
+import { discussionId } from "../../families/hqDiscussion.ts";
 import type { OperationIntent, OperationReceipt, OperationResult } from "../../model.ts";
 import type { StreamFault } from "../../streamMachine.ts";
 import type { OperationExecutor, UncertainAcceptance } from "../coordinator.ts";
@@ -38,13 +39,20 @@ export type HqWrites = Pick<
 
 function faultOf(cause: unknown): StreamFault | UncertainAcceptance {
   const message = cause instanceof Error ? cause.message : String(cause);
-  if (!(cause instanceof HqError) || cause.kind === "uncertain" || cause.code === "conflict")
+  if (!(cause instanceof HqError) || cause.kind === "uncertain")
     return { outcome: "uncertain-acceptance", message };
   if (cause.kind === "refused") return { outcome: "definitive-refusal", message };
   return { outcome: "transient", message };
 }
 
-const write = <A>(call: () => Promise<A>) => Effect.tryPromise({ try: call, catch: faultOf });
+const write = <A>(call: () => Promise<A>) =>
+  Effect.tryPromise({
+    try: call,
+    catch: (cause) =>
+      cause instanceof HqError && cause.code === "conflict"
+        ? { outcome: "uncertain-acceptance" as const, message: cause.message }
+        : faultOf(cause),
+  });
 
 /**
  * A write HQ refuses with `code` as done already: a Mate's record it holds (`conflict`), a close-off
@@ -155,15 +163,31 @@ export function makeHqExecutor(ports: {
   return {
     submit: (requestId, intent: OperationIntent) =>
       Effect.gen(function* () {
-        const hqWrite = intent as HqWriteIntent;
-        const api = ports.apiOf(hqWrite.orgId);
+        if (!("orgId" in intent))
+          return yield* Effect.die(new Error(`HQ executes no ${intent.kind}.`));
+        const api = ports.apiOf(intent.orgId);
         // No HQ to send it to: nothing was sent, and nothing will be until one is named.
         if (api === null)
           return yield* Effect.fail<StreamFault>({
             outcome: "definitive-refusal",
             message: HQ_NOT_OPEN,
           });
-        return yield* creationWrite(requestId, api, hqWrite);
+        if (intent.kind === "change-comment") {
+          const said = yield* Effect.tryPromise({
+            try: () => api.commentOnChange(intent.link, intent.body),
+            catch: faultOf,
+          });
+          return {
+            requestId,
+            operationId: said.id,
+            executor: "hq",
+            affected: [{ family: "hqDiscussion", id: discussionId(intent.link) }],
+            handles: [said.id],
+            acceptance: { kind: "accepted" },
+            outcome: { kind: "pending" },
+          } satisfies OperationReceipt;
+        }
+        return yield* creationWrite(requestId, api, intent as HqWriteIntent);
       }),
   };
 }

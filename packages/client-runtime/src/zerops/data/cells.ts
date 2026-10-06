@@ -1,6 +1,6 @@
 /**
  * The store's cells: the reads no organization stream carries, one keyed cell each —
- * `tokens:{org}`, `members:{org}`, `locations:{org}`, `agents:{service}` and `mate-flag:{service}`. Every caller of a key shares its one read; a value stays fresh for its
+ * `mate-flag:{service}`. Every caller of a key shares its one read; a value stays fresh for its
  * kind's while (`CELL_FRESH_MS`), our own writes invalidate it, an idle cell is kept
  * `CELL_IDLE_RETENTION_MS`, and access withholds what it no longer covers. The data adapter's
  * `cells` read them (`restAdapter.ts`).
@@ -15,9 +15,6 @@ import * as Result from "effect/Result";
 import * as Scope from "effect/Scope";
 import { Atom } from "effect/unstable/reactivity";
 
-import type { ZeropsPublicAccess } from "../publicRoutes.ts";
-import type { ZeropsLocation, ZeropsOrganizationMember } from "../api.ts";
-import type { ZeropsIntegrationToken } from "../groupReach.ts";
 import {
   advance,
   newCell,
@@ -34,7 +31,6 @@ import {
   scheduleRetry,
   type Backoff,
 } from "../knowledge/retryPolicy.ts";
-import type { ZeropsAgentType } from "../newProject.ts";
 import { DEFAULT_ZEROPS_DATA_POLICY } from "./policy.ts";
 import type {
   AccessDenialScope,
@@ -47,32 +43,6 @@ import type {
   VerifiedAccessGrant,
 } from "./types.ts";
 import { organizationKeyOf, projectKeyOf, projectRoleGrantsAccess } from "./types.ts";
-
-export interface LocationsCellRequest {
-  readonly kind: "locations";
-  readonly account: AccountScope;
-  readonly organization: OrganizationRef;
-}
-
-/** The adapter projects service env rows to agent identifiers before returning. */
-export interface AgentsCellRequest {
-  readonly kind: "agents";
-  readonly account: AccountScope;
-  readonly service: ServiceRef;
-}
-
-/** The organization's members (`GET /client/{id}/user/list`): names, roles and pictures. */
-export interface MembersCellRequest {
-  readonly kind: "members";
-  readonly account: AccountScope;
-  readonly organization: OrganizationRef;
-}
-
-export interface TokensCellRequest {
-  readonly kind: "tokens";
-  readonly account: AccountScope;
-  readonly organization: OrganizationRef;
-}
 
 /**
  * `ZCP_MATE_ENABLED` on a service — the one read fact that tells a container
@@ -87,44 +57,17 @@ export interface MateFlagCellRequest {
   readonly service: ServiceRef;
 }
 
-export interface PublicAccessCellRequest {
-  readonly kind: "public-access";
-  readonly account: AccountScope;
-  readonly project: ProjectRef;
-}
-
-export type ZeropsCellRequest =
-  | PublicAccessCellRequest
-  | LocationsCellRequest
-  | AgentsCellRequest
-  | MateFlagCellRequest
-  | TokensCellRequest
-  | MembersCellRequest;
+export type ZeropsCellRequest = MateFlagCellRequest;
 
 export type ZeropsCellKind = ZeropsCellRequest["kind"];
 
-/** A token as the door's throwaway sweep reads it: no credential, no grant. */
-export interface ZeropsIntegrationTokenMetadata {
-  readonly tokenId: ZeropsIntegrationToken["id"];
-  readonly name: ZeropsIntegrationToken["name"];
-  /** When the platform minted it: the start-up throwaway sweep dates rows by it. */
-  readonly created?: string | undefined;
-  /** Who minted it: besides an org owner, the one person who may write it. */
-  readonly createdByUser?: string | undefined;
-}
-
 export interface ZeropsCellValues {
-  readonly "public-access": ZeropsPublicAccess;
-  readonly locations: ReadonlyArray<ZeropsLocation>;
-  readonly agents: ReadonlyArray<ZeropsAgentType>;
   /**
    * `"unknown"` for a read that failed rather than answered — never folded
    * into `false`, which is itself a fact a caller may act on (H9): a row
    * offering Enable off an `"unknown"` flag would be back to inferring.
    */
   readonly "mate-flag": { readonly enabled: boolean | "unknown" };
-  readonly tokens: ReadonlyArray<ZeropsIntegrationTokenMetadata>;
-  readonly members: ReadonlyArray<ZeropsOrganizationMember>;
 }
 
 /**
@@ -133,31 +76,7 @@ export interface ZeropsCellValues {
  * (`invalidate`) whatever its age. `0` re-reads on every new demand.
  */
 export const CELL_FRESH_MS: Readonly<Record<ZeropsCellKind, number>> = {
-  "public-access": 60_000,
-  locations: 0,
-  agents: 0,
   "mate-flag": 0,
-  tokens: 60_000,
-  members: 5 * 60_000,
-};
-
-/**
- * How long a read of its kind may go unanswered before it fails as Zerops not answering and climbs
- * the retry ladder like any other — its request aborted. The token and member lists are each one
- * heavy answer the whole organization's, and a read the platform sat on held its cell reading for
- * as long as it did. A kind not named waits as long as its source does.
- */
-const CELL_READ_DEADLINE_MS: Readonly<Partial<Record<ZeropsCellKind, number>>> = {
-  "public-access": 30_000,
-  tokens: 30_000,
-  members: 30_000,
-};
-
-/** A read past its kind's deadline: Zerops did not answer, and a retry may. */
-const READ_PAST_DEADLINE: ZeropsCellSourceError = {
-  _tag: "ZeropsCellSourceError",
-  kind: "transport",
-  retryable: true,
 };
 
 export type ZeropsCellValue<Request extends ZeropsCellRequest> = ZeropsCellValues[Request["kind"]];
@@ -187,30 +106,10 @@ export interface ZeropsCellReadContext {
  * before their Effects succeed.
  */
 export interface ZeropsCellAdapter {
-  readonly readProjectPublicAccess: (
-    request: PublicAccessCellRequest,
-    context: ZeropsCellReadContext,
-  ) => Effect.Effect<ZeropsCellValues["public-access"], ZeropsCellSourceError>;
-  readonly readOrganizationLocations: (
-    request: LocationsCellRequest,
-    context: ZeropsCellReadContext,
-  ) => Effect.Effect<ZeropsCellValues["locations"], ZeropsCellSourceError>;
-  readonly readServiceAuthorizedAgents: (
-    request: AgentsCellRequest,
-    context: ZeropsCellReadContext,
-  ) => Effect.Effect<ZeropsCellValues["agents"], ZeropsCellSourceError>;
   readonly readServiceMateFlag: (
     request: MateFlagCellRequest,
     context: ZeropsCellReadContext,
   ) => Effect.Effect<ZeropsCellValues["mate-flag"], ZeropsCellSourceError>;
-  readonly readOrganizationIntegrationTokens: (
-    request: TokensCellRequest,
-    context: ZeropsCellReadContext,
-  ) => Effect.Effect<ZeropsCellValues["tokens"], ZeropsCellSourceError>;
-  readonly readOrganizationMembers: (
-    request: MembersCellRequest,
-    context: ZeropsCellReadContext,
-  ) => Effect.Effect<ZeropsCellValues["members"], ZeropsCellSourceError>;
 }
 
 /** Why the broker takes no demand at all; access never refuses demand, it withholds (§9 C4). */
@@ -295,13 +194,6 @@ export interface ZeropsCellsOptions {
 
 export const CELL_ADMISSION_DEADLINE_MS = 30_000;
 
-/**
- * A heavy list the platform sat on past its deadline retries on the ladder this many times; after
- * that it waits `CELL_DEADLINE_CAP_MS` between reads, or a person's Read again.
- */
-const DEADLINE_RETRIES = 2;
-const CELL_DEADLINE_CAP_MS = 5 * 60_000;
-
 export const CELL_IDLE_RETENTION_MS = 10 * 60_000;
 
 type AnyCellValue = ZeropsCellValues[ZeropsCellKind];
@@ -335,8 +227,6 @@ interface CellEntry {
   retryWake: Fiber.Fiber<void> | null;
   /** Its retry came due while the tab was hidden: the next `wake` reads it. */
   retryDue: boolean;
-  /** Reads past their deadline in a row (`DEADLINE_RETRIES`). */
-  deadlineFailures: number;
   /** The end of the idle retention window, while nothing demands the entry. */
   evictionWake: Fiber.Fiber<void> | null;
 }
@@ -375,58 +265,24 @@ const usableGrant = (access: AccessState): VerifiedAccessGrant | null => {
   return null;
 };
 
-const organizationOf = (request: ZeropsCellRequest): OrganizationRef => {
-  switch (request.kind) {
-    case "public-access":
-      return request.project.organization;
-    case "locations":
-    case "tokens":
-    case "members":
-      return request.organization;
-    case "agents":
-    case "mate-flag":
-      return request.service.project.organization;
-  }
-};
+const organizationOf = (request: ZeropsCellRequest): OrganizationRef =>
+  request.service.project.organization;
 
-/** The project a cell belongs to; an organization's cell belongs to none. */
-const projectOf = (request: ZeropsCellRequest): ProjectRef | null => {
-  switch (request.kind) {
-    case "public-access":
-      return request.project;
-    case "locations":
-    case "tokens":
-    case "members":
-      return null;
-    case "agents":
-    case "mate-flag":
-      return request.service.project;
-  }
-};
+/** The project a cell belongs to: its service's. */
+const projectOf = (request: ZeropsCellRequest): ProjectRef => request.service.project;
 
 /** The access scope that withholds a cell: its project, or the account for an organization's. */
 const cellScopeOf = (request: ZeropsCellRequest): Cell<AnyCellValue>["scope"] =>
-  projectOf(request)?.projectId ?? "account";
+  projectOf(request).projectId;
 
 /** A denial of the account covers every cell; a project's covers only that project's. */
 const denialCovers = (scope: AccessDenialScope, request: ZeropsCellRequest): boolean => {
   if (scope.kind === "account") return true;
-  const project = projectOf(request);
-  return project !== null && projectKeyOf(project) === projectKeyOf(scope.project);
+  return projectKeyOf(projectOf(request)) === projectKeyOf(scope.project);
 };
 
 export function zeropsCellKeyOf(request: ZeropsCellRequest): ZeropsCellKey {
-  switch (request.kind) {
-    case "public-access":
-      return `${request.kind}:${projectKeyOf(request.project)}` as ZeropsCellKey;
-    case "locations":
-    case "tokens":
-    case "members":
-      return `${request.kind}:${request.organization.organizationId}` as ZeropsCellKey;
-    case "agents":
-    case "mate-flag":
-      return `${request.kind}:${request.service.serviceId}` as ZeropsCellKey;
-  }
+  return `${request.kind}:${request.service.serviceId}` as ZeropsCellKey;
 }
 
 /** The sanitized reason a read failed: the source's own message never leaves the adapter. */
@@ -436,7 +292,6 @@ const failureOf = (
   readonly failure: FailureReason;
   readonly retryable: boolean;
   readonly retryAfterMs?: number;
-  readonly pastDeadline?: true;
 } => {
   const found = Cause.findError(cause);
   if (Result.isFailure(found)) {
@@ -445,12 +300,6 @@ const failureOf = (
       retryable: false,
     };
   }
-  if (found.success === READ_PAST_DEADLINE)
-    return {
-      failure: { kind: "transport", detail: "Zerops did not answer." },
-      retryable: true,
-      pastDeadline: true,
-    };
   const { kind, retryable } = found.success;
   if (found.success.retryAfterMs !== undefined)
     return {
@@ -516,8 +365,7 @@ function cellAdmission(
   ) {
     return withheld("access-denied");
   }
-  const project = projectOf(request);
-  if (project !== null && !projectRoleGrantsAccess(grant, project, "any-role")) {
+  if (!projectRoleGrantsAccess(grant, projectOf(request), "any-role")) {
     return withheld("access-denied");
   }
   return { kind: "admitted", deadlineMs: grant.deadlineMs };
@@ -528,20 +376,7 @@ function readCell(
   request: ZeropsCellRequest,
   context: ZeropsCellReadContext,
 ): Effect.Effect<AnyCellValue, ZeropsCellSourceError> {
-  switch (request.kind) {
-    case "public-access":
-      return adapter.readProjectPublicAccess(request, context);
-    case "locations":
-      return adapter.readOrganizationLocations(request, context);
-    case "agents":
-      return adapter.readServiceAuthorizedAgents(request, context);
-    case "mate-flag":
-      return adapter.readServiceMateFlag(request, context);
-    case "tokens":
-      return adapter.readOrganizationIntegrationTokens(request, context);
-    case "members":
-      return adapter.readOrganizationMembers(request, context);
-  }
+  return adapter.readServiceMateFlag(request, context);
 }
 
 /** Nothing is in flight over it: a one-shot reader may act on it. */
@@ -711,7 +546,6 @@ export const makeZeropsCells = Effect.fn("ZeropsCells.make")(function* (
     entry.inFlight = null;
     if (Exit.isSuccess(exit)) {
       entry.backoff = INITIAL_BACKOFF;
-      entry.deadlineFailures = 0;
       apply(entry, {
         kind: "read-succeeded",
         ordinal: inFlight.ordinal,
@@ -723,22 +557,14 @@ export const makeZeropsCells = Effect.fn("ZeropsCells.make")(function* (
       if (entry.cell.dirty && entry.demands.size > 0) startRead(entry);
       return;
     }
-    const { failure, retryable, retryAfterMs, pastDeadline } = failureOf(exit.cause);
-    entry.deadlineFailures = pastDeadline === true ? entry.deadlineFailures + 1 : 0;
+    const { failure, retryable, retryAfterMs } = failureOf(exit.cause);
     const ladder = retryable ? scheduleRetry(entry.backoff, now(), random) : null;
     if (ladder !== null) entry.backoff = ladder.backoff;
-    // A Retry-After is a floor; a list the platform keeps sitting on waits the cap.
+    // A Retry-After is a floor.
     const scheduled =
       ladder === null
         ? null
-        : {
-            retryAtMs: Math.max(
-              entry.deadlineFailures > DEADLINE_RETRIES
-                ? now() + CELL_DEADLINE_CAP_MS
-                : ladder.retryAtMs,
-              now() + (retryAfterMs ?? 0),
-            ),
-          };
+        : { retryAtMs: Math.max(ladder.retryAtMs, now() + (retryAfterMs ?? 0)) };
     const failed = advance(
       entry.cell,
       {
@@ -770,23 +596,10 @@ export const makeZeropsCells = Effect.fn("ZeropsCells.make")(function* (
     entry.attemptedInvalidation = cell.lastInvalidation;
     entry.inFlight = inFlight;
     setCell(entry, advance(cell, { kind: "read-started", ordinal: inFlight.ordinal, atMs }, atMs));
-    const read = readCell(options.adapter, entry.request, {
-      abortSignal: inFlight.controller.signal,
-    });
-    const deadlineMs = CELL_READ_DEADLINE_MS[entry.request.kind];
     inFlight.fiber = fork(
-      (deadlineMs === undefined
-        ? read
-        : read.pipe(
-            Effect.timeoutOrElse({
-              duration: Duration.millis(deadlineMs),
-              orElse: () =>
-                Effect.sync(() => inFlight.controller.abort()).pipe(
-                  Effect.andThen(Effect.fail(READ_PAST_DEADLINE)),
-                ),
-            }),
-          )
-      ).pipe(
+      readCell(options.adapter, entry.request, {
+        abortSignal: inFlight.controller.signal,
+      }).pipe(
         Effect.exit,
         Effect.flatMap((exit) => Effect.sync(() => completeRead(entry, inFlight, atMs, exit))),
       ),
@@ -1013,7 +826,6 @@ export const makeZeropsCells = Effect.fn("ZeropsCells.make")(function* (
         backoff: INITIAL_BACKOFF,
         retryWake: null,
         retryDue: false,
-        deadlineFailures: 0,
         evictionWake: null,
       };
       if (waits) {
@@ -1165,14 +977,7 @@ export const makeZeropsCells = Effect.fn("ZeropsCells.make")(function* (
     });
 
   const diagnostics: Effect.Effect<ZeropsCellDiagnostics> = Effect.sync(() => {
-    const byKind: Record<ZeropsCellKind, number> = {
-      "public-access": 0,
-      locations: 0,
-      agents: 0,
-      "mate-flag": 0,
-      tokens: 0,
-      members: 0,
-    };
+    const byKind: Record<ZeropsCellKind, number> = { "mate-flag": 0 };
     const counts = { leases: 0, reading: 0, waiting: 0, known: 0, failed: 0, withheld: 0 };
     for (const entry of [...entries.values(), ...pending.values()]) {
       byKind[entry.request.kind] += 1;

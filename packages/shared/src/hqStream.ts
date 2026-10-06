@@ -5,7 +5,7 @@ import { MateOverview } from "./mateLink.ts";
 import { RecipeTierResponse } from "./hqRecipe.ts";
 import { HqDecision } from "./hqOffers.ts";
 import { AppReadValue } from "./hqAppReads.ts";
-import { HqChange } from "./hqChanges.ts";
+import { CompareQuery, CompareResponse, RepoName, HqChange } from "./hqChanges.ts";
 import { EnvironmentBirth, HqDeployOutcome } from "./hqDeploys.ts";
 import { ReleaseRollout } from "./hqRelease.ts";
 
@@ -125,6 +125,13 @@ export const HqStreamRequest = Schema.Union([
     requestId: Schema.String,
     projectId: Schema.String,
   }),
+  Schema.Struct({
+    type: Schema.Literal("compare"),
+    requestId: Schema.String,
+    appId: Schema.String,
+    repo: RepoName,
+    ...CompareQuery.fields,
+  }),
   Schema.Struct({ type: Schema.Literal("pong") }),
 ]);
 export type HqStreamRequest = typeof HqStreamRequest.Type;
@@ -190,6 +197,23 @@ export const HqHandoverCandidatesError = Schema.Struct({
   reason: Schema.NullOr(Schema.String),
   disposition: Schema.Literals(["refused", "transient"]),
 });
+/** On-demand read; the result has the same shape as Changes.compare. Never broadcast. */
+export const HqCompareMessage = Schema.Struct({
+  type: Schema.Literal("compare"),
+  requestId: Schema.String,
+  appId: Schema.String,
+  repo: RepoName,
+  result: CompareResponse,
+});
+export const HqCompareError = Schema.Struct({
+  type: Schema.Literal("compare-error"),
+  requestId: Schema.String,
+  appId: Schema.String,
+  repo: RepoName,
+  code: Schema.String,
+  reason: Schema.NullOr(Schema.String),
+  disposition: Schema.Literals(["refused", "transient"]),
+});
 export const HqStreamMessage = Schema.Union([
   HqScopeDelivery,
   HqScopeFailure,
@@ -198,6 +222,8 @@ export const HqStreamMessage = Schema.Union([
   HqMoveOffersError,
   HqHandoverCandidatesMessage,
   HqHandoverCandidatesError,
+  HqCompareMessage,
+  HqCompareError,
   Schema.Struct({ type: Schema.Literal("ping") }),
 ]);
 export type HqStreamMessage = typeof HqStreamMessage.Type;
@@ -294,6 +320,23 @@ export const HqNavigationPress = Schema.Struct({
   importProcessId: Schema.optionalKey(Schema.String),
 });
 export type HqNavigationPress = typeof HqNavigationPress.Type;
+/** Only what the menu draws and orders; commit contents and history belong to detail scopes. */
+export const HqNavigationChange = Schema.Struct({
+  repo: HqChange.fields.repo,
+  number: HqChange.fields.number,
+  mateProjectId: HqChange.fields.mateProjectId,
+  title: HqChange.fields.title,
+  state: Schema.Literal("open"),
+  hasHead: Schema.Boolean,
+  updatedAt: HqChange.fields.updatedAt,
+  mergeability: HqChange.fields.mergeability,
+  ready: Schema.Boolean,
+});
+export type HqNavigationChange = typeof HqNavigationChange.Type;
+export const HqNavigationChanges = Schema.Union([
+  Schema.Array(HqNavigationChange),
+  Schema.Struct({ refused: Schema.String }),
+]);
 export const HqNavigationApp = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
@@ -303,6 +346,7 @@ export const HqNavigationApp = Schema.Struct({
     deletingProjectIds: Schema.Array(Schema.String),
   }),
   environments: HqNavigationEnvironments,
+  changes: HqNavigationChanges,
   projectIds: Schema.Array(Schema.String),
   births: Schema.Array(Schema.Unknown),
 });
@@ -313,12 +357,13 @@ export const HqNavigationProject = Schema.Struct({
   name: Schema.String,
   kind: Schema.String,
   mate: Schema.NullOr(HqNavigationMate),
+  /** Environment projects include finish: the attach decision for their current placement. */
   can: Schema.optionalKey(Decisions),
   person: HqPersonFacts,
-  signers: Schema.Struct({
-    "claude-code": Schema.optionalKey(Schema.String),
-    codex: Schema.optionalKey(Schema.String),
-  }),
+  /** Login ID to current person; only credentials present and not API tokens. */
+  signedInNow: Schema.Record(Schema.String, Schema.String),
+  /** Login ID to its latest known person, including saved history after sign-out. */
+  everSignedIn: Schema.Record(Schema.String, Schema.String),
 });
 export type HqNavigationProject = typeof HqNavigationProject.Type;
 /** Independent app-detail record values, keyed as documented in hq-scopes.md. */

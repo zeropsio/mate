@@ -123,10 +123,6 @@ const mock = vi.hoisted(() => ({
       readonly cleanup?: boolean;
     } | null,
   },
-  /** The kinds of the account's cells the hook asked for. */
-  asked: [] as Array<string>,
-  /** The organization's token list, as the platform would answer it were it read. */
-  tokens: [] as Array<unknown>,
   /** Whether the member list was to be read, at each render that asked. */
   membersEnabled: [] as Array<boolean>,
   /** The member list's read, as it stands. */
@@ -233,25 +229,8 @@ vi.mock("./zeropsDataContext", () => ({
     projectRef: (organizationId: string, projectId: string) => ({ organizationId, projectId }),
     runtime: {
       reads: { setupMarker: () => null },
-      cells: {
-        known: (request: { readonly kind: string }) => {
-          mock.asked.push(request.kind);
-          return request;
-        },
-      },
     },
   }),
-  // The organization's token list as the platform answers it, where it is read; nothing else is.
-  useKnown: (cell: { readonly kind: string } | null) =>
-    cell?.kind === "tokens"
-      ? {
-          state: "known",
-          value: mock.tokens,
-          asOf: { ordinal: 1, atMs: 0 },
-          coverage: "complete",
-          freshness: { kind: "settled" },
-        }
-      : { state: "unread" },
   // The press's marker on each container, as the case states it: absent unless it says.
   useZeropsAtomSelections: (selections: ReadonlyArray<readonly [string, unknown]>) =>
     new Map(selections.map(([serviceId]) => [serviceId, mock.markers.get(serviceId) ?? false])),
@@ -398,8 +377,6 @@ beforeEach(() => {
   mock.assignDialog.current = null;
   mock.assignMateOwner.mockReset();
   mock.invalidated = [];
-  mock.asked = [];
-  mock.tokens = [];
   mock.deletedTokens = [];
   mock.deleteTokenFailure = false;
   mock.mateKeyFailure = false;
@@ -823,18 +800,9 @@ describe("useMateActions — Finish setup on a Mate its press left open", () => 
   it("offers no harden from a token read on load", () => {
     mock.roleCode = "BASIC_USER";
     const candidate = left({ by: "user-ada" });
-    // Were the list read: the Mate's key still ADMIN on its project, made by the viewer.
-    mock.tokens = [
-      {
-        tokenId: "tok-ivo",
-        name: `zcp-${candidate.project.name}`,
-        grants: [{ projectId: candidate.project.id, roleCode: "ADMIN" }],
-        createdByUser: "user-ada",
-      },
-    ];
     listing(candidate);
     mount();
-    expect([offered(candidate), mock.asked.includes("tokens")]).toEqual([false, false]);
+    expect(offered(candidate)).toBe(false);
   });
 });
 
@@ -879,7 +847,6 @@ describe("useMateActions — Finish setup on a Mate whose key reads other projec
     listing();
     mount();
     expect(finishVerb()?.why).toBe(want);
-    expect(mock.asked.includes("tokens")).toBe(false);
   });
 
   it("hardens it, by the key HQ names as it runs", async () => {

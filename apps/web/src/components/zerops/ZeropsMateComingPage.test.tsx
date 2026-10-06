@@ -86,7 +86,12 @@ const app = vi.hoisted(() => ({
   processes: [] as Array<unknown>,
   birthProgress: false,
   wholeForPerson: false,
+  registration: {
+    attempt: 0,
+    state: "waiting",
+  } as import("@t3tools/client-runtime/data").MateRegistration,
 }));
+vi.mock("~/zerops/registration", () => ({ useMateRegistration: () => app.registration }));
 vi.mock("~/zerops/useMenuMateReadings", () => ({ useToldActivity: () => app.told }));
 
 vi.mock("@tanstack/react-router", () => ({
@@ -291,6 +296,7 @@ beforeEach(() => {
   app.link = { key: undefined, environmentId: undefined, reachability: null };
   app.told = undefined;
   app.creations = [];
+  app.registration = { attempt: 0, state: "waiting" };
   app.processes = [];
   app.birthProgress = false;
   app.wholeForPerson = false;
@@ -1195,6 +1201,23 @@ describe("an added Mate's own view, after its hand-over", () => {
   });
   afterEach(() => {
     forgetPress(PROJECT);
+  });
+
+  it("keeps Not registered and its receipt's reason after its press ends", () => {
+    app.registration = { attempt: 1, state: "unfinished", reason: "Its grant timed out." };
+    beginPress({
+      projectId: PROJECT,
+      organizationId: "org-beviro",
+      startedAt: 0,
+      placement: null,
+      container: true,
+    });
+    openView();
+    act(() => forgetPress(PROJECT));
+    expect(said()).toContain("Not registered: Its grant timed out.");
+    app.registration = { attempt: 2, state: "done" };
+    act(() => tree?.update(h(ZeropsMateComingPage, { projectId: PROJECT })));
+    expect(said()).not.toContain("Not registered");
   });
 
   it("draws its copy's and its workspace's lines and its steps from its press, and keeps its lines when the press ends", () => {

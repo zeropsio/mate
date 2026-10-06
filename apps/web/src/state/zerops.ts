@@ -2,25 +2,16 @@ import {
   connectionCatalogDisplayUrl,
   type EnvironmentConnectionPresentation,
 } from "@t3tools/client-runtime/connection";
-import {
-  grantListing,
-  projectGrantsOf,
-  type ZeropsService,
-  type ZeropsStatHistoryItem,
-} from "@t3tools/client-runtime/zerops";
+import { grantListing, projectGrantsOf, type ZeropsService } from "@t3tools/client-runtime/zerops";
 import { projectsNeverSeen, heldEvidence } from "@t3tools/client-runtime/zerops/account/runtime";
 import {
   projectKeyOf,
   serviceRecordToZeropsService,
   ZeropsProjectId,
-  type HistoryReadView,
   type ManagedZeropsDataRuntime,
-  type MetricWindow,
   type OrganizationRef,
   type ProjectRef,
   type ProjectTopologyRead,
-  type ServiceRef,
-  type UsageRead,
 } from "@t3tools/client-runtime/zerops/data";
 import {
   mateListingsAtom,
@@ -33,8 +24,6 @@ import {
   type HqMates,
   type HqPlacement,
 } from "@t3tools/client-runtime/zerops/hq";
-import type { AppRead } from "@t3tools/shared/hqAppReads";
-import type { HqChange } from "@t3tools/shared/hqChanges";
 import type { Known, Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import {
   admittedOnly,
@@ -51,12 +40,16 @@ import * as Option from "effect/Option";
 import { Atom } from "effect/unstable/reactivity";
 import {
   listedProjectAtom,
+  NOT_READ_USAGE,
   projectProcessesAtom,
+  projectUsageAtom,
   shownHqMatesAtom,
   shownHqNavigationAtom,
   shownHqStatusAtom,
   shownProjectsAtom,
+  usageOwnerOf,
   type HqNavigationRead,
+  type ProjectUsage,
   type ProjectValue,
 } from "@t3tools/client-runtime/data";
 import type { ActivityProcess } from "@t3tools/client-runtime/zerops/activity/dto";
@@ -133,11 +126,6 @@ export const hqDownSinceAtom = Atom.make((get): number | null => {
   return down ? (Option.getOrNull(get.self<number | null>()) ?? Date.now()) : null;
 }).pipe(Atom.keepAlive, Atom.withLabel("zerops:hq-down-since"));
 
-/** Each application's changes, by its id: the open ones and the latest settled, newest first. */
-export type HqChanges = ReadonlyMap<string, ReadonlyArray<HqChange>>;
-/** HQ-owned load data for each readable application, by id. */
-export type HqAppReads = ReadonlyMap<string, AppRead>;
-
 const HQ_STANDING_UNKNOWN: HqStanding = { kind: "unknown" };
 
 /**
@@ -199,17 +187,6 @@ export const hqEnvironmentsAtom = Atom.make(
         );
   },
 ).pipe(Atom.withLabel("zerops:hq-environments"));
-
-/**
- * Each application's changes (SPEC §3.2a) and its releases, repository heads and recipe tiers come
- * with its `app-detail` scope, whose family is not observed yet: none is known meanwhile.
- */
-export const hqChangesAtom = Atom.make((): HqChanges | null => null).pipe(
-  Atom.withLabel("zerops:hq-changes"),
-);
-export const hqAppReadsAtom = Atom.make((): HqAppReads | null => null).pipe(
-  Atom.withLabel("zerops:hq-app-reads"),
-);
 
 /**
  * The Mates the reader may observe, as HQ relays them (`hqMates`): each by its project, its
@@ -505,13 +482,6 @@ export const EMPTY_PROJECT_TOPOLOGY_SNAPSHOT: ProjectTopologySnapshot = {
   error: undefined,
 };
 
-/** The window a project's metric history is read in: the last day, by the hour. */
-export const PROJECT_HISTORY_WINDOW: MetricWindow = {
-  timeGroupBy: "1h",
-  limit: 24,
-  timeZone: new Intl.DateTimeFormat().resolvedOptions().timeZone,
-};
-
 function latestObservedAt(topology: ProjectTopologyRead): number | undefined {
   const stamps: number[] = [];
   for (const knowledge of topology.services.value) {
@@ -524,22 +494,20 @@ function latestObservedAt(topology: ProjectTopologyRead): number | undefined {
   return stamps.length === 0 ? undefined : Math.max(...stamps);
 }
 
-const EMPTY_USAGE_READS: ReadonlyMap<string, UsageRead> = new Map();
-const EMPTY_HISTORY_READS: ReadonlyMap<string, HistoryReadView> = new Map();
-
 export function projectTopologySnapshotFromRead(
   /** The project as the account's store lists it; `null` while it does not. */
   project: ProjectValue | null,
   topology: ProjectTopologyRead,
   /** What runs in the project now, as the account's store holds it (`projectProcesses`). */
   running: ReadonlyArray<ActivityProcess>,
-  usageByService: ReadonlyMap<string, UsageRead> = EMPTY_USAGE_READS,
-  historyByService: ReadonlyMap<string, HistoryReadView> = EMPTY_HISTORY_READS,
+  /** The project's resources, as the account's store holds them while the panel shows them. */
+  usage: ProjectUsage = NOT_READ_USAGE,
 ): ProjectTopologySnapshot {
   const required = topology.observation.required;
   const failed = [...required, ...topology.observation.optional].find(
     (interest) => interest.status === "failed",
   );
+  const error = failed?.reason ?? usage.failure;
   const liveness: ProjectTopologyLiveness =
     required.length > 0 && required.every((interest) => interest.status === "observing")
       ? "live"
@@ -549,7 +517,7 @@ export function projectTopologySnapshotFromRead(
       view: undefined,
       liveness,
       lastReadAt: latestObservedAt(topology),
-      error: failed?.reason,
+      error,
     };
   }
   const services: ZeropsService[] = [];
@@ -559,47 +527,16 @@ export function projectTopologySnapshotFromRead(
     if (service !== null) services.push(service);
   }
   const processes = running;
-  const history: ZeropsStatHistoryItem[] = [...historyByService.values()].flatMap(({ series }) =>
-    [...series.buckets.values()].map((bucket) => ({
-      serviceStackId: bucket.key.series.service.serviceId,
-      from: bucket.key.from,
-      till: bucket.key.till,
-      containerCount: bucket.containers ?? 0,
-      cpuUsed: bucket.cpu?.used ?? 0,
-      cpuLimit: bucket.cpu?.limit ?? 0,
-      vCpuUsed: bucket.virtualCpu?.used ?? 0,
-      vCpuLimit: bucket.virtualCpu?.limit ?? 0,
-      ramUsed: bucket.memoryGb?.used ?? 0,
-      ramLimit: bucket.memoryGb?.limit ?? 0,
-      diskUsed: bucket.diskGb?.used ?? 0,
-      diskLimit: bucket.diskGb?.limit ?? 0,
-    })),
-  );
-  // Native corrections can arrive out of order; chart points must remain chronological.
-  history.sort((a, b) => Date.parse(a.from) - Date.parse(b.from));
-  const base = projectTopology(project, services, processes, undefined, history);
-  let usageRead = false;
+  const base = projectTopology(project, services, processes, undefined, usage.history);
   const rows = base.services.map((row) => {
-    const usage = usageByService.get(row.serviceId);
-    if (usage === undefined) return row;
-    if (usage.coverage.kind !== "none") usageRead = true;
-    return usage.value === null
-      ? row
-      : {
-          ...row,
-          usage: {
-            containers: usage.value.containers,
-            cores: usage.value.cpu,
-            memoryGb: usage.value.memoryGb,
-            diskGb: usage.value.diskGb,
-          },
-        };
+    const used = usage.byService[row.serviceId];
+    return used === undefined ? row : { ...row, usage: used };
   });
   return {
-    view: { ...base, services: rows, usageRead },
+    view: { ...base, services: rows, usageRead: usage.read },
     liveness,
     lastReadAt: latestObservedAt(topology),
-    error: failed?.reason,
+    error,
   };
 }
 
@@ -620,43 +557,21 @@ const projectTopologies = Atom.family((key: string) =>
       return EMPTY_PROJECT_TOPOLOGY_SNAPSHOT;
     }
     const topology = get(runtime.reads.topology(project));
-    const services = topology.services.value.flatMap((knowledge): ReadonlyArray<ServiceRef> =>
-      knowledge.knowledge === "observed" ? [knowledge.record.ref] : [],
-    );
-    const usage = new Map(
-      services.map((service) => [service.serviceId, get(runtime.reads.usage(service))] as const),
-    );
-    const history = new Map(
-      services.map(
-        (service) =>
-          [
-            service.serviceId,
-            get(
-              runtime.reads.history({
-                service,
-                groupBy: "serviceStackId",
-                window: PROJECT_HISTORY_WINDOW,
-                schemaVersion: 1,
-              }),
-            ),
-          ] as const,
-      ),
-    );
     // What runs in it is the account store's: the organization's running work, never the runtime's.
     const running = get(projectProcessesAtom(project.projectId)).running;
     return projectTopologySnapshotFromRead(
       get(listedProjectAtom(project.projectId)),
       topology,
       running,
-      usage,
-      history,
+      get(projectUsageAtom(usageOwnerOf(project.organization.organizationId, project.projectId))),
     );
   }).pipe(Atom.withLabel(`zerops:project-topology:${key}`)),
 );
 
 /**
  * A project's topology (DESIGN §2.C C11): the project as the account's store lists it, its
- * services, usage and history as the runtime reads them, so a pushed facet reaches every reader
+ * services as the runtime reads them, and their usage and history as the account's store holds
+ * them while the panel demands them, so a pushed facet reaches every reader
  * with nobody copying it. Protected roots read it
  * through `useZeropsTopology`; `useProjectTopology` is where a host demands it.
  */

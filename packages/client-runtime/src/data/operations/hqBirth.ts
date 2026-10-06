@@ -9,11 +9,17 @@
  *
  * @module data/operations/hqBirth
  */
+import type { HqBirthOutcome, HqBirthRecord } from "../../zerops/hq/birth.ts";
 import type { OperationKind } from "./kind.ts";
 import { historyHolding, reflectedByProcess, settledByProcess } from "./processEnd.ts";
 
 declare module "../model.ts" {
   interface OperationIntents {
+    readonly "hq-birth": {
+      readonly orgId: string;
+      readonly zeropsApi: string;
+      readonly again: boolean;
+    };
     /** One create-once slot of HQ's setup journal, in its project's env. */
     readonly "hq-birth-note": {
       readonly orgId: string;
@@ -47,6 +53,10 @@ declare module "../model.ts" {
     };
   }
   interface OperationResults {
+    readonly "hq-birth": {
+      readonly record: HqBirthRecord;
+      readonly failed: Extract<HqBirthOutcome, { readonly ok: false }> | null;
+    };
     /** The token written; `null` where HQ's service held its variable already. */
     readonly "hq-org-token": { readonly tokenId: string | null };
     /** The sync that puts the domain in place; `null` where it was in place, or Zerops named none. */
@@ -106,7 +116,14 @@ export const markOfficialHq: OperationKind<"mark-official-hq"> = {
   reflected: () => true,
 };
 
+export const hqBirth: OperationKind<"hq-birth"> = {
+  kind: "hq-birth",
+  executor: "zerops",
+  reflected: () => false,
+};
+
 export const HQ_BIRTH_KINDS = [
+  hqBirth,
   hqBirthNote,
   hqOrgToken,
   hqKeySecret,

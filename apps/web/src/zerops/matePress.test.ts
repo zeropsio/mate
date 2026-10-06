@@ -370,7 +370,19 @@ describe("finishSetupView — Finish setup on a Mate's own view", () => {
       },
     },
   ])("$case", ({ made, want }) => {
-    expect(drawn(finishSetupView(made))).toEqual(want);
+    const refused = made.progress?.find(
+      (entry) => entry.step.kind === "register" && entry.state === "failed",
+    );
+    expect(
+      drawn(
+        finishSetupView(
+          made,
+          refused === undefined
+            ? { attempt: 1, state: "done" }
+            : { attempt: 1, state: "unfinished", reason: refused.error ?? "It was refused." },
+        ),
+      ),
+    ).toEqual(want);
   });
 
   it("is kept on the press as it moves", () => {

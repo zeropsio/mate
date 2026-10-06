@@ -15,6 +15,10 @@ import { makeProjectTagWriter, type ProjectTagLocks } from "../../../zerops/data
 import type { DetailDemand } from "../../demand.ts";
 import { readsOfState, type AccountStore } from "../../store.ts";
 import { projectsScope } from "../../families/project.ts";
+import { hqBirthWaits } from "../../hqBirthWaits.ts";
+import type { RunToEnd } from "../runToEnd.ts";
+import { hqProvisionExecutor } from "./hqProvision.ts";
+import { hqBirthReads } from "./hqBirthReads.ts";
 import type { OperationExecutor } from "../coordinator.ts";
 import { createProjectExecutor } from "./createProject.ts";
 import { deleteProjectExecutor } from "./deleteProject.ts";
@@ -56,6 +60,8 @@ type ZeropsOperationsClient = Pick<
   | "importDevelopmentContainer"
   | "hardenMate"
   | "readProjectEnv"
+  | "readProjectBirthEnv"
+  | "listProjectServices"
   | "createAppVersion"
   | "uploadAppVersionArchive"
   | "buildAndDeployAppVersion"
@@ -78,6 +84,8 @@ export function makeZeropsExecutor(input: {
   readonly demandDetail: (demand: DetailDemand) => () => void;
   readonly debtOf: (clientId: string) => ThrowawayDebt;
   readonly nowMs: () => number;
+  readonly run: RunToEnd;
+  readonly makeId: () => string;
   /** The HQ Core this app carries, which HQ's update deploys. */
   readonly hqCore: () => Promise<HqCoreArtifact>;
   /** The page's locks, which serialize a project's record writes across tabs; absent, this page's. */
@@ -173,6 +181,20 @@ export function makeZeropsExecutor(input: {
     syncPublicHttpRouting: (projectId) => client.syncPublicHttpRouting(projectId),
     listOrganizationMembers: (clientId) => client.listOrganizationMembers(clientId),
   });
+  const provisionHq = hqProvisionExecutor({
+    store: input.store,
+    deps: {
+      run: input.run,
+      reads: hqBirthReads(client),
+      waits: hqBirthWaits({
+        data: input.store.data,
+        registry: input.registry,
+        demandDetail: input.demandDetail,
+      }),
+      now: input.nowMs,
+      newBirthId: input.makeId,
+    },
+  });
   return {
     submit: (requestId, intent) => {
       switch (intent.kind) {
@@ -196,6 +218,8 @@ export function makeZeropsExecutor(input: {
           return retag(requestId, intent);
         case "assign-mate-owner":
           return assign(requestId, intent);
+        case "hq-birth":
+          return provisionHq(requestId, intent);
         case "hq-update":
           return updateHq(requestId, intent);
         case "create-project":

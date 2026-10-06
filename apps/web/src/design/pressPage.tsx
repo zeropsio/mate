@@ -374,7 +374,17 @@ function HarnessMatePage({
     return {
       ...(made.adds === undefined ? newProjectProgress(made, theirs, nowMs) : theirs),
       ...(managed === undefined ? {} : { managed }),
-      ...(press === undefined ? {} : { press: creationSubsteps(made, press.progress ?? null) }),
+      ...(press === undefined
+        ? {}
+        : {
+            press: creationSubsteps(
+              made,
+              press.progress ?? null,
+              FAIL === "registered"
+                ? { attempt: 1, state: "unfinished", reason: "Register said no." }
+                : { attempt: 1, state: "done" },
+            ),
+          }),
     };
   }, [made, nowMs, press]);
   const coming =

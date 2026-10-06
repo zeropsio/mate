@@ -8,6 +8,13 @@ it("ignores control traffic and measures first Shop data without rewriting frame
   const ping = JSON.stringify({ type: "ping" });
   const roles = JSON.stringify({ type: "roles", rolesAnsweredAt: "now" });
   const snapshot = JSON.stringify({ apps: [{ name: "Shop" }] });
+  // A scope's catchup end names its scope (a Mate's project), never a fact.
+  const ready = JSON.stringify({
+    type: "scope-ready",
+    scope: { kind: "attention", projectId: "Ada" },
+    incarnation: "i",
+    revision: 1,
+  });
   const upstream = await serve(
     () => ({ body: { real: "HQ" } }),
     (socket) => {
@@ -32,6 +39,13 @@ it("ignores control traffic and measures first Shop data without rewriting frame
     socket.send(roles);
     expect(await echo).toBe(roles);
     expect(observer.segments[0]).toMatchObject({ firstDataMs: null, stateBytes: 0 });
+    const readyEcho = deadline(
+      new Promise<string>((resolve) => socket.once("message", (data) => resolve(data.toString()))),
+      "ready echo",
+    );
+    socket.send(ready);
+    expect(await readyEcho).toBe(ready);
+    expect(observer.segments[0]).toMatchObject({ firstDataMs: null, stateBytes: 0 });
     const data = deadline(
       new Promise<string>((resolve) =>
         socket.once("message", (frame) => resolve(frame.toString())),
@@ -42,8 +56,8 @@ it("ignores control traffic and measures first Shop data without rewriting frame
     await observer.firstData(1);
     expect(await data).toBe(snapshot);
     expect(observer.segments[0]).toMatchObject({
-      frames: 3,
-      downBytes: ping.length + roles.length + snapshot.length,
+      frames: 4,
+      downBytes: ping.length + roles.length + ready.length + snapshot.length,
       stateBytes: snapshot.length,
     });
     expect(observer.segments[0]!.firstDataMs).toBeGreaterThanOrEqual(0);

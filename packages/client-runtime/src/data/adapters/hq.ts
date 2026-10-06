@@ -28,6 +28,7 @@ import {
   type HqScopeDelivery,
   type HqStreamRequest,
 } from "@t3tools/shared/hqStream";
+import type { CompareQuery, CompareResponse } from "@t3tools/shared/hqChanges";
 import * as Clock from "effect/Clock";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -44,7 +45,7 @@ import { FAMILIES, scopeSpec } from "../families/index.ts";
 import { hqMateFamily } from "../families/hqMate.ts";
 import { placementsScope, type PlacementValue } from "../families/hqNavigation.ts";
 import { scopeOf, type AnyFamilySpec, type ScopeOwner } from "../families/spec.ts";
-import { factKey, linkKeys, type LinkKey, type ScopeKey } from "../model.ts";
+import { factKey, linkKeys, type LinkKey, type Revision, type ScopeKey } from "../model.ts";
 import { streamOf, type HqDeliveryScope, type HqRemovalInput, type Row } from "../reducer.ts";
 import { readsOfState, type AccountStore } from "../store.ts";
 import type { StreamEvent, StreamFault } from "../streamMachine.ts";
@@ -82,6 +83,12 @@ export function classifyHqClose(code: number): StreamFault {
 /** What HQ says a Mate may be moved into, per application, as asked when the move opens. */
 export type HqMoveOffers = Readonly<Record<string, ReadonlyArray<string>>>;
 
+/**
+ * How long a socket may say nothing — not even HQ's ping, sent every 20 s — before it is given up:
+ * a socket a sleeping laptop or a stalled path left open carries nothing, though it never closed.
+ */
+export const HQ_SILENCE_MS = 60_000;
+
 /** Whom a Mate may be handed over to, as HQ answers when the hand-over opens. */
 export type HqHandoverCandidates = ReadonlyArray<HqHandoverCandidate>;
 
@@ -116,7 +123,11 @@ export function hqNavigationLink(options: {
   readonly handoverCandidates: (
     projectId: string,
   ) => Effect.Effect<HqHandoverCandidates, StreamFault>;
-  /** Tells HQ the reader saw these results of a Mate. */
+  /** Asks HQ what lies between two commits of an application's repository, on the open socket. */
+  readonly compare: (
+    ask: { readonly appId: string; readonly repo: string } & CompareQuery,
+  ) => Effect.Effect<CompareResponse, StreamFault>;
+  /** Tells HQ the reader saw these results of a Mate: on the open socket, else on the next. */
   readonly seen: (projectId: string, resultIds: ReadonlyArray<string>) => Effect.Effect<void>;
   /** Ends the link's own holds (each Mate's attention). */
   readonly stop: () => void;
@@ -133,25 +144,43 @@ export function hqNavigationLink(options: {
   };
   const scopes = nav.families.map(({ scope }) => scope);
   const demands = makeDetailDemands({
+    // A demanded scope's riders are demanded with it: their records come on its wire.
     demanded: (scope, demanded) =>
       Effect.runSync(
-        Effect.map(Clock.currentTimeMillis, (now) =>
-          store.dispatch({ kind: "stream", key: scope, now, event: { kind: "demand", demanded } }),
-        ),
+        Effect.map(Clock.currentTimeMillis, (now) => {
+          for (const fed of fedBy(scope))
+            store.dispatch({ kind: "stream", key: fed, now, event: { kind: "demand", demanded } });
+        }),
       ),
   });
 
-  /** A detail store scope as HQ names it: its family's scope for the owner it is demanded for. */
+  /**
+   * A detail store scope as HQ names it: its family's scope for the owner it is demanded for, and
+   * beside it the scope of each family riding the same kind of HQ scope without demanding one (a
+   * Mate's attention, relayed in HQ's record of that Mate).
+   */
   const detailOf = (scope: ScopeKey): Registered | null => {
     const spec = scopeSpec(scope);
     const ownerId = scope.split(":").slice(3).join(":");
     if (spec.hq?.wireScope === undefined || ownerId === "") return null;
+    const riders = familiesOf(spec.hq.scope).filter(
+      (rider) => rider !== spec && rider.hq?.wireScope === undefined,
+    );
     return {
       wire: spec.hq.wireScope(ownerId),
       owner: { orgId, ownerId },
-      families: [{ spec, scope }],
+      families: [
+        { spec, scope },
+        ...riders.map((rider) => ({
+          spec: rider,
+          scope: `${linkKeys.hq(orgId)}:${rider.scope.suffix}:${ownerId}` as ScopeKey,
+        })),
+      ],
     };
   };
+  /** The store scopes a demanded scope feeds: its own, and its riders'. */
+  const fedBy = (scope: ScopeKey): ReadonlyArray<ScopeKey> =>
+    detailOf(scope)?.families.map((family) => family.scope) ?? [scope];
 
   /**
    * Each Mate HQ places is observed while it is placed: navigation demand, held by the link
@@ -198,6 +227,8 @@ export function hqNavigationLink(options: {
   const cursors = new Map<string, HqCursor>();
   /** The segment open now, if any: what a request is sent on. */
   let open: HqSegment | null = null;
+  /** What the person saw while no socket was open, by project: told HQ on the next one. */
+  const untold = new Map<string, Set<string>>();
   /** The asks sent on the open socket that HQ has not answered yet, by request id. */
   const pendingOffers = new Map<string, Deferred.Deferred<unknown, StreamFault>>();
   let requests = 0;
@@ -228,13 +259,31 @@ export function hqNavigationLink(options: {
       const asked = new Set<string>();
       /** Whether a socket of this attempt said anything yet. */
       let said = false;
+      /** When the open segment last said anything. */
+      let heardAt = 0;
+      /** Fails once the open segment said nothing for {@link HQ_SILENCE_MS}. */
+      const silence: Effect.Effect<never, StreamFault> = Effect.gen(function* () {
+        while (true) {
+          const now = yield* Clock.currentTimeMillis;
+          const quietFor = now - heardAt;
+          if (quietFor >= HQ_SILENCE_MS)
+            return yield* Effect.fail<StreamFault>({
+              outcome: "transient",
+              message: "HQ's stream said nothing for a minute.",
+            });
+          yield* Effect.sleep(HQ_SILENCE_MS - quietFor);
+        }
+      });
 
       /** The keys this renderer holds of an HQ scope: what proves a removal on resume. */
-      const knownKeys = (registered: Registered): ReadonlyArray<string> =>
-        registered.families.flatMap(({ spec, scope }) => {
-          const { ids, unverified } = readsOfState(store.state()).members(scope);
-          return [...ids, ...unverified].map((id) => spec.hq!.keyOf(id, registered.owner));
-        });
+      const knownKeys = (registered: Registered): ReadonlyArray<string> => [
+        ...new Set(
+          registered.families.flatMap(({ spec, scope }) => {
+            const { ids, unverified } = readsOfState(store.state()).members(scope);
+            return [...ids, ...unverified].map((id) => spec.hq!.keyOf(id, registered.owner));
+          }),
+        ),
+      ];
 
       const subscription = (registered: Registered) => {
         const cursor = cursors.get(hqScopeKey(registered.wire));
@@ -287,7 +336,18 @@ export function hqNavigationLink(options: {
               const decoded = spec.hq!.decode(value, recordKey);
               // A record this build cannot read changes nothing: its last value stays.
               if (decoded !== null)
-                rows.push({ family: spec.family, id, value: decoded, revision } as Row);
+                rows.push({
+                  family: spec.family,
+                  id,
+                  value: decoded,
+                  // A relayed value keeps its author's revision; HQ's own records, the scope's.
+                  revision:
+                    (
+                      spec.hq!.revisionOf as
+                        | ((value: unknown, raw: unknown) => Revision)
+                        | undefined
+                    )?.(decoded, value) ?? revision,
+                } as Row);
             }
           const removals: HqRemovalInput[] = message.removals.flatMap(
             ({ key: recordKey, reason }) =>
@@ -332,6 +392,7 @@ export function hqNavigationLink(options: {
 
       const onMessage = (encoded: string): Effect.Effect<void> =>
         Effect.gen(function* () {
+          heardAt = yield* Clock.currentTimeMillis;
           // The socket said something: its session holds, and the link is live.
           if (!said) {
             said = true;
@@ -376,7 +437,9 @@ export function hqNavigationLink(options: {
             case "move-offers":
             case "move-offers-error":
             case "handover-candidates":
-            case "handover-candidates-error": {
+            case "handover-candidates-error":
+            case "compare":
+            case "compare-error": {
               const waiting = pendingOffers.get(message.requestId);
               if (waiting === undefined) return;
               pendingOffers.delete(message.requestId);
@@ -384,6 +447,8 @@ export function hqNavigationLink(options: {
                 return yield* Deferred.succeed(waiting, message.moveTo);
               if (message.type === "handover-candidates")
                 return yield* Deferred.succeed(waiting, message.candidates);
+              if (message.type === "compare")
+                return yield* Deferred.succeed(waiting, message.result);
               return yield* Deferred.fail(waiting, {
                 outcome: message.disposition === "refused" ? "definitive-refusal" : "transient",
                 message: message.reason ?? `HQ could not answer this (${message.code}).`,
@@ -480,6 +545,9 @@ export function hqNavigationLink(options: {
               yield* opened.send({ type: "subscribe", scopes: resumed.map(subscription) });
               for (const { wire } of resumed) asked.add(hqScopeKey(wire));
             }
+            for (const [projectId, resultIds] of untold)
+              yield* opened.send({ type: "seen", projectId, resultIds: [...resultIds] });
+            untold.clear();
             wake();
             const watching = Effect.forever(
               Effect.gen(function* () {
@@ -491,7 +559,8 @@ export function hqNavigationLink(options: {
               }),
             );
             // The segment's end, as planned or by its fault, ends the look at the details too.
-            yield* Effect.raceFirst(Fiber.join(reading), watching);
+            heardAt = yield* Clock.currentTimeMillis;
+            yield* Effect.raceAllFirst([Fiber.join(reading), watching, silence]);
             open = null;
           }),
         );
@@ -509,8 +578,8 @@ export function hqNavigationLink(options: {
 
   /** One question to HQ on the open socket, answered by its request id; none without a socket. */
   const ask = <A>(
-    type: "move-offers" | "handover-candidates",
-    projectId: string,
+    type: "move-offers" | "handover-candidates" | "compare",
+    request: (requestId: string) => HqStreamRequest,
   ): Effect.Effect<A, StreamFault> =>
     Effect.suspend(() => {
       const segment = open;
@@ -523,7 +592,7 @@ export function hqNavigationLink(options: {
       const answer = Deferred.makeUnsafe<unknown, StreamFault>();
       pendingOffers.set(requestId, answer);
       return Effect.andThen(
-        segment.send({ type, requestId, projectId }),
+        segment.send(request(requestId)),
         Deferred.await(answer) as Effect.Effect<A, StreamFault>,
       );
     });
@@ -531,16 +600,32 @@ export function hqNavigationLink(options: {
   return {
     key,
     scopes,
-    details: demands.scopes,
+    details: () => demands.scopes().flatMap(fedBy),
     attempt,
     childMoved: () => wakeAttempt?.(),
     demandDetail: (demand) => demands.hold(detailScopeOf(orgId, demand)),
-    moveOffers: (projectId) => ask<HqMoveOffers>("move-offers", projectId),
-    handoverCandidates: (projectId) => ask<HqHandoverCandidates>("handover-candidates", projectId),
+    moveOffers: (projectId) =>
+      ask<HqMoveOffers>("move-offers", (requestId) => ({
+        type: "move-offers",
+        requestId,
+        projectId,
+      })),
+    handoverCandidates: (projectId) =>
+      ask<HqHandoverCandidates>("handover-candidates", (requestId) => ({
+        type: "handover-candidates",
+        requestId,
+        projectId,
+      })),
+    compare: (asked) =>
+      ask<CompareResponse>("compare", (requestId) => ({ type: "compare", requestId, ...asked })),
     seen: (projectId, resultIds) =>
-      Effect.suspend(() =>
-        open === null ? Effect.void : open.send({ type: "seen", projectId, resultIds }),
-      ),
+      Effect.suspend(() => {
+        if (open !== null) return open.send({ type: "seen", projectId, resultIds });
+        const held = untold.get(projectId) ?? new Set<string>();
+        for (const id of resultIds) held.add(id);
+        untold.set(projectId, held);
+        return Effect.void;
+      }),
     rewire: (next) => {
       wire = next;
     },

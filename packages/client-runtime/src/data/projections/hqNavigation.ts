@@ -62,7 +62,8 @@ function listed<F extends "hqApp" | "placement" | "hqPerson" | "hqPress">(
 /** A Mate's record as the old surfaces read it: what HQ leaves unsaid is absent. */
 function mateOf(
   mate: NonNullable<PlacementValue["mate"]>,
-  signers: PlacementValue["signers"],
+  /** Who last signed each of its agents in, by login, as HQ keeps it after sign-out too. */
+  signers: PlacementValue["everSignedIn"],
 ): HqMate {
   return {
     face: mate.face,
@@ -124,7 +125,8 @@ function structureOf(
                 projectId,
                 name: placement.name,
                 kind: placement.kind,
-                mate: placement.mate === null ? null : mateOf(placement.mate, placement.signers),
+                mate:
+                  placement.mate === null ? null : mateOf(placement.mate, placement.everSignedIn),
                 ...offersOf(placement),
               },
             ];
@@ -137,7 +139,7 @@ function structureOf(
             {
               projectId: placement.projectId,
               name: placement.name,
-              mate: mateOf(placement.mate, placement.signers),
+              mate: mateOf(placement.mate, placement.everSignedIn),
               ...offersOf(placement),
             },
           ],
@@ -204,5 +206,20 @@ export const hqStatus: Projection<string, HqStatusValue | null> = {
       ? fact.value
       : null;
   },
+  equals: sameValue,
+};
+
+/**
+ * Each application's open changes as HQ's navigation says them, for the menu's change rows: what
+ * the menu draws and orders, never a change's contents. HQ's refusal with its reason to one who
+ * may not read them.
+ */
+export const hqAppChanges: Projection<string, Readonly<Record<string, HqAppValue["changes"]>>> = {
+  name: "hqAppChanges",
+  keyOf: (orgId) => orgId,
+  derive: (read, orgId) =>
+    Object.fromEntries(
+      listed(read, "hqApp", hqAppsScope(orgId)).map(({ id, value }) => [id, value.changes]),
+    ),
   equals: sameValue,
 };

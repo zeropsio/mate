@@ -490,6 +490,7 @@ export {
 export {
   changeKindTag,
   flowChange,
+  flowAppChanges,
   flowChanges,
   flowVerbKey,
   flowVerbLabel,

@@ -24,7 +24,7 @@ export const UNOBSERVED_PHASES: ReadonlySet<string> = new Set([
 ]);
 
 /** The organization's link an executor answers over; a Mate's link is its project's, not one. */
-function organizationLink(executor: Authority, orgId: string): LinkKey | null {
+export function organizationLink(executor: Authority, orgId: string): LinkKey | null {
   switch (executor) {
     case "zerops":
       return linkKeys.zerops(orgId);

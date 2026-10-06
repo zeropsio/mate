@@ -16,30 +16,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/components/zerops/projects/rowRiseMemory.ts",
-    "kind": "CallExpression",
-    "fingerprint": "accountLocalStorage.getItem(RISEN_MEMORY_KEY)",
-    "owner": "data-layer rewrite: Mate attention/overview",
-    "reason": "source data stays out of browser storage: remembers which project rows last rose as a verdict; the attention projection decides on every load",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/projects/rowRiseMemory.ts",
-    "kind": "CallExpression",
-    "fingerprint": "accountLocalStorage.removeItem(RISEN_MEMORY_KEY)",
-    "owner": "data-layer rewrite: Mate attention/overview",
-    "reason": "source data stays out of browser storage: remembers which project rows last rose as a verdict; the attention projection decides on every load",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/projects/rowRiseMemory.ts",
-    "kind": "CallExpression",
-    "fingerprint": "accountLocalStorage.setItem(RISEN_MEMORY_KEY)",
-    "owner": "data-layer rewrite: Mate attention/overview",
-    "reason": "source data stays out of browser storage: remembers which project rows last rose as a verdict; the attention projection decides on every load",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/zerops/composerTopMemory.ts",
     "kind": "CallExpression",
     "fingerprint": "accountLocalStorage.getItem(COMPOSER_TOP_MEMORY_STORAGE_KEY)",

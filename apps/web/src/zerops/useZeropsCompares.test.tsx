@@ -3,19 +3,22 @@
  * two commits compare the same for ever — and a failed read ends until Compare again.
  */
 import type { CompareRead } from "@t3tools/client-runtime/zerops";
-import type { CompareQuery, CompareResponse } from "@t3tools/shared/hqChanges";
+import type { CompareResponse } from "@t3tools/shared/hqChanges";
+import { AtomRegistry } from "effect/unstable/reactivity";
 import { act, type ReactElement } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
+import { makeSampledAccount } from "./__fixtures__/sampledAccount";
 import { useZeropsCompares, type ZeropsCompares } from "./useZeropsCompares";
+import { AccountDataContext, type AccountData } from "./ZeropsAccountData";
 
 const OLD = "1".repeat(40);
 const HEAD = "2".repeat(40);
 
 /**
  * The organization's official HQ — one object, as `useOfficialHq` keeps it, or `null` while it is
- * not open here — what it answers, and what it was asked.
+ * not open here — and what the account's HQ socket answers and was asked.
  */
 const hq = vi.hoisted(() => {
   const state = {
@@ -27,19 +30,6 @@ const hq = vi.hoisted(() => {
   };
   const official = {
     address: "https://hq-0.example.test",
-    api: {
-      compare: async (appId: string, repo: string, query: CompareQuery) => {
-        state.asked.push(`${appId} ${repo}`);
-        if (state.failing) throw new Error("HQ is not answering right now.");
-        return {
-          base: query.base ?? null,
-          head: query.head,
-          commits: [],
-          truncated: false,
-          total: 0,
-        } satisfies CompareResponse;
-      },
-    },
   };
   return { state, official };
 });
@@ -48,9 +38,30 @@ vi.mock("./accountHq", () => ({
   useOfficialHq: () => (hq.state.open ? hq.official : null),
 }));
 
+const compare = vi.fn(
+  async ({ appId, repo, base, head }: Parameters<AccountData["compare"]>[0]) => {
+    hq.state.asked.push(`${appId} ${repo}`);
+    if (hq.state.failing) throw new Error("HQ is not answering right now.");
+    return {
+      base: base ?? null,
+      head,
+      commits: [],
+      truncated: false,
+      total: 0,
+    } satisfies CompareResponse;
+  },
+);
+
+let registry: AtomRegistry.AtomRegistry;
+let account: AccountData;
 beforeEach(() => {
   hq.state.tests += 1;
   hq.official.address = `https://hq-${String(hq.state.tests)}.example.test`;
+  registry = AtomRegistry.make();
+  account = {
+    ...makeSampledAccount({ registry, orgId: "org-1", answer: () => null }),
+    compare,
+  };
 });
 
 const READ: CompareRead = {
@@ -65,6 +76,14 @@ const renders: ZeropsCompares[] = [];
 const seen = () => renders.at(-1);
 
 function Probe({ asks }: { readonly asks: ReadonlyMap<string, ReadonlyArray<CompareRead>> }) {
+  return (
+    <AccountDataContext value={account}>
+      <Reader asks={asks} />
+    </AccountDataContext>
+  );
+}
+
+function Reader({ asks }: { readonly asks: ReadonlyMap<string, ReadonlyArray<CompareRead>> }) {
   renders.push(useZeropsCompares(asks));
   return null;
 }
@@ -76,6 +95,8 @@ afterEach(() => {
       tree.unmount();
     });
   }
+  registry.dispose();
+  compare.mockClear();
   hq.state.open = true;
   hq.state.asked = [];
   hq.state.failing = false;
@@ -97,6 +118,12 @@ describe("useZeropsCompares", () => {
   it("asks HQ each comparison of an application once, and holds its answer", async () => {
     await mount(<Probe asks={new Map([["a-todo", [READ]]])} />);
     expect(hq.state.asked).toEqual(["a-todo appdev"]);
+    expect(compare).toHaveBeenCalledExactlyOnceWith({
+      appId: "a-todo",
+      repo: "appdev",
+      base: OLD,
+      head: HEAD,
+    });
     expect(seen()?.get("a-todo")?.answers.get(KEY)).toEqual({
       base: OLD,
       head: HEAD,

@@ -16,6 +16,7 @@
  * again. Nothing is stored: a reload forgets it, and the listing — the project is tagged into its
  * group at birth — draws the rest.
  */
+import type { MateRegistration } from "@t3tools/client-runtime/data";
 import {
   resumableEnvironmentCreationStep,
   runEnvironmentCreation,
@@ -503,7 +504,10 @@ const keyNotLoweredLine = (reason: string) =>
  * project is marked closed off — a clear end. Undefined for any other press. A step that stops is
  * said by the press's failure (`pressFailure`), with *Try again*.
  */
-export function finishSetupView(press: MatePress | undefined):
+export function finishSetupView(
+  press: MatePress | undefined,
+  registration: MateRegistration = { attempt: 0, state: "waiting" },
+):
   | {
       readonly steps: ReadonlyArray<PressStepView>;
       readonly line: string;
@@ -512,11 +516,10 @@ export function finishSetupView(press: MatePress | undefined):
   | undefined {
   if (press?.finishing !== true) return undefined;
   const progress = press.progress ?? [];
-  const registered = progress.find((entry) => entry.step.kind === "register");
   const steps = pressSteps(progress);
   const done = press.state.kind === "pressed";
   const finished =
-    registered?.state === "failed"
+    registration.state === "unfinished"
       ? `${FINISHED_SETUP_LINE} ${AWAITING_OWNER_LINE}`
       : FINISHED_SETUP_LINE;
   return {

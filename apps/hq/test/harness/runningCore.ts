@@ -162,6 +162,8 @@ export const startCore = (
   given: {
     /** Scenario suites can share an HTTP fake; existing Core tests keep their in-memory backend. */
     readonly zeropsHttp?: { readonly baseUrl: string; readonly world: FakeWorld };
+    /** Observe native transport receipts without changing Core's routes or socket lifecycle. */
+    readonly httpServer?: NodeHttp.Server;
     readonly url?: string;
     readonly orgId?: string;
     readonly gitRoot?: string;
@@ -258,7 +260,9 @@ export const startCore = (
           ),
         ),
         Layer.provide(platform),
-        Layer.provideMerge(NodeHttpServer.layer(() => NodeHttp.createServer(), { port: 0 })),
+        Layer.provideMerge(
+          NodeHttpServer.layer(() => given.httpServer ?? NodeHttp.createServer(), { port: 0 }),
+        ),
       ),
       scope,
     );

@@ -126,3 +126,46 @@ describe("operationEnd", () => {
     ).toEqual(end);
   });
 });
+
+describe("operationEnd for an HQ-executed kind", () => {
+  const COMMENT = {
+    kind: "change-comment",
+    orgId: ORG,
+    link: { appId: "shop", repo: "web", number: 7 },
+    body: "Ship it",
+    authorUserId: "u1",
+  } as const;
+
+  function commenting(hq: "live" | "paused"): AccountState {
+    const store = makeAccountStore(AtomRegistry.make());
+    liveZerops({ running: [] }).forEach(store.dispatch);
+    for (const event of [
+      { kind: "demand", demanded: true },
+      { kind: "attempt" },
+      { kind: "handshake" },
+      { kind: "baseline-committed" },
+      ...(hq === "paused" ? [{ kind: "demand", demanded: false } as const] : []),
+    ] as const)
+      store.dispatch({ kind: "stream", key: linkKeys.hq(ORG), event, now: 0 });
+    const state = store.state();
+    const operations = new Map(state.operations).set("r1", {
+      requestId: "r1",
+      intent: COMMENT,
+      submission: "answered",
+      receipt: { ...accepted, operationId: "c1", executor: "hq", handles: ["c1"] },
+      handles: ["c1"],
+      before: null,
+      unresolved: null,
+    } as OperationRecord);
+    return { ...state, operations };
+  }
+
+  it.each([
+    { hq: "live", end: null },
+    { hq: "paused", end: { stage: "unobserved" } },
+  ] as const)("while HQ's link is $hq: $end", ({ hq, end }) => {
+    expect(
+      operationEnd.derive(readsOfState(commenting(hq)), { requestId: "r1", orgId: ORG }),
+    ).toEqual(end);
+  });
+});

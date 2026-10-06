@@ -75,9 +75,7 @@ const SAME_ORIGIN_CANDIDATE = {
 
 describe("same-origin Zerops identity bootstrap", () => {
   it("routes configuration reads through scoped resources", () => {
-    expect(projectsPageSource).toContain(
-      "readZeropsCellOnce(runtime.cells, request, unmountRef.current?.signal)",
-    );
+    expect(projectsPageSource).toContain("useReadGroupAgents()");
     expect(projectsPageSource).not.toContain(".readAuthorizedAgents(");
     // The recipe is the application's, read as the person through its HQ — there
     // is no Zerops endpoint for it and no mock standing in for one any more.

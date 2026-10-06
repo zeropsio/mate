@@ -7,6 +7,7 @@
 import type { OperationIntent } from "../model.ts";
 import { assignMateOwner } from "./assignMateOwner.ts";
 import { createProject } from "./createProject.ts";
+import { changeComment } from "./changeComment.ts";
 import { deleteProject } from "./deleteProject.ts";
 import { enableSubdomainAccess } from "./enableSubdomainAccess.ts";
 import { enableZeropsMate } from "./enableZeropsMate.ts";
@@ -56,6 +57,7 @@ export const OPERATION_KINDS = defineOperationKinds([
   hqUpdate,
   ...HQ_WRITE_KINDS,
   ...HQ_BIRTH_KINDS,
+  changeComment,
 ]);
 
 /** The kind an intent belongs to, in a registry: the account's, or a test's own. */

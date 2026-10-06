@@ -252,6 +252,38 @@ const outcome = <A, E extends { readonly _tag: string }>(effect: Effect.Effect<A
 describe("structure", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
     it.effect(
+      "a held half-made environment offers finish independently of its occupied add slot",
+      () =>
+        withStructure(() =>
+          Effect.gen(function* () {
+            const structure = yield* Structure;
+            for (const [kind, projectId] of [
+              ["stage", "P_OWNED"],
+              ["production", "P_RACE1"],
+              ["devstage", "P_RACE2"],
+            ] as const) {
+              const app = yield* structure.createApp("owner", kind);
+              yield* structure.attachProject("owner", app.id, {
+                projectId,
+                kind,
+                ...(kind === "devstage" ? { mate: { face: "face" } } : {}),
+              });
+              for (const who of ["owner", "admin", "maker"]) {
+                const read = (yield* structure.read(who)).apps.find(
+                  (value) => value.id === app.id,
+                )!;
+                assert.strictEqual(
+                  read.can[kind === "production" ? "add_production" : "add_stage"].allow,
+                  false,
+                );
+                const project = read.projects.find((value) => value.projectId === projectId)!;
+                assert.strictEqual(project.can?.finish?.allow, who !== "maker", `${kind}: ${who}`);
+              }
+            }
+          }),
+        ),
+    );
+    it.effect(
       "a project's admin who is no writer attaches it as an environment, into an empty place only",
       () =>
         withStructure(() =>

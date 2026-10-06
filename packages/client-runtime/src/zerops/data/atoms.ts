@@ -2,13 +2,7 @@ import { Atom } from "effect/unstable/reactivity";
 
 import { projectServices } from "../../data/projections/services.ts";
 import { accountReadsAtom, NOT_READ_SERVICES } from "../../data/reads.ts";
-import {
-  selectCommandAttempt,
-  selectHistory,
-  selectService,
-  selectTopology,
-  selectUsage,
-} from "./projection.ts";
+import { selectCommandAttempt, selectService, selectTopology } from "./projection.ts";
 import { runtimeServicesRead } from "./serviceBridge.ts";
 import type { Shown } from "../knowledge/known.ts";
 import {
@@ -22,20 +16,17 @@ import type {
   CollectionRead,
   CommandAttemptRef,
   EntityRead,
-  HistoryReadView,
-  HistorySeriesKey,
   ProjectRecord,
   ProjectRef,
   ProjectTopologyRead,
   ServiceRecord,
   ServiceRef,
-  UsageRead,
   ViewObservation,
   EntityKnowledge,
   ZeropsEntityRecord,
   ZeropsDataReads,
 } from "./types.ts";
-import { historySeriesKeyOf, projectKeyOf, serviceKeyOf } from "./types.ts";
+import { projectKeyOf, serviceKeyOf } from "./types.ts";
 
 function arrayReferencesEqual<Value>(
   left: ReadonlyArray<Value>,
@@ -204,7 +195,6 @@ export function createZeropsDataAtoms(stateAtom: Atom.Atom<ZeropsDataState>): {
 } {
   const projects = new Map<string, ProjectRef>();
   const services = new Map<string, ServiceRef>();
-  const history = new Map<string, HistorySeriesKey>();
   const attempts = new Map<string, CommandAttemptRef>();
 
   const serviceAtom = Atom.family((key: string) =>
@@ -222,39 +212,6 @@ export function createZeropsDataAtoms(stateAtom: Atom.Atom<ZeropsDataState>): {
       (_state, get) => bridgedServicesOf(get, projects.get(key)!),
       collectionReadsEqual,
       `zerops-services:${key}`,
-    ),
-  );
-  const usageAtom = Atom.family((key: string) =>
-    stableAtom(
-      stateAtom,
-      (state) => selectUsage(state, services.get(key)!),
-      (left: UsageRead, right: UsageRead) =>
-        (left.value === right.value ||
-          (left.value !== null &&
-            right.value !== null &&
-            left.value.containers === right.value.containers &&
-            left.value.cpu.used === right.value.cpu.used &&
-            left.value.cpu.limit === right.value.cpu.limit &&
-            left.value.memoryGb.used === right.value.memoryGb.used &&
-            left.value.memoryGb.limit === right.value.memoryGb.limit &&
-            left.value.diskGb.used === right.value.diskGb.used &&
-            left.value.diskGb.limit === right.value.diskGb.limit)) &&
-        left.coverage === right.coverage &&
-        observationsEqual(left.observation, right.observation),
-      `zerops-usage:${key}`,
-    ),
-  );
-  const historyAtom = Atom.family((key: string) =>
-    stableAtom(
-      stateAtom,
-      (state) => selectHistory(state, history.get(key)!),
-      (left: HistoryReadView, right: HistoryReadView) =>
-        (left.series === right.series ||
-          (left.series.status === "unresolved" &&
-            right.series.status === "unresolved" &&
-            historySeriesKeyOf(left.series.key) === historySeriesKeyOf(right.series.key))) &&
-        observationsEqual(left.observation, right.observation),
-      `zerops-history:${key}`,
     ),
   );
   const topologyAtom = Atom.family((key: string) =>
@@ -320,8 +277,6 @@ export function createZeropsDataAtoms(stateAtom: Atom.Atom<ZeropsDataState>): {
       access: stableAtom(stateAtom, (state) => state.access, Object.is, "zerops-access"),
       service: (ref) => serviceAtom(remember(services, serviceKeyOf(ref), ref)),
       servicesOf: (ref) => servicesOfAtom(remember(projects, projectKeyOf(ref), ref)),
-      usage: (ref) => usageAtom(remember(services, serviceKeyOf(ref), ref)),
-      history: (ref) => historyAtom(remember(history, historySeriesKeyOf(ref), ref)),
       topology: (ref) => topologyAtom(remember(projects, projectKeyOf(ref), ref)),
       commandAttempt: (ref) => commandAtom(remember(attempts, attemptKey(ref), ref)),
       deployedVersion: (ref) => deployedVersionAtom(remember(services, serviceKeyOf(ref), ref)),

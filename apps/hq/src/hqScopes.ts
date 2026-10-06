@@ -29,6 +29,7 @@ import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import { ZeropsRefused, type ZeropsError } from "./zerops/api.ts";
 import { Changes } from "./changes.ts";
+import type { ChangeNavigationSource } from "./changeNavigation.ts";
 import { pruneIdleScopes } from "./scopeRetention.ts";
 import { Deploys } from "./deploys.ts";
 import type { EnvironmentSource } from "./environmentNavigation.ts";
@@ -143,6 +144,7 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
         Effect.provideContext(yield* Effect.context<Effect.Services<typeof healthParts>>()),
       );
       const sourceOne = yield* Semaphore.make(1);
+      const changeOne = yield* Semaphore.make(1);
       const incarnation = NodeCrypto.randomUUID();
       type Journal = ReturnType<typeof makeScopeJournal>;
       type Entry = {
@@ -188,6 +190,23 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
       >();
       let source: StructureSource | undefined;
       let environmentSource: EnvironmentSource | undefined;
+      let changeSource: ChangeNavigationSource | undefined;
+      let publishedChanges: ChangeNavigationSource | undefined;
+      let changeVersion = 0;
+      const changeFence = makeSourceFence();
+      const changeSourceNow = changeOne.withPermits(1)(
+        Effect.gen(function* () {
+          while (changeSource === undefined || changeFence.dirty()) {
+            const started = changeFence.capture();
+            const fresh = yield* changes.navigation;
+            if (!changeFence.accept(started)) continue;
+            changeSource = fresh;
+            publishedChanges ??= fresh;
+            changeVersion += 1;
+          }
+          return changeSource;
+        }),
+      );
       const sourceFence = makeSourceFence();
       let sourceVersion = 0;
       const personViews = new Map<string, StructureRead>();
@@ -231,6 +250,9 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
         const { projects, ...navigation } = app;
         return decodeApp({
           ...navigation,
+          changes: app.can.read_change.allow
+            ? (changeSource?.forApp(app.id) ?? [])
+            : { refused: app.can.read_change.reason },
           environments: (environmentSource ?? current.environmentSource).forApp(
             userId,
             app.id,
@@ -280,7 +302,7 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
         });
       const observedProjects = (view: ReturnType<StructureSource["forPerson"]>) =>
         [...view.ungrouped, ...view.apps.flatMap((app) => app.projects)].filter(
-          (project) => project.can?.observe_mate.allow === true,
+          (project) => project.can?.observe_mate?.allow === true,
         );
       const loadSeen = (userId: string, projectId: string) =>
         Effect.gen(function* () {
@@ -345,23 +367,33 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
             );
             const listed = [...view.ungrouped, ...view.apps.flatMap((app) => app.projects)];
             const signersFor = (projectId: string) => {
-              if (!observable.some((project) => project.projectId === projectId)) return {};
-              const login = all.get(projectId)?.overview?.logins;
+              const signedInNow: Record<string, string> = {};
+              const everSignedIn: Record<string, string> = {};
+              if (!observable.some((project) => project.projectId === projectId))
+                return { signedInNow, everSignedIn };
+              const logins = all.get(projectId)?.overview?.logins;
               const saved = listed.find((project) => project.projectId === projectId)?.mate
                 ?.signers;
-              const signers: { "claude-code"?: string; codex?: string } = {};
-              for (const key of ["claude-code", "codex"] as const) {
-                const id = login?.[key]?.signedInBy ?? login?.[key]?.lastSignedInBy ?? saved?.[key];
-                if (
-                  typeof id === "string" &&
-                  id.length > 0 &&
-                  !current.facts.members.some(
-                    (member) => member.kind === "token" && member.userId === id,
-                  )
-                )
-                  signers[key] = id;
+              const isPerson = (id: string | null | undefined): id is string =>
+                typeof id === "string" &&
+                id.length > 0 &&
+                !current.facts.members.some(
+                  (member) => member.kind === "token" && member.userId === id,
+                );
+              for (const key of new Set([
+                ...Object.keys(logins ?? {}),
+                ...Object.keys(saved ?? {}),
+              ])) {
+                const login = logins?.[key];
+                if (login?.present && !login.token && isPerson(login.signedInBy))
+                  signedInNow[key] = login.signedInBy;
+                const previous =
+                  (login?.token ? undefined : login?.signedInBy) ??
+                  login?.lastSignedInBy ??
+                  saved?.[key];
+                if (isPerson(previous)) everSignedIn[key] = previous;
               }
-              return signers;
+              return { signedInNow, everSignedIn };
             };
             const person = (projectId: string) => {
               const project = current.facts.projects.find((project) => project.id === projectId);
@@ -375,18 +407,18 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
               const attention = observable.some((project) => project.projectId === projectId)
                 ? all.get(projectId)?.attention
                 : null;
-              const signers = signersFor(projectId);
+              const { signedInNow, everSignedIn } = signersFor(projectId);
               const ownerUserId =
                 owner !== undefined
                   ? (current.facts.members.find(
                       (member) =>
                         member.kind === "person" && member.clientUserId === owner.clientUserId,
                     )?.userId ?? null)
-                  : (signers["claude-code"] ?? signers.codex ?? null);
+                  : (everSignedIn["claude-code"] ?? everSignedIn.codex ?? null);
               return {
                 role,
                 ownerUserId,
-                waitsOnViewer: (signers["claude-code"] ?? signers.codex) === entry.userId,
+                waitsOnViewer: (signedInNow["claude-code"] ?? signedInNow.codex) === entry.userId,
                 mayWrite: observable.some((project) => project.projectId === projectId),
                 mine: ownerUserId === entry.userId,
                 unseen:
@@ -415,7 +447,7 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
                   ...project,
                   appId: app.id,
                   person: person(project.projectId),
-                  signers: signersFor(project.projectId),
+                  ...signersFor(project.projectId),
                 });
                 if (Option.isSome(read))
                   values.push({ key: `project:${project.projectId}`, value: read.value });
@@ -428,7 +460,7 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
                 kind: "mate",
                 appId: null,
                 person: person(project.projectId),
-                signers: signersFor(project.projectId),
+                ...signersFor(project.projectId),
               });
               if (Option.isSome(read))
                 values.push({ key: `project:${project.projectId}`, value: read.value });
@@ -444,7 +476,7 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
               ...relevant.flatMap((project) => [
                 project.mate?.madeBy,
                 project.mate?.standupRequestedBy,
-                ...Object.values(signersFor(project.projectId)),
+                ...Object.values(signersFor(project.projectId).everSignedIn),
               ]),
               ...observable
                 .filter((project) =>
@@ -584,9 +616,16 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
             if (!entry.dirty) return;
             const generation = entry.generation;
             const version = sourceVersion;
+            if (entry.scope.kind === "navigation") yield* changeSourceNow;
+            const menuVersion = changeVersion;
             const data = yield* load(entry);
             yield* sourceNow;
             if (generation !== entry.generation || version !== sourceVersion) continue;
+            if (
+              entry.scope.kind === "navigation" &&
+              (changeFence.dirty() || menuVersion !== changeVersion)
+            )
+              continue;
             let baseline = false;
             if (entry.scope.kind === "attention") {
               const read = readAttentionSource(data.values[0]?.value);
@@ -670,6 +709,7 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
       const invalidate = (kind: "structure" | "detail" | "roles") =>
         Effect.gen(function* () {
           if (kind === "structure" || kind === "roles") sourceFence.invalidate();
+          if (kind === "structure") changeFence.invalidate();
           if (kind === "detail" || kind === "structure") contents.clear();
           for (const entry of journals.values()) {
             const affected =
@@ -722,18 +762,12 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
             }
           }
         });
-      const refreshEnvironments = Effect.gen(function* () {
-        if (source === undefined || sourceFence.dirty()) return;
-        const version = sourceVersion;
-        const fresh = yield* structure.environments;
-        if (sourceFence.dirty() || version !== sourceVersion) return;
-        const changed = new Set(
-          [...source.appIds].filter(
-            (appId) => fresh.fingerprints.get(appId) !== environmentSource?.fingerprints.get(appId),
-          ),
-        );
-        environmentSource = fresh;
-        if (changed.size === 0) return;
+      const refreshAppValues = Effect.fnUntraced(function* (
+        changed: ReadonlySet<string>,
+        version: number,
+        menuVersion?: number,
+      ) {
+        if (source === undefined) return;
         for (const entry of journals.values()) {
           if (entry.scope.kind !== "navigation" || entry.failure !== undefined) continue;
           const apps = viewFor(source, entry.userId).apps.filter(
@@ -751,9 +785,14 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
                 version !== sourceVersion ||
                 sourceFence.dirty() ||
                 entry.sourceVersion !== sourceVersion ||
-                entry.dirty
-              )
+                entry.dirty ||
+                (menuVersion !== undefined &&
+                  (changeFence.dirty() || menuVersion !== changeVersion))
+              ) {
+                entry.dirty = true;
+                entry.generation += 1;
                 return yield* scheduleRefresh(entry);
+              }
               const values = apps.flatMap((app) => {
                 const read = navigationApp(source!, entry.userId, app);
                 return Option.isSome(read) ? [{ key: `app:${app.id}`, value: read.value }] : [];
@@ -763,28 +802,53 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
             }),
           );
         }
-      }).pipe(
-        Effect.catch((error) =>
-          Effect.gen(function* () {
-            for (const entry of journals.values()) {
-              if (entry.scope.kind !== "navigation" || entry.failure !== undefined) continue;
-              entry.dirty = true;
-              entry.generation += 1;
-              if (demanded(entry))
-                yield* send(entry, [
-                  {
-                    type: "scope-error",
-                    scope: entry.scope,
-                    code: "unavailable",
-                    reason: null,
-                    disposition: "transient",
-                  },
-                ]);
-            }
-            yield* Effect.logWarning("Environment navigation read unavailable", error);
-          }),
-        ),
-      );
+      });
+      const navigationUnavailable = (label: string) => (error: unknown) =>
+        Effect.gen(function* () {
+          for (const entry of journals.values()) {
+            if (entry.scope.kind !== "navigation" || entry.failure !== undefined) continue;
+            entry.dirty = true;
+            entry.generation += 1;
+            if (demanded(entry))
+              yield* send(entry, [
+                {
+                  type: "scope-error",
+                  scope: entry.scope,
+                  code: "unavailable",
+                  reason: null,
+                  disposition: "transient",
+                },
+              ]);
+          }
+          yield* Effect.logWarning(label, error);
+        });
+      const refreshChanges = Effect.gen(function* () {
+        if (source === undefined || sourceFence.dirty()) return;
+        const version = sourceVersion;
+        const fresh = yield* changeSourceNow;
+        if (sourceFence.dirty() || version !== sourceVersion) return;
+        const changed = new Set(
+          [...source.appIds].filter(
+            (appId) => fresh.fingerprints.get(appId) !== publishedChanges?.fingerprints.get(appId),
+          ),
+        );
+        publishedChanges = fresh;
+        if (changed.size > 0) yield* refreshAppValues(changed, version, changeVersion);
+      }).pipe(Effect.catch(navigationUnavailable("Change navigation read unavailable")));
+      const refreshEnvironments = Effect.gen(function* () {
+        if (source === undefined || sourceFence.dirty()) return;
+        const version = sourceVersion;
+        const fresh = yield* structure.environments;
+        if (sourceFence.dirty() || version !== sourceVersion) return;
+        const changed = new Set(
+          [...source.appIds].filter(
+            (appId) => fresh.fingerprints.get(appId) !== environmentSource?.fingerprints.get(appId),
+          ),
+        );
+        environmentSource = fresh;
+        if (changed.size === 0) return;
+        yield* refreshAppValues(changed, version);
+      }).pipe(Effect.catch(navigationUnavailable("Environment navigation read unavailable")));
       type Signal =
         | { kind: "structure" | "detail" | "roles" | "environment" }
         | { kind: "attention" | "forget"; projectId: string };
@@ -795,7 +859,12 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
             Stream.filter((seen) => fingerprint(seen.view) !== rolesFingerprint),
             Stream.map((): Signal => ({ kind: "roles" })),
           ),
-          changes.changes.pipe(Stream.map((): Signal => ({ kind: "detail" }))),
+          changes.changes.pipe(
+            Stream.map((): Signal => {
+              changeFence.invalidate();
+              return { kind: "detail" };
+            }),
+          ),
           releases.changes.pipe(Stream.map((): Signal => ({ kind: "environment" }))),
           deploys.changes.pipe(Stream.map((): Signal => ({ kind: "environment" }))),
           overviews.changes.pipe(
@@ -835,7 +904,9 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
               ? refreshAttention(signal.projectId, signal.kind === "forget")
               : signal.kind === "environment"
                 ? Effect.andThen(invalidate("detail"), refreshEnvironments)
-                : invalidate(signal.kind);
+                : signal.kind === "detail"
+                  ? Effect.andThen(invalidate("detail"), refreshChanges)
+                  : invalidate(signal.kind);
           }),
         ),
         { startImmediately: true },
@@ -1119,6 +1190,37 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
                       }
                       prune();
                       return;
+                    case "compare": {
+                      yield* changes
+                        .compare(userId, request.appId, request.repo, {
+                          ...(request.base === undefined ? {} : { base: request.base }),
+                          head: request.head,
+                        })
+                        .pipe(
+                          Effect.flatMap((result) =>
+                            Queue.offer(queue, {
+                              type: "compare",
+                              requestId: request.requestId,
+                              appId: request.appId,
+                              repo: request.repo,
+                              result,
+                            }),
+                          ),
+                          Effect.catch((error) => {
+                            const facts = metadata(error);
+                            return Queue.offer(queue, {
+                              type: "compare-error",
+                              requestId: request.requestId,
+                              appId: request.appId,
+                              repo: request.repo,
+                              code: facts.code ?? "unavailable",
+                              reason: facts.reason ?? null,
+                              disposition: refusalDisposition(facts.code ?? "unavailable"),
+                            });
+                          }),
+                        );
+                      return;
+                    }
                     case "move-offers": {
                       yield* structure.moveDestinations(userId, request.projectId).pipe(
                         Effect.flatMap((moveTo) =>

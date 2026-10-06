@@ -3,21 +3,17 @@
  * has no HQ: an owner or an admin sees it born — each step, the one it is on, and the one that
  * stopped it, with the way on — and anybody else whom to ask, and nothing more.
  */
-import { RegistryContext, useAtomValue } from "@effect/atom-react";
-import { hqBirthReads, hqBirthWaits } from "@t3tools/client-runtime/data";
-import {
-  HQ_BIRTH_DOING,
-  HQ_BIRTH_STEPS,
-  runHqBirth,
-  type HqBirthDeps,
-} from "@t3tools/client-runtime/zerops/hq";
+import { RegistryContext } from "@effect/atom-react";
+import { hqBirthProgress, hqBirthRequestId } from "@t3tools/client-runtime/data";
+import { HQ_BIRTH_DOING, HQ_BIRTH_STEPS } from "@t3tools/client-runtime/zerops/hq";
 import { CheckIcon, CircleAlertIcon } from "lucide-react";
-import { useCallback, useContext, useEffect, useMemo } from "react";
+import { useCallback, useContext, useEffect } from "react";
 
-import { cn, randomUUID } from "~/lib/utils";
+import { cn } from "~/lib/utils";
+import { captureAccountLifetime } from "~/zerops/accountLifetime";
 import { useAccountOperations } from "~/zerops/accountOperations";
 import { hqBirthSite, useAccountHq } from "~/zerops/accountHq";
-import { bearHq, hqBirthAtom, hqBirthView, type HqBirthView } from "~/zerops/hqBirth";
+import { useHqBirths, hqBirthView, type HqBirthView } from "~/zerops/hqBirth";
 import type { HqGate } from "~/zerops/hqGate";
 import { useAccountData } from "~/zerops/ZeropsAccountData";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
@@ -32,45 +28,29 @@ export function ZeropsHqGate({ gate }: { readonly gate: ClosedGate }) {
   const { activeOrganization, client } = useZeropsSession();
   const clientId = activeOrganization?.id ?? "";
   const accountHq = useAccountHq(activeOrganization?.id);
+  const held = useHqBirths(clientId);
   const registry = useContext(RegistryContext);
-  const held = useAtomValue(hqBirthAtom(clientId));
   const operations = useAccountOperations();
-  const { data, demandDetail } = useAccountData();
+  const { data } = useAccountData();
   const { reread } = accountHq;
-  // Its writes are the account's operations; its waits, Zerops's facts in the account's store.
-  const deps = useMemo<HqBirthDeps>(
-    () => ({
-      run: operations.run,
-      reads: hqBirthReads(client),
-      waits: hqBirthWaits({ data, registry, demandDetail }),
-      // The journal's claim alone: a lease, never a verdict.
-      now: () => Date.now(),
-      newBirthId: randomUUID,
-    }),
-    [client, data, demandDetail, operations, registry],
-  );
   const bear = useCallback(
-    (again: boolean) =>
-      bearHq({
-        registry,
-        clientId,
-        run: (record, moved, manualAgain) =>
-          runHqBirth({
-            record,
-            clientId,
-            ...hqBirthSite(client),
-            deps,
-            moved,
-            again: manualAgain,
-          }),
-        alreadyBorn: async () => (await deps.reads.markedHq(clientId)).kind === "official",
-        // Its anchor is in the member list now: the gate opens once it is read again.
-        onBorn: reread,
-        again,
-      }),
-    [client, clientId, deps, registry, reread],
+    (again: boolean) => {
+      const current = registry.get(data.project(hqBirthProgress, clientId));
+      if (current?.running || current?.record.step === "done") return;
+      const isCurrent = captureAccountLifetime();
+      void operations
+        .submit(
+          { kind: "hq-birth", orgId: clientId, ...hqBirthSite(client), again },
+          hqBirthRequestId(clientId, (current?.attempt ?? 0) + 1),
+        )
+        .then(({ progress }) => {
+          if (isCurrent() && progress.stage === "done" && progress.outcome === "succeeded")
+            reread();
+        });
+    },
+    [client, clientId, data, operations, registry, reread],
   );
-  const birthDue = gate.kind === "birth" && held === undefined;
+  const birthDue = gate.kind === "birth" && held === null;
   useEffect(() => {
     if (birthDue) bear(false);
   }, [bear, birthDue]);

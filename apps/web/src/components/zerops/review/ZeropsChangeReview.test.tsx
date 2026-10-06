@@ -71,11 +71,14 @@ vi.mock("~/zerops/useZeropsChangeDetail", async () => ({
   )),
   useZeropsChangeDetail: () => ({ readout: detail.readout, retry: () => undefined }),
 }));
-vi.mock("~/zerops/useZeropsChangeComments", () => ({
-  useZeropsChangeComments: () => ({
+vi.mock("~/zerops/useChangeDiscussion", () => ({
+  useChangeDiscussion: () => ({
     state: { kind: "reading" },
     say: async () => null,
     saying: false,
+    waiting: false,
+    pending: null,
+    landed: null,
     retry: () => undefined,
   }),
 }));
@@ -111,6 +114,22 @@ const offers = vi.hoisted(() => {
     },
   };
   return { held, of: () => held.current };
+});
+/** The applications whose detail the review holds now. */
+const detailHeld = vi.hoisted(() => ({ now: [] as ReadonlyArray<string> }));
+vi.mock("~/zerops/useHqAppDetail", async () => {
+  const { useEffect } = await import("react");
+  return {
+    useHqAppDetailHold: (appIds: ReadonlyArray<string>) => {
+      const key = appIds.join(",");
+      useEffect(() => {
+        detailHeld.now = key === "" ? [] : key.split(",");
+        return () => {
+          detailHeld.now = [];
+        };
+      }, [key]);
+    },
+  };
 });
 vi.mock("~/zerops/useChangeOffers", () => ({ useChangeOffers: () => () => offers.of() }));
 
@@ -186,6 +205,9 @@ function render(
       state: { kind: "read", comments: [] },
       say: async () => null,
       saying: false,
+      waiting: false,
+      pending: null,
+      landed: null,
       retry: noop,
     },
     remarks: [],
@@ -222,7 +244,15 @@ const textOf = (html: string) =>
 describe("ChangeReviewView: a change's conversation", () => {
   it("holds the room of the comments HQ counted while it reads them", () => {
     const markup = render(merged({ commentCount: 2 }), [], {
-      comments: { state: { kind: "reading" }, say: async () => null, saying: false, retry: noop },
+      comments: {
+        state: { kind: "reading" },
+        say: async () => null,
+        saying: false,
+        waiting: false,
+        pending: null,
+        landed: null,
+        retry: noop,
+      },
     });
     expect(markup.match(/<li aria-hidden="true"/gu)?.length).toBe(2);
   });
@@ -490,6 +520,13 @@ describe("ZeropsChangeReview: a change its project's flow does not hold yet", ()
       root.unmount();
     });
   }
+
+  it("holds its application's detail while it is drawn, and lets it go when it closes", async () => {
+    await reviewed(() => {
+      expect(detailHeld.now).toEqual(["group-orchard"]);
+    });
+    expect(detailHeld.now).toEqual([]);
+  });
 
   /** The review's buttons that say `label` — the primary by its action, its keys beside it. */
   const buttonsOf = (host: TestNode, label: string) =>

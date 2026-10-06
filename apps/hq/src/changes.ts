@@ -63,6 +63,7 @@ import * as SqlClient from "effect/unstable/sql/SqlClient";
 import type { SqlError } from "effect/unstable/sql/SqlError";
 
 import { firstCodeMergeOf } from "./firstCodeMerge.ts";
+import { readChangeNavigationSource, type ChangeNavigationSource } from "./changeNavigation.ts";
 import { appendEvent, releaseRevisions } from "./gitEvents.ts";
 import { GitHost, type PushedChange, mainOf } from "./gitHost.ts";
 import { heldOf } from "./held.ts";
@@ -275,6 +276,8 @@ export class Changes extends Context.Service<
      * structure socket carries (`stream.ts`).
      */
     readonly readable: (userId: string) => Effect.Effect<ChangesSnapshot, SqlError | ZeropsError>;
+    /** Compact open menu rows, shared across people; no git, descriptions or comment counts. */
+    readonly navigation: Effect.Effect<ChangeNavigationSource, SqlError>;
     /** Ticks after any change's record moved, starting with the current tick. */
     readonly changes: Stream.Stream<number>;
     /**
@@ -1056,6 +1059,7 @@ export const changesLayer: Layer.Layer<
           return { id, path: attachmentPath(appId, repo, number, id) };
         }),
       changes: Stream.merge(SubscriptionRef.changes(ticks), gitHost.recorded),
+      navigation: readChangeNavigationSource(sql),
       releaseRevisions: Effect.provideService(releaseRevisions, SqlClient.SqlClient, sql),
       readable: (userId) =>
         Effect.gen(function* () {

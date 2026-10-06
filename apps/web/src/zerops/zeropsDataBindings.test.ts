@@ -175,11 +175,7 @@ describe("central Zerops data bindings", () => {
     for (let index = 0; index < 100; index += 1) {
       registry.set(root, {
         ...settled,
-        observability: {
-          current: new Map(settled.observability.current),
-          history: new Map(settled.observability.history),
-          historyAdmission: new Map(settled.observability.historyAdmission),
-        },
+        reads: new Map(settled.reads),
         retention: { ...settled.retention, nextId: index + 1 },
       });
     }

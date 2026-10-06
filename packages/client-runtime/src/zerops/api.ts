@@ -40,7 +40,6 @@ import type {
   ZeropsTokenDelegation,
 } from "./groupReach.ts";
 import type { HqPlacement } from "./hq/placement.ts";
-import { agentsFromOAuthFlags } from "./agentSelection.ts";
 import {
   buildCreateProjectBody,
   buildDevelopmentContainerImportBody,
@@ -1127,25 +1126,7 @@ export class ZeropsApiClient {
     }
   }
 
-  /**
-   * Hears every write this client makes to an organization's integration tokens — a mint, a
-   * regenerate, a project list, a delete — by the organization's id, so the store's shared token
-   * list is read again. A throwaway's mint and delete are not heard: nothing reads them back.
-   */
-  onIntegrationTokensWritten(listener: (clientId: string) => void): () => void {
-    this.#tokenListeners.add(listener);
-    return () => {
-      this.#tokenListeners.delete(listener);
-    };
-  }
-
-  #tokenListeners = new Set<(clientId: string) => void>();
-
   readonly #holdToken: TokenWriteHold;
-
-  #tokensWritten(clientId: string): void {
-    for (const listener of this.#tokenListeners) listener(clientId);
-  }
 
   fetchUser(signal?: AbortSignal): Promise<ZeropsUser> {
     return this.#readUser(signal ?? null, {});
@@ -1422,13 +1403,8 @@ export class ZeropsApiClient {
     signal?: AbortSignal,
     beforeWrite?: () => Promise<void>,
   ): Promise<{ readonly id: string; readonly token: string }> {
-    try {
-      const { id, token } = await this.#mintIntegrationToken(input, signal, beforeWrite);
-      return { id, token };
-    } finally {
-      // Landed or not, it may have: every reader of the organization's tokens reads them again.
-      this.#tokensWritten(input.clientId);
-    }
+    const { id, token } = await this.#mintIntegrationToken(input, signal, beforeWrite);
+    return { id, token };
   }
 
   /**
@@ -1534,9 +1510,6 @@ export class ZeropsApiClient {
       );
     } catch (cause) {
       if (!isTokenGone(cause)) throw cause;
-    } finally {
-      // Landed or not, it may have: every reader of the organization's tokens reads them again.
-      this.#tokensWritten(input.clientId);
     }
   }
 
@@ -1597,37 +1570,21 @@ export class ZeropsApiClient {
     signal?: AbortSignal,
     beforeWrite?: () => Promise<void>,
   ): Promise<string> {
-    try {
-      const response = await this.#request<{ readonly token?: string }>(
-        `/client/${input.clientId}/integration-token/${input.tokenId}/regenerate`,
-        { method: "PUT", signal: signal ?? null },
-        {
-          operationKind: "project-write",
-          ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-        },
+    const response = await this.#request<{ readonly token?: string }>(
+      `/client/${input.clientId}/integration-token/${input.tokenId}/regenerate`,
+      { method: "PUT", signal: signal ?? null },
+      {
+        operationKind: "project-write",
+        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
+      },
+    );
+    if (!response.token) {
+      throw new ZeropsApiError(
+        "Zerops regenerated the token but did not return its value, so it cannot be used.",
+        "uncertain",
       );
-      if (!response.token) {
-        throw new ZeropsApiError(
-          "Zerops regenerated the token but did not return its value, so it cannot be used.",
-          "uncertain",
-        );
-      }
-      return response.token;
-    } finally {
-      // Landed or not, it may have: every reader of the organization's tokens reads them again.
-      this.#tokensWritten(input.clientId);
     }
-  }
-
-  /** Locations the selected organization may place a new project in. */
-  async listClientLocations(
-    clientId: string,
-    signal?: AbortSignal,
-  ): Promise<ReadonlyArray<ZeropsLocation>> {
-    const response = await this.#request<{
-      readonly locationList?: ReadonlyArray<ZeropsLocation>;
-    }>(`/client/${clientId}/settings`, { signal: signal ?? null });
-    return response.locationList ?? [];
+    return response.token;
   }
 
   /** `GET /project/{id}` — also the membership check: 200 member, 403 not. */
@@ -2068,30 +2025,25 @@ export class ZeropsApiClient {
     signal?: AbortSignal,
     beforeWrite?: () => Promise<void>,
   ): Promise<void> {
-    try {
-      await this.#request(
-        `/client/${input.clientId}/integration-token/${input.tokenId}`,
-        {
-          method: "PUT",
-          signal: signal ?? null,
-          body: JSON.stringify({
-            name: input.name,
-            roleCode: input.roleCode ?? "NO_ACCESS",
-            canCreateProjects: false,
-            canViewFinances: false,
-            canEditFinances: false,
-            projects: input.projects,
-          }),
-        },
-        {
-          operationKind: "project-write",
-          ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-        },
-      );
-    } finally {
-      // Landed or not, it may have: every reader of the organization's tokens reads them again.
-      this.#tokensWritten(input.clientId);
-    }
+    await this.#request(
+      `/client/${input.clientId}/integration-token/${input.tokenId}`,
+      {
+        method: "PUT",
+        signal: signal ?? null,
+        body: JSON.stringify({
+          name: input.name,
+          roleCode: input.roleCode ?? "NO_ACCESS",
+          canCreateProjects: false,
+          canViewFinances: false,
+          canEditFinances: false,
+          projects: input.projects,
+        }),
+      },
+      {
+        operationKind: "project-write",
+        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
+      },
+    );
   }
 
   /**
@@ -2759,21 +2711,6 @@ export class ZeropsApiClient {
       { signal: signal ?? null },
     );
     return body.items ?? [];
-  }
-
-  /**
-   * The coding agents a zcp container has signed in with
-   * (`agentSelection.ts`).
-   *
-   * The env records stop here: they carry every secret the service holds, and
-   * although the platform redacts their values there is no reason for the
-   * shape to travel. Only the derived agent list leaves.
-   */
-  async readAuthorizedAgents(
-    serviceId: string,
-    signal?: AbortSignal,
-  ): Promise<ReadonlyArray<ZeropsAgentType>> {
-    return agentsFromOAuthFlags(await this.#serviceEnv(serviceId, signal));
   }
 
   /**
