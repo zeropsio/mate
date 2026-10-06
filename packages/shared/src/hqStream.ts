@@ -294,6 +294,23 @@ export const HqNavigationPress = Schema.Struct({
   importProcessId: Schema.optionalKey(Schema.String),
 });
 export type HqNavigationPress = typeof HqNavigationPress.Type;
+/** Only what the menu draws and orders; commit contents and history belong to detail scopes. */
+export const HqNavigationChange = Schema.Struct({
+  repo: HqChange.fields.repo,
+  number: HqChange.fields.number,
+  mateProjectId: HqChange.fields.mateProjectId,
+  title: HqChange.fields.title,
+  state: Schema.Literal("open"),
+  hasHead: Schema.Boolean,
+  updatedAt: HqChange.fields.updatedAt,
+  mergeability: HqChange.fields.mergeability,
+  ready: Schema.Boolean,
+});
+export type HqNavigationChange = typeof HqNavigationChange.Type;
+export const HqNavigationChanges = Schema.Union([
+  Schema.Array(HqNavigationChange),
+  Schema.Struct({ refused: Schema.String }),
+]);
 export const HqNavigationApp = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
@@ -303,6 +320,7 @@ export const HqNavigationApp = Schema.Struct({
     deletingProjectIds: Schema.Array(Schema.String),
   }),
   environments: HqNavigationEnvironments,
+  changes: HqNavigationChanges,
   projectIds: Schema.Array(Schema.String),
   births: Schema.Array(Schema.Unknown),
 });

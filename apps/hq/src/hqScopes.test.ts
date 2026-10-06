@@ -58,6 +58,17 @@ const facts: OrgView<"cached"> = {
   ],
 };
 const json = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
+const menuChange = {
+  repo: "appdev",
+  number: 1,
+  mateProjectId: "P",
+  title: "Add a login page",
+  state: "open",
+  hasHead: true,
+  updatedAt: "2026-10-06T00:00:00.000Z",
+  mergeability: "conflict",
+  ready: false,
+} as const;
 const fixture = Effect.gen(function* () {
   let org = facts;
   let sourceRefused = false;
@@ -65,6 +76,10 @@ const fixture = Effect.gen(function* () {
   let recentRefused = false;
   let recentReads = 0;
   let savedSigners: Readonly<Record<string, string>> | undefined;
+  let otherApp = false;
+  let menu: Readonly<Record<string, ReadonlyArray<Record<string, unknown>>>> = {};
+  let menuReads = 0;
+  let changeDetailReads = 0;
   let deleted = false;
   let corrupt = false;
   let appName = "App";
@@ -192,13 +207,13 @@ const fixture = Effect.gen(function* () {
   const sourceNow = (): StructureSource => ({
     environmentSource: environmentSnapshot(),
     facts: org,
-    appIds: new Set(deleted ? [] : ["A"]),
+    appIds: new Set(deleted ? [] : otherApp ? ["A", "B"] : ["A"]),
     projectIds: new Set(deleted ? [] : ["P"]),
     pressProjectIds: new Set(),
     forPerson: (userId) => {
       projections += 1;
       const can = mateOffers(userId, "P", "mate", org);
-      return {
+      const read = {
         can: {
           create_app: { allow: true },
           rename_app: { allow: true },
@@ -259,6 +274,13 @@ const fixture = Effect.gen(function* () {
               },
             ],
       } as unknown as StructureRead;
+      return {
+        ...read,
+        apps:
+          otherApp && !deleted
+            ? [...read.apps, { ...read.apps[0]!, id: "B", name: "Other app", projects: [] }]
+            : read.apps,
+      };
     },
   });
   const services = Layer.mergeAll(
@@ -291,6 +313,14 @@ const fixture = Effect.gen(function* () {
       answeredAt: Effect.succeed(0),
     } as unknown as Roles["Service"]),
     Layer.succeed(Changes, {
+      navigation: Effect.sync(() => {
+        menuReads += 1;
+        const snapshot = menu;
+        return {
+          fingerprints: new Map(Object.entries(snapshot).map(([app, rows]) => [app, json(rows)])),
+          forApp: (appId: string) => snapshot[appId] ?? [],
+        };
+      }),
       changes: Stream.fromPubSub(detailsChanged),
       changeDetail: () =>
         Effect.gen(function* () {
@@ -311,7 +341,11 @@ const fixture = Effect.gen(function* () {
             return yield* new ChangeRefused({ code: "invalid", reason: "recipe_too_large" });
           return { state: "absent" as const, marker: recipeMarker };
         }),
-      listChanges: () => Effect.succeed([]),
+      listChanges: () =>
+        Effect.sync(() => {
+          changeDetailReads += 1;
+          return [];
+        }),
       listRepos: () =>
         Effect.sync(() => {
           detailReads.push("repos");
@@ -375,6 +409,18 @@ const fixture = Effect.gen(function* () {
       return { ...client, queue, take, subscribe };
     });
   return {
+    otherApp: () => {
+      otherApp = true;
+    },
+    menuReads: () => menuReads,
+    changeDetailReads: () => changeDetailReads,
+    menuChanges: (value: typeof menu) =>
+      Effect.andThen(
+        Effect.sync(() => {
+          menu = value;
+        }),
+        PubSub.publish(detailsChanged, 1),
+      ),
     savedSigners: (value: Readonly<Record<string, string>>) => {
       savedSigners = value;
     },
@@ -507,6 +553,79 @@ const resetOf = (message: ScopeOutput) => {
 };
 
 describe("revisioned HQ values", () => {
+  it.effect("navigation shares compact menu changes and filters them before person delivery", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const f = yield* fixture;
+        yield* f.menuChanges({ A: [{ ...menuChange, body: "private description", comments: 99 }] });
+        const clients = yield* Effect.forEach(["owner", "reader", "owner"], (userId) =>
+          f.connect(userId),
+        );
+        for (const client of clients) {
+          yield* client.subscribe([{ scope: nav }]);
+          const baseline = resetOf(yield* client.take);
+          yield* client.take;
+          const app = baseline.values.find((value) => value.key === "app:A")!.value as {
+            changes: unknown;
+          };
+          assert.deepStrictEqual(
+            app.changes,
+            client === clients[1] ? { refused: "forbidden" } : [menuChange],
+          );
+          assert.notInclude(json(baseline.values), '"body"');
+        }
+        assert.strictEqual(f.menuReads(), 1);
+        assert.strictEqual(f.changeDetailReads(), 0);
+        assert.deepStrictEqual(f.detailReads, []);
+      }),
+    ),
+  );
+  it.effect("change events revise only the affected navigation app without detail hydration", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const f = yield* fixture;
+        f.otherApp();
+        yield* f.menuChanges({ A: [menuChange], B: [] });
+        const owner = yield* f.connect("owner"),
+          reader = yield* f.connect("reader");
+        for (const client of [owner, reader]) {
+          yield* client.subscribe([{ scope: nav }]);
+          yield* client.take;
+          yield* client.take;
+        }
+        const reads = yield* Ref.get(f.reads),
+          projections = f.projections(),
+          roles = f.roleReads();
+        const retitled = { ...menuChange, title: "Login page ready", ready: true };
+        yield* f.menuChanges({ A: [retitled], B: [] });
+        const moved = resetOf(yield* owner.take);
+        assert.deepStrictEqual(
+          moved.values.map((value) => value.key),
+          ["app:A"],
+        );
+        assert.deepStrictEqual((moved.values[0]!.value as { changes: unknown }).changes, [
+          retitled,
+        ]);
+        yield* f.menuChanges({ A: [], B: [] });
+        const settled = resetOf(yield* owner.take);
+        assert.deepStrictEqual((settled.values[0]!.value as { changes: unknown }).changes, []);
+        assert.strictEqual(yield* Queue.size(reader.queue), 0);
+        assert.strictEqual(yield* Ref.get(f.reads), reads);
+        assert.strictEqual(f.projections(), projections);
+        assert.strictEqual(f.roleReads(), roles);
+        assert.deepStrictEqual(f.detailReads, []);
+        assert.strictEqual(f.changeDetailReads(), 0);
+        yield* f.menuChanges({ A: [], B: [] });
+        yield* owner.subscribe([
+          {
+            scope: nav,
+            cursor: { incarnation: settled.incarnation, revision: settled.revision },
+          },
+        ]);
+        assert.strictEqual((yield* owner.take).type, "scope-ready");
+      }),
+    ),
+  );
   it.effect("person owner, viewer signer, avatars and candidates stay isolated at delivery", () =>
     Effect.scoped(
       Effect.gen(function* () {

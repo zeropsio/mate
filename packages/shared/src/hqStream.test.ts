@@ -5,6 +5,7 @@ import {
   HqZeropsRefusedResponse,
   HQ_ZEROPS_REFUSED,
   HqStreamRequest,
+  HqStreamMessage,
   HqNavigationStatus,
   HqNavigationApp,
   HqNavigationPress,
@@ -28,6 +29,7 @@ const readRequest = Schema.decodeUnknownSync(HqStreamRequest);
 const readApp = Schema.decodeUnknownSync(HqNavigationApp);
 const readPress = Schema.decodeUnknownSync(HqNavigationPress);
 const readStatus = Schema.decodeUnknownSync(HqNavigationStatus);
+const readWire = Schema.decodeUnknownSync(Schema.fromJsonString(HqStreamMessage));
 
 it.each([{ type: "retry" }, { type: "retry", scopes: [{ kind: "navigation" }] }])(
   "decodes a person's explicit retry: %j",
@@ -61,6 +63,19 @@ it("navigation preserves production release standing and deploy evidence", () =>
     contents: { empty: false, deletingProjectIds: [] },
     projectIds: ["production"],
     births: [],
+    changes: [
+      {
+        repo: "appdev",
+        number: 1,
+        mateProjectId: "mate",
+        title: "Add a login page",
+        state: "open",
+        hasHead: true,
+        updatedAt: "2026-10-06T00:00:00Z",
+        mergeability: "conflict",
+        ready: false,
+      },
+    ],
     environments: [
       {
         projectId: "production",
@@ -126,6 +141,20 @@ it("navigation preserves production release standing and deploy evidence", () =>
   };
   expect(readPress(press)).toEqual(press);
 });
+
+it.each(["forbidden", "zerops_refused", "scope_not_found"])(
+  "keeps scope-error code %s in the wire for worded refusals",
+  (code) => {
+    const failure = {
+      type: "scope-error",
+      scope: { kind: "navigation" },
+      code,
+      reason: "no-access",
+      disposition: "refused",
+    };
+    expect(readWire(JSON.stringify(failure))).toEqual(failure);
+  },
+);
 
 const readFacts = Schema.decodeUnknownSync(HqPersonFacts);
 const readPerson = Schema.decodeUnknownSync(HqNavigationPerson);
