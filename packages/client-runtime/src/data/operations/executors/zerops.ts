@@ -5,6 +5,7 @@
  *
  * @module data/operations/executors/zerops
  */
+import * as Effect from "effect/Effect";
 import type { AtomRegistry } from "effect/unstable/reactivity";
 
 import type { ZeropsApiClient } from "../../../zerops/api.ts";
@@ -127,6 +128,8 @@ export function makeZeropsExecutor(input: {
           return retag(requestId, intent);
         case "assign-mate-owner":
           return assign(requestId, intent);
+        case "change-comment":
+          return Effect.die(new Error(`Zerops executes no ${intent.kind}.`));
       }
     },
   };

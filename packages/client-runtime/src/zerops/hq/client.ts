@@ -19,7 +19,6 @@ import {
   attachmentPath,
   ChangeDetailResponse,
   type ChangeDetailQuery,
-  CommentListResponse,
   CompareResponse,
   HqChange,
   HqChangeComment,
@@ -365,11 +364,6 @@ export interface HqApi {
     signal?: AbortSignal,
     snapshot?: ChangeDetailQuery,
   ) => Promise<ChangeDetailResponse>;
-  /** What was said on a change, oldest first. */
-  readonly changeComments: (
-    link: ChangeLink,
-    signal?: AbortSignal,
-  ) => Promise<ReadonlyArray<HqChangeComment>>;
   /** Says `body` on a change, as the person. */
   readonly commentOnChange: (link: ChangeLink, body: string) => Promise<HqChangeComment>;
   /**
@@ -566,7 +560,6 @@ const unreadable = () =>
   });
 
 const readChangeDetail = decoded(ChangeDetailResponse);
-const readComments = decoded(CommentListResponse);
 const readComment = decoded(HqChangeComment);
 const readChange = decoded(HqChange);
 const readMerged = decodedAsked(HqChange);
@@ -952,12 +945,6 @@ export function makeHqApi(input: {
       ),
     );
   };
-  const commentsOf = async (link: ChangeLink, signal?: AbortSignal) =>
-    (
-      await readComments(
-        await authorized(`${changePath(link)}/comments`, signal === undefined ? {} : { signal }),
-      )
-    ).comments;
   /** The change as HQ holds it, if it is in `state`. */
   const changeIn = async (link: ChangeLink, state: HqChange["state"]) => {
     const { change } = await changeOf(link);
@@ -1134,23 +1121,15 @@ export function makeHqApi(input: {
         },
       ),
     change: changeOf,
-    changeComments: commentsOf,
-    // A comment has no name of its own: the newest said on the change, in the very words, is taken
-    // for it.
-    commentOnChange: (link, body) =>
-      confirmed(
-        async () =>
-          readComment(
-            await authorized(
-              `${changePath(link)}/comments`,
-              { method: "POST", body: JSON.stringify({ body }) },
-              true,
-            ),
-          ),
-        async () => {
-          const newest = (await commentsOf(link)).at(-1);
-          return newest?.body === body ? newest : undefined;
-        },
+    // A comment has no name of its own: one whose answer was lost stays uncertain here, and the
+    // account's operation tells it from HQ's conversation by its author.
+    commentOnChange: async (link, body) =>
+      readComment(
+        await authorized(
+          `${changePath(link)}/comments`,
+          { method: "POST", body: JSON.stringify({ body }) },
+          true,
+        ),
       ),
     mergeChange: (link, expectedHead) =>
       confirmed(

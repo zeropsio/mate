@@ -10,7 +10,9 @@
  * The box is one quiet line that grows as it is written in (`field-sizing: content`); ⌘↵ in it
  * comments, never merges.
  * What was typed is kept for the change while the tab is open, so closing the review loses
- * nothing. While the conversation is read it holds the room of the comments the change has; one
+ * nothing; once HQ took it, it is the change's and no draft — the box shows it, off, until the
+ * conversation holds it, and says so while HQ reconnects. A press made before the conversation is
+ * read says it waits for that read; words whose answer was lost stay a draft until HQ shows them. While the conversation is read it holds the room of the comments the change has; one
  * that cannot be read says so, with *Try again*, and the box still takes words. Only people comment on a change (SPEC §3.2a): each remark wears its speaker's initial.
  */
 import {
@@ -23,7 +25,7 @@ import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { useState, type KeyboardEvent, type ReactElement } from "react";
 
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
-import type { ZeropsChangeComments } from "~/zerops/useZeropsChangeComments";
+import type { ChangeDiscussion } from "~/zerops/useChangeDiscussion";
 
 import { Avatar, MateFace } from "../primitives";
 import { remarkFold, type ReviewFrame } from "./ZeropsReview.logic";
@@ -58,7 +60,7 @@ export function ReviewConversation({
   readonly frame: ReviewFrame;
   /** The change the draft belongs to. */
   readonly draftKey: string;
-  readonly comments: ZeropsChangeComments;
+  readonly comments: ChangeDiscussion;
   readonly remarks: ReadonlyArray<ChangeRemark>;
   /** How many comments the change has, as HQ counts them: the room its conversation holds. */
   readonly count?: number | undefined;
@@ -170,13 +172,13 @@ function SayBox({
   onAsk,
 }: {
   readonly draftKey: string;
-  readonly comments: ZeropsChangeComments;
+  readonly comments: ChangeDiscussion;
   readonly asker: Asker | undefined;
   readonly onAsk: (said: string) => Promise<void>;
 }) {
   const [said, setSaid] = useState(() => drafts.get(draftKey) ?? "");
   const [trouble, setTrouble] = useState<string | null>(null);
-  const { say, saying } = comments;
+  const { say, saying, waiting, pending, landed } = comments;
   const empty = said.trim().length === 0;
 
   const write = (next: string) => {
@@ -184,6 +186,13 @@ function SayBox({
     if (next.length === 0) drafts.delete(draftKey);
     else drafts.set(draftKey, next);
   };
+  // Words whose answer was lost are the change's once HQ shows them as the person's: no draft.
+  const [cleared, setCleared] = useState<string | null>(null);
+  if (landed !== null && landed !== cleared) {
+    setCleared(landed);
+    if (said.trim() === landed) write("");
+    setTrouble(null);
+  }
   const comment = async () => {
     const body = said.trim();
     if (body.length === 0 || saying) return;
@@ -219,8 +228,9 @@ function SayBox({
               ? "Comment on this change…"
               : `Comment, or tell ${asker.name} what to change…`
           }
+          readOnly={pending !== null}
           rows={1}
-          value={said}
+          value={pending?.body ?? said}
         />
         <SayVerb
           explains="Adds it to the change's conversation, for everyone on it"
@@ -257,6 +267,12 @@ function SayBox({
         )}
       </div>
       {trouble === null ? null : <p className="rv-say-trouble">{trouble}</p>}
+      {waiting ? <p className="rv-say-trouble">Sends once HQ has read the conversation.</p> : null}
+      {pending?.reconnecting === true ? (
+        <p className="rv-say-trouble">
+          HQ is reconnecting. Your comment shows here once HQ has it.
+        </p>
+      ) : null}
     </>
   );
 }

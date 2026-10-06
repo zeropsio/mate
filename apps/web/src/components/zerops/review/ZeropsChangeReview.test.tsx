@@ -71,11 +71,14 @@ vi.mock("~/zerops/useZeropsChangeDetail", async () => ({
   )),
   useZeropsChangeDetail: () => ({ readout: detail.readout, retry: () => undefined }),
 }));
-vi.mock("~/zerops/useZeropsChangeComments", () => ({
-  useZeropsChangeComments: () => ({
+vi.mock("~/zerops/useChangeDiscussion", () => ({
+  useChangeDiscussion: () => ({
     state: { kind: "reading" },
     say: async () => null,
     saying: false,
+    waiting: false,
+    pending: null,
+    landed: null,
     retry: () => undefined,
   }),
 }));
@@ -186,6 +189,9 @@ function render(
       state: { kind: "read", comments: [] },
       say: async () => null,
       saying: false,
+      waiting: false,
+      pending: null,
+      landed: null,
       retry: noop,
     },
     remarks: [],
@@ -222,7 +228,15 @@ const textOf = (html: string) =>
 describe("ChangeReviewView: a change's conversation", () => {
   it("holds the room of the comments HQ counted while it reads them", () => {
     const markup = render(merged({ commentCount: 2 }), [], {
-      comments: { state: { kind: "reading" }, say: async () => null, saying: false, retry: noop },
+      comments: {
+        state: { kind: "reading" },
+        say: async () => null,
+        saying: false,
+        waiting: false,
+        pending: null,
+        landed: null,
+        retry: noop,
+      },
     });
     expect(markup.match(/<li aria-hidden="true"/gu)?.length).toBe(2);
   });
