@@ -15,6 +15,7 @@ import {
 } from "./hqNavigation.ts";
 import { hqDiscussionFamily } from "./hqDiscussion.ts";
 import { hqAppDetailFamily } from "./hqAppDetail.ts";
+import { hqPictureFamily } from "./hqPicture.ts";
 import { hqMateFamily } from "./hqMate.ts";
 import { mateAttentionFamily } from "./mateAttention.ts";
 import { organizationLocationsFamily } from "./organizationLocations.ts";
@@ -76,6 +77,7 @@ export const FAMILIES = defineFamilies([
   hqVerdictFamily,
   mateVariablesFamily,
   mateLinkFamily,
+  hqPictureFamily,
 ]);
 
 const byFamily = new Map<string, AnyFamilySpec>(FAMILIES.map((spec) => [spec.family, spec]));

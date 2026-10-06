@@ -95,9 +95,9 @@ vi.mock("~/zerops/useChangeDiscussion", () => ({
 vi.mock("~/zerops/useZeropsChangeRun", () => ({
   useZeropsChangeRun: () => ({ words: undefined, reading: false, threadRef: undefined }),
 }));
-vi.mock("~/zerops/useChangePicture", () => ({
+vi.mock("~/zerops/useProjectedHqPicture", () => ({
   useHqPictureSource: () => undefined,
-  useChangePicture: () => ({ kind: "reading" }),
+  useProjectedHqPicture: () => ({ kind: "reading" }),
 }));
 vi.mock("~/zerops/useAskMate", () => ({ useAskMate: () => () => undefined }));
 vi.mock("~/zerops/useAddEnvironment", () => ({

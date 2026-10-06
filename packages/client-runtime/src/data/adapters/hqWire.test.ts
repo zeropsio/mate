@@ -81,3 +81,40 @@ describe("classifyHqCall", () => {
     expect(classifyHqCall(cause).outcome).toBe(outcome);
   });
 });
+
+describe("HQ attachment wire", () => {
+  it.effect.each([
+    { name: "bytes", cause: null, outcome: null },
+    {
+      name: "refusal",
+      cause: new HqError({ kind: "refused", code: "forbidden", message: "No picture." }),
+      outcome: "definitive-refusal",
+    },
+    {
+      name: "outage",
+      cause: new HqError({ kind: "unavailable", code: "network", message: "HQ unavailable." }),
+      outcome: "transient",
+    },
+  ] as const)(
+    "reads $name through the account API without opening a socket",
+    ({ cause, outcome }) =>
+      Effect.gen(function* () {
+        const link = { appId: "app", repo: "web", number: 1, id: "picture" };
+        const blob = new Blob(["picture"], { type: "image/png" });
+        const api: Pick<HqApi, "openScopeSocket" | "changeAttachment"> = {
+          openScopeSocket: async () => {
+            throw new Error("An attachment opens no socket.");
+          },
+          changeAttachment: async (asked, signal) => {
+            expect(asked).toEqual(link);
+            expect(signal?.aborted).toBe(false);
+            if (cause !== null) throw cause;
+            return blob;
+          },
+        };
+        const read = makeHqWire(api).picture!(link);
+        if (outcome === null) expect(yield* read).toBe(blob);
+        else expect((yield* Effect.flip(read)).outcome).toBe(outcome);
+      }),
+  );
+});

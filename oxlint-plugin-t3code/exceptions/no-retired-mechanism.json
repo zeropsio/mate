@@ -1024,38 +1024,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/components/zerops/review/ReviewDescription.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useChangePicture",
-    "owner": "data-layer rewrite: changes/review",
-    "reason": "a hook reads change pictures itself; the changes adapter owns the read",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/review/ReviewDescription.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useChangePicture",
-    "owner": "data-layer rewrite: changes/review",
-    "reason": "a hook reads change pictures itself; the changes adapter owns the read",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/review/ReviewDescription.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useChangePicture",
-    "owner": "data-layer rewrite: changes/review",
-    "reason": "a hook reads change pictures itself; the changes adapter owns the read",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/review/ZeropsChangeReview.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useChangePicture",
-    "owner": "data-layer rewrite: changes/review",
-    "reason": "a hook reads change pictures itself; the changes adapter owns the read",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/components/zerops/review/ZeropsChangeReview.tsx",
     "kind": "retired-token",
     "fingerprint": "useZeropsLandedChange",
@@ -1109,14 +1077,6 @@
     "fingerprint": "useNewProjectBirths",
     "owner": "data-layer rewrite: operations",
     "reason": "births are tracked by app hooks; the operations adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/design/reviewHarnessPictures.ts",
-    "kind": "retired-token",
-    "fingerprint": "useChangePicture",
-    "owner": "data-layer rewrite: changes/review",
-    "reason": "a hook reads change pictures itself; the changes adapter owns the read",
     "expires": "never"
   },
   {
@@ -1500,7 +1460,7 @@
     "kind": "retired-token",
     "fingerprint": "rememberedRef",
     "owner": "data-layer rewrite: running work/processes",
-    "reason": "a remembered ref stands in for a fact; the store holds what the source said",
+    "reason": "Browser frames carry environment identity, sequence and pixels but no operation/call id. A Mate-owned call result slot needs the browser-frame contract and server producer to carry that identity; retaining the card-local final frame until that protocol exists.",
     "expires": "never"
   },
   {
@@ -1508,7 +1468,7 @@
     "kind": "retired-token",
     "fingerprint": "rememberedRef",
     "owner": "data-layer rewrite: running work/processes",
-    "reason": "a remembered ref stands in for a fact; the store holds what the source said",
+    "reason": "Browser frames carry environment identity, sequence and pixels but no operation/call id. A Mate-owned call result slot needs the browser-frame contract and server producer to carry that identity; retaining the card-local final frame until that protocol exists.",
     "expires": "never"
   },
   {
@@ -1516,7 +1476,7 @@
     "kind": "retired-token",
     "fingerprint": "rememberedRef",
     "owner": "data-layer rewrite: running work/processes",
-    "reason": "a remembered ref stands in for a fact; the store holds what the source said",
+    "reason": "Browser frames carry environment identity, sequence and pixels but no operation/call id. A Mate-owned call result slot needs the browser-frame contract and server producer to carry that identity; retaining the card-local final frame until that protocol exists.",
     "expires": "never"
   },
   {
@@ -1524,7 +1484,7 @@
     "kind": "retired-token",
     "fingerprint": "rememberedRef",
     "owner": "data-layer rewrite: running work/processes",
-    "reason": "a remembered ref stands in for a fact; the store holds what the source said",
+    "reason": "Browser frames carry environment identity, sequence and pixels but no operation/call id. A Mate-owned call result slot needs the browser-frame contract and server producer to carry that identity; retaining the card-local final frame until that protocol exists.",
     "expires": "never"
   },
   {
@@ -1532,7 +1492,7 @@
     "kind": "retired-token",
     "fingerprint": "rememberedRef",
     "owner": "data-layer rewrite: running work/processes",
-    "reason": "a remembered ref stands in for a fact; the store holds what the source said",
+    "reason": "Browser frames carry environment identity, sequence and pixels but no operation/call id. A Mate-owned call result slot needs the browser-frame contract and server producer to carry that identity; retaining the card-local final frame until that protocol exists.",
     "expires": "never"
   },
   {
@@ -1540,7 +1500,7 @@
     "kind": "retired-token",
     "fingerprint": "rememberedRef",
     "owner": "data-layer rewrite: running work/processes",
-    "reason": "a remembered ref stands in for a fact; the store holds what the source said",
+    "reason": "Browser frames carry environment identity, sequence and pixels but no operation/call id. A Mate-owned call result slot needs the browser-frame contract and server producer to carry that identity; retaining the card-local final frame until that protocol exists.",
     "expires": "never"
   },
   {
@@ -1965,22 +1925,6 @@
     "fingerprint": "useNewProjectBirths",
     "owner": "data-layer rewrite: operations",
     "reason": "births are tracked by app hooks; the operations adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useChangePicture.ts",
-    "kind": "retired-token",
-    "fingerprint": "function readPicture(",
-    "owner": "data-layer rewrite: changes/review",
-    "reason": "a hook reads change pictures itself; the changes adapter owns the read",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useChangePicture.ts",
-    "kind": "retired-token",
-    "fingerprint": "useChangePicture",
-    "owner": "data-layer rewrite: changes/review",
-    "reason": "a hook reads change pictures itself; the changes adapter owns the read",
     "expires": "never"
   },
   {

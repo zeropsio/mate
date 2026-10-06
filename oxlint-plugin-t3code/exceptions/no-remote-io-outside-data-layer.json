@@ -544,14 +544,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/zerops/useChangePicture.ts",
-    "kind": "CallExpression",
-    "fingerprint": "hq.api.changeAttachment",
-    "owner": "data-layer rewrite: HQ",
-    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/zerops/useDeleteGroup.ts",
     "kind": "CallExpression",
     "fingerprint": "accountHqApi(client, activeOrganization.id, officialHq(accountHq)).deleteApp",
