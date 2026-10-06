@@ -1,7 +1,7 @@
 # Sign-in scenarios
 
 The area drives the actual hosted client through account hand-over, organization choices,
-reload, a second tab, session recovery and logout. Eight green cases preserve current behavior;
+reload, a second tab, session recovery and logout. Nine green cases preserve current behavior;
 two `.fails` cases name today's bugs. No scenario is skipped. Desktop/mobile are outside the
 shared hosted-web contract.
 
@@ -16,9 +16,9 @@ session; outage renames the session relation until database rollbacks show Core 
 read, then restores it in `finally`. Outage setup requires no close code or outage banner.
 This is a session-query failure, not a full database/role outage; no HQ response/frame is fabricated.
 
-Logout clears the account UI and stays signed out on reload, with no `registry is disposed`
-browser error. Tab B's logout leaves tab A signed in with its menu: a sign-out is its own tab's.
-Their one/two known disposal errors are accounted for locally only after the target
+Logout clears the account UI and stays signed out on reload. A deliberate logout in tab B signs
+tab A out too, as the Zerops web app does: both show the sign-in, with no browser error at all.
+The single-tab case's one known disposal error is accounted for locally only after the target
 assertion is reached and after a clean pre-logout browser-health check. The exact accepted message is:
 
 ```text
@@ -31,11 +31,12 @@ Error: Cannot access Atom {
 ```
 
 The raw messages remain in `web.errors` and the area's diagnostic audit. Only these exact messages
-are removed from the shared health list; `afterAll` rejects excess counts (one/two), while the
+are removed from the shared health list; `afterAll` rejects an excess count (one), while the
 foundation's independent `afterAll` rejects every unmatched error and blocked request. Zero known
-errors is allowed so fixing disposal does not introduce a new setup failure. In the tab-B case,
-known disposal errors cannot substitute for tab A's account: the body asserts tab A's person and
-menu row after the logout. The area retains its started/target guard
+errors is allowed so fixing disposal does not introduce a new setup failure. The tab-B case
+accounts for none: any error fails it. A tab looked at is brought to front first, since a
+background page draws no frames. Two tabs entering HQ together (tab B signed in by tab A's
+sign-in) both stay live: neither revokes the HQ session the other holds. The area retains its started/target guard
 because setup errors must not masquerade as domain failures; filtered tests do not start it.
 An injected uncaught browser error proved that unmatched diagnostics still fail the shared
 `afterAll`, despite the logout body being an expected failure. A temporary Try again input also made the outage row assertion pass and `.fails` report an

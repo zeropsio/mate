@@ -33,6 +33,9 @@ catalogs:
     vite-plus:
       specifier: 0.3.3
       version: 0.3.3
+    yaml:
+      specifier: ^2.9.0
+      version: 2.9.0
 
 overrides:
   '@react-navigation/core': 7.21.13

@@ -194,6 +194,7 @@ function makeSession(storage: ZeropsStorageAdapter) {
     },
     probe: (session) => probeZeropsPrincipal({ fetch, baseUrl: client.baseUrl }, session),
     adopt: (session) => client.adoptRenewedSession(session),
+    forgetSession: () => client.forgetSession(),
     openAccount: (user) => openAccountLifetime(user.id),
     closeAccount: closeAccountLifetime,
     owner: ownerRecordIn(browser),
@@ -255,10 +256,9 @@ export function ZeropsSessionProvider({
     return driver.subscribe(remember);
   }, [driver]);
 
-  // A sign-in is shared across tabs; organization, navigation and sign-out are
-  // not. A session another tab writes is verified before this tab holds it and
-  // reaches this tab in any state, without a reload; another tab's sign-out
-  // leaves this tab's session as it is.
+  // Identity is shared across tabs; organization and navigation are not. A
+  // session another tab writes is verified before this tab holds it, and a
+  // sign-in or sign-out there reaches this tab in any state, without a reload.
   useEffect(() => {
     const document = window.document;
     const onStorage = (event: StorageEvent) => {

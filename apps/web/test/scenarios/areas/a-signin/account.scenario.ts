@@ -219,35 +219,30 @@ describe("A: sign-in, session and organizations", () => {
       }),
     );
 
-    // Catches tab B signing out tab A; its separate known disposal errors are audited explicitly.
-    it.effect("sign-out in tab B leaves tab A's session usable", () =>
+    // Catches a deliberate sign-out in tab B leaving tab A signed in, or ending it in an error.
+    it.effect("sign-out in tab B signs tab A out too, without errors", () =>
       Effect.gen(function* () {
-        const name = "sign-out in tab B leaves tab A's session usable";
-        const reachedVisible = startExpectedFailure(name);
         const s = yield* accountScenario();
-        yield* Effect.promise(() => s.clock.install());
         yield* s.given.project("Ada", { mate: true, app: "Shop" });
         yield* s.given.signedIn;
         yield* s.then.menu.row("Shop").appears();
         const b = yield* s.given.browserActor({ context: s.page.browserContext() });
-        yield* Effect.promise(() => b.clock.install());
         yield* Effect.promise(async () => {
           await b.page.goto(s.web.origin);
         });
         yield* account(b.page).showsPerson("owner");
         yield* b.then.menu.row("Shop").appears();
         yield* s.then.noExternalNetwork;
-        yield* Effect.gen(function* () {
-          yield* account(b.page).signOut;
-          yield* account(b.page).signedOut;
-          reachedVisible();
-          yield* account(s.page).showsPerson("owner", "Tab A signed out when tab B signed out");
-          yield* s.then.menu.row("Shop").appears();
-        }).pipe(
-          Effect.ensuring(
-            accountForLogoutError(s, name, 2).pipe(Effect.andThen(s.then.noExternalNetwork)),
-          ),
+        yield* account(b.page).signOut;
+        yield* account(b.page).signedOut;
+        // A tab in the background draws no frames: tab A is looked at in front.
+        yield* Effect.promise(() => s.page.bringToFront());
+        yield* account(s.page).signedOut;
+        yield* Effect.sync(() =>
+          expect([...s.web.pageErrors], "Sign-out must not raise registry is disposed").toEqual([]),
         );
+        yield* s.then.noReload;
+        yield* s.then.noExternalNetwork;
       }),
     );
 

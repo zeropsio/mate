@@ -183,7 +183,7 @@ describe("ZeropsSessionProvider sign-in guards", () => {
     expect(JSON.parse(storedSession(harness)!)).toEqual({ accessToken: second });
   });
 
-  it("keeps its session when another tab signs out", async () => {
+  it("signs out when another tab signs out", async () => {
     const harness = harnessWith({ signedIn: "user-1" });
     const tab = await mountTab(harness, harness.browser.openTab());
     expect(tab.session().status).toBe("signed-in");
@@ -191,9 +191,9 @@ describe("ZeropsSessionProvider sign-in guards", () => {
     harness.browser.openTab().localStorage.removeItem(ZEROPS_SESSION_STORAGE_KEY);
     await settle();
 
-    expect(tab.session().status).toBe("signed-in");
-    expect(tab.session().user?.id).toBe("user-1");
-    expect(tab.accountId()).toBe("user-1");
+    expect(tab.session().status).toBe("signed-out");
+    expect(tab.session().user).toBeNull();
+    expect(tab.accountId()).toBeNull();
   });
 
   it("keeps a stored session and opens no account when the network fails at boot", async () => {
@@ -323,7 +323,7 @@ describe("ZeropsSessionProvider sign-in guards", () => {
 });
 
 describe("ZeropsSessionProvider across two tabs", () => {
-  it("keeps the other tab signed in when one tab signs out", async () => {
+  it("signs the other tab out when one tab signs out", async () => {
     const harness = harnessWith({ signedIn: "user-1" });
     const a = await mountTab(harness, harness.browser.openTab());
     const b = await mountTab(harness, harness.browser.openTab());
@@ -332,8 +332,8 @@ describe("ZeropsSessionProvider across two tabs", () => {
     await a.run(() => a.session().signOut());
     await settle();
 
-    expect(b.session().status).toBe("signed-in");
-    expect(b.accountId()).toBe("user-1");
+    expect(b.session().status).toBe("signed-out");
+    expect(b.accountId()).toBeNull();
     expect(a.session().status).toBe("signed-out");
     expect(a.tab.reloads).toBe(0);
   });
@@ -559,30 +559,30 @@ describe("ZeropsSessionProvider verified adoption across tabs", () => {
     expect([a.tab.reloads, b.tab.reloads]).toEqual([0, 0]);
   });
 
-  it("leaves the other tab the token it holds when one tab signs out", async () => {
+  it("signs the other tab out without a reload and forgets the token it held", async () => {
     const harness = harnessWith({ signedIn: "user-1" });
     const a = await recordingTab(harness);
     const b = await recordingTab(harness);
-    const held = b.session().client.session;
 
     await a.run(() => a.session().signOut());
     await settle();
 
-    expect(b.session().client.session).toEqual(held);
-    expect(held).not.toBeNull();
+    expect(b.session().status).toBe("signed-out");
+    expect(b.accountId()).toBeNull();
+    expect(b.session().client.session).toBeNull();
     expect([a.tab.reloads, b.tab.reloads]).toEqual([0, 0]);
   });
 
-  it("keeps its session when another tab clears the origin's storage", async () => {
+  it("signs out without a reload when another tab clears the origin's storage", async () => {
     const harness = harnessWith({ signedIn: "user-1" });
     const b = await recordingTab(harness);
 
     harness.browser.openTab().localStorage.clear();
     await settle();
 
-    expect(b.session().status).toBe("signed-in");
-    expect(b.accountId()).toBe("user-1");
-    expect(b.session().client.session).not.toBeNull();
+    expect(b.session().status).toBe("signed-out");
+    expect(b.accountId()).toBeNull();
+    expect(b.session().client.session).toBeNull();
     expect(b.tab.reloads).toBe(0);
   });
 
@@ -727,14 +727,14 @@ describe("ZeropsSessionProvider when the platform refuses the handed-over token"
     expect(handovers(tab)).toEqual([]);
   });
 
-  it("stays signed in and sends nowhere when another tab signs out", async () => {
+  it("sends nowhere when another tab signs out", async () => {
     const harness = harnessWith();
     const { tab } = await handedOverTab(harness, "/projects/p-1");
 
     harness.browser.openTab().localStorage.removeItem(ZEROPS_SESSION_STORAGE_KEY);
     await settle();
 
-    expect(tab.session().status).toBe("signed-in");
+    expect(tab.session().status).toBe("signed-out");
     expect(handovers(tab)).toEqual([]);
   });
 });

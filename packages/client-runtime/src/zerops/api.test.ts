@@ -328,7 +328,7 @@ describe("ZeropsApiClient authentication", () => {
       await client.fetchUser();
       expect(client.verifiedUser()).toMatchObject({ user: { id: "user-1" }, atMs: 5_000 });
 
-      await client.signOutLocally();
+      client.forgetSession();
       expect(client.verifiedUser()).toBe(null);
     } finally {
       vi.useRealTimers();
@@ -439,6 +439,33 @@ describe("ZeropsApiClient authentication", () => {
 
     expect((await inFlight).id).toBe("user-1");
     expect(client.session?.accessToken).toBe("access-2");
+    expect(stored).toEqual([]);
+  });
+
+  it("forgets a session another tab removed without clearing storage, and drops the answer in flight", async () => {
+    let answer!: (response: Response) => void;
+    const stub = recordingFetch(
+      () =>
+        new Promise<Response>((resolve) => {
+          answer = resolve;
+        }),
+    );
+    const stored: Array<ZeropsSession | null> = [];
+    const client = new ZeropsApiClient({
+      fetch: stub.fetch,
+      onSessionChange: (session) => {
+        stored.push(session);
+      },
+    });
+    client.restoreSession(SESSION);
+    const inFlight = client.fetchUser().catch((cause: unknown) => cause);
+    await Promise.resolve();
+
+    client.forgetSession();
+    answer(jsonResponse(200, { id: "user-1", email: "a@b.c", clientUserList: [] }));
+
+    expect(await inFlight).toBeInstanceOf(ZeropsApiError);
+    expect(client.session).toBeNull();
     expect(stored).toEqual([]);
   });
 

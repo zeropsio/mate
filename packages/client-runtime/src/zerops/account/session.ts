@@ -144,6 +144,8 @@ export type ZeropsSessionEffect =
   | { readonly kind: "probe"; readonly session: ZeropsSession }
   /** Hold `session` in place of the current token, for the same login. */
   | { readonly kind: "adopt"; readonly session: ZeropsSession }
+  /** The client drops the session another tab removed. */
+  | { readonly kind: "forget-session" }
   | { readonly kind: "open-account"; readonly user: ZeropsUser }
   | { readonly kind: "close-account" }
   /** Under the refresh lock: take the record for `userId`, or create it when missing. */
@@ -234,16 +236,20 @@ function onStorageChanged(
   next: ZeropsSession | null,
   held: boolean,
 ): ZeropsSessionTransition {
-  // Another tab signed out: that sign-out is its own. This tab keeps the session it holds, and
-  // stops adopting one that tab no longer stores.
   if (next === null) {
-    if (state.status === "booting") return { state: { status: "signed-out" }, effects: [] };
-    if (state.status === "signed-in" && state.token.status === "adopting")
-      return {
-        state: { ...state, token: { status: "current" } },
-        effects: leaving(state, { closeAccount: false }),
-      };
-    return stay(state);
+    switch (state.status) {
+      case "booting":
+        return { state: { status: "signed-out" }, effects: [] };
+      case "verifying":
+      case "unavailable":
+      case "signed-in":
+        return {
+          state: { status: "signed-out" },
+          effects: [...leaving(state, { closeAccount: true }), { kind: "forget-session" }],
+        };
+      default:
+        return stay(state);
+    }
   }
   switch (state.status) {
     case "booting":
@@ -483,6 +489,7 @@ export interface ZeropsSessionPorts {
   /** The `probe` effect; it answers a verdict and never rejects. */
   readonly probe: (session: ZeropsSession) => Promise<ZeropsPrincipalVerdict>;
   readonly adopt: (session: ZeropsSession) => void;
+  readonly forgetSession: () => void;
   readonly openAccount: (user: ZeropsUser) => void;
   readonly closeAccount: () => void;
   readonly owner: {
@@ -570,6 +577,9 @@ export function makeZeropsSessionDriver(ports: ZeropsSessionPorts): ZeropsSessio
         return;
       case "adopt":
         ports.adopt(effect.session);
+        return;
+      case "forget-session":
+        ports.forgetSession();
         return;
       case "open-account":
         ports.openAccount(effect.user);

@@ -962,6 +962,16 @@ export class ZeropsApiClient {
   }
 
   /**
+   * Drops a session another tab removed. Requests in flight lose their
+   * answers, and storage is left alone: by now it may hold that tab's next
+   * session, which is not this tab's to clear.
+   */
+  forgetSession(): void {
+    this.#generation += 1;
+    this.#session = null;
+  }
+
+  /**
    * Adopts a session minted elsewhere: the bearer the sign-in hand-over
    * delivers (`zerops/handover.ts`), with no refresh token, or — dev builds
    * only — a full `/auth/login` session an agent injects.
