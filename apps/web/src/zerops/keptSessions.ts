@@ -87,9 +87,12 @@ export function keptSessionHeld(state: AuthSessionState): boolean {
 /** The shared Web Lock every tab holds on the account it has open. */
 const accountOpenLock = (accountId: string) => `mate:account-open:${accountId}`;
 
-/** The origin's Web Locks; absent outside a secure context, where a tab's close decides alone. */
+/**
+ * The origin's Web Locks; absent outside a secure context, where a tab's close decides alone. An
+ * implementation without them may also report `null` (happy-dom does).
+ */
 function webLocks(): LockManager | undefined {
-  return typeof navigator === "undefined" ? undefined : navigator.locks;
+  return typeof navigator === "undefined" ? undefined : (navigator.locks ?? undefined);
 }
 
 /**

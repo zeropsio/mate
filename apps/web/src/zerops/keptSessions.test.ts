@@ -312,6 +312,18 @@ describe("no kept session outlives the login it was opened under", () => {
     expect(ends).toEqual(expected);
   });
 
+  it("the account's close ends its kept sessions at once where the page has no Web Locks", async () => {
+    // happy-dom reports `navigator.locks` as null.
+    vi.stubGlobal("navigator", { locks: null });
+    lifetime.openAccountLifetime("person-1");
+    kept.keptSessions.keep("p1:zcp", session("shop"));
+
+    lifetime.closeAccountLifetime();
+    await settleLocks();
+
+    expect(fetched.map(({ authorization }) => authorization)).toEqual(["Bearer session-shop"]);
+  });
+
   it("the account's close ends every live kept session at its Mate, each once", async () => {
     lifetime.openAccountLifetime("person-1");
     kept.keptSessions.keep("p1:zcp", session("shop"));
