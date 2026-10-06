@@ -7656,3 +7656,43 @@ mcp-disabled.json`, a JSON array of names (`cursor-agent mcp disable`, isolated 
 - **A process search no longer lists a weeks-old `stack.enableSubdomainAccess`**: on four KRLS Mates
   made 2026-10-02/03, `POST /process/search` by project returned 8 recent processes and none of the
   enable, so whether a service's `lastUpdate` moves when its subdomain access flips stays unmeasured.
+
+## The vault's platform, measured — 2026-10-07
+
+Probe project `vault-probe-1007` in Mate s.r.o. (one `nodejs@22` service `app`, imported with
+`vault:` at both levels, deployed twice with `zcli push`), its runtime log read through
+`GET /project/{id}/log`, plus reads of Rhea's project (`Big Shock - Rhea`).
+
+- **Shared values live on the project's search row only**: `envList` comes with `POST /project/search`
+  (`id` filter), never with `GET /project/{id}`. Each row: `id, key, content, type USER|SYSTEM,
+editable, sensitive, created, lastUpdate`.
+- **A project's every variable is one search**: `POST /user-data/search` by `projectId` lists each
+  service's rows (Rhea: 242, build containers and zcp included). A service's own values are `USER`
+  - `editable: true`; its deployed zerops.yml run entries are `USER` + `editable: false`, the
+    template unresolved (`${db_password}`), written when the deploy's pipeline starts. They equal
+    `GET app-version/{activeAppVersionId}`'s `userDataList`, which carries **no `ZEROPS_YAML`** any
+    more. Build entries are exposed nowhere: a build container (`build<host>v<n>`) is deleted after
+    its build, and one that survives carries only the `RUNTIME_` copies.
+- **Sensitive content reads `REDACTED`**, even to the owner's own session token; the process gets
+  the real value; the runtime log masks sensitive values as `[REDACTED]`.
+- **Both searches are live queries**: posted with `receiverId` + `subscriptionName`, each pushes
+  frames `{type: "search", data: {items}}` — the whole answer again — 0.3–2 s after a write (the
+  project search also after a service variable write).
+- **`KEY: ${KEY}` reaches the process as the literal `${KEY}`** for a Shared key too, and every other
+  entry of the service that references `KEY` gets the literal as well. A rename resolves
+  (`R: ${SHARED}`, sensitive ones too), a chain resolves (`${R}-x`), `${app_hostname}` resolves, an
+  unresolved `${NAME}` stays literal. Unreferenced Shared and own values are still injected.
+- **At build** `${SHARED}` resolves and the service's own `${OWN}` does not (literal).
+- **Project-level `sensitive: true` persists** (import `vault:` `{value, sensitive}`, and
+  `POST /project/{id}/env`).
+- **A write answers a process** finishing in ~1.5 s: `stack.updateProjectEnvs` (no services) or
+  `stack.updateUserData` (the service). A key equal to an existing value or one of the service's
+  yaml entries is refused, case-insensitively (`projectEnvDuplicateKey`, `userDataDuplicateKey`); a
+  bad name is `projectEnvKeyInvalid`; a service write without `sensitive` is plain.
+- **A `PUT` without `sensitive` turns a sensitive value plain** (`/project-env/{id}`,
+  `/user-data/{id}`), its content then readable; `sensitive: true` turns a plain one sensitive; a `PUT`
+  may rename the key.
+- **A running process keeps the environment it booted with** after a write; `stack.restart` (~10 s,
+  same container) applies it. A service's `lastUpdate` moves on variable writes too, so only its
+  newest finished `stack.build` / `stack.deploy` / `stack.restart` / `stack.start` says when it
+  started.
