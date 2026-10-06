@@ -32,6 +32,7 @@ import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { environmentsWithSnapshotAtom } from "~/state/shell";
 import { shownHqProjectPeopleAtom } from "@t3tools/client-runtime/data";
+import { useEnvironmentOffers } from "~/zerops/useAddEnvironment";
 import { hqPlacementsAtom, hqNavigationAtom } from "~/state/zerops";
 import {
   PROJECT_ORDER_CHOICES,
@@ -192,7 +193,6 @@ import {
   changesUnknownOf,
   flowStepsAwaiting,
   groupFlowInputOf,
-  mayAddEnvironment,
   groupMemberFactsOf,
   lastMergedCode,
   parseProjectsSearch,
@@ -1584,19 +1584,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     [candidateHealth, groupTree.groups],
   );
 
-  // Whether this person may add a stage or a production to the group (`mayAddEnvironment`).
-  const mayAddFor = useCallback(
-    (group: ZeropsGroup) =>
-      activeOrganization !== null &&
-      mayAddEnvironment({
-        organization: activeOrganization,
-        projects: (
-          groupTree.groups.find((entry) => entry.group.groupId === group.groupId)?.environments ??
-          []
-        ).map(({ item }) => item.project),
-      }),
-    [activeOrganization, groupTree.groups],
-  );
+  // Which tiers HQ offers this person to add to the group (`add_stage` / `add_production`).
+  const environmentOffers = useEnvironmentOffers();
 
   // "Add stage" opens the form; the form's answer is what gets created.
   const [creationRequest, setCreationRequest] = useState<{
@@ -2299,8 +2288,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
    * A project's own quiet actions: its name, and the environments a person
    * adds to it — another Mate, and a stage and a production as equals: neither
    * is optional, neither comes before the other, and each is offered where the
-   * role is still there to take (`creatableRoles`) and this person may add one
-   * (`mayAddEnvironment`).
+   * role is still there to take (`creatableRoles`) and HQ offers it to this
+   * person (`useEnvironmentOffers`).
    */
   const renderGroupMenu = ({ group, flow }: ProjectsFlowGroup<ZeropsCandidatePresentation>) => {
     // Each Mate's preview, where its pair has one: a link out, so the menu's, not the row's.
@@ -2343,7 +2332,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
                 },
               ]
             : []),
-          ...(addsOfferedFor(group) && mayAddFor(group)
+          ...(addsOfferedFor(group) && environmentOffers(group.groupId)?.stage === true
             ? [
                 {
                   id: "add-stage",
@@ -2355,7 +2344,9 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
                 },
               ]
             : []),
-          ...(mayAddFor(group) && !groupIsEmpty(group) && creatableRoles(group).includes("prod")
+          ...(environmentOffers(group.groupId)?.production === true &&
+          !groupIsEmpty(group) &&
+          creatableRoles(group).includes("prod")
             ? [
                 {
                   id: "add-production",

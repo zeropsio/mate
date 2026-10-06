@@ -997,9 +997,7 @@ describe("project rename permissions on the projects surfaces", () => {
   it("preserves the existing environment creation offers independently of rename permission", () => {
     expect(projectsPageSource).toContain("...(groupIsEmpty(group)");
     expect(projectsPageSource).toContain("...(addsOfferedFor(group)");
-    expect(projectsPageSource).toContain(
-      '...(mayAddFor(group) && !groupIsEmpty(group) && creatableRoles(group).includes("prod")',
-    );
+    expect(projectsPageSource).toContain('creatableRoles(group).includes("prod")');
     expect(projectsPageSource).toContain("if (creationRunning) return;");
   });
 });

@@ -258,7 +258,7 @@ export interface ChangeReviewInput {
   readonly productionHeld?: boolean | undefined;
   /**
    * The environments this person may add now: those the recipe on `main` holds, the application
-   * lacks, and the person may add (`mayAddEnvironment`). Absent, none: nothing is offered on a guess.
+   * lacks, and HQ offers the person (`add_stage` / `add_production`). Absent, none: nothing is offered on a guess.
    */
   readonly addable?: { readonly stage: boolean; readonly production: boolean } | undefined;
   /** Once merged: how many changes wait for production now, and what production runs. */

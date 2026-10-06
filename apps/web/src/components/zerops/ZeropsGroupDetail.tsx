@@ -136,7 +136,7 @@ import { useZeropsRecipeFailure } from "~/zerops/useZeropsAppRecipes";
 import {
   useAddEnvironment,
   useGroupPendingEnvironments,
-  useMayAddEnvironment,
+  useEnvironmentOffers,
 } from "~/zerops/useAddEnvironment";
 import { useHalfMadeEnvironments } from "~/zerops/useHalfMadeEnvironments";
 import { ZeropsReadFailure } from "./ZeropsReadFailure";
@@ -726,7 +726,7 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
     notLiveAtLeast: waiting.atLeast,
     canRelease: release.offered,
   });
-  const { mayAdd, writer } = useMayAddEnvironment()(groupId);
+  const offered = useEnvironmentOffers()(groupId);
   const addEnvironment = useAddEnvironment();
   const devstages = useDevstages(groupId);
   const pendingEnvironments = useGroupPendingEnvironments(groupId);
@@ -761,8 +761,7 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
         halfMade: halfMadeHere.map((entry) => ({ id: entry.projectId, tier: entry.tier })),
         recipeTiers: flow.recipeTiers,
         recipeRead: flow.recipeRead,
-        mayAdd,
-        writer,
+        offered: offered ?? { stage: false, production: false },
         productionRuns:
           production === undefined
             ? "unknown"

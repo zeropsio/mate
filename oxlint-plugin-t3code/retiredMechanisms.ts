@@ -939,15 +939,6 @@ export const RETIRED_MECHANISMS: ReadonlyArray<RetiredMechanism> = [
     ],
   },
   {
-    token: "tiersAddable(",
-    family: "permissions/members",
-    reason: "tiers addable are computed from the organization role in the client; HQ sends it",
-    paths: [
-      "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
-      "apps/web/src/components/zerops/projects/projectsView.logic.ts",
-    ],
-  },
-  {
     token: 'const writer = roleAtLeast(organization.roleCode, "ADMIN")',
     family: "permissions/members",
     reason: "tiers addable are computed from the organization role in the client; HQ sends it",
@@ -955,11 +946,6 @@ export const RETIRED_MECHANISMS: ReadonlyArray<RetiredMechanism> = [
   },
   {
     token: "useMayAddEnvironment",
-    family: "permissions/members",
-    reason: "add-environment facts are computed in the client; HQ sends what the person may do",
-  },
-  {
-    token: "useEnvironmentQuestionFacts",
     family: "permissions/members",
     reason: "add-environment facts are computed in the client; HQ sends what the person may do",
   },

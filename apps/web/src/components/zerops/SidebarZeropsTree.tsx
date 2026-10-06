@@ -74,7 +74,6 @@ import {
   type ListedStop,
   type MissingEnvironmentRow,
   missingEnvironmentRows,
-  type ZeropsOrganization,
   type StopComing,
   type ZeropsEnvironmentRole,
   type ZeropsEnvironmentServices,
@@ -154,6 +153,7 @@ import {
   rememberProjectsOnScreen,
   useProjectOrder,
 } from "~/zerops/projectOrderPreference";
+import { useEnvironmentOffers } from "~/zerops/useAddEnvironment";
 import { useWaitsOnViewer, type ZeropsMateOwner } from "~/zerops/useZeropsMateOwners";
 import { compactSidebarTimeLabel } from "../Sidebar.logic";
 import { SidebarCrewLine, type SidebarCrewRead } from "./crew/SidebarCrewLine";
@@ -452,12 +452,6 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
    * shape and simply carries none of what the flow says: no change row.
    */
   readonly getFlow?: ((groupId: string) => SidebarProjectFlow | undefined) | undefined;
-  /**
-   * The organization the person is signed in to: whether *Add stage* and *Add production* are
-   * offered in a project's menu is `mayAddEnvironment`'s answer over it. Absent, they are never
-   * offered on a guess.
-   */
-  readonly organization?: ZeropsOrganization | null | undefined;
   readonly className?: string;
   /**
    * The listing is known and complete, and every row's presence is read
@@ -534,7 +528,6 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   getConversationsRead,
   getOwner,
   getFlow,
-  organization = null,
   complete,
   notice = null,
   reading = false,
@@ -592,6 +585,8 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   const projectOrder = useProjectOrder();
   // Only the Mates HQ says wait on the viewer wait on them (`waitsOnViewer`).
   const waitsOnViewer = useWaitsOnViewer();
+  // Whether *Add stage* and *Add production* stand in a project's menu: HQ's offer of each.
+  const environmentOffers = useEnvironmentOffers();
   const treeRef = useRef<HTMLElement>(null);
   const reorder = useProjectReorder(treeRef);
   // A Mate opened from elsewhere — Add landing on the new Mate, a link, a
@@ -1520,7 +1515,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
             group={group}
             missing={missingEnvironmentRows({
               tiersOnMain: tiersAddable({
-                organization,
+                offered: environmentOffers(group.groupId),
                 group,
                 hq: [...(getFlow?.(group.groupId)?.environments.values() ?? [])].map((row) => ({
                   id: row.projectId,

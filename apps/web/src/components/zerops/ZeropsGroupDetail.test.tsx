@@ -114,8 +114,7 @@ const slotsOf = (environments: ReadonlyArray<EnvironmentRow>) =>
     halfMade: [],
     recipeTiers: [],
     recipeRead: false,
-    mayAdd: false,
-    writer: false,
+    offered: { stage: false, production: false },
     productionRuns: "unknown",
     waiting: { count: 0, atLeast: false },
     mainHasCode: undefined,
@@ -322,8 +321,7 @@ describe("ZeropsGroupPane", () => {
         halfMade: [],
         recipeTiers: ["stage", "production"],
         recipeRead: true,
-        mayAdd: true,
-        writer: false,
+        offered: { stage: true, production: true },
         productionRuns: "unknown",
         waiting: { count: 0, atLeast: false },
         mainHasCode: true,
@@ -345,10 +343,10 @@ describe("ZeropsGroupPane", () => {
       expect(markup).toContain("Add production");
     });
 
-    it("offers no Add to somebody who may not add, and says a tier waits for the recipe", () => {
+    it("offers no Add HQ does not offer, and says a tier waits for the recipe", () => {
       const markup = render(undefined, {
         environments: [],
-        slots: slots({ mayAdd: false, recipeTiers: ["stage"] }),
+        slots: slots({ offered: { stage: false, production: false }, recipeTiers: ["stage"] }),
       });
       expect(markup).not.toContain("Add stage");
       expect(markup).toContain("Waiting for the Mate&#x27;s recipe");

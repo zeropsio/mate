@@ -221,10 +221,10 @@ describe("missingEnvironmentRows", () => {
   }
 });
 
-// The one rule for adding a tier, which every door asks (the menus, the Environments section, the
-// question after a first merge): the recipe holds the tier, the person may add, the tier is empty —
-// a production is one, a non-writer fills only an empty place (HQ `attach`: `slot_taken`), a writer
-// may add another stage.
+// The one rule every door asks (the projects page's menu, the sidebar's, the Environments section, the
+// question after a first merge): HQ offers the tier (`add_stage` / `add_production`, its `attach`
+// rule over the application's live projects), the recipe holds it, and no creation of the tier is
+// under way or half-made here — what this browser started and HQ does not hold yet.
 describe("environmentAddable", () => {
   const BOTH = ["stage", "production"] as const;
   const input = (
@@ -233,26 +233,20 @@ describe("environmentAddable", () => {
     tier: "stage",
     recipeRead: true,
     recipeTiers: BOTH,
-    mayAdd: true,
-    writer: false,
+    offered: true,
     held: { stages: 0, production: false },
     ...over,
   });
   it.each([
-    ["an empty stage, the recipe holds it", input({}), true],
-    ["an empty production", input({ tier: "production" }), true],
-    ["the person may not add", input({ mayAdd: false }), false],
+    ["an empty stage HQ offers, the recipe holds it", input({}), true],
+    ["an empty production HQ offers", input({ tier: "production" }), true],
+    ["HQ does not offer the tier", input({ offered: false }), false],
     ["the recipe is not read", input({ recipeRead: false }), false],
     ["the recipe lacks the tier", input({ recipeTiers: ["stage"], tier: "production" }), false],
-    ["a stage is held, a non-writer", input({ held: { stages: 1, production: false } }), false],
+    ["a stage is held here", input({ held: { stages: 1, production: false } }), false],
     [
-      "a stage is held, a writer: another stage",
-      input({ held: { stages: 1, production: false }, writer: true }),
-      true,
-    ],
-    [
-      "a production is held, even for a writer",
-      input({ tier: "production", held: { stages: 0, production: true }, writer: true }),
+      "a production is held here",
+      input({ tier: "production", held: { stages: 0, production: true } }),
       false,
     ],
     [
@@ -288,8 +282,7 @@ describe("environmentSlots", () => {
     halfMade: [],
     recipeTiers: ["stage", "production"],
     recipeRead: true,
-    mayAdd: true,
-    writer: false,
+    offered: { stage: true, production: true },
     productionRuns: "unknown",
     waiting: { count: 0, atLeast: false },
     mainHasCode: true,
@@ -330,8 +323,8 @@ describe("environmentSlots", () => {
       ],
     },
     {
-      case: "nothing is added and the person may not add",
-      input: { ...base, mayAdd: false },
+      case: "nothing is added and HQ offers neither tier",
+      input: { ...base, offered: { stage: false, production: false } },
       rows: [
         ["slot", "stage", "Not added", false],
         ["slot", "production", "Not added", false],
@@ -411,8 +404,12 @@ describe("environmentSlots", () => {
       ],
     },
     {
-      case: "a half-made stage, the person may not finish it: the words only",
-      input: { ...base, mayAdd: false, halfMade: [{ id: "p-half", tier: "stage" }] },
+      case: "a half-made stage HQ does not offer: the words only",
+      input: {
+        ...base,
+        offered: { stage: false, production: false },
+        halfMade: [{ id: "p-half", tier: "stage" }],
+      },
       rows: [
         ["half-made", "p-half", "Setup isn't finished", false],
         ["slot", "production", "Not added", false],
@@ -430,8 +427,8 @@ describe("environmentSlots", () => {
       rows: [NO_STAGE_RECIPE, ["environment", "p-prod", undefined, undefined]],
     },
     {
-      case: "a writer may add another stage: still no slot beside the stages, the menu offers it",
-      input: { ...base, environments: [STAGE], writer: true },
+      case: "a stage is there: no slot beside it",
+      input: { ...base, environments: [STAGE] },
       rows: [
         ["environment", "p-stage", undefined, undefined],
         ["slot", "production", "Not added", true],
