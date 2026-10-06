@@ -316,10 +316,13 @@ describe("a stop's services as the account's store and listing say them", () => 
       });
     });
 
-    it("reads the version by id and fails it when the platform has none", () => {
+    it("reads the version by id while a surface holds it, and fails it when the platform has none", () => {
       const { stops, registry, state, dispatch, readById } = rig();
       dispatch(liveZerops({ running: [], active: [] }));
       state(statedAs(null));
+      registry.get(stops.version(APP));
+      expect(readById()).toEqual([]);
+      const release = stops.holdVersions([APP]);
       expect(registry.get(stops.version(APP))).toEqual({ state: "unread", waitingFor: null });
       expect(readById()).toEqual(["v-new"]);
       const scope = versionScope(ORG_ID, "v-new");
@@ -341,6 +344,8 @@ describe("a stop's services as the account's store and listing say them", () => 
         state: "failed",
         failure: { detail: "Its active version is not listed." },
       });
+      release();
+      expect(readById()).toEqual([]);
     });
 
     it("fails a version the refused active versions will never source", () => {

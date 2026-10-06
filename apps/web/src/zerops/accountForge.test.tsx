@@ -66,6 +66,7 @@ function stage() {
     }
     return atom;
   };
+  const versionHolds: Array<string> = [];
   const versionAtoms = new Map<string, Atom.Writable<Shown<ZeropsServiceDeployedVersion>>>();
   const versionOf = (serviceId: string) => {
     let atom = versionAtoms.get(serviceId);
@@ -78,6 +79,13 @@ function stage() {
   const stops = {
     services: (project: ProjectRef) => atomOf(project.projectId),
     version: (service: ServiceRef) => versionOf(service.serviceId),
+    holdVersions: (services: ReadonlyArray<ServiceRef>) => {
+      for (const { serviceId } of services) versionHolds.push(serviceId);
+      return () => {
+        for (const { serviceId } of services)
+          versionHolds.splice(versionHolds.indexOf(serviceId), 1);
+      };
+    },
     demand: (project: ProjectRef) => {
       stopDemandCalls += 1;
       stopDemands.push(project.projectId);
@@ -100,6 +108,7 @@ function stage() {
     holdStop: (projectId: string, shown: Shown<ReadonlyArray<StopService>>) => {
       registry.set(atomOf(projectId), shown);
     },
+    versionHolds,
     holdVersion: (serviceId: string, shown: Shown<ZeropsServiceDeployedVersion>) => {
       registry.set(versionOf(serviceId), shown);
     },
@@ -398,6 +407,7 @@ describe("the account's project flow in the web", () => {
       await vi.waitFor(() =>
         expect(answers.at(-1)?.get("s-app")).toEqual({ state: "unread", waitingFor: null }),
       );
+      expect(rig.versionHolds).toEqual(["s-app"]);
       rig.holdVersion("s-app", known({ activeId: "v1", source: "GIT", name: "v1.0.0" }));
       await vi.waitFor(() =>
         expect(answers.at(-1)?.get("s-app")).toMatchObject({ value: { name: "v1.0.0" } }),
@@ -407,5 +417,6 @@ describe("the account's project flow in the web", () => {
       await nextMacrotask();
       unbind();
     }
+    expect(rig.versionHolds).toEqual([]);
   });
 });

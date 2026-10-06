@@ -460,6 +460,7 @@ describe("ZeropsProjectFlowProvider", () => {
             : { state: "unread", waitingFor: null },
         ),
       version: () => Atom.make<Shown<never>>({ state: "unread", waitingFor: null }),
+      holdVersions: () => () => undefined,
       dispose: () => undefined,
     };
     const unbind = bindAccountFlow({ stops });
@@ -554,6 +555,7 @@ describe("ZeropsProjectFlowProvider", () => {
             waitingFor: null,
           }),
         version: () => Atom.make<Shown<never>>({ state: "unread", waitingFor: null }),
+        holdVersions: () => () => undefined,
         dispose: () => undefined,
       },
     });

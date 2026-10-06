@@ -45,6 +45,11 @@ export interface Stops {
    * version's source from the organization's active versions where its push left it unstated.
    */
   readonly version: (service: ServiceRef) => Atom.Atom<Shown<ZeropsServiceDeployedVersion>>;
+  /**
+   * Holds the services' versions to be read by id where the active versions lack them, for as
+   * long as a surface draws them; the release lets them go.
+   */
+  readonly holdVersions: (services: ReadonlyArray<ServiceRef>) => () => void;
   /** One manual attempt for a stop a view still shows. */
   readonly again: (project: ProjectRef) => void;
   /** The account closed: every demand is let go. */
@@ -160,8 +165,11 @@ export function makeStops(
   );
 
   /** Each service a version was asked of, by its key. */
-  const noServices: ReadonlyMap<string, ServiceRef> = new Map();
-  const askedServices = Atom.make({ services: noServices }).pipe(Atom.keepAlive);
+  const asked = new Map<string, ServiceRef>();
+  /** The services a surface holds the version of now, by key, each with its holds. */
+  const noServices: ReadonlyMap<string, { readonly service: ServiceRef; readonly holds: number }> =
+    new Map();
+  const heldServices = Atom.make({ services: noServices }).pipe(Atom.keepAlive);
   /** The version a service started whose source its push left unstated; `null` for none. */
   const unstatedOf = (get: Atom.AtomContext, service: ServiceRef): string | null => {
     const started = get(data.reads.deployedVersion(service));
@@ -171,7 +179,7 @@ export function makeStops(
   };
   const versionAtom = Atom.family((key: string) =>
     Atom.make((get): Shown<ZeropsServiceDeployedVersion> => {
-      const service = get(askedServices).services.get(key);
+      const service = asked.get(key);
       if (service === undefined) return UNREAD;
       const started = get(data.reads.deployedVersion(service));
       const versionId = unstatedOf(get, service);
@@ -224,7 +232,7 @@ export function makeStops(
       for (const { versionId } of listedVersions(get(data.reads.servicesOf(demanded.project))))
         want(versionId);
     }
-    for (const service of get(askedServices).services.values()) want(unstatedOf(get, service));
+    for (const { service } of get(heldServices).services.values()) want(unstatedOf(get, service));
     const reads: ReadonlyArray<DetailDemand> = [
       ...[...ids].map((ownerId) => ({ family: "version" as const, listing: "version", ownerId })),
       ...[...histories].map((ownerId) => ({
@@ -297,10 +305,28 @@ export function makeStops(
     services: (project) => servicesAtom(projectKeyOf(project)),
     version: (service) => {
       const key = serviceKeyOf(service);
-      const { services: asked } = atomRegistry.get(askedServices);
-      if (!asked.has(key))
-        atomRegistry.set(askedServices, { services: new Map(asked).set(key, service) });
+      asked.set(key, service);
       return versionAtom(key);
+    },
+    holdVersions: (services) => {
+      if (disposed) return () => undefined;
+      const move = (by: 1 | -1) => {
+        const held = new Map(atomRegistry.get(heldServices).services);
+        for (const service of services) {
+          const key = serviceKeyOf(service);
+          const holds = (held.get(key)?.holds ?? 0) + by;
+          if (holds > 0) held.set(key, { service, holds });
+          else held.delete(key);
+        }
+        atomRegistry.set(heldServices, { services: held });
+      };
+      move(1);
+      let released = false;
+      return () => {
+        if (released || disposed) return;
+        released = true;
+        move(-1);
+      };
     },
     demand: (project, scope = "summary") => {
       if (disposed) return () => undefined;

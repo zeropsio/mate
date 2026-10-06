@@ -169,7 +169,7 @@ function useStopDemand(
 
 /**
  * What each service runs, by service id: the version it started, its source stated where its push
- * left it unstated. One answer per change of what they read.
+ * left it unstated. One answer per change of what they read; held while the surface draws them.
  */
 export function useStatedVersions(
   services: ReadonlyArray<ServiceRef>,
@@ -187,6 +187,11 @@ export function useStatedVersions(
           ]),
         ),
     );
+  }, [stops, serviceKeys]);
+  // The surface holds what it reads: a version the active versions lack is read by id meanwhile.
+  useEffect(() => {
+    if (stops === null) return;
+    return stops.holdVersions(JSON.parse(serviceKeys) as ReadonlyArray<ServiceRef>);
   }, [stops, serviceKeys]);
   return useAtomValue(versions);
 }
