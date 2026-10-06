@@ -70,7 +70,9 @@ describe("a picture's signed address", () => {
 
   it.each([
     ["the Mate did not answer", { _tag: "RpcClientError" }, false],
-    ["the file is not there", { _tag: "AssetWorkspaceResolutionError" }, true],
+    ["the file is not there", { _tag: "AssetWorkspaceAssetNotFoundError" }, true],
+    ["the workspace could not be resolved", { _tag: "AssetWorkspaceResolutionError" }, false],
+    ["the conversation is gone", { _tag: "AssetWorkspaceContextNotFoundError" }, true],
     ["no attachment by that id", { _tag: "AssetAttachmentNotFoundError" }, true],
     ["the signing key did not load", { _tag: "AssetSigningKeyLoadError" }, false],
   ])("reads a failed signing where %s as not there: %s", (_case, error, notThere) => {
@@ -91,8 +93,25 @@ describe("a picture's signed address", () => {
     act(() => renderer.unmount());
   });
 
+  it.each([
+    ["AssetWorkspaceAssetNotFoundError", "File no longer exists"],
+    ["AssetWorkspaceContextNotFoundError", "Conversation workspace is unavailable"],
+    ["AssetWorkspacePathValidationError", "File path is not allowed"],
+    ["AssetPreviewTypeValidationError", "File type cannot be previewed"],
+  ])("does not retry %s and retains its reason", (tag, reason) => {
+    testState.result = failure({ _tag: tag });
+    const { seen, renderer } = draw(true);
+    expect(seen.at(-1)).toBe("Failure");
+    expect(
+      assetUrlStateOf(AsyncResult.failure(Cause.fail({ _tag: tag })), "https://mate.test/"),
+    ).toEqual({ _tag: "Failure", reason });
+    act(() => vi.advanceTimersByTime(60_000));
+    expect(testState.refreshes).toBe(0);
+    act(() => renderer.unmount());
+  });
+
   it("fails at once where the file is not there, or nobody asked it to try again", () => {
-    testState.result = failure({ _tag: "AssetWorkspaceResolutionError" });
+    testState.result = failure({ _tag: "AssetWorkspaceAssetNotFoundError" });
     const missing = draw(true);
     expect(missing.seen.at(-1)).toBe("Failure");
     testState.result = failure({ _tag: "RpcClientError" });
@@ -115,7 +134,7 @@ describe("pictures' signed addresses, read together", () => {
   it.each([
     {
       case: "the file is not there",
-      result: AsyncResult.failure(Cause.fail({ _tag: "AssetWorkspaceResolutionError" })),
+      result: AsyncResult.failure(Cause.fail({ _tag: "AssetWorkspaceAssetNotFoundError" })),
       base: BASE,
       state: "Failure",
     },
@@ -155,10 +174,10 @@ describe("pictures' signed addresses, read together", () => {
   });
   afterEach(() => vi.useRealTimers());
 
-  it("tries a failed signing again on the same schedule, and never calls it gone", () => {
+  it("tries a transient signing on the same schedule, then reports it unavailable", () => {
     testState.result = [
       AsyncResult.failure(Cause.fail({ _tag: "RpcClientError" })),
-      AsyncResult.failure(Cause.fail({ _tag: "AssetWorkspaceResolutionError" })),
+      AsyncResult.failure(Cause.fail({ _tag: "AssetWorkspaceAssetNotFoundError" })),
     ];
     const seen: Array<ReadonlyArray<string>> = [];
     function Probe() {
@@ -180,7 +199,9 @@ describe("pictures' signed addresses, read together", () => {
     }
     // Only the one that may come back is asked again, once per step of the schedule.
     expect(testState.refreshes).toBe(SIGN_RETRY_DELAYS_MS.length);
-    expect(seen.at(-1)).toEqual(["Loading", "Failure"]);
+    expect(seen.at(-1)).toEqual(["Failure", "Failure"]);
+    act(() => vi.advanceTimersByTime(60_000));
+    expect(testState.refreshes).toBe(SIGN_RETRY_DELAYS_MS.length);
     act(() => renderer.unmount());
   });
 });

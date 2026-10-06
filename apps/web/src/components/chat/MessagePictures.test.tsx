@@ -42,11 +42,40 @@ describe("MessagePictureBody", () => {
       "a picture of unknown size keeps its accessible placeholder until it arrives",
       image({}),
       ['role="img"', 'aria-label="Picture 1"'],
-      ["<img", "home-page.png"],
+      ["<img", "home-page.png", "Image unavailable"],
     ],
   ])("%s", (_label, picture, present, absent) => {
     const markup = render(picture);
     for (const text of present) expect(markup).toContain(text);
     for (const text of absent) expect(markup).not.toContain(text);
   });
+});
+
+it("shows a failed attachment signing with its reason instead of a pending box", () => {
+  const html = renderToStaticMarkup(
+    <MessagePictureBody
+      segments={[
+        {
+          kind: "picture",
+          n: 1,
+          notes: [],
+          original: null,
+          image: {
+            type: "image",
+            id: "shot",
+            name: "shot.png",
+            mimeType: "image/png",
+            sizeBytes: 10,
+          },
+        },
+      ]}
+      dimensions={new Map()}
+      states={new Map([["shot", { _tag: "Failure", reason: "Attachment no longer exists" }]])}
+      onOpen={() => undefined}
+      renderText={() => null}
+    />,
+  );
+  expect(html).toContain("Image unavailable");
+  expect(html).toContain("Attachment no longer exists");
+  expect(html).not.toContain("message-picture-pending");
 });
