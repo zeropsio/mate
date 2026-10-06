@@ -8,7 +8,7 @@ import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import { useMemo, useState } from "react";
 import { useAtomCommand } from "../state/use-atom-command";
 import { zeropsCommands } from "../state/zeropsCommands";
-import { useRegistrationRecord } from "./registrationRecords";
+import { useMateOfEnvironment } from "./accountEnvironments";
 import { useMateSetup, refreshMateSetup } from "./useMateSetup";
 
 import { useThreadShells } from "../state/entities";
@@ -76,7 +76,7 @@ export function useMateStandUp(input: {
   );
   const conversation: MateStandUpConversation =
     threadRef === null || !main ? "unknown" : messageCount === 0 ? "empty" : "started";
-  const origin = useRegistrationRecord(environmentId)?.origin ?? undefined;
+  const origin = useMateOfEnvironment(environmentId)?.origin ?? undefined;
   const own = marker !== undefined && marker.by === viewer;
   const { setup } = useMateSetup(
     own && (main || threadRef === null) && messageCount === 0 ? origin : undefined,

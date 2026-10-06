@@ -5,28 +5,25 @@ import type { ZeropsProject, ZeropsService } from "@t3tools/client-runtime/zerop
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { AccountEnvironments } from "@t3tools/client-runtime/zerops/account/runtime";
 import {
+  makeMateAdapter,
+  type AccountStore,
+  type MateAdapter,
+  type MateLinkValue,
+} from "@t3tools/client-runtime/data";
+import {
   environmentLinkable,
-  indexDescriptors,
   initialContainer,
   initialEnvironment,
   isTerminalReachability,
-  makeContainerStore,
-  makeExchangeDriver,
   MATE_VOICE_QUIET_MS,
   mateVoice,
   routeGatePhrase,
   selectReachability,
   selectRouteGate,
-  type ContainerMachine,
-  type ContainerStore,
-  type ContainerVerdict,
-  type DescriptorIndex,
   type EnvironmentMachine,
-  type ExchangeDriver,
   type Presence,
   type ProbeReading,
   type Reachability,
-  type RegistrationRecord,
   type RouteGate,
   type RouteTarget,
 } from "@t3tools/client-runtime/zerops/environments";
@@ -63,10 +60,7 @@ const shell = vi.hoisted(() => ({
     label: string;
     connection: { phase: string };
   }>,
-  records: [] as Array<{ targetKey: string; environmentId: string }>,
   organization: "selected" as ZeropsOrganizationStatus,
-  driver: null as unknown,
-  containers: null as unknown,
   /** Every route the gate handed the account runtime, in order. */
   routes: [] as Array<string | null>,
   /** When the account runtime's sweep asked for each target it reads again. */
@@ -87,43 +81,17 @@ vi.mock("../zerops/ZeropsSessionProvider", () => ({
 }));
 
 /**
- * The account runtime's Mate environments as the hooks read them, over whichever driver, container
- * store and records the test put in `shell`.
+ * The account runtime's Mate environments as the hooks ask them: every Mate itself is read from
+ * the account's store (`showMates`, or a real Mate adapter writing there).
  */
 function shellStage(): AccountEnvironments {
-  const driver = () => shell.driver as ExchangeDriver;
-  const containers = () => shell.containers as ContainerStore;
-  let indexed: {
-    readonly machines: ReadonlyMap<string, EnvironmentMachine>;
-    readonly containers: ReadonlyMap<string, ContainerMachine>;
-    readonly index: DescriptorIndex;
-  } | null = null;
   return {
-    setDeleting: (projectId, deleting) => driver().setDeleting(projectId, deleting),
+    setDeleting: () => undefined,
     closeOffHolds: () => new Map(),
     detailProjects: () => new Set(),
     detailFailure: () => null,
     retryDetail: () => undefined,
-    machines: () => driver().machines(),
-    containers: () => containers().machines(),
-    records: () => shell.records as unknown as ReadonlyArray<RegistrationRecord>,
-    index: () => {
-      const [machines, readings] = [driver().machines(), containers().machines()];
-      if (indexed?.machines !== machines || indexed.containers !== readings) {
-        indexed = {
-          machines,
-          containers: readings,
-          index: indexDescriptors(machines, readings),
-        };
-      }
-      return indexed.index;
-    },
-    subscribe: (listener) => {
-      const stops = [driver().subscribe(listener), containers().subscribe(listener)];
-      return () => {
-        for (const stop of stops) stop();
-      };
-    },
+    subscribe: () => () => undefined,
     connect: () => new Promise(() => undefined),
     hold: () => () => undefined,
     intend: () => false,
@@ -170,6 +138,62 @@ let container: TestNode;
 let root: Root;
 /** The atoms the hooks read: HQ's word of the organization's Mates. */
 let atoms: AtomRegistry.AtomRegistry;
+/** The account's store the hooks read each Mate from. */
+let store: AccountStore;
+/** The Mates `showMates` last wrote as shown. */
+let shown: ReadonlySet<string> = new Set();
+let sequence = 0;
+
+/**
+ * The account's store holds these Mates, as the Mate adapter would have written them: each one's
+ * environment machine, and the reading its last probe made, if any. Any shown before and left out
+ * here is no longer shown.
+ */
+function showMates(
+  machines: ReadonlyMap<string, EnvironmentMachine>,
+  readings: ReadonlyMap<string, ProbeReading> = new Map(),
+) {
+  const keys = new Set([...machines.keys(), ...readings.keys()]);
+  const value = (key: string, isShown: boolean): MateLinkValue => {
+    const read = readings.get(key);
+    return {
+      key,
+      projectId: key.split(":")[0] ?? key,
+      orgId: "org-1",
+      origin: null,
+      shown: isShown,
+      watched: false,
+      environment: machines.get(key) ?? initialEnvironment({ record: null }),
+      container:
+        read === undefined
+          ? initialContainer()
+          : { ...initialContainer(), reading: { reading: read, sentAt: { wall: 0, mono: 0 } } },
+    };
+  };
+  const values = [
+    ...[...keys].map((key) => value(key, true)),
+    ...[...shown].filter((key) => !keys.has(key)).map((key) => value(key, false)),
+  ];
+  act(() => {
+    for (const next of values)
+      store.dispatch({
+        kind: "rows",
+        scope: `mate:${next.projectId}:link`,
+        generation: 0,
+        method: "read",
+        via: "mate-direct",
+        rows: [
+          {
+            family: "mateLink",
+            id: next.key,
+            value: next,
+            revision: { kind: "mate-link", sequence: (sequence += 1) },
+          },
+        ],
+      });
+  });
+  shown = keys;
+}
 
 beforeEach(() => {
   const document = new TestNode("#document", null, 9);
@@ -185,19 +209,21 @@ beforeEach(() => {
   root = createRoot(container as unknown as Element);
   atoms = AtomRegistry.make();
   // The organization's services listing holds the project's zcp container.
-  mountRoster(atoms, "org-1", [project], {
+  store = mountRoster(atoms, "org-1", [project], {
     services: [{ ...zcp("ACTIVE"), projectId: "project-1" }],
   });
+  shown = new Set();
   shell.environments = [];
-  shell.records = [];
   shell.routes = [];
   shell.organization = "selected";
-  shell.driver = publishing(new Map());
-  shell.containers = descriptorRig([]).containers;
   unbindStage = bindAccountEnvironments(shellStage());
 });
 
 let unbindStage: () => void = () => undefined;
+
+/** Renders under the test's atoms, as the app's registry holds the account's store. */
+const renderIn = (node: ReactNode) =>
+  root.render(<RegistryContext value={atoms}>{node}</RegistryContext>);
 
 afterEach(() => {
   act(() => root.unmount());
@@ -212,7 +238,7 @@ async function gateOnRoute(value: Inventory): Promise<RouteGate> {
     return JSON.stringify(selectRouteGate(useRouteGateInputs(ENV_A).target));
   }
   act(() =>
-    root.render(
+    renderIn(
       <InventoryContext value={value}>
         <Probe />
       </InventoryContext>,
@@ -226,9 +252,27 @@ const KEY = "project-1:service-1";
 /** The tab's clock as the driver reads it; its timers never fire on their own. */
 let nowMs = 1_000_000;
 
-/** A real exchange driver whose door admits `env-a` and whose registry takes every credential. */
-function exchangeDriver(): ExchangeDriver {
-  return makeExchangeDriver<unknown>({
+/** A Mate's container answering as Mate for this environment, stating this project. */
+const readyAt = (environmentId: EnvironmentId, projectId: string): ProbeReading => ({
+  kind: "ready",
+  descriptor: {
+    environmentId,
+    serverVersion: "0.12.0",
+    update: null,
+    identity: "ok",
+    identityCheckedAt: null,
+  },
+  projectId,
+  initAt: null,
+});
+
+/**
+ * A real Mate adapter over the account's store whose door admits `env-a`, whose registry takes
+ * every credential, and whose container answers ready.
+ */
+function admittingAdapter(): MateAdapter {
+  return makeMateAdapter<unknown>({
+    store,
     clock: {
       now: () => ({ wall: nowMs, mono: nowMs }),
       random: () => 0.5,
@@ -250,20 +294,29 @@ function exchangeDriver(): ExchangeDriver {
     readDescriptor: () => new Promise(() => undefined),
     retryLink: () => undefined,
     retire: () => undefined,
+    probe: async () => ({
+      reading: readyAt(ENV_A, "project-1"),
+      sentAt: { wall: nowMs, mono: nowMs },
+    }),
+    readInitAt: async () => null,
+    readMateFlag: async () => "unknown",
+    intents: { read: () => null, write: () => undefined },
   });
 }
 
-/** Lets the driver's queue and every port's answer run. */
+/** Lets the adapter's queue and every port's answer run. */
 const settle = () =>
   act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
   });
 
-/** The route's target as the inventory publishes it. */
-const target = (presence: Presence, container: ContainerVerdict) => ({
+/** The route's target as the listing publishes it, its service in this status. */
+const target = (presence: Presence, service: string) => ({
   key: KEY,
+  orgId: "org-1",
   presence,
-  container,
+  origin: ORIGIN,
+  platform: { project: "ACTIVE", service },
   record: ENV_A,
 });
 
@@ -299,10 +352,9 @@ function RoutedOutlet({
   );
 }
 
-describe("the route gate over the exchange driver's machines", () => {
+describe("the route gate over the Mate adapter's machines", () => {
   it("a zcp restart while connected keeps the same ChatView instance and never shows 'not reachable'", async () => {
-    const driver = exchangeDriver();
-    shell.driver = driver;
+    const driver = admittingAdapter();
     shell.environments = [
       {
         environmentId: ENV_A,
@@ -311,7 +363,6 @@ describe("the route gate over the exchange driver's machines", () => {
         connection: { phase: "connected" },
       },
     ];
-    shell.records = [{ targetKey: KEY, environmentId: ENV_A }];
     const mounts: Array<number> = [];
     function ChatView() {
       useEffect(() => {
@@ -325,7 +376,7 @@ describe("the route gate over the exchange driver's machines", () => {
     const texts: Array<string> = [];
     const look = () => {
       act(() =>
-        root.render(
+        renderIn(
           <InventoryContext value={inventory("ACTIVE")}>
             <RoutedOutlet gates={gates}>
               <ChatView />
@@ -335,11 +386,8 @@ describe("the route gate over the exchange driver's machines", () => {
       );
       texts.push(container.textContent);
     };
-    const active = target({ kind: "present", origin: ORIGIN }, { level: "ready" });
-    const restarting = target(
-      { kind: "transitioning", status: "RESTARTING" },
-      { level: "restarting", by: "platform", overdue: false },
-    );
+    const active = target({ kind: "present", origin: ORIGIN }, "ACTIVE");
+    const restarting = target({ kind: "transitioning", status: "RESTARTING" }, "RESTARTING");
 
     driver.setAccount({
       postGrant: true,
@@ -491,25 +539,6 @@ const VERDICTS: ReadonlyArray<readonly [Reachability["kind"], EnvironmentMachine
   ["resolving", machine({ presence: { kind: "unknown" } })],
 ];
 
-/** A driver that publishes exactly these machines. */
-const publishing = (machines: ReadonlyMap<string, EnvironmentMachine>) =>
-  ({ subscribe: () => () => undefined, machines: () => machines }) as unknown as ExchangeDriver;
-
-/** A container store whose probes last read these, target by target; it reads nothing more. */
-const reading = (readings: ReadonlyMap<string, ProbeReading>) => {
-  const machines = new Map<string, ContainerMachine>(
-    [...readings].map(([key, value]) => [
-      key,
-      { ...initialContainer(), reading: { reading: value, sentAt: { wall: 0, mono: 0 } } },
-    ]),
-  );
-  return {
-    subscribe: () => () => undefined,
-    machines: () => machines,
-    request: () => undefined,
-  } as unknown as ContainerStore;
-};
-
 const candidate: ZeropsCandidate = {
   key: KEY,
   project: { id: "project-1", name: "shop", status: "ACTIVE" } as ZeropsProject,
@@ -527,7 +556,7 @@ describe("the route gate and every link into an environment", () => {
   });
 
   it.each(VERDICTS)("the gate and the sidebar agree for a %s verdict", (_kind, entry) => {
-    shell.driver = publishing(new Map([[KEY, entry]]));
+    showMates(new Map([[KEY, entry]]));
     shell.environments = [
       {
         environmentId: ENV_A,
@@ -545,7 +574,7 @@ describe("the route gate and every link into an environment", () => {
       });
     }
     act(() =>
-      root.render(
+      renderIn(
         <InventoryContext value={inventory("ACTIVE")}>
           <Probe />
         </InventoryContext>,
@@ -657,13 +686,13 @@ describe("a Mate's link, whatever its row says of it at the moment", () => {
       opens: null,
     },
   ])("$case", ({ row, machines, registered, opens }) => {
-    shell.driver = publishing(new Map(machines));
+    showMates(new Map(machines));
     shell.environments = registered ? [REGISTERED] : [];
     function Probe() {
       return JSON.stringify(useEnvironmentLinks().linkTarget(row) ?? null);
     }
     act(() =>
-      root.render(
+      renderIn(
         <InventoryContext value={inventory("ACTIVE")}>
           <Probe />
         </InventoryContext>,
@@ -686,7 +715,6 @@ describe("useRouteGateInputs", () => {
   const DISCOVERY: ReadonlyArray<{
     readonly name: string;
     readonly machines: ReadonlyMap<string, EnvironmentMachine>;
-    readonly records?: ReadonlyArray<{ targetKey: string; environmentId: string }>;
     readonly inventory?: Inventory;
     /** What the probes last read at each target's origin, sent at 0. */
     readonly readings?: ReadonlyMap<string, ProbeReading>;
@@ -726,7 +754,6 @@ describe("useRouteGateInputs", () => {
     {
       name: "a remembered target the driver has not taken in yet",
       machines: new Map(),
-      records: [{ targetKey: OTHER, environmentId: ENV_B }],
       gate: { kind: "unavailable", reachability: null },
     },
     {
@@ -743,7 +770,6 @@ describe("useRouteGateInputs", () => {
         last: { kind: "network" },
         reconnect: false,
       }),
-      records: [{ targetKey: OTHER, environmentId: ENV_B }],
       gate: { kind: "unavailable", reachability: null },
     },
     {
@@ -754,7 +780,6 @@ describe("useRouteGateInputs", () => {
         last: { kind: "network" },
         reconnect: false,
       }),
-      records: [{ targetKey: OTHER, environmentId: ENV_B }],
       readings: new Map([[OTHER, { kind: "unreachable" }]]),
       gate: { kind: "unavailable", reachability: null },
     },
@@ -766,7 +791,6 @@ describe("useRouteGateInputs", () => {
         last: { kind: "network" },
         reconnect: false,
       }),
-      records: [{ targetKey: OTHER, environmentId: ENV_B }],
       readings: new Map([[OTHER, { kind: "unreachable" }]]),
       gate: { kind: "unavailable", reachability: null },
     },
@@ -784,7 +808,6 @@ describe("useRouteGateInputs", () => {
         last: { kind: "network" },
         reconnect: false,
       }),
-      records: [{ targetKey: OTHER, environmentId: ENV_B }],
       readings: new Map([[OTHER, answering(ENV_B, "project-1")]]),
       gate: { kind: "unavailable", reachability: null },
     },
@@ -807,7 +830,6 @@ describe("useRouteGateInputs", () => {
           }),
         ],
       ]),
-      records: [{ targetKey: OTHER, environmentId: ENV_B }],
       gate: { kind: "unavailable", reachability: null },
     },
     {
@@ -829,9 +851,7 @@ describe("useRouteGateInputs", () => {
   it.each(DISCOVERY.map((row) => [row.name, row] as const))(
     "an environment no target names: %s",
     async (_name, row) => {
-      shell.driver = publishing(row.machines);
-      shell.containers = reading(row.readings ?? new Map());
-      shell.records = [...(row.records ?? [])];
+      showMates(row.machines, row.readings ?? new Map());
 
       expect(await gateOnRoute(row.inventory ?? inventory("ACTIVE"))).toEqual(row.gate);
     },
@@ -865,12 +885,12 @@ describe("useRouteGateInputs", () => {
       { kind: "suppressed", reason: "access-denied" },
     ],
   ] as const)("the route's conversation under %s", (_name, value, target, conversation) => {
-    shell.driver = publishing(new Map([[KEY, target]]));
+    showMates(new Map([[KEY, target]]));
     function Probe() {
       return JSON.stringify(useRouteConversation(ENV_A));
     }
     act(() =>
-      root.render(
+      renderIn(
         <InventoryContext value={value}>
           <Probe />
         </InventoryContext>,
@@ -905,7 +925,7 @@ const answering = (environmentId: EnvironmentId, projectId: string): ProbeReadin
 });
 
 /**
- * A real container store and exchange driver for present candidates, remembered by `records` or
+ * A real Mate adapter over the account's store for present candidates, remembered by `records` or
  * not at all: every probe waits for the test to answer it, and no exchange ever answers.
  */
 function descriptorRig(
@@ -916,38 +936,14 @@ function descriptorRig(
     string,
     { readonly resolve: (reading: ProbeReading) => void; readonly reject: (cause: Error) => void }
   >();
-  const probed: Array<string> = [];
   const retired: Array<string> = [];
-  const timers = new Set<{ readonly atMs: number; readonly fire: () => void }>();
   const clock = {
     now: () => ({ wall: nowMs, mono: nowMs }),
     random: () => 0.5,
-    setTimer: (delayMs: number, fire: () => void) => {
-      const timer = { atMs: nowMs + delayMs, fire };
-      timers.add(timer);
-      return () => void timers.delete(timer);
-    },
+    setTimer: () => () => undefined,
   };
-  let intents: string | null = null;
-  const containers: ContainerStore = makeContainerStore({
-    clock,
-    probe: (origin) => {
-      const sentAt = clock.now();
-      return new Promise((resolve, reject) => {
-        probed.push(origin);
-        pending.set(origin, { resolve: (reading) => resolve({ reading, sentAt }), reject });
-      });
-    },
-    readInitAt: async () => null,
-    readMateFlag: async () => "unknown",
-    intents: {
-      read: () => intents,
-      write: (value) => {
-        intents = value;
-      },
-    },
-  });
-  const driver = makeExchangeDriver<unknown>({
+  const adapter = makeMateAdapter<unknown>({
+    store,
     clock,
     exchange: () => new Promise(() => undefined),
     install: async () => ({ ok: true }),
@@ -956,33 +952,35 @@ function descriptorRig(
     retire: (key) => {
       retired.push(key);
     },
+    probe: (origin) => {
+      const sentAt = clock.now();
+      return new Promise((resolve, reject) => {
+        pending.set(origin, { resolve: (reading) => resolve({ reading, sentAt }), reject });
+      });
+    },
+    readInitAt: async () => null,
+    readMateFlag: async () => "unknown",
+    intents: { read: () => null, write: () => undefined },
   });
-  containers.setTargets(
-    mates.map(({ key, origin }) => ({
-      key,
-      origin,
-      platform: { project: "ACTIVE", service: "ACTIVE" },
-    })),
-  );
-  driver.setAccount({
+  adapter.setAccount({
     postGrant: true,
     identityMint: { allowed: true },
     zeropsFailing: false,
     grantVerifiedAtMs: nowMs,
   });
-  driver.setVisible(true);
-  driver.setTargets(
+  adapter.setVisible(true);
+  adapter.setTargets(
     mates.map(({ key, origin }) => ({
       key,
+      orgId: "org-1",
       presence: { kind: "present", origin } as const,
-      container: { level: "unknown" } as const,
+      origin,
+      platform: { project: "ACTIVE", service: "ACTIVE" },
       record: records.get(key) ?? null,
     })),
   );
   return {
-    containers,
-    driver,
-    probed,
+    adapter,
     retired,
     /** Answers the probe in flight for this origin. */
     answer: async (origin: string, reading: ProbeReading) => {
@@ -990,25 +988,6 @@ function descriptorRig(
       if (probe === undefined) throw new Error(`No probe of ${origin} is in flight.`);
       pending.delete(origin);
       probe.resolve(reading);
-      await settle();
-    },
-
-    /** Time passes: every timer that comes due fires, in order. */
-    advance: async (ms: number) => {
-      nowMs += ms;
-      for (const timer of [...timers].toSorted((left, right) => left.atMs - right.atMs)) {
-        if (timer.atMs > nowMs || !timers.has(timer)) continue;
-        timers.delete(timer);
-        timer.fire();
-      }
-      await settle();
-    },
-    /** Fails the probe in flight for this origin the way a dead origin's CORS refusal does. */
-    fail: async (origin: string) => {
-      const probe = pending.get(origin);
-      if (probe === undefined) throw new Error(`No probe of ${origin} is in flight.`);
-      pending.delete(origin);
-      probe.reject(new TypeError("Failed to fetch"));
       await settle();
     },
   };
@@ -1026,7 +1005,7 @@ function routeTo(environmentId: EnvironmentId, value: Inventory = inventory("ACT
     return JSON.stringify({ target: inputs.target, projectId: inputs.projectId });
   }
   act(() =>
-    root.render(
+    renderIn(
       <RegistryContext value={atoms}>
         <InventoryContext value={value}>
           <Probe />
@@ -1041,63 +1020,40 @@ describe("the descriptor index", () => {
   it("resolves a route's environment through HQ's index without a descriptor sweep", async () => {
     const one = mate(1);
     const rig = descriptorRig([one]);
-    shell.driver = rig.driver;
-    shell.containers = rig.containers;
     atoms.set(zeropsSessionAtom, {
       status: "signed-in",
       organizationStatus: "selected",
-      activeOrganization: { organizationId: "org-acme" },
+      activeOrganization: { organizationId: "org-1" },
     } as never);
-    mountHqNavigation(atoms, "org-acme", {
-      structure: {
-        apps: [],
-        ungrouped: [{ projectId: one.projectId, name: "Mate", mate: { face: "" } }],
+    mountHqNavigation(
+      atoms,
+      "org-1",
+      {
+        structure: {
+          apps: [],
+          ungrouped: [{ projectId: one.projectId, name: "Mate", mate: { face: "" } }],
+        },
+        mates: {
+          [one.projectId]: {
+            presence: { online: true, since: "2026-10-06T00:00:00Z", overview: "live" },
+            identity: { environmentId: ENV_A },
+          } as unknown as MateLiveView,
+        },
       },
-      mates: {
-        [one.projectId]: {
-          presence: { online: true, since: "2026-10-06T00:00:00Z", overview: "live" },
-          identity: { environmentId: ENV_A },
-        } as unknown as MateLiveView,
-      },
-    });
+      store,
+    );
     await settle();
 
     // Its descriptor never answers: HQ's word alone names the route's Mate.
     const seen = routeTo(ENV_A).read();
     expect(seen.target?.kind).toBe("resolved");
     expect(seen.projectId).toBe(one.projectId);
-    rig.driver.dispose();
-    rig.containers.dispose();
-  });
-
-  it("a cached descriptor resolves a deep link with no HQ or registration record", async () => {
-    const one = mate(1);
-    const rig = descriptorRig([one]);
-    shell.driver = rig.driver;
-    shell.containers = rig.containers;
-    await settle();
-    const routed = routeTo(ENV_A);
-    expect(selectRouteGate(routed.read().target)).toEqual({
-      kind: "unavailable",
-      reachability: null,
-    });
-    // The route is the account runtime's demand: it exchanges the route's target first.
-    expect(shell.routes).toEqual([ENV_A]);
-
-    await rig.answer(one.origin, answering(ENV_A, one.projectId));
-
-    const seen = routed.read();
-    expect(seen.target?.kind).toBe("resolved");
-    expect(seen.projectId).toBe(one.projectId);
-    rig.driver.dispose();
-    rig.containers.dispose();
+    rig.adapter.dispose();
   });
 
   it("an unknown deep link offers the organization picker without waiting for other projects", async () => {
     const one = mate(1);
     const rig = descriptorRig([one]);
-    shell.driver = rig.driver;
-    shell.containers = rig.containers;
     shell.organization = "needs-selection";
     await settle();
     const made = EnvironmentId.make("env-made-up");
@@ -1106,7 +1062,9 @@ describe("the descriptor index", () => {
       made: selectRouteGate(routeTo(made).read().target),
     };
 
-    // A descriptor already read for an explicit demand may subsequently name the route.
+    // A descriptor read for an explicit demand may subsequently name the route.
+    rig.adapter.setDemand("screen", [one.key]);
+    await settle();
     await rig.answer(one.origin, answering(ENV_A, one.projectId));
 
     expect(before).toEqual({
@@ -1116,17 +1074,13 @@ describe("the descriptor index", () => {
     expect(routeTo(ENV_A).read().target?.kind).toBe("resolved");
     // Settled without naming it: choosing an organization is what is left to offer (A5).
     expect(selectRouteGate(routeTo(made).read().target)).toEqual({ kind: "choose-organization" });
-    rig.driver.dispose();
-    rig.containers.dispose();
+    rig.adapter.dispose();
   });
 
   it("a changed envId marks the old route replaced, drafts kept", async () => {
     const one = mate(1);
     const rig = descriptorRig([one], new Map([[one.key, ENV_A]]));
-    shell.driver = rig.driver;
-    shell.containers = rig.containers;
-    shell.records = [{ targetKey: one.key, environmentId: ENV_A }];
-    rig.driver.setDemand("recent", [one.key]);
+    rig.adapter.setDemand("recent", [one.key]);
     const draft = scopeThreadRef(ENV_A, ThreadId.make("thread-1"));
     useComposerDraftStore.getState().setPrompt(draft, "keep me");
     await settle();
@@ -1139,7 +1093,7 @@ describe("the descriptor index", () => {
     }
     const look = (environmentId: EnvironmentId) => {
       act(() =>
-        root.render(
+        renderIn(
           <InventoryContext value={inventory("ACTIVE")}>
             <Probe environmentId={environmentId} />
           </InventoryContext>,
@@ -1157,11 +1111,10 @@ describe("the descriptor index", () => {
     });
     // Nothing retired the target: its record, and every draft keyed by the old environment, stay.
     expect(rig.retired).toEqual([]);
-    expect(rig.driver.machine(one.key)?.record).toBe(ENV_A);
+    expect(rig.adapter.machines(one.key)?.environment.record).toBe(ENV_A);
     expect(useComposerDraftStore.getState().draftsByThreadKey[scopedThreadKey(draft)]?.prompt).toBe(
       "keep me",
     );
-    rig.driver.dispose();
-    rig.containers.dispose();
+    rig.adapter.dispose();
   });
 });

@@ -40,7 +40,7 @@ import { mateListingsAtom } from "../environments/listings.ts";
 import { readServiceMateFlag } from "../environments/mateFlag.ts";
 import { rowTarget } from "../environments/mateLink.ts";
 import type { ProbeReading } from "../environments/probe.ts";
-import { REGISTRATION_RECORDS_KEY, type RegistrationRecord } from "../environments/records.ts";
+import type { RememberedTarget } from "../environments/targets.ts";
 import { heldCandidates } from "../projections/candidates.ts";
 import type { ExchangeAnswer } from "../identityExchange.ts";
 import type { Invalidation } from "../knowledge/invalidation.ts";
@@ -51,13 +51,16 @@ import { makeFakeZeropsRest } from "../testing/fakeZeropsRest.ts";
 import {
   makeAccountRuntime,
   type AccountEnvironmentPorts,
+  type AccountEnvironments,
   type CatalogListener,
   type DoorCredential,
   type DoorRequest,
 } from "./accountRuntime.ts";
 import { liveProjects, liveServices } from "../../data/__fixtures__/account.ts";
 import { accountReadsAtom } from "../../data/reads.ts";
-import { makeAccountStore, type AccountStore } from "../../data/store.ts";
+import { makeAccountStore, readsOfState, type AccountStore } from "../../data/store.ts";
+import { mateLinks } from "../../data/projections/mateLinks.ts";
+import { indexDescriptors } from "../environments/descriptorIndex.ts";
 import { historyScope } from "../../data/families/process.ts";
 
 const SECOND = 1_000;
@@ -221,41 +224,22 @@ const admitted = (
   credential: { install },
 });
 
-/** A descriptor that answered as Mate for this environment, stating this project. */
-const answering = (environmentId: EnvironmentId, projectId: string): ProbeReading => ({
-  kind: "ready",
-  descriptor: {
-    environmentId,
-    serverVersion: "0.12.0",
-    update: null,
-    identity: "ok",
-    identityCheckedAt: null,
-  },
-  projectId,
-  initAt: null,
-});
-
 /**
  * The Mate environments' ports as a tab hands them over, with no React: every exchange and probe
- * is recorded and left for the test to answer, the records hold what `remembered` names, and the
- * catalog and the records' other tabs are the test's to drive.
+ * is recorded and left for the test to answer, the kept sessions name what `remembered` names,
+ * and the catalog is the test's to drive.
  */
-const environmentRig = (clock: DeadlineClock, remembered: ReadonlyArray<RegistrationRecord>) => {
+const environmentRig = (clock: DeadlineClock, remembered: ReadonlyArray<RememberedTarget>) => {
   const exchanges: Array<Pending<DoorRequest, ExchangeAnswer<DoorCredential>>> = [];
   const descriptors: Array<Pending<string, DescriptorFacts>> = [];
   const probes: Array<Pending<string, ProbeReading>> = [];
   const removed: Array<EnvironmentId> = [];
   /** Every target whose kept session the stage dropped. */
   const forgotten: Array<string> = [];
-  const storage = new Map<string, string>([[REGISTRATION_RECORDS_KEY, JSON.stringify(remembered)]]);
   /** What the stage listens to now, by port. */
-  const listening = { records: 0, catalog: 0 };
-  /** How many times the records were read from storage. */
-  let recordReads = 0;
-  /** What the stage hears when another tab writes the records. */
-  let recordsChanged: (() => void) | null = null;
-  /** The tab's writes of the records do not land: a full or refusing storage, which the port swallows. */
-  let writesLand = true;
+  const listening = { catalog: 0 };
+  /** The sessions kept now: an install the web's door takes keeps one in place of its target's. */
+  let kept = [...remembered];
   let catalog: CatalogListener | null = null;
   /** The environment the tab's route names, as its address bar holds it. */
   let route: EnvironmentId | null = null;
@@ -292,23 +276,12 @@ const environmentRig = (clock: DeadlineClock, remembered: ReadonlyArray<Registra
     },
     readInitAt: async () => null,
     intents: { read: () => null, write: () => undefined },
-    records: {
-      getItem: (key) => {
-        recordReads += 1;
-        return storage.get(key) ?? null;
-      },
-      setItem: (key, value) => {
-        if (writesLand) storage.set(key, value);
-      },
-      listen: (changed) => {
-        recordsChanged = changed;
-        listening.records += 1;
-        return () => void (listening.records -= 1);
-      },
-    },
+    remembered: () => kept,
     catalog: {
       listen: (listener) => {
         catalog = listener;
+        // The catalog says what it holds as it is first heard: nothing, in a tab.
+        listener.environments([]);
         listening.catalog += 1;
         return () => void (listening.catalog -= 1);
       },
@@ -321,11 +294,8 @@ const environmentRig = (clock: DeadlineClock, remembered: ReadonlyArray<Registra
         return () => void down.splice(down.indexOf(environmentId), 1);
       },
     },
-    // HQ's word, current: it names no environment's project, holds no Mate online and speaks for
-    // no organization. A test that needs another word says it.
+    // HQ's word: it names no environment's project. A test that needs another word says it.
     hqIndex: { projectOf: () => null, subscribe: () => () => undefined },
-    online: { read: () => new Set(), subscribe: () => () => undefined },
-    hqOrganization: { read: () => null, subscribe: () => () => undefined },
     // No word on any close-off, and none pending here: nothing is held.
     closeOff: { read: () => null, subscribe: () => () => undefined },
     closeOffPending: { read: () => new Set(), subscribe: () => () => undefined },
@@ -357,23 +327,11 @@ const environmentRig = (clock: DeadlineClock, remembered: ReadonlyArray<Registra
     removed,
     forgotten,
     listening,
-    /** The records as they are stored now. */
-    records: () =>
-      JSON.parse(storage.get(REGISTRATION_RECORDS_KEY) ?? "[]") as Array<RegistrationRecord>,
-    recordReads: () => recordReads,
-    /**
-     * Another tab stores these records; `announce` is whether its storage event has reached this
-     * tab yet.
-     */
-    storeElsewhere: (records: ReadonlyArray<RegistrationRecord>, announce: boolean) => {
-      storage.set(REGISTRATION_RECORDS_KEY, JSON.stringify(records));
-      if (announce) recordsChanged?.();
-    },
     /** The connection catalog as the stage hears it. */
     catalog: () => catalog!,
-    /** Whether this tab's writes of the records land from now on. */
-    landWrites: (land: boolean) => {
-      writesLand = land;
+    /** The door kept this session for its target, in place of the one kept before. */
+    keep: (session: RememberedTarget) => {
+      kept = [...kept.filter((entry) => entry.targetKey !== session.targetKey), session];
     },
   };
 };
@@ -381,13 +339,25 @@ const environmentRig = (clock: DeadlineClock, remembered: ReadonlyArray<Registra
 /** The ports of a runtime whose Mates these tests never reach. */
 const inertEnvironments = (clock: DeadlineClock) => environmentRig(clock, []).ports;
 
-const REMEMBERED_A: RegistrationRecord = {
+const REMEMBERED_A: RememberedTarget = {
   targetKey: MATE,
   environmentId: ENV_A,
   origin: MATE_ORIGIN,
-  projectRef: { projectId: A_MATE.projectId, orgId: "org-1" },
-  name: "shop a",
+  orgId: "org-1",
 };
+
+/**
+ * The stage as a test asks it, with each Mate's machines as the account's store holds them — the
+ * reading every surface gets (`mateLinks`).
+ */
+const withMates = (environments: AccountEnvironments, store: AccountStore) => ({
+  ...environments,
+  machines: () => mateLinks.derive(readsOfState(store.state()), null).machines,
+  index: () => {
+    const { machines, containers } = mateLinks.derive(readsOfState(store.state()), null);
+    return indexDescriptors(machines, containers);
+  },
+});
 
 /** Lets every fiber the last step woke run to its next wait, on whichever scheduler it runs. */
 const settle = Effect.gen(function* () {
@@ -522,6 +492,7 @@ describe("the account runtime", () => {
               signals: page.signals,
               atomRegistry: registry,
               environments: inertEnvironments(clock),
+              store: makeAccountStore(registry),
             }).pipe(
               Effect.tap((runtime) =>
                 Effect.sync(() => runtime.selectOrganization(organization.organizationId)),
@@ -601,6 +572,7 @@ describe("the account runtime", () => {
               signals: page.signals,
               atomRegistry: registry,
               environments: inertEnvironments(clock),
+              store: makeAccountStore(registry),
             }).pipe(
               Effect.tap((runtime) =>
                 Effect.sync(() => runtime.selectOrganization(organization.organizationId)),
@@ -653,6 +625,7 @@ describe("the account runtime", () => {
               signals: page.signals,
               atomRegistry: registry,
               environments: inertEnvironments(clock),
+              store: makeAccountStore(registry),
             }).pipe(
               Effect.tap((runtime) =>
                 Effect.sync(() => runtime.selectOrganization(organization.organizationId)),
@@ -715,6 +688,7 @@ describe("the account runtime", () => {
             signals: page.signals,
             atomRegistry: registry,
             environments: inertEnvironments(clock),
+            store: makeAccountStore(registry),
           }).pipe(
             Effect.tap((runtime) =>
               Effect.sync(() => runtime.selectOrganization(organization.organizationId)),
@@ -802,6 +776,7 @@ describe("the account runtime", () => {
             signals: page.signals,
             atomRegistry: registry,
             environments: inertEnvironments(clock),
+            store: makeAccountStore(registry),
           }).pipe(
             Effect.tap((runtime) =>
               Effect.sync(() => runtime.selectOrganization(organization.organizationId)),
@@ -902,6 +877,7 @@ describe("the account runtime", () => {
               signals: page.signals,
               atomRegistry: registry,
               environments: inertEnvironments(clock),
+              store: makeAccountStore(registry),
             }).pipe(
               Effect.tap((runtime) =>
                 Effect.sync(() => runtime.selectOrganization(organization.organizationId)),
@@ -1022,6 +998,7 @@ describe("the account runtime", () => {
               signals: page.signals,
               atomRegistry: registry,
               environments: inertEnvironments(clock),
+              store: makeAccountStore(registry),
             }).pipe(
               Effect.tap((runtime) =>
                 Effect.sync(() => runtime.selectOrganization(organization.organizationId)),
@@ -1110,6 +1087,7 @@ describe("the account runtime", () => {
               signals: page.signals,
               atomRegistry: registry,
               environments: inertEnvironments(clock),
+              store: makeAccountStore(registry),
             }).pipe(
               Effect.tap((runtime) =>
                 Effect.sync(() => runtime.selectOrganization(organization.organizationId)),
@@ -1209,6 +1187,7 @@ describe("the account runtime", () => {
               signals: page.signals,
               atomRegistry: registry,
               environments: inertEnvironments(clock),
+              store: makeAccountStore(registry),
             });
           }).pipe(Effect.provideService(Clock.Clock, clock));
           yield* Effect.addFinalizer(() => built.close("application-close"));
@@ -1261,6 +1240,7 @@ describe("the account runtime", () => {
             signals: page.signals,
             atomRegistry: registry,
             environments: inertEnvironments(clock),
+            store: makeAccountStore(registry),
           })
             .pipe(
               Effect.tap((runtime) =>
@@ -1327,6 +1307,7 @@ describe("the account runtime", () => {
               signals: page.signals,
               atomRegistry: registry,
               environments: inertEnvironments(clock),
+              store: makeAccountStore(registry),
             }).pipe(
               Effect.tap((runtime) =>
                 Effect.sync(() => runtime.selectOrganization(organization.organizationId)),
@@ -1388,7 +1369,7 @@ describe("the account runtime", () => {
 describe("the post-grant stage's Mate environments", () => {
   /** An account runtime over a platform holding these Mates' projects, with no React mounted. */
   const openAccount = Effect.fnUntraced(function* (
-    remembered: ReadonlyArray<RegistrationRecord>,
+    remembered: ReadonlyArray<RememberedTarget>,
     mates: ReadonlyArray<Mate> = [A_MATE],
     adapter: ZeropsDataAdapter = platformAdapter(mates),
     /** The Mates the grant admits; the organization may list more. */
@@ -1412,6 +1393,8 @@ describe("the post-grant stage's Mate environments", () => {
         .map(({ projectId }) => project(projectId)),
     );
     const rig = environmentRig(clock, remembered);
+    // The account's store, its organization's roster read: the Mates' projects.
+    const store = makeAccountStore(registry);
     const built = yield* Effect.gen(function* () {
       const data = yield* makeZeropsDataRuntime({
         random: () => 0,
@@ -1430,6 +1413,7 @@ describe("the post-grant stage's Mate environments", () => {
         signals: page.signals,
         atomRegistry: registry,
         environments: { ...rig.ports, ...extra },
+        store,
       }).pipe(
         Effect.tap((runtime) =>
           Effect.sync(() => runtime.selectOrganization(organization.organizationId)),
@@ -1437,8 +1421,6 @@ describe("the post-grant stage's Mate environments", () => {
       );
     }).pipe(Effect.provideService(Clock.Clock, clock));
     yield* Effect.addFinalizer(() => built.close("application-close"));
-    // The account's store, its organization's roster read: the Mates' projects.
-    const store = makeAccountStore(registry);
     let rosterReleased = false;
     let servicesReleased = false;
     /** The organization's services listing answers: after the roster, once the grant answered. */
@@ -1499,7 +1481,7 @@ describe("the post-grant stage's Mate environments", () => {
 
   /** `openAccount` past the epoch's first grant, with its post-grant stage. */
   const granted = Effect.fnUntraced(function* (
-    remembered: ReadonlyArray<RegistrationRecord>,
+    remembered: ReadonlyArray<RememberedTarget>,
     mates: ReadonlyArray<Mate> = [A_MATE],
     adapter: ZeropsDataAdapter = platformAdapter(mates),
     admitted: ReadonlyArray<Mate> = mates,
@@ -1529,7 +1511,7 @@ describe("the post-grant stage's Mate environments", () => {
         project: project(mate.projectId),
       });
     yield* settle;
-    return { ...opened, environments: stage.environments };
+    return { ...opened, environments: withMates(stage.environments, opened.store) };
   });
 
   it.effect("a refused cold route read ends visibly and waits for manual Again", () =>
@@ -1557,7 +1539,7 @@ describe("the post-grant stage's Mate environments", () => {
         }
         yield* opened.grant.answer();
         yield* settle;
-        const { environments } = yield* opened.built.postGrant;
+        const environments = withMates((yield* opened.built.postGrant).environments, opened.store);
         environments.setActiveOrganization(organization.organizationId);
         environments.setRoute(ENV_A);
         yield* settle;
@@ -1635,12 +1617,11 @@ describe("the post-grant stage's Mate environments", () => {
   // Mate of the open organization: the 20+-Mate account opened twenty-odd sockets per tab.
   const B_MATE = mate("b");
   const ENV_B = EnvironmentId.make("env-b");
-  const REMEMBERED_B: RegistrationRecord = {
+  const REMEMBERED_B: RememberedTarget = {
     targetKey: B_MATE.key,
     environmentId: ENV_B,
     origin: B_MATE.origin,
-    projectRef: { projectId: B_MATE.projectId, orgId: "org-1" },
-    name: "shop b",
+    orgId: "org-1",
   };
   const registered = (...environmentIds: ReadonlyArray<EnvironmentId>) =>
     environmentIds.map((environmentId) => ({ environmentId, origin: null }));
@@ -2083,7 +2064,8 @@ describe("the post-grant stage's Mate environments", () => {
           yield* settle;
           expect(environments.machines().get(MATE)?.guards.want).toBe(false);
           expect(rig.parked()).toContain(ENV_A);
-          expect(rig.records()).toContainEqual(REMEMBERED_A);
+          // Its kept session stays for when the delete fails.
+          expect(rig.forgotten).not.toContain(MATE);
           expect(rig.removed).toEqual([]);
           const before = {
             exchanges: rig.exchanges.filter(({ input }) => input.key === MATE).length,
@@ -2169,7 +2151,7 @@ describe("the post-grant stage's Mate environments", () => {
   it.effect("no exchange before the first grant (I10, AL-04), with no React", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const { clock, grant, rig, built } = yield* openAccount([REMEMBERED_A]);
+        const { clock, grant, rig, built, store } = yield* openAccount([REMEMBERED_A]);
         rig.openOn(ENV_A);
         const postGrant = yield* Effect.forkChild(built.postGrant);
         yield* clock.advance(SECOND);
@@ -2199,7 +2181,9 @@ describe("the post-grant stage's Mate environments", () => {
         ).toEqual([
           { key: MATE, origin: MATE_ORIGIN, projectId: "project-a", organizationId: "org-1" },
         ]);
-        expect(stage.environments.machines().get(MATE)?.credential.kind).toBe("exchanging");
+        expect(withMates(stage.environments, store).machines().get(MATE)?.credential.kind).toBe(
+          "exchanging",
+        );
       }),
     ),
   );
@@ -2256,7 +2240,7 @@ describe("the post-grant stage's Mate environments", () => {
         yield* settle;
         expect(rig.exchanges).toHaveLength(1);
         expect(rig.probes.length).toBeGreaterThan(0);
-        expect(rig.listening).toEqual({ records: 1, catalog: 1 });
+        expect(rig.listening).toEqual({ catalog: 1 });
         let heard = 0;
         environments.subscribe(() => {
           heard += 1;
@@ -2269,45 +2253,13 @@ describe("the post-grant stage's Mate environments", () => {
         expect(rig.probes.every(({ signal }) => signal.aborted)).toBe(true);
         expect(yield* Effect.promise(() => connect)).toEqual({ _tag: "Closed" });
         // The stage hears nothing more: no port, and nothing the tab does, reaches a machine.
-        expect(rig.listening).toEqual({ records: 0, catalog: 0 });
+        expect(rig.listening).toEqual({ catalog: 0 });
         yield* page.emit({ type: "visibility", hidden: true });
         yield* clock.advance(MINUTE);
         yield* page.emit({ type: "visibility", hidden: false });
         yield* settle;
         expect(rig.exchanges).toHaveLength(1);
         expect(heard).toBe(0);
-      }),
-    ),
-  );
-
-  it.effect.each([
-    {
-      name: "the registry takes it: its target is remembered",
-      installed: true,
-      records: [REMEMBERED_A],
-    },
-    {
-      name: "the registry refuses it: nothing is written",
-      installed: false,
-      records: [],
-    },
-  ])("an installed credential writes its target's record (H12): $name", (row) =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const { rig, environments } = yield* granted([]);
-        const connect = environments.connect(MATE, "user");
-        yield* settle;
-
-        rig.exchanges[0]!.answer(admitted(ENV_A, async () => ({ ok: row.installed })));
-        yield* settle;
-
-        expect(rig.records()).toEqual(row.records);
-        if (row.installed) {
-          expect(yield* Effect.promise(() => connect)).toEqual({
-            _tag: "Connected",
-            environmentId: ENV_A,
-          });
-        }
       }),
     ),
   );
@@ -2357,12 +2309,17 @@ describe("the post-grant stage's Mate environments", () => {
         if (row.install !== null) {
           void environments.connect(MATE, "user");
           yield* settle;
+          const environmentId = row.install.environmentId;
           rig.exchanges[0]!.answer(
             admitted(
-              row.install.environmentId,
+              environmentId,
               () =>
                 new Promise((resolve) => {
-                  finish = (ok) => resolve({ ok });
+                  finish = (ok) => {
+                    // The web's door keeps the session it installed, in place of the one before.
+                    if (ok) rig.keep({ ...REMEMBERED_A, environmentId });
+                    resolve({ ok });
+                  };
                 }),
             ),
           );
@@ -2377,42 +2334,6 @@ describe("the post-grant stage's Mate environments", () => {
         if (row.install !== null) finish(row.install.ok);
         yield* settle;
         expect([...new Set(rig.removed)]).toEqual(row.removed);
-      }),
-    ),
-  );
-
-  // A registration a machine holds is the Mate's live link. Records are personal context: a write
-  // that does not land — a full storage, which the web's port swallows — or another tab's write
-  // made without it says nothing about the link, and releasing it left a Mate this tab still held
-  // unregistered, so no door could open it, with nothing to exchange it again.
-  it.effect.each([
-    { name: "its record's write did not land", lands: false, elsewhere: null },
-    { name: "another tab stored the records without it", lands: true, elsewhere: [] },
-  ])("a registration its machine holds is kept though the records lack it: $name", (row) =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const { rig, environments } = yield* granted([]);
-        rig.landWrites(row.lands);
-        void environments.connect(MATE, "user");
-        yield* settle;
-        rig.exchanges[0]!.answer(
-          admitted(ENV_A, async () => {
-            // The registry takes it: the catalog publishes it before the record is written.
-            rig.catalog().environments([{ environmentId: ENV_A, origin: MATE_ORIGIN }]);
-            return { ok: true };
-          }),
-        );
-        yield* settle;
-        if (row.elsewhere !== null) rig.storeElsewhere(row.elsewhere, true);
-        yield* settle;
-
-        expect(environments.machines().get(MATE)?.credential).toMatchObject({
-          kind: "held",
-          environmentId: ENV_A,
-          installed: true,
-        });
-        expect(rig.records()).toEqual([]);
-        expect(rig.removed).toEqual([]);
       }),
     ),
   );
@@ -2454,7 +2375,6 @@ describe("the post-grant stage's Mate environments", () => {
             key: listed!.key,
             projectId: listed!.project.id,
             machines,
-            records: environments.records(),
           });
           expect(key).toBe(MATE);
           expect(machines.get(MATE)?.credential).toMatchObject({
@@ -2462,46 +2382,6 @@ describe("the post-grant stage's Mate environments", () => {
             environmentId: ENV_A,
             installed: true,
           });
-        }),
-      ),
-  );
-
-  /** Answers the oldest probe of this origin still in flight. */
-  const answerProbe = (
-    rig: ReturnType<typeof environmentRig>,
-    origin: string,
-    reading: ProbeReading,
-  ) =>
-    Effect.gen(function* () {
-      const probe = rig.probes.find(
-        (entry) => entry.input === origin && !answeredProbes.has(entry),
-      );
-      if (probe === undefined) throw new Error(`No probe of ${origin} is in flight.`);
-      answeredProbes.add(probe);
-      probe.answer(reading);
-      yield* settle;
-    });
-  const answeredProbes = new WeakSet<object>();
-
-  it.effect(
-    "a deep link on a device with no record exchanges the Mate its descriptor names first",
-    () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const { rig, environments } = yield* granted([]);
-          environments.setRoute(ENV_A);
-          yield* settle;
-          expect(rig.exchanges).toEqual([]);
-
-          yield* answerProbe(rig, MATE_ORIGIN, answering(ENV_A, A_MATE.projectId));
-
-          expect(
-            rig.exchanges.map(({ input: { key, expected, reason } }) => ({
-              key,
-              expected,
-              reason,
-            })),
-          ).toEqual([{ key: MATE, expected: null, reason: "restore" }]);
         }),
       ),
   );
@@ -2524,23 +2404,16 @@ describe("the post-grant stage's Mate environments", () => {
             },
           },
         );
-        // No descriptor names the route's environment: the named Mate's read is still out.
-        yield* answerProbe(rig, down.origin, { kind: "unreachable" });
-        yield* answerProbe(rig, coming.origin, { kind: "initializing", initAt: null });
-
         environments.setRoute(ENV_A);
         yield* settle;
         expect(rig.exchanges.map(({ input: { key, expected } }) => ({ key, expected }))).toEqual([
           { key: named.key, expected: null },
         ]);
 
-        // Neither is read again for the route: the one coming up only on its poll, the one only a
-        // failed read says is coming up not at all, as nobody waits on it. Each stays unanswered.
+        // The other Mates are never read for the route: nobody waits on them.
         yield* clock.advance(10 * SECOND);
-        yield* answerProbe(rig, coming.origin, { kind: "initializing", initAt: null });
-        expect(rig.probes.filter(({ input }) => input === down.origin)).toHaveLength(1);
-        expect(environments.index().reported.has(down.key)).toBe(false);
-        expect(environments.index().reported.has(coming.key)).toBe(false);
+        expect(rig.probes.map(({ input }) => input)).not.toContain(down.origin);
+        expect(rig.probes.map(({ input }) => input)).not.toContain(coming.origin);
       }),
     ),
   );
@@ -2604,7 +2477,10 @@ describe("the post-grant stage's Mate environments", () => {
           );
           yield* opened.grant.answer();
           yield* settle;
-          const { environments } = yield* opened.built.postGrant;
+          const environments = withMates(
+            (yield* opened.built.postGrant).environments,
+            opened.store,
+          );
           environments.setActiveOrganization(organization.organizationId);
           yield* settle;
           expect(opened.rig.exchanges).toEqual([]);
@@ -2657,12 +2533,11 @@ describe("the post-grant stage's Mate environments", () => {
           const drawn = ["1", "2", "3"].map((id) => {
             const listed = mate(id);
             const environmentId = EnvironmentId.make(`env-${id}`);
-            const record: RegistrationRecord = {
+            const record: RememberedTarget = {
               targetKey: listed.key,
               environmentId,
               origin: listed.origin,
-              projectRef: { projectId: listed.projectId, orgId: organization.organizationId },
-              name: listed.project.name,
+              orgId: organization.organizationId,
             };
             return { mate: listed, environmentId, record };
           });
@@ -2686,7 +2561,10 @@ describe("the post-grant stage's Mate environments", () => {
           );
           yield* opened.grant.answer();
           yield* settle;
-          const { environments } = yield* opened.built.postGrant;
+          const environments = withMates(
+            (yield* opened.built.postGrant).environments,
+            opened.store,
+          );
           opened.rig.catalog().environments(registered(...drawn.map((e) => e.environmentId)));
           environments.setActiveOrganization(organization.organizationId);
           yield* settle;
@@ -2730,12 +2608,11 @@ describe("the post-grant stage's Mate environments", () => {
         const drawn = ["1", "2"].map((id) => {
           const listed = mate(id);
           const environmentId = EnvironmentId.make(`env-${id}`);
-          const record: RegistrationRecord = {
+          const record: RememberedTarget = {
             targetKey: listed.key,
             environmentId,
             origin: listed.origin,
-            projectRef: { projectId: listed.projectId, orgId: organization.organizationId },
-            name: listed.project.name,
+            orgId: organization.organizationId,
           };
           return { mate: listed, environmentId, record };
         });
@@ -2755,7 +2632,7 @@ describe("the post-grant stage's Mate environments", () => {
         );
         yield* opened.grant.answer();
         yield* settle;
-        const { environments } = yield* opened.built.postGrant;
+        const environments = withMates((yield* opened.built.postGrant).environments, opened.store);
         opened.rig.catalog().environments(registered(...drawn.map((e) => e.environmentId)));
         environments.setActiveOrganization(organization.organizationId);
         yield* opened.page.emit({ type: "visibility", hidden: true });
@@ -2809,7 +2686,7 @@ describe("the post-grant stage's Mate environments", () => {
         }
         yield* opened.grant.answer();
         yield* settle;
-        const { environments } = yield* opened.built.postGrant;
+        const environments = withMates((yield* opened.built.postGrant).environments, opened.store);
         environments.setActiveOrganization(organization.organizationId);
         const leased = () =>
           [...opened.registry.get(opened.built.data.stateAtom).interests.values()].filter(
@@ -2851,7 +2728,7 @@ describe("the post-grant stage's Mate environments", () => {
           let pressing = true;
           const heard = { listener: (): void => undefined };
           const { rig, environments } = yield* granted(
-            [],
+            [REMEMBERED_A],
             [A_MATE],
             platformAdapter([A_MATE]),
             [A_MATE],
@@ -2865,7 +2742,6 @@ describe("the post-grant stage's Mate environments", () => {
               },
             },
           );
-          yield* answerProbe(rig, MATE_ORIGIN, answering(ENV_A, A_MATE.projectId));
           // Left in the same turn it was opened: only the Mate left last wants it.
           environments.setRoute(ENV_A);
           environments.setRoute(null);
@@ -2933,126 +2809,27 @@ describe("the post-grant stage's Mate environments", () => {
       ),
   );
 
-  it.effect(
-    "a Mate HQ holds online is not probed as the stage starts, and is once HQ lets it go",
-    () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          let online: ReadonlySet<string> = new Set([A_MATE.projectId]);
-          const heard = { listener: (): void => undefined };
-          const { clock, rig, environments } = yield* granted(
-            [],
-            [A_MATE],
-            platformAdapter([A_MATE]),
-            [A_MATE],
-            {
-              online: {
-                read: () => online,
-                subscribe: (listener) => {
-                  heard.listener = listener;
-                  return () => undefined;
-                },
-              },
-            },
-          );
-          yield* clock.advance(MINUTE);
-          yield* settle;
-          expect([...environments.machines().keys()]).toContain(MATE);
-          expect(rig.probes.map(({ input }) => input)).not.toContain(MATE_ORIGIN);
-
-          online = new Set();
-          heard.listener();
-          yield* settle;
-          expect(rig.probes.map(({ input }) => input)).toContain(MATE_ORIGIN);
-        }),
-      ),
-  );
-
-  // t10, 2026-10-03: under KRLS's official HQ, every listed zcp project — Mate or not, up or not —
-  // was read at load. A project HQ's current word speaks for and does not hold online waits for a
-  // lease.
-  it.effect(
-    "a project an official HQ's current word does not hold online is read only once a lease holds it",
-    () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const { clock, rig, environments } = yield* granted(
-            [],
-            [A_MATE],
-            platformAdapter([A_MATE]),
-            [A_MATE],
-            {
-              online: { read: () => new Set(), subscribe: () => () => undefined },
-              hqOrganization: {
-                read: () => organization.organizationId,
-                subscribe: () => () => undefined,
-              },
-            },
-          );
-          yield* clock.advance(MINUTE);
-          yield* settle;
-          expect([...environments.machines().keys()]).toContain(MATE);
-          expect(rig.probes.map(({ input }) => input)).not.toContain(MATE_ORIGIN);
-
-          environments.setOnScreen(A_MATE.projectId);
-          yield* settle;
-          expect(rig.probes.map(({ input }) => input)).toContain(MATE_ORIGIN);
-        }),
-      ),
-  );
-
-  it.effect("a Mate listed where no HQ will answer is read at once, never waiting for HQ", () =>
+  // A Mate is read only while something waits on it (HANDOFF §6): the platform's statuses say
+  // the rest, and no listing, HQ word or load probes a Mate nobody opened.
+  it.effect("a listed Mate nobody waits on is never probed, and is once a lease holds it", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const { rig, environments } = yield* granted(
+        const { clock, rig, environments } = yield* granted(
           [],
           [A_MATE],
           platformAdapter([A_MATE]),
           [A_MATE],
-          {
-            online: { read: () => "absent", subscribe: () => () => undefined },
-          },
         );
+        yield* clock.advance(MINUTE);
         yield* settle;
         expect([...environments.machines().keys()]).toContain(MATE);
+        expect(rig.probes.map(({ input }) => input)).not.toContain(MATE_ORIGIN);
+
+        environments.setOnScreen(A_MATE.projectId);
+        yield* settle;
         expect(rig.probes.map(({ input }) => input)).toContain(MATE_ORIGIN);
       }),
     ),
-  );
-
-  it.effect(
-    "a Mate listed before HQ answers waits for its word, and HQ holding it online keeps it unread",
-    () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          let online: ReadonlySet<string> | null = null;
-          const heard = { listener: (): void => undefined };
-          const { clock, rig, environments } = yield* granted(
-            [],
-            [A_MATE],
-            platformAdapter([A_MATE]),
-            [A_MATE],
-            {
-              online: {
-                read: () => online,
-                subscribe: (listener) => {
-                  heard.listener = listener;
-                  return () => undefined;
-                },
-              },
-            },
-          );
-          yield* settle;
-          expect([...environments.machines().keys()]).toContain(MATE);
-          expect(rig.probes.map(({ input }) => input)).not.toContain(MATE_ORIGIN);
-
-          online = new Set([A_MATE.projectId]);
-          heard.listener();
-          yield* clock.advance(MINUTE);
-          yield* settle;
-          expect(rig.probes.map(({ input }) => input)).not.toContain(MATE_ORIGIN);
-        }),
-      ),
   );
 
   it.effect(
@@ -3107,80 +2884,6 @@ describe("the post-grant stage's Mate environments", () => {
       ),
   );
 
-  /** Three Mates, each remembered, the third the route's. */
-  const routeScene = () => {
-    const mates = [mate("1"), mate("2"), mate("3")];
-    const route = mates[2]!;
-    const environment = EnvironmentId.make("env-3");
-    const records = mates.map((listed, index): RegistrationRecord => ({
-      targetKey: listed.key,
-      environmentId: listed === route ? environment : EnvironmentId.make(`env-${index}`),
-      origin: listed.origin,
-      projectRef: { projectId: listed.projectId, orgId: "org-1" },
-      name: listed.project.name,
-    }));
-    return { mates, route, environment, records };
-  };
-
-  it.effect("the route is set before the first probe of a listing change", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const { mates, route, environment, records } = routeScene();
-        const { rig, environments, releaseRoster } = yield* granted(
-          records.filter(({ environmentId }) => environmentId !== environment),
-          mates,
-          undefined,
-          undefined,
-          undefined,
-          true,
-          true,
-        );
-        environments.setRoute(environment);
-        yield* settle;
-        expect(rig.probes.map(({ input }) => input)).not.toContain("unknown-environment");
-
-        // Another tab stores the route's record; its storage event has not reached this tab yet.
-        rig.storeElsewhere(records, false);
-        // The organization's projects are read: every remembered Mate's container is read at
-        // once, the route's first.
-        releaseRoster();
-        yield* settle;
-        expect(rig.probes.map(({ input }) => input)[0]).toBe(route.origin);
-        expect(rig.probes.map(({ input }) => input).toSorted()).toEqual(
-          mates.map(({ origin }) => origin).toSorted(),
-        );
-      }),
-    ),
-  );
-
-  it.effect("a record naming the route has the route's origin probed first", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const { mates, route, environment, records } = routeScene();
-        const { rig, environments } = yield* granted(
-          [],
-          mates,
-          undefined,
-          undefined,
-          undefined,
-          false,
-          true,
-        );
-        environments.setRoute(environment);
-        yield* settle;
-        expect(rig.probes.map(({ input }) => input)).not.toContain("unknown-environment");
-
-        // The organization's projects are listed already; another tab remembers every Mate.
-        rig.storeElsewhere(records, true);
-        yield* settle;
-        expect(rig.probes.map(({ input }) => input)[0]).toBe(route.origin);
-        expect(rig.probes.map(({ input }) => input).toSorted()).toEqual(
-          mates.map(({ origin }) => origin).toSorted(),
-        );
-      }),
-    ),
-  );
-
   it.effect("the socket admission follows the route, and lets go when the account closes", () =>
     Effect.scoped(
       Effect.gen(function* () {
@@ -3213,12 +2916,11 @@ describe("the post-grant stage's Mate environments", () => {
   it.effect("an unchanged listing publishes no target change", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const { clock, grant, rig, environments } = yield* granted([REMEMBERED_A]);
+        const { clock, grant, rig, store } = yield* granted([REMEMBERED_A]);
         yield* clock.advance(SECOND);
         yield* settle;
-        const machines = environments.machines();
+        const facts = store.state().facts;
         const probes = rig.probes.length;
-        const reads = rig.recordReads();
 
         // A renewal admits the same evidence: the listings are derived again, and none changed.
         while (grant.rounds() < 2) {
@@ -3227,9 +2929,9 @@ describe("the post-grant stage's Mate environments", () => {
         }
         yield* grant.answer();
 
-        expect(rig.recordReads()).toBe(reads);
         expect(rig.probes).toHaveLength(probes);
-        expect(environments.machines()).toBe(machines);
+        // Nothing of any Mate was written again.
+        expect(store.state().facts).toBe(facts);
       }),
     ),
   );

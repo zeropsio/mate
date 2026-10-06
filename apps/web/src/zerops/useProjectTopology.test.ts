@@ -260,55 +260,49 @@ describe("the project an environment belongs to (C3)", () => {
     ]),
   };
   const nowhere: EnvironmentProjects = { described: new Map(), listed: new Map() };
-  const record = (projectId: string): RegistrationRecord => ({
-    targetKey: `${projectId}:zcp` as RegistrationRecord["targetKey"],
-    environmentId: ENVIRONMENT,
-    origin: null,
-    projectRef: { projectId, orgId: organization.organizationId },
-    name: null,
-  });
+  const read = (projectId: string) => ({ projectId, orgId: organization.organizationId });
 
   it.each<{
     readonly name: string;
-    readonly record: RegistrationRecord | undefined;
+    readonly mate: { readonly projectId: string; readonly orgId: string | null } | undefined;
     readonly located: EnvironmentProjects;
     readonly project: string | null;
   }>([
-    { name: "nothing places it", record: undefined, located: nowhere, project: null },
+    { name: "nothing places it", mate: undefined, located: nowhere, project: null },
     {
       name: "its descriptor states a project",
-      record: undefined,
+      mate: undefined,
       located: { described: new Map([[ENVIRONMENT, other.projectId]]), listed: new Map() },
       project: other.projectId,
     },
     {
-      name: "its registration record names a project",
-      record: record(owner.projectId),
+      name: "the Mate this tab read serving it names a project",
+      mate: read(owner.projectId),
       located: nowhere,
       project: owner.projectId,
     },
     {
       name: "a listing row reaches it",
-      record: undefined,
+      mate: undefined,
       located: { described: new Map(), listed: new Map([[ENVIRONMENT, other.projectId]]) },
       project: other.projectId,
     },
     {
-      name: "its descriptor and its record disagree",
-      record: record(owner.projectId),
+      name: "its descriptor and its Mate's reading disagree",
+      mate: read(owner.projectId),
       located: { described: new Map([[ENVIRONMENT, other.projectId]]), listed: new Map() },
       project: other.projectId,
     },
     {
       name: "its project is not in the inventory",
-      record: record("project-gone"),
+      mate: read("project-gone"),
       located: nowhere,
       project: null,
     },
-  ])("resolves $project when $name", ({ record, located, project: expected }) => {
+  ])("resolves $project when $name", ({ mate, located, project: expected }) => {
     expect(
-      environmentProjectRef({ environmentId: ENVIRONMENT, record, located, inventory })
-        ?.projectId ?? null,
+      environmentProjectRef({ environmentId: ENVIRONMENT, mate, located, inventory })?.projectId ??
+        null,
     ).toBe(expected);
   });
 });

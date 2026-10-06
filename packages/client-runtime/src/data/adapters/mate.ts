@@ -30,6 +30,12 @@
  */
 import type { EnvironmentId } from "@t3tools/contracts";
 
+import {
+  readZeropsContainer,
+  readZeropsInitAt,
+  type DescriptorRead,
+  type FetchLike,
+} from "../../zerops/containerHealth.ts";
 import { DOOR_MINT_PACE, makeMintPace } from "../../zerops/doorThrowaway.ts";
 import type { Instant } from "../../zerops/data/access/grant.ts";
 import type { IdentityExchangeReason } from "../../zerops/diagnostics.ts";
@@ -104,11 +110,10 @@ export interface MateTarget {
   readonly presence: Presence | null;
   /** The Mate's public origin; null while the platform gives it none. */
   readonly origin: string | null;
-  readonly platform: PlatformStatus;
+  /** Its project's and service's statuses; null where the listing does not list its project. */
+  readonly platform: PlatformStatus | null;
   /** The environment a session kept for it names (C1); read when the target is first seen. */
   readonly record: EnvironmentId | null;
-  /** Listed in the organization shown, or named by the route: surfaces draw it. */
-  readonly shown: boolean;
 }
 
 export interface MateAdapterPorts<C> {
@@ -151,7 +156,7 @@ export interface MateMachines {
 }
 
 export interface MateAdapter {
-  /** Every Mate target the listing or a kept session names now; one left out is not shown. */
+  /** Every Mate target the listing or a kept session names now; one left out is no longer shown. */
   readonly setTargets: (targets: ReadonlyArray<MateTarget>) => void;
   /** A project being deleted takes no demand; its leases stand for when it fails. */
   readonly setDeleting: (projectId: string, deleting: boolean) => void;
@@ -197,6 +202,21 @@ export interface MateAdapter {
   readonly subscribe: (listener: () => void) => () => void;
   /** The account closed: every probe, exchange, timer and waiting Connect ends. */
   readonly dispose: () => void;
+}
+
+/**
+ * A Mate's container read over this page's `fetch`: its descriptor through the tab's one share of
+ * it (`descriptor`), and its `/healthz`.
+ */
+export function mateContainerReads(
+  descriptor: DescriptorRead,
+): Pick<MateAdapterPorts<unknown>, "probe" | "readInitAt"> {
+  // @effect-diagnostics-next-line globalFetch:off -- the Mate adapter's one reach of a Mate's container; plain promises, no Effect runtime.
+  const fetch: FetchLike = (url, init) => globalThis.fetch(url, init);
+  return {
+    probe: (origin, signal, ask) => readZeropsContainer(origin, { descriptor, fetch }, signal, ask),
+    readInitAt: (origin, signal) => readZeropsInitAt(origin, fetch, signal),
+  };
 }
 
 // ── Intents (C8) ─────────────────────────────────────────────────────────────────────────────
@@ -1058,6 +1078,7 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
         orgId: entry.orgId,
         origin: entry.origin,
         shown: entry.shown,
+        watched: watched(entry),
         environment: entry.environment,
         container: entry.container,
       };
@@ -1068,7 +1089,8 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
         held.container === value.container &&
         held.orgId === value.orgId &&
         held.origin === value.origin &&
-        held.shown === value.shown
+        held.shown === value.shown &&
+        held.watched === value.watched
       )
         continue;
       entry.written = value;
@@ -1195,20 +1217,23 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
           const fresh = entry === undefined;
           entry ??= entryFor(target.key, target.record);
           entry.orgId = target.orgId ?? entry.orgId;
-          entry.shown = target.shown;
+          entry.shown = true;
           const moved = entry.origin !== target.origin;
           entry.origin = target.origin;
           entry.listed = true;
-          const pushed = !fresh && statusMoved(entry.known, target.platform);
-          const platform =
-            target.platform.service === null && entry.known.service !== null
-              ? { ...target.platform, service: entry.known.service }
-              : target.platform;
-          entry.known = {
-            project: target.platform.project,
-            service: target.platform.service ?? entry.known.service,
-          };
-          transition(entry, { type: "PLATFORM", status: platform });
+          const listedStatus = target.platform;
+          const pushed = !fresh && listedStatus !== null && statusMoved(entry.known, listedStatus);
+          if (listedStatus !== null) {
+            const platform =
+              listedStatus.service === null && entry.known.service !== null
+                ? { ...listedStatus, service: entry.known.service }
+                : listedStatus;
+            entry.known = {
+              project: listedStatus.project,
+              service: listedStatus.service ?? entry.known.service,
+            };
+            transition(entry, { type: "PLATFORM", status: platform });
+          }
           if (fresh) {
             const record = restored.get(target.key);
             if (record !== undefined) {

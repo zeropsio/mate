@@ -2,11 +2,12 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { initialContainer } from "../../zerops/environments/containerMachine.ts";
 import { initialEnvironment } from "../../zerops/environments/environmentMachine.ts";
+import { EnvironmentId } from "@t3tools/contracts";
 import { mateLinkScope, type MateLinkValue } from "../families/mateLink.ts";
 import { emptyAccount, type AccountState } from "../model.ts";
 import { reduceAccount } from "../reducer.ts";
 import { readsOfState } from "../store.ts";
-import { mateLink, mateLinks } from "./mateLinks.ts";
+import { mateLink, mateLinks, mateOfEnvironment } from "./mateLinks.ts";
 
 const value = (key: string, overrides: Partial<MateLinkValue> = {}): MateLinkValue => ({
   key,
@@ -14,6 +15,7 @@ const value = (key: string, overrides: Partial<MateLinkValue> = {}): MateLinkVal
   orgId: "org",
   origin: `https://${key.replace(":", "-")}.example`,
   shown: true,
+  watched: false,
   environment: initialEnvironment({ record: null }),
   container: initialContainer(),
   ...overrides,
@@ -81,5 +83,52 @@ describe("mateLinks", () => {
 
   it("names no Mate it never read", () => {
     expect(mateLink.derive(readsOfState(emptyAccount), "p1:s1")).toBeNull();
+  });
+});
+
+describe("mateOfEnvironment", () => {
+  const ENV = EnvironmentId.make("env-1");
+  const held = initialEnvironment({ record: null });
+  it.each<{
+    readonly name: string;
+    readonly values: ReadonlyArray<MateLinkValue>;
+    readonly expected: string | null;
+  }>([
+    { name: "no Mate read: none", values: [], expected: null },
+    {
+      name: "the Mate holding its credential",
+      values: [
+        value("p1:s1", {
+          environment: {
+            ...held,
+            credential: {
+              kind: "held",
+              environmentId: ENV,
+              installed: true,
+              staleBlock: false,
+              rereading: null,
+            },
+          },
+        }),
+      ],
+      expected: "p1:s1",
+    },
+    {
+      name: "the Mate a kept session remembers it for",
+      values: [
+        value("p2:s2"),
+        value("p1:s1", { environment: initialEnvironment({ record: ENV }) }),
+      ],
+      expected: "p1:s1",
+    },
+    {
+      name: "a Mate no longer shown still answers for it",
+      values: [value("p1:s1", { shown: false, environment: initialEnvironment({ record: ENV }) })],
+      expected: "p1:s1",
+    },
+  ])("$name", ({ values, expected }) => {
+    expect(
+      mateOfEnvironment.derive(readsOfState(read(emptyAccount, values)), ENV)?.key ?? null,
+    ).toBe(expected);
   });
 });

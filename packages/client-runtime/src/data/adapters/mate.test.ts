@@ -86,7 +86,6 @@ const target = (projectId: string, overrides: Partial<MateTarget> = {}): MateTar
   origin: `https://${projectId}.example`,
   platform: { project: "ACTIVE", service: "ACTIVE" },
   record: null,
-  shown: true,
   ...overrides,
 });
 

@@ -5,7 +5,6 @@
  */
 import { describe, expect, it } from "@effect/vitest";
 import { EnvironmentId } from "@t3tools/contracts";
-import type { ZeropsStorageAdapter } from "@t3tools/client-runtime/zerops";
 import {
   makeAccountRuntime,
   type AccountEnvironmentPorts,
@@ -29,12 +28,7 @@ import {
   type ManagedZeropsDataRuntime,
   type ZeropsDataAdapter,
 } from "@t3tools/client-runtime/zerops/data";
-import {
-  knownServices,
-  REGISTRATION_RECORDS_KEY,
-  type ProbeReading,
-  type RegistrationRecord,
-} from "@t3tools/client-runtime/zerops/environments";
+import { knownServices, type ProbeReading } from "@t3tools/client-runtime/zerops/environments";
 import { makePlatformSignals } from "@t3tools/client-runtime/zerops/knowledge";
 import { selectCandidates } from "@t3tools/client-runtime/zerops/projections";
 import {
@@ -47,9 +41,13 @@ import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
 import { AtomRegistry } from "effect/unstable/reactivity";
-import { projectServicesAtom, servicesScope } from "@t3tools/client-runtime/data";
+import {
+  projectServicesAtom,
+  servicesScope,
+  shownMateLinksAtom,
+} from "@t3tools/client-runtime/data";
 
-import { hqAbsent, loadAccountRecords, memoryIntents } from "./account-ports";
+import { hqAbsent, memoryIntents } from "./account-ports";
 import { mobileCandidates } from "./candidate-listing";
 import { openMateRoute, openMateScreen } from "./open-mate";
 import { zeropsCandidatePresentation } from "./presentation";
@@ -184,16 +182,6 @@ const heldVerifier = () => {
   };
 };
 
-/** The device's keychain, as the session's storage adapter reaches it. */
-const deviceStorage = (): ZeropsStorageAdapter => {
-  const held = new Map<string, string>();
-  return {
-    get: async (key) => held.get(key) ?? null,
-    set: async (key, value) => void held.set(key, value),
-    remove: async (key) => void held.delete(key),
-  };
-};
-
 /** Lets every fiber and promise the last step woke run to its next wait. */
 const settle = Effect.gen(function* () {
   for (let turn = 0; turn < 20; turn++) {
@@ -210,19 +198,6 @@ const openMobileAccount = Effect.fnUntraced(function* (clock: DeadlineClock) {
   const registry = AtomRegistry.make();
   const place = platform();
   const grant = heldVerifier();
-  const storage = deviceStorage();
-  const remembered: RegistrationRecord = {
-    targetKey: KEY,
-    environmentId: ENVIRONMENT_ID,
-    origin: ORIGIN,
-    projectRef: { projectId: PROJECT_ID, orgId: ORGANIZATION_ID },
-    name: "shop",
-  };
-  // An earlier session on this device connected the Mate.
-  const earlier = yield* Effect.promise(() => loadAccountRecords(storage, USER_ID));
-  earlier.setItem(REGISTRATION_RECORDS_KEY, JSON.stringify([remembered]));
-  yield* settle;
-  const records = yield* Effect.promise(() => loadAccountRecords(storage, USER_ID));
 
   const exchanges: Array<DoorRequest> = [];
   const retried: Array<EnvironmentId> = [];
@@ -262,10 +237,11 @@ const openMobileAccount = Effect.fnUntraced(function* (clock: DeadlineClock) {
     }),
     readInitAt: async () => null,
     intents: memoryIntents(),
-    records,
     catalog: {
       listen: (listener) => {
         catalog = listener;
+        // An earlier session on this device registered the Mate: the device's catalog keeps it.
+        listener.environments([{ environmentId: ENVIRONMENT_ID, origin: ORIGIN }]);
         return () => undefined;
       },
     },
@@ -273,6 +249,10 @@ const openMobileAccount = Effect.fnUntraced(function* (clock: DeadlineClock) {
     closeOffPending: { read: () => new Set(), subscribe: () => () => undefined },
     ...hqAbsent(),
   };
+  // The organization's roster and services, as the account's store reads them.
+  const store = mountRoster(registry, ORGANIZATION_ID, [place.projectRow], {
+    services: [place.serviceRow()],
+  });
   const built = yield* Effect.gen(function* () {
     const data: ManagedZeropsDataRuntime = yield* makeZeropsDataRuntime({
       scope,
@@ -294,13 +274,10 @@ const openMobileAccount = Effect.fnUntraced(function* (clock: DeadlineClock) {
       }),
       atomRegistry: registry,
       environments: ports,
+      store,
     });
   }).pipe(Effect.provideService(Clock.Clock, clock));
   yield* Effect.addFinalizer(() => built.close("application-close"));
-  // The organization's roster and services, as the account's store reads them.
-  const store = mountRoster(registry, ORGANIZATION_ID, [place.projectRow], {
-    services: [place.serviceRow()],
-  });
   let serviceVersion = 1;
 
   /** The Mate's row in the picker, as it reads the runtime's machines now. */
@@ -319,7 +296,7 @@ const openMobileAccount = Effect.fnUntraced(function* (clock: DeadlineClock) {
           () => knownServices(registry.get(projectServicesAtom(PROJECT_ID)), nowMs),
         ),
       ],
-      machines: environments.machines(),
+      machines: registry.get(shownMateLinksAtom).machines,
       nowMs,
     });
     const candidate = listing.state === "known" ? listing.value[0] : undefined;
@@ -360,6 +337,8 @@ const openMobileAccount = Effect.fnUntraced(function* (clock: DeadlineClock) {
     row,
     serviceStatus,
     catalog: () => catalog!,
+    /** Each Mate's environment machine, as the account's store holds it. */
+    machines: () => registry.get(shownMateLinksAtom).machines,
   };
 });
 
@@ -400,7 +379,7 @@ describe("a Mate on mobile", () => {
         expect(account.exchanges.map(({ key, reason }) => ({ key, reason }))).toEqual([
           { key: KEY, reason: "restore" },
         ]);
-        expect(environments.machines().get(KEY)?.credential.kind).toBe("held");
+        expect(account.machines().get(KEY)?.credential.kind).toBe("held");
       }),
     ),
   );
@@ -430,7 +409,7 @@ describe("a Mate on mobile", () => {
         expect(account.exchanges.map(({ key, reason }) => ({ key, reason }))).toEqual([
           { key: KEY, reason: "restore" },
         ]);
-        expect(environments.machines().get(KEY)?.credential.kind).toBe("held");
+        expect(account.machines().get(KEY)?.credential.kind).toBe("held");
       }),
     ),
   );

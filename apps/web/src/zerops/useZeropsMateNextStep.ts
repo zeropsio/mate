@@ -24,7 +24,7 @@ import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 
 import { zeropsMateAt } from "./mateIdentities";
 import { useZeropsProjectFlowOptional } from "./projectFlowContext";
-import { useRegistrationRecord } from "./registrationRecords";
+import { useMateOfEnvironment } from "./accountEnvironments";
 import type { ReviewTarget } from "./review";
 import { useZeropsInventory } from "./ZeropsInventoryProvider";
 import { useZeropsMateDirectory } from "./useZeropsMates";
@@ -55,7 +55,7 @@ const UNKNOWN: ZeropsMateNextStep = { kind: "unknown" };
 export function useZeropsMateNextStep(threadRef: ScopedThreadRef | null): ZeropsMateNextStep {
   const flow = useZeropsProjectFlowOptional();
   const inventory = useZeropsInventory();
-  const projectId = useRegistrationRecord(threadRef?.environmentId)?.projectRef?.projectId;
+  const projectId = useMateOfEnvironment(threadRef?.environmentId)?.projectId;
   const mates = useZeropsMateDirectory();
 
   const project = inventory.projects.find((entry) => entry.id === projectId);

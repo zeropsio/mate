@@ -30,6 +30,7 @@ import { SidebarZeropsTree } from "../../components/zerops/SidebarZeropsTree";
 import { useConversationView } from "../../routes/-environmentTargets";
 import { RouteGateView } from "../../routes/-routeGate";
 import { ZeropsDataProvider } from "../ZeropsDataProvider";
+import { AccountStoreContext } from "../ZeropsAccountData";
 import { conversationAccess, useZeropsInventory, withheldProjectNotice } from "../inventoryContext";
 import { useZeropsSession } from "../ZeropsSessionProvider";
 import { useNowMs } from "../useNowMs";
@@ -129,7 +130,7 @@ function HarnessAccountData({
       demandDetail: observation.demandDetail,
     });
   }, [observation, orgId, registry, store]);
-  return children;
+  return createElement(AccountStoreContext, { value: store, children });
 }
 
 /**

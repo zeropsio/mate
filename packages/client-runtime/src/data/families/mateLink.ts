@@ -22,8 +22,13 @@ export interface MateLinkValue {
   readonly orgId: string | null;
   /** Where its Mate is reached, as the listing or the session kept for it names it. */
   readonly origin: string | null;
-  /** Listed in the organization shown, or held by a demand: surfaces draw it. */
+  /** Listed now — by the listing, or by a session kept for it: surfaces draw it. */
   readonly shown: boolean;
+  /**
+   * Something waits on it — the route, the screen, a lease, our verb's intent — so it is read
+   * itself now: its own readings are current. Otherwise only the platform's statuses are.
+   */
+  readonly watched: boolean;
   readonly environment: EnvironmentMachine;
   readonly container: ContainerMachine;
 }
@@ -37,11 +42,22 @@ declare module "../model.ts" {
 /** The index of the Mates shown, under its one key. */
 export const SHOWN_MATES = { name: "mateLinkShown", key: "shown" } as const;
 
+/** The index of each Mate by the environment it serves: the one it holds, else the one it remembers. */
+export const MATE_ENVIRONMENTS = "mateLinkEnvironment";
+
+const environmentOf = (value: MateLinkValue): string | null =>
+  value.environment.credential.kind === "held"
+    ? value.environment.credential.environmentId
+    : value.environment.record;
+
 export const mateLinkFamily: FamilySpec<"mateLink"> = {
   family: "mateLink",
   authority: "mate",
   scope: { source: "mate", suffix: "link", leaving: "removed", demand: "detail" },
-  indexes: [{ name: SHOWN_MATES.name, keyOf: (value) => (value.shown ? SHOWN_MATES.key : null) }],
+  indexes: [
+    { name: SHOWN_MATES.name, keyOf: (value) => (value.shown ? SHOWN_MATES.key : null) },
+    { name: MATE_ENVIRONMENTS, keyOf: environmentOf },
+  ],
 };
 
 /** A Mate project's link scope: the targets of its project the adapter reads. */
