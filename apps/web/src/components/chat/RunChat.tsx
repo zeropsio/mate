@@ -4778,8 +4778,9 @@ const RETOP_MARGIN_PX = 400;
  * The rows as they stand now, what holds them unchanged since they were
  * drawn: a height easing moved the rows under it. Only the rows near the
  * scroll's view are read again — a long history's thousands would take
- * milliseconds a frame — by where each last stood; one far from it keeps
- * its place, and is never glided.
+ * milliseconds a frame — by where each last stood; one far from it, or one
+ * whose place is unknown since a scroll took the view away, is unknown,
+ * and is never glided (`rowShifts`).
  */
 function retopped(
   drawn: ReadonlyMap<string, HolderRows>,
@@ -4795,12 +4796,20 @@ function retopped(
   const cardTops = new Map(lines.rows.map(({ key, top }) => [key, top] as const));
   const rows = new Map<string, HolderRows>();
   for (const [holderKey, held] of drawn) {
-    const base = holderKey === "" ? 0 : (cardTops.get(holderKey) ?? 0);
+    // A card far from the view: its calls' places are unknown too.
+    const base = holderKey === "" ? 0 : (cardTops.get(holderKey) ?? null);
+    if (base === null) {
+      rows.set(holderKey, {
+        holder: held.holder,
+        rows: held.rows.map((row) => ({ ...row, top: null })),
+      });
+      continue;
+    }
     rows.set(holderKey, {
       holder: held.holder,
       rows: held.rows.map((row) =>
-        base + row.top < near.top || base + row.top > near.bottom
-          ? row
+        row.top === null || base + row.top < near.top || base + row.top > near.bottom
+          ? { ...row, top: null }
           : { ...row, top: topIn(held.holder, row.row) },
       ),
     });

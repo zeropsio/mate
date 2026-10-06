@@ -101,7 +101,7 @@ describe("landingHosts", () => {
 // from where each stood and stands (a pair's row tucks under its question,
 // a line's height changes, one leaves).
 describe("rowShifts", () => {
-  const rows = (...pairs: ReadonlyArray<readonly [string, number]>) =>
+  const rows = (...pairs: ReadonlyArray<readonly [string, number | null]>) =>
     pairs.map(([key, top]) => ({ key, top }));
   it.each([
     {
@@ -134,6 +134,16 @@ describe("rowShifts", () => {
       before: rows(["a", 0], ["b", 40], ["c", 100], ["d", 130]),
       after: rows(["a", 0], ["c", 40], ["d", 70], ["b", 120]),
       shifts: { c: -60, d: -60, b: 80 },
+    },
+    {
+      what: "a line joining between two, a row far from the view unread since a scroll",
+      before: [
+        { key: "a", top: 0 },
+        { key: "c", top: null },
+        { key: "d", top: 124 },
+      ],
+      after: rows(["a", 0], ["b", 52], ["c", 124], ["d", 196]),
+      shifts: { d: 72 },
     },
     {
       what: "a line leaving, gone from the page",

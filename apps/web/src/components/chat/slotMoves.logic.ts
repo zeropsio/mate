@@ -33,10 +33,13 @@ export function landingHosts(
   return new Set(leaving.filter((key) => stood.has(key) || drawn.has(key)));
 }
 
-/** A row of a run's history as it was drawn: its key, and its top in what holds it. */
+/**
+ * A row of a run's history as it was drawn: its key, and its top in what
+ * holds it — null where it was not read since the view moved far from it.
+ */
 export interface DrawnRow {
   readonly key: string;
-  readonly top: number;
+  readonly top: number | null;
 }
 
 /**
@@ -60,7 +63,9 @@ export function rowShifts(
   const stood = new Map(before.map((row) => [row.key, row.top] as const));
   for (const row of after) {
     const top = stood.get(row.key);
-    if (top !== undefined && Math.abs(row.top - top) >= 0.5) shifts.set(row.key, row.top - top);
+    // A row with no place read is left as it is.
+    if (top === undefined || top === null || row.top === null) continue;
+    if (Math.abs(row.top - top) >= 0.5) shifts.set(row.key, row.top - top);
   }
   return shifts;
 }
