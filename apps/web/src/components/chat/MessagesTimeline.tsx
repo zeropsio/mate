@@ -1214,11 +1214,15 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     );
   }, [shown]);
 
+  // Its own memo: a ref made afresh with every other change of the rows'
+  // shared state handed every message's markdown a new prop, and each was
+  // parsed again.
+  const threadRef = useMemo(() => parseScopedThreadKey(routeThreadKey), [routeThreadKey]);
   const sharedState = useMemo<TimelineRowSharedState>(
     () => ({
       timestampFormat,
       routeThreadKey,
-      threadRef: parseScopedThreadKey(routeThreadKey),
+      threadRef,
       markdownCwd,
       resolvedTheme,
       workspaceRoot,
@@ -1247,6 +1251,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     [
       timestampFormat,
       routeThreadKey,
+      threadRef,
       markdownCwd,
       resolvedTheme,
       workspaceRoot,
