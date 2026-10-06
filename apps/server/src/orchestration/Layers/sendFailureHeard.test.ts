@@ -26,6 +26,7 @@ import {
 } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as PubSub from "effect/PubSub";
@@ -709,4 +710,225 @@ describe("a message Claude could not take", () => {
       ).toEqual([]);
     }).pipe(Effect.scoped),
   );
+});
+
+/**
+ * What a driver's adapter does when the reactor interrupts its send while the
+ * send holds the turn (Cursor, Grok, Antigravity): the person's Stop reached
+ * the send first.
+ */
+const sendInterrupted = (emit: Emit, turnId: TurnId): Effect.Effect<void> =>
+  // Each cancels the prompt at the agent and ends the turn as a Stop ends it.
+  emit("turn.completed", { turnId, payload: { state: "cancelled", stopReason: "cancelled" } });
+
+type StopMoment = "fresh" | "steer" | "failing";
+
+/**
+ * The person stops a running turn, then sends their next message, with the
+ * reactor forking each send as in production. `fresh`: Stop during a turn of
+ * its own. `steer`: Stop after a follow-up went to the running turn — Claude,
+ * Codex and OpenCode take it into the turn; Cursor, Grok and Antigravity hold
+ * the turn in their send, so the follow-up waits for it. `failing`: the turn
+ * fails just as the Stop lands, its failure told after the Stop.
+ */
+function makeStopRun(driver: Driver, moment: StopMoment, lagMs: number) {
+  return Effect.gen(function* () {
+    const baseDir = yield* tempDir;
+    const events = yield* fakeEvents(driver, lagMs);
+    const { emit, instanceId } = events;
+    let sendCalls = 0;
+    let turns = 0;
+    type Answer = "end" | "cancelled" | "failed";
+    // The agent's running turn. Whole-turn drivers' sends wait on its answer.
+    let live: { readonly turnId: TurnId; readonly answer: Deferred.Deferred<Answer> } | undefined;
+    const end = (turnId: TurnId, payload: unknown) => emit("turn.completed", { turnId, payload });
+    const failure = "Model request failed: 500";
+
+    const sendTurn: ProviderServiceShape["sendTurn"] = () =>
+      Effect.gen(function* () {
+        sendCalls += 1;
+        if (live !== undefined && !holdsTurn(driver)) {
+          // A follow-up into the running turn.
+          return { threadId: THREAD, turnId: live.turnId };
+        }
+        turns += 1;
+        const turnId = TurnId.make(`turn-${turns}`);
+        const answer = yield* Deferred.make<Answer>();
+        const turn = { turnId, answer };
+        live = turn;
+        yield* emit("turn.started", { turnId, payload: {} });
+        if (!holdsTurn(driver)) return { threadId: THREAD, turnId };
+        const outcome = yield* Deferred.await(answer).pipe(
+          Effect.onInterrupt(() =>
+            Effect.suspend(() => {
+              if (live !== turn) return Effect.void;
+              live = undefined;
+              return sendInterrupted(emit, turnId);
+            }),
+          ),
+        );
+        if (live === turn) live = undefined;
+        if (outcome === "failed") {
+          yield* end(turnId, { state: "failed", errorMessage: failure });
+          return yield* new ProviderAdapterTurnEndedError({
+            provider: driver,
+            threadId: THREAD,
+            turnId,
+            detail: failure,
+          });
+        }
+        yield* end(turnId, {
+          state: outcome === "cancelled" ? "cancelled" : "completed",
+          ...(outcome === "cancelled" ? { stopReason: "cancelled" } : {}),
+        });
+        return { threadId: THREAD, turnId };
+      });
+
+    // Each driver's Stop, as its adapter's interruptTurn ends the turn.
+    const interruptTurn: ProviderServiceShape["interruptTurn"] = () =>
+      Effect.gen(function* () {
+        const turn = live;
+        if (holdsTurn(driver)) {
+          // The agent answers the cancel; the send ends the turn.
+          if (turn !== undefined) yield* Deferred.succeed(turn.answer, "cancelled");
+          return;
+        }
+        live = undefined;
+        switch (driver) {
+          case "claudeAgent":
+            // Stop closes Claude's session.
+            if (turn !== undefined) yield* end(turn.turnId, { state: "interrupted" });
+            yield* exited(emit, "graceful");
+            return;
+          case "codex":
+            if (turn !== undefined) yield* end(turn.turnId, { state: "interrupted" });
+            return;
+          default:
+            if (turn !== undefined) {
+              yield* emit("turn.aborted", {
+                turnId: turn.turnId,
+                payload: { reason: "Interrupted by user." },
+              });
+            }
+        }
+      });
+
+    /** The agent's running turn answers: it ends, or it fails. */
+    const answerLive = (outcome: "end" | "failed") =>
+      Effect.gen(function* () {
+        const turn = live;
+        if (turn === undefined) return;
+        if (holdsTurn(driver)) {
+          yield* Deferred.succeed(turn.answer, outcome);
+          return;
+        }
+        live = undefined;
+        if (outcome === "end") {
+          yield* end(turn.turnId, { state: "completed" });
+          return;
+        }
+        yield* emit("runtime.error", {
+          turnId: turn.turnId,
+          payload: { message: failure, class: "provider_error" },
+        });
+        yield* end(turn.turnId, { state: "failed", errorMessage: failure });
+      });
+
+    const service = fakeService({ driver, events, sendTurn, interruptTurn });
+
+    return yield* Effect.gen(function* () {
+      const { engine, reactor, ingestion, send, thread } = yield* openThread(instanceId, baseDir);
+      const settle = Effect.gen(function* () {
+        yield* reactor.drain;
+        yield* Effect.sleep(`${lagMs + 60} millis`);
+        yield* ingestion.drain;
+        yield* reactor.drain;
+        yield* ingestion.drain;
+      });
+      /** What the person sees running: the Stop button and the turn it names. */
+      const runningTurn = Effect.gen(function* () {
+        for (let attempt = 0; attempt < 200; attempt += 1) {
+          const session = (yield* thread()).session;
+          if (session?.status === "running" && session.activeTurnId !== null) {
+            return session.activeTurnId;
+          }
+          yield* Effect.sleep("10 millis");
+        }
+        return yield* Effect.die("the turn never ran");
+      });
+
+      yield* send(1);
+      const stoppedTurn = yield* runningTurn;
+      if (moment === "steer") {
+        yield* send(2);
+        yield* settle;
+      }
+      yield* engine.dispatch({
+        type: "thread.turn.interrupt",
+        commandId: CommandId.make("cmd-turn-interrupt"),
+        threadId: THREAD,
+        turnId: stoppedTurn,
+        createdAt: "2026-01-01T00:00:05.000Z",
+      });
+      if (moment === "failing") yield* answerLive("failed");
+      yield* settle;
+      const stopped = yield* thread();
+      const sentBeforeNext = sendCalls;
+
+      // The next message runs, and its turn ends as it should.
+      yield* send(3);
+      const nextTurn = yield* runningTurn;
+      yield* answerLive("end");
+      yield* settle;
+      return {
+        stoppedTurn,
+        stopped,
+        sentBeforeNext,
+        nextTurn,
+        after: yield* thread(),
+        sendCalls,
+      };
+    }).pipe(Effect.provide(harnessLayer({ service, instanceId, baseDir, history: true })));
+  });
+}
+
+const failureRecords = (thread: {
+  readonly activities: ReadonlyArray<{ readonly kind: string }>;
+}) =>
+  thread.activities
+    .filter(
+      (activity) =>
+        activity.kind === "runtime.error" ||
+        activity.kind === "provider.turn.start.failed" ||
+        activity.kind === "provider.turn.interrupt.failed",
+    )
+    .map((activity) => activity.kind);
+
+describe("a person's Stop ends the turn, never as a failure", () => {
+  for (const driver of DRIVERS) {
+    for (const moment of ["fresh", "steer", "failing"] as const) {
+      for (const lagMs of [0, 250]) {
+        it.live(
+          `${driver}: Stop ${moment === "fresh" ? "during a turn" : moment === "steer" ? "after a follow-up" : "as the turn fails"}${lagMs > 0 ? ", ingestion lagging" : ""}`,
+          () =>
+            Effect.gen(function* () {
+              const run = yield* makeStopRun(driver, moment, lagMs);
+              // Stopped: no red line, the turn reads stopped, nothing runs on.
+              expect(failureRecords(run.stopped)).toEqual([]);
+              expect(run.stopped.latestTurn?.turnId).toBe(run.stoppedTurn);
+              expect(run.stopped.latestTurn?.state).toBe("interrupted");
+              expect(run.stopped.session?.status).not.toBe("running");
+              expect(run.stopped.session?.lastError ?? null).toBeNull();
+              // The next message reaches the agent and its turn runs to its end.
+              expect(run.sendCalls).toBe(run.sentBeforeNext + 1);
+              expect(run.nextTurn).not.toBe(run.stoppedTurn);
+              expect(run.after.latestTurn?.turnId).toBe(run.nextTurn);
+              expect(run.after.latestTurn?.state).toBe("completed");
+              expect(failureRecords(run.after)).toEqual([]);
+            }).pipe(Effect.scoped),
+          20_000,
+        );
+      }
+    }
+  }
 });

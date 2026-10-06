@@ -244,10 +244,14 @@ const make = Effect.gen(function* () {
     running.add(fiber);
     yield* Deferred.succeed(gate, undefined);
   });
+  // Newest first: a send waiting for the thread's lane goes before the one
+  // holding it, which would hand it the lane as it ends.
   const interruptPendingStarts = (threadId: ThreadId) =>
-    Effect.forEach([...(pendingStarts.get(threadId) ?? [])], (fiber) => Fiber.interrupt(fiber), {
-      discard: true,
-    });
+    Effect.forEach(
+      [...(pendingStarts.get(threadId) ?? [])].toReversed(),
+      (fiber) => Fiber.interrupt(fiber),
+      { discard: true },
+    );
   const providerRegistry = yield* ProviderRegistry;
   const gitWorkflow = yield* GitWorkflowService;
   const fileSystem = yield* FileSystem.FileSystem;
