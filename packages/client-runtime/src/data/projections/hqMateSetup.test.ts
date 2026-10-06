@@ -1,7 +1,7 @@
 import { AtomRegistry } from "effect/unstable/reactivity";
 import { describe, expect, it } from "vite-plus/test";
 import { seedHqNavigation } from "../__fixtures__/hqNavigation.ts";
-import { placementsScope } from "../families/hqNavigation.ts";
+import { placementFamily, placementsScope } from "../families/hqNavigation.ts";
 import { emptyAccount, linkKeys } from "../model.ts";
 import { readsOfState, makeAccountStore } from "../store.ts";
 import { hqMateSetup } from "./hqMateSetup.ts";
@@ -10,6 +10,39 @@ describe("hqMateSetup", () => {
   it("keeps a Mate absent from navigation unknown", () => {
     expect(
       hqMateSetup.derive(readsOfState(emptyAccount), { orgId: "org", projectId: "Ada" }),
+    ).toEqual({ closedOff: "unknown", marker: "unknown" });
+  });
+  it.each([
+    { name: "missing Mate fields", mate: undefined },
+    { name: "missing setup fields", mate: { face: "" } },
+    {
+      name: "unreadable setup fields",
+      mate: { face: "", closedOff: "damaged", setupMarker: "damaged" },
+    },
+  ])("$name leaves setup unknown", ({ mate }) => {
+    const store = makeAccountStore(AtomRegistry.make());
+    seedHqNavigation(store, "org", {
+      structure: { apps: [], ungrouped: [{ projectId: "Ada", name: "Ada", mate: { face: "" } }] },
+    });
+    const scope = placementsScope("org");
+    const value = placementFamily.hq!.decode({ projectId: "Ada", mate }, "project:Ada");
+    expect(value).not.toBeNull();
+    store.dispatch({
+      kind: "hq-delivery",
+      scopes: [{ scope, generation: store.state().streams.get(scope)!.generation }],
+      reset: false,
+      rows: [
+        {
+          family: "placement",
+          id: "Ada",
+          value: value!,
+          revision: { kind: "hq", incarnation: "seed", revision: 1_000_000 },
+        },
+      ],
+      removals: [],
+    });
+    expect(
+      hqMateSetup.derive(readsOfState(store.state()), { orgId: "org", projectId: "Ada" }),
     ).toEqual({ closedOff: "unknown", marker: "unknown" });
   });
   it.each([

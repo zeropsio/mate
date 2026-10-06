@@ -19,12 +19,12 @@ export const hqMateSetup: Projection<
   derive: (read, { orgId, projectId }) => {
     if (!read.members(placementsScope(orgId)).ids.includes(projectId)) return UNKNOWN_MATE_SETUP;
     const placement = read.fact("placement", projectId);
-    if (placement.kind !== "known" || placement.value.mate === null) return UNKNOWN_MATE_SETUP;
+    if (placement.kind !== "known" || placement.value.mate == null) return UNKNOWN_MATE_SETUP;
     const mate = placement.value.mate;
     return {
       closedOff:
         mate.closedOff || scopeFreshness(read, placementsScope(orgId)).live
-          ? mate.closedOff
+          ? (mate.closedOff ?? "unknown")
           : "unknown",
       marker: mate.setupMarker ?? "unknown",
     };
