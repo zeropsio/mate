@@ -288,8 +288,8 @@ describe("H: hosted client budgets", () => {
       }),
     );
 
-    // Targets retransmitting the whole unchanged HQ menu at every planned segment boundary.
-    it.effect.fails("target: an unchanged next HQ segment transfers no state payload", () =>
+    // Catches retransmitting the whole unchanged HQ menu at every planned segment boundary.
+    it.effect("target: an unchanged next HQ segment transfers no state payload", () =>
       Effect.gen(function* () {
         const s = yield* createScenario([installBudget]);
         const b = budgets(s);
