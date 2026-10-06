@@ -8,6 +8,9 @@
  * reads that chat alone. A chat that is no longer active (archived, deleted) or not the project's
  * leaves; a read that fails keeps the chat as held, and its next event reads it again.
  *
+ * Nothing is read or followed until the first reader asks (the link once it opens, a client's
+ * subscription); from then on it is kept for the service's lifetime.
+ *
  * The incarnation is one run of this server: the revision starts at 0 with it and is never kept
  * across a restart, so a reader orders values only inside one incarnation.
  *
@@ -27,7 +30,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
-import type * as Scope from "effect/Scope";
+import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 
@@ -93,37 +96,47 @@ export const makeZeropsMateAttention = <E>(
         Effect.ignore,
       );
 
-    // Subscribed before the baseline is read (the fork runs up to its first wait at once), so no
-    // event between the two is lost; one that the baseline already holds only reads its chat again.
-    const events = yield* Queue.unbounded<AttentionEvent>();
-    yield* Effect.forkScoped(
-      Stream.runForEach(reads.domainEvents, (event) => Queue.offer(events, event)),
-      { startImmediately: true },
-    );
-    yield* baseline;
-    const attention = yield* SubscriptionRef.make(
-      mateAttentionOf(chats.values(), undefined, source),
-    );
-    // Set only when the value moved, so each revision reaches a reader once.
-    const publish = Effect.gen(function* () {
-      const previous = yield* SubscriptionRef.get(attention);
-      const next = mateAttentionOf(chats.values(), previous, source);
-      if (next !== previous) yield* SubscriptionRef.set(attention, next);
-    });
-    yield* Effect.forkScoped(
-      Effect.forever(
-        Effect.gen(function* () {
-          const event = yield* Queue.take(events);
-          if (Option.isNone(project)) yield* baseline;
-          else if (event.aggregateKind === "thread") yield* refresh(event.aggregateId as ThreadId);
-          yield* publish;
-        }),
-      ),
+    // Started by the first reader — the link once it opens, or a client — and then kept for the
+    // service's lifetime: a server nobody reads follows nothing and reads nothing.
+    const scope = yield* Scope.Scope;
+    const started = yield* Effect.cached(
+      Effect.gen(function* () {
+        // Subscribed before the baseline is read (the fork runs up to its first wait at once), so no
+        // event between the two is lost; one that the baseline already holds only reads its chat again.
+        const events = yield* Queue.unbounded<AttentionEvent>();
+        yield* Effect.forkScoped(
+          Stream.runForEach(reads.domainEvents, (event) => Queue.offer(events, event)),
+          { startImmediately: true },
+        );
+        yield* baseline;
+        const attention = yield* SubscriptionRef.make(
+          mateAttentionOf(chats.values(), undefined, source),
+        );
+        // Set only when the value moved, so each revision reaches a reader once.
+        const publish = Effect.gen(function* () {
+          const previous = yield* SubscriptionRef.get(attention);
+          const next = mateAttentionOf(chats.values(), previous, source);
+          if (next !== previous) yield* SubscriptionRef.set(attention, next);
+        });
+        yield* Effect.forkScoped(
+          Effect.forever(
+            Effect.gen(function* () {
+              const event = yield* Queue.take(events);
+              if (Option.isNone(project)) yield* baseline;
+              else if (event.aggregateKind === "thread")
+                yield* refresh(event.aggregateId as ThreadId);
+              yield* publish;
+            }),
+          ),
+        );
+
+        return attention;
+      }).pipe(Scope.provide(scope)),
     );
 
     return ZeropsMateAttention.of({
-      current: SubscriptionRef.get(attention),
-      changes: SubscriptionRef.changes(attention),
+      current: Effect.flatMap(started, SubscriptionRef.get),
+      changes: Stream.unwrap(Effect.map(started, SubscriptionRef.changes)),
     });
   });
 

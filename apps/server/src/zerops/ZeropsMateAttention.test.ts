@@ -50,18 +50,24 @@ const projectionOf = (threads: ReadonlyArray<OrchestrationThreadShell>) => {
     rows,
     asked,
     project: { current: Option.some(PROJECT) as Option.Option<ProjectId> },
+    /** How often the project was looked up. */
+    lookups: { project: 0 },
     /** The chats whose read fails. */
     failing: new Set<string>(),
   };
 };
 
-const attentionFor = (projection: ReturnType<typeof projectionOf>) =>
+/** The service over `projection`, started by a first read unless `idle` says to leave it be. */
+const attentionFor = (projection: ReturnType<typeof projectionOf>, idle = false) =>
   Effect.gen(function* () {
     const events = yield* PubSub.unbounded<AttentionEvent>();
     const attention = yield* makeZeropsMateAttention({
       environmentId: EnvironmentId.make("env-1"),
       incarnation: "boot-1",
-      project: Effect.sync(() => projection.project.current),
+      project: Effect.sync(() => {
+        projection.lookups.project += 1;
+        return projection.project.current;
+      }),
       threadsOf: (projectId) =>
         Effect.sync(() => {
           projection.asked.whole += 1;
@@ -78,6 +84,7 @@ const attentionFor = (projection: ReturnType<typeof projectionOf>) =>
     });
     const threadMoved = (threadId: string) =>
       PubSub.publish(events, { aggregateKind: "thread", aggregateId: threadId as ThreadId });
+    if (!idle) yield* attention.current;
     return { attention, threadMoved };
   });
 
@@ -183,6 +190,24 @@ describe("ZeropsMateAttention", () => {
       yield* threadMoved("b");
       const revisions = Array.from(yield* Fiber.join(seen), (value) => value.source.revision);
       assert.deepStrictEqual(revisions, [0, 1]);
+    }),
+  );
+
+  it.effect("reads and follows nothing until a reader asks", () =>
+    Effect.gen(function* () {
+      const projection = projectionOf([shell("a")]);
+      projection.project.current = Option.none();
+      const { attention, threadMoved } = yield* attentionFor(projection, true);
+      yield* threadMoved("a");
+      yield* threadMoved("a");
+      yield* Effect.yieldNow;
+      const before = { lookups: projection.lookups.project, whole: projection.asked.whole };
+      projection.project.current = Option.some(PROJECT);
+      const first = yield* attention.current;
+      assert.deepStrictEqual(
+        { before, after: projection.asked.whole, revision: first.source.revision },
+        { before: { lookups: 0, whole: 0 }, after: 1, revision: 0 },
+      );
     }),
   );
 });
