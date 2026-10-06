@@ -333,11 +333,72 @@ it.effect("attention of an earlier run never replaces a later run's, from its ne
       const held = (yield* overviews.all).get("P");
       assert.deepStrictEqual(
         { attention: held?.attention, state: held?.attentionState },
-        // The later run's word stays, and no link of the run before makes it live.
-        { attention: yield* readAttention(later), state: "stored" },
+        // The later run's word stays, live: HQ hears the later run's link, not the run before's.
+        { attention: yield* readAttention(later), state: "live" },
       );
     }),
   ),
+);
+
+it.effect(
+  "the run before reconnects after a restart: its reports lose, the restarted run's hold",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const overviews = yield* makeMateOverviews(memoryStore().store);
+        const run = (epoch: number, incarnation: string, revision: number, working: number) => ({
+          source: { environmentId: "env", epoch, incarnation, revision },
+          mainThreadId: "main",
+          lastThreadId: "main",
+          working,
+          waiting: 0,
+          results: [],
+          questions: [],
+          truncated: false,
+        });
+        const before = yield* overviews.connect("P");
+        yield* overviews.reportAttention("P", before, run(1, "before", 4, 1));
+        // A hard kill HQ has not heard yet: the restarted run's link opens beside the old one.
+        const restarted = yield* overviews.connect("P");
+        yield* overviews.reportAttention("P", restarted, run(2, "after", 0, 0));
+        yield* overviews.report("P", restarted, {
+          type: "overview",
+          full: true,
+          overview: overviewOf({ main: mainAt("Restarted") }),
+        });
+        // The run before comes back on a link newer than both.
+        const back = yield* overviews.connect("P");
+        yield* overviews.reportAttention("P", back, run(1, "before", 9, 3));
+        yield* overviews.report("P", back, {
+          type: "overview",
+          full: true,
+          overview: overviewOf({ main: mainAt("Run before") }),
+        });
+        yield* overviews.reportAttention("P", before, run(1, "before", 10, 3));
+        // The restarted run goes on, on its own link.
+        yield* overviews.reportAttention("P", restarted, run(2, "after", 1, 2));
+        yield* overviews.report("P", restarted, {
+          type: "overview",
+          full: false,
+          sections: { main: mainAt("Restarted, later") },
+        });
+        const held = (yield* overviews.all).get("P");
+        assert.deepStrictEqual(
+          {
+            attention: held?.attention,
+            state: held?.attentionState,
+            main: held?.overview?.main,
+            overview: held?.presence.overview,
+          },
+          {
+            attention: yield* readAttention(run(2, "after", 1, 2)),
+            state: "live",
+            main: mainAt("Restarted, later"),
+            overview: "live",
+          },
+        );
+      }),
+    ),
 );
 
 describe("MateOverviews in HQ's store", () => {
