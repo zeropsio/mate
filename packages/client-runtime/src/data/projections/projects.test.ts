@@ -260,10 +260,12 @@ describe("ownRowWanted", () => {
     expect(ownRowWanted(role, listed)).toBe(wanted);
   });
 
-  it("a NO_ACCESS member's project whose row names grants already: not wanted", () => {
-    const listed = { userRoles: [{ clientUserId: "cu-1", roleCode: "BASIC_USER" }] };
-    expect(ownRowWanted("NO_ACCESS", listed)).toBe(false);
-  });
+  it.each([{ userRoles: [] }, { userRoles: [{ clientUserId: "cu-1", roleCode: "BASIC_USER" }] }])(
+    "keeps demand after an own row supplies grants: %j",
+    ({ userRoles }) => {
+      expect(ownRowWanted("NO_ACCESS", { userRoles })).toBe(true);
+    },
+  );
 
   it("a NO_ACCESS member's project the roster does not list yet: wanted", () => {
     expect(ownRowWanted("NO_ACCESS", null)).toBe(true);

@@ -222,6 +222,18 @@ describe("a drawn Mate's own project row", () => {
     });
     expect(rowsHeld.toSorted()).toEqual(held);
 
+    // Its first own-row answer must not release the demand needed by the next grant round.
+    await act(async () => {
+      registry.set(roster, {
+        ...registry.get(roster),
+        projects: registry.get(roster).projects.map((project) => ({
+          ...project,
+          userRoles: [{ clientUserId: "viewer", roleCode: "OWNER" }],
+        })),
+      });
+    });
+    expect(rowsHeld.toSorted()).toEqual(held);
+
     await act(async () => tree?.unmount());
     tree = undefined;
     expect(rowsHeld).toEqual([]);

@@ -119,11 +119,10 @@ export const projectStanding: Projection<
  * the viewer's access — a NO_ACCESS member's project whose listing row names no grant of theirs
  * (or that the roster does not list yet). An organization member is judged on their membership,
  * and whose a Mate is comes from HQ's person facts; neither asks Zerops per project.
+ * Held `userRoles` came from the own row and never release this demand: only the listing
+ * naming the viewer's grant makes the own read unnecessary.
  */
 export const ownRowWanted = (
   viewerRole: string | undefined,
   listed: Pick<ProjectValue, "viewerRoleCode" | "userRoles"> | null,
-): boolean =>
-  viewerRole === "NO_ACCESS" &&
-  listed?.viewerRoleCode === undefined &&
-  listed?.userRoles === undefined;
+): boolean => viewerRole === "NO_ACCESS" && listed?.viewerRoleCode === undefined;

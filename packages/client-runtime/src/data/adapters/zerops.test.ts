@@ -24,6 +24,8 @@ import { detailScopeOf } from "../demand.ts";
 import { membersScope } from "../families/organizationMembers.ts";
 import { routingScope } from "../families/publicRouting.ts";
 import { STREAM_POLICY } from "../streamMachine.ts";
+import { ownRowWanted, listedProject } from "../projections/projects.ts";
+import { readsOfState } from "../store.ts";
 
 const PROCESS_SEARCH = "/process/search";
 const PROJECT_SEARCH = "/project/search";
@@ -612,6 +614,57 @@ describe("a demanded detail", () => {
         expect(historyReads(fixture)).toBe(2);
         yield* Fiber.interrupt(fiber);
       }),
+  );
+
+  it.effect.each([
+    { name: "a downgrade", grants: [{ clientUserId: "viewer", roleCode: "READ_ONLY" }] },
+    { name: "a removed grant", grants: [] },
+  ])("keeps an own row demanded through renewal: $name", ({ grants }) =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      let userRoles = [{ clientUserId: "viewer", roleCode: "OWNER" }];
+      const fixture = fixtureWire((request) =>
+        request.method === "GET"
+          ? Effect.succeed({
+              status: 200,
+              body: {
+                id: PROBE_PROJECT_ID,
+                name: "Mate",
+                status: "ACTIVE",
+                lastUpdate: "2026-10-06T12:00:00Z",
+                userRoles,
+              },
+            })
+          : answers(() => [])(request),
+      );
+      const { fiber, link } = yield* runLink(store, fixture);
+      const demand = { family: "project", listing: "project", ownerId: PROBE_PROJECT_ID } as const;
+      const row = () =>
+        listedProject.derive(readsOfState(store.state()), {
+          orgId: ORG,
+          projectId: PROBE_PROJECT_ID,
+        });
+      const reads = () =>
+        fixture.requests.filter(({ path }) => path === `/project/${PROBE_PROJECT_ID}`).length;
+      expect(ownRowWanted("NO_ACCESS", row())).toBe(true);
+      const release = link.demandDetail(demand);
+      yield* settle;
+      expect(row()?.userRoles).toEqual(userRoles);
+      expect(ownRowWanted("NO_ACCESS", row())).toBe(true);
+
+      userRoles = grants;
+      link.renew(demand);
+      link.renew(demand);
+      yield* settle;
+      expect(reads()).toBe(2);
+      expect(row()?.userRoles).toEqual(grants);
+      expect(ownRowWanted("NO_ACCESS", row())).toBe(true);
+      release();
+      link.renew(demand);
+      yield* settle;
+      expect(reads()).toBe(2);
+      yield* Fiber.interrupt(fiber);
+    }),
   );
 
   it.effect(
