@@ -32,6 +32,11 @@ function rect(left: number, width: number): DOMRect {
 
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  // The frame's callbacks run as they are asked for; layout is the test's to say.
+  vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+    callback(0);
+    return 0;
+  });
   vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) {
     const left = this.getAttribute("data-left");
     return left === null ? rect(0, 0) : rect(Number(left), 80);
