@@ -374,7 +374,7 @@ describe("ZeropsGroupPane", () => {
     it("says a half-made environment is unfinished, with Finish setup and no Add for its tier", () => {
       const markup = render(undefined, {
         environments: [],
-        slots: slots({ halfMade: [{ id: "p-half", tier: "production" }] }),
+        slots: slots({ halfMade: [{ id: "p-half", tier: "production", finish: true }] }),
       });
       expect(markup).toContain("Setup isn&#x27;t finished");
       expect(markup).toContain("Finish setup");

@@ -1020,7 +1020,7 @@ function Harness() {
       >
         <EnvironmentsFrame
           environments={[]}
-          facts={{ halfMade: [{ id: "shop-prod", tier: "production" }] }}
+          facts={{ halfMade: [{ id: "shop-prod", tier: "production", finish: true }] }}
         />
       </State>
       <State

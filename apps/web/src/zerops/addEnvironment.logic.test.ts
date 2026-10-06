@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { environmentOffersOf, questionFactsOf } from "./addEnvironment.logic";
+import { environmentOffersOf, finishOffered, questionFactsOf } from "./addEnvironment.logic";
 
 // What the one question after a first merge is told: a button only for a tier the one rule
 // (`environmentAddable`) offers — HQ's offer, the recipe, nothing of it here yet — and a production
@@ -87,5 +87,29 @@ describe("environmentOffersOf", () => {
     { case: "an application HQ has not said", can: undefined, hq: LIVE, want: null },
   ])("$case", ({ can, hq, want }) => {
     expect(environmentOffersOf(can, hq)).toEqual(want);
+  });
+});
+
+// Whether HQ offers this person finishing a half-made environment: its project's own `can.finish`,
+// apart from adding a new one.
+describe("finishOffered", () => {
+  const LIVE = { current: true, unavailableSince: null };
+  it.each([
+    { case: "HQ offers it", can: { finish: { allow: true } }, hq: LIVE, want: true },
+    {
+      case: "HQ refuses it",
+      can: { finish: { allow: false, reason: "not_project_admin" } },
+      hq: LIVE,
+      want: false,
+    },
+    { case: "HQ has not said", can: undefined, hq: LIVE, want: false },
+    {
+      case: "HQ stopped answering",
+      can: { finish: { allow: true } },
+      hq: { current: false, unavailableSince: 1_000 },
+      want: false,
+    },
+  ])("$case: $want", ({ can, hq, want }) => {
+    expect(finishOffered(can, hq)).toBe(want);
   });
 });

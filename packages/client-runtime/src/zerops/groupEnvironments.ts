@@ -288,8 +288,11 @@ export function environmentSlots(input: {
   readonly devstages: ReadonlyArray<{ readonly id: string; readonly name: string }>;
   /** Creations the platform accepted and HQ does not hold yet (the group tree's `pending`). */
   readonly pending: ReadonlyArray<HeldEnvironment>;
-  /** Projects made as a tier that HQ does not hold in full (`halfMadeGroupEnvironments`). */
-  readonly halfMade: ReadonlyArray<HeldEnvironment>;
+  /**
+   * Projects made as a tier that HQ does not hold in full (`halfMadeGroupEnvironments`), each with
+   * whether HQ offers this person finishing it (`can.finish` of its project).
+   */
+  readonly halfMade: ReadonlyArray<HeldEnvironment & { readonly finish: boolean }>;
   /** The tiers the recipe on `main` holds; meaningful once `recipeRead`. */
   readonly recipeTiers: ReadonlyArray<GroupEnvironmentTier>;
   /** Whether the recipe is read: until it is, no slot is offered or said to wait for it. */
@@ -351,7 +354,7 @@ export function environmentSlots(input: {
         tier,
         id: entry.id,
         line: ENVIRONMENT_UNFINISHED,
-        finish: input.offered[tier],
+        finish: entry.finish,
       })),
   ];
   const production = input.environments.find((entry) => entry.tier === "production");

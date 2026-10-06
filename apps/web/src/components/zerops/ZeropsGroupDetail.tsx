@@ -758,7 +758,11 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
         environments: environments.map((entry) => ({ id: entry.projectId, tier: entry.tier })),
         devstages,
         pending: pendingEnvironments,
-        halfMade: halfMadeHere.map((entry) => ({ id: entry.projectId, tier: entry.tier })),
+        halfMade: halfMadeHere.map((entry) => ({
+          id: entry.projectId,
+          tier: entry.tier,
+          finish: entry.finish,
+        })),
         recipeTiers: flow.recipeTiers,
         recipeRead: flow.recipeRead,
         offered: offered ?? { stage: false, production: false },

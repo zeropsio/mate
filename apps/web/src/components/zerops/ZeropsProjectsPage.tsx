@@ -2358,9 +2358,10 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
                 },
               ]
             : []),
-          // A stage or a production whose setup is not finished, finished as the person asks.
+          // A stage or a production whose setup is not finished, finished as the person asks —
+          // where HQ offers them finishing it (`can.finish`), as on the application's own page.
           ...halfMade
-            .filter((entry) => entry.groupId === group.groupId)
+            .filter((entry) => entry.groupId === group.groupId && entry.finish)
             .map((entry) => ({
               id: `finish-${entry.tier}`,
               label: `Finish setting up ${entry.tier}`,

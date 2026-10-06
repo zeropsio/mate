@@ -397,21 +397,34 @@ describe("environmentSlots", () => {
     },
     {
       case: "a production made but not held by HQ is half-made, with Finish setup — never absent",
-      input: { ...base, recipeTiers: ["stage"], halfMade: [{ id: "p-half", tier: "production" }] },
+      input: {
+        ...base,
+        recipeTiers: ["stage"],
+        halfMade: [{ id: "p-half", tier: "production", finish: true }],
+      },
       rows: [
         ["slot", "stage", "Not added", true],
         ["half-made", "p-half", "Setup isn't finished", true],
       ],
     },
     {
-      case: "a half-made stage HQ does not offer: the words only",
+      // Finishing is HQ's own decision of the project (`can.finish`), whatever it offers of adding.
+      case: "a half-made stage HQ does not offer to finish: the words only",
+      input: { ...base, halfMade: [{ id: "p-half", tier: "stage", finish: false }] },
+      rows: [
+        ["half-made", "p-half", "Setup isn't finished", false],
+        ["slot", "production", "Not added", true],
+      ],
+    },
+    {
+      case: "a half-made stage HQ offers to finish, though it offers no new stage",
       input: {
         ...base,
         offered: { stage: false, production: false },
-        halfMade: [{ id: "p-half", tier: "stage" }],
+        halfMade: [{ id: "p-half", tier: "stage", finish: true }],
       },
       rows: [
-        ["half-made", "p-half", "Setup isn't finished", false],
+        ["half-made", "p-half", "Setup isn't finished", true],
         ["slot", "production", "Not added", false],
       ],
     },
@@ -422,7 +435,7 @@ describe("environmentSlots", () => {
         environments: [PROD],
         recipeTiers: [],
         pending: [{ id: "p-prod", tier: "production" }],
-        halfMade: [{ id: "p-prod", tier: "production" }],
+        halfMade: [{ id: "p-prod", tier: "production", finish: true }],
       },
       rows: [NO_STAGE_RECIPE, ["environment", "p-prod", undefined, undefined]],
     },

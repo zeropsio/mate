@@ -59,3 +59,14 @@ export function environmentOffersOf(
   const offered = (verb: string) => hqOffer(can, verb, hq).kind === "allowed";
   return { stage: offered("add_stage"), production: offered("add_production") };
 }
+
+/**
+ * Whether HQ offers this person finishing a half-made environment (`finish`, its project's own
+ * `can`): only an allowed decision, and nothing while HQ does not answer.
+ */
+export function finishOffered(
+  can: HqOffers | undefined,
+  hq: Parameters<typeof hqOffer>[2],
+): boolean {
+  return hqOffer(can, "finish", hq).kind === "allowed";
+}
