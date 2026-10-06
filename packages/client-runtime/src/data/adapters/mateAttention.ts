@@ -11,14 +11,24 @@
  *
  * @module data/adapters/mateAttention
  */
-import { EnvironmentAuthorizationError, type MateAttention } from "@t3tools/contracts";
+import {
+  EnvironmentAuthorizationError,
+  WS_METHODS,
+  type EnvironmentId,
+  type MateAttention,
+} from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import type * as Scope from "effect/Scope";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
+import * as SubscriptionRef from "effect/SubscriptionRef";
+
+import type { EnvironmentRegistry } from "../../connection/registry.ts";
+import { EnvironmentSupervisor } from "../../connection/supervisor.ts";
 
 import { mateAttentionScope } from "../families/mateAttention.ts";
 import { linkKeys, type LinkKey, type ScopeKey } from "../model.ts";
@@ -169,3 +179,42 @@ export function mateAttentionLink(options: {
 
 const isStreamFault = (error: unknown): error is StreamFault =>
   error === SESSION_LOST || error === ENDED;
+
+const SESSION: MateAttentionEvent = { kind: "session" };
+const LOST: MateAttentionEvent = { kind: "session-lost" };
+
+/**
+ * Today's transport: the Mate's socket in the app's connection registry. Each session asks for the
+ * attention anew; no session is a lost one. A failure that is not the Mate's refusal is the socket
+ * failing under it; a Mate without the method dies with the server's own words, which the link
+ * reads as unsupported.
+ */
+export function makeMateAttentionWire(options: {
+  readonly registry: EnvironmentRegistry["Service"];
+  readonly environmentId: EnvironmentId;
+}): MateAttentionWire {
+  const sessions = Stream.unwrap(
+    Effect.map(EnvironmentSupervisor, (supervisor) =>
+      SubscriptionRef.changes(supervisor.session).pipe(
+        Stream.switchMap(
+          Option.match({
+            onNone: () => Stream.make(LOST),
+            onSome: (session) =>
+              Stream.concat(
+                Stream.make(SESSION),
+                session.client[WS_METHODS.subscribeZeropsAttention]({}).pipe(
+                  Stream.map((value): MateAttentionEvent => ({ kind: "value", value })),
+                  Stream.mapError((error) =>
+                    isAuthorizationError(error)
+                      ? error
+                      : new MateAttentionLost({ message: error.message }),
+                  ),
+                ),
+              ),
+          }),
+        ),
+      ),
+    ),
+  );
+  return { open: options.registry.followStream(options.environmentId, sessions) };
+}
