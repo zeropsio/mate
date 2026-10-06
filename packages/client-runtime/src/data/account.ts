@@ -237,7 +237,12 @@ export function observeAccount(options: {
     },
     showHq: (next) => {
       wantedHq = next;
-      followHq();
+      if (next !== null) return followHq();
+      // Let go at the end of this turn, not at once: what names the HQ remounting names it again
+      // in the same turn, and its link and socket go on.
+      queueMicrotask(() => {
+        if (wantedHq === null) followHq();
+      });
     },
     moveOffers: (projectId) =>
       hq === null

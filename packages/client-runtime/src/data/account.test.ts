@@ -314,4 +314,29 @@ describe("an account's HQ", () => {
       account.stop();
     }),
   );
+
+  it.live("named again in the same turn it was let go, keeps its one socket", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const account = observeAccount({
+        store,
+        wire: emptyZerops().wire,
+        repairSession: Effect.void,
+      });
+      const hq = hqFixtureWire();
+      account.show("org-a");
+      account.showHq({ orgId: "org-a", wire: hq.wire });
+      yield* turns;
+      // A remount of what names the HQ lets it go and names it again at once.
+      account.showHq(null);
+      account.showHq({ orgId: "org-a", wire: hq.wire });
+      yield* turns;
+      expect(hq.opens()).toBe(1);
+      expect(streamOf(store.state(), hqAppsScope("org-a")).demanded).toBe(true);
+      account.showHq(null);
+      yield* turns;
+      expect(streamOf(store.state(), linkKeys.hq("org-a")).demanded).toBe(false);
+      account.stop();
+    }),
+  );
 });
