@@ -2254,13 +2254,18 @@ describe("KeptTimelines — a conversation seen a moment ago", () => {
     read.set(key, props);
     for (const reader of readers) reader();
   };
+  /** Whether each kept list's reader was last asked to hold. */
+  const holds = new Map<string, boolean>();
   const Reader = ({
     threadKey,
+    hold,
     onRead,
   }: {
     readonly threadKey: string;
+    readonly hold: boolean;
     readonly onRead: (props: never) => void;
   }) => {
+    holds.set(threadKey, hold);
     const props = useSyncExternalStore(
       (listener) => {
         readers.add(listener);
@@ -2276,7 +2281,11 @@ describe("KeptTimelines — a conversation seen a moment ago", () => {
     open: string,
     alive: (key: string) => boolean = () => true,
     extra: Partial<Parameters<typeof MessagesTimeline>[0]> = {},
-    inset: { readonly insetMeasured?: boolean; readonly insetRemembered?: boolean } = {},
+    inset: {
+      readonly insetMeasured?: boolean;
+      readonly insetRemembered?: boolean;
+      readonly warm?: string | null;
+    } = {},
   ) => {
     const { KeptTimelines } = await import("./KeptTimelines");
     return (
@@ -2460,6 +2469,25 @@ describe("KeptTimelines — a conversation seen a moment ago", () => {
             node.findAll((inner) => inner.props["data-timeline-thread"] === KEY_A).length > 0,
         ).length > 0;
       expect(outOfSightNow).toBe(changed);
+    } finally {
+      await act(() => renderer?.unmount());
+    }
+  });
+
+  // A run streaming in a Mate the person left is not read word by word out
+  // of sight; resting on its menu row reads it live again, before the press.
+  it("holds a kept list's read out of sight until someone is about to open it", async () => {
+    const place = await settle();
+    let renderer: ReactTestRenderer | undefined;
+    await act(async () => {
+      renderer = create(await pane(KEY_A));
+    });
+    try {
+      await place(renderer!);
+      await act(async () => renderer!.update(await pane(KEY_B)));
+      expect(holds.get(KEY_A)).toBe(true);
+      await act(async () => renderer!.update(await pane(KEY_B, undefined, {}, { warm: KEY_A })));
+      expect(holds.get(KEY_A)).toBe(false);
     } finally {
       await act(() => renderer?.unmount());
     }
