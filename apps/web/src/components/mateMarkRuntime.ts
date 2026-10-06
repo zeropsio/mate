@@ -127,6 +127,11 @@ export interface MarkLoopHost {
   readonly reducedMotion: () => boolean;
   readonly random: () => number;
   readonly viewport: () => { readonly width: number; readonly height: number };
+  /**
+   * Runs `callback` once the page is next laid out, before it paints, where reading a box costs
+   * no layout of its own. Absent, the loop reads its marks' boxes in the frame itself.
+   */
+  readonly afterLayout?: (callback: () => void) => void;
 }
 
 /** The one loop every mark on a page shares, and what moves it. */
@@ -187,6 +192,41 @@ export function createMarkLoop(host: MarkLoopHost): MarkLoop {
     arm();
   };
 
+  /** The marks whose boxes are read once the page is laid out (`host.afterLayout`). */
+  const wanted = new Set<MarkRuntime>();
+  const readWanted = () => {
+    let moved = false;
+    for (const mark of wanted) {
+      if (!marks.has(mark)) continue;
+      const was = mark.rect;
+      const rect = mark.root.getBoundingClientRect();
+      mark.rect = rect;
+      moved ||=
+        was === null ||
+        was.left !== rect.left ||
+        was.top !== rect.top ||
+        was.width !== rect.width ||
+        was.height !== rect.height;
+    }
+    wanted.clear();
+    // The pose follows the box it now has, from the next frame.
+    if (moved) arm();
+  };
+  /**
+   * Reads where `mark` stands. In a frame the page's last draw is not laid out yet, so a box read
+   * there forces that layout early (99 of them in a switch of Mates, 2026-10-06): it is read once
+   * the browser has laid the page out, and the frame poses the mark at the box it read last.
+   */
+  const measure = (mark: MarkRuntime, now: number) => {
+    mark.rectAt = now;
+    if (host.afterLayout === undefined) {
+      mark.rect = mark.root.getBoundingClientRect();
+      return;
+    }
+    if (wanted.size === 0) host.afterLayout(readWanted);
+    wanted.add(mark);
+  };
+
   const settleAfterInput = () => {
     measureUntil = host.now() + SETTLE_AFTER_INPUT_MS;
   };
@@ -211,7 +251,7 @@ export function createMarkLoop(host: MarkLoopHost): MarkLoop {
     let shown = false;
     for (const mark of marks) {
       if (!mark.visible) continue;
-      if (moving) mark.rectAt = -1;
+      if (moving || mark.rectAt < 0 || now - mark.rectAt > 400) measure(mark, now);
       const step = tick(mark, pointer, host, now, dt, reduced);
       moving ||= step.moving;
       due = Math.min(due, step.due);
@@ -410,10 +450,6 @@ function tick(
   if (mark.returning) {
     mark.returning = false;
     if (mark.nextBlink <= now) mark.nextBlink = now + 2500 + host.random() * 4000;
-  }
-  if (mark.rectAt < 0 || now - mark.rectAt > 400) {
-    mark.rect = mark.root.getBoundingClientRect();
-    mark.rectAt = now;
   }
   const rect = mark.rect;
   if (!rect || !rect.width) return AT_REST;
@@ -622,7 +658,26 @@ const browserHost: MarkLoopHost = {
   reducedMotion: () => globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false,
   random: Math.random,
   viewport: () => ({ width: window.innerWidth, height: window.innerHeight }),
+  afterLayout: (callback) => {
+    if (typeof ResizeObserver !== "function") {
+      callback();
+      return;
+    }
+    afterLayoutCallbacks.push(callback);
+    if (afterLayoutCallbacks.length > 1) return;
+    // An element observed anew is reported once the page is laid out, before it paints.
+    afterLayoutWatch ??= new ResizeObserver(() => {
+      const callbacks = afterLayoutCallbacks;
+      afterLayoutCallbacks = [];
+      for (const run of callbacks) run();
+    });
+    afterLayoutWatch.unobserve(document.documentElement);
+    afterLayoutWatch.observe(document.documentElement);
+  },
 };
+
+let afterLayoutCallbacks: Array<() => void> = [];
+let afterLayoutWatch: ResizeObserver | undefined;
 
 let pageLoop: MarkLoop | undefined;
 let observer: IntersectionObserver | undefined;
