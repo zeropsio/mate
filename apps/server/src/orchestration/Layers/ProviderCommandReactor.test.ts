@@ -3509,25 +3509,31 @@ describe("ProviderCommandReactor", () => {
   });
 
   describe("the message after the agent's process died mid-turn", () => {
-    // Every driver's crash leaves the thread session at error with plain
-    // words; the adapter's session either stays listed, dead (Codex keeps it
-    // at error), or is dropped (Claude, OpenCode and the ACP drivers). The
-    // next message must start a new session on the conversation and run.
+    // A crash leaves the thread session at error, and the adapter drops its
+    // dead session (every driver): the next message starts a new session,
+    // which picks the conversation up from the binding's resume cursor
+    // (ProviderService). An ordinary failure leaves the adapter's session —
+    // at error for Codex, OpenCode and Antigravity — with what still runs in
+    // it: the next message goes to it, nothing respawned.
     const cases: ReadonlyArray<{
       readonly name: string;
       readonly adapterSession: "dead" | "dropped" | "alive";
       readonly starts: number;
     }> = [
-      { name: "a session the adapter keeps, dead (Codex)", adapterSession: "dead", starts: 2 },
       {
-        name: "a session the adapter dropped (Claude, OpenCode, Cursor, Grok, Antigravity)",
+        name: "a crash: the adapter dropped its session",
         adapterSession: "dropped",
         starts: 2,
       },
-      { name: "a turn that failed on a live session", adapterSession: "alive", starts: 1 },
+      {
+        name: "an ordinary failure: the adapter's session stands at error",
+        adapterSession: "dead",
+        starts: 1,
+      },
+      { name: "a turn that failed on a ready session", adapterSession: "alive", starts: 1 },
     ];
     for (const testCase of cases) {
-      it(`${testCase.name}: ${testCase.starts === 2 ? "a new session runs it" : "it runs on the same session"}`, async () => {
+      it(`${testCase.name}: ${testCase.starts === 2 ? "a new session runs it" : "the same session runs it"}`, async () => {
         const harness = await createHarness();
         const threadId = ThreadId.make("thread-1");
         const start = (suffix: string) =>
@@ -3578,12 +3584,7 @@ describe("ProviderCommandReactor", () => {
         await start("second");
         await waitFor(() => harness.sendTurn.mock.calls.length === 2);
         expect(harness.startSession.mock.calls.length).toBe(testCase.starts);
-        if (testCase.adapterSession === "dead") {
-          // It picks up the conversation the dead session held.
-          expect(harness.startSession.mock.calls[1]?.[1]).toMatchObject({
-            resumeCursor: crashed.resumeCursor,
-          });
-        }
+        expect(harness.stopSession.mock.calls.length).toBe(0);
       });
     }
   });
@@ -3596,9 +3597,35 @@ describe("ProviderCommandReactor", () => {
       readonly name: string;
       /** The session's exit reached the conversation before the send's failure. */
       readonly exitFirst: boolean;
+      /** The send failed for another reason than a dead process. */
+      readonly notDead?: boolean;
+      /** The message went into a turn already running, which it did not start. */
+      readonly intoRunningTurn?: boolean;
+      /** What the conversation keeps: the turn's break, or the message's failure to start. */
+      readonly keeps: "break" | "nothing" | "start-failure";
     }> = [
-      { name: "its failure first: the turn's record says it broke off", exitFirst: false },
-      { name: "its session's exit first: what that said stands", exitFirst: true },
+      {
+        name: "its failure first: the turn's record says it broke off",
+        exitFirst: false,
+        keeps: "break",
+      },
+      {
+        name: "its session's exit first: what that said stands",
+        exitFirst: true,
+        keeps: "nothing",
+      },
+      {
+        name: "a send that failed for another reason: its message did not go",
+        exitFirst: false,
+        notDead: true,
+        keeps: "start-failure",
+      },
+      {
+        name: "a message sent into a turn it did not start: its message did not go",
+        exitFirst: false,
+        intoRunningTurn: true,
+        keeps: "start-failure",
+      },
     ];
     for (const testCase of cases) {
       it(testCase.name, async () => {
@@ -3623,9 +3650,18 @@ describe("ProviderCommandReactor", () => {
           });
         const harness: Awaited<ReturnType<typeof createHarness>> = await createHarness({
           sendTurnFailure: () =>
-            new ProviderAdapterProcessError({ provider: "cursor", threadId, detail: WORDS }),
+            testCase.notDead
+              ? new ProviderAdapterRequestError({
+                  provider: "cursor",
+                  method: "session/prompt",
+                  detail: "The attachment could not be read.",
+                })
+              : new ProviderAdapterProcessError({ provider: "cursor", threadId, detail: WORDS }),
           whileSendFails: () =>
-            setSession("running", "2026-01-01T00:00:01.000Z").pipe(
+            (testCase.intoRunningTurn
+              ? Effect.void
+              : setSession("running", "2026-01-01T00:00:01.000Z")
+            ).pipe(
               Effect.andThen(
                 testCase.exitFirst ? setSession("error", "2026-01-01T00:00:02.000Z") : Effect.void,
               ),
@@ -3633,6 +3669,9 @@ describe("ProviderCommandReactor", () => {
               Effect.orDie,
             ),
         });
+        if (testCase.intoRunningTurn) {
+          await Effect.runPromise(setSession("running", "2026-01-01T00:00:01.000Z"));
+        }
         await Effect.runPromise(
           harness.engine.dispatch({
             type: "thread.turn.start",
@@ -3646,7 +3685,9 @@ describe("ProviderCommandReactor", () => {
             },
             interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
             runtimeMode: "approval-required",
-            createdAt: "2026-01-01T00:00:00.000Z",
+            createdAt: testCase.intoRunningTurn
+              ? "2026-01-01T00:00:05.000Z"
+              : "2026-01-01T00:00:00.000Z",
           }),
         );
         await waitFor(async () => {
@@ -3655,10 +3696,10 @@ describe("ProviderCommandReactor", () => {
         });
         await Effect.runPromise(Effect.sleep("50 millis"));
         const thread = (await harness.readModel()).threads.find((entry) => entry.id === threadId)!;
-        expect(thread.session?.lastError).toBe(WORDS);
         expect(
-          thread.activities.filter((activity) => activity.kind === "provider.turn.start.failed"),
-        ).toEqual([]);
+          thread.activities.filter((activity) => activity.kind === "provider.turn.start.failed")
+            .length,
+        ).toBe(testCase.keeps === "start-failure" ? 1 : 0);
         expect(
           thread.activities
             .filter((activity) => activity.kind === "runtime.error")
@@ -3666,7 +3707,8 @@ describe("ProviderCommandReactor", () => {
               turnId: activity.turnId,
               message: (activity.payload as { readonly message?: unknown }).message,
             })),
-        ).toEqual(testCase.exitFirst ? [] : [{ turnId, message: WORDS }]);
+        ).toEqual(testCase.keeps === "break" ? [{ turnId, message: WORDS }] : []);
+        if (testCase.keeps !== "start-failure") expect(thread.session?.lastError).toBe(WORDS);
       });
     }
   });

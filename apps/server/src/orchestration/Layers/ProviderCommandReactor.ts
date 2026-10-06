@@ -834,13 +834,7 @@ const make = Effect.gen(function* () {
         activeSession?.status === "running" || thread.session?.status === "running";
       const shouldRestartForModelSelectionChange =
         modelSelectionChange === "new-session" && !sessionRunning;
-      // The agent's process died under its turn: the thread stands at error
-      // and the adapter still lists the dead session (Codex keeps it). A new
-      // session picks the conversation up; the dead one rejects every request.
-      const sessionDied = thread.session?.status === "error" && activeSession?.status === "error";
-
       if (
-        !sessionDied &&
         !runtimeModeChanged &&
         !cwdChanged &&
         !instanceChanged &&
@@ -874,7 +868,6 @@ const make = Effect.gen(function* () {
         instanceChanged,
         shouldRestartForModelChange,
         shouldRestartForModelSelectionChange,
-        sessionDied,
         hasResumeCursor: resumeCursor !== undefined,
       });
       const restartedSession = yield* startProviderSession(
@@ -1325,6 +1318,9 @@ const make = Effect.gen(function* () {
       );
     }
 
+    // The turn running as this message came in, which a failure of its send
+    // never belongs to (`handleTurnStartFailure`).
+    const turnRunningBeforeMessage = yield* runningTurnFor(event.payload.threadId);
     const handleTurnStartFailure = (cause: Cause.Cause<unknown>) => {
       if (Cause.hasInterruptsOnly(cause)) {
         return Effect.void;
@@ -1341,12 +1337,21 @@ const make = Effect.gen(function* () {
         // agent's process dies mid-turn: the turn broke off, it did not fail
         // to start. Said already — the session's exit beat this failure here
         // — it stands; else the turn's record says it, as a crash's does.
-        const thread = yield* resolveThreadShell(event.payload.threadId);
-        const latestTurn = thread?.latestTurn ?? null;
+        // Only a process that died counts, and only under the turn this very
+        // message started: any other failure — a bad attachment, a message
+        // sent into a running turn — keeps its turn-start record.
+        const processDied = cause.reasons.some(
+          (reason) =>
+            Cause.isFailReason(reason) &&
+            (reason.error as { readonly _tag?: unknown } | null)?._tag ===
+              "ProviderAdapterProcessError",
+        );
+        const startedByThisMessage = processDied && turnRunningBeforeMessage === undefined;
+        const thread = startedByThisMessage
+          ? yield* resolveThreadShell(event.payload.threadId)
+          : undefined;
         const saidAlready =
-          latestTurn?.state === "error" &&
-          (thread?.session?.activeTurnId ?? null) === null &&
-          Date.parse(latestTurn.requestedAt) >= Date.parse(event.payload.createdAt);
+          thread?.latestTurn?.state === "error" && (thread.session?.activeTurnId ?? null) === null;
         if (saidAlready) return;
         const underWay =
           thread?.session?.status === "running" ? (thread.session.activeTurnId ?? null) : null;
