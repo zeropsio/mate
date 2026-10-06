@@ -141,6 +141,23 @@ const DRIVERS: ReadonlyArray<readonly [driver: string, cases: ReadonlyArray<Case
         never: ["context-secret", "PORT=3000", "DEBUG=0", "KEEP=1", "GONE_A", "deleted-secret"],
       },
       {
+        name: "a line marked removed and added unchanged is no change",
+        data: {
+          item: {
+            type: "fileChange",
+            changes: [
+              {
+                path: "/srv/c.txt",
+                kind: { type: "update", move_path: null },
+                diff: "@@ -1,2 +1,2 @@\n-SAME=tie-secret\n-old=1\n+SAME=tie-secret\n+new=1",
+              },
+            ],
+          },
+        },
+        writes: [{ path: "/srv/c.txt", kind: "edit", changes: [wrote("new=1", 1)] }],
+        never: ["SAME=tie-secret", "old=1"],
+      },
+      {
         name: "a moved file is named where it went",
         data: {
           item: {
@@ -237,9 +254,7 @@ const DRIVERS: ReadonlyArray<readonly [driver: string, cases: ReadonlyArray<Case
             },
           ],
         },
-        writes: [
-          { path: "/home/u/.docker/config.json", kind: "edit", changes: [wrote('  "port": 2', 1)] },
-        ],
+        writes: [{ path: "/home/u/.docker/config.json", kind: "edit", changes: [wrote("…2", 1)] }],
         never: ["old-secret", '"port": 1'],
       },
       {
@@ -250,6 +265,117 @@ const DRIVERS: ReadonlyArray<readonly [driver: string, cases: ReadonlyArray<Case
         },
         writes: [{ path: "/srv/f.txt", kind: "edit", changes: [wrote("", 2)] }],
         never: ["b", "c"],
+      },
+      {
+        name: "one word changed in a line: only the characters that differ, never the line",
+        data: {
+          kind: "edit",
+          content: [
+            {
+              type: "diff",
+              path: "/srv/app/.env",
+              oldText: "DATABASE_URL=postgres://app:S3cr3t@db:5432/app\nPORT=3000",
+              newText: "DATABASE_URL=postgres://app:S3cr3t@db2:5432/app\nPORT=3000",
+            },
+          ],
+        },
+        writes: [{ path: "/srv/app/.env", kind: "edit", changes: [wrote("…2…", 1)] }],
+        never: ["S3cr3t", "DATABASE_URL", "postgres://app:S3cr3t@db2:5432/app", "PORT=3000"],
+      },
+      {
+        name: "a password on the line of a one-word change stays unsent",
+        data: {
+          kind: "edit",
+          content: [
+            {
+              type: "diff",
+              path: "/srv/app/config.ini",
+              oldText: "user=admin password=hunter2 mode=dev",
+              newText: "user=admin password=hunter2 mode=prod",
+            },
+          ],
+        },
+        writes: [{ path: "/srv/app/config.ini", kind: "edit", changes: [wrote("…prod", 1)] }],
+        never: ["hunter2", "password=hunter2", "user=admin"],
+      },
+      {
+        name: "a line that stands unchanged in the old text is never added",
+        data: {
+          kind: "edit",
+          content: [
+            {
+              type: "diff",
+              path: "/srv/app/vars",
+              oldText: "a=1\nTOKEN=untouched-secret\nb=2",
+              newText: "b=2\nTOKEN=untouched-secret\nc=3",
+            },
+          ],
+        },
+        writes: [{ path: "/srv/app/vars", kind: "edit", changes: [wrote("", 1), wrote("c=3")] }],
+        never: ["TOKEN=untouched-secret", "a=1", "b=2"],
+      },
+      {
+        name: "a block moved, nothing else changed: nothing to show",
+        data: {
+          kind: "edit",
+          content: [
+            {
+              type: "diff",
+              path: "/srv/app/list",
+              oldText: "KEY=secret-one\nother=two\nthird=3",
+              newText: "third=3\nKEY=secret-one\nother=two",
+            },
+          ],
+        },
+        writes: [],
+        never: ["KEY=secret-one"],
+      },
+      {
+        name: "the agent's own new_string, when its raw input carries it",
+        data: {
+          kind: "edit",
+          rawInput: { file_path: "/srv/app/.env", old_string: "PORT=1", new_string: "PORT=2" },
+          content: [
+            {
+              type: "diff",
+              path: "/srv/app/.env",
+              oldText: "PASSWORD=old-secret\nPORT=1\nKEEP=kept-secret",
+              newText: "PASSWORD=old-secret\nPORT=2\nKEEP=kept-secret",
+            },
+          ],
+        },
+        // Worked out from the whole file it would be `…2`: the call says `PORT=2`.
+        writes: [{ path: "/srv/app/.env", kind: "edit", changes: [wrote("PORT=2", 1)] }],
+        never: ["old-secret", "kept-secret"],
+      },
+      {
+        name: "the agent's own newString, as OpenCode-style keys spell it",
+        data: {
+          kind: "edit",
+          rawInput: { filePath: "/srv/a.txt", oldString: "x", newString: "y" },
+          content: [
+            {
+              type: "diff",
+              path: "/srv/a.txt",
+              oldText: "shared-secret\nx",
+              newText: "shared-secret\ny",
+            },
+          ],
+        },
+        writes: [{ path: "/srv/a.txt", kind: "edit", changes: [wrote("y", 1)] }],
+        never: ["shared-secret"],
+      },
+      {
+        name: "the agent's own content: a whole file it wrote",
+        data: {
+          kind: "edit",
+          rawInput: { path: "/srv/b.txt", content: "all of it" },
+          content: [
+            { type: "diff", path: "/srv/b.txt", oldText: "before-secret", newText: "all of it" },
+          ],
+        },
+        writes: [{ path: "/srv/b.txt", kind: "write", changes: [wrote("all of it")] }],
+        never: ["before-secret"],
       },
     ],
   ],

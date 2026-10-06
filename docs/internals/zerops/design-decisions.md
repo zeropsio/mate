@@ -4148,9 +4148,7 @@ medium < high < xhigh` (a driver's own order does not rank: Grok reports its lev
   write's content or an edit's new text, drawn from the call's own stored payload
   (`threads.fileWrites`): Claude Code's `Write` content and `Edit`/`MultiEdit` `new_string`s and
   `NotebookEdit` `new_source`, Codex's added files and the added lines of its updates, OpenCode's
-  `write` content, `edit`/`multiedit` `newString`s and the added lines of its patches, and the lines
-  an ACP agent's `diff` block adds over its old text (Cursor, Grok, Antigravity), worked out on the
-  server. A change that only removes reads as a count ("Removed 3 lines"). The client's copy of a
+  `write` content, `edit`/`multiedit` `newString`s and the added lines of its patches, and for an ACP agent (Cursor, Grok, Antigravity) the `new_string`, `newString` or `content` its call's raw input carries, else what its `diff` block adds over its old text, worked out on the server and cut to the characters that differ (`…db2…`): a line that stands unchanged in the old text is never shown as added, and a Codex or patch run that removes and adds the same line drops the pair. A change that only removes reads as a count ("Removed 3 lines"). The client's copy of a
   call carries only a mark that it wrote something; a call whose driver sent none keeps the row it
   had, and a running or failed write opens onto nothing. Each file's text stands in the card's own
   item box: in the log whole once opened, nothing scrolling inside (the 0.14.4 rule). "Open in
