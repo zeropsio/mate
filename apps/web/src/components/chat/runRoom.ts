@@ -139,6 +139,7 @@ export function easeRooms({
   rootClips = false,
   attributes = [],
   budget = null,
+  rootGives = false,
 }: {
   /** A box itself, and what holds the others. */
   readonly root: HTMLElement;
@@ -151,6 +152,11 @@ export function easeRooms({
   readonly attributes?: ReadonlyArray<string>;
   /** The speed a frame gives the eases of its card together (`spendStep`). */
   readonly budget?: EaseBudget | null;
+  /**
+   * Whether the root's shrink is what another set's growth takes — the live
+   * slot giving a landed line's room to the history — and has its own speed.
+   */
+  readonly rootGives?: boolean;
 }): Rooms {
   if (
     typeof ResizeObserver === "undefined" ||
@@ -220,7 +226,9 @@ export function easeRooms({
       const eased = approach(box.shown, box.target, dt, ROOM_TAU_MS);
       // What is left of the frame's speed, shared with the card's other eases.
       const taken =
-        budget === null ? eased - box.shown : spendStep(budget, now, dt, eased - box.shown);
+        budget === null
+          ? eased - box.shown
+          : spendStep(budget, now, dt, eased - box.shown, box === rootBox && rootGives);
       const next = taken === box.target - box.shown ? box.target : box.shown + taken;
       if (next === box.target) {
         release(box);

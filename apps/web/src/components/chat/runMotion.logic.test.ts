@@ -229,53 +229,70 @@ describe("keepsFoot", () => {
 
 // Two eases in one card — a landed line's room and the slot squeezing the
 // history — each took their own 32 px a frame, and moved the history up to
-// 53 px in one (the p43 review): eases the same way share one speed a frame.
-// A landing's two halves — the history growing by what the slot gives —
-// move on one curve each, so the card's height stays (the p43 verification:
-// one budget for both grew the card 50 px and shrank it back).
+// 53 px in one (the p43 review): every ease of a card shares one speed a
+// frame, whichever way it goes (two budgets let a bubble shrinking above a
+// line joining at the foot move the rows under it 53 px, the p43 final
+// check). Only the slot's own shrink as a line leaves it takes its own:
+// the history grows by what it gives, and the card's height stays (one
+// budget for both grew it 50 px and back, the p43 verification).
 describe("spendStep", () => {
   it.each([
-    { what: "one ease alone", steps: [[1000, 20]], taken: [20] },
-    { what: "one ease past the frame's speed", steps: [[1000, 45]], taken: [32] },
+    { what: "one ease alone", steps: [[30, false]], taken: [30] },
+    { what: "one ease past the frame's speed", steps: [[45, false]], taken: [32] },
     {
-      what: "two eases growing in one frame",
+      what: "two eases growing",
       steps: [
-        [1000, 30],
-        [1000, 30],
+        [30, false],
+        [30, false],
       ],
       taken: [30, 2],
     },
     {
-      what: "two eases shrinking in one frame",
+      what: "a bubble shrinking as a line joins",
       steps: [
-        [1000, -30],
-        [1000, -30],
+        [30, false],
+        [-30, false],
       ],
-      taken: [-30, -2],
+      taken: [30, -2],
     },
     {
-      what: "a landing: one grows by what the other gives",
+      what: "a landing: the history grows by what the slot gives",
       steps: [
-        [1000, 30],
-        [1000, -30],
+        [30, false],
+        [-30, true],
       ],
       taken: [30, -30],
     },
     {
-      what: "a new frame has its speed again",
+      what: "the slot giving, a bubble in the history shrinking",
       steps: [
-        [1000, 30],
-        [1020, 30],
+        [-30, true],
+        [-30, false],
       ],
-      taken: [30, 30],
+      taken: [-30, -30],
     },
-  ])("$what", ({ steps, taken }) => {
-    const budget = { at: -1, grow: 0, shrink: 0 };
-    expect(steps.map(([now, step]) => spendStep(budget, now!, 20, step!))).toEqual(taken);
+    {
+      what: "the slot growing takes the shared speed",
+      steps: [
+        [30, true],
+        [30, false],
+      ],
+      taken: [30, 2],
+    },
+  ] as const)("$what", ({ steps, taken }) => {
+    const budget = { at: -1, left: 0, landing: 0 };
+    expect(steps.map(([step, slotGives]) => spendStep(budget, 1000, 20, step, slotGives))).toEqual(
+      taken,
+    );
+  });
+
+  it("gives a new frame its speed again", () => {
+    const budget = { at: -1, left: 0, landing: 0 };
+    expect([spendStep(budget, 1000, 20, 30), spendStep(budget, 1020, 20, 30)]).toEqual([30, 30]);
   });
 
   it("lets a frame long gone stand at its target", () => {
-    const budget = { at: -1, grow: 0, shrink: 0 };
+    const budget = { at: -1, left: 0, landing: 0 };
     expect(spendStep(budget, 1000, LONG_GONE_MS, 400)).toBe(400);
   });
 });

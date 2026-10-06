@@ -47,40 +47,45 @@ export function approach(current: number, target: number, dtMs: number, tauMs: n
 }
 
 /**
- * The speed a frame gives the eases of one card, each way: a landed line's
- * room and the slot squeezing the history each took their own 32 px, and
- * the history moved up to 53 px in one frame (the p43 review), so eases the
- * same way share it. Growing and shrinking each have their own: a landing's
- * history grows by what its slot gives, on one curve each, and the card's
- * height stays (one budget for both grew it 50 px and back, the p43
- * verification). `at` is the frame it was given for.
+ * The speed a frame gives the eases of one card: every ease shares it,
+ * whichever way it goes — a landed line's room and the slot squeezing the
+ * history each took their own 32 px and moved the history 53 px in a frame
+ * (the p43 review), and so did a bubble shrinking above a line joining at
+ * the foot with a budget each way (the p43 final check). The slot's own
+ * shrink as a line leaves it (`landing`) has its own: the history grows by
+ * what it gives on one curve, and the card's height stays (one budget for
+ * both grew it 50 px and back, the p43 verification). `at` is the frame it
+ * was given for.
  */
 export interface EaseBudget {
   at: number;
-  grow: number;
-  shrink: number;
+  left: number;
+  landing: number;
 }
 
 /**
  * What of `step` an ease takes in the frame at `now`, `dtMs` after its last:
- * the first ease heard in a frame gives the budget that frame's speed each
- * way, and each takes from what is left its way. A frame long gone stands
- * at its target.
+ * the first ease heard in a frame gives the budget that frame's speed, and
+ * each takes from what is left — the slot's own shrink (`slotGives`) from
+ * its own. A frame long gone stands at its target.
  */
-export function spendStep(budget: EaseBudget, now: number, dtMs: number, step: number): number {
+export function spendStep(
+  budget: EaseBudget,
+  now: number,
+  dtMs: number,
+  step: number,
+  slotGives = false,
+): number {
   if (dtMs >= LONG_GONE_MS) return step;
   if (budget.at !== now) {
     budget.at = now;
-    budget.grow = budget.shrink = MAX_SPEED_PX_PER_MS * Math.min(dtMs, ON_TIME_FRAME_MS);
+    budget.left = budget.landing = MAX_SPEED_PX_PER_MS * Math.min(dtMs, ON_TIME_FRAME_MS);
   }
-  if (step >= 0) {
-    const taken = Math.min(step, budget.grow);
-    budget.grow -= taken;
-    return taken;
-  }
-  const taken = Math.min(-step, budget.shrink);
-  budget.shrink -= taken;
-  return -taken;
+  const own = slotGives && step < 0;
+  const taken = Math.min(Math.abs(step), own ? budget.landing : budget.left);
+  if (own) budget.landing -= taken;
+  else budget.left -= taken;
+  return Math.sign(step) * taken;
 }
 
 /**
