@@ -40,6 +40,11 @@ export {
 export { discussionDemand } from "./families/hqDiscussion.ts";
 export type { ZeropsWire } from "./adapters/zerops.ts";
 export {
+  appEnvironments,
+  appsEnvironments,
+  type AppEnvironmentsRead,
+} from "./projections/appEnvironments.ts";
+export {
   hqAppDetail,
   hqAppDetails,
   type HqAppDetailRead,
