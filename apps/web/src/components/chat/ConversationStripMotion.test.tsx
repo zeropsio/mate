@@ -66,9 +66,14 @@ afterEach(async () => {
 const STAGE: LineStage = { band: MATE_SEAT, crew: ["@ivy"] };
 
 function Line({ mateLeft, face }: { readonly mateLeft: number; readonly face: string }) {
+  // The strip hands its line a stage drawn anew with each of its own draws:
+  // one that says the same, so the line redraws and switches nothing. Built
+  // from the face, or the React Compiler keeps the line's element and it
+  // never redraws at all.
+  const stage: LineStage = { band: STAGE.band, crew: STAGE.crew.filter(() => face !== "") };
   return (
     <div data-left="0">
-      <LineMotion stage={STAGE} onFolded={() => undefined} />
+      <LineMotion stage={stage} onFolded={() => undefined} />
       <span data-conversation-mate="" data-face={face} data-left={String(mateLeft)} />
     </div>
   );
