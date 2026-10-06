@@ -2,7 +2,7 @@ import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
 import * as Schema from "effect/Schema";
-import { makeOperationWatch, type OperationWire } from "./operationWatch.ts";
+import { makeOperationWatch, type OperationWire, type Registration } from "./operationWatch.ts";
 import { ZeropsRefused, ZeropsUnavailable } from "./zerops/api.ts";
 
 const decodeSearch = Schema.decodeUnknownEffect(
@@ -35,7 +35,9 @@ const wireOf = (options: {
     },
     get: (path) => {
       options.calls.push({ path });
-      return Effect.succeed(options.missing ?? row("FINISHED", 2));
+      return Effect.succeed(
+        path === "/project/P" ? { clientId: "ORG" } : (options.missing ?? row("FINISHED", 2)),
+      );
     },
   }),
   makeId: () => "updates",
@@ -53,6 +55,87 @@ const collect = (wire: OperationWire) =>
     );
 
 describe("HQ operation observation", () => {
+  it.live.each([401, 403, 404])("does not retry a project's definitive %s refusal", (status) =>
+    Effect.gen(function* () {
+      let reads = 0;
+      const watch = makeOperationWatch({
+        makeId: () => "registration",
+        open: Effect.succeed({
+          receiverId: "R",
+          frames: Stream.never,
+          post: () => Effect.die("a refused project must not register"),
+          get: (path) => {
+            assert.strictEqual(path, "/project/P");
+            reads++;
+            return Effect.fail(
+              new ZeropsRefused({
+                operation: path,
+                status,
+                code: "project_observation_refused",
+                reason:
+                  status === 401 ? "unauthorized" : status === 403 ? "forbidden" : "not_found",
+              }),
+            );
+          },
+        }),
+      });
+      const error = yield* watch.watch(target).pipe(Stream.runDrain, Effect.flip, Effect.scoped);
+      assert.strictEqual(error._tag, "ZeropsRefused");
+      assert.strictEqual(reads, 1);
+    }),
+  );
+
+  it.live.each(["FINISHED", "FAILED", "CANCELED"] as const)(
+    "scopes every registration to the project's organization and reads the original %s handle",
+    (status) =>
+      Effect.gen(function* () {
+        const calls: Array<{ path: string; body?: Registration }> = [];
+        let sequence = 0;
+        const watch = makeOperationWatch({
+          makeId: () => `registration-${sequence++}`,
+          open: Effect.succeed({
+            receiverId: "R",
+            frames: Stream.never,
+            post: (path, body) => {
+              calls.push({ path, body });
+              return Effect.succeed(
+                body.wsOutputType === "listStream"
+                  ? {
+                      items:
+                        path === "/app-version/search" ? [{ id: "V", status: "BUILDING" }] : [],
+                    }
+                  : { success: true },
+              );
+            },
+            get: (path) => {
+              calls.push({ path });
+              return Effect.succeed(path === "/project/P" ? { clientId: "ORG" } : { status });
+            },
+          }),
+        });
+        const signals = yield* watch.watch({ ...target, versionId: "V" }).pipe(
+          Stream.takeUntil((signal) => signal.processes.some((p) => p.status === status)),
+          Stream.runCollect,
+          Effect.scoped,
+        );
+        assert.strictEqual(signals.at(-1)?.processes[0]?.status, status);
+        assert.deepStrictEqual(calls[0], { path: "/project/P" });
+        for (const call of calls.filter((call) => call.body !== undefined)) {
+          assert.includeDeepMembers(
+            [...call.body!.search],
+            [
+              { name: "clientId", operator: "eq", value: "ORG" },
+              { name: "projectId", operator: "eq", value: "P" },
+            ],
+          );
+        }
+        assert.lengthOf(
+          calls.filter((call) => call.body !== undefined),
+          4,
+        );
+      }),
+  );
+
   it.live(
     "discovers only the accepted version's process when it appears after an UPLOADING baseline",
     () =>
@@ -75,7 +158,10 @@ describe("HQ operation observation", () => {
                   : { success: true },
               );
             },
-            get: () => Effect.die("no original handle to read"),
+            get: (path) =>
+              path === "/project/P"
+                ? Effect.succeed({ clientId: "ORG" })
+                : Effect.die("no original handle to read"),
             frames: Stream.unwrap(
               Effect.sync(() =>
                 Stream.fromIterable(
@@ -127,6 +213,7 @@ describe("HQ operation observation", () => {
                   : { success: true },
               ),
             get: (path) => {
+              if (path === "/project/P") return Effect.succeed({ clientId: "ORG" });
               reads.push(path);
               return Effect.succeed({ status: "FINISHED" });
             },
@@ -175,7 +262,7 @@ describe("HQ operation observation", () => {
         assert.strictEqual(signals.at(-1)?.processes[0]?.status, "FINISHED");
         assert.deepStrictEqual(
           calls.filter((call) => call.body === undefined),
-          [{ path: "/process/J" }],
+          [{ path: "/project/P" }, { path: "/process/J" }],
         );
       }),
   );

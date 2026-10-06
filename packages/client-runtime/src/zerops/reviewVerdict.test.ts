@@ -808,15 +808,15 @@ describe("rollbackReview: roll back gets the same review, naming where it goes b
       "The project's line in the menu follows v0.1.59.",
     ],
     [
-      "tagged, and past the wait for it with no landing",
+      "tagged, and HQ ended its follow without confirming a landing",
       { press: { kind: "done" }, outcome: { kind: "stalled", at: minutesAgo(34) } },
       {
         state: "rollback-stalled",
         tone: "attention",
-        title: "v0.1.58 hasn't landed",
-        why: "Tagged 34 minutes ago · production doesn't run it",
+        title: "Deploy status unknown for v0.1.58",
+        why: "HQ couldn't confirm how the deploy ended",
       },
-      "Production still runs v0.1.57.",
+      "Check the deploy in Zerops.",
     ],
     [
       "refused",

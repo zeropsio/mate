@@ -311,8 +311,7 @@ describe("firstDeploy — where a stage's first deploy stands by HQ's jobs of it
       ],
       first: {
         kind: "unresolved",
-        reason:
-          "HQ could not follow this deploy to its end. A person acts next: Inspect the original version in Zerops before asking Run again",
+        reason: "HQ lost track of this deploy. Check it in Zerops, or run it again.",
       },
     },
     { case: "queued", deploys: [job({})], first: { kind: "on-its-way" } },
@@ -598,8 +597,7 @@ describe("stopImport — where an environment's own import has got, the one orde
 });
 
 it("does not turn an unresolved first deploy into awaiting-deploy forever", () => {
-  const reason =
-    "HQ could not follow this deploy to its end. A person acts next: Inspect the original version in Zerops";
+  const reason = "HQ lost track of this deploy. Check it in Zerops, or run it again.";
   const first = { kind: "unresolved", reason } as const;
   expect(firstDeployLine(first)).toBe(reason);
   expect(firstDeployTone(first)).toBe("off");

@@ -318,6 +318,76 @@ describe("a held release's changes follow the stage as it stands now", () => {
 });
 
 describe("a release HQ ended without landing says so: no clock ends it", () => {
+  it.each([
+    {
+      name: "queued",
+      inFlight: "v0.1.1",
+      standing: undefined,
+      state: "releasing",
+      title: "Releasing v0.1.1",
+    },
+    {
+      name: "building despite an earlier stopped observation",
+      inFlight: "v0.1.1",
+      standing: undefined,
+      state: "releasing",
+      title: "Releasing v0.1.1",
+    },
+    {
+      name: "follow lost with no outcome",
+      inFlight: undefined,
+      standing: undefined,
+      state: "release-stalled",
+      title: "Deploy status unknown for v0.1.1",
+    },
+    {
+      name: "deploy ended and failed",
+      inFlight: undefined,
+      standing: "deploy-failed",
+      state: "release-failed",
+      title: "v0.1.1 didn't go out",
+    },
+    {
+      name: "production runs it",
+      inFlight: undefined,
+      standing: "live",
+      state: "released",
+      title: "Released v0.1.1",
+    },
+  ] as const)("a just-tagged release: $name", ({ inFlight, standing, state, title }) => {
+    const follows = releaseFollows({
+      made: "v0.1.1",
+      held: undefined,
+      press: { kind: "done" },
+      inFlight,
+      stalled: "v0.1.1",
+      suggestion: "v0.1.2",
+      releases: [row("v0.1.1", standing)],
+    });
+    const outcome = releaseOutcomeOf({
+      ...follows,
+      pressing: false,
+      clockMs: NOW,
+    });
+    const model = releaseReview({
+      tag: follows.tag,
+      gate: { allowed: true },
+      permission: { allowed: true },
+      changes: 1,
+      onStage: undefined,
+      services: ["app"],
+      replaces: { kind: "release", tag: "v0.1.0" },
+      outcome,
+      now: NOW,
+    });
+    expect(model.verdict).toMatchObject({ state, title });
+    expect(model.verdict.title).not.toContain("hasn't landed");
+    if (standing === undefined && inFlight === undefined) {
+      expect(follows.ticking).toBe(false);
+      expect(model.consequence).toBe("Check the deploy in Zerops.");
+    }
+  });
+
   const before: Moment = { live: "v0.1.0", contents: ONE_CHANGE, production: "4c3b2a1" };
   const after: Moment = { live: "v0.1.1", contents: [], production: HEAD };
   const [, tagging, onItsWay] = release("v0.1.1", "v0.1.2", before, after, [row("v0.1.0", "live")]);
@@ -343,7 +413,7 @@ describe("a release HQ ended without landing says so: no clock ends it", () => {
     expect(steps.at(-1)?.follows.ticking).toBe(true);
   });
 
-  it("pressed, on its way, HQ ends its deploy with no landing: the tag hasn't landed, the clock stops", () => {
+  it("HQ ends its follow without a landing: the outcome is unknown and the clock stops", () => {
     const steps = walk([
       tagging,
       onItsWay,
@@ -360,20 +430,20 @@ describe("a release HQ ended without landing says so: no clock ends it", () => {
     const last = steps.at(-1);
     expect(last?.model.verdict).toMatchObject({
       tone: "attention",
-      title: "v0.1.1 hasn't landed",
-      why: "Tagged 31 minutes ago · production doesn't run it",
+      title: "Deploy status unknown for v0.1.1",
+      why: "HQ couldn't confirm how the deploy ended",
     });
-    expect(last?.model.consequence).toBe("Production still runs v0.1.0.");
+    expect(last?.model.consequence).toBe("Check the deploy in Zerops.");
     expect(last?.model.primary).toBeUndefined();
     expect(last?.model.verdict.fix).toEqual({
-      verb: "find out why",
+      verb: "check it",
       problem: {
-        what: "Production doesn't run release v0.1.1",
+        what: "The deploy status of release v0.1.1 is unknown",
         at: new Date(NOW - 40_000).toISOString(),
-        ask: "Find out why production hasn't deployed it, and fix what holds it.",
+        ask: "Check how the deploy ended in Zerops, and resolve anything that needs attention.",
       },
     });
-    // Nothing went out: production runs v0.1.0, and there is nothing to roll back.
+    // An unconfirmed deploy offers no roll back based on a guessed outcome.
     expect(last?.model.ifWrong).toBeUndefined();
     expect(last?.model.meta.join(" · ")).toBe("replaces v0.1.0 · 1 change");
   });

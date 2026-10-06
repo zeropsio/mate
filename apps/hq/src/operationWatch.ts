@@ -165,6 +165,14 @@ export function makeOperationWatch(wire: OperationWire): OperationWatch {
               Stream.unwrap(
                 Effect.gen(function* () {
                   const link = yield* wire.open;
+                  // Zerops requires clientId even for searches scoped to one project.
+                  const project = yield* link
+                    .get(`/project/${target.projectId}`)
+                    .pipe(
+                      Effect.flatMap((body) =>
+                        decode(Schema.Struct({ clientId: Schema.String }), body),
+                      ),
+                    );
                   const subscriptions = new Map<string, "process" | "app-version">();
                   const register = (
                     entity: "process" | "app-version",
@@ -173,6 +181,7 @@ export function makeOperationWatch(wire: OperationWire): OperationWatch {
                     const name = wire.makeId();
                     subscriptions.set(name, entity);
                     const search: Registration["search"] = [
+                      { name: "clientId", operator: "eq", value: project.clientId },
                       { name: "projectId", operator: "eq", value: target.projectId },
                       ...(entity === "process" && output === "listStream"
                         ? [
