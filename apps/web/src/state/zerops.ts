@@ -24,8 +24,6 @@ import {
   type HqMates,
   type HqPlacement,
 } from "@t3tools/client-runtime/zerops/hq";
-import type { AppRead } from "@t3tools/shared/hqAppReads";
-import type { HqChange } from "@t3tools/shared/hqChanges";
 import type { Known, Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import {
   admittedOnly,
@@ -128,11 +126,6 @@ export const hqDownSinceAtom = Atom.make((get): number | null => {
   return down ? (Option.getOrNull(get.self<number | null>()) ?? Date.now()) : null;
 }).pipe(Atom.keepAlive, Atom.withLabel("zerops:hq-down-since"));
 
-/** Each application's changes, by its id: the open ones and the latest settled, newest first. */
-export type HqChanges = ReadonlyMap<string, ReadonlyArray<HqChange>>;
-/** HQ-owned load data for each readable application, by id. */
-export type HqAppReads = ReadonlyMap<string, AppRead>;
-
 const HQ_STANDING_UNKNOWN: HqStanding = { kind: "unknown" };
 
 /**
@@ -194,17 +187,6 @@ export const hqEnvironmentsAtom = Atom.make(
         );
   },
 ).pipe(Atom.withLabel("zerops:hq-environments"));
-
-/**
- * Each application's changes (SPEC §3.2a) and its releases, repository heads and recipe tiers come
- * with its `app-detail` scope, whose family is not observed yet: none is known meanwhile.
- */
-export const hqChangesAtom = Atom.make((): HqChanges | null => null).pipe(
-  Atom.withLabel("zerops:hq-changes"),
-);
-export const hqAppReadsAtom = Atom.make((): HqAppReads | null => null).pipe(
-  Atom.withLabel("zerops:hq-app-reads"),
-);
 
 /**
  * The Mates the reader may observe, as HQ relays them (`hqMates`): each by its project, its

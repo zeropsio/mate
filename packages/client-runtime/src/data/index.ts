@@ -34,6 +34,13 @@ export {
 } from "./projections/changeDiscussion.ts";
 export { discussionDemand } from "./families/hqDiscussion.ts";
 export type { ZeropsWire } from "./adapters/zerops.ts";
+export {
+  hqAppDetail,
+  hqAppDetails,
+  type HqAppDetailRead,
+  type HqAppFailure,
+  type HqAppRecipes,
+} from "./projections/hqAppDetail.ts";
 export type { DetailDemand } from "./demand.ts";
 export { makeAccountStore, type AccountStore, type Projection } from "./store.ts";
 export {
