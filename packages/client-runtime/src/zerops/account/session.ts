@@ -162,8 +162,9 @@ export type ZeropsSessionEffect =
    */
   | { readonly kind: "reauth" }
   /**
-   * A stored session survived a fresh load's verification: the last hand-over
-   * held, so the next refusal may ask for another one.
+   * A session survived a fresh load's verification, or this tab's own sign-in
+   * completed: the last hand-over held, so the next refusal may ask for
+   * another one.
    */
   | { readonly kind: "reauth-settled" };
 
@@ -332,6 +333,9 @@ function onOwnSignIn(
       ...leaving(state, { closeAccount: !sameAccount }),
       ...(sameAccount ? [] : [{ kind: "open-account", user } as const]),
       { kind: "write-owner", owner },
+      // A sign-in completed in place: the hand-over that brought it held, so the next refusal may
+      // ask for another one.
+      { kind: "reauth-settled" },
     ],
   };
 }

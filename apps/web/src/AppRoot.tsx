@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from "react";
+import { useCallback, useEffect, useSyncExternalStore, type ReactNode } from "react";
 import { ZeropsProjectFlowProvider } from "./zerops/ZeropsProjectFlowProvider";
 import { ZeropsAccountData } from "./zerops/ZeropsAccountData";
 import { ZeropsDataProvider } from "./zerops/ZeropsDataProvider";
@@ -47,7 +47,13 @@ function AccountProductBoundary({ router }: { readonly router: AppRouter }) {
       window.history.replaceState(null, "", `${appBasePath()}/zerops`);
     }
   }, []);
-  const callback = window.location.pathname === `${appBasePath()}${ZEROPS_HANDOVER_CALLBACK_PATH}`;
+  // The route the hand-over returned to, followed as it changes: a sign-in completes there and
+  // opens the account in place once it routes on.
+  const pathname = useSyncExternalStore(
+    useCallback((changed: () => void) => router.history.subscribe(changed), [router]),
+    () => router.history.location.pathname,
+  );
+  const callback = pathname === `${appBasePath()}${ZEROPS_HANDOVER_CALLBACK_PATH}`;
   if (status !== "signed-in" && !callback) {
     return <ZeropsHostedLanding />;
   }

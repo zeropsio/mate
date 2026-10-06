@@ -86,6 +86,13 @@ export function account(page: Page) {
     reload: Effect.promise(async () => {
       await page.reload();
     }),
+    /** The account opened in the document the hand-over returned to, with no load after it. */
+    openedInTheHandoverDocument: Effect.promise(async () => {
+      const loaded = await page.evaluate(
+        () => new URL(performance.getEntriesByType("navigation")[0]?.name ?? "").pathname,
+      );
+      expect(loaded, "The document reloaded after the hand-over").toMatch(/\/zerops\/authorized$/);
+    }),
     lacksRows: (names: string[]) =>
       Effect.promise(async () => {
         await page.waitForFunction(

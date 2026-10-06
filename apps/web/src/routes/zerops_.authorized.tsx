@@ -11,7 +11,7 @@ import { accountReturnPath } from "../zerops/navigationStorage";
 import type { ZeropsHandoverOutcome } from "@t3tools/client-runtime/zerops/handover";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { ZeropsHandoverFailed } from "../components/zerops/landing/ZeropsHandoverFailed";
 import { ZeropsFrameWait } from "../components/zerops/landing/ZeropsLandingShell";
@@ -53,19 +53,20 @@ function takeZeropsHandoverFromLocation(): ZeropsHandoverOutcome {
  */
 const takeHandover = readHandoverOnce(takeZeropsHandoverFromLocation);
 
+/**
+ * The one adoption of this load's hand-over. The callback mounts again once the account opens (the
+ * account's registry replaces the hand-over's), and every mount waits on this same adoption: a
+ * handed-over token is adopted once, and each mount routes on or shows its failure.
+ */
+let adoption: Promise<void> | null = null;
+
 function ZeropsHandoverCallback() {
   const { handover: outcome } = Route.useRouteContext();
   const { adoptHandover } = useZeropsSession();
   const navigate = useNavigate();
   const [state, setState] = useState<CallbackState>({ kind: "working" });
-  const started = useRef(false);
 
   useEffect(() => {
-    // Strict mode mounts twice; a handed-over token must still only be adopted
-    // once during this callback.
-    if (started.current) return;
-    started.current = true;
-
     if (outcome.kind === "absent") {
       void navigate({ to: "/zerops", replace: true });
       return;
@@ -88,14 +89,22 @@ function ZeropsHandoverCallback() {
       return;
     }
 
-    void adoptHandover({
-      token: outcome.token,
-      zcpClaimed: outcome.zcpClaimed,
-    })
-      .then(() => window.location.replace(accountReturnPath()))
-      .catch((cause: unknown) => {
-        setState({ kind: "failed", message: zeropsErrorMessage(cause) });
-      });
+    let current = true;
+    if (adoption === null)
+      adoption = adoptHandover({
+        token: outcome.token,
+        zcpClaimed: outcome.zcpClaimed,
+      }).then(
+        // The account opens in this document: the route changes, nothing reloads. The path carries
+        // the base path, which the router strips, so a route named like the base keeps its own.
+        () => void navigate({ href: accountReturnPath(), replace: true }),
+      );
+    adoption.catch((cause: unknown) => {
+      if (current) setState({ kind: "failed", message: zeropsErrorMessage(cause) });
+    });
+    return () => {
+      current = false;
+    };
   }, [adoptHandover, navigate, outcome]);
 
   if (state.kind === "working") {

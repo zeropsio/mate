@@ -401,13 +401,14 @@ describe("transitionZeropsSession", () => {
       [],
     ],
     [
-      "signs in on its own sign-in with a new login generation",
+      "signs in on its own sign-in with a new login generation, its hand-over round trip settled",
       { status: "signed-out" },
       { type: "SIGNED_IN", user: person, generation: "g9" },
       signedIn("g9"),
       [
         { kind: "open-account", user: person },
         { kind: "write-owner", owner: { userId: "user-1", loginGeneration: "g9" } },
+        { kind: "reauth-settled" },
       ],
     ],
     [
@@ -419,6 +420,7 @@ describe("transitionZeropsSession", () => {
         { kind: "close-account" },
         { kind: "open-account", user: other },
         { kind: "write-owner", owner: { userId: "user-2", loginGeneration: "g9" } },
+        { kind: "reauth-settled" },
       ],
     ],
     [

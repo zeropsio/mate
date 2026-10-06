@@ -2328,14 +2328,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/routes/zerops_.authorized.tsx",
-    "kind": "retired-token",
-    "fingerprint": "window.location.replace(accountReturnPath())",
-    "owner": "data-layer rewrite: sign-in/session",
-    "reason": "the document reloads after sign-in; the store opens the account in place",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/state/assets.ts",
     "kind": "retired-token",
     "fingerprint": "createAssetEnvironmentAtoms",

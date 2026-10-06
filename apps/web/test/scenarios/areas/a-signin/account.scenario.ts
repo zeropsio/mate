@@ -65,7 +65,8 @@ afterAll(() => {
 
 describe("A: sign-in, session and organizations", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
-    // Catches a successful Zerops hand-over leaving the user at the door or without their menu.
+    // Catches a successful Zerops hand-over leaving the user at the door or without their menu, or
+    // reloading the document to get there.
     it.effect("hand-over opens the account's menu", () =>
       Effect.gen(function* () {
         const s = yield* accountScenario();
@@ -74,6 +75,7 @@ describe("A: sign-in, session and organizations", () => {
         yield* account(s.page).showsPerson("owner");
         yield* s.then.menu.row("Shop").appears();
         yield* s.then.menu.row("Ada").appears();
+        yield* account(s.page).openedInTheHandoverDocument;
         yield* s.then.noExternalNetwork;
       }),
     );

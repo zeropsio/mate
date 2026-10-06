@@ -654,22 +654,39 @@ describe("ZeropsSessionProvider when the platform refuses the handed-over token"
     expect(tab.tab.sessionStorage.getItem("mate:sign-in-return:v1")).toBe("/projects/p-1");
   });
 
-  it("stays signed out when the fresh token is refused on the load it returns to", async () => {
+  it("stays signed out when the platform refuses the fresh token as the callback adopts it", async () => {
     const harness = harnessWith();
     const { tab, token } = await handedOverTab(harness, "/projects/p-1");
     harness.rest.expireAccessToken(token);
     await readUser(tab);
     expect(handovers(tab)).toHaveLength(1);
 
-    // The callback adopted the fresh token, then the tab loads the route again
-    // — and the platform refuses that token at once.
     const fresh = harness.rest.issueSession("user-1").accessToken;
-    await tab.run(() => tab.session().adoptHandover({ token: fresh, zcpClaimed: false }));
     harness.rest.expireAccessToken(fresh);
-    await tab.run(() => window.location.reload());
+    await tab.run(() =>
+      tab
+        .session()
+        .adoptHandover({ token: fresh, zcpClaimed: false })
+        .catch(() => undefined),
+    );
 
     expect(tab.session().status).toBe("signed-out");
     expect(handovers(tab)).toHaveLength(1);
+  });
+
+  it("sends the tab again when a token adopted in place dies later", async () => {
+    const harness = harnessWith();
+    const { tab, token } = await handedOverTab(harness, "/projects/p-1");
+    harness.rest.expireAccessToken(token);
+    await readUser(tab);
+
+    const fresh = harness.rest.issueSession("user-1").accessToken;
+    await tab.run(() => tab.session().adoptHandover({ token: fresh, zcpClaimed: false }));
+    expect(tab.session().status).toBe("signed-in");
+    harness.rest.expireAccessToken(fresh);
+    await readUser(tab);
+
+    expect(handovers(tab)).toHaveLength(2);
   });
 
   it("sends the tab again when a token that held through a fresh load dies later", async () => {
