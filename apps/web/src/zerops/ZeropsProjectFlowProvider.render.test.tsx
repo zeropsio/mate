@@ -159,9 +159,6 @@ vi.mock("./useZeropsRegistry", () => ({
 }));
 /** What each application's recipe on `main` offers, as HQ answered it. */
 const recipes = vi.hoisted(() => ({ read: new Map<string, AppRecipe>() }));
-vi.mock("./useZeropsAppRecipes", () => ({
-  useZeropsAppRecipes: () => recipes.read,
-}));
 /** HQ's rule for this person releasing `g1`, in its words; `undefined` while it cannot be asked. */
 const permission = vi.hoisted(() => ({
   gate: { allowed: true } as
@@ -231,14 +228,14 @@ vi.mock("./useZeropsCompares", async () => {
     },
   };
 });
-vi.mock("./useZeropsAppReleases", () => ({
-  useZeropsAppReleases: () => {
-    return {
-      releases: new Map([["g1", released.releases]]),
-      repos: new Map([["g1", released.repos]]),
-      failures: released.failures,
-    };
-  },
+vi.mock("./useHqAppDetail", () => ({
+  useHqAppRecipes: () => recipes.read,
+  useHqAppReleases: () => ({
+    releases: new Map([["g1", released.releases]]),
+    repos: new Map([["g1", released.repos]]),
+    changes: new Map(),
+    failures: released.failures,
+  }),
 }));
 
 class TestNode {

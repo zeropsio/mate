@@ -8,7 +8,7 @@
  * each, the changes themselves, newest first.
  *
  * Everything on it is HQ's, as the flow holds it: each application's repositories, read with its
- * releases (`useZeropsAppReleases`), and the changes open on them, down its stream. A change's title opens the change's own page, with
+ * releases (`useHqAppReleases`), and the changes open on them, down its stream. A change's title opens the change's own page, with
  * the same word and the same colour its row wears on the projects screen and in the left menu (the
  * owner, 2026-09-19: "all pages are unified in how they look work feel have ux and abilities"). A
  * repository's name opens its source in HQ, at a branch or commit and path.

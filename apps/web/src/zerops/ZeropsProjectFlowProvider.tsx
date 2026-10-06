@@ -4,12 +4,12 @@
  *
  * Each part is read from the party that can prove it. HQ says which of a
  * group's projects are its stage and production, and how each deploy of
- * theirs went (`hqEnvironmentsAtom`), and what is waiting to land and what
- * landed — its Mates' changes (`hqChangesAtom`) — both down the
- * organization's stream; its recipe says which tiers a group can add and the
- * repository each runtime builds from (`useZeropsAppRecipes`). The account
- * says which projects a group holds and which version each service runs, as
- * its store states it, and HQ says what was released (`useZeropsAppReleases`).
+ * theirs went (`hqEnvironmentsAtom`), and — in each group's application
+ * detail, held while the account is drawn — what is waiting to land and what
+ * landed, its Mates' changes, and what was released (`useHqAppReleases`); and
+ * its recipe, which says which tiers a group can add and the repository each
+ * runtime builds from (`useHqAppRecipes`). The account says which projects a
+ * group holds and which version each service runs, as its store states it.
  * Each group's flow is the same object until one of its own parts changes, so
  * one group answering never republishes another.
  *
@@ -80,7 +80,7 @@ import {
   type ReactNode,
 } from "react";
 
-import { hqChangesAtom, hqDown, hqEnvironmentsAtom, hqNavigationAtom } from "../state/zerops";
+import { hqDown, hqEnvironmentsAtom, hqNavigationAtom } from "../state/zerops";
 import { useDetailProjects } from "./accountEnvironments";
 import { useStatedVersions, useStopDeployments } from "./accountForge";
 import { accountHqApi, useAccountHq } from "./accountHq";
@@ -90,8 +90,7 @@ import {
   type ZeropsProjectFlow,
   type ZeropsProjectFlowValue,
 } from "./projectFlowContext";
-import { useZeropsAppRecipes } from "./useZeropsAppRecipes";
-import { useZeropsAppReleases } from "./useZeropsAppReleases";
+import { useHqAppRecipes, useHqAppReleases } from "./useHqAppDetail";
 import { useZeropsCompares, type ComparedCommits } from "./useZeropsCompares";
 import { useReleasePermission } from "./useChangeOffers";
 import { useZeropsRegistry } from "./useZeropsRegistry";
@@ -166,9 +165,6 @@ export interface GroupChanges {
   readonly pullRequests: ReadonlyArray<FlowPullRequest>;
   readonly merged: ReadonlyArray<FlowPullRequest>;
 }
-
-/** A group HQ holds no change of. */
-const NO_CHANGES: GroupChanges = { pullRequests: [], merged: [] };
 
 /**
  * Each application's changes as rows, by the identity of its changes as HQ last sent them, so an
@@ -290,7 +286,7 @@ export function joinProjectFlows(input: {
    * whose commit cannot be told; absent while not asked.
    */
   readonly live: ReadonlyMap<string, ReleaseLive>;
-  /** Each group's changes, by its id; `null` while HQ has told nothing of them. */
+  /** Each group's changes, by its id, once HQ told them; `null` without HQ's address to link. */
   readonly changes: ReadonlyMap<string, GroupChanges> | null;
   /** Why HQ has told nothing of them, while it does not answer. */
   readonly changesFailure: string | undefined;
@@ -301,8 +297,7 @@ export function joinProjectFlows(input: {
   for (const group of input.groups) {
     const stops = input.stops.get(group.groupId);
     const records = input.releases.get(group.groupId);
-    const changes =
-      input.changes === null ? undefined : (input.changes.get(group.groupId) ?? NO_CHANGES);
+    const changes = input.changes?.get(group.groupId);
     if (stops === undefined && records === undefined && changes === undefined) continue;
     let byReleases = joinedFlows.get(stops ?? UNREAD_HALF);
     if (byReleases === undefined) {
@@ -562,8 +557,8 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
   );
 
   const hqStructure = useAtomValue(hqNavigationAtom);
-  const hqChanges = useAtomValue(hqChangesAtom);
-  const recipes = useZeropsAppRecipes();
+  const appIds = useMemo(() => flowGroups.map(({ groupId }) => groupId), [flowGroups]);
+  const recipes = useHqAppRecipes(appIds);
 
   // Each group's stops, from HQ's environments and the account's half.
   const heldEnvironments = useAtomValue(hqEnvironmentsAtom);
@@ -639,7 +634,8 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
     releases: releaseRecords,
     repos: appRepos,
     failures: releaseFailures,
-  } = useZeropsAppReleases();
+    changes: hqChanges,
+  } = useHqAppReleases(appIds);
 
   /**
    * Why the grant withholds each project it withholds alone; a lapse withholds every flow below
@@ -668,8 +664,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
     [accountHq.hq, clientId, session.client],
   );
   const changes = useMemo(
-    () =>
-      hqChanges === null || hqAddress === undefined ? null : groupChangesOf(hqChanges, hqAddress),
+    () => (hqAddress === undefined ? null : groupChangesOf(hqChanges, hqAddress)),
     [hqAddress, hqChanges],
   );
   const changesFailure = hqDown(hqStructure) ? HQ_CHANGES_UNANSWERED : undefined;
