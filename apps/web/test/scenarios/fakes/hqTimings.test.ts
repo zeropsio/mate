@@ -4,8 +4,6 @@ import * as Clock from "effect/Clock";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import { WebSocket } from "ws";
-import { vi } from "vite-plus/test";
-import * as DeploysModule from "../../../../hq/src/deploys.ts";
 import { tempPostgresLayer } from "../../../../hq/test/harness/tempPostgres.ts";
 import {
   seedCoreWorld,
@@ -18,30 +16,6 @@ import { serve, deadline } from "../harness/http.ts";
 import { ZeropsFake } from "./zerops.ts";
 
 it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
-  it.effect(
-    "scenario deploy overrides reach the real Deploys factory without changing Core defaults",
-    () =>
-      Effect.gen(function* () {
-        // Observe the real factory, retaining its implementation and every real Core service.
-        const factory = vi.spyOn(DeploysModule, "deploysLayer");
-        yield* Effect.addFinalizer(() => Effect.sync(() => factory.mockRestore()));
-        const fake = new ZeropsFake(seedCoreWorld(yield* Clock.currentTimeMillis, true, "ORG"));
-        const api = yield* Effect.acquireRelease(
-          Effect.promise(() => serve(fake.handle, fake.socket)),
-          (api) => Effect.promise(api.close),
-        );
-        const core = yield* startScenarioCore(
-          { baseUrl: `${api.origin}/api/rest/public`, world: fake.world },
-          { followFor: 10_000, pollEvery: 250 },
-        );
-        yield* untilHealth(core.call, "active");
-        expect(factory).toHaveBeenCalledTimes(1);
-        const options = factory.mock.calls[0]![0]!;
-        expect(options, "Deploy timings reached the real factory").toBeDefined();
-        expect(Duration.toMillis(options.followFor!)).toBe(10_000);
-        expect(Duration.toMillis(options.pollEvery!)).toBe(250);
-      }),
-  );
   const cases: [string, HqTimings, number[]][] = [
     ["production defaults", {}, [20_000, 60_000, 30_000]],
     [

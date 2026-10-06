@@ -28,7 +28,9 @@ import * as HttpServer from "effect/unstable/http/HttpServer";
 import { Backup, directoryStore } from "../../src/backup.ts";
 import { Changes } from "../../src/changes.ts";
 import { coreApp } from "../../src/core.ts";
-import { OperationObserver } from "../../src/operationWatch.ts";
+import * as SqlClient from "effect/unstable/sql/SqlClient";
+import { OperationObserver, makeOperationWatch } from "../../src/operationWatch.ts";
+import { makeOperationWire } from "../../src/operationWire.ts";
 import { fakeOperationWatch } from "./operationWatch.ts";
 import { GitHost } from "../../src/gitHost.ts";
 import { MateOverviews } from "../../src/mateOverviews.ts";
@@ -242,7 +244,19 @@ export const startCore = (
           ).pipe(Layer.provide(NodeHttpClient.layerNodeHttp));
     const context = yield* Layer.buildWithScope(
       coreApp(options).pipe(
-        Layer.provide(Layer.succeed(OperationObserver, fakeOperationWatch(fake))),
+        Layer.provide(
+          Layer.succeed(
+            OperationObserver,
+            given.zeropsHttp === undefined
+              ? fakeOperationWatch(fake)
+              : makeOperationWatch(
+                  makeOperationWire({
+                    baseUrl: given.zeropsHttp.baseUrl,
+                    credential: Redacted.make("hq"),
+                  }),
+                ),
+          ),
+        ),
         Layer.provide(platform),
         Layer.provideMerge(NodeHttpServer.layer(() => NodeHttp.createServer(), { port: 0 })),
       ),
@@ -371,6 +385,7 @@ export const startCore = (
       call,
       fake,
       url,
+      sql: Context.get(context, SqlClient.SqlClient),
       gitRoot,
       origin: `http://${base}`,
       stop,

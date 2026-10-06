@@ -14,12 +14,12 @@ afterAll(() =>
 describe("E: deployment clocks", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
     // Catches HQ calling a still-running stage build refused merely because its follow clock expired.
-    it.effect.fails(
+    it.effect(
       "HQ does not declare refused from a clock",
       () => {
         let reachedTarget = false;
         return Effect.gen(function* () {
-          const f = yield* environmentFixtureWith({ hq: { followFor: 5_000, pollEvery: 250 } });
+          const f = yield* environmentFixtureWith();
           const a = environmentActions(f);
           yield* f.s.given.signedIn;
           yield* a.when.open("stage");
@@ -27,7 +27,7 @@ describe("E: deployment clocks", () => {
           yield* a.then.text(`Building ${sha.slice(0, 7)}`);
           const retained = yield* a.then.keepsStageRunning;
           yield* a.then.running("stage");
-          yield* a.when.followWindow;
+          yield* a.when.longRunningGap;
           yield* a.then.running("stage");
           reachedTarget = true;
           yield* a.when.finish("stage");

@@ -155,16 +155,23 @@ export function environmentActions(f: Fixture, page: Page = f.s.page) {
         s.drivers.zerops.rows("process").find((row) => row.id === process.id)?.finished,
       ).toBeNull();
     });
-  const followWindow = Effect.gen(function* () {
+  const longRunningGap = Effect.gen(function* () {
     const process = yield* deployment("stage");
-    // Core's 5-second follow window stays native; allow another 5 seconds for its poll/stream.
-    yield* Effect.promise(() =>
-      page.waitForFunction(
-        (started) => Date.now() - Date.parse(started) >= 10_000,
-        { timeout: 30_000, polling: "raf" },
-        String(process.started),
-      ),
+    // Age the durable operation beyond the former 75-minute limit, then lose its socket.
+    // The reconnect registration must still report the owner's RUNNING state.
+    yield* s.drivers.core
+      .sql`UPDATE hq_deploy_job SET submitted_at = now() - interval '80 minutes' WHERE process_id = ${process.id}`;
+    const zerops = s.drivers.zerops;
+    const follow = [...zerops.subscriptions.values()].find(
+      (r) =>
+        r.apiToken === "hq" &&
+        r.kind === "app-version" &&
+        r.search.some((filter) => filter.name === "id"),
     );
+    expect(follow, "HQ registered the accepted operation through realtime").toBeDefined();
+    const registrations = zerops.requests.get("POST /process/search") ?? 0;
+    zerops.sockets.get(follow!.receiver)!.close();
+    yield* Effect.promise(() => zerops.waitForRequest("POST /process/search", registrations + 2));
   });
   const keepsStageRunning = Effect.promise(async () => {
     const guard = await page.evaluateHandle(() => {
@@ -205,7 +212,7 @@ export function environmentActions(f: Fixture, page: Page = f.s.page) {
   return {
     when: {
       open,
-      followWindow,
+      longRunningGap,
       finish,
       rollBackOnZerops,
       click,
