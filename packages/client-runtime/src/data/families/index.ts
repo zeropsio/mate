@@ -6,6 +6,7 @@
  */
 import type { Family, MemberState, ScopeKey } from "../model.ts";
 import { processFamily } from "./process.ts";
+import { projectFamily } from "./project.ts";
 import type { AnyFamilySpec, DetailListing } from "./spec.ts";
 
 /** The registry, checked once at startup: a family, a scope name and an index name each once. */
@@ -26,7 +27,7 @@ export function defineFamilies(
   return families;
 }
 
-export const FAMILIES = defineFamilies([processFamily]);
+export const FAMILIES = defineFamilies([projectFamily, processFamily]);
 
 const byFamily = new Map<string, AnyFamilySpec>(FAMILIES.map((spec) => [spec.family, spec]));
 /** What a scope lists: its family, what leaving it means, and the detail listing it is, if one. */

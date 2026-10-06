@@ -4,6 +4,7 @@ import { linkKeys, emptyAccount, type AccountState } from "./model.ts";
 import type { Revision } from "./model.ts";
 import { reduceAccount, supersedes, type AccountInput } from "./reducer.ts";
 import { historyScope, runningScope } from "./families/process.ts";
+import { projectsScope } from "./families/project.ts";
 import { factOf, indexOf } from "./reducer.ts";
 import { processValue } from "./__fixtures__/account.ts";
 
@@ -173,6 +174,61 @@ describe("reduceAccount", () => {
       access: "denied",
     });
     expect(denied.memberships.get(scope)?.members.has("p1")).toBe(false);
+  });
+
+  describe("the project roster", () => {
+    const projects = projectsScope(ORG);
+    const project = (id: string, version: number) => ({
+      family: "project" as const,
+      id,
+      value: { id, name: id, status: "ACTIVE" },
+      revision: { kind: "zerops" as const, version },
+    });
+    const live = (): AccountState =>
+      apply(emptyAccount, [
+        {
+          kind: "stream",
+          key: linkKeys.zerops(ORG),
+          now: 0,
+          event: { kind: "demand", demanded: true },
+        },
+        { kind: "stream", key: projects, now: 0, event: { kind: "demand", demanded: true } },
+        { kind: "stream", key: projects, now: 0, event: { kind: "attempt" } },
+        { kind: "baseline-begin", scope: projects, generation: 1 },
+        {
+          kind: "baseline-commit",
+          scope: projects,
+          generation: 1,
+          via: "zerops-realtime",
+          members: ["p1", "p2"],
+          rows: [project("p1", 1), project("p2", 1)],
+        },
+      ]);
+
+    it("asks whether a project that left the roster is gone or no longer the viewer's", () => {
+      const left = reduceAccount(live(), {
+        kind: "membership",
+        scope: projects,
+        generation: 1,
+        delta: { add: [], remove: ["p1"] },
+      });
+      expect(left.state.memberships.get(projects)?.members.get("p1")).toBe("absent-unverified");
+      expect(factOf(left.state, "project", "p1")?.content.kind).toBe("value");
+      expect(left.directives).toEqual([{ kind: "verify-absence", key: projects, ids: ["p1"] }]);
+
+      const missing = reduceAccount(
+        apply(live(), [{ kind: "baseline-begin", scope: projects, generation: 1 }]),
+        {
+          kind: "baseline-commit",
+          scope: projects,
+          generation: 1,
+          via: "zerops-realtime",
+          members: ["p2"],
+          rows: [project("p2", 1)],
+        },
+      );
+      expect(missing.directives).toEqual([{ kind: "verify-absence", key: projects, ids: ["p1"] }]);
+    });
   });
 
   describe("running work", () => {

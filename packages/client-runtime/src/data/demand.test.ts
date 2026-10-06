@@ -36,8 +36,20 @@ describe("zeropsRegistrations", () => {
   it("registers navigation families for the organization always, a detail family never unasked", () => {
     const navigation = zeropsRegistrations(families, "org", []);
     expect(navigation.map((registration) => registration.scope)).toEqual([
+      "zerops:org:projects",
+      "zerops:org:projects",
       "zerops:org:running",
       "zerops:org:running",
+    ]);
+  });
+
+  it("registers the organization's projects as measured: its whole roster, both streams", () => {
+    const projects = zeropsRegistrations(families, "org", []).filter(
+      (registration) => registration.scope === "zerops:org:projects",
+    );
+    expect(projects.map(({ role, path, search }) => [role, path, search])).toEqual([
+      ["updates", "/project/search", [{ name: "clientId", operator: "eq", value: "org" }]],
+      ["membership", "/project/search", [{ name: "clientId", operator: "eq", value: "org" }]],
     ]);
   });
 

@@ -72,7 +72,10 @@ const PING = Schema.encodeSync(Typed)({ type: "ping" });
 /** A frame's `type`, or nothing for one that is not a typed JSON object. */
 const typeOf = (data: string): string | undefined => Option.getOrUndefined(decodeTyped(data))?.type;
 
-/** A failed request: its HTTP status where it had one, and how it classifies. */
+/**
+ * A failed request: its HTTP status where it had one, and how it classifies. The platform answers
+ * a read of what it no longer has `400 <entity>NotFound` as often as 404; `status` says 404 for both.
+ */
 interface RequestFailure {
   readonly status: number | null;
   readonly fault: StreamFault;
@@ -111,7 +114,12 @@ export function makeZeropsWire(options: {
           background: true,
         }),
       catch: (cause): RequestFailure => ({
-        status: cause instanceof ZeropsApiError ? cause.status : null,
+        status:
+          cause instanceof ZeropsApiError
+            ? cause.kind === "not-found"
+              ? 404
+              : cause.status
+            : null,
         fault: zeropsFault(cause),
       }),
     });

@@ -16,10 +16,19 @@ import type { StreamFault } from "../streamMachine.ts";
 import { superviseLink } from "../supervisor.ts";
 import { zeropsNavigationLink } from "./zerops.ts";
 import { historyScope, runningScope } from "../families/process.ts";
+import { projectsScope } from "../families/project.ts";
 import { factOf, indexOf } from "../reducer.ts";
 import { linkKeys } from "../model.ts";
 
 const PROCESS_SEARCH = "/process/search";
+const PROJECT_SEARCH = "/project/search";
+
+const PROBE_PROJECT = {
+  id: PROBE_PROJECT_ID,
+  name: "mate-rig-live",
+  status: "ACTIVE",
+  _version: 1,
+};
 
 const recorded = (index: number) => {
   const event = RECORDED_PROCESS_TRAFFIC[index];
@@ -39,12 +48,16 @@ const firstRows = new Map(
 const searched = (request: WireRequest) =>
   (request.body?.search as ReadonlyArray<{ readonly name: string; readonly value: unknown }>) ?? [];
 
-/** Answers registrations with this baseline, and reads by id from the recorded rows. */
-function answers(running: () => ReadonlyArray<Readonly<Record<string, unknown>>>) {
+/** Answers registrations with these baselines, and reads by id from the recorded rows. */
+function answers(
+  running: () => ReadonlyArray<Readonly<Record<string, unknown>>>,
+  projects: () => ReadonlyArray<Readonly<Record<string, unknown>>> = () => [PROBE_PROJECT],
+) {
   return (request: WireRequest): Effect.Effect<unknown, StreamFault> => {
     const output = request.body?.wsOutputType;
     if (output === "updateStream") return Effect.succeed({ success: true });
-    if (output === "listStream") return Effect.succeed({ items: running() });
+    if (output === "listStream")
+      return Effect.succeed({ items: request.path === PROJECT_SEARCH ? projects() : running() });
     const ids = searched(request).find((term) => term.name === "id")
       ?.value as ReadonlyArray<string>;
     return Effect.succeed({ items: ids.flatMap((id) => firstRows.get(id) ?? []) });
@@ -164,7 +177,19 @@ describe("zeropsNavigationLink", () => {
     Effect.gen(function* () {
       const store = makeAccountStore(AtomRegistry.make());
       let outage = false;
-      const fixture = fixtureWire(answers(() => (outage ? itemsOf(recorded(14)) : [])));
+      const projects = (ids: ReadonlyArray<string>) =>
+        ids.map((id) => ({ id, name: id, status: "ACTIVE", _version: 1 }));
+      const baselines = answers(
+        () => (outage ? itemsOf(recorded(14)) : []),
+        () => (outage ? projects(["kept"]) : projects(["kept", "deleted", "denied"])),
+      );
+      // As measured: a deleted project's read answers `400 projectNotFound`, which the wire
+      // reports as not found; a project taken from the viewer answers 403.
+      const fixture = fixtureWire((request) =>
+        request.method === "GET"
+          ? Effect.succeed({ status: request.path.endsWith("/deleted") ? 404 : 403, body: null })
+          : baselines(request),
+      );
       const fiber = yield* run(store, fixture);
       // The deploy runs when the socket breaks; it finishes while the client is away.
       for (const index of [1, 3, 10])
@@ -183,6 +208,8 @@ describe("zeropsNavigationLink", () => {
       const link = store.state().streams.get(linkKeys.zerops(ORG));
       expect(link?.phase).toBe("recovering");
       expect(store.state().streams.get(runningScope(ORG))?.phase).toBe("stale");
+      expect(store.state().streams.get(projectsScope(ORG))?.phase).toBe("stale");
+      expect(factOf(store.state(), "project", "deleted")?.content.kind).toBe("value");
       expect(indexOf(store.state(), "running", PROBE_PROJECT_ID)?.size).toBe(1);
 
       yield* TestClock.adjust(link?.next.kind === "retry" ? link.next.at : 0);
@@ -190,11 +217,20 @@ describe("zeropsNavigationLink", () => {
       expect(fixture.opens()).toBe(2);
       expect(
         fixture.requests.filter((request) => request.body?.receiverId === "receiver-2"),
-      ).toHaveLength(2);
+      ).toHaveLength(4);
       expect(store.state().streams.get(runningScope(ORG))?.phase).toBe("live");
       expect(indexOf(store.state(), "running", PROBE_PROJECT_ID)?.size).toBe(0);
       expect(factOf(store.state(), "process", "K1bQIB8AQBeQGHaAe8mneg")?.content).toMatchObject({
         value: { status: "RUNNING" },
+      });
+      expect(factOf(store.state(), "project", "kept")?.content.kind).toBe("value");
+      expect(factOf(store.state(), "project", "deleted")?.content).toEqual({
+        kind: "deleted",
+        evidence: "GET /project/deleted answered 404",
+      });
+      expect(factOf(store.state(), "project", "denied")).toMatchObject({
+        content: { kind: "purged" },
+        access: "denied",
       });
       yield* Fiber.interrupt(fiber);
     }),
@@ -250,6 +286,47 @@ describe("zeropsNavigationLink", () => {
       expect(factOf(store.state(), "process", "J3TU3gE0SvCFrPDutSacqw")).toBeUndefined();
       yield* Fiber.interrupt(fiber);
     }),
+  );
+  it.effect(
+    "restores a denied project from a later baseline that lists it, never from a push",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const project = { id: "p", name: "p", status: "ACTIVE", _version: 1 };
+        const fixture = fixtureWire((request) =>
+          request.method === "GET"
+            ? Effect.succeed({ status: 403, body: null })
+            : answers(
+                () => [],
+                () => [project],
+              )(request),
+        );
+        const fiber = yield* run(store, fixture);
+        yield* fixture.push(fixture.subscription(PROJECT_SEARCH, "listStream"), {
+          add: [],
+          delete: ["p"],
+        });
+        yield* settle;
+        expect(factOf(store.state(), "project", "p")?.content.kind).toBe("purged");
+
+        yield* fixture.push(fixture.subscription(PROJECT_SEARCH, "updateStream"), {
+          update: [project],
+        });
+        yield* settle;
+        expect(factOf(store.state(), "project", "p")?.content.kind).toBe("purged");
+
+        yield* fixture.drop({ outcome: "transient", message: "socket closed" });
+        yield* settle;
+        const link = store.state().streams.get(linkKeys.zerops(ORG));
+        yield* TestClock.adjust(link?.next.kind === "retry" ? link.next.at : 0);
+        yield* settle;
+        expect(factOf(store.state(), "project", "p")).toMatchObject({
+          content: { kind: "value", value: { name: "p" } },
+          access: "allowed",
+        });
+        expect(store.state().memberships.get(projectsScope(ORG))?.members.get("p")).toBe("member");
+        yield* Fiber.interrupt(fiber);
+      }),
   );
 });
 

@@ -140,6 +140,22 @@ describe("the Zerops wire", () => {
   );
 
   it.effect(
+    "answers a read of a project the platform no longer has (400 projectNotFound) as 404",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { wire } = harness({
+            requestData: async () => {
+              throw new ZeropsApiError("Project not found.", "not-found", 400, "projectNotFound");
+            },
+          });
+          const link = yield* wire.open;
+          expect(yield* link.get("/project/p1")).toEqual({ status: 404, body: null });
+        }),
+      ),
+  );
+
+  it.effect(
     "ends the frames as transient when the socket closes, and closes it with the attempt",
     () =>
       Effect.gen(function* () {
