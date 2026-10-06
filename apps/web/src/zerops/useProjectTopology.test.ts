@@ -4,13 +4,11 @@ import {
   decodeEntityDirectResponse,
   decodeEntityQueryResponse,
   makeInitialZeropsDataState,
-  processRecordToActivityProcess,
   projectKeyOf,
   interestKeyOf,
   reduceZeropsDataState,
   type HistoryReadView,
   type ManagedZeropsDataRuntime,
-  type ProcessRecord,
   type ProtocolDecodeResult,
   type UsageRead,
   type ZeropsDataReads,
@@ -309,53 +307,5 @@ describe("the project an environment belongs to (C3)", () => {
       environmentProjectRef({ environmentId: ENVIRONMENT, record, located, inventory })
         ?.projectId ?? null,
     ).toBe(expected);
-  });
-});
-
-describe("central topology binding", () => {
-  it("preserves process status, service attribution and pipeline fields", () => {
-    const record = {
-      ref: { processId: "process-1", project: { projectId: "project-1" } },
-      identity: {
-        knowledge: "observed",
-        fields: {
-          actionName: "stack.deploy",
-          createdAt: "2026-09-07T10:00:00.000Z",
-          serviceIds: ["service-1"],
-        },
-      },
-      lifecycle: {
-        knowledge: "observed",
-        fields: { status: "RUNNING", startedAt: "2026-09-07T10:00:01.000Z" },
-      },
-      pipeline: {
-        knowledge: "observed",
-        fields: {
-          appVersion: {
-            id: "version-1",
-            status: "BUILDING",
-            build: {
-              serviceStackId: "builder-1",
-              pipelineStart: "2026-09-07T10:00:02.000Z",
-            },
-          },
-        },
-      },
-    } as unknown as ProcessRecord;
-
-    expect(processRecordToActivityProcess(record)).toMatchObject({
-      id: "process-1",
-      projectId: "project-1",
-      serviceStackIds: ["service-1"],
-      status: "RUNNING",
-      appVersion: {
-        id: "version-1",
-        status: "BUILDING",
-        build: {
-          serviceStackId: "builder-1",
-          pipelineStart: "2026-09-07T10:00:02.000Z",
-        },
-      },
-    });
   });
 });

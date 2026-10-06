@@ -10,7 +10,6 @@ import {
   ZeropsCommandAttemptId,
   ZeropsSharedReadId,
   historySeriesKeyOf,
-  processKeyOf,
   projectKeyOf,
   queryKeyOf,
   serviceKeyOf,
@@ -24,7 +23,6 @@ import {
   entityRegistration,
   identity,
   grant,
-  process,
   project,
   queryRegistration,
   queryTicket,
@@ -798,32 +796,6 @@ describe("Zerops data model coordination", () => {
       },
     });
 
-    const activityMember = process("inactive-activity-member", project("inactive-activity"));
-    const activityDescriptor = {
-      kind: "running-processes-of-project" as const,
-      project: activityMember.project,
-      statuses: ["RUNNING" as const],
-      schemaVersion: 1 as const,
-    };
-    const activityTicket = queryTicket(activityDescriptor, id, 2, 1, 2);
-    state = reduce(state, { kind: "read-started", ticket: activityTicket });
-    state = reduce(state, {
-      kind: "observation",
-      observation: {
-        stamp: stamp(2),
-        accessEvidence: null,
-        input: {
-          kind: "query-baseline-observed",
-          members: [],
-          unresolvedMembers: [activityMember],
-          observedTotal: 1,
-          coverage: fullCoverage,
-          source: "direct-read",
-          ticket: activityTicket,
-        },
-      },
-    });
-
     const currentDescriptor = {
       kind: "current-metrics-of-project" as const,
       project: project("inactive-current"),
@@ -928,22 +900,18 @@ describe("Zerops data model coordination", () => {
       kind: "inactive-queries-released",
       queryKeys: [
         queryKeyOf(inventoryDescriptor),
-        queryKeyOf(activityDescriptor),
         queryKeyOf(currentDescriptor),
         queryKeyOf(historyDescriptors[0]!),
       ],
     });
 
     expect(state.inventory.queries.has(queryKeyOf(inventoryDescriptor))).toBe(false);
-    expect(state.activity.queries.has(queryKeyOf(activityDescriptor))).toBe(false);
     expect(state.observability.current.has(queryKeyOf(currentDescriptor))).toBe(false);
     expect(state.observability.history.has(historySeriesKeyOf(historySeries[0]!))).toBe(false);
     expect(state.observability.history.has(retainedHistoryKey)).toBe(true);
     expect(state.observability.historyAdmission.has(retainedHistoryKey)).toBe(true);
     expect(state.inventory.memberRefs.has(serviceKeyOf(inventoryMember))).toBe(false);
-    expect(state.activity.memberRefs.has(processKeyOf(activityMember))).toBe(false);
     expect(state.inventory.services.has(serviceKeyOf(inventoryMember))).toBe(true);
-    expect(state.activity.processes.has(processKeyOf(activityMember))).toBe(true);
     expect(
       reduce(state, {
         kind: "inactive-queries-released",
@@ -952,7 +920,7 @@ describe("Zerops data model coordination", () => {
     ).toBe(state);
   });
 
-  it("separates command admission and outcome from platform Process state", () => {
+  it("admits a command, records its outcome, and rejects one once access expired", () => {
     const ref = service();
     const attemptId = ZeropsCommandAttemptId.make("attempt-1");
     const command = {
@@ -969,18 +937,12 @@ describe("Zerops data model coordination", () => {
       request: { command, enqueuedAtMs: 10 },
     });
     expect(state.commands.get(attemptId)?.status).toBe("pending");
-    expect(state.activity.processes.size).toBe(0);
-    const processRef = process();
     state = reduce(state, {
       kind: "command-completion",
       stamp: stamp(2),
-      completion: { kind: "command-accepted", command, processRefs: [processRef] },
+      completion: { kind: "command-accepted", command },
     });
-    expect(state.commands.get(attemptId)).toMatchObject({
-      status: "accepted",
-      processRefs: [processRef],
-    });
-    expect(state.activity.processes.size).toBe(0);
+    expect(state.commands.get(attemptId)?.status).toBe("accepted");
 
     state = reduce(state, {
       kind: "access-observation",
@@ -1036,7 +998,7 @@ describe("Zerops data model coordination", () => {
         {
           kind: "command-completion",
           stamp: stamp(index * 2 + 2),
-          completion: { kind: "command-accepted", command, processRefs: [] },
+          completion: { kind: "command-accepted", command },
         },
         tiny,
       );
@@ -1064,172 +1026,6 @@ describe("Zerops data model coordination", () => {
     );
     expect(state.commands.get(pending.attemptId)?.status).toBe("pending");
     expect(state.commands.size).toBeLessThan(tiny.retainedCommandAttemptsPerAccount);
-  });
-
-  it("bounds terminal processes per project and account, and nonterminal processes account-wide", () => {
-    const id = identity();
-    const tiny = makeZeropsDataPolicy({
-      retainedTerminalProcessesPerAccount: 2,
-      retainedTerminalProcessesPerProject: 1,
-      retainedNonTerminalProcessesPerAccount: 1,
-    });
-    let state = reduce(
-      makeInitialZeropsDataState(scope()),
-      { kind: "interest-upserted", interest: desiredInterest(id) },
-      tiny,
-    );
-    const projectA = project("process-project-a");
-    const projectB = project("process-project-b");
-    const projectC = project("process-project-c");
-    const observations = [
-      { ref: process("terminal-a1", projectA), status: "FINISHED" },
-      { ref: process("terminal-a2", projectA), status: "FAILED" },
-      { ref: process("running-b1", projectB), status: "RUNNING" },
-      { ref: process("running-c1", projectC), status: "PENDING" },
-      { ref: process("terminal-b1", projectB), status: "CANCELED" },
-      { ref: process("terminal-c1", projectC), status: "FINISHED" },
-    ] as const;
-    for (let index = 0; index < observations.length; index++) {
-      state = reduce(
-        state,
-        {
-          kind: "observation",
-          observation: {
-            stamp: stamp(index + 1),
-            accessEvidence: null,
-            input: {
-              kind: "process-lifecycle-observed",
-              ref: observations[index]!.ref,
-              observation: {
-                source: "native-push",
-                registration: entityRegistration("process", id),
-                fields: { status: observations[index]!.status },
-                metadata: {},
-              },
-            },
-          },
-        },
-        tiny,
-      );
-    }
-    expect(state.retention.pending).toEqual([
-      expect.objectContaining({
-        status: "partial-before-eviction",
-        reason: "terminal-process-account-budget",
-      }),
-    ]);
-    state = tick(state, 7, tiny);
-
-    const retained = [...state.activity.processes.values()];
-    expect(retained.filter((record) => record.ref.project === projectA).length).toBeLessThanOrEqual(
-      1,
-    );
-    expect(
-      retained.filter(
-        (record) =>
-          record.lifecycle.knowledge === "observed" && record.lifecycle.fields.status === "RUNNING",
-      ),
-    ).toHaveLength(0);
-    expect(
-      retained.filter(
-        (record) =>
-          record.lifecycle.knowledge === "observed" && record.lifecycle.fields.status === "PENDING",
-      ),
-    ).toHaveLength(1);
-    expect(
-      retained.filter(
-        (record) =>
-          record.lifecycle.knowledge === "observed" &&
-          typeof record.lifecycle.fields.status === "string" &&
-          ["FINISHED", "FAILED", "CANCELED"].includes(record.lifecycle.fields.status),
-      ),
-    ).toHaveLength(2);
-    expect(
-      state.retention.notices.some((notice) => notice.reason === "terminal-process-project-budget"),
-    ).toBe(true);
-    expect(
-      state.retention.notices.some((notice) => notice.reason === "nonterminal-process-budget"),
-    ).toBe(true);
-    expect(
-      state.retention.notices.some((notice) => notice.reason === "terminal-process-account-budget"),
-    ).toBe(true);
-  });
-
-  it("marks a running-process query partial before a retained process is evicted", () => {
-    const id = identity();
-    const projectRef = project("running-retention-project");
-    const descriptor = {
-      kind: "running-processes-of-project" as const,
-      project: projectRef,
-      statuses: ["PENDING", "RUNNING"] as const,
-      schemaVersion: 1 as const,
-    };
-    const ticket = queryTicket(descriptor, id, 1, 0, 1);
-    const processes = [
-      process("running-retention-1", projectRef),
-      process("running-retention-2", projectRef),
-    ];
-    let state = reduce(makeInitialZeropsDataState(scope()), {
-      kind: "interest-upserted",
-      interest: desiredInterest(id),
-    });
-    state = reduce(state, { kind: "read-started", ticket });
-    state = reduce(state, {
-      kind: "observation",
-      observation: {
-        stamp: stamp(1),
-        accessEvidence: null,
-        input: {
-          kind: "query-baseline-observed",
-          members: processes,
-          unresolvedMembers: processes,
-          observedTotal: 2,
-          coverage: fullCoverage,
-          source: "indexed-search",
-          ticket,
-        },
-      },
-    });
-    for (let index = 0; index < processes.length; index += 1) {
-      state = reduce(state, {
-        kind: "observation",
-        observation: {
-          stamp: stamp(index + 2),
-          accessEvidence: null,
-          input: {
-            kind: "process-lifecycle-observed",
-            ref: processes[index]!,
-            observation: {
-              source: "native-push",
-              registration: entityRegistration("process", id),
-              fields: { status: "RUNNING" },
-              metadata: {},
-            },
-          },
-        },
-      });
-    }
-
-    const tiny = makeZeropsDataPolicy({ retainedNonTerminalProcessesPerAccount: 1 });
-    state = tick(state, 4, tiny);
-    expect(state.activity.processes.size).toBe(2);
-    expect(state.retention.pending).toEqual([
-      expect.objectContaining({
-        status: "partial-before-eviction",
-        reason: "nonterminal-process-budget",
-      }),
-    ]);
-    expect(state.activity.queries.get(queryKeyOf(descriptor))?.coverage).toEqual({
-      kind: "partial",
-      reason: "budget",
-    });
-
-    state = tick(state, 5, tiny);
-    expect(state.activity.processes.size).toBe(1);
-    expect(state.activity.queries.get(queryKeyOf(descriptor))?.coverage).toEqual({
-      kind: "partial",
-      reason: "budget",
-    });
   });
 
   it("shuts down with an idempotent fence and rejects all late model work", () => {
@@ -1289,7 +1085,6 @@ describe("Zerops data model coordination", () => {
     expect(state.inventory.services.get(serviceKeyOf(hotRef))?.lifecycle).toMatchObject({
       fields: { status: "STOPPED" },
     });
-    expect(state.activity.processes.has(processKeyOf(process("never")))).toBe(false);
   });
 
   it("performs no retention sort when every collection is under budget", () => {
@@ -1329,7 +1124,7 @@ describe("Zerops data model coordination", () => {
 });
 
 describe("unavailable response ordering", () => {
-  for (const ref of [project(), service(), process()]) {
+  for (const ref of [project(), service()]) {
     for (const source of ["direct-read", "native-push"] as const) {
       for (const reason of ["forbidden", "not-found"] as const) {
         it(`keeps newer ${source} ${ref.kind} facts ahead of an older ${reason}`, () => {
@@ -1348,7 +1143,7 @@ describe("unavailable response ordering", () => {
               ...(source === "direct-read"
                 ? { source, ticket: newer }
                 : { source, registration: entityRegistration(ref.kind, id) }),
-              fields: { status: ref.kind === "process" ? "RUNNING" : "ACTIVE" },
+              fields: { status: "ACTIVE" },
               metadata: {},
             },
           } as PlatformObservation;
@@ -1371,7 +1166,6 @@ describe("unavailable response ordering", () => {
             },
           });
           expect(state.inventory).toBe(before.inventory);
-          expect(state.activity).toBe(before.activity);
         });
       }
     }

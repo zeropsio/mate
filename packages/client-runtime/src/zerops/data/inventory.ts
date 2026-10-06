@@ -238,7 +238,7 @@ const canReopenUnavailable = <Fields, RequiredField extends keyof Fields>(
   if (target.kind === "project") {
     return projectRoleGrantsAccess(accessEvidence, target.ref, "no-read-only");
   }
-  if (target.kind === "service" || target.kind === "process") {
+  if (target.kind === "service") {
     return projectRoleGrantsAccess(accessEvidence, target.ref.project, "no-read-only");
   }
   return false;

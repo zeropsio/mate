@@ -761,7 +761,7 @@ describe("ZeropsDataAdapter receiver", () => {
     }),
   );
 
-  it.effect("returns the accepted restart Process ref and command-response observations", () =>
+  it.effect("accepts the restart Process answered for the requested service", () =>
     Effect.gen(function* () {
       const requests: Array<{
         readonly url: string;
@@ -800,22 +800,7 @@ describe("ZeropsDataAdapter receiver", () => {
         url: expect.stringMatching(/\/service-stack\/service\/restart$/),
         init: { method: "PUT" },
       });
-      expect(result.processRefs).toEqual([
-        expect.objectContaining({ kind: "process", processId: "independent-process-id" }),
-      ]);
-      expect(result.observations).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            kind: "process-lifecycle-observed",
-            ref: expect.objectContaining({ processId: "independent-process-id" }),
-            observation: expect.objectContaining({
-              source: "command-response",
-              command: restartCommand,
-              fields: expect.objectContaining({ status: "PENDING" }),
-            }),
-          }),
-        ]),
-      );
+      expect(result.result).toEqual({ kind: "restart-service", value: undefined });
     }),
   );
 
@@ -846,46 +831,41 @@ describe("ZeropsDataAdapter receiver", () => {
     }),
   );
 
-  it.effect(
-    "returns the accepted start-service Process ref via PUT /service-stack/{id}/start",
-    () =>
-      Effect.gen(function* () {
-        const requests: Array<{
-          readonly url: string;
-          readonly init: RequestInit | undefined;
-        }> = [];
-        const client = clientFor((url, init) => {
-          requests.push({ url, init });
-          return new Response(
-            JSON.stringify({
-              id: "start-process-id",
-              projectId: "project",
-              serviceStackId: "service",
-              actionName: "stack.start",
-              status: "PENDING",
-              created: "2026-09-04T12:41:00.728Z",
-            }),
-            { status: 200 },
-          );
-        });
-        const adapter = makeZeropsDataAdapter({
-          client,
-          makeSocket: () => new FakeSocket(),
-          timers,
-        });
+  it.effect("accepts the start-service Process via PUT /service-stack/{id}/start", () =>
+    Effect.gen(function* () {
+      const requests: Array<{
+        readonly url: string;
+        readonly init: RequestInit | undefined;
+      }> = [];
+      const client = clientFor((url, init) => {
+        requests.push({ url, init });
+        return new Response(
+          JSON.stringify({
+            id: "start-process-id",
+            projectId: "project",
+            serviceStackId: "service",
+            actionName: "stack.start",
+            status: "PENDING",
+            created: "2026-09-04T12:41:00.728Z",
+          }),
+          { status: 200 },
+        );
+      });
+      const adapter = makeZeropsDataAdapter({
+        client,
+        makeSocket: () => new FakeSocket(),
+        timers,
+      });
 
-        const result = yield* adapter.execute(startServiceCommand, context());
+      const result = yield* adapter.execute(startServiceCommand, context());
 
-        expect(requests).toHaveLength(1);
-        expect(requests[0]).toMatchObject({
-          url: expect.stringMatching(/\/service-stack\/service\/start$/),
-          init: { method: "PUT" },
-        });
-        expect(result.processRefs).toEqual([
-          expect.objectContaining({ kind: "process", processId: "start-process-id" }),
-        ]);
-        expect(result.result).toEqual({ kind: "start-service", value: undefined });
-      }),
+      expect(requests).toHaveLength(1);
+      expect(requests[0]).toMatchObject({
+        url: expect.stringMatching(/\/service-stack\/service\/start$/),
+        init: { method: "PUT" },
+      });
+      expect(result.result).toEqual({ kind: "start-service", value: undefined });
+    }),
   );
 
   it.effect(
@@ -918,7 +898,7 @@ describe("ZeropsDataAdapter receiver", () => {
       }),
   );
 
-  it.effect("returns the accepted start-project Process ref via PUT /project/{id}/start", () =>
+  it.effect("accepts the start-project Process via PUT /project/{id}/start", () =>
     Effect.gen(function* () {
       const requests: Array<{
         readonly url: string;
@@ -950,9 +930,6 @@ describe("ZeropsDataAdapter receiver", () => {
         url: expect.stringMatching(/\/project\/project\/start$/),
         init: { method: "PUT" },
       });
-      expect(result.processRefs).toEqual([
-        expect.objectContaining({ kind: "process", processId: "start-process-id" }),
-      ]);
       expect(result.result).toEqual({ kind: "start-project", value: undefined });
     }),
   );
@@ -1014,13 +991,6 @@ describe("ZeropsDataAdapter receiver", () => {
         init: { method: "DELETE" },
       });
       expect(result.result).toEqual({ kind: "delete-project", value: undefined });
-      expect(result.processRefs).toEqual([
-        {
-          kind: "process",
-          project: { kind: "project", organization, projectId: "project" },
-          processId: "delete-process-id",
-        },
-      ]);
     }),
   );
 
@@ -1242,9 +1212,6 @@ describe("ZeropsDataAdapter receiver", () => {
         value: { projectId: "imported-project" },
       });
       expect(services.result).toEqual({ kind: "import-services", value: undefined });
-      expect(services.processRefs).toEqual([
-        expect.objectContaining({ processId: "process-1", project }),
-      ]);
     }),
   );
 

@@ -1,13 +1,10 @@
 import { Atom } from "effect/unstable/reactivity";
 
 import {
-  selectActivity,
   selectCommandAttempt,
   selectHistory,
-  selectOperationProgress,
   selectProject,
   selectProjectsOf,
-  selectRunningProcessesOf,
   selectService,
   selectServicesOf,
   selectTopology,
@@ -27,10 +24,7 @@ import type {
   EntityRead,
   HistoryReadView,
   HistorySeriesKey,
-  OperationProgressView,
   OrganizationRef,
-  ProcessRecord,
-  ProjectActivityRead,
   ProjectRecord,
   ProjectRef,
   ProjectTopologyRead,
@@ -101,7 +95,7 @@ function knowledgeArraysEqual<Record extends ZeropsEntityRecord>(
   );
 }
 
-function collectionReadsEqual<Record extends ProjectRecord | ServiceRecord | ProcessRecord>(
+function collectionReadsEqual<Record extends ProjectRecord | ServiceRecord>(
   left: CollectionRead<Record>,
   right: CollectionRead<Record>,
 ): boolean {
@@ -195,14 +189,6 @@ export function createZeropsDataAtoms(stateAtom: Atom.Atom<ZeropsDataState>): {
       `zerops-services:${key}`,
     ),
   );
-  const runningAtom = Atom.family((key: string) =>
-    stableAtom(
-      stateAtom,
-      (state) => selectRunningProcessesOf(state, projects.get(key)!),
-      collectionReadsEqual,
-      `zerops-running-processes:${key}`,
-    ),
-  );
   const usageAtom = Atom.family((key: string) =>
     stableAtom(
       stateAtom,
@@ -243,19 +229,8 @@ export function createZeropsDataAtoms(stateAtom: Atom.Atom<ZeropsDataState>): {
       (left: ProjectTopologyRead, right: ProjectTopologyRead) =>
         entityReadsEqual(left.project, right.project) &&
         collectionReadsEqual(left.services, right.services) &&
-        collectionReadsEqual(left.runningProcesses, right.runningProcesses) &&
         observationsEqual(left.observation, right.observation),
       `zerops-topology:${key}`,
-    ),
-  );
-  const activityAtom = Atom.family((key: string) =>
-    stableAtom(
-      stateAtom,
-      (state) => selectActivity(state, projects.get(key)!),
-      (left: ProjectActivityRead, right: ProjectActivityRead) =>
-        collectionReadsEqual(left.running, right.running) &&
-        observationsEqual(left.observation, right.observation),
-      `zerops-activity:${key}`,
     ),
   );
   const commandAtom = Atom.family((key: string) =>
@@ -264,17 +239,6 @@ export function createZeropsDataAtoms(stateAtom: Atom.Atom<ZeropsDataState>): {
       (state) => selectCommandAttempt(state, attempts.get(key)!),
       Object.is,
       `zerops-command:${key}`,
-    ),
-  );
-  const operationAtom = Atom.family((key: string) =>
-    stableAtom(
-      stateAtom,
-      (state) => selectOperationProgress(state, attempts.get(key)!),
-      (left: OperationProgressView, right: OperationProgressView) =>
-        left.attempt === right.attempt &&
-        knowledgeArraysEqual(left.processes, right.processes) &&
-        observationsEqual(left.observation, right.observation),
-      `zerops-operation:${key}`,
     ),
   );
 
@@ -320,12 +284,9 @@ export function createZeropsDataAtoms(stateAtom: Atom.Atom<ZeropsDataState>): {
       projectsOf: (ref) => projectsOfAtom(remember(organizations, organizationKeyOf(ref), ref)),
       service: (ref) => serviceAtom(remember(services, serviceKeyOf(ref), ref)),
       servicesOf: (ref) => servicesOfAtom(remember(projects, projectKeyOf(ref), ref)),
-      runningProcessesOf: (ref) => runningAtom(remember(projects, projectKeyOf(ref), ref)),
       usage: (ref) => usageAtom(remember(services, serviceKeyOf(ref), ref)),
       history: (ref) => historyAtom(remember(history, historySeriesKeyOf(ref), ref)),
       topology: (ref) => topologyAtom(remember(projects, projectKeyOf(ref), ref)),
-      activity: (ref) => activityAtom(remember(projects, projectKeyOf(ref), ref)),
-      operationProgress: (ref) => operationAtom(remember(attempts, attemptKey(ref), ref)),
       commandAttempt: (ref) => commandAtom(remember(attempts, attemptKey(ref), ref)),
       deployedVersion: (ref) => deployedVersionAtom(remember(services, serviceKeyOf(ref), ref)),
       mateFlag: (ref) => mateFlagAtom(remember(services, serviceKeyOf(ref), ref)),

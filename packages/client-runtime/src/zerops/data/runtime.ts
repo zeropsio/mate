@@ -58,12 +58,11 @@ import type {
   CommandAdmissionError,
   CommandCompletionInput,
   DesiredInterestState,
-  EntityRef,
   IngestionInput,
   InterestIdentity,
   InterestKey,
   InterestLease,
-  EntityQueryDescriptor,
+  MembershipQueryDescriptor,
   LeaseAdmissionError,
   OrganizationRef,
   PlatformCommand,
@@ -86,6 +85,7 @@ import type {
   RegistrationRequest,
   RegistrationReceipt,
   RuntimeInterestDescriptor,
+  ServiceRef,
   SharedReadOwnership,
   TableQueryDescriptor,
   VerifiedAccessGrant,
@@ -150,17 +150,16 @@ function organizationOfReadTarget(target: ReadTarget): OrganizationRef | null {
   return descriptor.organization ?? descriptor.project?.organization ?? null;
 }
 
-function entityIdOf(ref: EntityRef): string {
-  return ref.kind === "project"
-    ? ref.projectId
-    : ref.kind === "service"
-      ? ref.serviceId
-      : ref.processId;
+function entityIdOf(ref: ReadEntityRef): string {
+  return ref.kind === "project" ? ref.projectId : ref.serviceId;
 }
 
-function organizationOfEntityRef(ref: EntityRef): OrganizationRef {
+function organizationOfEntityRef(ref: ReadEntityRef): OrganizationRef {
   return ref.kind === "project" ? ref.organization : ref.project.organization;
 }
+
+/** The entities the runtime reads: projects and their services. */
+type ReadEntityRef = ProjectRef | ServiceRef;
 
 const interestKeys = new WeakMap<RuntimeInterestDescriptor, InterestKey>();
 
@@ -201,10 +200,6 @@ function serializedInterestKey(descriptor: RuntimeInterestDescriptor): InterestK
     case "project-access":
     case "project-services-check":
     case "project-current-metrics":
-      return InterestKeySchema.make(
-        JSON.stringify([descriptor.kind, projectKeyOf(descriptor.project)]),
-      );
-    case "project-activity":
       return InterestKeySchema.make(
         JSON.stringify([descriptor.kind, projectKeyOf(descriptor.project)]),
       );
@@ -463,32 +458,26 @@ const queryKeysOfPlan = (plan: InterestPlan): ReadonlyArray<QueryKey> => [
 export function planZeropsInterest(descriptor: RuntimeInterestDescriptor): InterestPlan {
   const organization = organizationOfInterest(descriptor);
   const scopeProject = "project" in descriptor ? descriptor.project : null;
-  const entityUpdate = (entity: "project" | "service" | "process"): PlannedRegistration => ({
+  const entityUpdate = (entity: "project" | "service"): PlannedRegistration => ({
     descriptor:
       entity === "project"
         ? { kind: "entity-updates", entity, organization }
         : { kind: "entity-updates", entity, organization, project: scopeProject! },
     baseline: null,
   });
-  const membership = (query: EntityQueryDescriptor): PlannedRegistration => ({
+  const membership = (query: MembershipQueryDescriptor): PlannedRegistration => ({
     descriptor: { kind: "query-membership", query },
     baseline: { kind: "query", descriptor: query },
   });
-  const projects: EntityQueryDescriptor = {
+  const projects: MembershipQueryDescriptor = {
     kind: "projects-of-organization",
     organization,
     statuses: [],
     schemaVersion: 1,
   };
-  const services: EntityQueryDescriptor = {
+  const services: MembershipQueryDescriptor = {
     kind: "services-of-project",
     project: scopeProject!,
-    schemaVersion: 1,
-  };
-  const running: EntityQueryDescriptor = {
-    kind: "running-processes-of-project",
-    project: scopeProject!,
-    statuses: ["PENDING", "RUNNING", "ROLLBACKING", "CANCELING"],
     schemaVersion: 1,
   };
   const table = (query: TableQueryDescriptor): ReadonlyArray<PlannedRegistration> => [
@@ -525,20 +514,12 @@ export function planZeropsInterest(descriptor: RuntimeInterestDescriptor): Inter
   }
   if (descriptor.kind === "project-access") return { registrations: [], directReads: [] };
   const project = descriptor.project;
-  const activity = [entityUpdate("process"), membership(running)];
   if (descriptor.kind === "project-inventory" || descriptor.kind === "project-topology") {
     return {
       // The project itself is the organization inventory's, which every app holds beside it.
-      registrations: [
-        entityUpdate("service"),
-        membership(services),
-        ...(descriptor.kind === "project-topology" ? activity : []),
-      ],
+      registrations: [entityUpdate("service"), membership(services)],
       directReads: [{ kind: "query", descriptor: services }],
     };
-  }
-  if (descriptor.kind === "project-activity") {
-    return { registrations: activity, directReads: [] };
   }
   if (descriptor.kind === "project-services-check") {
     return {
@@ -728,7 +709,7 @@ interface RuntimeReceiver {
 }
 
 interface RuntimeHydration {
-  readonly target: EntityRef;
+  readonly target: ReadEntityRef;
   readonly requestId: ZeropsRequestId;
   ownership: SharedReadOwnership;
   fiber: Fiber.Fiber<void> | null;
@@ -1131,7 +1112,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
   const hydrationAttempts = new Map<
     string,
     {
-      readonly target: EntityRef;
+      readonly target: ReadEntityRef;
       readonly query: QueryKey;
       count: number;
       retryAtMs: number;
@@ -1650,7 +1631,6 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         target.kind === "query" &&
         (target.descriptor.kind === "projects-of-organization" ||
           target.descriptor.kind === "services-of-project" ||
-          target.descriptor.kind === "running-processes-of-project" ||
           target.descriptor.kind === "active-versions-of-services" ||
           target.descriptor.kind === "service-variables-of-services")
           ? {
@@ -1792,18 +1772,14 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
     return dependents;
   };
 
-  const unresolvedRefs = (state: ZeropsDataState, query: QueryKey): ReadonlyArray<EntityRef> => {
+  const unresolvedRefs = (
+    state: ZeropsDataState,
+    query: QueryKey,
+  ): ReadonlyArray<ReadEntityRef> => {
     const inventoryQuery = state.inventory.queries.get(query);
-    if (inventoryQuery !== undefined) {
-      return inventoryQuery.unresolvedMemberKeys.flatMap((key) => {
-        const ref = state.inventory.memberRefs.get(key);
-        return ref === undefined ? [] : [ref];
-      });
-    }
-    const activityQuery = state.activity.queries.get(query);
-    if (activityQuery === undefined) return [];
-    return activityQuery.unresolvedMemberKeys.flatMap((key) => {
-      const ref = state.activity.memberRefs.get(key);
+    if (inventoryQuery === undefined) return [];
+    return inventoryQuery.unresolvedMemberKeys.flatMap((key) => {
+      const ref = state.inventory.memberRefs.get(key);
       return ref === undefined ? [] : [ref];
     });
   };
@@ -1988,10 +1964,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
     if (heldReads.size === 0) return;
     const current = yield* Ref.get(model);
     const unresolved = new Set<string>();
-    for (const query of [
-      ...current.inventory.queries.values(),
-      ...current.activity.queries.values(),
-    ])
+    for (const query of current.inventory.queries.values())
       for (const ref of unresolvedRefs(current, query.key)) unresolved.add(entityKeyOf(ref));
     for (const key of heldReads) {
       if (unresolved.has(key)) continue;
@@ -2150,10 +2123,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
               Effect.andThen(
                 Effect.gen(function* () {
                   const current = yield* Ref.get(model);
-                  const incomplete = [
-                    ...current.inventory.queries.values(),
-                    ...current.activity.queries.values(),
-                  ].some((query) =>
+                  const incomplete = [...current.inventory.queries.values()].some((query) =>
                     unresolvedRefs(current, query.key).some((ref) => entityKeyOf(ref) === key),
                   );
                   if (!incomplete) {
@@ -2206,7 +2176,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
    */
   const scheduleHydrationRetry = (
     key: string,
-    target: EntityRef,
+    target: ReadEntityRef,
     query: QueryKey,
     error: AdapterError | null,
   ): Effect.Effect<{
@@ -3445,8 +3415,8 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         }
         const retained = yield* Ref.get(model);
         const unresolved = new Set<string>(
-          [...retained.inventory.queries.values(), ...retained.activity.queries.values()].flatMap(
-            (query) => unresolvedRefs(retained, query.key).map(entityKeyOf),
+          [...retained.inventory.queries.values()].flatMap((query) =>
+            unresolvedRefs(retained, query.key).map(entityKeyOf),
           ),
         );
         for (const key of hydrationAttempts.keys()) {
@@ -3585,7 +3555,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
                 interest.leases.size > 0 && receiverKeyOf(interest.descriptor) === organizationKey,
             )
           : held;
-        const matchesEntity = (target: EntityRef) =>
+        const matchesEntity = (target: ReadEntityRef) =>
           organizationKeyOf(organizationOfEntityRef(target)) === organizationKey &&
           (replace ||
             (target.kind === "project" ? target : target.project).projectId === scope.projectId);
@@ -3980,7 +3950,6 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
             completion: {
               kind: "command-accepted",
               command,
-              processRefs: outcome.success.processRefs,
             },
             interest: null,
           });

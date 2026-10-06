@@ -43,9 +43,6 @@ export interface ZeropsDataPolicy {
   readonly recoveryBackoffMaxMs: number;
   readonly retainedProjectsPerAccount: number;
   readonly retainedServicesPerAccount: number;
-  readonly retainedTerminalProcessesPerProject: number;
-  readonly retainedTerminalProcessesPerAccount: number;
-  readonly retainedNonTerminalProcessesPerAccount: number;
   readonly retainedCurrentMetricSamplesPerAccount: number;
   readonly retainedHistoryBucketsPerSeries: number;
   readonly activeHistorySeriesPerAccount: number;
@@ -117,9 +114,6 @@ export const DEFAULT_ZEROPS_DATA_POLICY: ZeropsDataPolicy = Object.freeze({
   recoveryBackoffMaxMs: RECOVERY_CAP_MS,
   retainedProjectsPerAccount: 10_000,
   retainedServicesPerAccount: 50_000,
-  retainedTerminalProcessesPerProject: 500,
-  retainedTerminalProcessesPerAccount: 2_000,
-  retainedNonTerminalProcessesPerAccount: 10_000,
   retainedCurrentMetricSamplesPerAccount: 10_000,
   retainedHistoryBucketsPerSeries: 720,
   activeHistorySeriesPerAccount: 128,

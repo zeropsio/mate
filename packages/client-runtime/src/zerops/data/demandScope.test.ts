@@ -4,7 +4,7 @@ import { project } from "./__fixtures__/index.ts";
 
 const opened = project("opened");
 describe("visible project demand", () => {
-  it.each(["project-inventory", "project-topology", "project-activity"] as const)(
+  it.each(["project-inventory", "project-topology"] as const)(
     "narrows every %s membership and update registration to the opened project",
     (kind) => {
       const plan = planZeropsInterest({ kind, project: opened });

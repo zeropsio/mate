@@ -380,20 +380,9 @@ export type ObservationSource =
  */
 export type FacetPatch<Fields> = Readonly<Partial<Fields>>;
 
-type IndexedQueryForTarget<Target extends EntityReadTarget> = Target["kind"] extends "project"
+type QueryForTarget<Target extends EntityReadTarget> = Target["kind"] extends "project"
   ? Extract<EntityQueryDescriptor, { readonly kind: "projects-of-organization" }>
-  : Target["kind"] extends "service"
-    ? Extract<EntityQueryDescriptor, { readonly kind: "services-of-project" }>
-    : Extract<EntityQueryDescriptor, { readonly kind: "running-processes-of-project" }>;
-
-type DirectCollectionQueryForTarget<Target extends EntityReadTarget> =
-  Target["kind"] extends "project"
-    ? Extract<EntityQueryDescriptor, { readonly kind: "projects-of-organization" }>
-    : Target["kind"] extends "service"
-      ? Extract<EntityQueryDescriptor, { readonly kind: "services-of-project" }>
-      : Target["kind"] extends "process"
-        ? Extract<EntityQueryDescriptor, { readonly kind: "running-processes-of-project" }>
-        : never;
+  : Extract<EntityQueryDescriptor, { readonly kind: "services-of-project" }>;
 
 type EntityUpdateRegistrationForTarget<Target extends EntityReadTarget> = RegistrationRequest & {
   readonly descriptor: Extract<RegistrationDescriptor, { readonly kind: "entity-updates" }> & {
@@ -405,7 +394,7 @@ export type FieldObservation<Fields, Target extends EntityReadTarget> =
   | {
       readonly source: "indexed-search";
       readonly ticket: ReadTicket & {
-        readonly target: MembershipQueryReadTarget<IndexedQueryForTarget<Target>>;
+        readonly target: MembershipQueryReadTarget<QueryForTarget<Target>>;
       };
       readonly fields: FacetPatch<Fields>;
       readonly metadata: SourceMetadata;
@@ -413,7 +402,7 @@ export type FieldObservation<Fields, Target extends EntityReadTarget> =
   | {
       readonly source: "direct-read";
       readonly ticket: ReadTicket & {
-        readonly target: Target | MembershipQueryReadTarget<DirectCollectionQueryForTarget<Target>>;
+        readonly target: Target | MembershipQueryReadTarget<QueryForTarget<Target>>;
       };
       readonly fields: FacetPatch<Fields>;
       readonly metadata: SourceMetadata;
@@ -490,21 +479,6 @@ export type EntityObservation =
       readonly kind: "service-scaling-observed";
       readonly ref: ServiceRef;
       readonly observation: FieldObservation<ServiceScalingFields, ServiceReadTarget>;
-    }
-  | {
-      readonly kind: "process-identity-observed";
-      readonly ref: ProcessRef;
-      readonly observation: FieldObservation<ProcessIdentityFields, ProcessReadTarget>;
-    }
-  | {
-      readonly kind: "process-lifecycle-observed";
-      readonly ref: ProcessRef;
-      readonly observation: FieldObservation<ProcessLifecycleFields, ProcessReadTarget>;
-    }
-  | {
-      readonly kind: "process-pipeline-observed";
-      readonly ref: ProcessRef;
-      readonly observation: FieldObservation<ProcessPipelineFields, ProcessReadTarget>;
     };
 
 export type QueryCoverage =
@@ -550,7 +524,7 @@ export type QueryDescriptor =
       readonly schemaVersion: 1;
     }
   | {
-      /** The organization's running processes, read and subscribed once for every project. */
+      /** A project's running processes, as the deployment store reads them (`account/processBridge.ts`). */
       readonly kind: "running-processes-of-project";
       readonly project: ProjectRef;
       /** Wire filters admit only known status strings. Unknown values are observation data. */
@@ -617,6 +591,12 @@ export type EntityQueryDescriptor = Extract<
       | "services-of-project"
       | "running-processes-of-project";
   }
+>;
+
+/** The entity queries the runtime reads and subscribes: an organization's projects, a project's services. */
+export type MembershipQueryDescriptor = Extract<
+  EntityQueryDescriptor,
+  { readonly kind: "projects-of-organization" | "services-of-project" }
 >;
 
 export type QueryMemberRef<Descriptor extends EntityQueryDescriptor> =
@@ -704,7 +684,6 @@ export const queryKeyOf = (descriptor: QueryDescriptor): QueryKey => {
 
 export type ProjectFacetName = "identity" | "lifecycle" | "presentation" | "placement";
 export type ServiceFacetName = "identity" | "lifecycle" | "routing" | "deployment" | "scaling";
-export type ProcessFacetName = "identity" | "lifecycle" | "pipeline";
 
 export const PROJECT_READ_FACETS = ["identity", "lifecycle", "presentation", "placement"] as const;
 export const SERVICE_READ_FACETS = [
@@ -714,7 +693,6 @@ export const SERVICE_READ_FACETS = [
   "deployment",
   "scaling",
 ] as const;
-export const PROCESS_READ_FACETS = ["identity", "lifecycle", "pipeline"] as const;
 
 export interface ProjectReadTarget {
   readonly kind: "project";
@@ -726,15 +704,10 @@ export interface ServiceReadTarget {
   readonly ref: ServiceRef;
 }
 
-export interface ProcessReadTarget {
-  readonly kind: "process";
-  readonly ref: ProcessRef;
-}
-
-export type EntityReadTarget = ProjectReadTarget | ServiceReadTarget | ProcessReadTarget;
+export type EntityReadTarget = ProjectReadTarget | ServiceReadTarget;
 
 export interface MembershipQueryReadTarget<
-  Descriptor extends EntityQueryDescriptor = EntityQueryDescriptor,
+  Descriptor extends MembershipQueryDescriptor = MembershipQueryDescriptor,
 > {
   readonly kind: "query";
   readonly descriptor: Descriptor;
@@ -830,7 +803,6 @@ export type ReadFailureKind =
 export type ReadContribution =
   | `project:${ProjectFacetName}`
   | `service:${ServiceFacetName}`
-  | `process:${ProcessFacetName}`
   | "query-membership"
   | "current-metrics"
   | "metric-history"
@@ -870,8 +842,8 @@ export interface IngestionStamp {
   readonly observedAtMs: number;
 }
 
-type QueryBaselineFor<Descriptor extends EntityQueryDescriptor> =
-  Descriptor extends EntityQueryDescriptor
+type QueryBaselineFor<Descriptor extends MembershipQueryDescriptor> =
+  Descriptor extends MembershipQueryDescriptor
     ? {
         readonly kind: "query-baseline-observed";
         readonly members: ReadonlyArray<QueryMemberRef<Descriptor>>;
@@ -888,10 +860,10 @@ type QueryBaselineFor<Descriptor extends EntityQueryDescriptor> =
       }
     : never;
 
-export type QueryBaselineObservation = QueryBaselineFor<EntityQueryDescriptor>;
+export type QueryBaselineObservation = QueryBaselineFor<MembershipQueryDescriptor>;
 
-type QueryMembershipFor<Descriptor extends EntityQueryDescriptor> =
-  Descriptor extends EntityQueryDescriptor
+type QueryMembershipFor<Descriptor extends MembershipQueryDescriptor> =
+  Descriptor extends MembershipQueryDescriptor
     ? {
         readonly kind: "query-membership-observed";
         readonly operation: "add" | "remove";
@@ -902,11 +874,11 @@ type QueryMembershipFor<Descriptor extends EntityQueryDescriptor> =
       }
     : never;
 
-export type QueryMembershipObservation = QueryMembershipFor<EntityQueryDescriptor>;
+export type QueryMembershipObservation = QueryMembershipFor<MembershipQueryDescriptor>;
 
 export interface EntityUnavailableObservation {
   readonly kind: "entity-unavailable";
-  readonly ref: EntityRef;
+  readonly ref: ProjectRef | ServiceRef;
   readonly reason: "forbidden" | "not-found" | "access-revoked";
   readonly ticket: ReadTicket & { readonly target: EntityReadTarget };
 }
@@ -1123,7 +1095,6 @@ export type CommandCompletionInput =
   | {
       readonly kind: "command-accepted";
       readonly command: PlatformCommand;
-      readonly processRefs: ReadonlyArray<ProcessRef>;
     }
   | {
       readonly kind: "command-rejected" | "command-uncertain";
@@ -1538,7 +1509,6 @@ interface CommandAttemptBase {
   readonly target: CommandTarget;
   readonly requestedAtMs: number;
   readonly startedAtReceiptOrdinal: ReceiptOrdinal;
-  readonly processRefs: ReadonlyArray<ProcessRef>;
 }
 
 export type CommandAttemptState =
@@ -1579,7 +1549,6 @@ export type RuntimeInterestDescriptor =
   /** A project's services read on their own, lag-free, to confirm one is gone (§9 C19). */
   | { readonly kind: "project-services-check"; readonly project: ProjectRef }
   | { readonly kind: "project-current-metrics"; readonly project: ProjectRef }
-  | { readonly kind: "project-activity"; readonly project: ProjectRef }
   | {
       readonly kind: "project-metric-history";
       readonly project: ProjectRef;
@@ -1594,11 +1563,11 @@ export type RegistrationDescriptor =
     }
   | {
       readonly kind: "entity-updates";
-      readonly entity: "service" | "process";
+      readonly entity: "service";
       readonly project: ProjectRef;
       readonly organization: OrganizationRef;
     }
-  | { readonly kind: "query-membership"; readonly query: EntityQueryDescriptor }
+  | { readonly kind: "query-membership"; readonly query: MembershipQueryDescriptor }
   | {
       readonly kind: "current-metrics";
       readonly query: Extract<QueryDescriptor, { readonly kind: "current-metrics-of-project" }>;
@@ -1702,8 +1671,8 @@ interface RegistrationRequestBase {
   readonly subscriptionName: ZeropsWireSubscriptionName;
 }
 
-type MembershipRegistrationRequest<Descriptor extends EntityQueryDescriptor> =
-  Descriptor extends EntityQueryDescriptor
+type MembershipRegistrationRequest<Descriptor extends MembershipQueryDescriptor> =
+  Descriptor extends MembershipQueryDescriptor
     ? RegistrationRequestBase & {
         readonly descriptor: { readonly kind: "query-membership"; readonly query: Descriptor };
         /** Also fences the subscription response's indexed baseline. */
@@ -1736,7 +1705,7 @@ export type RegistrationRequest =
       readonly descriptor: Extract<RegistrationDescriptor, { readonly kind: "entity-updates" }>;
       readonly baselineTicket: null;
     })
-  | MembershipRegistrationRequest<EntityQueryDescriptor>
+  | MembershipRegistrationRequest<MembershipQueryDescriptor>
   | MetricRegistrationRequest<
       Extract<QueryDescriptor, { readonly kind: "current-metrics-of-project" }>
     >
@@ -1966,7 +1935,6 @@ export type PlatformCommandResult =
   | { readonly kind: "delete-project"; readonly value: void };
 
 export interface PlatformCommandReceipt {
-  readonly processRefs: ReadonlyArray<ProcessRef>;
   readonly observations: ReadonlyArray<PlatformObservation>;
   /** Legacy/fake adapters may omit this; public typed execution rejects that response. */
   readonly result?: PlatformCommandResult;
@@ -2063,23 +2031,11 @@ export interface UsageRead {
 export interface ProjectTopologyRead {
   readonly project: EntityRead<ProjectRecord>;
   readonly services: CollectionRead<ServiceRecord>;
-  readonly runningProcesses: CollectionRead<ProcessRecord>;
   readonly observation: ViewObservation;
 }
 
 export interface HistoryReadView {
   readonly series: HistorySeriesState;
-  readonly observation: ViewObservation;
-}
-
-export interface ProjectActivityRead {
-  readonly running: CollectionRead<ProcessRecord>;
-  readonly observation: ViewObservation;
-}
-
-export interface OperationProgressView {
-  readonly attempt: CommandAttemptState | null;
-  readonly processes: ReadonlyArray<EntityKnowledge<ProcessRecord>>;
   readonly observation: ViewObservation;
 }
 
@@ -2095,12 +2051,9 @@ export interface ZeropsDataReads {
   readonly projectsOf: (organization: OrganizationRef) => Atom.Atom<CollectionRead<ProjectRecord>>;
   readonly service: (ref: ServiceRef) => Atom.Atom<EntityRead<ServiceRecord>>;
   readonly servicesOf: (project: ProjectRef) => Atom.Atom<CollectionRead<ServiceRecord>>;
-  readonly runningProcessesOf: (project: ProjectRef) => Atom.Atom<CollectionRead<ProcessRecord>>;
   readonly usage: (service: ServiceRef) => Atom.Atom<UsageRead>;
   readonly history: (key: HistorySeriesKey) => Atom.Atom<HistoryReadView>;
   readonly topology: (project: ProjectRef) => Atom.Atom<ProjectTopologyRead>;
-  readonly activity: (project: ProjectRef) => Atom.Atom<ProjectActivityRead>;
-  readonly operationProgress: (attempt: CommandAttemptRef) => Atom.Atom<OperationProgressView>;
   readonly commandAttempt: (attempt: CommandAttemptRef) => Atom.Atom<CommandAttemptState | null>;
   /** What the service runs, as the account's store states it (`deployedVersion.ts`). */
   readonly deployedVersion: (service: ServiceRef) => Atom.Atom<Shown<ZeropsServiceDeployedVersion>>;

@@ -32,7 +32,6 @@ import {
   makeZeropsApiOrigin,
   ZeropsAccountId,
   ZeropsOrganizationId,
-  ZeropsProcessId,
   ZeropsProjectId,
   ZeropsServiceId,
   type AccountScope,
@@ -412,20 +411,20 @@ const topologyDescriptor: RuntimeInterestDescriptor = {
   project: project("project-a"),
 };
 
-const unresolvedProcessBaseline = (
+const unresolvedServiceBaseline = (
   request: RegistrationRequest,
-  processId = "process-a",
+  serviceId = "service-a",
 ): PlatformObservation | null => {
   if (
     request.descriptor.kind !== "query-membership" ||
-    request.descriptor.query.kind !== "running-processes-of-project" ||
+    request.descriptor.query.kind !== "services-of-project" ||
     request.baselineTicket === null
   )
     return null;
   const ref = {
-    kind: "process" as const,
+    kind: "service" as const,
     project: project("project-a"),
-    processId: ZeropsProcessId.make(processId),
+    serviceId: ZeropsServiceId.make(serviceId),
   };
   return {
     kind: "query-baseline-observed",
@@ -604,8 +603,8 @@ describe("makeZeropsDataRuntime", () => {
         adapter: harness.adapter,
         atomRegistry: registry,
         makeOpaqueId: makeIdFactory(),
-        // The topology's two organization queries fill it; the metrics' own is one too many.
-        policy: makeZeropsDataPolicy({ activeQueriesPerAccount: 2 }),
+        // The topology's one query, its services, fills it; the metrics' own is one too many.
+        policy: makeZeropsDataPolicy({ activeQueriesPerAccount: 1 }),
       });
       const topologyScope = yield* Scope.make();
       yield* queryBounded.acquire(topologyDescriptor).pipe(Scope.provide(topologyScope));
@@ -681,8 +680,8 @@ describe("makeZeropsDataRuntime", () => {
       );
       expect(observing.interests.get(first.interest)?.leases).toBe(2);
       expect(second.interest).toBe(first.interest);
-      // The organization's searches, shared: a project's topology reads nothing of its own.
-      expect(harness.counts()).toEqual({ opens: 1, registrations: 4, reads: 1, closes: 0 });
+      // Its services' feed and search, and the one lag-free read of them, shared by both leases.
+      expect(harness.counts()).toEqual({ opens: 1, registrations: 2, reads: 1, closes: 0 });
 
       yield* first.release;
       expect((yield* runtime.state).interests.get(first.interest)?.leases).toBe(1);
@@ -732,7 +731,7 @@ describe("makeZeropsDataRuntime", () => {
     }),
   );
 
-  it.effect("shares physical registrations across topology and activity interests", () =>
+  it.effect("shares physical registrations across topology and inventory interests", () =>
     Effect.gen(function* () {
       const registry = AtomRegistry.make();
       const harness = makeAdapterHarness();
@@ -747,29 +746,29 @@ describe("makeZeropsDataRuntime", () => {
         Queue.offerUnsafe(states, state);
       });
       const topologyScope = yield* Scope.make();
-      const activityScope = yield* Scope.make();
+      const inventoryScope = yield* Scope.make();
       const topology = yield* runtime
         .acquire(topologyDescriptor)
         .pipe(Scope.provide(topologyScope));
-      const activity = yield* runtime
-        .acquire({ kind: "project-activity", project: topologyDescriptor.project })
-        .pipe(Scope.provide(activityScope));
+      const projectInventory = yield* runtime
+        .acquire({ kind: "project-inventory", project: topologyDescriptor.project })
+        .pipe(Scope.provide(inventoryScope));
 
       yield* waitForState(states, (state) => {
         const topologyState = state.interests.get(topology.interest)?.interest.status;
-        const activityState = state.interests.get(activity.interest)?.interest.status;
-        return topologyState === "observing" && activityState === "observing";
+        const inventoryState = state.interests.get(projectInventory.interest)?.interest.status;
+        return topologyState === "observing" && inventoryState === "observing";
       });
-      expect(harness.counts().registrations).toBe(4);
+      expect(harness.counts().registrations).toBe(2);
 
       yield* topology.release;
-      expect((yield* runtime.state).interests.has(activity.interest)).toBe(true);
+      expect((yield* runtime.state).interests.has(projectInventory.interest)).toBe(true);
       expect(harness.counts().closes).toBe(0);
-      yield* activity.release;
+      yield* projectInventory.release;
       expect(harness.counts().closes).toBe(1);
 
       yield* Scope.close(topologyScope, Exit.void);
-      yield* Scope.close(activityScope, Exit.void);
+      yield* Scope.close(inventoryScope, Exit.void);
       yield* runtime.shutdown("application-close");
       unsubscribe();
       registry.dispose();
@@ -782,7 +781,7 @@ describe("makeZeropsDataRuntime", () => {
       const allowBaseline = yield* Deferred.make<void>();
       const hydrationStarted = yield* Deferred.make<void>();
       const finishHydration = yield* Deferred.make<void>();
-      let processReads = 0;
+      let serviceReads = 0;
       const adapter: ZeropsDataAdapter = {
         openReceiver: (_scope, organization, identity) =>
           Effect.succeed({
@@ -792,20 +791,20 @@ describe("makeZeropsDataRuntime", () => {
             events: Stream.never,
           }),
         register: (_receiver, request) => {
-          const baseline = unresolvedProcessBaseline(request);
+          const baseline = unresolvedServiceBaseline(request);
           return baseline === null
             ? Effect.succeed({ responseObservations: [] })
             : Deferred.await(allowBaseline).pipe(Effect.as({ responseObservations: [baseline] }));
         },
         read: (ticket) => {
-          if (ticket.target.kind !== "process") return Effect.succeed({ observations: [] });
-          processReads += 1;
+          if (ticket.target.kind !== "service") return Effect.succeed({ observations: [] });
+          serviceReads += 1;
           return Deferred.succeed(hydrationStarted, undefined).pipe(
             Effect.andThen(Deferred.await(finishHydration)),
             Effect.as({ observations: [] }),
           );
         },
-        execute: () => Effect.succeed({ processRefs: [], observations: [] }),
+        execute: () => Effect.succeed({ observations: [] }),
         closeReceiver: () => Effect.void,
       };
       const runtime = yield* makeZeropsDataRuntime({
@@ -815,36 +814,36 @@ describe("makeZeropsDataRuntime", () => {
         makeOpaqueId: makeIdFactory(),
       });
       const topologyScope = yield* Scope.make();
-      const activityScope = yield* Scope.make();
+      const inventoryScope = yield* Scope.make();
       const topology = yield* runtime
         .acquire(topologyDescriptor)
         .pipe(Scope.provide(topologyScope));
-      const activity = yield* runtime
-        .acquire({ kind: "project-activity", project: topologyDescriptor.project })
-        .pipe(Scope.provide(activityScope));
+      const projectInventory = yield* runtime
+        .acquire({ kind: "project-inventory", project: topologyDescriptor.project })
+        .pipe(Scope.provide(inventoryScope));
       yield* Deferred.succeed(allowBaseline, undefined);
       yield* Deferred.await(hydrationStarted);
 
-      expect(processReads).toBe(1);
+      expect(serviceReads).toBe(1);
       const activeHydration = [...(yield* runtime.state).sharedReads.values()].find(
-        (ownership) => ownership.target.kind === "process",
+        (ownership) => ownership.target.kind === "service",
       );
       expect(activeHydration?.dependents.size).toBe(2);
 
       yield* topology.release;
       const retainedHydration = [...(yield* runtime.state).sharedReads.values()].find(
-        (ownership) => ownership.target.kind === "process",
+        (ownership) => ownership.target.kind === "service",
       );
       expect(retainedHydration?.dependents.size).toBe(1);
-      expect(retainedHydration?.dependents.has(activity.interest)).toBe(true);
+      expect(retainedHydration?.dependents.has(projectInventory.interest)).toBe(true);
 
       yield* Deferred.succeed(finishHydration, undefined);
       yield* Effect.yieldNow;
       yield* Effect.yieldNow;
-      expect(processReads).toBe(1);
-      yield* activity.release;
+      expect(serviceReads).toBe(1);
+      yield* projectInventory.release;
       yield* Scope.close(topologyScope, Exit.void);
-      yield* Scope.close(activityScope, Exit.void);
+      yield* Scope.close(inventoryScope, Exit.void);
       yield* runtime.shutdown("application-close");
       registry.dispose();
     }),
@@ -855,7 +854,7 @@ describe("makeZeropsDataRuntime", () => {
     () =>
       Effect.gen(function* () {
         const registry = AtomRegistry.make();
-        let processReads = 0;
+        let serviceReads = 0;
         const adapter: ZeropsDataAdapter = {
           openReceiver: (_scope, organization, identity) =>
             Effect.succeed({
@@ -866,16 +865,16 @@ describe("makeZeropsDataRuntime", () => {
             }),
           register: (_receiver, request) =>
             Effect.succeed({
-              responseObservations: [unresolvedProcessBaseline(request)].filter(
+              responseObservations: [unresolvedServiceBaseline(request)].filter(
                 (observation) => observation !== null,
               ),
             }),
           read: (ticket) => {
-            if (ticket.target.kind !== "process") return Effect.succeed({ observations: [] });
-            processReads += 1;
+            if (ticket.target.kind !== "service") return Effect.succeed({ observations: [] });
+            serviceReads += 1;
             return Effect.never;
           },
-          execute: () => Effect.succeed({ processRefs: [], observations: [] }),
+          execute: () => Effect.succeed({ observations: [] }),
           closeReceiver: () => Effect.void,
         };
         const runtime = yield* makeZeropsDataRuntime({
@@ -897,11 +896,11 @@ describe("makeZeropsDataRuntime", () => {
           discard: true,
         });
         yield* settle;
-        expect(processReads).toBe(1);
+        expect(serviceReads).toBe(1);
 
         yield* other.release;
         yield* settle;
-        expect(processReads).toBe(2);
+        expect(serviceReads).toBe(2);
         yield* runtime.shutdown("application-close");
         yield* Scope.close(leaseScope, Exit.void);
         registry.dispose();
@@ -912,7 +911,7 @@ describe("makeZeropsDataRuntime", () => {
     Effect.gen(function* () {
       const registry = AtomRegistry.make();
       const events = yield* Queue.unbounded<ReceiverEvent>();
-      let processSubscriptionName: string | undefined;
+      let serviceSubscriptionName: string | undefined;
       let opens = 0;
       const adapter: ZeropsDataAdapter = {
         openReceiver: (_scope, organization, identity) => {
@@ -930,13 +929,13 @@ describe("makeZeropsDataRuntime", () => {
         register: (_receiver, request) => {
           if (
             request.descriptor.kind === "entity-updates" &&
-            request.descriptor.entity === "process"
+            request.descriptor.entity === "service"
           )
-            processSubscriptionName = request.subscriptionName;
+            serviceSubscriptionName = request.subscriptionName;
           return Effect.succeed({ responseObservations: [] });
         },
         read: () => Effect.succeed({ observations: [] }),
-        execute: () => Effect.succeed({ processRefs: [], observations: [] }),
+        execute: () => Effect.succeed({ observations: [] }),
         closeReceiver: () => Effect.void,
       };
       const visibilityState = yield* Ref.make<"visible" | "hidden">("visible");
@@ -956,17 +955,17 @@ describe("makeZeropsDataRuntime", () => {
       const unsubscribe = registry.subscribe(runtime.stateAtom, (state) => {
         Queue.offerUnsafe(states, state);
       });
-      const activityDescriptor: RuntimeInterestDescriptor = {
-        kind: "project-activity",
+      const inventoryDescriptor: RuntimeInterestDescriptor = {
+        kind: "project-inventory",
         project: topologyDescriptor.project,
       };
       const leaseScope = yield* Scope.make();
-      const lease = yield* runtime.acquire(activityDescriptor).pipe(Scope.provide(leaseScope));
+      const lease = yield* runtime.acquire(inventoryDescriptor).pipe(Scope.provide(leaseScope));
       yield* waitForState(
         states,
         (state) => state.interests.get(lease.interest)?.interest.status === "observing",
       );
-      expect(processSubscriptionName).toBeDefined();
+      expect(serviceSubscriptionName).toBeDefined();
       const opensBeforePause = opens;
 
       // Background pause tears every receiver down and marks the interest paused.
@@ -986,7 +985,7 @@ describe("makeZeropsDataRuntime", () => {
       // either, since it only looks for "paused"/"failed".
       yield* Queue.offer(events, {
         kind: "malformed",
-        subscriptionName: processSubscriptionName as never,
+        subscriptionName: serviceSubscriptionName as never,
       });
       yield* Effect.yieldNow;
       yield* Effect.yieldNow;
@@ -1018,13 +1017,13 @@ describe("makeZeropsDataRuntime", () => {
       kind: "organization-inventory",
       organization: topologyDescriptor.project.organization,
     };
-    const activityDescriptor: RuntimeInterestDescriptor = {
-      kind: "project-activity",
+    const inventoryDescriptor: RuntimeInterestDescriptor = {
+      kind: "project-inventory",
       project: topologyDescriptor.project,
     };
-    const isActivityQuery = (request: RegistrationRequest) =>
+    const isServicesQuery = (request: RegistrationRequest) =>
       request.descriptor.kind === "query-membership" &&
-      request.descriptor.query.kind === "running-processes-of-project";
+      request.descriptor.query.kind === "services-of-project";
 
     const setup = Effect.gen(function* () {
       const registry = AtomRegistry.make();
@@ -1053,7 +1052,7 @@ describe("makeZeropsDataRuntime", () => {
             return { responseObservations: [] };
           }),
         read: () => Effect.succeed({ observations: [] }),
-        execute: () => Effect.succeed({ processRefs: [], observations: [] }),
+        execute: () => Effect.succeed({ observations: [] }),
         closeReceiver: () => Effect.sync(() => void (closes += 1)),
       };
       const runtime = yield* makeZeropsDataRuntime({
@@ -1071,13 +1070,15 @@ describe("makeZeropsDataRuntime", () => {
       const organization = yield* runtime
         .acquire(organizationDescriptor)
         .pipe(Scope.provide(leaseScope));
-      const activity = yield* runtime.acquire(activityDescriptor).pipe(Scope.provide(leaseScope));
+      const projectInventory = yield* runtime
+        .acquire(inventoryDescriptor)
+        .pipe(Scope.provide(leaseScope));
       const receiver = yield* Queue.take(opened); // The organization's one socket.
       const observing = yield* waitForState(
         states,
         (state) =>
           state.interests.get(organization.interest)?.interest.status === "observing" &&
-          state.interests.get(activity.interest)?.interest.status === "observing",
+          state.interests.get(projectInventory.interest)?.interest.status === "observing",
       );
       return {
         runtime,
@@ -1087,7 +1088,7 @@ describe("makeZeropsDataRuntime", () => {
         closes: () => closes,
         receiver,
         organization,
-        activity,
+        projectInventory,
         observing,
         dispose: Effect.gen(function* () {
           yield* runtime.shutdown("application-close");
@@ -1109,23 +1110,23 @@ describe("makeZeropsDataRuntime", () => {
             naming === "named"
               ? {
                   kind: "malformed",
-                  subscriptionName: rig.registrations.find(isActivityQuery)!.subscriptionName,
+                  subscriptionName: rig.registrations.find(isServicesQuery)!.subscriptionName,
                 }
               : { kind: "malformed" },
           );
           const failed = yield* waitForState(rig.states, (state) =>
-            [rig.organization.interest, rig.activity.interest].every(
+            [rig.organization.interest, rig.projectInventory.interest].every(
               (key) => state.interests.get(key)?.interest.status === "failed",
             ),
           );
-          expect(failed.interests.get(rig.activity.interest)?.interest).toMatchObject({
+          expect(failed.interests.get(rig.projectInventory.interest)?.interest).toMatchObject({
             reason: expect.stringContaining("Malformed subscription frame."),
             retryAtMs: expect.any(Number),
           });
           yield* TestClock.adjust("1 second");
           yield* Queue.take(rig.opened);
           yield* waitForState(rig.states, (state) =>
-            [rig.organization.interest, rig.activity.interest].every(
+            [rig.organization.interest, rig.projectInventory.interest].every(
               (key) => state.interests.get(key)?.interest.status === "observing",
             ),
           );
@@ -1163,7 +1164,7 @@ describe("makeZeropsDataRuntime", () => {
             );
           },
           read: () => Effect.succeed({ observations: [] }),
-          execute: () => Effect.succeed({ processRefs: [], observations: [] }),
+          execute: () => Effect.succeed({ observations: [] }),
           closeReceiver: () => Effect.void,
         };
         const visibilityState = yield* Ref.make<"visible" | "hidden">("visible");
@@ -1185,7 +1186,7 @@ describe("makeZeropsDataRuntime", () => {
         });
         const leaseScope = yield* Scope.make();
         const lease = yield* runtime
-          .acquire({ kind: "project-activity", project: topologyDescriptor.project })
+          .acquire({ kind: "project-inventory", project: topologyDescriptor.project })
           .pipe(Scope.provide(leaseScope));
         yield* Deferred.await(registering);
 
@@ -1243,7 +1244,7 @@ describe("makeZeropsDataRuntime", () => {
       Effect.gen(function* () {
         const registry = AtomRegistry.make();
         const hydrationStarted = yield* Deferred.make<void>();
-        let processReads = 0;
+        let serviceReads = 0;
         const adapter: ZeropsDataAdapter = {
           openReceiver: (_scope, organization, identity) =>
             Effect.succeed({
@@ -1253,15 +1254,15 @@ describe("makeZeropsDataRuntime", () => {
               events: Stream.never,
             }),
           register: (_receiver, request) => {
-            const baseline = unresolvedProcessBaseline(request);
+            const baseline = unresolvedServiceBaseline(request);
             return Effect.succeed({ responseObservations: baseline === null ? [] : [baseline] });
           },
           read: (ticket) => {
-            if (ticket.target.kind !== "process") return Effect.succeed({ observations: [] });
-            processReads += 1;
+            if (ticket.target.kind !== "service") return Effect.succeed({ observations: [] });
+            serviceReads += 1;
             return Deferred.succeed(hydrationStarted, undefined).pipe(Effect.andThen(Effect.never));
           },
-          execute: () => Effect.succeed({ processRefs: [], observations: [] }),
+          execute: () => Effect.succeed({ observations: [] }),
           closeReceiver: () => Effect.void,
         };
         const visibilityState = yield* Ref.make<"visible" | "hidden">("visible");
@@ -1277,8 +1278,8 @@ describe("makeZeropsDataRuntime", () => {
             changes: Stream.fromQueue(visibilityChanges),
           },
         });
-        const activityDescriptor: RuntimeInterestDescriptor = {
-          kind: "project-activity",
+        const inventoryDescriptor: RuntimeInterestDescriptor = {
+          kind: "project-inventory",
           project: topologyDescriptor.project,
         };
         const states = yield* Queue.unbounded<ZeropsDataState>();
@@ -1286,12 +1287,12 @@ describe("makeZeropsDataRuntime", () => {
           Queue.offerUnsafe(states, state);
         });
         const leaseScope = yield* Scope.make();
-        const _lease = yield* runtime.acquire(activityDescriptor).pipe(Scope.provide(leaseScope));
+        const _lease = yield* runtime.acquire(inventoryDescriptor).pipe(Scope.provide(leaseScope));
         yield* Deferred.await(hydrationStarted);
-        expect(processReads).toBe(1);
+        expect(serviceReads).toBe(1);
         expect(
           [...(yield* runtime.state).sharedReads.values()].some(
-            (ownership) => ownership.target.kind === "process",
+            (ownership) => ownership.target.kind === "service",
           ),
         ).toBe(true);
         // The interest's own direct read of the query (unrelated to hydration) settles a
@@ -1309,13 +1310,13 @@ describe("makeZeropsDataRuntime", () => {
           states,
           (state) =>
             ![...state.sharedReads.values()].some(
-              (ownership) => ownership.target.kind === "process",
+              (ownership) => ownership.target.kind === "service",
             ),
         );
 
         expect(
           [...(yield* runtime.state).sharedReads.values()].some(
-            (ownership) => ownership.target.kind === "process",
+            (ownership) => ownership.target.kind === "service",
           ),
         ).toBe(false);
 
@@ -1532,25 +1533,21 @@ describe("makeZeropsDataRuntime", () => {
             switch (command.kind) {
               case "create-project":
                 return Effect.succeed({
-                  processRefs: [],
                   observations: [],
                   result: { kind: command.kind, value: created },
                 });
               case "import-development-container":
                 return Effect.succeed({
-                  processRefs: [],
                   observations: [],
                   result: { kind: command.kind, value: { serviceName: "zcp", imported: true } },
                 });
               case "import-services":
                 return Effect.succeed({
-                  processRefs: [],
                   observations: [],
                   result: { kind: command.kind, value: undefined },
                 });
               case "import-project":
                 return Effect.succeed({
-                  processRefs: [],
                   observations: [],
                   result: { kind: command.kind, value: { projectId: "imported-project" } },
                 });
@@ -1655,7 +1652,6 @@ describe("makeZeropsDataRuntime", () => {
         execute: (command) =>
           command.kind === "create-project"
             ? Effect.succeed({
-                processRefs: [],
                 observations: [],
                 result: {
                   kind: command.kind,
@@ -1763,7 +1759,6 @@ describe("makeZeropsDataRuntime", () => {
           // The answer lands just as the account closes: its barrier is queued, then dropped.
           Effect.forkDetach(runtime.shutdown("application-close")).pipe(
             Effect.as({
-              processRefs: [],
               observations: [],
               result: { kind: command.kind, value: { projectId: "imported" } },
             } as never),
@@ -1783,7 +1778,6 @@ describe("makeZeropsDataRuntime", () => {
       const registry = AtomRegistry.make();
       const runtime = yield* commandRuntime(registry, (command) =>
         Effect.succeed({
-          processRefs: [],
           observations: [],
           result: { kind: command.kind, value: { projectId: "imported" } },
         } as never),
@@ -1819,7 +1813,6 @@ describe("makeZeropsDataRuntime", () => {
       const registry = AtomRegistry.make();
       const runtime = yield* commandRuntime(registry, (command) =>
         Effect.succeed({
-          processRefs: [],
           observations: [],
           result: { kind: command.kind, value: { projectId: "imported" } },
         } as never),
@@ -1943,7 +1936,6 @@ describe("makeZeropsDataRuntime", () => {
           writes += 1;
           return command.kind === "create-project"
             ? Effect.succeed({
-                processRefs: [],
                 observations: [],
                 result: {
                   kind: command.kind,
@@ -2063,9 +2055,9 @@ describe("makeZeropsDataRuntime", () => {
           return writes === 1
             ? Deferred.succeed(firstWriteStarted, undefined).pipe(
                 Effect.andThen(Deferred.await(releaseFirstWrite)),
-                Effect.as({ processRefs: [], observations: [] }),
+                Effect.as({ observations: [] }),
               )
-            : Effect.succeed({ processRefs: [], observations: [] });
+            : Effect.succeed({ observations: [] });
         },
       };
       const service: ServiceRef = {
@@ -2154,7 +2146,6 @@ describe("makeZeropsDataRuntime", () => {
             yield* checked();
             writes += 1;
             return {
-              processRefs: [],
               observations: [],
             };
           }),
@@ -2239,7 +2230,7 @@ describe("makeZeropsDataRuntime", () => {
               yield* Deferred.succeed(firstWriteFinished, undefined);
               yield* Deferred.await(allowSecondWrite);
               yield* checked();
-              return { processRefs: [], observations: [] };
+              return { observations: [] };
             }),
         };
         const service: ServiceRef = {
@@ -2301,9 +2292,9 @@ describe("makeZeropsDataRuntime", () => {
           Number(command.accountEpoch) === 1
             ? Deferred.succeed(oldStarted, undefined).pipe(
                 Effect.andThen(Effect.promise(() => oldResponse)),
-                Effect.as({ processRefs: [], observations: [] }),
+                Effect.as({ observations: [] }),
               )
-            : Effect.succeed({ processRefs: [], observations: [] }),
+            : Effect.succeed({ observations: [] }),
       };
       const initialAccess = (epoch: number) => ({
         status: "verified" as const,
@@ -2491,7 +2482,7 @@ describe("makeZeropsDataRuntime", () => {
           }),
         register: () => Effect.succeed({ responseObservations: [] }),
         read: () => Effect.succeed({ observations: [] }),
-        execute: () => Effect.succeed({ processRefs: [], observations: [] }),
+        execute: () => Effect.succeed({ observations: [] }),
         closeReceiver: () => Effect.void,
       };
       const runtime = yield* makeZeropsDataRuntime({
@@ -2719,7 +2710,7 @@ describe("makeZeropsDataRuntime", () => {
             return { responseObservations: [] };
           }),
         read: () => Effect.succeed({ observations: [] }),
-        execute: () => Effect.succeed({ processRefs: [], observations: [] }),
+        execute: () => Effect.succeed({ observations: [] }),
         closeReceiver: () => Effect.void,
       };
       const runtime = yield* makeZeropsDataRuntime({
@@ -2933,7 +2924,7 @@ describe("makeZeropsDataRuntime", () => {
             }),
           register: () => Effect.succeed({ responseObservations: [] }),
           read: () => Effect.succeed({ observations: [] }),
-          execute: () => Effect.succeed({ processRefs: [], observations: [] }),
+          execute: () => Effect.succeed({ observations: [] }),
           closeReceiver: (handle) =>
             Effect.sync(() => {
               closedIdentities.push(handle.identity.receiverId);
@@ -3201,30 +3192,8 @@ it.effect("reconciles open logs on runtime access denial and the injected deadli
 );
 
 describe("inventory demand", () => {
-  it("does not register process feeds or process searches for unopened projects", () => {
-    const plans = [
-      planZeropsInterest({
-        kind: "organization-inventory",
-        organization: project("p").organization,
-      }),
-      planZeropsInterest({ kind: "project-inventory", project: project("p") }),
-    ];
-    for (const plan of plans) {
-      expect(
-        plan.registrations.some(
-          ({ descriptor }) =>
-            descriptor.kind === "entity-updates" && descriptor.entity === "process",
-        ),
-      ).toBe(false);
-      expect(
-        plan.registrations.some(
-          ({ descriptor }) =>
-            descriptor.kind === "query-membership" &&
-            descriptor.query.kind === "running-processes-of-project",
-        ),
-      ).toBe(false);
-    }
-    const inventory = plans[1]!;
+  it("registers a project's service feed and search for its inventory", () => {
+    const inventory = planZeropsInterest({ kind: "project-inventory", project: project("p") });
     expect(
       inventory.registrations.some(
         ({ descriptor }) => descriptor.kind === "entity-updates" && descriptor.entity === "service",
@@ -3234,14 +3203,6 @@ describe("inventory demand", () => {
       inventory.registrations.some(
         ({ descriptor }) =>
           descriptor.kind === "query-membership" && descriptor.query.kind === "services-of-project",
-      ),
-    ).toBe(true);
-    const topology = planZeropsInterest(topologyDescriptor);
-    expect(
-      topology.registrations.some(
-        ({ descriptor }) =>
-          descriptor.kind === "query-membership" &&
-          descriptor.query.kind === "running-processes-of-project",
       ),
     ).toBe(true);
     expect(
@@ -3704,7 +3665,7 @@ describe("publication: one per task", () => {
   );
 });
 
-describe("a registration every project shares", () => {
+describe("a registration two interests share", () => {
   it.effect("survives the release of the interest that happened to send it", () =>
     Effect.gen(function* () {
       const registry = AtomRegistry.make();
@@ -3722,15 +3683,15 @@ describe("a registration every project shares", () => {
       const sender = yield* Scope.make();
       const sibling = yield* Scope.make();
       const first = yield* runtime
-        .acquire({ kind: "project-activity", project: project("project-a") })
+        .acquire({ kind: "project-topology", project: project("project-a") })
         .pipe(Scope.provide(sender));
       yield* settleUntil(runtime, () => false, 20);
       const second = yield* runtime
-        .acquire({ kind: "project-activity", project: project("project-b") })
+        .acquire({ kind: "project-inventory", project: project("project-a") })
         .pipe(Scope.provide(sibling));
       yield* settleUntil(runtime, () => false, 20);
 
-      // The interest whose establishment sent the organization's process registrations goes.
+      // The interest whose establishment sent the project's service registrations goes.
       yield* first.release;
       yield* Deferred.succeed(answer, undefined);
       const settled = yield* settleUntil(
@@ -3866,7 +3827,7 @@ describe("opening a Mate on a loaded organization", () => {
           { kind: "organization-inventory" as const, organization: projects[0]!.organization },
           ...projects.flatMap((ref) => [
             { kind: "project-inventory" as const, project: ref },
-            { kind: "project-activity" as const, project: ref },
+            { kind: "project-inventory" as const, project: ref },
           ]),
         ],
         (descriptor) => runtime.acquire(descriptor).pipe(Scope.provide(leases)),
@@ -3876,14 +3837,14 @@ describe("opening a Mate on a loaded organization", () => {
       yield* settleUntil(runtime, (state) => observing(state, resting), 2_000);
       const atRest = sent.length;
 
-      // The Mate's conversation: its topology and activity, then its live usage.
+      // The Mate's conversation: its topology and inventory, then its live usage.
       const open = yield* Effect.forEach(
         [
           {
             kind: "project-topology" as const,
             project: projects[1]!,
           },
-          { kind: "project-activity" as const, project: projects[1]! },
+          { kind: "project-inventory" as const, project: projects[1]! },
           { kind: "project-current-metrics" as const, project: projects[1]! },
         ],
         (descriptor) => runtime.acquire(descriptor).pipe(Scope.provide(leases)),
@@ -3944,7 +3905,7 @@ describe("the entity table's reads by id", () => {
             }).observations,
           });
         },
-        execute: () => Effect.succeed({ processRefs: [], observations: [] }),
+        execute: () => Effect.succeed({ observations: [] }),
         closeReceiver: () => Effect.void,
       };
       const runtime = yield* makeZeropsDataRuntime({
@@ -4049,7 +4010,7 @@ describe("the entity table's reads by id", () => {
               }),
             );
           },
-          execute: () => Effect.succeed({ processRefs: [], observations: [] }),
+          execute: () => Effect.succeed({ observations: [] }),
           closeReceiver: () => Effect.void,
         };
         const runtime = yield* makeZeropsDataRuntime({
@@ -4394,7 +4355,7 @@ describe("incomplete data says so, with its retry", () => {
     Effect.gen(function* () {
       const registry = AtomRegistry.make();
       const secondAttempt = yield* Deferred.make<void>();
-      let processReads = 0;
+      let serviceReads = 0;
       const adapterError: AdapterError = {
         _tag: "ZeropsDataAdapterError",
         kind: "network",
@@ -4411,17 +4372,17 @@ describe("incomplete data says so, with its retry", () => {
             events: Stream.never,
           }),
         register: (_receiver, request) => {
-          const baseline = unresolvedProcessBaseline(request);
+          const baseline = unresolvedServiceBaseline(request);
           return Effect.succeed({ responseObservations: baseline === null ? [] : [baseline] });
         },
         read: (ticket) => {
-          if (ticket.target.kind !== "process") return Effect.succeed({ observations: [] });
-          processReads += 1;
-          return processReads === 1
+          if (ticket.target.kind !== "service") return Effect.succeed({ observations: [] });
+          serviceReads += 1;
+          return serviceReads === 1
             ? Effect.fail(adapterError)
             : Deferred.succeed(secondAttempt, undefined).pipe(Effect.as({ observations: [] }));
         },
-        execute: () => Effect.succeed({ processRefs: [], observations: [] }),
+        execute: () => Effect.succeed({ observations: [] }),
         closeReceiver: () => Effect.void,
       };
       const runtime = yield* makeZeropsDataRuntime({
@@ -4434,10 +4395,10 @@ describe("incomplete data says so, with its retry", () => {
       yield* runtime.acquire(topologyDescriptor).pipe(Scope.provide(leaseScope));
       // The first retry waits the backoff's first rung, never follows the failure at once.
       for (let turn = 0; turn < 20; turn++) yield* Effect.yieldNow;
-      expect(processReads).toBe(1);
+      expect(serviceReads).toBe(1);
       yield* TestClock.adjust("1 second");
       yield* Deferred.await(secondAttempt);
-      expect(processReads).toBe(2);
+      expect(serviceReads).toBe(2);
 
       yield* runtime.shutdown("application-close");
       yield* Scope.close(leaseScope, Exit.void);
@@ -4450,7 +4411,7 @@ describe("incomplete data says so, with its retry", () => {
     () =>
       Effect.gen(function* () {
         const registry = AtomRegistry.make();
-        let processReads = 0;
+        let serviceReads = 0;
         const adapter: ZeropsDataAdapter = {
           openReceiver: (_scope, organization, identity) =>
             Effect.succeed({
@@ -4460,12 +4421,12 @@ describe("incomplete data says so, with its retry", () => {
               events: Stream.never,
             }),
           register: (_receiver, request) => {
-            const baseline = unresolvedProcessBaseline(request);
+            const baseline = unresolvedServiceBaseline(request);
             return Effect.succeed({ responseObservations: baseline === null ? [] : [baseline] });
           },
           read: (ticket) => {
-            if (ticket.target.kind !== "process") return Effect.succeed({ observations: [] });
-            processReads += 1;
+            if (ticket.target.kind !== "service") return Effect.succeed({ observations: [] });
+            serviceReads += 1;
             return Effect.fail({
               _tag: "ZeropsDataAdapterError",
               kind: "network",
@@ -4474,7 +4435,7 @@ describe("incomplete data says so, with its retry", () => {
               accountRevocationEvidence: false,
             } satisfies AdapterError);
           },
-          execute: () => Effect.succeed({ processRefs: [], observations: [] }),
+          execute: () => Effect.succeed({ observations: [] }),
           closeReceiver: () => Effect.void,
         };
         const runtime = yield* makeZeropsDataRuntime({
@@ -4499,37 +4460,37 @@ describe("incomplete data says so, with its retry", () => {
           states,
           // A failed read says so on the interest.
           (state) =>
-            processReads > 0 && state.interests.get(lease.interest)?.interest.status === "failed",
+            serviceReads > 0 && state.interests.get(lease.interest)?.interest.status === "failed",
         );
         const settle = Effect.gen(function* () {
           for (let turn = 0; turn < 20; turn++) yield* Effect.yieldNow;
         });
         yield* settle;
-        const observed = processReads;
+        const observed = serviceReads;
         expect(observed).toBeGreaterThan(0);
 
         // The next read waits out the backoff rather than following the failure at once.
         yield* TestClock.adjust("99 millis");
         yield* settle;
-        expect(processReads).toBe(observed);
+        expect(serviceReads).toBe(observed);
         yield* TestClock.adjust("1 millis");
         yield* settle;
-        expect(processReads).toBe(observed + 1);
+        expect(serviceReads).toBe(observed + 1);
 
         // The budget is spent: nothing for the backoff's cap, then the entity is read again.
         yield* TestClock.adjust("999 millis");
         yield* settle;
-        expect(processReads).toBe(observed + 1);
+        expect(serviceReads).toBe(observed + 1);
         yield* TestClock.adjust("1 millis");
         yield* settle;
-        expect(processReads).toBe(observed + 2);
+        expect(serviceReads).toBe(observed + 2);
         // Spent, it stays at the cap: no fast rung follows.
         yield* TestClock.adjust("999 millis");
         yield* settle;
-        expect(processReads).toBe(observed + 2);
+        expect(serviceReads).toBe(observed + 2);
         yield* TestClock.adjust("1 millis");
         yield* settle;
-        expect(processReads).toBe(observed + 3);
+        expect(serviceReads).toBe(observed + 3);
 
         unsubscribe();
         yield* runtime.shutdown("application-close");
@@ -4564,7 +4525,7 @@ describe("incomplete data says so, with its retry", () => {
   ] as const)("a failed entity read: $name", ({ error, reads }) =>
     Effect.gen(function* () {
       const registry = AtomRegistry.make();
-      let processReads = 0;
+      let serviceReads = 0;
       const adapter: ZeropsDataAdapter = {
         openReceiver: (_scope, organization, identity) =>
           Effect.succeed({
@@ -4574,12 +4535,12 @@ describe("incomplete data says so, with its retry", () => {
             events: Stream.never,
           }),
         register: (_receiver, request) => {
-          const baseline = unresolvedProcessBaseline(request);
+          const baseline = unresolvedServiceBaseline(request);
           return Effect.succeed({ responseObservations: baseline === null ? [] : [baseline] });
         },
         read: (ticket) => {
-          if (ticket.target.kind !== "process") return Effect.succeed({ observations: [] });
-          processReads += 1;
+          if (ticket.target.kind !== "service") return Effect.succeed({ observations: [] });
+          serviceReads += 1;
           return Effect.fail({
             _tag: "ZeropsDataAdapterError",
             kind: error.kind,
@@ -4589,7 +4550,7 @@ describe("incomplete data says so, with its retry", () => {
             accountRevocationEvidence: false,
           } satisfies AdapterError);
         },
-        execute: () => Effect.succeed({ processRefs: [], observations: [] }),
+        execute: () => Effect.succeed({ observations: [] }),
         closeReceiver: () => Effect.void,
       };
       const runtime = yield* makeZeropsDataRuntime({
@@ -4614,26 +4575,26 @@ describe("incomplete data says so, with its retry", () => {
         states,
         // A failed read says so on the interest.
         (state) =>
-          processReads > 0 && state.interests.get(lease.interest)?.interest.status === "failed",
+          serviceReads > 0 && state.interests.get(lease.interest)?.interest.status === "failed",
       );
       const settle = Effect.gen(function* () {
         for (let turn = 0; turn < 20; turn++) yield* Effect.yieldNow;
       });
       yield* settle;
-      const atFirst = processReads;
+      const atFirst = serviceReads;
       for (let second = 0; second < 60; second++) {
         yield* TestClock.adjust("1 second");
         yield* settle;
       }
-      const afterAMinute = processReads - atFirst + 1;
-      const before = processReads;
+      const afterAMinute = serviceReads - atFirst + 1;
+      const before = serviceReads;
       yield* runtime.observeAccess({
         kind: "project-access-established",
         accountEpoch: runtimeScope.epoch,
         project: topologyDescriptor.project,
       });
       yield* settle;
-      const afterGrant = afterAMinute + processReads - before;
+      const afterGrant = afterAMinute + serviceReads - before;
       expect({ atFirst: atFirst > 0 ? 1 : 0, afterAMinute, afterGrant }).toEqual(reads);
       // A read failing again under the new grant says so again: the round never hides it.
       for (let second = 0; second < 2; second++) {
@@ -4654,7 +4615,7 @@ describe("incomplete data says so, with its retry", () => {
   it.effect("a 429 waits out the platform's Retry-After before the entity is read again", () =>
     Effect.gen(function* () {
       const registry = AtomRegistry.make();
-      let processReads = 0;
+      let serviceReads = 0;
       const adapter: ZeropsDataAdapter = {
         openReceiver: (_scope, organization, identity) =>
           Effect.succeed({
@@ -4664,12 +4625,12 @@ describe("incomplete data says so, with its retry", () => {
             events: Stream.never,
           }),
         register: (_receiver, request) => {
-          const baseline = unresolvedProcessBaseline(request);
+          const baseline = unresolvedServiceBaseline(request);
           return Effect.succeed({ responseObservations: baseline === null ? [] : [baseline] });
         },
         read: (ticket) => {
-          if (ticket.target.kind !== "process") return Effect.succeed({ observations: [] });
-          processReads += 1;
+          if (ticket.target.kind !== "service") return Effect.succeed({ observations: [] });
+          serviceReads += 1;
           return Effect.fail({
             _tag: "ZeropsDataAdapterError",
             kind: "network",
@@ -4680,7 +4641,7 @@ describe("incomplete data says so, with its retry", () => {
             accountRevocationEvidence: false,
           } satisfies AdapterError);
         },
-        execute: () => Effect.succeed({ processRefs: [], observations: [] }),
+        execute: () => Effect.succeed({ observations: [] }),
         closeReceiver: () => Effect.void,
       };
       const runtime = yield* makeZeropsDataRuntime({
@@ -4704,19 +4665,19 @@ describe("incomplete data says so, with its retry", () => {
         states,
         // A failed read says so on the interest.
         (state) =>
-          processReads > 0 && state.interests.get(lease.interest)?.interest.status === "failed",
+          serviceReads > 0 && state.interests.get(lease.interest)?.interest.status === "failed",
       );
       const settle = Effect.gen(function* () {
         for (let turn = 0; turn < 20; turn++) yield* Effect.yieldNow;
       });
       yield* settle;
-      const observed = processReads;
+      const observed = serviceReads;
       yield* TestClock.adjust("4999 millis");
       yield* settle;
-      expect(processReads).toBe(observed);
+      expect(serviceReads).toBe(observed);
       yield* TestClock.adjust("1 millis");
       yield* settle;
-      expect(processReads).toBe(observed + 1);
+      expect(serviceReads).toBe(observed + 1);
 
       yield* runtime.shutdown("application-close");
       yield* Scope.close(leaseScope, Exit.void);
@@ -4731,7 +4692,7 @@ describe("incomplete data says so, with its retry", () => {
       Effect.gen(function* () {
         const registry = AtomRegistry.make();
         const events = yield* Queue.unbounded<ReceiverEvent>();
-        let processReads = 0;
+        let serviceReads = 0;
         const adapterError: AdapterError = {
           _tag: "ZeropsDataAdapterError",
           kind: "network",
@@ -4748,15 +4709,15 @@ describe("incomplete data says so, with its retry", () => {
               events: Stream.fromQueue(events),
             }),
           register: (_receiver, request) => {
-            const baseline = unresolvedProcessBaseline(request);
+            const baseline = unresolvedServiceBaseline(request);
             return Effect.succeed({ responseObservations: baseline === null ? [] : [baseline] });
           },
           read: (ticket) => {
-            if (ticket.target.kind !== "process") return Effect.succeed({ observations: [] });
-            processReads += 1;
+            if (ticket.target.kind !== "service") return Effect.succeed({ observations: [] });
+            serviceReads += 1;
             return Effect.fail(adapterError);
           },
-          execute: () => Effect.succeed({ processRefs: [], observations: [] }),
+          execute: () => Effect.succeed({ observations: [] }),
           closeReceiver: () => Effect.void,
         };
         const runtime = yield* makeZeropsDataRuntime({
@@ -4775,25 +4736,25 @@ describe("incomplete data says so, with its retry", () => {
         const unsubscribe = registry.subscribe(runtime.stateAtom, (state) => {
           Queue.offerUnsafe(states, state);
         });
-        const activityDescriptor: RuntimeInterestDescriptor = {
-          kind: "project-activity",
+        const inventoryDescriptor: RuntimeInterestDescriptor = {
+          kind: "project-inventory",
           project: topologyDescriptor.project,
         };
         const leaseScope = yield* Scope.make();
-        const lease = yield* runtime.acquire(activityDescriptor).pipe(Scope.provide(leaseScope));
-        yield* waitForState(states, () => processReads > 0);
+        const lease = yield* runtime.acquire(inventoryDescriptor).pipe(Scope.provide(leaseScope));
+        yield* waitForState(states, () => serviceReads > 0);
         yield* Effect.yieldNow;
         yield* Effect.yieldNow;
         yield* Effect.yieldNow;
         // Every failed read triggers its own automatic retry until the 2-attempt budget
         // is spent; the exact attempt count only depends on that unrelated retry
         // machinery, so record the plateau rather than assert a specific number.
-        const afterInitialSettle = processReads;
+        const afterInitialSettle = serviceReads;
         expect(afterInitialSettle).toBeGreaterThan(0);
 
         // The receiver reconnects: the interest's transport is replaced and re-established,
         // and the recovered transport resets the hydration-failure budget for the whole
-        // organization. The resent baseline reports the same unresolved process, so a
+        // organization. The resent baseline reports the same unresolved service, so a
         // fresh hydration attempt must run once the budget is clear again — the plateau
         // must move past its exhausted value.
         yield* Queue.offer(events, { kind: "closed", reason: "disconnect" });
@@ -4803,11 +4764,11 @@ describe("incomplete data says so, with its retry", () => {
         );
         // The receiver reconnects on its own first rung.
         yield* TestClock.adjust("1 second");
-        yield* waitForState(states, () => processReads > afterInitialSettle);
+        yield* waitForState(states, () => serviceReads > afterInitialSettle);
         yield* Effect.yieldNow;
         yield* Effect.yieldNow;
         yield* Effect.yieldNow;
-        expect(processReads).toBeGreaterThan(afterInitialSettle);
+        expect(serviceReads).toBeGreaterThan(afterInitialSettle);
 
         yield* runtime.shutdown("application-close");
         yield* Scope.close(leaseScope, Exit.void);
@@ -4819,7 +4780,7 @@ describe("incomplete data says so, with its retry", () => {
   it.effect("resets the hydration-failure budget for an organization on foreground resume", () =>
     Effect.gen(function* () {
       const registry = AtomRegistry.make();
-      let processReads = 0;
+      let serviceReads = 0;
       const adapterError: AdapterError = {
         _tag: "ZeropsDataAdapterError",
         kind: "network",
@@ -4836,15 +4797,15 @@ describe("incomplete data says so, with its retry", () => {
             events: Stream.never,
           }),
         register: (_receiver, request) => {
-          const baseline = unresolvedProcessBaseline(request);
+          const baseline = unresolvedServiceBaseline(request);
           return Effect.succeed({ responseObservations: baseline === null ? [] : [baseline] });
         },
         read: (ticket) => {
-          if (ticket.target.kind !== "process") return Effect.succeed({ observations: [] });
-          processReads += 1;
+          if (ticket.target.kind !== "service") return Effect.succeed({ observations: [] });
+          serviceReads += 1;
           return Effect.fail(adapterError);
         },
-        execute: () => Effect.succeed({ processRefs: [], observations: [] }),
+        execute: () => Effect.succeed({ observations: [] }),
         closeReceiver: () => Effect.void,
       };
       const visibilityState = yield* Ref.make<"visible" | "hidden">("visible");
@@ -4867,21 +4828,21 @@ describe("incomplete data says so, with its retry", () => {
       const unsubscribe = registry.subscribe(runtime.stateAtom, (state) => {
         Queue.offerUnsafe(states, state);
       });
-      const activityDescriptor: RuntimeInterestDescriptor = {
-        kind: "project-activity",
+      const inventoryDescriptor: RuntimeInterestDescriptor = {
+        kind: "project-inventory",
         project: topologyDescriptor.project,
       };
       const leaseScope = yield* Scope.make();
-      const lease = yield* runtime.acquire(activityDescriptor).pipe(Scope.provide(leaseScope));
-      yield* waitForState(states, () => processReads > 0);
+      const lease = yield* runtime.acquire(inventoryDescriptor).pipe(Scope.provide(leaseScope));
+      yield* waitForState(states, () => serviceReads > 0);
       yield* Effect.yieldNow;
       yield* Effect.yieldNow;
       yield* Effect.yieldNow;
-      const afterInitialSettle = processReads;
+      const afterInitialSettle = serviceReads;
       expect(afterInitialSettle).toBeGreaterThan(0);
 
       // Background pause, then foreground resume: the resumed interest resends its
-      // baseline (same unresolved process), and the resume path itself must reset the
+      // baseline (same unresolved service), and the resume path itself must reset the
       // organization's hydration-failure budget so a fresh attempt is allowed.
       yield* Ref.set(visibilityState, "hidden");
       yield* Queue.offer(visibilityChanges, "hidden");
@@ -4893,11 +4854,11 @@ describe("incomplete data says so, with its retry", () => {
 
       yield* Ref.set(visibilityState, "visible");
       yield* Queue.offer(visibilityChanges, "visible");
-      yield* waitForState(states, () => processReads > afterInitialSettle);
+      yield* waitForState(states, () => serviceReads > afterInitialSettle);
       yield* Effect.yieldNow;
       yield* Effect.yieldNow;
       yield* Effect.yieldNow;
-      expect(processReads).toBeGreaterThan(afterInitialSettle);
+      expect(serviceReads).toBeGreaterThan(afterInitialSettle);
 
       yield* runtime.shutdown("application-close");
       yield* Scope.close(leaseScope, Exit.void);
@@ -4932,14 +4893,14 @@ describe("incomplete data says so, with its retry", () => {
                     };
                   }),
                 register: (_receiver, request) => {
-                  const baseline = unresolvedProcessBaseline(request);
+                  const baseline = unresolvedServiceBaseline(request);
                   if (baseline !== null) membership = request;
                   return Effect.succeed({
                     responseObservations: baseline === null ? [] : [baseline],
                   });
                 },
                 read: (ticket) => {
-                  if (ticket.target.kind !== "process") return Effect.succeed({ observations: [] });
+                  if (ticket.target.kind !== "service") return Effect.succeed({ observations: [] });
                   reads += 1;
                   return fails
                     ? Effect.fail({
@@ -4965,7 +4926,7 @@ describe("incomplete data says so, with its retry", () => {
               Queue.offerUnsafe(states, state),
             );
             const lease = yield* runtime.acquire({
-              kind: "project-activity",
+              kind: "project-inventory",
               project: topologyDescriptor.project,
             });
             const state = yield* waitForState(
@@ -4974,7 +4935,7 @@ describe("incomplete data says so, with its retry", () => {
             );
             expect(state.interests.get(lease.interest)?.interest).toMatchObject({
               status: "failed",
-              reason: expect.stringContaining("process-a"),
+              reason: expect.stringContaining("service-a"),
               retryAtMs: expect.any(Number),
             });
             expect(state.interests.get(lease.interest)?.interest).toMatchObject({
@@ -4982,7 +4943,7 @@ describe("incomplete data says so, with its retry", () => {
             });
             expect(reads).toBe(1);
             expect(
-              [...state.reads.values()].find((read) => read.ticket.target.kind === "process"),
+              [...state.reads.values()].find((read) => read.ticket.target.kind === "service"),
             ).toMatchObject({ status: "failed", failure: fails ? "network" : "incomplete" });
             yield* TestClock.adjust("1 minute");
             const extra = yield* runtime.acquire(topologyDescriptor);
@@ -5004,9 +4965,9 @@ describe("incomplete data says so, with its retry", () => {
                 kind: "query-membership-observed",
                 operation: "add",
                 member: {
-                  kind: "process",
+                  kind: "service",
                   project: topologyDescriptor.project,
-                  processId: ZeropsProcessId.make("process-a"),
+                  serviceId: ZeropsServiceId.make("service-a"),
                 },
                 registration: membership as never,
               },
@@ -5016,7 +4977,7 @@ describe("incomplete data says so, with its retry", () => {
               states,
               (next) =>
                 [...next.reads.values()].filter(
-                  (read) => read.ticket.target.kind === "process" && read.status !== "pending",
+                  (read) => read.ticket.target.kind === "service" && read.status !== "pending",
                 ).length === 3,
             );
             expect(reads).toBe(3);
@@ -5041,7 +5002,7 @@ describe("incomplete data says so, with its retry", () => {
             register: (receiver, request, context) => {
               if (
                 request.descriptor.kind !== "query-membership" ||
-                request.descriptor.query.kind !== "running-processes-of-project"
+                request.descriptor.query.kind !== "services-of-project"
               )
                 return harness.adapter.register(receiver, request, context);
               attempts += 1;
@@ -5063,7 +5024,7 @@ describe("incomplete data says so, with its retry", () => {
           Queue.offerUnsafe(states, state),
         );
         const first = yield* runtime.acquire({
-          kind: "project-activity",
+          kind: "project-inventory",
           project: topologyDescriptor.project,
         });
         yield* waitForState(
@@ -5488,7 +5449,7 @@ it.effect("retains a malformed registration failure for later dependents", () =>
           register: (receiver, planned, context) => {
             if (
               planned.descriptor.kind === "query-membership" &&
-              planned.descriptor.query.kind === "running-processes-of-project"
+              planned.descriptor.query.kind === "services-of-project"
             ) {
               request = planned;
               attempts += 1;
@@ -5504,7 +5465,7 @@ it.effect("retains a malformed registration failure for later dependents", () =>
         Queue.offerUnsafe(states, state),
       );
       const first = yield* runtime.acquire({
-        kind: "project-activity",
+        kind: "project-inventory",
         project: topologyDescriptor.project,
       });
       yield* waitForState(
@@ -5840,7 +5801,6 @@ it.effect("publishing a subdomain refreshes the drawn stop's public access once"
         ...base.adapter,
         execute: () =>
           Effect.succeed({
-            processRefs: [],
             observations: [],
             result: { kind: "enable-subdomain-access", value: undefined },
           }),
@@ -5883,14 +5843,14 @@ describe("an interest that fails alone recovers alone", () => {
     retryable: true,
     accountRevocationEvidence: false,
   };
-  const isRunningProcesses = (request: RegistrationRequest) =>
+  const isServicesQuery = (request: RegistrationRequest) =>
     request.descriptor.kind === "query-membership" &&
-    request.descriptor.query.kind === "running-processes-of-project";
+    request.descriptor.query.kind === "services-of-project";
   const settle = Effect.forEach(Array.from({ length: 30 }), () => Effect.yieldNow, {
     discard: true,
   });
 
-  /** A project's activity whose running-process subscription the platform refuses `refusals` times. */
+  /** A project's inventory whose service subscription the platform refuses `refusals` times. */
   const refusing = (
     refusals: number,
     options: {
@@ -5907,7 +5867,7 @@ describe("an interest that fails alone recovers alone", () => {
         adapter: {
           ...harness.adapter,
           register: (receiver, request, context) => {
-            if (!isRunningProcesses(request))
+            if (!isServicesQuery(request))
               return harness.adapter.register(receiver, request, context);
             return Effect.flatMap(Clock.currentTimeMillis, (now) => {
               attemptsAt.push(now);
@@ -5943,7 +5903,7 @@ describe("an interest that fails alone recovers alone", () => {
         Effect.gen(function* () {
           const rig = yield* refusing(4);
           const lease = yield* rig.runtime.acquire({
-            kind: "project-activity",
+            kind: "project-inventory",
             project: topologyDescriptor.project,
           });
           const failed = yield* waitForState(rig.states, (state) => {
@@ -5982,7 +5942,7 @@ describe("an interest that fails alone recovers alone", () => {
         Effect.gen(function* () {
           const rig = yield* refusing(1);
           const descriptor: RuntimeInterestDescriptor = {
-            kind: "project-activity",
+            kind: "project-inventory",
             project: topologyDescriptor.project,
           };
           const first = yield* rig.runtime.acquire(descriptor);
@@ -6013,7 +5973,7 @@ describe("an interest that fails alone recovers alone", () => {
         Effect.gen(function* () {
           const rig = yield* refusing(4);
           const lease = yield* rig.runtime.acquire({
-            kind: "project-activity",
+            kind: "project-inventory",
             project: topologyDescriptor.project,
           });
           yield* settle;
@@ -6026,7 +5986,7 @@ describe("an interest that fails alone recovers alone", () => {
             rig.states,
             (state) => state.interests.get(lease.interest)?.interest.status === "observing",
           );
-          // Four retries of the one failed subscription; the process feed beside it went once.
+          // Four retries of the one failed subscription; the service feed beside it went once.
           expect(rig.attemptsAt).toHaveLength(5);
           expect(rig.harness.counts().registrations).toBe(sentBefore);
           expect(rig.harness.counts().opens).toBe(1);
@@ -6042,17 +6002,17 @@ describe("an interest that fails alone recovers alone", () => {
       Effect.gen(function* () {
         const rig = yield* refusing(1, { policy: { releasedRegistrationsPerReceiver: 1 } });
         const lease = yield* rig.runtime.acquire({
-          kind: "project-activity",
+          kind: "project-inventory",
           project: topologyDescriptor.project,
         });
         yield* waitForState(rig.states, (state) => {
           const interest = state.interests.get(lease.interest)?.interest;
           return interest?.status === "failed" && interest.retryAtMs !== null;
         });
-        // Another project's demand comes and goes: its released subscriptions replace the socket.
+        // Another project's demand comes and goes: its released subscription replaces the socket.
         const passing = yield* Scope.make();
         yield* rig.runtime
-          .acquire({ kind: "project-inventory", project: project("project-b") })
+          .acquire({ kind: "project-current-metrics", project: project("project-b") })
           .pipe(Scope.provide(passing));
         yield* settle;
         yield* Scope.close(passing, Exit.void);
@@ -6077,7 +6037,7 @@ describe("an interest that fails alone recovers alone", () => {
       Effect.gen(function* () {
         const rig = yield* refusing(3, { policy: { releasedRegistrationsPerReceiver: 2 } });
         const lease = yield* rig.runtime.acquire({
-          kind: "project-activity",
+          kind: "project-inventory",
           project: topologyDescriptor.project,
         });
         for (let step = 0; step < 40; step++) {
@@ -6108,7 +6068,7 @@ describe("an interest that fails alone recovers alone", () => {
             visibility: { current: Ref.get(visibility), changes: Stream.fromQueue(changes) },
           });
           const lease = yield* rig.runtime.acquire({
-            kind: "project-activity",
+            kind: "project-inventory",
             project: topologyDescriptor.project,
           });
           yield* waitForState(rig.states, (state) => {
@@ -6151,7 +6111,7 @@ describe("an interest that fails alone recovers alone", () => {
             adapter: {
               ...harness.adapter,
               register: (receiver, request, context) => {
-                if (!isRunningProcesses(request))
+                if (!isServicesQuery(request))
                   return harness.adapter.register(receiver, request, context);
                 sent += 1;
                 // The first send is never answered; its retry is.
@@ -6170,8 +6130,8 @@ describe("an interest that fails alone recovers alone", () => {
             Queue.offerUnsafe(states, state),
           );
           const topology = yield* runtime.acquire(topologyDescriptor);
-          const activity = yield* runtime.acquire({
-            kind: "project-activity",
+          const projectInventory = yield* runtime.acquire({
+            kind: "project-inventory",
             project: topologyDescriptor.project,
           });
           yield* settle;
@@ -6181,7 +6141,7 @@ describe("an interest that fails alone recovers alone", () => {
           // on its first rung (f8c96d60d), and everything it carried registers again.
           yield* TestClock.adjust("1 second");
           yield* waitForState(states, (state) =>
-            [topology.interest, activity.interest].every(
+            [topology.interest, projectInventory.interest].every(
               (key) => state.interests.get(key)?.interest.status === "observing",
             ),
           );
@@ -6211,7 +6171,7 @@ describe("an interest that fails alone recovers alone", () => {
             ...harness.adapter,
             register: (receiver, request, context) => {
               const kind = kindOf(request);
-              if (kind !== "projects-of-organization" && kind !== "running-processes-of-project")
+              if (kind !== "projects-of-organization" && kind !== "services-of-project")
                 return harness.adapter.register(receiver, request, context);
               sent.push(kind);
               if (refusedOnce.has(kind)) return Effect.succeed({ responseObservations: [] });
@@ -6228,9 +6188,9 @@ describe("an interest that fails alone recovers alone", () => {
         const stop = registry.subscribe(runtime.stateAtom, (state) =>
           Queue.offerUnsafe(states, state),
         );
-        // The project's activity first, the organization's list after: both refused.
-        const activity = yield* runtime.acquire({
-          kind: "project-activity",
+        // The project's inventory first, the organization's list after: both refused.
+        const projectInventory = yield* runtime.acquire({
+          kind: "project-inventory",
           project: topologyDescriptor.project,
         });
         yield* settle;
@@ -6239,14 +6199,14 @@ describe("an interest that fails alone recovers alone", () => {
           organization: topologyDescriptor.project.organization,
         });
         yield* settle;
-        expect(sent).toEqual(["running-processes-of-project", "projects-of-organization"]);
+        expect(sent).toEqual(["services-of-project", "projects-of-organization"]);
         yield* TestClock.adjust("100 millis");
         yield* waitForState(states, (state) =>
-          [activity.interest, list.interest].every(
+          [projectInventory.interest, list.interest].every(
             (key) => state.interests.get(key)?.interest.status === "observing",
           ),
         );
-        expect(sent.slice(2)).toEqual(["projects-of-organization", "running-processes-of-project"]);
+        expect(sent.slice(2)).toEqual(["projects-of-organization", "services-of-project"]);
         expect(harness.counts().opens).toBe(1);
         yield* runtime.shutdown("application-close");
         stop();
@@ -6260,7 +6220,7 @@ describe("an interest that fails alone recovers alone", () => {
       Effect.gen(function* () {
         const rig = yield* refusing(1, { policy: { recoveryBackoffStartMs: 1_000 } });
         const lease = yield* rig.runtime.acquire({
-          kind: "project-activity",
+          kind: "project-inventory",
           project: topologyDescriptor.project,
         });
         yield* waitForState(rig.states, (state) => {
@@ -6318,16 +6278,16 @@ describe("a 429 is answered with patience, never more requests", () => {
                 events: Stream.fromQueue(events),
               }),
             register: (_receiver, request) => {
-              const baseline = unresolvedProcessBaseline(request);
+              const baseline = unresolvedServiceBaseline(request);
               if (baseline !== null) membership = request;
               return Effect.succeed({ responseObservations: baseline === null ? [] : [baseline] });
             },
             read: (ticket) => {
-              if (ticket.target.kind !== "process") return Effect.succeed({ observations: [] });
-              const id = ticket.target.ref.processId;
+              if (ticket.target.kind !== "service") return Effect.succeed({ observations: [] });
+              const id = ticket.target.ref.serviceId;
               return Effect.flatMap(Clock.currentTimeMillis, (now) => {
                 readsAt.push([id, now]);
-                return id === "process-a"
+                return id === "service-a"
                   ? Effect.fail(slowDown(5_000))
                   : Effect.succeed({ observations: [] });
               });
@@ -6337,9 +6297,9 @@ describe("a 429 is answered with patience, never more requests", () => {
           makeOpaqueId: makeIdFactory(),
           random: () => 0,
         });
-        yield* runtime.acquire({ kind: "project-activity", project: topologyDescriptor.project });
+        yield* runtime.acquire({ kind: "project-inventory", project: topologyDescriptor.project });
         yield* settle;
-        expect(readsAt).toEqual([["process-a", 0]]);
+        expect(readsAt).toEqual([["service-a", 0]]);
         yield* TestClock.adjust("1 second");
         yield* Queue.offer(events, {
           kind: "observation",
@@ -6347,9 +6307,9 @@ describe("a 429 is answered with patience, never more requests", () => {
             kind: "query-membership-observed",
             operation: "add",
             member: {
-              kind: "process",
+              kind: "service",
               project: topologyDescriptor.project,
-              processId: ZeropsProcessId.make("process-c"),
+              serviceId: ZeropsServiceId.make("service-c"),
             },
             registration: membership as never,
           },
@@ -6358,10 +6318,10 @@ describe("a 429 is answered with patience, never more requests", () => {
         yield* settle;
         yield* TestClock.adjust("3999 millis");
         yield* settle;
-        expect(readsAt).toEqual([["process-a", 0]]);
+        expect(readsAt).toEqual([["service-a", 0]]);
         yield* TestClock.adjust("1 millis");
         yield* settle;
-        expect(readsAt.map(([id]) => id).sort()).toEqual(["process-a", "process-a", "process-c"]);
+        expect(readsAt.map(([id]) => id).sort()).toEqual(["service-a", "service-a", "service-c"]);
         expect(readsAt.every(([, at]) => at === 0 || at === 5_000)).toBe(true);
         yield* runtime.shutdown("application-close");
         registry.dispose();
@@ -6393,17 +6353,17 @@ describe("a 429 is answered with patience, never more requests", () => {
                   events: Stream.fromQueue(events),
                 }),
               register: (_receiver, request) => {
-                const baseline = unresolvedProcessBaseline(request);
+                const baseline = unresolvedServiceBaseline(request);
                 if (
                   baseline === null ||
                   request.descriptor.kind !== "query-membership" ||
-                  request.descriptor.query.kind !== "running-processes-of-project"
+                  request.descriptor.query.kind !== "services-of-project"
                 )
                   return Effect.succeed({ responseObservations: [] });
                 const projectId = request.descriptor.query.project.projectId;
                 registrations.set(projectId, request);
-                // Only project a runs something; the others' first processes arrive while its read
-                // is held.
+                // Only project a has a service; the others' first services arrive while its read is
+                // held.
                 return Effect.succeed({
                   responseObservations: [
                     projectId === "project-a"
@@ -6418,10 +6378,10 @@ describe("a 429 is answered with patience, never more requests", () => {
                 });
               },
               read: (ticket) => {
-                if (ticket.target.kind !== "process") return Effect.succeed({ observations: [] });
-                const id = ticket.target.ref.processId;
+                if (ticket.target.kind !== "service") return Effect.succeed({ observations: [] });
+                const id = ticket.target.ref.serviceId;
                 reads.push(id);
-                return id === "process-a" && reads.length === 1
+                return id === "service-a" && reads.length === 1
                   ? Effect.fail(slowDown(5_000))
                   : Effect.succeed({ observations: [] });
               },
@@ -6434,37 +6394,37 @@ describe("a 429 is answered with patience, never more requests", () => {
               changes: Stream.fromQueue(visibilityChanges),
             },
           });
-          const membership = (operation: "add" | "remove", projectId: string, processId: string) =>
+          const membership = (operation: "add" | "remove", projectId: string, serviceId: string) =>
             Queue.offer(events, {
               kind: "observation",
               input: {
                 kind: "query-membership-observed",
                 operation,
                 member: {
-                  kind: "process",
+                  kind: "service",
                   project: project(projectId),
-                  processId: ZeropsProcessId.make(processId),
+                  serviceId: ZeropsServiceId.make(serviceId),
                 },
                 registration: registrations.get(projectId) as never,
               },
               bytes: 1,
             });
-          yield* runtime.acquire({ kind: "project-activity", project: project("project-a") });
+          yield* runtime.acquire({ kind: "project-inventory", project: project("project-a") });
           const leaseB = yield* runtime.acquire({
-            kind: "project-activity",
+            kind: "project-inventory",
             project: project("project-b"),
           });
           const leaseC = yield* runtime.acquire({
-            kind: "project-activity",
+            kind: "project-inventory",
             project: project("project-c"),
           });
           const interestOf = (lease: typeof leaseB) =>
             registry.get(runtime.stateAtom).interests.get(lease.interest)?.interest;
           yield* settle;
-          expect(reads).toEqual(["process-a"]);
+          expect(reads).toEqual(["service-a"]);
           yield* TestClock.adjust("1 second");
-          yield* membership("add", "project-b", "process-b");
-          yield* membership("add", "project-c", "process-c");
+          yield* membership("add", "project-b", "service-b");
+          yield* membership("add", "project-c", "service-c");
           yield* settle;
           // Their data is missing until the hold passes: each interest says so, with when it reads.
           for (const lease of [leaseB, leaseC])
@@ -6473,10 +6433,10 @@ describe("a 429 is answered with patience, never more requests", () => {
               retryable: true,
               retryAtMs: 5_000,
             });
-          // Project a's refused process and project c's held one end: nothing of theirs is left to
+          // Project a's refused service and project c's held one go: nothing of theirs is left to
           // read.
-          yield* membership("remove", "project-a", "process-a");
-          yield* membership("remove", "project-c", "process-c");
+          yield* membership("remove", "project-a", "service-a");
+          yield* membership("remove", "project-c", "service-c");
           yield* settle;
           yield* Ref.set(visibilityState, "hidden");
           yield* Queue.offer(visibilityChanges, "hidden");
@@ -6484,12 +6444,12 @@ describe("a 429 is answered with patience, never more requests", () => {
           // The hold ends while nobody looks: nothing is read, and nothing is forgotten either.
           yield* TestClock.adjust("10 seconds");
           yield* settle;
-          expect(reads).toEqual(["process-a"]);
+          expect(reads).toEqual(["service-a"]);
           expect(interestOf(leaseC)?.status).toBe("observing");
           yield* Ref.set(visibilityState, "visible");
           yield* Queue.offer(visibilityChanges, "visible");
           yield* settle;
-          expect(reads.slice(1)).toEqual(["process-b"]);
+          expect(reads.slice(1)).toEqual(["service-b"]);
           yield* runtime.shutdown("application-close");
           registry.dispose();
         }),
@@ -6508,7 +6468,7 @@ describe("a 429 is answered with patience, never more requests", () => {
             ...harness.adapter,
             register: (receiver, request, context) =>
               request.descriptor.kind === "query-membership" &&
-              request.descriptor.query.kind === "running-processes-of-project"
+              request.descriptor.query.kind === "services-of-project"
                 ? Effect.flatMap(Clock.currentTimeMillis, (now) => {
                     sentAt.push(now);
                     return sentAt.length === 1
@@ -6522,7 +6482,7 @@ describe("a 429 is answered with patience, never more requests", () => {
           random: () => 0,
           policy: makeZeropsDataPolicy({ recoveryBackoffStartMs: 100 }),
         });
-        yield* runtime.acquire({ kind: "project-activity", project: topologyDescriptor.project });
+        yield* runtime.acquire({ kind: "project-inventory", project: topologyDescriptor.project });
         for (let step = 0; step < 60; step++) {
           yield* TestClock.adjust("100 millis");
           yield* settle;
@@ -6583,7 +6543,7 @@ describe("a 429 is answered with patience, never more requests", () => {
             ...harness.adapter,
             register: (receiver, request, context) =>
               request.descriptor.kind === "query-membership" &&
-              request.descriptor.query.kind === "running-processes-of-project"
+              request.descriptor.query.kind === "services-of-project"
                 ? Effect.flatMap(Clock.currentTimeMillis, (now) => {
                     sentAt.push(now);
                     return sentAt.length === 1
@@ -6597,7 +6557,7 @@ describe("a 429 is answered with patience, never more requests", () => {
           random: () => 1,
           policy: makeZeropsDataPolicy({ recoveryBackoffStartMs: 1_000 }),
         });
-        yield* runtime.acquire({ kind: "project-activity", project: topologyDescriptor.project });
+        yield* runtime.acquire({ kind: "project-inventory", project: topologyDescriptor.project });
         for (let step = 0; step < 15; step++) {
           yield* TestClock.adjust("100 millis");
           yield* settle;

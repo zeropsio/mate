@@ -48,8 +48,6 @@ describe("Zerops data runtime policy", () => {
   });
 
   it("bounds account-wide entity, telemetry, history and log retention", () => {
-    expect(DEFAULT_ZEROPS_DATA_POLICY.retainedTerminalProcessesPerProject).toBe(500);
-    expect(DEFAULT_ZEROPS_DATA_POLICY.retainedTerminalProcessesPerAccount).toBe(2_000);
     expect(DEFAULT_ZEROPS_DATA_POLICY.retainedCurrentMetricSamplesPerAccount).toBe(10_000);
     expect(DEFAULT_ZEROPS_DATA_POLICY.retainedHistoryBucketsPerSeries).toBe(720);
     expect(DEFAULT_ZEROPS_DATA_POLICY.activeHistorySeriesPerAccount).toBe(128);

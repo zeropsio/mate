@@ -3,7 +3,7 @@ import type {
   AccountRef,
   AccountScope,
   DesiredInterestState,
-  EntityQueryDescriptor,
+  MembershipQueryDescriptor,
   IngestionStamp,
   InterestIdentity,
   ProjectRef,
@@ -143,7 +143,7 @@ export const entityRegistration = <Entity extends "project" | "service" | "proce
     };
   };
 
-export const queryRegistration = <Descriptor extends EntityQueryDescriptor>(
+export const queryRegistration = <Descriptor extends MembershipQueryDescriptor>(
   descriptor: Descriptor,
   id = identity(),
   baseline = queryTicket(descriptor, id, 1, 1, 1),
@@ -183,13 +183,12 @@ export const directTicket = <Target extends ReadTarget>(
     startedAtMs: start,
     ...(target.kind === "query" &&
     (target.descriptor.kind === "projects-of-organization" ||
-      target.descriptor.kind === "services-of-project" ||
-      target.descriptor.kind === "running-processes-of-project")
+      target.descriptor.kind === "services-of-project")
       ? { membershipReceiptOrdinalAtStart: ReceiptOrdinal.make(receipt) }
       : {}),
   }) as unknown as ReadTicket & { readonly target: Target };
 
-export const queryTicket = <Descriptor extends EntityQueryDescriptor>(
+export const queryTicket = <Descriptor extends MembershipQueryDescriptor>(
   descriptor: Descriptor,
   id = identity(),
   start = 1,

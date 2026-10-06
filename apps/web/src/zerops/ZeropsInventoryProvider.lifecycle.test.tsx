@@ -342,7 +342,7 @@ const mountInventory = Effect.fn(function* (
           }),
         }).pipe(Effect.map((dto) => decodeEntityDirectResponse(ticket, dto)));
       },
-      execute: () => Effect.succeed({ processRefs: [], observations: [] }),
+      execute: () => Effect.succeed({ observations: [] }),
       closeReceiver: () => Effect.void,
     },
   });

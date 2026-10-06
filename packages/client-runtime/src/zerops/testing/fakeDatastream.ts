@@ -136,7 +136,7 @@ export function makeFakeDatastream(
           observations: decodeEntityDirectResponse(ticket, project).observations,
         });
       },
-      execute: () => Effect.succeed({ processRefs: [], observations: [] }),
+      execute: () => Effect.succeed({ observations: [] }),
       closeReceiver: () => Effect.void,
     },
     registrations: () => [...registrations],

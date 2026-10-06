@@ -21,7 +21,6 @@ import {
   ZeropsAccountId,
   ZeropsCommandAttemptId,
   ZeropsOrganizationId,
-  ZeropsProcessId,
   ZeropsProjectId,
   ZeropsReceiverId,
   ZeropsRequestId,
@@ -29,7 +28,7 @@ import {
   ZeropsWireSubscriptionName,
   makeZeropsApiOrigin,
   type AccountRef,
-  type EntityQueryDescriptor,
+  type MembershipQueryDescriptor,
   type InterestIdentity,
   type OrganizationRef,
   type PlatformCommand,
@@ -61,15 +60,6 @@ const interest: InterestIdentity = {
   interestEpoch: InterestEpoch.make(1),
   key: InterestKey.make("interest"),
 };
-const processStatuses = [
-  "PENDING",
-  "RUNNING",
-  "ROLLBACKING",
-  "CANCELING",
-  "FINISHED",
-  "FAILED",
-  "CANCELED",
-] as const;
 const restartCommand: PlatformCommand = {
   kind: "restart-service",
   service: {
@@ -104,7 +94,7 @@ const startProjectCommand: PlatformCommand = {
   dispatchOrdinal: DispatchOrdinal.make(8),
 };
 
-function ticket(descriptor: EntityQueryDescriptor): ReadTicket {
+function ticket(descriptor: MembershipQueryDescriptor): ReadTicket {
   return {
     kind: "baseline",
     requestId: ZeropsRequestId.make("request"),
@@ -118,28 +108,8 @@ function ticket(descriptor: EntityQueryDescriptor): ReadTicket {
   };
 }
 
-function directProcessTicket(status = "RUNNING"): ReadTicket {
-  return {
-    kind: "direct",
-    requestId: ZeropsRequestId.make(`process-${status}`),
-    owner: { kind: "interest", identity: interest },
-    target: {
-      kind: "process",
-      ref: {
-        kind: "process",
-        project,
-        processId: ZeropsProcessId.make("process"),
-      },
-    },
-    receiptOrdinalAtStart: ReceiptOrdinal.make(0),
-    readStartOrdinal: ReadStartOrdinal.make(1),
-    dispatchOrdinal: DispatchOrdinal.make(1),
-    startedAtMs: 0,
-  };
-}
-
 function registration(
-  descriptor: EntityQueryDescriptor,
+  descriptor: MembershipQueryDescriptor,
   name = "opaque::chosen-by-runtime",
 ): RegistrationRequest {
   return {
@@ -250,42 +220,11 @@ describe("Zerops platform protocol decoding", () => {
       },
       {
         descriptor: {
-          kind: "running-processes-of-project" as const,
-          project,
-          statuses: ["RUNNING" as const],
-          schemaVersion: 1 as const,
-        },
-        row: {
-          id: "\t",
-          projectId: "project",
-          actionName: "stack.restart",
-          created: "2026-09-07T00:00:00Z",
-          status: "RUNNING",
-        },
-      },
-      {
-        descriptor: {
           kind: "services-of-project" as const,
           project: project,
           schemaVersion: 1 as const,
         },
         row: { id: "service", projectId: "project", name: "app", status: "ACTIVE", rootId: "" },
-      },
-      {
-        descriptor: {
-          kind: "running-processes-of-project" as const,
-          project,
-          statuses: ["RUNNING" as const],
-          schemaVersion: 1 as const,
-        },
-        row: {
-          id: "process",
-          projectId: "project",
-          actionName: "stack.restart",
-          created: "2026-09-07T00:00:00Z",
-          status: "RUNNING",
-          parentId: " parent",
-        },
       },
     ];
 
@@ -335,9 +274,8 @@ describe("Zerops platform protocol decoding", () => {
 
   it("routes arbitrary names through the registry and decodes list deletes as membership only", () => {
     const descriptor = {
-      kind: "running-processes-of-project" as const,
+      kind: "services-of-project" as const,
       project: project,
-      statuses: ["PENDING", "RUNNING"] as const,
       schemaVersion: 1 as const,
     };
     const request = registration(descriptor, "name/that-is-not-parsed");
@@ -345,7 +283,7 @@ describe("Zerops platform protocol decoding", () => {
       JSON.stringify({
         type: "search",
         subscriptionName: request.subscriptionName,
-        data: { add: ["process-a"], delete: ["process-b"] },
+        data: { add: ["service-a"], delete: ["service-b"] },
       }),
       new Map([[request.subscriptionName, request]]),
     );
@@ -361,19 +299,8 @@ describe("Zerops platform protocol decoding", () => {
     );
   });
 
-  it.each([
-    ["services-of-project", "service"],
-    ["running-processes-of-project", "process"],
-  ] as const)("places bare IDs from a %s frame in its requested project", (kind, entity) => {
-    const descriptor =
-      kind === "services-of-project"
-        ? { kind, project: project, schemaVersion: 1 as const }
-        : {
-            kind,
-            project: project,
-            statuses: ["PENDING", "RUNNING"] as const,
-            schemaVersion: 1 as const,
-          };
+  it("places bare IDs from a services-of-project frame in its requested project", () => {
+    const descriptor = { kind: "services-of-project" as const, project, schemaVersion: 1 as const };
     const request = registration(descriptor);
     const decoded = decodeNativeFrame(
       JSON.stringify({
@@ -391,7 +318,7 @@ describe("Zerops platform protocol decoding", () => {
     for (const observation of decoded.observations)
       expect(observation).toMatchObject({
         kind: "query-membership-observed",
-        member: { kind: entity, project },
+        member: { kind: "service", project },
       });
   });
 
@@ -415,231 +342,7 @@ describe("Zerops platform protocol decoding", () => {
     ).toMatchObject({ kind: "malformed", subscriptionName: request.subscriptionName });
   });
 
-  it.each(processStatuses)("admits Process status %s on the update stream", (wireStatus) => {
-    const request: RegistrationRequest = {
-      identity: interest,
-      subscriptionName: ZeropsWireSubscriptionName.make("process-update"),
-      descriptor: { kind: "entity-updates", entity: "process", organization, project },
-      baselineTicket: null,
-    };
-    const decoded = decodeNativeFrame(
-      JSON.stringify({
-        type: "search",
-        subscriptionName: request.subscriptionName,
-        data: {
-          update: [
-            {
-              id: "process",
-              projectId: "project",
-              status: wireStatus,
-              actionName: "restart",
-              created: "2026-09-07T00:00:00Z",
-            },
-          ],
-        },
-      }),
-      new Map([[request.subscriptionName, request]]),
-    );
-    if (decoded.kind !== "observations") throw new Error("expected observations");
-    expect(decoded.observations).toContainEqual(
-      expect.objectContaining({
-        kind: "process-lifecycle-observed",
-        observation: expect.objectContaining({ fields: { status: wireStatus } }),
-      }),
-    );
-  });
-
-  it("decodes every Process status from indexed search, direct lists, and direct entities", () => {
-    const descriptor = {
-      kind: "running-processes-of-project" as const,
-      project,
-      statuses: ["RUNNING" as const],
-      schemaVersion: 1 as const,
-    };
-    const rows = processStatuses.map((status, index) => ({
-      id: `process-${index}`,
-      projectId: "project",
-      status,
-      actionName: "restart",
-      created: "2026-09-07T00:00:00Z",
-    }));
-    for (const [source, envelope] of [
-      ["indexed-search", { items: rows, limit: rows.length, offset: 0, totalHits: rows.length }],
-      ["direct-read", { list: rows, totalCount: rows.length }],
-    ] as const) {
-      const decoded = decodeEntityQueryResponse(descriptor, ticket(descriptor), envelope, source);
-      expect(decoded.issues).toEqual([]);
-      expect(
-        decoded.observations
-          .filter((observation) => observation.kind === "process-lifecycle-observed")
-          .map((observation) => observation.observation.fields.status),
-      ).toEqual(processStatuses);
-    }
-
-    for (const status of processStatuses) {
-      const direct = directProcessTicket(status);
-      const decoded = decodeEntityDirectResponse(direct, {
-        id: "process",
-        projectId: "project",
-        status,
-        actionName: "restart",
-        created: "2026-09-07T00:00:00Z",
-      });
-      expect(decoded.issues).toEqual([]);
-      expect(decoded.observations).toContainEqual(
-        expect.objectContaining({
-          kind: "process-lifecycle-observed",
-          observation: expect.objectContaining({ fields: { status } }),
-        }),
-      );
-    }
-  });
-
-  it("preserves an unknown Process status without mapping it to idle or success", () => {
-    const request: RegistrationRequest = {
-      identity: interest,
-      subscriptionName: ZeropsWireSubscriptionName.make("process-update"),
-      descriptor: { kind: "entity-updates", entity: "process", organization, project },
-      baselineTicket: null,
-    };
-    const decoded = decodeNativeFrame(
-      JSON.stringify({
-        type: "search",
-        subscriptionName: request.subscriptionName,
-        data: {
-          update: [
-            {
-              id: "process",
-              projectId: "project",
-              status: "PAUSING",
-              actionName: "restart",
-              created: "2026-09-07T00:00:00Z",
-            },
-          ],
-        },
-      }),
-      new Map([[request.subscriptionName, request]]),
-    );
-    if (decoded.kind !== "observations") throw new Error("expected observations");
-    expect(decoded.observations).toContainEqual(
-      expect.objectContaining({
-        observation: expect.objectContaining({
-          fields: { status: { kind: "unknown", raw: "PAUSING" } },
-        }),
-      }),
-    );
-  });
-
-  it("returns an issue for invalid ids in a direct Process body", () => {
-    const decode = () =>
-      decodeEntityDirectResponse(directProcessTicket(), {
-        id: "process",
-        projectId: "project",
-        serviceStackId: "service",
-        serviceStacks: [{ id: "" }],
-        status: "RUNNING",
-        actionName: "stack.restart",
-        created: "2026-09-07T00:00:00Z",
-      });
-
-    expect(decode).not.toThrow();
-    expect(decode()).toEqual({
-      observations: [],
-      issues: [expect.objectContaining({ kind: "malformed-row" })],
-    });
-  });
-
-  it("skips an embedded serviceStacks entry without an id, keeping the Process observations", () => {
-    const result = decodeEntityDirectResponse(directProcessTicket(), {
-      id: "process",
-      projectId: "project",
-      serviceStackId: "service",
-      serviceStacks: [{}, { id: "service" }],
-      status: "RUNNING",
-      actionName: "stack.restart",
-      created: "2026-09-07T00:00:00Z",
-    });
-
-    expect(result.issues).toEqual([expect.objectContaining({ kind: "malformed-row" })]);
-    expect(result.observations).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          kind: "process-identity-observed",
-          observation: expect.objectContaining({
-            fields: expect.objectContaining({ serviceIds: ["service"] }),
-          }),
-        }),
-      ]),
-    );
-  });
-
-  it("accepts a null lastUpdate on a direct Process body as absent source metadata", () => {
-    const result = decodeEntityDirectResponse(directProcessTicket(), {
-      id: "process",
-      projectId: "project",
-      status: "RUNNING",
-      actionName: "stack.restart",
-      created: "2026-09-07T00:00:00Z",
-      lastUpdate: null,
-    });
-
-    expect(result.issues).toEqual([]);
-    expect(result.observations).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          kind: "process-lifecycle-observed",
-          observation: expect.objectContaining({ metadata: {} }),
-        }),
-      ]),
-    );
-  });
-
-  it.each([
-    ["embedded service", { serviceStacks: [{ id: " " }] }],
-    ["top-level service", { serviceStackId: "" }],
-    ["pipeline build service", { appVersion: { build: { serviceStackId: " bad" } } }],
-    [
-      "pipeline prepare service",
-      { appVersion: { prepareCustomRuntime: { serviceStackId: " bad" } } },
-    ],
-    ["root metadata", { rootId: "bad " }],
-  ])("reports a malformed Process update with an invalid %s id", (_label, invalidFields) => {
-    const request: RegistrationRequest = {
-      identity: interest,
-      subscriptionName: ZeropsWireSubscriptionName.make("invalid-process-update"),
-      descriptor: { kind: "entity-updates", entity: "process", organization, project },
-      baselineTicket: null,
-    };
-    const decode = () =>
-      decodeNativeFrame(
-        JSON.stringify({
-          type: "search",
-          subscriptionName: request.subscriptionName,
-          data: {
-            update: [
-              {
-                id: "process",
-                projectId: "project",
-                status: "RUNNING",
-                actionName: "stack.restart",
-                created: "2026-09-07T00:00:00Z",
-                ...invalidFields,
-              },
-            ],
-          },
-        }),
-        new Map([[request.subscriptionName, request]]),
-      );
-
-    expect(decode).not.toThrow();
-    expect(decode()).toMatchObject({
-      kind: "observations",
-      observations: [],
-      issues: [expect.objectContaining({ kind: "malformed-row", rowIndex: 0 })],
-    });
-  });
-
-  it("decodes the measured direct restart Process as command-linked entity facets", () => {
+  it("accepts the measured direct restart Process for the command's service", () => {
     const result = decodeRestartServiceResponse(restartCommand, {
       id: "independent-process-id",
       projectId: "project",
@@ -655,36 +358,7 @@ describe("Zerops platform protocol decoding", () => {
       appVersion: null,
     });
 
-    expect(result.issues).toEqual([]);
-    expect(result.processRefs).toEqual([
-      {
-        kind: "process",
-        project,
-        processId: "independent-process-id",
-      },
-    ]);
-    expect(result.observations.map((observation) => observation.kind)).toEqual([
-      "process-identity-observed",
-      "process-lifecycle-observed",
-      "process-pipeline-observed",
-    ]);
-    expect(result.observations).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          kind: "process-identity-observed",
-          ref: expect.objectContaining({ processId: "independent-process-id" }),
-          observation: expect.objectContaining({
-            source: "command-response",
-            command: restartCommand,
-            fields: expect.objectContaining({
-              actionName: "stack.restart",
-              serviceIds: ["service"],
-            }),
-            metadata: { lastUpdate: "2026-09-04T12:41:00.728Z", sequence: 0 },
-          }),
-        }),
-      ]),
-    );
+    expect(result).toEqual({ observations: [], issues: [] });
   });
 
   it("rejects a restart body that cannot prove the returned Process belongs to the command", () => {
@@ -698,13 +372,12 @@ describe("Zerops platform protocol decoding", () => {
     });
 
     expect(result).toEqual({
-      processRefs: [],
       observations: [],
       issues: [expect.objectContaining({ kind: "malformed-row" })],
     });
   });
 
-  it("decodes a start-service Process response scoped to the command's service", () => {
+  it("accepts a start-service Process response scoped to the command's service", () => {
     const result = decodeStartServiceResponse(startServiceCommand, {
       id: "start-process",
       projectId: "project",
@@ -716,7 +389,6 @@ describe("Zerops platform protocol decoding", () => {
 
     expect(result.issues).toEqual([]);
     expect(result.actionNameMismatch).toBe(false);
-    expect(result.processRefs).toEqual([{ kind: "process", project, processId: "start-process" }]);
   });
 
   it("accepts a start-service response with an unexpected actionName, flagging the mismatch instead of failing", () => {
@@ -731,7 +403,6 @@ describe("Zerops platform protocol decoding", () => {
 
     expect(result.issues).toEqual([]);
     expect(result.actionNameMismatch).toBe(true);
-    expect(result.processRefs).toHaveLength(1);
   });
 
   it("rejects a start-service response for another service", () => {
@@ -745,14 +416,13 @@ describe("Zerops platform protocol decoding", () => {
     });
 
     expect(result).toEqual({
-      processRefs: [],
       observations: [],
       actionNameMismatch: false,
       issues: [expect.objectContaining({ kind: "malformed-row" })],
     });
   });
 
-  it("decodes a start-project Process response scoped to the command's project", () => {
+  it("accepts a start-project Process response scoped to the command's project", () => {
     const result = decodeStartProjectResponse(startProjectCommand, {
       id: "start-process",
       projectId: "project",
@@ -763,7 +433,6 @@ describe("Zerops platform protocol decoding", () => {
 
     expect(result.issues).toEqual([]);
     expect(result.actionNameMismatch).toBe(false);
-    expect(result.processRefs).toEqual([{ kind: "process", project, processId: "start-process" }]);
   });
 
   it("rejects a start-project response for another project", () => {
@@ -776,7 +445,6 @@ describe("Zerops platform protocol decoding", () => {
     });
 
     expect(result).toEqual({
-      processRefs: [],
       observations: [],
       actionNameMismatch: false,
       issues: [expect.objectContaining({ kind: "malformed-row" })],
@@ -837,7 +505,6 @@ describe("Zerops platform protocol decoding", () => {
   it.each([
     ["process", { id: " " }],
     ["parent metadata", { parentId: "" }],
-    ["embedded service", { serviceStacks: [{ id: " service" }] }],
   ])("rejects a restart response with an invalid %s id", (_label, invalidFields) => {
     const decode = () =>
       decodeRestartServiceResponse(restartCommand, {
@@ -852,7 +519,6 @@ describe("Zerops platform protocol decoding", () => {
 
     expect(decode).not.toThrow();
     expect(decode()).toEqual({
-      processRefs: [],
       observations: [],
       issues: [expect.objectContaining({ kind: "malformed-row" })],
     });
@@ -1064,13 +730,13 @@ describe("Zerops platform protocol decoding", () => {
 });
 
 describe("the datastream's deploy frames", () => {
-  const updates = (entity: "service" | "process"): RegistrationRequest => ({
+  const updates = (entity: "service"): RegistrationRequest => ({
     identity: interest,
     subscriptionName: ZeropsWireSubscriptionName.make(`${entity}-update`),
     descriptor: { kind: "entity-updates", entity, organization, project },
     baselineTicket: null,
   });
-  const decodeUpdate = (entity: "service" | "process", row: Record<string, unknown>) => {
+  const decodeUpdate = (entity: "service", row: Record<string, unknown>) => {
     const request = updates(entity);
     const decoded = decodeNativeFrame(
       JSON.stringify({
@@ -1121,102 +787,6 @@ describe("the datastream's deploy frames", () => {
           },
         }),
       }),
-    );
-  });
-
-  it("a build process frame names its appVersion's sha", () => {
-    const sha = "ec3d2cb9ea02144b23300dd8cd16ae02bbcb321c";
-    const observations = decodeUpdate("process", {
-      id: "process",
-      projectId: "project",
-      actionName: "stack.build",
-      status: "RUNNING",
-      created: "2026-09-23T14:01:39Z",
-      serviceStackId: "service",
-      appVersion: {
-        id: "app-version",
-        name: sha,
-        source: "CLI",
-        status: "BUILDING",
-        activationDate: null,
-        build: {
-          serviceStackId: "build-service",
-          pipelineStart: "2026-09-23T14:01:40.174564611Z",
-          pipelineFinish: null,
-          pipelineFailed: null,
-          startDate: null,
-          endDate: null,
-        },
-        prepareCustomRuntime: null,
-      },
-    });
-
-    expect(observations).toContainEqual(
-      expect.objectContaining({
-        kind: "process-pipeline-observed",
-        observation: expect.objectContaining({
-          fields: {
-            appVersion: expect.objectContaining({
-              id: "app-version",
-              name: sha,
-              status: "BUILDING",
-            }),
-          },
-        }),
-      }),
-    );
-  });
-
-  it("a process frame carries what the pipeline readout reads off its appVersion", () => {
-    const observations = decodeUpdate("process", {
-      id: "process",
-      projectId: "project",
-      actionName: "stack.build",
-      status: "RUNNING",
-      created: "2026-09-23T14:01:39Z",
-      serviceStackId: "service",
-      appVersion: {
-        id: "app-version",
-        status: "PREPARING_RUNTIME",
-        created: "2026-09-23T14:01:38Z",
-        source: "CLI",
-        build: {
-          serviceStackId: "build-service",
-          serviceStackName: "build-appdev",
-          containerCreationStart: "2026-09-23T14:01:40Z",
-          pipelineStart: "2026-09-23T14:01:40Z",
-        },
-        prepareCustomRuntime: {
-          serviceStackId: "prepare-service",
-          serviceStackName: null,
-          containerCreationStart: "2026-09-23T14:02:40Z",
-        },
-      },
-    });
-    const pipeline = observations.find(
-      (observation) => observation.kind === "process-pipeline-observed",
-    );
-
-    expect(pipeline).toMatchObject({
-      observation: {
-        fields: {
-          appVersion: {
-            created: "2026-09-23T14:01:38Z",
-            source: "CLI",
-            build: {
-              serviceStackName: "build-appdev",
-              containerCreationStart: "2026-09-23T14:01:40Z",
-            },
-            prepareCustomRuntime: {
-              serviceStackId: "prepare-service",
-              containerCreationStart: "2026-09-23T14:02:40Z",
-            },
-          },
-        },
-      },
-    });
-    expect(pipeline).not.toHaveProperty(
-      "observation.fields.appVersion.prepareCustomRuntime.serviceStackName",
     );
   });
 });
@@ -1292,21 +862,13 @@ describe("a service read's active version name (A14)", () => {
 it.each(["READ_ONLY", "NO_ACCESS"])(
   "preserves %s project grants in the direct answer used by admission",
   (roleCode) => {
-    const {
-      requestId,
-      owner,
-      receiptOrdinalAtStart,
-      readStartOrdinal,
-      dispatchOrdinal,
-      startedAtMs,
-    } = directProcessTicket();
     const ticket: ReadTicket = {
-      requestId,
-      owner,
-      receiptOrdinalAtStart,
-      readStartOrdinal,
-      dispatchOrdinal,
-      startedAtMs,
+      requestId: ZeropsRequestId.make("project-grants"),
+      owner: { kind: "interest", identity: interest },
+      receiptOrdinalAtStart: ReceiptOrdinal.make(0),
+      readStartOrdinal: ReadStartOrdinal.make(1),
+      dispatchOrdinal: DispatchOrdinal.make(1),
+      startedAtMs: 0,
       kind: "direct",
       target: { kind: "project", ref: project },
     };

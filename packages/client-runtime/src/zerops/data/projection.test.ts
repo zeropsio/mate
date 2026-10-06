@@ -4,7 +4,7 @@ import { stopServices } from "../flow/deployment.ts";
 import { deployed, record, servicesRead } from "../flow/__fixtures__/services.ts";
 import { processesRead } from "../flow/__fixtures__/processes.ts";
 import { DEFAULT_ZEROPS_DATA_POLICY } from "./policy.ts";
-import { selectProjectsOf, selectServicesOf, selectRunningProcessesOf } from "./projection.ts";
+import { selectProjectsOf, selectServicesOf } from "./projection.ts";
 import {
   makeInitialZeropsDataState,
   reduceZeropsDataState,
@@ -109,10 +109,7 @@ describe("Zerops data projections", () => {
               ...selectServicesOf(state, project()),
               query: servicesRead([pushed]).query,
             },
-            processes: {
-              ...processesRead([]),
-              observation: selectRunningProcessesOf(state, project()).observation,
-            },
+            processes: processesRead([]),
             names: new Map(),
             stated: new Map(),
             refused: null,
@@ -176,30 +173,22 @@ describe("Zerops data projections", () => {
         ]),
       };
       expect(selectServicesOf(state, project()).observation.required).toEqual([runtime.interest]);
-      expect(selectRunningProcessesOf(state, project()).observation.required).toEqual([
-        runtime.interest,
-      ]);
     },
   );
 
-  it.each(["project-inventory", "project-activity"] as const)(
-    "%s only supplies its own runtime listing",
-    (kind) => {
-      const desired = desiredInterest();
-      const state = {
-        ...makeInitialZeropsDataState(scope()),
-        interests: new Map([
-          [desired.key, { ...desired, descriptor: { kind, project: project() } }],
-        ]),
-      };
-      expect(selectServicesOf(state, project()).observation.required).toEqual(
-        kind === "project-inventory" ? [desired.interest] : [],
-      );
-      expect(selectRunningProcessesOf(state, project()).observation.required).toEqual(
-        kind === "project-activity" ? [desired.interest] : [],
-      );
-    },
-  );
+  it("project-inventory supplies its project's service listing", () => {
+    const desired = desiredInterest();
+    const state = {
+      ...makeInitialZeropsDataState(scope()),
+      interests: new Map([
+        [
+          desired.key,
+          { ...desired, descriptor: { kind: "project-inventory" as const, project: project() } },
+        ],
+      ]),
+    };
+    expect(selectServicesOf(state, project()).observation.required).toEqual([desired.interest]);
+  });
 
   it("preserves the exact unresolved member ref and uses a scoped query identity", () => {
     const id = identity();

@@ -2,7 +2,6 @@ import type { ZeropsProject } from "../api.ts";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
-import { readActivityAppVersion } from "../activity/dto.ts";
 import { coverageFor } from "./coverage.ts";
 import { decodeTableFrame, decodeTableSearch } from "./tableProtocol.ts";
 
@@ -10,13 +9,11 @@ import type {
   CurrentMetricObservation,
   CurrentMetricSample,
   EntityObservation,
-  EntityQueryDescriptor,
+  MembershipQueryDescriptor,
   HistoryMetricBucket,
   HistoryMetricObservation,
   PlatformCommand,
   PlatformObservation,
-  ProcessRef,
-  ProcessStatus,
   ProjectRef,
   QueryBaselineObservation,
   QueryMembershipObservation,
@@ -152,53 +149,14 @@ const ServiceRow = Schema.Struct({
   ...SourceMetadataRow,
 });
 
-const EmbeddedServiceRow = Schema.Struct({ id: Schema.String });
-const ProcessAppVersionRow = Schema.Struct({
-  id: OptionalNullableString,
-  name: OptionalNullableString,
-  status: OptionalNullableString,
-  created: OptionalNullableString,
-  source: OptionalNullableString,
-  build: Schema.optionalKey(
-    Schema.Union([
-      Schema.Struct({
-        serviceStackId: OptionalNullableString,
-        serviceStackName: OptionalNullableString,
-        containerCreationStart: OptionalNullableString,
-        pipelineStart: OptionalNullableString,
-        pipelineFinish: OptionalNullableString,
-        pipelineFailed: OptionalNullableString,
-        startDate: OptionalNullableString,
-        endDate: OptionalNullableString,
-      }),
-      Schema.Null,
-    ]),
-  ),
-  prepareCustomRuntime: Schema.optionalKey(
-    Schema.Union([
-      Schema.Struct({
-        serviceStackId: OptionalNullableString,
-        serviceStackName: OptionalNullableString,
-        containerCreationStart: OptionalNullableString,
-        startDate: OptionalNullableString,
-        endDate: OptionalNullableString,
-      }),
-      Schema.Null,
-    ]),
-  ),
-  activationDate: OptionalNullableString,
-});
+/** The Process a start or restart answers with: only what its acceptance checks. */
 const ProcessRow = Schema.Struct({
   id: Schema.String,
   projectId: OptionalString,
   actionName: OptionalString,
   created: OptionalString,
   status: OptionalString,
-  started: OptionalNullableString,
-  finished: OptionalNullableString,
   serviceStackId: OptionalNullableString,
-  serviceStacks: Schema.optionalKey(Schema.Array(EmbeddedServiceRow)),
-  appVersion: Schema.optionalKey(Schema.Union([ProcessAppVersionRow, Schema.Null])),
   ...SourceMetadataRow,
 });
 
@@ -243,52 +201,6 @@ const decodeProjectRow = Schema.decodeUnknownOption(ProjectRow);
 const decodeServiceRow = Schema.decodeUnknownOption(ServiceRow);
 const decodeProcessRow = Schema.decodeUnknownOption(ProcessRow);
 
-/**
- * An embedded `serviceStacks[]` entry that omits `id` entirely is a benign
- * projection gap, not a malformed Process: it is dropped before schema
- * decoding so the rest of the row still decodes, and its removal is reported
- * as a diagnostic issue rather than failing the whole row/frame. An entry
- * that carries an `id` (even an invalid one) is left for the existing id
- * validation, which still fails the row — only a missing key is lenient.
- */
-function sanitizeEmbeddedServiceStacks(input: unknown): {
-  readonly value: unknown;
-  readonly dropped: number;
-} {
-  if (
-    typeof input !== "object" ||
-    input === null ||
-    !("serviceStacks" in input) ||
-    !Array.isArray((input as { serviceStacks: unknown }).serviceStacks)
-  )
-    return { value: input, dropped: 0 };
-  const stacks = (input as { serviceStacks: ReadonlyArray<unknown> }).serviceStacks;
-  let dropped = 0;
-  const kept = stacks.filter((entry) => {
-    const hasId = typeof entry === "object" && entry !== null && "id" in entry;
-    if (!hasId) dropped += 1;
-    return hasId;
-  });
-  if (dropped === 0) return { value: input, dropped: 0 };
-  return { value: { ...input, serviceStacks: kept }, dropped };
-}
-
-function decodeProcessRowLenient(input: unknown): {
-  readonly row: typeof ProcessRow.Type | undefined;
-  readonly droppedServiceStacks: number;
-} {
-  const sanitized = sanitizeEmbeddedServiceStacks(input);
-  return {
-    row: Option.getOrUndefined(decodeProcessRow(sanitized.value)),
-    droppedServiceStacks: sanitized.dropped,
-  };
-}
-
-const droppedServiceStacksIssue = (rowIndex?: number): ProtocolDecodeIssue => ({
-  kind: "malformed-row",
-  message: "Process embedded serviceStacks entries without an id were skipped.",
-  ...(rowIndex === undefined ? {} : { rowIndex }),
-});
 const decodeSearchEnvelope = Schema.decodeUnknownOption(SearchEnvelope);
 const decodeDirectListEnvelope = Schema.decodeUnknownOption(DirectListEnvelope);
 const decodeCurrentMetricRow = Schema.decodeUnknownOption(CurrentMetricRow);
@@ -329,11 +241,6 @@ const hasValidProcessIds = (row: typeof ProcessRow.Type): boolean =>
   isProcessId(row.id) &&
   (row.projectId === undefined || isProjectId(row.projectId)) &&
   (row.serviceStackId == null || isServiceId(row.serviceStackId)) &&
-  (row.serviceStacks?.every((service) => isServiceId(service.id)) ?? true) &&
-  (row.appVersion?.build?.serviceStackId == null ||
-    isServiceId(row.appVersion.build.serviceStackId)) &&
-  (row.appVersion?.prepareCustomRuntime?.serviceStackId == null ||
-    isServiceId(row.appVersion.prepareCustomRuntime.serviceStackId)) &&
   hasValidMetadataIds(row);
 
 export interface ProtocolDecodeIssue {
@@ -392,21 +299,6 @@ const metadataOf = (row: {
     ? {}
     : { rootId: row.rootId === null ? null : ZeropsProcessId.make(row.rootId) }),
 });
-
-function processStatus(raw: string): ProcessStatus {
-  switch (raw) {
-    case "PENDING":
-    case "RUNNING":
-    case "ROLLBACKING":
-    case "CANCELING":
-    case "FINISHED":
-    case "FAILED":
-    case "CANCELED":
-      return raw;
-    default:
-      return { kind: "unknown", raw };
-  }
-}
 
 type ObservationCause =
   | { readonly source: "indexed-search" | "direct-read"; readonly ticket: ReadTicket }
@@ -689,75 +581,13 @@ function serviceObservations(
   return observations;
 }
 
-function processObservations(
-  ref: ProcessRef,
-  raw: typeof ProcessRow.Type,
-  cause: ObservationCause,
-): ReadonlyArray<EntityObservation> {
-  const metadata = metadataOf(raw);
-  const observations: EntityObservation[] = [];
-  if (
-    raw.actionName !== undefined ||
-    raw.created !== undefined ||
-    raw.serviceStacks !== undefined ||
-    raw.serviceStackId !== undefined
-  ) {
-    const serviceIds = [
-      ...(raw.serviceStackId ? [raw.serviceStackId] : []),
-      ...(raw.serviceStacks?.map((service) => service.id) ?? []),
-    ];
-    observations.push({
-      kind: "process-identity-observed",
-      ref,
-      observation: observationFields(
-        cause,
-        {
-          ...(raw.actionName === undefined ? {} : { actionName: raw.actionName }),
-          ...(raw.created === undefined ? {} : { createdAt: raw.created }),
-          ...(raw.serviceStacks === undefined && raw.serviceStackId === undefined
-            ? {}
-            : { serviceIds: [...new Set(serviceIds)].map((id) => ZeropsServiceId.make(id)) }),
-        },
-        metadata,
-      ) as never,
-    });
-  }
-  if (raw.status !== undefined || raw.started !== undefined || raw.finished !== undefined)
-    observations.push({
-      kind: "process-lifecycle-observed",
-      ref,
-      observation: observationFields(
-        cause,
-        {
-          ...(raw.status === undefined ? {} : { status: processStatus(raw.status) }),
-          ...(raw.started === undefined ? {} : { startedAt: raw.started }),
-          ...(raw.finished === undefined ? {} : { finishedAt: raw.finished }),
-        },
-        metadata,
-      ) as never,
-    });
-  if (raw.appVersion !== undefined)
-    observations.push({
-      kind: "process-pipeline-observed",
-      ref,
-      observation: observationFields(
-        cause,
-        {
-          appVersion: readActivityAppVersion(raw.appVersion) ?? null,
-        },
-        metadata,
-      ) as never,
-    });
-  return observations;
-}
-
 /**
  * The project a row belongs to: the one an organization-wide row names, or the one a project's
  * query was asked for. `undefined` when an organization-wide row names none, or a project's row
  * names another.
  */
 const rowProject = (
-  descriptor: EntityQueryDescriptor,
+  descriptor: MembershipQueryDescriptor,
   projectId: string | undefined,
 ): ProjectRef | undefined => {
   if (!("project" in descriptor)) return undefined;
@@ -767,25 +597,20 @@ const rowProject = (
 };
 
 function decodeRows(
-  descriptor: EntityQueryDescriptor,
+  descriptor: MembershipQueryDescriptor,
   rows: ReadonlyArray<unknown>,
   cause: ObservationCause,
 ): {
   readonly observations: ReadonlyArray<PlatformObservation>;
-  readonly members: ReadonlyArray<ProjectRef | ServiceRef | ProcessRef>;
+  readonly members: ReadonlyArray<ProjectRef | ServiceRef>;
   readonly issues: ReadonlyArray<ProtocolDecodeIssue>;
 } {
   const observations: PlatformObservation[] = [];
-  const members: Array<ProjectRef | ServiceRef | ProcessRef> = [];
+  const members: Array<ProjectRef | ServiceRef> = [];
   const issues: ProtocolDecodeIssue[] = [];
   const seenMembers = new Set<string>();
-  const retainMember = (ref: ProjectRef | ServiceRef | ProcessRef, rowIndex: number): boolean => {
-    const key =
-      ref.kind === "project"
-        ? `project:${ref.projectId}`
-        : ref.kind === "service"
-          ? `service:${ref.serviceId}`
-          : `process:${ref.processId}`;
+  const retainMember = (ref: ProjectRef | ServiceRef, rowIndex: number): boolean => {
+    const key = ref.kind === "project" ? `project:${ref.projectId}` : `service:${ref.serviceId}`;
     if (seenMembers.has(key)) {
       issues.push({
         kind: "contradictory-coverage",
@@ -849,44 +674,12 @@ function decodeRows(
       observations.push(...serviceObservations(ref, decoded, cause));
       return;
     }
-    const { row: decoded, droppedServiceStacks } = decodeProcessRowLenient(row);
-    const project = rowProject(descriptor, decoded?.projectId);
-    if (
-      !decoded ||
-      !hasValidProcessIds(decoded) ||
-      decoded.actionName === undefined ||
-      decoded.created === undefined ||
-      decoded.status === undefined ||
-      project === undefined
-    ) {
-      issues.push({
-        kind: "malformed-row",
-        message: "Process row lacks identity, status or its project.",
-        rowIndex,
-      });
-      return;
-    }
-    if (droppedServiceStacks > 0) issues.push(droppedServiceStacksIssue(rowIndex));
-    const ref: ProcessRef = {
-      kind: "process",
-      project,
-      processId: ZeropsProcessId.make(decoded.id),
-    };
-    observations.push(...processObservations(ref, decoded, cause));
-    if (
-      descriptor.kind === "running-processes-of-project" &&
-      !descriptor.statuses.includes(
-        processStatus(decoded.status) as (typeof descriptor.statuses)[number],
-      )
-    )
-      return;
-    if (!retainMember(ref, rowIndex)) return;
   });
   return { observations, members, issues };
 }
 
 export function decodeEntityQueryPages(
-  descriptor: EntityQueryDescriptor,
+  descriptor: MembershipQueryDescriptor,
   ticket: ReadTicket,
   pages: ReadonlyArray<DirectListPage>,
   source: "indexed-search" | "direct-read" = "direct-read",
@@ -940,7 +733,7 @@ export function decodeEntityQueryPages(
 }
 
 export function decodeEntityQueryResponse(
-  descriptor: EntityQueryDescriptor,
+  descriptor: MembershipQueryDescriptor,
   ticket: ReadTicket,
   input: unknown,
   source: "indexed-search" | "direct-read",
@@ -1022,36 +815,12 @@ export function decodeEntityDirectResponse(
       issues: [],
     };
   }
-  if (target.kind === "service") {
-    const row = Option.getOrUndefined(decodeServiceRow(input));
-    if (
-      !row ||
-      !hasValidServiceIds(row) ||
-      row.id !== target.ref.serviceId ||
-      row.name === undefined ||
-      row.status === undefined
-    )
-      return {
-        observations: [],
-        issues: [
-          {
-            kind: "malformed-row",
-            message: "Direct ServiceStack response is incomplete or has the wrong id.",
-          },
-        ],
-      };
-    return {
-      observations: serviceObservations(target.ref, row, { source: "direct-read", ticket }),
-      issues: [],
-    };
-  }
-  const { row, droppedServiceStacks } = decodeProcessRowLenient(input);
+  const row = Option.getOrUndefined(decodeServiceRow(input));
   if (
     !row ||
-    !hasValidProcessIds(row) ||
-    row.id !== target.ref.processId ||
-    row.actionName === undefined ||
-    row.created === undefined ||
+    !hasValidServiceIds(row) ||
+    row.id !== target.ref.serviceId ||
+    row.name === undefined ||
     row.status === undefined
   )
     return {
@@ -1059,18 +828,14 @@ export function decodeEntityDirectResponse(
       issues: [
         {
           kind: "malformed-row",
-          message: "Direct Process response is incomplete or has the wrong id.",
+          message: "Direct ServiceStack response is incomplete or has the wrong id.",
         },
       ],
     };
   return {
-    observations: processObservations(target.ref, row, { source: "direct-read", ticket }),
-    issues: droppedServiceStacks > 0 ? [droppedServiceStacksIssue()] : [],
+    observations: serviceObservations(target.ref, row, { source: "direct-read", ticket }),
+    issues: [],
   };
-}
-
-export interface RestartResponseDecodeResult extends ProtocolDecodeResult {
-  readonly processRefs: ReadonlyArray<ProcessRef>;
 }
 
 type ProjectResponseCommand = Extract<
@@ -1130,14 +895,13 @@ export function decodeProjectCommandResponse(
 
 /**
  * The measured PUT /service-stack/{id}/restart response is a direct Process body.
- * Its repeated project and service ids must match the command scope; the returned
- * Process id remains an independent entity identity linked to the exact attempt.
+ * Its repeated project and service ids must match the command scope.
  */
 export function decodeRestartServiceResponse(
   command: Extract<PlatformCommand, { readonly kind: "restart-service" }>,
   input: unknown,
-): RestartResponseDecodeResult {
-  const { row, droppedServiceStacks } = decodeProcessRowLenient(input);
+): ProtocolDecodeResult {
+  const row = Option.getOrUndefined(decodeProcessRow(input));
   if (
     !row ||
     !hasValidProcessIds(row) ||
@@ -1148,7 +912,6 @@ export function decodeRestartServiceResponse(
     row.serviceStackId !== command.service.serviceId
   )
     return {
-      processRefs: [],
       observations: [],
       issues: [
         {
@@ -1157,20 +920,10 @@ export function decodeRestartServiceResponse(
         },
       ],
     };
-  const ref: ProcessRef = {
-    kind: "process",
-    project: command.service.project,
-    processId: ZeropsProcessId.make(row.id),
-  };
-  return {
-    processRefs: [ref],
-    observations: processObservations(ref, row, { source: "command-response", command }),
-    issues: droppedServiceStacks > 0 ? [droppedServiceStacksIssue()] : [],
-  };
+  return { observations: [], issues: [] };
 }
 
 export interface StartResponseDecodeResult extends ProtocolDecodeResult {
-  readonly processRefs: ReadonlyArray<ProcessRef>;
   /**
    * True when the Process came back with an actionName other than the
    * expected start action. Never a decode failure by itself — the platform's
@@ -1192,7 +945,7 @@ function decodeStartResponse(
   input: unknown,
   expectedActionName: (actionName: string | undefined) => boolean,
 ): StartResponseDecodeResult {
-  const { row, droppedServiceStacks } = decodeProcessRowLenient(input);
+  const row = Option.getOrUndefined(decodeProcessRow(input));
   const project = command.kind === "start-service" ? command.service.project : command.project;
   const scopeMatches =
     row !== undefined &&
@@ -1204,7 +957,6 @@ function decodeStartResponse(
 
   if (!row || !scopeMatches)
     return {
-      processRefs: [],
       observations: [],
       actionNameMismatch: false,
       issues: [
@@ -1214,16 +966,10 @@ function decodeStartResponse(
         },
       ],
     };
-  const ref: ProcessRef = {
-    kind: "process",
-    project,
-    processId: ZeropsProcessId.make(row.id),
-  };
   return {
-    processRefs: [ref],
-    observations: processObservations(ref, row, { source: "command-response", command }),
+    observations: [],
     actionNameMismatch: !expectedActionName(row.actionName),
-    issues: droppedServiceStacks > 0 ? [droppedServiceStacksIssue()] : [],
+    issues: [],
   };
 }
 
@@ -1439,12 +1185,7 @@ export function decodeNativeFrame(
   if (registration.descriptor.kind === "query-membership") {
     const delta = Option.getOrUndefined(decodeMembershipDelta(frame.data));
     const query = registration.descriptor.query;
-    const hasValidMemberId =
-      query.kind === "projects-of-organization"
-        ? isProjectId
-        : query.kind === "services-of-project"
-          ? isServiceId
-          : isProcessId;
+    const hasValidMemberId = query.kind === "projects-of-organization" ? isProjectId : isServiceId;
     if (
       !delta ||
       delta.add.some((id) => !hasValidMemberId(id) || delta.delete.includes(id)) ||
@@ -1455,21 +1196,10 @@ export function decodeNativeFrame(
         subscriptionName: name,
         message: "Membership delta is malformed or contradictory.",
       };
-    const memberFor = (id: string): ProjectRef | ServiceRef | ProcessRef => {
-      if (query.kind === "projects-of-organization")
-        return {
-          kind: "project",
-          organization: query.organization,
-          projectId: ZeropsProjectId.make(id),
-        };
-      if (query.kind === "services-of-project")
-        return {
-          kind: "service",
-          project: query.project,
-          serviceId: ZeropsServiceId.make(id),
-        };
-      return { kind: "process", project: query.project, processId: ZeropsProcessId.make(id) };
-    };
+    const memberFor = (id: string): ProjectRef | ServiceRef =>
+      query.kind === "projects-of-organization"
+        ? { kind: "project", organization: query.organization, projectId: ZeropsProjectId.make(id) }
+        : { kind: "service", project: query.project, serviceId: ZeropsServiceId.make(id) };
     const membershipOf = (operation: "add" | "remove") => (id: string) => {
       const member = memberFor(id);
       return member === undefined
@@ -1544,7 +1274,7 @@ export function decodeNativeFrame(
         projectId: ZeropsProjectId.make(row.id),
       };
       observations.push(...projectObservations(ref, row, { source: "native-push", registration }));
-    } else if (entityDescriptor.entity === "service") {
+    } else {
       const row = Option.getOrUndefined(decodeServiceRow(raw));
       if (
         !row ||
@@ -1567,34 +1297,6 @@ export function decodeNativeFrame(
       observations.push(
         ...serviceObservations(
           { kind: "service", project, serviceId: ZeropsServiceId.make(row.id) },
-          row,
-          { source: "native-push", registration },
-        ),
-      );
-    } else {
-      const { row, droppedServiceStacks } = decodeProcessRowLenient(raw);
-      if (
-        !row ||
-        !hasValidProcessIds(row) ||
-        row.projectId === undefined ||
-        row.projectId !== entityDescriptor.project.projectId
-      ) {
-        issues.push({
-          kind: "malformed-row",
-          message: "Process update lacks projectId.",
-          rowIndex,
-        });
-        return;
-      }
-      if (droppedServiceStacks > 0) issues.push(droppedServiceStacksIssue(rowIndex));
-      const project: ProjectRef = {
-        kind: "project",
-        organization: entityDescriptor.organization,
-        projectId: ZeropsProjectId.make(row.projectId),
-      };
-      observations.push(
-        ...processObservations(
-          { kind: "process", project, processId: ZeropsProcessId.make(row.id) },
           row,
           { source: "native-push", registration },
         ),

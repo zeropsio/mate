@@ -27,7 +27,7 @@ import {
   ZeropsProjectId,
   type AccessVerifier,
   type AccountScope,
-  type EntityQueryDescriptor,
+  type MembershipQueryDescriptor,
   type ManagedZeropsDataRuntime,
   type ZeropsDataAdapter,
 } from "@t3tools/client-runtime/zerops/data";
@@ -96,12 +96,8 @@ const platform = () => {
     subdomainAccess: true,
     ports: [{ port: 8080 }],
   });
-  const rowsOf = (query: EntityQueryDescriptor): ReadonlyArray<unknown> =>
-    query.kind === "projects-of-organization"
-      ? [projectRow]
-      : query.kind === "services-of-project"
-        ? [serviceRow()]
-        : [];
+  const rowsOf = (query: MembershipQueryDescriptor): ReadonlyArray<unknown> =>
+    query.kind === "projects-of-organization" ? [projectRow] : [serviceRow()];
   const adapter: ZeropsDataAdapter = {
     openReceiver: (_scope, receiving, identity) =>
       Effect.succeed({
@@ -124,7 +120,7 @@ const platform = () => {
     read: (ticket) =>
       Effect.sync(() => {
         if (ticket.target.kind === "query") {
-          const descriptor = ticket.target.descriptor as EntityQueryDescriptor;
+          const descriptor = ticket.target.descriptor as MembershipQueryDescriptor;
           const rows = rowsOf(descriptor);
           return {
             observations: decodeEntityQueryPages(descriptor, ticket, [
@@ -139,7 +135,7 @@ const platform = () => {
               : [],
         };
       }),
-    execute: () => Effect.succeed({ processRefs: [], observations: [] }),
+    execute: () => Effect.succeed({ observations: [] }),
     closeReceiver: () => Effect.void,
   };
   return { adapter, setService: (status: string) => void (state.service = status) };

@@ -30,7 +30,7 @@ import {
   ZeropsOrganizationId,
   ZeropsProjectId,
   ZeropsServiceId,
-  type EntityQueryDescriptor,
+  type MembershipQueryDescriptor,
   type ProjectRef,
   type ReceiverEvent,
   type ZeropsDataAdapter,
@@ -114,7 +114,7 @@ const platformAdapter = (
   /** The services' variables as the stream answers them; `never`: it never answers. */
   variables: ReadonlyArray<unknown> | "never" = [],
 ): ZeropsDataAdapter => {
-  const rowsOf = (query: EntityQueryDescriptor): ReadonlyArray<unknown> => {
+  const rowsOf = (query: MembershipQueryDescriptor): ReadonlyArray<unknown> => {
     switch (query.kind) {
       case "projects-of-organization":
         return mates.map(({ project }) => project);
@@ -122,8 +122,6 @@ const platformAdapter = (
         return mates
           .filter(({ projectId }) => projectId === query.project.projectId)
           .map(({ service }) => service);
-      default:
-        return [];
     }
   };
   return {
@@ -163,7 +161,7 @@ const platformAdapter = (
     read: (ticket) =>
       Effect.sync(() => {
         if (ticket.target.kind === "query") {
-          const descriptor = ticket.target.descriptor as EntityQueryDescriptor;
+          const descriptor = ticket.target.descriptor as MembershipQueryDescriptor;
           const rows = rowsOf(descriptor);
           return {
             observations: decodeEntityQueryPages(
@@ -183,7 +181,7 @@ const platformAdapter = (
           ? { observations: [] }
           : { observations: decodeEntityDirectResponse(ticket, listed.project).observations };
       }),
-    execute: () => Effect.succeed({ processRefs: [], observations: [] }),
+    execute: () => Effect.succeed({ observations: [] }),
     closeReceiver: () => Effect.void,
   };
 };
@@ -1498,7 +1496,7 @@ describe("the post-grant stage's Mate environments", () => {
         yield* opened.built.data.acquire({ kind: "organization-inventory", organization });
         for (let i = 0; i < 15; i++) {
           yield* opened.built.data
-            .acquire({ kind: "project-activity", project: project(`background-${i}`) })
+            .acquire({ kind: "project-topology", project: project(`background-${i}`) })
             .pipe(Effect.provideService(Scope.Scope, background));
         }
         yield* opened.grant.answer();
@@ -1565,14 +1563,14 @@ describe("the post-grant stage's Mate environments", () => {
    */
   const heldQueries = (
     platform: ZeropsDataAdapter,
-    kinds: ReadonlyArray<EntityQueryDescriptor["kind"]>,
+    kinds: ReadonlyArray<MembershipQueryDescriptor["kind"]>,
   ) => {
     let release: () => void = () => undefined;
     const opened = new Promise<void>((resolve) => {
       release = resolve;
     });
     const held = (descriptor: unknown) =>
-      kinds.includes((descriptor as EntityQueryDescriptor).kind);
+      kinds.includes((descriptor as MembershipQueryDescriptor).kind);
     const adapter: ZeropsDataAdapter = {
       ...platform,
       register: (receiver, request, context) =>
@@ -2847,7 +2845,7 @@ describe("the post-grant stage's Mate environments", () => {
         yield* opened.built.data.acquire({ kind: "organization-inventory", organization });
         for (let i = 0; i < 15; i++) {
           yield* opened.built.data
-            .acquire({ kind: "project-activity", project: project(`background-${i}`) })
+            .acquire({ kind: "project-topology", project: project(`background-${i}`) })
             .pipe(Effect.provideService(Scope.Scope, background));
         }
         yield* opened.grant.answer();
@@ -2977,7 +2975,7 @@ describe("the post-grant stage's Mate environments", () => {
         (released ? after : first).register(receiver, request, context),
       read: (ticket, context) =>
         ticket.target.kind === "query" &&
-        (ticket.target.descriptor as EntityQueryDescriptor).kind === "services-of-project" &&
+        (ticket.target.descriptor as MembershipQueryDescriptor).kind === "services-of-project" &&
         ++reads > 0
           ? Effect.promise(() => opened).pipe(Effect.andThen(after.read(ticket, context)))
           : (released ? after : first).read(ticket, context),

@@ -1,4 +1,3 @@
-import { isRunningProcess } from "./activity.ts";
 import type { ZeropsDataState } from "./state.ts";
 import type {
   CollectionRead,
@@ -11,10 +10,7 @@ import type {
   HistorySeriesKey,
   InterestState,
   EntityQueryDescriptor,
-  OperationProgressView,
   OrganizationRef,
-  ProcessRecord,
-  ProjectActivityRead,
   ProjectKey,
   ProjectRecord,
   ProjectRef,
@@ -26,13 +22,7 @@ import type {
   UsageRead,
   ViewObservation,
 } from "./types.ts";
-import {
-  historySeriesKeyOf,
-  processKeyOf,
-  projectKeyOf,
-  queryKeyOf,
-  serviceKeyOf,
-} from "./types.ts";
+import { historySeriesKeyOf, projectKeyOf, queryKeyOf, serviceKeyOf } from "./types.ts";
 
 type Interests = ZeropsDataState["interests"];
 type InterestsOfView = Pick<ViewObservation, "required" | "optional">;
@@ -107,21 +97,13 @@ const observationOf = (state: ZeropsDataState, project?: ProjectRef): ViewObserv
   access: state.access,
 });
 
-type RuntimeListing = "services" | "processes";
-const runtimeViews = new WeakMap<
-  Interests,
-  Map<ProjectKey, Record<RuntimeListing, InterestsOfView>>
->();
+const runtimeViews = new WeakMap<Interests, Map<ProjectKey, InterestsOfView>>();
 
 /**
- * Runtime listings depend on their service/process streams alone. Metadata, history and metrics
+ * A project's service listing depends on its service stream alone. Metadata, history and metrics
  * can fail independently after a deploy; their failure must not stale a current runtime answer.
  */
-function runtimeObservationOf(
-  state: ZeropsDataState,
-  project: ProjectRef,
-  listing: RuntimeListing,
-): ViewObservation {
+function runtimeObservationOf(state: ZeropsDataState, project: ProjectRef): ViewObservation {
   let views = runtimeViews.get(state.interests);
   if (views === undefined) {
     views = new Map();
@@ -133,23 +115,16 @@ function runtimeObservationOf(
     const index = interestIndexOf(state.interests);
     const services: InterestState[] = [];
     const optionalServices: InterestState[] = [];
-    const processes: InterestState[] = [];
-    const optionalProcesses: InterestState[] = [];
     for (const position of index.positions.get(key) ?? []) {
       const desired = index.interests[position]!;
       const kind = desired.descriptor.kind;
       if (kind === "project-topology" || kind === "project-inventory")
         (desired.required ? services : optionalServices).push(desired.interest);
-      if (kind === "project-topology" || kind === "project-activity")
-        (desired.required ? processes : optionalProcesses).push(desired.interest);
     }
-    view = {
-      services: { required: services, optional: optionalServices },
-      processes: { required: processes, optional: optionalProcesses },
-    };
+    view = { required: services, optional: optionalServices };
     views.set(key, view);
   }
-  return { ...view[listing], access: state.access };
+  return { ...view, access: state.access };
 }
 
 const projectKnowledge = (
@@ -190,25 +165,6 @@ const serviceKnowledge = (
   return { knowledge: "unresolved", ref };
 };
 
-const processKnowledge = (
-  record: ProcessRecord | undefined,
-  ref: ProcessRecord["ref"],
-): EntityKnowledge<ProcessRecord> => {
-  if (record === undefined) return { knowledge: "unresolved", ref };
-  if (record.identity.knowledge === "unavailable") {
-    return {
-      knowledge: "unavailable",
-      ref,
-      reason: record.identity.reason,
-      since: record.identity.stamp,
-    };
-  }
-  if (record.identity.knowledge === "observed" && record.lifecycle.knowledge === "observed") {
-    return { knowledge: "observed", record };
-  }
-  return { knowledge: "unresolved", ref };
-};
-
 export const selectProject = (
   state: ZeropsDataState,
   ref: ProjectRef,
@@ -227,10 +183,6 @@ export const selectService = (
 
 type ProjectQuery = Extract<EntityQueryDescriptor, { readonly kind: "projects-of-organization" }>;
 type ServiceQuery = Extract<EntityQueryDescriptor, { readonly kind: "services-of-project" }>;
-type RunningQuery = Extract<
-  EntityQueryDescriptor,
-  { readonly kind: "running-processes-of-project" }
->;
 
 const unresolvedProjectQuery = (
   organization: OrganizationRef,
@@ -359,66 +311,7 @@ export function selectServicesOf(
       return ref?.kind === "service" ? [{ knowledge: "unresolved" as const, ref }] : [];
     }),
     query,
-    observation: runtimeObservationOf(state, project, "services"),
-    project,
-  };
-}
-
-const RUNNING_STATUSES = ["PENDING", "RUNNING", "ROLLBACKING", "CANCELING"] as const;
-
-const unresolvedRunningQuery = (project: ProjectRef): QueryState<RunningQuery> => {
-  const descriptor: RunningQuery = {
-    kind: "running-processes-of-project",
-    project,
-    statuses: RUNNING_STATUSES,
-    schemaVersion: 1,
-  };
-  return {
-    status: "unresolved",
-    descriptor,
-    key: queryKeyOf(descriptor),
-    memberKeys: [],
-    unresolvedMemberKeys: [],
-    coverage: { kind: "none" },
-    lastAppliedReadStartOrdinal: null,
-    membershipOperations: new Map(),
-  };
-};
-
-/** One project's running processes: its slice of the organization's running processes read. */
-export function selectRunningProcessesOf(
-  state: ZeropsDataState,
-  project: ProjectRef,
-): CollectionRead<ProcessRecord> {
-  const descriptor: RunningQuery = {
-    kind: "running-processes-of-project",
-    project: project,
-    statuses: RUNNING_STATUSES,
-    schemaVersion: 1,
-  };
-  const query =
-    (state.activity.queries.get(queryKeyOf(descriptor)) as QueryState<RunningQuery> | undefined) ??
-    unresolvedRunningQuery(project);
-  // The organization's read of what runs is the word on a process it does not carry: one whose
-  // status was last said before that read began finished meanwhile — a build that ended while the
-  // socket was down, whose FINISHED was never pushed. Only a status said after the read stands.
-  const whole = query.status === "observed" && query.coverage.kind === "exhausted-traversal";
-  const members = whole ? new Set<string>(query.memberKeys) : null;
-  const readAt = whole && query.status === "observed" ? query.stamp.receiptOrdinal : null;
-  const running = [...state.activity.processes.values()].filter(
-    (record) =>
-      projectKeyOf(record.ref.project) === projectKeyOf(project) &&
-      isRunningProcess(record) &&
-      (members === null ||
-        members.has(processKeyOf(record.ref)) ||
-        (record.lifecycle.knowledge === "observed" &&
-          readAt !== null &&
-          record.lifecycle.stamp.receiptOrdinal > readAt)),
-  );
-  return {
-    value: running.map((record) => processKnowledge(record, record.ref)),
-    query,
-    observation: runtimeObservationOf(state, project, "processes"),
+    observation: runtimeObservationOf(state, project),
     project,
   };
 }
@@ -484,18 +377,9 @@ export function selectHistory(state: ZeropsDataState, key: HistorySeriesKey): Hi
 export function selectTopology(state: ZeropsDataState, project: ProjectRef): ProjectTopologyRead {
   const projectRead = selectProject(state, project);
   const services = selectServicesOf(state, project);
-  const runningProcesses = selectRunningProcessesOf(state, project);
   return {
     project: projectRead,
     services,
-    runningProcesses,
-    observation: observationOf(state, project),
-  };
-}
-
-export function selectActivity(state: ZeropsDataState, project: ProjectRef): ProjectActivityRead {
-  return {
-    running: selectRunningProcessesOf(state, project),
     observation: observationOf(state, project),
   };
 }
@@ -512,21 +396,3 @@ export const selectCommandAttempt = (
     return null;
   return state.commands.get(attempt.attemptId) ?? null;
 };
-
-export function selectOperationProgress(
-  state: ZeropsDataState,
-  attempt: CommandAttemptRef,
-): OperationProgressView {
-  const command = selectCommandAttempt(state, attempt);
-  const processes =
-    command?.processRefs.map((ref) =>
-      processKnowledge(state.activity.processes.get(processKeyOf(ref)), ref),
-    ) ?? [];
-  const project =
-    command?.target.kind === "service"
-      ? command.target.project
-      : command?.target.kind === "project"
-        ? command.target
-        : undefined;
-  return { attempt: command, processes, observation: observationOf(state, project) };
-}

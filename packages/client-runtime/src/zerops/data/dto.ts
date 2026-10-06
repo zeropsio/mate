@@ -1,7 +1,6 @@
 /** Compatibility projections shared by all clients while UI consumes the existing Zerops DTOs. */
 import type { ZeropsProject, ZeropsService } from "../api.ts";
-import type { ActivityProcess } from "../activity/dto.ts";
-import type { ProjectRecord, ServiceRecord, ProcessRecord } from "./types.ts";
+import type { ProjectRecord, ServiceRecord } from "./types.ts";
 
 export function projectRecordToZeropsProject(record: ProjectRecord): ZeropsProject | null {
   if (record.identity.knowledge !== "observed" || record.lifecycle.knowledge !== "observed")
@@ -152,40 +151,6 @@ export function serviceRecordToZeropsService(record: ServiceRecord): ZeropsServi
               ...(scaling.cpuMode === undefined ? {} : { cpuMode: scaling.cpuMode }),
             },
           },
-        }),
-  };
-}
-
-function processStatus(record: ProcessRecord): string {
-  if (record.lifecycle.knowledge !== "observed") return "UNKNOWN";
-  const status = record.lifecycle.fields.status;
-  return typeof status === "string" ? status : status.raw;
-}
-
-export function processRecordToActivityProcess(record: ProcessRecord): ActivityProcess | null {
-  if (record.identity.knowledge !== "observed" || record.lifecycle.knowledge !== "observed")
-    return null;
-  const pipeline =
-    record.pipeline.knowledge === "observed" ? record.pipeline.fields.appVersion : null;
-  return {
-    id: record.ref.processId,
-    projectId: record.ref.project.projectId,
-    serviceStackIds: record.identity.fields.serviceIds ?? [],
-    status: processStatus(record),
-    actionName: record.identity.fields.actionName,
-    created: record.identity.fields.createdAt,
-    ...(record.lifecycle.fields.startedAt === null ||
-    record.lifecycle.fields.startedAt === undefined
-      ? {}
-      : { started: record.lifecycle.fields.startedAt }),
-    ...(record.lifecycle.fields.finishedAt === null ||
-    record.lifecycle.fields.finishedAt === undefined
-      ? {}
-      : { finished: record.lifecycle.fields.finishedAt }),
-    ...(pipeline === null || pipeline === undefined
-      ? {}
-      : {
-          appVersion: pipeline,
         }),
   };
 }

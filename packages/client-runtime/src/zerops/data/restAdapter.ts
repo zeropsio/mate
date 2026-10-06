@@ -26,11 +26,10 @@ import {
 import { mateDiagnostics } from "../diagnostics.ts";
 import type {
   AdapterError,
-  EntityQueryDescriptor,
+  MembershipQueryDescriptor,
   PlatformCommand,
   PlatformCommandReceipt,
   PlatformObservation,
-  ProcessRef,
   PlatformReadRequest,
   PlatformReadResult,
   ReceiverEvent,
@@ -41,12 +40,7 @@ import type {
   ZeropsDataAdapter,
   ZeropsWireSubscriptionName,
 } from "./types.ts";
-import {
-  ZeropsProcessId,
-  ZeropsProjectId,
-  tableEntityOf,
-  type TableQueryDescriptor,
-} from "./types.ts";
+import { tableEntityOf, type TableQueryDescriptor } from "./types.ts";
 import { decodeTableSearch } from "./tableProtocol.ts";
 import { ZeropsApiError, type ZeropsApiClient } from "../api.ts";
 import type { ZeropsIntegrationToken } from "../groupReach.ts";
@@ -109,19 +103,19 @@ function importProjectId(value: unknown): string | null {
   return nonEmptyString(value.projectId) ? value.projectId : null;
 }
 
-function importProcessIds(value: unknown): ReadonlyArray<string> | null {
+/** Whether an import's answer names its services and each one's processes well. */
+function importProcessesWellFormed(value: unknown): boolean {
   if (
     typeof value !== "object" ||
     value === null ||
     !("serviceStacks" in value) ||
     !Array.isArray(value.serviceStacks)
   )
-    return null;
-  const processIds: string[] = [];
+    return false;
   for (const stack of value.serviceStacks) {
-    if (typeof stack !== "object" || stack === null) return null;
+    if (typeof stack !== "object" || stack === null) return false;
     if (!("processes" in stack) || stack.processes === undefined) continue;
-    if (!Array.isArray(stack.processes)) return null;
+    if (!Array.isArray(stack.processes)) return false;
     for (const process of stack.processes) {
       if (
         typeof process !== "object" ||
@@ -129,11 +123,10 @@ function importProcessIds(value: unknown): ReadonlyArray<string> | null {
         !("id" in process) ||
         !nonEmptyString(process.id)
       )
-        return null;
-      processIds.push(process.id);
+        return false;
     }
   }
-  return processIds;
+  return true;
 }
 
 function errorFrom(cause: unknown, fallback: AdapterError["kind"]): AdapterError {
@@ -285,7 +278,7 @@ function reportDroppedRows(issues: ReadonlyArray<ProtocolDecodeIssue>): void {
   }
 }
 
-function queryOrganizationId(query: EntityQueryDescriptor): string {
+function queryOrganizationId(query: MembershipQueryDescriptor): string {
   return "project" in query
     ? query.project.organization.organizationId
     : query.organization.organizationId;
@@ -315,7 +308,7 @@ function sameReceiverIdentity(
 }
 
 function searchTerms(
-  query: EntityQueryDescriptor,
+  query: MembershipQueryDescriptor,
 ): ReadonlyArray<Readonly<Record<string, unknown>>> {
   const terms: Array<Readonly<Record<string, unknown>>> = [
     { name: "clientId", operator: "eq", value: queryOrganizationId(query) },
@@ -324,10 +317,6 @@ function searchTerms(
     terms.push({ name: "projectId", operator: "eq", value: query.project.projectId });
   if (query.kind === "projects-of-organization" && query.statuses.length)
     terms.push({ name: "status", operator: "in", value: query.statuses });
-  if (query.kind === "running-processes-of-project") {
-    terms.push({ name: "status", operator: "in", value: query.statuses });
-    terms.push({ name: "executorTag", operator: "ne", value: "L7_MASTER" });
-  }
   return terms;
 }
 
@@ -393,9 +382,6 @@ function registrationHttp(request: RegistrationRequest, receiver: ReceiverHandle
           ...("project" in descriptor
             ? [{ name: "projectId", operator: "eq", value: descriptor.project.projectId }]
             : []),
-          ...(descriptor.entity === "process"
-            ? [{ name: "executorTag", operator: "ne", value: "L7_MASTER" }]
-            : []),
         ],
         sort: [],
         ...common,
@@ -406,11 +392,7 @@ function registrationHttp(request: RegistrationRequest, receiver: ReceiverHandle
   }
   if (descriptor.kind === "query-membership") {
     const entity =
-      descriptor.query.kind === "projects-of-organization"
-        ? "project"
-        : descriptor.query.kind === "services-of-project"
-          ? "service-stack"
-          : "process";
+      descriptor.query.kind === "projects-of-organization" ? "project" : "service-stack";
     return {
       path: `/${entity}/search`,
       body: {
@@ -451,8 +433,6 @@ function readHttp(ticket: PlatformReadRequest, offset = 0) {
     return { path: `/project/${target.ref.projectId}`, method: "GET" as const };
   if (target.kind === "service")
     return { path: `/service-stack/${target.ref.serviceId}`, method: "GET" as const };
-  if (target.kind === "process")
-    return { path: `/process/${target.ref.processId}`, method: "GET" as const };
   const query = target.descriptor;
   if (
     query.kind === "active-versions-of-services" ||
@@ -469,17 +449,6 @@ function readHttp(ticket: PlatformReadRequest, offset = 0) {
     return {
       path: `/client/${query.organization.organizationId}/project?limit=500${offset ? `&offset=${offset}` : ""}`,
       method: "GET" as const,
-    };
-  if (query.kind === "running-processes-of-project")
-    return {
-      path: "/process/search",
-      method: "POST" as const,
-      body: {
-        search: searchTerms(query),
-        sort: [],
-        limit: ORGANIZATION_SEARCH_LIMIT,
-        ...(offset ? { offset } : {}),
-      },
     };
   if (query.kind === "services-of-project")
     return {
@@ -515,7 +484,6 @@ function decodeRead(ticket: PlatformReadRequest, body: unknown) {
   switch (ticket.target.descriptor.kind) {
     case "projects-of-organization":
     case "services-of-project":
-    case "running-processes-of-project":
       return decodeEntityQueryResponse(ticket.target.descriptor, ticket, body, "direct-read");
     case "current-metrics-of-project":
     case "metric-history-of-project":
@@ -1013,13 +981,6 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
       });
     const result = Effect.gen(function* () {
       const descriptor = ticket.target.kind === "query" ? ticket.target.descriptor : null;
-      if (descriptor !== null && descriptor.kind === "running-processes-of-project") {
-        // The platform has no lag-free list of a project's running processes: its
-        // search is the read, as the platform's own app reads them.
-        const pages = yield* traversePages(perform, decodeSearchListPage);
-        const decoded = decodeEntityQueryPages(descriptor, ticket, pages, "indexed-search");
-        return { observations: decoded.observations } satisfies PlatformReadResult;
-      }
       if (descriptor !== null && descriptor.kind === "services-of-project") {
         // The lag-free list of one project's services: the confirming read (§9 C19).
         const pages = yield* traversePages(perform, decodeDirectListPage);
@@ -1132,7 +1093,6 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
           ),
         )
       : Effect.succeed({
-          processRefs: [],
           observations: decoded.observations,
           result,
         });
@@ -1168,7 +1128,6 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
               ),
             );
           return Effect.succeed<PlatformCommandReceipt>({
-            processRefs: decoded.processRefs,
             observations: decoded.observations,
             result: { kind: command.kind, value: undefined },
           });
@@ -1215,7 +1174,6 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
               ),
             );
           return Effect.succeed<PlatformCommandReceipt>({
-            processRefs: decoded.processRefs,
             observations: decoded.observations,
             result: { kind: command.kind, value: undefined },
           });
@@ -1290,7 +1248,6 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
           commandDeadlineMs(command.kind, policy),
         ).pipe(
           Effect.map((value): PlatformCommandReceipt => ({
-            processRefs: [],
             observations: [],
             result: { kind: command.kind, value },
           })),
@@ -1305,7 +1262,6 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
           ),
         ).pipe(
           Effect.map((value): PlatformCommandReceipt => ({
-            processRefs: [],
             observations: [],
             result: { kind: command.kind, value },
           })),
@@ -1320,7 +1276,6 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
           ),
         ).pipe(
           Effect.map((value): PlatformCommandReceipt => ({
-            processRefs: [],
             observations: [],
             result: { kind: command.kind, value },
           })),
@@ -1364,7 +1319,6 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
                   ),
                 )
               : Effect.succeed<PlatformCommandReceipt>({
-                  processRefs: [],
                   observations: [],
                   result: { kind: command.kind, value: { projectId } },
                 });
@@ -1381,8 +1335,7 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
           ),
         ).pipe(
           Effect.flatMap((value) => {
-            const processIds = importProcessIds(value);
-            return processIds === null
+            return !importProcessesWellFormed(value)
               ? Effect.fail(
                   adapterError(
                     "uncertain",
@@ -1391,11 +1344,6 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
                   ),
                 )
               : Effect.succeed<PlatformCommandReceipt>({
-                  processRefs: processIds.map((processId): ProcessRef => ({
-                    kind: "process",
-                    project: command.project,
-                    processId: ZeropsProcessId.make(processId),
-                  })),
                   observations: [],
                   result: { kind: command.kind, value: undefined },
                 });
@@ -1406,18 +1354,7 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
         return executeApi(context, (signal) =>
           options.client.deleteProject(command.projectId, signal, context.beforeProjectWrite),
         ).pipe(
-          Effect.map(({ processId }): PlatformCommandReceipt => ({
-            processRefs: [
-              {
-                kind: "process",
-                project: {
-                  kind: "project",
-                  organization: command.organization,
-                  projectId: ZeropsProjectId.make(command.projectId),
-                },
-                processId: ZeropsProcessId.make(processId),
-              },
-            ],
+          Effect.map((): PlatformCommandReceipt => ({
             observations: [],
             result: { kind: command.kind, value: undefined },
           })),
@@ -1437,7 +1374,6 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
           ),
         ).pipe(
           Effect.map((value): PlatformCommandReceipt => ({
-            processRefs: [],
             observations: [],
             result: { kind: command.kind, value },
           })),

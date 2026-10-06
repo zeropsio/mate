@@ -183,7 +183,6 @@ describe("central Zerops data bindings", () => {
     for (let index = 0; index < 100; index += 1) {
       registry.set(root, {
         ...settled,
-        activity: { ...settled.activity, processes: new Map(settled.activity.processes) },
         observability: {
           current: new Map(settled.observability.current),
           history: new Map(settled.observability.history),

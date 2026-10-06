@@ -2,15 +2,6 @@ import type { ZeropsDataPolicy } from "./policy.ts";
 import { commandTarget } from "./commands.ts";
 import { wantStaleVariables } from "./deployedVersion.ts";
 import {
-  denyActivityScope,
-  isTerminalProcess,
-  makeInitialActivityState,
-  reduceActivityObservation,
-  releaseActivityMembershipMarkers,
-  type ActivityQueryState,
-  type ActivityState,
-} from "./activity.ts";
-import {
   denyInventoryScope,
   makeInitialInventoryState,
   reduceInventoryObservation,
@@ -54,7 +45,6 @@ import type {
   InterestProgress,
   InterestState,
   PlatformObservation,
-  ProcessRecord,
   ProjectRecord,
   QueryKey,
   ReadContribution,
@@ -80,7 +70,7 @@ interface ReadAccumulator {
 export type RetentionTarget =
   | {
       readonly kind: "entity";
-      readonly entity: "project" | "service" | "process";
+      readonly entity: "project" | "service";
       readonly keys: ReadonlyArray<string>;
     }
   | {
@@ -105,9 +95,6 @@ export interface RetentionNotice {
   readonly reason:
     | "project-budget"
     | "service-budget"
-    | "terminal-process-project-budget"
-    | "terminal-process-account-budget"
-    | "nonterminal-process-budget"
     | "current-metric-budget"
     | "history-bucket-budget"
     | "membership-marker-budget";
@@ -125,7 +112,6 @@ export interface ZeropsDataState {
   readonly closed: boolean;
   readonly access: AccessState;
   readonly inventory: InventoryState;
-  readonly activity: ActivityState;
   readonly observability: ObservabilityState;
   /** The entities held as the platform sends them (`entityTable.ts`). */
   readonly table: EntityTableState;
@@ -191,7 +177,6 @@ export function makeInitialZeropsDataState(
     closed: false,
     access,
     inventory: makeInitialInventoryState(),
-    activity: makeInitialActivityState(),
     observability: makeInitialObservabilityState(),
     table: makeInitialEntityTableState(),
     reads: new Map(),
@@ -371,39 +356,27 @@ function accumulateRead(
 function reduceObservation(state: ZeropsDataState, admitted: AdmittedObservation): ZeropsDataState {
   if (!observationIsCurrent(state, admitted)) return state;
   const inventory = reduceInventoryObservation(state.inventory, state.scope, admitted);
-  const activity = reduceActivityObservation(state.activity, state.scope, admitted);
   const observability = reduceObservabilityObservation(state.observability, admitted);
   const table = reduceTableObservation(state.table, admitted);
   const changed =
     inventory.state !== state.inventory ||
-    activity.state !== state.activity ||
     observability.state !== state.observability ||
     table.state !== state.table;
   const outcome: DomainObservationOutcome = {
     readRequestId:
       inventory.outcome.readRequestId ??
-      activity.outcome.readRequestId ??
       observability.outcome.readRequestId ??
       table.outcome.readRequestId,
     applied: mergeUnique(
-      mergeUnique(
-        mergeUnique(inventory.outcome.applied, activity.outcome.applied),
-        observability.outcome.applied,
-      ),
+      mergeUnique(inventory.outcome.applied, observability.outcome.applied),
       table.outcome.applied,
     ),
     suppressed: mergeUnique(
-      mergeUnique(
-        mergeUnique(inventory.outcome.suppressed, activity.outcome.suppressed),
-        observability.outcome.suppressed,
-      ),
+      mergeUnique(inventory.outcome.suppressed, observability.outcome.suppressed),
       table.outcome.suppressed,
     ),
     unresolvedRequiredFields: mergeUnique(
-      mergeUnique(
-        inventory.outcome.unresolvedRequiredFields,
-        activity.outcome.unresolvedRequiredFields,
-      ),
+      inventory.outcome.unresolvedRequiredFields,
       observability.outcome.unresolvedRequiredFields,
     ),
   };
@@ -411,7 +384,6 @@ function reduceObservation(state: ZeropsDataState, admitted: AdmittedObservation
     ? {
         ...state,
         inventory: inventory.state,
-        activity: activity.state,
         observability: observability.state,
         table: table.state,
       }
@@ -551,8 +523,8 @@ function completeRead(
     });
   } else if (ticket.kind === "hydration" && target.kind !== "query") {
     const key = entityKeyOf(target.ref);
-    incomplete = [...state.inventory.queries.values(), ...state.activity.queries.values()].some(
-      (query) => query.unresolvedMemberKeys.some((memberKey) => memberKey === key),
+    incomplete = [...state.inventory.queries.values()].some((query) =>
+      query.unresolvedMemberKeys.some((memberKey) => memberKey === key),
     );
   }
   const reads = new Map(state.reads);
@@ -606,10 +578,7 @@ function releaseObsoleteMembershipMarkers(state: ZeropsDataState): ZeropsDataSta
     }
   }
   const inventory = releaseInventoryMembershipMarkers(state.inventory, activeMarkers);
-  const activity = releaseActivityMembershipMarkers(state.activity, activeMarkers);
-  return inventory === state.inventory && activity === state.activity
-    ? state
-    : { ...state, inventory, activity };
+  return inventory === state.inventory ? state : { ...state, inventory };
 }
 
 function cancelPendingReads(
@@ -753,13 +722,6 @@ function reduceAccess(
       input.stamp,
       state.lastDispatchOrdinal ?? (0 as DispatchOrdinal),
     ),
-    activity: denyActivityScope(
-      state.activity,
-      state.scope,
-      observation.scope,
-      input.stamp,
-      state.lastDispatchOrdinal ?? (0 as DispatchOrdinal),
-    ),
   };
 }
 
@@ -803,7 +765,6 @@ function reduceCommandRequest(
     target: commandTarget(command),
     requestedAtMs: input.request.enqueuedAtMs,
     startedAtReceiptOrdinal: command.startedAtReceiptOrdinal,
-    processRefs: [],
     ...(reason === null ? { status: "pending" as const } : { status: "rejected" as const, reason }),
   };
   const commands = new Map(state.commands);
@@ -821,11 +782,7 @@ function reduceCommandCompletion(
   if (existing === undefined || existing.status !== "pending") return state;
   const attempt: CommandAttemptState =
     completion.kind === "command-accepted"
-      ? {
-          ...existing,
-          status: "accepted",
-          processRefs: mergeUnique(existing.processRefs, completion.processRefs),
-        }
+      ? { ...existing, status: "accepted" }
       : completion.kind === "command-rejected"
         ? { ...existing, status: "rejected", reason: completion.reason }
         : { ...existing, status: "uncertain", reason: completion.reason };
@@ -861,16 +818,11 @@ function releaseInactiveQueries(
       ticket.target.kind === "query" && released.has(queryKeyOf(ticket.target.descriptor)),
   );
   let inventoryQueries: Map<QueryKey, InventoryQueryState> | null = null;
-  let activityQueries: Map<QueryKey, ActivityQueryState> | null = null;
   let current: Map<QueryKey, CurrentMetricQueryState> | null = null;
   for (const key of released) {
     if (next.inventory.queries.has(key)) {
       inventoryQueries ??= new Map(next.inventory.queries);
       inventoryQueries.delete(key);
-    }
-    if (next.activity.queries.has(key)) {
-      activityQueries ??= new Map(next.activity.queries);
-      activityQueries.delete(key);
     }
     if (next.observability.current.has(key)) {
       current ??= new Map(next.observability.current);
@@ -896,8 +848,7 @@ function releaseInactiveQueries(
   }
   const table = releaseTableLists(next.table, released);
   if (table !== next.table) next = { ...next, table };
-  if (inventoryQueries === null && activityQueries === null && current === null && history === null)
-    return next;
+  if (inventoryQueries === null && current === null && history === null) return next;
 
   let inventory = next.inventory;
   if (inventoryQueries !== null) {
@@ -912,19 +863,6 @@ function releaseInactiveQueries(
     inventory = { ...inventory, queries: inventoryQueries, memberRefs };
   }
 
-  let activity = next.activity;
-  if (activityQueries !== null) {
-    const activityMemberKeys = new Set<string>();
-    for (const query of activityQueries.values()) {
-      for (const key of query.memberKeys) activityMemberKeys.add(key);
-      for (const key of query.membershipOperations.keys()) activityMemberKeys.add(key);
-    }
-    const memberRefs = new Map(
-      [...activity.memberRefs].filter(([key]) => activityMemberKeys.has(key)),
-    );
-    activity = { ...activity, queries: activityQueries, memberRefs };
-  }
-
   const observability =
     current === null && history === null
       ? next.observability
@@ -937,7 +875,6 @@ function releaseInactiveQueries(
   next = {
     ...next,
     inventory,
-    activity,
     observability,
   };
   return next;
@@ -951,7 +888,6 @@ function applyControl(state: ZeropsDataState, input: RuntimeControlInput): Zerop
       closed: true,
       access: { status: "unverified" },
       inventory: makeInitialInventoryState(),
-      activity: makeInitialActivityState(),
       observability: makeInitialObservabilityState(),
       reads: new Map(),
       readAccumulators: new Map(),
@@ -1054,7 +990,6 @@ function applyControl(state: ZeropsDataState, input: RuntimeControlInput): Zerop
 function applyPendingRetention(state: ZeropsDataState): ZeropsDataState {
   if (state.retention.pending.length === 0) return state;
   let inventory = state.inventory;
-  let activity = state.activity;
   let observability = state.observability;
   const overflowingMembershipQueries = new Set<QueryKey>();
   for (const notice of state.retention.pending) {
@@ -1063,14 +998,10 @@ function applyPendingRetention(state: ZeropsDataState): ZeropsDataState {
         const projects = new Map(inventory.projects);
         for (const key of notice.target.keys) projects.delete(key as never);
         inventory = { ...inventory, projects };
-      } else if (notice.target.entity === "service") {
+      } else {
         const services = new Map(inventory.services);
         for (const key of notice.target.keys) services.delete(key as never);
         inventory = { ...inventory, services };
-      } else {
-        const processes = new Map(activity.processes);
-        for (const key of notice.target.keys) processes.delete(key as never);
-        activity = { ...activity, processes };
       }
     } else if (notice.target.kind === "current-metric") {
       const query = observability.current.get(notice.target.query);
@@ -1114,20 +1045,6 @@ function applyPendingRetention(state: ZeropsDataState): ZeropsDataState {
         } as unknown as typeof inventoryQuery);
         inventory = { ...inventory, queries };
       }
-      const activityQuery = activity.queries.get(notice.target.query);
-      if (activityQuery !== undefined) {
-        const membershipOperations = new Map(
-          activityQuery.membershipOperations as ReadonlyMap<string, unknown>,
-        );
-        for (const key of notice.target.keys) membershipOperations.delete(key as never);
-        const queries = new Map(activity.queries);
-        queries.set(notice.target.query, {
-          ...activityQuery,
-          membershipOperations,
-          coverage: { kind: "partial", reason: "budget" },
-        } as unknown as typeof activityQuery);
-        activity = { ...activity, queries };
-      }
     }
   }
   const evicted = state.retention.pending.map((notice) => ({
@@ -1137,7 +1054,6 @@ function applyPendingRetention(state: ZeropsDataState): ZeropsDataState {
   let next: ZeropsDataState = {
     ...state,
     inventory,
-    activity,
     observability,
     retention: {
       ...state.retention,
@@ -1204,10 +1120,7 @@ const facetReceiptOrdinal = (
     | ServiceRecord["lifecycle"]
     | ServiceRecord["routing"]
     | ServiceRecord["deployment"]
-    | ServiceRecord["scaling"]
-    | ProcessRecord["identity"]
-    | ProcessRecord["lifecycle"]
-    | ProcessRecord["pipeline"],
+    | ServiceRecord["scaling"],
 ): number => (facet.knowledge === "unresolved" ? 0 : Number(facet.stamp.receiptOrdinal));
 
 const projectReceiptOrdinal = (record: ProjectRecord): number =>
@@ -1225,13 +1138,6 @@ const serviceReceiptOrdinal = (record: ServiceRecord): number =>
     facetReceiptOrdinal(record.routing),
     facetReceiptOrdinal(record.deployment),
     facetReceiptOrdinal(record.scaling),
-  );
-
-const processReceiptOrdinal = (record: ProcessRecord): number =>
-  Math.max(
-    facetReceiptOrdinal(record.identity),
-    facetReceiptOrdinal(record.lifecycle),
-    facetReceiptOrdinal(record.pipeline),
   );
 
 function trimCompletedReads(state: ZeropsDataState, policy: ZeropsDataPolicy): ZeropsDataState {
@@ -1290,18 +1196,12 @@ function markRetentionViewsPartial(
 ): ZeropsDataState {
   const projectKeys = new Set<string>();
   const serviceKeys = new Set<string>();
-  const processKeys = new Set<string>();
   const queryKeys = new Set<QueryKey>();
   const currentQueryKeys = new Set<QueryKey>();
   const historySeriesKeys = new Set<string>();
   for (const notice of notices) {
     if (notice.target.kind === "entity") {
-      const target =
-        notice.target.entity === "project"
-          ? projectKeys
-          : notice.target.entity === "service"
-            ? serviceKeys
-            : processKeys;
+      const target = notice.target.entity === "project" ? projectKeys : serviceKeys;
       for (const key of notice.target.keys) target.add(key);
     } else if (notice.target.kind === "membership-marker") {
       queryKeys.add(notice.target.query);
@@ -1316,11 +1216,6 @@ function markRetentionViewsPartial(
   for (const [key, record] of state.inventory.services) {
     if (serviceKeys.has(key))
       serviceOrganizations.add(organizationKeyOf(record.ref.project.organization));
-  }
-  const processOrganizations = new Set<string>();
-  for (const [key, record] of state.activity.processes) {
-    if (!processKeys.has(key)) continue;
-    processOrganizations.add(organizationKeyOf(record.ref.project.organization));
   }
 
   let inventoryQueries: Map<QueryKey, InventoryQueryState> | null = null;
@@ -1338,20 +1233,6 @@ function markRetentionViewsPartial(
       ...query,
       coverage: { kind: "partial", reason: "budget" },
     } as InventoryQueryState);
-  }
-
-  let activityQueries: Map<QueryKey, ActivityQueryState> | null = null;
-  for (const [key, query] of state.activity.queries) {
-    const affected =
-      queryKeys.has(key) ||
-      query.memberKeys.some((memberKey) => processKeys.has(memberKey)) ||
-      processOrganizations.has(organizationKeyOf(query.descriptor.project.organization));
-    if (!affected) continue;
-    activityQueries ??= new Map(state.activity.queries);
-    activityQueries.set(key, {
-      ...query,
-      coverage: { kind: "partial", reason: "budget" },
-    } as ActivityQueryState);
   }
 
   let current: Map<QueryKey, CurrentMetricQueryState> | null = null;
@@ -1372,16 +1253,13 @@ function markRetentionViewsPartial(
     });
   }
 
-  if (inventoryQueries === null && activityQueries === null && current === null && history === null)
-    return state;
+  if (inventoryQueries === null && current === null && history === null) return state;
   return {
     ...state,
     inventory:
       inventoryQueries === null
         ? state.inventory
         : { ...state.inventory, queries: inventoryQueries },
-    activity:
-      activityQueries === null ? state.activity : { ...state.activity, queries: activityQueries },
     observability: {
       ...state.observability,
       current: current ?? state.observability.current,
@@ -1428,67 +1306,6 @@ function scheduleRetention(state: ZeropsDataState, policy: ZeropsDataPolicy): Ze
       entity: "service",
       keys: services
         .slice(0, services.length - policy.retainedServicesPerAccount)
-        .map(([key]) => key),
-    });
-  }
-
-  const processOrder = (
-    [leftKey, left]: [unknown, ProcessRecord],
-    [rightKey, right]: [unknown, ProcessRecord],
-  ) =>
-    processReceiptOrdinal(left) - processReceiptOrdinal(right) ||
-    String(leftKey).localeCompare(String(rightKey));
-  const terminalEntries = [...state.activity.processes.entries()].filter(([, record]) =>
-    isTerminalProcess(record),
-  );
-  const selectedTerminal = new Set<string>();
-  if (
-    terminalEntries.length > policy.retainedTerminalProcessesPerProject ||
-    terminalEntries.length > policy.retainedTerminalProcessesPerAccount
-  ) {
-    const terminal = [...terminalEntries].sort(processOrder);
-    const terminalByProject = new Map<string, typeof terminal>();
-    for (const entry of terminal) {
-      const projectKey = projectKeyOf(entry[1].ref.project);
-      const group = terminalByProject.get(projectKey) ?? [];
-      terminalByProject.set(projectKey, [...group, entry]);
-    }
-    for (const group of terminalByProject.values()) {
-      const excess = group.length - policy.retainedTerminalProcessesPerProject;
-      if (excess <= 0) continue;
-      const keys = group.slice(0, excess).map(([key]) => key);
-      for (const key of keys) selectedTerminal.add(key);
-      addNotice("terminal-process-project-budget", {
-        kind: "entity",
-        entity: "process",
-        keys,
-      });
-    }
-    const accountTerminalExcess = terminal.length - policy.retainedTerminalProcessesPerAccount;
-    if (accountTerminalExcess > selectedTerminal.size) {
-      const keys = terminal
-        .filter(([key]) => !selectedTerminal.has(key))
-        .slice(0, accountTerminalExcess - selectedTerminal.size)
-        .map(([key]) => key);
-      for (const key of keys) selectedTerminal.add(key);
-      addNotice("terminal-process-account-budget", {
-        kind: "entity",
-        entity: "process",
-        keys,
-      });
-    }
-  }
-
-  const nonterminalEntries = [...state.activity.processes.entries()].filter(
-    ([, record]) => !isTerminalProcess(record),
-  );
-  if (nonterminalEntries.length > policy.retainedNonTerminalProcessesPerAccount) {
-    const nonterminal = [...nonterminalEntries].sort(processOrder);
-    addNotice("nonterminal-process-budget", {
-      kind: "entity",
-      entity: "process",
-      keys: nonterminal
-        .slice(0, nonterminal.length - policy.retainedNonTerminalProcessesPerAccount)
         .map(([key]) => key),
     });
   }
@@ -1540,10 +1357,7 @@ function scheduleRetention(state: ZeropsDataState, policy: ZeropsDataPolicy): Ze
     });
   }
 
-  for (const [query, value] of [
-    ...state.inventory.queries.entries(),
-    ...state.activity.queries.entries(),
-  ]) {
+  for (const [query, value] of state.inventory.queries) {
     if (value.membershipOperations.size <= policy.membershipMarkersPerQuery) continue;
     const operations = [...value.membershipOperations.entries()].sort(
       ([leftKey, left], [rightKey, right]) =>
@@ -1654,7 +1468,7 @@ export function reduceZeropsDataState(
     state = wantStaleVariables(state, stamp.receiptOrdinal, stamp.observedAtMs);
   }
   const followUps: ZeropsDataFollowUp[] = [];
-  for (const query of [...state.inventory.queries.values(), ...state.activity.queries.values()]) {
+  for (const query of state.inventory.queries.values()) {
     if (query.unresolvedMemberKeys.length > 0) {
       followUps.push({ kind: "hydrate-unresolved-query-members", query: query.key });
     }
