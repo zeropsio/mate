@@ -243,6 +243,49 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
     }),
   );
 
+  it.effect("a Stop that interrupts its send ends the turn cancelled, and the next turn runs", () =>
+    Effect.gen(function* () {
+      const adapter = yield* CursorAdapter;
+      const settings = yield* ServerSettingsService;
+      const threadId = ThreadId.make("cursor-send-interrupted");
+      const wrapperPath = yield* Effect.promise(() =>
+        makeMockAgentWrapper({ T3_ACP_HANG_FIRST_PROMPT_FOREVER: "1" }),
+      );
+      yield* settings.updateSettings({ providers: { cursor: { binaryPath: wrapperPath } } });
+      const endsFiber = yield* adapter.streamEvents.pipe(
+        Stream.filter((event) => event.threadId === threadId && event.type === "turn.completed"),
+        Stream.take(2),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      yield* adapter.startSession({ threadId, cwd: process.cwd(), runtimeMode: "full-access" });
+      const sending = yield* adapter
+        .sendTurn({ threadId, input: "work on it", attachments: [] })
+        .pipe(Effect.forkChild);
+      yield* Effect.gen(function* () {
+        for (let attempt = 0; attempt < 200; attempt += 1) {
+          const session = (yield* adapter.listSessions()).find(
+            (entry) => entry.threadId === threadId,
+          );
+          if (session?.activeTurnId !== undefined) return;
+          yield* TestClock.adjust("10 millis");
+        }
+        throw new Error("Timed out waiting for the prompt to be in flight.");
+      });
+
+      // The person's Stop reaches the send before the agent answers.
+      yield* Fiber.interrupt(sending);
+      yield* adapter.sendTurn({ threadId, input: "go on", attachments: [] });
+
+      const ends = Array.from(yield* Fiber.join(endsFiber));
+      assert.deepStrictEqual(
+        ends.map((event) => (event.type === "turn.completed" ? event.payload.state : null)),
+        ["cancelled", "completed"],
+      );
+      yield* adapter.stopSession(threadId);
+    }),
+  );
+
   it.effect("rejects a Cursor transport error returned as a successful assistant answer", () =>
     Effect.gen(function* () {
       const adapter = yield* CursorAdapter;

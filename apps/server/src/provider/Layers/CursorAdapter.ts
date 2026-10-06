@@ -1208,6 +1208,25 @@ export function makeCursorAdapter(
                 })
               : Effect.fail(error),
           ),
+          // Interrupted — the person's Stop reached the send before the agent
+          // answered: its turn ends as the Stop ends it, cancelled at the agent.
+          Effect.onInterrupt(() =>
+            (turnOpened || steeringTurnId !== undefined) &&
+            ctx.promptsInFlight === 1 &&
+            ctx.activeTurnId === turnId
+              ? Effect.gen(function* () {
+                  yield* Effect.ignore(interruptTurn(input.threadId));
+                  yield* offerRuntimeEvent({
+                    type: "turn.completed",
+                    ...(yield* makeEventStamp()),
+                    provider: PROVIDER,
+                    threadId: input.threadId,
+                    turnId,
+                    payload: { state: "cancelled", stopReason: "cancelled" },
+                  });
+                })
+              : Effect.void,
+          ),
           Effect.ensuring(
             Effect.sync(() => {
               ctx.promptsInFlight = Math.max(0, ctx.promptsInFlight - 1);
