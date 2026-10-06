@@ -25,6 +25,7 @@
 
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 import { changeUrl, type HqChange } from "@t3tools/shared/hqChanges";
+import type { HqNavigationChange } from "@t3tools/shared/hqStream";
 import { RECIPE_PROPOSAL_TITLE, RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { isSlashCommand } from "@t3tools/shared/userAsk";
 
@@ -191,6 +192,64 @@ export function flowChanges(input: {
       .filter((change) => change.state === "merged")
       .sort((left, right) => (right.mergedAt ?? "").localeCompare(left.mergedAt ?? ""))
       .map(row),
+  };
+}
+
+/** An open change as HQ's navigation lists it for the menu: no head, words or comments. */
+function menuChange(appId: string, change: HqNavigationChange, hqAddress: string): FlowPullRequest {
+  return {
+    repository: change.repo,
+    number: change.number,
+    title: change.title,
+    kind: change.repo === RECIPE_REPO ? "recipe" : "code",
+    mateProjectId: change.mateProjectId,
+    url: changeUrl(hqAddress, appId, change.repo, change.number),
+    mergeability: mergeabilityKindOf(change.mergeability),
+    behind: false,
+    merged: false,
+    mergedAt: undefined,
+    state: "open",
+    headSha: undefined,
+    baseBranch: FALLBACK_BASE,
+    line:
+      change.repo === RECIPE_REPO
+        ? `#${String(change.number)}`
+        : `${change.repo} #${String(change.number)}`,
+    updatedAt: change.updatedAt,
+    headBranch: `mate/${change.mateProjectId}/${String(change.number)}`,
+    ready: change.ready,
+  };
+}
+
+/**
+ * An application's changes as every surface shows them: the open ones HQ's navigation lists that a
+ * push reached, each drawn from the application's detail where a surface holds it and from its
+ * menu row otherwise; the landed ones only from that detail, newest first.
+ */
+export function flowAppChanges(input: {
+  readonly appId: string;
+  readonly open: ReadonlyArray<HqNavigationChange>;
+  /** The application's changes as its detail says them; `undefined` while nothing holds it. */
+  readonly detail: ReadonlyArray<HqChange> | undefined;
+  readonly hqAddress: string;
+}): {
+  readonly pullRequests: ReadonlyArray<FlowPullRequest>;
+  readonly merged: ReadonlyArray<FlowPullRequest>;
+} {
+  const held =
+    input.detail === undefined
+      ? undefined
+      : flowChanges({ changes: input.detail, hqAddress: input.hqAddress });
+  return {
+    pullRequests: input.open
+      .filter((change) => change.hasHead)
+      .map(
+        (change) =>
+          held?.pullRequests.find(
+            (pull) => pull.repository === change.repo && pull.number === change.number,
+          ) ?? menuChange(input.appId, change, input.hqAddress),
+      ),
+    merged: held?.merged ?? [],
   };
 }
 
