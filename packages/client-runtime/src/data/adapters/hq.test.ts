@@ -745,7 +745,7 @@ describe("an HQ session", () => {
       yield* supervisor.signal("manual-retry");
       yield* settle;
       expect(fixture.opens()).toBe(2);
-      expect(fixture.sent.filter(({ segment }) => segment === 2)[0]?.request).toEqual({
+      expect(fixture.sent.find(({ segment }) => segment === 2)?.request).toEqual({
         type: "retry",
       });
       yield* Fiber.interrupt(fiber);

@@ -200,6 +200,48 @@ describe("matesAttention", () => {
       inputs: [...placed(2), ...relay(attention("m1", 3))],
       expected: { attention: attention("m1", 3), live: true, unseen: 2 },
     },
+    {
+      name: "a later epoch stored by HQ while the earlier direct run is live",
+      inputs: [...direct(attention("m1", 9, 1)), ...relay(attention("m2", 0, 0, 2), "stored")],
+      expected: { attention: attention("m2", 0, 0, 2), live: false, unseen: null },
+    },
+    {
+      name: "a later epoch relayed live while the earlier direct run is live",
+      inputs: [...direct(attention("m1", 9, 1)), ...relay(attention("m2", 0, 0, 2))],
+      expected: { attention: attention("m2", 0, 0, 2), live: true, unseen: null },
+    },
+    {
+      name: "the earlier direct run speaks after the later epoch's relay goes down",
+      inputs: [
+        ...relay(attention("m2", 0, 0, 2)),
+        fault(linkKeys.hq(ORG)),
+        ...direct(attention("m1", 10, 1)),
+      ],
+      expected: { attention: attention("m2", 0, 0, 2), live: false, unseen: null },
+    },
+    {
+      name: "the direct source confirms the very revision HQ stored",
+      inputs: [...relay(attention("m2", 0, 0, 2), "stored"), ...direct(attention("m2", 0, 0, 2))],
+      expected: { attention: attention("m2", 0, 0, 2), live: true, unseen: null },
+    },
+    {
+      name: "a direct confirmation cannot change the held revision's value",
+      inputs: [...relay(attention("m2", 0, 0, 2), "stored"), ...direct(attention("m2", 0, 9, 2))],
+      expected: { attention: attention("m2", 0, 0, 2), live: true, unseen: null },
+    },
+    {
+      name: "a later direct epoch remains when that source refuses the read",
+      inputs: [
+        ...direct(attention("m2", 0, 0, 2)),
+        stream(linkKeys.mate(P), {
+          kind: "fault",
+          fault: { outcome: "definitive-refusal", message: "Access refused." },
+          jitter: 0,
+        }),
+        ...relay(attention("m1", 10, 1)),
+      ],
+      expected: { attention: attention("m2", 0, 0, 2), live: false, unseen: null },
+    },
   ])("$name", ({ inputs, expected }) => {
     expect(read(inputs)).toEqual(expected);
   });

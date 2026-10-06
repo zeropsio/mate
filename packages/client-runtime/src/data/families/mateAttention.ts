@@ -1,5 +1,5 @@
 /**
- * A Mate's attention (`MateAttention`, HANDOFF §4.2 "Mate"): one value per Mate, by its project,
+ * A Mate's attention (`MateAttention`): one value per Mate, by its project,
  * ordered by its own source revision. It arrives on two paths into this one family — straight from
  * a Mate the person has open (`adapters/mateAttention.ts`, `mate-direct`), and relayed by HQ for
  * every Mate HQ places (its `attention` scope, `hq-stream`) — and the reducer keeps whichever is

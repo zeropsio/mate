@@ -3,7 +3,7 @@
  * whichever path brought it, whether that value is of now, and how many of its results the person
  * has not seen, as HQ counts them from that person's acknowledgements.
  *
- * Of now is end-to-end (HANDOFF §4.2): the Mate's own link to this page is live, or HQ's link is
+ * Of now is end-to-end: the Mate's own link to this page is live, or HQ's link is
  * live and HQ relays this very revision while its own link to the Mate is up. A live HQ never makes
  * the word of a Mate it cannot hear live. No clock decides it.
  *
@@ -38,7 +38,9 @@ function attentionOf(read: ProjectionReads, orgId: string, projectId: string): M
   const fact = read.fact("mateAttention", projectId);
   if (fact.kind !== "known") return { attention: null, live: false, unseen };
   const direct =
-    isLive(read, linkKeys.mate(projectId)) && isLive(read, mateAttentionScope(projectId));
+    fact.scope === mateAttentionScope(projectId) &&
+    isLive(read, linkKeys.mate(projectId)) &&
+    isLive(read, mateAttentionScope(projectId));
   const relayed = read.fact("hqMate", projectId);
   const relayedNow =
     relayed.kind === "known" &&

@@ -180,7 +180,9 @@ to establish replacement. HQ's scope cursor orders delivery, not Mate's source v
 
 Live and stored describe source evidence separately from ordering. A live client-to-HQ connection
 cannot make stored attention live while HQ cannot hear Mate. Older live evidence cannot overwrite
-a newer epoch merely because it is live. HQ computes unseen from result identities and per-person
+a newer epoch merely because it is live. A direct connection proves freshness only for the source
+revision it observed; confirming the retained revision refreshes that evidence without replacing
+its value. HQ computes unseen from result identities and per-person
 acknowledgements; absent attention means unknown unseen, not zero.
 
 ## Guards and proof
@@ -227,12 +229,10 @@ The rewrite lands in waves. The remaining lanes are:
 - Mate connections without polling.
 - Menu first-paint and outage truth.
 - Variables on declared data-layer demand.
-- Mate start epoch across source publication, HQ and client ordering.
 - Releases and environments client surfaces.
 - Final removal of the old runtime and remaining duplicate paths.
 
 Code in these areas is being replaced — coordinate before changing it. Build new work on the data
 layer, not on the old runtime: `packages/client-runtime/src/zerops/data/runtime.ts` and its related
 stores, grant plumbing and wrappers are being deleted. An old call site is migration debt, not a
-pattern to copy. The start-epoch contract above is part of that in-flight work; check the current
-source contracts when integrating it.
+pattern to copy.

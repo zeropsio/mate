@@ -2,7 +2,8 @@ import { expect, it } from "@effect/vitest";
 import { acceptAttention } from "./attentionIngest.ts";
 import { HqAttentionValue } from "@t3tools/shared/hqStream";
 import * as Schema from "effect/Schema";
-const value = Schema.decodeSync(HqAttentionValue)({
+const decode = Schema.decodeSync(HqAttentionValue);
+const value = decode({
   source: { environmentId: "env", epoch: 1, incarnation: "boot", revision: 2 },
   mainThreadId: "main",
   lastThreadId: "new",
@@ -96,7 +97,5 @@ it.each([
     source: { ...value.source, epoch: 2, incarnation: "boot", revision: 0 },
   };
   const incoming = { ...value, source: { ...held.source, ...next }, working: 1 };
-  expect(acceptAttention(held, incoming, live)).toEqual(
-    kept ? held : Schema.decodeSync(HqAttentionValue)(incoming),
-  );
+  expect(acceptAttention(held, incoming, live)).toEqual(kept ? held : decode(incoming));
 });

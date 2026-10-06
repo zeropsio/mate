@@ -263,7 +263,35 @@ function reduceRows(
   for (const row of input.rows) {
     const key = factKey(row.family, row.id);
     const current = (draft ?? state.facts).get(key);
-    if (current !== undefined && !admits(state, input, current, row)) continue;
+    if (current !== undefined && !admits(state, input, current, row)) {
+      const held = current.revision;
+      const incoming = row.revision;
+      // A direct confirmation of the held revision proves this path observed it, without
+      // replacing its value. A live path carrying an older run proves no freshness for it.
+      if (
+        input.via !== "mate-direct" ||
+        current.content.kind !== "value" ||
+        held.kind !== "mate-attention" ||
+        incoming.kind !== "mate-attention" ||
+        !incoming.live ||
+        held.environmentId !== incoming.environmentId ||
+        held.epoch !== incoming.epoch ||
+        held.incarnation !== incoming.incarnation ||
+        held.revision !== incoming.revision ||
+        current.scope === input.scope
+      )
+        continue;
+      draft ??= new Map(state.facts);
+      draft.set(key, {
+        ...current,
+        revision: incoming,
+        via: input.via,
+        method: input.method,
+        scope: input.scope,
+      });
+      changed.add(key);
+      continue;
+    }
     const spec = familySpec(row.family);
     const merge = spec.merge as ((held: unknown, pushed: unknown) => unknown) | undefined;
     const keepUnsaid = spec.keepUnsaid as

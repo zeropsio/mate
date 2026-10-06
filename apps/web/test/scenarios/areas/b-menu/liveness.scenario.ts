@@ -183,7 +183,7 @@ describe("B: menu liveness", () => {
     );
 
     // Catches a row that keeps saying its Mate works after the Mate said it stopped: its
-    // attention, ordered by its own revision, is the word (HANDOFF §2.2 / §8: within ~2 s).
+    // attention, ordered by its own revision, is the word: the row follows within two seconds.
     it.effect("a Mate's attention that it stopped clears its working row within two seconds", () =>
       Effect.gen(function* () {
         const s = yield* menuScenario();
@@ -201,7 +201,7 @@ describe("B: menu liveness", () => {
 
     // Catches a restarted Mate whose attention starts its revisions over being held to the run
     // before, and the run before — back from a partition, never killed — taking the row back:
-    // runs order by their epoch, whatever is live (HANDOFF §2.2 / §8: within ~2 s).
+    // runs order by their epoch, whatever is live: the row follows within two seconds.
     it.effect(
       "a restarted Mate's attention, HQ relaying it alone, replaces its run before within two seconds, and the run before's late word never wins",
       () =>
@@ -223,7 +223,7 @@ describe("B: menu liveness", () => {
     );
 
     // Catches a new chat reaching the row only with HQ's overview of it: the attention HQ relays
-    // names it first, and the row follows it alone (HANDOFF §2.2 / §8: within ~2 s).
+    // names it first, and the row follows it alone within two seconds.
     it.effect(
       "a new chat HQ relays the attention of alone reaches its row within two seconds",
       () =>
