@@ -1037,7 +1037,7 @@
         "apps/web/src/components/zerops/SidebarProductionChip.logic.test.ts",
         "apps/web/src/components/zerops/StopReadAgain.test.tsx",
         "apps/web/src/components/zerops/StopPublicAccess.test.tsx",
-        "apps/web/src/zerops/useStopPublicAccess.test.tsx",
+        "packages/client-runtime/src/data/projections/publicAccess.test.ts",
         "apps/web/src/components/zerops/SidebarHeadingLine.logic.test.ts",
         "apps/web/src/components/zerops/SidebarMateMenu.test.tsx",
         "apps/web/src/components/zerops/ZeropsDeleteMateDialog.test.tsx",

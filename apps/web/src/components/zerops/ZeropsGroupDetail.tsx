@@ -1,4 +1,4 @@
-import { useStopPublicAccess } from "~/zerops/useStopPublicAccess";
+import { usePublicAccess } from "~/zerops/usePublicAccess";
 import { useMatesInventory } from "~/zerops/useMatesInventory";
 import { RuntimeStopPublicAccess, StopPublicAccessStatus } from "./StopPublicAccess";
 /**
@@ -1192,9 +1192,9 @@ export function ZeropsStopDetailPage({
   const stopGroupName = useGroupName(groupId);
   const crumbs = useCrumbs({ groupId, name: stopGroupName });
   const names = useHistoryNames();
-  const publicAccess = useStopPublicAccess(projectId);
-  const routes = publicAccess.access.routes;
-  const offers = publicAccess.access.offers;
+  const publicAccess = usePublicAccess(projectId);
+  const routes = publicAccess.routes;
+  const offers = publicAccess.offers;
   const route = useEnableRoute();
   const inventory = useZeropsInventory();
   const platform = useStopServices(
@@ -1286,7 +1286,7 @@ export function ZeropsStopDetailPage({
 
   return (
     <>
-      <StopPublicAccessStatus shown={publicAccess.shown} again={publicAccess.again} />
+      <StopPublicAccessStatus access={publicAccess} />
       <ZeropsStopPane
         readAgain={<StopReadAgain projectId={projectId} />}
         readFailures={
@@ -1896,7 +1896,7 @@ function StopServiceLine({
   /** What the verdict over the rows already says: HQ's words for a failure, never said twice. */
   readonly said: string | undefined;
 }) {
-  const publicAccess = useStopPublicAccess(projectId);
+  const publicAccess = usePublicAccess(projectId);
   const dot = STOP_DOT_TONE[row.tone];
   // HQ's live commit, asked again over a version HQ did not deploy, where HQ takes the ask.
   const again = row.drift?.redeploy;
@@ -1941,12 +1941,12 @@ function StopServiceLine({
           )}
         </span>
         <span className="col-span-2 col-start-1 flex min-w-0 flex-col gap-1 sm:col-span-1 sm:col-start-4 sm:row-start-1">
-          {(!publicAccess.bound || publicAccess.access.state === "ready") &&
+          {(!publicAccess.bound || publicAccess.state === "ready") &&
           row.routes.length === 0 &&
           offers.length === 0 ? (
             <span className="truncate text-[13px] text-muted-foreground">{NOT_PUBLIC_YET}</span>
           ) : null}
-          <StopPublicAccessStatus shown={publicAccess.shown} again={publicAccess.again} />
+          <StopPublicAccessStatus access={publicAccess} serviceId={row.serviceId ?? null} />
           {row.routes.map((route) => (
             <a
               className="flex min-w-0 items-center gap-1.5 text-[13px] text-foreground underline-offset-2 hover:underline"

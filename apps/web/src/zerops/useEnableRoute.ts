@@ -10,7 +10,8 @@
  * It needs nothing that screen has and other surfaces do not: the account's
  * `enable-subdomain-access` operation, from context. The trouble it reports is
  * the caller's to show, because where a failed write belongs depends on the
- * surface.
+ * surface. Its end is the service's pushed row turning its subdomain on, and the new address
+ * arrives with the organization's routings: nothing is read again.
  */
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { useCallback, useState } from "react";
@@ -31,7 +32,7 @@ export interface EnableRoute {
 
 export function useEnableRoute(): EnableRoute {
   const operations = useAccountOperations();
-  const { orgId, revalidate } = useAccountData();
+  const { orgId } = useAccountData();
   const [enablingServiceId, setEnablingServiceId] = useState<string | null>(null);
   const [trouble, setTrouble] = useState<string | null>(null);
 
@@ -48,16 +49,13 @@ export function useEnableRoute(): EnableRoute {
           projectId,
           serviceId,
         });
-        // Our own write: the project's routing is read again (its subdomain rides the services'
-        // own rows, which say it live).
-        revalidate({ family: "publicRouting", ownerId: projectId });
       } catch (cause) {
         if (isCurrent()) setTrouble(zeropsErrorMessage(cause));
       } finally {
         if (isCurrent()) setEnablingServiceId(null);
       }
     },
-    [enablingServiceId, operations, orgId, revalidate],
+    [enablingServiceId, operations, orgId],
   );
 
   return { enable, enablingServiceId, trouble };

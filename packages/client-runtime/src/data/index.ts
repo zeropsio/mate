@@ -73,6 +73,8 @@ export {
 export { historyScope, runningScope, type ProcessValue } from "./families/process.ts";
 export { projectsScope, type ProjectValue } from "./families/project.ts";
 export { servicesScope, type ServiceValue } from "./families/service.ts";
+export { PROJECT_ROUTINGS_LISTING } from "./families/publicRouting.ts";
+export { publicAccess, type PublicAccess } from "./projections/publicAccess.ts";
 export { projectServices, projectsServices, type ProjectServices } from "./projections/services.ts";
 export type { ProjectUsage } from "./projections/usage.ts";
 export { usageOwnerOf } from "./families/usage.ts";
@@ -104,7 +106,6 @@ export {
   type MembersRead,
   type SampledRead,
 } from "./projections/sampled.ts";
-export { publicAccess, type PublicAccessView } from "./projections/publicAccess.ts";
 export { makeOperations, type Operations } from "./operations/coordinator.ts";
 export { makeZeropsExecutor } from "./operations/executors/zerops.ts";
 export { makeHqExecutor, type HqWrites } from "./operations/executors/hq.ts";
