@@ -90,15 +90,34 @@ function codexWrites(item: Record<string, unknown>): RawWrite[] {
 }
 
 /** An ACP agent's `diff` blocks: `oldText` absent is a new file. */
-function acpWrites(content: ReadonlyArray<unknown>): RawWrite[] {
-  return content.flatMap((entry): RawWrite[] => {
+function acpWrites(
+  content: ReadonlyArray<unknown>,
+  rawInput: Record<string, unknown> | null,
+): RawWrite[] {
+  const blocks = content.flatMap((entry) => {
     const block = asRecord(entry);
     const path = asPath(block?.path);
-    if (block?.type !== "diff" || path === null || typeof block.newText !== "string") return [];
-    return typeof block.oldText === "string"
-      ? [{ path, kind: "edit", whole: [block.oldText, block.newText] }]
-      : [{ path, kind: "write", content: block.newText }];
+    return block?.type === "diff" && path !== null && typeof block.newText === "string"
+      ? [{ path, oldText: block.oldText, newText: block.newText }]
+      : [];
   });
+  // One file changed, and the call's own input says what the agent wrote
+  // there: that, never what the server would work out from the whole file.
+  const [only] = blocks;
+  if (blocks.length === 1 && only !== undefined && rawInput !== null) {
+    const after = firstString(rawInput, NEW_KEYS);
+    if (after !== null) {
+      const before = firstString(rawInput, OLD_KEYS) ?? "";
+      return [{ path: only.path, kind: "edit", edits: [[before, after]] }];
+    }
+    const written = firstString(rawInput, ["content"]);
+    if (written !== null) return [{ path: only.path, kind: "write", content: written }];
+  }
+  return blocks.map((block): RawWrite =>
+    typeof block.oldText === "string"
+      ? { path: block.path, kind: "edit", whole: [block.oldText, block.newText] }
+      : { path: block.path, kind: "write", content: block.newText },
+  );
 }
 
 /**
@@ -195,7 +214,7 @@ function rawWrites(data: unknown): RawWrite[] {
   const item = asRecord(record.item);
   if (item !== null) return codexWrites(item);
   if (Array.isArray(record.content)) {
-    const acp = acpWrites(record.content);
+    const acp = acpWrites(record.content, asRecord(record.rawInput));
     if (acp.length > 0) return acp;
   }
   const name = asPath(record.toolName) ?? asPath(record.tool);
@@ -209,7 +228,15 @@ function drawsSomething(write: RawWrite): boolean {
   if ("content" in write) return write.content.length > 0;
   if ("diff" in write)
     return write.diff.split("\n").some((line) => /^[+-](?![+-]{2} )/u.test(line));
-  if ("whole" in write) return write.whole[0] !== write.whole[1];
+  // A whole file before and after: some line is new, or gone — lines only
+  // moved about change nothing a reader is shown.
+  if ("whole" in write) {
+    const before = new Set(linesOf(write.whole[0]));
+    const after = new Set(linesOf(write.whole[1]));
+    return (
+      [...after].some((line) => !before.has(line)) || [...before].some((line) => !after.has(line))
+    );
+  }
   return write.edits.some(([before, after]) => before !== after);
 }
 
@@ -258,33 +285,78 @@ function middleOps(before: ReadonlyArray<string>, after: ReadonlyArray<string>):
   return ops;
 }
 
-/**
- * Lines as changes: each run of removed and added lines between kept ones is
- * one change — its added lines, and how many it removed. Kept lines and
- * removed ones never leave.
- */
-function changesOf(ops: ReadonlyArray<Op>): FileWriteChange[] {
-  const changes: FileWriteChange[] = [];
+/** One run of removed and added lines between kept ones. */
+interface Run {
+  readonly removed: ReadonlyArray<string>;
+  readonly added: ReadonlyArray<string>;
+}
+
+/** Lines as runs: each run of removed and added lines between kept ones. */
+function runsOf(ops: ReadonlyArray<Op>): Run[] {
+  const runs: Run[] = [];
+  let removed: string[] = [];
   let added: string[] = [];
-  let removed = 0;
   const close = () => {
-    if (added.length > 0 || removed > 0)
-      changes.push({ text: added.join("\n"), removedLines: removed });
+    if (added.length > 0 || removed.length > 0) runs.push({ removed, added });
     added = [];
-    removed = 0;
+    removed = [];
   };
   for (const [mark, line] of ops) {
     if (mark === " ") close();
     else if (mark === "+") added.push(line);
-    else removed += 1;
+    else removed.push(line);
   }
   close();
-  return changes;
+  return runs;
+}
+
+/** A run's lines that it both removes and adds unchanged: each pair dropped, no change. */
+function withoutTies(run: Run): Run {
+  const removed = [...run.removed];
+  const added = run.added.filter((line) => {
+    const at = removed.indexOf(line);
+    if (at === -1) return true;
+    removed.splice(at, 1);
+    return false;
+  });
+  return { removed, added };
 }
 
 /**
- * What the new text adds over the old, change by change: the added lines of
- * each, and how many lines it removed. Unchanged text changes nothing.
+ * What the added text holds past what it shares with the removed at both
+ * ends, an ellipsis where it was cut: `…db2…`.
+ */
+function differingPart(removed: string, added: string): string {
+  if (removed.length === 0 || added.length === 0) return added;
+  const most = Math.min(removed.length, added.length);
+  let prefix = 0;
+  while (prefix < most && removed[prefix] === added[prefix]) prefix++;
+  let suffix = 0;
+  while (
+    suffix < most - prefix &&
+    removed[removed.length - 1 - suffix] === added[added.length - 1 - suffix]
+  ) {
+    suffix++;
+  }
+  const middle = added.slice(prefix, added.length - suffix);
+  if (middle.length === 0) return "";
+  return `${prefix > 0 ? "…" : ""}${middle}${suffix > 0 ? "…" : ""}`;
+}
+
+/** Runs as changes: what each shows of its added lines, and how many it removed. */
+function changesOfRuns(runs: ReadonlyArray<Run>, text: (run: Run) => string): FileWriteChange[] {
+  return runs
+    .filter((run) => run.added.length > 0 || run.removed.length > 0)
+    .map((run) => ({ text: text(run), removedLines: run.removed.length }));
+}
+
+/**
+ * What the new text adds over the old, change by change, as narrow as the
+ * text allows — the server works it out, so it shows no more than differs:
+ * a line that stands unchanged anywhere in the old text is never added (nor
+ * one still in the new text removed), and each change is cut to the
+ * characters that differ, an ellipsis where it was cut (`…db2…`). How many
+ * lines each removed is counted. Unchanged text changes nothing.
  */
 export function lineChanges(before: string, after: string): FileWriteChange[] {
   if (before === after) return [];
@@ -300,15 +372,22 @@ export function lineChanges(before: string, after: string): FileWriteChange[] {
   ) {
     suffix++;
   }
-  return changesOf(
+  const oldLines = new Set(a);
+  const newLines = new Set(b);
+  const runs = runsOf(
     middleOps(a.slice(prefix, a.length - suffix), b.slice(prefix, b.length - suffix)),
-  );
+  ).map((run) => ({
+    removed: run.removed.filter((line) => !newLines.has(line)),
+    added: run.added.filter((line) => !oldLines.has(line)),
+  }));
+  return changesOfRuns(runs, (run) => differingPart(run.removed.join("\n"), run.added.join("\n")));
 }
 
 /**
- * A unified diff's or a patch update's changes: its `+` lines, its `-` lines
- * counted; context lines, hunk headers (`@@ …` and what follows them) and
- * file headers never leave.
+ * A unified diff's or a patch update's changes: its `+` lines — whole lines
+ * the agent's patch wrote — its `-` lines counted; context lines, hunk
+ * headers (`@@ …` and what follows them) and file headers never leave. A line
+ * a run both removes and adds unchanged is no change, and never shown.
  */
 function diffChanges(diff: string): FileWriteChange[] {
   const ops: Op[] = [];
@@ -319,7 +398,7 @@ function diffChanges(diff: string): FileWriteChange[] {
     // A context line, a hunk header, an empty line: a break between changes.
     else ops.push([" ", ""]);
   }
-  return changesOf(ops);
+  return changesOfRuns(runsOf(ops).map(withoutTies), (run) => run.added.join("\n"));
 }
 
 /** The changes cut at the cap, at the end of a line; whether any was cut. */
