@@ -5,7 +5,6 @@ import * as Effect from "effect/Effect";
 import * as Deferred from "effect/Deferred";
 import * as Stream from "effect/Stream";
 import * as Queue from "effect/Queue";
-import * as Schema from "effect/Schema";
 import { afterEach, vi } from "vite-plus/test";
 import { expect, it } from "@effect/vitest";
 import {
@@ -18,7 +17,6 @@ import {
   makeZeropsDataRuntime,
   decodeEntityDirectResponse,
   decodeRegistrationResponse,
-  decodeNativeFrame,
   type RegistrationRequest,
   type ReceiverEvent,
   AccountEpoch,
@@ -37,12 +35,12 @@ import { invalidateZerops, onZeropsInvalidation } from "./accountInvalidations";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
 import { ZeropsDataProvider } from "./ZeropsDataProvider";
 import { inventoryProjectRefKey, useZeropsInventory, type Inventory } from "./inventoryContext";
+import { projectsScope } from "@t3tools/client-runtime/data";
+import { mountRoster } from "@t3tools/client-runtime/zerops/testing";
 import { ZeropsInventoryProvider } from "./ZeropsInventoryProvider";
 import { hqStructureAtom } from "../state/zerops";
 import { AccountVoiceLine } from "../components/zerops/AccountVoiceLine";
 import { TRY_NOW_SETTLE_MS } from "./inventoryTrouble.logic";
-
-const encodeWireFrame = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
 
 const session = vi.hoisted(() => ({ current: undefined as unknown }));
 vi.mock("./ZeropsSessionProvider", () => ({ useZeropsSession: () => session.current }));
@@ -346,6 +344,13 @@ const mountInventory = Effect.fn(function* (
       closeReceiver: () => Effect.void,
     },
   });
+  // The organization's roster, as the account's store reads it: the projects its index lists.
+  const store = mountRoster(
+    registry,
+    "org",
+    [...projects.values()].filter(({ id }) => indexed.has(id)),
+  );
+  let projectVersion = 1;
   // These admission tests explicitly demand their fixture projects; navigation never does.
   for (const id of options.demandServices === false ? [] : ids)
     yield* actual.acquire({ kind: "project-inventory", project: projectRef("org", id) });
@@ -456,26 +461,26 @@ const mountInventory = Effect.fn(function* (
         .updateVerifiedMemberships,
     inventoryPublications: () => inventoryPublications,
     grantsWhenChildMounted: () => grantsWhenChildMounted,
+    /** The organization's roster pushes a project's whole row, as Zerops does. */
     pushProject: (id: string, name: string) =>
       actEffect(
-        Effect.gen(function* () {
-          const request = [...registrations.values()].find(
-            (entry) =>
-              entry.descriptor.kind === "entity-updates" && entry.descriptor.entity === "project",
-          )!;
-          const raw = yield* encodeWireFrame({
-            type: "search",
-            subscriptionName: request.subscriptionName,
-            data: { update: [{ ...projects.get(id)!, name }] },
+        Effect.sync(() => {
+          projectVersion += 1;
+          store.dispatch({
+            kind: "rows",
+            scope: projectsScope("org"),
+            generation: 1,
+            method: "push",
+            via: "zerops-realtime",
+            rows: [
+              {
+                family: "project",
+                id,
+                value: { ...projects.get(id)!, name },
+                revision: { kind: "zerops", version: projectVersion },
+              },
+            ],
           });
-          const decoded = decodeNativeFrame(raw, registrations);
-          if (decoded.kind !== "observations") throw new Error("Expected project observations");
-          delivered = yield* Deferred.make<void>();
-          for (const input of decoded.observations)
-            yield* Queue.offer(events, { kind: "observation", input, bytes: raw.length });
-          yield* Queue.offer(events, { kind: "pong" });
-          yield* Deferred.await(delivered);
-          yield* actual.observeAccess({ kind: "access-verified", grant: grants.at(-1)! });
         }),
       ),
     /** Moves both clocks, running every timer that comes due and what each set off. */
@@ -927,11 +932,11 @@ it.live(
         expect(loading.slice(-19, -1)).toEqual(Array.from({ length: 18 }, () => true));
         expect(harness.inventory()?.error).toBe("Zerops isn't answering. Trying again…");
         expect(harness.inventory()?.isLoading).toBe(true);
-        // Said once, at the menu's foot, naming what isn't answering — the organization's
-        // projects and services, whose subscriptions every project shares — with Try now and no
-        // Sign out.
+        // Said once, at the menu's foot, naming what isn't answering — the project whose
+        // services stalled; the organization's projects are the account store's, live — with Try
+        // now and no Sign out.
         expect(harness.container.textContent).toBe(
-          "Zerops isn't answering. Trying again…Organization's projects and servicesTry now",
+          "Zerops isn't answering. Trying again…kept in OrganizationTry now",
         );
         heard.length = 0;
         const reopened = harness.refreshed().length;
@@ -1050,7 +1055,6 @@ it.live("a renewal reverifies a command-created project the search index still o
         "kept",
         "created",
       ]);
-      expect(harness.inventory()?.projects.map(({ id }) => id)).toEqual(["kept", "created"]);
     }),
   ),
 );
@@ -1119,15 +1123,13 @@ it.live("has given the runtime its grant before the first child mounts", () =>
 );
 
 it.live(
-  "does not republish identical inventory DTOs from native updates but publishes actual edits",
+  "does not republish identical inventory DTOs from the roster's pushes but publishes actual edits",
   () =>
     Effect.scoped(
       Effect.gen(function* () {
         const harness = yield* mountInventory();
         const before = harness.inventoryPublications();
-        const receipt = (yield* harness.runtime.state).lastReceiptOrdinal;
         yield* harness.pushProject("kept", "kept");
-        expect((yield* harness.runtime.state).lastReceiptOrdinal).toBeGreaterThan(receipt!);
         expect(harness.inventoryPublications()).toBe(before);
         yield* harness.pushProject("kept", "Renamed");
         expect(harness.inventory()?.projects[0]?.name).toBe("Renamed");

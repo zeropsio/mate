@@ -86,8 +86,10 @@ describe("central Zerops data bindings", () => {
 
   it("binds inventory and candidates only to their narrow projection families", () => {
     const inventory = source("./ZeropsInventoryProvider.tsx");
-    expect(inventory).toContain("runtime.reads.projectsOf(");
-    expect(inventory).toContain("runtime.reads.project(");
+    // In transit (`projectBridge`): the organization's projects and each project are the store's.
+    expect(inventory).toContain("organizationProjectsRead(");
+    expect(inventory).toContain("projectRead(");
+    expect(inventory).not.toContain("runtime.reads.projectsOf(");
     expect(inventory).toContain("runtime.reads.servicesOf(");
     expect(inventory).not.toContain("runtime.stateAtom");
 
@@ -161,17 +163,6 @@ describe("central Zerops data bindings", () => {
           left.observation.access === right.observation.access,
       );
     const stores = [
-      makeZeropsAtomSelectionStore(registry, [
-        ["organizations", stableCollection(reads.projectsOf(organization))],
-      ]),
-      makeZeropsAtomSelectionStore(registry, [
-        [
-          "project",
-          stabilizeZeropsAtom(reads.project(project), (left, right) =>
-            zeropsKnowledgeArraysEqual([left.value], [right.value]),
-          ),
-        ],
-      ]),
       makeZeropsAtomSelectionStore(registry, [
         ["services", stableCollection(reads.servicesOf(project))],
       ]),

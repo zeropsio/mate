@@ -348,91 +348,6 @@ export const makeZeropsBoundedIngress = Effect.fn("ZeropsDataRuntime.makeBounded
   },
 );
 
-/** Which waiting work a freed permit goes to: `first` work before any `later` work. */
-export type ZeropsPermitPriority = "first" | "later";
-
-export interface ZeropsPriorityPermits {
-  /**
-   * Runs `effect` holding one permit, given back however it ends. While permits are short, no
-   * `later` work is admitted while `first` work waits.
-   */
-  readonly withPermit: (
-    priority: ZeropsPermitPriority,
-  ) => <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>;
-}
-
-/**
- * Counting permits with two admission classes. A woken waiter checks its turn again inside an
- * uninterruptible region before it takes a permit, as `Semaphore` does, so work interrupted
- * while it waits neither takes a permit nor keeps later work waiting behind it.
- */
-export const makeZeropsPriorityPermits = (permits: number): Effect.Effect<ZeropsPriorityPermits> =>
-  Effect.sync(() => {
-    let taken = 0;
-    /** Work waiting for a permit, counted from its first wait until it takes one or leaves. */
-    const waiting: Record<ZeropsPermitPriority, number> = { first: 0, later: 0 };
-    const wakers: Record<ZeropsPermitPriority, Set<() => void>> = {
-      first: new Set(),
-      later: new Set(),
-    };
-    const admissible = (priority: ZeropsPermitPriority): boolean =>
-      taken < permits && (priority === "first" || waiting.first === 0);
-    // Over a snapshot, first work ahead: a woken waiter may wait again before the loop ends.
-    const wake = (): void => {
-      for (const waker of [...wakers.first, ...wakers.later]) waker();
-    };
-    const turn = (priority: ZeropsPermitPriority): Effect.Effect<void> =>
-      Effect.callback<void>((resume) => {
-        const waker = () => {
-          if (!admissible(priority)) return;
-          wakers[priority].delete(waker);
-          resume(Effect.void);
-        };
-        wakers[priority].add(waker);
-        return Effect.sync(() => void wakers[priority].delete(waker));
-      });
-    const release = Effect.sync(() => {
-      taken -= 1;
-      wake();
-    });
-    return {
-      withPermit:
-        (priority) =>
-        <A, E, R>(effect: Effect.Effect<A, E, R>) =>
-          Effect.uninterruptibleMask((restore) =>
-            Effect.suspend(() => {
-              let queued = false;
-              const leave = () => {
-                if (!queued) return;
-                queued = false;
-                waiting[priority] -= 1;
-              };
-              const acquire: Effect.Effect<A, E, R> = Effect.suspend(() => {
-                if (admissible(priority)) {
-                  leave();
-                  taken += 1;
-                  return restore(effect).pipe(Effect.ensuring(release));
-                }
-                if (!queued) {
-                  queued = true;
-                  waiting[priority] += 1;
-                }
-                return restore(turn(priority)).pipe(
-                  Effect.onInterrupt(() =>
-                    Effect.sync(() => {
-                      leave();
-                      wake();
-                    }),
-                  ),
-                  Effect.andThen(acquire),
-                );
-              });
-              return acquire;
-            }),
-          ),
-    } satisfies ZeropsPriorityPermits;
-  });
-
 type PlannedRegistration = {
   readonly descriptor: RegistrationDescriptor;
   readonly baseline: ReadTarget | null;
@@ -452,8 +367,20 @@ const queryKeysOfPlan = (plan: InterestPlan): ReadonlyArray<QueryKey> => [
 ];
 
 /**
- * Navigation reads one organization's projects. Detail registrations, baselines and direct anchors
- * use the opened project; service metadata uses its service IDs. Equal descriptors share work.
+ * An interest that registers and reads nothing of its own: a project's access (the grant's), and
+ * the organization's inventory, whose projects are the account store's — it holds the
+ * organization for its projects' reads. It observes from the moment it is held.
+ */
+const readsNothing = (
+  descriptor: RuntimeInterestDescriptor,
+): descriptor is Extract<
+  RuntimeInterestDescriptor,
+  { readonly kind: "organization-inventory" | "project-access" }
+> => descriptor.kind === "organization-inventory" || descriptor.kind === "project-access";
+
+/**
+ * What an interest registers and reads: detail registrations, baselines and direct anchors use the
+ * opened project; service metadata uses its service IDs. Equal descriptors share work.
  */
 export function planZeropsInterest(descriptor: RuntimeInterestDescriptor): InterestPlan {
   const organization = organizationOfInterest(descriptor);
@@ -469,12 +396,6 @@ export function planZeropsInterest(descriptor: RuntimeInterestDescriptor): Inter
     descriptor: { kind: "query-membership", query },
     baseline: { kind: "query", descriptor: query },
   });
-  const projects: MembershipQueryDescriptor = {
-    kind: "projects-of-organization",
-    organization,
-    statuses: [],
-    schemaVersion: 1,
-  };
   const services: MembershipQueryDescriptor = {
     kind: "services-of-project",
     project: scopeProject!,
@@ -504,15 +425,9 @@ export function planZeropsInterest(descriptor: RuntimeInterestDescriptor): Inter
       directReads: [],
     };
   }
-  if (descriptor.kind === "organization-inventory") {
-    return {
-      registrations: [entityUpdate("project"), membership(projects)],
-      // The lag-free list (`GET /client/{id}/project`): a project is there before its create
-      // call has returned, while the search behind the registration trails it.
-      directReads: [{ kind: "query", descriptor: projects }],
-    };
-  }
-  if (descriptor.kind === "project-access") return { registrations: [], directReads: [] };
+  // The organization's projects are the account store's (`data/families/project.ts`): this
+  // inventory reads none of its own, and only holds the organization for its projects' reads.
+  if (readsNothing(descriptor)) return { registrations: [], directReads: [] };
   const project = descriptor.project;
   if (descriptor.kind === "project-inventory" || descriptor.kind === "project-topology") {
     return {
@@ -588,18 +503,6 @@ function registrationKeyOf(descriptor: RegistrationDescriptor): string {
           : null,
     ]);
   return JSON.stringify([descriptor.kind, queryKeyOf(descriptor.query)]);
-}
-
-/**
- * The organization inventory's own registrations, its project feed and its project list, go
- * first: the sidebar and the projects page read the list before any project in it.
- */
-function registrationPriority(organization: OrganizationRef, key: string): ZeropsPermitPriority {
-  return planZeropsInterest({ kind: "organization-inventory", organization }).registrations.some(
-    (planned) => registrationKeyOf(planned.descriptor) === key,
-  )
-    ? "first"
-    : "later";
 }
 
 type RuntimeIngressInput =
@@ -1094,7 +997,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
   const registrationLock = yield* Semaphore.make(1);
   const readSemaphore = yield* Semaphore.make(policy.readConcurrency);
   const hydrationSemaphore = yield* Semaphore.make(policy.hydrationConcurrency);
-  const registrationPermits = yield* makeZeropsPriorityPermits(policy.registrationConcurrency);
+  const registrationPermits = yield* Semaphore.make(policy.registrationConcurrency);
   const commandSemaphore = yield* Semaphore.make(1);
   const rootAtom = Atom.make(yield* Ref.get(model));
   const unmountRootAtom = options.atomRegistry.mount(rootAtom);
@@ -1582,30 +1485,29 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         leases: runtimeInterest.leases.size,
         required: runtimeInterest.required,
         registrationAttemptsOnReceiver: 0,
-        interest:
-          runtimeInterest.descriptor.kind === "project-access"
-            ? {
-                status: "observing",
-                identity,
-                guarantee: "source-order-unverified",
-                sinceReceiptOrdinal: ReceiptOrdinal.make(receiptOrdinal),
-              }
-            : {
-                status: "establishing",
-                identity,
-                startedAtMs: now,
-                deadlineMs: now + policy.establishmentDeadlineMs,
-                progress: {
-                  requiredRegistrations: plan.registrations.length,
-                  completedRegistrations: 0,
-                  requiredReads:
-                    plan.directReads.length +
-                    plan.registrations.filter((registration) => registration.baseline !== null)
-                      .length,
-                  completedReads: 0,
-                  crossedReceiptOrdinal: ReceiptOrdinal.make(receiptOrdinal),
-                },
+        interest: readsNothing(runtimeInterest.descriptor)
+          ? {
+              status: "observing",
+              identity,
+              guarantee: "source-order-unverified",
+              sinceReceiptOrdinal: ReceiptOrdinal.make(receiptOrdinal),
+            }
+          : {
+              status: "establishing",
+              identity,
+              startedAtMs: now,
+              deadlineMs: now + policy.establishmentDeadlineMs,
+              progress: {
+                requiredRegistrations: plan.registrations.length,
+                completedRegistrations: 0,
+                requiredReads:
+                  plan.directReads.length +
+                  plan.registrations.filter((registration) => registration.baseline !== null)
+                    .length,
+                completedReads: 0,
+                crossedReceiptOrdinal: ReceiptOrdinal.make(receiptOrdinal),
               },
+            },
         wire: { status: "absent" },
       };
     });
@@ -2535,7 +2437,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
   ): Effect.Effect<EstablishmentOutcome> =>
     Effect.gen(function* () {
       if (yield* Ref.get(closed)) return establishmentDone;
-      if (runtimeInterest.descriptor.kind === "project-access") return establishmentDone;
+      if (readsNothing(runtimeInterest.descriptor)) return establishmentDone;
       if (runtimeInterest.identity.receiver !== receiver.identity) {
         yield* updateInterestIdentity(runtimeInterest, receiver).pipe(
           Effect.flatMap((interest) => applyControl({ kind: "interest-upserted", interest })),
@@ -2603,10 +2505,10 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           // must not strand the entry in `status: "registering"`. Retain the abandoned
           // physical attempt and fail its deferred so later dependents see the same outcome.
           yield* Effect.gen(function* () {
-            // A bounded number of registrations are in flight across the account, the
-            // organization inventory's admitted first. The deadline starts once it is sent.
+            // A bounded number of registrations are in flight across the account. The deadline
+            // starts once it is sent.
             const result = yield* registrationPermits
-              .withPermit(registrationPriority(receiver.organization, registration.key))(
+              .withPermits(1)(
                 context(policy.registrationDeadlineMs, (requestContext) =>
                   Effect.suspend(() => {
                     registration.awaitingAnswer = true;
@@ -3106,14 +3008,9 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           }),
         );
         if (due.length === 0) continue;
-        const listFirst = [...due].sort(
-          (left, right) =>
-            Number(right.descriptor.kind === "organization-inventory") -
-            Number(left.descriptor.kind === "organization-inventory"),
-        );
         let receiverFailed = false;
         yield* Effect.forEach(
-          listFirst,
+          due,
           (interest) =>
             Effect.suspend(() =>
               receiverFailed

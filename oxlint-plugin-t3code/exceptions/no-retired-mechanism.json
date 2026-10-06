@@ -5462,5 +5462,37 @@
     "owner": "data-layer rewrite: releases/environments",
     "reason": "the review hand-off is decided in the app; the operation's result says where to go",
     "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/ZeropsInventoryProvider.tsx",
+    "kind": "retired-token",
+    "fingerprint": "organizationProjectsRead",
+    "owner": "data-layer rewrite: services",
+    "reason": "the inventory reads the organization projects through the in-transit bridge to the project family until the services slice replaces the inventory",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/ZeropsInventoryProvider.tsx",
+    "kind": "retired-token",
+    "fingerprint": "organizationProjectsRead",
+    "owner": "data-layer rewrite: services",
+    "reason": "the inventory reads the organization projects through the in-transit bridge to the project family until the services slice replaces the inventory",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/account/accountRuntime.ts",
+    "kind": "retired-token",
+    "fingerprint": "organizationProjectsRead",
+    "owner": "data-layer rewrite: services",
+    "reason": "the inventory reads the organization projects through the in-transit bridge to the project family until the services slice replaces the inventory",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/account/projectBridge.ts",
+    "kind": "retired-token",
+    "fingerprint": "organizationProjectsRead",
+    "owner": "data-layer rewrite: services",
+    "reason": "the inventory reads the organization projects through the in-transit bridge to the project family until the services slice replaces the inventory",
+    "expires": "never"
   }
 ]

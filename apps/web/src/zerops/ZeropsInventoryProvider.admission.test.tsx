@@ -94,16 +94,22 @@ describe("ZeropsInventoryProvider first admission", () => {
     expect(accessAtMount).toEqual(["verified"]);
   });
 
-  // An organization's project list failing fails the whole round, today and
-  // after one project's failure stops failing it (DESIGN G1).
+  // The organization's project list failing is read again by the account's store on its own.
   it("reads a failed navigation list again by itself, while the product stays mounted and silent", async () => {
     const harness = signedInHarness();
-    const listing = harness.rest.hold("GET /client/org-1/project");
+    const listing = harness.rest.hold("POST /project/search");
     const { mounting, accessAtMount } = mountProduct(harness);
     const tab = await mounting;
     expect(listing.waiting()).toBe(1);
+    // Each attempt registers the list's updates first: the one held, then the one sent again.
     const lists = () =>
-      harness.rest.requests().filter(({ route }) => route === "GET /client/org-1/project").length;
+      harness.rest
+        .requests()
+        .filter(
+          ({ route, body }) =>
+            route === "POST /project/search" &&
+            (body as { wsOutputType?: string } | null)?.wsOutputType === "updateStream",
+        ).length;
 
     await tab.run(() => listing.fail(503));
 
@@ -116,6 +122,24 @@ describe("ZeropsInventoryProvider first admission", () => {
     expect(tab.text()).toContain(CHILD);
     expect(tab.text()).not.toContain("Zerops isn't answering.");
     expect(accessAtMount).toEqual(["verified"]);
+  });
+});
+
+describe("ZeropsInventoryProvider's projects", () => {
+  it("come from one registration pair at start: the account store's, the runtime reading none", async () => {
+    const harness = signedInHarness();
+    const { mounting } = mountProduct(harness);
+    const tab = await mounting;
+    await settle();
+    const registrations = harness.rest
+      .requests()
+      .filter(({ route }) => route === "POST /project/search")
+      .map(({ body }) => (body as { wsOutputType?: string } | null)?.wsOutputType);
+    expect(registrations).toEqual(["updateStream", "listStream"]);
+    expect(harness.rest.requests().map(({ route }) => route)).not.toContain(
+      "GET /client/org-1/project",
+    );
+    expect(tab.text()).toContain(CHILD);
   });
 });
 
@@ -227,11 +251,7 @@ describe("ZeropsInventoryProvider grants", () => {
     await settle();
 
     expect(harness.rest.requests().map(({ route }) => route)).toEqual(
-      expect.arrayContaining([
-        "GET /client/org-1/project",
-        "POST /project/search",
-        "GET /project/p1",
-      ]),
+      expect.arrayContaining(["POST /project/search", "GET /project/p1"]),
     );
     expect(tab.text()).toContain("owner cu-dev");
   });

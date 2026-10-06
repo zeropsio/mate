@@ -2047,8 +2047,6 @@ export interface CommandAttemptRef {
 
 export interface ZeropsDataReads {
   readonly access: Atom.Atom<AccessState>;
-  readonly project: (ref: ProjectRef) => Atom.Atom<EntityRead<ProjectRecord>>;
-  readonly projectsOf: (organization: OrganizationRef) => Atom.Atom<CollectionRead<ProjectRecord>>;
   readonly service: (ref: ServiceRef) => Atom.Atom<EntityRead<ServiceRecord>>;
   readonly servicesOf: (project: ProjectRef) => Atom.Atom<CollectionRead<ServiceRecord>>;
   readonly usage: (service: ServiceRef) => Atom.Atom<UsageRead>;

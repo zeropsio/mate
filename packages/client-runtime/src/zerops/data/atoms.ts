@@ -3,8 +3,6 @@ import { Atom } from "effect/unstable/reactivity";
 import {
   selectCommandAttempt,
   selectHistory,
-  selectProject,
-  selectProjectsOf,
   selectService,
   selectServicesOf,
   selectTopology,
@@ -24,7 +22,6 @@ import type {
   EntityRead,
   HistoryReadView,
   HistorySeriesKey,
-  OrganizationRef,
   ProjectRecord,
   ProjectRef,
   ProjectTopologyRead,
@@ -36,7 +33,7 @@ import type {
   ZeropsEntityRecord,
   ZeropsDataReads,
 } from "./types.ts";
-import { historySeriesKeyOf, organizationKeyOf, projectKeyOf, serviceKeyOf } from "./types.ts";
+import { historySeriesKeyOf, projectKeyOf, serviceKeyOf } from "./types.ts";
 
 function arrayReferencesEqual<Value>(
   left: ReadonlyArray<Value>,
@@ -152,27 +149,10 @@ export function createZeropsDataAtoms(stateAtom: Atom.Atom<ZeropsDataState>): {
   readonly reads: ZeropsDataReads;
 } {
   const projects = new Map<string, ProjectRef>();
-  const organizations = new Map<string, OrganizationRef>();
   const services = new Map<string, ServiceRef>();
   const history = new Map<string, HistorySeriesKey>();
   const attempts = new Map<string, CommandAttemptRef>();
 
-  const projectAtom = Atom.family((key: string) =>
-    stableAtom(
-      stateAtom,
-      (state) => selectProject(state, projects.get(key)!),
-      entityReadsEqual,
-      `zerops-project:${key}`,
-    ),
-  );
-  const projectsOfAtom = Atom.family((key: string) =>
-    stableAtom(
-      stateAtom,
-      (state) => selectProjectsOf(state, organizations.get(key)!),
-      collectionReadsEqual,
-      `zerops-projects:${key}`,
-    ),
-  );
   const serviceAtom = Atom.family((key: string) =>
     stableAtom(
       stateAtom,
@@ -280,8 +260,6 @@ export function createZeropsDataAtoms(stateAtom: Atom.Atom<ZeropsDataState>): {
     stateAtom,
     reads: {
       access: stableAtom(stateAtom, (state) => state.access, Object.is, "zerops-access"),
-      project: (ref) => projectAtom(remember(projects, projectKeyOf(ref), ref)),
-      projectsOf: (ref) => projectsOfAtom(remember(organizations, organizationKeyOf(ref), ref)),
       service: (ref) => serviceAtom(remember(services, serviceKeyOf(ref), ref)),
       servicesOf: (ref) => servicesOfAtom(remember(projects, projectKeyOf(ref), ref)),
       usage: (ref) => usageAtom(remember(services, serviceKeyOf(ref), ref)),

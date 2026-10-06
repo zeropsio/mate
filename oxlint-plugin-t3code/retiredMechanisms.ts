@@ -21,6 +21,12 @@ export interface RetiredMechanism {
 
 export const RETIRED_MECHANISMS: ReadonlyArray<RetiredMechanism> = [
   {
+    token: "organizationProjectsRead",
+    family: "services",
+    reason:
+      "the inventory's in-transit bridge to the project family; the inventory reads the store's projections and the bridge goes with ZeropsInventoryProvider",
+  },
+  {
     token: "runningProcessesRead",
     family: "app versions",
     reason:

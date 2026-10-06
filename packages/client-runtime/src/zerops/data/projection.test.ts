@@ -4,7 +4,7 @@ import { stopServices } from "../flow/deployment.ts";
 import { deployed, record, servicesRead } from "../flow/__fixtures__/services.ts";
 import { processesRead } from "../flow/__fixtures__/processes.ts";
 import { DEFAULT_ZEROPS_DATA_POLICY } from "./policy.ts";
-import { selectProjectsOf, selectServicesOf } from "./projection.ts";
+import { selectServicesOf } from "./projection.ts";
 import {
   makeInitialZeropsDataState,
   reduceZeropsDataState,
@@ -311,75 +311,5 @@ describe("Zerops data projections", () => {
       { status: "unresolved", services: ["two-api"] },
       { status: "unresolved", services: [] },
     ]);
-  });
-
-  it("selects the projects-of-organization query matching the requested statuses, not an arbitrary one", () => {
-    const id = identity();
-    const activeRef = project("active-only");
-    const allRef = project("all");
-    const activeDescriptor = {
-      kind: "projects-of-organization" as const,
-      organization,
-      statuses: ["ACTIVE"],
-      schemaVersion: 1 as const,
-    };
-    const allDescriptor = {
-      kind: "projects-of-organization" as const,
-      organization,
-      statuses: [],
-      schemaVersion: 1 as const,
-    };
-    const activeTicket = queryTicket(activeDescriptor, id, 1, 1, 1);
-    const allTicket = queryTicket(allDescriptor, id, 2, 2, 2);
-    let state = reduce(makeInitialZeropsDataState(scope()), {
-      kind: "interest-upserted",
-      interest: desiredInterest(id),
-    });
-    state = reduce(state, {
-      kind: "observation",
-      observation: {
-        stamp: stamp(1),
-        accessEvidence: null,
-        input: {
-          kind: "query-baseline-observed",
-          members: [activeRef],
-          unresolvedMembers: [],
-          observedTotal: 1,
-          coverage: {
-            kind: "exhausted-traversal",
-            traversedPages: 1,
-            observedTotal: 1,
-            guarantee: "non-atomic",
-          },
-          source: "direct-read",
-          ticket: activeTicket,
-        },
-      },
-    });
-    state = reduce(state, {
-      kind: "observation",
-      observation: {
-        stamp: stamp(2),
-        accessEvidence: null,
-        input: {
-          kind: "query-baseline-observed",
-          members: [activeRef, allRef],
-          unresolvedMembers: [],
-          observedTotal: 2,
-          coverage: {
-            kind: "exhausted-traversal",
-            traversedPages: 1,
-            observedTotal: 2,
-            guarantee: "non-atomic",
-          },
-          source: "direct-read",
-          ticket: allTicket,
-        },
-      },
-    });
-    const active = selectProjectsOf(state, organization, ["ACTIVE"]);
-    expect(active.query.key).toBe(queryKeyOf(activeDescriptor));
-    const all = selectProjectsOf(state, organization, []);
-    expect(all.query.key).toBe(queryKeyOf(allDescriptor));
   });
 });

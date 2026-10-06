@@ -10,7 +10,6 @@ import type {
   HistorySeriesKey,
   InterestState,
   EntityQueryDescriptor,
-  OrganizationRef,
   ProjectKey,
   ProjectRecord,
   ProjectRef,
@@ -181,57 +180,7 @@ export const selectService = (
   observation: observationOf(state, ref.project),
 });
 
-type ProjectQuery = Extract<EntityQueryDescriptor, { readonly kind: "projects-of-organization" }>;
 type ServiceQuery = Extract<EntityQueryDescriptor, { readonly kind: "services-of-project" }>;
-
-const unresolvedProjectQuery = (
-  organization: OrganizationRef,
-  statuses: ReadonlyArray<string> = [],
-): QueryState<ProjectQuery> => {
-  const descriptor: ProjectQuery = {
-    kind: "projects-of-organization",
-    organization,
-    statuses,
-    schemaVersion: 1,
-  };
-  return {
-    status: "unresolved",
-    descriptor,
-    key: queryKeyOf(descriptor),
-    memberKeys: [],
-    unresolvedMemberKeys: [],
-    coverage: { kind: "none" },
-    lastAppliedReadStartOrdinal: null,
-    membershipOperations: new Map(),
-  };
-};
-
-export function selectProjectsOf(
-  state: ZeropsDataState,
-  organization: OrganizationRef,
-  statuses: ReadonlyArray<string> = [],
-): CollectionRead<ProjectRecord> {
-  const descriptor: ProjectQuery = {
-    kind: "projects-of-organization",
-    organization,
-    statuses,
-    schemaVersion: 1,
-  };
-  const query = state.inventory.queries.get(queryKeyOf(descriptor)) as
-    | QueryState<ProjectQuery>
-    | undefined;
-  const resolved = query ?? unresolvedProjectQuery(organization, statuses);
-  return {
-    value: resolved.memberKeys.flatMap((key) => {
-      const record = state.inventory.projects.get(key);
-      const ref = state.inventory.memberRefs.get(key);
-      if (record !== undefined) return [projectKnowledge(record, record.ref)];
-      return ref?.kind === "project" ? [{ knowledge: "unresolved" as const, ref }] : [];
-    }),
-    query: resolved,
-    observation: observationOf(state),
-  };
-}
 
 const unresolvedServiceQuery = (project: ProjectRef): QueryState<ServiceQuery> => {
   const descriptor: ServiceQuery = {

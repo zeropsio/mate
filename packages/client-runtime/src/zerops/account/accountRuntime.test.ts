@@ -819,9 +819,10 @@ describe("the account runtime", () => {
         yield* clock.advance(SECOND);
         yield* settle;
         yield* settle;
-        // Only the selected organization holds inventory leases.
+        // Only the selected organization holds inventory leases; its projects are the account
+        // store's, so its inventory opens no receiver of its own.
         expect(yield* statuses()).toEqual(["observing"]);
-        expect(opened).toEqual(["org-1"]);
+        expect(opened).toEqual([]);
         const roundsBefore = rounds().length;
 
         yield* built.invalidations
@@ -833,7 +834,7 @@ describe("the account runtime", () => {
         yield* clock.advance(250);
         yield* settle;
 
-        expect(opened.slice(1)).toEqual(["org-1"]);
+        expect(opened).toEqual([]);
         expect(yield* statuses()).toEqual(["observing"]);
         expect(rounds()).toHaveLength(roundsBefore);
       }),

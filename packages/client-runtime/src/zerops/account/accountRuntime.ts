@@ -49,6 +49,7 @@ import { makeDeploymentStore, type DeploymentStore } from "../flow/deploymentSto
 import type { EnvelopeServices } from "../flow/envelopeInvalidations.ts";
 import { deploymentStorePorts, envelopeServices } from "./flow.ts";
 import { holdInventoryDemand, holdAccessDemand } from "./inventoryDemand.ts";
+export { organizationProjectsRead, projectRead } from "./projectBridge.ts";
 import {
   makeEnvironmentWiring,
   type AccountEnvironmentPorts,

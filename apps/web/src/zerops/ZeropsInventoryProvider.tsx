@@ -1,5 +1,10 @@
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import {
+  listedProjectAtom,
+  NOT_READ_PROJECTS,
+  shownProjectsAtom,
+} from "@t3tools/client-runtime/data";
+import {
   projectGrantsOf,
   withProjectGrants,
   type ZeropsProject,
@@ -9,7 +14,9 @@ import {
   evidenceProjectRefs,
   heldEvidence,
   inventoryProjectRefs,
+  organizationProjectsRead,
   pendingDenials,
+  projectRead,
 } from "@t3tools/client-runtime/zerops/account/runtime";
 import {
   DEFAULT_ZEROPS_DATA_POLICY,
@@ -30,6 +37,7 @@ import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import { placeProjects } from "@t3tools/client-runtime/zerops/hq";
 import type { Invalidation } from "@t3tools/client-runtime/zerops/knowledge";
 import * as Effect from "effect/Effect";
+import { Atom } from "effect/unstable/reactivity";
 import {
   useCallback,
   useContext,
@@ -361,7 +369,14 @@ export function ZeropsInventoryProvider({
           [
             interestKeyOf(descriptor),
             stabilizeZeropsAtom(
-              runtime.reads.projectsOf(descriptor.organization),
+              // In transit (`projectBridge`): the organization's projects are the account store's.
+              Atom.make((get) => {
+                const { orgId, ...roster } = get(shownProjectsAtom);
+                return organizationProjectsRead(
+                  descriptor.organization,
+                  orgId === descriptor.organization.organizationId ? roster : NOT_READ_PROJECTS,
+                );
+              }),
               (left, right) =>
                 left.query === right.query &&
                 zeropsKnowledgeArraysEqual(left.value, right.value) &&
@@ -371,7 +386,7 @@ export function ZeropsInventoryProvider({
             ),
           ] as const,
       ),
-    [organizationDescriptors, runtime],
+    [organizationDescriptors],
   );
   const organizationReads = useZeropsAtomSelections(organizationReadEntries);
   const hqEnvironments = useAtomValue(hqEnvironmentsAtom);
@@ -381,11 +396,23 @@ export function ZeropsInventoryProvider({
         .filter((ref) => ref.organization.organizationId === activeOrganization?.id)
         .map((ref) => [inventoryProjectRefKey(ref), ref]),
     );
-    for (const read of organizationReads.values())
+    // An organization's projects are this account's only while its grant names the organization.
+    const granted = new Set(
+      (evidence?.account.organizations ?? []).map(
+        ({ organization }) => organization.organizationId as string,
+      ),
+    );
+    for (const [key, read] of organizationReads) {
+      const descriptor = organizationDescriptors.find(
+        (candidate) => interestKeyOf(candidate) === key,
+      );
+      if (descriptor === undefined || !granted.has(descriptor.organization.organizationId))
+        continue;
       for (const entry of read.value) {
         const ref = entry.knowledge === "observed" ? entry.record.ref : entry.ref;
         if (!lost.has(ref.projectId)) refs.set(inventoryProjectRefKey(ref), ref);
       }
+    }
     // HQ supplies relations by project id, including projects absent from the search listing.
     // Naming their refs does not read them: a visible stop's deployment demand owns the read.
     if (activeOrganization !== null && hqEnvironments !== null) {
@@ -398,19 +425,30 @@ export function ZeropsInventoryProvider({
       }
     }
     return [...refs.values()];
-  }, [access, evidence, organizationReads, activeOrganization, lost, hqEnvironments, projectRef]);
+  }, [
+    access,
+    evidence,
+    organizationDescriptors,
+    organizationReads,
+    activeOrganization,
+    lost,
+    hqEnvironments,
+    projectRef,
+  ]);
   const projectReadEntries = useMemo(
     () =>
       knownProjectRefs.map(
         (ref) =>
           [
             inventoryProjectRefKey(ref),
-            stabilizeZeropsAtom(runtime.reads.project(ref), (left, right) =>
-              zeropsKnowledgeArraysEqual([left.value], [right.value]),
+            stabilizeZeropsAtom(
+              // In transit (`projectBridge`): each project is the account store's.
+              Atom.make((get) => projectRead(ref, get(listedProjectAtom(ref.projectId)))),
+              (left, right) => zeropsKnowledgeArraysEqual([left.value], [right.value]),
             ),
           ] as const,
       ),
-    [knownProjectRefs, runtime],
+    [knownProjectRefs],
   );
   const projectReads = useZeropsAtomSelections(projectReadEntries);
   const projectDescriptors = useMemo(
