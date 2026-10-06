@@ -37,6 +37,7 @@ import { useNowMs } from "../useNowMs";
 import { useZeropsCandidates } from "../useZeropsCandidates";
 import { ZeropsInventoryProvider } from "../ZeropsInventoryProvider";
 import { useZeropsData, useZeropsDataInterest } from "../zeropsDataContext";
+import { accountOperations, AccountOperationsContext } from "../accountOperations";
 import { harnessRuntime } from "./harnessRuntime";
 
 export function AccountProduct({
@@ -136,7 +137,12 @@ function HarnessAccountData({
       demandDetail: observation.demandDetail,
     });
   }, [observation, orgId, registry, store]);
-  return children;
+  // The account's operations over this store, as `ZeropsAccountData` builds them.
+  const operations = useMemo(
+    () => accountOperations(store, registry, client, observation.demandDetail),
+    [client, observation, registry, store],
+  );
+  return createElement(AccountOperationsContext, { value: operations }, children);
 }
 
 /**

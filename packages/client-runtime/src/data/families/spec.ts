@@ -109,6 +109,11 @@ export interface DetailListing {
   readonly suffix: string;
   /** What leaving the listing says of a member. */
   readonly leaving: MemberState;
+  /**
+   * The listing reads one member by its own id (a project's own row): our own write to that
+   * member reads it again while a screen holds it (`holdStandingDemands`).
+   */
+  readonly member?: true;
   /** Zerops: the `GET` whose answer is the listing's baseline, and the rows in that answer. */
   readonly zerops: {
     readonly path: (owner: ScopeOwner) => string;

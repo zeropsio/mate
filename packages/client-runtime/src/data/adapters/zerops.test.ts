@@ -549,6 +549,36 @@ describe("a demanded detail", () => {
   );
 
   it.effect(
+    "reads a held detail again, once, after our own write; one nobody holds not at all",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const fixture = fixtureWire((request) =>
+          request.method === "GET"
+            ? Effect.succeed({ status: 200, body: { list: [finished] } })
+            : answers(() => [])(request),
+        );
+        const { fiber, link } = yield* runLink(store, fixture);
+        link.readAgain(DEMAND);
+        yield* settle;
+        expect(historyReads(fixture)).toBe(0);
+
+        link.demandDetail(DEMAND);
+        link.demandDetail(DEMAND);
+        yield* settle;
+        expect(historyReads(fixture)).toBe(1);
+
+        link.readAgain(DEMAND);
+        yield* settle;
+        expect(historyReads(fixture)).toBe(2);
+        expect(store.state().streams.get(history)?.phase).toBe("live");
+        yield* settle;
+        expect(historyReads(fixture)).toBe(2);
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
+
+  it.effect(
     "takes a service read by its id over the listing's row when Zerops updated it since",
     () =>
       Effect.gen(function* () {

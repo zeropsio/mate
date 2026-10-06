@@ -102,6 +102,7 @@ export const projectFamily: FamilySpec<"project"> = {
       // One project's own row, read while a screen shows whose it is: everybody's grants.
       suffix: "project",
       leaving: "absent-unverified",
+      member: true,
       zerops: {
         path: ({ ownerId }) => `/project/${encodeURIComponent(ownerId ?? "")}`,
         items: (answer) =>

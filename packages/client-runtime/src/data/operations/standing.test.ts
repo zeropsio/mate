@@ -86,7 +86,12 @@ describe("holdStandingDemands", () => {
             outcome: { kind: "pending" },
           }),
       };
-      const stop = holdStandingDemands({ store, kinds, demandDetail: link.demandDetail });
+      const stop = holdStandingDemands({
+        store,
+        kinds,
+        demandDetail: link.demandDetail,
+        readAgain: link.readAgain,
+      });
       const requestId = yield* makeOperations({
         store,
         kinds,
@@ -110,6 +115,90 @@ describe("holdStandingDemands", () => {
       expect(historyReads()).toBe(2);
       expect(progress()).toEqual({ stage: "done", operationId: "proc-1", outcome: "succeeded" });
       expect(link.details?.()).toEqual([]);
+      stop();
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+
+  it.effect("reads a held project's own row again once our own write to it is answered", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      let roles = [{ clientUserId: "cu-1", roleCode: "OWNER" }];
+      const own = () => ({
+        id: "p1",
+        clientId: ORG,
+        name: "Cyd",
+        status: "ACTIVE",
+        lastUpdate: "2026-10-06T10:00:00Z",
+        userRoles: roles,
+      });
+      const fixture = fixtureWire((request: WireRequest) =>
+        Effect.succeed(
+          request.method === "GET"
+            ? { status: 200, body: own() }
+            : request.body?.wsOutputType === "updateStream"
+              ? { success: true }
+              : { items: [] },
+        ),
+      );
+      const ownReads = () => fixture.requests.filter((request) => request.path === "/project/p1");
+      const link = zeropsNavigationLink({
+        orgId: ORG,
+        wire: fixture.wire,
+        store,
+        makeId: () => "subscription",
+      });
+      const supervisor = yield* superviseLink({ ...link, store, repairSession: Effect.void });
+      const fiber = yield* Effect.forkChild(supervisor.run);
+      // A screen draws the Mate: its project's own row is held.
+      link.demandDetail({ family: "project", listing: "project", ownerId: "p1" });
+      yield* settle;
+      expect(ownReads()).toHaveLength(1);
+
+      const handOver = {
+        kind: "assign-mate-owner",
+        orgId: ORG,
+        projectId: "p1",
+        clientUserId: "cu-dev",
+      } as OperationIntent;
+      const executor: OperationExecutor = {
+        submit: (requestId) =>
+          Effect.sync(() => {
+            roles = [{ clientUserId: "cu-dev", roleCode: "OWNER" }];
+            return {
+              requestId,
+              operationId: "p1",
+              executor: "zerops",
+              affected: [{ family: "project", id: "p1" }],
+              handles: ["p1"],
+              acceptance: { kind: "accepted" },
+              outcome: { kind: "succeeded", evidence: "Zerops answered the write." },
+            } satisfies OperationReceipt;
+          }),
+      };
+      const stop = holdStandingDemands({
+        store,
+        demandDetail: link.demandDetail,
+        readAgain: link.readAgain,
+      });
+      const requestId = yield* makeOperations({
+        store,
+        executors: { zerops: executor },
+        makeId: () => "request-1",
+      }).submit(handOver);
+      yield* settle;
+
+      expect(ownReads()).toHaveLength(2);
+      expect(readsOfState(store.state()).fact("project", "p1")).toMatchObject({
+        kind: "known",
+        value: { userRoles: [{ clientUserId: "cu-dev", roleCode: "OWNER" }] },
+      });
+      expect(
+        operationProgressOf(OPERATION_KINDS).derive(readsOfState(store.state()), requestId),
+      ).toMatchObject({ stage: "done" });
+      // Read once for the write, never again by itself.
+      yield* settle;
+      expect(ownReads()).toHaveLength(2);
       stop();
       yield* Fiber.interrupt(fiber);
     }),

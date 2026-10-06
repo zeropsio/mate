@@ -47,6 +47,13 @@ export interface DetailDemands {
   readonly hold: (scope: ScopeKey) => () => void;
   readonly scopes: () => ReadonlyArray<ScopeKey>;
   readonly onChange: (listener: () => void) => () => void;
+  /**
+   * A held scope's owner changed it by our own write: it is read again, once. One no screen holds
+   * is asked nothing — its next hold reads it anyway.
+   */
+  readonly again: (scope: ScopeKey) => void;
+  /** Whether a scope was marked to be read again, consuming the mark. */
+  readonly takeAgain: (scope: ScopeKey) => boolean;
 }
 
 export function makeDetailDemands(options: {
@@ -54,6 +61,7 @@ export function makeDetailDemands(options: {
   readonly demanded: (scope: ScopeKey, demanded: boolean) => void;
 }): DetailDemands {
   const holds = new Map<ScopeKey, number>();
+  const rereads = new Set<ScopeKey>();
   const listeners = new Set<() => void>();
   const changed = () => {
     for (const listener of listeners) listener();
@@ -73,11 +81,18 @@ export function makeDetailDemands(options: {
         const left = (holds.get(scope) ?? 1) - 1;
         if (left > 0) return void holds.set(scope, left);
         holds.delete(scope);
+        rereads.delete(scope);
         options.demanded(scope, false);
         changed();
       };
     },
     scopes: () => [...holds.keys()],
+    again: (scope) => {
+      if (!holds.has(scope)) return;
+      rereads.add(scope);
+      changed();
+    },
+    takeAgain: (scope) => rereads.delete(scope),
     onChange: (listener) => {
       listeners.add(listener);
       return () => void listeners.delete(listener);

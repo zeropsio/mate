@@ -260,6 +260,7 @@ export function observeAccount(options: {
       stopStanding ??= holdStandingDemands({
         store: options.store,
         demandDetail: observation.demandDetail,
+        readAgain: (demand) => shown?.link.revalidate(demand),
         ...(options.kinds === undefined ? {} : { kinds: options.kinds }),
       });
       const link = startZeropsNavigation({ ...options, orgId });
