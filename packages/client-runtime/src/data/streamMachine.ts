@@ -152,7 +152,7 @@ export const STREAM_POLICY = {
   baselineTimeoutMs: 20_000,
   backoffBaseMs: 1_000,
   backoffCapMs: 60_000,
-  /** Where realtime is unverified, a demanded sampled source revalidates this often (§10.5). */
+  /** Where realtime is unverified, a demanded sampled source revalidates this often. */
   sampledIntervalMs: 30_000,
 } as const;
 
