@@ -1,4 +1,5 @@
 // @effect-diagnostics preferSchemaOverJson:off -- human-readable failure diagnostics.
+import { effectReceipt } from "../../harness/waits.ts";
 import * as Effect from "effect/Effect";
 import * as Schedule from "effect/Schedule";
 import { expect } from "@effect/vitest";
@@ -15,7 +16,7 @@ export function environmentActions(f: Fixture, page: Page = f.s.page) {
       try {
         await page.waitForFunction(
           (wanted) => document.body.innerText.includes(wanted),
-          { timeout: 30_000, polling: "raf" },
+          { timeout: page.getDefaultTimeout(), polling: "raf" },
           wanted,
         );
       } catch (cause) {
@@ -40,7 +41,7 @@ export function environmentActions(f: Fixture, page: Page = f.s.page) {
     ).pipe(
       Effect.filterOrFail((row) => row !== undefined),
       Effect.retry(Schedule.spaced("25 millis")),
-      Effect.timeout("10 seconds"),
+      effectReceipt(`${tier} RUNNING stack.build process`),
     );
   });
   const finish = Effect.fn("e-env.finish")(function* (
@@ -67,9 +68,7 @@ export function environmentActions(f: Fixture, page: Page = f.s.page) {
     zerops.writes.transition(processId, "FINISHED");
   });
   const click = (label: string) =>
-    Effect.promise(() =>
-      page.locator(`::-p-aria(${label}[role="button"])`).setTimeout(15_000).click(),
-    );
+    Effect.promise(() => page.locator(`::-p-aria(${label}[role="button"])`).click());
   const rowShows = (tag: string, words: string, options: { within?: number } = {}) =>
     Effect.promise(async () => {
       try {
@@ -82,7 +81,7 @@ export function environmentActions(f: Fixture, page: Page = f.s.page) {
                 el.innerText === tag &&
                 el.closest<HTMLElement>("[data-zerops-environment-row]")?.innerText.includes(words),
             ),
-          { timeout: options.within ?? 30_000, polling: "raf" },
+          { timeout: options.within ?? page.getDefaultTimeout(), polling: "raf" },
           tag,
           words,
         );
@@ -139,7 +138,7 @@ export function environmentActions(f: Fixture, page: Page = f.s.page) {
         [...document.querySelectorAll<HTMLButtonElement>("button")].some(
           (button) => button.innerText.startsWith("Release v") && button.disabled,
         ),
-      { timeout: 10_000, polling: "raf" },
+      { timeout: page.getDefaultTimeout(), polling: "raf" },
     );
   });
   const keepsDocument = Effect.promise(async () => {

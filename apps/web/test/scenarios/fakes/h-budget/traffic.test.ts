@@ -70,10 +70,20 @@ it("ignores control traffic and measures first Shop data without rewriting frame
 });
 
 // Catches an unchanged segment budget requiring a heartbeat or snapshot before it can pass.
-it("a replacement socket can open and settle with zero frames and zero state bytes", async () => {
+it("a replacement socket settles at scope-ready without state payload", async () => {
   const upstream = await serve(
     () => ({ body: {} }),
-    () => {},
+    (socket) =>
+      socket.on("message", () =>
+        socket.send(
+          JSON.stringify({
+            type: "scope-ready",
+            scope: { kind: "navigation" },
+            incarnation: "same",
+            revision: 1,
+          }),
+        ),
+      ),
   );
   const observer = await observeTraffic(upstream.origin);
   const first = new WebSocket(observer.origin.replace("http:", "ws:"));
@@ -88,10 +98,11 @@ it("a replacement socket can open and settle with zero frames and zero state byt
     await closed;
     next = new WebSocket(observer.origin.replace("http:", "ws:"));
     await observer.opened(2);
+    next.send(JSON.stringify({ type: "subscribe", scopes: [{ scope: { kind: "navigation" } }] }));
     await observer.stateSettled();
     expect(observer.segments[1]).toMatchObject({
       open: true,
-      frames: 0,
+      frames: 1,
       stateBytes: 0,
       firstDataMs: null,
     });

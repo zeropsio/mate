@@ -4,7 +4,7 @@ import { afterAll } from "vite-plus/test";
 import * as Effect from "effect/Effect";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
-import { installSignIn, slowMemberList } from "./fake.ts";
+import { installSignIn, holdMemberList } from "./fake.ts";
 import {
   account,
   organizations,
@@ -100,17 +100,17 @@ describe("A: sign-in, session and organizations", () => {
     // Catches a reload minting a throwaway Zerops token for HQ's door though the account kept a
     // live HQ session: only HQ asking for a new session may mint one.
     it.effect.each([
-      { members: "read at once", lateMs: 0 },
-      { members: "read late, as KRLS's", lateMs: 3_000 },
+      { members: "read at once", held: false },
+      { members: "read late, as KRLS's", held: true },
     ])(
       "a reload with a kept HQ session mints no door token, its member list $members",
-      ({ lateMs }) =>
+      ({ held }) =>
         Effect.gen(function* () {
           const s = yield* accountScenario();
-          if (lateMs > 0) slowMemberList(s.drivers, lateMs);
           yield* s.given.project("Ada", { mate: true, app: "Shop" });
           yield* s.given.signedIn;
           yield* s.then.menu.row("Shop").appears();
+          const members = held ? holdMemberList(s.drivers) : undefined;
           const mints = () =>
             s.drivers.zerops.requests.get("POST /client/ORG/integration-token") ?? 0;
           const first = mints();
@@ -123,9 +123,10 @@ describe("A: sign-in, session and organizations", () => {
             yield* Effect.promise(() =>
               s.drivers.zerops.waitForRequest("GET /client/ORG/user/list", reads),
             );
+            members?.release();
             // The application keeps its id: the colleague renames it by its first name each time.
             yield* s.when.hq.colleague.renamesProject("Shop", `Shop ${load}`);
-            yield* s.then.menu.row(`Shop ${load}`).appears({ within: lateMs + 10_000 });
+            yield* s.then.menu.row(`Shop ${load}`).appears();
           }
           expect(mints(), "Two reloads mint no further door token").toBe(first);
           yield* s.then.noExternalNetwork;
@@ -191,12 +192,11 @@ describe("A: sign-in, session and organizations", () => {
     // seconds) before it reaches the HQ whose session the account kept.
     it.effect("reload and a new tab reach the kept HQ without waiting for the member list", () =>
       Effect.gen(function* () {
-        const MEMBERS_MS = 5_000;
         const s = yield* accountScenario();
-        slowMemberList(s.drivers, MEMBERS_MS);
         yield* s.given.project("Ada", { mate: true, app: "Shop" });
         yield* s.given.signedIn;
-        yield* s.then.menu.row("Shop").appears({ within: 15_000 });
+        yield* s.then.menu.row("Shop").appears();
+        const members = holdMemberList(s.drivers);
         const reloaded = firstHqAnswer(s.page);
         reloaded.from();
         yield* account(s.page).reload;
@@ -209,12 +209,13 @@ describe("A: sign-in, session and organizations", () => {
         const tab = yield* opened.ms;
         yield* b.then.menu.row("Shop").appears();
         process.stdout.write(
-          `A first HQ answer with the member list ${MEMBERS_MS} ms late: reload=${reload.toFixed(0)}ms new tab=${tab.toFixed(0)}ms\n`,
+          `A first HQ answer while the member list is held: reload=${reload.toFixed(0)}ms new tab=${tab.toFixed(0)}ms\n`,
         );
         expect(
-          [reload, tab].every((ms) => ms < MEMBERS_MS / 2),
-          `reload ${reload} ms, tab ${tab} ms`,
-        ).toBe(true);
+          members.pending(),
+          "Both tabs reached HQ while membership replies are still held",
+        ).toBeGreaterThanOrEqual(2);
+        members.release();
         yield* s.then.noExternalNetwork;
       }),
     );

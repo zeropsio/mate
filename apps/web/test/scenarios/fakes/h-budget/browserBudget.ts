@@ -1,14 +1,17 @@
 // @effect-diagnostics nodeBuiltinImport:off -- observe the browser's fake-platform wire traffic.
+import { WebSocket } from "ws";
 import * as NodeEvents from "node:events";
 import type { ZeropsFake } from "../zerops.ts";
 import { settled } from "./activity.ts";
-import { serve } from "../../harness/http.ts";
+import { deadline, serve } from "../../harness/http.ts";
 
 export async function observeBrowserBudget(zerops: ZeropsFake) {
   const events = new NodeEvents.EventEmitter();
   let pending = 0;
   let registrations = 0;
   const handle = zerops.handle;
+  const activity = () => events.emit("activity");
+  zerops.events.on("change", activity);
   const isBrowser = (credential: string) => credential === "personal" || credential === "anonymous";
   // Core retains the original fake origin; only browser routes use this observed listener.
   const server = await serve(async (request) => {
@@ -26,7 +29,41 @@ export async function observeBrowserBudget(zerops: ZeropsFake) {
   }, zerops.socket);
   return {
     ...server,
-    settled: () => settled(events, () => pending === 0, "browser Zerops traffic quiet for 1 s"),
+    close: async () => {
+      zerops.events.off("change", activity);
+      await server.close();
+    },
+    settled: async () => {
+      const registrations = () =>
+        [...zerops.subscriptions.values()].filter((entry) => isBrowser(entry.apiToken));
+      await settled(
+        events,
+        () =>
+          pending === 0 &&
+          registrations().every((entry) => entry.socket?.readyState === WebSocket.OPEN),
+        "browser Zerops responses and subscription receivers ready",
+      );
+      const sockets = new Set(registrations().map((entry) => entry.socket!));
+      await Promise.all(
+        [...sockets].map(async (socket) => {
+          let pong = () => {};
+          try {
+            await deadline(
+              new Promise<void>((resolve, reject) => {
+                pong = resolve;
+                socket.once("pong", pong);
+                socket.ping(undefined, undefined, (error) => {
+                  if (error) reject(error);
+                });
+              }),
+              "browser Zerops websocket delivery barrier (pong)",
+            );
+          } finally {
+            socket.off("pong", pong);
+          }
+        }),
+      );
+    },
     sample() {
       let requests = 0;
       for (const [credential, counts] of zerops.requestsByCredential) {

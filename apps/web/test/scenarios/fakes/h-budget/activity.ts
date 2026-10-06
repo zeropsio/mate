@@ -1,34 +1,21 @@
-// @effect-diagnostics nodeBuiltinImport:off -- wire-observation receipts and a bounded inactivity condition.
+// @effect-diagnostics nodeBuiltinImport:off -- event-driven pending-work drain.
 import type * as NodeEvents from "node:events";
 import { deadline } from "../../harness/http.ts";
 
-/** Resolve after a full quiet window with no pending work; activity restarts the condition. */
-export async function settled(
-  events: NodeEvents.EventEmitter,
-  idle: () => boolean,
-  label: string,
-  quietMs = 1_000,
-) {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  let activity = () => {};
+export async function settled(events: NodeEvents.EventEmitter, idle: () => boolean, label: string) {
+  let check = () => {};
   try {
     await deadline(
       new Promise<void>((resolve) => {
-        activity = () => {
-          clearTimeout(timer);
-          if (idle())
-            timer = setTimeout(() => {
-              if (idle()) resolve();
-            }, quietMs);
+        check = () => {
+          if (idle()) resolve();
         };
-        events.on("activity", activity);
-        activity();
+        events.on("activity", check);
+        check();
       }),
       label,
-      15_000,
     );
   } finally {
-    clearTimeout(timer);
-    events.off("activity", activity);
+    events.off("activity", check);
   }
 }

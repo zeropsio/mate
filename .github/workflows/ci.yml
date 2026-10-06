@@ -1,10 +1,12 @@
 name: CI
 
 on:
+  workflow_dispatch:
   pull_request:
   push:
     branches:
       - main
+      - ci/fast-gates
 
 permissions:
   contents: read
@@ -59,50 +61,14 @@ jobs:
       - name: mate zone architecture
         run: vp test run scripts/mate-zone-architecture.test.ts
 
-      - name: Reconcile no-platform-globals exceptions
-        run: node scripts/check-guard-exceptions.ts --rule no-platform-globals
+      - name: Reconcile guard exceptions
+        run: node scripts/check-guard-exceptions.ts
 
       - name: Check CSS motion
         run: node scripts/check-css-motion.ts
 
-      - name: Reconcile no-infinite-motion exceptions
-        run: node scripts/check-guard-exceptions.ts --rule no-infinite-motion
-
-      - name: Check legacy vocabulary exceptions
-        run: node scripts/check-guard-exceptions.ts --rule no-legacy-vocabulary
-
-      - name: Reconcile no-failure-to-empty exceptions
-        run: node scripts/check-guard-exceptions.ts --rule no-failure-to-empty
-
-      - name: Reconcile no-restyle exceptions
-        run: node scripts/check-guard-exceptions.ts --rule no-restyle
-
-      - name: Reconcile no-unknown-classes exceptions
-        run: node scripts/check-guard-exceptions.ts --rule no-unknown-classes
-
-      - name: Reconcile require-static-classes exceptions
-        run: node scripts/check-guard-exceptions.ts --rule require-static-classes
-
-      - name: Reconcile no-arbitrary-values exceptions
-        run: node scripts/check-guard-exceptions.ts --rule no-arbitrary-values
-
-      - name: Reconcile no-direct-permission-rule exceptions
-        run: node scripts/check-guard-exceptions.ts --rule no-direct-permission-rule
-
-      - name: Reconcile no-remote-data-in-browser-storage exceptions
-        run: node scripts/check-guard-exceptions.ts --rule no-remote-data-in-browser-storage
-
-      - name: Reconcile no-remote-io-outside-data-layer exceptions
-        run: node scripts/check-guard-exceptions.ts --rule no-remote-io-outside-data-layer
-
-      - name: Reconcile no-retired-mechanism exceptions
-        run: node scripts/check-guard-exceptions.ts --rule no-retired-mechanism
-
       - name: Check CSS theme tokens
         run: node scripts/check-css-tokens.ts
-
-      - name: Check theme escape-hatch exceptions
-        run: node scripts/check-guard-exceptions.ts --rule no-theme-escape-hatches
 
       - name: Check generated theme tokens
         run: node scripts/generate-theme-tokens.ts --check
@@ -330,6 +296,31 @@ jobs:
             echo "Transfer budget report was not produced." >> "$GITHUB_STEP_SUMMARY"
           fi
 
+  test_scenarios:
+    name: Scenarios ${{ matrix.shard }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /*
+            !/.repos/
+          sparse-checkout-cone-mode: false
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: package.json
+          cache: true
+          run-install: true
+      - name: Test scenarios
+        run: vp test run --config apps/web/test/scenarios/vitest.config.ts --shard ${{ matrix.shard }}/${{ strategy.job-total }}
+
   # Split out of Check and Test: both paid ~7-9s to install a Rust toolchain
   # for checks that take under 3s, on the critical path of every PR.
   rust:
@@ -387,6 +378,11 @@ jobs:
           set -uo pipefail
 
           areas=(desktop mobile resource_monitor mobile_native)
+
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            for area in "${areas[@]}"; do echo "${area}=true" >> "$GITHUB_OUTPUT"; done
+            exit 0
+          fi
 
           fail_open() {
             echo "$* Running every gated job."

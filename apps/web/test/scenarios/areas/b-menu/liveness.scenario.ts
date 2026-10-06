@@ -92,7 +92,7 @@ describe("B: menu liveness", () => {
                 ].some((menu) =>
                   menu.innerText.split("\n").some((line) => line.trim() === "Bea"),
                 ) === shown,
-              { timeout: 10_000, polling: 100 },
+              { timeout: s.page.getDefaultTimeout(), polling: 100 },
               shown,
             ),
           );

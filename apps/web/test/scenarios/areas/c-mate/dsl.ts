@@ -35,7 +35,7 @@ export function mateChat(s: Scenario) {
             }
             return found === present;
           },
-          { timeout: 8000, polling: "raf" },
+          { timeout: page.getDefaultTimeout(), polling: "raf" },
           value,
           present,
         );
@@ -51,7 +51,7 @@ export function mateChat(s: Scenario) {
       yield* Effect.promise(() =>
         page.waitForFunction(
           (name) => location.pathname === `/env-${name}/thread-${name}`,
-          { timeout: 8000, polling: "raf" },
+          { timeout: page.getDefaultTimeout(), polling: "raf" },
           name,
         ),
       );
@@ -75,12 +75,12 @@ export function mateChat(s: Scenario) {
       );
     });
   const click = (label: string) =>
-    Effect.promise(() => page.locator(`button ::-p-text(${label})`).setTimeout(8000).click());
+    Effect.promise(() => page.locator(`button ::-p-text(${label})`).click());
   const openMate = (name: string) =>
     Effect.promise(async () => {
       await page
         .locator(`[data-zerops-surface="sidebar-mate"] ::-p-text(${name})`)
-        .setTimeout(8000)
+
         .click();
     });
   return {
@@ -122,7 +122,7 @@ export function mateChat(s: Scenario) {
             .locator(`::-p-aria([name="${name}"][role="button"])`)
             .filter((button) => !button.closest('[data-zerops-surface="sidebar-environments"]'))
             .setVisibility("visible")
-            .setTimeout(10_000)
+
             .waitHandle();
           await header.dispose();
         }),
@@ -163,7 +163,7 @@ export function mateChat(s: Scenario) {
                   button.disabled &&
                   (button.getAttribute("aria-label") ?? "").includes("not recorded"),
               ),
-            { timeout: 8000, polling: "raf" },
+            { timeout: page.getDefaultTimeout(), polling: "raf" },
             message,
           );
         }),
@@ -189,7 +189,7 @@ export function mateChat(s: Scenario) {
                 button.disabled &&
                 (button.getAttribute("aria-label") ?? "").includes("not recorded"),
             ),
-          { timeout: 8000, polling: "raf" },
+          { timeout: page.getDefaultTimeout(), polling: "raf" },
         );
       }),
     },

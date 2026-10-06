@@ -31,6 +31,7 @@ const RESTRICTED_UI_VARIANT_PATTERNS = [
 ];
 
 export default defineConfig({
+  assetsInclude: ["**/*.wasm"],
   resolve: {
     alias: {
       "~": NodeURL.fileURLToPath(new URL("./apps/web/src", import.meta.url)),

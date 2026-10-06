@@ -53,13 +53,15 @@ Full map, `imported.lock` enforcement, and the adapter SPI contract: `docs/inter
 
 ## Commands
 
-- `vp test run <file>` — targeted tests for what you touched, never the repo-wide suite.
-- Package `typecheck` (scoped to the package you changed), never repo-wide.
-- Before a push: `vp check` on the touched files; a deletion must also pass
-  `node scripts/check-guard-exceptions.ts` and `vp test run scripts/surface-manifest.test.ts` — CI's
-  Check job reconciles the guard ledgers and `docs/internals/zerops/surfaces.json` against the tree.
-  Before a big branch's push, `node scripts/ci-local.ts` runs CI's whole Check job, read from
-  `.github/workflows/ci.yml`, and prints only what failed.
+- Lanes run `node scripts/gate-changed.ts` (default diff: merge-base with `origin/main`, plus
+  staged/working/untracked files). It checks guard ledgers, `vp check` on touched files, incremental
+  typechecks of touched packages, related tests and only affected scenario areas. `--list` previews
+  selection; `--base <ref>` changes the comparison. Use targeted tests while iterating.
+- The integrator runs full gates once before pushing the assembled work: `node scripts/ci-local.ts`
+  for CI's Check job, then the full sharded CI suite on a branch before pushing main. Push
+  `ci/fast-gates` to start it, or `gh workflow run ci.yml --ref <branch>` after this workflow is on
+  main. `node scripts/ci-local.ts --full` runs Check and all unit/scenario suites locally when needed;
+  keep that load off a laptop shared by lanes. `--list --full` previews the commands.
 - The CI Check job runs `vp check` repo-wide, ledger markdown included: a table row committed past
   the pre-commit hook (`--no-verify`, an editor) leaves unaligned columns and a red job — `vp fmt`
   the file first.

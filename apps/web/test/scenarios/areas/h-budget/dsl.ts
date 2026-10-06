@@ -3,12 +3,14 @@ import * as Effect from "effect/Effect";
 import type { createScenario } from "../../harness/scenario.ts";
 import { percentile, observeTabConnections } from "../../fakes/h-budget/traffic.ts";
 import type { Page } from "puppeteer-core";
+import { completedHttp } from "../../harness/completedHttp.ts";
 import { budgetObservations } from "./fake.ts";
 
 type Scenario = Effect.Success<ReturnType<typeof createScenario>>;
 
 export function budgets(s: Scenario) {
   const observation = budgetObservations(s.drivers);
+  const renderedHttp = completedHttp(s.page);
   return {
     given: {
       mates: Effect.fn("budgets.given.mates")(function* (names: string[]) {
@@ -43,17 +45,27 @@ export function budgets(s: Scenario) {
         Effect.promise(async () => {
           await s.page
             .locator(`[data-zerops-surface="sidebar-mate"] ::-p-text(${name})`)
-            .setTimeout(15_000)
+
             .click();
           await s.page.waitForFunction(
             (threadId) => location.href.includes(threadId),
-            { timeout: 15_000, polling: "raf" },
+            { timeout: s.page.getDefaultTimeout(), polling: "raf" },
             s.drivers.mates.get(name)!.thread.id,
           );
           await observation.mateReady(name);
         }),
       hqFirstData: (count: number) => Effect.promise(() => observation.hq.firstData(count)),
-      browserSettled: Effect.promise(() => observation.browser.settled()),
+      browserSettled: Effect.promise(async () => {
+        let before = observation.browser.sample();
+        for (;;) {
+          await renderedHttp();
+          await observation.browser.settled();
+          await renderedHttp();
+          const after = observation.browser.sample();
+          if (after.requests === before.requests) return;
+          before = after;
+        }
+      }),
       hqStateSettled: Effect.promise(() => observation.hq.stateSettled()),
       menuReady: Effect.fn("budgets.menuReady")(function* (names: string[]) {
         yield* s.then.menu.row("Shop").appears();
@@ -109,7 +121,7 @@ export function budgets(s: Scenario) {
                 editor.isContentEditable &&
                 editor.getAttribute("aria-disabled") !== "true",
             ),
-          { timeout: 15_000, polling: "raf" },
+          { timeout: s.page.getDefaultTimeout(), polling: "raf" },
         );
       }),
     },

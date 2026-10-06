@@ -51,18 +51,22 @@ export async function endSessionCheck(
 export const handoverCount = (drivers: ScenarioDrivers) =>
   drivers.zerops.requests.get("GET /authorize-app") ?? 0;
 
-/**
- * The organization's member list as KRLS's stalls it: each read the person's browser makes is
- * answered `ms` late. HQ's own reads (its token, `hq`) are not slowed: only the client's path is.
- */
-export function slowMemberList(drivers: ScenarioDrivers, ms: number) {
+/** Hold the browser's member-list replies; Core's own token reads remain live. */
+export function holdMemberList(drivers: ScenarioDrivers) {
+  const pending = new Set<() => void>();
+  const release = () => {
+    for (const resolve of pending) resolve();
+    pending.clear();
+  };
+  drivers.cleanup.push(async () => release());
   drivers.zerops.handlers.push(async (request) => {
     const bearer = request.headers.authorization?.replace(/^Bearer /u, "");
     if (
       bearer !== "hq" &&
       /^\/api\/rest\/public\/client\/[^/]+\/user\/list$/u.test(request.url.pathname)
     )
-      await new Promise((resolve) => setTimeout(resolve, ms));
+      await new Promise<void>((resolve) => pending.add(resolve));
     return undefined;
   });
+  return { release, pending: () => pending.size };
 }

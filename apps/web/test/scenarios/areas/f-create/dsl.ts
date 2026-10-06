@@ -17,7 +17,7 @@ export function creation(s: Scenario) {
       try {
         await page.waitForFunction(
           (value) => document.body.innerText.includes(value),
-          { timeout: 15_000, polling: "raf" },
+          { timeout: page.getDefaultTimeout(), polling: "raf" },
           value,
         );
       } catch (cause) {
@@ -30,7 +30,7 @@ export function creation(s: Scenario) {
   const click = (name: string) =>
     Effect.promise(async () => {
       try {
-        await page.locator(`::-p-aria(${name})`).setTimeout(15_000).click();
+        await page.locator(`::-p-aria(${name})`).click();
       } catch (cause) {
         throw new Error(
           `Cannot press ${name}\n${await page.evaluate(() => document.body.innerText)}`,
@@ -40,14 +40,12 @@ export function creation(s: Scenario) {
     });
   const fill = (name: string, value: string) =>
     Effect.promise(async () => {
-      await page.locator(`::-p-aria(${name})`).setTimeout(15_000).click({ clickCount: 3 });
+      await page.locator(`::-p-aria(${name})`).click({ clickCount: 3 });
       await page.keyboard.press("Backspace");
       await page.keyboard.type(value);
     });
   const openProjectDetails = async (group: string) => {
-    const toggle = page
-      .locator(`[data-zerops-surface="project-rows"] ::-p-aria(${group})`)
-      .setTimeout(15_000);
+    const toggle = page.locator(`[data-zerops-surface="project-rows"] ::-p-aria(${group})`);
     await toggle.wait();
     const expanded = await page.evaluate(
       (group) =>
@@ -97,7 +95,7 @@ export function creation(s: Scenario) {
         yield* Effect.promise(() =>
           page
             .locator('[data-zerops-surface="project-rows"] ::-p-aria(More for Shop)')
-            .setTimeout(15_000)
+
             .click(),
         );
         yield* click(`Add ${role}`);
@@ -105,12 +103,12 @@ export function creation(s: Scenario) {
     withAgent: Effect.promise(() =>
       page
         .locator('[data-zerops-surface="environment-creation-form"] [role="switch"]')
-        .setTimeout(15_000)
+
         .click(),
     ),
     agentIsOff: Effect.promise(async () => {
       const selector = '[data-zerops-surface="environment-creation-form"] [role="switch"]';
-      await page.locator(selector).setTimeout(15_000).wait();
+      await page.locator(selector).wait();
       expect(await page.$eval(selector, (toggle) => toggle.getAttribute("aria-checked"))).toBe(
         "false",
       );
@@ -119,7 +117,7 @@ export function creation(s: Scenario) {
       Effect.promise(async () => {
         await page.waitForSelector('[data-zerops-surface="environment-creation-form"]', {
           hidden: true,
-          timeout: 15_000,
+          timeout: page.getDefaultTimeout(),
         });
         try {
           await page.waitForFunction(
@@ -137,7 +135,7 @@ export function creation(s: Scenario) {
                     ?.innerText.trim()
                     .toLowerCase() === tag,
               ),
-            { timeout: 15_000, polling: "raf" },
+            { timeout: page.getDefaultTimeout(), polling: "raf" },
             name,
             tag,
           );
@@ -157,7 +155,7 @@ export function creation(s: Scenario) {
             [...document.querySelectorAll<HTMLElement>('[data-zerops-surface="mate-cards"]')].some(
               (cards) => cards.innerText.split("\n").some((line) => line.trim() === name),
             ),
-          { timeout: 15_000, polling: "raf" },
+          { timeout: page.getDefaultTimeout(), polling: "raf" },
           name,
         );
       }),

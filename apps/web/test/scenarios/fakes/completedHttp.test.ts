@@ -17,7 +17,7 @@ it.each(["requestfinished", "requestfailed"])(
       waitForNetworkIdle: async () => {},
     });
     const settle = completedHttp(events as unknown as Page);
-    const request = {} as HTTPRequest;
+    const request = { url: () => "https://stream.example.test/body" } as HTTPRequest;
     events.emit("request", request);
     const drained = settle();
     events.emit("response", { request: () => request });

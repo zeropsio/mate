@@ -1,9 +1,7 @@
 // @effect-diagnostics nodeBuiltinImport:off -- build the real web bundle with the repository's CLI.
 import * as NodeChildProcess from "node:child_process";
-import * as NodeFSP from "node:fs/promises";
-import * as NodeOS from "node:os";
-import * as NodePath from "node:path";
 import * as NodeURL from "node:url";
+import { cachedBundle } from "./buildCache.ts";
 import type { TestProject } from "vite-plus/test/node";
 
 declare module "vite-plus/test" {
@@ -13,7 +11,7 @@ declare module "vite-plus/test" {
 }
 
 export default async function setup(project: TestProject) {
-  const dist = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "mate-scenarios-web-"));
+  const root = NodeURL.fileURLToPath(new URL("../../../../../", import.meta.url));
   const buildEnv: NodeJS.ProcessEnv = {
     ...process.env,
     VITE_HOSTED_APP_CHANNEL: "latest",
@@ -24,7 +22,10 @@ export default async function setup(project: TestProject) {
   };
   delete buildEnv.VITE_HTTP_URL;
   delete buildEnv.VITE_WS_URL;
-  try {
+  const started = performance.now();
+  let built = false;
+  const dist = await cachedBundle(root, buildEnv, async (dist) => {
+    built = true;
     await new Promise<void>((resolve, reject) => {
       const child = NodeChildProcess.spawn("vp", ["build", "--outDir", dist], {
         cwd: NodeURL.fileURLToPath(new URL("../../../", import.meta.url)),
@@ -41,10 +42,9 @@ export default async function setup(project: TestProject) {
       child.on("error", reject);
       child.on("exit", (code) => (code === 0 ? resolve() : reject(new Error(log))));
     });
-    project.provide("scenarioDist", dist);
-  } catch (error) {
-    await NodeFSP.rm(dist, { recursive: true, force: true });
-    throw error;
-  }
-  return () => NodeFSP.rm(dist, { recursive: true, force: true });
+  });
+  console.log(
+    `scenario web: ${built ? "built" : "reused"} (${((performance.now() - started) / 1000).toFixed(2)}s)`,
+  );
+  project.provide("scenarioDist", dist);
 }

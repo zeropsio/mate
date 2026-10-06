@@ -1,4 +1,5 @@
 import { defineConfig } from "vite-plus/test/config";
+import { scenarioPolicy } from "./harness/policy.ts";
 import * as NodeURL from "node:url";
 
 export default defineConfig({
@@ -12,8 +13,8 @@ export default defineConfig({
           environment: "node",
           globalSetup: ["test/scenarios/harness/build.ts"],
           fileParallelism: false,
-          hookTimeout: 120_000,
-          testTimeout: 45_000,
+          hookTimeout: scenarioPolicy.testMs,
+          testTimeout: scenarioPolicy.testMs,
         },
       },
       {

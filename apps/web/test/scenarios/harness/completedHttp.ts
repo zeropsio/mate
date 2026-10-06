@@ -1,4 +1,5 @@
 import type { HTTPRequest, Page } from "puppeteer-core";
+import { waitBudget } from "./waits.ts";
 import { deadline } from "./http.ts";
 
 /** Track response bodies through completion; Puppeteer's network-idle counter ends at headers. */
@@ -19,7 +20,7 @@ export function completedHttp(page: Page) {
     page.off("requestfailed", answered);
     for (const resolve of waiters) resolve();
   });
-  return async (timeout = 10_000) => {
+  return async (timeout = waitBudget()) => {
     let activeWaiter: (() => void) | undefined;
     try {
       await deadline(
@@ -51,7 +52,7 @@ export function completedHttp(page: Page) {
             if (pending.size === 0) return;
           }
         })(),
-        "completed browser HTTP and renderer continuations",
+        `completed browser HTTP and renderer continuations: ${[...pending].map((request) => request.url()).join(", ")}`,
         timeout,
       );
     } finally {

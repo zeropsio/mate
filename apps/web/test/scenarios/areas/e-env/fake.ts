@@ -1,4 +1,5 @@
 // @effect-diagnostics nodeBuiltinImport:off preferSchemaOverJson:off -- localhost fixture content and wire diagnostics.
+import { effectReceipt } from "../../harness/waits.ts";
 import * as Effect from "effect/Effect";
 import * as Schedule from "effect/Schedule";
 import { expect } from "@effect/vitest";
@@ -119,7 +120,7 @@ export const environmentFixtureWith = Effect.fn("e-env.fixture")(function* (
         ),
       ),
       Effect.retry(Schedule.spaced("30 millis")),
-      Effect.timeout("10 seconds"),
+      effectReceipt(`Core change web/${number} at ${head}`),
     );
     expect(
       (yield* core.call("POST", `/api/apps/${appId}/changes/web/${number}/merge`, {

@@ -3,7 +3,7 @@ import * as NodeFS from "node:fs";
 
 import { describe, expect, it } from "vite-plus/test";
 
-import { checkSteps, selectSteps } from "./ci-local.ts";
+import { checkSteps, selectSteps, suiteSteps } from "./ci-local.ts";
 
 const WORKFLOW = `
 jobs:
@@ -67,4 +67,22 @@ describe("selectSteps", () => {
   ])("$words keeps $names", ({ words, names }) => {
     expect(selectSteps(steps, words).map((step) => step.name)).toEqual(names);
   });
+});
+
+it("full local gates include every CI test job with its shard argument removed", () => {
+  const workflow = NodeFS.readFileSync(
+    new URL("../.github/workflows/ci.yml", import.meta.url),
+    "utf8",
+  );
+  const steps = suiteSteps(workflow);
+  expect(steps.map((step) => step.name)).toEqual([
+    "test: Test",
+    "test_mobile: Test",
+    "test_web: Test",
+    "test_server: Test",
+    "test_scenarios: Test scenarios",
+  ]);
+  expect(steps.every((step) => !step.run.includes("--shard") && !step.run.includes("${{"))).toBe(
+    true,
+  );
 });

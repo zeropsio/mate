@@ -4,7 +4,8 @@ import * as NodePath from "node:path";
 import { afterAll, expect } from "vite-plus/test";
 import puppeteer, { type Page, type BrowserContext } from "puppeteer-core";
 import { clientClock, type ScenarioWallClock } from "./clientClock.ts";
-import { serve } from "./http.ts";
+import { boundPageWaits, waitBudget } from "./waits.ts";
+import { deadline, serve } from "./http.ts";
 
 // Vitest inverts afterEach failures inside it.fails too. Retain diagnostics from every opened
 // browser until the file-level hook, which cannot become an expected domain failure.
@@ -88,6 +89,7 @@ export async function openBrowser(
       "--disable-features=MediaRouter,OptimizationHints,AutofillServerCommunication",
     ],
   });
+  const browserProcess = browser.process();
   const errors: string[] = [];
   const pageErrors: string[] = [];
   const blocked: string[] = [];
@@ -106,6 +108,7 @@ export async function openBrowser(
   const routeSetters = new Map<Page, () => Promise<void>>();
   const newPage = async (context: BrowserContext = browser.defaultBrowserContext()) => {
     const page = await context.newPage();
+    boundPageWaits(page);
     clocks.set(page, clientClock(page, wallClock));
     await page.setBypassServiceWorker(true);
     await page.setViewport({ width: 1280, height: 900 });
@@ -226,13 +229,29 @@ export async function openBrowser(
     blocked,
     networkViolation,
     close: async () => {
+      // This captured child owns a disposable profile, with nothing to flush. Chrome's native
+      // graceful-quit delay grows with contexts; await process exit instead of paying that delay.
+      if (
+        browserProcess &&
+        browserProcess.exitCode === null &&
+        browserProcess.signalCode === null
+      ) {
+        const exited = new Promise<void>((resolve) => browserProcess.once("exit", () => resolve()));
+        browserProcess.kill("SIGKILL");
+        await deadline(exited, `scenario Chrome ${browserProcess.pid} exit`);
+      }
       await browser.close();
       await web.close();
     },
   };
 }
 
-export async function visibleText(page: Page, surface: string, text: string, timeout = 10_000) {
+export async function visibleText(
+  page: Page,
+  surface: string,
+  text: string,
+  timeout = waitBudget(),
+) {
   await page.waitForFunction(
     (surface, text) =>
       [...document.querySelectorAll<HTMLElement>(`[data-zerops-surface="${surface}"]`)].some(
@@ -247,7 +266,7 @@ export async function visibleText(page: Page, surface: string, text: string, tim
 }
 
 export async function clickText(page: Page, surface: string, text: string) {
-  const until = Date.now() + 10_000;
+  const until = Date.now() + waitBudget();
   for (;;) {
     await visibleText(page, surface, text, Math.max(1, until - Date.now()));
     const handle = await page.evaluateHandle(

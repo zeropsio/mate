@@ -7,21 +7,31 @@ vp test run --config apps/web/test/scenarios/vitest.config.ts
 ```
 
 The independent `scenarios` and `scenario-drivers` Vitest projects are separate from `unit` and
-are not wired into CI. One invocation builds the actual hosted production bundle in a temporary
-directory, launches headless Chrome, and starts real HQ Core with disposable Postgres/git roots
+run in sharded CI, including branch full gates. The actual hosted production bundle is cached at
+`node_modules/.cache/mate-scenario-web/<input hash>` within this worktree. Source, public assets,
+workspace dependencies, build configuration, lockfile and public build environment determine the
+key; test/fixture sources also feed Tailwind scanning. Concurrent runs await the builder, failed
+builds never publish, and unchanged invocations reuse the bundle. Each run launches headless
+Chrome and starts real HQ Core with disposable Postgres/git roots
 through `apps/hq/test/harness`. Nothing imports application modules into the browser or replaces
 its stores. This lives in `apps/web/test` because the observable subject is the hosted web client;
 Core's established test infrastructure remains reusable by its own tests.
 
 Prerequisites: workspace dependencies, installed Chrome and local Postgres binaries. Override
 Chrome with `MATE_CHROME_BIN` and Postgres with `MATE_PG_BIN`. Puppeteer Core never downloads Chrome.
-Use `pnpm install --offline` when dependencies are absent and the package cache is populated.
+Install with `pnpm install --frozen-lockfile --prefer-offline`.
 HTTP and WebSockets are routed to loopback only; Chrome background networking and external DNS
 are disabled. Both unmapped HTTP and WebSocket destinations fail the suite, even if the app catches
 an error. Uncaught page errors and unmapped network diagnostics survive browser closure and fail
 an `afterAll` file-level assertion, including inside `it.fails` / `it.effect.fails`. Vitest also
 inverts failing `afterEach` hooks in expected-failure tests, so they cannot enforce this guard.
 Only browsers actually opened by selected tests contribute diagnostics; `-t` filters are safe.
+
+Conditions use the harness condition budget and live remaining test budget, including explicit
+protocol delays when needed. Missing receipts name the awaited event; missing browser predicates
+include the predicate and arguments. Whole tests and hooks are bounded by `harness/policy.ts`.
+Budget observations drain completed HTTP/render work and scope-ready receipts; they never wait
+for a fixed quiet window. Membership-stall tests release held replies at the assertion boundary.
 
 ## Layout
 

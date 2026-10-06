@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off globalFetch:off globalFetchInEffect:off -- loopback-only transport instrumentation.
+// @effect-diagnostics nodeBuiltinImport:off globalFetch:off globalFetchInEffect:off preferSchemaOverJson:off -- loopback-only transport instrumentation.
 import * as NodeEvents from "node:events";
 import { WebSocket, type RawData } from "ws";
 import { HQ_STREAM_SEGMENT_CLOSE } from "@t3tools/shared/hqStream";
@@ -27,6 +27,8 @@ export async function observeTraffic(origin: string) {
     downBytes: number;
     stateBytes: number;
     frames: number;
+    pendingScopes: Set<string>;
+    subscribed: boolean;
   }[] = [];
   const server = await serve(
     async (request) => {
@@ -58,6 +60,8 @@ export async function observeTraffic(origin: string) {
         downBytes: 0,
         stateBytes: 0,
         frames: 0,
+        pendingScopes: new Set<string>(),
+        subscribed: false,
       };
       segments.push(segment);
       const upstream = new WebSocket(
@@ -67,6 +71,15 @@ export async function observeTraffic(origin: string) {
       const queued: { bytes: Buffer; binary: boolean }[] = [];
       client.on("message", (data, binary) => {
         const bytes = bytesOf(data);
+        const request = JSON.parse(bytes.toString()) as {
+          type?: string;
+          scopes?: { scope: unknown }[];
+        };
+        if (request.type === "subscribe") {
+          segment.subscribed = true;
+          for (const { scope } of request.scopes ?? [])
+            segment.pendingScopes.add(JSON.stringify(scope));
+        }
         if (upstream.readyState === WebSocket.OPEN) upstream.send(bytes, { binary });
         else queued.push({ bytes, binary });
       });
@@ -77,6 +90,11 @@ export async function observeTraffic(origin: string) {
       });
       upstream.on("message", (data, binary) => {
         const bytes = bytesOf(data);
+        if (scopeReady(bytes)) {
+          const ready = JSON.parse(bytes.toString()) as { scope: unknown };
+          segment.pendingScopes.delete(JSON.stringify(ready.scope));
+          stateEvents.emit("activity");
+        }
         if (bytes.includes("Shop")) segment.firstDataMs ??= performance.now() - openedAt;
         if (carriesMenu(bytes)) {
           segment.stateBytes += bytes.length;
@@ -102,7 +120,15 @@ export async function observeTraffic(origin: string) {
   return {
     ...server,
     segments,
-    stateSettled: () => settled(stateEvents, () => true, "HQ menu state quiet for 1 s"),
+    stateSettled: () =>
+      settled(
+        stateEvents,
+        () => {
+          const segment = segments.at(-1);
+          return segment?.subscribed === true && segment.pendingScopes.size === 0;
+        },
+        "HQ subscribed scopes caught up (scope-ready receipts)",
+      ),
     async opened(count: number) {
       const ready = () => segments.filter((segment) => segment.open).length >= count;
       if (ready()) return;

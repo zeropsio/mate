@@ -7,6 +7,7 @@
  *
  *   node scripts/ci-local.ts              every step of the Check job
  *   node scripts/ci-local.ts css guard    only the steps whose name holds one of the words
+ *   node scripts/ci-local.ts --full       Check plus every unit/scenario suite (prefer branch CI)
  *   node scripts/ci-local.ts --list       the steps, without running them
  */
 import * as NodeChildProcess from "node:child_process";
@@ -64,6 +65,31 @@ export function checkSteps(workflowYaml: string, jobId = "check"): ReadonlyArray
   });
 }
 
+/** All CI unit/scenario jobs, unsharded on a local machine. Prefer branch CI for this load. */
+export function suiteSteps(workflowYaml: string): ReadonlyArray<CheckStep> {
+  const workflow = parse(workflowYaml) as Workflow;
+  return Object.entries(workflow.jobs ?? {})
+    .filter(([id]) => id === "test" || id.startsWith("test_"))
+    .flatMap(([id, job]) =>
+      (job.steps ?? []).flatMap((step) => {
+        if (!step.run || !step.name?.startsWith("Test")) return [];
+        const run = step.run.replace(
+          / --shard \$\{\{ matrix\.shard \}\}\/\$\{\{ strategy\.job-total \}\}/gu,
+          "",
+        );
+        if (usesContext(run)) throw new Error(`Cannot run ${id} locally: unresolved CI context`);
+        return [
+          {
+            name: `${id}: ${step.name}`,
+            run,
+            env: {},
+            workingDirectory: step["working-directory"],
+          },
+        ];
+      }),
+    );
+}
+
 /** The steps whose name holds one of the words, in any case; no words keeps every step. */
 export function selectSteps(
   steps: ReadonlyArray<CheckStep>,
@@ -81,7 +107,7 @@ if (import.meta.main) {
   const args = process.argv.slice(2);
   const workflow = NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8");
   const steps = selectSteps(
-    checkSteps(workflow),
+    [...checkSteps(workflow), ...(args.includes("--full") ? suiteSteps(workflow) : [])],
     args.filter((arg) => !arg.startsWith("--")),
   );
   if (args.includes("--list")) {

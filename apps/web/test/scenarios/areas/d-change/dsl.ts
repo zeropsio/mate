@@ -19,7 +19,7 @@ export function review(s: Pick<Scenario, "page" | "web">) {
             ].some(
               (node) => node.getBoundingClientRect().height > 0 && node.innerText.includes(words),
             ),
-          { timeout: 15_000, polling: "raf" },
+          { timeout: s.page.getDefaultTimeout(), polling: "raf" },
           words,
         );
       } catch (error) {
@@ -39,7 +39,7 @@ export function review(s: Pick<Scenario, "page" | "web">) {
               !button.disabled &&
               button.getBoundingClientRect().height > 0,
           ),
-        { timeout: 15_000, polling: "raf" },
+        { timeout: s.page.getDefaultTimeout(), polling: "raf" },
       );
     } catch (error) {
       throw new Error(
@@ -55,7 +55,7 @@ export function review(s: Pick<Scenario, "page" | "web">) {
     waitUntilMergeEnabled,
     chooseInitialOrganization: (name: string) =>
       Effect.promise(async () => {
-        await s.page.locator("::-p-text(Choose an organization)").setTimeout(15_000).wait();
+        await s.page.locator("::-p-text(Choose an organization)").wait();
         await s.page.locator(`::-p-text(${name})`).click();
       }),
     switchOrganization: (name: string) =>
@@ -71,7 +71,7 @@ export function review(s: Pick<Scenario, "page" | "web">) {
             ].some(
               (node) => node.getBoundingClientRect().height > 0 && node.innerText.trim() === name,
             ),
-          { timeout: 15_000, polling: "raf" },
+          { timeout: s.page.getDefaultTimeout(), polling: "raf" },
           name,
         );
       }),
@@ -112,7 +112,7 @@ export function review(s: Pick<Scenario, "page" | "web">) {
     open: Effect.promise(async () => {
       await s.page
         .locator('[data-zerops-surface="sidebar-pull-request-review"]')
-        .setTimeout(15_000)
+
         .click();
     }),
     direct: (path: string) =>
@@ -137,7 +137,7 @@ export function review(s: Pick<Scenario, "page" | "web">) {
                 '[aria-label="Say something on this change"]',
               ),
             ].some((box) => box.value === body),
-          { timeout: 15_000 },
+          { timeout: s.page.getDefaultTimeout() },
           body,
         );
       }),
@@ -145,7 +145,7 @@ export function review(s: Pick<Scenario, "page" | "web">) {
       await s.page.keyboard.press("Escape");
       await s.page.waitForSelector('[data-zerops-surface="review"]', {
         hidden: true,
-        timeout: 15_000,
+        timeout: s.page.getDefaultTimeout(),
       });
     }),
     merge: Effect.promise(async () => {

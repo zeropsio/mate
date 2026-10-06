@@ -53,7 +53,7 @@ receipt deadline with tenfold headroom. They retain production ping/reconcile in
 retries use shared `advanceStepped` with an HQ-only HTTP reply settler: the default all-HTTP
 idle condition stalls on an unrelated account refresh while virtual time is paused. The settler observes real HQ response/abort receipts; the UI wait checks applied WebSocket
 updates. At most twelve 10-second advances are each followed by a bounded
-1-second visible-row attempt, then the normal 10-second assertion. There are no sleeps or elapsed
+1-second visible-row attempt, then the shared live condition bound. There are no sleeps or elapsed
 performance assertions; page clocks do not advance Core clocks.
 
 The second organization has read-only membership and no HQ. Switching proves the admin setup

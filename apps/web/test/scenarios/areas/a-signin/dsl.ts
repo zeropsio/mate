@@ -23,7 +23,7 @@ export const signInOrganization = Effect.fn("signin.chooseOrganization")(functio
             button.innerText.trim() === "Continue with your Zerops account" ||
             button.innerText.includes("KRLS"),
         ),
-      { timeout: 10_000, polling: "raf" },
+      { timeout: page.getDefaultTimeout(), polling: "raf" },
     );
     const authorization = await page.$("::-p-aria(Continue with your Zerops account)");
     if (authorization) await authorization.click();
@@ -32,7 +32,7 @@ export const signInOrganization = Effect.fn("signin.chooseOrganization")(functio
         [...document.querySelectorAll("button")].some((button) =>
           button.innerText.includes("KRLS"),
         ),
-      { timeout: 10_000, polling: "raf" },
+      { timeout: page.getDefaultTimeout(), polling: "raf" },
     );
     if (await page.$('::-p-aria(KRLS Owner[role="button"])'))
       await page.locator('::-p-aria(KRLS Owner[role="button"])').click();
@@ -67,12 +67,12 @@ export function account(page: Page) {
       }),
     signOut: Effect.promise(async () => {
       await openMenu();
-      await page.locator('::-p-aria(Sign out[role="menuitem"])').setTimeout(10_000).click();
+      await page.locator('::-p-aria(Sign out[role="menuitem"])').click();
     }),
     signedOut: Effect.promise(async () => {
       await page
         .locator('::-p-aria(Continue with your Zerops account[role="button"])')
-        .setTimeout(10_000)
+
         .wait();
       expect(await page.$('[data-zerops-surface="sidebar-account"]')).toBeNull();
       expect(await page.$('[data-zerops-surface="sidebar-environments"]')).toBeNull();
@@ -81,7 +81,7 @@ export function account(page: Page) {
     needsAdministrator: Effect.promise(async () => {
       await page.waitForFunction(
         () => document.body.innerText.includes("An admin sets up Mate for this organization."),
-        { polling: "raf", timeout: 10_000 },
+        { polling: "raf", timeout: page.getDefaultTimeout() },
       );
     }),
     reload: Effect.promise(async () => {
@@ -107,7 +107,7 @@ export function account(page: Page) {
             );
             return names.every((name) => !rows.has(name));
           },
-          { polling: "raf", timeout: 10_000 },
+          { polling: "raf", timeout: page.getDefaultTimeout() },
           names,
         );
       }),
@@ -137,7 +137,7 @@ export const retryHq = Effect.fn("signin.retryHq")(function* (s: Scenario) {
         (element) =>
           element.textContent?.includes("HQ") === true && element.textContent.includes("Try again"),
       )
-      .setTimeout(10_000)
+
       .click(),
   );
 });
@@ -165,7 +165,7 @@ export const renewHq = Effect.fn("signin.renewHq")(function* (s: Scenario, name:
         );
         return retry ? "retry" : false;
       },
-      { timeout: 10_000, polling: "raf" },
+      { timeout: s.page.getDefaultTimeout(), polling: "raf" },
       name,
     );
     try {

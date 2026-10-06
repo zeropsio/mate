@@ -3,6 +3,7 @@ import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import type { Page, BrowserContext } from "puppeteer-core";
+import { effectReceipt } from "./waits.ts";
 import { inject } from "vite-plus/test";
 import { expect } from "@effect/vitest";
 import { MateLinkUp, MateOverview } from "@t3tools/shared/mateLink";
@@ -63,7 +64,7 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
     { baseUrl: `${api.origin}/api/rest/public`, world },
     options.hq,
   );
-  yield* untilHealth(core.call, "active");
+  yield* untilHealth(core.call, "active").pipe(effectReceipt("Core active health"));
   const personal = core.fake.tokens.get("door-owner")!;
   core.fake.tokens.set("personal", {
     ...personal,
@@ -207,7 +208,7 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
     })).body as { ticket: string };
     const link = yield* core.socket(`/api/mate/link?ticket=${ticket}`);
     drivers.links.set(name, link);
-    yield* link.next("state");
+    yield* link.next("state").pipe(effectReceipt(`${name} enrolled link state`));
     const overview = yield* decodeOverview({
       ...overviewOf(),
       identity: {
@@ -268,7 +269,7 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
                   '[data-zerops-surface="sidebar-account"]',
                 ),
               ].some((element) => element.getBoundingClientRect().height > 0),
-            { timeout: 10_000, polling: "raf" },
+            { timeout: page.getDefaultTimeout(), polling: "raf" },
           );
           const hasButton = await page.evaluate(() =>
             [...document.querySelectorAll<HTMLButtonElement>("button")].some(
@@ -278,7 +279,7 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
           if (hasButton)
             await page
               .locator("::-p-aria(Continue with your Zerops account)")
-              .setTimeout(10_000)
+
               .click();
           await visibleText(page, "sidebar-account", zerops.orgName);
           signedInDocument = await page.evaluate(() => performance.timeOrigin);
@@ -339,7 +340,7 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
         isUnavailable: Effect.promise(async () => {
           await page.waitForSelector('[data-zerops-surface="sidebar-hq-outage"]', {
             visible: true,
-            timeout: 10_000,
+            timeout: page.getDefaultTimeout(),
           });
         }),
       },
@@ -426,7 +427,7 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
                   }
                   return false;
                 })(),
-              { timeout: 8000, polling: "raf" },
+              { timeout: page.getDefaultTimeout(), polling: "raf" },
               text,
             );
           }),

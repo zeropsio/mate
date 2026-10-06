@@ -25,7 +25,12 @@ export const menuScenario = Effect.fn("menu.scenario")(function* (
 ) {
   const s = yield* createScenario([installMenu, ...extensions]);
   const menu = {
-    text: (name: string, words: string, surface = "sidebar-mate", within = 15_000) =>
+    text: (
+      name: string,
+      words: string,
+      surface = "sidebar-mate",
+      within = s.page.getDefaultTimeout(),
+    ) =>
       Effect.promise(async () => {
         try {
           await s.page.waitForFunction(
@@ -109,7 +114,7 @@ export const menuScenario = Effect.fn("menu.scenario")(function* (
                 row.getBoundingClientRect().height > 0 &&
                 row.innerText.split("\n").some((line) => line.trim() === name),
             ),
-          { timeout: 15_000, polling: "raf" },
+          { timeout: s.page.getDefaultTimeout(), polling: "raf" },
           name,
         );
       }),
@@ -134,13 +139,13 @@ export const menuScenario = Effect.fn("menu.scenario")(function* (
               return heading?.innerText.split("\n")[0]?.trim() === app;
             });
           },
-          { timeout: 15_000, polling: "raf" },
+          { timeout: s.page.getDefaultTimeout(), polling: "raf" },
           name,
           app,
         );
       }),
     toggle: (app: string) => Effect.promise(() => clickText(s.page, "sidebar-project-toggle", app)),
-    chip: (words: string, within = 15_000) =>
+    chip: (words: string, within = s.page.getDefaultTimeout()) =>
       Effect.promise(async () => {
         try {
           await s.page.waitForFunction(
