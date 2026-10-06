@@ -188,6 +188,32 @@ describe("a service HQ records a deploy of", () => {
 });
 
 describe("what a release compares, from HQ's records", () => {
+  it.each(["queued", "building", "live"] as const)(
+    "keeps the earlier release's failed job when the next job is %s",
+    (state) => {
+      const failedJob = record("failed", API, "api", RELEASED);
+      const nextJob = record(state, WEB, "api", { cause: "release", ref: "v1.0.2" });
+      const inputs = environmentRowInputsOf({
+        environments: [
+          environment({
+            projectId: "p-prod",
+            tier: "production",
+            name: "production",
+            jobs: [nextJob, failedJob],
+          }),
+        ],
+        projectNames: new Map(),
+        services,
+        versions: new Map(),
+      });
+      expect(releaseDeploys(inputs).failed).toContainEqual({
+        tag: "v1.0.1",
+        service: "api",
+        sha: API,
+      });
+    },
+  );
+
   it("holds a production deploy HQ records as failed, under its service and commit", () => {
     const inputs = environmentRowInputsOf({
       environments: [
