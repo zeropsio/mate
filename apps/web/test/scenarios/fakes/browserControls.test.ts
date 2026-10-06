@@ -5,6 +5,8 @@ import * as NodePath from "node:path";
 import { expect, it } from "vite-plus/test";
 import { openBrowser, clickText } from "../harness/browser.ts";
 import { completedHttp } from "../harness/completedHttp.ts";
+import { deadline } from "../harness/http.ts";
+import { remainingTestBudget, waitBudget } from "../harness/waits.ts";
 
 it("manual client timers cross Retry-After/backoff deadlines and coalesce timers across sleep/wake", async () => {
   const dist = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "scenario-clock-"));
@@ -12,11 +14,15 @@ it("manual client timers cross Retry-After/backoff deadlines and coalesce timers
     NodePath.join(dist, "index.html"),
     "<!doctype html><title>Clock driver</title>",
   );
-  const web = await openBrowser(dist, {});
+  const web = await deadline(
+    openBrowser(dist, {}),
+    "clock driver browser ready",
+    remainingTestBudget() - waitBudget(),
+  );
   try {
     const clock = web.clock(web.page);
-    await clock.install();
-    await web.page.goto(web.origin);
+    await deadline(clock.install(), "clock driver installed");
+    await deadline(web.page.goto(web.origin), "clock driver document loaded");
     await web.page.evaluate(() => {
       const receipts: number[] = [];
       Object.assign(window, { receipts, started: Date.now() });
@@ -41,14 +47,14 @@ it("manual client timers cross Retry-After/backoff deadlines and coalesce timers
       const id = setInterval(() => state.receipts.push(Date.now()), 1000);
       setTimeout(() => clearInterval(id), 60_000);
     });
-    await clock.sleep();
-    await clock.wake(3_600_000);
+    await deadline(clock.sleep(), "clock driver freeze receipt");
+    await deadline(clock.wake(3_600_000), "clock driver wake receipt");
     expect(
       await web.page.evaluate(() => (window as unknown as { receipts: number[] }).receipts.length),
     ).toBe(3);
     expect(web.pageErrors).toEqual([]);
   } finally {
-    await web.close();
+    await deadline(web.close(), "clock driver browser closed");
     await NodeFSP.rm(dist, { recursive: true, force: true });
   }
 });

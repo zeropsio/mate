@@ -25,7 +25,7 @@ export function waitBudget(expectedDelay = 0) {
 
 export function boundPageWaits(page: Page) {
   page.setDefaultTimeout(waitBudget());
-  page.setDefaultNavigationTimeout(scenarioPolicy.testMs);
+  page.setDefaultNavigationTimeout(waitBudget());
   const wait = page.waitForFunction.bind(page);
   page.waitForFunction = async (condition, options, ...args) => {
     try {

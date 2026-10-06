@@ -162,7 +162,8 @@ export function clientClock(page: Page, wallClock?: ScenarioWallClock) {
               [...timers.values()]
                 .filter((timer) => timer.interval === undefined && timer.at <= now + maxStep)
                 .reduce<number | null>(
-                  (next, timer) => (next === null ? timer.at : Math.min(next, timer.at)),
+                  // Coalesce recurring UI tasks too; stop at a live protocol-sized horizon.
+                  (next, timer) => (next === null ? timer.at : Math.max(next, timer.at)),
                   null,
                 ),
           },

@@ -243,8 +243,8 @@ export async function openBrowser(
         browserProcess.kill("SIGKILL");
         await deadline(exited, `scenario Chrome ${browserProcess.pid} exit`);
       }
-      await browser.close();
-      await web.close();
+      await deadline(browser.close(), "scenario Chrome resources released");
+      await deadline(web.close(), "scenario static server closed");
     },
   };
 }

@@ -7,7 +7,9 @@ import { openBrowser } from "../browser.ts";
 import { deadline } from "../http.ts";
 
 const targets: { name: string; reached: boolean }[] = [];
+const setupErrors: string[] = [];
 afterAll(() => {
+  expect(setupErrors, "Health fixture browser setup").toEqual([]);
   for (const target of targets)
     expect(target.reached, `Health fixture did not reach its receipt: ${target.name}`).toBe(true);
 });
@@ -27,7 +29,12 @@ async function withBrowser(run: (web: Awaited<ReturnType<typeof openBrowser>>) =
   );
   const web = await openBrowser(dist, {});
   try {
-    await web.page.goto(web.origin);
+    try {
+      await deadline(web.page.goto(web.origin), "health fixture document loaded");
+    } catch (error) {
+      setupErrors.push(String(error));
+      throw error;
+    }
     await run(web);
   } finally {
     await web.close();
