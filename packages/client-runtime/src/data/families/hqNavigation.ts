@@ -151,6 +151,18 @@ export const placementFamily: FamilySpec<"placement"> = {
   family: "placement",
   authority: "hq",
   scope: navigation("hq-placements"),
+  // A partial navigation record cannot erase setup evidence HQ previously proved.
+  keepUnsaid: (held, row) => {
+    if (held?.mate == null || row.mate == null) return row;
+    return {
+      ...row,
+      mate: {
+        ...row.mate,
+        closedOff: row.mate.closedOff ?? held.mate.closedOff,
+        setupMarker: row.mate.setupMarker ?? held.mate.setupMarker,
+      },
+    };
+  },
   hq: {
     scope: "navigation",
     ...prefixed("project"),

@@ -22,7 +22,7 @@ describe("hqMateSetup", () => {
   ])("$name leaves setup unknown", ({ mate }) => {
     const store = makeAccountStore(AtomRegistry.make());
     seedHqNavigation(store, "org", {
-      structure: { apps: [], ungrouped: [{ projectId: "Ada", name: "Ada", mate: { face: "" } }] },
+      structure: { apps: [], ungrouped: [] },
     });
     const scope = placementsScope("org");
     const value = placementFamily.hq!.decode({ projectId: "Ada", mate }, "project:Ada");
