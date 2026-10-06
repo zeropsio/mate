@@ -834,8 +834,13 @@ const make = Effect.gen(function* () {
         activeSession?.status === "running" || thread.session?.status === "running";
       const shouldRestartForModelSelectionChange =
         modelSelectionChange === "new-session" && !sessionRunning;
+      // The agent's process died under its turn: the thread stands at error
+      // and the adapter still lists the dead session (Codex keeps it). A new
+      // session picks the conversation up; the dead one rejects every request.
+      const sessionDied = thread.session?.status === "error" && activeSession?.status === "error";
 
       if (
+        !sessionDied &&
         !runtimeModeChanged &&
         !cwdChanged &&
         !instanceChanged &&
@@ -869,6 +874,7 @@ const make = Effect.gen(function* () {
         instanceChanged,
         shouldRestartForModelChange,
         shouldRestartForModelSelectionChange,
+        sessionDied,
         hasResumeCursor: resumeCursor !== undefined,
       });
       const restartedSession = yield* startProviderSession(
@@ -1324,22 +1330,58 @@ const make = Effect.gen(function* () {
         return Effect.void;
       }
       const detail = formatFailureDetail(cause);
-      return Effect.logError("provider turn start failed", {
-        threadId: event.payload.threadId,
-        messageId: event.payload.messageId,
-        code: describeProviderFailure(cause).code,
-        cause: Cause.pretty(cause),
-      }).pipe(
-        Effect.andThen(
-          setThreadSessionErrorOnTurnStartFailure({
+      return Effect.gen(function* () {
+        yield* Effect.logError("provider turn start failed", {
+          threadId: event.payload.threadId,
+          messageId: event.payload.messageId,
+          code: describeProviderFailure(cause).code,
+          cause: Cause.pretty(cause),
+        });
+        // A send that holds the whole turn (Cursor's prompt) fails when the
+        // agent's process dies mid-turn: the turn broke off, it did not fail
+        // to start. Said already — the session's exit beat this failure here
+        // — it stands; else the turn's record says it, as a crash's does.
+        const thread = yield* resolveThreadShell(event.payload.threadId);
+        const latestTurn = thread?.latestTurn ?? null;
+        const saidAlready =
+          latestTurn?.state === "error" &&
+          (thread?.session?.activeTurnId ?? null) === null &&
+          Date.parse(latestTurn.requestedAt) >= Date.parse(event.payload.createdAt);
+        if (saidAlready) return;
+        const underWay =
+          thread?.session?.status === "running" ? (thread.session.activeTurnId ?? null) : null;
+        if (underWay !== null) {
+          const words = describeProviderFailure(cause).sentence;
+          const now = DateTime.formatIso(yield* DateTime.now);
+          yield* orchestrationEngine.dispatch({
+            type: "thread.activity.append",
+            commandId: yield* serverCommandId("turn-break-activity"),
             threadId: event.payload.threadId,
-            detail,
-            createdAt: event.payload.createdAt,
-          }),
-        ),
-        Effect.flatMap(() => appendTurnStartFailure("Provider turn start failed", detail)),
-        Effect.asVoid,
-      );
+            activity: {
+              id: yield* serverEventId(),
+              tone: "error",
+              kind: "runtime.error",
+              summary: "Runtime error",
+              payload: { message: words },
+              turnId: underWay,
+              createdAt: now,
+            },
+            createdAt: now,
+          });
+          yield* setThreadSessionErrorOnTurnStartFailure({
+            threadId: event.payload.threadId,
+            detail: words,
+            createdAt: now,
+          });
+          return;
+        }
+        yield* setThreadSessionErrorOnTurnStartFailure({
+          threadId: event.payload.threadId,
+          detail,
+          createdAt: event.payload.createdAt,
+        });
+        yield* appendTurnStartFailure("Provider turn start failed", detail);
+      });
     };
 
     const recoverTurnStartFailure = (cause: Cause.Cause<unknown>) =>

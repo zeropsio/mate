@@ -184,6 +184,52 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
     }),
   );
 
+  it.effect("drops a session whose agent died under its prompt, and the next one runs", () =>
+    Effect.gen(function* () {
+      const adapter = yield* CursorAdapter;
+      const settings = yield* ServerSettingsService;
+      const threadId = ThreadId.make("cursor-crash-mid-turn");
+      const marker = NodePath.join(
+        yield* Effect.promise(() =>
+          NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "cursor-crash-")),
+        ),
+        "crashed",
+      );
+      const wrapperPath = yield* Effect.promise(() =>
+        makeMockAgentWrapper({ T3_ACP_CRASH_ONCE_PATH: marker }),
+      );
+      yield* settings.updateSettings({ providers: { cursor: { binaryPath: wrapperPath } } });
+      const exitsFiber = yield* adapter.streamEvents.pipe(
+        Stream.filter((event) => event.type === "session.exited"),
+        Stream.take(1),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      yield* adapter.startSession({ threadId, cwd: process.cwd(), runtimeMode: "full-access" });
+
+      const error = yield* adapter
+        .sendTurn({ threadId, input: "work on it", attachments: [] })
+        .pipe(Effect.flip);
+      assert.equal(error._tag, "ProviderAdapterProcessError");
+      if (error._tag === "ProviderAdapterProcessError") {
+        assert.equal(
+          error.detail,
+          "Cursor stopped unexpectedly. Send a message to pick up where it left off.",
+        );
+      }
+      const [exited] = yield* Fiber.join(exitsFiber);
+      assert.deepStrictEqual(exited?.type === "session.exited" ? exited.payload : null, {
+        exitKind: "error",
+      });
+      assert.isFalse(yield* adapter.hasSession(threadId));
+
+      yield* adapter.startSession({ threadId, cwd: process.cwd(), runtimeMode: "full-access" });
+      const resumed = yield* adapter.sendTurn({ threadId, input: "go on", attachments: [] });
+      assert.equal(resumed.threadId, threadId);
+      yield* adapter.stopSession(threadId);
+    }),
+  );
+
   it.effect("rejects a Cursor transport error returned as a successful assistant answer", () =>
     Effect.gen(function* () {
       const adapter = yield* CursorAdapter;

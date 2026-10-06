@@ -458,6 +458,48 @@ it.layer(grokAdapterTestLayer)("GrokAdapterLive", (it) => {
     }),
   );
 
+  it.effect("drops a session whose agent died under its prompt, and the next one runs", () =>
+    Effect.gen(function* () {
+      const threadId = ThreadId.make("grok-crash-mid-turn");
+      const marker = NodePath.join(
+        yield* Effect.promise(() => NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "grok-crash-"))),
+        "crashed",
+      );
+      const wrapperPath = yield* Effect.promise(() =>
+        makeMockGrokWrapper({ T3_ACP_CRASH_ONCE_PATH: marker }),
+      );
+      const adapter = yield* makeTestAdapter(wrapperPath);
+      const exitsFiber = yield* adapter.streamEvents.pipe(
+        Stream.filter((event) => event.type === "session.exited"),
+        Stream.take(1),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      const start = adapter.startSession({
+        threadId,
+        provider: ProviderDriverKind.make("grok"),
+        cwd: process.cwd(),
+        runtimeMode: "full-access",
+        modelSelection: { instanceId: ProviderInstanceId.make("grok"), model: "grok-build" },
+      });
+      yield* start;
+
+      yield* adapter
+        .sendTurn({ threadId, input: "work on it", attachments: [] })
+        .pipe(Effect.ignore);
+      const [exited] = yield* Fiber.join(exitsFiber);
+      assert.deepStrictEqual(exited?.type === "session.exited" ? exited.payload : null, {
+        exitKind: "error",
+      });
+      assert.isFalse(yield* adapter.hasSession(threadId));
+
+      yield* start;
+      const resumed = yield* adapter.sendTurn({ threadId, input: "go on", attachments: [] });
+      assert.equal(resumed.threadId, threadId);
+      yield* adapter.stopSession(threadId);
+    }),
+  );
+
   it.effect("reports a Grok session running only while the prompt is in flight", () =>
     Effect.gen(function* () {
       const threadId = ThreadId.make("grok-session-ready-after-prompt");
