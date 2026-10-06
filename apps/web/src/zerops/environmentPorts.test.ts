@@ -26,7 +26,10 @@ import type { MateLiveView } from "@t3tools/shared/hqMates";
 import { AtomRegistry } from "effect/unstable/reactivity";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { hqOfficialAtom, zeropsSessionAtom } from "../state/zerops";
+import { accountReadsAtom, makeAccountStore } from "@t3tools/client-runtime/data";
+import { seedHqVerdict } from "@t3tools/client-runtime/data/fixtures";
+
+import { zeropsSessionAtom } from "../state/zerops";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
 import {
   closeOffPort,
@@ -268,20 +271,33 @@ const registryWith = (
   official: boolean | null = true,
 ) => {
   const registry = AtomRegistry.make();
+  const store = makeAccountStore(registry);
+  const orgId = view?.organizationId ?? "org-test";
+  registry.set(accountReadsAtom, {
+    data: store.data,
+    orgId,
+    demandDetail: () => () => {},
+    renewHeld: () => {},
+  });
   if (view !== null)
-    mountHqNavigation(registry, view.organizationId, {
-      structure: {
-        apps: [],
-        ungrouped: Object.keys(view.mates).map((projectId) => ({
-          projectId,
-          name: projectId,
-          mate: { face: "" },
-        })),
+    mountHqNavigation(
+      registry,
+      view.organizationId,
+      {
+        structure: {
+          apps: [],
+          ungrouped: Object.keys(view.mates).map((projectId) => ({
+            projectId,
+            name: projectId,
+            mate: { face: "" },
+          })),
+        },
+        mates: view.mates,
+        live: view.current,
       },
-      mates: view.mates,
-      live: view.current,
-    });
-  registry.set(hqOfficialAtom, official);
+      store,
+    );
+  seedHqVerdict(store, orgId, official === null ? "pending" : official ? "official" : "none");
   return registry;
 };
 
@@ -343,13 +359,20 @@ describe("onlinePort: the projects whose Mate HQ holds online", () => {
     },
   );
 
-  it("tells its listener when the organization's HQ is decided", () => {
-    const registry = registryWith(null, null);
+  it("tells its listener when the organization's HQ is decided", async () => {
+    const registry = AtomRegistry.make();
+    const store = makeAccountStore(registry);
+    registry.set(accountReadsAtom, {
+      data: store.data,
+      orgId: "org-test",
+      demandDetail: () => () => {},
+      renewHeld: () => {},
+    });
     let told = 0;
     const stop = onlinePort(registry).subscribe(() => void (told += 1));
-    registry.set(hqOfficialAtom, false);
+    seedHqVerdict(store, "org-test", "none");
+    await vi.waitFor(() => expect(told).toBe(1));
     stop();
-    expect(told).toBe(1);
   });
 });
 

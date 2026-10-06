@@ -677,6 +677,18 @@ describe("groupFlow", () => {
       expected: { kind: "checking", line: "Checking what runs here…", stop: { state: "checking" } },
     },
     {
+      case: "checking: access to it is still being verified, which is no failed read",
+      production: productionOf({
+        row: declared({ projectId: "p-prod", name: "production", tier: "production" }),
+        deployment: { state: "withheld", reason: "access-unverified", cause: null },
+      }),
+      expected: {
+        kind: "checking",
+        line: "Checking your access to this project…",
+        stop: expect.not.objectContaining({ readFailed: true }),
+      },
+    },
+    {
       case: "live: the platform runs the release a pending status was read on before it went active",
       production: productionOf({
         row: declared({

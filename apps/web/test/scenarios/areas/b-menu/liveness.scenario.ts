@@ -349,13 +349,13 @@ describe("B: menu liveness", () => {
     );
 
     // Targets menu rows blocked behind the delivery of HQ application detail.
-    it.effect.fails("application menu rows arrive before HQ application detail", () =>
+    it.effect("application menu rows arrive before HQ application detail", () =>
       Effect.gen(function* () {
         const s = yield* menuScenario([installDelayedDetails]);
         yield* s.given.project("Ada", { mate: true, app: "Shop" });
-        const held = yield* s.colleague.holdsDetails("Shop");
+        yield* s.colleague.holdsDetails("Shop");
         yield* s.given.signedIn;
-        yield* Effect.all([s.menu.grouped("Ada", "Shop"), held], { concurrency: "unbounded" }).pipe(
+        yield* s.menu.grouped("Ada", "Shop").pipe(
           Effect.ensuring(
             Effect.gen(function* () {
               yield* s.colleague.releasesDetails;

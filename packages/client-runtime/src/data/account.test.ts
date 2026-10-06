@@ -9,6 +9,7 @@ import { hqAppsScope } from "./families/hqNavigation.ts";
 import { historyScope, runningScope } from "./families/process.ts";
 import { linkKeys, type OperationIntent } from "./model.ts";
 import type { RegisteredOperationKind } from "./operations/kind.ts";
+import { hqVerdict } from "./projections/hqVerdict.ts";
 import { streamOf } from "./reducer.ts";
 import { makeAccountStore } from "./store.ts";
 
@@ -382,6 +383,30 @@ describe("an account's HQ", () => {
       account.showHq(null);
       yield* turns;
       expect(streamOf(store.state(), linkKeys.hq("org-a")).demanded).toBe(false);
+      account.stop();
+    }),
+  );
+  it.live("holds whether the organization has an official HQ as the account says it", () =>
+    Effect.sync(() => {
+      const registry = AtomRegistry.make();
+      const store = makeAccountStore(registry);
+      const account = observeAccount({
+        store,
+        wire: emptyZerops().wire,
+        repairSession: Effect.void,
+      });
+      const verdict = () => registry.get(store.data.project(hqVerdict, "org-a"));
+      // Said before its organization is shown: held once it is.
+      account.showHq({ orgId: "org-a", verdict: "none" });
+      expect(verdict()).toBe("pending");
+      account.show("org-a");
+      expect(verdict()).toBe("none");
+      account.showHq({ orgId: "org-a", verdict: "pending" });
+      expect(verdict()).toBe("pending");
+      account.showHq({ orgId: "org-a", wire: hqFixtureWire().wire });
+      expect(verdict()).toBe("official");
+      account.showHq({ orgId: "org-a", verdict: "unreadable" });
+      expect(verdict()).toBe("unreadable");
       account.stop();
     }),
   );

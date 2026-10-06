@@ -3,6 +3,7 @@
  * connection runtime, the connection catalog and its links, the probe over `fetch`, and this
  * account's storage. Adapters only: every decision is the runtime's.
  */
+import { shownHqVerdictAtom } from "@t3tools/client-runtime/data";
 import { accountThrowawayDebt } from "./throwawayDebt";
 import { fetchRemoteSessionState } from "@t3tools/client-runtime/authorization";
 import {
@@ -58,7 +59,7 @@ import { environmentCatalog } from "~/connection/catalog";
 import { connectionAtomRuntime } from "~/connection/runtime";
 import { randomUUID } from "~/lib/utils";
 import { environmentIdFromAddress } from "~/routes/-environmentRoute";
-import { hqMatesAtom, hqNavigationAtom, hqOfficialAtom, hqProjectOf } from "~/state/zerops";
+import { hqMatesAtom, hqNavigationAtom, hqProjectOf } from "~/state/zerops";
 
 import { accountLocalStorage, accountStorageKey, captureAccountLifetime } from "./accountLifetime";
 import {
@@ -283,7 +284,7 @@ export function onlinePort(
     read: () => {
       const view = registry.get(hqMatesAtom);
       if (view === null || !view.current) {
-        return registry.get(hqOfficialAtom) === false ? NO_PROJECTS : null;
+        return registry.get(shownHqVerdictAtom) === "none" ? NO_PROJECTS : null;
       }
       return new Set(
         [...view.mates].flatMap(([projectId, mate]) => (mate.presence.online ? [projectId] : [])),
@@ -291,7 +292,9 @@ export function onlinePort(
     },
     subscribe: (listener) => {
       const stopView = registry.subscribe(hqMatesAtom, listener);
-      const stopOfficial = registry.subscribe(hqOfficialAtom, listener);
+      // A non-React subscriber evaluates the projection before hearing its dependencies change.
+      registry.get(shownHqVerdictAtom);
+      const stopOfficial = registry.subscribe(shownHqVerdictAtom, listener);
       return () => {
         stopView();
         stopOfficial();
@@ -312,13 +315,15 @@ export function hqOrganizationPort(
   return {
     read: () => {
       const view = registry.get(hqMatesAtom);
-      return registry.get(hqOfficialAtom) === true && view?.current === true
+      return registry.get(shownHqVerdictAtom) === "official" && view?.current === true
         ? view.organizationId
         : null;
     },
     subscribe: (listener) => {
       const stopView = registry.subscribe(hqMatesAtom, listener);
-      const stopOfficial = registry.subscribe(hqOfficialAtom, listener);
+      // A non-React subscriber evaluates the projection before hearing its dependencies change.
+      registry.get(shownHqVerdictAtom);
+      const stopOfficial = registry.subscribe(shownHqVerdictAtom, listener);
       return () => {
         stopView();
         stopOfficial();

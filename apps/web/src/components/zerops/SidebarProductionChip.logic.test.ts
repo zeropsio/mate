@@ -9,6 +9,7 @@ import type { HqJob } from "@t3tools/client-runtime/zerops/hq";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  asLastKnown,
   buildingOf,
   chipFace,
   chipDot,
@@ -1305,6 +1306,41 @@ describe("stageMenu — each stage, as production's menu says production", () =>
         routes: [],
       },
     ]);
+  });
+});
+
+describe("a last-known chip's menu — what HQ last said, never said as current", () => {
+  const NOW = Date.parse("2026-09-29T10:53:00Z");
+  it("says production's row as last known", () => {
+    const chip = asLastKnown({ label: "prod", state: "ok", version: "v0.1.0" });
+    const menu = productionMenu({
+      chip,
+      projectId: "shop-prod",
+      failure: undefined,
+      down: [],
+      routes: [],
+      nowMs: NOW,
+    });
+    expect(menu.stops[0]).toMatchObject({ word: "Last known: Healthy", dot: "off" });
+  });
+
+  it("says each stage's row as last known", () => {
+    const menu = stageMenu({
+      stages: [
+        {
+          projectId: "shop-stage",
+          name: "stage",
+          stop: stage({ projectId: "shop-stage", name: "stage" }),
+          chip: asLastKnown({ label: "stage", state: "ok", version: "main" }),
+          deployedAt: "2026-09-29T10:13:00Z",
+          down: [],
+          routes: [],
+        },
+      ],
+      creating: [],
+      nowMs: NOW,
+    });
+    expect(menu.stops[0]?.word).toBe("Last known: Deployed 40 min ago");
   });
 });
 

@@ -341,7 +341,10 @@ function stopOf(input: GroupFlowStopInput): GroupFlowStop {
     ...base,
     state: "checking",
     version: undefined,
-    ...(deploymentReadFailed(deployment) ? { readFailed: true as const } : {}),
+    // Access still being verified is a read not made yet: no failure for a chip to say.
+    ...(deploymentReadFailed(deployment) && !awaitingAccess(deployment)
+      ? { readFailed: true as const }
+      : {}),
     readLine: stopView({
       deployment: deployment ?? { state: "unread", waitingFor: null },
       row,
@@ -349,6 +352,9 @@ function stopOf(input: GroupFlowStopInput): GroupFlowStop {
     }).line,
   };
 }
+
+const awaitingAccess = (deployment: Shown<Deployment> | undefined): boolean =>
+  deployment?.state === "withheld" && deployment.reason === "access-unverified";
 
 /** A stage known to run nothing, with where its first deploy stands (`stageFirstDeploy`). */
 function withFirstDeploy(stop: GroupFlowStop, input: GroupFlowStopInput): GroupFlowStop {
