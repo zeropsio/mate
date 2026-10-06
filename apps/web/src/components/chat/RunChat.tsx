@@ -65,6 +65,7 @@ import {
   createContext,
   Fragment,
   use,
+  useCallback,
   useEffect,
   useEffectEvent,
   useId,
@@ -4510,12 +4511,13 @@ function RunScroll({
     readonly from: number;
     readonly landing: ReadonlyMap<string, number> | null;
   } | null>(null);
-  const redraw = useEffectEvent(() => {
+  // Read again as heights ease and as it scrolls: the rows near its view.
+  const redraw = useCallback(() => {
     const scroll = scrollRef.current;
     const drawn = drawnRef.current;
     if (scroll === null || drawn === null || !easesRef.current) return;
     drawnRef.current = { ...drawn, rows: retopped(drawn.rows, scroll) };
-  });
+  }, []);
   useLayoutEffect(() => {
     const list = listRef.current;
     if (list === null || typeof list.querySelectorAll !== "function" || !easesRef.current) {
@@ -4554,7 +4556,7 @@ function RunScroll({
     observer.observe(list);
     observer.observe(element);
     return () => observer.disconnect();
-  }, [follow]);
+  }, [follow, redraw]);
   // Where the browser never says a move ended (Safari before `scrollend`),
   // it ended once the scroll stood still a moment.
   const quietRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -4597,6 +4599,7 @@ function RunScroll({
               markEdges(element);
             }
             drawEarlier(position);
+            redraw();
             endsOnQuiet();
           }}
           onScrollEnd={() => follow.heard({ kind: "ended" })}
@@ -4814,29 +4817,49 @@ function retopped(
   };
   const lines = drawn.get("");
   if (lines === undefined) return drawn;
-  // Where each card of calls stood in the list: its calls stand under it.
-  const cardTops = new Map(lines.rows.map(({ key, top }) => [key, top] as const));
-  const rows = new Map<string, HolderRows>();
+  const rows = new Map<string, HolderRows>([["", nearRows(lines, 0, near)]]);
+  // Where each card of calls stands in the list: its calls stand under it.
+  const cardTops = new Map(rows.get("")!.rows.map(({ key, top }) => [key, top] as const));
   for (const [holderKey, held] of drawn) {
-    // A card far from the view: its calls' places are unknown too.
-    const base = holderKey === "" ? 0 : (cardTops.get(holderKey) ?? null);
-    if (base === null) {
-      rows.set(holderKey, {
-        holder: held.holder,
-        rows: held.rows.map((row) => ({ ...row, top: null })),
-      });
-      continue;
-    }
-    rows.set(holderKey, {
-      holder: held.holder,
-      rows: held.rows.map((row) =>
-        row.top === null || base + row.top < near.top || base + row.top > near.bottom
-          ? { ...row, top: null }
-          : { ...row, top: topIn(held.holder, row.row) },
-      ),
-    });
+    if (holderKey === "") continue;
+    const base = cardTops.get(holderKey) ?? null;
+    rows.set(
+      holderKey,
+      base === null
+        ? { holder: held.holder, rows: held.rows.map((row) => ({ ...row, top: null })) }
+        : nearRows(held, base, near),
+    );
   }
   return rows;
+}
+
+/**
+ * The rows of one holder near the view, read where they stand — the first
+ * found by halves, the rest until one stands past it — and the others
+ * unknown: whatever the view did since, a scroll included, the rows it
+ * reaches are read anew (`base`: the holder's top in the list).
+ */
+function nearRows(
+  held: HolderRows,
+  base: number,
+  near: { readonly top: number; readonly bottom: number },
+): HolderRows {
+  const { holder, rows } = held;
+  let low = 0;
+  let high = rows.length;
+  while (low < high) {
+    const middle = (low + high) >> 1;
+    const row = rows[middle]!.row;
+    if (base + topIn(holder, row) + row.offsetHeight < near.top) low = middle + 1;
+    else high = middle;
+  }
+  const read = rows.map((row) => ({ ...row, top: null as number | null }));
+  for (let index = low; index < rows.length; index += 1) {
+    const top = topIn(holder, rows[index]!.row);
+    if (base + top > near.bottom) break;
+    read[index] = { ...rows[index]!, top };
+  }
+  return { holder, rows: read };
 }
 
 /**
