@@ -62,9 +62,8 @@ describe("shareEqual", () => {
   });
 
   it("never walks into a non-plain object", () => {
-    const date = new Date(0);
-    const next = { at: new Date(0) };
-    const shared = shareEqual({ at: date }, next);
+    const next = { at: new Map([["a", 1]]) };
+    const shared = shareEqual({ at: new Map([["a", 1]]) }, next);
     expect(shared.at).toBe(next.at);
   });
 });
