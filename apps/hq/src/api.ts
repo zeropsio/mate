@@ -75,7 +75,8 @@ import { RASTER_CONTENT_TYPES, rasterContentType } from "@t3tools/shared/hqAttac
  * HQ's org. Only the leading HQ answers: a standby or an HQ that is not the official one answers
  * `503 not_active` with `Retry-After`, as does a Zerops that cannot be read (`zerops_unavailable`) —
  * a deploy runs two Cores side by side for a while, and zcp tries again. A write whose roles Zerops
- * left unanswered answers `503 zerops_unanswered`: refused before it wrote anything. A refusal answers one
+ * left unanswered answers `503 zerops_unanswered`: refused before it wrote anything. Zerops refusing
+ * HQ outright answers `403 zerops_refused` with its reason, never a 503. A refusal answers one
  * code, and for the structure and a Mate's changes a reason code beside it (`zeropsPermissions.ts`'s
  * or their own) — the words for a person are the client's; a
  * refusal at the person's door says nothing of which rule the token broke. Bodies are bounded (8
@@ -369,7 +370,6 @@ export const failure = (error: {
     case "NotLeader":
       return Effect.succeed(unavailable("not_active"));
     case "ZeropsUnavailable":
-    case "ZeropsRefused":
       return Effect.as(
         Effect.logWarning("zerops read failed", error),
         // A write whose roles Zerops left unanswered wrote nothing: refused, never uncertain.
@@ -378,6 +378,12 @@ export const failure = (error: {
             ? "zerops_unanswered"
             : "zerops_unavailable",
         ),
+      );
+    case "ZeropsRefused":
+      // Zerops said no: no outage, so nothing tells the caller to try again.
+      return Effect.as(
+        Effect.logWarning("zerops refused", error),
+        json({ code: "zerops_refused", reason: "reason" in error ? error.reason : undefined }, 403),
       );
     case "TooLarge":
       return Effect.succeed(json({ code: "too_large" }, 413));

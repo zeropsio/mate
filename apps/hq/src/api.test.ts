@@ -30,7 +30,7 @@ import { tempPostgresLayer } from "../test/harness/tempPostgres.ts";
 import type { ZeropsOwnToken } from "./zerops/api.ts";
 import { corsRoutes, failure } from "./api.ts";
 import { NotLeader } from "./leader.ts";
-import { ZeropsUnavailable } from "./zerops/api.ts";
+import { ZeropsRefused, ZeropsUnavailable } from "./zerops/api.ts";
 
 describe("HQ's failures", () => {
   it.effect("caches a preflight from any origin for two hours, without credentials", () =>
@@ -78,6 +78,26 @@ describe("HQ's failures", () => {
           [response.status, response.headers["retry-after"]],
           [503, "5"],
           error._tag,
+        );
+      }
+    }),
+  );
+
+  // HANDOFF §4.2: a definitive refusal from Zerops is no outage — nothing tells the caller to retry.
+  it.effect("answers Zerops' definitive refusal as a refusal, never a 503 to try again", () =>
+    Effect.gen(function* () {
+      for (const reason of ["unauthorized", "forbidden", "not_found", "invalid"] as const) {
+        const response = yield* failure(
+          new ZeropsRefused({ operation: "view", reason, status: 0, code: "noCredential" }),
+        );
+        assert.deepStrictEqual(
+          [
+            response.status,
+            response.headers["retry-after"],
+            yield* Effect.promise(() => HttpServerResponse.toWeb(response).json()),
+          ],
+          [403, undefined, { code: "zerops_refused", reason }],
+          reason,
         );
       }
     }),
