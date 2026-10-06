@@ -54,6 +54,9 @@ function operationsOf(
       calls.push(`flag ${serviceId}`);
       return answers.flag?.() ?? Promise.resolve();
     },
+    variablesWritten: ({ orgId, serviceId }) => {
+      calls.push(`refresh ${orgId} ${serviceId}`);
+    },
     restartService: (serviceId) => {
       calls.push(`restart ${serviceId}`);
       return answers.restart?.() ?? Promise.resolve({ processId: "proc-restart" });
@@ -80,7 +83,7 @@ describe("enable-zerops-mate", () => {
         const store = account();
         const { operations, calls } = operationsOf(store, {});
         yield* operations.submit(ENABLE);
-        expect(calls).toEqual(["flag s1", "restart s1"]);
+        expect(calls).toEqual(["flag s1", `refresh ${ORG} s1`, "restart s1"]);
         expect(progressOf(store)).toEqual({ stage: "accepted", operationId: "proc-restart" });
         restartRow(store, "RUNNING", 1);
         expect(progressOf(store)).toEqual({ stage: "reflected", operationId: "proc-restart" });
@@ -109,7 +112,7 @@ describe("enable-zerops-mate", () => {
         restart: () => Promise.reject(new ZeropsApiError("Service is busy.", "invalid-input", 400)),
       });
       yield* operations.submit(ENABLE);
-      expect(calls).toEqual(["flag s1", "restart s1"]);
+      expect(calls).toEqual(["flag s1", `refresh ${ORG} s1`, "restart s1"]);
       expect(progressOf(store)).toEqual({
         stage: "unresolved",
         operationId: null,
@@ -128,7 +131,7 @@ describe("enable-zerops-mate", () => {
       yield* operations.submit(ENABLE);
       yield* operations.retry("r1");
       expect(progressOf(store)).toEqual({ stage: "uncertain", next: "ask-owner-again" });
-      expect(calls).toEqual(["flag s1", "restart s1"]);
+      expect(calls).toEqual(["flag s1", `refresh ${ORG} s1`, "restart s1"]);
     }),
   );
 });

@@ -102,7 +102,8 @@ export function ZeropsAccountData({ children }: { readonly children: ReactNode }
   useMateResultsSeen(orgId, observation.seen);
   // The operations are built here, over the store this mount owns: no screen reaches its writer.
   const operations = useMemo(
-    () => accountOperations(store, registry, client, observation.demandDetail),
+    () =>
+      accountOperations(store, registry, client, observation.demandDetail, observation.revalidate),
     [client, observation, registry, store],
   );
   // The account's reads move to each new value as it comes, never unset between: a moment without
