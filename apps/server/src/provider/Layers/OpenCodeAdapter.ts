@@ -49,6 +49,7 @@ import {
   ProviderAdapterSessionNotFoundError,
   ProviderAdapterValidationError,
 } from "../Errors.ts";
+import { agentStoppedUnexpectedly } from "../agentStopped.ts";
 import { buildRuntimeInstructions } from "../RuntimeInstructions.ts";
 import { profiledRuntimeMode } from "../../spi/threadToolPolicy.ts";
 import {
@@ -2748,7 +2749,8 @@ export function makeOpenCodeAdapter(
               if (yield* Ref.get(context.stopped)) {
                 return;
               }
-              yield* emitUnexpectedExit(context, `OpenCode server exited unexpectedly (${code}).`);
+              yield* Effect.logWarning("opencode.server.exited", { code });
+              yield* emitUnexpectedExit(context, agentStoppedUnexpectedly(PROVIDER));
             }),
           ),
           Effect.forkIn(context.sessionScope),

@@ -4267,6 +4267,131 @@ describe("ProviderRuntimeIngestion", () => {
     expect(thread.session?.lastError).toBe("runtime exploded");
   });
 
+  describe("an agent's process that dies in the middle of a turn", () => {
+    const cases: ReadonlyArray<{
+      readonly name: string;
+      readonly driver: string;
+      readonly exitKind?: "graceful" | "error";
+      /** A runtime.error the adapter said first, in its own words. */
+      readonly saidFirst?: string;
+      readonly turnRunning: boolean;
+      readonly status: "error" | "stopped";
+      readonly lastError: string | null;
+      readonly turnState: "error" | "interrupted" | null;
+      /** The runtime.error activities the turn holds, by their words. */
+      readonly errors: ReadonlyArray<string>;
+    }> = [
+      {
+        name: "Codex's app server exits mid-turn",
+        driver: "codex",
+        turnRunning: true,
+        status: "error",
+        lastError: "Codex stopped unexpectedly. Send a message to pick up where it left off.",
+        turnState: "error",
+        errors: ["Codex stopped unexpectedly. Send a message to pick up where it left off."],
+      },
+      {
+        name: "Antigravity's process is cut off mid-turn",
+        driver: "antigravity",
+        exitKind: "error",
+        turnRunning: true,
+        status: "error",
+        lastError: "Antigravity stopped unexpectedly. Send a message to pick up where it left off.",
+        turnState: "error",
+        errors: ["Antigravity stopped unexpectedly. Send a message to pick up where it left off."],
+      },
+      {
+        name: "OpenCode said why first: its words stand, said once",
+        driver: "opencode",
+        exitKind: "error",
+        saidFirst: "OpenCode stopped unexpectedly. Send a message to pick up where it left off.",
+        turnRunning: true,
+        status: "error",
+        lastError: "OpenCode stopped unexpectedly. Send a message to pick up where it left off.",
+        turnState: "error",
+        errors: ["OpenCode stopped unexpectedly. Send a message to pick up where it left off."],
+      },
+      {
+        name: "a graceful close mid-turn is a stop, not a crash",
+        driver: "codex",
+        exitKind: "graceful",
+        turnRunning: true,
+        status: "stopped",
+        lastError: null,
+        turnState: "interrupted",
+        errors: [],
+      },
+      {
+        name: "an exit with no turn running cut nothing off",
+        driver: "codex",
+        turnRunning: false,
+        status: "stopped",
+        lastError: null,
+        turnState: null,
+        errors: [],
+      },
+    ];
+    for (const testCase of cases) {
+      it(testCase.name, async () => {
+        const harness = await createHarness();
+        const threadId = asThreadId("thread-1");
+        const turnId = asTurnId("turn-crash");
+        const provider = ProviderDriverKind.make(testCase.driver);
+        if (testCase.turnRunning) {
+          harness.emit({
+            type: "turn.started",
+            eventId: asEventId("evt-crash-turn-started"),
+            provider,
+            createdAt: "2026-01-01T00:00:01.000Z",
+            threadId,
+            turnId,
+          });
+          await waitForThread(
+            harness.readModel,
+            (thread) => thread.session?.activeTurnId === turnId,
+          );
+        }
+        if (testCase.saidFirst !== undefined) {
+          harness.emit({
+            type: "runtime.error",
+            eventId: asEventId("evt-crash-said-first"),
+            provider,
+            createdAt: "2026-01-01T00:00:02.000Z",
+            threadId,
+            turnId,
+            payload: { message: testCase.saidFirst },
+          });
+        }
+        harness.emit({
+          type: "session.exited",
+          eventId: asEventId("evt-crash-session-exited"),
+          provider,
+          createdAt: "2026-01-01T00:00:03.000Z",
+          threadId,
+          payload: {
+            reason: "App server exited with code 134.",
+            ...(testCase.exitKind === undefined ? {} : { exitKind: testCase.exitKind }),
+          },
+        });
+        await harness.drain();
+        const thread = (await harness.readModel()).threads.find((entry) => entry.id === threadId)!;
+        expect(thread.session?.status).toBe(testCase.status);
+        expect(thread.session?.activeTurnId).toBeNull();
+        expect(thread.session?.lastError ?? null).toBe(testCase.lastError);
+        expect(thread.latestTurn?.state ?? null).toBe(testCase.turnState);
+        const errors = thread.activities.filter(
+          (activity: ProviderRuntimeTestActivity) => activity.kind === "runtime.error",
+        );
+        expect(
+          errors.map((activity: ProviderRuntimeTestActivity) => ({
+            turnId: activity.turnId,
+            message: (activity.payload as { readonly message?: unknown }).message,
+          })),
+        ).toEqual(testCase.errors.map((message) => ({ turnId, message })));
+      });
+    }
+  });
+
   it("records runtime.error activities from the typed payload message", async () => {
     const harness = await createHarness();
     const now = "2026-01-01T00:00:00.000Z";

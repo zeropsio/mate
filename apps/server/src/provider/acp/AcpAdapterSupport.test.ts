@@ -26,6 +26,25 @@ describe("AcpAdapterSupport", () => {
     expect(error.message).toContain("Invalid params");
   });
 
+  it("says a process that dies under a prompt stopped, in the person's words", () => {
+    const error = mapAcpToAdapterError(
+      ProviderDriverKind.make("grok"),
+      "thread-1" as never,
+      "session/prompt",
+      new EffectAcpErrors.AcpProcessExitedError({
+        code: 134,
+        stderr: "    at Object.run (/opt/agent/index.js:12:5)",
+      }),
+    );
+
+    expect(error._tag).toBe("ProviderAdapterProcessError");
+    if (error._tag === "ProviderAdapterProcessError") {
+      expect(error.detail).toBe(
+        "Grok stopped unexpectedly. Send a message to pick up where it left off.",
+      );
+    }
+  });
+
   it("maps ACP process exits without stderr to a process error instead of a closed session", () => {
     const error = mapAcpToAdapterError(
       ProviderDriverKind.make("cursor"),

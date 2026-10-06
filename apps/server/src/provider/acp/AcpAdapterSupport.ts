@@ -6,11 +6,8 @@ import {
 import * as Schema from "effect/Schema";
 import * as EffectAcpErrors from "effect-acp/errors";
 
-import {
-  ProviderAdapterProcessError,
-  ProviderAdapterRequestError,
-  type ProviderAdapterError,
-} from "../Errors.ts";
+import { ProviderAdapterProcessError, ProviderAdapterRequestError } from "../Errors.ts";
+import { agentStoppedUnexpectedly } from "../agentStopped.ts";
 const isAcpProcessExitedError = Schema.is(EffectAcpErrors.AcpProcessExitedError);
 const isAcpRequestError = Schema.is(EffectAcpErrors.AcpRequestError);
 
@@ -19,12 +16,14 @@ export function mapAcpToAdapterError(
   threadId: ThreadId,
   method: string,
   error: EffectAcpErrors.AcpError,
-): ProviderAdapterError {
+): ProviderAdapterProcessError | ProviderAdapterRequestError {
   if (isAcpProcessExitedError(error)) {
     return new ProviderAdapterProcessError({
       provider,
       threadId,
-      detail: error.message,
+      // Dead under a prompt, it crashed mid-turn: the person reads that it
+      // stopped; its code and stderr stay with the cause, for the log.
+      detail: method === "session/prompt" ? agentStoppedUnexpectedly(provider) : error.message,
       cause: error,
     });
   }

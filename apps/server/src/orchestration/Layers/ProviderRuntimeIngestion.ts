@@ -56,6 +56,7 @@ import { projectActivityPayload } from "../ActivityPayloadProjection.ts";
 import { forkParked } from "../../serverActivation.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { canReplaceThreadTitle } from "../threadTitles.ts";
+import { agentStoppedUnexpectedly } from "../../provider/agentStopped.ts";
 
 const providerTurnKey = (threadId: ThreadId, turnId: TurnId) => `${threadId}:${turnId}`;
 // Suffixed, not prefixed: `clearTurnStateForSession` sweeps by thread prefix.
@@ -1894,6 +1895,19 @@ const make = Effect.gen(function* () {
           : Option.none();
       const hasPendingTurnStart =
         Option.isSome(pendingTurnStart) && thread.session?.status === "starting";
+      // The agent's process died under a running turn, whatever the driver:
+      // the turn fails with plain words, never a stop the person made. Words
+      // the adapter already said (its runtime.error) stand.
+      const crashedTurnId =
+        event.type === "session.exited" && event.payload.exitKind !== "graceful"
+          ? activeTurnId
+          : null;
+      const crashWords =
+        crashedTurnId === null
+          ? null
+          : thread.session?.status === "error" && thread.session.lastError
+            ? null
+            : agentStoppedUnexpectedly(event.provider);
 
       const conflictsWithActiveTurn =
         activeTurnId !== null && eventTurnId !== undefined && !sameId(activeTurnId, eventTurnId);
@@ -1962,7 +1976,7 @@ const make = Effect.gen(function* () {
             case "turn.started":
               return "running";
             case "session.exited":
-              return "stopped";
+              return crashedTurnId === null ? "stopped" : "error";
             case "turn.aborted":
               return "interrupted";
             case "turn.completed":
@@ -1988,14 +2002,16 @@ const make = Effect.gen(function* () {
                 ? null
                 : activeTurnId;
         const lastError =
-          event.type === "session.state.changed" && event.payload.state === "error"
-            ? (event.payload.reason ?? thread.session?.lastError ?? "Provider session error")
-            : event.type === "turn.completed" &&
-                normalizeRuntimeTurnState(event.payload.state) === "failed"
-              ? (event.payload.errorMessage ?? thread.session?.lastError ?? "Turn failed")
-              : status === "ready" || status === "interrupted"
-                ? null
-                : (thread.session?.lastError ?? null);
+          crashWords !== null
+            ? crashWords
+            : event.type === "session.state.changed" && event.payload.state === "error"
+              ? (event.payload.reason ?? thread.session?.lastError ?? "Provider session error")
+              : event.type === "turn.completed" &&
+                  normalizeRuntimeTurnState(event.payload.state) === "failed"
+                ? (event.payload.errorMessage ?? thread.session?.lastError ?? "Turn failed")
+                : status === "ready" || status === "interrupted"
+                  ? null
+                  : (thread.session?.lastError ?? null);
 
         if (shouldApplyThreadLifecycle) {
           // The live step the menu says: a turn starts out thinking; once no
@@ -2555,6 +2571,24 @@ const make = Effect.gen(function* () {
 
       if (event.type === "session.exited") {
         yield* clearTurnStateForSession(thread.id);
+        // The turn's record says where it broke off, as Claude's own crash does.
+        if (crashWords !== null && crashedTurnId !== null) {
+          yield* orchestrationEngine.dispatch({
+            type: "thread.activity.append",
+            commandId: yield* providerCommandId(event, "agent-crash-activity-append"),
+            threadId: thread.id,
+            activity: {
+              id: EventId.make(`${event.eventId}:crash`),
+              createdAt: now,
+              tone: "error",
+              kind: "runtime.error",
+              summary: "Runtime error",
+              payload: { message: crashWords },
+              turnId: crashedTurnId,
+            },
+            createdAt: now,
+          });
+        }
       }
 
       if (event.type === "runtime.error") {
