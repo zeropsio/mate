@@ -62,6 +62,22 @@ describe("hqRefusalWords — HQ's refusal, in the person's words", () => {
     expect(hqRefusalWords({ code, reason })).toBe(words);
   });
 
+  // Zerops refusing HQ itself (`403 zerops_refused`): what Zerops said no to, and who can fix it.
+  it.each([
+    [
+      "unauthorized",
+      "Zerops no longer accepts HQ's access. An owner or admin of the organization sets HQ up again.",
+    ],
+    [
+      "forbidden",
+      "Zerops does not let HQ read this. An owner or admin of the organization checks HQ's access in Zerops.",
+    ],
+    ["not_found", "Zerops has no such project or service any more."],
+    ["invalid", "Zerops did not accept HQ's request. Tell an owner or admin of the organization."],
+  ])("says Zerops' own refusal of HQ, %s, in words of its own", (reason, words) => {
+    expect(hqRefusalWords({ code: "zerops_refused", reason })).toBe(words);
+  });
+
   it.each([...MERGE_REFUSALS])("says why HQ did not merge, %s, in words of its own", (reason) => {
     const words = hqRefusalWords({ code: "conflict", reason });
     expect(words).not.toContain(reason);

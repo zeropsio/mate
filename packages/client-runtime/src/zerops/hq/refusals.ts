@@ -66,6 +66,27 @@ const MERGE_WORDS: { readonly [R in (typeof MERGE_REFUSALS)[number]]: string } =
   change_not_open: "This change is merged or closed already.",
 };
 
+/** HQ's code for a call Zerops refused HQ outright (`apps/hq/src/api.ts`): never retried. */
+const ZEROPS_REFUSED = "zerops_refused";
+
+type ZeropsRefusal = "unauthorized" | "forbidden" | "not_found" | "invalid";
+
+/**
+ * What Zerops said no to when it refused HQ itself, and who can change it: Zerops' reason, never
+ * the person's permission. A reason left out does not compile.
+ */
+const ZEROPS_REFUSAL_WORDS: { readonly [R in ZeropsRefusal]: string } = {
+  unauthorized:
+    "Zerops no longer accepts HQ's access. An owner or admin of the organization sets HQ up again.",
+  forbidden:
+    "Zerops does not let HQ read this. An owner or admin of the organization checks HQ's access in Zerops.",
+  not_found: "Zerops has no such project or service any more.",
+  invalid: "Zerops did not accept HQ's request. Tell an owner or admin of the organization.",
+};
+
+const isZeropsRefusal = (reason: string): reason is ZeropsRefusal =>
+  Object.hasOwn(ZEROPS_REFUSAL_WORDS, reason);
+
 /**
  * Why HQ made no release or rollback (`RELEASE_REFUSALS`), in words: only a main that moved, or a
  * newer release, is helped by reviewing it again. A refusal left out does not compile.
@@ -180,6 +201,9 @@ export function hqRefusalWords(refusal: {
   readonly reason: string | undefined;
 }): string {
   const { reason } = refusal;
+  if (refusal.code === ZEROPS_REFUSED && reason !== undefined && isZeropsRefusal(reason)) {
+    return ZEROPS_REFUSAL_WORDS[reason];
+  }
   if (reason !== undefined) {
     if (isPermissionReason(reason)) return PERMISSION_WORDS[reason];
     if (isMergeRefusal(reason)) return MERGE_WORDS[reason];
