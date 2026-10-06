@@ -32,11 +32,21 @@ const account = vi.hoisted(() => ({
   answer: { ok: true } as { readonly ok: true } | { readonly ok: false; readonly reason: string },
 }));
 
-vi.mock("~/zerops/projectFlowContext", () => ({
-  useZeropsProjectFlowOptional: () => ({
+vi.mock("~/zerops/projectFlows", () => ({
+  useProjectFlows: () => ({
+    hqAddress: undefined,
+    readFailure: undefined,
+    groupsRead: false,
+    knownGroups: new Set(),
     flows: new Map(),
-    deployments: new Map(),
-    mateNames: new Map(),
+    releaseFailures: new Map(),
+  }),
+  useMateNames: () => new Map(),
+  useEveryAppId: () => [],
+  useAppsEnvironments: () => ({}),
+}));
+vi.mock("~/zerops/flowVerbs", () => ({
+  useFlowVerbs: () => ({
     pending: new Set(),
     trouble: null,
     merge: async (...asked: ReadonlyArray<unknown>) => {

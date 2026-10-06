@@ -200,54 +200,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
-    "kind": "CallExpression",
-    "fingerprint": "api.closeChange",
-    "owner": "data-layer rewrite: HQ",
-    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
-    "kind": "CallExpression",
-    "fingerprint": "api.mergeChange",
-    "owner": "data-layer rewrite: HQ",
-    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
-    "kind": "CallExpression",
-    "fingerprint": "hqApi.addService",
-    "owner": "data-layer rewrite: HQ",
-    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
-    "kind": "CallExpression",
-    "fingerprint": "hqApi.redeploy",
-    "owner": "data-layer rewrite: HQ",
-    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
-    "kind": "CallExpression",
-    "fingerprint": "hqApi.release",
-    "owner": "data-layer rewrite: HQ",
-    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
-    "kind": "CallExpression",
-    "fingerprint": "hqApi.rollback",
-    "owner": "data-layer rewrite: HQ",
-    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/zerops/ZeropsSessionProvider.tsx",
     "kind": "MemberExpression",
     "fingerprint": "globalThis.fetch",

@@ -522,14 +522,6 @@
   {
     "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
     "kind": "retired-token",
-    "fingerprint": "useHalfMadeEnvironments(",
-    "owner": "data-layer rewrite: releases/environments",
-    "reason": "half-made environments are found by a hook's own reads; the projection reads the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
-    "kind": "retired-token",
     "fingerprint": "useMatesInventory",
     "owner": "data-layer rewrite: services",
     "reason": "the Mates inventory prepares containers, services and variables for every listed Mate; read on open",
@@ -549,38 +541,6 @@
     "fingerprint": "useMatesInventory",
     "owner": "data-layer rewrite: services",
     "reason": "the Mates inventory prepares containers, services and variables for every listed Mate; read on open",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsHistory",
-    "owner": "data-layer rewrite: releases/environments",
-    "reason": "history is read by a hook up front; read it when the view opens",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsHistory",
-    "owner": "data-layer rewrite: releases/environments",
-    "reason": "history is read by a hook up front; read it when the view opens",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsHistory",
-    "owner": "data-layer rewrite: releases/environments",
-    "reason": "history is read by a hook up front; read it when the view opens",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsHistory",
-    "owner": "data-layer rewrite: releases/environments",
-    "reason": "history is read by a hook up front; read it when the view opens",
     "expires": "never"
   },
   {
@@ -613,14 +573,6 @@
     "fingerprint": "useZeropsRegistry",
     "owner": "data-layer rewrite: HQ structure/apps",
     "reason": "registry, recipes and releases are read by app hooks; the HQ adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsHistoryView.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsHistory",
-    "owner": "data-layer rewrite: releases/environments",
-    "reason": "history is read by a hook up front; read it when the view opens",
     "expires": "never"
   },
   {
@@ -946,14 +898,6 @@
   {
     "path": "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
     "kind": "retired-token",
-    "fingerprint": "useHalfMadeEnvironments(",
-    "owner": "data-layer rewrite: releases/environments",
-    "reason": "half-made environments are found by a hook's own reads; the projection reads the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
-    "kind": "retired-token",
     "fingerprint": "useMatesInventory",
     "owner": "data-layer rewrite: services",
     "reason": "the Mates inventory prepares containers, services and variables for every listed Mate; read on open",
@@ -1133,14 +1077,6 @@
     "fingerprint": "useZeropsLandedChange",
     "owner": "data-layer rewrite: changes/review",
     "reason": "a hook reads a landed change itself; the changes adapter owns the read",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/design/detailHarness.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsHistory",
-    "owner": "data-layer rewrite: releases/environments",
-    "reason": "history is read by a hook up front; read it when the view opens",
     "expires": "never"
   },
   {
@@ -1501,110 +1437,6 @@
     "fingerprint": "zeropsInventoryAtom",
     "owner": "data-layer rewrite: services",
     "reason": "inventory atoms and trouble refs remember a verdict; the services projection reads the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
-    "kind": "retired-token",
-    "fingerprint": "EMPTY_FLOWS",
-    "owner": "data-layer rewrite: releases/environments",
-    "reason": "a lost grant empties every flow and hooks read on their own; hide the project when it is read",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
-    "kind": "retired-token",
-    "fingerprint": "EMPTY_FLOWS",
-    "owner": "data-layer rewrite: releases/environments",
-    "reason": "a lost grant empties every flow and hooks read on their own; hide the project when it is read",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
-    "kind": "retired-token",
-    "fingerprint": "EMPTY_FLOWS",
-    "owner": "data-layer rewrite: releases/environments",
-    "reason": "a lost grant empties every flow and hooks read on their own; hide the project when it is read",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
-    "kind": "retired-token",
-    "fingerprint": "const compareAsks",
-    "owner": "data-layer rewrite: releases/environments",
-    "reason": "release comparisons are prepared up front; compare when a release is opened",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
-    "kind": "retired-token",
-    "fingerprint": "effectRead(",
-    "owner": "data-layer rewrite: releases/environments",
-    "reason": "a lost grant empties every flow and hooks read on their own; hide the project when it is read",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
-    "kind": "retired-token",
-    "fingerprint": "effectRead(",
-    "owner": "data-layer rewrite: releases/environments",
-    "reason": "a lost grant empties every flow and hooks read on their own; hide the project when it is read",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
-    "kind": "retired-token",
-    "fingerprint": "setAwaiting",
-    "owner": "data-layer rewrite: releases/environments",
-    "reason": "a lost grant empties every flow and hooks read on their own; hide the project when it is read",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
-    "kind": "retired-token",
-    "fingerprint": "setAwaiting",
-    "owner": "data-layer rewrite: releases/environments",
-    "reason": "a lost grant empties every flow and hooks read on their own; hide the project when it is read",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
-    "kind": "retired-token",
-    "fingerprint": "setAwaiting",
-    "owner": "data-layer rewrite: releases/environments",
-    "reason": "a lost grant empties every flow and hooks read on their own; hide the project when it is read",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsCompares(compareAsks)",
-    "owner": "data-layer rewrite: releases/environments",
-    "reason": "release comparisons are prepared up front; compare when a release is opened",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsRegistry",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "registry, recipes and releases are read by app hooks; the HQ adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsRegistry",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "registry, recipes and releases are read by app hooks; the HQ adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsRegistry",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "registry, recipes and releases are read by app hooks; the HQ adapter feeds the store",
     "expires": "never"
   },
   {
@@ -2192,62 +2024,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/zerops/useHalfMadeEnvironments.ts",
-    "kind": "retired-token",
-    "fingerprint": "useFinishGroupEnvironment",
-    "owner": "data-layer rewrite: operations",
-    "reason": "upgrade restart and finish-environment hooks poll themselves; the operations adapter owns them",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useHalfMadeEnvironments.ts",
-    "kind": "retired-token",
-    "fingerprint": "useFinishGroupEnvironment",
-    "owner": "data-layer rewrite: operations",
-    "reason": "upgrade restart and finish-environment hooks poll themselves; the operations adapter owns them",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useHalfMadeEnvironments.ts",
-    "kind": "retired-token",
-    "fingerprint": "useFinishGroupEnvironment",
-    "owner": "data-layer rewrite: operations",
-    "reason": "upgrade restart and finish-environment hooks poll themselves; the operations adapter owns them",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useHalfMadeEnvironments.ts",
-    "kind": "retired-token",
-    "fingerprint": "useHalfMadeEnvironments(",
-    "owner": "data-layer rewrite: releases/environments",
-    "reason": "half-made environments are found by a hook's own reads; the projection reads the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useHalfMadeEnvironments.ts",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsRegistry",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "registry, recipes and releases are read by app hooks; the HQ adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useHalfMadeEnvironments.ts",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsRegistry",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "registry, recipes and releases are read by app hooks; the HQ adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useHalfMadeEnvironments.ts",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsRegistry",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "registry, recipes and releases are read by app hooks; the HQ adapter feeds the store",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/zerops/useInterestLeases.ts",
     "kind": "retired-token",
     "fingerprint": "useInterestLeases",
@@ -2480,14 +2256,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/zerops/useZeropsCompares.ts",
-    "kind": "retired-token",
-    "fingerprint": "const stores = new Map<string, Store>()",
-    "owner": "data-layer rewrite: releases/environments",
-    "reason": "compare stores per HQ are kept in the app; the HQ adapter answers on open",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/zerops/useZeropsDataMentions.ts",
     "kind": "retired-token",
     "fingerprint": "useZeropsDataCatalogStore",
@@ -2533,14 +2301,6 @@
     "fingerprint": "useZeropsGitRemoteProbes",
     "owner": "data-layer rewrite: Mate identity/connection",
     "reason": "a component probes git remotes itself; the adapter owns the read",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsHistory.ts",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsHistory",
-    "owner": "data-layer rewrite: releases/environments",
-    "reason": "history is read by a hook up front; read it when the view opens",
     "expires": "never"
   },
   {

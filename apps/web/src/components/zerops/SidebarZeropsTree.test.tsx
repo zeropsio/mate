@@ -34,8 +34,6 @@ import {
   ProjectCustomOrderSchema,
   ProjectOrderSchema,
 } from "~/zerops/projectOrderPreference";
-import { HQ_LAST_KNOWN } from "~/zerops/hqNavigation";
-import { ZeropsProjectFlowContext, type ZeropsProjectFlowValue } from "~/zerops/projectFlowContext";
 import { InventoryContext, type Inventory } from "~/zerops/inventoryContext";
 import type { ProjectRef } from "@t3tools/client-runtime/zerops/data";
 
@@ -44,6 +42,11 @@ import type { ProjectRef } from "@t3tools/client-runtime/zerops/data";
 const stored = vi.hoisted(() => ({
   collapsed: new Set<string>(),
   written: undefined as ReadonlySet<string> | undefined,
+}));
+/** What each stop runs, as the platform says it, for the tests that draw it. */
+const stops = vi.hoisted(() => ({ deployments: new Map<string, unknown>() }));
+vi.mock("~/zerops/projectFlows", () => ({
+  useStopDeploymentsShown: () => stops.deployments,
 }));
 vi.mock("~/zerops/collapsedProjects", () => ({
   readCollapsedProjects: () => stored.collapsed,
@@ -121,6 +124,7 @@ vi.mock("~/zerops/useZeropsMateOwners", async (original) => ({
   },
 }));
 afterEach(() => {
+  stops.deployments = new Map();
   // A tree left mounted would answer the next test's asks of the one menu.
   for (const tree of mountedTrees.splice(0)) {
     act(() => {
@@ -602,8 +606,8 @@ describe("SidebarZeropsTree", () => {
   it.each([
     ["syncing", false, null, false],
     ["syncing", true, null, false],
-    ["last-known", false, HQ_LAST_KNOWN, false],
-    ["last-known", true, HQ_LAST_KNOWN, true],
+    ["last-known", false, "HQ last known", false],
+    ["last-known", true, "HQ last known", true],
     ["unavailable", false, "HQ unavailable", false],
     ["unavailable", true, "HQ unavailable", true],
   ] as const)("the header's HQ standing: %s, a retry offered %s", (kind, offered, words, again) => {
@@ -1749,7 +1753,7 @@ describe("a Mate and its crew, one unit in the menu", () => {
 
 // An HQ is open, so its releases are coming — but it has not answered them.
 const HQ_OPEN = {
-  deployments: new Map([
+  deployments: new Map<string, unknown>([
     [
       "crm-prod",
       {
@@ -1771,9 +1775,7 @@ const HQ_OPEN = {
       },
     ],
   ]),
-  flows: new Map(),
-  hqAddress: "https://hq.example.test",
-} as unknown as ZeropsProjectFlowValue;
+};
 
 describe("production and the stages are two chips on the project's heading (M2, M1)", () => {
   const released = (label: string): EnvironmentRow => ({
@@ -2060,15 +2062,14 @@ describe("production and the stages are two chips on the project's heading (M2, 
   });
 
   it("draws what the platform alone says while HQ has not answered the releases", () => {
+    stops.deployments = HQ_OPEN.deployments;
     const tree = mount(
-      <ZeropsProjectFlowContext.Provider value={HQ_OPEN}>
-        <SidebarZeropsTree
-          candidates={[CRM_DEV, up(CRM_PROD)]}
-          complete
-          onBrowseProjects={() => {}}
-          onSelect={() => {}}
-        />
-      </ZeropsProjectFlowContext.Provider>,
+      <SidebarZeropsTree
+        candidates={[CRM_DEV, up(CRM_PROD)]}
+        complete
+        onBrowseProjects={() => {}}
+        onSelect={() => {}}
+      />,
     );
     const chips = tree.root.findAll(
       (node) =>

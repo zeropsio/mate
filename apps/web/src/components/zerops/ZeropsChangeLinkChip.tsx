@@ -23,13 +23,13 @@ import { changeState, type FlowPullRequest } from "@t3tools/client-runtime/zerop
 import { parseChangeUrl } from "@t3tools/shared/hqChanges";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 import { GitMergeIcon, GitPullRequestArrow, GitPullRequestClosed } from "lucide-react";
-import { createContext, useContext, type ReactNode } from "react";
+import { createContext, useContext, useMemo, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
 import { AppLinkContext } from "../ServiceBrowserLink";
 import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { useZeropsProjectFlowOptional } from "../../zerops/projectFlowContext";
+import { useAppsChanges, useHqAddress } from "../../zerops/projectFlows";
 import { useZeropsLandedChange } from "../../zerops/useZeropsLandedChange";
 
 /**
@@ -63,15 +63,16 @@ export function ZeropsChangeLinkChip({
   readonly words?: ReactNode;
   readonly children: ReactNode;
 }) {
-  const flowValue = useZeropsProjectFlowOptional();
   const openInApp = useContext(AppLinkContext);
   const writtenAt = useContext(ChangeChipMomentContext);
-  const hqAddress = flowValue?.hqAddress;
+  const hqAddress = useHqAddress();
   const link =
     href === undefined || hqAddress === undefined ? null : parseChangeUrl(href, hqAddress);
 
-  // The flow carries an application's open changes and its newest landed ones.
-  const flow = link === null ? undefined : flowValue?.flows.get(link.appId);
+  // The application's open changes and its newest landed ones, held while the chip is drawn.
+  const appId = link?.appId;
+  const { changes } = useAppsChanges(useMemo(() => (appId === undefined ? [] : [appId]), [appId]));
+  const flow = appId === undefined ? undefined : changes.get(appId);
   const named = (entry: FlowPullRequest) =>
     entry.repository === link?.repo && entry.number === link.number;
   const held = flow?.pullRequests.find(named) ?? flow?.merged.find(named);

@@ -1,11 +1,10 @@
 /**
  * What HQ offers the person to do with an application, as its structure streamed it (`can`,
- * `@t3tools/shared/hqOffers`): its changes' verbs, a deploy asked again, a release, and each
+ * `@t3tools/shared/hqOffers`): its changes' verbs, a deploy asked again, and each
  * environment's deploy key. Drawn here, never decided: HQ decides each over the very target its
  * write is enforced with, and decides the write again at the press. While HQ does not answer,
  * every one of them is unavailable since then; before HQ has said, none is known.
  */
-import { type ReleaseGate } from "@t3tools/client-runtime/zerops";
 import type { HqOfferState } from "@t3tools/shared/hqOffers";
 import { useCallback } from "react";
 
@@ -78,29 +77,5 @@ export function useKeepDeployKeyOffer(): (projectId: string) => boolean | undefi
       return offer.kind === "allowed" ? true : offer.kind === "refused" ? false : undefined;
     },
     [state, structure],
-  );
-}
-
-/**
- * Whether HQ offers the person releasing an application's production, its refusal — that it has
- * not said, or since when it does not answer — in words, by the application's id; `undefined` for
- * one HQ's structure does not hold, or before it.
- */
-export function useReleasePermission(): (appId: string) => ReleaseGate | undefined {
-  const { structure, state, words } = useHqOffers();
-  return useCallback(
-    (appId) => {
-      const app = structure?.apps.find((candidate) => candidate.id === appId);
-      if (app === undefined) return undefined;
-      const offer = state(app.can, "release");
-      return offer.kind === "allowed"
-        ? { allowed: true }
-        : {
-            allowed: false,
-            reason: words(offer) ?? "",
-            ...(offer.kind === "refused" ? { refusedBy: "hq" as const } : {}),
-          };
-    },
-    [state, structure, words],
   );
 }

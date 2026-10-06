@@ -13,7 +13,7 @@ import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 import type { Release, ReleaseRollout } from "@t3tools/shared/hqRelease";
 import { describe, expect, it } from "vite-plus/test";
 
-import { joinProjectFlows } from "./ZeropsProjectFlowProvider";
+import { joinProjectFlows } from "./projectFlowJoin";
 
 const GROUPS = [
   { groupId: "g1", slug: "harbor" },

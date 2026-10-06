@@ -64,6 +64,8 @@ export interface GroupEnvironmentRowInput {
   readonly recipeServices?: ReadonlyArray<string> | undefined;
   /** A production's newest release as HQ's rollout of it stands there (`HqEnvironment.release`). */
   readonly release?: ReleaseRollout | null | undefined;
+  /** Failed release jobs HQ still lists, including those a newer service job replaced. */
+  readonly releaseFailures?: ReadonlyArray<ReleaseDeployFailure>;
   /** HQ bringing it up (`HqEnvironment.birth`). */
   readonly birth?: EnvironmentBirth | null | undefined;
 }
@@ -197,6 +199,19 @@ export function environmentRowInputsOf(input: {
         (hostname) => !listed.some((service) => service.hostname === hostname),
       );
       const recipeServices = input.declared?.get(environment.tier);
+      const releaseFailures =
+        environment.tier !== "production"
+          ? []
+          : environment.jobs.flatMap((job) =>
+              job.kind === "deploy" &&
+              job.cause === "release" &&
+              job.ref !== null &&
+              job.service !== null &&
+              job.sha !== null &&
+              jobFailed(job)
+                ? [{ tag: job.ref, service: job.service, sha: job.sha }]
+                : [],
+            );
       return {
         projectId: environment.projectId,
         name: input.projectNames.get(environment.projectId) ?? environment.name,
@@ -211,6 +226,7 @@ export function environmentRowInputsOf(input: {
         ],
         ...(recipeServices === undefined ? {} : { recipeServices }),
         ...(environment.release === undefined ? {} : { release: environment.release }),
+        ...(releaseFailures.length === 0 ? {} : { releaseFailures }),
         birth: environment.birth,
       };
     });
@@ -288,7 +304,7 @@ export interface ReleaseDeploys {
    * the version's name spells it.
    */
   readonly production: ReadonlyMap<string, string>;
-  /** Each production service whose newest deploy failed, with the release it was that of. */
+  /** Failed jobs HQ lists for production, each with the release that asked for it. */
   readonly failed: ReadonlyArray<ReleaseDeployFailure>;
   /** Each production's newest release rollout, as HQ told it (`releaseInFlight`). */
   readonly rollouts: ReadonlyArray<ReleaseRollout | null | undefined>;
@@ -312,6 +328,7 @@ export function releaseDeploys(
   for (const environment of environments) {
     if (environment.tier !== "production") continue;
     rollouts.push(environment.release);
+    failed.push(...(environment.releaseFailures ?? []));
     for (const service of environment.services) {
       const latest = service.deploy?.latest;
       if (latest !== undefined && latest.sha !== null && jobFailed(latest)) {
@@ -321,7 +338,13 @@ export function releaseDeploys(
             : environment.release?.leftOut.some((left) => left.job === latest.id) === true
               ? environment.release.tag
               : null;
-        if (tag !== null) failed.push({ tag, service: service.hostname, sha: latest.sha });
+        if (
+          tag !== null &&
+          !failed.some(
+            (job) => job.tag === tag && job.service === service.hostname && job.sha === latest.sha,
+          )
+        )
+          failed.push({ tag, service: service.hostname, sha: latest.sha });
       }
       const sha = deployedCommit(service.appVersionName);
       if (sha === undefined || production.has(service.hostname)) continue;

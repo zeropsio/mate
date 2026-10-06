@@ -5,8 +5,8 @@
  * this is what tells it *whose*: the group this Mate's project belongs to, and
  * whether this person is the Mate's owner (D11). The group's side — its
  * changes as HQ's stream tells them, the declarations that say which
- * environment picks a branch up — is the project flow's, read once for the
- * whole account (`ZeropsProjectFlowProvider`); the tab adds only what is this
+ * environment picks a branch up — is the project flow's, read for its
+ * application while the tab is drawn (`useProjectFlows`); the tab adds only what is this
  * Mate's: its checkouts, and its change in each.
  */
 import {
@@ -17,9 +17,11 @@ import {
 import { resolveMateProjectRole } from "@t3tools/client-runtime/zerops/mateAccess";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 
-import { useZeropsProjectFlow } from "../../zerops/projectFlowContext";
+import { useHqAppDetailHold } from "../../zerops/useHqAppDetail";
+import { useFlowVerbs } from "../../zerops/flowVerbs";
+import { useProjectFlows } from "../../zerops/projectFlows";
 import { useOpenReview } from "../../zerops/review";
 import { useRegistrationRecord } from "../../zerops/registrationRecords";
 import { useZeropsInventory } from "../../zerops/ZeropsInventoryProvider";
@@ -30,7 +32,7 @@ export function ZeropsGitSurface({ threadRef }: { readonly threadRef: ScopedThre
   const navigate = useNavigate();
   const session = useZeropsSessionOptional();
   const inventory = useZeropsInventory();
-  const flow = useZeropsProjectFlow();
+  const { trouble } = useFlowVerbs();
   const environmentId = threadRef?.environmentId;
   const projectRef = useRegistrationRecord(environmentId)?.projectRef;
 
@@ -42,7 +44,12 @@ export function ZeropsGitSurface({ threadRef }: { readonly threadRef: ScopedThre
    * never its bot login, which is `mate-{projectId}` (`changeAuthorName`).
    */
   const mateName = project === undefined ? undefined : projectNameInApp(project);
-  const projectFlow = groupId === undefined ? undefined : flow.flows.get(groupId);
+  useHqAppDetailHold(groupId === undefined ? [] : [groupId]);
+  // The application's flow, held while the panel is drawn.
+  const { flows } = useProjectFlows(
+    useMemo(() => (groupId === undefined ? [] : [groupId]), [groupId]),
+  );
+  const projectFlow = groupId === undefined ? undefined : flows.get(groupId);
 
   /**
    * Whose Mate this is. A checkout verb runs in the container as the agent's
@@ -106,12 +113,12 @@ export function ZeropsGitSurface({ threadRef }: { readonly threadRef: ScopedThre
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {flow.trouble === null ? null : (
+      {trouble === null ? null : (
         <p
           className="px-4 pt-3 text-xs text-[var(--zerops-status-failed)]"
           data-zerops-surface="git-error"
         >
-          {flow.trouble}
+          {trouble}
         </p>
       )}
       <ZeropsGitTab

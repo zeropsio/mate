@@ -41,6 +41,11 @@ export {
 export { discussionDemand } from "./families/hqDiscussion.ts";
 export type { ZeropsWire } from "./adapters/zerops.ts";
 export {
+  appEnvironments,
+  appsEnvironments,
+  type AppEnvironmentsRead,
+} from "./projections/appEnvironments.ts";
+export {
   hqAppDetail,
   hqAppDetails,
   type HqAppDetailRead,
@@ -116,6 +121,8 @@ export {
 export { makeOperations, type Operations } from "./operations/coordinator.ts";
 export { makeZeropsExecutor } from "./operations/executors/zerops.ts";
 export { makeHqExecutor, type HqWrites } from "./operations/executors/hq.ts";
+export { type FlowWriteIntent } from "./operations/flowWrites.ts";
+export { flowAnswer, type FlowWriteAnswer } from "./projections/flowAnswer.ts";
 export { restartWay } from "./operations/mateRestart.ts";
 export { operationProgress, type OperationProgress } from "./projections/operation.ts";
 export { SWEEP_FAILED_REASON } from "./operations/executors/throwawaySweep.ts";
@@ -153,3 +160,5 @@ export {
   type HqProjectPeople,
 } from "./projections/hqProjectPeople.ts";
 export type { HqVerdict } from "./families/hqVerdict.ts";
+
+export { environmentSetup } from "./projections/environmentSetup.ts";

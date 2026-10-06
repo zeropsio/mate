@@ -10,7 +10,7 @@ import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { makeSampledAccount } from "./__fixtures__/sampledAccount";
-import { useZeropsCompares, type ZeropsCompares } from "./useZeropsCompares";
+import { useReleaseComparisons, type AppCompares } from "./useReleaseComparisons";
 import { AccountDataContext, type AccountData } from "./ZeropsAccountData";
 
 const OLD = "1".repeat(40);
@@ -72,19 +72,19 @@ const READ: CompareRead = {
 const KEY = JSON.stringify(["appdev", OLD, HEAD]);
 
 /** What the hook said, render by render. */
-const renders: ZeropsCompares[] = [];
+const renders: ReadonlyMap<string, AppCompares>[] = [];
 const seen = () => renders.at(-1);
 
 function Probe({ asks }: { readonly asks: ReadonlyMap<string, ReadonlyArray<CompareRead>> }) {
   return (
-    <AccountDataContext value={account}>
+    <AccountDataContext value={hq.state.open ? account : null}>
       <Reader asks={asks} />
     </AccountDataContext>
   );
 }
 
 function Reader({ asks }: { readonly asks: ReadonlyMap<string, ReadonlyArray<CompareRead>> }) {
-  renders.push(useZeropsCompares(asks));
+  renders.push(useReleaseComparisons(asks));
   return null;
 }
 
@@ -114,7 +114,7 @@ async function mount(element: ReactElement): Promise<ReactTestRenderer> {
   return tree!;
 }
 
-describe("useZeropsCompares", () => {
+describe("useReleaseComparisons", () => {
   it("asks HQ each comparison of an application once, and holds its answer", async () => {
     await mount(<Probe asks={new Map([["a-todo", [READ]]])} />);
     expect(hq.state.asked).toEqual(["a-todo appdev"]);
@@ -201,10 +201,24 @@ describe("useZeropsCompares", () => {
     expect(seen()?.get("a-todo")?.answers).toEqual(new Map());
   });
 
-  it("asks a comparison another surface asked already of nobody: one store per HQ", async () => {
+  it("holds comparisons only with the surface that asked for them", async () => {
     await mount(<Probe asks={new Map([["a-todo", [READ]]])} />);
     await mount(<Probe asks={new Map([["a-todo", [READ]]])} />);
-    expect(hq.state.asked).toEqual(["a-todo appdev"]);
+    expect(hq.state.asked).toEqual(["a-todo appdev", "a-todo appdev"]);
     expect(seen()?.get("a-todo")?.answers.has(KEY)).toBe(true);
+  });
+
+  it("lets go of another account's comparisons when the account changes", async () => {
+    const tree = await mount(<Probe asks={new Map([["a-todo", [READ]]])} />);
+    const nextCompare = vi.fn(async () => {
+      throw new Error("No access in this account.");
+    });
+    account = { ...account, compare: nextCompare };
+    await act(async () => {
+      tree.update(<Probe asks={new Map([["a-todo", [READ]]])} />);
+    });
+    expect(nextCompare).toHaveBeenCalledOnce();
+    expect(seen()?.get("a-todo")?.answers.size).toBe(0);
+    expect(seen()?.get("a-todo")?.failures.get(KEY)).toBe("No access in this account.");
   });
 });

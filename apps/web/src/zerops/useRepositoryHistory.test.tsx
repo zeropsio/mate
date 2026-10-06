@@ -9,7 +9,7 @@ import { act } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { useZeropsHistory, type ZeropsHistoryState } from "./useZeropsHistory";
+import { useRepositoryHistory, type ZeropsHistoryState } from "./useRepositoryHistory";
 
 const HEAD = "a".repeat(40);
 const COMMIT: CompareCommit = {
@@ -25,10 +25,10 @@ const compares = vi.hoisted(() => ({
   asked: [] as Array<CompareRead>,
   answer: "answer" as "answer" | "fail" | "none",
 }));
-vi.mock("./useZeropsCompares", async () => {
+vi.mock("./useReleaseComparisons", async () => {
   const { compareReadKey } = await import("@t3tools/client-runtime/zerops");
   return {
-    useZeropsCompares: (asks: ReadonlyMap<string, ReadonlyArray<CompareRead>>) =>
+    useReleaseComparisons: (asks: ReadonlyMap<string, ReadonlyArray<CompareRead>>) =>
       new Map(
         [...asks].map(([appId, reads]) => {
           compares.asked.push(...reads);
@@ -63,8 +63,8 @@ vi.mock("./useZeropsCompares", async () => {
 });
 
 const renders: ZeropsHistoryState[] = [];
-function Probe(props: Parameters<typeof useZeropsHistory>[0]) {
-  renders.push(useZeropsHistory(props));
+function Probe(props: Parameters<typeof useRepositoryHistory>[0]) {
+  renders.push(useRepositoryHistory(props));
   return null;
 }
 
@@ -80,7 +80,9 @@ afterEach(() => {
   compares.answer = "answer";
 });
 
-function historyOf(props: Parameters<typeof useZeropsHistory>[0]): ZeropsHistoryState | undefined {
+function historyOf(
+  props: Parameters<typeof useRepositoryHistory>[0],
+): ZeropsHistoryState | undefined {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   act(() => {
     mounted.push(create(<Probe {...props} />));
@@ -93,7 +95,7 @@ const REPOS: ReadonlyArray<RepoListEntry> = [
   { name: "group", mainHead: null, updatedAt: "2026-10-02T08:00:00.000Z" },
 ];
 
-describe("useZeropsHistory", () => {
+describe("useRepositoryHistory", () => {
   it("is every commit up to main's head as HQ compares it, and how many HQ counted", () => {
     expect(historyOf({ appId: "a-todo", repo: "appdev", repos: REPOS })).toEqual({
       kind: "read",

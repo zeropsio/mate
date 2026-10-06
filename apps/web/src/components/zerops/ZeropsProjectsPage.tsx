@@ -166,9 +166,10 @@ import { useChangeOffers } from "~/zerops/useChangeOffers";
 import { useMateOffers, useOrgOffers } from "~/zerops/useHqOffers";
 import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
 import { officialHq, useAccountHq } from "~/zerops/accountHq";
-import { useHalfMadeEnvironments } from "~/zerops/useHalfMadeEnvironments";
+import { useEnvironmentSetup } from "~/zerops/useEnvironmentSetup";
 import { useZeropsRegistry } from "~/zerops/useZeropsRegistry";
-import { useZeropsProjectFlow } from "~/zerops/projectFlowContext";
+import { useFlowVerbs } from "~/zerops/flowVerbs";
+import { useProjectFlows, useStopDeploymentsShown } from "~/zerops/projectFlows";
 import { REVIEW_LABEL, REVIEW_RELEASE_LABEL, useOpenReview } from "~/zerops/review";
 import { useReadGroupAgents } from "~/zerops/groupAgents";
 import { deployRowTone } from "./ZeropsProjectRow.logic";
@@ -1576,9 +1577,11 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   });
 
   // Every group's flow — its declared environments and what they run, what
-  // is waiting to land, what was released — is read once for the account
-  // (`ZeropsProjectFlowProvider`, D26); the page draws its share of it.
-  const projectFlow = useZeropsProjectFlow();
+  // is waiting to land, what was released — read while the page is drawn.
+  // What a release would put live is compared on the project's own page.
+  const projectFlow = useProjectFlows("every");
+  const verbs = useFlowVerbs();
+  const deployments = useStopDeploymentsShown();
   // What HQ's rule shows this person of each project's changes: a project listed to them whose
   // changes it does not says so in their steps, never "None yet".
   const changeOffersOf = useChangeOffers();
@@ -1606,14 +1609,18 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   const groupDeploys = projectFlow.flows;
   // A production just added is the intent to release (P7): the application whose production came
   // up waits here until HQ holds it and the gate says whether its first release is the person's to
-  // review, which then opens by itself (`firstReleaseHandoff`).
+  // review, which then opens by itself (`firstReleaseHandoff`). Its release is compared meanwhile.
   const [handoffTo, setHandoffTo] = useState<{
     readonly groupId: string;
     readonly projectId: string;
   } | null>(null);
+  const handoffFlows = useProjectFlows(
+    useMemo(() => (handoffTo === null ? [] : [handoffTo.groupId]), [handoffTo]),
+    { compare: true },
+  ).flows;
   useEffect(() => {
     if (handoffTo === null) return;
-    const flow = groupDeploys.get(handoffTo.groupId);
+    const flow = handoffFlows.get(handoffTo.groupId);
     if (flow === undefined) return;
     const verdict = firstReleaseHandoff({
       // The project this press made, never another production that comes up later.
@@ -1625,7 +1632,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     if (verdict === "wait") return;
     setHandoffTo(null);
     if (verdict === "open") openReview({ kind: "release", groupId: handoffTo.groupId });
-  }, [groupDeploys, handoffTo, openReview]);
+  }, [handoffFlows, handoffTo, openReview]);
 
   /**
    * The environment row of one Zerops project, when HQ records it as one of an
@@ -1733,7 +1740,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     const action =
       withMerge && review ? (
         <ZeropsMateVerb
-          label={changeRowVerb(projectFlow.pending, group.groupId, pull)}
+          label={changeRowVerb(verbs.pending, group.groupId, pull)}
           onClick={(event) => {
             openReview(
               {
@@ -1895,8 +1902,10 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   );
 
   // A stage or a production whose creation lost its last writes is said on its project's row and
-  // finished from its menu, when the person asks (`useHalfMadeEnvironments`).
-  const { halfMade, finishing } = useHalfMadeEnvironments(candidates);
+  // finished from its menu, when the person asks (`useEnvironmentSetup`).
+  const { halfMade, finishing } = useEnvironmentSetup(
+    useMemo(() => candidates.map(({ project }) => project.id), [candidates]),
+  );
 
   // Persisted cleanup debt is restored after a crash, once inventory admits the account.
   const throwawayCleanup = useZeropsThrowawaySweep({
@@ -2077,7 +2086,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     const stopDeployTone =
       declared === undefined
         ? undefined
-        : stopTone(projectFlow.deployments.get(candidate.project.id), declared);
+        : stopTone(deployments.get(candidate.project.id), declared);
     const deployTone = stopDeployTone === undefined ? undefined : deployRowTone(stopDeployTone);
     const deployLabel = stopDeployTone === undefined ? undefined : deployWord(stopDeployTone);
     // *Release* is the project's next step, in production's cell beside
@@ -2369,7 +2378,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
           onRollBack={(tag, from) => {
             openReview({ kind: "rollback", groupId: group.groupId, tag }, { from });
           }}
-          pending={projectFlow.pending}
+          pending={verbs.pending}
           releases={releases}
         />
       </>
@@ -2476,7 +2485,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
             groupId: group.groupId,
             members,
             flow: reads,
-            deployments: projectFlow.deployments,
+            deployments,
             pending: group.pending,
           }),
         ),
@@ -2521,7 +2530,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       ?.firstDeploy;
   // The page's one line of trouble: a refusal of something done here — a
   // merge or a release the project flow refused included — one at a time.
-  const trouble = toolError ?? route.trouble ?? projectFlow.trouble;
+  const trouble = toolError ?? route.trouble ?? verbs.trouble;
   const ungroupedRows = shownUngrouped(
     withoutOfficialHq(groupTree.ungrouped, accountHq.hq).map((candidate) => ({
       item: candidate,
