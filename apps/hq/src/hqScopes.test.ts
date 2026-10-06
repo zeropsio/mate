@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import type { HqSubscription } from "@t3tools/shared/hqStream";
+import type { HqNavigationJob, HqSubscription } from "@t3tools/shared/hqStream";
 import * as Deferred from "effect/Deferred";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
@@ -66,6 +66,73 @@ const fixture = Effect.gen(function* () {
   let deleted = false;
   let corrupt = false;
   let appName = "App";
+  let environmentState: HqNavigationJob["state"] = "building";
+  let environmentReads = 0;
+  let environmentsEnabled = false;
+  const environmentSnapshot = (): StructureSource["environmentSource"] => {
+    const environments = environmentsEnabled
+      ? [
+          {
+            projectId: "P",
+            tier: "stage" as const,
+            name: "stage",
+            sources: ["main"],
+            order: 1,
+            keyHeld: true,
+            keyInvalid: false,
+            jobs: [
+              {
+                id: "job",
+                kind: "deploy" as const,
+                service: "web",
+                sha: "sha",
+                state: environmentState,
+                cause: "merge" as const,
+                ref: "sha",
+                reason: null,
+                appVersionId: "version",
+                processId: "process",
+                evidence: {
+                  phase: environmentState,
+                  processes: [
+                    {
+                      id: "process",
+                      status: environmentState === "building" ? "RUNNING" : "FINISHED",
+                    },
+                  ],
+                  version: null,
+                  nextActor: environmentState === "building" ? ("hq" as const) : ("none" as const),
+                  nextAction: "Follow operation",
+                },
+                steps: [],
+                verifiedVersionId: null,
+                requestedBy: "owner",
+                at: "2026-10-06T00:00:00.000Z",
+                endedAt: environmentState === "building" ? null : "2026-10-06T00:01:00.000Z",
+                supersededBy: null,
+              },
+            ],
+            release: null,
+            birth: { ended: false },
+          },
+        ]
+      : [];
+    return {
+      fingerprints: new Map(environmentsEnabled ? [["A", json(environments)]] : []),
+      forApp: (
+        _user: string,
+        _app: string,
+        _facts: unknown,
+        access: StructureRead["apps"][number]["can"]["read_change"],
+      ) =>
+        access.allow
+          ? environments.map((environment) => ({
+              ...environment,
+              can: { keep_deploy_token: { allow: true } },
+            }))
+          : { refused: access.reason },
+    };
+  };
   let detailRefused = false;
   let missingChange = true;
   let granted = false;
@@ -113,11 +180,13 @@ const fixture = Effect.gen(function* () {
     readonly answered: number;
   }>();
   const detailsChanged = yield* PubSub.unbounded<number>();
+  const deployChanged = yield* PubSub.unbounded<number>();
   const official = yield* Ref.make<OfficialStatus>({ official: "ok", allowed: true });
   const checked = yield* Ref.make(true);
   const backup = yield* Ref.make({ state: "pending" as const });
   const overviews = yield* makeMateOverviews(memoryStore().store);
   const sourceNow = (): StructureSource => ({
+    environmentSource: environmentSnapshot(),
     facts: org,
     appIds: new Set(deleted ? [] : ["A"]),
     projectIds: new Set(deleted ? [] : ["P"]),
@@ -132,7 +201,17 @@ const fixture = Effect.gen(function* () {
           delete_app: { allow: true },
         },
         unheld: {},
-        presses: {},
+        presses: environmentsEnabled
+          ? {
+              P: {
+                kind: "stage",
+                appId: "A",
+                heldForMs: 9000,
+                until: "2026-10-06T00:01:00.000Z",
+                importProcessId: "import",
+              },
+            }
+          : {},
         ungrouped: [],
         apps: deleted
           ? []
@@ -168,7 +247,10 @@ const fixture = Effect.gen(function* () {
                   redeploy: { allow: false, reason: "forbidden" },
                   release: { allow: false, reason: "forbidden" },
                 },
-                environments: [],
+                environments: environmentSnapshot().forApp(userId, "A", org, {
+                  allow: (userId === "owner" || granted) && !revoked,
+                  reason: "changes_not_seen",
+                }),
               },
             ],
       } as unknown as StructureRead;
@@ -176,6 +258,10 @@ const fixture = Effect.gen(function* () {
   });
   const services = Layer.mergeAll(
     Layer.succeed(Structure, {
+      environments: Effect.sync(() => {
+        environmentReads += 1;
+        return environmentSnapshot();
+      }),
       navigation: Effect.gen(function* () {
         yield* Ref.update(reads, (n) => n + 1);
         return sourceNow();
@@ -236,7 +322,9 @@ const fixture = Effect.gen(function* () {
           return [];
         }),
     } as unknown as Releases["Service"]),
-    Layer.succeed(Deploys, { changes: Stream.empty } as unknown as Deploys["Service"]),
+    Layer.succeed(Deploys, {
+      changes: Stream.fromPubSub(deployChanged),
+    } as unknown as Deploys["Service"]),
     Layer.succeed(MateOverviews, overviews),
     Layer.succeed(Official, {
       status: Ref.get(official),
@@ -282,6 +370,18 @@ const fixture = Effect.gen(function* () {
       return { ...client, queue, take, subscribe };
     });
   return {
+    enableEnvironments: () => {
+      environmentsEnabled = true;
+    },
+    environmentReads: () => environmentReads,
+    deployState: (state: HqNavigationJob["state"]) =>
+      Effect.andThen(
+        Effect.sync(() => {
+          environmentState = state;
+        }),
+        PubSub.publish(deployChanged, 1),
+      ),
+    deployChanged: PubSub.publish(deployChanged, 1),
     recoverSource: () => {
       sourceRefused = false;
       recentRefused = false;
@@ -396,6 +496,97 @@ const resetOf = (message: ScopeOutput) => {
 };
 
 describe("revisioned HQ values", () => {
+  it.effect("navigation retains filtered environment jobs and press hold duration", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const f = yield* fixture;
+        f.enableEnvironments();
+        const owner = yield* f.connect("owner");
+        const reader = yield* f.connect("reader");
+        yield* owner.subscribe([{ scope: nav }]);
+        yield* reader.subscribe([{ scope: nav }]);
+        const first = resetOf(yield* owner.take);
+        const filtered = resetOf(yield* reader.take);
+        const app = first.values.find((value) => value.key === "app:A")!.value as {
+          environments: Array<{ jobs: Array<{ state: string; evidence: unknown }> }>;
+        };
+        assert.strictEqual(app.environments[0]!.jobs[0]!.state, "building");
+        assert.property(app.environments[0]!.jobs[0]!, "evidence");
+        assert.deepStrictEqual(
+          (
+            filtered.values.find((value) => value.key === "app:A")!.value as {
+              environments: unknown;
+            }
+          ).environments,
+          { refused: "forbidden" },
+        );
+        assert.strictEqual(
+          (first.values.find((value) => value.key === "press:P")!.value as { heldForMs: number })
+            .heldForMs,
+          9000,
+        );
+      }),
+    ),
+  );
+  it.effect(
+    "deploy pushes revise only changed app environment values without rebuilding navigation or projecting every person",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const f = yield* fixture;
+          f.enableEnvironments();
+          const owner = yield* f.connect("owner");
+          const reader = yield* f.connect("reader");
+          yield* owner.subscribe([{ scope: nav }]);
+          yield* reader.subscribe([{ scope: nav }]);
+          const first = resetOf(yield* owner.take);
+          yield* owner.take;
+          resetOf(yield* reader.take);
+          yield* reader.take;
+          const projections = f.projections();
+          const roles = f.roleReads();
+          yield* f.deployState("live");
+          const moved = resetOf(yield* owner.take);
+          assert.deepStrictEqual(
+            moved.values.map((value) => value.key),
+            ["app:A"],
+          );
+          assert.strictEqual(moved.type, "scope-values");
+          assert.strictEqual(moved.incarnation, first.incarnation);
+          assert.strictEqual(moved.revision, first.revision + 1);
+          assert.deepStrictEqual(moved.removals, []);
+          assert.include(json(moved.values), '"state":"live"');
+          assert.strictEqual(yield* Ref.get(f.reads), 1);
+          assert.strictEqual(f.projections(), projections);
+          assert.strictEqual(f.roleReads(), roles);
+          assert.strictEqual(f.environmentReads(), 1);
+          assert.deepStrictEqual(f.detailReads, []);
+          assert.strictEqual(yield* Queue.size(reader.queue), 0);
+          yield* f.deployChanged;
+          // A tick with unchanged values emits no app update. The status tick is a receipt barrier.
+          yield* Ref.set(f.official, { official: "anchor_missing" as const, allowed: true });
+          yield* TestClock.adjust("30 seconds");
+          const status = resetOf(yield* owner.take);
+          assert.deepStrictEqual(
+            status.values.map((value) => value.key),
+            ["status"],
+          );
+          assert.strictEqual(yield* Ref.get(f.reads), 1);
+          assert.strictEqual(f.environmentReads(), 2);
+          yield* owner.subscribe([
+            {
+              scope: nav,
+              cursor: { incarnation: status.incarnation, revision: status.revision },
+              knownKeys: first.values.map((value) => value.key),
+            },
+          ]);
+          const ready = yield* owner.take;
+          assert.strictEqual(ready.type, "scope-ready");
+          assert.strictEqual(yield* Queue.size(owner.queue), 0);
+        }),
+      ),
+  );
+
   it.effect("a new session behind a failing old read still re-evaluates", () =>
     Effect.scoped(
       Effect.gen(function* () {

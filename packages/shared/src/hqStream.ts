@@ -6,6 +6,8 @@ import { RecipeTierResponse } from "./hqRecipe.ts";
 import { HqDecision } from "./hqOffers.ts";
 import { AppReadValue } from "./hqAppReads.ts";
 import { HqChange } from "./hqChanges.ts";
+import { EnvironmentBirth, HqDeployOutcome } from "./hqDeploys.ts";
+import { ReleaseRollout } from "./hqRelease.ts";
 
 export { HqAttentionValue };
 
@@ -202,6 +204,63 @@ export const HqNavigationMate = Schema.Struct({
   birthId: Schema.optionalKey(Schema.String),
   signers: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
 });
+/** Bounded environment jobs, retaining the latest live job for each service too. */
+export const HqNavigationJob = Schema.Struct({
+  id: Schema.String,
+  kind: HqDeployOutcome.fields.kind,
+  service: HqDeployOutcome.fields.service,
+  sha: HqDeployOutcome.fields.sha,
+  state: HqDeployOutcome.fields.state,
+  cause: Schema.Literals([
+    "merge",
+    "release",
+    "run_again",
+    "add_service",
+    "env_added",
+    "key_kept",
+    "import",
+    "migrated",
+  ]),
+  ref: Schema.NullOr(Schema.String),
+  reason: HqDeployOutcome.fields.reason,
+  appVersionId: Schema.NullOr(Schema.String),
+  processId: HqDeployOutcome.fields.processId,
+  evidence: HqDeployOutcome.fields.evidence,
+  steps: HqDeployOutcome.fields.steps,
+  verifiedVersionId: HqDeployOutcome.fields.verifiedVersionId,
+  requestedBy: Schema.NullOr(Schema.String),
+  at: Schema.String,
+  endedAt: Schema.NullOr(Schema.String),
+  supersededBy: Schema.NullOr(Schema.String),
+});
+export type HqNavigationJob = typeof HqNavigationJob.Type;
+export const HqNavigationEnvironment = Schema.Struct({
+  projectId: Schema.String,
+  tier: Schema.Literals(["stage", "production"]),
+  name: Schema.String,
+  sources: Schema.Array(Schema.String),
+  order: Schema.Number,
+  keyHeld: Schema.Boolean,
+  keyInvalid: Schema.Boolean,
+  can: Decisions,
+  jobs: Schema.Array(HqNavigationJob),
+  release: Schema.NullOr(ReleaseRollout),
+  birth: Schema.NullOr(EnvironmentBirth),
+});
+export type HqNavigationEnvironment = typeof HqNavigationEnvironment.Type;
+export const HqNavigationEnvironments = Schema.Union([
+  Schema.Array(HqNavigationEnvironment),
+  Schema.Struct({ refused: Schema.String }),
+]);
+/** Remaining hold duration from HQ's read; transport silence never decides its outcome. */
+export const HqNavigationPress = Schema.Struct({
+  kind: Schema.Literals(["mate", "stage", "production"]),
+  appId: Schema.optionalKey(Schema.String),
+  heldForMs: Schema.Number.check(Schema.isGreaterThanOrEqualTo(0)),
+  until: Schema.String,
+  importProcessId: Schema.optionalKey(Schema.String),
+});
+export type HqNavigationPress = typeof HqNavigationPress.Type;
 export const HqNavigationApp = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
@@ -210,6 +269,7 @@ export const HqNavigationApp = Schema.Struct({
     empty: Schema.Boolean,
     deletingProjectIds: Schema.Array(Schema.String),
   }),
+  environments: HqNavigationEnvironments,
   projectIds: Schema.Array(Schema.String),
   births: Schema.Array(Schema.Unknown),
 });
