@@ -8,7 +8,7 @@
  * brought the word decides it: the store already holds the newest by the Mate's own revision. The
  * words a row shows — the task, the last reply, the step, the question — are the attention's chat's
  * own, found by its id: in the chat's shell where this page holds it, else in HQ's overview of the
- * Mate's main chat.
+ * Mate's main chat; a chat HQ's overview does not name yet reads without words until it does.
  *
  * A Mate from before the attention value is read as it always was, off its socket's reading while
  * that socket stands, else off HQ's overview of it, live while HQ holds its link (`legacyActivity`);
@@ -17,7 +17,7 @@
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { MateAttentionRead } from "@t3tools/client-runtime/data";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
-import type { EnvironmentId, MateAttention } from "@t3tools/contracts";
+import type { EnvironmentId, MateAttention, ThreadId } from "@t3tools/contracts";
 import type { MateLiveView } from "@t3tools/shared/hqMates";
 import {
   mateMarkStateForThread,
@@ -122,7 +122,11 @@ export function attentionActivity(input: {
   const main = input.overview?.main ?? null;
   const words: AgentActivityThread | undefined =
     input.shells.find((shell) => shell.id === threadId) ??
-    (main !== null && main.id === threadId ? { ...main, environmentId } : undefined);
+    (main === null
+      ? undefined
+      : main.id === threadId
+        ? { ...main, environmentId }
+        : wordlessChat(threadId, environmentId, main.updatedAt));
   if (words === undefined) return undefined;
   const read = threadAgentActivity(
     words,
@@ -154,6 +158,31 @@ export function attentionActivity(input: {
     ...(kind === "failed" && errorLine !== undefined ? { errorLine } : {}),
   };
   return input.live ? activity : restingActivity(activity);
+}
+
+/**
+ * A chat the attention names before HQ's overview does (a new one, the overview a beat behind): no
+ * words of it yet, dated at HQ's last word of the Mate — the attention alone says what it does.
+ */
+function wordlessChat(
+  id: ThreadId,
+  environmentId: EnvironmentId,
+  updatedAt: string,
+): AgentActivityThread {
+  return {
+    id,
+    environmentId,
+    title: "",
+    hasPendingApprovals: false,
+    hasPendingUserInput: false,
+    hasActionableProposedPlan: false,
+    interactionMode: "default",
+    backgroundLiveness: null,
+    latestUserMessageAt: null,
+    updatedAt,
+    session: null,
+    latestTurn: null,
+  };
 }
 
 /**

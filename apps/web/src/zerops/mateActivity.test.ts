@@ -175,9 +175,32 @@ describe("matesActivityOf — a Mate that publishes its attention", () => {
     expect(activity?.remembered).toBeUndefined();
   });
 
-  it("says nothing of a new chat no words of which are held yet", () => {
+  it.each([
+    { name: "at work", says: { working: 1 }, kind: "working" },
+    {
+      name: "waiting on its person",
+      says: {
+        waiting: 1,
+        questions: [{ threadId: "t9", kind: "approval", turnId: null }],
+      },
+      kind: "approval",
+    },
+    { name: "at rest", says: {}, kind: "idle" },
+  ])(
+    "reads a new chat HQ's overview does not name yet off the attention, wordless: $name",
+    ({ says, kind }) => {
+      const activity = read({
+        attention: attention(said({ mainThreadId: "t9" as never, ...(says as object) })),
+      });
+      expect(activity).toMatchObject({ threadId: "t9", kind, at: DONE });
+      expect(activity?.subject).toBeUndefined();
+      expect(activity?.snippet).toBeUndefined();
+    },
+  );
+
+  it("says nothing of a chat no words of which are held, nor HQ's overview of any", () => {
     expect(
-      read({ attention: attention(said({ mainThreadId: "t9" as never, working: 1 })) }),
+      read({ attention: attention(said({ working: 1 })), overviews: new Map() }),
     ).toBeUndefined();
   });
 
