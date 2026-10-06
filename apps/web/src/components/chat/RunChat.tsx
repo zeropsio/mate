@@ -81,6 +81,7 @@ import {
 import { flushSync } from "react-dom";
 
 import { cn } from "~/lib/utils";
+import { RunShimmer } from "./RunShimmer";
 import { FileWriteDetail } from "./FileWriteDetail";
 import { stepWriteCalls } from "./fileWrites.logic";
 import { useAssetUrls, useAssetUrlState } from "../../assets/assetUrls";
@@ -1022,18 +1023,18 @@ function Headline({
   if (use(InSlotContext)) {
     return (
       <span className={cn("flex min-w-0 items-start gap-2", META)}>
-        <span className="min-w-0 flex-1 break-words" data-run-shimmer={running ? "" : undefined}>
+        <RunShimmer className="min-w-0 flex-1 break-words" sweeps={running}>
           {children}
-        </span>
+        </RunShimmer>
         <span aria-hidden="true" className="run-slot-clock-room" />
       </span>
     );
   }
   return (
     <span className={cn("flex min-w-0 items-start gap-2", META)}>
-      <span className="min-w-0 flex-1 break-words" data-run-shimmer={running ? "" : undefined}>
+      <RunShimmer className="min-w-0 flex-1 break-words" sweeps={running}>
         {children}
-      </span>
+      </RunShimmer>
       {time !== null || opens || column ? (
         <span className="flex h-[1lh] shrink-0 items-center gap-1.5 ps-2">
           <span
@@ -1857,13 +1858,13 @@ function OperationLine({
       timeTone={failure === "broken" ? "failed" : "muted"}
     >
       <span className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-0.5">
-        <span
+        <RunShimmer
           className={stepped ? "text-foreground" : "text-foreground/75"}
           // A deploy's running step pulses: its name stands still in the ink.
-          data-run-shimmer={live === null || stepped ? undefined : ""}
+          sweeps={live !== null && !stepped}
         >
           {words}
-        </span>
+        </RunShimmer>
         {stepped ? null : live !== null ? (
           <>
             <StatusBar className="w-12" segments={live.segments} />
@@ -2853,17 +2854,16 @@ function StepNowWords({
   /** A command's first line after its words — not where its whole stands under them. */
   readonly codeAfter?: boolean;
 }) {
-  const sweep = sweeps ? "" : undefined;
   if (step.kind === "command" && step.words === null) {
     return (
-      <span className="run-now-verb run-now-mono" data-run-shimmer={sweep}>
+      <RunShimmer className="run-now-verb run-now-mono" inline sweeps={sweeps}>
         {step.code}
-      </span>
+      </RunShimmer>
     );
   }
   if (step.kind !== "command" && step.phrase !== null) {
     return (
-      <span className="run-now-verb" data-run-shimmer={sweep}>
+      <RunShimmer className="run-now-verb" inline sweeps={sweeps}>
         {step.phrase.verb}
         {keyedByOccurrence(step.phrase.targets).map(({ key, value }, index, all) => (
           <Fragment key={key}>
@@ -2872,14 +2872,14 @@ function StepNowWords({
           </Fragment>
         ))}
         {step.phrase.more > 0 ? ` and ${step.phrase.more} more` : null}
-      </span>
+      </RunShimmer>
     );
   }
   return (
     <>
-      <span className="run-now-verb" data-run-shimmer={sweep}>
+      <RunShimmer className="run-now-verb" inline sweeps={sweeps}>
         {stepNowWords(step)}
-      </span>
+      </RunShimmer>
       {codeAfter && step.kind === "command" && step.code !== null ? (
         <span className="run-now-code">{step.code}</span>
       ) : null}
@@ -2902,9 +2902,9 @@ function NowWords({ line }: { readonly line: NowLineModel }) {
     case "operation":
       return (
         <>
-          <span className="run-now-verb" data-run-shimmer="">
+          <RunShimmer className="run-now-verb" inline sweeps>
             {operationNowWords(line.operation)}
-          </span>
+          </RunShimmer>
         </>
       );
     case "several":

@@ -331,10 +331,11 @@ function GlassAppearanceSync() {
   useEffect(() => {
     const style = document.documentElement.style;
     style.setProperty("--glass-opacity", `${glassOpacity}%`);
+    // Opaque glass shows nothing of what is behind it: no backdrop pass at all.
     if (glassOpacity === 100) {
-      style.setProperty("--glass-blur", "0px");
+      style.setProperty("--glass-backdrop", "none");
     } else {
-      style.removeProperty("--glass-blur");
+      style.removeProperty("--glass-backdrop");
     }
   }, [glassOpacity]);
 

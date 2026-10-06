@@ -1605,8 +1605,11 @@ describe("MessagesTimeline — the conversation", () => {
     // In the live slot, as the row it becomes: said plainly, sweeping.
     expect(markup.match(/data-chat-kind="step:web"/g)).toHaveLength(1);
     expect(markup).toContain('data-mate-face-state="working"');
-    // Once in the slot, and once more for a screen reader, in its words alone.
-    expect(markup.match(/docs\.example\.dev\/guides/g)).toHaveLength(2);
+    // Once in the slot, and once more for a screen reader, in its words alone; the sweep's
+    // copy of the words is hidden from readers and repeats them where they stand.
+    const said = markup.replace(/<span data-sweep-copy="">.*?<\/span><\/span>/gu, "");
+    expect(markup).toMatch(/aria-hidden="true" data-sweep-band="" inert="">/u);
+    expect(said.match(/docs\.example\.dev\/guides/g)).toHaveLength(2);
     expect(markup).toContain(
       '<span class="sr-only" role="status">Reading docs.example.dev/guides</span>',
     );
