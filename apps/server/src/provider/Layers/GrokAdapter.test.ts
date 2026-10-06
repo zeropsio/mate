@@ -475,6 +475,12 @@ it.layer(grokAdapterTestLayer)("GrokAdapterLive", (it) => {
         Stream.runCollect,
         Effect.forkChild,
       );
+      const failedFiber = yield* adapter.streamEvents.pipe(
+        Stream.filter((event) => event.type === "turn.completed"),
+        Stream.take(1),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
       const start = adapter.startSession({
         threadId,
         provider: ProviderDriverKind.make("grok"),
@@ -492,6 +498,13 @@ it.layer(grokAdapterTestLayer)("GrokAdapterLive", (it) => {
         exitKind: "error",
       });
       assert.isFalse(yield* adapter.hasSession(threadId));
+      // Its turn ends failed, typed a crash.
+      const [failed] = yield* Fiber.join(failedFiber);
+      assert.equal(failed?.type === "turn.completed" ? failed.payload.state : null, "failed");
+      assert.equal(
+        failed?.type === "turn.completed" ? failed.payload.terminalReason : null,
+        "process_exit",
+      );
 
       yield* start;
       const resumed = yield* adapter.sendTurn({ threadId, input: "go on", attachments: [] });

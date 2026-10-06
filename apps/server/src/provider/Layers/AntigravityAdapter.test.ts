@@ -444,6 +444,45 @@ it.layer(layer)("AntigravityAdapter", (it) => {
     }),
   );
 
+  // Its prompt fails: the turn ends failed in the failure's own words, typed
+  // a crash when the process died under it, an ordinary failure otherwise.
+  it.effect.each([
+    {
+      name: "its process dies",
+      error: new AcpErrors.AcpProcessExitedError({ code: 134 }),
+      words: "Antigravity stopped unexpectedly. Send a message to pick up where it left off.",
+      terminalReason: "process_exit",
+    },
+    {
+      name: "the request fails",
+      error: AcpErrors.AcpRequestError.internalError("Model request failed: 500"),
+      words: "Model request failed: 500",
+      terminalReason: undefined,
+    },
+  ])("ends its turn failed when $name", ({ error, words, terminalReason }) =>
+    Effect.gen(function* () {
+      const h = yield* makeHarness();
+      yield* h.adapter.startSession({
+        threadId,
+        cwd: process.cwd(),
+        runtimeMode: "approval-required",
+      });
+      const sending = yield* h.adapter
+        .sendTurn({ threadId, input: "Work on it" })
+        .pipe(Effect.exit, Effect.forkChild);
+      const prompt = yield* h.nextPrompt;
+      yield* Deferred.fail(prompt.result, error);
+      yield* Fiber.join(sending);
+      yield* h.waitForEvent((event) => event.type === "turn.completed");
+      const completed = h.seen.find((event) => event.type === "turn.completed");
+      expect(completed?.type === "turn.completed" ? completed.payload : null).toEqual({
+        state: "failed",
+        errorMessage: words,
+        ...(terminalReason === undefined ? {} : { terminalReason }),
+      });
+    }),
+  );
+
   it.effect("keeps thoughts, native command results, and replies on the active turn", () =>
     Effect.gen(function* () {
       const h = yield* makeHarness();

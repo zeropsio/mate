@@ -7061,9 +7061,15 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
           exited.some((event) => event.type === "request.resolved"),
           false,
         );
+        const said = exited.find((event) => event.type === "runtime.error");
         NodeAssert.equal(
-          exited.find((event) => event.type === "runtime.error")?.payload.message,
+          said?.type === "runtime.error" ? said.payload.message : undefined,
           "OpenCode stopped unexpectedly. Send a message to pick up where it left off.",
+        );
+        // Typed a crash.
+        NodeAssert.equal(
+          said?.type === "runtime.error" ? said.payload.class : undefined,
+          "process_exit",
         );
         NodeAssert.equal(yield* adapter.hasSession(threadId), false);
         runtimeMock.state.endEventStream = false;

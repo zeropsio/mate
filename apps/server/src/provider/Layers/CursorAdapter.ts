@@ -981,6 +981,8 @@ export function makeCursorAdapter(
         // resolving from here on does not settle the turn; the matching
         // decrement is the `ensuring` below.
         ctx.promptsInFlight += 1;
+        // Once its turn is open, a failure is that turn's: it ends failed.
+        let turnOpened = false;
 
         return yield* Effect.gen(function* () {
           const turnProfile = yield* acpTurnProfile(
@@ -1026,6 +1028,7 @@ export function makeCursorAdapter(
               turnId,
               payload: { model: resolvedModel },
             });
+            turnOpened = true;
           }
 
           const promptParts: Array<EffectAcpSchema.ContentBlock> = [];
@@ -1168,6 +1171,26 @@ export function makeCursorAdapter(
             resumeCursor: ctx.session.resumeCursor,
           };
         }).pipe(
+          Effect.tapError((error) =>
+            turnOpened && ctx.promptsInFlight === 1
+              ? Effect.gen(function* () {
+                  yield* offerRuntimeEvent({
+                    type: "turn.completed",
+                    ...(yield* makeEventStamp()),
+                    provider: PROVIDER,
+                    threadId: input.threadId,
+                    turnId,
+                    payload: {
+                      state: "failed",
+                      errorMessage: "detail" in error ? error.detail : error.message,
+                      ...(error._tag === "ProviderAdapterProcessError"
+                        ? { terminalReason: "process_exit" }
+                        : {}),
+                    },
+                  });
+                })
+              : Effect.void,
+          ),
           Effect.ensuring(
             Effect.sync(() => {
               ctx.promptsInFlight = Math.max(0, ctx.promptsInFlight - 1);

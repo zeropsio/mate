@@ -205,6 +205,12 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
         Stream.runCollect,
         Effect.forkChild,
       );
+      const failedFiber = yield* adapter.streamEvents.pipe(
+        Stream.filter((event) => event.type === "turn.completed"),
+        Stream.take(1),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
       yield* adapter.startSession({ threadId, cwd: process.cwd(), runtimeMode: "full-access" });
 
       const error = yield* adapter
@@ -222,6 +228,13 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
         exitKind: "error",
       });
       assert.isFalse(yield* adapter.hasSession(threadId));
+      // Its turn ends failed, typed a crash, in the person's words.
+      const [failed] = yield* Fiber.join(failedFiber);
+      assert.deepStrictEqual(failed?.type === "turn.completed" ? failed.payload : null, {
+        state: "failed",
+        errorMessage: "Cursor stopped unexpectedly. Send a message to pick up where it left off.",
+        terminalReason: "process_exit",
+      });
 
       yield* adapter.startSession({ threadId, cwd: process.cwd(), runtimeMode: "full-access" });
       const resumed = yield* adapter.sendTurn({ threadId, input: "go on", attachments: [] });
@@ -262,7 +275,14 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
       }
       yield* adapter.stopSession(threadId);
       const runtimeEvents = yield* Fiber.join(runtimeEventsFiber);
-      assert.isFalse(runtimeEvents.some((event) => event.type === "turn.completed"));
+      // Its turn had opened: the failure ends it, in the failure's own words.
+      const completed = Array.from(runtimeEvents).filter(
+        (event) => event.type === "turn.completed",
+      );
+      assert.deepStrictEqual(
+        completed.map((event) => (event.type === "turn.completed" ? event.payload : null)),
+        [{ state: "failed", errorMessage: "Cursor reported a transport failure." }],
+      );
     }),
   );
 

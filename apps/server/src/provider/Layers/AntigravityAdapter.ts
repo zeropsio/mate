@@ -1169,6 +1169,10 @@ export const makeAntigravityAdapter = Effect.fn("makeAntigravityAdapter")(functi
                     "detail" in cause && typeof cause.detail === "string"
                       ? cause.detail
                       : cause.message,
+                  // Its process died under the prompt: the turn broke off.
+                  ...(cause._tag === "ProviderAdapterProcessError"
+                    ? { terminalReason: "process_exit" }
+                    : {}),
                 }),
               )
             : Effect.void,

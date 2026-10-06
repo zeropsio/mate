@@ -1557,7 +1557,7 @@ export function makeOpenCodeAdapter(
         type: "runtime.error",
         payload: {
           message,
-          class: "transport_error",
+          class: "process_exit",
         },
       }).pipe(Effect.ignore);
       yield* emit({

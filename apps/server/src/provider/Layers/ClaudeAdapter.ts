@@ -2599,7 +2599,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     context: ClaudeSessionContext,
     message: string,
     cause?: unknown,
-    errorClass: "provider_error" | "usage_limit" = "provider_error",
+    errorClass: "provider_error" | "usage_limit" | "process_exit" = "provider_error",
   ) {
     if (cause !== undefined) {
       void cause;
@@ -4641,10 +4641,19 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       const told =
         Exit.isFailure(exit) || context.turnState !== undefined || context.liveTaskIds.size > 0;
       if (told)
-        yield* emitRuntimeError(context, failure.words, {
-          failureCount: failures.length + defects.length,
-          failureTags: [...failures.map((failure) => failure._tag), ...defects.map(() => "Defect")],
-        });
+        yield* emitRuntimeError(
+          context,
+          failure.words,
+          {
+            failureCount: failures.length + defects.length,
+            failureTags: [
+              ...failures.map((failure) => failure._tag),
+              ...defects.map(() => "Defect"),
+            ],
+          },
+          // Its stream died: the turn broke off.
+          "process_exit",
+        );
       if (context.turnState) {
         yield* completeTurn(context, "failed", failure.words);
       }

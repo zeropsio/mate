@@ -5322,6 +5322,13 @@ describe("ClaudeAdapterLive", () => {
             event.type === "runtime.error" ? [event.payload.message] : [],
           );
           assert.deepEqual(errors, [words]);
+          // A stream that died is typed a crash.
+          assert.deepEqual(
+            runtimeEvents.flatMap((event) =>
+              event.type === "runtime.error" ? [event.payload.class] : [],
+            ),
+            ["process_exit"],
+          );
           const ends = runtimeEvents.flatMap((event) =>
             event.type === "turn.completed"
               ? [[event.payload.state, event.payload.errorMessage ?? null]]
