@@ -13,7 +13,7 @@ import { linkKeys, type StreamKey } from "../model.ts";
 import { factOf } from "../reducer.ts";
 import { makeAccountStore, publicRead, readsOfState, type AccountStore } from "../store.ts";
 import { superviseLink } from "../supervisor.ts";
-import { classifyHqClose, hqNavigationLink } from "./hq.ts";
+import { classifyHqClose, HQ_SILENCE_MS, hqNavigationLink } from "./hq.ts";
 
 const ORG = "org";
 const NAVIGATION = { kind: "navigation" } as const;
@@ -338,6 +338,28 @@ describe("asking HQ on the open socket", () => {
 });
 
 describe("an HQ outage", () => {
+  it.effect("a socket that says nothing, not even a ping, is given up and asked again", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const fixture = hqFixtureWire();
+      const { fiber } = yield* live(store, fixture);
+      // HQ pings every 20 s: a minute of silence is a socket that no longer carries anything.
+      yield* TestClock.adjust(HQ_SILENCE_MS - 1);
+      expect(fixture.opens()).toBe(1);
+      yield* fixture.send({ type: "ping" });
+      yield* TestClock.adjust(HQ_SILENCE_MS - 1);
+      expect(fixture.opens()).toBe(1);
+      yield* TestClock.adjust(1);
+      yield* settle;
+      expect(phase(store, linkKeys.hq(ORG))).toBe("recovering");
+      expect(appName(store, "shop")).toBe("Shop");
+      yield* TestClock.adjust(1_000);
+      yield* settle;
+      expect(fixture.opens()).toBe(2);
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+
   it.effect("keeps every fact while down, then resumes each scope from its cursor", () =>
     Effect.gen(function* () {
       const store = makeAccountStore(AtomRegistry.make());

@@ -82,6 +82,12 @@ export function classifyHqClose(code: number): StreamFault {
 /** What HQ says a Mate may be moved into, per application, as asked when the move opens. */
 export type HqMoveOffers = Readonly<Record<string, ReadonlyArray<string>>>;
 
+/**
+ * How long a socket may say nothing — not even HQ's ping, sent every 20 s — before it is given up:
+ * a socket a sleeping laptop or a stalled path left open carries nothing, though it never closed.
+ */
+export const HQ_SILENCE_MS = 60_000;
+
 /** Whom a Mate may be handed over to, as HQ answers when the hand-over opens. */
 export type HqHandoverCandidates = ReadonlyArray<HqHandoverCandidate>;
 
@@ -228,6 +234,21 @@ export function hqNavigationLink(options: {
       const asked = new Set<string>();
       /** Whether a socket of this attempt said anything yet. */
       let said = false;
+      /** When the open segment last said anything. */
+      let heardAt = 0;
+      /** Fails once the open segment said nothing for {@link HQ_SILENCE_MS}. */
+      const silence: Effect.Effect<never, StreamFault> = Effect.gen(function* () {
+        while (true) {
+          const now = yield* Clock.currentTimeMillis;
+          const quietFor = now - heardAt;
+          if (quietFor >= HQ_SILENCE_MS)
+            return yield* Effect.fail<StreamFault>({
+              outcome: "transient",
+              message: "HQ's stream said nothing for a minute.",
+            });
+          yield* Effect.sleep(HQ_SILENCE_MS - quietFor);
+        }
+      });
 
       /** The keys this renderer holds of an HQ scope: what proves a removal on resume. */
       const knownKeys = (registered: Registered): ReadonlyArray<string> =>
@@ -332,6 +353,7 @@ export function hqNavigationLink(options: {
 
       const onMessage = (encoded: string): Effect.Effect<void> =>
         Effect.gen(function* () {
+          heardAt = yield* Clock.currentTimeMillis;
           // The socket said something: its session holds, and the link is live.
           if (!said) {
             said = true;
@@ -491,7 +513,8 @@ export function hqNavigationLink(options: {
               }),
             );
             // The segment's end, as planned or by its fault, ends the look at the details too.
-            yield* Effect.raceFirst(Fiber.join(reading), watching);
+            heardAt = yield* Clock.currentTimeMillis;
+            yield* Effect.raceAllFirst([Fiber.join(reading), watching, silence]);
             open = null;
           }),
         );
