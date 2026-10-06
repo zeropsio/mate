@@ -25,8 +25,10 @@ async function ask({ input }: { readonly input: ThreadFileWritesInput }) {
             {
               path: "/srv/app/src/a.ts",
               kind: "edit",
-              format: "diff",
-              text: " keep\n-was\n+is",
+              changes: [
+                { text: "is", removedLines: 1 },
+                { text: "", removedLines: 2 },
+              ],
               truncated: false,
             },
           ],
@@ -37,8 +39,7 @@ async function ask({ input }: { readonly input: ThreadFileWritesInput }) {
             {
               path: "/tmp/plan.md",
               kind: "write",
-              format: "content",
-              text: "# Plan",
+              changes: [{ text: "# Plan", removedLines: 0 }],
               truncated: true,
             },
           ],
@@ -49,7 +50,7 @@ async function ask({ input }: { readonly input: ThreadFileWritesInput }) {
 }
 
 vi.mock("../../state/threadFileWritesCommands", () => ({
-  threadFileWritesCommands: { fileWrites: {}, readWrittenFile: {} },
+  threadFileWritesCommands: { fileWrites: {}, writtenFile: {} },
 }));
 
 vi.mock("../../rightPanelStore", () => ({
@@ -101,12 +102,17 @@ describe("FileWriteDetail — what a write or an edit wrote, opened under its ro
         .findAll((node) => node.props["data-item-box"] !== undefined)
         .map((node) => node.props["data-item-box"]),
     ).toEqual(["write:0", "write:1"]);
-    const lines = drawn.root.findAll((node) => node.props["data-diff-line"] !== undefined);
-    expect(lines.map((line) => line.props["data-diff-line"])).toEqual(["kept", "removed", "added"]);
+    // An edit shows its new text; a change that only removed, its count.
+    const changes = drawn.root.findAll((node) => node.props["data-change"] !== undefined);
+    expect(changes.map((change) => change.props["data-change"])).toEqual([
+      "wrote",
+      "removed",
+      "wrote",
+    ]);
     expect(texts(drawn)).toEqual(
-      expect.arrayContaining(["src/a.ts", "was", "is", "/tmp/plan.md", "# Plan"]),
+      expect.arrayContaining(["src/a.ts", "is", "Removed 2 lines", "/tmp/plan.md", "# Plan"]),
     );
-    expect(texts(drawn)).toContain("Cut here: the file holds the rest.");
+    expect(texts(drawn)).toContain("Cut here: it wrote more.");
 
     const opens = drawn.root.findAll((node) => node.props["data-open-in-files"] !== undefined);
     expect(opens.map((button) => button.props["data-open-in-files"])).toEqual([
@@ -132,8 +138,8 @@ describe("FileWriteDetail — what a write or an edit wrote, opened under its ro
       );
     });
     expect(asked).toEqual([]);
-    expect(
-      renderer!.root.findAll((node) => node.props["data-diff-line"] !== undefined),
-    ).toHaveLength(3);
+    expect(renderer!.root.findAll((node) => node.props["data-change"] !== undefined)).toHaveLength(
+      3,
+    );
   });
 });

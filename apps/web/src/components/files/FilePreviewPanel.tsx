@@ -719,8 +719,9 @@ function initialExplorerOpen(): boolean {
 
 /**
  * A path the Files tab is asked for: a workspace file by its path there, or a
- * file this conversation's agent wrote outside it, by its absolute path —
- * read-only, served only because the agent wrote it (`WrittenFilePanel`).
+ * file this conversation's agent wrote outside it, by its absolute path — as
+ * the agent wrote it, from the thread's record, never read from disk
+ * (`WrittenFilePanel`).
  */
 export default function FilePreviewPanel(props: FilePreviewPanelProps) {
   const { relativePath } = props;

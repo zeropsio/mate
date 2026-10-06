@@ -1,47 +1,54 @@
 /**
- * What a thread's agent wrote, read back from its own tool events.
+ * What a thread's agent wrote, from the thread's own record — never from
+ * disk, and never what the agent only read or found in a file.
  *
- * - `threads.fileWrites` — a written or edited file's row opens onto what was
- *   written: a new file's content, an edit's change. Drawn from the call's own
- *   payload as the server stored it (the client's copy keeps none of it).
- * - `threads.readWrittenFile` — a file this thread's agent wrote outside the
- *   workspace, read-only, and only one it wrote: the security model is the
- *   2026-10-06 entry in `docs/internals/zerops/design-decisions.md`.
+ * - `threads.fileWrites` — a written or edited file's row opens onto what the
+ *   call wrote: a write's content, an edit's new text. Drawn from the call's
+ *   own payload as the server stored it (the client's copy keeps none of it).
+ * - `threads.writtenFile` — the Files tab's read-only view of a file the
+ *   thread's agent wrote outside the workspace: the newest completed write of
+ *   that exact path, as it wrote it. The security model is the 2026-10-06
+ *   entry in `docs/internals/zerops/design-decisions.md`.
  *
  * @module threadFileWrites
  */
 import * as Schema from "effect/Schema";
 
-import { NonNegativeInt, ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
-
-/**
- * How a write is drawn: `content` is a file's text as it was written (a new
- * file, a whole-file write); `diff` is a change, a line each, led by `+`, `-`,
- * ` ` (context) or `@@` (a gap between the parts it changed).
- */
-export const FileWriteFormat = Schema.Literals(["content", "diff"]);
-export type FileWriteFormat = typeof FileWriteFormat.Type;
+import { IsoDateTime, NonNegativeInt, ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
 
 /** The longest path a written file is asked by. */
 export const THREAD_WRITTEN_FILE_PATH_MAX_LENGTH = 4096;
 
 /**
  * A path exactly as the call named it, never trimmed: `/a.txt ` is another
- * file than `/a.txt`, and the server serves only the one the agent wrote.
+ * file than `/a.txt`, and only the one the agent named is answered.
  */
 const RawPath = Schema.String.check(
   Schema.isNonEmpty(),
   Schema.isMaxLength(THREAD_WRITTEN_FILE_PATH_MAX_LENGTH),
 );
 
-/** One file one call wrote: `write` made or replaced it whole, `edit` changed part of it. */
+/**
+ * One change a call made, as the agent wrote it: the text it wrote there,
+ * and how many lines it removed — counted, never shown.
+ */
+export const FileWriteChange = Schema.Struct({
+  text: Schema.String,
+  removedLines: NonNegativeInt,
+});
+export type FileWriteChange = typeof FileWriteChange.Type;
+
+/**
+ * One file one call wrote: `write` made or replaced it whole (one change, its
+ * content), `edit` changed parts of it (a change each: the agent's new text,
+ * never the old, nor the lines around it).
+ */
 export const FileWrite = Schema.Struct({
   /** As the call named it: absolute, or relative to the agent's directory. */
   path: RawPath,
   kind: Schema.Literals(["write", "edit"]),
-  format: FileWriteFormat,
-  text: Schema.String,
-  /** The text was cut at the server's cap: the file itself holds the rest. */
+  changes: Schema.Array(FileWriteChange),
+  /** What it wrote was cut at the server's cap. */
   truncated: Schema.Boolean,
 });
 export type FileWrite = typeof FileWrite.Type;
@@ -76,35 +83,22 @@ export const ThreadWrittenFileInput = Schema.Struct({
 export type ThreadWrittenFileInput = typeof ThreadWrittenFileInput.Type;
 
 export const ThreadWrittenFileResult = Schema.Struct({
-  path: RawPath,
-  contents: Schema.String,
-  byteLength: NonNegativeInt,
+  /** What the thread's newest completed write of the path wrote there. */
+  write: FileWrite,
+  /** When that call completed, as the server stamped it. */
+  writtenAt: IsoDateTime,
 });
 export type ThreadWrittenFileResult = typeof ThreadWrittenFileResult.Type;
 
 /**
- * Why a written file was not served. Each is a refusal, never a partial read:
+ * Why no written file is shown:
  * - `not_absolute` — the path is not absolute;
  * - `not_written` — no completed write or edit of this thread named this exact path;
- * - `changed_since_write` — it changed after the thread's newest write of it;
- * - `link_after_thread` — a symbolic link on its way was made, or changed, after the thread began;
- * - `system` — its way enters `/proc`, `/sys` or `/dev`, which name the server's own process;
- * - `remote_fs` — it, or a link on its way, is on a file system whose times can be set (FUSE, network);
- * - `not_file` — it is gone, or not a regular file;
- * - `binary` — it is not UTF-8 text;
- * - `too_large` — it is past the cap;
- * - `unavailable` — the thread is gone, or this server cannot read it.
+ * - `unavailable` — this server cannot answer now.
  */
 export const ThreadWrittenFileRefusal = Schema.Literals([
   "not_absolute",
   "not_written",
-  "changed_since_write",
-  "link_after_thread",
-  "system",
-  "remote_fs",
-  "not_file",
-  "binary",
-  "too_large",
   "unavailable",
 ]);
 export type ThreadWrittenFileRefusal = typeof ThreadWrittenFileRefusal.Type;
@@ -114,6 +108,6 @@ export class ThreadFileWritesError extends Schema.TaggedError<ThreadFileWritesEr
   { reason: ThreadWrittenFileRefusal, detail: Schema.optional(Schema.String) },
 ) {
   override get message(): string {
-    return `The written file was not served: ${this.reason}${this.detail ? ` (${this.detail})` : ""}`;
+    return `No written file is shown: ${this.reason}${this.detail ? ` (${this.detail})` : ""}`;
   }
 }

@@ -1,30 +1,32 @@
 /**
  * A file this conversation's agent wrote outside the workspace, in the Files
- * tab, read-only (D9, the owner: "Why can't this be opened in the Files
- * tab?"). The server serves it only because this thread's own completed
- * write named this exact path (`threads.readWrittenFile`); anything else is
- * refused and said plainly here.
+ * tab (D9, the owner: "Why can't this be opened in the Files tab?"): what the
+ * thread's newest completed write of that exact path wrote there — a write's
+ * content, an edit's new text — labelled with when it was written. It comes
+ * from the thread's own record (`threads.writtenFile`); nothing is read from
+ * disk, so nothing the file holds besides what the agent wrote is shown.
  */
-import type { EnvironmentId, ScopedThreadRef, ThreadWrittenFileRefusal } from "@t3tools/contracts";
-import { File, Virtualizer } from "@pierre/diffs/react";
+import type {
+  EnvironmentId,
+  ScopedThreadRef,
+  ThreadWrittenFileRefusal,
+  ThreadWrittenFileResult,
+} from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import { useEffect, useState } from "react";
 
-import { writtenFileRefusalWords } from "~/components/chat/fileWrites.logic";
+import { WrittenChanges } from "~/components/chat/FileWriteDetail";
+import { writtenAtWords, writtenFileRefusalWords } from "~/components/chat/fileWrites.logic";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { useClientSettings } from "~/hooks/useSettings";
-import { useTheme } from "~/hooks/useTheme";
-import { DIFF_SURFACE_THEME_UNSAFE_CSS, resolveDiffThemeName } from "~/lib/diffRendering";
 import { threadFileWritesCommands } from "~/state/threadFileWritesCommands";
 import { useAtomCommand } from "~/state/use-atom-command";
+import { formatShortTimestamp } from "~/timestampFormat";
 import { useKnownMate } from "~/zerops/useZeropsMates";
-
-import { DiffWorkerPoolProvider } from "../DiffWorkerPoolProvider";
-import { projectFileCacheKey } from "./fileContentRevision";
 
 type Read =
   | { readonly state: "reading" }
-  | { readonly state: "read"; readonly contents: string }
+  | { readonly state: "read"; readonly file: ThreadWrittenFileResult }
   | { readonly state: "refused"; readonly reason: ThreadWrittenFileRefusal | null };
 
 function refusalOf(cause: Cause.Cause<unknown>): ThreadWrittenFileRefusal | null {
@@ -34,7 +36,7 @@ function refusalOf(cause: Cause.Cause<unknown>): ThreadWrittenFileRefusal | null
     : null;
 }
 
-/** Keyed by its path where it is drawn: another file is read afresh. */
+/** Keyed by its path where it is drawn: another file is asked afresh. */
 export default function WrittenFilePanel({
   environmentId,
   threadRef,
@@ -44,31 +46,30 @@ export default function WrittenFilePanel({
   readonly threadRef: ScopedThreadRef;
   readonly path: string;
 }) {
-  const { resolvedTheme } = useTheme();
-  const mate = useKnownMate(environmentId);
-  const wordWrap = useClientSettings((settings) => settings.wordWrap);
+  const mate = useKnownMate(environmentId)?.name ?? null;
+  const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
   const [read, setRead] = useState<Read>({ state: "reading" });
-  const readWrittenFile = useAtomCommand(threadFileWritesCommands.readWrittenFile, {
-    label: "read written file",
+  const writtenFile = useAtomCommand(threadFileWritesCommands.writtenFile, {
+    label: "written file",
     reportFailure: false,
   });
   useEffect(() => {
     let cancelled = false;
-    void readWrittenFile({
+    void writtenFile({
       environmentId,
       input: { threadId: threadRef.threadId, path },
     }).then((result) => {
       if (cancelled) return;
       setRead(
         result._tag === "Success"
-          ? { state: "read", contents: result.value.contents }
+          ? { state: "read", file: result.value }
           : { state: "refused", reason: refusalOf(result.cause) },
       );
     });
     return () => {
       cancelled = true;
     };
-  }, [environmentId, path, readWrittenFile, threadRef.threadId]);
+  }, [environmentId, path, writtenFile, threadRef.threadId]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
@@ -84,42 +85,28 @@ export default function WrittenFilePanel({
           </TooltipTrigger>
           <TooltipPopup side="top">{path}</TooltipPopup>
         </Tooltip>
-        <span className="shrink-0 text-muted-foreground">Read only</span>
+        {read.state === "read" ? (
+          <span className="shrink-0 text-muted-foreground" data-written-at>
+            {writtenAtWords(mate, formatShortTimestamp(read.file.writtenAt, timestampFormat))}
+          </span>
+        ) : null}
       </div>
       {read.state === "reading" ? (
-        // Read in a moment: nothing drawn that the file then replaces.
+        // Asked in a moment: nothing drawn that the answer then replaces.
         <div className="min-h-0 flex-1" />
       ) : read.state === "refused" ? (
         <div
           className="flex min-h-0 flex-1 items-center justify-center px-6 text-center text-xs leading-relaxed text-muted-foreground"
           data-written-file-refused={read.reason ?? "unavailable"}
         >
-          {writtenFileRefusalWords(read.reason, mate?.name ?? null)}
+          {writtenFileRefusalWords(read.reason, mate)}
         </div>
       ) : (
-        <DiffWorkerPoolProvider>
-          <Virtualizer
-            key={`${path}:${resolvedTheme}`}
-            className="file-preview-virtualizer min-h-0 flex-1 overflow-auto"
-            config={{ overscrollSize: 600, intersectionObserverMargin: 1200 }}
-          >
-            <File
-              file={{
-                name: path,
-                contents: read.contents,
-                cacheKey: projectFileCacheKey("written", path, read.contents),
-              }}
-              options={{
-                disableFileHeader: true,
-                overflow: wordWrap ? "wrap" : "scroll",
-                theme: resolveDiffThemeName(resolvedTheme),
-                themeType: resolvedTheme,
-                unsafeCSS: DIFF_SURFACE_THEME_UNSAFE_CSS,
-              }}
-              className="min-h-full"
-            />
-          </Virtualizer>
-        </DiffWorkerPoolProvider>
+        <div className="min-h-0 flex-1 overflow-auto p-3">
+          <div className="rounded-xl bg-foreground/4">
+            <WrittenChanges write={read.file.write} />
+          </div>
+        </div>
       )}
     </div>
   );

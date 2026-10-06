@@ -2500,10 +2500,10 @@ const makeWsRpcLayer = (
             withThreadFileWrites((service) => service.fileWrites(input)),
             { "rpc.aggregate": "orchestration" },
           ),
-        [WS_METHODS.threadsReadWrittenFile]: (input) =>
+        [WS_METHODS.threadsWrittenFile]: (input) =>
           observeRpcEffect(
-            WS_METHODS.threadsReadWrittenFile,
-            withThreadFileWrites((service) => service.readWrittenFile(input)),
+            WS_METHODS.threadsWrittenFile,
+            withThreadFileWrites((service) => service.writtenFile(input)),
             { "rpc.aggregate": "orchestration" },
           ),
         [WS_METHODS.projectsWriteFile]: (input) =>

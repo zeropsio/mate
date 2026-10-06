@@ -92,11 +92,10 @@ export const RPC_REQUIRED_SCOPES = {
   // `git ls-remote` against the checkout's own remote: a read of what is
   // already there, with no ref written and nothing fetched (guide 4.5).
   [WS_METHODS.zeropsGitProbeRemote]: AuthOrchestrationReadScope,
-  // What this thread's agent wrote, read back: the same read as the thread
-  // itself (`subscribeThread`). A written file outside the workspace is served
-  // only where the thread's own completed write named that exact path.
+  // What this thread's agent wrote, from its own record: the same read as the
+  // thread itself (`subscribeThread`). Nothing is read from disk.
   [WS_METHODS.threadsFileWrites]: AuthOrchestrationReadScope,
-  [WS_METHODS.threadsReadWrittenFile]: AuthOrchestrationReadScope,
+  [WS_METHODS.threadsWrittenFile]: AuthOrchestrationReadScope,
   [WS_METHODS.subscribeResourceTelemetry]: AuthOrchestrationReadScope,
   // Every Zerops feed method is a READ. Mutating the project stays the
   // agent's job through MCP, never a client RPC.

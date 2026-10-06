@@ -1,20 +1,22 @@
 /**
- * What a write or an edit wrote, under its row once opened (D9): a new
- * file's content, an edit's change — each in the card's own item box, as
- * every item's text: whole in the log, nothing scrolling inside; the box
- * grows only under the row, so nothing above it moves. Each file says where it is and opens in the Files tab:
- * inside the workspace as any file there, outside it read-only, served only
- * because this thread's agent wrote it (`threads.readWrittenFile`).
+ * What a write or an edit wrote, under its row once opened (D9): a write's
+ * content, an edit's new text — only what the agent itself wrote in the call,
+ * from the thread's record, never read from disk. Each file's text stands in
+ * the card's own item box, as every item's: whole in the log, nothing
+ * scrolling inside; it grows only under the row, so nothing above it moves.
+ * Each file says where it is and opens in the Files tab: inside the workspace
+ * as any file there, outside it as the thread's newest write of it left it
+ * (`threads.writtenFile`).
  */
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import type { FileWrite, ScopedThreadRef } from "@t3tools/contracts";
-import { type ReactNode, use, useEffect, useEffectEvent, useState } from "react";
+import { Fragment, type ReactNode, use, useEffect, useEffectEvent, useState } from "react";
 
 import { cn } from "~/lib/utils";
 import { useRightPanelStore } from "../../rightPanelStore";
 import { threadFileWritesCommands } from "../../state/threadFileWritesCommands";
 import { useAtomCommand } from "../../state/use-atom-command";
-import { diffLines, filesTarget } from "./fileWrites.logic";
+import { filesTarget, removedWords } from "./fileWrites.logic";
 import { TimelineRowCtx } from "./timelineContext";
 
 const META = "text-line";
@@ -91,38 +93,41 @@ function useFileWrites(threadRef: ScopedThreadRef | null, callIds: ReadonlyArray
   return asked;
 }
 
-const LINE_TONE = {
-  kept: "text-foreground/70",
-  added: "bg-success/8 text-foreground",
-  removed: "bg-destructive/8 text-foreground/60",
-  gap: "text-muted-foreground",
-} as const;
-
-const LINE_MARK = { kept: " ", added: "+", removed: "-", gap: "⋯" } as const;
-
-/** A file's text, as drawn inside the card's own item box. */
-function WrittenText({ write }: { readonly write: FileWrite }) {
+/**
+ * What one call wrote in one file, as the agent wrote it: a write's content,
+ * an edit's new text change by change — a change that only removed lines is
+ * their count. Never the old text, nor the lines around a change.
+ */
+export function WrittenChanges({ write }: { readonly write: FileWrite }) {
   return (
     <div data-file-write={write.kind}>
       <pre className={cn("min-w-0 px-3 py-2 font-mono select-text", META)}>
-        {write.format === "content" ? (
-          <span className="whitespace-pre-wrap break-words text-foreground/80">{write.text}</span>
-        ) : (
-          diffLines(write.text).map((line, index) => (
-            <span
-              // Lines are drawn once, in the order the change has them.
-              // eslint-disable-next-line react/no-array-index-key
-              key={index}
-              className={cn("-mx-3 flex px-3", LINE_TONE[line.mark])}
-              data-diff-line={line.mark}
-            >
-              <span aria-hidden="true" className="w-3 shrink-0 select-none text-muted-foreground">
-                {LINE_MARK[line.mark]}
+        {write.changes.map((change, index) => (
+          // Changes are drawn once, in the order the call made them.
+          // eslint-disable-next-line react/no-array-index-key
+          <Fragment key={index}>
+            {index > 0 ? (
+              <span aria-hidden="true" className="block select-none text-muted-foreground">
+                ⋯
               </span>
-              <span className="min-w-0 whitespace-pre-wrap break-words">{line.text}</span>
-            </span>
-          ))
-        )}
+            ) : null}
+            {change.text.length > 0 ? (
+              <span
+                className={cn(
+                  "block whitespace-pre-wrap break-words text-foreground/80",
+                  write.kind === "edit" && "-mx-3 bg-success/8 px-3",
+                )}
+                data-change="wrote"
+              >
+                {change.text}
+              </span>
+            ) : (
+              <span className="block font-sans text-muted-foreground" data-change="removed">
+                {removedWords(change.removedLines)}
+              </span>
+            )}
+          </Fragment>
+        ))}
       </pre>
     </div>
   );
@@ -172,11 +177,9 @@ export function FileWriteDetail({
                 </button>
               ) : null}
             </div>
-            {box(`write:${index}`, <WrittenText write={write} />)}
+            {box(`write:${index}`, <WrittenChanges write={write} />)}
             {write.truncated ? (
-              <p className={cn(META, "text-muted-foreground")}>
-                Cut here: the file holds the rest.
-              </p>
+              <p className={cn(META, "text-muted-foreground")}>Cut here: it wrote more.</p>
             ) : null}
           </section>
         );

@@ -362,7 +362,7 @@ export const WS_METHODS = {
   zeropsCrewFilesPut: "zerops.crew.files.put",
   zeropsCrewCommand: "zerops.crew.command",
   threadsFileWrites: "threads.fileWrites",
-  threadsReadWrittenFile: "threads.readWrittenFile",
+  threadsWrittenFile: "threads.writtenFile",
 
   // Streaming subscriptions
   subscribeVcsStatus: "subscribeVcsStatus",
@@ -1163,8 +1163,8 @@ const WsThreadsFileWritesRpc = Rpc.make(WS_METHODS.threadsFileWrites, {
   error: Schema.Union([ThreadFileWritesError, EnvironmentAuthorizationError]),
 });
 
-/** A file this thread's agent wrote outside the workspace, read-only (`threadFileWrites.ts`). */
-const WsThreadsReadWrittenFileRpc = Rpc.make(WS_METHODS.threadsReadWrittenFile, {
+/** What this thread's agent wrote in a file outside the workspace, from its record (`threadFileWrites.ts`). */
+const WsThreadsWrittenFileRpc = Rpc.make(WS_METHODS.threadsWrittenFile, {
   payload: ThreadWrittenFileInput,
   success: ThreadWrittenFileResult,
   error: Schema.Union([ThreadFileWritesError, EnvironmentAuthorizationError]),
@@ -1316,7 +1316,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsZeropsDataConsoleCallRpc,
   WsZeropsGitProbeRemoteRpc,
   WsThreadsFileWritesRpc,
-  WsThreadsReadWrittenFileRpc,
+  WsThreadsWrittenFileRpc,
   WsSubscribeZeropsDataConsoleRpc,
   WsSubscribeZeropsCrewRpc,
   WsZeropsCrewFilesGetRpc,

@@ -1,15 +1,20 @@
 /**
- * What a call wrote, read from its own payload as the driver sent it: a new
- * file's content, an edit's change. Every driver that sends one:
+ * What a call wrote, read from its own payload as the driver sent it: a
+ * write's content, an edit's new text — only ever what the agent itself
+ * wrote in the call, never the old text it replaced, the lines around a
+ * change, or anything it only read. Every driver that sends one:
  *
- * - Claude Code: `Write` (`content`), `Edit` (`old_string`/`new_string`),
- *   `MultiEdit` (`edits`), `NotebookEdit` (`new_source`) — `data.input`.
- * - Codex: a `fileChange` item's `changes` (`add` is the content, `update` a
- *   unified diff; a `delete` wrote nothing to show) — `data.item`.
+ * - Claude Code: `Write` (`content`), `Edit` (`new_string`), `MultiEdit`
+ *   (each edit's `new_string`), `NotebookEdit` (`new_source`) — `data.input`.
+ * - Codex: a `fileChange` item's `changes` (`add` is the content; an
+ *   `update`'s added lines, change by change; a `delete` shows nothing).
  * - OpenCode: `write`, `edit`, `multiedit` in camelCase, `patch`/`apply_patch`
  *   as patch text — `data.input` or `data.state.input`.
- * - An ACP agent (Cursor, Grok, Antigravity): its `diff` content blocks,
- *   `oldText` absent for a new file — `data.content`.
+ * - An ACP agent (Cursor, Grok, Antigravity): its `diff` content blocks — a
+ *   new file's text, or the lines the new text adds over `oldText`, worked
+ *   out here; `oldText` itself never leaves.
+ *
+ * A change that only removes is a count of the lines it removed.
  *
  * A call that sends none of these (an ACP edit without a diff block) writes
  * nothing here, and its row keeps the line it has.
@@ -18,25 +23,26 @@
  *
  * @module fileWrites
  */
-import type { FileWrite } from "@t3tools/contracts";
+import type { FileWrite, FileWriteChange } from "@t3tools/contracts";
 
-/** A write's text past this is cut at a line: the file itself holds the rest. */
+/** A write's text past this is cut at a line. */
 export const FILE_WRITE_TEXT_MAX_CHARS = 64 * 1024;
-
-/** Lines of the file kept around each change. */
-const CONTEXT_LINES = 3;
 
 /** Past this many cells the middle of a diff is told whole, removed then added. */
 const DIFF_CELL_BUDGET = 1_000_000;
 
-/** A write as the payload has it, before any diff is worked out. */
+/** A write as the payload has it, before any change is worked out. */
 type RawWrite =
   | { readonly path: string; readonly kind: "write" | "edit"; readonly content: string }
+  /** Edits that name their new text: Claude's and OpenCode's `old`/`new` strings. */
   | {
       readonly path: string;
       readonly kind: "edit";
-      readonly pairs: ReadonlyArray<readonly [before: string, after: string]>;
+      readonly edits: ReadonlyArray<readonly [before: string, after: string]>;
     }
+  /** A whole file before and after (an ACP diff): what it adds is worked out. */
+  | { readonly path: string; readonly kind: "edit"; readonly whole: readonly [string, string] }
+  /** A unified diff or a patch's update: its added lines, its removed ones counted. */
   | { readonly path: string; readonly kind: "edit"; readonly diff: string };
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -90,7 +96,7 @@ function acpWrites(content: ReadonlyArray<unknown>): RawWrite[] {
     const path = asPath(block?.path);
     if (block?.type !== "diff" || path === null || typeof block.newText !== "string") return [];
     return typeof block.oldText === "string"
-      ? [{ path, kind: "edit", pairs: [[block.oldText, block.newText]] }]
+      ? [{ path, kind: "edit", whole: [block.oldText, block.newText] }]
       : [{ path, kind: "write", content: block.newText }];
   });
 }
@@ -158,7 +164,7 @@ function toolWrites(name: string, input: Record<string, unknown>): RawWrite[] {
   }
   if (tool === "edit") {
     const pair = editPair(input);
-    return path === null || pair === null ? [] : [{ path, kind: "edit", pairs: [pair] }];
+    return path === null || pair === null ? [] : [{ path, kind: "edit", edits: [pair] }];
   }
   if (tool === "multiedit") {
     if (path === null || !Array.isArray(input.edits)) return [];
@@ -167,7 +173,7 @@ function toolWrites(name: string, input: Record<string, unknown>): RawWrite[] {
       const pair = edit === null ? null : editPair(edit);
       return pair === null ? [] : [pair];
     });
-    return pairs.length === 0 ? [] : [{ path, kind: "edit", pairs }];
+    return pairs.length === 0 ? [] : [{ path, kind: "edit", edits: pairs }];
   }
   if (tool === "notebookedit") {
     const notebook = asPath(input.notebook_path) ?? path;
@@ -198,11 +204,13 @@ function rawWrites(data: unknown): RawWrite[] {
   return name === null || input === null ? [] : toolWrites(name, input);
 }
 
-/** Whether a raw write has anything to draw, without working out its diff. */
+/** Whether a raw write has anything to show, without working out its changes. */
 function drawsSomething(write: RawWrite): boolean {
   if ("content" in write) return write.content.length > 0;
-  if ("diff" in write) return write.diff.trim().length > 0;
-  return write.pairs.some(([before, after]) => before !== after);
+  if ("diff" in write)
+    return write.diff.split("\n").some((line) => /^[+-](?![+-]{2} )/u.test(line));
+  if ("whole" in write) return write.whole[0] !== write.whole[1];
+  return write.edits.some(([before, after]) => before !== after);
 }
 
 /** Lines of a text; an empty text has none. */
@@ -251,11 +259,35 @@ function middleOps(before: ReadonlyArray<string>, after: ReadonlyArray<string>):
 }
 
 /**
- * A change as its lines: `-` removed, `+` added, ` ` kept around a change,
- * `@@` where unchanged lines are left out. Unchanged text is the empty diff.
+ * Lines as changes: each run of removed and added lines between kept ones is
+ * one change — its added lines, and how many it removed. Kept lines and
+ * removed ones never leave.
  */
-export function lineDiff(before: string, after: string): string {
-  if (before === after) return "";
+function changesOf(ops: ReadonlyArray<Op>): FileWriteChange[] {
+  const changes: FileWriteChange[] = [];
+  let added: string[] = [];
+  let removed = 0;
+  const close = () => {
+    if (added.length > 0 || removed > 0)
+      changes.push({ text: added.join("\n"), removedLines: removed });
+    added = [];
+    removed = 0;
+  };
+  for (const [mark, line] of ops) {
+    if (mark === " ") close();
+    else if (mark === "+") added.push(line);
+    else removed += 1;
+  }
+  close();
+  return changes;
+}
+
+/**
+ * What the new text adds over the old, change by change: the added lines of
+ * each, and how many lines it removed. Unchanged text changes nothing.
+ */
+export function lineChanges(before: string, after: string): FileWriteChange[] {
+  if (before === after) return [];
   const a = linesOf(before);
   const b = linesOf(after);
   let prefix = 0;
@@ -268,66 +300,73 @@ export function lineDiff(before: string, after: string): string {
   ) {
     suffix++;
   }
-  const ops: Op[] = [
-    ...a.slice(0, prefix).map((line): Op => [" ", line]),
-    ...middleOps(a.slice(prefix, a.length - suffix), b.slice(prefix, b.length - suffix)),
-    ...a.slice(a.length - suffix).map((line): Op => [" ", line]),
-  ];
-  const near = new Uint8Array(ops.length);
-  ops.forEach(([mark], index) => {
-    if (mark === " ") return;
-    const from = Math.max(0, index - CONTEXT_LINES);
-    const to = Math.min(ops.length - 1, index + CONTEXT_LINES);
-    for (let at = from; at <= to; at++) near[at] = 1;
-  });
-  const out: string[] = [];
-  ops.forEach(([mark, line], index) => {
-    if (near[index] === 1) {
-      out.push(`${mark}${line}`);
-    } else if (out.at(-1) !== "@@") {
-      out.push("@@");
+  return changesOf(
+    middleOps(a.slice(prefix, a.length - suffix), b.slice(prefix, b.length - suffix)),
+  );
+}
+
+/**
+ * A unified diff's or a patch update's changes: its `+` lines, its `-` lines
+ * counted; context lines, hunk headers (`@@ …` and what follows them) and
+ * file headers never leave.
+ */
+function diffChanges(diff: string): FileWriteChange[] {
+  const ops: Op[] = [];
+  for (const line of diff.split("\n")) {
+    if (/^(?:--- |\+\+\+ |diff --git |index |\\ No newline|\*\*\* )/u.test(line)) continue;
+    if (line.startsWith("+")) ops.push(["+", line.slice(1)]);
+    else if (line.startsWith("-")) ops.push(["-", line.slice(1)]);
+    // A context line, a hunk header, an empty line: a break between changes.
+    else ops.push([" ", ""]);
+  }
+  return changesOf(ops);
+}
+
+/** The changes cut at the cap, at the end of a line; whether any was cut. */
+function capped(changes: ReadonlyArray<FileWriteChange>): {
+  readonly changes: FileWriteChange[];
+  readonly truncated: boolean;
+} {
+  const kept: FileWriteChange[] = [];
+  let room = FILE_WRITE_TEXT_MAX_CHARS;
+  for (const change of changes) {
+    if (change.text.length <= room) {
+      kept.push(change);
+      room -= change.text.length;
+      continue;
     }
-  });
-  return out.join("\n");
-}
-
-/** A unified diff's lines as drawn: its file headers dropped, each hunk's header a bare `@@`. */
-function normalizeDiff(diff: string): string {
-  return diff
-    .split("\n")
-    .filter(
-      (line) =>
-        !/^(?:--- |\+\+\+ |diff --git |index |\\ No newline)/u.test(line) && line.length > 0,
-    )
-    .map((line) => (line.startsWith("@@") ? "@@" : line))
-    .join("\n");
-}
-
-/** A text cut at the cap, at the end of a line. */
-function capped(text: string): { readonly text: string; readonly truncated: boolean } {
-  if (text.length <= FILE_WRITE_TEXT_MAX_CHARS) return { text, truncated: false };
-  const head = text.slice(0, FILE_WRITE_TEXT_MAX_CHARS);
-  const lineEnd = head.lastIndexOf("\n");
-  return { text: lineEnd > 0 ? head.slice(0, lineEnd) : head, truncated: true };
+    const head = change.text.slice(0, room);
+    const lineEnd = head.lastIndexOf("\n");
+    const text = lineEnd > 0 ? head.slice(0, lineEnd) : head;
+    if (text.length > 0) kept.push({ text, removedLines: change.removedLines });
+    return { changes: kept, truncated: true };
+  }
+  return { changes: kept, truncated: false };
 }
 
 function drawn(write: RawWrite): FileWrite {
-  if ("content" in write) {
-    return { path: write.path, kind: write.kind, format: "content", ...capped(write.content) };
-  }
-  const text =
-    "diff" in write
-      ? normalizeDiff(write.diff)
-      : write.pairs
-          .map(([before, after]) => lineDiff(before, after))
-          .filter((diff) => diff.length > 0)
-          .join("\n@@\n");
-  return { path: write.path, kind: "edit", format: "diff", ...capped(text) };
+  const changes =
+    "content" in write
+      ? [{ text: write.content, removedLines: 0 }]
+      : "diff" in write
+        ? diffChanges(write.diff)
+        : "whole" in write
+          ? lineChanges(write.whole[0], write.whole[1])
+          : write.edits
+              .filter(([before, after]) => before !== after)
+              .map(([before, after]) => ({
+                text: after,
+                removedLines: linesOf(before).length,
+              }));
+  return { path: write.path, kind: write.kind, ...capped(changes) };
 }
 
 /** Each file a call's payload shows it wrote, with what it wrote; nothing where it shows none. */
 export function readFileWrites(data: unknown): FileWrite[] {
-  return rawWrites(data).filter(drawsSomething).map(drawn);
+  return rawWrites(data)
+    .filter(drawsSomething)
+    .map(drawn)
+    .filter((write) => write.changes.length > 0);
 }
 
 /** Whether a call's payload shows anything it wrote — cheap: no diff is worked out. */

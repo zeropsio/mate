@@ -3,9 +3,10 @@ import { describe, expect, it } from "vite-plus/test";
 
 import type { WorkLogEntry } from "../../session-logic";
 import {
-  diffLines,
   filesTarget,
+  removedWords,
   stepWriteCalls,
+  writtenAtWords,
   writtenFileRefusalWords,
 } from "./fileWrites.logic";
 import { stepOf } from "./workSteps.logic";
@@ -74,37 +75,34 @@ describe("filesTarget — where Open in Files goes", () => {
   });
 });
 
-describe("diffLines — a change drawn a line at a time", () => {
-  it("marks each line by what happened to it", () => {
-    expect(diffLines(" keep\n-was\n+is\n@@\n+more")).toEqual([
-      { mark: "kept", text: "keep" },
-      { mark: "removed", text: "was" },
-      { mark: "added", text: "is" },
-      { mark: "gap", text: "" },
-      { mark: "added", text: "more" },
-    ]);
+describe("removedWords — a change that only removes, as a count", () => {
+  it.each([
+    [1, "Removed 1 line"],
+    [3, "Removed 3 lines"],
+  ])("%i", (count, words) => {
+    expect(removedWords(count)).toBe(words);
+  });
+});
+
+describe("writtenAtWords — the Files tab's label on what the Mate wrote", () => {
+  it.each([
+    ["Sage", "01:23", "As Sage wrote it at 01:23"],
+    [null, "01:23", "As your Mate wrote it at 01:23"],
+  ] as const)("%s at %s", (mate, time, words) => {
+    expect(writtenAtWords(mate, time)).toBe(words);
   });
 });
 
 describe("writtenFileRefusalWords — why the Files tab shows no written file", () => {
   it.each([
     ["not_written", "Sage", "Sage didn't write this file in this conversation, so it isn't shown."],
-    ["changed_since_write", "Sage", "This file changed after Sage wrote it, so it isn't shown."],
-    ["changed_since_write", null, "This file changed after your Mate wrote it, so it isn't shown."],
     [
-      "link_after_thread",
-      "Sage",
-      "This file is reached through a link made after the conversation began, so it isn't shown.",
+      "not_written",
+      null,
+      "Your Mate didn't write this file in this conversation, so it isn't shown.",
     ],
-    ["system", "Sage", "This path belongs to the system, so it isn't shown."],
-    [
-      "remote_fs",
-      "Sage",
-      "This file is on a shared or network mount, where its changes can't be checked, so it isn't shown.",
-    ],
-    ["too_large", "Sage", "This file is over 1 MB."],
-    ["binary", "Sage", "This file isn't text."],
-    [null, "Sage", "This file can't be read here."],
+    ["not_absolute", "Sage", "This file can't be shown here."],
+    [null, "Sage", "This file can't be shown here."],
   ] as const)("%s, %s", (reason, mate, words) => {
     expect(writtenFileRefusalWords(reason, mate)).toBe(words);
   });

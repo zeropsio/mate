@@ -3,8 +3,9 @@
  * the contracts):
  * - `fileWrites` — server scope `orchestration:read`; a write's or an edit's
  *   change, from its call's stored payload;
- * - `readWrittenFile` — server scope `orchestration:read`; a file the thread's
- *   agent wrote outside the workspace, read-only, only one it wrote.
+ * - `writtenFile` — server scope `orchestration:read`; what the thread's
+ *   newest completed write of a path outside the workspace wrote there, from
+ *   the thread's record, never from disk.
  */
 import { WS_METHODS } from "@t3tools/contracts";
 import type { Atom } from "effect/unstable/reactivity";
@@ -20,9 +21,9 @@ export function createThreadFileWritesAtoms<R, E>(
       label: "environment-data:threads:fileWrites",
       tag: WS_METHODS.threadsFileWrites,
     }),
-    readWrittenFile: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:threads:readWrittenFile",
-      tag: WS_METHODS.threadsReadWrittenFile,
+    writtenFile: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:threads:writtenFile",
+      tag: WS_METHODS.threadsWrittenFile,
     }),
   };
 }

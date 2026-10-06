@@ -53,48 +53,22 @@ export function filesTarget(path: string, cwd: string | null): FilesTarget | nul
   return { kind: "outside", path };
 }
 
-export interface DiffLine {
-  readonly mark: "kept" | "removed" | "added" | "gap";
-  readonly text: string;
+/** A change that only removed lines, said as a count: its lines are never shown. */
+export function removedWords(count: number): string {
+  return `Removed ${count} ${count === 1 ? "line" : "lines"}`;
 }
 
-/** A change's lines (`threadFileWrites.ts`: `+`, `-`, ` `, `@@`), each by what happened to it. */
-export function diffLines(text: string): DiffLine[] {
-  return text.split("\n").map((line): DiffLine => {
-    if (line.startsWith("@@")) return { mark: "gap", text: "" };
-    if (line.startsWith("+")) return { mark: "added", text: line.slice(1) };
-    if (line.startsWith("-")) return { mark: "removed", text: line.slice(1) };
-    return { mark: "kept", text: line.startsWith(" ") ? line.slice(1) : line };
-  });
+/** The Files tab's label on a written file: what the Mate wrote, and when — never the file now. */
+export function writtenAtWords(mate: string | null, time: string): string {
+  return `As ${mate ?? "your Mate"} wrote it at ${time}`;
 }
 
-/**
- * Why the Files tab shows no written file, said plainly, the Mate by its
- * name where it is known; anything else is "can't be read here".
- */
+/** Why the Files tab shows no written file, said plainly, the Mate by its name where known. */
 export function writtenFileRefusalWords(
   reason: ThreadWrittenFileRefusal | null,
   mate: string | null,
 ): string {
-  const who = mate ?? "your Mate";
-  switch (reason) {
-    case "not_written":
-      return `${mate ?? "Your Mate"} didn't write this file in this conversation, so it isn't shown.`;
-    case "changed_since_write":
-      return `This file changed after ${who} wrote it, so it isn't shown.`;
-    case "link_after_thread":
-      return "This file is reached through a link made after the conversation began, so it isn't shown.";
-    case "system":
-      return "This path belongs to the system, so it isn't shown.";
-    case "remote_fs":
-      return "This file is on a shared or network mount, where its changes can't be checked, so it isn't shown.";
-    case "not_file":
-      return "This file is gone.";
-    case "binary":
-      return "This file isn't text.";
-    case "too_large":
-      return "This file is over 1 MB.";
-    default:
-      return "This file can't be read here.";
-  }
+  return reason === "not_written"
+    ? `${mate ?? "Your Mate"} didn't write this file in this conversation, so it isn't shown.`
+    : "This file can't be shown here.";
 }
