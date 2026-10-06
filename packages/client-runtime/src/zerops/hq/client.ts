@@ -1276,27 +1276,3 @@ export function makeHqApi(input: {
     },
   };
 }
-
-/**
- * Attaches a project to an application. HQ refuses a project attached already (`409 conflict`):
- * one attached there as asked is the same write run twice — a press tried again — and stands;
- * any other conflict is the refusal it is.
- */
-export async function attachToApp(
-  api: Pick<HqApi, "attachProject" | "structure">,
-  appId: string,
-  attach: HqAttach,
-): Promise<void> {
-  try {
-    await api.attachProject(appId, attach);
-  } catch (cause) {
-    if (!(cause instanceof HqError && cause.code === "conflict")) throw cause;
-    const { apps } = await api.structure();
-    const there = apps
-      .find((app) => app.id === appId)
-      ?.projects.some(
-        (project) => project.projectId === attach.projectId && project.kind === attach.kind,
-      );
-    if (there !== true) throw cause;
-  }
-}

@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "@effect/vitest";
 
 import {
-  attachToApp,
   HQ_WRITE_UNCERTAIN,
   HqError,
   makeHqApi,
@@ -658,55 +657,6 @@ describe("readHqHealth — how HQ's parts stand", () => {
       build: "b1",
       parts,
     });
-  });
-});
-
-describe("attachToApp", () => {
-  const conflict = new HqError({
-    kind: "refused",
-    code: "conflict",
-    status: 409,
-    message: "The project is in an application already, or the application has its production.",
-  });
-  const api = (attached: ReadonlyArray<{ readonly projectId: string; readonly kind: string }>) => {
-    const made: Pick<HqApi, "attachProject" | "structure"> = {
-      structure: async () => ({
-        ungrouped: [],
-        apps: [
-          {
-            id: "app-1",
-            name: "Acme",
-            projects: attached.map((entry) => ({ ...entry, name: "", mate: null })),
-          },
-        ],
-      }),
-      attachProject: async () => {
-        throw conflict;
-      },
-    };
-    return made;
-  };
-
-  it.each<[string, ReadonlyArray<{ readonly projectId: string; readonly kind: string }>, boolean]>([
-    [
-      "a project already attached as asked: the same write run twice",
-      [{ projectId: "p1", kind: "mate" }],
-      true,
-    ],
-    [
-      "a project attached as something else stays refused",
-      [{ projectId: "p1", kind: "stage" }],
-      false,
-    ],
-    ["a second production stays refused", [{ projectId: "p0", kind: "production" }], false],
-  ])("%s", async (_name, attached, attachedAsAsked) => {
-    const attaching = attachToApp(api(attached), "app-1", {
-      projectId: "p1",
-      kind: attached[0]?.kind === "production" ? "production" : "mate",
-      ...(attached[0]?.kind === "production" ? {} : { mate: { face: "rose:seal" } }),
-    });
-    if (attachedAsAsked) await expect(attaching).resolves.toBeUndefined();
-    else await expect(attaching).rejects.toBe(conflict);
   });
 });
 
