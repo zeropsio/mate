@@ -1556,8 +1556,6 @@ export interface ZeropsDataAdapter {
   readonly closeReceiver: (receiver: ReceiverHandle) => Effect.Effect<void>;
   /** The reads no stream carries, one per cell kind (`cells.ts`); without them, none answers. */
   readonly cells?: ZeropsCellAdapter;
-  /** Hears every write to an organization's integration tokens, by its id, until stopped. */
-  readonly onTokensWritten?: (listener: (organizationId: string) => void) => () => void;
 }
 
 export type InterestLease = {

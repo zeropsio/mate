@@ -1,5 +1,3 @@
-import * as Schema from "effect/Schema";
-import { derivePublicAccess } from "../publicRoutes.ts";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Queue from "effect/Queue";
@@ -39,13 +37,8 @@ import type {
 import type { TableQueryDescriptor } from "./types.ts";
 import { decodeTableSearch } from "./tableProtocol.ts";
 import { ZeropsApiError, ZeropsWriteNotSent, type ZeropsApiClient } from "../api.ts";
-import type { ZeropsIntegrationToken } from "../groupReach.ts";
 import type { PlatformWatchSocket, PlatformWatchTimers } from "./platformSocket.ts";
-import type {
-  ZeropsCellAdapter,
-  ZeropsCellSourceError,
-  ZeropsIntegrationTokenMetadata,
-} from "./cells.ts";
+import type { ZeropsCellAdapter, ZeropsCellSourceError } from "./cells.ts";
 
 const PUBLIC_WS_PATH = "/api/rest/public/web-socket";
 
@@ -1160,17 +1153,8 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
     execute,
     closeReceiver,
     cells: makeZeropsCellReads(options.client),
-    onTokensWritten: (listener) => options.client.onIntegrationTokensWritten(listener),
   };
 }
-
-/** A token as metadata: its value never leaves the API client, its grants are not read here. */
-const tokenMetadata = (token: ZeropsIntegrationToken): ZeropsIntegrationTokenMetadata => ({
-  tokenId: token.id,
-  name: token.name,
-  ...(token.created === undefined ? {} : { created: token.created }),
-  ...(token.createdByUser === undefined ? {} : { createdByUser: token.createdByUser }),
-});
 
 const cellReadError = (cause: unknown): ZeropsCellSourceError => {
   if (cause instanceof ZeropsApiError) {
@@ -1201,129 +1185,9 @@ const cellReadError = (cause: unknown): ZeropsCellSourceError => {
 const cellRead = <Value>(run: () => Promise<Value>): Effect.Effect<Value, ZeropsCellSourceError> =>
   Effect.tryPromise({ try: run, catch: cellReadError });
 
-/**
- * The reads no stream carries, one per cell kind, over the REST API; secret-bearing source rows
- * are stripped at this boundary.
- */
-const PublicAccessProject = Schema.Struct({
-  id: Schema.String,
-  name: Schema.String,
-  publicZone: Schema.NullOr(Schema.String),
-  zeropsSubdomainHost: Schema.NullOr(Schema.String),
-});
-const PublicAccessServices = Schema.Struct({
-  list: Schema.Array(
-    Schema.Struct({
-      id: Schema.String,
-      name: Schema.String,
-      status: Schema.String,
-      isSystem: Schema.optionalKey(Schema.Boolean),
-      subdomainAccess: Schema.Boolean,
-      ports: Schema.Array(
-        Schema.Struct({
-          port: Schema.Finite,
-          scheme: Schema.optionalKey(Schema.String),
-        }),
-      ),
-      serviceStackTypeInfo: Schema.optionalKey(
-        Schema.NullOr(
-          Schema.Struct({
-            serviceStackTypeVersionName: Schema.optionalKey(Schema.String),
-            serviceStackTypeCategory: Schema.optionalKey(Schema.NullOr(Schema.String)),
-          }),
-        ),
-      ),
-    }),
-  ),
-});
-const PublicAccessRoutings = Schema.Struct({
-  list: Schema.Array(
-    Schema.Struct({
-      isSynced: Schema.Boolean,
-      sslEnabled: Schema.Boolean,
-      domains: Schema.Array(Schema.Struct({ domainName: Schema.String })),
-      locations: Schema.Array(
-        Schema.Struct({ path: Schema.String, port: Schema.Finite, serviceStackId: Schema.String }),
-      ),
-    }),
-  ),
-});
-
-const decodePublicAccessProject = Schema.decodeUnknownEffect(PublicAccessProject);
-const decodePublicAccessServices = Schema.decodeUnknownEffect(PublicAccessServices);
-const decodePublicAccessRoutings = Schema.decodeUnknownEffect(PublicAccessRoutings);
-
+/** The reads no stream carries, one per cell kind, over the REST API. */
 export function makeZeropsCellReads(client: ZeropsApiClient): ZeropsCellAdapter {
   return {
-    readProjectPublicAccess: (input, context) =>
-      Effect.gen(function* () {
-        const id = input.project.projectId;
-        const read = (path: string) =>
-          cellRead(() =>
-            client.requestData({
-              path,
-              operationKind: "read",
-              signal: context.abortSignal,
-              background: true,
-            }),
-          );
-        const project = yield* read(`/project/${id}`);
-        const services = yield* read(`/project/${id}/service-stack?limit=500`);
-        const routings = yield* read(`/project/${id}/public-http-routing`);
-        const decodeFailure = () => ({
-          _tag: "ZeropsCellSourceError" as const,
-          kind: "decode" as const,
-          retryable: false,
-        });
-        const decoded = yield* decodePublicAccessProject(project).pipe(
-          Effect.mapError(decodeFailure),
-        );
-        const serviceRows = yield* decodePublicAccessServices(services).pipe(
-          Effect.mapError(decodeFailure),
-        );
-        const routingRows = yield* decodePublicAccessRoutings(routings).pipe(
-          Effect.mapError(decodeFailure),
-        );
-        if (decoded.id !== id) return yield* Effect.fail(decodeFailure());
-        return derivePublicAccess(
-          {
-            id: decoded.id,
-            name: decoded.name,
-            status: "UNKNOWN",
-            ...(decoded.publicZone === null ? {} : { publicZone: decoded.publicZone }),
-            ...(decoded.zeropsSubdomainHost === null
-              ? {}
-              : { zeropsSubdomainHost: decoded.zeropsSubdomainHost }),
-          },
-          serviceRows.list.map(({ serviceStackTypeInfo, ...service }) => ({
-            ...service,
-            ...(serviceStackTypeInfo === null || serviceStackTypeInfo === undefined
-              ? {}
-              : {
-                  serviceStackTypeInfo: {
-                    ...(serviceStackTypeInfo.serviceStackTypeVersionName === undefined
-                      ? {}
-                      : {
-                          serviceStackTypeVersionName:
-                            serviceStackTypeInfo.serviceStackTypeVersionName,
-                        }),
-                    ...(serviceStackTypeInfo.serviceStackTypeCategory == null
-                      ? {}
-                      : {
-                          serviceStackTypeCategory: serviceStackTypeInfo.serviceStackTypeCategory,
-                        }),
-                  },
-                }),
-          })),
-          routingRows.list,
-        );
-      }),
-    readOrganizationLocations: (input, context) =>
-      cellRead(() =>
-        client.listClientLocations(input.organization.organizationId, context.abortSignal),
-      ),
-    readServiceAuthorizedAgents: (input, context) =>
-      cellRead(() => client.readAuthorizedAgents(input.service.serviceId, context.abortSignal)),
     // A failed read is folded into `"unknown"` here, not left to fail the
     // resource: this flag exists to replace an inference (H9), and a read
     // that could not be made is exactly the case a caller must not treat as
@@ -1338,15 +1202,5 @@ export function makeZeropsCellReads(client: ZeropsApiClient): ZeropsCellAdapter 
           return { enabled: "unknown" as const };
         }
       }),
-    readOrganizationIntegrationTokens: (input, context) =>
-      cellRead(async () =>
-        (
-          await client.listIntegrationTokens(input.organization.organizationId, context.abortSignal)
-        ).map(tokenMetadata),
-      ),
-    readOrganizationMembers: (input, context) =>
-      cellRead(() =>
-        client.listOrganizationMembers(input.organization.organizationId, context.abortSignal),
-      ),
   };
 }

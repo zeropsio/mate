@@ -62,7 +62,6 @@ export function harnessRuntime(
       Object.assign(rest, {
         cells: adapter.cells,
         execute: adapter.execute,
-        onTokensWritten: adapter.onTokensWritten,
       });
     }
     return Effect.runPromise(

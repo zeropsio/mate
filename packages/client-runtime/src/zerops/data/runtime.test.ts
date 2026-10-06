@@ -1088,19 +1088,13 @@ describe("makeZeropsDataRuntime", () => {
             : Effect.die(`unexpected command ${command.kind}`),
       };
       let reads = 0;
-      const unused = Effect.die("this test reads only authorized agents");
       const runtime = yield* makeZeropsDataRuntime({
         scope: runtimeScope,
         adapter: {
           ...adapter,
           cells: {
-            readProjectPublicAccess: () => Effect.never,
-            readOrganizationLocations: () => unused,
-            readServiceAuthorizedAgents: () =>
-              Effect.sync(() => void (reads += 1)).pipe(Effect.as([])),
-            readServiceMateFlag: () => unused,
-            readOrganizationIntegrationTokens: () => unused,
-            readOrganizationMembers: () => unused,
+            readServiceMateFlag: () =>
+              Effect.sync(() => void (reads += 1)).pipe(Effect.as({ enabled: true })),
           },
         },
         atomRegistry: registry,
@@ -1121,7 +1115,7 @@ describe("makeZeropsDataRuntime", () => {
       const leaseScope = yield* Scope.make();
       const lease = yield* runtime.cells
         .acquire({
-          kind: "agents",
+          kind: "mate-flag",
           account: runtimeScope,
           service: {
             kind: "service",
@@ -1139,7 +1133,10 @@ describe("makeZeropsDataRuntime", () => {
         tagList: [],
       });
 
-      expect(yield* lease.awaitSettled).toMatchObject({ state: "known", value: [] });
+      expect(yield* lease.awaitSettled).toMatchObject({
+        state: "known",
+        value: { enabled: true },
+      });
       expect(reads).toBe(1);
       yield* Scope.close(leaseScope, Exit.void);
       yield* runtime.shutdown("application-close");
@@ -1283,66 +1280,6 @@ describe("makeZeropsDataRuntime", () => {
       expect(statuses).toHaveLength(1);
       expect(statuses).not.toContain("pending");
       yield* runtime.shutdown("application-close");
-      registry.dispose();
-    }),
-  );
-
-  it.effect("reads an organization's tokens again whenever a token of it is written", () =>
-    Effect.gen(function* () {
-      const registry = AtomRegistry.make();
-      const base = makeAdapterHarness();
-      let reads = 0;
-      const listeners = new Set<(organizationId: string) => void>();
-      const unused = Effect.die("this test reads only tokens");
-      const runtime = yield* makeZeropsDataRuntime({
-        scope: runtimeScope,
-        adapter: {
-          ...base.adapter,
-          onTokensWritten: (listener) => {
-            listeners.add(listener);
-            return () => listeners.delete(listener);
-          },
-          cells: {
-            readProjectPublicAccess: () => Effect.never,
-            readOrganizationLocations: () => unused,
-            readServiceAuthorizedAgents: () => unused,
-            readServiceMateFlag: () => unused,
-            readOrganizationIntegrationTokens: () =>
-              Effect.sync(() => void (reads += 1)).pipe(Effect.as([])),
-            readOrganizationMembers: () => unused,
-          },
-        },
-        atomRegistry: registry,
-        makeOpaqueId: makeIdFactory(),
-        initialAccess: {
-          status: "verified",
-          account: runtimeScope.account,
-          accountEpoch: runtimeScope.epoch,
-          verifiedAtMs: 0,
-          deadlineMs: 10_000,
-          mutationsAllowed: true,
-          organizations: [
-            { organization: variablesDescriptor.project.organization, mutationsAllowed: true },
-          ],
-          projects: [],
-        },
-      });
-      const organization = variablesDescriptor.project.organization;
-      const leaseScope = yield* Scope.make();
-      const lease = yield* runtime.cells
-        .acquire({ kind: "tokens", account: runtimeScope, organization })
-        .pipe(Scope.provide(leaseScope));
-      yield* lease.awaitSettled;
-      expect(reads).toBe(1);
-
-      // Any write to one of its tokens — a mint, a grant, a delete, from anywhere in the app.
-      for (const listener of listeners) listener(organization.organizationId);
-      yield* lease.awaitSettled;
-      expect(reads).toBe(2);
-
-      yield* runtime.shutdown("application-close");
-      expect(listeners.size).toBe(0);
-      yield* Scope.close(leaseScope, Exit.void);
       registry.dispose();
     }),
   );

@@ -102,7 +102,6 @@ import {
   ZeropsLeaseId,
   ZeropsProjectId,
   ZeropsReceiverId,
-  ZeropsOrganizationId,
   ZeropsRequestId,
   ZeropsSharedReadId,
   ZeropsWireSubscriptionName,
@@ -589,12 +588,7 @@ const unavailableResource = (): Effect.Effect<never, ZeropsCellSourceError> =>
   });
 
 const unavailableCellAdapter: ZeropsCellAdapter = {
-  readProjectPublicAccess: unavailableResource,
-  readOrganizationLocations: unavailableResource,
-  readServiceAuthorizedAgents: unavailableResource,
   readServiceMateFlag: unavailableResource,
-  readOrganizationIntegrationTokens: unavailableResource,
-  readOrganizationMembers: unavailableResource,
 };
 
 function registrationInterest(observation: PlatformObservation): InterestIdentity | null {
@@ -822,21 +816,6 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
     // A failed cell's retry waits while the tab is hidden; the visible wake below reads it.
     visible: () => Ref.getUnsafe(currentVisibility) === "visible",
   });
-  // Every write to an organization's tokens, wherever the app made it, makes its list read again.
-  const stopTokenWrites =
-    options.adapter.onTokensWritten?.((organizationId) =>
-      Effect.runForkWith(runtimeContext)(
-        cells.invalidate({
-          kind: "tokens",
-          account: options.scope,
-          organization: {
-            kind: "organization",
-            account: options.scope.account,
-            organizationId: ZeropsOrganizationId.make(organizationId),
-          },
-        }),
-      ),
-    ) ?? (() => undefined);
   const clock = yield* Clock.Clock;
   /** The access the cells were last reconciled with. */
   let reconciledAccess = Ref.getUnsafe(model).access;
@@ -3966,7 +3945,6 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         // What the shutdown dropped is never reached: its waiters are let go now.
         for (const barrier of barriers) yield* Deferred.succeed(barrier, undefined);
         barriers.clear();
-        stopTokenWrites();
         yield* cells.shutdown;
         yield* Scope.close(runtimeScope, Exit.void);
         interests.clear();

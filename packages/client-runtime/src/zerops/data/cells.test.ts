@@ -1,5 +1,4 @@
 import { describe, expect, it } from "@effect/vitest";
-import * as Clock from "effect/Clock";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -8,18 +7,12 @@ import * as Scope from "effect/Scope";
 import * as TestClock from "effect/testing/TestClock";
 import { AtomRegistry } from "effect/unstable/reactivity";
 
-import type { ZeropsLocation } from "../api.ts";
 import { settledValue } from "./cellSelectors.ts";
 import {
   makeZeropsCells,
-  CELL_FRESH_MS,
   zeropsCellKeyOf,
-  type MembersCellRequest,
-  type TokensCellRequest,
-  type LocationsCellRequest,
-  type AgentsCellRequest,
+  type MateFlagCellRequest,
   type ZeropsCellAdapter,
-  type ZeropsCellReadContext,
   type ZeropsCellSourceError,
   type ZeropsCellRequest,
   type ZeropsCells,
@@ -73,41 +66,18 @@ const service = (
   serviceId: ZeropsServiceId.make(serviceId),
 });
 
-const locationsRequest = (scope: AccountScope, orgId = "org-a"): LocationsCellRequest => ({
-  kind: "locations",
-  account: scope,
-  organization: organization(scope, orgId),
-});
-
-const authorizedAgentsRequest = (
+const mateFlagRequest = (
   scope: AccountScope,
   serviceId = "service-a",
   projectId = "project-a",
-): AgentsCellRequest => ({
-  kind: "agents",
+): MateFlagCellRequest => ({
+  kind: "mate-flag",
   account: scope,
   service: service(scope, serviceId, projectId),
 });
 
-const tokensRequest = (scope: AccountScope): TokensCellRequest => ({
-  kind: "tokens",
-  account: scope,
-  organization: organization(scope),
-});
-
-const membersRequest = (scope: AccountScope): MembersCellRequest => ({
-  kind: "members",
-  account: scope,
-  organization: organization(scope),
-});
-
 const unusedAdapter = (overrides: Partial<ZeropsCellAdapter> = {}): ZeropsCellAdapter => ({
-  readProjectPublicAccess: () => Effect.never,
-  readOrganizationLocations: () => Effect.succeed([]),
-  readOrganizationMembers: () => Effect.succeed([]),
-  readServiceAuthorizedAgents: () => Effect.succeed([]),
   readServiceMateFlag: () => Effect.succeed({ enabled: "unknown" }),
-  readOrganizationIntegrationTokens: () => Effect.succeed([]),
   ...overrides,
 });
 
@@ -126,7 +96,6 @@ const verifiedAccess = (
 });
 
 const MINUTE_MS = 60_000;
-const PRAGUE: ZeropsLocation = { id: "prg1", name: "Prague", pingUrl: "https://ping.test" };
 
 const expiredAccess = (scope: AccountScope, deadlineMs: number): AccessState => ({
   status: "expired",
@@ -144,14 +113,11 @@ const transportFailure = (retryable = true): ZeropsCellSourceError => ({
 describe("zeropsCellKeyOf", () => {
   // A runtime's cells are one account epoch's: a request from any other is refused, never keyed.
   it.each([
-    ["an organization's locations", locationsRequest(accountScope()), "locations:org-a"],
-    ["an organization's tokens", tokensRequest(accountScope()), "tokens:org-a"],
-    ["an organization's members", membersRequest(accountScope()), "members:org-a"],
-    ["a service's agents", authorizedAgentsRequest(accountScope()), "agents:service-a"],
+    ["a service's mate flag", mateFlagRequest(accountScope()), "mate-flag:service-a"],
     [
-      "another service's agents",
-      authorizedAgentsRequest(accountScope(), "service-b"),
-      "agents:service-b",
+      "another service's mate flag",
+      mateFlagRequest(accountScope(), "service-b"),
+      "mate-flag:service-b",
     ],
   ] as const)("keys %s by what it is of", (_, request, key) => {
     expect(zeropsCellKeyOf(request)).toBe(key);
@@ -168,22 +134,22 @@ describe("makeZeropsCells", () => {
         scope,
         access: () => access,
         adapter: unusedAdapter({
-          readOrganizationLocations: () =>
+          readServiceMateFlag: () =>
             Effect.gen(function* () {
               const gate = yield* Deferred.make<void>();
               gates.push(gate);
               yield* Deferred.await(gate);
-              return [PRAGUE];
+              return { enabled: true };
             }),
         }),
       });
       const registry = AtomRegistry.make();
-      const atom = broker.known(locationsRequest(scope));
+      const atom = broker.known(mateFlagRequest(scope));
       const unmount = registry.mount(atom);
       yield* Effect.yieldNow;
       yield* Deferred.succeed(gates[0]!, undefined);
       yield* Effect.yieldNow;
-      expect(registry.get(atom)).toMatchObject({ state: "known", value: [PRAGUE] });
+      expect(registry.get(atom)).toMatchObject({ state: "known", value: { enabled: true } });
 
       access = expiredAccess(scope, 15 * MINUTE_MS);
       yield* broker.reconcileAccess;
@@ -202,7 +168,7 @@ describe("makeZeropsCells", () => {
       expect(registry.get(atom)).toMatchObject({ state: "reading" });
       yield* Deferred.succeed(gates[1]!, undefined);
       yield* Effect.yieldNow;
-      expect(registry.get(atom)).toMatchObject({ state: "known", value: [PRAGUE] });
+      expect(registry.get(atom)).toMatchObject({ state: "known", value: { enabled: true } });
 
       unmount();
       registry.dispose();
@@ -221,17 +187,17 @@ describe("makeZeropsCells", () => {
         // No jitter: every retry lands on its rung.
         random: () => 0.5,
         adapter: unusedAdapter({
-          readOrganizationLocations: () =>
+          readServiceMateFlag: () =>
             Effect.suspend(() => {
               reads += 1;
               return outcomes[reads - 1] === "answer"
-                ? Effect.succeed([PRAGUE])
+                ? Effect.succeed({ enabled: true })
                 : Effect.fail(transportFailure());
             }),
         }),
       });
       const leaseScope = yield* Scope.make();
-      const lease = yield* broker.acquire(locationsRequest(scope)).pipe(Scope.provide(leaseScope));
+      const lease = yield* broker.acquire(mateFlagRequest(scope)).pipe(Scope.provide(leaseScope));
 
       expect(yield* lease.awaitSettled).toMatchObject({
         state: "failed",
@@ -248,7 +214,7 @@ describe("makeZeropsCells", () => {
       });
       yield* TestClock.adjust("4 seconds");
       yield* Effect.yieldNow;
-      expect(yield* lease.snapshot).toMatchObject({ state: "known", value: [PRAGUE] });
+      expect(yield* lease.snapshot).toMatchObject({ state: "known", value: { enabled: true } });
 
       // An answered read has nothing left to retry.
       expect(yield* lease.retry).toBe(false);
@@ -269,17 +235,17 @@ describe("makeZeropsCells", () => {
         access: () => verifiedAccess(scope),
         random: () => 0.5,
         adapter: unusedAdapter({
-          readOrganizationLocations: () =>
+          readServiceMateFlag: () =>
             Effect.suspend(() => {
               reads += 1;
               return reads === 1
                 ? Effect.fail({ ...transportFailure(), retryAfterMs: 30_000 })
-                : Effect.succeed([PRAGUE]);
+                : Effect.succeed({ enabled: true });
             }),
         }),
       });
       const leaseScope = yield* Scope.make();
-      const lease = yield* broker.acquire(locationsRequest(scope)).pipe(Scope.provide(leaseScope));
+      const lease = yield* broker.acquire(mateFlagRequest(scope)).pipe(Scope.provide(leaseScope));
       expect(yield* lease.awaitSettled).toMatchObject({ state: "failed", retryAtMs: 30_000 });
       yield* TestClock.adjust("29 seconds");
       yield* Effect.yieldNow;
@@ -292,37 +258,6 @@ describe("makeZeropsCells", () => {
     }).pipe(Effect.provide(TestClock.layer())),
   );
 
-  it.effect(
-    "a heavy list the platform keeps sitting on retries twice, then every five minutes",
-    () =>
-      Effect.gen(function* () {
-        const scope = accountScope();
-        const startedAt: number[] = [];
-        const broker = yield* makeZeropsCells({
-          scope,
-          access: () => verifiedAccess(scope),
-          random: () => 0.5,
-          adapter: unusedAdapter({
-            readOrganizationMembers: () =>
-              Effect.flatMap(Clock.currentTimeMillis, (now) => {
-                startedAt.push(now);
-                return Effect.never;
-              }),
-          }),
-        });
-        const leaseScope = yield* Scope.make();
-        yield* broker.acquire(membersRequest(scope)).pipe(Scope.provide(leaseScope));
-        for (let second = 0; second < 15 * 60; second++) {
-          yield* TestClock.adjust("1 second");
-          yield* Effect.yieldNow;
-        }
-        // Fails at 30 s, retries on the 2 and 4 s rungs, then waits five minutes each time.
-        expect(startedAt.slice(0, 5)).toEqual([0, 32_000, 66_000, 396_000, 726_000]);
-        yield* Scope.close(leaseScope, Exit.void);
-        yield* broker.shutdown;
-      }).pipe(Effect.provide(TestClock.layer())),
-  );
-
   it.effect("a manual Read again reads at once, and its failure starts the ladder over", () =>
     Effect.gen(function* () {
       const scope = accountScope();
@@ -332,7 +267,7 @@ describe("makeZeropsCells", () => {
         access: () => verifiedAccess(scope),
         random: () => 0.5,
         adapter: unusedAdapter({
-          readOrganizationLocations: () =>
+          readServiceMateFlag: () =>
             Effect.suspend(() => {
               reads += 1;
               return Effect.fail(transportFailure());
@@ -340,7 +275,7 @@ describe("makeZeropsCells", () => {
         }),
       });
       const leaseScope = yield* Scope.make();
-      const lease = yield* broker.acquire(locationsRequest(scope)).pipe(Scope.provide(leaseScope));
+      const lease = yield* broker.acquire(mateFlagRequest(scope)).pipe(Scope.provide(leaseScope));
       yield* lease.awaitSettled;
       yield* TestClock.adjust("2 seconds");
       yield* Effect.yieldNow;
@@ -370,15 +305,17 @@ describe("makeZeropsCells", () => {
         random: () => 0.5,
         visible: () => visible,
         adapter: unusedAdapter({
-          readOrganizationLocations: () =>
+          readServiceMateFlag: () =>
             Effect.suspend(() => {
               reads += 1;
-              return reads === 1 ? Effect.fail(transportFailure()) : Effect.succeed([PRAGUE]);
+              return reads === 1
+                ? Effect.fail(transportFailure())
+                : Effect.succeed({ enabled: true });
             }),
         }),
       });
       const leaseScope = yield* Scope.make();
-      const lease = yield* broker.acquire(locationsRequest(scope)).pipe(Scope.provide(leaseScope));
+      const lease = yield* broker.acquire(mateFlagRequest(scope)).pipe(Scope.provide(leaseScope));
       yield* lease.awaitSettled;
       visible = false;
       yield* TestClock.adjust("1 minute");
@@ -389,7 +326,7 @@ describe("makeZeropsCells", () => {
       yield* broker.wake;
       yield* Effect.yieldNow;
       expect(reads).toBe(2);
-      expect(yield* lease.snapshot).toMatchObject({ state: "known", value: [PRAGUE] });
+      expect(yield* lease.snapshot).toMatchObject({ state: "known", value: { enabled: true } });
       // A wake with nothing due reads nothing.
       yield* broker.wake;
       yield* Effect.yieldNow;
@@ -397,51 +334,6 @@ describe("makeZeropsCells", () => {
       yield* Scope.close(leaseScope, Exit.void);
       yield* broker.shutdown;
     }).pipe(Effect.provide(TestClock.layer())),
-  );
-
-  // The token and member lists are each one heavy answer the platform may sit on: a read with no
-  // deadline held its cell reading for as long as the platform did, with nothing retried.
-  it.effect.each([["tokens", tokensRequest] as const, ["members", membersRequest] as const])(
-    "a %s read the platform sits on fails at 30 s, aborted, and climbs the retry ladder",
-    ([kind, request]) =>
-      Effect.gen(function* () {
-        const scope = accountScope();
-        const signals: AbortSignal[] = [];
-        const never = (_input: unknown, context: ZeropsCellReadContext) =>
-          Effect.suspend(() => {
-            signals.push(context.abortSignal);
-            return Effect.never;
-          });
-        const broker = yield* makeZeropsCells({
-          scope,
-          access: () => verifiedAccess(scope),
-          random: () => 0.5,
-          adapter: unusedAdapter(
-            kind === "tokens"
-              ? { readOrganizationIntegrationTokens: never }
-              : { readOrganizationMembers: never },
-          ),
-        });
-        const leaseScope = yield* Scope.make();
-        const lease = yield* broker.acquire(request(scope)).pipe(Scope.provide(leaseScope));
-        yield* Effect.yieldNow;
-        expect(yield* lease.snapshot).toMatchObject({ state: "reading" });
-
-        yield* TestClock.adjust("30 seconds");
-        yield* Effect.yieldNow;
-        expect(yield* lease.snapshot).toMatchObject({
-          state: "failed",
-          failure: { kind: "transport" },
-          attempt: 1,
-          retryAtMs: 32_000,
-        });
-        expect(signals[0]?.aborted).toBe(true);
-        yield* TestClock.adjust("2 seconds");
-        yield* Effect.yieldNow;
-        expect(signals).toHaveLength(2);
-        yield* Scope.close(leaseScope, Exit.void);
-        yield* broker.shutdown;
-      }).pipe(Effect.provide(TestClock.layer())),
   );
 
   it.effect("an idle lease retains its value for the retention window", () =>
@@ -454,16 +346,15 @@ describe("makeZeropsCells", () => {
         scope,
         access: () => verifiedAccess(scope),
         adapter: unusedAdapter({
-          readOrganizationLocations: () =>
+          readServiceMateFlag: () =>
             Effect.gen(function* () {
               reads += 1;
-              const name = `Prague ${reads}`;
               if (reads > 1) yield* Deferred.await(gates[reads - 2]!);
-              return [{ ...PRAGUE, name }];
+              return { enabled: reads % 2 === 0 };
             }),
         }),
       });
-      const request = locationsRequest(scope);
+      const request = mateFlagRequest(scope);
       const firstScope = yield* Scope.make();
       const first = yield* broker.acquire(request).pipe(Scope.provide(firstScope));
       expect(yield* first.awaitSettled).toMatchObject({ state: "known" });
@@ -477,13 +368,13 @@ describe("makeZeropsCells", () => {
       const second = yield* broker.acquire(request).pipe(Scope.provide(secondScope));
       expect(yield* second.snapshot).toMatchObject({
         state: "known",
-        value: [{ name: "Prague 1" }],
+        value: { enabled: false },
         freshness: { kind: "revalidating" },
       });
       yield* Deferred.succeed(gates[0]!, undefined);
       expect(yield* second.awaitSettled).toMatchObject({
         state: "known",
-        value: [{ name: "Prague 2" }],
+        value: { enabled: true },
         freshness: { kind: "settled" },
       });
       yield* Scope.close(secondScope, Exit.void);
@@ -499,43 +390,9 @@ describe("makeZeropsCells", () => {
       const third = yield* broker.acquire(request).pipe(Scope.provide(thirdScope));
       expect(yield* third.snapshot).toMatchObject({ state: "reading", attempt: 1 });
       yield* Deferred.succeed(gates[1]!, undefined);
-      expect(yield* third.awaitSettled).toMatchObject({ value: [{ name: "Prague 3" }] });
+      expect(yield* third.awaitSettled).toMatchObject({ value: { enabled: false } });
       expect(reads).toBe(3);
       yield* Scope.close(thirdScope, Exit.void);
-      yield* broker.shutdown;
-    }).pipe(Effect.provide(TestClock.layer())),
-  );
-
-  it.effect("a demand inside its kind's freshness reads nothing, and past it reads again", () =>
-    Effect.gen(function* () {
-      const scope = accountScope();
-      let reads = 0;
-      const broker = yield* makeZeropsCells({
-        scope,
-        access: () => verifiedAccess(scope),
-        adapter: unusedAdapter({
-          readOrganizationMembers: () =>
-            Effect.sync(() => {
-              reads += 1;
-              return [{ id: `member-${reads}` }];
-            }),
-        }),
-      });
-      const request = membersRequest(scope);
-      const demand = Effect.gen(function* () {
-        const held = yield* Scope.make();
-        const lease = yield* broker.acquire(request).pipe(Scope.provide(held));
-        const settled = yield* lease.awaitSettled;
-        yield* Scope.close(held, Exit.void);
-        return settled;
-      });
-      expect(yield* demand).toMatchObject({ state: "known", value: [{ id: "member-1" }] });
-      yield* TestClock.adjust(CELL_FRESH_MS["members"] - 1);
-      expect(yield* demand).toMatchObject({ state: "known", value: [{ id: "member-1" }] });
-      expect(reads).toBe(1);
-      yield* TestClock.adjust(1);
-      expect(yield* demand).toMatchObject({ state: "known", value: [{ id: "member-2" }] });
-      expect(reads).toBe(2);
       yield* broker.shutdown;
     }).pipe(Effect.provide(TestClock.layer())),
   );
@@ -550,20 +407,20 @@ describe("makeZeropsCells", () => {
           scope,
           access: () => verifiedAccess(scope),
           adapter: unusedAdapter({
-            readOrganizationIntegrationTokens: () =>
+            readServiceMateFlag: () =>
               Effect.sync(() => {
                 reads += 1;
-                return [{ tokenId: `token-${reads}`, name: "t" }];
+                return { enabled: reads % 2 === 0 };
               }),
           }),
         });
-        const request = tokensRequest(scope);
+        const request = mateFlagRequest(scope);
         const held = yield* Scope.make();
         const lease = yield* broker.acquire(request).pipe(Scope.provide(held));
         yield* lease.awaitSettled;
 
         yield* broker.invalidate(request);
-        expect(yield* lease.awaitSettled).toMatchObject({ value: [{ tokenId: "token-2" }] });
+        expect(yield* lease.awaitSettled).toMatchObject({ value: { enabled: true } });
         expect(reads).toBe(2);
 
         yield* Scope.close(held, Exit.void);
@@ -571,7 +428,7 @@ describe("makeZeropsCells", () => {
         expect(reads).toBe(2);
         const again = yield* Scope.make();
         const next = yield* broker.acquire(request).pipe(Scope.provide(again));
-        expect(yield* next.awaitSettled).toMatchObject({ value: [{ tokenId: "token-3" }] });
+        expect(yield* next.awaitSettled).toMatchObject({ value: { enabled: false } });
         yield* Scope.close(again, Exit.void);
         yield* broker.shutdown;
       }).pipe(Effect.provide(TestClock.layer())),
@@ -584,10 +441,10 @@ describe("makeZeropsCells", () => {
       const broker = yield* makeZeropsCells({
         scope,
         access: () => access,
-        adapter: unusedAdapter({ readOrganizationLocations: () => Effect.succeed([PRAGUE]) }),
+        adapter: unusedAdapter({ readServiceMateFlag: () => Effect.succeed({ enabled: true }) }),
       });
       const leaseScope = yield* Scope.make();
-      const lease = yield* broker.acquire(locationsRequest(scope)).pipe(Scope.provide(leaseScope));
+      const lease = yield* broker.acquire(mateFlagRequest(scope)).pipe(Scope.provide(leaseScope));
       expect((yield* lease.awaitSettled).state).toBe("known");
       yield* Scope.close(leaseScope, Exit.void);
       expect(yield* broker.diagnostics).toMatchObject({ entries: 1, known: 1 });
@@ -608,7 +465,7 @@ describe("makeZeropsCells", () => {
         scope,
         access: () => verifiedAccess(scope),
         adapter: unusedAdapter({
-          readOrganizationLocations: () =>
+          readServiceMateFlag: () =>
             Effect.suspend(() => {
               reads += 1;
               return Effect.fail(transportFailure(false));
@@ -616,7 +473,7 @@ describe("makeZeropsCells", () => {
         }),
       });
       const leaseScope = yield* Scope.make();
-      const lease = yield* broker.acquire(locationsRequest(scope)).pipe(Scope.provide(leaseScope));
+      const lease = yield* broker.acquire(mateFlagRequest(scope)).pipe(Scope.provide(leaseScope));
 
       expect(yield* lease.awaitSettled).toMatchObject({ state: "failed", retryAtMs: null });
       yield* TestClock.adjust("10 minutes");
@@ -643,25 +500,23 @@ describe("makeZeropsCells", () => {
         scope,
         access: () => access,
         adapter: unusedAdapter({
-          readServiceAuthorizedAgents: () =>
+          readServiceMateFlag: () =>
             Effect.sync(() => {
               reads += 1;
-              return ["codex"] as const;
+              return { enabled: true };
             }),
         }),
       });
       const registry = AtomRegistry.make();
-      const kept = broker.known(authorizedAgentsRequest(scope, "service-a", "project-a"));
-      const lost = broker.known(authorizedAgentsRequest(scope, "service-b", "project-b"));
-      const locations = broker.known(locationsRequest(scope));
-      const unmounts = [registry.mount(kept), registry.mount(lost), registry.mount(locations)];
+      const kept = broker.known(mateFlagRequest(scope, "service-a", "project-a"));
+      const lost = broker.known(mateFlagRequest(scope, "service-b", "project-b"));
+      const unmounts = [registry.mount(kept), registry.mount(lost)];
       yield* Effect.yieldNow;
 
       access = verifiedAccess(scope);
       yield* broker.reconcileAccess;
 
-      expect(registry.get(kept)).toMatchObject({ state: "known", value: ["codex"] });
-      expect(registry.get(locations)).toMatchObject({ state: "known" });
+      expect(registry.get(kept)).toMatchObject({ state: "known", value: { enabled: true } });
       expect(registry.get(lost)).toEqual({
         state: "withheld",
         reason: "access-denied",
@@ -672,7 +527,7 @@ describe("makeZeropsCells", () => {
       access = both;
       yield* broker.reconcileAccess;
       yield* Effect.yieldNow;
-      expect(registry.get(lost)).toMatchObject({ state: "known", value: ["codex"] });
+      expect(registry.get(lost)).toMatchObject({ state: "known", value: { enabled: true } });
       expect(reads).toBe(3);
 
       for (const unmount of unmounts) unmount();
@@ -697,18 +552,17 @@ describe("makeZeropsCells", () => {
         scope,
         access: () => access,
         adapter: unusedAdapter({
-          readServiceAuthorizedAgents: () =>
+          readServiceMateFlag: () =>
             Effect.sync(() => {
               reads += 1;
-              return ["codex"] as const;
+              return { enabled: true };
             }),
         }),
       });
       const registry = AtomRegistry.make();
-      const kept = broker.known(authorizedAgentsRequest(scope, "service-a", "project-a"));
-      const lost = broker.known(authorizedAgentsRequest(scope, "service-b", "project-b"));
-      const locations = broker.known(locationsRequest(scope));
-      const unmounts = [registry.mount(kept), registry.mount(lost), registry.mount(locations)];
+      const kept = broker.known(mateFlagRequest(scope, "service-a", "project-a"));
+      const lost = broker.known(mateFlagRequest(scope, "service-b", "project-b"));
+      const unmounts = [registry.mount(kept), registry.mount(lost)];
       yield* Effect.yieldNow;
 
       const { status: _status, ...previous } = both;
@@ -721,8 +575,7 @@ describe("makeZeropsCells", () => {
       };
       yield* broker.reconcileAccess;
 
-      expect(registry.get(kept)).toMatchObject({ state: "known", value: ["codex"] });
-      expect(registry.get(locations)).toMatchObject({ state: "known" });
+      expect(registry.get(kept)).toMatchObject({ state: "known", value: { enabled: true } });
       expect(registry.get(lost)).toEqual({
         state: "withheld",
         reason: "access-denied",
@@ -752,20 +605,20 @@ describe("makeZeropsCells", () => {
         scope,
         access: () => verifiedAccess(scope),
         adapter: unusedAdapter({
-          readOrganizationLocations: (_request, context) =>
+          readServiceMateFlag: (_request, context) =>
             Effect.sync(() => {
               calls += 1;
               signal = context.abortSignal;
             }).pipe(
               Effect.andThen(Deferred.succeed(started, undefined)),
               Effect.andThen(Deferred.await(finish)),
-              Effect.as([PRAGUE]),
+              Effect.as({ enabled: true }),
             ),
         }),
       });
       const firstScope = yield* Scope.make();
       const secondScope = yield* Scope.make();
-      const request = locationsRequest(scope);
+      const request = mateFlagRequest(scope);
       const first = yield* broker.acquire(request).pipe(Scope.provide(firstScope));
       const second = yield* broker.acquire(request).pipe(Scope.provide(secondScope));
       yield* Deferred.await(started);
@@ -779,7 +632,7 @@ describe("makeZeropsCells", () => {
       yield* Deferred.succeed(finish, undefined);
       expect(yield* second.awaitSettled).toMatchObject({
         state: "known",
-        value: [PRAGUE],
+        value: { enabled: true },
         coverage: "complete",
         freshness: { kind: "settled" },
       });
@@ -795,10 +648,10 @@ describe("makeZeropsCells", () => {
       const broker = yield* makeZeropsCells({
         scope,
         access: () => verifiedAccess(scope),
-        adapter: unusedAdapter({ readOrganizationLocations: () => Effect.never }),
+        adapter: unusedAdapter({ readServiceMateFlag: () => Effect.never }),
       });
       const leaseScope = yield* Scope.make();
-      const lease = yield* broker.acquire(locationsRequest(scope)).pipe(Scope.provide(leaseScope));
+      const lease = yield* broker.acquire(mateFlagRequest(scope)).pipe(Scope.provide(leaseScope));
       const waiting = yield* Effect.forkChild(lease.awaitSettled);
       yield* Effect.yieldNow;
 
@@ -812,80 +665,20 @@ describe("makeZeropsCells", () => {
     }),
   );
 
-  it.effect("routes every named resource through its restricted adapter result", () =>
-    Effect.gen(function* () {
-      const scope = accountScope();
-      const calls: Array<string> = [];
-      const broker = yield* makeZeropsCells({
-        scope,
-        access: () => verifiedAccess(scope),
-        adapter: unusedAdapter({
-          readOrganizationLocations: () => {
-            calls.push("locations");
-            return Effect.succeed([PRAGUE]);
-          },
-          readServiceAuthorizedAgents: () => {
-            calls.push("agents");
-            return Effect.succeed(["codex"]);
-          },
-          readOrganizationIntegrationTokens: () => {
-            calls.push("tokens");
-            return Effect.succeed([
-              {
-                tokenId: "token-id",
-                name: "zcp-project",
-              },
-            ]);
-          },
-        }),
-      });
-      const requests = [
-        locationsRequest(scope),
-        authorizedAgentsRequest(scope),
-        tokensRequest(scope),
-      ] as const;
-      const scopes = yield* Effect.forEach(requests, () => Scope.make());
-      const leases = yield* Effect.forEach(requests, (request, index) =>
-        broker.acquire(request).pipe(Scope.provide(scopes[index]!)),
-      );
-      yield* Effect.forEach(leases, (lease) => lease.awaitSettled, { concurrency: "unbounded" });
-
-      expect(calls.sort()).toEqual(["agents", "locations", "tokens"]);
-      const agents = yield* leases[1]!.snapshot;
-      expect(agents.state === "known" ? agents.value : null).toEqual(["codex"]);
-      const tokens = yield* leases[2]!.snapshot;
-      expect(tokens.state === "known" ? tokens.value : null).toEqual([
-        {
-          tokenId: "token-id",
-          name: "zcp-project",
-        },
-      ]);
-      const diagnostics = yield* broker.diagnostics;
-      expect(diagnostics).toMatchObject({ entries: 3, known: 3 });
-      expect(diagnostics).not.toHaveProperty("value");
-      expect(diagnostics).not.toHaveProperty("error");
-      yield* broker.shutdown;
-      yield* Effect.forEach(scopes, (leaseScope) => Scope.close(leaseScope, Exit.void), {
-        discard: true,
-      });
-    }),
-  );
-
   it.effect("retains an adapter-owned value without normalizing its nested data", () =>
     Effect.gen(function* () {
       const scope = accountScope();
-      const value: ReadonlyArray<ZeropsLocation> = [PRAGUE];
+      const value = { enabled: true };
       const broker = yield* makeZeropsCells({
         scope,
         access: () => verifiedAccess(scope),
-        adapter: unusedAdapter({ readOrganizationLocations: () => Effect.succeed(value) }),
+        adapter: unusedAdapter({ readServiceMateFlag: () => Effect.succeed(value) }),
       });
       const leaseScope = yield* Scope.make();
-      const lease = yield* broker.acquire(locationsRequest(scope)).pipe(Scope.provide(leaseScope));
+      const lease = yield* broker.acquire(mateFlagRequest(scope)).pipe(Scope.provide(leaseScope));
       const loaded = yield* lease.awaitSettled;
 
       expect(loaded.state === "known" ? loaded.value : null).toBe(value);
-      expect(loaded.state === "known" ? loaded.value[0] : null).toBe(value[0]);
       yield* Scope.close(leaseScope, Exit.void);
       yield* broker.shutdown;
     }),
@@ -899,24 +692,24 @@ describe("makeZeropsCells", () => {
         scope,
         access: () => verifiedAccess(scope),
         adapter: unusedAdapter({
-          readOrganizationLocations: () => {
+          readServiceMateFlag: () => {
             calls += 1;
-            return Effect.succeed([]);
+            return Effect.succeed({ enabled: false });
           },
         }),
       });
       const leaseScope = yield* Scope.make();
       const stale = yield* broker
-        .acquire(locationsRequest(accountScope("account-a", 2)))
+        .acquire(mateFlagRequest(accountScope("account-a", 2)))
         .pipe(Scope.provide(leaseScope), Effect.result);
       const mismatched = yield* broker
         .acquire({
-          ...locationsRequest(scope),
-          organization: organization(accountScope("account-b")),
+          ...mateFlagRequest(scope),
+          service: service(accountScope("account-b")),
         })
         .pipe(Scope.provide(leaseScope), Effect.result);
       const registry = AtomRegistry.make();
-      const refused = broker.known(locationsRequest(accountScope("account-a", 2)));
+      const refused = broker.known(mateFlagRequest(accountScope("account-a", 2)));
       const unmount = registry.mount(refused);
 
       expect(stale).toMatchObject({ _tag: "Failure", failure: { reason: "account-mismatch" } });
@@ -943,15 +736,15 @@ describe("makeZeropsCells", () => {
           scope,
           access: () => verifiedAccess(scope),
           adapter: unusedAdapter({
-            readServiceAuthorizedAgents: () => {
+            readServiceMateFlag: () => {
               calls += 1;
-              return Effect.succeed([]);
+              return Effect.succeed({ enabled: false });
             },
           }),
         });
         const leaseScope = yield* Scope.make();
         const denied = yield* broker
-          .acquire(authorizedAgentsRequest(scope, "service-a", "not-granted"))
+          .acquire(mateFlagRequest(scope, "service-a", "not-granted"))
           .pipe(Scope.provide(leaseScope));
 
         expect(yield* denied.awaitSettled).toEqual({
@@ -976,16 +769,14 @@ describe("makeZeropsCells", () => {
           scope,
           access: () => access,
           adapter: unusedAdapter({
-            readOrganizationLocations: (_request, context) => {
+            readServiceMateFlag: (_request, context) => {
               signals.push(context.abortSignal);
-              return signals.length === 1 ? Effect.succeed([PRAGUE]) : Effect.never;
+              return signals.length === 1 ? Effect.succeed({ enabled: true }) : Effect.never;
             },
           }),
         });
         const leaseScope = yield* Scope.make();
-        const lease = yield* broker
-          .acquire(locationsRequest(scope))
-          .pipe(Scope.provide(leaseScope));
+        const lease = yield* broker.acquire(mateFlagRequest(scope)).pipe(Scope.provide(leaseScope));
         expect((yield* lease.awaitSettled).state).toBe("known");
         expect(yield* lease.retry).toBe(false);
 
@@ -1032,11 +823,11 @@ describe("makeZeropsCells", () => {
         scope,
         access: () => verifiedAccess(scope, 10),
         adapter: unusedAdapter({
-          readOrganizationLocations: () => Effect.succeed([PRAGUE]),
+          readServiceMateFlag: () => Effect.succeed({ enabled: true }),
         }),
       });
       const leaseScope = yield* Scope.make();
-      const lease = yield* broker.acquire(locationsRequest(scope)).pipe(Scope.provide(leaseScope));
+      const lease = yield* broker.acquire(mateFlagRequest(scope)).pipe(Scope.provide(leaseScope));
       expect((yield* lease.awaitSettled).state).toBe("known");
 
       yield* TestClock.adjust("10 millis");
@@ -1064,19 +855,17 @@ describe("makeZeropsCells", () => {
         scope,
         access: () => verifiedAccess(scope),
         adapter: unusedAdapter({
-          readServiceAuthorizedAgents: (_request, context) => {
+          readServiceMateFlag: (_request, context) => {
             signal = context.abortSignal;
             return Deferred.succeed(started, undefined).pipe(
               Effect.andThen(Deferred.await(finish)),
-              Effect.as(["codex"] as const),
+              Effect.as({ enabled: true }),
             );
           },
         }),
       });
       const leaseScope = yield* Scope.make();
-      const lease = yield* broker
-        .acquire(authorizedAgentsRequest(scope))
-        .pipe(Scope.provide(leaseScope));
+      const lease = yield* broker.acquire(mateFlagRequest(scope)).pipe(Scope.provide(leaseScope));
       yield* Deferred.await(started);
       yield* lease.release;
       expect(signal?.aborted).toBe(true);
@@ -1099,7 +888,7 @@ describe("makeZeropsCells", () => {
         scope,
         access: () => verifiedAccess(scope),
         adapter: unusedAdapter({
-          readOrganizationLocations: () => {
+          readServiceMateFlag: () => {
             calls += 1;
             return calls === 1
               ? Deferred.await(gate).pipe(
@@ -1110,13 +899,13 @@ describe("makeZeropsCells", () => {
                     }),
                   ),
                 )
-              : Effect.succeed([]);
+              : Effect.succeed({ enabled: false });
           },
         }),
       });
       const firstScope = yield* Scope.make();
       const secondScope = yield* Scope.make();
-      const request = locationsRequest(scope);
+      const request = mateFlagRequest(scope);
       const first = yield* broker.acquire(request).pipe(Scope.provide(firstScope));
       const second = yield* broker.acquire(request).pipe(Scope.provide(secondScope));
       yield* Deferred.succeed(gate, undefined);
@@ -1133,7 +922,10 @@ describe("makeZeropsCells", () => {
         concurrency: "unbounded",
       });
       expect(retryResults.filter(Boolean)).toHaveLength(1);
-      expect(yield* second.awaitSettled).toMatchObject({ state: "known", value: [] });
+      expect(yield* second.awaitSettled).toMatchObject({
+        state: "known",
+        value: { enabled: false },
+      });
       expect(calls).toBe(2);
       yield* Scope.close(firstScope, Exit.void);
       yield* Scope.close(secondScope, Exit.void);
@@ -1153,10 +945,10 @@ describe("makeZeropsCells", () => {
       const firstScope = yield* Scope.make();
       const sharedScope = yield* Scope.make();
       const rejectedScope = yield* Scope.make();
-      const first = yield* broker.acquire(locationsRequest(scope)).pipe(Scope.provide(firstScope));
-      yield* broker.acquire(locationsRequest(scope)).pipe(Scope.provide(sharedScope));
+      const first = yield* broker.acquire(mateFlagRequest(scope)).pipe(Scope.provide(firstScope));
+      yield* broker.acquire(mateFlagRequest(scope)).pipe(Scope.provide(sharedScope));
       const queued = yield* broker
-        .acquire(authorizedAgentsRequest(scope))
+        .acquire(mateFlagRequest(scope, "service-b"))
         .pipe(Scope.provide(rejectedScope));
       expect(yield* queued.snapshot).toEqual({ state: "unread", waitingFor: "data-slot" });
       expect(yield* broker.diagnostics).toMatchObject({ entries: 1, leases: 3, waiting: 1 });
@@ -1177,12 +969,12 @@ describe("makeZeropsCells", () => {
         scope,
         access: () => verifiedAccess(scope),
         maxEntries: 1,
-        adapter: unusedAdapter({ readOrganizationLocations: () => Effect.succeed([PRAGUE]) }),
+        adapter: unusedAdapter({ readServiceMateFlag: () => Effect.succeed({ enabled: true }) }),
       });
       const holderScope = yield* Scope.make();
-      yield* broker.acquire(authorizedAgentsRequest(scope)).pipe(Scope.provide(holderScope));
+      yield* broker.acquire(mateFlagRequest(scope, "holder")).pipe(Scope.provide(holderScope));
       const registry = AtomRegistry.make();
-      const atom = broker.known(locationsRequest(scope));
+      const atom = broker.known(mateFlagRequest(scope));
       const unmount = registry.mount(atom);
 
       expect(registry.get(atom)).toMatchObject({
@@ -1195,7 +987,7 @@ describe("makeZeropsCells", () => {
 
       yield* Scope.close(holderScope, Exit.void);
       yield* Effect.yieldNow;
-      expect(registry.get(atom)).toMatchObject({ state: "known", value: [PRAGUE] });
+      expect(registry.get(atom)).toMatchObject({ state: "known", value: { enabled: true } });
 
       unmount();
       registry.dispose();
@@ -1212,17 +1004,17 @@ describe("makeZeropsCells", () => {
         access: () => verifiedAccess(scope),
         maxEntries: 1,
         adapter: unusedAdapter({
-          readOrganizationLocations: () =>
+          readServiceMateFlag: (request) =>
             Effect.sync(() => {
-              reads++;
-              return [PRAGUE];
+              if (request.service.serviceId === "service-a") reads++;
+              return { enabled: true };
             }),
         }),
       });
       const holderScope = yield* Scope.make();
-      yield* broker.acquire(authorizedAgentsRequest(scope)).pipe(Scope.provide(holderScope));
+      yield* broker.acquire(mateFlagRequest(scope, "holder")).pipe(Scope.provide(holderScope));
       const display = yield* Scope.make();
-      const queued = yield* broker.acquire(locationsRequest(scope)).pipe(Scope.provide(display));
+      const queued = yield* broker.acquire(mateFlagRequest(scope)).pipe(Scope.provide(display));
       expect(yield* queued.snapshot).toEqual({ state: "unread", waitingFor: "data-slot" });
       yield* TestClock.adjust("30 seconds");
       expect(yield* queued.awaitSettled).toMatchObject({
@@ -1232,7 +1024,10 @@ describe("makeZeropsCells", () => {
       expect(reads).toBe(0);
       yield* Scope.close(holderScope, Exit.void);
       yield* Effect.yieldNow;
-      expect(yield* queued.awaitSettled).toMatchObject({ state: "known", value: [PRAGUE] });
+      expect(yield* queued.awaitSettled).toMatchObject({
+        state: "known",
+        value: { enabled: true },
+      });
       expect(reads).toBe(1);
       yield* Scope.close(display, Exit.void);
       yield* broker.shutdown;
@@ -1248,24 +1043,27 @@ describe("makeZeropsCells", () => {
         access: () => verifiedAccess(scope),
         maxEntries: 1,
         adapter: unusedAdapter({
-          readOrganizationLocations: () =>
+          readServiceMateFlag: (request) =>
             Effect.sync(() => {
-              reads++;
-              return [PRAGUE];
+              if (request.service.serviceId === "service-a") reads++;
+              return { enabled: true };
             }),
         }),
       });
       const holderScope = yield* Scope.make();
-      yield* broker.acquire(authorizedAgentsRequest(scope)).pipe(Scope.provide(holderScope));
+      yield* broker.acquire(mateFlagRequest(scope, "holder")).pipe(Scope.provide(holderScope));
       const display = yield* Scope.make();
-      const queued = yield* broker.acquire(locationsRequest(scope)).pipe(Scope.provide(display));
+      const queued = yield* broker.acquire(mateFlagRequest(scope)).pipe(Scope.provide(display));
       yield* TestClock.adjust("30 seconds");
       yield* queued.awaitSettled;
       expect(yield* queued.retry).toBe(true);
       expect(yield* queued.retry).toBe(false);
       expect(yield* queued.snapshot).toEqual({ state: "unread", waitingFor: "data-slot" });
       yield* Scope.close(holderScope, Exit.void);
-      expect(yield* queued.awaitSettled).toMatchObject({ state: "known", value: [PRAGUE] });
+      expect(yield* queued.awaitSettled).toMatchObject({
+        state: "known",
+        value: { enabled: true },
+      });
       expect(reads).toBe(1);
       yield* Scope.close(display, Exit.void);
       yield* broker.shutdown;
@@ -1282,19 +1080,19 @@ describe("makeZeropsCells", () => {
         maxEntries: 1,
         maxQueuedEntries: 1,
         adapter: unusedAdapter({
-          readOrganizationLocations: () =>
+          readServiceMateFlag: (request) =>
             Effect.sync(() => {
-              reads++;
-              return [PRAGUE];
+              if (request.service.serviceId === "service-a") reads++;
+              return { enabled: true };
             }),
         }),
       });
       const holderScope = yield* Scope.make();
-      yield* broker.acquire(authorizedAgentsRequest(scope)).pipe(Scope.provide(holderScope));
+      yield* broker.acquire(mateFlagRequest(scope, "holder")).pipe(Scope.provide(holderScope));
       const registry = AtomRegistry.make();
-      const unmount = registry.mount(broker.known(locationsRequest(scope)));
+      const unmount = registry.mount(broker.known(mateFlagRequest(scope)));
       const rejected = yield* broker
-        .acquire(membersRequest(scope))
+        .acquire(mateFlagRequest(scope, "service-c"))
         .pipe(Effect.scoped, Effect.result);
       expect(rejected).toMatchObject({ _tag: "Failure", failure: { reason: "account-capacity" } });
       unmount();
@@ -1318,22 +1116,20 @@ describe("makeZeropsCells", () => {
           access: () => verifiedAccess(scope),
           random: () => 0.5,
           adapter: unusedAdapter({
-            readOrganizationMembers: () =>
+            readServiceMateFlag: () =>
               Effect.suspend(() =>
-                ++reads === 1
-                  ? Effect.succeed([{ id: "member-1" }])
-                  : Effect.fail(transportFailure()),
+                ++reads === 1 ? Effect.succeed({ enabled: true }) : Effect.fail(transportFailure()),
               ),
           }),
         });
         const display = yield* Scope.make();
-        const lease = yield* broker.acquire(membersRequest(scope)).pipe(Scope.provide(display));
+        const lease = yield* broker.acquire(mateFlagRequest(scope)).pipe(Scope.provide(display));
         yield* lease.awaitSettled;
-        yield* broker.invalidate(membersRequest(scope));
+        yield* broker.invalidate(mateFlagRequest(scope));
         const failed = yield* lease.awaitSettled;
         expect(failed).toMatchObject({
           state: "known",
-          value: [{ id: "member-1" }],
+          value: { enabled: true },
           freshness: { kind: "stale", reason: { kind: "revalidation-failed", retryAtMs: 2_000 } },
         });
         yield* broker.reconcileAccess;
@@ -1345,7 +1141,7 @@ describe("makeZeropsCells", () => {
         yield* Effect.yieldNow;
         expect(reads).toBe(3);
         yield* lease.awaitSettled;
-        yield* broker.readAgain(membersRequest(scope));
+        yield* broker.readAgain(mateFlagRequest(scope));
         yield* lease.awaitSettled;
         expect(reads).toBe(4);
         yield* Scope.close(display, Exit.void);
@@ -1364,19 +1160,19 @@ describe("makeZeropsCells", () => {
         maxQueuedEntries: 1,
         random: () => 0.5,
         adapter: unusedAdapter({
-          readOrganizationMembers: () =>
+          readServiceMateFlag: (request) =>
             Effect.sync(() => {
-              reads++;
-              return [{ id: "member-1" }];
+              if (request.service.serviceId === "service-a") reads++;
+              return { enabled: true };
             }),
         }),
       });
       const holderScope = yield* Scope.make();
-      yield* broker.acquire(authorizedAgentsRequest(scope)).pipe(Scope.provide(holderScope));
+      yield* broker.acquire(mateFlagRequest(scope, "holder")).pipe(Scope.provide(holderScope));
       const queuedScope = yield* Scope.make();
-      yield* broker.acquire(locationsRequest(scope)).pipe(Scope.provide(queuedScope));
+      yield* broker.acquire(mateFlagRequest(scope, "service-b")).pipe(Scope.provide(queuedScope));
       const registry = AtomRegistry.make();
-      const atom = broker.known(membersRequest(scope));
+      const atom = broker.known(mateFlagRequest(scope));
       const unmount = registry.mount(atom);
       expect(registry.get(atom)).toMatchObject({
         state: "failed",
@@ -1392,7 +1188,7 @@ describe("makeZeropsCells", () => {
       yield* Scope.close(holderScope, Exit.void);
       yield* TestClock.adjust("4 seconds");
       yield* Effect.yieldNow;
-      expect(registry.get(atom)).toMatchObject({ state: "known", value: [{ id: "member-1" }] });
+      expect(registry.get(atom)).toMatchObject({ state: "known", value: { enabled: true } });
       expect(reads).toBe(1);
       unmount();
       registry.dispose();
@@ -1410,22 +1206,22 @@ describe("makeZeropsCells", () => {
         maxQueuedEntries: 1,
         random: () => 0.5,
         adapter: unusedAdapter({
-          readOrganizationMembers: () => Effect.succeed([{ id: "member-1" }]),
+          readServiceMateFlag: () => Effect.succeed({ enabled: true }),
         }),
       });
       const holderScope = yield* Scope.make();
-      yield* broker.acquire(authorizedAgentsRequest(scope)).pipe(Scope.provide(holderScope));
+      yield* broker.acquire(mateFlagRequest(scope, "holder")).pipe(Scope.provide(holderScope));
       const queuedScope = yield* Scope.make();
-      yield* broker.acquire(locationsRequest(scope)).pipe(Scope.provide(queuedScope));
+      yield* broker.acquire(mateFlagRequest(scope, "service-b")).pipe(Scope.provide(queuedScope));
       const registry = AtomRegistry.make();
-      const atom = broker.known(membersRequest(scope));
+      const atom = broker.known(mateFlagRequest(scope));
       const unmount = registry.mount(atom);
       expect(registry.get(atom)).toMatchObject({ failure: { code: "data-slot-queue-full" } });
       yield* Scope.close(queuedScope, Exit.void);
       yield* Scope.close(holderScope, Exit.void);
-      expect(yield* broker.readAgain(membersRequest(scope))).toBe(true);
+      expect(yield* broker.readAgain(mateFlagRequest(scope))).toBe(true);
       yield* Effect.yieldNow;
-      expect(registry.get(atom)).toMatchObject({ state: "known", value: [{ id: "member-1" }] });
+      expect(registry.get(atom)).toMatchObject({ state: "known", value: { enabled: true } });
       unmount();
       registry.dispose();
       yield* broker.shutdown;
@@ -1443,44 +1239,38 @@ describe("makeZeropsCells", () => {
           access: () => verifiedAccess(scope),
           maxEntries: 1,
           adapter: unusedAdapter({
-            readServiceAuthorizedAgents: () => Effect.fail(transportFailure()),
-            readOrganizationLocations: () =>
-              Effect.sync(() => {
-                reads.push("locations");
-                return [PRAGUE];
-              }),
-            readOrganizationMembers: () =>
-              Effect.sync(() => {
-                reads.push("members");
-                return [{ id: "member-1" }];
-              }),
+            readServiceMateFlag: (request) =>
+              request.service.serviceId === "holder"
+                ? Effect.fail(transportFailure())
+                : Effect.sync(() => {
+                    reads.push(request.service.serviceId);
+                    return { enabled: true };
+                  }),
           }),
         });
         const holderScope = yield* Scope.make();
         const holder = yield* broker
-          .acquire(authorizedAgentsRequest(scope))
+          .acquire(mateFlagRequest(scope, "holder"))
           .pipe(Scope.provide(holderScope));
         yield* holder.awaitSettled;
         const firstScope = yield* Scope.make();
         const secondScope = yield* Scope.make();
-        const first = yield* broker
-          .acquire(locationsRequest(scope))
-          .pipe(Scope.provide(firstScope));
+        const first = yield* broker.acquire(mateFlagRequest(scope)).pipe(Scope.provide(firstScope));
         const shared = yield* broker
-          .acquire(locationsRequest(scope))
+          .acquire(mateFlagRequest(scope))
           .pipe(Scope.provide(firstScope));
         const second = yield* broker
-          .acquire(membersRequest(scope))
+          .acquire(mateFlagRequest(scope, "service-b"))
           .pipe(Scope.provide(secondScope));
         expect(yield* broker.diagnostics).toMatchObject({ waiting: 2 });
         yield* Scope.close(holderScope, Exit.void);
         yield* first.awaitSettled;
         expect(yield* shared.snapshot).toMatchObject({ state: "known" });
-        expect(reads).toEqual(["locations"]);
+        expect(reads).toEqual(["service-a"]);
         expect(yield* second.snapshot).toMatchObject({ waitingFor: "data-slot" });
         yield* Scope.close(firstScope, Exit.void);
         yield* second.awaitSettled;
-        expect(reads).toEqual(["locations", "members"]);
+        expect(reads).toEqual(["service-a", "service-b"]);
         yield* Scope.close(secondScope, Exit.void);
         yield* broker.shutdown;
       }).pipe(Effect.provide(TestClock.layer())),
@@ -1496,17 +1286,17 @@ describe("makeZeropsCells", () => {
         access: () => access,
         maxEntries: 1,
         adapter: unusedAdapter({
-          readOrganizationLocations: () =>
+          readServiceMateFlag: (request) =>
             Effect.sync(() => {
-              reads++;
-              return [PRAGUE];
+              if (request.service.serviceId === "service-a") reads++;
+              return { enabled: true };
             }),
         }),
       });
       const holderScope = yield* Scope.make();
-      yield* broker.acquire(authorizedAgentsRequest(scope)).pipe(Scope.provide(holderScope));
+      yield* broker.acquire(mateFlagRequest(scope, "holder")).pipe(Scope.provide(holderScope));
       const display = yield* Scope.make();
-      const queued = yield* broker.acquire(locationsRequest(scope)).pipe(Scope.provide(display));
+      const queued = yield* broker.acquire(mateFlagRequest(scope)).pipe(Scope.provide(display));
       access = expiredAccess(scope, 0);
       yield* broker.reconcileAccess;
       expect(yield* queued.snapshot).toMatchObject({ state: "withheld", reason: "access-lapsed" });
@@ -1533,9 +1323,9 @@ describe("makeZeropsCells", () => {
         adapter: unusedAdapter(),
       });
       const holderScope = yield* Scope.make();
-      yield* broker.acquire(authorizedAgentsRequest(scope)).pipe(Scope.provide(holderScope));
+      yield* broker.acquire(mateFlagRequest(scope, "holder")).pipe(Scope.provide(holderScope));
       const registry = AtomRegistry.make();
-      const atom = broker.known(locationsRequest(scope));
+      const atom = broker.known(mateFlagRequest(scope));
       const unmount = registry.mount(atom);
       expect(registry.get(atom)).toMatchObject({ state: "unread", waitingFor: "data-slot" });
 
@@ -1554,19 +1344,19 @@ describe("makeZeropsCells", () => {
       const broker = yield* makeZeropsCells({
         scope,
         access: () => verifiedAccess(scope),
-        adapter: unusedAdapter({ readOrganizationLocations: () => Effect.succeed([PRAGUE]) }),
+        adapter: unusedAdapter({ readServiceMateFlag: () => Effect.succeed({ enabled: true }) }),
       });
       const leaseScope = yield* Scope.make();
-      const lease = yield* broker.acquire(locationsRequest(scope)).pipe(Scope.provide(leaseScope));
+      const lease = yield* broker.acquire(mateFlagRequest(scope)).pipe(Scope.provide(leaseScope));
       const registry = AtomRegistry.make();
-      const openAtom = broker.known(authorizedAgentsRequest(scope));
+      const openAtom = broker.known(mateFlagRequest(scope, "service-b"));
       const unmounts = [registry.mount(openAtom)];
       yield* Effect.yieldNow;
 
       yield* broker.shutdown;
-      const lateAtom = broker.known(tokensRequest(scope));
+      const lateAtom = broker.known(mateFlagRequest(scope, "service-c"));
       unmounts.push(registry.mount(lateAtom));
-      const stale = broker.known(locationsRequest(accountScope("account-a", 2)));
+      const stale = broker.known(mateFlagRequest(accountScope("account-a", 2)));
       unmounts.push(registry.mount(stale));
 
       const closed = { state: "unread", waitingFor: "zerops-session" };
@@ -1588,26 +1378,22 @@ describe("makeZeropsCells", () => {
         scope,
         access: () => verifiedAccess(scope),
         adapter: unusedAdapter({
-          readOrganizationLocations: (_request, context) => {
+          readServiceMateFlag: (request, context) => {
             signals.push(context.abortSignal);
-            return Effect.succeed([{ id: "prg1", name: "erase-me", pingUrl: "https://ping.test" }]);
-          },
-          readServiceAuthorizedAgents: (_request, context) => {
-            signals.push(context.abortSignal);
-            return Effect.never;
+            return request.service.serviceId === "service-a"
+              ? Effect.succeed({ enabled: true })
+              : Effect.never;
           },
         }),
       });
       const recipeScope = yield* Scope.make();
       const cloneScope = yield* Scope.make();
-      const recipe = yield* broker
-        .acquire(locationsRequest(scope))
-        .pipe(Scope.provide(recipeScope));
+      const recipe = yield* broker.acquire(mateFlagRequest(scope)).pipe(Scope.provide(recipeScope));
       const clone = yield* broker
-        .acquire(authorizedAgentsRequest(scope))
+        .acquire(mateFlagRequest(scope, "service-b"))
         .pipe(Scope.provide(cloneScope));
       const loaded = yield* recipe.awaitSettled;
-      expect(loaded.state === "known" ? loaded.value[0]?.name : undefined).toBe("erase-me");
+      expect(loaded.state === "known" ? loaded.value.enabled : undefined).toBe(true);
       const cloneSettled = yield* Effect.forkChild(clone.awaitSettled);
       yield* Effect.yieldNow;
 
@@ -1622,7 +1408,7 @@ describe("makeZeropsCells", () => {
       expect(yield* broker.diagnostics).toMatchObject({ entries: 0, leases: 0 });
       const afterCloseScope = yield* Scope.make();
       const afterClose = yield* broker
-        .acquire(locationsRequest(scope))
+        .acquire(mateFlagRequest(scope))
         .pipe(Scope.provide(afterCloseScope), Effect.result);
       expect(afterClose).toMatchObject({
         _tag: "Failure",
@@ -1646,41 +1432,6 @@ describe("the cells' one-shot reads", () => {
       return settled;
     });
 
-  it.effect("a reader joining a held cell past its freshness reads it again", () =>
-    Effect.gen(function* () {
-      const scope = accountScope();
-      let reads = 0;
-      const cells = yield* makeZeropsCells({
-        scope,
-        access: () => verifiedAccess(scope),
-        adapter: unusedAdapter({
-          readOrganizationMembers: () =>
-            Effect.sync(() => {
-              reads += 1;
-              return [{ id: `member-${reads}` }];
-            }),
-        }),
-      });
-      const request = membersRequest(scope);
-      // A surface holds the members all along.
-      const display = yield* Scope.make();
-      const held = yield* cells.acquire(request).pipe(Scope.provide(display));
-      yield* held.awaitSettled;
-
-      yield* TestClock.adjust(CELL_FRESH_MS["members"] - 1);
-      expect(yield* oneShot(cells, request)).toMatchObject({ value: [{ id: "member-1" }] });
-      expect(reads).toBe(1);
-      yield* TestClock.adjust(1);
-      expect(yield* oneShot(cells, request)).toMatchObject({
-        value: [{ id: "member-2" }],
-        freshness: { kind: "settled" },
-      });
-      expect(reads).toBe(2);
-      yield* Scope.close(display, Exit.void);
-      yield* cells.shutdown;
-    }).pipe(Effect.provide(TestClock.layer())),
-  );
-
   it.effect("an invalidation that lands while the cell is first read reads it once more", () =>
     Effect.gen(function* () {
       const scope = accountScope();
@@ -1690,17 +1441,17 @@ describe("the cells' one-shot reads", () => {
         scope,
         access: () => verifiedAccess(scope),
         adapter: unusedAdapter({
-          readOrganizationIntegrationTokens: () =>
+          readServiceMateFlag: () =>
             Effect.suspend(() => {
               reads += 1;
-              const answer = [{ tokenId: `token-${reads}`, name: "t" }];
+              const answer = { enabled: reads % 2 === 0 };
               return reads === 1
                 ? Deferred.await(gate).pipe(Effect.as(answer))
                 : Effect.succeed(answer);
             }),
         }),
       });
-      const request = tokensRequest(scope);
+      const request = mateFlagRequest(scope);
       const held = yield* Scope.make();
       const lease = yield* cells.acquire(request).pipe(Scope.provide(held));
       expect(yield* lease.snapshot).toMatchObject({ state: "reading" });
@@ -1710,7 +1461,7 @@ describe("the cells' one-shot reads", () => {
       yield* Deferred.succeed(gate, undefined);
 
       expect(yield* lease.awaitSettled).toMatchObject({
-        value: [{ tokenId: "token-2" }],
+        value: { enabled: true },
         freshness: { kind: "settled" },
       });
       expect(reads).toBe(2);
@@ -1728,17 +1479,17 @@ describe("the cells' one-shot reads", () => {
         scope,
         access: () => verifiedAccess(scope),
         adapter: unusedAdapter({
-          readOrganizationIntegrationTokens: () =>
+          readServiceMateFlag: () =>
             Effect.suspend(() => {
               reads += 1;
-              const answer = [{ tokenId: `token-${reads}`, name: "t" }];
+              const answer = { enabled: reads % 2 === 0 };
               return reads === 2
                 ? Deferred.await(gate).pipe(Effect.as(answer))
                 : Effect.succeed(answer);
             }),
         }),
       });
-      const request = tokensRequest(scope);
+      const request = mateFlagRequest(scope);
       const display = yield* Scope.make();
       const held = yield* cells.acquire(request).pipe(Scope.provide(display));
       yield* held.awaitSettled;
@@ -1750,7 +1501,7 @@ describe("the cells' one-shot reads", () => {
       yield* Deferred.succeed(gate, undefined);
       const settled = yield* Fiber.join(reader);
 
-      expect(settled).toMatchObject({ value: [{ tokenId: "token-3" }] });
+      expect(settled).toMatchObject({ value: { enabled: false } });
       expect(settledValue(settled)).not.toBe(null);
       expect(reads).toBe(3);
       yield* Scope.close(display, Exit.void);
@@ -1767,16 +1518,16 @@ describe("the cells' one-shot reads", () => {
         scope,
         access: () => verifiedAccess(scope),
         adapter: unusedAdapter({
-          readOrganizationIntegrationTokens: () =>
+          readServiceMateFlag: () =>
             Effect.suspend(() => {
               reads++;
               return reads === 1
                 ? Deferred.await(gate).pipe(Effect.andThen(Effect.fail(transportFailure())))
-                : Effect.succeed([{ tokenId: "token-new", name: "new" }]);
+                : Effect.succeed({ enabled: true });
             }),
         }),
       });
-      const request = tokensRequest(scope);
+      const request = mateFlagRequest(scope);
       const reader = yield* Effect.forkChild(oneShot(cells, request));
       yield* Effect.yieldNow;
       yield* cells.invalidate(request);
@@ -1784,7 +1535,7 @@ describe("the cells' one-shot reads", () => {
       yield* Deferred.succeed(gate, undefined);
       expect(yield* Fiber.join(reader)).toMatchObject({
         state: "known",
-        value: [{ tokenId: "token-new" }],
+        value: { enabled: true },
       });
       expect(reads).toBe(2);
       yield* TestClock.adjust("1 minute");
@@ -1802,14 +1553,16 @@ describe("the cells' one-shot reads", () => {
         access: () => verifiedAccess(scope),
         random: () => 0.5,
         adapter: unusedAdapter({
-          readServiceAuthorizedAgents: () =>
+          readServiceMateFlag: () =>
             Effect.suspend(() => {
               reads += 1;
-              return reads <= 5 ? Effect.fail(transportFailure(true)) : Effect.succeed(["codex"]);
+              return reads <= 5
+                ? Effect.fail(transportFailure(true))
+                : Effect.succeed({ enabled: true });
             }),
         }),
       });
-      const request = authorizedAgentsRequest(scope);
+      const request = mateFlagRequest(scope);
       // A surface holds the agents while their reads fail and the retries widen.
       const display = yield* Scope.make();
       const held = yield* cells.acquire(request).pipe(Scope.provide(display));
@@ -1827,7 +1580,7 @@ describe("the cells' one-shot reads", () => {
       const reader = yield* Effect.forkChild(oneShot(cells, request));
       yield* Effect.yieldNow;
       expect(reads).toBe(6);
-      expect(yield* Fiber.join(reader)).toMatchObject({ value: ["codex"] });
+      expect(yield* Fiber.join(reader)).toMatchObject({ value: { enabled: true } });
       yield* Scope.close(display, Exit.void);
       yield* cells.shutdown;
     }).pipe(Effect.provide(TestClock.layer())),
@@ -1842,16 +1595,16 @@ describe("the cells' one-shot reads", () => {
         access: () => verifiedAccess(scope),
         random: () => 0.5,
         adapter: unusedAdapter({
-          readOrganizationMembers: () =>
+          readServiceMateFlag: () =>
             Effect.suspend(() => {
               reads += 1;
               return reads === 1
                 ? Effect.fail(transportFailure(true))
-                : Effect.succeed([{ id: "member-1" }]);
+                : Effect.succeed({ enabled: true });
             }),
         }),
       });
-      const request = membersRequest(scope);
+      const request = mateFlagRequest(scope);
       const display = yield* Scope.make();
       const held = yield* cells.acquire(request).pipe(Scope.provide(display));
       expect(yield* held.awaitSettled).toMatchObject({ state: "failed" });
@@ -1878,21 +1631,21 @@ describe("the cells' one-shot reads", () => {
         scope,
         access: () => verifiedAccess(scope),
         adapter: unusedAdapter({
-          readOrganizationMembers: () =>
+          readServiceMateFlag: () =>
             Effect.suspend(() => {
               reads += 1;
               return reads === 1
                 ? Effect.fail(transportFailure(false))
-                : Effect.succeed([{ id: "member-1" }]);
+                : Effect.succeed({ enabled: true });
             }),
         }),
       });
-      const request = membersRequest(scope);
+      const request = mateFlagRequest(scope);
       const display = yield* Scope.make();
       const held = yield* cells.acquire(request).pipe(Scope.provide(display));
       expect(yield* held.awaitSettled).toMatchObject({ state: "failed" });
 
-      expect(yield* oneShot(cells, request)).toMatchObject({ value: [{ id: "member-1" }] });
+      expect(yield* oneShot(cells, request)).toMatchObject({ value: { enabled: true } });
       expect(reads).toBe(2);
       yield* Scope.close(display, Exit.void);
       yield* cells.shutdown;

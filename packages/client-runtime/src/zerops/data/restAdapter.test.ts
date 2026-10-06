@@ -715,27 +715,6 @@ describe("ZeropsDataAdapter receiver", () => {
     }),
   );
 
-  it.effect("tells the runtime of every token write its client makes", () =>
-    Effect.gen(function* () {
-      const client = clientFor(() => new Response(JSON.stringify({}), { status: 200 }));
-      const adapter = makeZeropsDataAdapter({ client, makeSocket: () => new FakeSocket(), timers });
-      const heard: string[] = [];
-      const stop = adapter.onTokensWritten?.((organizationId) => heard.push(organizationId));
-
-      yield* Effect.promise(() =>
-        client.setIntegrationTokenProjects({
-          clientId: organization.organizationId,
-          tokenId: "token-a",
-          name: "t",
-          projects: [],
-        }),
-      );
-      stop?.();
-
-      expect(heard).toEqual([organization.organizationId]);
-    }),
-  );
-
   // Several requests in one command — its services, the org's keys, a key, the import — have a
   // minute between them, not one request's 15 s (`commandDeadlineMs`).
   it.effect("gives a Mate's container import a minute, and a project's creation its 15 s", () =>
