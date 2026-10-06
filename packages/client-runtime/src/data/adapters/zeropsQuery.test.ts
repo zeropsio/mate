@@ -14,7 +14,7 @@ import type { StreamFault } from "../streamMachine.ts";
 import { superviseLink } from "../supervisor.ts";
 import { factOf } from "../reducer.ts";
 import { linkKeys } from "../model.ts";
-import { zeropsNavigationLink } from "./zerops.ts";
+import { RELEASED_QUERIES_PER_RECEIVER, zeropsNavigationLink } from "./zerops.ts";
 
 const PROJECT = "p1";
 const CURRENT = "/current-stats/group-by-search";
@@ -139,6 +139,40 @@ describe("a demanded query detail", () => {
       expect(store.state().memberships.get(usage)?.members.get("c1")).toBe("member");
       yield* Fiber.interrupt(fiber);
     }),
+  );
+
+  it.effect(
+    "past its bound of released queries, the receiver is opened afresh; what is held stays",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const fixture = fixtureWire(answers(() => [container("c1", 0.4)]));
+        const { fiber, link } = yield* runLink(store, fixture);
+        // Every tab switch lets a project's query go, and the platform cannot unsubscribe it.
+        for (let shown = 0; shown < RELEASED_QUERIES_PER_RECEIVER; shown += 1) {
+          const release = link.demandDetail(USAGE);
+          yield* settle;
+          release();
+          yield* settle;
+        }
+        link.demandDetail(USAGE);
+        yield* settle;
+        expect(fixture.opens()).toBe(1);
+
+        // One more let go: past the bound, the receiver goes; the use still held comes back on the next.
+        const hours = link.demandDetail({ family: "usageHistory", ownerId: PROJECT });
+        yield* settle;
+        hours();
+        yield* settle;
+        const down = store.state().streams.get(linkKeys.zerops(ORG));
+        yield* TestClock.adjust(down?.next.kind === "retry" ? down.next.at : 0);
+        yield* settle;
+        expect(fixture.opens()).toBe(2);
+        expect(registrationsOn(fixture, CURRENT).at(-1)?.body?.receiverId).toBe("receiver-2");
+        expect(store.state().streams.get(usage)?.phase).toBe("live");
+        expect(store.state().memberships.get(usage)?.members.get("c1")).toBe("member");
+        yield* Fiber.interrupt(fiber);
+      }),
   );
 
   it.effect("a history frame corrects its bucket and adds the hour that began", () =>

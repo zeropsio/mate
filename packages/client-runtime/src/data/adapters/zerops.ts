@@ -44,6 +44,12 @@ import type { AccountStore } from "../store.ts";
 import { retryDelayMs, type StreamEvent, type StreamFault } from "../streamMachine.ts";
 import type { LinkOptions } from "../supervisor.ts";
 
+/**
+ * How many query registrations one receiver may have let go: the platform cannot unsubscribe
+ * them, so their frames go on arriving. Past it, the receiver is opened afresh.
+ */
+export const RELEASED_QUERIES_PER_RECEIVER = 256;
+
 /** A demanded query's registration on the receiver; `held` its frames until its answer lands. */
 interface QuerySubscription {
   readonly scope: ScopeKey;
@@ -465,7 +471,7 @@ export function zeropsNavigationLink(options: {
           const generation = streamOf(store.state(), scope).generation;
           generations.set(scope, generation);
           yield* signal(scope, { kind: "handshake" });
-          forgetQueries(scope);
+          yield* forgetQueries(scope);
           const subscriptionName = options.makeId();
           const query: QuerySubscription = { scope, generation, held: [] };
           queries.set(subscriptionName, query);
@@ -499,10 +505,28 @@ export function zeropsNavigationLink(options: {
           while (held.length > 0) yield* onQueryFrame({ ...query, held: null }, held.shift());
           query.held = null;
         });
-      /** Forgets a scope's query registrations: their frames are dropped from now on. */
-      const forgetQueries = (scope: ScopeKey) => {
-        for (const [name, query] of queries) if (query.scope === scope) queries.delete(name);
-      };
+      /** The query registrations this receiver let go, still subscribed on the platform. */
+      let released = 0;
+      /**
+       * Forgets a scope's query registrations: their frames are dropped from now on. Past the
+       * receiver's bound of them, the attempt ends and the next one opens a fresh receiver.
+       */
+      const forgetQueries = (scope: ScopeKey): Effect.Effect<void> =>
+        Effect.suspend(() => {
+          for (const [name, query] of queries)
+            if (query.scope === scope) {
+              queries.delete(name);
+              released += 1;
+            }
+          return released > RELEASED_QUERIES_PER_RECEIVER
+            ? Effect.asVoid(
+                Deferred.fail(ended, {
+                  outcome: "transient",
+                  message: "The connection to Zerops is opened afresh.",
+                }),
+              )
+            : Effect.void;
+        });
 
       const observeDetail = (scope: ScopeKey): Effect.Effect<void, StreamFault> =>
         Effect.gen(function* () {
@@ -575,7 +599,7 @@ export function zeropsNavigationLink(options: {
         for (const scope of observed.keys())
           if (!demanded.has(scope)) {
             observed.delete(scope);
-            forgetQueries(scope);
+            yield* forgetQueries(scope);
           }
         const fresh: Array<ScopeKey> = [];
         let wakeAt = Number.POSITIVE_INFINITY;
