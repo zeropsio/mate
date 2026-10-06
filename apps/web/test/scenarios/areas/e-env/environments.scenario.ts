@@ -54,6 +54,28 @@ describe("E: stage, production, release and rollback", () => {
       }),
     );
 
+    // Catches a stage someone rolled back in Zerops, without a build, still naming the newer commit:
+    // its push names the restored version only by id.
+    it.effect(
+      "a rollback without a build shows the restored version's commit on the stage",
+      () =>
+        Effect.gen(function* () {
+          const f = yield* environmentFixture;
+          const a = environmentActions(f);
+          const earlier = yield* f.merge();
+          yield* a.when.finish("stage");
+          const later = yield* f.merge("Improve the storefront");
+          yield* a.when.finish("stage");
+          yield* f.s.given.signedIn;
+          yield* a.when.open("stage");
+          yield* a.then.text(`web\n${later.slice(0, 7)}`);
+          yield* a.when.rollBackOnZerops("stage");
+          yield* a.then.text(`web\n${earlier.slice(0, 7)}`);
+          yield* f.s.then.noExternalNetwork;
+        }),
+      90_000,
+    );
+
     // Catches a failed stage build being presented as successful with no way to retry.
     it.effect("failed stage build says why and offers Run again", () =>
       Effect.gen(function* () {

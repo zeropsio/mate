@@ -57,6 +57,17 @@ export class ZeropsWrites {
     return id;
   }
 
+  /**
+   * Activates a version the service already built (`PUT /app-version/{id}/deploy`, a roll back):
+   * no build, the version `DEPLOYING` until its deploy ends (`m0/vers-probe`). The process's id.
+   */
+  activate(versionId: string) {
+    const version = this.platform.world.appVersions.get(versionId)!;
+    const row = this.row("app-version", versionId)!;
+    this.platform.put("app-version", { ...row, status: "DEPLOYING" });
+    return this.start(String(row.projectId), "stack.deploy", [version.serviceId], versionId);
+  }
+
   transition(id: string, status: ProcessStatus, message?: string) {
     const row = this.row("process", id);
     if (!row) throw new Error(`Unknown process ${id}`);
@@ -144,7 +155,7 @@ export class ZeropsWrites {
     const importMatch = path.match(/^\/project\/([^/]+)\/service-stack\/import$/u);
     const createVersion = path.match(/^\/service-stack\/([^/]+)\/app-version$/u);
     const subdomain = path.match(/^\/service-stack\/([^/]+)\/enable-subdomain-access$/u);
-    const versionWrite = path.match(/^\/app-version\/([^/]+)\/(upload|build-and-deploy)$/u);
+    const versionWrite = path.match(/^\/app-version\/([^/]+)\/(upload|build-and-deploy|deploy)$/u);
     if (!importMatch && !createVersion && !subdomain && !versionWrite) return undefined;
     const service =
       createVersion || subdomain
@@ -176,6 +187,9 @@ export class ZeropsWrites {
         clientId: this.row("project", projectId)!.clientId,
         serviceStackId: service!.id,
         status: "UPLOADING",
+        // A version made through the API reads `CLI`; every push of it carries the whole row
+        // (`m0/vers-probe`).
+        source: "CLI",
         created: this.at(),
       });
       return { body: { id } };
@@ -185,6 +199,11 @@ export class ZeropsWrites {
       if (versionWrite[2] === "upload") {
         version.archive = request.rawBody ?? new Uint8Array();
         return { body: {} };
+      }
+      if (versionWrite[2] === "deploy") {
+        if (request.body.zeropsYaml === undefined || request.body.zeropsYamlSetup === undefined)
+          return this.platform.error(400, "zeropsYamlSetupNotFound");
+        return { body: { id: this.activate(version.id) } };
       }
       if (!version.archive) return this.platform.error(400, "appVersionNotUploaded");
       version.zeropsYaml = String(request.body.zeropsYaml);

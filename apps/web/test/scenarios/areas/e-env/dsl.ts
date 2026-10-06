@@ -50,6 +50,22 @@ export function environmentActions(f: Fixture, page: Page = f.s.page) {
     const process = yield* deployment(tier);
     endBuild(s.drivers.zerops, process.id, outcome);
   });
+  /**
+   * Someone rolls the tier's service back in Zerops to the version it ran before, no build, and
+   * its deploy ends.
+   */
+  const rollBackOnZerops = Effect.fn("e-env.rollBackOnZerops")(function* (
+    tier: "stage" | "production",
+  ) {
+    const zerops = s.drivers.zerops;
+    const previous = zerops
+      .rows("app-version")
+      .filter((row) => row.serviceStackId === `web-${tier}` && row.status === "BACKUP")
+      .toSorted((left, right) => String(right.created).localeCompare(String(left.created)))[0];
+    if (previous === undefined) return yield* Effect.die(`No earlier version of web-${tier}`);
+    const processId = zerops.writes.activate(previous.id);
+    zerops.writes.transition(processId, "FINISHED");
+  });
   const click = (label: string) =>
     Effect.promise(() =>
       page.locator(`::-p-aria(${label}[role="button"])`).setTimeout(15_000).click(),
@@ -191,6 +207,7 @@ export function environmentActions(f: Fixture, page: Page = f.s.page) {
       open,
       followWindow,
       finish,
+      rollBackOnZerops,
       click,
       releaseFromReview,
       reload,

@@ -66,10 +66,16 @@ function rig(options: { readonly refuse?: LeaseAdmissionError["reason"] } = {}) 
   const store: AccountStore = makeAccountStore(registry);
   /** The versions held to be read by id now. */
   const readById = new Set<string>();
+  /** The projects whose process history is held now. */
+  const histories = new Set<string>();
   registry.set(accountReadsAtom, {
     data: store.data,
     orgId: ORG_ID,
     demandDetail: (demand) => {
+      if (demand.family === "process") {
+        histories.add(demand.ownerId);
+        return () => histories.delete(demand.ownerId);
+      }
       if (demand.family !== "version") return () => undefined;
       readById.add(demand.ownerId);
       return () => readById.delete(demand.ownerId);
@@ -87,6 +93,7 @@ function rig(options: { readonly refuse?: LeaseAdmissionError["reason"] } = {}) 
     store,
     acquired,
     readById: () => [...readById],
+    histories: () => [...histories],
     services,
     app,
     list: (deploy: ServiceDeployInfo | null) =>
@@ -354,6 +361,17 @@ describe("a stop's services as the account's store and listing say them", () => 
       state(statedAs(null));
       expect(registry.get(stops.version(APP))).toMatchObject({ state: "failed" });
     });
+  });
+
+  it("reads an opened stop's process history: what its earlier builds named its versions", () => {
+    const { stops, histories } = rig();
+    const summary = stops.demand(STAGE);
+    expect(histories()).toEqual([]);
+    const detail = stops.demand(STAGE, "detail");
+    expect(histories()).toEqual([STAGE.projectId]);
+    detail();
+    expect(histories()).toEqual([]);
+    summary();
   });
 
   it("holds summary demand, and detail adds the project's topology", () => {

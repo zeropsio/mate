@@ -622,6 +622,15 @@ export class ZeropsFake {
         },
       };
     if (/^\/project\/[^/]+\/public-http-routing$/u.test(path)) return { body: { list: [] } };
+    // A project's newest processes, newest first, as the platform lists them (`?limit=100`).
+    const projectProcesses = path.match(/^\/project\/([^/]+)\/process$/u);
+    if (projectProcesses) {
+      const list = this.rows("process")
+        .filter((row) => row.projectId === projectProcesses[1])
+        .toSorted((left, right) => String(right.created).localeCompare(String(left.created)))
+        .slice(0, 100);
+      return { body: { list, count: list.length, limit: 100, offset: 0, total: list.length } };
+    }
     if (/^\/service-stack\/[^/]+\/env$/u.test(path))
       return { body: { items: [{ id: "enabled", key: "ZCP_MATE_ENABLED", content: "1" }] } };
     const single = path.match(/^\/(project|service-stack|app-version)\/([^/]+)$/u);

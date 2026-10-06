@@ -9,7 +9,8 @@
  * surface draws it, the project's topology while one opens it, and the platform's refusal to take
  * that demand, which fails the stop until a manual Again. A stop nobody demands reads `unread`.
  * And a read by id of each version a stop or an asked service runs that the active versions do not
- * hold, until they hold it or the platform says it has none.
+ * hold, until they hold it or the platform says it has none; and an opened stop's process history,
+ * whose builds name the versions a roll back activates by id alone.
  *
  * @module zerops/account/stops
  */
@@ -20,6 +21,7 @@ import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
 
 import { stopWork, type StopWork } from "../../data/projections/stopWork.ts";
 import { versionSource, type VersionSource } from "../../data/projections/versionSource.ts";
+import type { DetailDemand } from "../../data/demand.ts";
 import { accountReadsAtom, type AccountReads } from "../../data/reads.ts";
 import type { ManagedZeropsDataRuntime } from "../data/runtime.ts";
 import type { ZeropsServiceDeployedVersion } from "../data/deployedVersion.ts";
@@ -198,13 +200,15 @@ export function makeStops(
   );
 
   /**
-   * The versions to read by id now: each a demanded stop's service or an asked service runs that
-   * the active versions, though answered, do not hold — and, once read, one the platform does not
-   * have, so its refusal stays to be said.
+   * The reads held now. Each version a demanded stop's service or an asked service runs that the
+   * active versions, though answered, do not hold, by id — and, once read, one the platform does
+   * not have, so its refusal stays to be said. And each opened stop's process history: what its
+   * earlier builds named the versions it may run again (a roll back pushes only their ids).
    */
-  const wantedVersions = Atom.make((get) => {
+  const wantedReads = Atom.make((get) => {
     const account = get(accountReadsAtom);
     const ids = new Set<string>();
+    const histories = new Set<string>();
     const want = (versionId: string | null) => {
       if (versionId === null) return;
       const source = sourceOf(get, account, versionId);
@@ -213,13 +217,22 @@ export function makeStops(
     for (const key of get(demandedKeys).keys) {
       const demanded = get(demandedAtom(key));
       if (demanded === null) continue;
+      if (demanded.detail) histories.add(demanded.project.projectId);
       for (const { versionId } of listedVersions(get(data.reads.servicesOf(demanded.project))))
         want(versionId);
     }
     for (const service of get(askedServices).services.values()) want(unstatedOf(get, service));
-    return { account, ids: [...ids].sort() };
+    const reads: ReadonlyArray<DetailDemand> = [
+      ...[...ids].map((ownerId) => ({ family: "version" as const, listing: "version", ownerId })),
+      ...[...histories].map((ownerId) => ({
+        family: "process" as const,
+        listing: "history",
+        ownerId,
+      })),
+    ];
+    return { account, reads };
   });
-  /** Each version held to be read by id, with its release, and the account that holds it. */
+  /** Each read held, by family and owner, with its release, and the account holding them. */
   const reading = new Map<string, () => void>();
   let readingFrom: AccountReads | null = null;
   const releaseReads = () => {
@@ -227,27 +240,22 @@ export function makeStops(
     reading.clear();
   };
   const stopWanting = atomRegistry.subscribe(
-    wantedVersions,
-    ({ account, ids }) => {
+    wantedReads,
+    ({ account, reads }) => {
       if (disposed) return;
       if (account !== readingFrom) {
         releaseReads();
         readingFrom = account;
       }
       if (account === null) return;
-      const wanted = new Set(ids);
-      for (const [id, release] of reading) {
-        if (wanted.has(id)) continue;
+      const wanted = new Map(reads.map((read) => [`${read.family}:${read.ownerId}`, read]));
+      for (const [key, release] of reading) {
+        if (wanted.has(key)) continue;
         release();
-        reading.delete(id);
+        reading.delete(key);
       }
-      for (const id of wanted) {
-        if (!reading.has(id))
-          reading.set(
-            id,
-            account.demandDetail({ family: "version", listing: "version", ownerId: id }),
-          );
-      }
+      for (const [key, read] of wanted)
+        if (!reading.has(key)) reading.set(key, account.demandDetail(read));
     },
     { immediate: true },
   );
