@@ -474,3 +474,39 @@ describe("useBuildLog over the account's own log registry", () => {
     }
   });
 });
+
+describe("the account's build logs under StrictMode", () => {
+  it("stay readable after React mounts, unmounts and mounts the account again", async () => {
+    installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const { useAccountBuildLogs } = await import("../accountBuildLogs.ts");
+    const store = makeAccountStore(AtomRegistry.make());
+    const client = { fetchProjectLogAccess: async () => ({ url: "https://logs.example.test/l" }) };
+    const seen: Array<BuildLogRegistry | null> = [];
+
+    function Account() {
+      const logs = useAccountBuildLogs(client, store);
+      useEffect(() => void seen.push(logs), [logs]);
+      return null;
+    }
+
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    try {
+      await act(() =>
+        root.render(
+          <StrictMode>
+            <Account />
+          </StrictMode>,
+        ),
+      );
+      await flushEffects();
+      const logs = seen.at(-1);
+      expect(logs).not.toBeNull();
+      expect(logs?.diagnostics().closed).toBe(false);
+      expect(() => logs?.acquire("project-1", QUERY).release()).not.toThrow();
+    } finally {
+      await act(() => root.unmount());
+    }
+    expect(seen.at(-1)?.diagnostics().closed ?? true).toBe(true);
+  });
+});
