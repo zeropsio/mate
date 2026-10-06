@@ -29,7 +29,7 @@ import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/model
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import type { MateLiveView } from "@t3tools/shared/hqMates";
 import { useRouter } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import type { MateRowActions } from "~/components/zerops/SidebarMateMenu";
 import type { ZeropsMenuEntry } from "~/components/zerops/ZeropsProjectMenu";
@@ -109,6 +109,47 @@ export function mateMenuTarget(input: {
   };
 }
 
+/** `build`, answered again for a Mate whose candidate and activity are the ones it last built for. */
+function builtOnce(
+  build: (
+    candidate: ZeropsCandidatePresentation,
+    activity: ZeropsAgentActivity | undefined,
+  ) => MateRowActions,
+): (
+  candidate: ZeropsCandidatePresentation,
+  activity: ZeropsAgentActivity | undefined,
+) => MateRowActions {
+  const built = new WeakMap<
+    ZeropsCandidatePresentation,
+    { readonly activity: ZeropsAgentActivity | undefined; readonly actions: MateRowActions }
+  >();
+  return (candidate, activity) => {
+    const known = built.get(candidate);
+    if (known !== undefined && known.activity === activity) return known.actions;
+    const actions = build(candidate, activity);
+    built.set(candidate, { activity, actions });
+    return actions;
+  };
+}
+
+/** Each chat's last finished turn by thread key, the last map kept while it reads the same. */
+function createCompletedAtReader(): (
+  threads: ReadonlyArray<EnvironmentThreadShell>,
+) => ReadonlyMap<string, string> {
+  let last: ReadonlyMap<string, string> = new Map();
+  return (threads) => {
+    const byThread = new Map<string, string>();
+    for (const thread of threads) {
+      const at = thread.latestTurn?.completedAt;
+      if (at !== null && at !== undefined) byThread.set(`${thread.environmentId}:${thread.id}`, at);
+    }
+    const same =
+      byThread.size === last.size && [...byThread].every(([key, at]) => last.get(key) === at);
+    if (!same) last = byThread;
+    return last;
+  };
+}
+
 export function useSidebarMateMenus(input: {
   /** Every conversation's shell: what *Mark as unread* marks is its last finished turn. */
   readonly threads: ReadonlyArray<EnvironmentThreadShell>;
@@ -150,80 +191,79 @@ export function useSidebarMateMenus(input: {
     }
   }, [mateActions.trouble]);
 
-  const completedAt = useMemo(() => {
-    const byThread = new Map<string, string>();
-    for (const thread of input.threads) {
-      const at = thread.latestTurn?.completedAt;
-      if (at !== null && at !== undefined) byThread.set(`${thread.environmentId}:${thread.id}`, at);
-    }
-    return byThread;
-  }, [input.threads]);
+  // Each chat's last finished turn: the same map while no turn finishes, however often a
+  // streaming chat's shell changes — every row's menu is built off it.
+  const [completedAtOf] = useState(createCompletedAtReader);
+  const completedAt = useMemo(() => completedAtOf(input.threads), [completedAtOf, input.threads]);
 
-  const getMateActions = useCallback(
-    (
-      candidate: ZeropsCandidatePresentation,
-      activity: ZeropsAgentActivity | undefined,
-    ): MateRowActions | undefined => {
-      const { environmentId, finished, stop } = mateMenuTarget({
-        environmentId: candidate.environmentId,
-        told: hq?.mates?.get(candidate.project.id),
-        activity,
-        completedAt,
-      });
-      const tags = readZeropsMembership(candidate.project);
-      const name = projectNameInApp(candidate.project);
-      const threadRef =
-        environmentId === undefined || activity === undefined
-          ? undefined
-          : scopeThreadRef(environmentId, activity.threadId);
-      return {
-        muted: environmentId !== undefined && muted.includes(environmentId),
-        toggleMute:
-          environmentId === undefined
+  const { actionsFor, renameInPlace, changeFace } = mateActions;
+  // A row's menu stands while its Mate and its activity do: a memoised row redraws only when its
+  // own menu changes.
+  const getMateActions = useMemo(
+    () =>
+      builtOnce((candidate, activity) => {
+        const { environmentId, finished, stop } = mateMenuTarget({
+          environmentId: candidate.environmentId,
+          told: hq?.mates?.get(candidate.project.id),
+          activity,
+          completedAt,
+        });
+        const tags = readZeropsMembership(candidate.project);
+        const name = projectNameInApp(candidate.project);
+        const threadRef =
+          environmentId === undefined || activity === undefined
             ? undefined
-            : () => {
-                toggle(environmentId);
-              },
-        toggleUnread:
-          activity === undefined || finished === undefined
-            ? undefined
-            : () => {
-                if (activity.unread)
-                  markThreadVisited(activity.threadKey, new Date().toISOString());
-                else markThreadUnread(activity.threadKey, finished);
-              },
-        copyLink:
-          threadRef === undefined
-            ? undefined
-            : () => {
-                const { href } = router.buildLocation({
-                  to: "/$environmentId/$threadId",
-                  params: buildThreadRouteParams(threadRef),
-                });
-                copyToClipboard(new URL(href, window.location.origin).toString(), { name });
-              },
-        rename: mateActions.renameInPlace(candidate),
-        changeFace: mateActions.changeFace(candidate),
-        stop:
-          stop === undefined
-            ? undefined
-            : () => {
-                void interrupt(stop).then((result) => {
-                  if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
-                    const error = squashAtomCommandFailure(result);
-                    toastManager.add({
-                      type: "error",
-                      title: `Could not stop ${name}`,
-                      ...(error instanceof Error ? { description: error.message } : {}),
-                    });
-                  }
-                });
-              },
-        entries: sidebarMateVerbs(mateActions.actionsFor(candidate, tags)),
-        drawn: drawnOf(candidate.project.id),
-      };
-    },
+            : scopeThreadRef(environmentId, activity.threadId);
+        return {
+          muted: environmentId !== undefined && muted.includes(environmentId),
+          toggleMute:
+            environmentId === undefined
+              ? undefined
+              : () => {
+                  toggle(environmentId);
+                },
+          toggleUnread:
+            activity === undefined || finished === undefined
+              ? undefined
+              : () => {
+                  if (activity.unread)
+                    markThreadVisited(activity.threadKey, new Date().toISOString());
+                  else markThreadUnread(activity.threadKey, finished);
+                },
+          copyLink:
+            threadRef === undefined
+              ? undefined
+              : () => {
+                  const { href } = router.buildLocation({
+                    to: "/$environmentId/$threadId",
+                    params: buildThreadRouteParams(threadRef),
+                  });
+                  copyToClipboard(new URL(href, window.location.origin).toString(), { name });
+                },
+          rename: renameInPlace(candidate),
+          changeFace: changeFace(candidate),
+          stop:
+            stop === undefined
+              ? undefined
+              : () => {
+                  void interrupt(stop).then((result) => {
+                    if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+                      const error = squashAtomCommandFailure(result);
+                      toastManager.add({
+                        type: "error",
+                        title: `Could not stop ${name}`,
+                        ...(error instanceof Error ? { description: error.message } : {}),
+                      });
+                    }
+                  });
+                },
+          entries: sidebarMateVerbs(actionsFor(candidate, tags)),
+          drawn: drawnOf(candidate.project.id),
+        };
+      }),
     [
+      actionsFor,
+      changeFace,
       completedAt,
       copyToClipboard,
       drawnOf,
@@ -231,8 +271,8 @@ export function useSidebarMateMenus(input: {
       interrupt,
       markThreadUnread,
       markThreadVisited,
-      mateActions,
       muted,
+      renameInPlace,
       router,
       toggle,
     ],

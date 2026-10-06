@@ -105,6 +105,7 @@ import {
   SquareIcon,
 } from "lucide-react";
 import {
+  memo,
   useContext,
   useEffect,
   useMemo,
@@ -141,6 +142,7 @@ import { useZeropsProjectFlowOptional } from "~/zerops/projectFlowContext";
 import { useStopDeploymentDemand } from "~/zerops/accountForge";
 import { findInventoryProjectRef, InventoryContext } from "~/zerops/inventoryContext";
 import { useNowMs } from "~/zerops/useNowMs";
+import { useMateLinkedInHq } from "~/zerops/useMenuMateReadings";
 import type { FixProblem } from "~/zerops/fixRequest";
 import { useOpenReview } from "~/zerops/review";
 import { useSentAsks } from "~/zerops/sentAsk";
@@ -210,6 +212,7 @@ import {
   mateRowSentAsk,
   mateRowSentEchoed,
   mateRowDraft,
+  mateRowPropsEqual,
   mateRowReading,
   pendingBornLine,
   type MateBornLine,
@@ -519,7 +522,13 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
 /** What a change row acts with: the project's flow. */
 type ChangeRows = Pick<SidebarProjectFlow, "onOpenChange">;
 
-export function SidebarZeropsTree<T extends RosterCandidate>({
+/**
+ * Memoised: the menu above it redraws on every event of a streaming Mate's chat, and its props —
+ * the Mates, their activity, the verbs — stand while what they say does.
+ */
+export const SidebarZeropsTree = memo(SidebarZeropsTreeView) as typeof SidebarZeropsTreeView;
+
+function SidebarZeropsTreeView<T extends RosterCandidate>({
   candidates,
   onSelect,
   onAddMate,
@@ -716,6 +725,16 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     Array.from(
       treeRef.current?.querySelectorAll<HTMLElement>('[data-zerops-surface="sidebar-mate"]') ?? [],
     );
+  // j and k, the same object from draw to draw: every memoised row is handed it.
+  const [mateKeys] = useState<MateRowKeys>(() => ({
+    move: (from, direction) => {
+      const rows = mateRows();
+      const next = rows[Math.max(0, Math.min(rows.length - 1, rows.indexOf(from) + direction))];
+      if (next === undefined || next === from) return;
+      next.focus({ preventScroll: true });
+      next.scrollIntoView({ block: "nearest" });
+    },
+  }));
   useEffect(() => {
     const onDown = (event: KeyboardEvent) => {
       if (event.key === "Alt") {
@@ -851,15 +870,6 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
 
   // Each drawn Mate's number, top to bottom, for the ⌥ chips.
   let numbered = 0;
-  const mateKeys: MateRowKeys = {
-    move: (from, direction) => {
-      const rows = mateRows();
-      const next = rows[Math.max(0, Math.min(rows.length - 1, rows.indexOf(from) + direction))];
-      if (next === undefined || next === from) return;
-      next.focus({ preventScroll: true });
-      next.scrollIntoView({ block: "nearest" });
-    },
-  };
 
   // What the jump box finds, gathered as each project is read (`indexSection`):
   // data only, in the menu's own order — what the box does with a find is its
@@ -2429,7 +2439,10 @@ function MateUnit({
 
 import { mateOutsideHq, NOT_IN_HQ_LINE } from "./ZeropsProjectRow.logic";
 
-function MateRow<T extends RosterCandidate>({
+/** Memoised (`mateRowPropsEqual`): only the rows whose own props changed redraw with the tree. */
+const MateRow = memo(MateRowView, mateRowPropsEqual) as typeof MateRowView;
+
+function MateRowView<T extends RosterCandidate>({
   candidate,
   tint,
   shape,
@@ -2493,10 +2506,8 @@ function MateRow<T extends RosterCandidate>({
   // is said for a moment, and never over a Mate that is connected: this tab's socket to it, or its
   // link to HQ — not a container that only runs, whose stop is what the row says.
   const press = useMatePress(candidate.project.id);
-  const hqWord = useAtomValue(hqMatesAtom);
-  const linkedNow =
-    candidate.group === "connected" ||
-    (hqWord?.current === true && hqWord.mates.get(candidate.project.id)?.presence.online === true);
+  const linkedInHq = useMateLinkedInHq(candidate.project.id);
+  const linkedNow = candidate.group === "connected" || linkedInHq;
   const navigation = useAtomValue(hqNavigationAtom);
   const placements = useAtomValue(hqPlacementsAtom);
   const outsideHq = mateOutsideHq(

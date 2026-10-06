@@ -243,6 +243,7 @@ import {
   SidebarNewProject,
   SidebarZeropsTree,
   type SidebarProjectFlow,
+  type SidebarZeropsTreeProps,
 } from "./zerops/SidebarZeropsTree";
 import { newProjectOffered } from "./zerops/SidebarProjects.logic";
 import { releaseFailureOf } from "./zerops/SidebarProductionChip.logic";
@@ -1772,6 +1773,11 @@ const ZEROPS_SIDEBAR_SURFACE = {
   negative: null,
 } as const;
 
+/** What one of the Mate tree's verbs is called with. */
+type TreeVerbArgs<K extends "onNoticeAct" | "onSetUp" | "onAskToFix"> = Parameters<
+  NonNullable<SidebarZeropsTreeProps<never>[K]>
+>;
+
 export default function Sidebar() {
   const projects = useProjects();
   const projectOrder = useUiStateStore((store) => store.projectOrder);
@@ -2353,6 +2359,47 @@ export default function Sidebar() {
         candidate.project.id === activeZeropsProjectId,
       ),
     [activeZeropsProjectId, zeropsPersonFacts, zeropsMateScope],
+  );
+  // The tree's verbs, the same functions from render to render: the tree and its rows are
+  // memoised, and a streaming Mate re-renders this whole menu on every shell event.
+  const onZeropsNoticeAct = useCallback(
+    (...[affordance]: TreeVerbArgs<"onNoticeAct">) => {
+      if (affordance.kind === "go-to-projects") navigateToZeropsProjects();
+      else refreshZeropsCandidates();
+    },
+    [navigateToZeropsProjects, refreshZeropsCandidates],
+  );
+  const onZeropsSetUp = useCallback(
+    (...[groupId, tier]: TreeVerbArgs<"onSetUp">) => {
+      askSetUp(groupId, tier);
+      navigateToZeropsProjects();
+    },
+    [askSetUp, navigateToZeropsProjects],
+  );
+  const onZeropsAskToFix = useCallback(
+    (...[mateProjectId, problem]: TreeVerbArgs<"onAskToFix">) => {
+      if (isMobile) setOpenMobile(false);
+      askMateToFix(mateProjectId, problem);
+    },
+    [askMateToFix, isMobile, setOpenMobile],
+  );
+  const onZeropsSelect = useCallback(
+    (candidate: (typeof zeropsCandidates)[number]) => {
+      if (isMobile) {
+        setOpenMobile(false);
+      }
+      openMate(candidate);
+    },
+    [isMobile, openMate, setOpenMobile],
+  );
+  const onZeropsOpenCrew = useCallback(
+    (candidate: (typeof zeropsCandidates)[number], setUp: boolean) => {
+      if (isMobile) setOpenMobile(false);
+      openMate(candidate, (conversation) => {
+        openCrewTab(conversation, { setUp });
+      });
+    },
+    [isMobile, openMate, setOpenMobile],
   );
   // The Mates waiting on the viewer, for the header's faces and ⌥↓: each read as its row reads it.
   const zeropsWaiting = useSidebarWaiting({
@@ -4109,22 +4156,13 @@ export default function Sidebar() {
               complete={zeropsHeld.complete}
               notice={zeropsNotice}
               reading={zeropsSession.organizationStatus === "selected" && !zeropsHeld.complete}
-              onNoticeAct={(affordance) => {
-                if (affordance.kind === "go-to-projects") navigateToZeropsProjects();
-                else refreshZeropsCandidates();
-              }}
+              onNoticeAct={onZeropsNoticeAct}
               onAddMate={addMate}
-              onSetUp={(groupId, tier) => {
-                askSetUp(groupId, tier);
-                navigateToZeropsProjects();
-              }}
+              onSetUp={onZeropsSetUp}
               getComing={zeropsComing}
               onOpenComing={openComingMate}
               onBrowseProjects={navigateToZeropsProjects}
-              onAskToFix={(mateProjectId, problem) => {
-                if (isMobile) setOpenMobile(false);
-                askMateToFix(mateProjectId, problem);
-              }}
+              onAskToFix={onZeropsAskToFix}
               getFlow={zeropsSidebarFlowWithPages}
               getOwner={zeropsMateOwner}
               getMateActions={zeropsMateMenus.getMateActions}
@@ -4133,18 +4171,8 @@ export default function Sidebar() {
               onOpenGroup={openGroup}
               getActivity={zeropsRowActivity}
               getConversationsRead={zeropsConversationsRead}
-              onSelect={(candidate) => {
-                if (isMobile) {
-                  setOpenMobile(false);
-                }
-                openMate(candidate);
-              }}
-              onOpenCrew={(candidate, setUp) => {
-                if (isMobile) setOpenMobile(false);
-                openMate(candidate, (conversation) => {
-                  openCrewTab(conversation, { setUp });
-                });
-              }}
+              onSelect={onZeropsSelect}
+              onOpenCrew={onZeropsOpenCrew}
             />
           ) : null}
           {/* The dialogs a Mate's own menu opens: rename, hand over, move. */}

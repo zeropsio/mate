@@ -12,6 +12,7 @@ import {
   applyProjectCreationVerdict,
   type ZeropsCandidate,
 } from "@t3tools/client-runtime/zerops/candidates";
+import { Atom } from "effect/unstable/reactivity";
 import { useCallback, useMemo } from "react";
 
 import { environmentsWithSnapshotAtom } from "../state/shell";
@@ -59,6 +60,21 @@ export function useHqMainChats(): (projectId: string) => ScopedThreadRef | undef
     },
     [hq],
   );
+}
+
+/**
+ * Whether HQ relays now that a Mate's link to it is open: one answer per Mate, so a row redraws
+ * when its own link opens or closes, not on every word HQ relays of any Mate.
+ */
+const mateLinkedInHqAtom = Atom.family((projectId: string) =>
+  Atom.make((get) => {
+    const hq = get(hqMatesAtom);
+    return hq?.current === true && hq.mates.get(projectId)?.presence.online === true;
+  }).pipe(Atom.withLabel(`mate-linked-in-hq:${projectId}`)),
+);
+
+export function useMateLinkedInHq(projectId: string): boolean {
+  return useAtomValue(mateLinkedInHqAtom(projectId));
 }
 
 /**
