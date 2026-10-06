@@ -42,7 +42,7 @@ import { useCrew } from "../../zerops/crew/useCrew";
 import { useMateLogins } from "../../zerops/useMateLogins";
 import { useProjectTopology } from "../../zerops/useProjectTopology";
 import { activityOfNow, mateFaceFor } from "../../zerops/agentActivity";
-import { useZeropsAgentActivity } from "../../zerops/useZeropsAgentActivity";
+import { useMatesActivity } from "../../zerops/useZeropsAgentActivity";
 import { useZeropsEnvironmentProject } from "../../zerops/useZeropsEnvironmentProject";
 import { useZeropsMemberNames } from "../../zerops/useZeropsMateOwners";
 import { useZeropsLifecycle } from "../../zerops/useZeropsFeeds";
@@ -122,15 +122,16 @@ export function ZeropsPanel({
     (login) => !login.default && login.id === authorizationLoginId,
   );
   const mates = useZeropsMateDirectory();
-  const activity = useZeropsAgentActivity();
+  const activity = useMatesActivity();
   const nowMs = useNowMs();
   const environmentId = threadRef?.environmentId;
   // An environment the Mate list has not reached shows the panel without a
   // Mate, and no service is marked as its container until one is known.
   const whoLivesHere = environmentId === undefined ? null : zeropsMateAt(mates, environmentId);
   const mateIdentity = whoLivesHere?.kind === "mate" ? whoLivesHere.mate : undefined;
-  // What it does now, where a word of now says it: HQ's live word, or its standing socket's.
-  const live = environmentId === undefined ? undefined : activityOfNow(activity.get(environmentId));
+  // What it does now, where its attention is a word of now.
+  const live =
+    environmentId === undefined ? undefined : activityOfNow(activity.ofEnvironment(environmentId));
   const mate =
     mateIdentity === undefined || environmentId === undefined
       ? undefined

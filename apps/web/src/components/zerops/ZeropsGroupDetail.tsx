@@ -118,7 +118,7 @@ import {
 } from "~/zerops/agentActivity";
 import { useMateRowActivity } from "~/zerops/useMenuMateReadings";
 import { useAddMate } from "~/zerops/newMate";
-import { useZeropsAgentActivity } from "~/zerops/useZeropsAgentActivity";
+import { useMatesActivity } from "~/zerops/useZeropsAgentActivity";
 import { useListingPatience } from "~/zerops/useListingPatience";
 import { useNowMs } from "~/zerops/useNowMs";
 import { mateUpdateStatus, type MateUpdateStatus } from "~/zerops/mateUpdate";
@@ -373,7 +373,7 @@ function useGroupMates(groupId: string): {
 } {
   const { listing, refresh } = useZeropsCandidates();
   // Each Mate as its menu row reads it: HQ's word, or its socket's.
-  const activityOf = useMateRowActivity(useZeropsAgentActivity());
+  const activityOf = useMateRowActivity(useMatesActivity());
   // HQ's word of who is up, as the menu reads it (`mateAwake`).
   const hqView = useAtomValue(hqMatesAtom);
   const hqMates = hqView?.current === true ? hqView.mates : null;

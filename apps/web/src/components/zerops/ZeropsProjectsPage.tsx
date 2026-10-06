@@ -155,7 +155,7 @@ import { MateUpdateStatusText } from "./MateUpdateLine";
 import { cn } from "~/lib/utils";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
 import { useMateRowActivity } from "~/zerops/useMenuMateReadings";
-import { useZeropsAgentActivity } from "~/zerops/useZeropsAgentActivity";
+import { useMatesActivity } from "~/zerops/useZeropsAgentActivity";
 import { ZeropsEnvironmentCreation } from "./ZeropsEnvironmentCreation";
 import {
   ZeropsEnvironmentCreationDialog,
@@ -942,7 +942,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   });
   const tints = useMemo(() => assignCandidateMateTints(candidates), [candidates]);
   // Each Mate as its menu row reads it: HQ's word of it, or its socket's.
-  const activityOf = useMateRowActivity(useZeropsAgentActivity());
+  const activityOf = useMateRowActivity(useMatesActivity());
   const updates = useZeropsMateUpdateStates();
   const withConversations = useAtomValue(environmentsWithSnapshotAtom);
   // What this person may do with each Mate, from the one role function the

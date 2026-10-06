@@ -1,14 +1,11 @@
-import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
-import { EnvironmentId, ProjectId, ProviderInstanceId, ThreadId, TurnId } from "@t3tools/contracts";
-import { MateLiveView } from "@t3tools/shared/hqMates";
-import * as Schema from "effect/Schema";
+import type { EnvironmentId } from "@t3tools/contracts";
 import { act, type ReactNode } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import type { ZeropsAgentActivity } from "./agentActivity";
 import { LIVE_STEP_HOLD_MS, type LiveStepWords } from "./liveStep";
-import { usePacedLiveSteps, zeropsAgentActivityOf } from "./useZeropsAgentActivity";
+import { usePacedLiveSteps } from "./useZeropsAgentActivity";
 
 const NOVA = "env-nova" as EnvironmentId;
 
@@ -67,143 +64,5 @@ describe("usePacedLiveSteps", () => {
     show(undefined);
     expect(row!.toJSON()).toBe("…");
     act(() => row!.unmount());
-  });
-});
-
-const ASKED = "2026-10-03T09:00:00.000Z";
-const DONE = "2026-10-03T09:05:00.000Z";
-
-/** Vera, online, her main chat done answering what she was asked. */
-const VERA = Schema.decodeUnknownSync(MateLiveView)({
-  presence: { online: true, since: ASKED, overview: "live" },
-  identity: { environmentId: "env-vera", serverVersion: "0.11.90", update: null },
-  main: {
-    id: "t1",
-    title: "Add a login page",
-    hasPendingApprovals: false,
-    hasPendingUserInput: false,
-    hasActionableProposedPlan: false,
-    interactionMode: "default",
-    backgroundLiveness: null,
-    session: { status: "ready", lastError: null },
-    latestTurn: {
-      turnId: "turn-1",
-      state: "completed",
-      requestedAt: ASKED,
-      startedAt: ASKED,
-      completedAt: DONE,
-    },
-    latestUserMessageAt: ASKED,
-    updatedAt: DONE,
-    latestUserMessagePreview: { text: "Add a login page" },
-    latestMessagePreview: { role: "assistant", text: "The login page is up at /login." },
-    planProgress: null,
-    pendingQuestion: null,
-    usagePause: null,
-    liveStep: null,
-  },
-  threads: { list: [], omitted: 0 },
-  logins: {},
-  crew: { status: "off" },
-});
-
-describe("zeropsAgentActivityOf", () => {
-  it("a Mate's row reads its HQ overview with this device's visit", () => {
-    const hq = { mates: new Map([["p-vera", VERA]]), current: true };
-    const read = (visitedAt: string) =>
-      zeropsAgentActivityOf({
-        hq,
-        threads: [],
-        standing: new Set(),
-        lastVisitedAtById: { "env-vera:t1": visitedAt },
-      }).get("env-vera" as EnvironmentId);
-
-    // Visited before it finished: done, and unread.
-    expect(read(ASKED)).toMatchObject({
-      threadId: "t1",
-      threadKey: "env-vera:t1",
-      kind: "done",
-      face: "done",
-      subject: "Add a login page",
-      snippet: "The login page is up at /login.",
-      at: DONE,
-      unread: true,
-    });
-    expect(read(ASKED)?.remembered).toBeUndefined();
-    // Visited since: at rest, read.
-    expect(read("2026-10-03T09:10:00.000Z")).toMatchObject({ kind: "idle", unread: false });
-  });
-});
-
-describe("zeropsAgentActivityOf — a socket's reading", () => {
-  /** Vera's main chat as her socket read it: at work. */
-  const WORKING: EnvironmentThreadShell = {
-    id: ThreadId.make("t1"),
-    environmentId: EnvironmentId.make("env-vera"),
-    projectId: ProjectId.make("project-1"),
-    title: "Add a login page",
-    modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.4" },
-    runtimeMode: "full-access",
-    interactionMode: "default",
-    branch: null,
-    worktreePath: null,
-    latestTurn: {
-      turnId: TurnId.make("turn-1"),
-      state: "running",
-      requestedAt: ASKED,
-      startedAt: ASKED,
-      completedAt: null,
-      assistantMessageId: null,
-    },
-    createdAt: ASKED,
-    updatedAt: ASKED,
-    archivedAt: null,
-    settledOverride: null,
-    settledAt: null,
-    session: null,
-    latestUserMessageAt: ASKED,
-    hasPendingApprovals: false,
-    hasPendingUserInput: false,
-    hasActionableProposedPlan: false,
-  };
-  const read = (input: {
-    readonly standing: boolean;
-    readonly hq: {
-      readonly mates: ReadonlyMap<string, MateLiveView>;
-      readonly current: boolean;
-    } | null;
-  }) =>
-    zeropsAgentActivityOf({
-      hq: input.hq,
-      threads: [WORKING],
-      standing: new Set(input.standing ? [EnvironmentId.make("env-vera")] : []),
-      lastVisitedAtById: {},
-    }).get(EnvironmentId.make("env-vera"));
-
-  it("stands while its socket does, up or blinking, and rests once it no longer does", () => {
-    expect(read({ standing: true, hq: null })).toMatchObject({ kind: "working" });
-    expect(read({ standing: true, hq: null })?.remembered).toBeUndefined();
-    expect(read({ standing: false, hq: null })).toMatchObject({ kind: "idle", remembered: true });
-  });
-
-  it("gives way to HQ's live word, and holds over HQ's word at rest", () => {
-    const stored = {
-      ...VERA,
-      presence: { ...VERA.presence, online: false, overview: "stored" as const },
-    };
-    expect(
-      read({ standing: false, hq: { mates: new Map([["p-vera", VERA]]), current: true } }),
-    ).toMatchObject({
-      kind: "idle",
-      subject: "Add a login page",
-      snippet: "The login page is up at /login.",
-    });
-    expect(
-      read({ standing: false, hq: { mates: new Map([["p-vera", VERA]]), current: true } })
-        ?.remembered,
-    ).toBeUndefined();
-    expect(
-      read({ standing: true, hq: { mates: new Map([["p-vera", stored]]), current: true } }),
-    ).toMatchObject({ kind: "working" });
   });
 });

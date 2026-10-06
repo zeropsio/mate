@@ -1,0 +1,179 @@
+/**
+ * What each Mate is up to, by its project: the one answer the menu's rows, its folded headings,
+ * the waiting faces, the projects screen and a conversation's panel read.
+ *
+ * A Mate that publishes its attention (`matesAttention`) is read off it: whether it works, waits
+ * on its person — and on what — or finished something the person has not seen (HQ counts that from
+ * the person's acknowledgements), and whether that word is of now. Neither a clock nor which path
+ * brought the word decides it: the store already holds the newest by the Mate's own revision. The
+ * words a row shows — the task, the last reply, the step, the question — are the attention's chat's
+ * own, found by its id: in the chat's shell where this page holds it, else in HQ's overview of the
+ * Mate's main chat.
+ *
+ * A Mate from before the attention value is read as it always was, off its socket's reading while
+ * that socket stands, else off HQ's overview of it, live while HQ holds its link (`legacyActivity`);
+ * that path goes with the old overview shape.
+ */
+import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
+import type { MateAttentionRead } from "@t3tools/client-runtime/data";
+import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
+import type { EnvironmentId, MateAttention } from "@t3tools/contracts";
+import type { MateLiveView } from "@t3tools/shared/hqMates";
+import {
+  mateMarkStateForThread,
+  toneIdForKind,
+  type ThreadStatusKind,
+} from "@t3tools/shared/threadStatus";
+
+import { threadStatusPill } from "../components/Sidebar.logic";
+import {
+  deriveZeropsAgentActivity,
+  overviewAgentActivity,
+  restingActivity,
+  threadAgentActivity,
+  type AgentActivityThread,
+  type ZeropsAgentActivity,
+} from "./agentActivity";
+
+export interface MatesActivityInput {
+  /** The Mates to read, by project. */
+  readonly projectIds: ReadonlyArray<string>;
+  readonly attention: Readonly<Record<string, MateAttentionRead>>;
+  /** HQ's record of each Mate it places, by project; its overview words, its presence. */
+  readonly overviews: ReadonlyMap<string, MateLiveView> | null;
+  /** HQ relays them now (`hqMatesAtom.current`). */
+  readonly hqCurrent: boolean;
+  /** The chats this page holds, of every Mate it has open. */
+  readonly threads: ReadonlyArray<EnvironmentThreadShell>;
+  /** The environment of each Mate this page has a socket to, by project. */
+  readonly sockets: ReadonlyMap<string, EnvironmentId>;
+  /** The environments whose socket stands: up, or only blinking. */
+  readonly standing: ReadonlySet<EnvironmentId>;
+  readonly lastVisitedAtById: Readonly<Record<string, string>>;
+}
+
+/** The environment a Mate runs in: as its attention, HQ's overview, or this page's socket names it. */
+export function mateEnvironmentOf(
+  input: Pick<MatesActivityInput, "attention" | "overviews" | "sockets">,
+  projectId: string,
+): EnvironmentId | undefined {
+  return (
+    input.attention[projectId]?.attention?.source.environmentId ??
+    input.overviews?.get(projectId)?.identity?.environmentId ??
+    input.sockets.get(projectId)
+  );
+}
+
+export function matesActivityOf(
+  input: MatesActivityInput,
+): ReadonlyMap<string, ZeropsAgentActivity> {
+  const shellsByEnvironment = new Map<EnvironmentId, EnvironmentThreadShell[]>();
+  for (const thread of input.threads) {
+    const shells = shellsByEnvironment.get(thread.environmentId);
+    if (shells === undefined) shellsByEnvironment.set(thread.environmentId, [thread]);
+    else shells.push(thread);
+  }
+  const sockets = deriveZeropsAgentActivity(input.threads, input.lastVisitedAtById);
+  const activity = new Map<string, ZeropsAgentActivity>();
+  for (const projectId of input.projectIds) {
+    const read = input.attention[projectId];
+    const overview = input.overviews?.get(projectId);
+    const said = read?.attention ?? null;
+    const environmentId = mateEnvironmentOf(input, projectId);
+    if (environmentId === undefined) continue;
+    const shells = shellsByEnvironment.get(environmentId) ?? [];
+    const entry =
+      said === null || read === undefined
+        ? legacyActivity({ ...input, environmentId, overview, socket: sockets.get(environmentId) })
+        : attentionActivity({
+            attention: said,
+            live: read.live,
+            unseen: read.unseen,
+            environmentId,
+            overview,
+            shells,
+            lastVisitedAtById: input.lastVisitedAtById,
+          });
+    if (entry !== undefined) activity.set(projectId, entry);
+  }
+  return activity;
+}
+
+/** The kinds a chat is on its way in: what an agent at work is doing. */
+const UNDER_WAY: ReadonlySet<ThreadStatusKind> = new Set(["connecting", "working", "monitoring"]);
+
+/**
+ * A Mate's activity off its attention: its chat's words, under the attention's own word of what it
+ * does — what it waits on its person for first, else whether it works, else whether the person has
+ * a result of it not seen — at rest unless that word is of now.
+ */
+export function attentionActivity(input: {
+  readonly attention: MateAttention;
+  readonly live: boolean;
+  readonly unseen: number | null;
+  readonly environmentId: EnvironmentId;
+  readonly overview: MateLiveView | undefined;
+  readonly shells: ReadonlyArray<EnvironmentThreadShell>;
+  readonly lastVisitedAtById: Readonly<Record<string, string>>;
+}): ZeropsAgentActivity | undefined {
+  const { attention, environmentId } = input;
+  const threadId = attention.mainThreadId ?? attention.lastThreadId;
+  if (threadId === null) return undefined;
+  const main = input.overview?.main ?? null;
+  const words: AgentActivityThread | undefined =
+    input.shells.find((shell) => shell.id === threadId) ??
+    (main !== null && main.id === threadId ? { ...main, environmentId } : undefined);
+  if (words === undefined) return undefined;
+  const read = threadAgentActivity(
+    words,
+    input.lastVisitedAtById[scopedThreadKey(scopeThreadRef(environmentId, threadId))],
+  );
+  const unread = input.unseen === null ? read.unread : input.unseen > 0;
+  const question = attention.questions[0];
+  const kind: ThreadStatusKind =
+    question !== undefined
+      ? question.kind
+      : attention.working > 0
+        ? UNDER_WAY.has(read.kind)
+          ? read.kind
+          : "working"
+        : unread
+          ? "done"
+          : "idle";
+  const { liveStep, waitsOnHelpers, question: asked, errorLine, ...rest } = read;
+  const activity: ZeropsAgentActivity = {
+    ...rest,
+    kind,
+    status: threadStatusPill({ kind, toneId: toneIdForKind(kind) }),
+    face: mateMarkStateForThread(kind, read.pausedUntil !== undefined),
+    unread,
+    // The words only true of the kind the attention says.
+    ...(UNDER_WAY.has(kind) && liveStep !== undefined ? { liveStep } : {}),
+    ...(UNDER_WAY.has(kind) && waitsOnHelpers === true ? { waitsOnHelpers } : {}),
+    ...(kind === "input" && asked !== undefined ? { question: asked } : {}),
+    ...(kind === "failed" && errorLine !== undefined ? { errorLine } : {}),
+  };
+  return input.live ? activity : restingActivity(activity);
+}
+
+/**
+ * A Mate from before the attention value: its socket's reading of its main chat while the socket
+ * stands, else HQ's overview of it — live while HQ holds its link — else that reading, at rest.
+ */
+function legacyActivity(input: {
+  readonly environmentId: EnvironmentId;
+  readonly overview: MateLiveView | undefined;
+  readonly socket: ZeropsAgentActivity | undefined;
+  readonly hqCurrent: boolean;
+  readonly standing: ReadonlySet<EnvironmentId>;
+  readonly lastVisitedAtById: Readonly<Record<string, string>>;
+}): ZeropsAgentActivity | undefined {
+  const { overview, socket } = input;
+  if (overview?.identity !== undefined && overview.main !== undefined) {
+    const live = input.hqCurrent && overview.presence.overview === "live";
+    if (live || socket === undefined)
+      return overviewAgentActivity(overview, live, input.lastVisitedAtById);
+  }
+  if (socket === undefined) return undefined;
+  return input.standing.has(input.environmentId) ? socket : restingActivity(socket);
+}

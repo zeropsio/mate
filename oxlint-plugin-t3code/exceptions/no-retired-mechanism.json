@@ -496,14 +496,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/components/zerops/SidebarJumpBox.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useMateActivityByProject(",
-    "owner": "data-layer rewrite: Mate attention/overview",
-    "reason": "Mate activity is picked by send time; the source decides, never the clock",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
     "kind": "retired-token",
     "fingerprint": "mateIsViewers(",
@@ -3146,22 +3138,6 @@
   {
     "path": "apps/web/src/zerops/useMenuMateReadings.ts",
     "kind": "retired-token",
-    "fingerprint": "useMateActivityByProject(",
-    "owner": "data-layer rewrite: Mate attention/overview",
-    "reason": "Mate activity is picked by send time; the source decides, never the clock",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useMenuMateReadings.ts",
-    "kind": "retired-token",
-    "fingerprint": "useMateActivityByProject(",
-    "owner": "data-layer rewrite: Mate attention/overview",
-    "reason": "Mate activity is picked by send time; the source decides, never the clock",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useMenuMateReadings.ts",
-    "kind": "retired-token",
     "fingerprint": "useNewMate",
     "owner": "data-layer rewrite: operations",
     "reason": "births are tracked by app hooks; the operations adapter feeds the store",
@@ -3285,22 +3261,6 @@
     "fingerprint": "useZeropsOrganizationMembers(",
     "owner": "data-layer rewrite: permissions/members",
     "reason": "the client reads organization members for owners and admins; HQ sends them finished",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsAgentActivity.ts",
-    "kind": "retired-token",
-    "fingerprint": "zeropsAgentActivityOf(",
-    "owner": "data-layer rewrite: Mate attention/overview",
-    "reason": "Mate activity is picked by send time; the source decides, never the clock",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsAgentActivity.ts",
-    "kind": "retired-token",
-    "fingerprint": "zeropsAgentActivityOf(",
-    "owner": "data-layer rewrite: Mate attention/overview",
-    "reason": "Mate activity is picked by send time; the source decides, never the clock",
     "expires": "never"
   },
   {
