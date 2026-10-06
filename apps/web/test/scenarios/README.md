@@ -29,7 +29,8 @@ Only browsers actually opened by selected tests contribute diagnostics; `-t` fil
 
 Conditions use the harness condition budget and live remaining test budget, including explicit
 protocol delays when needed. Missing receipts name the awaited event; missing browser predicates
-include the predicate and arguments. Whole tests and hooks are bounded by `harness/policy.ts`.
+include the predicate and arguments. Whole tests and hooks are bounded by `harness/policy.ts`;
+multi-page tests add one boot-condition budget per additional declared page with `scenarioTimeout`.
 Budget observations drain completed HTTP/render work and scope-ready receipts; they never wait
 for a fixed quiet window. Membership-stall tests release held replies at the assertion boundary.
 

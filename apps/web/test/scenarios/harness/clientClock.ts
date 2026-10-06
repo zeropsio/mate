@@ -1,4 +1,4 @@
-import type { Page } from "puppeteer-core";
+import type { CDPSession, Page } from "puppeteer-core";
 import { completedHttp } from "./completedHttp.ts";
 import { deadline } from "./http.ts";
 
@@ -17,6 +17,7 @@ export interface ScenarioWallClock {
 export function clientClock(page: Page, wallClock?: ScenarioWallClock) {
   const settleHttp = completedHttp(page);
   let installed = false;
+  let frozenSession: CDPSession | undefined;
   let refreshEpoch = async () => {};
   const install = async () => {
     if (installed) return;
@@ -198,24 +199,30 @@ export function clientClock(page: Page, wallClock?: ScenarioWallClock) {
     },
     async sleep() {
       if (!installed) throw new Error("Install clientClock before sign-in/navigation");
-      const cdp = await page.createCDPSession();
+      const cdp = await deadline(page.createCDPSession(), "Chrome freeze session attached");
       try {
         await deadline(
           cdp.send("Page.setWebLifecycleState", { state: "frozen" }),
           "Chrome page frozen",
         );
-      } finally {
+        // Attaching another session can wait on the frozen renderer. Keep the session that
+        // froze it until that same session resumes it.
+        frozenSession = cdp;
+      } catch (error) {
         await deadline(cdp.detach(), "Chrome freeze session detached");
+        throw error;
       }
     },
     async wake(elapsedMs: number) {
-      const cdp = await page.createCDPSession();
+      const cdp =
+        frozenSession ?? (await deadline(page.createCDPSession(), "Chrome wake session attached"));
       try {
         await deadline(
           cdp.send("Page.setWebLifecycleState", { state: "active" }),
           "Chrome page active",
         );
       } finally {
+        frozenSession = undefined;
         await deadline(cdp.detach(), "Chrome wake session detached");
       }
       await advance(elapsedMs, true);

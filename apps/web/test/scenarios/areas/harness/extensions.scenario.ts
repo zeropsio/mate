@@ -3,10 +3,12 @@ import * as Effect from "effect/Effect";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { platformIdentityWasRead } from "./driver.ts";
 import { createScenario } from "../../harness/scenario.ts";
+import { scenarioTimeout } from "../../harness/policy.ts";
 
 // Catches extension fixtures replacing an app, conflating accounts, or sharing isolated contexts.
 describe("harness extension APIs", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    const people = ["owner", "reader", "dev", "reader"] as const;
     it.effect(
       "several projects per application, separate applications and selected people in tabs/contexts",
       () =>
@@ -28,14 +30,14 @@ describe("harness extension APIs", () => {
           yield* given.signedIn;
           yield* then.menu.row("Shop").appears();
           yield* then.menu.row("Other").appears();
-          const reader = yield* given.browserActor({ person: "reader" });
+          const reader = yield* given.browserActor({ person: people[1] });
           yield* reader.given.signedIn;
           yield* reader.then.menu.row("Shop").appears();
-          const developer = yield* given.browserActor({ person: "dev" });
+          const developer = yield* given.browserActor({ person: people[2] });
           yield* developer.given.signedIn;
           yield* developer.then.menu.row("Ada").appears();
           const tab = yield* given.browserActor({
-            person: "reader",
+            person: people[3],
             context: reader.page.browserContext(),
           });
           yield* tab.given.signedIn;
@@ -46,6 +48,7 @@ describe("harness extension APIs", () => {
           expect(platformIdentityWasRead(drivers, "reader")).toBe(true);
           yield* then.noExternalNetwork;
         }),
+      scenarioTimeout(people.length),
     );
   });
 });

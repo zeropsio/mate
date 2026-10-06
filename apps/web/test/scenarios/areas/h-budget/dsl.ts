@@ -25,9 +25,9 @@ export function budgets(s: Scenario) {
       plainProjects: Effect.fn("budgets.given.plainProjects")(function* (names: string[]) {
         for (const name of names) yield* s.given.project(name);
       }),
-      fiveTabs: Effect.fn("budgets.given.fiveTabs")(function* () {
+      tabs: Effect.fn("budgets.given.tabs")(function* (count: number) {
         const tabs = [s];
-        for (let index = 1; index < 5; index++) {
+        for (let index = 1; index < count; index++) {
           const tab = yield* s.given.browserActor({ context: s.page.browserContext() });
           // Only the primary actor needs the new-actor factory; the UI controls are identical.
           tabs.push({ ...s, ...tab, given: { ...s.given, ...tab.given } });
@@ -56,6 +56,9 @@ export function budgets(s: Scenario) {
         }),
       hqFirstData: (count: number) => Effect.promise(() => observation.hq.firstData(count)),
       browserSettled: Effect.promise(async () => {
+        await observation.browser.projectsReady(
+          [...s.drivers.mates.values()].map((mate) => mate.projectId),
+        );
         let before = observation.browser.sample();
         for (;;) {
           await renderedHttp();

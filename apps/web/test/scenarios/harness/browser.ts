@@ -78,6 +78,7 @@ export async function openBrowser(
   const browser = await puppeteer.launch({
     executablePath,
     headless: true,
+    timeout: waitBudget(),
     args: [
       "--disable-background-networking",
       "--disable-component-update",
@@ -107,7 +108,7 @@ export async function openBrowser(
   const clocks = new WeakMap<Page, ReturnType<typeof clientClock>>();
   const routeSetters = new Map<Page, () => Promise<void>>();
   const newPage = async (context: BrowserContext = browser.defaultBrowserContext()) => {
-    const page = await context.newPage();
+    const page = await deadline(context.newPage(), "Chrome page created");
     boundPageWaits(page);
     clocks.set(page, clientClock(page, wallClock));
     await page.setBypassServiceWorker(true);

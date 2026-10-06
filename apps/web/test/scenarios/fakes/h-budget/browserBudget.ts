@@ -64,6 +64,37 @@ export async function observeBrowserBudget(zerops: ZeropsFake) {
         }),
       );
     },
+    projectsReady: async (projectIds: string[]) => {
+      await settled(
+        events,
+        () =>
+          projectIds.every((projectId) =>
+            ["service-stack", "user-data"].every((kind) => {
+              const services = zerops
+                .rows("service-stack")
+                .filter((row) => row.projectId === projectId);
+              const rows =
+                kind === "service-stack"
+                  ? services
+                  : zerops
+                      .rows(kind)
+                      .filter((row) =>
+                        services.some((service) => service.id === row.serviceStackId),
+                      );
+              return rows.every((row) =>
+                [...zerops.subscriptions.values()].some(
+                  (entry) =>
+                    isBrowser(entry.apiToken) &&
+                    entry.kind === kind &&
+                    entry.socket?.readyState === WebSocket.OPEN &&
+                    entry.members.has(row.id),
+                ),
+              );
+            }),
+          ),
+        `browser startup service/variable coverage for projects: ${projectIds.join(", ")}`,
+      );
+    },
     sample() {
       let requests = 0;
       for (const [credential, counts] of zerops.requestsByCredential) {

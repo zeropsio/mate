@@ -69,6 +69,30 @@ it("settles and counts browser registrations and other requests while excluding 
     await browser.settled();
     expect(browser.sample()).toEqual({ requests: 3, registrations: 1, otherRequests: 2 });
     expect(fake.requestsByCredential.get("hq")?.get("GET /project/HQ1")).toBe(1);
+    fake.put("service-stack", { id: "service-Ada", projectId: "Ada", clientId: "ORG" });
+    fake.put("user-data", { id: "flag-Ada", serviceStackId: "service-Ada", clientId: "ORG" });
+    await call(browser.origin, "/service-stack/search", "POST", "personal", {
+      wsOutputType: "listStream",
+      subscriptionName: "services",
+      receiverId: "browser",
+      search: [],
+    });
+    let covered = false;
+    const coverage = browser.projectsReady(["Ada"]).then(() => {
+      covered = true;
+    });
+    await Promise.resolve();
+    expect(covered, "An idle transport is insufficient before the Mate variables arrive").toBe(
+      false,
+    );
+    await call(browser.origin, "/user-data/search", "POST", "personal", {
+      wsOutputType: "listStream",
+      subscriptionName: "variables",
+      receiverId: "browser",
+      search: [],
+    });
+    await coverage;
+    expect(covered).toBe(true);
   } finally {
     receiver?.terminate();
     await browser.close();

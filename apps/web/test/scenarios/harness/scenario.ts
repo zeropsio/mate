@@ -308,6 +308,14 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
       conversation: {
         sends: (message: string) =>
           Effect.promise(async () => {
+            await page.waitForFunction(() =>
+              [...document.querySelectorAll<HTMLElement>('[role="textbox"]')].some(
+                (editor) =>
+                  editor.getBoundingClientRect().height > 0 &&
+                  editor.isContentEditable &&
+                  editor.getAttribute("aria-disabled") !== "true",
+              ),
+            );
             const editor = page.locator('::-p-aria([role="textbox"])');
             await editor.fill(message);
             await page.keyboard.press("Enter");

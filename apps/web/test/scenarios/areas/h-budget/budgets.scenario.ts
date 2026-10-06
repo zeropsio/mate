@@ -1,6 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import { afterEach } from "vite-plus/test";
 import * as Effect from "effect/Effect";
+import { scenarioTimeout } from "../../harness/policy.ts";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { installBudget } from "./fake.ts";
@@ -54,61 +55,68 @@ describe("H: hosted client budgets", () => {
     );
 
     // Catches extra tabs starving one another of the first HQ-backed application menu.
-    it.effect("five tabs each receive real HQ data and show the application menu", () =>
-      Effect.gen(function* () {
-        const s = yield* createScenario([installBudget]);
-        const b = budgets(s);
-        yield* b.given.mates(["Ada"]);
-        const tabs = yield* b.given.fiveTabs();
-        for (const tab of tabs) {
-          yield* Effect.promise(() => tab.page.bringToFront());
-          yield* tab.given.signedIn;
-          yield* tab.then.menu.row("Shop").appears();
-        }
-        // Cached rows can appear before the last tab's initial HQ snapshot arrives.
-        yield* b.when.hqFirstData(5);
-        const connections = yield* b.when.observeTabConnections(tabs.map((tab) => tab.page));
-        const rounds: ReturnType<typeof b.measure.firstData>[] = [];
-        for (let round = 1; round <= 3; round++) {
-          const before = b.measure.hqSegments().length;
-          // Earlier sign-in attempts may have closed before upgrading or receiving a frame.
-          const receivedBefore = b.measure
-            .hqSegments()
-            .filter((s) => s.firstDataMs !== null).length;
-          const countsBefore = connections.counts();
-          yield* Effect.forEach(tabs, (tab) => Effect.promise(() => tab.page.reload()), {
-            concurrency: "unbounded",
-          });
-          yield* b.when.hqFirstData(receivedBefore + 5);
-          yield* Effect.forEach(tabs, (tab) => tab.then.menu.row("Shop").appears(), {
-            concurrency: "unbounded",
-          });
-          yield* Effect.promise(() => s.hq.ready());
-          for (const [index, count] of connections.counts().entries())
-            expect(
-              count - countsBefore[index]!,
-              "At most one HQ connection per tab",
-            ).toBeLessThanOrEqual(1);
-          const timing = b.measure.firstData(before);
-          expect(timing.samples).toHaveLength(5);
-          rounds.push(timing);
-          report(
-            `H five tabs round ${round}: p50=${timing.p50.toFixed(1)}ms p95=${timing.p95.toFixed(1)}ms; socket-to-first-Shop-frame`,
+    const tabCount = 5;
+    it.effect(
+      "five tabs each receive real HQ data and show the application menu",
+      () =>
+        Effect.gen(function* () {
+          const s = yield* createScenario([installBudget]);
+          const b = budgets(s);
+          yield* b.given.mates(["Ada"]);
+          const tabs = yield* b.given.tabs(tabCount);
+          expect(tabs).toHaveLength(tabCount);
+          for (const tab of tabs) {
+            yield* Effect.promise(() => tab.page.bringToFront());
+            yield* tab.given.signedIn;
+            yield* tab.then.menu.row("Shop").appears();
+          }
+          // Cached rows can appear before the last tab's initial HQ snapshot arrives.
+          yield* b.when.hqFirstData(tabs.length);
+          const connections = yield* b.when.observeTabConnections(tabs.map((tab) => tab.page));
+          const rounds: ReturnType<typeof b.measure.firstData>[] = [];
+          for (let round = 1; round <= 3; round++) {
+            const before = b.measure.hqSegments().length;
+            // Earlier sign-in attempts may have closed before upgrading or receiving a frame.
+            const receivedBefore = b.measure
+              .hqSegments()
+              .filter((s) => s.firstDataMs !== null).length;
+            const countsBefore = connections.counts();
+            yield* Effect.forEach(tabs, (tab) => Effect.promise(() => tab.page.reload()), {
+              concurrency: "unbounded",
+            });
+            yield* b.when.hqFirstData(receivedBefore + tabs.length);
+            yield* Effect.forEach(tabs, (tab) => tab.then.menu.row("Shop").appears(), {
+              concurrency: "unbounded",
+            });
+            yield* Effect.promise(() => s.hq.ready());
+            for (const [index, count] of connections.counts().entries())
+              expect(
+                count - countsBefore[index]!,
+                "At most one HQ connection per tab",
+              ).toBeLessThanOrEqual(1);
+            const timing = b.measure.firstData(before);
+            expect(timing.samples).toHaveLength(tabs.length);
+            rounds.push(timing);
+            report(
+              `H five tabs round ${round}: p50=${timing.p50.toFixed(1)}ms p95=${timing.p95.toFixed(1)}ms; socket-to-first-Shop-frame`,
+            );
+            if (timing.p50 <= 300 && timing.p95 <= 600) break;
+          }
+          // Rank whole rounds by their worst normalized target; never mix percentiles across rounds.
+          const score = (timing: (typeof rounds)[number]) =>
+            Math.max(timing.p50 / 300, timing.p95 / 600);
+          const timing = rounds.reduce((best, round) =>
+            score(round) < score(best) ? round : best,
           );
-          if (timing.p50 <= 300 && timing.p95 <= 600) break;
-        }
-        // Rank whole rounds by their worst normalized target; never mix percentiles across rounds.
-        const score = (timing: (typeof rounds)[number]) =>
-          Math.max(timing.p50 / 300, timing.p95 / 600);
-        const timing = rounds.reduce((best, round) => (score(round) < score(best) ? round : best));
-        report(
-          `H five tabs best of ${rounds.length}: p50=${timing.p50.toFixed(1)}ms p95=${timing.p95.toFixed(1)}ms`,
-        );
-        // Up to three rounds tolerate host load spikes; persistent slow delivery still fails.
-        expect(timing.p50, "Five-tab first HQ data p50 target").toBeLessThanOrEqual(300);
-        expect(timing.p95, "Five-tab first HQ data p95 target").toBeLessThanOrEqual(600);
-        yield* s.then.noExternalNetwork;
-      }),
+          report(
+            `H five tabs best of ${rounds.length}: p50=${timing.p50.toFixed(1)}ms p95=${timing.p95.toFixed(1)}ms`,
+          );
+          // Up to three rounds tolerate host load spikes; persistent slow delivery still fails.
+          expect(timing.p50, "Five-tab first HQ data p50 target").toBeLessThanOrEqual(300);
+          expect(timing.p95, "Five-tab first HQ data p95 target").toBeLessThanOrEqual(600);
+          yield* s.then.noExternalNetwork;
+        }),
+      scenarioTimeout(tabCount),
     );
 
     // Catches a planned HQ segment rollover clearing rows or leaving the next segment stale.
