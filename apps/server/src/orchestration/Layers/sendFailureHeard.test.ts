@@ -40,6 +40,7 @@ import * as RepositoryIdentityResolver from "../../project/RepositoryIdentityRes
 import {
   ProviderAdapterProcessError,
   ProviderAdapterRequestError,
+  ProviderAdapterSessionClosedError,
   ProviderAdapterTurnEndedError,
   type ProviderServiceError,
 } from "../../provider/Errors.ts";
@@ -82,8 +83,16 @@ type Emit = (
 
 /** What the fake adapter does: while the send runs, and after it returned. */
 interface Script {
+  /** The last send: its events, then its result or failure. */
   readonly send: (emit: Emit) => Effect.Effect<void, ProviderServiceError>;
   readonly later?: (emit: Emit) => Effect.Effect<void>;
+  /**
+   * The send is a follow-up into a running turn: an earlier message opened
+   * it (its send succeeded), and this one steers into it.
+   */
+  readonly steer?: boolean;
+  /** Sends after the last one's failure — a resend on a new session — succeed, opening the turn. */
+  readonly resendOpens?: boolean;
 }
 
 const started = (emit: Emit) => emit("turn.started", { turnId: TURN, payload: {} });
@@ -264,6 +273,7 @@ function makeRun(driver: Driver, script: Script, lagMs: number) {
     const provider = ProviderDriverKind.make(driver);
     const sessions: Array<ProviderSession> = [];
     let sequence = 0;
+    let sendCalls = 0;
     const emit: Emit = (type, rest) =>
       Effect.gen(function* () {
         sequence += 1;
@@ -271,6 +281,7 @@ function makeRun(driver: Driver, script: Script, lagMs: number) {
           type,
           eventId: EventId.make(`evt-${sequence}`),
           provider,
+          providerInstanceId: instanceId,
           threadId: THREAD,
           createdAt: `2026-01-01T00:${String(Math.floor(sequence / 60)).padStart(2, "0")}:${String(sequence % 60).padStart(2, "0")}.000Z`,
           ...(rest?.turnId === undefined ? {} : { turnId: rest.turnId }),
@@ -294,6 +305,10 @@ function makeRun(driver: Driver, script: Script, lagMs: number) {
             providerInstanceId: instanceId,
             status: "ready",
             runtimeMode: input.runtimeMode ?? "full-access",
+            ...(input.cwd === undefined ? {} : { cwd: input.cwd }),
+            ...(input.modelSelection?.model === undefined
+              ? {}
+              : { model: input.modelSelection.model }),
             threadId,
             createdAt: now,
             updatedAt: now,
@@ -301,14 +316,28 @@ function makeRun(driver: Driver, script: Script, lagMs: number) {
           sessions.push(session);
           return session;
         }),
-      sendTurn: () => script.send(emit).pipe(Effect.as({ threadId: THREAD, turnId: TURN })),
+      sendTurn: () => {
+        sendCalls += 1;
+        const send =
+          script.steer === true && sendCalls === 1
+            ? started
+            : sendCalls > 1 && script.resendOpens === true
+              ? started
+              : script.send;
+        return send(emit).pipe(Effect.as({ threadId: THREAD, turnId: TURN }));
+      },
       compactThread: () => Effect.void,
       interruptTurn: () => Effect.void,
       respondToRequest: () => Effect.void,
       respondToUserInput: () => Effect.void,
       stopSession: () => Effect.void,
       listSessions: () => Effect.succeed(sessions),
-      getCapabilities: () => Effect.succeed({ sessionModelSwitch: "in-session" }),
+      // Claude's send that met a closed session never reached the agent.
+      getCapabilities: () =>
+        Effect.succeed({
+          sessionModelSwitch: "in-session",
+          ...(driver === "claudeAgent" ? { closedSendUndelivered: true } : {}),
+        }),
       getInstanceInfo: (id) =>
         Effect.succeed({
           instanceId: id,
@@ -403,21 +432,30 @@ function makeRun(driver: Driver, script: Script, lagMs: number) {
       // The ingestion worker subscribes before the first event.
       yield* Effect.sleep("20 millis");
 
-      yield* engine.dispatch({
-        type: "thread.turn.start",
-        commandId: CommandId.make("cmd-turn-start"),
-        threadId: THREAD,
-        message: {
-          messageId: MessageId.make("message-1"),
-          role: "user",
-          text: "work on it",
-          attachments: [],
-        },
-        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
-        runtimeMode: "full-access",
-        createdAt: "2026-01-01T00:00:00.500Z",
-      });
+      const send = (index: number) =>
+        engine.dispatch({
+          type: "thread.turn.start",
+          commandId: CommandId.make(`cmd-turn-start-${index}`),
+          threadId: THREAD,
+          message: {
+            messageId: MessageId.make(`message-${index}`),
+            role: "user",
+            text: index === 1 ? "work on it" : "and the footer too",
+            attachments: [],
+          },
+          interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+          runtimeMode: "full-access",
+          createdAt: `2026-01-01T00:00:0${index}.500Z`,
+        });
+      yield* send(1);
       yield* reactor.drain;
+      if (script.steer === true) {
+        // The first message's turn runs; the follow-up steers into it.
+        yield* Effect.sleep(`${lagMs + 60} millis`);
+        yield* ingestion.drain;
+        yield* send(2);
+        yield* reactor.drain;
+      }
       if (script.later) yield* script.later(emit);
       // Everything the adapter said reaches ingestion, however late.
       yield* Effect.sleep(`${lagMs + 60} millis`);
@@ -426,10 +464,69 @@ function makeRun(driver: Driver, script: Script, lagMs: number) {
       yield* ingestion.drain;
 
       const thread = (yield* snapshot.getSnapshot()).threads.find((entry) => entry.id === THREAD)!;
-      return thread;
+      return { thread, sendCalls };
     }).pipe(Effect.provide(layer));
   });
 }
+
+/**
+ * A follow-up into a running turn that breaks as it goes: Claude, Codex and
+ * OpenCode take the follow-up and the turn breaks after, in its events; Cursor,
+ * Grok and Antigravity hold the follow-up's prompt, which fails, ending the
+ * running turn.
+ */
+function steerScriptFor(driver: Driver, failure: "crash" | "ordinary" | "usage-limit"): Script {
+  const fresh = scriptFor(driver, failure);
+  if (!holdsTurn(driver)) return { ...fresh, send: () => Effect.void, steer: true };
+  const words =
+    failure === "crash"
+      ? STOPPED(NAMES[driver])
+      : failure === "usage-limit"
+        ? `${NAMES[driver]} usage limit reached.`
+        : "Model request failed: 500";
+  const reason =
+    failure === "crash"
+      ? "process_exit"
+      : failure === "usage-limit" && driver === "grok"
+        ? "usage_limit"
+        : undefined;
+  // The steer's failure ends the running turn — whoever opened it — and the
+  // send fails typed as that turn's.
+  switch (driver) {
+    case "antigravity":
+      return {
+        steer: true,
+        send: (emit) =>
+          (failure === "crash" ? exited(emit, "error") : failedTurn(emit, words, reason)).pipe(
+            Effect.andThen(Effect.fail(turnEnded(driver, words))),
+          ),
+      };
+    default:
+      return {
+        steer: true,
+        send: (emit) =>
+          failedTurn(emit, words, reason).pipe(
+            Effect.andThen(failure === "crash" ? exited(emit, "error") : Effect.void),
+            Effect.andThen(Effect.fail(turnEnded(driver, words))),
+          ),
+      };
+  }
+}
+
+/**
+ * Claude's stream ends while its message is built: the prompt queue is shut.
+ * The send fails as a closed session, opening no turn; the reactor resends on
+ * a new session, which takes it and finishes.
+ */
+const claudeDeadQueue: Script = {
+  send: () =>
+    Effect.fail(
+      new ProviderAdapterSessionClosedError({ provider: "claudeAgent", threadId: THREAD }),
+    ),
+  resendOpens: true,
+  later: (emit) =>
+    emit("turn.completed", { turnId: TURN, payload: { state: "completed" } }).pipe(Effect.asVoid),
+};
 
 const FAILURES = [
   "crash",
@@ -456,7 +553,7 @@ describe("every failed send is heard exactly once", () => {
           `${driver}: ${failure}${lagMs > 0 ? ", ingestion lagging" : ""}`,
           () =>
             Effect.gen(function* () {
-              const thread = yield* makeRun(driver, scriptFor(driver, failure), lagMs);
+              const { thread } = yield* makeRun(driver, scriptFor(driver, failure), lagMs);
               const records = thread.activities.filter(
                 (activity) =>
                   activity.kind === "runtime.error" ||
@@ -473,14 +570,18 @@ describe("every failed send is heard exactly once", () => {
               expect(thread.latestTurn?.state ?? null).not.toBe("running");
               expect(thread.session?.lastError ?? null).not.toBeNull();
               if (failure === "usage-limit" && driver !== "cursor" && driver !== "antigravity") {
-                expect((records[0]?.payload as { readonly turnEnd?: unknown }).turnEnd).toBe(
-                  "usage-limit",
-                );
+                expect(
+                  (records[0]?.payload as { readonly turnEnd?: unknown } | undefined)?.turnEnd,
+                ).toBe("usage-limit");
               }
               if (failure === "crash") {
-                expect((records[0]?.payload as { readonly turnEnd?: unknown }).turnEnd).toBe(
-                  "crash",
-                );
+                expect(
+                  (records[0]?.payload as { readonly turnEnd?: unknown } | undefined)?.turnEnd,
+                ).toBe("crash");
+              }
+              // A picture it could not read is said plainly, on every driver.
+              if (failure === "attachment") {
+                expect(thread.session?.lastError ?? "").toContain(PICTURE);
               }
             }).pipe(Effect.scoped),
           20_000,
@@ -488,4 +589,53 @@ describe("every failed send is heard exactly once", () => {
       }
     }
   }
+});
+
+describe("every failed follow-up into a running turn is heard exactly once", () => {
+  for (const driver of DRIVERS) {
+    for (const failure of ["crash", "ordinary", "usage-limit"] as const) {
+      for (const lagMs of [0, 250]) {
+        it.live(
+          `${driver}: the turn breaks as a follow-up steers into it: ${failure}${lagMs > 0 ? ", ingestion lagging" : ""}`,
+          () =>
+            Effect.gen(function* () {
+              const script = steerScriptFor(driver, failure);
+              const { thread } = yield* makeRun(driver, script, lagMs);
+              if (!holdsTurn(driver) && script.later === undefined) return;
+              const records = thread.activities.filter(
+                (activity) =>
+                  activity.kind === "runtime.error" ||
+                  activity.kind === "provider.turn.start.failed",
+              );
+              // The running turn's break, once: never the follow-up's start too.
+              expect(records.map((activity) => activity.kind)).toEqual(["runtime.error"]);
+              expect(thread.latestTurn?.state ?? null).not.toBe("running");
+              expect(thread.session?.lastError ?? null).not.toBeNull();
+              if (failure === "crash") {
+                expect(
+                  (records[0]?.payload as { readonly turnEnd?: unknown } | undefined)?.turnEnd,
+                ).toBe("crash");
+              }
+            }).pipe(Effect.scoped),
+          20_000,
+        );
+      }
+    }
+  }
+});
+
+describe("a message Claude could not take", () => {
+  it.live("its stream ended while the message was built: resent on a new session", () =>
+    Effect.gen(function* () {
+      const { thread, sendCalls } = yield* makeRun("claudeAgent", claudeDeadQueue, 0);
+      // The message went through on a new session, and nothing failed.
+      expect(sendCalls).toBe(2);
+      expect(
+        thread.activities.filter(
+          (activity) =>
+            activity.kind === "runtime.error" || activity.kind === "provider.turn.start.failed",
+        ),
+      ).toEqual([]);
+    }).pipe(Effect.scoped),
+  );
 });
