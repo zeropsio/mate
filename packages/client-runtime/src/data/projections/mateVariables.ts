@@ -3,7 +3,8 @@
  * whether zcp serves Zerops Mate on it (`ZCP_MATE_ENABLED`, absent reads as off, the way zcp reads
  * it), and whether it carries the press's marker (`MATE_SETUP_RUNTIMES`). Neither is `false`
  * before an answer for this service: `unread` until one, `unknown` where the read failed or was
- * refused — off is a fact a row offers Enable on, and no marker lets a Mate connect.
+ * refused, or the flag's content is redacted — off is a fact a row offers Enable on, and no marker
+ * lets a Mate connect.
  *
  * One import writes both keys on a press's container, so an answer that holds its flag and no
  * marker says the marker is not there. An answer that holds neither says so only of a container

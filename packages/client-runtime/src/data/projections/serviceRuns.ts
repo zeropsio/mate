@@ -1,8 +1,8 @@
 /**
  * What a service runs, from its own row in the organization's services listing: its active
  * version, and that version's name. The API never returns a version's name; the row's own
- * variables do — `appVersionName` beside `appVersionId`, both SYSTEM variables the row carries
- * (A14). They name the build the service last started (A11), so the name is the one it runs only
+ * variables do — `appVersionName` beside `appVersionId`, both SYSTEM variables on that row. They
+ * name the build the service last started, so the name is the one it runs only
  * while `appVersionId` is its active version's id. One row is one observation: no variable is read
  * of its own, and none can trail the version the row names.
  *
@@ -13,7 +13,7 @@ import type { Projection } from "../store.ts";
 import { sameValue } from "./equal.ts";
 
 /**
- * What a service runs (A14): its active version's id and source (`NONE` on a runtime nothing was
+ * What a service runs: its active version's id and source (`NONE` on a runtime nothing was
  * ever deployed to), each `null` when it has no active version — the source also where its row
  * leaves it unstated — and that version's name, `null` where nothing names it.
  */

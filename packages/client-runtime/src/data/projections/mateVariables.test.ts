@@ -93,6 +93,11 @@ describe("mateVariables", () => {
       expected: { flag: false, marker: false },
     },
     {
+      name: "a redacted flag stays unknown while the marker's presence is known",
+      state: () => answered([{ flag: "unknown" }, MARKER]),
+      expected: { flag: "unknown", marker: true },
+    },
+    {
       name: "neither, on a container still being made: its variables may be on their way",
       state: () => answered([], "CREATING"),
       expected: { flag: false, marker: "unread" },

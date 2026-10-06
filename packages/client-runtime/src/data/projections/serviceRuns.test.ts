@@ -50,7 +50,7 @@ describe("serviceRuns", () => {
       expected: { activeId: "v2", source: "GIT", name: "main 6aeae99" },
     },
     {
-      name: "its variables name a build started since (A11): nameless",
+      name: "its variables name a build started since: nameless",
       state: () =>
         listed({ activeAppVersion: { id: "v2", source: "GIT" }, userData: named("v3", "next") }),
       expected: { activeId: "v2", source: "GIT", name: null },

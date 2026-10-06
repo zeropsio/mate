@@ -29,9 +29,19 @@ describe("a Mate's container's variables, as one search answers them", () => {
       expected: { flag: false, marker: false },
     },
     {
-      name: "a flag written sensitive reads REDACTED: present, it is on",
+      name: "a redacted flag does not prove whether it is on",
       answer: { items: [row("ZCP_MATE_ENABLED", "REDACTED", { sensitive: true })] },
-      expected: { flag: true, marker: false },
+      expected: { flag: "unknown", marker: false },
+    },
+    {
+      name: "a visible off value stays off even when the variable is sensitive",
+      answer: { items: [row("ZCP_MATE_ENABLED", "0", { sensitive: true })] },
+      expected: { flag: false, marker: false },
+    },
+    {
+      name: "a sensitive flag with no disclosed content is unknown",
+      answer: { items: [{ key: "ZCP_MATE_ENABLED", sensitive: true }] },
+      expected: { flag: "unknown", marker: false },
     },
     {
       name: "a row of another key is not kept",

@@ -24,7 +24,7 @@ const KEYS: ReadonlyArray<string> = [MATE_ENABLED, SETUP_MARKER];
 
 /** One container's two variables as its search answered: the flag `null` where it has no row. */
 export interface MateVariablesValue {
-  readonly flag: boolean | null;
+  readonly flag: boolean | "unknown" | null;
   readonly marker: boolean;
 }
 
@@ -47,13 +47,12 @@ const decodeAnswer = Schema.decodeUnknownOption(Answer);
 const decodeVariable = Schema.decodeUnknownOption(Variable);
 
 /**
- * The flag reads as on as zcp reads it. One written sensitive answers `REDACTED` to every reader,
- * and both its writers — the press's import and *Enable Zerops Mate* — write it only as `1`:
- * present, it is on.
+ * A disclosed flag reads as zcp reads it. A hidden content value proves only the key's presence,
+ * never whether the flag is enabled, even when our own writes always set it to `1`.
  */
-const flagOn = (variable: typeof Variable.Type): boolean =>
-  variable.sensitive === true || variable.content === "REDACTED"
-    ? true
+const flagOn = (variable: typeof Variable.Type): boolean | "unknown" =>
+  variable.content === "REDACTED" || (variable.sensitive === true && variable.content == null)
+    ? "unknown"
     : typeof variable.content === "string" && readsAsEnabled(variable.content);
 
 export const mateVariablesFamily: FamilySpec<"mateVariables"> = {
@@ -76,7 +75,7 @@ export const mateVariablesFamily: FamilySpec<"mateVariables"> = {
         onNone: () => null,
         onSome: ({ items, totalHits }) => {
           if (totalHits !== undefined && totalHits > items.length) return null;
-          let flag: boolean | null = null;
+          let flag: MateVariablesValue["flag"] = null;
           let marker = false;
           const seen = new Set<string>();
           for (const raw of items) {
