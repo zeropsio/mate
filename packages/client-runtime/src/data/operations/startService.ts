@@ -1,0 +1,25 @@
+/**
+ * Starting a stopped service, at Zerops. Its start process, where Zerops names one, is the
+ * operation's handle and says how it ended; where it names none, its answer is the end.
+ *
+ * @module data/operations/startService
+ */
+import type { OperationKind } from "./kind.ts";
+import { followedByProcess } from "./processEnd.ts";
+
+declare module "../model.ts" {
+  interface OperationIntents {
+    readonly "start-service": {
+      /** The organization whose link observes the project's processes. */
+      readonly orgId: string;
+      readonly projectId: string;
+      readonly serviceId: string;
+    };
+  }
+}
+
+export const startService: OperationKind<"start-service"> = {
+  kind: "start-service",
+  executor: "zerops",
+  ...followedByProcess({ action: "stack.start", what: "The start" }),
+};
