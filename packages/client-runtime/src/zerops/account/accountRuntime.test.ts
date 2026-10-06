@@ -2679,7 +2679,7 @@ describe("the post-grant stage's Mate environments", () => {
       ),
   );
 
-  // A Mate is read only while something waits on it (HANDOFF §6): the platform's statuses say
+  // A Mate is read only while something waits on it: the platform's statuses say
   // the rest, and no listing, HQ word or load probes a Mate nobody opened.
   it.effect(
     "a listed Mate nobody waits on is never read, and is through its door once a lease holds it",

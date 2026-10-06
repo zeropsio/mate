@@ -2656,46 +2656,6 @@
     "expires": "never"
   },
   {
-    "path": "packages/client-runtime/src/zerops/data/cells.ts",
-    "kind": "retired-token",
-    "fingerprint": "\"runtime-closed\"",
-    "owner": "data-layer rewrite: projects",
-    "reason": "closing the runtime erases its facts; a transport event never deletes a fact",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/data/cells.ts",
-    "kind": "retired-token",
-    "fingerprint": "\"runtime-closed\"",
-    "owner": "data-layer rewrite: projects",
-    "reason": "closing the runtime erases its facts; a transport event never deletes a fact",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/data/cells.ts",
-    "kind": "retired-token",
-    "fingerprint": "\"runtime-closed\"",
-    "owner": "data-layer rewrite: projects",
-    "reason": "closing the runtime erases its facts; a transport event never deletes a fact",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/data/cells.ts",
-    "kind": "retired-token",
-    "fingerprint": "makeZeropsCells",
-    "owner": "data-layer rewrite: projects",
-    "reason": "runtime cells duplicate the store's members and project reads",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/data/entityTable.ts",
-    "kind": "retired-token",
-    "fingerprint": "releaseTableLists",
-    "owner": "data-layer rewrite: projects",
-    "reason": "closing the runtime erases its facts; a transport event never deletes a fact",
-    "expires": "never"
-  },
-  {
     "path": "packages/client-runtime/src/zerops/data/runtime.ts",
     "kind": "retired-token",
     "fingerprint": "\"runtime-closed\"",
@@ -2933,6 +2893,30 @@
     "fingerprint": "runtimeServicesRead",
     "owner": "data-layer rewrite: Zerops runtime deletion",
     "reason": "the runtime's readers take a project's services through the in-transit bridge to the services family until the runtime is deleted",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/useEnvironmentSetup.ts",
+    "kind": "retired-token",
+    "fingerprint": "useFinishGroupEnvironment",
+    "owner": "data-layer rewrite: operations",
+    "reason": "upgrade restart and finish-environment hooks poll themselves; the operations adapter owns them",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/useEnvironmentSetup.ts",
+    "kind": "retired-token",
+    "fingerprint": "useFinishGroupEnvironment",
+    "owner": "data-layer rewrite: operations",
+    "reason": "upgrade restart and finish-environment hooks poll themselves; the operations adapter owns them",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/useEnvironmentSetup.ts",
+    "kind": "retired-token",
+    "fingerprint": "useFinishGroupEnvironment",
+    "owner": "data-layer rewrite: operations",
+    "reason": "upgrade restart and finish-environment hooks poll themselves; the operations adapter owns them",
     "expires": "never"
   }
 ]

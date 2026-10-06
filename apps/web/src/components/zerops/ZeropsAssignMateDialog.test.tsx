@@ -52,7 +52,7 @@ describe("ZeropsAssignMateForm", () => {
     expect(html).toMatch(/<button type="submit"[^>]*aria-busy="true"/u);
   });
 
-  // F27: whom to hand over to is asked once the dialog opens, and KRLS's took seconds.
+  // F27: whom to hand over to is asked once the dialog opens, which can take seconds in a populated organization.
   it("says it reads the organization while there is nobody to pick yet", () => {
     const html = renderToStaticMarkup(form({ candidates: [], readingOrganization: "Acme" }));
     expect(html).toMatch(/<select(?=[^>]*aria-busy="true")(?=[^>]*disabled="")/u);

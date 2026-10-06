@@ -1,5 +1,5 @@
 /**
- * The Mate adapter (HANDOFF §4.2 Mate; DESIGN §4.4, §4.5): what this tab reads of each Mate from
+ * The Mate adapter: what this tab reads of each Mate from
  * the Mate itself — a probe of its container, its door's answer, the link the connection registry
  * reports — run by the two machines that stay the judges of it, and written to the account's store
  * as one `mateLink` fact per target after every batch. Readers read projections of those facts.
