@@ -15,32 +15,39 @@ import { scopeOf, type FamilySpec } from "./spec.ts";
 
 const KEYS: ReadonlySet<string> = new Set(Object.keys(HqAppDetailFields));
 
-/**
- * A record as it reads, told by its own shape — a recipe tier by its `state`, a list by its
- * records. An empty list fits each list alike: the key it was held under says which it is.
- */
+/** A record as it reads, told by the key HQ holds it under. */
 export type HqAppDetailValue =
   | { readonly kind: "releases"; readonly value: typeof HqAppDetailFields.releases.Type }
   | { readonly kind: "repos"; readonly value: typeof HqAppDetailFields.repos.Type }
   | { readonly kind: "changes"; readonly value: typeof HqAppDetailFields.changes.Type }
-  | { readonly kind: "recipe"; readonly value: (typeof HqAppDetailFields)["recipe:stage"]["Type"] }
-  | { readonly kind: "empty" };
+  | { readonly kind: "recipe"; readonly value: (typeof HqAppDetailFields)["recipe:stage"]["Type"] };
 
 const readReleases = Schema.decodeUnknownOption(HqAppDetailFields.releases);
 const readRepos = Schema.decodeUnknownOption(HqAppDetailFields.repos);
 const readChanges = Schema.decodeUnknownOption(HqAppDetailFields.changes);
 const readTier = Schema.decodeUnknownOption(HqAppDetailFields["recipe:stage"]);
 
-function decodeDetail(raw: unknown): HqAppDetailValue | null {
-  if (Array.isArray(raw) && raw.length === 0) return { kind: "empty" };
-  const releases = readReleases(raw);
-  if (Option.isSome(releases)) return { kind: "releases", value: releases.value };
-  const repos = readRepos(raw);
-  if (Option.isSome(repos)) return { kind: "repos", value: repos.value };
-  const changes = readChanges(raw);
-  if (Option.isSome(changes)) return { kind: "changes", value: changes.value };
-  const tier = readTier(raw);
-  return Option.isSome(tier) ? { kind: "recipe", value: tier.value } : null;
+function decodeDetail(raw: unknown, key: string): HqAppDetailValue | null {
+  if (key === "releases")
+    return Option.match(readReleases(raw), {
+      onNone: () => null,
+      onSome: (value) => ({ kind: "releases", value }),
+    });
+  if (key === "repos")
+    return Option.match(readRepos(raw), {
+      onNone: () => null,
+      onSome: (value) => ({ kind: "repos", value }),
+    });
+  if (key === "changes")
+    return Option.match(readChanges(raw), {
+      onNone: () => null,
+      onSome: (value) => ({ kind: "changes", value }),
+    });
+  if (!key.startsWith("recipe:") || !KEYS.has(key)) return null;
+  return Option.match(readTier(raw), {
+    onNone: () => null,
+    onSome: (value) => ({ kind: "recipe", value }),
+  });
 }
 
 declare module "../model.ts" {

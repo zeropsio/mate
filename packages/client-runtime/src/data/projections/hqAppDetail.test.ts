@@ -59,8 +59,8 @@ const partial = apply(demanded, [
 ]);
 const read = apply(partial, [
   deliver([
-    row("releases", { kind: "empty" }),
-    row("changes", { kind: "empty" }),
+    row("releases", { kind: "releases", value: [] }),
+    row("changes", { kind: "changes", value: [] }),
     row("recipe:production", { kind: "recipe", value: { state: "absent" } }),
   ]),
   { kind: "hq-ready", scopes: [{ scope: SCOPE, generation: 1 }] },

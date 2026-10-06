@@ -53,21 +53,25 @@ describe("hqAppDetailFamily", () => {
   });
 
   it.each([
-    { name: "releases", raw: [release], value: { kind: "releases", value: [release] } },
-    { name: "repositories", raw: [repo], value: { kind: "repos", value: [repo] } },
-    { name: "changes", raw: [change], value: { kind: "changes", value: [change] } },
-    { name: "a present tier", raw: tier, value: { kind: "recipe", value: tier } },
+    { key: "releases", raw: [release], value: { kind: "releases", value: [release] } },
+    { key: "repos", raw: [repo], value: { kind: "repos", value: [repo] } },
+    { key: "changes", raw: [change], value: { kind: "changes", value: [change] } },
+    { key: "recipe:stage", raw: tier, value: { kind: "recipe", value: tier } },
     {
-      name: "an absent tier",
+      key: "recipe:production",
       raw: { state: "absent" },
       value: { kind: "recipe", value: { state: "absent" } },
     },
-    { name: "an empty list, whichever it is", raw: [], value: { kind: "empty" } },
-    { name: "a corrupt list", raw: [{ tag: "nope" }], value: null },
-    { name: "a list of mixed records", raw: [release, repo], value: null },
-    { name: "no record at all", raw: "releases", value: null },
-  ])("reads $name", ({ raw, value }) => {
-    expect(hq.decode(raw)).toEqual(value);
+    { key: "releases", raw: [], value: { kind: "releases", value: [] } },
+    { key: "repos", raw: [], value: { kind: "repos", value: [] } },
+    { key: "changes", raw: [], value: { kind: "changes", value: [] } },
+    { key: "releases", raw: [{ tag: "nope" }], value: null },
+    { key: "releases", raw: [repo], value: null },
+    { key: "repos", raw: [release], value: null },
+    { key: "recipe:mate", raw: [release], value: null },
+    { key: "environments", raw: [], value: null },
+  ])("reads $key from $raw", ({ key, raw, value }) => {
+    expect(hq.decode(raw, key)).toEqual(value);
   });
 
   it("observes the application's own app-detail scope", () => {

@@ -39,13 +39,12 @@ export interface HqAppKey {
   readonly appId: string;
 }
 
-/** A list under its own key: an empty one fits any key, another list's records none. */
 const releasesOf = (value: HqAppDetailValue | undefined): ReadonlyArray<Release> | undefined =>
-  value?.kind === "empty" ? [] : value?.kind === "releases" ? value.value : undefined;
+  value?.kind === "releases" ? value.value : undefined;
 const reposOf = (value: HqAppDetailValue | undefined): ReadonlyArray<RepoListEntry> | undefined =>
-  value?.kind === "empty" ? [] : value?.kind === "repos" ? value.value : undefined;
+  value?.kind === "repos" ? value.value : undefined;
 const changesOf = (value: HqAppDetailValue | undefined): ReadonlyArray<HqChange> | undefined =>
-  value?.kind === "empty" ? [] : value?.kind === "changes" ? value.value : undefined;
+  value?.kind === "changes" ? value.value : undefined;
 
 const tierOf = (value: HqAppDetailValue | undefined) =>
   value?.kind === "recipe" ? value.value : undefined;
