@@ -141,6 +141,12 @@ function readCallInput(input: Record<string, unknown> | null): WorkCallInput | u
 }
 
 export interface WorkLogEntry {
+  /**
+   * `runtime.error`: how the server says its turn ended — its agent died
+   * (`crash`), it failed (`failed`), or the usage limit refused it
+   * (`usage-limit`, a pause). Typed by the server: never read off the words.
+   */
+  turnEnd?: "crash" | "failed" | "usage-limit";
   questionAnswer?: UserInputAttachmentAnswerPayload;
   /** `user-input.requested`/`.resolved`: which request the entry belongs to. */
   inputRequestId?: string;
@@ -204,6 +210,11 @@ export interface WorkLogEntry {
    * address or query a tool names.
    */
   callInput?: WorkCallInput;
+  /**
+   * The call's payload shows what it wrote (`data.wrote`): its row opens onto
+   * it, asked of the server (`threads.fileWrites`), which keeps the text.
+   */
+  wroteFile?: boolean;
   /** A task's: the tool call it tracks — Claude Code tracks a long command as a task. */
   taskToolUseId?: string;
   /**
@@ -1089,6 +1100,10 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   const itemType = extractWorkLogItemType(payload);
   const requestKind = extractWorkLogRequestKind(payload);
   const viewedImagePath = asTrimmedString(asRecord(payload?.data)?.imagePath);
+  const turnEnd = activity.kind === "runtime.error" ? payload?.turnEnd : undefined;
+  if (turnEnd === "crash" || turnEnd === "failed" || turnEnd === "usage-limit") {
+    entry.turnEnd = turnEnd;
+  }
   if (detail) {
     entry.detail = detail;
   } else if (activity.kind === "runtime.error" || activity.kind === "runtime.warning") {
@@ -1116,6 +1131,9 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
     entry.toolTitle = title;
   }
   const data = asRecord(payload?.data);
+  if (!isTaskActivity && data?.wrote === true) {
+    entry.wroteFile = true;
+  }
   const toolName = isTaskActivity ? null : asTrimmedString(data?.toolName);
   if (toolName) {
     entry.toolName = toolName;
@@ -1374,6 +1392,7 @@ function mergeDerivedWorkLogEntries(
   const toolData = next.toolData ?? previous.toolData;
   const toolInput = next.toolInput ?? previous.toolInput;
   const callInput = next.callInput ?? previous.callInput;
+  const wroteFile = next.wroteFile === true || previous.wroteFile === true;
   const startedAt = previous.startedAt ?? previous.createdAt;
   const responseId = previous.responseId ?? next.responseId;
   return {
@@ -1401,6 +1420,7 @@ function mergeDerivedWorkLogEntries(
     ...(toolData !== undefined ? { toolData } : {}),
     ...(toolInput !== undefined ? { toolInput } : {}),
     ...(callInput !== undefined ? { callInput } : {}),
+    ...(wroteFile ? { wroteFile } : {}),
     ...(responseId !== undefined ? { responseId } : {}),
   };
 }

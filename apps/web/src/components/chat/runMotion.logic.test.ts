@@ -113,6 +113,27 @@ describe("movesAsPerson", () => {
       person: true,
     },
     {
+      // Run 12, 18:58:18: a "Context condensed" row went in, the box grew 4 px, and the
+      // browser set the top 14 px up with no input for 43 s; the run stopped following
+      // for 39 minutes.
+      what: "its box resized, no input near",
+      moving: false,
+      resized: true,
+      sinceInput: 43_000,
+      atFoot: false,
+      follows: true,
+      person: false,
+    },
+    {
+      what: "its box resized, right after an input",
+      moving: false,
+      resized: true,
+      sinceInput: 100,
+      atFoot: false,
+      follows: true,
+      person: true,
+    },
+    {
       what: "its motion, no input near",
       moving: true,
       sinceInput: 5000,
@@ -144,7 +165,11 @@ describe("movesAsPerson", () => {
       follows: false,
       person: true,
     },
-  ])("$what: the person's $person", ({ moving, sinceInput, atFoot, follows, person }) => {
-    expect(movesAsPerson({ moving, msSinceInput: sinceInput, atFoot, follows })).toBe(person);
+  ])("$what: the person's $person", (row) => {
+    const { moving, sinceInput, atFoot, follows, person } = row;
+    const resized = "resized" in row ? row.resized : false;
+    expect(movesAsPerson({ moving, resized, msSinceInput: sinceInput, atFoot, follows })).toBe(
+      person,
+    );
   });
 });

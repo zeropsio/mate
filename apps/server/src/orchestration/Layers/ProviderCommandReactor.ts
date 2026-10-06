@@ -244,10 +244,14 @@ const make = Effect.gen(function* () {
     running.add(fiber);
     yield* Deferred.succeed(gate, undefined);
   });
+  // Newest first: a send waiting for the thread's lane goes before the one
+  // holding it, which would hand it the lane as it ends.
   const interruptPendingStarts = (threadId: ThreadId) =>
-    Effect.forEach([...(pendingStarts.get(threadId) ?? [])], (fiber) => Fiber.interrupt(fiber), {
-      discard: true,
-    });
+    Effect.forEach(
+      [...(pendingStarts.get(threadId) ?? [])].toReversed(),
+      (fiber) => Fiber.interrupt(fiber),
+      { discard: true },
+    );
   const providerRegistry = yield* ProviderRegistry;
   const gitWorkflow = yield* GitWorkflowService;
   const fileSystem = yield* FileSystem.FileSystem;
@@ -834,7 +838,6 @@ const make = Effect.gen(function* () {
         activeSession?.status === "running" || thread.session?.status === "running";
       const shouldRestartForModelSelectionChange =
         modelSelectionChange === "new-session" && !sessionRunning;
-
       if (
         !runtimeModeChanged &&
         !cwdChanged &&
@@ -1323,6 +1326,23 @@ const make = Effect.gen(function* () {
       if (Cause.hasInterruptsOnly(cause)) {
         return Effect.void;
       }
+      // The send opened its turn and failed under it, and its adapter ended
+      // that turn itself (`ProviderAdapterTurnEndedError`): the failure is
+      // the turn's, which ingestion records once. Nothing more is said here.
+      const turnEnded = cause.reasons.find(
+        (reason) =>
+          Cause.isFailReason(reason) &&
+          (reason.error as { readonly _tag?: unknown } | null)?._tag ===
+            "ProviderAdapterTurnEndedError",
+      );
+      if (turnEnded !== undefined) {
+        return Effect.logInfo("provider turn ended with its send's failure", {
+          threadId: event.payload.threadId,
+          messageId: event.payload.messageId,
+          cause: Cause.pretty(cause),
+        });
+      }
+      // Every other failure is the message's failure to start, said at once.
       const detail = formatFailureDetail(cause);
       return Effect.logError("provider turn start failed", {
         threadId: event.payload.threadId,
@@ -1337,7 +1357,7 @@ const make = Effect.gen(function* () {
             createdAt: event.payload.createdAt,
           }),
         ),
-        Effect.flatMap(() => appendTurnStartFailure("Provider turn start failed", detail)),
+        Effect.andThen(appendTurnStartFailure("Provider turn start failed", detail)),
         Effect.asVoid,
       );
     };

@@ -80,6 +80,8 @@ import {
 import { flushSync } from "react-dom";
 
 import { cn } from "~/lib/utils";
+import { FileWriteDetail } from "./FileWriteDetail";
+import { stepWriteCalls } from "./fileWrites.logic";
 import { useAssetUrls, useAssetUrlState } from "../../assets/assetUrls";
 import {
   selectMessageImageResources,
@@ -109,6 +111,7 @@ import {
   formatWorkDuration,
   operationLineWords,
   operationUnreturnedWords,
+  type BrokeOff,
   type BrowserStripModel,
   type IncidentModel,
   type OutcomeModel,
@@ -127,7 +130,8 @@ import { useLiveSlot } from "./useLiveSlot";
 import { usePace } from "./usePace";
 import { KeptTimelineContext } from "./keptTimelineContext";
 import { landingHosts, slotMoves } from "./slotMoves.logic";
-import { stripShowsFiles } from "./runResult.logic";
+import { resultPictures as allResultPictures, stripShowsFiles } from "./runResult.logic";
+import { useStripFiles } from "./resultStripFiles";
 import {
   backgroundItemWord,
   reportsInline,
@@ -1514,6 +1518,7 @@ function StepBubble({
   const bare = script !== null && step.words === null;
   const disclosure = useDisclosure(false, "open");
   const outputs = stepOutput(step);
+  const writeCalls = stepWriteCalls(step);
   const failure: Failure | null = step.state !== "failed" ? null : undone ? "undone" : "broken";
   const running = step.state === "running";
   const time = stepTime(step);
@@ -1562,7 +1567,7 @@ function StepBubble({
       {opens ? (
         <DisclosureButton
           className={pad}
-          label={`${title}. ${disclosure.open ? "Hide" : "Show"} ${outputs.length > 0 ? "what it returned" : "all of its code"}`}
+          label={`${title}. ${disclosure.open ? "Hide" : "Show"} ${outputs.length > 0 ? "what it returned" : writeCalls.length > 0 ? "what it wrote" : "all of its code"}`}
           onToggle={disclosure.toggle}
           open={disclosure.open}
         >
@@ -1596,6 +1601,18 @@ function StepBubble({
               text={output.text}
             />
           ))}
+        </div>
+      ) : null}
+      {disclosure.open && writeCalls.length > 0 ? (
+        <div className={cn("px-3 pb-2", rises(disclosure.made))} data-chat-detail>
+          <FileWriteDetail
+            box={(part, text) => (
+              <CappedBox className="rounded-xl bg-foreground/4" detail part={part}>
+                {text}
+              </CappedBox>
+            )}
+            callIds={writeCalls}
+          />
         </div>
       ) : null}
     </CallRow>
@@ -3048,6 +3065,48 @@ function NowLine({
         ) : null}
       </div>
       {status.live ? <RunTicker status={status} /> : (end ?? <span />)}
+      {/* A run that broke off ends on why, under its line, in the words the
+          server gave it: never a stack. Watched as it ends, its room opens
+          as the line settles — never a jump of the card. */}
+      {!status.live && status.brokeOff !== undefined ? (
+        <BrokeOffLine brokeOff={status.brokeOff} rises={risesIn} />
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Why a run broke off, under its line, and on the latest run what to do
+ * next. When a later run begins, what to do next leaves; its words keep their
+ * room, unseen, while the line stays on screen — a wrapped line never shrinks
+ * the card under the person's eyes. Drawn anew, the line is its reason alone.
+ */
+function BrokeOffLine({
+  brokeOff,
+  rises,
+}: {
+  readonly brokeOff: BrokeOff;
+  /** Watched as the run ends: its room opens as the line settles. */
+  readonly rises: boolean;
+}) {
+  const [heldNext, setHeldNext] = useState(brokeOff.next);
+  if (brokeOff.next !== null && brokeOff.next !== heldNext) setHeldNext(brokeOff.next);
+  return (
+    <div
+      className={cn("grid min-w-0 [grid-column:2/-1]", rises && "motion-safe:animate-room-open")}
+      data-run-broke-off
+    >
+      <p className="min-h-0 min-w-0 overflow-hidden pt-0.5 text-sm leading-5 text-status-failed-text">
+        {brokeOff.reason}
+        {heldNext === null ? null : (
+          <span
+            aria-hidden={brokeOff.next === null ? true : undefined}
+            className={brokeOff.next === null ? "invisible" : undefined}
+          >
+            {` ${heldNext}`}
+          </span>
+        )}
+      </p>
     </div>
   );
 }
@@ -3769,10 +3828,12 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
       />
     );
   const settledOutcome = settled ? row.outcome : null;
-  const resultPictures = useMemo(
-    () => (settledOutcome === null ? NO_PATHS : stripShowsFiles(settledOutcome)),
+  // What the result's strip draws, as it said (`resultStripFiles`); the first six until then.
+  const stripGuess = useMemo(
+    () => (settledOutcome === null ? NO_PATHS : stripShowsFiles(allResultPictures(settledOutcome))),
     [settledOutcome],
   );
+  const resultPictures = useStripFiles(settledOutcome?.turnKey ?? null, stripGuess);
   return (
     // One container for the chat and its now line: the Mate's column keeps
     // one gap for both. Its words wear its tint (`.run-speech`). Keyed, so the
@@ -4191,14 +4252,23 @@ function RunScroll({
       };
       gliding.frame = requestAnimationFrame(tick);
     };
+    // Its box and its lines as they stood at the last read.
+    const sized: { box: number | null; lines: number | null } = { box: null, lines: null };
     /**
-     * Where it stands, read: while its room eases or it glides, a move with
-     * no input of the person's is that motion's — the browser clamping it as
-     * its box grows — and never their move up.
+     * Where it stands, read: while its room eases or it glides, or as its box
+     * or its lines change size, a move with no input of the person's is that
+     * motion's or that change's — the browser clamping it — and never their
+     * move up.
      */
     const read = (position: RunScrollPosition) => {
+      const resized =
+        (sized.box !== null && Math.abs(position.clientHeight - sized.box) > 0.5) ||
+        (sized.lines !== null && Math.abs(position.scrollHeight - sized.lines) > 0.5);
+      sized.box = position.clientHeight;
+      sized.lines = position.scrollHeight;
       const person = movesAsPerson({
         moving: gliding.frame !== 0 || (roomRef.current?.easing() ?? false) || heldAbove(),
+        resized,
         msSinceInput: performance.now() - personAtRef.current,
         atFoot: standsAtFoot(position),
         follows: followRef.current.follows,

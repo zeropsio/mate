@@ -1,0 +1,193 @@
+import { describe, expect, it } from "@effect/vitest";
+import * as Effect from "effect/Effect";
+import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
+import { createScenario } from "../../harness/scenario.ts";
+import { installArea } from "./fake.ts";
+import { mateChat } from "./dsl.ts";
+
+const setup = Effect.gen(function* () {
+  const s = yield* createScenario([installArea]);
+  yield* s.given.project("Ada", { mate: true });
+  const chat = mateChat(s);
+  chat.fixture().history();
+  return { s, chat };
+});
+
+describe("C: opening a Mate and chat", () => {
+  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    // Catches a broken identity door/OAuth exchange or a slow first opening that never reaches the chosen chat.
+    it.effect("first open crosses the door and OAuth within the opening budget", () =>
+      Effect.gen(function* () {
+        const { s, chat } = yield* setup;
+        yield* s.given.signedIn;
+        yield* chat.when.open();
+        yield* chat.then.path("/env-Ada/thread-Ada");
+        yield* s.then.noExternalNetwork;
+      }),
+    );
+
+    // Catches returning to a parked Mate losing its history, opening another chat, or repeating the cold door.
+    it.effect("returning to a parked Mate preserves history within the warm budget", () =>
+      Effect.gen(function* () {
+        const { s, chat } = yield* setup;
+        yield* s.given.project("Bea", { mate: true });
+        chat.fixture("Bea").history("Bea's conversation history");
+        yield* s.given.signedIn;
+        yield* chat.when.open();
+        yield* chat.then.text("The existing conversation is still here");
+        yield* chat.when.open("Bea", "Bea's conversation history");
+        const doors = chat.fixture().doorCount();
+        yield* chat.when.returnTo();
+        yield* chat.then.text("The existing conversation is still here");
+        expect(chat.fixture().doorCount()).toBe(doors);
+        yield* s.then.noReload;
+        yield* s.then.noExternalNetwork;
+      }),
+    );
+
+    // Catches a saved conversation link failing in a browser that has never opened this Mate.
+    it.effect("cold direct conversation URL opens the named Mate and its history", () =>
+      Effect.gen(function* () {
+        const { s, chat } = yield* setup;
+        yield* s.given.signedIn;
+        expect(chat.fixture().doorCount()).toBe(0);
+        yield* chat.when.visit("/env-Ada/thread-Ada");
+        yield* chat.then.ready("Ada");
+        yield* chat.then.headerName("Ada");
+        yield* chat.then.text("The existing conversation is still here");
+        yield* chat.then.path("/env-Ada/thread-Ada");
+        yield* s.then.noExternalNetwork;
+      }),
+    );
+
+    // Catches the project-level Mate URL stranding a signed-in user on the arrival page instead of the chat.
+    it.effect("/mate/project-id opens the Mate conversation from a cold door", () =>
+      Effect.gen(function* () {
+        const { s, chat } = yield* setup;
+        yield* s.given.signedIn;
+        yield* chat.when.visit("/mate/Ada");
+        yield* chat.then.ready("Ada");
+        yield* chat.then.headerName("Ada");
+        yield* chat.then.path("/env-Ada/thread-Ada");
+        yield* chat.then.text("The existing conversation is still here");
+        yield* s.then.noExternalNetwork;
+      }),
+    );
+
+    // Catches reload losing the selected chat/history or turning a kept session into a slow cold opening.
+    it.effect("reload restores history within the reload budget", () =>
+      Effect.gen(function* () {
+        const { s, chat } = yield* setup;
+        yield* s.given.signedIn;
+        yield* chat.when.open();
+        yield* chat.when.reload();
+        yield* chat.then.headerName("Ada");
+        yield* chat.then.text("The existing conversation is still here");
+        yield* chat.then.path("/env-Ada/thread-Ada");
+        yield* s.then.noExternalNetwork;
+      }),
+    );
+
+    // Catches Enter dropping a prompt, showing it only in the editor, or losing the acknowledged message on reload.
+    it.effect("sending a message puts it in the durable visible conversation", () =>
+      Effect.gen(function* () {
+        const { s, chat } = yield* setup;
+        yield* s.given.signedIn;
+        yield* chat.when.open();
+        yield* chat.when.send("Please inspect the Shop project");
+        yield* chat.then.sent("Please inspect the Shop project");
+        yield* chat.when.reload("Ada", "Please inspect the Shop project");
+        yield* chat.then.headerName("Ada");
+        yield* chat.then.text("Please inspect the Shop project");
+        yield* s.then.noExternalNetwork;
+      }),
+    );
+
+    // Catches an agent's approval never appearing or Approve failing to release the pending command.
+    it.effect("approve an agent command and see it resolve", () =>
+      Effect.gen(function* () {
+        const { s, chat } = yield* setup;
+        yield* s.given.signedIn;
+        yield* chat.when.open();
+        chat.fixture().approval();
+        yield* chat.then.text("Command approval");
+        yield* chat.then.text("vp run build");
+        yield* chat.when.click("Approve");
+        yield* chat.then.text("Agent received your response");
+        yield* chat.then.noButton("Approve");
+        expect(chat.fixture().commandDecisions()).toEqual(["approved"]);
+        yield* s.then.noExternalNetwork;
+      }),
+    );
+
+    // Catches Decline silently approving the command or leaving the approval stuck in the composer.
+    it.effect("decline an agent command and see it resolve", () =>
+      Effect.gen(function* () {
+        const { s, chat } = yield* setup;
+        chat.fixture().approval();
+        yield* s.given.signedIn;
+        yield* chat.when.open();
+        yield* chat.then.text("vp run build");
+        yield* chat.when.click("Decline");
+        yield* chat.then.text("Agent received your response");
+        yield* chat.then.noButton("Decline");
+        expect(chat.fixture().commandDecisions()).toEqual(["declined"]);
+        yield* s.then.noExternalNetwork;
+      }),
+    );
+
+    // Catches an agent question disappearing, sending the display label instead of its answer, or remaining unanswered after selection.
+    it.effect("answer an agent question with a suggested option", () =>
+      Effect.gen(function* () {
+        const { s, chat } = yield* setup;
+        yield* s.given.signedIn;
+        yield* chat.when.open();
+        chat.fixture().question();
+        yield* chat.then.text("Which environment should I inspect?");
+        yield* chat.when.click("Staging");
+        yield* chat.then.text("Agent received your response");
+        yield* chat.then.noText("Which environment should I inspect?");
+        expect(chat.fixture().receivedStagingAnswer()).toBe(true);
+        expect(chat.fixture().responseCount()).toBe(1);
+        yield* s.then.noExternalNetwork;
+      }),
+    );
+
+    // Catches a composer sending on an unrecorded personal login despite the missing permission to run that agent.
+    it.effect("an unrecorded personal login blocks Send with an explanation", () =>
+      Effect.gen(function* () {
+        const { s, chat } = yield* setup;
+        chat.fixture().ownership = "unrecorded";
+        yield* s.given.signedIn;
+        yield* chat.when.open();
+        yield* chat.when.send("This must not reach the agent");
+        yield* chat.then.blockedPromptRemains("This must not reach the agent");
+        yield* chat.then.sendDisabled;
+        yield* chat.then.text("This agent's sign-in was not recorded");
+        yield* chat.then.noText("This must not reach the agent");
+        expect(chat.fixture().sentTurnCount()).toBe(0);
+        yield* s.then.noExternalNetwork;
+      }),
+    );
+
+    // Catches another member's personal Mate exposing a composer or approval controls while its history is still readable.
+    it.effect("someone else's personal Mate is readable but cannot be sent to or approved", () =>
+      Effect.gen(function* () {
+        const { s, chat } = yield* setup;
+        chat.fixture().approval();
+        chat.fixture().ownership = "colleague";
+        yield* s.given.signedIn;
+        yield* chat.when.openReadOnly();
+        yield* chat.then.text("only they can run this agent");
+        yield* chat.then.text("The existing conversation is still here");
+        yield* chat.then.text("vp run build");
+        yield* chat.then.text("Waiting for the agent's owner");
+        yield* chat.then.noComposer;
+        yield* chat.then.noButton("Approve");
+        yield* chat.then.noButton("Decline");
+        expect(chat.fixture().responseCount()).toBe(0);
+        yield* s.then.noExternalNetwork;
+      }),
+    );
+  });
+});

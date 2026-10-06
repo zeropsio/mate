@@ -4104,3 +4104,70 @@ medium < high < xhigh` (a driver's own order does not rank: Grok reports its lev
     `Rune`): in an application a project is `<application> - <Mate>`, outside any just `<Mate>`.
   - _Why:_ the organization's project list in Zerops is where the projects of every application
     stand side by side; without the prefix a Mate's project says nothing of whose it is.
+- **2026-10-06** — **Every list of a Mate's changes reads D7 by one rule** (pass 43: the menu's rows
+  hid a change's _Review_ while its Mate worked, the projects page did not). `changeShowsReview` —
+  described at its head, and its Mate not working in any of its chats, a turn or helpers it
+  started — is read by the menu's change rows, the projects page's change rows, the group's next
+  step and the composer's top (`mateNextStep`; the composer gives way by its own hold, which keeps
+  a dismissed strip remembered). A rule by HQ's `updatedAt` against the run's start was tried and
+  dropped: a person's comment moves a change, a change the run will amend could be merged
+  mid-edit, and two clocks would decide it.
+  - _Why:_ 0fc8a2eca's D7 — "While the Mate works in any of its chats … its rows carry no Review,
+    and the group's next step passes its changes by" — and the surfaces disagreed.
+- **2026-10-06** — **A sign-in failure is the Mate's, said in its words** (F7: the reason read
+  "Claude's sign-in has expired. Sign Claude in again, …" under Sage). Where a Mate is named, its
+  sign-in failure reads "Sage is signed out of Claude. Sign in again to continue." — the Mate the
+  subject, the agent only what the person signs in to; on the Mate's own menu row, under its name,
+  "Signed out of Claude. Sign in again to continue." The driver's words stay the driver's
+  (`apps/server/src/provider` is ported): the client recognises them (`signedOutAgent`: each agent
+  driver's own sentence from its first word — Claude's "could not authenticate. For subscription
+  login" and "'s sign-in has expired.", Antigravity's — and only the conversation's own driver's
+  where it is known; Git's "could not authenticate with the remote" is no agent signed out) and
+  says them (`mateErrorWords`) in the conversation's banner, the menu row and the jump box.
+  - _Why:_ the adapter does not know the Mate's name, and the client does wherever it draws one.
+- **2026-10-06** — **A helper is called what the Mate called it** (F6: the Mate's text said "the
+  deep-sea builder", the card said the launch's task). Where a helper's launch gave it a name —
+  Claude's Agent `name`, kept by the activity projection for an agent launch only — every place
+  the card names that helper (its row, its band, the dock, its report's wake) reads the name;
+  Codex's helpers were already named by their nickname or path. Where the launch named none, or
+  aged out, the task's words stand as before. Cursor, Grok, Antigravity and OpenCode report no
+  named helpers.
+- **2026-10-06** — **A result picture that can no longer load is no result** (N2, run 11: a muted
+  "Gone" tile stood as a Noibit turn's result). A file the workspace says is not there leaves the
+  result strip with no room held: the next picture takes its place, the strip's six and its "+N"
+  count only what stands, and a run whose pictures are all gone shows nothing of them (no strip;
+  no result where it left no row). Only the server's "not there" makes a picture gone: one whose
+  Mate is asleep, offline or reconnecting stays a quiet tile and is asked again on the signing's
+  retry schedule. A conversation remembers its gone pictures per account (`gonePictureMemory`), so
+  a reload leaves them out before their reads answer and paints no tile it takes back; one that
+  loads again is forgotten. The opened card's steps leave to the result exactly the files its strip
+  draws, as the result itself placed them (`resultStripFiles`).
+- **2026-10-06** — **A written or edited file's row opens onto what the agent wrote, and "Open in
+  Files" shows a file it wrote outside the workspace as it wrote it** (D9, the owner: "Are these
+  unclickable on purpose?", "Why can't this be opened in the Files tab?"). The row opens onto a
+  write's content or an edit's new text, drawn from the call's own stored payload
+  (`threads.fileWrites`): Claude Code's `Write` content and `Edit`/`MultiEdit` `new_string`s and
+  `NotebookEdit` `new_source`, Codex's added files and the added lines of its updates, OpenCode's
+  `write` content, `edit`/`multiedit` `newString`s and the added lines of its patches, and for an ACP agent (Cursor, Grok, Antigravity) the `new_string`, `newString` or `content` its call's raw input carries, else what its `diff` block adds over its old text, worked out on the server and cut to the characters that differ (`…db2…`): a line that stands unchanged in the old text is never shown as added, and a Codex or patch run that removes and adds the same line drops the pair. A change that only removes reads as a count ("Removed 3 lines"). The client's copy of a
+  call carries only a mark that it wrote something; a call whose driver sent none keeps the row it
+  had, and a running or failed write opens onto nothing. Each file's text stands in the card's own
+  item box: in the log whole once opened, nothing scrolling inside (the 0.14.4 rule). "Open in
+  Files" for a path inside the workspace opens the Files tab as before; for one outside, the
+  read-only panel shows the thread's newest completed write of that path, labelled "As Sage wrote
+  it at 01:23" (`threads.writtenFile`).
+  - _Rule:_ what a reader sees is exactly what the agent wrote in its calls, from the thread's own
+    record. Nothing is read from disk, and nothing the agent only read or found in a file is sent:
+    never an edit's old text, a diff's removed or context lines, a patch's hunk headers, ACP's
+    `oldText` or a deleted file's content.
+    - Only a completed call wrote, as the server's own stored row says: a failed, declined or
+      never-returned call counts for nothing.
+    - The Files tab's path must equal exactly — untrimmed, in the form it was named — a path that a
+      completed call of THIS thread wrote; another thread's writes count for nothing.
+    - Both methods take `orchestration:read`, as `subscribeThread` does, and one answer carries at
+      most 1 MiB of text.
+  - _Why:_ a security review found that serving the file from disk cannot hold: an edit of one line
+    of `~/.npmrc` or an outside `.env` would serve the token beside it, which the agent never wrote
+    and readers never saw (a Read reaches them as an 84-character summary), and a renamed folder, a
+    write through a shared mapping, a FUSE mount, a timing slack or another clock each put other
+    content under the written name. The agent's own calls already reach every reader of the thread;
+    showing those, and only those, discloses nothing new.

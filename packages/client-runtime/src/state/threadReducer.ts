@@ -12,6 +12,7 @@ import type {
   OrchestrationThreadActivity,
   TurnId,
 } from "@t3tools/contracts";
+import { isToolCallEcho, toolCallEchoKey } from "@t3tools/shared/toolCallEcho";
 
 export type ThreadDetailReducerResult =
   | { readonly kind: "updated"; readonly thread: OrchestrationThread }
@@ -60,6 +61,58 @@ function isResolvableContextWindowActivity(activity: OrchestrationThreadActivity
       : null;
   const usedTokens = payload?.usedTokens;
   return typeof usedTokens === "number" && Number.isFinite(usedTokens) && usedTokens >= 0;
+}
+
+// Per-array echo rows: each call's updates and completions by call, turn and
+// instant (`toolCallEchoKey`), so a landing row finds its echo or completion
+// without reading the whole history. Moves forward with the fast append path;
+// read once from an array that has none.
+const echoRowsIndex = new WeakMap<
+  ReadonlyArray<OrchestrationThreadActivity>,
+  Map<string, ReadonlyArray<OrchestrationThreadActivity>>
+>();
+
+function echoRowsOf(
+  activities: ReadonlyArray<OrchestrationThreadActivity>,
+): Map<string, ReadonlyArray<OrchestrationThreadActivity>> {
+  const known = echoRowsIndex.get(activities);
+  if (known !== undefined) return known;
+  const rows = new Map<string, ReadonlyArray<OrchestrationThreadActivity>>();
+  for (const activity of activities) {
+    const key = toolCallEchoKey(activity);
+    if (key !== null) rows.set(key, [...(rows.get(key) ?? []), activity]);
+  }
+  echoRowsIndex.set(activities, rows);
+  return rows;
+}
+
+/** Forgets a row a redelivery replaces; true, so it reads as a filter's "drop". */
+function forgetEchoRow(
+  rows: Map<string, ReadonlyArray<OrchestrationThreadActivity>>,
+  row: OrchestrationThreadActivity,
+): true {
+  const key = toolCallEchoKey(row);
+  const known = key === null ? undefined : rows.get(key);
+  if (key !== null && known !== undefined) {
+    rows.set(
+      key,
+      known.filter((entry) => entry !== row),
+    );
+  }
+  return true;
+}
+
+/** The array without `rows`, each found from the tail, where an echo stands. */
+function withoutRows(
+  activities: ReadonlyArray<OrchestrationThreadActivity>,
+  rows: ReadonlyArray<OrchestrationThreadActivity>,
+): ReadonlyArray<OrchestrationThreadActivity> {
+  const kept = [...activities];
+  for (const row of rows) {
+    const at = kept.lastIndexOf(row);
+    if (at >= 0) kept.splice(at, 1);
+  }
+  return kept;
 }
 
 /**
@@ -609,6 +662,22 @@ export function applyThreadDetailEvent(
     // ── Activities ──────────────────────────────────────────────────
     case "thread.activity-appended": {
       const activity = event.payload.activity;
+      // A call's echo — the update sent with its completion, the same instant
+      // and payload (`isToolCallEcho`) — is dropped wherever it sorts: landing
+      // after its completion it changes nothing, and a completion landing
+      // after it takes it out. A reload's snapshot drops it the same way.
+      const echoKey = toolCallEchoKey(activity);
+      const peers = echoKey === null ? undefined : echoRowsOf(thread.activities).get(echoKey);
+      if (
+        activity.kind === "tool.updated" &&
+        peers?.some((peer) => isToolCallEcho(activity, peer)) === true
+      ) {
+        return { kind: "unchanged" };
+      }
+      const echoes =
+        activity.kind === "tool.completed" && peers !== undefined
+          ? peers.filter((peer) => isToolCallEcho(peer, activity))
+          : [];
       // A resolvable context-window update supersedes earlier resolvable ones
       // for the same turn: consumers only read the latest value (walking the
       // array backwards), and providers stream these updates continuously, so
@@ -620,20 +689,32 @@ export function applyThreadDetailEvent(
       const supersedesContextWindow = isResolvableContextWindowActivity(activity);
       // Live streams append in order: an unseen id sorting at/after the tail
       // of a known-sorted array appends without re-filtering and re-sorting
-      // the whole history on every event. The id set moves forward to the new
-      // array; a superseded array falls back to the sorting path.
+      // the whole history on every event. A completion's echoes come off the
+      // tail first: an echo of the same instant may sort just above it (the
+      // ids are random), and the completion then appends where it stood. The
+      // id set and the echo rows move forward to the new array; a superseded
+      // array falls back to the sorting path, and its echo rows are read anew
+      // when next asked for.
       const ids = activityIdIndex.get(thread.activities);
-      const lastActivity = thread.activities.at(-1);
+      const base = echoes.length === 0 ? thread.activities : withoutRows(thread.activities, echoes);
+      const lastActivity = base.at(-1);
       if (
         !supersedesContextWindow &&
         ids !== undefined &&
         (lastActivity === undefined || activityOrder(lastActivity, activity) <= 0) &&
         !ids.has(activity.id)
       ) {
-        const activities = Arr.append(thread.activities, activity);
+        const activities = Arr.append(base, activity);
+        const rows = echoRowsOf(thread.activities);
         activityIdIndex.delete(thread.activities);
+        echoRowsIndex.delete(thread.activities);
         ids.add(activity.id);
+        for (const echo of echoes) ids.delete(echo.id);
+        if (echoKey !== null) {
+          rows.set(echoKey, [...(peers ?? []).filter((row) => !echoes.includes(row)), activity]);
+        }
         activityIdIndex.set(activities, ids);
+        echoRowsIndex.set(activities, rows);
         return {
           kind: "updated",
           thread: {
@@ -643,11 +724,14 @@ export function applyThreadDetailEvent(
           },
         };
       }
+      const rows = echoRowsOf(thread.activities);
+      echoRowsIndex.delete(thread.activities);
       const activities = pipe(
         thread.activities,
         Arr.filter(
           (entry) =>
-            entry.id !== activity.id &&
+            !(entry.id === activity.id && forgetEchoRow(rows, entry)) &&
+            !echoes.includes(entry) &&
             !(
               supersedesContextWindow &&
               entry.turnId === activity.turnId &&
@@ -658,6 +742,13 @@ export function applyThreadDetailEvent(
         Arr.sort(activityOrder),
       );
       activityIdIndex.set(activities, new Set(activities.map((entry) => entry.id)));
+      if (echoKey !== null) {
+        rows.set(echoKey, [
+          ...(rows.get(echoKey) ?? []).filter((row) => !echoes.includes(row)),
+          activity,
+        ]);
+      }
+      echoRowsIndex.set(activities, rows);
 
       return {
         kind: "updated",

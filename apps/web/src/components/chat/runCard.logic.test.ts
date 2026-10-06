@@ -510,6 +510,13 @@ describe("the now line", () => {
       face: "idle",
     },
     {
+      name: "a run whose agent died under it",
+      over: { face: "brokeOff", endedAt: at(45) },
+      effort: "2 commands",
+      words: "Nova stopped after 45s",
+      face: "idle",
+    },
+    {
       name: "a run the usage limit stopped",
       over: { face: "paused", endedAt: at(45) },
       effort: null,

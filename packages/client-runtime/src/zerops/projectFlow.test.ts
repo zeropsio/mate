@@ -7,6 +7,7 @@ import { mateProjectOfBranch, mateProjectOfLogin } from "./mateIdentity.ts";
 import type { MergeabilityKind } from "./changeMergeability.ts";
 import {
   changeKindTag,
+  changeShowsReview,
   changeState,
   pullRequestMergeLine,
   releaseContentsSentence,
@@ -870,5 +871,29 @@ describe("waitingForProduction: how many changes wait for production once one me
     },
   ])("$name", ({ listed, change, liveSince, count }) => {
     expect(waitingForProduction({ listed, change, liveSince })).toBe(count);
+  });
+});
+
+// D7: a change asks for review once its Mate described it at its head, and never while its Mate
+// works in any of its chats. Every list a change stands in reads this one rule.
+describe("changeShowsReview — one rule for every list a change stands in", () => {
+  it.each([
+    { case: "a draft, its Mate at rest", ready: false, mate: undefined, shows: false },
+    { case: "a described change, its Mate at rest", ready: true, mate: undefined, shows: true },
+    {
+      case: "a described change, its Mate idle",
+      ready: true,
+      mate: { working: false },
+      shows: true,
+    },
+    {
+      case: "a described change, its Mate at work",
+      ready: true,
+      mate: { working: true },
+      shows: false,
+    },
+    { case: "a draft, its Mate at work", ready: false, mate: { working: true }, shows: false },
+  ])("$case: $shows", ({ ready, mate, shows }) => {
+    expect(changeShowsReview({ ready }, mate)).toBe(shows);
   });
 });

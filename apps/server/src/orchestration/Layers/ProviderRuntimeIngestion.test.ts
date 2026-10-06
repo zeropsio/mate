@@ -4267,6 +4267,335 @@ describe("ProviderRuntimeIngestion", () => {
     expect(thread.session?.lastError).toBe("runtime exploded");
   });
 
+  describe("a turn that breaks off: its agent's process dies, or the turn fails", () => {
+    const STOPPED = (name: string) =>
+      `${name} stopped unexpectedly. Send a message to pick up where it left off.`;
+    type Step =
+      /** The adapter's runtime.error on the turn, with its class. */
+      | { readonly said: string; readonly class?: "usage_limit" | "process_exit" }
+      /** The session exits, with this kind. */
+      | { readonly exit: "graceful" | "error" | undefined }
+      /** The turn fails, with its words and its terminal reason. */
+      | { readonly failed: string | undefined; readonly reason?: "usage_limit" | "process_exit" };
+    const cases: ReadonlyArray<{
+      readonly name: string;
+      readonly driver: string;
+      readonly turnRunning?: false;
+      readonly steps: ReadonlyArray<Step>;
+      readonly status: "error" | "stopped";
+      readonly lastError: string | null;
+      readonly turnState: "error" | "interrupted" | null;
+      /** The turn's runtime.error records: their words, and how each says the turn ended. */
+      readonly records: ReadonlyArray<{ readonly message: string; readonly turnEnd?: string }>;
+    }> = [
+      // Crashes, every driver, in the order each adapter says it: one record, a crash.
+      {
+        name: "Claude: its stream dies, then its turn fails in the same words",
+        driver: "claudeAgent",
+        steps: [
+          { said: STOPPED("Claude Code"), class: "process_exit" },
+          { failed: STOPPED("Claude Code") },
+          { exit: "graceful" },
+        ],
+        status: "stopped",
+        lastError: STOPPED("Claude Code"),
+        turnState: "error",
+        records: [{ message: STOPPED("Claude Code"), turnEnd: "crash" }],
+      },
+      {
+        name: "Codex: its app server exits mid-turn",
+        driver: "codex",
+        steps: [{ exit: undefined }],
+        status: "error",
+        lastError: STOPPED("Codex"),
+        turnState: "error",
+        records: [{ message: STOPPED("Codex"), turnEnd: "crash" }],
+      },
+      {
+        name: "OpenCode: its server exits, said first, then its session exits",
+        driver: "opencode",
+        steps: [{ said: STOPPED("OpenCode"), class: "process_exit" }, { exit: "error" }],
+        status: "error",
+        lastError: STOPPED("OpenCode"),
+        turnState: "error",
+        records: [{ message: STOPPED("OpenCode"), turnEnd: "crash" }],
+      },
+      {
+        name: "Cursor: its connection ends first, then its prompt fails the turn",
+        driver: "cursor",
+        steps: [{ exit: "error" }, { failed: STOPPED("Cursor"), reason: "process_exit" }],
+        status: "error",
+        lastError: STOPPED("Cursor"),
+        turnState: "error",
+        records: [{ message: STOPPED("Cursor"), turnEnd: "crash" }],
+      },
+      {
+        name: "Cursor: its prompt fails the turn first, then its connection ends",
+        driver: "cursor",
+        steps: [{ failed: STOPPED("Cursor"), reason: "process_exit" }, { exit: "error" }],
+        status: "stopped",
+        lastError: STOPPED("Cursor"),
+        turnState: "error",
+        records: [{ message: STOPPED("Cursor"), turnEnd: "crash" }],
+      },
+      {
+        name: "Grok: its prompt fails the turn first, then its connection ends",
+        driver: "grok",
+        steps: [{ failed: STOPPED("Grok"), reason: "process_exit" }, { exit: "error" }],
+        status: "stopped",
+        lastError: STOPPED("Grok"),
+        turnState: "error",
+        records: [{ message: STOPPED("Grok"), turnEnd: "crash" }],
+      },
+      {
+        name: "Antigravity: its connection ends first, then its prompt fails the turn",
+        driver: "antigravity",
+        steps: [{ exit: "error" }, { failed: STOPPED("Antigravity"), reason: "process_exit" }],
+        status: "error",
+        lastError: STOPPED("Antigravity"),
+        turnState: "error",
+        records: [{ message: STOPPED("Antigravity"), turnEnd: "crash" }],
+      },
+      {
+        name: "a plain failure, then a crash told in the same words: upgraded to a crash",
+        driver: "grok",
+        steps: [{ failed: STOPPED("Grok") }, { said: STOPPED("Grok"), class: "process_exit" }],
+        status: "error",
+        lastError: STOPPED("Grok"),
+        turnState: "error",
+        records: [{ message: STOPPED("Grok"), turnEnd: "crash" }],
+      },
+      // Ordinary failures: one record each, in the turn's own words.
+      {
+        name: "Antigravity: an ordinary failure",
+        driver: "antigravity",
+        steps: [{ failed: "Model request failed: 500" }],
+        status: "error",
+        lastError: "Model request failed: 500",
+        turnState: "error",
+        records: [{ message: "Model request failed: 500", turnEnd: "failed" }],
+      },
+      {
+        name: "Claude: a failed result in its own words",
+        driver: "claudeAgent",
+        steps: [{ failed: "API Error: 500 Internal server error" }],
+        status: "error",
+        lastError: "API Error: 500 Internal server error",
+        turnState: "error",
+        records: [{ message: "API Error: 500 Internal server error", turnEnd: "failed" }],
+      },
+      {
+        name: "OpenCode: its provider error, then the turn it fails",
+        driver: "opencode",
+        steps: [
+          { said: "Rate limit exceeded for this model." },
+          { failed: "Rate limit exceeded for this model." },
+        ],
+        status: "error",
+        lastError: "Rate limit exceeded for this model.",
+        turnState: "error",
+        records: [{ message: "Rate limit exceeded for this model." }],
+      },
+      {
+        name: "a failed turn, then the adapter's error in the same words",
+        driver: "opencode",
+        steps: [{ failed: "Context window exceeded." }, { said: "Context window exceeded." }],
+        status: "error",
+        lastError: "Context window exceeded.",
+        turnState: "error",
+        records: [{ message: "Context window exceeded.", turnEnd: "failed" }],
+      },
+      {
+        name: "Codex: an error longer than a record keeps, then its failed turn",
+        driver: "codex",
+        steps: [
+          { said: `unexpected status 500: ${"x".repeat(300)}` },
+          { failed: `unexpected status 500: ${"x".repeat(300)}` },
+        ],
+        status: "error",
+        lastError: `unexpected status 500: ${"x".repeat(300)}`,
+        turnState: "error",
+        records: [{ message: `unexpected status 500: ${"x".repeat(154)}...` }],
+      },
+      {
+        name: "a failed turn with no words says so neutrally",
+        driver: "codex",
+        steps: [{ failed: undefined }],
+        status: "error",
+        lastError: "Turn failed",
+        turnState: "error",
+        records: [{ message: "The turn failed.", turnEnd: "failed" }],
+      },
+      {
+        name: "a failed turn with no words, its error recorded: nothing more",
+        driver: "codex",
+        steps: [{ said: "stream disconnected before completion" }, { failed: undefined }],
+        status: "error",
+        lastError: "stream disconnected before completion",
+        turnState: "error",
+        records: [{ message: "stream disconnected before completion" }],
+      },
+      // Usage limits, typed: one record, a pause.
+      ...(
+        [
+          ["codex", "Codex usage limit reached. Try again at 9:20 PM."],
+          [
+            "claudeAgent",
+            "Claude usage limit reached. Send the message again once the limit resets.",
+          ],
+          ["opencode", "Rate limit exceeded: 429"],
+        ] as const
+      ).map(([driver, words]) => ({
+        name: `${driver}: its usage limit`,
+        driver,
+        steps: [
+          { said: words, class: "usage_limit" as const },
+          { failed: words, reason: "usage_limit" as const },
+        ],
+        status: "error" as const,
+        lastError: words,
+        turnState: "error" as const,
+        records: [{ message: words, turnEnd: "usage-limit" }],
+      })),
+      {
+        name: "grok: its usage limit, its failed turn alone",
+        driver: "grok",
+        steps: [{ failed: "Grok usage limit reached. Try again later.", reason: "usage_limit" }],
+        status: "error",
+        lastError: "Grok usage limit reached. Try again later.",
+        turnState: "error",
+        records: [
+          { message: "Grok usage limit reached. Try again later.", turnEnd: "usage-limit" },
+        ],
+      },
+      // Not breaks.
+      {
+        name: "a graceful close mid-turn is a stop, not a crash",
+        driver: "codex",
+        steps: [{ exit: "graceful" }],
+        status: "stopped",
+        lastError: null,
+        turnState: "interrupted",
+        records: [],
+      },
+      {
+        name: "an exit with no turn running cut nothing off",
+        driver: "codex",
+        turnRunning: false,
+        steps: [{ exit: undefined }],
+        status: "stopped",
+        lastError: null,
+        turnState: null,
+        records: [],
+      },
+    ];
+    for (const testCase of cases) {
+      it(testCase.name, async () => {
+        const harness = await createHarness();
+        const threadId = asThreadId("thread-1");
+        const turnId = asTurnId("turn-crash");
+        const provider = ProviderDriverKind.make(testCase.driver);
+        if (testCase.turnRunning !== false) {
+          harness.emit({
+            type: "turn.started",
+            eventId: asEventId("evt-crash-turn-started"),
+            provider,
+            createdAt: "2026-01-01T00:00:01.000Z",
+            threadId,
+            turnId,
+          });
+          await waitForThread(
+            harness.readModel,
+            (thread) => thread.session?.activeTurnId === turnId,
+          );
+        }
+        for (const [index, step] of testCase.steps.entries()) {
+          const base = {
+            eventId: asEventId(`evt-crash-step-${index}`),
+            provider,
+            createdAt: `2026-01-01T00:00:0${index + 2}.000Z`,
+            threadId,
+          };
+          if ("said" in step) {
+            harness.emit({
+              ...base,
+              type: "runtime.error",
+              turnId,
+              payload: {
+                message: step.said,
+                ...(step.class === undefined ? {} : { class: step.class }),
+              },
+            });
+          } else if ("exit" in step) {
+            harness.emit({
+              ...base,
+              type: "session.exited",
+              payload: {
+                reason: "App server exited with code 134.",
+                ...(step.exit === undefined ? {} : { exitKind: step.exit }),
+              },
+            });
+          } else {
+            harness.emit({
+              ...base,
+              type: "turn.completed",
+              turnId,
+              payload: {
+                state: "failed",
+                ...(step.failed === undefined ? {} : { errorMessage: step.failed }),
+                ...(step.reason === undefined ? {} : { terminalReason: step.reason }),
+              },
+            });
+          }
+          await harness.drain();
+        }
+        const thread = (await harness.readModel()).threads.find((entry) => entry.id === threadId)!;
+        expect(thread.session?.status).toBe(testCase.status);
+        expect(thread.session?.activeTurnId).toBeNull();
+        expect(thread.session?.lastError ?? null).toBe(testCase.lastError);
+        expect(thread.latestTurn?.state ?? null).toBe(testCase.turnState);
+        const errors = thread.activities.filter(
+          (activity: ProviderRuntimeTestActivity) => activity.kind === "runtime.error",
+        );
+        expect(
+          errors.map((activity: ProviderRuntimeTestActivity) => {
+            const payload = activity.payload as {
+              readonly message?: unknown;
+              readonly turnEnd?: unknown;
+            };
+            return {
+              turnId: activity.turnId,
+              message: payload.message,
+              ...(payload.turnEnd === undefined ? {} : { turnEnd: payload.turnEnd }),
+            };
+          }),
+        ).toEqual(testCase.records.map((record) => ({ turnId, ...record })));
+        // A break written by more than one event keeps the one id they share.
+        for (const activity of errors) {
+          if ((activity.payload as { readonly turnEnd?: unknown }).turnEnd !== undefined) {
+            expect(activity.id).toBe(`broke-off:${threadId}:${turnId}`);
+          }
+        }
+
+        // The record lands before the session says the turn failed: it never
+        // reads finished in between.
+        const events = Array.from(
+          await Effect.runPromise(Stream.runCollect(harness.engine.readEvents(0))),
+        );
+        const recorded = events.findIndex(
+          (event) =>
+            event.type === "thread.activity-appended" &&
+            event.payload.activity.kind === "runtime.error",
+        );
+        const failed = events.findIndex(
+          (event) =>
+            event.type === "thread.session-set" && event.payload.session.status === "error",
+        );
+        if (testCase.records.length > 0) expect(recorded).toBeLessThan(failed);
+      });
+    }
+  });
+
   it("records runtime.error activities from the typed payload message", async () => {
     const harness = await createHarness();
     const now = "2026-01-01T00:00:00.000Z";

@@ -710,14 +710,13 @@ function pictureLabel(picture: OutcomePicture): string {
 export const STRIP_TILES = 6;
 
 /**
- * The files a run's result surely draws: those among its strip's first
- * tiles (a picture placed under a row only moves those after it forward).
- * An opened card leaves those to the result and draws the rest in their
- * steps — never a picture twice, never one only behind "+N".
+ * The files a result's strip draws: those among its first tiles, of the pictures that stand and
+ * are placed under no row (`placeResultPictures`). An opened card leaves those to the result and
+ * draws the rest in their steps — never a picture twice, never one only behind "+N".
  */
-export function stripShowsFiles(outcome: OutcomeModel): ReadonlySet<string> {
+export function stripShowsFiles(strip: ReadonlyArray<ResultPicture>): ReadonlySet<string> {
   return new Set(
-    resultPictures(outcome)
+    strip
       .slice(0, STRIP_TILES)
       .flatMap((picture) => (picture.kind === "file" ? [picture.path] : [])),
   );
@@ -733,6 +732,37 @@ export function resultPictures(outcome: OutcomeModel): ReadonlyArray<ResultPictu
     )
       ? []
       : [{ ...picture, label: pictureLabel(picture) }],
+  );
+}
+
+/**
+ * The pictures that stand as a run's result (run 11: a symbol the turn
+ * downloaded and looked at stood as its result, a muted "Gone" box): a file
+ * that can no longer be read is left out, with no room held for it; one
+ * still being read keeps its tile; a check's own pixels never go.
+ */
+export function standingPictures(
+  pictures: ReadonlyArray<ResultPicture>,
+  gone: ReadonlySet<string>,
+): ReadonlyArray<ResultPicture> {
+  return pictures.filter((picture) => picture.kind !== "file" || !gone.has(picture.path));
+}
+
+/**
+ * A result's pictures as it draws them: those that stand (`standingPictures`) — only what the
+ * checks took where there is no workspace to read a file from (`gone` null) — each service's
+ * under its row, the rest in the strip (`rowPictures`).
+ */
+export function placeResultPictures(
+  outcome: OutcomeModel,
+  rows: ReadonlyArray<ResultRow>,
+  gone: ReadonlySet<string> | null,
+): ReturnType<typeof rowPictures> {
+  const all = resultPictures(outcome);
+  return rowPictures(
+    outcome,
+    rows,
+    gone === null ? all.filter((picture) => picture.kind === "check") : standingPictures(all, gone),
   );
 }
 

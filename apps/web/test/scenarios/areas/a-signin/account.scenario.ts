@@ -1,0 +1,273 @@
+import { receivedHqReplies } from "../../fakes/a-signin/replies.ts";
+import { describe, it, expect } from "@effect/vitest";
+import { afterAll } from "vite-plus/test";
+import * as Effect from "effect/Effect";
+import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
+import { createScenario } from "../../harness/scenario.ts";
+import { installSignIn } from "./fake.ts";
+import {
+  account,
+  organizations,
+  renewHq,
+  sessionEnds,
+  signInOrganization,
+  unchangedHandovers,
+  allowHqRetries,
+} from "./dsl.ts";
+
+const accountScenario = Effect.fn("signin.scenario")(function* (sessionFault = false) {
+  const s = yield* createScenario(
+    [installSignIn],
+    sessionFault ? { hq: { streamRecheck: 1_000 } } : {},
+  );
+  return { ...s, receivedReplies: receivedHqReplies(s.page, s.drivers.routes, s.hq.origin) };
+});
+const disposalMessage = `Error: Cannot access Atom {
+  "_id": "Atom",
+  "keepAlive": true,
+  "lazy": true,
+  "label": undefined
+}: registry is disposed`;
+const logoutDiagnostics: { name: string; raw: string[]; maximum: number }[] = [];
+function accountForLogoutError(
+  s: Effect.Success<ReturnType<typeof accountScenario>>,
+  name: string,
+  maximum: number,
+) {
+  return Effect.sync(() => {
+    if (expectedTargets.get(name) !== true) return;
+    const raw: string[] = [];
+    for (let index = s.web.pageErrors.length - 1; index >= 0; index--) {
+      if (s.web.pageErrors[index] === disposalMessage)
+        raw.push(...s.web.pageErrors.splice(index, 1));
+    }
+    // The shared guard still sees every unmatched error; web.errors keeps the original log.
+    logoutDiagnostics.push({ name, raw, maximum });
+  });
+}
+const expectedTargets = new Map<string, boolean>();
+function startExpectedFailure(name: string) {
+  expectedTargets.set(name, false);
+  return () => expectedTargets.set(name, true);
+}
+// afterAll runs outside Vitest's inversion of an expected failure and its afterEach hooks.
+afterAll(() => {
+  for (const { name, raw, maximum } of logoutDiagnostics) {
+    expect(
+      raw.every((error) => error === disposalMessage),
+      `${name}: unexpected diagnostic`,
+    ).toBe(true);
+    expect(raw.length, `${name}: extra disposal errors`).toBeLessThanOrEqual(maximum);
+  }
+  for (const [name, reached] of expectedTargets)
+    expect(reached, `${name}: expected failure did not reach its visible assertion`).toBe(true);
+});
+
+describe("A: sign-in, session and organizations", () => {
+  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    // Catches a successful Zerops hand-over leaving the user at the door or without their menu.
+    it.effect("hand-over opens the account's menu", () =>
+      Effect.gen(function* () {
+        const s = yield* accountScenario();
+        yield* s.given.project("Ada", { mate: true, app: "Shop" });
+        yield* s.given.signedIn;
+        yield* account(s.page).showsPerson("owner");
+        yield* s.then.menu.row("Shop").appears();
+        yield* s.then.menu.row("Ada").appears();
+        yield* s.then.noExternalNetwork;
+      }),
+    );
+
+    // Catches a reload sending a signed-in user back through account authorization.
+    it.effect("reload keeps the account signed in", () =>
+      Effect.gen(function* () {
+        const s = yield* accountScenario();
+        yield* s.given.project("Ada", { mate: true, app: "Shop" });
+        yield* s.given.signedIn;
+        yield* s.then.menu.row("Shop").appears();
+        const retainedAuthorization = yield* unchangedHandovers(s);
+        yield* account(s.page).reload;
+        yield* account(s.page).showsPerson("owner");
+        yield* s.then.menu.row("Shop").appears();
+        yield* retainedAuthorization();
+        yield* s.then.noExternalNetwork;
+      }),
+    );
+
+    // Catches organization selection showing the previous organization's projects or losing the way back.
+    it.effect("switching organizations clears previous work and can return", () =>
+      Effect.gen(function* () {
+        const s = yield* accountScenario();
+        yield* organizations(s);
+        yield* signInOrganization(s);
+        yield* s.then.menu.row("Shop").appears();
+        yield* account(s.page).selectOrganization("Second");
+        yield* account(s.page).needsAdministrator;
+        yield* account(s.page).lacksRows(["Shop", "Ada"]);
+        yield* account(s.page).selectOrganization("KRLS");
+        yield* s.then.menu.row("Shop").appears();
+        yield* s.then.noExternalNetwork;
+      }),
+    );
+
+    // Catches reload silently selecting a different organization and exposing the wrong workspace.
+    it.effect("reload restores the selected organization", () =>
+      Effect.gen(function* () {
+        const s = yield* accountScenario();
+        yield* organizations(s);
+        yield* signInOrganization(s);
+        yield* account(s.page).selectOrganization("Second");
+        yield* account(s.page).needsAdministrator;
+        const retainedAuthorization = yield* unchangedHandovers(s);
+        yield* account(s.page).reload;
+        yield* account(s.page).showsOrganization("Second");
+        yield* account(s.page).needsAdministrator;
+        yield* account(s.page).lacksRows(["Shop", "Ada"]);
+        yield* retainedAuthorization();
+        yield* s.then.noExternalNetwork;
+      }),
+    );
+
+    // Catches opening another tab needlessly requiring a fresh account hand-over.
+    it.effect("another tab restores the same signed-in account", () =>
+      Effect.gen(function* () {
+        const s = yield* accountScenario();
+        yield* s.given.project("Ada", { mate: true, app: "Shop" });
+        yield* s.given.signedIn;
+        yield* s.then.menu.row("Shop").appears();
+        const retainedAuthorization = yield* unchangedHandovers(s);
+        const b = yield* s.given.browserActor({ context: s.page.browserContext() });
+        yield* Effect.promise(async () => {
+          await b.page.goto(s.web.origin);
+        });
+        yield* account(b.page).showsPerson("owner");
+        yield* b.then.menu.row("Shop").appears();
+        yield* account(s.page).showsPerson("owner");
+        yield* retainedAuthorization();
+        yield* s.then.noReload;
+        yield* s.then.noExternalNetwork;
+      }),
+    );
+
+    // Catches an expired HQ session trapping an otherwise signed-in user even after Try again.
+    it.effect("Try again renews an expired HQ session without account sign-in", () =>
+      Effect.gen(function* () {
+        const s = yield* accountScenario(true);
+        yield* s.given.project("Ada", { mate: true, app: "Shop" });
+        yield* s.given.signedIn;
+        yield* s.then.menu.row("Shop").appears();
+        const retainedAuthorization = yield* unchangedHandovers(s);
+        yield* sessionEnds(s, "expiry");
+        yield* s.when.hq.colleague.renamesProject("Shop", "Renewed");
+        yield* renewHq(s, "Renewed");
+        yield* s.then.menu.row("Renewed").appears();
+        yield* account(s.page).showsPerson("owner");
+        yield* retainedAuthorization();
+        yield* s.then.noReload;
+        yield* s.then.noExternalNetwork;
+      }),
+    );
+
+    // Targets transient HQ session-database failure permanently stopping live updates after recovery.
+    it.effect.fails("HQ session-check outage recovers without user intervention", () =>
+      Effect.gen(function* () {
+        const reachedVisible = startExpectedFailure(
+          "HQ session-check outage recovers without user intervention",
+        );
+        const s = yield* accountScenario(true);
+        yield* s.given.project("Ada", { mate: true, app: "Shop" });
+        yield* Effect.promise(() => s.clock.install());
+        yield* s.given.signedIn;
+        yield* s.then.menu.row("Shop").appears();
+        yield* sessionEnds(s, "outage");
+        yield* s.when.hq.colleague.renamesProject("Shop", "HQ returned");
+        yield* allowHqRetries(s, "HQ returned", s.receivedReplies);
+        reachedVisible();
+        yield* s.then.menu
+          .row("HQ returned")
+          .appears({ within: 10_000 })
+          .pipe(Effect.ensuring(Effect.all([s.then.noReload, s.then.noExternalNetwork])));
+      }),
+    );
+    // Catches sign-out raising "registry is disposed" after clearing the account UI.
+    it.effect.fails("sign-out clears the account without registry disposal", () =>
+      Effect.gen(function* () {
+        const name = "sign-out clears the account without registry disposal";
+        const reachedVisible = startExpectedFailure(name);
+        const s = yield* accountScenario();
+        yield* Effect.promise(() => s.clock.install());
+        yield* s.given.project("Ada", { mate: true, app: "Shop" });
+        yield* s.given.signedIn;
+        yield* s.then.menu.row("Shop").appears();
+        yield* s.then.noExternalNetwork;
+        yield* Effect.gen(function* () {
+          yield* account(s.page).signOut;
+          yield* account(s.page).signedOut;
+          yield* account(s.page).reload;
+          yield* account(s.page).signedOut;
+          reachedVisible();
+          // Copy diagnostics so the failure report survives exact-error accounting in finally.
+          yield* Effect.sync(() =>
+            expect([...s.web.pageErrors], "Sign-out must not raise registry is disposed").toEqual(
+              [],
+            ),
+          );
+          yield* s.then.noExternalNetwork;
+        }).pipe(Effect.ensuring(accountForLogoutError(s, name, 1)));
+      }),
+    );
+
+    // Catches tab B signing out tab A; its separate known disposal errors are audited explicitly.
+    it.effect.fails("sign-out in tab B leaves tab A's session usable", () =>
+      Effect.gen(function* () {
+        const name = "sign-out in tab B leaves tab A's session usable";
+        const reachedVisible = startExpectedFailure(name);
+        const s = yield* accountScenario();
+        yield* Effect.promise(() => s.clock.install());
+        yield* s.given.project("Ada", { mate: true, app: "Shop" });
+        yield* s.given.signedIn;
+        yield* s.then.menu.row("Shop").appears();
+        const b = yield* s.given.browserActor({ context: s.page.browserContext() });
+        yield* Effect.promise(() => b.clock.install());
+        yield* Effect.promise(async () => {
+          await b.page.goto(s.web.origin);
+        });
+        yield* account(b.page).showsPerson("owner");
+        yield* b.then.menu.row("Shop").appears();
+        yield* s.then.noExternalNetwork;
+        yield* Effect.gen(function* () {
+          yield* account(b.page).signOut;
+          yield* account(b.page).signedOut;
+          reachedVisible();
+          yield* account(s.page).showsPerson("owner", "Tab A signed out when tab B signed out");
+          yield* s.then.menu.row("Shop").appears();
+        }).pipe(
+          Effect.ensuring(
+            accountForLogoutError(s, name, 2).pipe(Effect.andThen(s.then.noExternalNetwork)),
+          ),
+        );
+      }),
+    );
+
+    // Catches an expired HQ session permanently stopping live work until the user retries.
+    it.effect.fails("HQ session expires and renews itself", () =>
+      Effect.gen(function* () {
+        const reachedVisible = startExpectedFailure("HQ session expires and renews itself");
+        const s = yield* accountScenario(true);
+        yield* Effect.promise(() => s.clock.install());
+        yield* s.given.project("Ada", { mate: true, app: "Shop" });
+        yield* s.given.signedIn;
+        yield* s.then.menu.row("Shop").appears();
+        const retainedAuthorization = yield* unchangedHandovers(s);
+        yield* sessionEnds(s, "expiry");
+        yield* s.when.hq.colleague.renamesProject("Shop", "Automatically renewed");
+        yield* allowHqRetries(s, "Automatically renewed", s.receivedReplies);
+        reachedVisible();
+        yield* s.then.menu.row("Automatically renewed").appears({ within: 10_000 });
+        yield* retainedAuthorization();
+        yield* s.then.noReload;
+        yield* s.then.noExternalNetwork;
+      }),
+    );
+  });
+});

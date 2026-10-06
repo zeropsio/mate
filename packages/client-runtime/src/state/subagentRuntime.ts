@@ -307,6 +307,17 @@ function helperOfLaunch(
   return undefined;
 }
 
+/** The name a helper's launch gave it (Claude's Agent `name`), where the call launched one. */
+function launchNameOf(payload: Record<string, unknown>): string | undefined {
+  if (payload.itemType !== "collab_agent_tool_call") return undefined;
+  const data = payload.data;
+  if (typeof data !== "object" || data === null) return undefined;
+  const input = (data as Record<string, unknown>).input;
+  if (typeof input !== "object" || input === null) return undefined;
+  const name = asString((input as Record<string, unknown>).name)?.trim();
+  return name === undefined || name.length === 0 ? undefined : name;
+}
+
 /** Completion can create an agent (its start may have aged out of retention). */
 function getOrCreate(
   agents: Map<string, MutableAgent>,
@@ -515,6 +526,8 @@ export function foldSubagentActivities(
   options?: { readonly sessionLive?: boolean },
 ): ReadonlyArray<RuntimeSubagent> {
   const agents = new Map<string, MutableAgent>();
+  // The names the Mate gave its helpers at their launch, by the launch's call id.
+  const launchNames = new Map<string, string>();
 
   for (const activity of activities) {
     if (typeof activity.payload !== "object" || activity.payload === null) {
@@ -669,6 +682,11 @@ export function foldSubagentActivities(
       case "tool.started":
       case "tool.updated":
       case "tool.completed": {
+        const launchName = launchNameOf(payload);
+        const launchId = asString(payload.toolCallId);
+        if (launchName !== undefined && launchId !== undefined) {
+          launchNames.set(launchId, launchName);
+        }
         // A helper's own call, tagged with its task — or its launch, while the
         // server did not know its task yet: the open one is what it does now.
         const tag = asString(payload.agentId);
@@ -704,6 +722,13 @@ export function foldSubagentActivities(
       default:
         break;
     }
+  }
+
+  // A helper is called what the Mate called it at its launch (F6); its task's
+  // words stand where the launch gave it no name.
+  for (const agent of agents.values()) {
+    const name = agent.toolUseId === null ? undefined : launchNames.get(agent.toolUseId);
+    if (name !== undefined) agent.title = name;
   }
 
   // Consistency pass: when a workflow coordinator has settled, members that

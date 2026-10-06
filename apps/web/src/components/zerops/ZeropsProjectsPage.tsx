@@ -112,7 +112,6 @@ import type { ZeropsRowPresentation } from "./ZeropsProjectRow.logic";
 
 import {
   changeKindTag,
-  changeAsksForReview,
   changeState,
   firstReleaseHandoff,
   assignCandidateMateTints,
@@ -1778,15 +1777,20 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   const pullRequestRowOf = (
     group: ZeropsGroup,
     pull: FlowPullRequest,
-    { withMerge, compact }: { readonly withMerge: boolean; readonly compact: boolean },
+    {
+      withMerge,
+      review,
+      compact,
+    }: { readonly withMerge: boolean; readonly review: boolean; readonly compact: boolean },
   ) => {
     // One vocabulary down the column, the same one the project's own page and
     // the left menu use (`changeState`): a change that no longer merges is the
     // one a person needs to see.
     const state = changeState(pull);
-    // A draft stays listed and opens from its title; it asks for no review.
+    // A draft, or a change the Mate's working run still writes, stays listed and opens from its
+    // title; it asks for no review (`changeShowsReview`).
     const action =
-      withMerge && changeAsksForReview(pull) ? (
+      withMerge && review ? (
         <ZeropsMateVerb
           label={changeRowVerb(projectFlow.pending, group.groupId, pull)}
           onClick={(event) => {

@@ -9,6 +9,7 @@
  */
 import * as NodeHttp from "node:http";
 
+import * as NodeHttpClient from "@effect/platform-node/NodeHttpClient";
 import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
 import { assert } from "@effect/vitest";
 import * as Clock from "effect/Clock";
@@ -27,6 +28,7 @@ import * as HttpServer from "effect/unstable/http/HttpServer";
 import { Backup, directoryStore } from "../../src/backup.ts";
 import { Changes } from "../../src/changes.ts";
 import { coreApp } from "../../src/core.ts";
+import { coreWithDeployTimings } from "./coreWithDeployTimings.ts";
 import { GitHost } from "../../src/gitHost.ts";
 import { MateOverviews } from "../../src/mateOverviews.ts";
 import { treeMigrations } from "../../src/migrationFiles.ts";
@@ -37,6 +39,11 @@ import {
   type ZeropsMember,
   type ZeropsOwnToken,
 } from "../../src/zerops/api.ts";
+import {
+  makeZeropsApiHttp,
+  makeZeropsDeployHttp,
+  makeZeropsObservationHttp,
+} from "../../src/zerops/http.ts";
 import { TEST_KEY_SECRET } from "./deployKeys.ts";
 import { tempDir } from "./tempDir.ts";
 import { TempPostgres } from "./tempPostgres.ts";
@@ -80,7 +87,7 @@ const tokenRecord = (patch: Partial<ZeropsOwnToken>): Omit<ZeropsOwnToken, "read
 });
 
 /** The rig in miniature: HQ's token and anchor, an owner, a Developer, the HQ project and a Mate's. */
-const world = (now: number, anchored: boolean, orgId: string): FakeWorld => {
+export const seedCoreWorld = (now: number, anchored: boolean, orgId: string): FakeWorld => {
   const fake = emptyWorld();
   fake.tokens.set(
     "hq",
@@ -150,12 +157,20 @@ export type SocketMessage = { readonly type: string; readonly [field: string]: u
 export const startCore = (
   anchored: boolean,
   given: {
+    /** Scenario suites can share an HTTP fake; existing Core tests keep their in-memory backend. */
+    readonly zeropsHttp?: { readonly baseUrl: string; readonly world: FakeWorld };
     readonly url?: string;
     readonly orgId?: string;
     readonly gitRoot?: string;
     /** How long the org's view is kept, and how often the structure reconciles; 200 ms each. */
     readonly viewTtl?: Duration.Duration;
     readonly reconcileEvery?: Duration.Duration;
+    /** Socket pings and role rechecks; fast defaults retained for existing Core tests. */
+    readonly pingEvery?: Duration.Duration;
+    readonly streamRecheck?: Duration.Duration;
+    /** Real Deploys following limit and young-build cadence; production defaults when absent. */
+    readonly followFor?: Duration.Duration;
+    readonly pollEvery?: Duration.Duration;
     /** The directory backup sets are kept in; a fresh one by default. */
     readonly storeDir?: string;
     /** Backup with no store: sets are only staged. */
@@ -182,7 +197,9 @@ export const startCore = (
     const gitRoot = given.gitRoot ?? (yield* tempDir("hq-git-"));
     const storeDir = given.storeDir ?? (yield* tempDir("hq-backup-"));
     const stagingDir = given.stagingDir ?? (yield* tempDir("hq-backup-"));
-    const fake = world(yield* Clock.currentTimeMillis, anchored, given.orgId ?? "ORG");
+    const fake =
+      given.zeropsHttp?.world ??
+      seedCoreWorld(yield* Clock.currentTimeMillis, anchored, given.orgId ?? "ORG");
     const options = {
       databaseUrl: Redacted.make(url),
       gitRoot,
@@ -208,16 +225,32 @@ export const startCore = (
       retryAfter: Duration.millis(100),
       viewTtl: given.viewTtl ?? Duration.millis(200),
       reconcileEvery: given.reconcileEvery ?? Duration.millis(200),
-      streamRecheck: Duration.millis(200),
-      pingEvery: Duration.millis(300),
+      streamRecheck: given.streamRecheck ?? Duration.millis(200),
+      pingEvery: given.pingEvery ?? Duration.millis(300),
       ...(given.officialRecheck === undefined ? {} : { officialRecheck: given.officialRecheck }),
     };
     const scope = yield* Scope.make();
+    const platform =
+      given.zeropsHttp === undefined
+        ? Layer.mergeAll(
+            Layer.succeed(ZeropsApi, fakeZeropsApi(fake)),
+            Layer.succeed(ZeropsDeploy, fakeZeropsDeploy(fake)),
+            Layer.succeed(ZeropsObservation, fakeZeropsObservation(fake)),
+          )
+        : Layer.mergeAll(
+            Layer.effect(ZeropsApi, makeZeropsApiHttp(given.zeropsHttp.baseUrl)),
+            Layer.effect(ZeropsDeploy, makeZeropsDeployHttp(given.zeropsHttp.baseUrl)),
+            Layer.effect(ZeropsObservation, makeZeropsObservationHttp(given.zeropsHttp.baseUrl)),
+          ).pipe(Layer.provide(NodeHttpClient.layerNodeHttp));
     const context = yield* Layer.buildWithScope(
-      coreApp(options).pipe(
-        Layer.provide(Layer.succeed(ZeropsApi, fakeZeropsApi(fake))),
-        Layer.provide(Layer.succeed(ZeropsDeploy, fakeZeropsDeploy(fake))),
-        Layer.provide(Layer.succeed(ZeropsObservation, fakeZeropsObservation(fake))),
+      (given.followFor === undefined && given.pollEvery === undefined
+        ? coreApp(options)
+        : coreWithDeployTimings(options, {
+            ...(given.followFor === undefined ? {} : { followFor: given.followFor }),
+            ...(given.pollEvery === undefined ? {} : { pollEvery: given.pollEvery }),
+          })
+      ).pipe(
+        Layer.provide(platform),
         Layer.provideMerge(NodeHttpServer.layer(() => NodeHttp.createServer(), { port: 0 })),
       ),
       scope,
@@ -254,7 +287,11 @@ export const startCore = (
           },
           ...(options.body === undefined
             ? {}
-            : { body: raw ? (options.body as Uint8Array) : encodeJson(options.body) }),
+            : {
+                body: raw
+                  ? new Uint8Array(options.body as Uint8Array).buffer
+                  : encodeJson(options.body),
+              }),
         });
         const bytes = new Uint8Array(await response.arrayBuffer());
         const text = new TextDecoder().decode(bytes);

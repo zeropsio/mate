@@ -48,7 +48,13 @@ import {
   ProviderAdapterSessionClosedError,
   ProviderAdapterSessionNotFoundError,
   ProviderAdapterValidationError,
+  ProviderAdapterTurnEndedError,
 } from "../Errors.ts";
+import {
+  agentStoppedUnexpectedly,
+  ATTACHED_FILE_UNREADABLE,
+  ATTACHED_PICTURE_UNREADABLE,
+} from "@t3tools/shared/threadStatus";
 import { buildRuntimeInstructions } from "../RuntimeInstructions.ts";
 import { profiledRuntimeMode } from "../../spi/threadToolPolicy.ts";
 import {
@@ -68,6 +74,7 @@ import {
   loadOpenCodeCommands,
   parseOpenCodeModelSlug,
   runOpenCodeSdk,
+  openCodeFileAttachments,
   toOpenCodeFileParts,
   toOpenCodePermissionReply,
   toOpenCodeQuestionAnswers,
@@ -679,6 +686,15 @@ function sessionErrorMessage(error: unknown): string {
     : "OpenCode session failed.";
 }
 
+/** OpenCode's provider refused the request at its rate or usage limit (HTTP 429). */
+export function sessionErrorIsUsageLimit(error: unknown): boolean {
+  if (!error || typeof error !== "object" || !("name" in error) || error.name !== "APIError") {
+    return false;
+  }
+  const data = "data" in error && error.data && typeof error.data === "object" ? error.data : null;
+  return data !== null && "statusCode" in data && data.statusCode === 429;
+}
+
 function updateProviderSession(
   context: OpenCodeSessionContext,
   patch: Partial<ProviderSession>,
@@ -1275,18 +1291,7 @@ export function makeOpenCodeAdapter(
         { status: "error", lastError: detail },
         { clearActiveTurnId: true },
       );
-      yield* emit({
-        ...(yield* buildEventBase({
-          threadId: context.session.threadId,
-          turnId: promptAdmission.turnId,
-          raw: promptAdmission.recoveryRaw,
-        })),
-        type: "turn.completed",
-        payload: {
-          state: "failed",
-          errorMessage: detail,
-        },
-      });
+      // The error before the turn it fails: one record of the break.
       yield* emit({
         ...(yield* buildEventBase({
           threadId: context.session.threadId,
@@ -1297,6 +1302,18 @@ export function makeOpenCodeAdapter(
         payload: {
           message: detail,
           class: "transport_error",
+        },
+      });
+      yield* emit({
+        ...(yield* buildEventBase({
+          threadId: context.session.threadId,
+          turnId: promptAdmission.turnId,
+          raw: promptAdmission.recoveryRaw,
+        })),
+        type: "turn.completed",
+        payload: {
+          state: "failed",
+          errorMessage: detail,
         },
       });
     });
@@ -1546,7 +1563,7 @@ export function makeOpenCodeAdapter(
         type: "runtime.error",
         payload: {
           message,
-          class: "transport_error",
+          class: "process_exit",
         },
       }).pipe(Effect.ignore);
       yield* emit({
@@ -2581,6 +2598,7 @@ export function makeOpenCodeAdapter(
 
         case "session.error": {
           const message = sessionErrorMessage(event.properties.error);
+          const usageLimited = sessionErrorIsUsageLimit(event.properties.error);
           const activeTurnId = context.activeTurnId;
           const cancellation = context.cancellation;
           if (isOpenCodeAbortError(event.properties.error)) {
@@ -2620,6 +2638,20 @@ export function makeOpenCodeAdapter(
             },
             { clearActiveTurnId: true },
           );
+          // The error, on its turn, before the turn it fails: one record.
+          yield* emit({
+            ...(yield* buildEventBase({
+              threadId: context.session.threadId,
+              ...(activeTurnId ? { turnId: activeTurnId } : {}),
+              raw: event,
+            })),
+            type: "runtime.error",
+            payload: {
+              message,
+              class: usageLimited ? "usage_limit" : "provider_error",
+              detail: event.properties.error,
+            },
+          });
           if (activeTurnId) {
             yield* emit({
               ...(yield* buildEventBase({
@@ -2631,21 +2663,10 @@ export function makeOpenCodeAdapter(
               payload: {
                 state: "failed",
                 errorMessage: message,
+                ...(usageLimited ? { terminalReason: "usage_limit" } : {}),
               },
             });
           }
-          yield* emit({
-            ...(yield* buildEventBase({
-              threadId: context.session.threadId,
-              raw: event,
-            })),
-            type: "runtime.error",
-            payload: {
-              message,
-              class: "provider_error",
-              detail: event.properties.error,
-            },
-          });
           if (terminalCancellation) {
             yield* Deferred.succeed(terminalCancellation.acknowledgment, undefined).pipe(
               Effect.ignore,
@@ -2728,14 +2749,16 @@ export function makeOpenCodeAdapter(
             if (eventsAbortController.signal.aborted || (yield* Ref.get(context.stopped))) {
               return;
             }
-            yield* emitUnexpectedExit(
-              context,
-              Exit.isFailure(exit)
+            // The stream's end and the server's exit race to say it: either
+            // way the person reads the same words; what ended it is the log's.
+            yield* Effect.logWarning("opencode.event-stream.ended", {
+              detail: Exit.isFailure(exit)
                 ? openCodeRuntimeErrorDetail(Cause.squash(exit.cause))
                 : lastStreamError !== undefined
-                  ? `OpenCode event stream disconnected: ${openCodeRuntimeErrorDetail(lastStreamError)}`
-                  : "OpenCode event stream ended unexpectedly. Send another message to reconnect.",
-            );
+                  ? openCodeRuntimeErrorDetail(lastStreamError)
+                  : "ended",
+            });
+            yield* emitUnexpectedExit(context, agentStoppedUnexpectedly(PROVIDER));
           }),
         ),
         Effect.forkIn(context.sessionScope),
@@ -2748,7 +2771,8 @@ export function makeOpenCodeAdapter(
               if (yield* Ref.get(context.stopped)) {
                 return;
               }
-              yield* emitUnexpectedExit(context, `OpenCode server exited unexpectedly (${code}).`);
+              yield* Effect.logWarning("opencode.server.exited", { code });
+              yield* emitUnexpectedExit(context, agentStoppedUnexpectedly(PROVIDER));
             }),
           ),
           Effect.forkIn(context.sessionScope),
@@ -3093,6 +3117,36 @@ export function makeOpenCodeAdapter(
             Effect.orElseSucceed(() => []),
           )).find((command) => command.name === commandMatch[1])
         : undefined;
+      // Every attachment it takes as a file must be there before the turn
+      // opens: OpenCode skips an unknown one and fails a missing one with its
+      // path, mid-turn. Said plainly, before any turn.
+      yield* Effect.forEach(
+        openCodeFileAttachments(
+          withoutPictureOriginals(input.input ?? "", input.attachments ?? []),
+        ),
+        (attachment) =>
+          Effect.gen(function* () {
+            const attachmentPath = resolveAttachmentPath({
+              attachmentsDir: serverConfig.attachmentsDir,
+              attachment,
+            });
+            const readable =
+              attachmentPath !== null &&
+              (yield* fileSystem.exists(attachmentPath).pipe(Effect.orElseSucceed(() => false)));
+            if (!readable) {
+              return yield* new ProviderAdapterRequestError({
+                provider: PROVIDER,
+                method: "session.promptAsync",
+                detail:
+                  attachment.type === "image"
+                    ? ATTACHED_PICTURE_UNREADABLE
+                    : ATTACHED_FILE_UNREADABLE,
+                cause: attachmentPath ?? `Invalid attachment id '${attachment.id}'.`,
+              });
+            }
+          }),
+        { discard: true },
+      );
       // OpenCode ingests images, text, and PDFs natively; formats its model
       // paths reject ride only as the prompt's file path line.
       const fileParts = toOpenCodeFileParts({
@@ -3210,6 +3264,9 @@ export function makeOpenCodeAdapter(
           }
 
           let promptTimedOut = false;
+          // A failed submission ends the turn it opened, failed — now, or by its
+          // recovery: the send's failure is that turn's.
+          let submissionEndsTurn = false;
           const submissionMethod = nativeCommand ? "session.command" : "session.promptAsync";
           // Native commands expand provider-owned templates. Their API does not
           // accept the per-turn system addendum supported by ordinary prompts.
@@ -3337,9 +3394,10 @@ export function makeOpenCodeAdapter(
                       );
                       yield* emit({
                         ...(yield* buildEventBase({ threadId: input.threadId, turnId })),
-                        type: "turn.aborted",
-                        payload: { reason: requestError.detail },
+                        type: "turn.completed",
+                        payload: { state: "failed", errorMessage: requestError.detail },
                       });
+                      submissionEndsTurn = true;
                       return;
                     }
                     const cleanupExit = yield* Effect.exit(
@@ -3364,6 +3422,7 @@ export function makeOpenCodeAdapter(
                         requestError,
                         cleanupError: Cause.squash(cleanupExit.cause),
                       });
+                      submissionEndsTurn = true;
                       return;
                     }
                     context.promptAdmission = undefined;
@@ -3386,11 +3445,10 @@ export function makeOpenCodeAdapter(
                         threadId: input.threadId,
                         turnId,
                       })),
-                      type: "turn.aborted",
-                      payload: {
-                        reason: requestError.detail,
-                      },
+                      type: "turn.completed",
+                      payload: { state: "failed", errorMessage: requestError.detail },
                     });
+                    submissionEndsTurn = true;
                   });
             }),
             Effect.onExit((exit) =>
@@ -3429,6 +3487,22 @@ export function makeOpenCodeAdapter(
             (yield* Ref.get(context.stopped)) ||
             sessions.get(input.threadId) !== context;
           if (Exit.isFailure(promptExit) && !intentionallyCancelled) {
+            if (submissionEndsTurn && steeringTurnId === undefined) {
+              const failure = Cause.squash(promptExit.cause);
+              return yield* new ProviderAdapterTurnEndedError({
+                provider: PROVIDER,
+                threadId: input.threadId,
+                turnId,
+                detail:
+                  typeof failure === "object" &&
+                  failure !== null &&
+                  "detail" in failure &&
+                  typeof failure.detail === "string"
+                    ? failure.detail
+                    : openCodeRuntimeErrorDetail(failure),
+                cause: failure,
+              });
+            }
             return yield* Effect.failCause(promptExit.cause);
           }
           const cancelled =

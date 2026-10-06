@@ -112,6 +112,29 @@ describe("opens — a control is drawn only when it opens onto something not on 
       opens: false,
     },
     {
+      name: "a write whose call sent what it wrote opens onto it",
+      opener: {
+        control: "step",
+        step: step({ itemType: "file_change", changedFiles: ["notes.md"], wroteFile: true }),
+        codeCut: false,
+      },
+      opens: true,
+    },
+    {
+      name: "a write that failed wrote nothing to open onto",
+      opener: {
+        control: "step",
+        step: step({
+          itemType: "file_change",
+          changedFiles: ["notes.md"],
+          wroteFile: true,
+          toolLifecycleStatus: "failed",
+        }),
+        codeCut: false,
+      },
+      opens: false,
+    },
+    {
       name: "an edit of several files opens onto them",
       opener: { control: "step", step: twoFileEdit, codeCut: false },
       opens: true,
@@ -150,22 +173,6 @@ describe("opens — a control is drawn only when it opens onto something not on 
     {
       name: "Show work on a run that did something",
       opener: { control: "work", lines: 3 },
-      opens: true,
-    },
-    // 9. A picture of the result.
-    {
-      name: "a picture whose file is gone",
-      opener: { control: "picture", gone: true, more: 0 },
-      opens: false,
-    },
-    {
-      name: "a gone picture standing for more opens onto those",
-      opener: { control: "picture", gone: true, more: 2 },
-      opens: true,
-    },
-    {
-      name: "a picture opens onto itself, larger",
-      opener: { control: "picture", gone: false, more: 0 },
       opens: true,
     },
     // A thought.

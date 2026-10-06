@@ -48,6 +48,8 @@ const emitLateUpdateAfterCancel = process.env.T3_ACP_EMIT_LATE_UPDATE_AFTER_CANC
 const omitXAiPromptCompleteStopReason =
   process.env.T3_ACP_OMIT_XAI_PROMPT_COMPLETE_STOP_REASON === "1";
 const failLoadSession = process.env.T3_ACP_FAIL_LOAD_SESSION === "1";
+/** Its first prompt, across processes, kills it outright: an agent crashing mid-turn. */
+const crashOncePath = process.env.T3_ACP_CRASH_ONCE_PATH;
 const emitLoadReplay = process.env.T3_ACP_EMIT_LOAD_REPLAY === "1";
 const hangLoadSessionAfterReplay = process.env.T3_ACP_HANG_LOAD_SESSION_AFTER_REPLAY === "1";
 const delayLoadSessionAfterReplay = process.env.T3_ACP_DELAY_LOAD_SESSION_AFTER_REPLAY === "1";
@@ -57,6 +59,8 @@ const emitStaleXAiPromptCompleteBeforeSecondHang =
 const emitOverlappingXAiPromptCompleteOutOfOrder =
   process.env.T3_ACP_EMIT_OVERLAPPING_XAI_PROMPT_COMPLETE_OUT_OF_ORDER === "1";
 const failPrompt = process.env.T3_ACP_FAIL_PROMPT === "1";
+/** Its second prompt — a steer into the running turn — fails. */
+const failSecondPrompt = process.env.T3_ACP_FAIL_SECOND_PROMPT === "1";
 const failSetConfigOption = process.env.T3_ACP_FAIL_SET_CONFIG_OPTION === "1";
 const exitOnSetConfigOption = process.env.T3_ACP_EXIT_ON_SET_CONFIG_OPTION === "1";
 const promptResponseText = process.env.T3_ACP_PROMPT_RESPONSE_TEXT;
@@ -626,6 +630,11 @@ const program = Effect.gen(function* () {
       const requestedSessionId = String(request.sessionId ?? sessionId);
       promptCount += 1;
 
+      if (crashOncePath !== undefined && !NodeFS.existsSync(crashOncePath)) {
+        NodeFS.writeFileSync(crashOncePath, "crashed\n", "utf8");
+        process.exit(134);
+      }
+
       if (completeFirstPromptOnCancel && promptCount === 1) {
         yield* agent.client.sessionUpdate({
           sessionId: requestedSessionId,
@@ -662,7 +671,7 @@ const program = Effect.gen(function* () {
         yield* Effect.sleep(`${promptDelayMs} millis`);
       }
 
-      if (failPrompt) {
+      if (failPrompt || (failSecondPrompt && promptCount === 2)) {
         return yield* AcpError.AcpRequestError.internalError("Mock prompt failure");
       }
 

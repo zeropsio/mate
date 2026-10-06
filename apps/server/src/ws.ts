@@ -1,4 +1,5 @@
 import { ZeropsSetup } from "./zerops/ZeropsSetup.ts";
+import { ThreadFileWrites } from "./zerops/ThreadFileWrites.ts";
 import {
   sameUsageLimitCommandCoverage,
   withUsageLimitsCommands,
@@ -50,6 +51,7 @@ import {
   type ProjectFileOperation,
   ProjectListEntriesError,
   ProjectReadFileError,
+  ThreadFileWritesError,
   ProjectSearchContentsError,
   ProjectSearchEntriesError,
   ProjectWriteFileError,
@@ -666,6 +668,14 @@ const makeWsRpcLayer = (
       const zeropsMateUpdate = yield* ZeropsMateUpdate;
       const zeropsDataConsole = yield* ZeropsDataConsoleModule.ZeropsDataConsole;
       const zeropsGitRemoteProbe = yield* ZeropsGitRemoteProbeModule.ZeropsGitRemoteProbe;
+      // What a thread's agent wrote, read back; absent where no store backs it.
+      const threadFileWrites = Option.getOrUndefined(yield* Effect.serviceOption(ThreadFileWrites));
+      const withThreadFileWrites = <A>(
+        run: (service: ThreadFileWrites["Service"]) => Effect.Effect<A, ThreadFileWritesError>,
+      ) =>
+        threadFileWrites === undefined
+          ? Effect.fail(new ThreadFileWritesError({ reason: "unavailable" }))
+          : run(threadFileWrites);
       const crew = yield* CrewEngine;
       const usage = yield* UsageService.UsageService;
       const relayClient = yield* RelayClient.RelayClient;
@@ -2483,6 +2493,18 @@ const makeWsRpcLayer = (
               ),
             ),
             { "rpc.aggregate": "workspace" },
+          ),
+        [WS_METHODS.threadsFileWrites]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.threadsFileWrites,
+            withThreadFileWrites((service) => service.fileWrites(input)),
+            { "rpc.aggregate": "orchestration" },
+          ),
+        [WS_METHODS.threadsWrittenFile]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.threadsWrittenFile,
+            withThreadFileWrites((service) => service.writtenFile(input)),
+            { "rpc.aggregate": "orchestration" },
           ),
         [WS_METHODS.projectsWriteFile]: (input) =>
           observeRpcEffect(

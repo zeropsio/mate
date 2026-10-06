@@ -51,22 +51,28 @@ export const PERSON_INPUT_MS = 500;
 
 /**
  * Whether a move of a run's scroll is the person's: always, unless its own
- * motion runs (its room easing, its glide) with no input of theirs near — then
- * it is that motion's, the browser clamping it — but for a move onto the foot
- * they had left: a phone's flick coasting there sends no touch, and it is
- * their way back.
+ * motion runs (its room easing, its glide) or its box or lines changed size
+ * since it was last read, with no input of theirs near — then it is that
+ * motion's or that change's, the browser clamping it — but for a move onto the
+ * foot they had left: a phone's flick coasting there sends no touch, and it is
+ * their way back. (Run 12: a row going in grew the box 4 px and set the top
+ * 14 px up, 43 s after any input; read as the person's, the run stopped
+ * following its foot for 39 minutes.)
  */
 export function movesAsPerson({
   moving,
+  resized = false,
   msSinceInput,
   atFoot,
   follows,
 }: {
   readonly moving: boolean;
+  /** Its box or what it holds changed size since it was last read. */
+  readonly resized?: boolean;
   readonly msSinceInput: number;
   readonly atFoot: boolean;
   readonly follows: boolean;
 }): boolean {
-  if (!moving || msSinceInput <= PERSON_INPUT_MS) return true;
+  if ((!moving && !resized) || msSinceInput <= PERSON_INPUT_MS) return true;
   return atFoot && !follows;
 }

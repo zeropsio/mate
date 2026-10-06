@@ -8,6 +8,7 @@
  * One function, a case per control, so one table-driven test holds the card.
  */
 import type { WorkLogEntry } from "../../session-logic";
+import { stepWriteCalls } from "./fileWrites.logic";
 import { webTarget, type WorkStep } from "./workSteps.logic";
 
 /** The runtime's `Name: {json}` detail of a call: its arguments, never output to show. */
@@ -126,14 +127,12 @@ export type Opener =
       /** Takes with a picture, a read of the page or a reason it failed. */
       readonly shown: number;
     }
-  /** A step: what it printed, past its code's four lines. */
+  /** A step: what it printed, past its code's four lines; what a write or an edit wrote. */
   | { readonly control: "step"; readonly step: WorkStep; readonly codeCut: boolean }
   /** A thought: past its four lines. */
   | { readonly control: "thought"; readonly pastCap: boolean }
   /** "Show work" on a settled run's line: the scroll of what the run shows. */
-  | { readonly control: "work"; readonly lines: number }
-  /** A picture of the result: the viewer, onto a file still there or the pictures past it. */
-  | { readonly control: "picture"; readonly gone: boolean; readonly more: number };
+  | { readonly control: "work"; readonly lines: number };
 
 /** Whether a control opens onto something not already on screen: else it is not drawn. */
 export function opensOnto(opener: Opener): boolean {
@@ -152,13 +151,15 @@ export function opensOnto(opener: Opener): boolean {
     case "checks":
       return opener.checks > 1 || opener.shown > 0;
     case "step":
-      return opener.codeCut || stepOutput(opener.step).length > 0;
+      return (
+        opener.codeCut ||
+        stepOutput(opener.step).length > 0 ||
+        stepWriteCalls(opener.step).length > 0
+      );
     case "thought":
       return opener.pastCap;
     case "work":
       return opener.lines > 0;
-    case "picture":
-      return !opener.gone || opener.more > 0;
   }
 }
 

@@ -10,6 +10,7 @@
  * waits on says.
  */
 import type { PendingApproval, PendingUserInput } from "@t3tools/client-runtime/pending-requests";
+import { mateErrorWords } from "@t3tools/client-runtime/zerops";
 import type { ProviderApprovalDecision, ProviderRequestKind } from "@t3tools/contracts";
 import type { ThreadStatusKind } from "@t3tools/shared/threadStatus";
 
@@ -80,6 +81,8 @@ export function mateDecision(input: {
   readonly userInputs: ReadonlyArray<PendingUserInput>;
   /** The session's or the turn's own words for a failure. */
   readonly failure: string | undefined;
+  /** The agent driver that said them (the session's `providerName`), where known. */
+  readonly failureDriver?: string | null | undefined;
 }): MateDecision | undefined {
   switch (input.kind) {
     case "approval": {
@@ -117,7 +120,13 @@ export function mateDecision(input: {
     case "planReady":
       return { kind: "plan" };
     case "failed":
-      return { kind: "failure", message: input.failure };
+      return {
+        kind: "failure",
+        message:
+          input.failure === undefined
+            ? undefined
+            : mateErrorWords(input.failure, input.name, input.failureDriver),
+      };
     default:
       return undefined;
   }

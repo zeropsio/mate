@@ -46,7 +46,10 @@ import {
   ProviderAdapterRequestError,
   ProviderAdapterSessionNotFoundError,
   ProviderAdapterValidationError,
+  ProviderAdapterTurnEndedError,
+  type ProviderAdapterError,
 } from "../Errors.ts";
+import { ATTACHED_PICTURE_UNREADABLE } from "@t3tools/shared/threadStatus";
 import { mapAcpToAdapterError } from "../acp/AcpAdapterSupport.ts";
 import type * as AcpSessionRuntime from "../acp/AcpSessionRuntime.ts";
 import {
@@ -78,6 +81,7 @@ import {
   makeXAiAskUserQuestionCancelledResponse,
   makeXAiAskUserQuestionResponse,
   makeXAiExitPlanModeCapturedResponse,
+  isXAiRateLimitedError,
   promptResponseHasMissingXAiStopReason,
   XAiAskUserQuestionRequest,
   XAiExitPlanModeRequest,
@@ -591,16 +595,22 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
       expectedAcpSessionId: string,
       options?: {
         readonly errorMessage?: string;
+        /** The usage limit refused the turn: its failure is a pause. */
+        readonly usageLimited?: boolean;
+        /** Its process died under the prompt: the turn broke off. */
+        readonly processExited?: boolean;
         readonly completedStopReason?: EffectAcpSchema.StopReason | null;
         readonly emitTurnCompletion?: boolean;
         /** Interrupt/cancel: drop every outstanding prompt slot and settle once. */
         readonly settleAllPrompts?: boolean;
       },
     ) =>
+      // Whether it ended the turn failed: a send whose failure did so fails
+      // typed as that turn's, whoever opened it.
       Effect.gen(function* () {
         const liveCtx = sessions.get(threadId);
         if (!liveCtx) {
-          return;
+          return false;
         }
         const settlementBelongsToLiveContext = grokPromptSettlementBelongsToContext({
           liveAcpSessionId: liveCtx.acpSessionId,
@@ -617,7 +627,7 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
             liveCtx.acpSessionId !== expectedAcpSessionId ||
             liveCtx.interruptedTurnIds.has(turnId)
           ) {
-            return;
+            return false;
           }
           if (options?.emitTurnCompletion !== false) {
             if (options?.errorMessage !== undefined) {
@@ -630,8 +640,14 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
                 payload: {
                   state: "failed",
                   errorMessage: options.errorMessage,
+                  ...(options.usageLimited === true
+                    ? { terminalReason: "usage_limit" }
+                    : options.processExited === true
+                      ? { terminalReason: "process_exit" }
+                      : {}),
                 },
               });
+              return true;
             } else if (options?.completedStopReason !== undefined) {
               yield* offerRuntimeEvent({
                 type: "turn.completed",
@@ -647,7 +663,7 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
               });
             }
           }
-          return;
+          return false;
         }
         let settleTurnId = turnId;
         if (options?.settleAllPrompts) {
@@ -666,7 +682,7 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
                 };
               }
               yield* clearTurnLiveness(liveCtx);
-              return;
+              return false;
             }
             settleTurnId = fallbackTurnId;
           }
@@ -678,7 +694,7 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
             liveCtx.session.activeTurnId !== settleTurnId
           ) {
             liveCtx.promptsInFlight = remainingPrompts;
-            return;
+            return false;
           }
           liveCtx.promptsInFlight = remainingPrompts;
         }
@@ -700,7 +716,7 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
           updatedAt,
         };
         if (options?.emitTurnCompletion === false) {
-          return;
+          return false;
         }
         if (shouldEmitFailedTurn) {
           yield* offerRuntimeEvent({
@@ -712,8 +728,14 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
             payload: {
               state: "failed",
               errorMessage: options.errorMessage,
+              ...(options.usageLimited === true
+                ? { terminalReason: "usage_limit" }
+                : options.processExited === true
+                  ? { terminalReason: "process_exit" }
+                  : {}),
             },
           });
+          return true;
         } else if (shouldEmitCompletedTurn) {
           yield* offerRuntimeEvent({
             type: "turn.completed",
@@ -728,6 +750,7 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
             },
           });
         }
+        return false;
       });
 
     const isLiveTurn = (ctx: GrokSessionContext, turnId: TurnId) =>
@@ -941,7 +964,10 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
       return Effect.succeed(ctx);
     };
 
-    const stopSessionInternal = (ctx: GrokSessionContext) =>
+    const stopSessionInternal = (
+      ctx: GrokSessionContext,
+      exitKind: "graceful" | "error" = "graceful",
+    ) =>
       Effect.gen(function* () {
         if (ctx.stopped) return;
         ctx.stopped = true;
@@ -957,7 +983,7 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
           ...(yield* makeEventStamp()),
           provider: PROVIDER,
           threadId: ctx.threadId,
-          payload: { exitKind: "graceful" },
+          payload: { exitKind },
         });
       });
 
@@ -1336,6 +1362,12 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
                 if (event._tag === "ModeChanged") {
                   return;
                 }
+                if (event._tag === "ConnectionTerminated") {
+                  // Its process died: the session goes, so the next message
+                  // starts a new one. Forked: the stop interrupts this fiber.
+                  yield* stopSessionInternal(ctx, "error").pipe(Effect.forkDetach);
+                  return;
+                }
 
                 const notificationTurnId = resolveNotificationTurnId(ctx);
                 if (event._tag === "ToolCallUpdated" && !ctx.stopped) {
@@ -1590,7 +1622,8 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
                       return yield* new ProviderAdapterRequestError({
                         provider: PROVIDER,
                         method: "session/prompt",
-                        detail: `Invalid attachment id '${attachment.id}'.`,
+                        detail: ATTACHED_PICTURE_UNREADABLE,
+                        cause: `Invalid attachment id '${attachment.id}'.`,
                       });
                     }
                     const bytes = yield* fileSystem.readFile(attachmentPath).pipe(
@@ -1599,7 +1632,7 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
                           new ProviderAdapterRequestError({
                             provider: PROVIDER,
                             method: "session/prompt",
-                            detail: cause.message,
+                            detail: ATTACHED_PICTURE_UNREADABLE,
                             cause,
                           }),
                       ),
@@ -1740,6 +1773,12 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
         );
 
         const promptFailureMessageRef = yield* Ref.make<string | undefined>(undefined);
+        const promptUsageLimitedRef = yield* Ref.make(false);
+        const promptProcessExitedRef = yield* Ref.make(false);
+        // The prompt's failure ended its turn failed: the send fails as that turn's.
+        const promptEndedTurnRef = yield* Ref.make(false);
+        // The send was interrupted: the person's Stop reached it before the agent answered.
+        const sendInterruptedRef = yield* Ref.make(false);
 
         return yield* Effect.gen(function* () {
           const promptStart = yield* prepared.promptLifecycle.withPermit(
@@ -1830,8 +1869,18 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
             Effect.tapError((error) =>
               Ref.set(
                 promptFailureMessageRef,
-                mapAcpToAdapterError(PROVIDER, input.threadId, "session/prompt", error).message,
-              ).pipe(Effect.andThen(prepared.acp.drainEvents)),
+                mapAcpToAdapterError(PROVIDER, input.threadId, "session/prompt", error).detail,
+              ).pipe(
+                Effect.andThen(Ref.set(promptUsageLimitedRef, isXAiRateLimitedError(error))),
+                Effect.andThen(
+                  Ref.set(
+                    promptProcessExitedRef,
+                    mapAcpToAdapterError(PROVIDER, input.threadId, "session/prompt", error)._tag ===
+                      "ProviderAdapterProcessError",
+                  ),
+                ),
+                Effect.andThen(prepared.acp.drainEvents),
+              ),
             ),
             Effect.mapError((error) =>
               mapAcpToAdapterError(PROVIDER, input.threadId, "session/prompt", error),
@@ -1953,6 +2002,7 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
             }),
           );
         }).pipe(
+          Effect.onInterrupt(() => Ref.set(sendInterruptedRef, true)),
           Effect.ensuring(
             Effect.gen(function* () {
               if (yield* Ref.get(promptSettled)) {
@@ -2010,14 +2060,45 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
                 return;
               }
 
+              // Its turn ends as the Stop ends it: cancelled at the agent, never failed.
+              if (yield* Ref.get(sendInterruptedRef)) {
+                yield* interruptTurn(input.threadId, prepared.turnId);
+                return;
+              }
+
               const errorMessage = yield* Ref.get(promptFailureMessageRef);
-              yield* withThreadLock(
+              const usageLimited = yield* Ref.get(promptUsageLimitedRef);
+              const processExited = yield* Ref.get(promptProcessExitedRef);
+              const endedTurn = yield* withThreadLock(
                 input.threadId,
                 settlePromptInFlight(input.threadId, prepared.turnId, prepared.acpSessionId, {
                   errorMessage: errorMessage ?? "Grok prompt request failed.",
+                  usageLimited,
+                  processExited,
                 }),
               );
+              yield* Ref.set(promptEndedTurnRef, endedTurn);
             }).pipe(Effect.ignore),
+          ),
+          // A turn this send opened is always its own failure's, even when a
+          // crash's own stop settled it first; a steered turn is, once the
+          // prompt's settling above ended it failed.
+          Effect.catch((error) =>
+            Ref.get(promptEndedTurnRef).pipe(
+              Effect.flatMap((endedTurn): Effect.Effect<never, ProviderAdapterError> =>
+                endedTurn || prepared.steeringTurnId === undefined
+                  ? Effect.fail(
+                      new ProviderAdapterTurnEndedError({
+                        provider: PROVIDER,
+                        threadId: input.threadId,
+                        turnId: prepared.turnId,
+                        detail: "detail" in error ? error.detail : error.message,
+                        cause: error,
+                      }),
+                    )
+                  : Effect.fail(error),
+              ),
+            ),
           ),
         );
       });
@@ -2184,7 +2265,9 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
       });
 
     const stopAll: GrokAdapterShape["stopAll"] = () =>
-      Effect.forEach(Array.from(sessions.values()), stopSessionInternal, { discard: true });
+      Effect.forEach(Array.from(sessions.values()), (ctx) => stopSessionInternal(ctx), {
+        discard: true,
+      });
 
     yield* Effect.addFinalizer(() =>
       Effect.ignore(stopAll()).pipe(

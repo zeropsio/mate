@@ -447,7 +447,14 @@ const testsSettled = status({ live: false, face: "idle", startedAt: ago(12), end
  * or, with nothing to report, into the line alone. Run it again starts it
  * over.
  */
-function WatchedToItsEnd({ reports = true }: { readonly reports?: boolean }) {
+function WatchedToItsEnd({
+  reports = true,
+  brokeOff = false,
+}: {
+  readonly reports?: boolean;
+  /** Its agent dies as it ends: the line says it stopped, and why under it. */
+  readonly brokeOff?: boolean;
+}) {
   const [round, setRound] = useState(0);
   const [ended, setEnded] = useState(false);
   const run = `${reports ? "status" : "tests"}-watched-${round}`;
@@ -456,7 +463,7 @@ function WatchedToItsEnd({ reports = true }: { readonly reports?: boolean }) {
     <div className="grid gap-3">
       <div className="flex gap-2">
         <Button
-          data-harness-end={reports ? "" : "alone"}
+          data-harness-end={brokeOff ? "broke" : reports ? "" : "alone"}
           disabled={ended}
           onClick={() => setEnded(true)}
           size="sm"
@@ -476,19 +483,62 @@ function WatchedToItsEnd({ reports = true }: { readonly reports?: boolean }) {
         </Button>
       </div>
       <Turn
-        answer={reports ? ANSWER : TESTS_ANSWER}
+        answer={brokeOff ? null : reports ? ANSWER : TESTS_ANSWER}
         {...(reports ? {} : { ask: TESTS_ASK })}
-        result={reports && ended}
+        result={reports && ended && !brokeOff}
         row={
           ended
             ? record(run, {
                 items,
                 live: false,
-                status: reports ? settled : testsSettled,
+                status: brokeOff
+                  ? { ...settled, face: "brokeOff", brokeOff: BROKE_OFF }
+                  : reports
+                    ? settled
+                    : testsSettled,
                 outcome: reports ? OUTCOME : TESTS_OUTCOME,
               })
-            : record(run, { items, answering: true })
+            : record(run, { items, answering: !brokeOff })
         }
+      />
+    </div>
+  );
+}
+
+const BROKE_OFF = {
+  reason: "Claude Code stopped unexpectedly.",
+  next: "Send a message to pick up where it left off.",
+};
+
+/**
+ * A run that broke off, then the next run begins: its line drops what to do
+ * next, and keeps that sentence's room while it stays on screen. Narrow, so
+ * the line wraps as on a phone.
+ */
+function BrokeOffThenNext() {
+  const [next, setNext] = useState(false);
+  return (
+    <div className="grid max-w-[360px] gap-3">
+      <div className="flex gap-2">
+        <Button data-harness-next-run="" disabled={next} onClick={() => setNext(true)} size="sm">
+          The next run begins
+        </Button>
+        <Button onClick={() => setNext(false)} size="sm" variant="outline">
+          Back
+        </Button>
+      </div>
+      <Turn
+        row={record("status-broke-off-narrow", {
+          live: false,
+          status: status({
+            live: false,
+            face: "brokeOff",
+            startedAt: ago(61 * 60),
+            endedAt: ago(0),
+            brokeOff: next ? { ...BROKE_OFF, next: null } : BROKE_OFF,
+          }),
+          outcome: OUTCOME,
+        })}
       />
     </div>
   );
@@ -693,6 +743,36 @@ export function CardStates() {
             live: false,
             status: testsSettled,
             outcome: TESTS_OUTCOME,
+          })}
+        />
+      </CardState>
+      <CardState
+        label="Its agent stopped while you watch"
+        note="End the run: the line settles to its stopped words, and the room for why opens under it, eased — the card never jumps."
+      >
+        <WatchedToItsEnd brokeOff />
+      </CardState>
+      <CardState
+        label="Its agent stopped, then the next run begins"
+        note="Phone width: what to do next leaves the earlier run's line, and its room stays while the line is on screen — the card never shrinks."
+      >
+        <BrokeOffThenNext />
+      </CardState>
+      <CardState
+        label="Its agent stopped under it"
+        note="Its agent's process died mid-run: the line says it stopped, and why stands under it in the server's words, never a stack. Its last words stay in its work: no answer under the card."
+      >
+        <Turn
+          row={record("status-broke-off", {
+            live: false,
+            status: status({
+              live: false,
+              face: "brokeOff",
+              startedAt: ago(61 * 60),
+              endedAt: ago(0),
+              brokeOff: BROKE_OFF,
+            }),
+            outcome: OUTCOME,
           })}
         />
       </CardState>

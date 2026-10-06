@@ -95,12 +95,17 @@ export interface ZeropsProjectsFlowProps<T> {
   readonly renderEnvironment: (item: T, role: ZeropsEnvironmentRole | undefined) => ReactNode;
   /**
    * A pull request's `<li>`. `withMerge` is false where the step's own verb
-   * already merges it; `compact` stacks it for a step's narrow column.
+   * already merges it; `review` is whether it shows its *Review* at all
+   * (`changeShowsReview`); `compact` stacks it for a step's narrow column.
    */
   readonly renderPullRequest: (
     group: ZeropsGroup,
     pull: FlowPullRequest,
-    options: { readonly withMerge: boolean; readonly compact: boolean },
+    options: {
+      readonly withMerge: boolean;
+      readonly review: boolean;
+      readonly compact: boolean;
+    },
   ) => ReactNode;
   /** The verb of a group's next step (`flow.nextStep`), at its row's end; nothing for `none`. */
   readonly renderNextStep: (entry: ProjectsFlowGroup<T>) => ReactNode;

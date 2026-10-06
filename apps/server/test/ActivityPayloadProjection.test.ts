@@ -367,9 +367,16 @@ describe("superseded tool.updated snapshot dedup", () => {
       readonly title?: string;
       readonly detail?: string;
       readonly toolCallId?: string;
+      readonly createdAt?: string;
     } = {},
   ): OrchestrationThreadActivity {
-    const { turn = "turn-a", title = "File change", detail, toolCallId } = options;
+    const {
+      turn = "turn-a",
+      title = "File change",
+      detail,
+      toolCallId,
+      createdAt = "2026-07-27T00:00:00.000Z",
+    } = options;
     return {
       id: EventId.make(id),
       tone: "tool",
@@ -386,7 +393,7 @@ describe("superseded tool.updated snapshot dedup", () => {
         },
       },
       turnId: TurnId.make(turn),
-      createdAt: "2026-07-27T00:00:00.000Z",
+      createdAt,
     };
   }
 
@@ -412,9 +419,16 @@ describe("superseded tool.updated snapshot dedup", () => {
   // An ACP call sends no start: its first update is where the live run stood
   // its step, so a reload keeps that one and drops only the later updates.
   it("keeps a call's first sight when no start precedes it", () => {
-    const update1 = makeToolLifecycleActivity("upd-1", "tool.updated");
-    const update2 = makeToolLifecycleActivity("upd-2", "tool.updated");
-    const completed = makeToolLifecycleActivity("done-1", "tool.completed");
+    // Each update arrives before the completion, so none is its echo.
+    const update1 = makeToolLifecycleActivity("upd-1", "tool.updated", {
+      createdAt: "2026-07-27T00:00:00.000Z",
+    });
+    const update2 = makeToolLifecycleActivity("upd-2", "tool.updated", {
+      createdAt: "2026-07-27T00:00:00.500Z",
+    });
+    const completed = makeToolLifecycleActivity("done-1", "tool.completed", {
+      createdAt: "2026-07-27T00:00:01.000Z",
+    });
 
     expect(projectedIds([update1, update2, completed])).toEqual([update1.id, completed.id]);
   });
@@ -491,8 +505,13 @@ describe("superseded tool.updated snapshot dedup", () => {
 
   it("keeps an update that follows its completion", () => {
     // A later update under the same identity is the next call, still in flight.
-    const completed = makeToolLifecycleActivity("done-first", "tool.completed");
-    const nextCall = makeToolLifecycleActivity("upd-next", "tool.updated");
+    // It arrives after the completion, so it is no echo of it.
+    const completed = makeToolLifecycleActivity("done-first", "tool.completed", {
+      createdAt: "2026-07-27T00:00:00.000Z",
+    });
+    const nextCall = makeToolLifecycleActivity("upd-next", "tool.updated", {
+      createdAt: "2026-07-27T00:00:01.000Z",
+    });
 
     expect(projectedIds([completed, nextCall])).toEqual([completed.id, nextCall.id]);
   });
