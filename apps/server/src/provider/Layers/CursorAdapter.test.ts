@@ -433,6 +433,60 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
     }),
   );
 
+  // A steer whose prompt fails, the first prompt settled, ends the running
+  // turn failed and fails typed as that turn's: never a turn left open.
+  it.effect("ends the running turn failed when a steer's prompt fails", () =>
+    Effect.gen(function* () {
+      const adapter = yield* CursorAdapter;
+      const settings = yield* ServerSettingsService;
+      const threadId = ThreadId.make("cursor-steer-fails");
+      const wrapperPath = yield* Effect.promise(() =>
+        makeMockAgentWrapper({ T3_ACP_PROMPT_DELAY_MS: "1500", T3_ACP_FAIL_SECOND_PROMPT: "1" }),
+      );
+      yield* settings.updateSettings({ providers: { cursor: { binaryPath: wrapperPath } } });
+      const runtimeEventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.filter((event) => event.threadId === threadId),
+        Stream.takeUntil((event) => event.type === "turn.completed"),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      yield* adapter.startSession({
+        threadId,
+        provider: ProviderDriverKind.make("cursor"),
+        cwd: process.cwd(),
+        runtimeMode: "full-access",
+        modelSelection: { instanceId: ProviderInstanceId.make("cursor"), model: "default" },
+      });
+      const firstTurnFiber = yield* adapter
+        .sendTurn({ threadId, input: "run 5 commands", attachments: [] })
+        .pipe(Effect.forkChild);
+      yield* Effect.gen(function* () {
+        for (let attempt = 0; attempt < 200; attempt += 1) {
+          const session = (yield* adapter.listSessions()).find(
+            (entry) => entry.threadId === threadId,
+          );
+          if (session?.activeTurnId !== undefined) return;
+          yield* TestClock.adjust("10 millis");
+        }
+        throw new Error("Timed out waiting for the first prompt to be in flight.");
+      });
+
+      const error = yield* adapter
+        .sendTurn({ threadId, input: "actually run 15", attachments: [] })
+        .pipe(Effect.flip);
+      yield* Fiber.join(firstTurnFiber);
+      assert.equal(error._tag, "ProviderAdapterTurnEndedError");
+      const completed = Array.from(yield* Fiber.join(runtimeEventsFiber)).filter(
+        (event) => event.type === "turn.completed",
+      );
+      assert.deepStrictEqual(
+        completed.map((event) => (event.type === "turn.completed" ? event.payload.state : null)),
+        ["failed"],
+      );
+      yield* adapter.stopSession(threadId);
+    }),
+  );
+
   it.effect("steers a running turn instead of opening a new one on mid-turn sendTurn", () =>
     Effect.gen(function* () {
       const adapter = yield* CursorAdapter;

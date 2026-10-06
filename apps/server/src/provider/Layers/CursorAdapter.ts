@@ -1175,10 +1175,13 @@ export function makeCursorAdapter(
             resumeCursor: ctx.session.resumeCursor,
           };
         }).pipe(
-          // Once its turn is open, a failure ends that turn failed, in the
+          // Once its turn is open — opened by this send, or steered into — a
+          // failure of the last prompt in flight ends that turn failed, in the
           // failure's own words, and the send fails typed as that turn's.
           Effect.catch((error): Effect.Effect<never, ProviderAdapterError> =>
-            turnOpened && ctx.promptsInFlight === 1
+            (turnOpened || steeringTurnId !== undefined) &&
+            ctx.promptsInFlight === 1 &&
+            ctx.activeTurnId === turnId
               ? Effect.gen(function* () {
                   const detail = "detail" in error ? error.detail : error.message;
                   yield* offerRuntimeEvent({

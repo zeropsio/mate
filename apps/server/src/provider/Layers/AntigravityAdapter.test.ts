@@ -711,6 +711,40 @@ it.layer(layer)("AntigravityAdapter", (it) => {
     }),
   );
 
+  // A follow-up steered into the running turn whose prompt fails ends that
+  // turn failed, and fails typed as that turn's: the turn's record says it,
+  // never a start failure besides.
+  it.effect("ends the running turn failed when a steer's prompt fails", () =>
+    Effect.gen(function* () {
+      const h = yield* makeHarness();
+      yield* h.adapter.startSession({
+        threadId,
+        cwd: process.cwd(),
+        runtimeMode: "approval-required",
+      });
+      const first = yield* h.adapter
+        .sendTurn({ threadId, input: "First prompt" })
+        .pipe(Effect.exit, Effect.forkChild);
+      yield* h.nextPrompt;
+      const second = yield* h.adapter
+        .sendTurn({ threadId, input: "Steer the turn" })
+        .pipe(Effect.flip, Effect.forkChild);
+      const replacement = yield* h.nextPrompt;
+      yield* Deferred.fail(
+        replacement.result,
+        AcpErrors.AcpRequestError.internalError("Model request failed: 500"),
+      );
+      const error = yield* Fiber.join(second);
+      yield* Fiber.join(first);
+      expect(error._tag).toBe("ProviderAdapterTurnEndedError");
+      yield* h.waitForEvent((event) => event.type === "turn.completed");
+      const completed = h.seen.filter((event) => event.type === "turn.completed");
+      expect(
+        completed.map((event) => (event.type === "turn.completed" ? event.payload : null)),
+      ).toEqual([{ state: "failed", errorMessage: "Model request failed: 500" }]);
+    }),
+  );
+
   it.effect("waits for native cancellation before a steer changes the model", () =>
     Effect.gen(function* () {
       const h = yield* makeHarness({ holdCancel: true });

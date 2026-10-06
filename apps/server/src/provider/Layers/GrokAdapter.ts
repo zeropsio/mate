@@ -605,10 +605,12 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
         readonly settleAllPrompts?: boolean;
       },
     ) =>
+      // Whether it ended the turn failed: a send whose failure did so fails
+      // typed as that turn's, whoever opened it.
       Effect.gen(function* () {
         const liveCtx = sessions.get(threadId);
         if (!liveCtx) {
-          return;
+          return false;
         }
         const settlementBelongsToLiveContext = grokPromptSettlementBelongsToContext({
           liveAcpSessionId: liveCtx.acpSessionId,
@@ -625,7 +627,7 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
             liveCtx.acpSessionId !== expectedAcpSessionId ||
             liveCtx.interruptedTurnIds.has(turnId)
           ) {
-            return;
+            return false;
           }
           if (options?.emitTurnCompletion !== false) {
             if (options?.errorMessage !== undefined) {
@@ -638,8 +640,14 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
                 payload: {
                   state: "failed",
                   errorMessage: options.errorMessage,
+                  ...(options.usageLimited === true
+                    ? { terminalReason: "usage_limit" }
+                    : options.processExited === true
+                      ? { terminalReason: "process_exit" }
+                      : {}),
                 },
               });
+              return true;
             } else if (options?.completedStopReason !== undefined) {
               yield* offerRuntimeEvent({
                 type: "turn.completed",
@@ -655,7 +663,7 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
               });
             }
           }
-          return;
+          return false;
         }
         let settleTurnId = turnId;
         if (options?.settleAllPrompts) {
@@ -674,7 +682,7 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
                 };
               }
               yield* clearTurnLiveness(liveCtx);
-              return;
+              return false;
             }
             settleTurnId = fallbackTurnId;
           }
@@ -686,7 +694,7 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
             liveCtx.session.activeTurnId !== settleTurnId
           ) {
             liveCtx.promptsInFlight = remainingPrompts;
-            return;
+            return false;
           }
           liveCtx.promptsInFlight = remainingPrompts;
         }
@@ -708,7 +716,7 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
           updatedAt,
         };
         if (options?.emitTurnCompletion === false) {
-          return;
+          return false;
         }
         if (shouldEmitFailedTurn) {
           yield* offerRuntimeEvent({
@@ -727,6 +735,7 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
                   : {}),
             },
           });
+          return true;
         } else if (shouldEmitCompletedTurn) {
           yield* offerRuntimeEvent({
             type: "turn.completed",
@@ -741,6 +750,7 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
             },
           });
         }
+        return false;
       });
 
     const isLiveTurn = (ctx: GrokSessionContext, turnId: TurnId) =>
@@ -1765,6 +1775,8 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
         const promptFailureMessageRef = yield* Ref.make<string | undefined>(undefined);
         const promptUsageLimitedRef = yield* Ref.make(false);
         const promptProcessExitedRef = yield* Ref.make(false);
+        // The prompt's failure ended its turn failed: the send fails as that turn's.
+        const promptEndedTurnRef = yield* Ref.make(false);
 
         return yield* Effect.gen(function* () {
           const promptStart = yield* prepared.promptLifecycle.withPermit(
@@ -2048,7 +2060,7 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
               const errorMessage = yield* Ref.get(promptFailureMessageRef);
               const usageLimited = yield* Ref.get(promptUsageLimitedRef);
               const processExited = yield* Ref.get(promptProcessExitedRef);
-              yield* withThreadLock(
+              const endedTurn = yield* withThreadLock(
                 input.threadId,
                 settlePromptInFlight(input.threadId, prepared.turnId, prepared.acpSessionId, {
                   errorMessage: errorMessage ?? "Grok prompt request failed.",
@@ -2056,20 +2068,27 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
                   processExited,
                 }),
               );
+              yield* Ref.set(promptEndedTurnRef, endedTurn);
             }).pipe(Effect.ignore),
           ),
-          // The send opened its turn, which the prompt's settling above ended
-          // failed: its failure is that turn's.
-          Effect.mapError((error): ProviderAdapterError =>
-            prepared.steeringTurnId === undefined
-              ? new ProviderAdapterTurnEndedError({
-                  provider: PROVIDER,
-                  threadId: input.threadId,
-                  turnId: prepared.turnId,
-                  detail: "detail" in error ? error.detail : error.message,
-                  cause: error,
-                })
-              : error,
+          // The prompt's settling above ended the turn failed — the turn this
+          // send opened or the one it steered: its failure is that turn's.
+          Effect.catch((error) =>
+            Ref.get(promptEndedTurnRef).pipe(
+              Effect.flatMap((endedTurn): Effect.Effect<never, ProviderAdapterError> =>
+                endedTurn
+                  ? Effect.fail(
+                      new ProviderAdapterTurnEndedError({
+                        provider: PROVIDER,
+                        threadId: input.threadId,
+                        turnId: prepared.turnId,
+                        detail: "detail" in error ? error.detail : error.message,
+                        cause: error,
+                      }),
+                    )
+                  : Effect.fail(error),
+              ),
+            ),
           ),
         );
       });

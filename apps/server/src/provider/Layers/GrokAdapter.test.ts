@@ -1371,6 +1371,65 @@ it.layer(grokAdapterTestLayer)("GrokAdapterLive", (it) => {
     }).pipe(TestClock.withLive),
   );
 
+  // A steer whose prompt fails ends the running turn failed and fails typed as
+  // that turn's: the turn's record says it, never a start failure besides.
+  it.effect("ends the running turn failed when a steer's prompt fails", () =>
+    Effect.gen(function* () {
+      const threadId = ThreadId.make("grok-steer-fails");
+      const tempDir = yield* Effect.promise(() =>
+        NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "grok-acp-steer-fails-")),
+      );
+      const requestLogPath = NodePath.join(tempDir, "requests.ndjson");
+      const wrapperPath = yield* Effect.promise(() =>
+        makeMockGrokWrapper({
+          T3_ACP_HANG_FIRST_PROMPT_FOREVER: "1",
+          T3_ACP_FAIL_SECOND_PROMPT: "1",
+          T3_ACP_REQUEST_LOG_PATH: requestLogPath,
+        }),
+      );
+      const adapter = yield* makeTestAdapter(wrapperPath);
+      const completed: Array<ProviderRuntimeEvent> = [];
+      const turnCompleted = yield* Deferred.make<void>();
+      const firstTurnStarted = yield* Deferred.make<void>();
+      const runtimeEventsFiber = yield* Stream.runForEach(adapter.streamEvents, (event) =>
+        String(event.threadId) !== String(threadId)
+          ? Effect.void
+          : event.type === "turn.started"
+            ? Deferred.succeed(firstTurnStarted, undefined).pipe(Effect.ignore)
+            : event.type === "turn.completed"
+              ? Effect.sync(() => completed.push(event)).pipe(
+                  Effect.andThen(Deferred.succeed(turnCompleted, undefined)),
+                  Effect.ignore,
+                )
+              : Effect.void,
+      ).pipe(Effect.forkChild);
+      yield* adapter.startSession({
+        threadId,
+        provider: ProviderDriverKind.make("grok"),
+        cwd: process.cwd(),
+        runtimeMode: "full-access",
+      });
+      const first = yield* adapter
+        .sendTurn({ threadId, input: "hang until steered", attachments: [] })
+        .pipe(Effect.exit, Effect.forkChild);
+      yield* Deferred.await(firstTurnStarted).pipe(Effect.timeout("2 seconds"));
+      yield* waitForFileContent(requestLogPath, 80, '"method":"session/prompt"');
+      const error = yield* adapter
+        .sendTurn({ threadId, input: "take this instead", attachments: [] })
+        .pipe(Effect.flip, Effect.timeout("3 seconds"));
+      yield* Fiber.join(first).pipe(Effect.timeout("3 seconds"));
+      yield* Deferred.await(turnCompleted).pipe(Effect.timeout("3 seconds"));
+
+      assert.equal(error._tag, "ProviderAdapterTurnEndedError");
+      assert.deepStrictEqual(
+        completed.map((event) => (event.type === "turn.completed" ? event.payload.state : null)),
+        ["failed"],
+      );
+      yield* Fiber.interrupt(runtimeEventsFiber);
+      yield* adapter.stopSession(threadId);
+    }).pipe(TestClock.withLive),
+  );
+
   it.effect("cancels an in-flight prompt when a mid-turn sendTurn steers", () =>
     Effect.gen(function* () {
       const threadId = ThreadId.make("grok-steer-cancels-in-flight");
