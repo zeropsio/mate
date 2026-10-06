@@ -1911,10 +1911,12 @@ export interface MessagesTimelineRowsCache {
   generation: number;
   readonly batches: Map<string, Remembered<LiveBatch<BatchEntry>>>;
   readonly records: Map<string, Remembered<{ items: RecordItem[]; rows: MessagesTimelineRow[] }>>;
+  /** By run: what its calls came to (`turnActivity`), read off its entries alone. */
+  readonly activities: Map<string, Remembered<OutcomeActivity[]>>;
 }
 
 export function createMessagesTimelineRowsCache(): MessagesTimelineRowsCache {
-  return { generation: 0, batches: new Map(), records: new Map() };
+  return { generation: 0, batches: new Map(), records: new Map(), activities: new Map() };
 }
 
 function sameReads(left: ReadonlyArray<unknown>, right: ReadonlyArray<unknown>): boolean {
@@ -1947,7 +1949,7 @@ function remembered<T>(
 
 /** What the last derive did not draw is not kept: the cache holds one conversation. */
 function forgetUnused(cache: MessagesTimelineRowsCache): void {
-  for (const store of [cache.batches, cache.records] as const) {
+  for (const store of [cache.batches, cache.records, cache.activities] as const) {
     for (const [key, known] of store) if (known.used !== cache.generation) store.delete(key);
   }
 }
@@ -2554,7 +2556,13 @@ export function deriveMessagesTimelineRows(input: {
             turn,
             landed: landedByTurnKey.get(turn.key) ?? [],
             diffs,
-            activity: turnActivity(turn),
+            activity: remembered(
+              cache?.activities,
+              cache?.generation ?? 0,
+              turn.key,
+              () => [turn.live, ...runEntries],
+              () => turnActivity(turn),
+            ),
             later: turnsAfter(structure, turn.key),
           });
     // What the result draws under the line: an outcome of what its calls came
