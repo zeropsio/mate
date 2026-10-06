@@ -79,6 +79,8 @@ export async function openBrowser(
   const browser = await puppeteer.launch({
     executablePath,
     headless: true,
+    // The driver creates its own routed page; Chrome's unused startup tab is no receipt.
+    waitForInitialPage: false,
     timeout: waitBudget(scenarioPolicy.testMs),
     protocolTimeout: waitBudget(),
     args: [
