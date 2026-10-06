@@ -129,6 +129,12 @@ export function makeZeropsExecutor(input: {
         case "assign-mate-owner":
           return assign(requestId, intent);
         case "change-comment":
+        case "release":
+        case "roll-back":
+        case "redeploy":
+        case "add-service":
+        case "merge-change":
+        case "close-change":
           return Effect.die(new Error(`Zerops executes no ${intent.kind}.`));
       }
     },

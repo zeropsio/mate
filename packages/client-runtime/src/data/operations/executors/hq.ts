@@ -14,9 +14,13 @@ import { discussionId } from "../../families/hqDiscussion.ts";
 import type { OperationIntent, OperationReceipt } from "../../model.ts";
 import type { StreamFault } from "../../streamMachine.ts";
 import type { OperationExecutor, UncertainAcceptance } from "../coordinator.ts";
+import { FLOW_WRITE_KINDS, type FlowWriteIntent } from "../flowWrites.ts";
+import { flowWrite, type FlowWrites } from "./hqFlow.ts";
 
 /** The writes HQ executes, as its client sends them. */
-export type HqWrites = Pick<HqApi, "commentOnChange">;
+export type HqWrites = Pick<HqApi, "commentOnChange"> & FlowWrites;
+
+const FLOW_KINDS: ReadonlySet<string> = new Set(FLOW_WRITE_KINDS.map(({ kind }) => kind));
 
 function faultOf(cause: unknown): StreamFault | UncertainAcceptance {
   const message = cause instanceof Error ? cause.message : String(cause);
@@ -47,6 +51,18 @@ export function makeHqExecutor(ports: {
   return {
     submit: (requestId, intent: OperationIntent) =>
       Effect.gen(function* () {
+        if (FLOW_KINDS.has(intent.kind)) {
+          const flow = intent as FlowWriteIntent;
+          const api = ports.apiOf(flow.orgId);
+          if (api === null)
+            return yield* Effect.fail<StreamFault>({
+              outcome: "definitive-refusal",
+              message: HQ_NOT_OPEN,
+            });
+          return yield* flowWrite(requestId, api, flow, (call) =>
+            Effect.tryPromise({ try: call, catch: faultOf }),
+          );
+        }
         if (intent.kind !== "change-comment")
           return yield* Effect.die(new Error(`HQ executes no ${intent.kind}.`));
         const api = ports.apiOf(intent.orgId);

@@ -10,7 +10,7 @@ import { makeAccountStore, readsOfState, type AccountStore } from "../store.ts";
 import { HqError } from "../../zerops/hq/client.ts";
 import { changeComment } from "./changeComment.ts";
 import { makeOperations } from "./coordinator.ts";
-import { makeHqExecutor } from "./executors/hq.ts";
+import { makeHqExecutor, type HqWrites } from "./executors/hq.ts";
 
 const LINK = { appId: "shop", repo: "web", number: 7 };
 const SAY = {
@@ -57,12 +57,13 @@ function operationsOf(store: AccountStore, post: () => Promise<HqChangeComment>)
       hq: makeHqExecutor({
         apiOf: (orgId) =>
           orgId === ORG
-            ? {
+            ? ({
                 commentOnChange: (link, body) => {
                   calls.push(`${link.repo}#${String(link.number)} ${body}`);
                   return post();
                 },
-              }
+                // A comment reaches no other write.
+              } as Partial<HqWrites> as HqWrites)
             : null,
       }),
     },
