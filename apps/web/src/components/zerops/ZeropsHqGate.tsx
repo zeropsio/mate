@@ -5,10 +5,11 @@
  */
 import { HQ_BIRTH_DOING, HQ_BIRTH_STEPS, runHqBirth } from "@t3tools/client-runtime/zerops/hq";
 import { CheckIcon, CircleAlertIcon } from "lucide-react";
-import { useCallback, useEffect } from "react";
+import { useCallback, useContext, useEffect } from "react";
 
 import { cn } from "~/lib/utils";
-import { hqBirthDeps, hqBirthSite, useAccountHq } from "~/zerops/accountHq";
+import { hqBirthDeps, hqBirthSite, readOfficialHqNow, useAccountHq } from "~/zerops/accountHq";
+import { ZeropsDataContext } from "~/zerops/zeropsDataContext";
 import { bearHq, hqBirthView, useHqBirths, type HqBirthView } from "~/zerops/hqBirth";
 import type { HqGate } from "~/zerops/hqGate";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
@@ -25,7 +26,7 @@ export function ZeropsHqGate({ gate }: { readonly gate: ClosedGate }) {
   const accountHq = useAccountHq(activeOrganization?.id);
   const held = useHqBirths((state) => state.byOrg[clientId]);
   const { reread } = accountHq;
-  const official = accountHq.hq.kind === "official";
+  const data = useContext(ZeropsDataContext);
   const bear = useCallback(
     (again: boolean) =>
       bearHq({
@@ -39,14 +40,15 @@ export function ZeropsHqGate({ gate }: { readonly gate: ClosedGate }) {
             moved,
             again: manualAgain,
           }),
-        // An HQ the account names official meanwhile ends the birth as made; the birth itself
-        // checks the anchor again before it makes anything.
-        alreadyBorn: async () => official,
+        // Another admin may have set an HQ up since this page decided there is none: the member
+        // list is read afresh at every attempt, and an HQ it names ends the birth as made.
+        alreadyBorn: async () =>
+          data !== null && (await readOfficialHqNow(data, clientId)).kind === "official",
         // Its anchor is in the member list now: the gate opens once it is read again.
         onBorn: reread,
         again,
       }),
-    [client, clientId, official, reread],
+    [client, clientId, data, reread],
   );
   const birthDue = gate.kind === "birth" && held === undefined;
   useEffect(() => {

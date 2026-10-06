@@ -19,6 +19,7 @@ import { makeMemberCells } from "./__fixtures__/memberCells";
 import {
   accountHqApi,
   nextHqStanding,
+  readOfficialHqNow,
   readBundledCore,
   useAccountHq,
   useCarriedCoreBuild,
@@ -900,5 +901,52 @@ describe("useAccountHq — no official HQ, kept too", () => {
     expect([hq.reads(), hq.last().hq]).toEqual([2, official]);
     const next = await loaded("org-born", () => members);
     expect([next.reads(), next.last().hq]).toEqual([0, official]);
+  });
+});
+
+// The HQ gate's birth asks whether the organization has an official HQ now: another admin may have
+// set one up since this page decided it has none. It reads the member list afresh each time,
+// never a verdict it read before.
+describe("readOfficialHqNow", () => {
+  const scope: AccountScope = {
+    account: {
+      apiOrigin: makeZeropsApiOrigin("https://api.example.test"),
+      accountId: ZeropsAccountId.make("account-gate"),
+    },
+    epoch: AccountEpoch.make(1),
+  };
+  const organizationRef = (organizationId: string): OrganizationRef => ({
+    kind: "organization",
+    account: scope.account,
+    organizationId: ZeropsOrganizationId.make(organizationId),
+  });
+  const ANCHOR = {
+    id: "cu-anchor",
+    roleCode: "ADMIN",
+    status: "ACTIVE",
+    user: { fullName: "mate-hq:P_HQ:https://hq.example.test", email: "token-hq@zerops.io" },
+  } as ZeropsOrganizationMember;
+
+  it("reads the member list again each time it is asked", async () => {
+    let reads = 0;
+    const cells = await makeMemberCells({
+      scope,
+      organization: organizationRef("org-1"),
+      members: async () => {
+        reads += 1;
+        return reads === 1 ? [] : [ANCHOR];
+      },
+    });
+    const data = {
+      runtime: { scope, cells },
+      organizationRef,
+    } as unknown as ZeropsDataContextValue;
+    expect((await readOfficialHqNow(data, "org-1")).kind).toBe("none");
+    expect(await readOfficialHqNow(data, "org-1")).toEqual({
+      kind: "official",
+      projectId: "P_HQ",
+      address: "https://hq.example.test",
+    });
+    expect(reads).toBe(2);
   });
 });

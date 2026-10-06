@@ -38,7 +38,7 @@ import {
   zeropsThrowawayPlatform,
 } from "@t3tools/client-runtime/zerops/doorThrowaway";
 import type { ZeropsApiClient, ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
-import type { MembersCellRequest } from "@t3tools/client-runtime/zerops/data";
+import { selectMembers, type MembersCellRequest } from "@t3tools/client-runtime/zerops/data";
 import * as Effect from "effect/Effect";
 import { useCallback, useContext, useEffect, useMemo, useSyncExternalStore } from "react";
 
@@ -60,7 +60,7 @@ import {
 import { endHqSession, keptHqSessions } from "./keptSessions";
 import { useZeropsOrganizationMembersRead } from "./useZeropsMateOwners";
 import { whenShown } from "./whenShown";
-import { ZeropsDataContext } from "./zeropsDataContext";
+import { ZeropsDataContext, type ZeropsDataContextValue } from "./zeropsDataContext";
 import { useZeropsSessionOptional } from "./ZeropsSessionProvider";
 
 export interface AccountHq {
@@ -211,6 +211,33 @@ function forgetKeptHq(clientId: string, hq: HqEndpoint): void {
 
 const apis = new Map<string, HqApi>();
 onAccountLifetimeClose(() => apis.clear());
+
+/**
+ * The organization's official HQ as its member list names it now: the list read afresh through the
+ * account's cells, never a verdict read before — another admin may have set one up since. A list
+ * that cannot be read names none.
+ */
+export function readOfficialHqNow(
+  data: Pick<ZeropsDataContextValue, "runtime" | "organizationRef">,
+  clientId: string,
+): Promise<OfficialHq> {
+  const request: MembersCellRequest = {
+    kind: "members",
+    account: data.runtime.scope,
+    organization: data.organizationRef(clientId),
+  };
+  const { cells } = data.runtime;
+  return Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        yield* cells.invalidate(request);
+        const lease = yield* cells.acquire(request);
+        const read = selectMembers(yield* lease.awaitSettled);
+        return findOfficialHq(read.status === "ready" ? read.members : []);
+      }),
+    ),
+  );
+}
 
 /**
  * The organization's HQ, for a write in the product: the product opens only over an official HQ
