@@ -589,12 +589,16 @@ export async function runHqBirth(input: {
       if (record.syncProcessId != null || routing?.routing.isSynced !== true) {
         const receipt =
           record.syncProcessId == null
-            ? await effect("routing_sync", { projectId }, async () => {
-                const synced = await platform.syncPublicHttpRouting(projectId);
-                return synced.processId === undefined
-                  ? { projectId }
-                  : { projectId, processId: synced.processId };
-              })
+            ? await effect(
+                "routing_sync",
+                { projectId },
+                async (): Promise<Readonly<Record<string, string>>> => {
+                  const synced = await platform.syncPublicHttpRouting(projectId);
+                  return synced.processId === undefined
+                    ? { projectId }
+                    : { projectId, processId: synced.processId };
+                },
+              )
             : { processId: record.syncProcessId };
         const processId = receipt.processId;
         if (processId !== undefined) await advance({ syncProcessId: processId });
