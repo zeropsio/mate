@@ -5,6 +5,14 @@
  * @module data/families
  */
 import type { Family, MemberState, ScopeKey } from "../model.ts";
+import {
+  hqAppFamily,
+  hqOrganizationFamily,
+  hqPersonFamily,
+  hqPressFamily,
+  placementFamily,
+} from "./hqNavigation.ts";
+import { hqMateFamily } from "./hqMate.ts";
 import { processFamily } from "./process.ts";
 import { projectFamily } from "./project.ts";
 import { versionFamily } from "./version.ts";
@@ -28,7 +36,17 @@ export function defineFamilies(
   return families;
 }
 
-export const FAMILIES = defineFamilies([projectFamily, processFamily, versionFamily]);
+export const FAMILIES = defineFamilies([
+  projectFamily,
+  processFamily,
+  versionFamily,
+  hqOrganizationFamily,
+  hqAppFamily,
+  placementFamily,
+  hqPersonFamily,
+  hqPressFamily,
+  hqMateFamily,
+]);
 
 const byFamily = new Map<string, AnyFamilySpec>(FAMILIES.map((spec) => [spec.family, spec]));
 /** What a scope lists: its family, what leaving it means, and the detail listing it is, if one. */

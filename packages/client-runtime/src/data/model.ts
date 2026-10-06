@@ -32,11 +32,8 @@ export const linkKeys = {
 export type Revision =
   /** A Zerops entity row's `_version`; `null` where the row carried none. */
   | { readonly kind: "zerops"; readonly version: number | null }
-  /**
-   * Today's HQ stream carries no revision: an observation is ordered only by the connection
-   * generation that delivered it and its place in that connection.
-   */
-  | { readonly kind: "hq-observation"; readonly generation: number; readonly sequence: number }
+  /** An HQ scope's revision, inside one incarnation of that scope (`@t3tools/shared/hqStream`). */
+  | { readonly kind: "hq"; readonly incarnation: string; readonly revision: number }
   /** A Mate's own attention revision, inside one incarnation of its store. */
   | { readonly kind: "mate-attention"; readonly incarnation: string; readonly revision: number };
 

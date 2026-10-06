@@ -7,6 +7,8 @@
  *
  * @module data/families/spec
  */
+import type { HqScope } from "@t3tools/shared/hqStream";
+
 import type { Authority, Family, FamilyValues, MemberState, ScopeKey, Source } from "../model.ts";
 
 export type SearchTerms = ReadonlyArray<Readonly<Record<string, unknown>>>;
@@ -43,6 +45,23 @@ export interface ZeropsFamilySource<Value> {
    * another organization left this one, though it exists and the viewer reads it.
    */
   readonly organizationOf?: (answer: unknown) => string | null;
+}
+
+/**
+ * How a family is observed on HQ: the scope kind whose records it holds, which record keys are its
+ * own, and how a record's value reads. A navigation family's records come with the organization's
+ * one `navigation` scope; a detail family's with the scope a demand for one owner names.
+ */
+export interface HqFamilySource<Value> {
+  readonly scope: HqScope["kind"];
+  /** The id a record key names in this family; `null` for a key that is another family's. */
+  readonly idOf: (key: string, owner: ScopeOwner) => string | null;
+  /** The record key an id is held under: what a resume names as a retained key. */
+  readonly keyOf: (id: string, owner: ScopeOwner) => string;
+  /** A record's value; `null` for one this build cannot read, which then changes nothing. */
+  readonly decode: (raw: unknown) => Value | null;
+  /** A detail family's scope for one owner (`DetailDemand.ownerId`). */
+  readonly wireScope?: (ownerId: string) => HqScope;
 }
 
 /**
@@ -89,6 +108,7 @@ export interface FamilySpec<F extends Family> {
    */
   readonly indexes?: ReadonlyArray<FamilyIndex<FamilyValues[F]>>;
   readonly zerops?: ZeropsFamilySource<FamilyValues[F]>;
+  readonly hq?: HqFamilySource<FamilyValues[F]>;
   /**
    * Whether a value is its entity's end, after which it never changes (a process finished): an
    * end that a read or a baseline brings replaces a value that is no end, though the read carries

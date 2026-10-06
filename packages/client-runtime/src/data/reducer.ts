@@ -100,6 +100,20 @@ export type AccountInput =
       readonly generation: number;
       readonly id: string;
     }
+  /**
+   * One HQ scope delivery: its records of every family it holds and its explicit removals,
+   * committed together or — from a superseded registration — not at all. A `reset` starts the
+   * scope's revision afresh; the records it leaves out stay.
+   */
+  | {
+      readonly kind: "hq-delivery";
+      readonly scopes: ReadonlyArray<HqDeliveryScope>;
+      readonly reset: boolean;
+      readonly rows: ReadonlyArray<Row>;
+      readonly removals: ReadonlyArray<HqRemovalInput>;
+    }
+  /** HQ's catchup of these scopes ended: what they list is the whole. */
+  | { readonly kind: "hq-ready"; readonly scopes: ReadonlyArray<HqDeliveryScope> }
   | {
       readonly kind: "rows";
       readonly scope: ScopeKey;
@@ -108,6 +122,19 @@ export type AccountInput =
       readonly via: Delivery;
       readonly rows: ReadonlyArray<Row>;
     };
+
+/** A scope an HQ delivery commits into, as the attempt registered it. */
+export interface HqDeliveryScope {
+  readonly scope: ScopeKey;
+  readonly generation: number;
+}
+
+/** A record HQ removed explicitly, and why: the one way an HQ record leaves. */
+export interface HqRemovalInput {
+  readonly family: Family;
+  readonly id: string;
+  readonly reason: "deleted" | "no-access";
+}
 
 export type RuntimeDirective =
   | (StreamDirective & { readonly key: StreamKey })
@@ -138,9 +165,9 @@ export function streamOf(state: AccountState, key: StreamKey): StreamState {
 
 /**
  * Whether `incoming` may replace `current` in its owner's ordering. Revisions compare only inside
- * their own domain: a Mate's own attention revision always outranks HQ's unrevisioned relay of it,
- * which never replaces it back; another incarnation of a Mate is not ordered, so only a baseline
- * replaces it; a value of another domain never replaces one. Time never decides.
+ * their own domain: a Mate's own attention revision always outranks HQ's relay of it, which never
+ * replaces it back; another incarnation of a Mate or of an HQ scope is not ordered, so only a
+ * baseline replaces it; a value of another domain never replaces one. Time never decides.
  */
 export function supersedes(
   current: Revision,
@@ -152,14 +179,13 @@ export function supersedes(
       if (current.kind !== "zerops") return false;
       if (incoming.version === null) return current.version === null;
       return current.version === null || incoming.version > current.version;
-    case "hq-observation":
-      if (current.kind !== "hq-observation") return false;
-      return (
-        incoming.generation > current.generation ||
-        (incoming.generation === current.generation && incoming.sequence > current.sequence)
-      );
+    case "hq":
+      if (current.kind !== "hq") return false;
+      return current.incarnation === incoming.incarnation
+        ? incoming.revision > current.revision
+        : method === "baseline";
     case "mate-attention":
-      if (current.kind === "hq-observation") return true;
+      if (current.kind === "hq") return true;
       if (current.kind !== "mate-attention") return false;
       return current.incarnation === incoming.incarnation
         ? incoming.revision > current.revision
@@ -436,6 +462,72 @@ function touched(
   return ids;
 }
 
+/** Whether every scope a delivery names is still in the registration that delivered it. */
+const current = (state: AccountState, scopes: ReadonlyArray<HqDeliveryScope>) =>
+  scopes.every(({ scope, generation }) => streamOf(state, scope).generation === generation);
+
+function reduceHqDelivery(
+  state: AccountState,
+  input: Extract<AccountInput, { readonly kind: "hq-delivery" }>,
+  changed: Set<ReadKey>,
+): AccountState {
+  let next = state;
+  for (const { scope } of input.scopes) {
+    const family = scopeSpec(scope).family;
+    const rows = input.rows.filter((row) => row.family === family);
+    if (rows.length === 0) continue;
+    next = reduceRows(
+      next,
+      { scope, via: "hq-stream", method: input.reset ? "baseline" : "push", rows },
+      changed,
+    );
+    const membership = next.memberships.get(scope) ?? EMPTY_MEMBERSHIP;
+    const members = new Map(membership.members);
+    for (const row of rows) {
+      // A record withheld from the reader returns to its listing only with its value.
+      if (next.facts.get(factKey(family, row.id))?.content.kind !== "value") continue;
+      members.set(row.id, "member");
+    }
+    changed.add(`members:${scope}`);
+    next = withMembership(next, scope, { ...membership, members });
+  }
+  for (const removal of input.removals)
+    next =
+      removal.reason === "deleted"
+        ? reduceEvidence(
+            next,
+            {
+              kind: "proven-deletion",
+              family: removal.family,
+              id: removal.id,
+              evidence: "HQ removed it as deleted",
+            },
+            changed,
+          )
+        : reduceEvidence(
+            next,
+            { kind: "access", family: removal.family, id: removal.id, access: "denied" },
+            changed,
+          );
+  return next;
+}
+
+function completeScopes(
+  state: AccountState,
+  scopes: ReadonlyArray<HqDeliveryScope>,
+  changed: Set<ReadKey>,
+): AccountState {
+  let next = state;
+  for (const { scope } of scopes) {
+    const membership = next.memberships.get(scope) ?? EMPTY_MEMBERSHIP;
+    if (membership.coverage === "complete") continue;
+    changed.add(`coverage:${scope}`);
+    changed.add(`members:${scope}`);
+    next = withMembership(next, scope, { ...membership, coverage: "complete" });
+  }
+  return next;
+}
+
 export function reduceAccount(state: AccountState, input: AccountInput): Reduction {
   const changed = new Set<ReadKey>();
   if (input.kind === "stream") {
@@ -462,6 +554,14 @@ export function reduceAccount(state: AccountState, input: AccountInput): Reducti
       changed,
       directives: [],
     };
+  }
+  if (input.kind === "hq-delivery" || input.kind === "hq-ready") {
+    if (!current(state, input.scopes)) return { state, changed, directives: [] };
+    const next =
+      input.kind === "hq-delivery"
+        ? reduceHqDelivery(state, input, changed)
+        : completeScopes(state, input.scopes, changed);
+    return { state: reindex(state, next, changed), changed, directives: [] };
   }
   // A superseded attempt's input is late: its scope already re-registered.
   if ("generation" in input && input.generation !== streamOf(state, input.scope).generation)

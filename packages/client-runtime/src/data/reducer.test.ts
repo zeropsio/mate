@@ -471,10 +471,10 @@ describe("reduceAccount", () => {
 
   describe("supersedes", () => {
     const zerops = (version: number | null): Revision => ({ kind: "zerops", version });
-    const hq = (generation: number, sequence: number): Revision => ({
-      kind: "hq-observation",
-      generation,
-      sequence,
+    const hq = (incarnation: string, revision: number): Revision => ({
+      kind: "hq",
+      incarnation,
+      revision,
     });
     const mate = (incarnation: string, revision: number): Revision => ({
       kind: "mate-attention",
@@ -498,26 +498,38 @@ describe("reduceAccount", () => {
         incoming: zerops(1),
         push: true,
       },
-      { name: "later hq place", current: hq(1, 3), incoming: hq(1, 4), push: true },
-      { name: "earlier connection's hq", current: hq(2, 0), incoming: hq(1, 9), push: false },
-      { name: "next connection's hq", current: hq(1, 9), incoming: hq(2, 0), push: true },
+      { name: "newer hq revision", current: hq("a", 3), incoming: hq("a", 4), push: true },
+      { name: "older hq revision", current: hq("a", 4), incoming: hq("a", 3), push: false },
+      { name: "equal hq revision", current: hq("a", 4), incoming: hq("a", 4), push: false },
+      {
+        name: "another hq incarnation, pushed",
+        current: hq("a", 9),
+        incoming: hq("b", 1),
+        push: false,
+      },
       { name: "newer mate revision", current: mate("a", 5), incoming: mate("a", 6), push: true },
       { name: "older mate revision", current: mate("a", 6), incoming: mate("a", 5), push: false },
-      { name: "hq relay over mate's own", current: mate("a", 1), incoming: hq(9, 9), push: false },
-      { name: "mate's own over hq relay", current: hq(9, 9), incoming: mate("a", 1), push: true },
+      {
+        name: "hq relay over mate's own",
+        current: mate("a", 1),
+        incoming: hq("a", 9),
+        push: false,
+      },
+      { name: "mate's own over hq relay", current: hq("a", 9), incoming: mate("a", 1), push: true },
       {
         name: "another incarnation, pushed",
         current: mate("a", 9),
         incoming: mate("b", 1),
         push: false,
       },
-      { name: "zerops against hq", current: zerops(1), incoming: hq(1, 1), push: false },
+      { name: "zerops against hq", current: zerops(1), incoming: hq("a", 1), push: false },
     ])("$name: $push", ({ current, incoming, push }) => {
       expect(supersedes(current, incoming, "push")).toBe(push);
     });
 
     it("lets another incarnation in only through a baseline", () => {
       expect(supersedes(mate("a", 9), mate("b", 1), "baseline")).toBe(true);
+      expect(supersedes(hq("a", 9), hq("b", 1), "baseline")).toBe(true);
     });
   });
 });
