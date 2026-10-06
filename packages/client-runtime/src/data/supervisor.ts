@@ -26,6 +26,11 @@ export interface LinkSupervisor {
   readonly run: Effect.Effect<never>;
   /** The person's "try now", or a changed input a refusal was decided over. */
   readonly signal: (signal: LinkSignal) => Effect.Effect<void>;
+  /**
+   * Lets the link's demand go now, before its run is interrupted: the run's own end then lets
+   * nothing go, so a link that takes over the same keys meanwhile keeps its demand.
+   */
+  readonly release: Effect.Effect<void>;
 }
 
 export interface LinkOptions {
@@ -194,13 +199,20 @@ export const superviseLink = (options: LinkOptions): Effect.Effect<LinkSuperviso
         return yield* dispatch({ kind: "demand", demanded });
       });
 
+    let released = false;
+    const release = Effect.suspend(() => {
+      if (released) return Effect.void;
+      released = true;
+      return Effect.asVoid(demand(false));
+    });
     const run = Effect.gen(function* () {
       let directives = yield* demand(true);
       while (true) directives = yield* step(directives);
-    }).pipe(Effect.onInterrupt(() => demand(false)));
+    }).pipe(Effect.onInterrupt(() => release));
 
     return {
       run,
+      release,
       // The person's try-now, or a changed input, is the scopes' too: a refused scope revives only
       // by it, never by its link's own attempts.
       signal: (signal) =>

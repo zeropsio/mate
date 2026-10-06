@@ -195,6 +195,17 @@ describe("hqNavigation", () => {
     expect(navigation(failing(7)).capped).toBe(true);
   });
 
+  it("is catching up while what it read is asked again on a new socket", () => {
+    const asking = apply(down, [
+      stream(linkKeys.hq(ORG), { kind: "retry-due" }),
+      ...NAV.flatMap((scope) => [
+        stream(scope, { kind: "attempt" }),
+        stream(scope, { kind: "handshake" }),
+      ]),
+    ]);
+    expect(navigation(asking)).toMatchObject({ live: false, reconnecting: true });
+  });
+
   it("keeps what it read through an outage", () => {
     expect(navigation(down).structure).toEqual(navigation(read).structure);
   });

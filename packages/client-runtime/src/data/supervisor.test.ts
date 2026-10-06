@@ -186,4 +186,32 @@ describe("superviseLink", () => {
         yield* Fiber.interrupt(fiber);
       }),
   );
+
+  it.effect(
+    "lets its demand go at its release, and its late end takes none from the link after",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const link = () =>
+          superviseLink({
+            key: LINK,
+            scopes: [SCOPE],
+            store,
+            attempt: () => Effect.never,
+            repairSession: Effect.void,
+          });
+        const first = yield* link();
+        const running = yield* Effect.forkChild(first.run);
+        yield* Effect.yieldNow;
+        yield* first.release;
+        expect(store.state().streams.get(SCOPE)?.demanded).toBe(false);
+        const second = yield* link();
+        const next = yield* Effect.forkChild(second.run);
+        yield* Effect.yieldNow;
+        yield* Fiber.interrupt(running);
+        expect(store.state().streams.get(LINK)?.demanded).toBe(true);
+        expect(store.state().streams.get(SCOPE)?.demanded).toBe(true);
+        yield* Fiber.interrupt(next);
+      }),
+  );
 });

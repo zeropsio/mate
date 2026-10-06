@@ -29,7 +29,11 @@ export async function outageConnection(upstreamOrigin: string) {
       droppedUp: number;
     }
   >();
-  const lastSnapshots = new Map<WebSocket, Frame>();
+  /** Each browser socket's last cursor of each Mate's attention scope HQ delivered, by project. */
+  const attentionCursors = new Map<
+    WebSocket,
+    Map<string, { readonly incarnation: string; readonly revision: number }>
+  >();
   const pendingPongs = new Map<WebSocket, (() => void)[]>();
   let serial = 0;
   let factsSilent = false;
@@ -122,7 +126,21 @@ export async function outageConnection(upstreamOrigin: string) {
           return;
         }
         const parsed = isStructure ? readFrame(raw, binary) : undefined;
-        if (parsed?.type === "snapshot") lastSnapshots.set(client, parsed);
+        const scope = parsed?.scope as { kind?: unknown; projectId?: unknown } | undefined;
+        if (
+          (parsed?.type === "scope-reset" ||
+            parsed?.type === "scope-values" ||
+            parsed?.type === "scope-ready") &&
+          scope?.kind === "attention" &&
+          typeof scope.projectId === "string"
+        ) {
+          const cursors = attentionCursors.get(client) ?? new Map();
+          cursors.set(scope.projectId, {
+            incarnation: String(parsed.incarnation),
+            revision: Number(parsed.revision),
+          });
+          attentionCursors.set(client, cursors);
+        }
         if (isStructure && factsSilent && parsed?.type !== "ping") return;
         if (client.readyState === WebSocket.OPEN) client.send(bytesOf(raw), { binary });
       });
@@ -136,7 +154,7 @@ export async function outageConnection(upstreamOrigin: string) {
       });
       client.on("close", () => {
         structures.delete(client);
-        lastSnapshots.delete(client);
+        attentionCursors.delete(client);
         pendingPongs.delete(client);
         upstream.close();
         events.emit("change");
@@ -173,19 +191,27 @@ export async function outageConnection(upstreamOrigin: string) {
         },
       };
     },
+    /** HQ's next delivery of a Mate's attention, its value one this build cannot read. */
     corruptMate(projectId: string) {
-      for (const [client, snapshot] of lastSnapshots) {
-        const mates = snapshot.mates as Record<string, unknown>;
-        if (!mates?.[projectId]) throw new Error(`Real HQ snapshot has no Mate ${projectId}`);
+      let sent = 0;
+      for (const [client, cursors] of attentionCursors) {
+        const cursor = cursors.get(projectId);
+        if (cursor === undefined) continue;
+        const next = { ...cursor, revision: cursor.revision + 1 };
+        cursors.set(projectId, next);
         client.send(
           JSON.stringify({
-            ...snapshot,
-            mates: { ...mates, [projectId]: { presence: "corrupt" } },
+            type: "scope-values",
+            scope: { kind: "attention", projectId },
+            ...next,
+            values: [{ key: projectId, value: { presence: "corrupt" } }],
+            removals: [],
           }),
         );
+        sent++;
       }
-      if (lastSnapshots.size === 0)
-        throw new Error("Wait for the real HQ snapshot before corruption");
+      if (sent === 0)
+        throw new Error(`Wait for HQ's real attention of ${projectId} before corruption`);
     },
     async ping() {
       const [client] = (await oneStructure())!;

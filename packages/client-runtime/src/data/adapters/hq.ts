@@ -112,8 +112,11 @@ export function hqNavigationLink(options: {
   readonly seen: (projectId: string, resultIds: ReadonlyArray<string>) => Effect.Effect<void>;
   /** Ends the link's own holds (each Mate's attention). */
   readonly stop: () => void;
+  /** The same HQ reached anew (its session's API again): the next socket opens over it. */
+  readonly rewire: (wire: HqWire) => void;
 } {
   const { orgId, store } = options;
+  let wire = options.wire;
   const key: LinkKey = linkKeys.hq(orgId);
   const nav: Registered = {
     wire: NAVIGATION,
@@ -444,7 +447,7 @@ export function hqNavigationLink(options: {
       const segment = (first: boolean) =>
         Effect.scoped(
           Effect.gen(function* () {
-            const opened = yield* options.wire.open;
+            const opened = yield* wire.open;
             open = opened;
             if (first) yield* signal(key, { kind: "handshake" });
             if (refusedWhole) {
@@ -518,6 +521,9 @@ export function hqNavigationLink(options: {
       Effect.suspend(() =>
         open === null ? Effect.void : open.send({ type: "seen", projectId, resultIds }),
       ),
+    rewire: (next) => {
+      wire = next;
+    },
     stop: () => {
       stopHolding?.();
       stopHolding = null;

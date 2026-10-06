@@ -12,37 +12,39 @@ const nextFrame = (socket: WebSocket) =>
     "outage driver frame",
   );
 
-it("forwards HTTP and corrupts exactly one entry of a real upstream snapshot", async () => {
-  const original = {
-    type: "snapshot",
-    apps: [{ name: "Shop" }],
-    mates: {
-      Ada: { task: "Ada task" },
-      Bea: { task: "Bea task" },
-    },
+it("forwards HTTP and corrupts the next delivery of one Mate's real attention", async () => {
+  const delivered = {
+    type: "scope-reset",
+    scope: { kind: "attention", projectId: "Ada" },
+    incarnation: "i1",
+    revision: 4,
+    values: [{ key: "Ada", value: { task: "Ada task" } }],
+    removals: [],
   };
   const upstream = await serve(
     () => ({ status: 201, body: { fromCore: true } }),
-    (socket) => socket.send(JSON.stringify(original)),
+    (socket) => socket.send(JSON.stringify(delivered)),
   );
   const proxy = await outageConnection(upstream.origin);
   const socket = new WebSocket(`${proxy.origin.replace("http:", "ws:")}/api/structure/ws`);
   try {
-    expect(await nextFrame(socket)).toEqual(original);
+    expect(await nextFrame(socket)).toEqual(delivered);
     const response = await fetch(`${proxy.origin}/api/future`);
     expect(response.status).toBe(201);
     expect(await response.json()).toEqual({ fromCore: true });
     const corrupt = nextFrame(socket);
     proxy.corruptMate("Ada");
     expect(await corrupt).toEqual({
-      ...original,
-      mates: {
-        Ada: { presence: "corrupt" },
-        Bea: original.mates.Bea,
-      },
+      type: "scope-values",
+      scope: { kind: "attention", projectId: "Ada" },
+      incarnation: "i1",
+      revision: 5,
+      values: [{ key: "Ada", value: { presence: "corrupt" } }],
+      removals: [],
     });
+    expect(() => proxy.corruptMate("Bea")).toThrow(/Wait for HQ's real attention of Bea/u);
   } finally {
-    socket.terminate();
+    socket.close();
     await proxy.close();
     await upstream.close();
   }

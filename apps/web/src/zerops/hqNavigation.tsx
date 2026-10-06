@@ -89,11 +89,14 @@ export function ZeropsHqNavigation(): null {
           ),
     [client, hqAddress, hqProjectId, organizationId],
   );
+  // A new wire for the same organization's HQ moves the link to it; the link stops only once no
+  // HQ is named, or with this mount.
   useEffect(() => {
-    if (showHq === undefined || organizationId === undefined || wire === null) return;
-    showHq({ orgId: organizationId, wire });
-    return () => showHq(null);
+    showHq?.(
+      organizationId === undefined || wire === null ? null : { orgId: organizationId, wire },
+    );
   }, [organizationId, showHq, wire]);
+  useEffect(() => () => showHq?.(null), [showHq]);
 
   return null;
 }

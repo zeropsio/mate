@@ -151,6 +151,10 @@ export const hqNavigation: Projection<string, HqNavigationRead> = {
       capped:
         link.phase === "recovering" && retryDelayMs(link.failures, 1) >= STREAM_POLICY.backoffCapMs,
       ...freshness,
+      // What was read and is not live now is catching up, whatever step its next attempt is at.
+      reconnecting:
+        freshness.reconnecting ||
+        (complete && !freshness.live && freshness.unavailableReason === undefined),
     };
   },
   equals: sameValue,

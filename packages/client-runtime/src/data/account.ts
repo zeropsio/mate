@@ -49,11 +49,16 @@ export function startZeropsNavigation(options: {
   return {
     signal: (signal) => void Effect.runFork(supervisor.signal(signal)),
     demandDetail: link.demandDetail,
-    stop: () => void Effect.runFork(Fiber.interrupt(fiber)),
+    stop: () => {
+      Effect.runSync(supervisor.release);
+      Effect.runFork(Fiber.interrupt(fiber));
+    },
   };
 }
 
 export interface RunningHq extends RunningLink {
+  /** The same organization's HQ reached over a new wire: the next socket opens over it. */
+  readonly rewire: (wire: HqWire) => void;
   /** Asks HQ where a Mate may move, as the move opens. */
   readonly moveOffers: (projectId: string) => Promise<HqMoveOffers>;
   /** Tells HQ the reader saw these results of a Mate. */
@@ -79,8 +84,10 @@ export function startHqNavigation(options: {
     demandDetail: link.demandDetail,
     moveOffers: (projectId) => Effect.runPromise(link.moveOffers(projectId)),
     seen: (projectId, resultIds) => void Effect.runFork(link.seen(projectId, resultIds)),
+    rewire: link.rewire,
     stop: () => {
       link.stop();
+      Effect.runSync(supervisor.release);
       Effect.runFork(Fiber.interrupt(fiber));
     },
   };
@@ -162,7 +169,14 @@ export function observeAccount(options: {
   /** Observes the HQ named for the organization shown, and none other. */
   const followHq = () => {
     const next = wantedHq !== null && wantedHq.orgId === shown?.orgId && !closed ? wantedHq : null;
-    if (hq !== null && next !== null && hq.wire === next.wire) return;
+    if (hq !== null && next !== null && hq.orgId === next.orgId) {
+      // Its HQ reached anew: the link and what it holds go on, its next socket over the new wire.
+      if (hq.wire !== next.wire) {
+        hq.link.rewire(next.wire);
+        hq = { ...hq, wire: next.wire };
+      }
+      return;
+    }
     stopHq();
     if (next === null) return;
     hq = { ...next, link: startHqNavigation({ ...next, store: options.store }) };

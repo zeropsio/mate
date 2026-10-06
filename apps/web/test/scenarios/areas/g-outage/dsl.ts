@@ -76,7 +76,7 @@ export const cappedHqOutage = (s: Scenario) =>
           () =>
             document
               .querySelector('[data-zerops-surface="sidebar-hq-outage"]')
-              ?.textContent?.includes("Retrying every 30 seconds.") === true,
+              ?.textContent?.includes("Retrying every minute.") === true,
         ),
       );
       if (capped) return;

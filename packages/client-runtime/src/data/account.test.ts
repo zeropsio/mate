@@ -256,4 +256,28 @@ describe("an account's HQ", () => {
       account.stop();
     }),
   );
+
+  it.live("goes on over a new wire for the same organization, its scopes still demanded", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const account = observeAccount({
+        store,
+        wire: emptyZerops().wire,
+        repairSession: Effect.void,
+      });
+      const first = hqFixtureWire();
+      const second = hqFixtureWire();
+      account.show("org-a");
+      account.showHq({ orgId: "org-a", wire: first.wire });
+      yield* turns;
+      account.showHq({ orgId: "org-a", wire: second.wire });
+      yield* turns;
+      expect(streamOf(store.state(), hqAppsScope("org-a")).demanded).toBe(true);
+      expect([first.opens(), second.opens()]).toEqual([1, 0]);
+      yield* first.endSegment;
+      yield* turns;
+      expect([first.opens(), second.opens()]).toEqual([1, 1]);
+      account.stop();
+    }),
+  );
 });
