@@ -231,14 +231,20 @@ export function officialHq(accountHq: Pick<AccountHq, "hq">): HqEndpoint {
  */
 const openBrowserSocket: OpenHqSocket = (url, on) => {
   const socket = new WebSocket(url);
+  /** What was sent before the socket opened: the scope requests, sent as soon as it does. */
+  const early: string[] = [];
+  socket.addEventListener("open", () => {
+    for (const data of early.splice(0)) socket.send(data);
+  });
   socket.addEventListener("message", (event) => {
     if (typeof event.data === "string") on.message(event.data);
   });
   socket.addEventListener("close", (event) => on.close(event.code));
   return {
-    // A pong to a socket already closing is lost with it.
+    // What is sent to a socket already closing is lost with it.
     send: (data) => {
-      if (socket.readyState === WebSocket.OPEN) socket.send(data);
+      if (socket.readyState === WebSocket.CONNECTING) early.push(data);
+      else if (socket.readyState === WebSocket.OPEN) socket.send(data);
     },
     close: () => socket.close(),
   };
