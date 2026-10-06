@@ -264,7 +264,7 @@ describe("readMateFlag", () => {
           {
             family: "mateVariables",
             id: "zcp",
-            value: { flag: content === undefined ? null : content === "1", marker: false },
+            value: { flag: content === undefined ? null : content === "1" },
             revision: { kind: "zerops", version: null },
           },
         ],

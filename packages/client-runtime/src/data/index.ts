@@ -154,7 +154,6 @@ export {
   accountReadsAtom,
   NOT_READ_PROCESSES,
   listedProjectAtom,
-  mateVariablesAtom,
   hqMateSetupAtom,
   NOT_READ_PROJECTS,
   NOT_READ_SERVICES,
