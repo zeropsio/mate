@@ -92,7 +92,7 @@ describe("the version family", () => {
   });
 
   // A replaced active version arrives as one membership frame `add:[new], delete:[old]` and one
-  // update frame (old BACKUP, new ACTIVE), in either order (HANDOFF §4.2).
+  // update frame (old BACKUP, new ACTIVE), in either order.
   it.each([
     {
       order: "membership first",

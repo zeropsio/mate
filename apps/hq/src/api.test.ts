@@ -83,7 +83,7 @@ describe("HQ's failures", () => {
     }),
   );
 
-  // HANDOFF §4.2: a definitive refusal from Zerops is no outage — nothing tells the caller to retry.
+  // a definitive refusal from Zerops is no outage — nothing tells the caller to retry.
   it.effect("answers Zerops' definitive refusal as a refusal, never a 503 to try again", () =>
     Effect.gen(function* () {
       for (const reason of ["unauthorized", "forbidden", "not_found", "invalid"] as const) {

@@ -1,5 +1,5 @@
 /**
- * A Mate's attention (HANDOFF §4.2 "Mate"): one value with its source's revision, which every
+ * A Mate's attention: one value with its source's revision, which every
  * surface that marks a Mate as working, waiting on its person, or done reads. The same value comes
  * straight from an open Mate and, for one nobody has open, relayed by HQ; both paths go into one
  * reducer, where a value replaces another only by its revision (never by a clock, never by which

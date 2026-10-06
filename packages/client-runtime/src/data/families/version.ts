@@ -2,7 +2,7 @@
  * Zerops app versions, observed as what each service runs: the organization's `ACTIVE` membership
  * paired with the status-unfiltered updates (`registration-formats.jsonl`). Replacing a service's
  * active version arrives as one membership frame (`add:[new], delete:[old]`) and one update frame
- * (old `BACKUP`, new `ACTIVE`), in either order (HANDOFF §4.2). Leaving the active scope is a
+ * (old `BACKUP`, new `ACTIVE`), in either order. Leaving the active scope is a
  * version no longer active, nothing about its existence.
  *
  * @module data/families/version

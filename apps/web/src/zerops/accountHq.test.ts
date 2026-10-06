@@ -340,7 +340,7 @@ describe("useAccountHq — the official HQ this page holds", () => {
     });
   });
 
-  // HANDOFF §5: source data stays out of browser storage — the verdict lives in this page alone.
+  // source data stays out of browser storage — the verdict lives in this page alone.
   it("keeps what the member list said in this page's memory, never in browser storage", async () => {
     const written: Array<string> = [];
     vi.stubGlobal("localStorage", {
