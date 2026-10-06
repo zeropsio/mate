@@ -4464,15 +4464,16 @@ function RunScroll({
   // Where its rows stood: read at each draw, and again as its lines resize
   // (a height easing moves the rows under it between two draws).
   const drawnRef = useRef<{
-    readonly rows: ReadonlyMap<string, ReadonlyArray<DrawnRow>>;
+    readonly rows: ReadonlyMap<string, HolderRows>;
+    readonly lines: ReadonlyArray<ChatLine>;
     readonly from: number;
     readonly landing: ReadonlyMap<string, number> | null;
   } | null>(null);
   const redraw = useEffectEvent(() => {
-    const list = listRef.current;
+    const scroll = scrollRef.current;
     const drawn = drawnRef.current;
-    if (list === null || drawn === null || !easesRef.current) return;
-    drawnRef.current = { ...drawn, rows: drawnRows(historyRows(list)) };
+    if (scroll === null || drawn === null || !easesRef.current) return;
+    drawnRef.current = { ...drawn, rows: retopped(drawn.rows, scroll) };
   });
   useLayoutEffect(() => {
     const list = listRef.current;
@@ -4480,9 +4481,18 @@ function RunScroll({
       drawnRef.current = null;
       return;
     }
-    const rows = historyRows(list);
     const drawn = drawnRef.current;
-    drawnRef.current = { rows: drawnRows(rows), from, landing };
+    // The same lines drawn again: its rows are the ones last read.
+    if (
+      drawn !== null &&
+      drawn.from === from &&
+      drawn.landing === landing &&
+      sameLines(drawn.lines, lines)
+    ) {
+      return;
+    }
+    const rows = historyRows(list, drawn?.rows);
+    drawnRef.current = { rows, lines, from, landing };
     // A landing glides the history itself, and plops what lands.
     if (drawn === null || drawn.landing !== landing || !shownRef.current) return;
     // Earlier lines drawn over the ones in view keep their place by the scroll.
@@ -4668,7 +4678,7 @@ function glideLines(
   }
 }
 
-/** The rows of one holder of a run's history — its list, or a card of calls — as drawn. */
+/** The rows of one holder of a run's history — its list, or a card of calls — as drawn, each by its top in it. */
 interface HolderRows {
   readonly holder: HTMLElement;
   readonly rows: ReadonlyArray<DrawnRow & { readonly row: HTMLElement }>;
@@ -4685,33 +4695,92 @@ function callsIn(line: Element): HTMLElement | null {
 }
 
 /** The rows a holder draws, each by its top in the holder as laid out (a glide's translate left out). */
-function rowsIn(holder: HTMLElement): HolderRows {
-  const rows: Array<DrawnRow & { readonly row: HTMLElement }> = [];
+function rowsIn(holder: HTMLElement, was: HolderRows | undefined): HolderRows {
+  const found: Array<{ readonly key: string; readonly row: HTMLElement }> = [];
   for (const row of holder.children) {
-    if (!(row instanceof HTMLElement) || row.dataset.runKey === undefined) continue;
-    const top =
-      row.offsetParent === holder.offsetParent ? row.offsetTop - holder.offsetTop : row.offsetTop;
-    rows.push({ key: row.dataset.runKey, top, row });
+    const key = row.getAttribute("data-run-key");
+    if (key !== null && row instanceof HTMLElement) found.push({ key, row });
   }
-  return { holder, rows };
+  // Grown only at its foot: what stood keeps the place last read, and only
+  // what joined is read — a long history's every row would take milliseconds.
+  const grew =
+    was !== undefined &&
+    was.rows.length <= found.length &&
+    was.rows.every((row, index) => found[index]!.key === row.key);
+  return {
+    holder,
+    rows: found.map(({ key, row }, index) => ({
+      key,
+      row,
+      top: grew && index < was.rows.length ? was.rows[index]!.top : topIn(holder, row),
+    })),
+  };
+}
+
+/** Whether two draws of a run's history hold the same lines, each a call or not alike. */
+function sameLines(left: ReadonlyArray<ChatLine>, right: ReadonlyArray<ChatLine>): boolean {
+  return (
+    left.length === right.length &&
+    left.every((line, index) => line.key === right[index]!.key && line.call === right[index]!.call)
+  );
+}
+
+/** A row's top in what holds it, as laid out: a glide's translate left out. */
+function topIn(holder: HTMLElement, row: HTMLElement): number {
+  return row.offsetParent === holder.offsetParent
+    ? row.offsetTop - holder.offsetTop
+    : row.offsetTop;
 }
 
 /** The rows of a run's history by what holds them: its lines (""), and each card's calls by its key. */
-function historyRows(list: HTMLElement): ReadonlyMap<string, HolderRows> {
-  const lines = rowsIn(list);
+function historyRows(
+  list: HTMLElement,
+  was: ReadonlyMap<string, HolderRows> | undefined,
+): ReadonlyMap<string, HolderRows> {
+  const lines = rowsIn(list, was?.get(""));
   const rows = new Map([["", lines]]);
   for (const { key, row } of lines.rows) {
     const calls = callsIn(row);
-    if (calls !== null) rows.set(key, rowsIn(calls));
+    if (calls !== null) rows.set(key, rowsIn(calls, was?.get(key)));
   }
   return rows;
 }
 
-/** Where each row stood, for the next draw. */
-function drawnRows(
-  rows: ReadonlyMap<string, HolderRows>,
-): ReadonlyMap<string, ReadonlyArray<DrawnRow>> {
-  return new Map([...rows].map(([key, held]) => [key, held.rows] as const));
+/** How far past the scroll's view a row's place is read again as heights ease. */
+const RETOP_MARGIN_PX = 400;
+
+/**
+ * The rows as they stand now, what holds them unchanged since they were
+ * drawn: a height easing moved the rows under it. Only the rows near the
+ * scroll's view are read again — a long history's thousands would take
+ * milliseconds a frame — by where each last stood; one far from it keeps
+ * its place, and is never glided.
+ */
+function retopped(
+  drawn: ReadonlyMap<string, HolderRows>,
+  scroll: HTMLElement,
+): ReadonlyMap<string, HolderRows> {
+  const near = {
+    top: scroll.scrollTop - RETOP_MARGIN_PX,
+    bottom: scroll.scrollTop + scroll.clientHeight + RETOP_MARGIN_PX,
+  };
+  const lines = drawn.get("");
+  if (lines === undefined) return drawn;
+  // Where each card of calls stood in the list: its calls stand under it.
+  const cardTops = new Map(lines.rows.map(({ key, top }) => [key, top] as const));
+  const rows = new Map<string, HolderRows>();
+  for (const [holderKey, held] of drawn) {
+    const base = holderKey === "" ? 0 : (cardTops.get(holderKey) ?? 0);
+    rows.set(holderKey, {
+      holder: held.holder,
+      rows: held.rows.map((row) =>
+        base + row.top < near.top || base + row.top > near.bottom
+          ? row
+          : { ...row, top: topIn(held.holder, row.row) },
+      ),
+    });
+  }
+  return rows;
 }
 
 /**
@@ -4723,7 +4792,7 @@ function drawnRows(
  */
 function glideShifted(
   list: HTMLElement,
-  before: ReadonlyMap<string, ReadonlyArray<DrawnRow>>,
+  before: ReadonlyMap<string, HolderRows>,
   after: ReadonlyMap<string, HolderRows>,
   lines: boolean,
 ): void {
@@ -4734,7 +4803,7 @@ function glideShifted(
   for (const [holderKey, { rows }] of after) {
     const was = before.get(holderKey);
     if (was === undefined || (holderKey === "" && !lines)) continue;
-    const shifts = rowShifts(was, rows);
+    const shifts = rowShifts(was.rows, rows);
     if (shifts.size === 0) continue;
     view ??= scroll.getBoundingClientRect();
     for (const { key, row } of rows) {
