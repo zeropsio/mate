@@ -56,7 +56,7 @@ import { projectActivityPayload } from "../ActivityPayloadProjection.ts";
 import { forkParked } from "../../serverActivation.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { canReplaceThreadTitle } from "../threadTitles.ts";
-import { agentStoppedUnexpectedly } from "../../provider/agentStopped.ts";
+import { agentStoppedUnexpectedly } from "@t3tools/shared/threadStatus";
 
 const providerTurnKey = (threadId: ThreadId, turnId: TurnId) => `${threadId}:${turnId}`;
 // Suffixed, not prefixed: `clearTurnStateForSession` sweeps by thread prefix.
@@ -1861,6 +1861,46 @@ const make = Effect.gen(function* () {
     },
   );
 
+  /**
+   * The record of where a turn broke off — its agent's process died, or the
+   * turn failed — in its own words: one per turn and words, whichever event
+   * says it first (the adapter's runtime.error, the session's exit, the
+   * turn's failure). It is what the conversation reads, after a reload too.
+   */
+  const recordBreak = Effect.fnUntraced(function* (input: {
+    readonly event: ProviderRuntimeEvent;
+    readonly threadId: ThreadId;
+    readonly turnId: TurnId;
+    readonly words: string;
+  }) {
+    const recorded = yield* projectionThreadActivityRepository.listByThreadId({
+      threadId: input.threadId,
+      activityKinds: ["runtime.error"],
+      limit: 20,
+    });
+    const said = recorded.some(
+      (activity) =>
+        activity.turnId === input.turnId &&
+        (activity.payload as { readonly message?: unknown } | null)?.message === input.words,
+    );
+    if (said) return;
+    yield* orchestrationEngine.dispatch({
+      type: "thread.activity.append",
+      commandId: yield* providerCommandId(input.event, "turn-break-activity-append"),
+      threadId: input.threadId,
+      activity: {
+        id: EventId.make(`${input.event.eventId}:broke-off`),
+        createdAt: input.event.createdAt,
+        tone: "error",
+        kind: "runtime.error",
+        summary: "Runtime error",
+        payload: { message: input.words },
+        turnId: input.turnId,
+      },
+      createdAt: input.event.createdAt,
+    });
+  });
+
   const processRuntimeEvent = (event: ProviderRuntimeEvent) =>
     Effect.gen(function* () {
       if (
@@ -2014,6 +2054,29 @@ const make = Effect.gen(function* () {
                   : (thread.session?.lastError ?? null);
 
         if (shouldApplyThreadLifecycle) {
+          // The turn's record says where it broke off before the session
+          // settles it, so it never reads finished in between.
+          if (crashWords !== null && crashedTurnId !== null) {
+            yield* recordBreak({
+              event,
+              threadId: thread.id,
+              turnId: crashedTurnId,
+              words: crashWords,
+            });
+          } else if (
+            event.type === "turn.completed" &&
+            normalizeRuntimeTurnState(event.payload.state) === "failed"
+          ) {
+            const failedTurnId = eventTurnId ?? activeTurnId;
+            if (failedTurnId !== null) {
+              yield* recordBreak({
+                event,
+                threadId: thread.id,
+                turnId: failedTurnId,
+                words: event.payload.errorMessage ?? agentStoppedUnexpectedly(event.provider),
+              });
+            }
+          }
           // The live step the menu says: a turn starts out thinking; once no
           // turn is active — it settled, the session errored, stopped or went
           // idle — nothing is live. Before the session change goes out, so the
@@ -2571,54 +2634,6 @@ const make = Effect.gen(function* () {
 
       if (event.type === "session.exited") {
         yield* clearTurnStateForSession(thread.id);
-        // The turn's record says where it broke off, as Claude's own crash does.
-        if (crashWords !== null && crashedTurnId !== null) {
-          yield* orchestrationEngine.dispatch({
-            type: "thread.activity.append",
-            commandId: yield* providerCommandId(event, "agent-crash-activity-append"),
-            threadId: thread.id,
-            activity: {
-              id: EventId.make(`${event.eventId}:crash`),
-              createdAt: now,
-              tone: "error",
-              kind: "runtime.error",
-              summary: "Runtime error",
-              payload: { message: crashWords },
-              turnId: crashedTurnId,
-            },
-            createdAt: now,
-          });
-        }
-      }
-
-      if (event.type === "runtime.error") {
-        const runtimeErrorMessage = event.payload.message;
-
-        const shouldApplyRuntimeError = !STRICT_PROVIDER_LIFECYCLE_GUARD
-          ? true
-          : activeTurnId === null || eventTurnId === undefined || sameId(activeTurnId, eventTurnId);
-
-        if (shouldApplyRuntimeError) {
-          threadLiveStep.clearThread(thread.id);
-          yield* orchestrationEngine.dispatch({
-            type: "thread.session.set",
-            commandId: yield* providerCommandId(event, "runtime-error-session-set"),
-            threadId: thread.id,
-            session: {
-              threadId: thread.id,
-              status: "error",
-              providerName: event.provider,
-              ...(event.providerInstanceId !== undefined
-                ? { providerInstanceId: event.providerInstanceId }
-                : {}),
-              runtimeMode: thread.session?.runtimeMode ?? "full-access",
-              activeTurnId: eventTurnId ?? null,
-              lastError: runtimeErrorMessage,
-              updatedAt: now,
-            },
-            createdAt: now,
-          });
-        }
       }
 
       if (event.type === "thread.metadata.updated" && event.payload.name) {
@@ -2787,6 +2802,37 @@ const make = Effect.gen(function* () {
           ),
         ),
       ).pipe(Effect.asVoid);
+
+      // After its record: the turn it settles has its error in it already.
+      if (event.type === "runtime.error") {
+        const runtimeErrorMessage = event.payload.message;
+
+        const shouldApplyRuntimeError = !STRICT_PROVIDER_LIFECYCLE_GUARD
+          ? true
+          : activeTurnId === null || eventTurnId === undefined || sameId(activeTurnId, eventTurnId);
+
+        if (shouldApplyRuntimeError) {
+          threadLiveStep.clearThread(thread.id);
+          yield* orchestrationEngine.dispatch({
+            type: "thread.session.set",
+            commandId: yield* providerCommandId(event, "runtime-error-session-set"),
+            threadId: thread.id,
+            session: {
+              threadId: thread.id,
+              status: "error",
+              providerName: event.provider,
+              ...(event.providerInstanceId !== undefined
+                ? { providerInstanceId: event.providerInstanceId }
+                : {}),
+              runtimeMode: thread.session?.runtimeMode ?? "full-access",
+              activeTurnId: eventTurnId ?? null,
+              lastError: runtimeErrorMessage,
+              updatedAt: now,
+            },
+            createdAt: now,
+          });
+        }
+      }
     });
 
   // A thread deleted or archived mid-turn: its runtime events are dropped from

@@ -6992,9 +6992,9 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
           exited.some((event) => event.type === "request.resolved"),
           false,
         );
-        NodeAssert.match(
-          exited.find((event) => event.type === "runtime.error")?.payload.message ?? "",
-          /event stream ended/,
+        NodeAssert.equal(
+          exited.find((event) => event.type === "runtime.error")?.payload.message,
+          "OpenCode stopped unexpectedly. Send a message to pick up where it left off.",
         );
         NodeAssert.equal(yield* adapter.hasSession(threadId), false);
         runtimeMock.state.endEventStream = false;

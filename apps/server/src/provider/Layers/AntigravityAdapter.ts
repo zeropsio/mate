@@ -1162,7 +1162,14 @@ export const makeAntigravityAdapter = Effect.fn("makeAntigravityAdapter")(functi
         Effect.suspend(() =>
           intent
             ? context.promptLock.withPermit(
-                finishTurn(intent, { state: "failed", errorMessage: cause.message }),
+                finishTurn(intent, {
+                  state: "failed",
+                  // The person reads the error's own words, never its prefix.
+                  errorMessage:
+                    "detail" in cause && typeof cause.detail === "string"
+                      ? cause.detail
+                      : cause.message,
+                }),
               )
             : Effect.void,
         ),

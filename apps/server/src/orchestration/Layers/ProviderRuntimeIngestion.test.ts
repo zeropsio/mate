@@ -4267,54 +4267,101 @@ describe("ProviderRuntimeIngestion", () => {
     expect(thread.session?.lastError).toBe("runtime exploded");
   });
 
-  describe("an agent's process that dies in the middle of a turn", () => {
+  describe("a turn that breaks off: its agent's process dies, or the turn fails", () => {
+    const STOPPED = (name: string) =>
+      `${name} stopped unexpectedly. Send a message to pick up where it left off.`;
     const cases: ReadonlyArray<{
       readonly name: string;
       readonly driver: string;
-      readonly exitKind?: "graceful" | "error";
       /** A runtime.error the adapter said first, in its own words. */
       readonly saidFirst?: string;
+      /** How it ends: the session exits (with this kind), or the turn fails (with these words). */
+      readonly ends:
+        | { readonly exit: "graceful" | "error" | undefined }
+        | { readonly failed: string | undefined };
       readonly turnRunning: boolean;
       readonly status: "error" | "stopped";
       readonly lastError: string | null;
       readonly turnState: "error" | "interrupted" | null;
-      /** The runtime.error activities the turn holds, by their words. */
+      /** The turn's runtime.error records, by their words. */
       readonly errors: ReadonlyArray<string>;
     }> = [
       {
         name: "Codex's app server exits mid-turn",
         driver: "codex",
+        ends: { exit: undefined },
         turnRunning: true,
         status: "error",
-        lastError: "Codex stopped unexpectedly. Send a message to pick up where it left off.",
+        lastError: STOPPED("Codex"),
         turnState: "error",
-        errors: ["Codex stopped unexpectedly. Send a message to pick up where it left off."],
+        errors: [STOPPED("Codex")],
       },
       {
         name: "Antigravity's process is cut off mid-turn",
         driver: "antigravity",
-        exitKind: "error",
+        ends: { exit: "error" },
         turnRunning: true,
         status: "error",
-        lastError: "Antigravity stopped unexpectedly. Send a message to pick up where it left off.",
+        lastError: STOPPED("Antigravity"),
         turnState: "error",
-        errors: ["Antigravity stopped unexpectedly. Send a message to pick up where it left off."],
+        errors: [STOPPED("Antigravity")],
+      },
+      {
+        name: "Cursor's ACP process dies mid-turn",
+        driver: "cursor",
+        ends: { exit: "error" },
+        turnRunning: true,
+        status: "error",
+        lastError: STOPPED("Cursor"),
+        turnState: "error",
+        errors: [STOPPED("Cursor")],
       },
       {
         name: "OpenCode said why first: its words stand, said once",
         driver: "opencode",
-        exitKind: "error",
-        saidFirst: "OpenCode stopped unexpectedly. Send a message to pick up where it left off.",
+        saidFirst: STOPPED("OpenCode"),
+        ends: { exit: "error" },
         turnRunning: true,
         status: "error",
-        lastError: "OpenCode stopped unexpectedly. Send a message to pick up where it left off.",
+        lastError: STOPPED("OpenCode"),
         turnState: "error",
-        errors: ["OpenCode stopped unexpectedly. Send a message to pick up where it left off."],
+        errors: [STOPPED("OpenCode")],
+      },
+      {
+        name: "Grok fails its turn in its own words, with no record of it",
+        driver: "grok",
+        ends: { failed: STOPPED("Grok") },
+        turnRunning: true,
+        status: "error",
+        lastError: STOPPED("Grok"),
+        turnState: "error",
+        errors: [STOPPED("Grok")],
+      },
+      {
+        name: "Claude said why, then failed its turn in the same words: said once",
+        driver: "claudeAgent",
+        saidFirst: STOPPED("Claude Code"),
+        ends: { failed: STOPPED("Claude Code") },
+        turnRunning: true,
+        status: "error",
+        lastError: STOPPED("Claude Code"),
+        turnState: "error",
+        errors: [STOPPED("Claude Code")],
+      },
+      {
+        name: "a turn that failed without a crash keeps its own words",
+        driver: "claudeAgent",
+        ends: { failed: "API Error: 500 Internal server error" },
+        turnRunning: true,
+        status: "error",
+        lastError: "API Error: 500 Internal server error",
+        turnState: "error",
+        errors: ["API Error: 500 Internal server error"],
       },
       {
         name: "a graceful close mid-turn is a stop, not a crash",
         driver: "codex",
-        exitKind: "graceful",
+        ends: { exit: "graceful" },
         turnRunning: true,
         status: "stopped",
         lastError: null,
@@ -4324,6 +4371,7 @@ describe("ProviderRuntimeIngestion", () => {
       {
         name: "an exit with no turn running cut nothing off",
         driver: "codex",
+        ends: { exit: undefined },
         turnRunning: false,
         status: "stopped",
         lastError: null,
@@ -4362,17 +4410,32 @@ describe("ProviderRuntimeIngestion", () => {
             payload: { message: testCase.saidFirst },
           });
         }
-        harness.emit({
-          type: "session.exited",
-          eventId: asEventId("evt-crash-session-exited"),
-          provider,
-          createdAt: "2026-01-01T00:00:03.000Z",
-          threadId,
-          payload: {
-            reason: "App server exited with code 134.",
-            ...(testCase.exitKind === undefined ? {} : { exitKind: testCase.exitKind }),
-          },
-        });
+        if ("exit" in testCase.ends) {
+          harness.emit({
+            type: "session.exited",
+            eventId: asEventId("evt-crash-session-exited"),
+            provider,
+            createdAt: "2026-01-01T00:00:03.000Z",
+            threadId,
+            payload: {
+              reason: "App server exited with code 134.",
+              ...(testCase.ends.exit === undefined ? {} : { exitKind: testCase.ends.exit }),
+            },
+          });
+        } else {
+          harness.emit({
+            type: "turn.completed",
+            eventId: asEventId("evt-crash-turn-failed"),
+            provider,
+            createdAt: "2026-01-01T00:00:03.000Z",
+            threadId,
+            turnId,
+            payload: {
+              state: "failed",
+              ...(testCase.ends.failed === undefined ? {} : { errorMessage: testCase.ends.failed }),
+            },
+          });
+        }
         await harness.drain();
         const thread = (await harness.readModel()).threads.find((entry) => entry.id === threadId)!;
         expect(thread.session?.status).toBe(testCase.status);
@@ -4388,6 +4451,22 @@ describe("ProviderRuntimeIngestion", () => {
             message: (activity.payload as { readonly message?: unknown }).message,
           })),
         ).toEqual(testCase.errors.map((message) => ({ turnId, message })));
+
+        // The record lands before the session says the turn failed: it never
+        // reads finished in between.
+        const events = Array.from(
+          await Effect.runPromise(Stream.runCollect(harness.engine.readEvents(0))),
+        );
+        const recorded = events.findIndex(
+          (event) =>
+            event.type === "thread.activity-appended" &&
+            event.payload.activity.kind === "runtime.error",
+        );
+        const failed = events.findIndex(
+          (event) =>
+            event.type === "thread.session-set" && event.payload.session.status === "error",
+        );
+        if (testCase.errors.length > 0) expect(recorded).toBeLessThan(failed);
       });
     }
   });

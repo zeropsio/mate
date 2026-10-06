@@ -7,7 +7,7 @@ import * as Schema from "effect/Schema";
 import * as EffectAcpErrors from "effect-acp/errors";
 
 import { ProviderAdapterProcessError, ProviderAdapterRequestError } from "../Errors.ts";
-import { agentStoppedUnexpectedly } from "../agentStopped.ts";
+import { agentStoppedUnexpectedly } from "@t3tools/shared/threadStatus";
 const isAcpProcessExitedError = Schema.is(EffectAcpErrors.AcpProcessExitedError);
 const isAcpRequestError = Schema.is(EffectAcpErrors.AcpRequestError);
 

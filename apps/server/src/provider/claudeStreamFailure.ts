@@ -10,6 +10,8 @@
  * on a bounded line: one bounded class repetition, or plain alternatives.
  */
 
+import { PICK_UP_NEXT } from "@t3tools/shared/threadStatus";
+
 const STDERR_TAIL_CHARS = 8 * 1024;
 /** No line is read past this: what crashed is said at its start. */
 const LINE_CHARS = 400;
@@ -139,7 +141,7 @@ export interface ClaudeStreamFailure {
   };
 }
 
-const NEXT = "Send a message to pick up where it left off.";
+const NEXT = PICK_UP_NEXT;
 const SIGN_IN_NEXT = "Sign Claude in again, then send a message to pick up where it left off.";
 
 const SIGNED_OUT = /OAuth token has expired|Invalid API key|API Error: 401\b|Please run \/login/u;

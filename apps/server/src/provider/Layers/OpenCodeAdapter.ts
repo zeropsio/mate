@@ -49,7 +49,7 @@ import {
   ProviderAdapterSessionNotFoundError,
   ProviderAdapterValidationError,
 } from "../Errors.ts";
-import { agentStoppedUnexpectedly } from "../agentStopped.ts";
+import { agentStoppedUnexpectedly } from "@t3tools/shared/threadStatus";
 import { buildRuntimeInstructions } from "../RuntimeInstructions.ts";
 import { profiledRuntimeMode } from "../../spi/threadToolPolicy.ts";
 import {
@@ -2729,14 +2729,16 @@ export function makeOpenCodeAdapter(
             if (eventsAbortController.signal.aborted || (yield* Ref.get(context.stopped))) {
               return;
             }
-            yield* emitUnexpectedExit(
-              context,
-              Exit.isFailure(exit)
+            // The stream's end and the server's exit race to say it: either
+            // way the person reads the same words; what ended it is the log's.
+            yield* Effect.logWarning("opencode.event-stream.ended", {
+              detail: Exit.isFailure(exit)
                 ? openCodeRuntimeErrorDetail(Cause.squash(exit.cause))
                 : lastStreamError !== undefined
-                  ? `OpenCode event stream disconnected: ${openCodeRuntimeErrorDetail(lastStreamError)}`
-                  : "OpenCode event stream ended unexpectedly. Send another message to reconnect.",
-            );
+                  ? openCodeRuntimeErrorDetail(lastStreamError)
+                  : "ended",
+            });
+            yield* emitUnexpectedExit(context, agentStoppedUnexpectedly(PROVIDER));
           }),
         ),
         Effect.forkIn(context.sessionScope),
