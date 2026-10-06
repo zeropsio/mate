@@ -33,6 +33,7 @@ import * as Stream from "effect/Stream";
 
 import { ServerConfig } from "../../config.ts";
 import * as CheckpointStore from "../../checkpointing/CheckpointStore.ts";
+import { WorkspaceHistory } from "../../checkpointing/WorkspaceHistory.ts";
 import { OrchestrationEventStoreLive } from "../../persistence/Layers/OrchestrationEventStore.ts";
 import { OrchestrationCommandReceiptRepositoryLive } from "../../persistence/Layers/OrchestrationCommandReceipts.ts";
 import { SqlitePersistenceMemory } from "../../persistence/Layers/Sqlite.ts";
@@ -258,22 +259,83 @@ function scriptFor(
 }
 
 /**
- * The reactor and ingestion over one engine, with a fake ProviderService that
- * runs the script. `lagMs` holds back the adapter's events from ingestion — a
- * busy worker — while the send's own result returns at once.
+ * The reactor and ingestion over one engine and the fake ProviderService.
+ * With `history`, the reactor runs as in production: each send forked, so a
+ * Stop meets a send still running.
  */
-function makeRun(driver: Driver, script: Script, lagMs: number) {
+function harnessLayer(input: {
+  readonly service: ProviderServiceShape;
+  readonly instanceId: ProviderInstanceId;
+  readonly baseDir: string;
+  readonly history?: boolean;
+}) {
+  const { service, instanceId, baseDir } = input;
+  const engineLayer = OrchestrationEngineLive.pipe(
+    Layer.provide(OrchestrationProjectionPipelineLive),
+    Layer.provide(OrchestrationEventStoreLive),
+    Layer.provide(OrchestrationCommandReceiptRepositoryLive),
+  );
+  const layer = Layer.mergeAll(ProviderCommandReactorLive, ProviderRuntimeIngestionLive).pipe(
+    Layer.provideMerge(engineLayer),
+    Layer.provideMerge(OrchestrationProjectionSnapshotQueryLive),
+    Layer.provideMerge(ThreadBackgroundLiveness.layer),
+    Layer.provideMerge(ThreadPlanProgress.layer),
+    Layer.provideMerge(ThreadLiveStep.layer),
+    Layer.provideMerge(RepositoryIdentityResolver.layer),
+    Layer.provideMerge(Layer.succeed(ProviderService, service)),
+    Layer.provideMerge(
+      Layer.mock(ProviderAuthService, { tryHandlePromptCommand: () => Effect.succeed(false) }),
+    ),
+    Layer.provideMerge(makeProviderRegistryLayer([{ instanceId }] as never)),
+    Layer.provideMerge(
+      Layer.mock(GitWorkflowService.GitWorkflowService)({
+        renameBranch: () => Effect.die("unused"),
+        pruneWorktrees: () => Effect.void,
+        createWorktree: () => Effect.die("unused"),
+      }),
+    ),
+    Layer.provideMerge(
+      Layer.succeed(VcsStatusBroadcaster, {
+        getStatus: () => Effect.die("unused"),
+        refreshLocalStatus: () => Effect.die("unused"),
+        refreshStatus: () => Effect.die("unused"),
+        streamStatus: () => Stream.die("unused"),
+      }),
+    ),
+    Layer.provideMerge(
+      Layer.mock(TextGeneration, {
+        generateBranchName: () => Effect.die("unused"),
+        generateThreadTitle: () => Effect.die("unused"),
+      }),
+    ),
+    Layer.provideMerge(CheckpointStore.layer.pipe(Layer.provide(VcsDriverRegistry.layer))),
+    Layer.provideMerge(VcsProcess.layer),
+    Layer.provideMerge(ServerSettingsService.layerTest()),
+    Layer.provideMerge(SqlitePersistenceMemory),
+    Layer.provideMerge(ServerConfig.layerTest(process.cwd(), baseDir)),
+    Layer.provideMerge(NodeServices.layer),
+  );
+  return input.history === true
+    ? layer.pipe(
+        Layer.provideMerge(
+          Layer.mock(WorkspaceHistory)({
+            prepare: () => Effect.void,
+            markDispatched: () => Effect.void,
+            sentTo: () => Effect.void,
+            release: () => Effect.void,
+          }),
+        ),
+      )
+    : layer;
+}
+
+/** The fake adapter's event stream: `lagMs` holds its events back from ingestion — a busy worker. */
+function fakeEvents(driver: Driver, lagMs: number) {
   return Effect.gen(function* () {
-    const baseDir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "send-failure-heard-"));
-    yield* Effect.addFinalizer(() =>
-      Effect.sync(() => NodeFS.rmSync(baseDir, { recursive: true, force: true })),
-    );
     const pubsub = yield* PubSub.unbounded<ProviderRuntimeEvent>();
     const instanceId = ProviderInstanceId.make(driver);
     const provider = ProviderDriverKind.make(driver);
-    const sessions: Array<ProviderSession> = [];
     let sequence = 0;
-    let sendCalls = 0;
     const emit: Emit = (type, rest) =>
       Effect.gen(function* () {
         sequence += 1;
@@ -296,26 +358,152 @@ function makeRun(driver: Driver, script: Script, lagMs: number) {
           yield* PubSub.publish(pubsub, event);
         }
       });
-    const now = "2026-01-01T00:00:00.000Z";
-    const service: ProviderServiceShape = {
-      startSession: (threadId, input) =>
-        Effect.sync(() => {
-          const session: ProviderSession = {
-            provider,
-            providerInstanceId: instanceId,
-            status: "ready",
-            runtimeMode: input.runtimeMode ?? "full-access",
-            ...(input.cwd === undefined ? {} : { cwd: input.cwd }),
-            ...(input.modelSelection?.model === undefined
-              ? {}
-              : { model: input.modelSelection.model }),
-            threadId,
-            createdAt: now,
-            updatedAt: now,
-          };
-          sessions.push(session);
-          return session;
-        }),
+    return { pubsub, emit, instanceId, provider };
+  });
+}
+
+const NOW = "2026-01-01T00:00:00.000Z";
+
+/** A ProviderService whose sessions start at once; the test gives its sends and its Stop. */
+function fakeService(input: {
+  readonly driver: Driver;
+  readonly events: Effect.Success<ReturnType<typeof fakeEvents>>;
+  readonly sendTurn: ProviderServiceShape["sendTurn"];
+  readonly interruptTurn: ProviderServiceShape["interruptTurn"];
+}): ProviderServiceShape {
+  const { driver, events } = input;
+  const { instanceId, provider, pubsub } = events;
+  const sessions: Array<ProviderSession> = [];
+  return {
+    startSession: (threadId, start) =>
+      Effect.sync(() => {
+        const session: ProviderSession = {
+          provider,
+          providerInstanceId: instanceId,
+          status: "ready",
+          runtimeMode: start.runtimeMode ?? "full-access",
+          ...(start.cwd === undefined ? {} : { cwd: start.cwd }),
+          ...(start.modelSelection?.model === undefined
+            ? {}
+            : { model: start.modelSelection.model }),
+          threadId,
+          createdAt: NOW,
+          updatedAt: NOW,
+        };
+        sessions.push(session);
+        return session;
+      }),
+    sendTurn: input.sendTurn,
+    compactThread: () => Effect.void,
+    interruptTurn: input.interruptTurn,
+    respondToRequest: () => Effect.void,
+    respondToUserInput: () => Effect.void,
+    stopSession: () => Effect.void,
+    listSessions: () => Effect.succeed(sessions),
+    // Claude's send that met a closed session never reached the agent.
+    getCapabilities: () =>
+      Effect.succeed({
+        sessionModelSwitch: "in-session",
+        ...(driver === "claudeAgent" ? { closedSendUndelivered: true } : {}),
+      }),
+    getInstanceInfo: (id) =>
+      Effect.succeed({
+        instanceId: id,
+        driverKind: provider,
+        displayName: undefined,
+        enabled: true,
+        continuationIdentity: { driverKind: provider, continuationKey: `${driver}:${id}` },
+      }),
+    assertConversationRollbackSupported: () => Effect.die("unsupported"),
+    rollbackConversation: () => Effect.die("unsupported"),
+    uploadFeedback: () => Effect.die("unsupported"),
+    get streamEvents() {
+      return Stream.fromPubSub(pubsub);
+    },
+  };
+}
+
+/**
+ * A project and its thread, the reactor and ingestion started; `send(n)` is
+ * the person's nth message, `thread()` what the conversation reads now.
+ */
+const openThread = (instanceId: ProviderInstanceId, baseDir: string) =>
+  Effect.gen(function* () {
+    const engine = yield* OrchestrationEngineService;
+    const snapshot = yield* ProjectionSnapshotQuery;
+    const reactor = yield* ProviderCommandReactor;
+    const ingestion = yield* ProviderRuntimeIngestionService;
+    yield* engine.dispatch({
+      type: "project.create",
+      commandId: CommandId.make("cmd-project-create"),
+      projectId: ProjectId.make("project-1"),
+      title: "Project",
+      workspaceRoot: baseDir,
+      defaultModelSelection: { instanceId, model: "model" },
+      createdAt: NOW,
+    });
+    yield* engine.dispatch({
+      type: "thread.create",
+      commandId: CommandId.make("cmd-thread-create"),
+      threadId: THREAD,
+      projectId: ProjectId.make("project-1"),
+      title: "Thread",
+      modelSelection: { instanceId, model: "model" },
+      interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+      runtimeMode: "full-access",
+      branch: null,
+      worktreePath: null,
+      createdAt: NOW,
+    });
+    yield* ingestion.start();
+    yield* reactor.start();
+    // The ingestion worker subscribes before the first event.
+    yield* Effect.sleep("20 millis");
+
+    const send = (index: number) =>
+      engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.make(`cmd-turn-start-${index}`),
+        threadId: THREAD,
+        message: {
+          messageId: MessageId.make(`message-${index}`),
+          role: "user",
+          text: index === 1 ? "work on it" : "and the footer too",
+          attachments: [],
+        },
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        runtimeMode: "full-access",
+        createdAt: `2026-01-01T00:00:0${index}.500Z`,
+      });
+    const thread = () =>
+      snapshot
+        .getSnapshot()
+        .pipe(Effect.map((read) => read.threads.find((entry) => entry.id === THREAD)!));
+    return { engine, reactor, ingestion, send, thread };
+  });
+
+const tempDir = Effect.gen(function* () {
+  const baseDir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "send-failure-heard-"));
+  yield* Effect.addFinalizer(() =>
+    Effect.sync(() => NodeFS.rmSync(baseDir, { recursive: true, force: true })),
+  );
+  return baseDir;
+});
+
+/**
+ * The reactor and ingestion over one engine, with a fake ProviderService that
+ * runs the script. `lagMs` holds back the adapter's events from ingestion — a
+ * busy worker — while the send's own result returns at once.
+ */
+function makeRun(driver: Driver, script: Script, lagMs: number) {
+  return Effect.gen(function* () {
+    const baseDir = yield* tempDir;
+    const events = yield* fakeEvents(driver, lagMs);
+    const { emit, instanceId } = events;
+    let sendCalls = 0;
+    const service = fakeService({
+      driver,
+      events,
       sendTurn: () => {
         sendCalls += 1;
         const send =
@@ -326,127 +514,11 @@ function makeRun(driver: Driver, script: Script, lagMs: number) {
               : script.send;
         return send(emit).pipe(Effect.as({ threadId: THREAD, turnId: TURN }));
       },
-      compactThread: () => Effect.void,
       interruptTurn: () => Effect.void,
-      respondToRequest: () => Effect.void,
-      respondToUserInput: () => Effect.void,
-      stopSession: () => Effect.void,
-      listSessions: () => Effect.succeed(sessions),
-      // Claude's send that met a closed session never reached the agent.
-      getCapabilities: () =>
-        Effect.succeed({
-          sessionModelSwitch: "in-session",
-          ...(driver === "claudeAgent" ? { closedSendUndelivered: true } : {}),
-        }),
-      getInstanceInfo: (id) =>
-        Effect.succeed({
-          instanceId: id,
-          driverKind: provider,
-          displayName: undefined,
-          enabled: true,
-          continuationIdentity: { driverKind: provider, continuationKey: `${driver}:${id}` },
-        }),
-      assertConversationRollbackSupported: () => Effect.die("unsupported"),
-      rollbackConversation: () => Effect.die("unsupported"),
-      uploadFeedback: () => Effect.die("unsupported"),
-      get streamEvents() {
-        return Stream.fromPubSub(pubsub);
-      },
-    };
-
-    const engineLayer = OrchestrationEngineLive.pipe(
-      Layer.provide(OrchestrationProjectionPipelineLive),
-      Layer.provide(OrchestrationEventStoreLive),
-      Layer.provide(OrchestrationCommandReceiptRepositoryLive),
-    );
-    const layer = Layer.mergeAll(ProviderCommandReactorLive, ProviderRuntimeIngestionLive).pipe(
-      Layer.provideMerge(engineLayer),
-      Layer.provideMerge(OrchestrationProjectionSnapshotQueryLive),
-      Layer.provideMerge(ThreadBackgroundLiveness.layer),
-      Layer.provideMerge(ThreadPlanProgress.layer),
-      Layer.provideMerge(ThreadLiveStep.layer),
-      Layer.provideMerge(RepositoryIdentityResolver.layer),
-      Layer.provideMerge(Layer.succeed(ProviderService, service)),
-      Layer.provideMerge(
-        Layer.mock(ProviderAuthService, { tryHandlePromptCommand: () => Effect.succeed(false) }),
-      ),
-      Layer.provideMerge(makeProviderRegistryLayer([{ instanceId }] as never)),
-      Layer.provideMerge(
-        Layer.mock(GitWorkflowService.GitWorkflowService)({
-          renameBranch: () => Effect.die("unused"),
-          pruneWorktrees: () => Effect.void,
-          createWorktree: () => Effect.die("unused"),
-        }),
-      ),
-      Layer.provideMerge(
-        Layer.succeed(VcsStatusBroadcaster, {
-          getStatus: () => Effect.die("unused"),
-          refreshLocalStatus: () => Effect.die("unused"),
-          refreshStatus: () => Effect.die("unused"),
-          streamStatus: () => Stream.die("unused"),
-        }),
-      ),
-      Layer.provideMerge(
-        Layer.mock(TextGeneration, {
-          generateBranchName: () => Effect.die("unused"),
-          generateThreadTitle: () => Effect.die("unused"),
-        }),
-      ),
-      Layer.provideMerge(CheckpointStore.layer.pipe(Layer.provide(VcsDriverRegistry.layer))),
-      Layer.provideMerge(VcsProcess.layer),
-      Layer.provideMerge(ServerSettingsService.layerTest()),
-      Layer.provideMerge(SqlitePersistenceMemory),
-      Layer.provideMerge(ServerConfig.layerTest(process.cwd(), baseDir)),
-      Layer.provideMerge(NodeServices.layer),
-    );
+    });
 
     return yield* Effect.gen(function* () {
-      const engine = yield* OrchestrationEngineService;
-      const snapshot = yield* ProjectionSnapshotQuery;
-      const reactor = yield* ProviderCommandReactor;
-      const ingestion = yield* ProviderRuntimeIngestionService;
-      yield* engine.dispatch({
-        type: "project.create",
-        commandId: CommandId.make("cmd-project-create"),
-        projectId: ProjectId.make("project-1"),
-        title: "Project",
-        workspaceRoot: baseDir,
-        defaultModelSelection: { instanceId, model: "model" },
-        createdAt: now,
-      });
-      yield* engine.dispatch({
-        type: "thread.create",
-        commandId: CommandId.make("cmd-thread-create"),
-        threadId: THREAD,
-        projectId: ProjectId.make("project-1"),
-        title: "Thread",
-        modelSelection: { instanceId, model: "model" },
-        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
-        runtimeMode: "full-access",
-        branch: null,
-        worktreePath: null,
-        createdAt: now,
-      });
-      yield* ingestion.start();
-      yield* reactor.start();
-      // The ingestion worker subscribes before the first event.
-      yield* Effect.sleep("20 millis");
-
-      const send = (index: number) =>
-        engine.dispatch({
-          type: "thread.turn.start",
-          commandId: CommandId.make(`cmd-turn-start-${index}`),
-          threadId: THREAD,
-          message: {
-            messageId: MessageId.make(`message-${index}`),
-            role: "user",
-            text: index === 1 ? "work on it" : "and the footer too",
-            attachments: [],
-          },
-          interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
-          runtimeMode: "full-access",
-          createdAt: `2026-01-01T00:00:0${index}.500Z`,
-        });
+      const { reactor, ingestion, send, thread } = yield* openThread(instanceId, baseDir);
       yield* send(1);
       yield* reactor.drain;
       if (script.steer === true) {
@@ -463,9 +535,8 @@ function makeRun(driver: Driver, script: Script, lagMs: number) {
       yield* reactor.drain;
       yield* ingestion.drain;
 
-      const thread = (yield* snapshot.getSnapshot()).threads.find((entry) => entry.id === THREAD)!;
-      return { thread, sendCalls };
-    }).pipe(Effect.provide(layer));
+      return { thread: yield* thread(), sendCalls };
+    }).pipe(Effect.provide(harnessLayer({ service, instanceId, baseDir })));
   });
 }
 
