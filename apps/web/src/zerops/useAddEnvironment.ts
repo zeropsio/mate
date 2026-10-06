@@ -20,7 +20,8 @@ import { mayAddEnvironment } from "~/components/zerops/projects/projectsView.log
 import { questionFactsOf } from "./addEnvironment.logic";
 import { HeldInventoryContext } from "./inventoryContext";
 import { placedPressesIn, useMatePresses } from "./matePress";
-import { useNewProjectBirths } from "./newProjectBirth";
+import { useCreations } from "./creations";
+import { placedNewProjects } from "./newProjectBirth";
 import type { ZeropsProjectFlow } from "./projectFlowContext";
 import { useSetUpEnvironment } from "./setUpEnvironment";
 import { useZeropsCandidates } from "./useZeropsCandidates";
@@ -45,14 +46,14 @@ function useGroupProjects(): (groupId: string) => ReadonlyArray<ZeropsProject> {
 export function useGroupPendingEnvironments(groupId: string): ReadonlyArray<HeldEnvironment> {
   const { listing } = useZeropsCandidates();
   const presses = useMatePresses();
-  const made = useNewProjectBirths((state) => state.births);
+  const made = useCreations();
   const organizationId = useZeropsSession().activeOrganization?.id;
   return useMemo(
     () =>
       (
         buildZeropsGroupTree(heldCandidates(listing).rows, {
           order: "name",
-          births: placedPressesIn(presses, organizationId, Object.values(made)),
+          births: placedPressesIn(presses, organizationId, placedNewProjects(made, organizationId)),
         }).groups.find((entry) => entry.group.groupId === groupId)?.group.pending ?? []
       ).flatMap((member): ReadonlyArray<HeldEnvironment> =>
         member.kind === "stage" || member.kind === "production"

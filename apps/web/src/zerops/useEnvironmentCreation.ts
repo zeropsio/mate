@@ -30,7 +30,12 @@ import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates"
 import { ZeropsServiceId, type AgentsCellRequest } from "@t3tools/client-runtime/zerops/data";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { RegistryContext } from "@effect/atom-react";
-import { projectServicesAtom, type ProjectServices } from "@t3tools/client-runtime/data";
+import {
+  creationStepId,
+  projectServicesAtom,
+  type ProjectServices,
+  type RunToEnd,
+} from "@t3tools/client-runtime/data";
 import type { Atom, AtomRegistry } from "effect/unstable/reactivity";
 import { useCallback, useContext } from "react";
 
@@ -53,8 +58,12 @@ export interface EnvironmentCreationRequest {
   /** The steps it will take, once planned. */
   readonly onPlanned?: (steps: ReadonlyArray<EnvironmentCreationStep>) => void;
   readonly onProgress?: (progress: ReadonlyArray<EnvironmentCreationStepProgress>) => void;
-  /** The platform took the project: the rest of the press acts on it. */
-  readonly onAccepted?: (projectId: string) => void;
+  /**
+   * The creation an Add a Mate runs this press for (`creationRunId`): its birth intent and the
+   * write that makes its project are recorded under ids named from it, where its view reads them
+   * (`creationSteps`). None for a stage or a production.
+   */
+  readonly creationId?: string | undefined;
 }
 
 /** How a creation ended, for the surface that started it. */
@@ -245,7 +254,7 @@ export function useEnvironmentCreation(): (
       const hq = officialHq(accountHq);
       const organization = activeOrganization;
       const isCurrent = captureAccountLifetime();
-      const { group, role, choice } = request;
+      const { group, role, choice, creationId } = request;
       const { name, shown } = environmentProjectName(role, group.name, choice.name);
       const tier = role === "prod" ? "production" : role === "stage" ? "stage" : null;
 
@@ -256,7 +265,13 @@ export function useEnvironmentCreation(): (
           (
             await operations.run(
               { kind: "record-birth", orgId: organization.id, ...birth },
-              { orgId: organization.id, unobserved: HQ_UNFOLLOWED },
+              {
+                orgId: organization.id,
+                unobserved: HQ_UNFOLLOWED,
+                ...(creationId === undefined
+                  ? {}
+                  : { requestId: creationStepId(creationId, "birth", 1) }),
+              },
             )
           ).birthId;
         intent = await addedMateBirth(record, {
@@ -280,7 +295,20 @@ export function useEnvironmentCreation(): (
       if (!plan.ok) return { kind: "refused", reason: plan.reason };
 
       const withAgent = plan.steps.some((step) => step.kind === "import-container");
-      const inputs = { client, operations, organizationId: organization.id };
+      // An Add's project, made or imported, is recorded where its creation's view reads it.
+      const run: RunToEnd = (intent, options) =>
+        operations.run(
+          intent,
+          creationId !== undefined &&
+            (intent.kind === "create-project" || intent.kind === "import-project")
+            ? { ...options, requestId: creationStepId(creationId, "project", 1) }
+            : options,
+        );
+      const inputs = {
+        client,
+        operations: { ...operations, run },
+        organizationId: organization.id,
+      };
       // Every press is held at HQ while it runs, so another browser never takes it for one that
       // stopped, and one cut short is read as what it was making, in its application (B5).
       const pressKind = withAgent ? "mate" : tier;
@@ -338,7 +366,6 @@ export function useEnvironmentCreation(): (
             },
           });
           invalidateZerops({ topic: "inventory", organization: organizationRef(organization.id) });
-          request.onAccepted?.(projectId);
           if (intent !== undefined)
             await operations.run(
               {

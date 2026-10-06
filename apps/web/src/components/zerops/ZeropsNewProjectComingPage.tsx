@@ -18,19 +18,15 @@ import { useEffect, useMemo, useRef } from "react";
 
 import { arrivalHeaderFace } from "~/zerops/mateArrival";
 import { mateOpeningPhrase } from "~/zerops/mateComing";
+import { dismissCreation, startAddOver, tryCreationAgain, useCreation } from "~/zerops/creations";
 import {
   creationEnds,
   creationManaged,
   creationSubsteps,
-  dismissNewProjectBirth,
   newProjectComing,
   newProjectHandOver,
   newProjectProgress,
-  retryNewProjectBirth,
-  startAddOver,
-  useNewProjectBirths,
 } from "~/zerops/newProjectBirth";
-import { useNewProjectBirthPorts } from "~/zerops/useNewProjectBirthPorts";
 import { useSecondsNowMs } from "~/zerops/useNowMs";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
@@ -56,11 +52,10 @@ const NOBODY = {
 
 export function ZeropsNewProjectComingPage({ birthId }: { readonly birthId: string }) {
   const navigate = useNavigate();
-  const birthPorts = useNewProjectBirthPorts();
   const { user } = useZeropsSession();
   // The person's own step wears their picture.
   const you = useMemo(() => personOf(user), [user]);
-  const birth = useNewProjectBirths((state) => state.births[birthId]);
+  const birth = useCreation(birthId);
 
   // The platform took its Mate's project: that Mate's view takes the route, in place of this one.
   const handOver = useMemo(() => newProjectHandOver(birth), [birth]);
@@ -94,7 +89,8 @@ export function ZeropsNewProjectComingPage({ birthId }: { readonly birthId: stri
     return {
       ...newProjectProgress(birth, null, nowMs),
       ...(birth.adds === undefined || managed === undefined ? {} : { managed }),
-      press: creationSubsteps(birth),
+      // Its Mate's press has not begun: the platform has not taken its project.
+      press: creationSubsteps(birth, null),
     };
   }, [birth, nowMs]);
 
@@ -139,9 +135,7 @@ export function ZeropsNewProjectComingPage({ birthId }: { readonly birthId: stri
               mate={mate}
               nowMs={nowMs}
               onTryAgain={() => {
-                if (birth !== undefined && birth.adds === undefined)
-                  retryNewProjectBirth(birthId, birthPorts(birth));
-                else retryNewProjectBirth(birthId);
+                if (birth !== undefined) tryCreationAgain(birth);
               }}
               {...(ends === null
                 ? {}
@@ -149,8 +143,12 @@ export function ZeropsNewProjectComingPage({ birthId }: { readonly birthId: stri
                     ends: {
                       ...(ends.startOver === null
                         ? {}
-                        : { onStartOver: () => startAddOver(birthId) }),
-                      onDismiss: () => dismissNewProjectBirth(birthId),
+                        : {
+                            onStartOver: () => {
+                              if (birth !== undefined) startAddOver(birth);
+                            },
+                          }),
+                      onDismiss: () => dismissCreation(birthId),
                     },
                   })}
               progress={progress}

@@ -12,7 +12,7 @@ import type { AtomRegistry } from "effect/unstable/reactivity";
 import { ZeropsApiError } from "../../zerops/api.ts";
 import type { OperationIntent, OperationResults } from "../model.ts";
 import { operationResult } from "../model.ts";
-import { operationEnd, type OperationEnd } from "../projections/operationEnd.ts";
+import { operationEnd, operationStop, type OperationEnd } from "../projections/operationEnd.ts";
 import type { AccountStore } from "../store.ts";
 import type { Operations } from "./coordinator.ts";
 
@@ -65,21 +65,9 @@ export function runToEnd(input: {
     if (store.state().operations.get(requestId)?.receipt?.acceptance.kind === "accepted")
       accepted?.(resultOf(requestId, intent.kind));
     const end = await until(requestId, orgId);
-    const record = store.state().operations.get(requestId);
-    const said = record?.unsentBecause ?? record?.uncertainBecause ?? unobserved;
-    switch (end.stage) {
-      case "done":
-        if (end.outcome === "succeeded") return resultOf(requestId, intent.kind);
-        throw new Error(end.reason ?? `Zerops reported it ${end.outcome}.`);
-      case "refused":
-        throw new Error(end.reason);
-      case "unsent":
-        throw new Error(said);
-      case "unresolved":
-        throw uncertain(end.nextAction ?? `${end.nextActor} must act next.`);
-      default:
-        // Its answer lost, or its end out of sight: it may have landed.
-        throw uncertain(end.stage === "uncertain" ? said : unobserved);
-    }
+    const stop = operationStop(end, store.state().operations.get(requestId));
+    if (stop === null) return resultOf(requestId, intent.kind);
+    const message = stop.reason ?? unobserved;
+    throw stop.uncertain ? uncertain(message) : new Error(message);
   };
 }

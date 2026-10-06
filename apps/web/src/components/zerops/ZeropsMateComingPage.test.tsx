@@ -13,7 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { closeAccountLifetime, openAccountLifetime } from "~/zerops/accountLifetime";
 import { awaitMateConversation, takeMateConversation } from "~/zerops/mateOpening";
 import { beginPress, forgetPress } from "~/zerops/matePress";
-import { useNewProjectBirths, type NewProjectBirth } from "~/zerops/newProjectBirth";
+import type { NewProjectBirth } from "~/zerops/newProjectBirth";
 import { rememberWriter } from "~/zerops/writerMemory";
 
 import { ComingBelow, comingSentenceOf, ZeropsMateComingPage } from "./ZeropsMateComingPage";
@@ -82,7 +82,7 @@ const app = vi.hoisted(() => ({
   threads: [] as Array<unknown>,
   projects: [] as Array<unknown>,
   told: undefined as { readonly subject: string; readonly threadKey?: string } | undefined,
-  creations: {} as Record<string, unknown>,
+  creations: [] as Array<unknown>,
   processes: [] as Array<unknown>,
   birthProgress: false,
   wholeForPerson: false,
@@ -132,8 +132,13 @@ vi.mock("~/zerops/useMateActions", () => ({
 }));
 vi.mock("~/zerops/useZeropsRegistry", () => ({ useZeropsRegistry: () => null }));
 vi.mock("~/zerops/newMate", () => ({
-  useNewMate: (select: (state: unknown) => unknown) =>
-    select({ creations: app.creations, forget: () => undefined, handingOver: app.handingOver }),
+  useMateHandOver: (select: (state: unknown) => unknown) =>
+    select({ handingOver: app.handingOver }),
+}));
+// The creations this tab holds, as their operations say them.
+vi.mock("~/zerops/creations", () => ({
+  useCreations: () => app.creations,
+  dismissCreation: () => undefined,
 }));
 vi.mock("~/zerops/useProjectCreations", () => ({
   useProjectCreations: () => new Map(),
@@ -285,7 +290,7 @@ beforeEach(() => {
   app.projects = [];
   app.link = { key: undefined, environmentId: undefined, reachability: null };
   app.told = undefined;
-  app.creations = {};
+  app.creations = [];
   app.processes = [];
   app.birthProgress = false;
   app.wholeForPerson = false;
@@ -602,18 +607,26 @@ describe("a new Mate's arrival, from the press to the sign-in", () => {
     group: "provisioning",
     service: { id: "zcp", name: "zcp", status: "CREATING" },
   } as unknown as ZeropsCandidate;
-  const QUINN_MADE = {
+  const QUINN_MADE: NewProjectBirth = {
+    birthId: "add-quinn",
+    organizationId: "org-beviro",
     projectId: PROJECT,
     appId: "beviro",
     intent: null,
     hq: { projectId: "hq", address: "https://hq.example" },
-    groupName: "Beviro",
+    name: "Beviro",
     botName: "Quinn",
     face: { tint: "sky", shape: "pick" },
+    locationId: null,
+    agents: [],
+    adds: { appId: "beviro", registers: true },
+    startedAt: Date.now(),
+    step: "created",
+    failed: null,
   };
 
   it("a Mate this tab made is coming up from its first frame, its container up or not", () => {
-    app.creations = { [PROJECT]: QUINN_MADE };
+    app.creations = [QUINN_MADE];
     app.link = { key: KEY, environmentId: undefined, reachability: { kind: "reconnecting" } };
     openView();
     expect(kind()).toBe("coming");
@@ -626,7 +639,7 @@ describe("a new Mate's arrival, from the press to the sign-in", () => {
       ...coming,
       project: { id: PROJECT, name: "Beviro - Quinn", status: "ACTIVE", tagList: ["mate"] },
     } as unknown as ZeropsCandidate;
-    app.creations = { [PROJECT]: QUINN_MADE };
+    app.creations = [QUINN_MADE];
     app.listing = listingOf([unplaced]);
     openView();
     expect(said()).toContain("Quinn");
@@ -635,7 +648,7 @@ describe("a new Mate's arrival, from the press to the sign-in", () => {
 
   // One pose wherever its face shows (`matePose`): the header wears the stage's, waking.
   it("wears its waking face in the header while it comes up", () => {
-    app.creations = { [PROJECT]: QUINN_MADE };
+    app.creations = [QUINN_MADE];
     app.link = { key: KEY, environmentId: undefined, reachability: { kind: "reconnecting" } };
     openView();
     const faces =
@@ -679,7 +692,7 @@ describe("a new Mate's arrival, from the press to the sign-in", () => {
       },
     } as unknown as ZeropsCandidate;
     app.listing = listingOf([building]);
-    app.creations = { [PROJECT]: QUINN_MADE };
+    app.creations = [QUINN_MADE];
     openView();
     expect(kind()).toBe("coming");
     app.processes = [
@@ -742,7 +755,7 @@ describe("a new Mate's arrival, from the press to the sign-in", () => {
   });
 
   it("a Mate this tab made that a whole listing, read well after, lacks is not coming up", () => {
-    app.creations = { [PROJECT]: { ...QUINN_MADE, at: 1_000 } };
+    app.creations = [{ ...QUINN_MADE, startedAt: 1_000 }];
     app.listing = { ...listingOf([]), asOf: { ordinal: 2, atMs: 1_000 + 5_000 } };
     openView();
     expect(kind()).toBe("coming");
@@ -755,7 +768,7 @@ describe("a new Mate's arrival, from the press to the sign-in", () => {
     // Deleted while the organization's socket is live: a push takes it off the listing, whose
     // time stays the full read's, moments after the creation.
     const madeAt = Date.now();
-    app.creations = { [PROJECT]: { ...QUINN_MADE, at: madeAt } };
+    app.creations = [{ ...QUINN_MADE, startedAt: madeAt }];
     app.listing = { ...listingOf([]), asOf: { ordinal: 2, atMs: madeAt + 5_000 } };
     openView();
     expect(kind()).toBe("coming");
@@ -773,7 +786,7 @@ describe("a new Mate's arrival, from the press to the sign-in", () => {
 
   it("never reads them again for a creation the listing holds", () => {
     const madeAt = Date.now();
-    app.creations = { [PROJECT]: { ...QUINN_MADE, at: madeAt } };
+    app.creations = [{ ...QUINN_MADE, startedAt: madeAt }];
     openView();
     act(() => vi.advanceTimersByTime(120_000));
     expect(app.refresh).not.toHaveBeenCalled();
@@ -1153,7 +1166,6 @@ describe("an added Mate's own view, after its hand-over", () => {
     step: "created",
     failed: null,
     projectId: PROJECT,
-    progress: null,
     adds: {
       appId: "beviro",
       registers: true,
@@ -1179,25 +1191,13 @@ describe("an added Mate's own view, after its hand-over", () => {
   beforeEach(() => {
     app.birthProgress = true;
     app.listing = listingOf([]);
-    app.creations = {
-      [PROJECT]: {
-        projectId: PROJECT,
-        appId: "beviro",
-        intent: null,
-        hq: { projectId: "hq", address: "https://hq.example" },
-        groupName: "Beviro",
-        botName: "Quinn",
-        face: IDA.face,
-      },
-    };
-    useNewProjectBirths.setState({ births: { [IDA.birthId]: IDA } });
+    app.creations = [IDA];
   });
   afterEach(() => {
     forgetPress(PROJECT);
-    useNewProjectBirths.setState({ births: {} });
   });
 
-  it("draws its copy's and its workspace's lines and its steps from its press, and keeps them when the press ends", () => {
+  it("draws its copy's and its workspace's lines and its steps from its press, and keeps its lines when the press ends", () => {
     beginPress({
       projectId: PROJECT,
       organizationId: "org-beviro",
@@ -1214,9 +1214,10 @@ describe("an added Mate's own view, after its hand-over", () => {
       "workspace[appdev]{}",
       "you[]{}",
     ]);
-    // Closed off and registered: the press is over (`endPress`).
+    // Closed off and registered: the press is over (`endPress`). Its lines stand, from the
+    // creation's ask; its steps went with the press that held them.
     act(() => forgetPress(PROJECT));
-    expect(rows()).toEqual(held);
+    expect(rows()).toEqual(["copy[db]{}", "workspace[appdev]{}", "you[]{}"]);
   });
 });
 

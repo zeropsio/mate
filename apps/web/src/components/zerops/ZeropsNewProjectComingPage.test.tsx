@@ -4,8 +4,7 @@ import { create, type ReactTestRenderer, type ReactTestRendererJSON } from "reac
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { KEEP_TAB_OPEN_LINE } from "~/zerops/mateArrival";
-import { useNewMate } from "~/zerops/newMate";
-import { useNewProjectBirths, type NewProjectBirth } from "~/zerops/newProjectBirth";
+import type { NewProjectBirth } from "~/zerops/newProjectBirth";
 
 import { ZeropsNewProjectComingPage } from "./ZeropsNewProjectComingPage";
 
@@ -13,14 +12,44 @@ const app = vi.hoisted(() => ({
   navigate: vi.fn(async (_to: unknown) => undefined),
 }));
 
-vi.mock("~/zerops/useNewProjectBirthPorts", () => ({
-  useNewProjectBirthPorts: () => () => ({
-    registerGroup: () => new Promise(() => undefined),
-    recordBirth: () => new Promise(() => undefined),
-    createProject: () => new Promise(() => undefined),
-    accepted: () => undefined,
-  }),
+/** The creations this tab holds, as their operations say them, and what each verb did. */
+const held = vi.hoisted(() => {
+  const listeners = new Set<() => void>();
+  const state = {
+    creations: {} as Record<string, unknown>,
+    listeners,
+    set(next: Record<string, unknown>) {
+      state.creations = next;
+      for (const listener of listeners) listener();
+    },
+    letGo: (birthId: string) => {
+      const { [birthId]: _gone, ...rest } = state.creations;
+      state.set(rest);
+    },
+  };
+  return state;
+});
+const verbs = vi.hoisted(() => ({
+  tryAgain: vi.fn(),
+  startOver: vi.fn((creation: { readonly birthId: string }) => held.letGo(creation.birthId)),
+  dismiss: vi.fn((birthId: string) => held.letGo(birthId)),
 }));
+vi.mock("~/zerops/creations", async () => {
+  const { useSyncExternalStore } = await import("react");
+  return {
+    useCreation: (birthId: string) =>
+      useSyncExternalStore(
+        (listener) => {
+          held.listeners.add(listener);
+          return () => held.listeners.delete(listener);
+        },
+        () => held.creations[birthId],
+      ),
+    tryCreationAgain: verbs.tryAgain,
+    startAddOver: verbs.startOver,
+    dismissCreation: verbs.dismiss,
+  };
+});
 
 vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => app.navigate,
@@ -84,14 +113,13 @@ const ACME: NewProjectBirth = {
   step: "registry",
   failed: null,
   projectId: null,
-  progress: null,
 };
 
 let tree: ReactTestRenderer | undefined;
 
 function hold(birth: NewProjectBirth | undefined) {
   act(() => {
-    useNewProjectBirths.setState({ births: birth === undefined ? {} : { [birth.birthId]: birth } });
+    held.set(birth === undefined ? {} : { [birth.birthId]: birth });
   });
 }
 
@@ -140,6 +168,7 @@ const button = (label: string) =>
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   app.navigate.mockClear();
+  for (const verb of Object.values(verbs)) verb.mockClear();
   hold(undefined);
 });
 afterEach(() => {
@@ -182,14 +211,15 @@ describe("a New project's first Mate, before its project exists", () => {
   });
 
   it("says why a step stopped, and Try again resumes it", () => {
-    hold({ ...ACME, failed: { reason: "No room in this account.", uncertain: false } });
+    const stopped = { ...ACME, failed: { reason: "No room in this account.", uncertain: false } };
+    hold(stopped);
     openView();
     expect(kind()).toBe("failed");
     expect(said()).toContain("No room in this account.");
     act(() => {
       button("Try again")?.props.onClick();
     });
-    expect(useNewProjectBirths.getState().births["b-acme"]?.failed).toBeNull();
+    expect(verbs.tryAgain).toHaveBeenCalledWith(stopped);
   });
 
   it("never offers to make again what the platform may have made, only the way to the projects", () => {
@@ -255,31 +285,22 @@ describe("the steps this tab runs, on the Mate's own view", () => {
   });
 
   it.each([
-    {
-      verb: "Dismiss",
-      then: { asked: null },
-    },
+    { verb: "Dismiss", called: () => expect(verbs.dismiss).toHaveBeenCalledWith("add-1") },
     {
       verb: "Start over",
-      then: {
-        asked: expect.objectContaining({
-          groupId: "g-acme",
-          again: { botName: "Ida", tint: "rose", shape: "seal" },
-        }),
-      },
+      called: () =>
+        expect(verbs.startOver).toHaveBeenCalledWith(expect.objectContaining({ birthId: "add-1" })),
     },
-  ])("ends an Add refused before Zerops took anything: $verb", ({ verb, then }) => {
-    useNewMate.setState({ asked: null });
+  ])("ends an Add refused before Zerops took anything: $verb", ({ verb, called }) => {
     hold({ ...IDA, failed: { reason: "No room in this account.", uncertain: false } });
     openView("add-1");
     expect(button("Try again")).toBeDefined();
     act(() => {
       button(verb)?.props.onClick();
     });
-    expect(useNewProjectBirths.getState().births["add-1"]).toBeUndefined();
+    called();
+    // Let go of, its view goes with it, to the projects.
     expect(app.navigate).toHaveBeenCalledWith({ to: "/zerops", replace: true });
-    expect(useNewMate.getState()).toMatchObject(then);
-    useNewMate.setState({ asked: null });
   });
 
   // Run 6's second review: one Zerops may have made had no way to end but the projects.
@@ -291,7 +312,7 @@ describe("the steps this tab runs, on the Mate's own view", () => {
     act(() => {
       button("Dismiss")?.props.onClick();
     });
-    expect(useNewProjectBirths.getState().births["add-1"]).toBeUndefined();
+    expect(verbs.dismiss).toHaveBeenCalledWith("add-1");
     expect(app.navigate).toHaveBeenCalledWith({ to: "/zerops", replace: true });
   });
 
