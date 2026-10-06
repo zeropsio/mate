@@ -1,0 +1,161 @@
+import { assert, describe, it } from "@effect/vitest";
+import * as Effect from "effect/Effect";
+import * as Stream from "effect/Stream";
+import * as Schema from "effect/Schema";
+import { makeOperationWatch, type OperationWire } from "./operationWatch.ts";
+import { ZeropsRefused, ZeropsUnavailable } from "./zerops/api.ts";
+
+const decodeSearch = Schema.decodeUnknownEffect(
+  Schema.Struct({ search: Schema.Array(Schema.Struct({ name: Schema.String })) }),
+);
+const target = { projectId: "P", processIds: ["J"], versionId: null };
+const row = (status: string, version = 1) => ({ id: "J", status, _version: version });
+const frames = (updates: ReadonlyArray<unknown>) =>
+  Stream.fromIterable(
+    updates.map((update) =>
+      JSON.stringify({ type: "Message", subscriptionName: "updates", data: { update: [update] } }),
+    ),
+  );
+const wireOf = (options: {
+  readonly baseline?: ReadonlyArray<unknown>;
+  readonly updates?: ReadonlyArray<unknown>;
+  readonly missing?: unknown;
+  readonly calls: Array<{ path: string; body?: unknown }>;
+}): OperationWire => ({
+  open: Effect.succeed({
+    receiverId: "R",
+    frames: frames(options.updates ?? []),
+    post: (path, body) => {
+      options.calls.push({ path, body });
+      return Effect.succeed(
+        body.wsOutputType === "listStream"
+          ? { items: options.baseline ?? [], totalHits: (options.baseline ?? []).length }
+          : { success: true },
+      );
+    },
+    get: (path) => {
+      options.calls.push({ path });
+      return Effect.succeed(options.missing ?? row("FINISHED", 2));
+    },
+  }),
+  makeId: () => "updates",
+});
+
+const collect = (wire: OperationWire) =>
+  makeOperationWatch(wire)
+    .watch(target)
+    .pipe(
+      Stream.takeUntil((signal) =>
+        signal.processes.some((process) => process.status === "FINISHED"),
+      ),
+      Stream.runCollect,
+      Effect.scoped,
+    );
+
+describe("HQ operation observation", () => {
+  it.live(
+    "registers unfiltered updates before taking the running baseline and accepts a terminal push",
+    () =>
+      Effect.gen(function* () {
+        const calls: Array<{ path: string; body?: unknown }> = [];
+        const signals = yield* collect(
+          wireOf({ calls, baseline: [row("RUNNING")], updates: [row("FINISHED", 2)] }),
+        );
+        assert.deepStrictEqual(
+          signals.at(-1)?.processes.map((process) => process.status),
+          ["FINISHED"],
+        );
+        const bodies = calls.flatMap((call) => (call.body === undefined ? [] : [call.body]));
+        const body = yield* decodeSearch(bodies[0]);
+        assert.isFalse(body.search.some((filter) => filter.name === "status"));
+        assert.lengthOf(
+          calls.filter((call) => call.path === "/process/J"),
+          0,
+        );
+      }),
+  );
+  it.live(
+    "reads a tracked process by id when it finished during a gap and is absent from the baseline",
+    () =>
+      Effect.gen(function* () {
+        const calls: Array<{ path: string; body?: unknown }> = [];
+        const signals = yield* collect(wireOf({ calls }));
+        assert.strictEqual(signals.at(-1)?.processes[0]?.status, "FINISHED");
+        assert.deepStrictEqual(
+          calls.filter((call) => call.body === undefined),
+          [{ path: "/process/J" }],
+        );
+      }),
+  );
+  it.live("re-registers after transport loss without deleting facts", () =>
+    Effect.gen(function* () {
+      const calls: Array<{ path: string; body?: unknown }> = [];
+      let opens = 0;
+      const first = wireOf({ calls, baseline: [row("RUNNING")] });
+      const second = wireOf({ calls });
+      const wire: OperationWire = {
+        makeId: () => "updates",
+        open: Effect.suspend(() =>
+          ++opens === 1
+            ? Effect.map(first.open, (link) => ({
+                ...link,
+                frames: Stream.fail(new ZeropsUnavailable({ operation: "socket", message: "gap" })),
+              }))
+            : second.open,
+        ),
+      };
+      const signals = yield* collect(wire);
+      assert.strictEqual(opens, 2);
+      assert.isTrue(signals.some((signal) => signal.phase === "recovering"));
+      assert.strictEqual(signals.at(-1)?.processes[0]?.status, "FINISHED");
+      assert.lengthOf(
+        calls.filter((call) => call.path === "/process/search"),
+        4,
+      );
+    }),
+  );
+  it.live("uses a fresh handle read even when GET carries no revision", () =>
+    Effect.gen(function* () {
+      let opens = 0;
+      const calls: Array<{ path: string; body?: unknown }> = [];
+      const first = wireOf({ calls, baseline: [row("RUNNING", 5)] });
+      const second = wireOf({ calls, missing: { id: "J", status: "FINISHED" } });
+      const wire: OperationWire = {
+        makeId: () => "updates",
+        open: Effect.suspend(() =>
+          ++opens === 1
+            ? Effect.map(first.open, (link) => ({
+                ...link,
+                frames: Stream.fail(new ZeropsUnavailable({ operation: "socket", message: "gap" })),
+              }))
+            : second.open,
+        ),
+      };
+      const signals = yield* collect(wire).pipe(Effect.timeout(1_000));
+      assert.strictEqual(signals.at(-1)?.processes[0]?.status, "FINISHED");
+      assert.strictEqual(opens, 2);
+    }),
+  );
+  it.live("does not retry a revoked credential", () =>
+    Effect.gen(function* () {
+      let opens = 0;
+      const watch = makeOperationWatch({
+        makeId: () => "updates",
+        open: Effect.suspend(() => {
+          opens++;
+          return Effect.fail(
+            new ZeropsRefused({
+              operation: "login",
+              reason: "unauthorized",
+              code: "gone",
+              status: 401,
+            }),
+          );
+        }),
+      });
+      const error = yield* Stream.runDrain(watch.watch(target)).pipe(Effect.flip, Effect.scoped);
+      assert.strictEqual(error._tag, "ZeropsRefused");
+      assert.strictEqual(opens, 1);
+    }),
+  );
+});

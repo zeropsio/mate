@@ -33,10 +33,9 @@
  * - **A build is submitted once** (audit H6): Zerops takes no idempotency key, so the version HQ
  *   makes is recorded before its archive goes up, its upload once it answered — only then is its
  *   build asked for — and its build's process once build-and-deploy answers. A lost answer is
- *   never submitted again: the job stays submitting and HQ reads the version it made. A build is followed by its process, else its version (`follow`) — Zerops'
- *   socket takes no token HQ holds (2026-10-03) — every 10 s for its first 20 min, then every
- *   minute, for at most 75 min — a build ends within Zerops' 1-hour limit — then HQ stops
- *   following it, refused.
+ *   never submitted again: the job stays submitting and HQ reads the version it made. A build is followed by its process, else its version (`follow`): Zerops'
+ *   live updates carry terminal states under HQ's org token. After a gap HQ registers again and
+ *   reads its original handles. Lost access ends unresolved, with a person acting next.
  * - **Live is what runs**: a deploy is live once the service runs the version HQ made for it (B17),
  *   as HQ recorded it — never what a version's name spells (audit N7). A service running what HQ
  *   last made it run at a commit is live at once, building nothing. An HTTP service created for HQ
@@ -76,9 +75,8 @@ import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { fromYaml } from "@t3tools/shared/schemaYaml";
 import { REASONS } from "@t3tools/shared/zeropsPermissions";
 import { can } from "./permissions.ts";
-import * as Clock from "effect/Clock";
+import * as Config from "effect/Config";
 import * as Context from "effect/Context";
-import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
@@ -94,6 +92,16 @@ import * as SqlClient from "effect/unstable/sql/SqlClient";
 import type { SqlError } from "effect/unstable/sql/SqlError";
 import type * as Statement from "effect/unstable/sql/Statement";
 
+import {
+  makeOperationWatch,
+  operationBackoff,
+  type OperationError,
+  OperationObserver,
+  type OperationWatch,
+  type OperationSignal,
+} from "./operationWatch.ts";
+import { makeOperationWire } from "./operationWire.ts";
+import { evidenceOf, stepOf, encodeEvidence, encodePhase, operationRecords } from "./operations.ts";
 import { DeployKeys } from "./deployKeys.ts";
 import {
   deadDeployToken,
@@ -116,25 +124,13 @@ import {
   ZeropsApi,
   ZeropsDeploy,
   type ZeropsError,
-  type ZeropsRefused,
+  ZeropsRefused,
   type ZeropsService,
 } from "./zerops/api.ts";
 
 export interface DeploysOptions {
-  /** How often a build is read while it is young; 10 s. */
-  readonly pollEvery?: Duration.Duration;
-  /** How often a build is read once it is older than `slowAfter`; 60 s. */
-  readonly slowPollEvery?: Duration.Duration;
-  /** When a build's reads slow down, from its submission; 20 min. */
-  readonly slowAfter?: Duration.Duration;
-  /** How long after its submission HQ follows a build at most; 75 min. */
-  readonly followFor?: Duration.Duration;
-  /**
-   * How long after HQ's upload of its archive answered a version whose build-and-deploy went
-   * unanswered may still wait for its archive before HQ takes it that Zerops never took the build;
-   * 1 min. A delta's import, likewise, from its submission.
-   */
-  readonly untakenAfter?: Duration.Duration;
+  /** A scoped observer; production uses HQ_ORG_TOKEN and HQ_ZEROPS_API. */
+  readonly observer?: OperationWatch;
 }
 
 /** A person's ask HQ refused: a code, and the reason (a permission's, or the deploy's own). */
@@ -187,6 +183,8 @@ export class Deploys extends Context.Service<
     ) => Effect.Effect<HqDeployAnswer, DeployRefused | NotLeader | SqlError | ZeropsError>;
     /** Ticks after every change of a job, starting with the current tick. */
     readonly changes: Stream.Stream<number>;
+    /** PB operation scope: current jobs and their minimal persisted evidence. */
+    readonly operations: (appId: string) => ReturnType<typeof operationRecords>;
   }
 >()("@t3tools/hq/deploys") {}
 
@@ -265,23 +263,30 @@ interface Job {
   readonly process_id: string | null;
   readonly cause: Cause;
   readonly by: string | null;
-  /** How long ago its submission began, ms; none before. */
-  readonly submitted_ms: number | null;
-  /** How long after its submission began HQ's upload of its archive answered, ms; none before. */
-  readonly uploaded_after_ms: number | null;
-  /** Whether `uploaded_after_ms` is HQ's record: not on a job made before HQ recorded uploads. */
+  /** Whether HQ recorded an answered archive upload before asking for its build. */
+  readonly uploaded: boolean;
+  /** Whether this job was made after HQ began recording uploads. */
   readonly upload_recorded: boolean;
 }
 
 type DeployJob = Job & { readonly service: string; readonly repo: string; readonly sha: string };
 
 /** How a job ended. */
-type Ended =
-  | { readonly state: "live"; readonly reason?: string }
-  | { readonly state: "failed" | "refused" | "skipped"; readonly reason: string };
+type Stopped = {
+  readonly state: "failed" | "refused" | "unresolved" | "skipped";
+  readonly reason: string;
+};
+type Ended = { readonly state: "live"; readonly reason?: string } | Stopped;
 
-const failed = (reason: string): Ended => ({ state: "failed", reason });
+const failed = (reason: string): Stopped => ({
+  state: "failed",
+  reason,
+});
 const refused = (reason: string): Ended => ({ state: "refused", reason });
+const unresolved = (reason: string): Stopped => ({
+  state: "unresolved",
+  reason: `${reason}; a person must inspect the original handle in Zerops`,
+});
 const skipped = (reason: string): Ended => ({ state: "skipped", reason });
 
 const IN_FLIGHT: ReadonlySet<string> = new Set(["queued", "submitting", "building"]);
@@ -323,9 +328,6 @@ const decodeSetups = Schema.decodeUnknownExit(
 );
 
 const short = (sha: string) => sha.slice(0, 7);
-
-/** A service the platform is still making: its container, before it stands ready. */
-const MAKING: ReadonlySet<string> = new Set(["NEW", "CREATING"]);
 
 /** The statuses a version's build or deploy ends badly in (the SDK's `AppVersionStatusEnum`). */
 const VERSION_FAILURES: ReadonlySet<string> = new Set([
@@ -380,8 +382,7 @@ const JOB_COLUMNS = `
   j.id::text AS id, j.rollout_id::text AS rollout_id, j.kind, j.project_id,
   e.app_id::text AS app_id, e.name AS env_name, e.tier, j.service, j.service_id, j.repo, j.sha,
   j.label, j.services, j.processes, j.state, j.app_version_id, j.process_id, r.cause, r.by,
-  (EXTRACT(EPOCH FROM (now() - j.submitted_at)) * 1000)::float8 AS submitted_ms,
-  (EXTRACT(EPOCH FROM (j.uploaded_at - j.submitted_at)) * 1000)::float8 AS uploaded_after_ms,
+  (j.uploaded_at IS NOT NULL) AS uploaded,
   j.upload_recorded`;
 const JOB_FROM = `
   hq_deploy_job j JOIN hq_environment e ON e.project_id = j.project_id
@@ -416,11 +417,28 @@ export const deploysLayer = (
       const releases = yield* Releases;
       const keys = yield* DeployKeys;
       const rollouts = yield* Rollouts;
-      const pollEvery = options.pollEvery ?? Duration.seconds(10);
-      const slowPollEvery = options.slowPollEvery ?? Duration.minutes(1);
-      const slowAfter = Duration.toMillis(options.slowAfter ?? Duration.minutes(20));
-      const followFor = Duration.toMillis(options.followFor ?? Duration.minutes(75));
-      const untakenAfter = Duration.toMillis(options.untakenAfter ?? Duration.minutes(1));
+      const credential = yield* Config.option(Config.Redacted("HQ_ORG_TOKEN")).pipe(Effect.orDie);
+      const baseUrl = yield* Config.String("HQ_ZEROPS_API").pipe(
+        Config.withDefault("https://api.app-prg1.zerops.io/api/rest/public"),
+        Effect.orDie,
+      );
+      const supplied = yield* Effect.serviceOption(OperationObserver);
+      const observer: OperationWatch =
+        options.observer ??
+        Option.getOrUndefined(supplied) ??
+        (Option.isSome(credential)
+          ? makeOperationWatch(makeOperationWire({ baseUrl, credential: credential.value }))
+          : {
+              watch: () =>
+                Stream.fail(
+                  new ZeropsRefused({
+                    operation: "observation",
+                    reason: "unauthorized",
+                    status: 401,
+                    code: "hq_org_credential_missing",
+                  }),
+                ),
+            });
       const ticks = yield* SubscriptionRef.make(0);
       const tick = SubscriptionRef.update(ticks, (n) => n + 1);
       /** A list of names as a column of them holds it. */
@@ -960,53 +978,47 @@ export const deploysLayer = (
 
       /**
        * After HQ's own verified deploy: an HTTP service's subdomain, its process followed to its
-       * end on its own cadence, from its start — none where it came on or was on already, else why
-       * it did not, in HQ's words. It never fails the deploy (B17); the live job says it.
+       * end through the same scoped observation — none where it came on or was on already, else why
+       * it did not, in HQ's words. A platform refusal is noted on the verified deploy; an unobservable step ends unresolved.
        */
       const openSubdomain = (job: Job, service: ZeropsService, token: Redacted.Redacted) =>
-        !service.http || service.subdomainAccess
+        (job.processes ?? []).length === 0 && (!service.http || service.subdomainAccess)
           ? Effect.succeed(undefined)
-          : deploy
-              .enableSubdomainAccess(service.id)(token)
-              .pipe(
-                Effect.flatMap(({ processId }) =>
-                  // Its own clock, from its start: never what is left of the build's.
-                  onCadence(
-                    0,
-                    () =>
-                      deploy
-                        .process(processId)(token)
-                        .pipe(
-                          Effect.map((process) =>
-                            process.status === "FINISHED"
-                              ? ({ state: "on" } as const)
-                              : process.status === "FAILED" || process.status === "CANCELED"
-                                ? ({
-                                    state: "refused",
-                                    reason: process.failure ?? "Zerops gave no reason",
-                                  } as const)
-                                : undefined,
-                          ),
-                          // What cannot be read now says nothing of it: it is read again.
-                          Effect.catch((error) =>
-                            Effect.as(
-                              Effect.logWarning("a subdomain's process not read", {
-                                service: service.name,
-                                error,
-                              }),
-                              undefined,
-                            ),
-                          ),
-                        ),
-                    `HQ stopped following it ${Math.round(followFor / 60_000)} min after it was asked`,
-                  ),
-                ),
-                Effect.map((ended) => (ended.state === "on" ? undefined : ended.reason)),
-                Effect.catch((error) => Effect.succeed(zeropsEnd(job.env_name, error).reason)),
-                Effect.map((why) =>
-                  why === undefined ? undefined : `its subdomain was not turned on: ${why}`,
-                ),
+          : Effect.gen(function* () {
+              let processId = job.processes?.[0];
+              if (processId === undefined) {
+                processId = (yield* deploy.enableSubdomainAccess(service.id)(token)).processId;
+                // The accepted side effect survives a gap even before its registration succeeds.
+                yield* update(job, sql`processes = ${textArray([processId])}`);
+              }
+              const ended = yield* observed(job, [processId], null, (signal) =>
+                Effect.sync(() => {
+                  const process = signal.processes.find((row) => row.id === processId);
+                  if (process?.status === "FINISHED") return { state: "on" } as const;
+                  if (
+                    process !== undefined &&
+                    ["FAILED", "CANCELED", "CANCELLED"].includes(process.status)
+                  )
+                    return failed(
+                      process.error?.message ?? process.error?.code ?? "Zerops gave no reason",
+                    );
+                  return undefined;
+                }),
               );
+              return ended.state === "on"
+                ? undefined
+                : {
+                    reason: `its subdomain was not turned on: ${ended.reason}`,
+                    unresolved: ended.state === "unresolved",
+                  };
+            }).pipe(
+              Effect.catch((error) =>
+                Effect.succeed({
+                  reason: `its subdomain could not be verified: ${error._tag === "ZeropsRefused" ? error.code : error.message}`,
+                  unresolved: error._tag === "ZeropsUnavailable",
+                }),
+              ),
+            );
 
       /**
        * HQ's own deploy of `job`, live: its subdomain turned on where it was intended — its service
@@ -1041,158 +1053,105 @@ export const deploysLayer = (
           ),
         );
 
-      /**
-       * A handle HQ made, read on its cadence until `read` says how it ended: every `pollEvery`
-       * while it is younger than `slowAfter`, then every `slowPollEvery`, counted from when it was
-       * asked for — `ageMs` old as the follow starts: a build's from its submission, so a takeover
-       * resumes the same clock, a subdomain's from its own start — and past `followFor`, refused as
-       * `stopped` says. A read again on this cadence is following, never a retry.
-       */
-      const onCadence = <A>(
-        ageMs: number,
-        read: (ageMs: number) => Effect.Effect<A | undefined>,
-        stopped: string,
-      ): Effect.Effect<A | { readonly state: "refused"; readonly reason: string }> =>
-        Effect.gen(function* () {
-          const started = (yield* Clock.currentTimeMillis) - ageMs;
-          for (;;) {
-            const answer = yield* read((yield* Clock.currentTimeMillis) - started);
-            if (answer !== undefined) return answer;
-            const age = (yield* Clock.currentTimeMillis) - started;
-            if (age >= followFor) return { state: "refused", reason: stopped } as const;
-            yield* Effect.sleep(age < slowAfter ? pollEvery : slowPollEvery);
-          }
-        });
+      /** Persist only the evidence of the accepted operation, never a platform inventory. */
+      const record = (job: Job, signal: OperationSignal) => {
+        const evidence = evidenceOf(signal);
+        const step = encodeEvidence(stepOf(signal));
+        const patch = signal.phase === "live" ? encodeEvidence(evidence) : encodePhase(evidence);
+        return leader
+          .write(sql`
+          UPDATE hq_deploy_job SET
+            evidence = coalesce(evidence, '{"processes":[],"version":null}'::jsonb) || ${patch}::jsonb,
+            steps = CASE WHEN ${signal.phase === "live"} AND
+              (steps->-1->'processes', steps->-1->'version') IS DISTINCT FROM
+              (${step}::jsonb->'processes', ${step}::jsonb->'version')
+              THEN steps || jsonb_build_array(${step}::jsonb) ELSE steps END,
+            updated_at = now()
+          WHERE id = ${job.id}::bigint AND ended_at IS NULL
+            AND evidence IS DISTINCT FROM (coalesce(evidence, '{"processes":[],"version":null}'::jsonb) || ${patch}::jsonb)
+          RETURNING 1`)
+          .pipe(
+            Effect.flatMap((rows) => (rows.length === 0 ? Effect.void : tick)),
+            Effect.orDie,
+          );
+      };
 
-      /**
-       * A build HQ submitted, followed until it ends, as Zerops says it stands (audit H6): by its
-       * build's process where HQ heard it, else by its version — every `pollEvery` while it is
-       * younger than `slowAfter`, then every `slowPollEvery`, counted from its submission, so a
-       * takeover resumes the same clock. Live once the service runs the version; the build's own
-       * failure; refused where HQ asked for no build — its upload went unanswered — or Zerops never
-       * took it — its version still waits for its archive `untakenAfter` past HQ's upload — where
-       * Zerops no longer has the version, or, past `followFor`, where HQ stops. What cannot be read
-       * now is read again. It records nothing: its caller does.
-       */
+      /** Current owner state at registration, then only relevant pushes; loss re-registers. */
+      const observed = <A>(
+        job: Job,
+        processIds: ReadonlyArray<string>,
+        versionId: string | null,
+        read: (signal: OperationSignal) => Effect.Effect<A | undefined, OperationError>,
+      ): Effect.Effect<A | Stopped> => {
+        let retries = 0;
+        const attempt = (): Effect.Effect<A | Stopped> =>
+          observer.watch({ projectId: job.project_id, processIds, versionId }).pipe(
+            Stream.mapEffect((signal) =>
+              record(job, signal).pipe(
+                Effect.andThen(signal.phase === "live" ? read(signal) : Effect.succeed(undefined)),
+              ),
+            ),
+            Stream.filter((answer): answer is A => answer !== undefined),
+            Stream.take(1),
+            Stream.runHead,
+            Effect.map((answer) =>
+              Option.isSome(answer)
+                ? answer.value
+                : unresolved("HQ can no longer observe the operation"),
+            ),
+            Effect.catch((error) =>
+              error._tag === "ZeropsRefused"
+                ? Effect.succeed(unresolved(`HQ cannot follow the operation: ${error.code}`))
+                : record(job, { phase: "recovering", processes: [], version: null }).pipe(
+                    Effect.andThen(operationBackoff(retries++, error.retryAfterMs)),
+                    Effect.andThen(Effect.suspend(attempt)),
+                  ),
+            ),
+          );
+        return attempt();
+      };
+
+      /** Success belongs to the terminal process; active service/version is verified separately. */
       const follow = (
         job: Job,
         token: Redacted.Redacted,
         serviceId: string,
         versionId: string,
         processId: string | null,
-      ): Effect.Effect<
-        | { readonly state: "live"; readonly service: ZeropsService }
-        | { readonly state: "failed" | "refused"; readonly reason: string }
-      > =>
-        Effect.gen(function* () {
-          type Read =
-            | { readonly state: "live"; readonly service: ZeropsService }
-            | { readonly state: "failed" | "refused"; readonly reason: string }
-            | undefined;
-          /** Where it stands once its build ended well: what the service runs. */
-          const landed = Effect.gen(function* () {
-            const service = yield* zerops.service(serviceId)(token);
-            if (service.activeVersionId === versionId) return { state: "live", service } as const;
-            // Its build is the last one started, and not yet what the service runs.
-            if (service.named?.id === versionId) return undefined;
-            const other =
-              service.named !== null && service.named.id === service.activeVersionId
-                ? `"${service.named.name}"`
-                : "another version";
-            return {
-              state: "failed",
-              reason: `the deploy finished, but ${job.service ?? ""} runs ${other}`,
-            } as const;
-          });
-          /**
-           * Where it stands by its version's own status. One still waiting for its archive whose
-           * upload HQ never heard answer was never asked to build; one HQ uploaded is given
-           * `untakenAfter` from the upload to show its build taken; one made before HQ recorded
-           * uploads, `untakenAfter` from its submission.
-           */
-          const byVersion = (age: number) =>
-            Effect.gen(function* () {
-              const { status } = yield* deploy.appVersion(versionId)(token);
-              if (status === "UPLOADING") {
-                // Made before HQ recorded uploads: the window from its submission, as then.
-                if (!job.upload_recorded) {
-                  return age < untakenAfter
-                    ? undefined
-                    : ({
-                        state: "refused",
-                        reason: "Zerops did not take the deploy's submission",
-                      } as const);
-                }
-                if (job.uploaded_after_ms === null) {
-                  return {
-                    state: "refused",
-                    reason:
-                      "HQ's upload of the deploy's archive went unanswered: no build was asked for",
-                  } as const;
-                }
-                return age - job.uploaded_after_ms < untakenAfter
-                  ? undefined
-                  : ({
-                      state: "refused",
-                      reason: "Zerops did not take the deploy's build",
-                    } as const);
-              }
-              if (status === "ACTIVE" || status === "BACKUP") return yield* landed;
-              if (VERSION_FAILURES.has(status)) {
-                return { state: "failed", reason: `failed: the version is ${status}` } as const;
-              }
-              return undefined;
-            });
-          const byProcess = (id: string, age: number) =>
-            Effect.gen(function* () {
-              const process = yield* deploy.process(id)(token);
-              if (process.status === "FAILED" || process.status === "CANCELED") {
-                return {
-                  state: "failed",
-                  reason: `failed: ${process.failure ?? "the build failed"}`,
-                } as const;
-              }
+      ) =>
+        observed(job, processId === null ? [] : [processId], versionId, (signal) =>
+          Effect.gen(function* () {
+            const process =
+              processId === null ? undefined : signal.processes.find((row) => row.id === processId);
+            if (process !== undefined) {
+              if (["FAILED", "CANCELED", "CANCELLED"].includes(process.status))
+                return failed(
+                  `failed: ${process.error?.message ?? process.error?.code ?? "the build failed"}`,
+                );
               if (process.status !== "FINISHED") return undefined;
-              return yield* landed;
-            }).pipe(
-              // A process Zerops no longer keeps says nothing: its version does.
-              Effect.catchIf(
-                (error) => error._tag === "ZeropsRefused" && error.reason === "not_found",
-                () => byVersion(age),
-              ),
-            );
-          const once = (age: number): Effect.Effect<Read> =>
-            (processId === null ? byVersion(age) : byProcess(processId, age)).pipe(
-              // A version Zerops no longer has was never built: HQ's own refusal.
-              Effect.catchIf(
-                (error): error is ZeropsRefused =>
-                  error._tag === "ZeropsRefused" &&
-                  error.reason === "not_found" &&
-                  error.operation === "appVersion",
-                (error) =>
-                  Effect.succeed({
-                    state: "refused",
-                    reason: `Zerops no longer has the version HQ made: ${error.code}`,
-                  } as const),
-              ),
-              // What cannot be read now says nothing of the build: it is read again.
-              Effect.catch((error) =>
-                Effect.as(
-                  Effect.logWarning("a deploy's build not read", {
-                    environment: job.env_name,
-                    service: job.service,
-                    error,
-                  }),
-                  undefined,
-                ),
-              ),
-            );
-          return yield* onCadence(
-            job.submitted_ms ?? 0,
-            once,
-            `HQ stopped following the build ${Math.round(followFor / 60_000)} min after it was submitted; Zerops still reports it running`,
-          );
-        });
+            } else {
+              const status =
+                signal.version?.status ?? (yield* deploy.appVersion(versionId)(token)).status;
+              if (VERSION_FAILURES.has(status)) return failed(`failed: the version is ${status}`);
+              if (status === "UPLOADING" && job.upload_recorded && !job.uploaded)
+                return unresolved("HQ's archive upload went unanswered; no build was asked for");
+              if (status !== "ACTIVE" && status !== "BACKUP") return undefined;
+            }
+            const service = yield* zerops.service(serviceId)(token);
+            if (service.activeVersionId !== versionId && service.named?.id === versionId)
+              return undefined;
+            if (service.activeVersionId !== versionId)
+              return unresolved(
+                "The process finished but the expected running version is not verified",
+              );
+            yield* leader
+              .write(
+                sql`UPDATE hq_deploy_job SET verified_version_id = ${versionId} WHERE id = ${job.id}::bigint`,
+              )
+              .pipe(Effect.orDie);
+            return { state: "live", service } as const;
+          }),
+        );
 
       /** The archive and `zerops.yaml` of the commit, or why HQ will not submit the commit. */
       const commitOf = (git: HqGit, job: DeployJob) =>
@@ -1231,7 +1190,10 @@ export const deploysLayer = (
         update(
           job,
           sql`state = ${ended.state}, ended_at = now(),
-            reason = ${ended.reason === undefined ? null : cut(ended.reason)}`,
+            reason = ${ended.reason === undefined ? null : cut(ended.reason)},
+            evidence = coalesce(evidence, '{"processes":[],"version":null}'::jsonb) ||
+              jsonb_build_object('phase', 'closed', 'nextActor', ${ended.state === "unresolved" ? "person" : "none"}::text,
+                'nextAction', ${ended.state === "unresolved" ? "Inspect the original handles in Zerops; Run again is a new explicit operation" : "Operation ended"}::text)`,
         );
 
       /**
@@ -1255,6 +1217,7 @@ export const deploysLayer = (
             }
             yield* update(job, sql`service_id = ${service.id}`);
             if (yield* runsJob(job, service)) {
+              yield* update(job, sql`verified_version_id = ${service.activeVersionId}`);
               return { state: "live", reason: `${job.service} already runs it` } as const;
             }
             const git = yield* gitHost.git;
@@ -1277,7 +1240,10 @@ export const deploysLayer = (
                 ),
               );
             // Unanswered, no version is known: HQ makes no other.
-            if ("lost" in version) return refused(zeropsDidNotAnswer(version.lost));
+            if ("lost" in version)
+              return unresolved(
+                "Zerops did not answer version creation; HQ has no handle to follow",
+              );
             // Kept before anything is submitted with it: whatever answer is lost from here on,
             // HQ reads this version instead of making another (audit H6).
             yield* update(job, sql`app_version_id = ${version.id}`);
@@ -1406,80 +1372,31 @@ export const deploysLayer = (
           if (ended !== undefined) yield* end(job, ended);
         });
 
-      /**
-       * A delta's import followed to its end, on the cadence a build is: by its processes, else —
-       * its answer lost, or a process Zerops no longer keeps — by what the project lists of its
-       * services. Ended well, its services' deploys are asked for in the same rollout and the delta
-       * is live; its import failed, the delta failed, Zerops' words why; never taken, refused.
-       */
+      /** Import handles decide the result; a lost handle ends unresolved, never inferred from a clock. */
       const followImport = (job: Job) =>
         Effect.gen(function* () {
           const key = yield* keyOf(job.project_id, job.env_name);
-          if (!("token" in key)) return yield* end(job, key);
-          const token = key.token;
+          if (!("token" in key))
+            return yield* end(job, unresolved(key.reason ?? "The deploy credential is gone"));
           const services = job.services ?? [];
           const named = services.join(", ");
-          type Read =
-            | { readonly state: "imported" }
-            | { readonly state: "failed" | "refused"; readonly reason: string }
-            | undefined;
-          /** Where it stands by what the project lists. */
-          const byListing = (age: number): Effect.Effect<Read, ZeropsError> =>
-            Effect.map(zerops.services(job.project_id)(token), (listed): Read => {
-              const made = listed.filter((service) => services.includes(service.name));
-              if (made.length < services.length) {
-                return age < untakenAfter
-                  ? undefined
-                  : { state: "refused", reason: "Zerops did not take the import" };
-              }
-              const broken = made.find((service) => /FAIL/u.test(service.status));
-              if (broken !== undefined) {
-                return {
-                  state: "failed",
-                  reason: `the import of ${named} failed: ${broken.name} is ${broken.status}`,
-                };
-              }
-              return made.some((service) => MAKING.has(service.status))
-                ? undefined
-                : { state: "imported" };
-            });
-          /** Where it stands by its processes. */
-          const byProcesses = (age: number) =>
-            Effect.gen(function* () {
+          if ((job.processes ?? []).length === 0)
+            return yield* end(job, unresolved("HQ did not receive the import's process handles"));
+          const ended = yield* observed(job, job.processes ?? [], null, (signal) =>
+            Effect.sync(() => {
               for (const id of job.processes ?? []) {
-                const process = yield* deploy.process(id)(token);
-                if (process.status === "FAILED" || process.status === "CANCELED") {
-                  return {
-                    state: "failed",
-                    reason: `the import of ${named} failed: ${process.failure ?? "Zerops gave no reason"}`,
-                  } as const;
-                }
-                if (process.status !== "FINISHED") return undefined;
+                const process = signal.processes.find((row) => row.id === id);
+                if (
+                  process !== undefined &&
+                  ["FAILED", "CANCELED", "CANCELLED"].includes(process.status)
+                )
+                  return failed(
+                    `the import of ${named} failed: ${process.error?.message ?? process.error?.code ?? "Zerops gave no reason"}`,
+                  );
+                if (process?.status !== "FINISHED") return undefined;
               }
               return { state: "imported" } as const;
-            }).pipe(
-              // A process Zerops no longer keeps says nothing: what the project lists does.
-              Effect.catchIf(
-                (error) => error._tag === "ZeropsRefused" && error.reason === "not_found",
-                () => byListing(age),
-              ),
-            );
-          const ended = yield* onCadence(
-            job.submitted_ms ?? 0,
-            (age) =>
-              ((job.processes ?? []).length === 0 ? byListing(age) : byProcesses(age)).pipe(
-                // What cannot be read now says nothing of the import: it is read again.
-                Effect.catch((error) =>
-                  Effect.as(
-                    Effect.logWarning("a delta's import not read", {
-                      environment: job.env_name,
-                      error,
-                    }),
-                    undefined,
-                  ),
-                ),
-              ),
-            `HQ stopped following the import ${Math.round(followFor / 60_000)} min after it was asked; Zerops still reports it running`,
+            }),
           );
           if (ended.state !== "imported") return yield* end(job, ended);
           const [environment] = yield* environmentsOf({ projectId: job.project_id });
@@ -1530,7 +1447,7 @@ export const deploysLayer = (
       /**
        * An environment moved on as far as it goes now, under its submission lock: while it builds
        * nothing, its next job submitted. A submission whose version HQ never heard, met here, is no
-       * longer being made — HQ stopped before Zerops answered — and ends refused.
+       * longer being made — HQ stopped before Zerops answered — and ends unresolved.
        */
       const advance = (projectId: string) =>
         Effect.flatMap(lockOf(projectId), (lock) =>
@@ -1540,11 +1457,10 @@ export const deploysLayer = (
               for (;;) {
                 const job = yield* openJob(projectId);
                 if (job === undefined || job.state === "building") return;
-                // A deploy's submission whose version HQ never heard; a delta's import is read back
-                // from what the project lists, as it is followed.
+                // A submission without its original handle cannot be followed after takeover.
                 if (job.state === "submitting") {
                   if (job.kind === "deploy" && job.app_version_id === null) {
-                    yield* end(job, refused("HQ restarted before Zerops answered"));
+                    yield* end(job, unresolved("HQ restarted before Zerops answered"));
                     continue;
                   }
                   return;
@@ -1559,9 +1475,10 @@ export const deploysLayer = (
       const followBuild = (job: Job) =>
         Effect.gen(function* () {
           const key = yield* keyOf(job.project_id, job.env_name);
-          if (!("token" in key)) return yield* end(job, key);
+          if (!("token" in key))
+            return yield* end(job, unresolved(key.reason ?? "The deploy credential is gone"));
           if (job.service_id === null || job.app_version_id === null) {
-            return yield* end(job, refused("HQ restarted before Zerops answered"));
+            return yield* end(job, unresolved("HQ restarted before Zerops answered"));
           }
           const followed = yield* follow(
             job,
@@ -1574,7 +1491,11 @@ export const deploysLayer = (
           const subdomain = yield* openIfIntended(job, followed.service, key.token);
           yield* end(
             job,
-            subdomain === undefined ? { state: "live" } : { state: "live", reason: subdomain },
+            subdomain === undefined
+              ? { state: "live" }
+              : subdomain.unresolved
+                ? unresolved(subdomain.reason)
+                : { state: "live", reason: subdomain.reason },
           );
         });
 
@@ -1812,6 +1733,7 @@ export const deploysLayer = (
         );
 
       return Deploys.of({
+        operations: (appId) => operationRecords(sql, appId),
         run,
         runOf: (event) =>
           Effect.flatMap(rolloutOf(sql, event), (id) =>

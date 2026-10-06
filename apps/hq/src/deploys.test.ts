@@ -15,12 +15,15 @@ import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Queue from "effect/Queue";
+import type { OperationSignal } from "./operationWatch.ts";
 import * as Redacted from "effect/Redacted";
 import * as Schedule from "effect/Schedule";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
+import { fakeOperationWatch } from "../test/harness/operationWatch.ts";
 import { activeCoreLayer, untilActive } from "../test/harness/activeCore.ts";
 import { OTHER_KEY_SECRET, sealedFor, testKey } from "../test/harness/deployKeys.ts";
 import { TempPostgres, tempPostgresLayer } from "../test/harness/tempPostgres.ts";
@@ -43,21 +46,14 @@ import { Releases, releasesLayer } from "./releases.ts";
 import { Roles } from "./roles.ts";
 import { environmentBirths } from "./births.ts";
 import { type RolloutCause, Rollouts, addRollout, rolloutsLayer } from "./rollouts.ts";
-import { ZeropsApi, ZeropsDeploy, type ZeropsMember } from "./zerops/api.ts";
+import { ZeropsApi, ZeropsDeploy, ZeropsRefused, type ZeropsMember } from "./zerops/api.ts";
 
 const AUTHOR = { name: "Ada", email: "ada@mate.test" };
 /** A `zerops.yaml` carrying `setup`. */
 const zeropsYaml = (setup: string) =>
   `zerops:\n  - setup: ${setup}\n    run:\n      start: node index.js\n`;
 const ZEROPS_YAML = zeropsYaml("web");
-/** Builds followed fast and for long; a submission Zerops did not take, told a moment later. */
-const FAST: DeploysOptions = {
-  pollEvery: Duration.millis(20),
-  slowPollEvery: Duration.millis(40),
-  slowAfter: Duration.millis(400),
-  followFor: Duration.seconds(30),
-  untakenAfter: Duration.millis(200),
-};
+const FAST: DeploysOptions = {};
 const ABSENT: RecipeTierResponse = { state: "absent" };
 
 const member = (userId: string, roleCode: string): ZeropsMember => ({
@@ -228,7 +224,10 @@ const withDeploys = <A, E>(
     );
     const world = emptyWorld();
     const tiers = new Map<string, RecipeTierResponse>();
-    const layer = deploysLayer(options).pipe(
+    const layer = deploysLayer({
+      ...options,
+      observer: options.observer ?? fakeOperationWatch(world),
+    }).pipe(
       Layer.provideMerge(releasesLayer),
       Layer.provide(deployKeysLayer(keySecret)),
       Layer.provideMerge(gitHostLayer({ rootDir: root })),
@@ -916,13 +915,17 @@ describe("deploys", () => {
               ["web already runs it", "dev"],
             ],
           );
+          const operation = (yield* (yield* Deploys).operations(appId)).at(-1)!;
+          assert.strictEqual(
+            operation.verifiedVersionId,
+            world.services.find((service) => service.name === "web")!.activeVersionId,
+          );
           assert.lengthOf(versions(world), 1);
         }),
       ),
     );
 
-    // Main B17: live is what the service runs, read back; a deploy that ends while it runs another
-    // commit failed.
+    // Main B17: the running version is verified separately; a mismatch leaves the operation unresolved.
     it.effect("calls a deploy live only once the service runs that commit", () =>
       withDeploys(({ appId, world, tiers, commit, deploys, until }) =>
         Effect.gen(function* () {
@@ -942,10 +945,12 @@ describe("deploys", () => {
             return "ACTIVE";
           };
           yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
-          yield* until(settled("failed"));
+          yield* until(settled("unresolved"));
           assert.deepStrictEqual(
             (yield* deploys).map(({ reason }) => reason),
-            ['the deploy finished, but web runs "main 1234567"'],
+            [
+              "The process finished but the expected running version is not verified; a person must inspect the original handle in Zerops",
+            ],
           );
         }),
       ),
@@ -999,28 +1004,26 @@ describe("deploys", () => {
 
     // The subdomain is the last step of a first deploy HQ makes: followed by its process before the
     // job ends live, and where it does not come on the live job says so in HQ's words.
-    it.effect(
-      "a subdomain HQ could not turn on is said on the live deploy, never only logged",
-      () =>
-        withDeploys(({ appId, world, tiers, commit, until, deploys }) =>
-          Effect.gen(function* () {
-            yield* createdForHq("P_STAGE");
-            world.unanswered.add("enableSubdomainAccess");
-            tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
-            yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
-            yield* until((found) => found.length === 1 && settled("live")(found));
-            const [row] = yield* deploys;
-            assert.match(row?.reason ?? "", /^its subdomain was not turned on: /u);
-            assert.isFalse(
-              world.services.find((service) => service.name === "web")!.subdomainAccess,
-            );
-          }),
-        ),
+    it.effect("a subdomain request whose answer is lost ends visibly unresolved", () =>
+      withDeploys(({ appId, world, tiers, commit, until, deploys }) =>
+        Effect.gen(function* () {
+          yield* createdForHq("P_STAGE");
+          world.unanswered.add("enableSubdomainAccess");
+          tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
+          yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+          yield* until((found) => found.length === 1 && settled("unresolved")(found));
+          const [row] = yield* deploys;
+          assert.match(
+            row?.reason ?? "",
+            /^its subdomain (was not turned on|could not be verified): /u,
+          );
+          assert.isFalse(world.services.find((service) => service.name === "web")!.subdomainAccess);
+        }),
+      ),
     );
 
-    // Review #5: the subdomain is followed on its own clock, from its own start — never on what
-    // was left of the build's, read before it was followed (a takeover's).
-    it.effect("follows a subdomain on its own bound, never on what the build's left", () =>
+    // Each accepted side effect is followed by its own handle through takeover.
+    it.effect("follows a subdomain by its own process after an old build finishes", () =>
       withDeploys(
         ({ appId, world, tiers, commit, deploys, until, takeover }) =>
           Effect.gen(function* () {
@@ -1046,7 +1049,7 @@ describe("deploys", () => {
               [null],
             );
           }),
-        { ...FAST, followFor: Duration.seconds(1) },
+        FAST,
       ),
     );
 
@@ -1392,27 +1395,15 @@ describe("deploys", () => {
         ),
       );
 
-      // H6 for an import: one whose answer was lost is never asked again — what the project lists
-      // says how it went.
-      it.effect("reads an import whose answer was lost from what the project lists", () =>
-        withDeploys(({ appId, world, tiers, commit, deploys, until, planned }) =>
+      it.effect("ends a lost import handle as unresolved without submitting again", () =>
+        withDeploys(({ appId, world, tiers, commit, planned }) =>
           Effect.gen(function* () {
             const sql = yield* SqlClient.SqlClient;
             world.lost.add("importServices");
-            const api = yield* addApi({ appId, tiers, commit, planned });
-            yield* deltaIs(sql, "submitting");
-            yield* Effect.sleep(Duration.millis(100));
+            yield* addApi({ appId, tiers, commit, planned });
+            yield* deltaIs(sql, "unresolved");
             assert.lengthOf(world.imports, 1);
-            // Still being made: no deploy of it yet.
-            assert.deepStrictEqual(
-              (yield* deploys).filter((row) => row.service === "api"),
-              [],
-            );
-            const made = world.services.find((service) => service.name === "api")!;
-            made.status = "ACTIVE";
-            yield* until((rows) => rows.some((row) => row.sha === api && row.state === "live"));
-            assert.deepStrictEqual(yield* deltas(sql), [{ state: "live", reason: "added api" }]);
-            assert.lengthOf(world.imports, 1);
+            assert.match((yield* deltas(sql))[0]?.reason ?? "", /person must inspect/u);
           }),
         ),
       );
@@ -1596,23 +1587,178 @@ describe("deploys", () => {
       ),
     );
 
-    // The deploy-jobs design: a build is followed at most `followFor` after its submission, then HQ
-    // stops following it — the job ends refused, for Run again — never submitting it again.
-    it.effect("stops following a build past its bound, refused, never submitting it again", () =>
-      withDeploys(
-        ({ appId, world, tiers, commit, deploys, until }) =>
-          Effect.gen(function* () {
-            tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
-            world.outcome = () => "BUILDING";
-            yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
-            yield* until(settled("refused"));
-            assert.match(
-              (yield* deploys)[0]?.reason ?? "",
-              /^HQ stopped following the build .* Zerops still reports it running$/u,
-            );
-            assert.lengthOf(versions(world), 1);
-          }),
-        { ...FAST, followFor: Duration.millis(300) },
+    it.effect(
+      "ends an unobservable subdomain step as unresolved while retaining the verified deploy",
+      () =>
+        Effect.gen(function* () {
+          let world: FakeWorld | undefined;
+          let watches = 0;
+          return yield* withDeploys(
+            ({ appId, world: rigWorld, tiers, commit, until }) =>
+              Effect.gen(function* () {
+                world = rigWorld;
+                yield* createdForHq("P_STAGE");
+                tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
+                yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+                yield* until(
+                  (rows) => rows[0]?.state === "unresolved" || rows[0]?.state === "live",
+                );
+                const [operation] = yield* (yield* Deploys).operations(appId);
+                assert.strictEqual(operation?.state, "unresolved");
+                assert.lengthOf(operation?.handles ?? [], 2);
+                assert.strictEqual(operation?.verifiedVersionId, operation?.versionId);
+                assert.strictEqual(operation?.evidence?.nextActor, "person");
+              }),
+            {
+              observer: {
+                watch: (target) =>
+                  ++watches === 1
+                    ? fakeOperationWatch(world!).watch(target)
+                    : Stream.fail(
+                        new ZeropsRefused({
+                          operation: "observation",
+                          reason: "forbidden",
+                          status: 403,
+                          code: "access_gone",
+                        }),
+                      ),
+              },
+            },
+          );
+        }),
+    );
+
+    it.effect("resumes the recorded subdomain handle at takeover without submitting it again", () =>
+      withDeploys(({ appId, world, tiers, commit, until, takeover }) =>
+        Effect.gen(function* () {
+          const service = yield* Deploys;
+          yield* createdForHq("P_STAGE");
+          world.subdomainRunningReads = 10_000;
+          tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
+          yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+          yield* service.changes.pipe(
+            Stream.mapEffect(() => service.operations(appId)),
+            Stream.filter(
+              (rows) =>
+                rows[0]?.evidence?.processes.some(
+                  (process) => process.id !== rows[0]?.handle && process.status === "RUNNING",
+                ) === true,
+            ),
+            Stream.take(1),
+            Stream.runHead,
+          );
+          const before = (yield* service.operations(appId))[0]!;
+          assert.lengthOf(before.handles, 2);
+          const submitted = world.calls.filter((call) =>
+            call.startsWith("enableSubdomainAccess:"),
+          ).length;
+          yield* takeover(
+            Effect.sync(() => {
+              for (const job of world.jobs.values())
+                if (job.appVersionId === undefined) job.runningReads = 0;
+            }),
+          );
+          yield* until(settled("live"));
+          assert.strictEqual(
+            world.calls.filter((call) => call.startsWith("enableSubdomainAccess:")).length,
+            submitted,
+          );
+        }),
+      ),
+    );
+
+    it.effect(
+      "keeps operation evidence through recovery and verifies the version on a terminal push",
+      () =>
+        Effect.gen(function* () {
+          const signals = yield* Queue.unbounded<"recovering" | "finished">();
+          return yield* withDeploys(
+            ({ appId, world, tiers, commit, until }) =>
+              Effect.gen(function* () {
+                const service = yield* Deploys;
+                tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
+                world.outcome = () => "BUILDING";
+                yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+                yield* until(settled("building"));
+                const atPhase = (phase: string) =>
+                  service.changes.pipe(
+                    Stream.mapEffect(() => service.operations(appId)),
+                    Stream.filter((rows) => rows[0]?.evidence?.phase === phase),
+                    Stream.take(1),
+                    Stream.runHead,
+                  );
+                yield* atPhase("live");
+                const before = (yield* service.operations(appId))[0]!;
+                yield* Queue.offer(signals, "recovering");
+                yield* atPhase("recovering");
+                const gap = (yield* service.operations(appId))[0]!;
+                assert.deepStrictEqual(gap.evidence?.processes, before.evidence?.processes);
+                assert.strictEqual(gap.evidence?.nextActor, "hq");
+                const web = world.services.find((row) => row.name === "web")!;
+                web.activeVersionId = before.versionId;
+                yield* Queue.offer(signals, "finished");
+                yield* until(settled("live"));
+                const done = (yield* service.operations(appId))[0]!;
+                assert.strictEqual(done.handle, before.handle);
+                assert.strictEqual(done.verifiedVersionId, before.versionId);
+                assert.isTrue(
+                  done.steps.some((step) =>
+                    step.processes.some((process) => process.status === "FINISHED"),
+                  ),
+                );
+                assert.strictEqual(done.evidence?.nextActor, "none");
+              }),
+            {
+              observer: {
+                watch: (target) => {
+                  const running: OperationSignal = {
+                    phase: "live",
+                    processes: target.processIds.map((id) => ({ id, status: "RUNNING" })),
+                    version: null,
+                  };
+                  return Stream.concat(
+                    Stream.succeed(running),
+                    Stream.fromQueue(signals).pipe(
+                      Stream.map((kind): OperationSignal =>
+                        kind === "recovering"
+                          ? { phase: "recovering", processes: [], version: null }
+                          : {
+                              phase: "live",
+                              processes: target.processIds.map((id) => ({
+                                id,
+                                status: "FINISHED",
+                              })),
+                              version: null,
+                            },
+                      ),
+                    ),
+                  );
+                },
+              },
+            },
+          );
+        }),
+    );
+
+    it.effect("keeps a running build after 75 minutes and follows its owner's end", () =>
+      withDeploys(({ appId, world, tiers, commit, deploys, until, takeover }) =>
+        Effect.gen(function* () {
+          tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
+          world.outcome = () => "BUILDING";
+          yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+          yield* until(settled("building"));
+          const sql = yield* SqlClient.SqlClient;
+          yield* takeover(
+            Effect.gen(function* () {
+              yield* sql`UPDATE hq_deploy_job SET submitted_at = now() - interval '80 minutes'`;
+            }).pipe(Effect.orDie),
+          );
+          yield* until((rows) => rows[0]?.state !== "queued");
+          assert.strictEqual((yield* deploys)[0]?.state, "building");
+          world.outcome = () => "ACTIVE";
+          yield* until(settled("live"));
+          assert.lengthOf(versions(world), 1);
+        }),
       ),
     );
 
@@ -1658,33 +1804,33 @@ describe("deploys", () => {
     // A version whose upload went unanswered is one whose build HQ never asked for: it waits for its
     // archive for good, which HQ knows by its own record — no clock, however long its window. The
     // job ends refused at once, never submitted again; a person's Run again makes another.
-    it.effect(
-      "refuses a submission whose upload went unanswered at once, and submits it again only when asked",
-      () =>
-        withDeploys(
-          ({ appId, world, tiers, commit, deploys, until }) =>
-            Effect.gen(function* () {
-              tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
-              world.lost.add("upload");
-              const sha = yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
-              yield* until(settled("refused"));
-              assert.deepStrictEqual(
-                (yield* deploys).map(({ reason }) => reason),
-                ["HQ's upload of the deploy's archive went unanswered: no build was asked for"],
-              );
-              assert.deepStrictEqual(
-                [...world.appVersions.values()].map((version) => version.status),
-                ["UPLOADING"],
-              );
-              assert.strictEqual(yield* runAgain(appId, "dev", sha), "ok");
-              yield* until((rows) => rows.at(-1)?.state === "live");
-              assert.deepStrictEqual(
-                [...world.appVersions.values()].map((version) => version.status),
-                ["UPLOADING", "ACTIVE"],
-              );
-            }),
-          { ...FAST, untakenAfter: Duration.minutes(10) },
-        ),
+    it.effect("ends an unanswered upload as unresolved, and submits again only when asked", () =>
+      withDeploys(
+        ({ appId, world, tiers, commit, deploys, until }) =>
+          Effect.gen(function* () {
+            tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
+            world.lost.add("upload");
+            const sha = yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+            yield* until(settled("unresolved"));
+            assert.deepStrictEqual(
+              (yield* deploys).map(({ reason }) => reason),
+              [
+                "HQ's archive upload went unanswered; no build was asked for; a person must inspect the original handle in Zerops",
+              ],
+            );
+            assert.deepStrictEqual(
+              [...world.appVersions.values()].map((version) => version.status),
+              ["UPLOADING"],
+            );
+            assert.strictEqual(yield* runAgain(appId, "dev", sha), "ok");
+            yield* until((rows) => rows.at(-1)?.state === "live");
+            assert.deepStrictEqual(
+              [...world.appVersions.values()].map((version) => version.status),
+              ["UPLOADING", "ACTIVE"],
+            );
+          }),
+        FAST,
+      ),
     );
 
     // B9: the window a version may still read UPLOADING after its build was asked for runs from
@@ -1708,20 +1854,23 @@ describe("deploys", () => {
       ),
     );
 
-    // A build HQ asked for after its upload, that Zerops never took — its version still waits for
-    // its archive past the window from the upload — ends refused, never submitted again.
-    it.effect("refuses a build Zerops never took, its window counted from the upload", () =>
-      withDeploys(({ appId, world, tiers, commit, deploys, until }) =>
+    it.effect("does not invent a refusal for an uploading version after a lost build answer", () =>
+      withDeploys(({ appId, world, tiers, commit, deploys, until, takeover, request }) =>
         Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
           tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
           world.buildSeenAfter = 60_000;
           world.lost.add("buildAndDeploy");
-          yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
-          yield* until(settled("refused"));
-          assert.deepStrictEqual(
-            (yield* deploys).map(({ reason }) => reason),
-            ["Zerops did not take the deploy's build"],
+          const sha = yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+          yield* request({ cause: "merge", appId, repo: "web", sha });
+          yield* until(settled("submitting"));
+          yield* takeover(
+            sql`UPDATE hq_deploy_job SET submitted_at = now() - interval '80 minutes'`.pipe(
+              Effect.asVoid,
+              Effect.orDie,
+            ),
           );
+          assert.strictEqual((yield* deploys)[0]?.state, "submitting");
           assert.lengthOf(versions(world), 1);
         }),
       ),
@@ -1729,14 +1878,14 @@ describe("deploys", () => {
 
     // A version made whose answer was lost is one HQ cannot name: the job ends refused, and HQ
     // makes no other.
-    it.effect("refuses a deploy whose version's answer was lost, making no other", () =>
+    it.effect("marks unresolved a deploy whose version's answer was lost, making no other", () =>
       withDeploys(({ appId, world, tiers, commit, deploys, until }) =>
         Effect.gen(function* () {
           tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
           world.lost.add("createAppVersion");
           yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
-          yield* until(settled("refused"));
-          assert.match((yield* deploys)[0]?.reason ?? "", /^Zerops did not answer: /u);
+          yield* until(settled("unresolved"));
+          assert.match((yield* deploys)[0]?.reason ?? "", /HQ has no handle to follow/u);
           yield* Effect.sleep(Duration.millis(200));
           assert.lengthOf(versions(world), 1);
         }),
@@ -1820,7 +1969,11 @@ describe("deploys", () => {
           assert.deepStrictEqual(
             (yield* deploys).slice(2).map(({ service, state, reason }) => [service, state, reason]),
             [
-              ["web", "refused", "HQ restarted before Zerops answered"],
+              [
+                "web",
+                "unresolved",
+                "HQ restarted before Zerops answered; a person must inspect the original handle in Zerops",
+              ],
               ["api", "live", "api already runs it"],
             ],
           );
@@ -1844,8 +1997,8 @@ describe("deploys", () => {
         ends: ["live", null],
       },
       {
-        name: "it still waits for its archive past the window: refused",
-        ends: ["refused", "Zerops did not take the deploy's submission"],
+        name: "it still waits for its archive: still submitting",
+        ends: ["submitting", null],
       },
     ])(
       "a submission left from before HQ recorded uploads, at takeover: $name",
@@ -1888,7 +2041,10 @@ describe("deploys", () => {
                   ${sha}, 0, 'submitting', now(), 'V-legacy', false)`;
               }).pipe(Effect.orDie),
             );
-            yield* until((rows) => rows.length === 2 && rows[1]?.state !== "submitting");
+            yield* until(
+              (rows) =>
+                rows.length === 2 && (seenAfter === undefined || rows[1]?.state !== "submitting"),
+            );
             const legacy = (yield* deploys)[1];
             assert.deepStrictEqual([legacy?.state, legacy?.reason ?? null], [...ends]);
           }),

@@ -28,7 +28,8 @@ import * as HttpServer from "effect/unstable/http/HttpServer";
 import { Backup, directoryStore } from "../../src/backup.ts";
 import { Changes } from "../../src/changes.ts";
 import { coreApp } from "../../src/core.ts";
-import { coreWithDeployTimings } from "./coreWithDeployTimings.ts";
+import { OperationObserver } from "../../src/operationWatch.ts";
+import { fakeOperationWatch } from "./operationWatch.ts";
 import { GitHost } from "../../src/gitHost.ts";
 import { MateOverviews } from "../../src/mateOverviews.ts";
 import { treeMigrations } from "../../src/migrationFiles.ts";
@@ -168,9 +169,6 @@ export const startCore = (
     /** Socket pings and role rechecks; fast defaults retained for existing Core tests. */
     readonly pingEvery?: Duration.Duration;
     readonly streamRecheck?: Duration.Duration;
-    /** Real Deploys following limit and young-build cadence; production defaults when absent. */
-    readonly followFor?: Duration.Duration;
-    readonly pollEvery?: Duration.Duration;
     /** The directory backup sets are kept in; a fresh one by default. */
     readonly storeDir?: string;
     /** Backup with no store: sets are only staged. */
@@ -243,13 +241,8 @@ export const startCore = (
             Layer.effect(ZeropsObservation, makeZeropsObservationHttp(given.zeropsHttp.baseUrl)),
           ).pipe(Layer.provide(NodeHttpClient.layerNodeHttp));
     const context = yield* Layer.buildWithScope(
-      (given.followFor === undefined && given.pollEvery === undefined
-        ? coreApp(options)
-        : coreWithDeployTimings(options, {
-            ...(given.followFor === undefined ? {} : { followFor: given.followFor }),
-            ...(given.pollEvery === undefined ? {} : { pollEvery: given.pollEvery }),
-          })
-      ).pipe(
+      coreApp(options).pipe(
+        Layer.provide(Layer.succeed(OperationObserver, fakeOperationWatch(fake))),
         Layer.provide(platform),
         Layer.provideMerge(NodeHttpServer.layer(() => NodeHttp.createServer(), { port: 0 })),
       ),
