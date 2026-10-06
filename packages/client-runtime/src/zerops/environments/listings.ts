@@ -56,11 +56,6 @@ import { systemExchangeClock } from "./exchangeDriver.ts";
 export interface OrganizationListing {
   readonly organizationId: string;
   readonly listing: Known<ReadonlyArray<CandidateRow>>;
-  /**
-   * IN TRANSIT (SVC → PROJ's absence checks): no project's services are read directly any more —
-   * the organization's services listing observes them all — so none is named here.
-   */
-  readonly directReads: ReadonlyMap<string, number>;
 }
 
 const heldEvidence = (machine: GrantMachine): Evidence | null =>
@@ -143,7 +138,6 @@ interface OrganizationEntry {
   readonly listed: OrganizationListing;
 }
 
-const NO_DIRECT_READS: ReadonlyMap<string, number> = new Map();
 const NO_LISTINGS: ReadonlyArray<OrganizationListing> = [];
 
 /** A project the grant does not admit: its services say nothing of a Mate of this person's. */
@@ -226,7 +220,6 @@ export function mateListingsAtom(
         .set(organizationId, {
           organizationId,
           listing: { state: "unread", waitingFor: null },
-          directReads: NO_DIRECT_READS,
         })
         .get(organizationId)!;
     const publish = (shown: OrganizationListing | null) => {
@@ -325,7 +318,7 @@ export function mateListingsAtom(
       const listed =
         before !== null && sameJson(before.listed.listing, projects)
           ? before.listed
-          : { organizationId: orgId, listing: projects, directReads: NO_DIRECT_READS };
+          : { organizationId: orgId, listing: projects };
       next = { roster, way, since, entries: new Map(), listed };
     } else {
       const entries = new Map<string, ProjectEntry>();
@@ -346,9 +339,7 @@ export function mateListingsAtom(
         way,
         since,
         entries,
-        listed: unchanged
-          ? previous
-          : { organizationId: orgId, listing, directReads: NO_DIRECT_READS },
+        listed: unchanged ? previous : { organizationId: orgId, listing },
       };
     }
     organization = next;

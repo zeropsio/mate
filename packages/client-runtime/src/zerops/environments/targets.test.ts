@@ -6,7 +6,7 @@ import type { Known } from "../knowledge/known.ts";
 import type { CandidateRow } from "../projections/candidates.ts";
 import type { Presence } from "./environmentMachine.ts";
 import type { RegistrationRecord } from "./records.ts";
-import { containerTargetsOf, listTargets, type Absence, type ListedTarget } from "./targets.ts";
+import { containerTargetsOf, listTargets, type ListedTarget } from "./targets.ts";
 import type { TargetKey } from "./exchangeDriver.ts";
 
 const ORIGIN = "https://zcp-24cb-8080.prg1.zerops.app";
@@ -71,23 +71,13 @@ interface Row {
   readonly records: ReadonlyArray<string>;
   /** The origin the records kept; `ORIGIN` unless a row says otherwise. */
   readonly origin?: string | null;
-  /** The receipt ordinal each project's services were last read at directly. */
-  readonly directReads?: ReadonlyArray<readonly [string, number]>;
-  /** The absences before this evaluation. */
-  readonly absences?: ReadonlyArray<readonly [TargetKey, Absence]>;
   /** Each target's presence before this evaluation. */
   readonly last?: ReadonlyArray<readonly [TargetKey, Presence]>;
   readonly targets: ReadonlyArray<ListedTarget>;
-  /** The absences after it. */
-  readonly after?: ReadonlyArray<readonly [TargetKey, Absence]>;
-  /** The targets whose confirming read it asks for. */
-  readonly confirm?: ReadonlyArray<TargetKey>;
 }
 
 const REMEMBERED = { kind: "remembered", origin: ORIGIN } as const;
 const GONE = { kind: "gone", evidence: "complete-scope-omits-verified" } as const;
-const waiting = (past: number | null): Absence => ({ kind: "waiting", past });
-const CONFIRMED: Absence = { kind: "confirmed" };
 
 const ROWS: ReadonlyArray<Row> = [
   {
@@ -139,16 +129,6 @@ const ROWS: ReadonlyArray<Row> = [
     targets: [
       { key: project.id, presence: { kind: "unknown" }, record: null },
       { key: KEY, presence: { kind: "unknown" }, record: ENV },
-    ],
-  },
-  {
-    name: "services not read yet after an omission: unknown, not remembered",
-    listings: [known([unreadRow])],
-    records: [OLD],
-    absences: [[OLD, waiting(3)]],
-    targets: [
-      { key: project.id, presence: { kind: "unknown" }, record: null },
-      { key: OLD, presence: { kind: "unknown" }, record: ENV },
     ],
   },
   {
@@ -223,29 +203,13 @@ const ROWS: ReadonlyArray<Row> = [
     ],
   },
   {
-    name: "the project's services read without the remembered one: held, and a confirming read asked for",
+    name: "the organization's complete services listing without the remembered one: gone",
     listings: [known([mateRow("ACTIVE")])],
     records: [OLD],
-    directReads: [[project.id, 3]],
     targets: [
       { key: KEY, presence: { kind: "present", origin: ORIGIN }, record: null },
-      { key: OLD, presence: null, record: ENV },
+      { key: OLD, presence: GONE, record: ENV },
     ],
-    after: [[OLD, waiting(3)]],
-    confirm: [OLD],
-  },
-  {
-    name: "the project's services read without a remembered one: unknown, no longer looked for at its record's origin (A16)",
-    listings: [known([mateRow("ACTIVE")])],
-    records: [OLD],
-    directReads: [[project.id, 3]],
-    last: [[OLD, REMEMBERED]],
-    targets: [
-      { key: KEY, presence: { kind: "present", origin: ORIGIN }, record: null },
-      { key: OLD, presence: { kind: "unknown" }, record: ENV },
-    ],
-    after: [[OLD, waiting(3)]],
-    confirm: [OLD],
   },
   {
     name: "the project's services read without a remembered one while a listing is partial: unknown (A16)",
@@ -258,97 +222,14 @@ const ROWS: ReadonlyArray<Row> = [
     ],
   },
   {
-    name: "the project's services read without a Mate last present: held",
-    listings: [known([mateRow("ACTIVE")])],
+    name: "the project's services read without a Mate last present while a listing is partial: held",
+    listings: [known([mateRow("ACTIVE")], "partial")],
     records: [OLD],
-    directReads: [[project.id, 3]],
     last: [[OLD, { kind: "present", origin: ORIGIN }]],
     targets: [
       { key: KEY, presence: { kind: "present", origin: ORIGIN }, record: null },
       { key: OLD, presence: null, record: ENV },
     ],
-    after: [[OLD, waiting(3)]],
-    confirm: [OLD],
-  },
-  {
-    name: "a direct read no newer than the omission holds it",
-    listings: [known([mateRow("ACTIVE")])],
-    records: [OLD],
-    directReads: [[project.id, 3]],
-    absences: [[OLD, waiting(3)]],
-    targets: [
-      { key: KEY, presence: { kind: "present", origin: ORIGIN }, record: null },
-      { key: OLD, presence: null, record: ENV },
-    ],
-    after: [[OLD, waiting(3)]],
-  },
-  {
-    name: "a deleted service loses its Mate only after a confirming read",
-    listings: [known([mateRow("ACTIVE")])],
-    records: [OLD],
-    directReads: [[project.id, 4]],
-    absences: [[OLD, waiting(3)]],
-    targets: [
-      { key: KEY, presence: { kind: "present", origin: ORIGIN }, record: null },
-      { key: OLD, presence: GONE, record: ENV },
-    ],
-    after: [[OLD, CONFIRMED]],
-  },
-  {
-    name: "an omission seen before any direct read waits past the first one, and asks again",
-    listings: [known([mateRow("ACTIVE")])],
-    records: [OLD],
-    directReads: [[project.id, 1]],
-    absences: [[OLD, waiting(null)]],
-    targets: [
-      { key: KEY, presence: { kind: "present", origin: ORIGIN }, record: null },
-      { key: OLD, presence: null, record: ENV },
-    ],
-    after: [[OLD, waiting(1)]],
-    confirm: [OLD],
-  },
-  {
-    name: "a confirmed absence stays gone and asks for no read",
-    listings: [known([mateRow("ACTIVE")])],
-    records: [OLD],
-    directReads: [[project.id, 9]],
-    absences: [[OLD, CONFIRMED]],
-    targets: [
-      { key: KEY, presence: { kind: "present", origin: ORIGIN }, record: null },
-      { key: OLD, presence: GONE, record: ENV },
-    ],
-    after: [[OLD, CONFIRMED]],
-  },
-  {
-    name: "services not read yet hold a confirmed absence",
-    listings: [known([unreadRow])],
-    records: [OLD],
-    absences: [[OLD, CONFIRMED]],
-    targets: [
-      { key: project.id, presence: { kind: "unknown" }, record: null },
-      { key: OLD, presence: null, record: ENV },
-    ],
-    after: [[OLD, CONFIRMED]],
-  },
-  {
-    name: "the service listed again ends its absence",
-    listings: [known([mateRow("ACTIVE")])],
-    records: [KEY],
-    directReads: [[project.id, 4]],
-    absences: [[KEY, CONFIRMED]],
-    targets: [{ key: KEY, presence: { kind: "present", origin: ORIGIN }, record: ENV }],
-  },
-  {
-    name: "a listing no longer settled holds the absence as it waits",
-    listings: [known([mateRow("ACTIVE")], "partial")],
-    records: [OLD],
-    directReads: [[project.id, 4]],
-    absences: [[OLD, waiting(3)]],
-    targets: [
-      { key: KEY, presence: { kind: "present", origin: ORIGIN }, record: null },
-      { key: OLD, presence: null, record: ENV },
-    ],
-    after: [[OLD, waiting(3)]],
   },
 ];
 
@@ -363,15 +244,9 @@ describe("listTargets: region P from the listings and the records (§4.4, §9 C1
         records: row.records.map((key) =>
           remembered(key, row.origin === undefined ? ORIGIN : row.origin),
         ),
-        directReads: new Map(row.directReads ?? []),
-        absences: new Map(row.absences ?? []),
         lastPresence: (key) => new Map(row.last ?? []).get(key) ?? null,
       }),
-    ).toEqual({
-      targets: row.targets,
-      absences: new Map(row.after ?? []),
-      confirm: row.confirm ?? [],
-    });
+    ).toEqual({ targets: row.targets });
   });
 });
 
@@ -386,8 +261,6 @@ describe("listTargets: a record is gone only on its own organization's word", ()
     const listed = listTargets({
       listings,
       records: [remembered(KEY)],
-      directReads: new Map(),
-      absences: new Map(),
       lastPresence: () => null,
     });
     expect(listed.targets).toEqual([{ key: KEY, presence: REMEMBERED, record: ENV }]);

@@ -94,12 +94,7 @@ import type {
   RegistrationRecord,
   RegistrationRecords,
 } from "../environments/records.ts";
-import {
-  containerTargetsOf,
-  listTargets,
-  targetProject,
-  type Absence,
-} from "../environments/targets.ts";
+import { containerTargetsOf, listTargets, targetProject } from "../environments/targets.ts";
 import type { ExchangeAnswer } from "../identityExchange.ts";
 import type { InvalidationBus } from "../knowledge/invalidation.ts";
 import type { PlatformSignal } from "../knowledge/signals.ts";
@@ -340,14 +335,10 @@ export interface EnvironmentWiringOptions {
 
 // ── The listings ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * What `listTargets` reads of a listing besides its rows: whether it can settle an absence, and
- * its direct reads.
- */
+/** What `listTargets` reads of a listing besides its rows: whether it can settle an absence. */
 const settling = (listed: OrganizationListing) => ({
   state: listed.listing.state,
   coverage: listed.listing.state === "known" ? listed.listing.coverage : null,
-  directReads: [...listed.directReads],
 });
 
 const sameItems = <T>(left: ReadonlyArray<T>, right: ReadonlyArray<T>): boolean =>
@@ -374,8 +365,6 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
   let closed = false;
   let listings: ReadonlyArray<OrganizationListing> = [];
   let rows: ReadonlyArray<CandidateRow> = [];
-  /** The remembered targets their projects' services were read without (§9 C19). */
-  let absences: ReadonlyMap<TargetKey, Absence> = new Map();
   let registered: ReadonlyArray<RegisteredEnvironment> = [];
   let route: EnvironmentId | null = null;
   /** The route's target, as `updateRoute` last found it; its container is read first. */
@@ -709,22 +698,15 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
 
   // ── Feeding the stores ─────────────────────────────────────────────────────────────────────
 
-  /**
-   * Every target, its presence and its container. IN TRANSIT (SVC → PROJ's absence checks): no
-   * project's services are read on their own any more — the organization's services listing is
-   * live — so an absence's wait for such a read (`listed.confirm`) asks nothing.
-   */
+  /** Every target, its presence and its container. */
   const updateTargets = () => {
     if (stores === null || closed) return;
     const records = stores.records.list();
     const listed = listTargets({
       listings,
       records,
-      directReads: new Map(listings.flatMap(({ directReads }) => [...directReads])),
-      absences,
       lastPresence: (key) => stores!.driver.machine(key)?.presence ?? null,
     });
-    absences = listed.absences;
     stores.containers.setTargets(containerTargetsOf(rows, listed.targets, routeKey));
     stores.driver.setTargets(
       listed.targets.map((target) => ({
