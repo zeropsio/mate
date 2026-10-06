@@ -96,16 +96,29 @@ export function useToldActivity(projectId: string): ZeropsAgentActivity | undefi
  */
 export function useMateConversationsRead(): (candidate: ZeropsCandidate) => boolean {
   const read = useAtomValue(environmentsWithSnapshotAtom);
-  const hq = useAtomValue(hqMatesAtom);
+  const toldKey = useAtomValue(hqMatesWithMainAtom);
+  const told = useMemo(() => new Set(toldKey.split("\n")), [toldKey]);
   return useCallback(
     (candidate: ZeropsCandidate) =>
-      hq?.mates?.get(candidate.project.id)?.main !== undefined ||
+      told.has(candidate.project.id) ||
       (candidate.group === "connected" &&
         candidate.environmentId !== undefined &&
         read.has(candidate.environmentId)),
-    [hq, read],
+    [told, read],
   );
 }
+
+/**
+ * The Mates whose main chat HQ's overview names, as one key: it changes when one gains or loses
+ * it, not on every word HQ relays.
+ */
+const hqMatesWithMainAtom = Atom.make((get) => {
+  const ids: string[] = [];
+  for (const [projectId, mate] of get(hqMatesAtom)?.mates ?? []) {
+    if (mate.main !== undefined) ids.push(projectId);
+  }
+  return ids.join("\n");
+}).pipe(Atom.withLabel("hq-mates-with-main"));
 
 /**
  * Whether a Mate the menu lists is still in its first minutes, as its row says it: its press made

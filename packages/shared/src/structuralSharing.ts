@@ -11,6 +11,19 @@ export function shareEqual<T>(previous: T, next: T): T {
   return share(previous, next) as T;
 }
 
+/**
+ * A reader of successive values that shares each with the last (`shareEqual`): it gives back the
+ * last value itself while the new one reads the same.
+ */
+export function createSharer<T>(): (next: T) => T {
+  let last: { readonly value: T } | undefined;
+  return (next) => {
+    const value = last === undefined ? next : shareEqual(last.value, next);
+    last = { value };
+    return value;
+  };
+}
+
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (value === null || typeof value !== "object") return false;
   const proto = Object.getPrototypeOf(value);

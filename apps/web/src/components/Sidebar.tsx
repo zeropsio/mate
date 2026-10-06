@@ -30,6 +30,7 @@ import {
   threadSearchMatchKey,
   type EnvironmentThreadSearchMatch,
 } from "@t3tools/client-runtime/state/thread-search";
+import { arrayElementsEqual } from "@t3tools/client-runtime/state/entities";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import {
   parseScopedThreadKey,
@@ -1773,6 +1774,15 @@ const ZEROPS_SIDEBAR_SURFACE = {
   negative: null,
 } as const;
 
+/** A reader of successive arrays giving back the last one while its elements are the same. */
+function createElementsKeeper<A>(): (next: ReadonlyArray<A>) => ReadonlyArray<A> {
+  let last: ReadonlyArray<A> = [];
+  return (next) => {
+    if (!arrayElementsEqual(last, next)) last = next;
+    return last;
+  };
+}
+
 /** What one of the Mate tree's verbs is called with. */
 type TreeVerbArgs<K extends "onNoticeAct" | "onSetUp" | "onAskToFix"> = Parameters<
   NonNullable<SidebarZeropsTreeProps<never>[K]>
@@ -2029,6 +2039,17 @@ export default function Sidebar() {
     () => new Set(environments.map((environment) => environment.environmentId)),
     [environments],
   );
+  // The threads T3's tree lists: none of a Zerops environment's. The same array while those stay
+  // the same objects, so a streaming Mate's chat — a Zerops one — never re-buckets or re-sorts
+  // the tree.
+  const [keepLegacyThreads] = useState(createElementsKeeper<EnvironmentThreadShell>);
+  const legacyThreads = useMemo(
+    () =>
+      keepLegacyThreads(
+        threads.filter((thread) => !zeropsEnvironmentIds.has(thread.environmentId)),
+      ),
+    [keepLegacyThreads, threads, zeropsEnvironmentIds],
+  );
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const clearSelection = useThreadSelectionStore((s) => s.clearSelection);
   const setSelectionAnchor = useThreadSelectionStore((s) => s.setAnchor);
@@ -2103,8 +2124,9 @@ export default function Sidebar() {
     ],
   );
   const projectGroups = useMemo(
-    () => sortLogicalProjectsForSidebar(unsortedProjectGroups, threads, sidebarProjectSortOrder),
-    [sidebarProjectSortOrder, threads, unsortedProjectGroups],
+    () =>
+      sortLogicalProjectsForSidebar(unsortedProjectGroups, legacyThreads, sidebarProjectSortOrder),
+    [legacyThreads, sidebarProjectSortOrder, unsortedProjectGroups],
   );
   // Nothing but the roster: a Zerops account whose every environment is a
   // roster row, with no local project alongside.
@@ -2435,11 +2457,10 @@ export default function Sidebar() {
     void snoozeWakeTick;
     const preciseNow = new Date().toISOString();
     // A crewmate's thread is the crew's, never an ordinary row.
-    const visible = threads.filter(
+    const visible = legacyThreads.filter(
       (thread) =>
         thread.archivedAt === null &&
         thread.crew === undefined &&
-        !zeropsEnvironmentIds.has(thread.environmentId) &&
         (scopedProjectKeys === null ||
           scopedProjectKeys.has(`${thread.environmentId}:${thread.projectId}`)),
     );
@@ -2517,8 +2538,7 @@ export default function Sidebar() {
     scopedProjectKeys,
     serverConfigs,
     snoozeWakeTick,
-    threads,
-    zeropsEnvironmentIds,
+    legacyThreads,
   ]);
 
   const threadSearchInputRef = useRef<HTMLInputElement>(null);

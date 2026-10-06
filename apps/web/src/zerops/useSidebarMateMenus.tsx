@@ -28,6 +28,7 @@ import {
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import type { MateLiveView } from "@t3tools/shared/hqMates";
+import { createSharer } from "@t3tools/shared/structuralSharing";
 import { useRouter } from "@tanstack/react-router";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 
@@ -70,6 +71,48 @@ export function sidebarMateVerbs(
   });
 }
 
+/** What a Mate's menu reads of HQ's word of it (`MateLiveView`): its environment, its main chat. */
+interface MenuTold {
+  readonly identity?: { readonly environmentId: EnvironmentId } | undefined;
+  readonly main?:
+    | {
+        readonly id: ThreadId;
+        readonly latestTurn: { readonly completedAt: string | null } | null;
+      }
+    | null
+    | undefined;
+}
+
+/**
+ * HQ's word of each Mate as its menu reads it (`MenuTold`), by project: plain data, so a reading
+ * shares with the last (`createSharer`) and the menus stand while no Mate's word of it changed —
+ * HQ relays far more of each Mate than a menu reads.
+ */
+function menuToldOf(
+  mates: ReadonlyMap<string, MateLiveView> | undefined,
+): Readonly<Record<string, MenuTold>> {
+  const told: Record<string, MenuTold> = {};
+  for (const [projectId, mate] of mates ?? []) {
+    told[projectId] = {
+      ...(mate.identity === undefined
+        ? {}
+        : { identity: { environmentId: mate.identity.environmentId } }),
+      ...(mate.main
+        ? {
+            main: {
+              id: mate.main.id,
+              latestTurn:
+                mate.main.latestTurn === null
+                  ? null
+                  : { completedAt: mate.main.latestTurn.completedAt },
+            },
+          }
+        : {}),
+    };
+  }
+  return told;
+}
+
 /**
  * Where a Mate's menu acts: its environment — its socket's, else the one HQ names — when the
  * chat its row reads last finished, for *Mark as unread*: this page's shell of it, else HQ's word,
@@ -79,7 +122,7 @@ export function mateMenuTarget(input: {
   /** Its socket's environment, where this page holds one. */
   readonly environmentId: EnvironmentId | undefined;
   /** HQ's word of it, where HQ holds one. */
-  readonly told: MateLiveView | undefined;
+  readonly told: MenuTold | undefined;
   readonly activity: ZeropsAgentActivity | undefined;
   /** Each chat's last finished turn as this page's shells hold it, by thread key. */
   readonly completedAt: ReadonlyMap<string, string>;
@@ -171,6 +214,8 @@ export function useSidebarMateMenus(input: {
   const interrupt = useMateCommand(threadEnvironment.interruptTurn, { reportFailure: false });
   const router = useRouter();
   const hq = useAtomValue(hqMatesAtom);
+  const [shareTold] = useState(() => createSharer<Readonly<Record<string, MenuTold>>>());
+  const told = useMemo(() => shareTold(menuToldOf(hq?.mates)), [hq, shareTold]);
   const { copyToClipboard } = useCopyToClipboard<{ readonly name: string }>({
     onCopy: ({ name }) => {
       toastManager.add({ type: "success", title: `Link to ${name} copied` });
@@ -204,7 +249,7 @@ export function useSidebarMateMenus(input: {
       builtOnce((candidate, activity) => {
         const { environmentId, finished, stop } = mateMenuTarget({
           environmentId: candidate.environmentId,
-          told: hq?.mates?.get(candidate.project.id),
+          told: told[candidate.project.id],
           activity,
           completedAt,
         });
@@ -267,7 +312,6 @@ export function useSidebarMateMenus(input: {
       completedAt,
       copyToClipboard,
       drawnOf,
-      hq,
       interrupt,
       markThreadUnread,
       markThreadVisited,
@@ -275,6 +319,7 @@ export function useSidebarMateMenus(input: {
       renameInPlace,
       router,
       toggle,
+      told,
     ],
   );
 

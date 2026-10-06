@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { shareEqual } from "./structuralSharing.ts";
+import { createSharer, shareEqual } from "./structuralSharing.ts";
 
 describe("shareEqual", () => {
   const previous = {
@@ -66,5 +66,16 @@ describe("shareEqual", () => {
     const next = { at: new Date(0) };
     const shared = shareEqual({ at: date }, next);
     expect(shared.at).toBe(next.at);
+  });
+});
+
+describe("createSharer", () => {
+  it("gives back the last value while each new one reads the same", () => {
+    const share = createSharer<{ readonly a: ReadonlyArray<number> }>();
+    const first = share({ a: [1] });
+    expect(share({ a: [1] })).toBe(first);
+    const changed = share({ a: [2] });
+    expect(changed).toEqual({ a: [2] });
+    expect(share({ a: [2] })).toBe(changed);
   });
 });
