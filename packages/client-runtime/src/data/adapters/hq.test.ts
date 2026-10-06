@@ -342,22 +342,23 @@ describe("asking HQ on the open socket", () => {
 describe("a Mate's attention, relayed", () => {
   const ATTENTION = { kind: "attention", projectId: "ada" } as const;
   const presence = { online: true, since: "2026-10-06T00:00:00Z", overview: "live" } as const;
-  const relayed = (value: MateAttention | null) => ({
+  const relayed = (value: MateAttention | null, state: "live" | "stored") => ({
     presence,
     overview: null,
     attention: value,
-    attentionState: value === null ? "none" : "live",
+    attentionState: value === null ? "none" : state,
   });
   const relay = (
     type: HqScopeDelivery["type"],
     revision: number,
     value: MateAttention | null,
+    state: "live" | "stored" = "live",
   ): HqStreamMessage => ({
     type,
     scope: ATTENTION,
     incarnation: "a1",
     revision,
-    values: [{ key: "ada", value: relayed(value) }],
+    values: [{ key: "ada", value: relayed(value, state) }],
     removals: [],
   });
   /** What an open Mate said straight, as its own link commits it. */
@@ -377,6 +378,7 @@ describe("a Mate's attention, relayed", () => {
             kind: "mate-attention",
             incarnation: value.source.incarnation,
             revision: value.source.revision,
+            live: true,
           },
         },
       ],
@@ -455,19 +457,93 @@ describe("a Mate's attention, relayed", () => {
     }),
   );
 
-  it.effect("orders another incarnation of the Mate only by a baseline", () =>
+  type Step =
+    | {
+        readonly by: "relay";
+        readonly type: HqScopeDelivery["type"];
+        readonly hq: number;
+        readonly value: MateAttention;
+        readonly state: "live" | "stored";
+      }
+    | {
+        readonly by: "direct";
+        readonly method: "baseline" | "push";
+        readonly value: MateAttention;
+      };
+  const relayStep = (
+    type: HqScopeDelivery["type"],
+    hq: number,
+    value: MateAttention,
+    state: "live" | "stored" = "live",
+  ): Step => ({ by: "relay", type, hq, value, state });
+  const directStep = (method: "baseline" | "push", value: MateAttention): Step => ({
+    by: "direct",
+    method,
+    value,
+  });
+
+  it.effect.each([
+    {
+      name: "the Mate restarts while open, HQ relaying it live",
+      steps: [
+        relayStep("scope-reset", 1, attention("m1", 9)),
+        relayStep("scope-values", 2, attention("m2", 0, 1)),
+      ],
+      held: attention("m2", 0, 1),
+    },
+    {
+      name: "the Mate restarts while open, its own link saying it",
+      steps: [
+        directStep("baseline", attention("m1", 9)),
+        directStep("push", attention("m2", 0, 1)),
+      ],
+      held: attention("m2", 0, 1),
+    },
+    {
+      name: "a restarted Mate's own word, then what HQ stored of the run before",
+      steps: [
+        directStep("baseline", attention("m2", 0, 1)),
+        relayStep("scope-reset", 1, attention("m1", 9), "stored"),
+      ],
+      held: attention("m2", 0, 1),
+    },
+    {
+      name: "what HQ stored of the run before, then the restarted Mate's own word",
+      steps: [
+        relayStep("scope-reset", 1, attention("m1", 9), "stored"),
+        directStep("baseline", attention("m2", 0, 1)),
+      ],
+      held: attention("m2", 0, 1),
+    },
+    {
+      name: "a reload just after a restart: both paths go on after HQ's stored value",
+      steps: [
+        directStep("baseline", attention("m2", 0, 1)),
+        relayStep("scope-reset", 1, attention("m1", 9), "stored"),
+        directStep("push", attention("m2", 1, 2)),
+        relayStep("scope-values", 2, attention("m2", 2, 0)),
+      ],
+      held: attention("m2", 2, 0),
+    },
+    {
+      name: "what HQ stored of another run, pushed, never over a live one",
+      steps: [
+        relayStep("scope-reset", 1, attention("m2", 3)),
+        relayStep("scope-values", 2, attention("m1", 9), "stored"),
+      ],
+      held: attention("m2", 3),
+    },
+  ])("orders another incarnation by its being live: $name", ({ steps, held: expected }) =>
     Effect.gen(function* () {
       const store = makeAccountStore(AtomRegistry.make());
       const fixture = hqFixtureWire();
       const { fiber } = yield* live(store, fixture);
-      direct(store, attention("m2", 0, 1), "baseline");
-      // HQ still relays the incarnation before the Mate's restart, then resets the scope.
-      yield* fixture.send(relay("scope-values", 1, attention("m1", 9)));
-      yield* settle;
-      expect(held(store)).toMatchObject({ content: { value: attention("m2", 0, 1) } });
-      yield* fixture.send(relay("scope-reset", 2, attention("m3", 0)));
-      yield* settle;
-      expect(held(store)).toMatchObject({ content: { value: attention("m3", 0) } });
+      for (const step of steps) {
+        if (step.by === "direct") direct(store, step.value, step.method);
+        else yield* fixture.send(relay(step.type, step.hq, step.value, step.state));
+        yield* settle;
+      }
+      expect(held(store)).toMatchObject({ content: { value: expected } });
       yield* Fiber.interrupt(fiber);
     }),
   );

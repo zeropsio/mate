@@ -79,9 +79,10 @@ export interface HqFamilySource<Value> {
   /**
    * The value's own revision, for a family HQ only relays (a Mate's attention): its author's
    * ordering, which the reducer compares with the same value arriving on another path. Without
-   * it a record carries its scope's HQ revision.
+   * it a record carries its scope's HQ revision. `raw` is the record as HQ sent it, for what HQ
+   * says of the value beside it.
    */
-  readonly revisionOf?: (value: Value) => Revision;
+  readonly revisionOf?: (value: Value, raw: unknown) => Revision;
 }
 
 /**

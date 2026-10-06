@@ -124,6 +124,7 @@ export function mateAttentionLink(options: {
                   kind: "mate-attention",
                   incarnation: event.value.source.incarnation,
                   revision: event.value.source.revision,
+                  live: true,
                 },
               } as const;
               if (based) {

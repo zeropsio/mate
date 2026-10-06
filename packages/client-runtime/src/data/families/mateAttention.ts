@@ -34,10 +34,12 @@ export const mateAttentionFamily: FamilySpec<"mateAttention"> = {
     idOf: (key) => key,
     keyOf: (id) => id,
     decode: (raw) => Option.getOrNull(decodeRelayed(raw))?.attention ?? null,
-    revisionOf: ({ source }) => ({
+    revisionOf: ({ source }, raw) => ({
       kind: "mate-attention",
       incarnation: source.incarnation,
       revision: source.revision,
+      // What HQ stored of a Mate it does not hear is no word of a running incarnation.
+      live: Option.getOrNull(decodeRelayed(raw))?.attentionState === "live",
     }),
   },
 };

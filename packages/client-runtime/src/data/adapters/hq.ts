@@ -314,9 +314,11 @@ export function hqNavigationLink(options: {
                   value: decoded,
                   // A relayed value keeps its author's revision; HQ's own records, the scope's.
                   revision:
-                    (spec.hq!.revisionOf as ((value: unknown) => Revision) | undefined)?.(
-                      decoded,
-                    ) ?? revision,
+                    (
+                      spec.hq!.revisionOf as
+                        | ((value: unknown, raw: unknown) => Revision)
+                        | undefined
+                    )?.(decoded, value) ?? revision,
                 } as Row);
             }
           const removals: HqRemovalInput[] = message.removals.flatMap(
