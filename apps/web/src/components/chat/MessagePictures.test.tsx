@@ -39,10 +39,10 @@ describe("MessagePictureBody", () => {
       ["message-picture-pending"],
     ],
     [
-      "an older picture of unknown size says its name until it arrives",
+      "a picture of unknown size keeps its accessible placeholder until it arrives",
       image({}),
-      ["home-page.png"],
-      ["message-picture-pending"],
+      ['role="img"', 'aria-label="Picture 1"'],
+      ["<img", "home-page.png"],
     ],
   ])("%s", (_label, picture, present, absent) => {
     const markup = render(picture);

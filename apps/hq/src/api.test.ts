@@ -237,6 +237,7 @@ describe("HQ API", () => {
                       madeBy: "owner",
                       standupRequestedBy: null,
                       closedOff: false,
+                      setupMarker: null,
                       keyWider: false,
                     },
                     ...MATE_OWNED(),
