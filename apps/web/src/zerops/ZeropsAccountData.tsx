@@ -50,6 +50,8 @@ export interface AccountData extends AccountReads {
   readonly revalidate: AccountObservation["revalidate"];
   /** The person's "try again" on one detail. */
   readonly retryDetail: AccountObservation["retryDetail"];
+  /** Asks HQ what lies between two commits, while a surface shows it. */
+  readonly compare: AccountObservation["compare"];
 }
 
 /** The mounted account's data; a test mounts its own account's here. */
@@ -91,6 +93,7 @@ export function ZeropsAccountData({ children }: { readonly children: ReactNode }
       moveOffers: observation.moveOffers,
       handoverCandidates: observation.handoverCandidates,
       logs,
+      compare: observation.compare,
     }),
     [logs, observation, orgId, store],
   );

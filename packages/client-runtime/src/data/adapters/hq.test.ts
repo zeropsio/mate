@@ -339,6 +339,59 @@ describe("asking HQ on the open socket", () => {
       yield* Fiber.interrupt(fiber);
     }),
   );
+
+  it.effect.each([
+    { disposition: "refused", outcome: "definitive-refusal" },
+    { disposition: "transient", outcome: "transient" },
+  ] as const)(
+    "compares two commits when asked, and hands HQ's $disposition answer back as $outcome",
+    ({ disposition, outcome }) =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const fixture = hqFixtureWire();
+        const { fiber, link } = yield* live(store, fixture);
+        const head = "b".repeat(40);
+        const asked = yield* Effect.forkChild(
+          link.compare({ appId: "shop", repo: "api", base: "a".repeat(40), head }),
+        );
+        yield* settle;
+        const request = fixture.sent.at(-1)?.request as { requestId: string };
+        expect(request).toMatchObject({
+          type: "compare",
+          appId: "shop",
+          repo: "api",
+          base: "a".repeat(40),
+          head,
+        });
+        const answer = { base: "a".repeat(40), head, commits: [], truncated: false, total: 0 };
+        yield* fixture.send({
+          type: "compare",
+          requestId: request.requestId,
+          appId: "shop",
+          repo: "api",
+          result: answer,
+        });
+        expect(yield* Fiber.join(asked)).toEqual(answer);
+
+        const failed = yield* Effect.forkChild(
+          Effect.flip(link.compare({ appId: "shop", repo: "api", head })),
+        );
+        yield* settle;
+        const second = fixture.sent.at(-1)?.request as { requestId: string };
+        expect(second).not.toHaveProperty("base");
+        yield* fixture.send({
+          type: "compare-error",
+          requestId: second.requestId,
+          appId: "shop",
+          repo: "api",
+          code: "commit_not_found",
+          reason: null,
+          disposition,
+        });
+        expect((yield* Fiber.join(failed)).outcome).toBe(outcome);
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
 });
 
 describe("a Mate's attention, relayed", () => {
