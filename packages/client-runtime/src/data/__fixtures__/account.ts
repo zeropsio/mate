@@ -6,6 +6,7 @@ import { linkKeys, type LinkKey, type ScopeKey } from "../model.ts";
 import type { AccountInput, Row } from "../reducer.ts";
 import type { StreamEvent } from "../streamMachine.ts";
 import { runningScope, type ProcessValue } from "../families/process.ts";
+import { projectsScope, type ProjectValue } from "../families/project.ts";
 
 export const ORG = "org";
 
@@ -54,10 +55,28 @@ export const processValue = (
 
 export const zeropsVersion = (version: number) => ({ kind: "zerops" as const, version });
 
+/** A project as its whole row reads: what a test does not name is an active one. */
+export const projectValue = (
+  patch: Pick<ProjectValue, "id"> & Partial<ProjectValue>,
+): ProjectValue => ({ name: patch.id, status: "ACTIVE", clientId: ORG, ...patch });
+
 export function liveZerops(input: {
   readonly running: ReadonlyArray<Parameters<typeof processValue>[0]>;
+  readonly projects?: ReadonlyArray<Parameters<typeof projectValue>[0]>;
 }): ReadonlyArray<AccountInput> {
+  const projects = input.projects ?? [];
   return liveScopes(linkKeys.zerops(ORG), [
+    {
+      scope: projectsScope(ORG),
+      via: "zerops-realtime",
+      members: projects.map((project) => project.id),
+      rows: projects.map((project) => ({
+        family: "project",
+        id: project.id,
+        value: projectValue(project),
+        revision: zeropsVersion(1),
+      })),
+    },
     {
       scope: runningScope(ORG),
       via: "zerops-realtime",

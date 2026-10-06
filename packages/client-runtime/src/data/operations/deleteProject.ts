@@ -1,7 +1,9 @@
 /**
  * Deleting a project, at Zerops: its delete process is the operation's handle. Its row in the
  * process family reflects it and its terminal status ends it; its project's process history is
- * held until then, so an end met while the account was away is read. No clock decides the end.
+ * held until then, so an end met while the account was away is read. Once the project is gone that
+ * history answers not-found, and the project's proven deletion ends it instead. No clock decides
+ * the end.
  *
  * @module data/operations/deleteProject
  */
@@ -28,7 +30,9 @@ export const deleteProject: OperationKind<"delete-project"> = {
   kind: "delete-project",
   executor: "zerops",
   reflected: (read, _intent, receipt) => read.fact("process", processOf(receipt)).kind === "known",
-  settledBy: (read, _intent, receipt) => {
+  settledBy: (read, intent, receipt) => {
+    // The project proven gone is the deletion's end, though its process's end went unseen.
+    if (read.fact("project", intent.projectId).kind === "deleted") return { kind: "succeeded" };
     const process = read.fact("process", processOf(receipt));
     if (process.kind !== "known") return null;
     if (process.value.status === "FINISHED") return { kind: "succeeded" };

@@ -17,7 +17,7 @@ const DELETE = { kind: "delete-project", orgId: ORG, projectId: "p1" } as const;
 
 function account() {
   const store = makeAccountStore(AtomRegistry.make());
-  liveZerops({ running: [] }).forEach(store.dispatch);
+  liveZerops({ running: [], projects: [{ id: "p1" }] }).forEach(store.dispatch);
   return store;
 }
 
@@ -112,6 +112,27 @@ describe("delete-project", () => {
         processRow(store, "proc-del", status, 2, patch);
         expect(progress(store)).toEqual(outcome);
       }
+    }),
+  );
+
+  it.effect("succeeds on its project's proven deletion when its process's end went unseen", () =>
+    Effect.gen(function* () {
+      const store = account();
+      const { operations } = operationsOf(store, async () => ({ processId: "proc-del" }));
+      yield* operations.submit(DELETE);
+      processRow(store, "proc-del", "RUNNING", 1);
+      // The process ends while the account is away; the project then leaves the roster, proven gone.
+      store.dispatch({
+        kind: "proven-deletion",
+        family: "project",
+        id: "p1",
+        evidence: "GET /project/p1 answered 404",
+      });
+      expect(progress(store)).toEqual({
+        stage: "done",
+        operationId: "proc-del",
+        outcome: "succeeded",
+      });
     }),
   );
 
