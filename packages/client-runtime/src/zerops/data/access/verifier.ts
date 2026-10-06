@@ -177,7 +177,10 @@ const judgeProject = (
     case "listed": {
       // A listing row names the viewer's own grant without whose it is: theirs, as a grant. Held
       // beside everybody's, it is the newer word on the viewer: a row's own read retires it.
-      const { viewerRoleCode, ...row } = standing.project;
+      const { viewerRoleCode: held, ...row } = standing.project;
+      // The viewer's own grant a listing named is a NO_ACCESS member's: the membership the round
+      // read says whether the viewer still is one.
+      const viewerRoleCode = membership.roleCode === "NO_ACCESS" ? held : undefined;
       // A NO_ACCESS member's access is only what a row names (their own grant, or everybody's):
       // a row naming none (a push of a project they just created) is no judgement yet.
       if (

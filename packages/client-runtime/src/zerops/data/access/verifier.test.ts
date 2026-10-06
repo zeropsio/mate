@@ -224,6 +224,38 @@ describe("the access verifier's round", () => {
     }),
   );
 
+  // The viewer's own grant a listing named is a NO_ACCESS member's: once the account says the
+  // viewer is an organization member, a held one says nothing of them.
+  it.effect.each([
+    { name: "a NO_ACCESS member is judged on it", membership: "NO_ACCESS", role: "READ_ONLY" },
+    {
+      name: "an organization member is judged on their membership",
+      membership: "ADMIN",
+      role: "ADMIN",
+    },
+  ])("a held own grant of the viewer: $name", ({ membership, role }) =>
+    Effect.gen(function* () {
+      const viewer: ZeropsUser = {
+        ...user,
+        clientUserList: [{ id: "membership", clientId: orgId, roleCode: membership }],
+      };
+      const verifier = makeRestAccessVerifier({
+        client: { fetchUser: async () => viewer },
+        standing: (ref) => ({
+          kind: "listed",
+          project: { ...project(ref.projectId), viewerRoleCode: "READ_ONLY" },
+        }),
+        account,
+        onUser: () => {},
+      });
+      yield* verifier.verifyRound({ round: 1, carried: [], report: () => Effect.void });
+      expect(yield* verifier.verifyProject(projectRef("a"))).toMatchObject({
+        kind: "verified",
+        access: { role },
+      });
+    }),
+  );
+
   // A NO_ACCESS member's listing row names their own grant; a push may carry the row without it
   // (a project they just created): that is no word that they have none.
   it.effect.each([
