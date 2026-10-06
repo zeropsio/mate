@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { usageFamily } from "./usage.ts";
+import { usageFamily, usageOwnerOf } from "./usage.ts";
+import { usageHistoryFamily } from "./usageHistory.ts";
 
 const decode = usageFamily.zeropsQuery!.decode;
 
@@ -56,5 +57,17 @@ describe("usageFamily.decode", () => {
     },
   ])("$name", ({ raw, row }) => {
     expect(decode(raw)).toEqual(row);
+  });
+});
+
+describe("whose use is asked for", () => {
+  it.each([
+    { name: "usage", body: usageFamily.zeropsQuery!.body },
+    { name: "usageHistory", body: usageHistoryFamily.zeropsQuery!.body },
+  ])("$name asks in the project's own organization, whichever is shown", ({ body }) => {
+    expect(body({ orgId: "shown", ownerId: usageOwnerOf("project-org", "p1") }).search).toEqual([
+      { name: "clientId", operator: "eq", value: "project-org" },
+      { name: "projectId", operator: "eq", value: "p1" },
+    ]);
   });
 });

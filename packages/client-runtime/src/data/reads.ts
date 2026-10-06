@@ -74,15 +74,15 @@ export const NOT_READ_USAGE: ProjectUsage = {
 };
 
 /**
- * One project's resources as the mounted account holds them; not read without one. Read only
- * while a screen demands the project's `usage` and `usageHistory` details.
+ * One project's resources (`usageOwnerOf`) as the mounted account holds them; not read without
+ * one. Read only while a screen demands the owner's `usage` and `usageHistory` details.
  */
-export const projectUsageAtom = Atom.family((projectId: string) =>
+export const projectUsageAtom = Atom.family((owner: string) =>
   Atom.make((get): ProjectUsage => {
     const account = get(accountReadsAtom);
     if (account === null || account.orgId === null) return NOT_READ_USAGE;
-    return get(account.data.project(projectUsage, { orgId: account.orgId, projectId }));
-  }).pipe(Atom.withLabel(`data:project-usage:${projectId}`)),
+    return get(account.data.project(projectUsage, { orgId: account.orgId, owner }));
+  }).pipe(Atom.withLabel(`data:project-usage:${owner}`)),
 );
 
 const NO_PROJECTS_SERVICES: Readonly<Record<string, ProjectServices>> = {};

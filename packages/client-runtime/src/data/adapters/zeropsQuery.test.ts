@@ -7,7 +7,7 @@ import { AtomRegistry } from "effect/unstable/reactivity";
 
 import { fixtureWire, settle, type WireRequest } from "../__fixtures__/zeropsWire.ts";
 import { ORGANIZATION_ID as ORG } from "../__fixtures__/zeropsOrg.ts";
-import { usageScope } from "../families/usage.ts";
+import { usageOwnerOf, usageScope } from "../families/usage.ts";
 import { usageHistoryScope } from "../families/usageHistory.ts";
 import { makeAccountStore } from "../store.ts";
 import type { StreamFault } from "../streamMachine.ts";
@@ -16,7 +16,7 @@ import { factOf } from "../reducer.ts";
 import { linkKeys } from "../model.ts";
 import { RELEASED_QUERIES_PER_RECEIVER, zeropsNavigationLink } from "./zerops.ts";
 
-const PROJECT = "p1";
+const PROJECT = usageOwnerOf(ORG, "p1");
 const CURRENT = "/current-stats/group-by-search";
 const usage = usageScope(ORG, PROJECT);
 const USAGE = { family: "usage", ownerId: PROJECT } as const;
@@ -72,7 +72,7 @@ describe("a demanded query detail", () => {
       expect(registration?.body).toMatchObject({
         search: [
           { name: "clientId", operator: "eq", value: ORG },
-          { name: "projectId", operator: "eq", value: PROJECT },
+          { name: "projectId", operator: "eq", value: "p1" },
         ],
         groupBy: "containerId",
         receiverId: "receiver-1",

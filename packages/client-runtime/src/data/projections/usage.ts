@@ -11,7 +11,12 @@ import { usageHistoryScope, type UsageBucket } from "../families/usageHistory.ts
 import type { ScopeKey } from "../model.ts";
 import type { Projection, ProjectionReads } from "../store.ts";
 import { sameValue } from "./equal.ts";
-import type { ProjectKey } from "./processes.ts";
+
+/** The organization whose link observes it, and whose resources (`usageOwnerOf`). */
+export interface UsageKey {
+  readonly orgId: string;
+  readonly owner: string;
+}
 
 export interface ProjectUsage {
   /** Whether the current use answered at all: until it has, a service without use is unread. */
@@ -88,12 +93,12 @@ function failureOf(read: ProjectionReads, scope: ScopeKey) {
   return phase === "refused" || phase === "recovering" ? fault?.message : undefined;
 }
 
-export const projectUsage: Projection<ProjectKey, ProjectUsage> = {
+export const projectUsage: Projection<UsageKey, ProjectUsage> = {
   name: "projectUsage",
-  keyOf: ({ orgId, projectId }) => `${orgId}/${projectId}`,
-  derive: (read, { orgId, projectId }) => {
-    const usage = usageScope(orgId, projectId);
-    const hours = usageHistoryScope(orgId, projectId);
+  keyOf: ({ orgId, owner }) => `${orgId}/${owner}`,
+  derive: (read, { orgId, owner }) => {
+    const usage = usageScope(orgId, owner);
+    const hours = usageHistoryScope(orgId, owner);
     return {
       read: read.coverage(usage) !== "unknown",
       byService: useByService(membersOf(read, "usage", usage)),

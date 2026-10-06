@@ -12,6 +12,7 @@ import * as Schema from "effect/Schema";
 import type { ZeropsStatHistoryItem } from "../../zerops/api.ts";
 import type { ScopeKey } from "../model.ts";
 import { scopeOf, type FamilySpec } from "./spec.ts";
+import { projectSearchOf } from "./usage.ts";
 
 /** One service's hour, as the platform's bucket states it. */
 export type UsageBucket = Omit<ZeropsStatHistoryItem, "projectId">;
@@ -48,11 +49,8 @@ export const usageHistoryFamily: FamilySpec<"usageHistory"> = {
   scope: { source: "zerops", suffix: "usage-history", leaving: "removed", demand: "detail" },
   zeropsQuery: {
     path: "/stats-history/group-by-search",
-    body: ({ orgId, ownerId }) => ({
-      search: [
-        { name: "clientId", operator: "eq", value: orgId },
-        { name: "projectId", operator: "eq", value: ownerId },
-      ],
+    body: ({ ownerId }) => ({
+      search: projectSearchOf(ownerId ?? ""),
       groupBy: "serviceStackId",
       ...WINDOW,
       timeZone: new Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -70,6 +68,6 @@ export const usageHistoryFamily: FamilySpec<"usageHistory"> = {
   },
 };
 
-/** One project's services' last day, observed while demanded. */
-export const usageHistoryScope = (orgId: string, projectId: string): ScopeKey =>
-  scopeOf(usageHistoryFamily, orgId, projectId);
+/** One project's services' last day (`usageOwnerOf`), observed while demanded. */
+export const usageHistoryScope = (orgId: string, owner: string): ScopeKey =>
+  scopeOf(usageHistoryFamily, orgId, owner);

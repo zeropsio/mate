@@ -35,6 +35,7 @@ export { projectsScope, type ProjectValue } from "./families/project.ts";
 export { servicesScope, type ServiceValue } from "./families/service.ts";
 export { projectServices, projectsServices, type ProjectServices } from "./projections/services.ts";
 export type { ProjectUsage } from "./projections/usage.ts";
+export { usageOwnerOf } from "./families/usage.ts";
 export {
   buildsUnderWay,
   projectProcesses,

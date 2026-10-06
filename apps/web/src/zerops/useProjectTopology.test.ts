@@ -80,7 +80,7 @@ function pushedRuntime() {
   };
   /** The project's resources, as the account's store observes them while the panel shows them. */
   const scopeOf = (suffix: "usage" | "usage-history") =>
-    `zerops:${owner.organization.organizationId}:${suffix}:${owner.projectId}` as const;
+    `zerops:${owner.organization.organizationId}:${suffix}:${owner.organization.organizationId}/${owner.projectId}` as const;
   const begin = (suffix: "usage" | "usage-history") => {
     for (const event of [
       { kind: "demand", demanded: true },

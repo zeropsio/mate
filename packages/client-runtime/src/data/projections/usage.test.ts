@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import { projectTopology } from "../../zerops/topology.ts";
-import { usageFamily, usageScope, type ContainerUsage } from "../families/usage.ts";
+import { usageFamily, usageOwnerOf, usageScope, type ContainerUsage } from "../families/usage.ts";
 import {
   usageHistoryFamily,
   usageHistoryScope,
@@ -14,8 +14,9 @@ import { projectUsage, type ProjectUsage } from "./usage.ts";
 
 const ORG = "org";
 const PROJECT = "p1";
-const USAGE = usageScope(ORG, PROJECT);
-const HISTORY = usageHistoryScope(ORG, PROJECT);
+const OWNER = usageOwnerOf(ORG, PROJECT);
+const USAGE = usageScope(ORG, OWNER);
+const HISTORY = usageHistoryScope(ORG, OWNER);
 
 const apply = (state: AccountState, inputs: ReadonlyArray<AccountInput>) =>
   inputs.reduce((current, input) => reduceAccount(current, input).state, state);
@@ -186,7 +187,7 @@ describe("projectUsage", () => {
     },
   ])("$name", ({ inputs, expected }) => {
     const reads = readsOfState(apply(emptyAccount, inputs));
-    const actual = projectUsage.derive(reads, { orgId: ORG, projectId: PROJECT });
+    const actual = projectUsage.derive(reads, { orgId: ORG, owner: OWNER });
     for (const [field, value] of Object.entries(expected))
       expect(actual[field as keyof ProjectUsage]).toEqual(value);
   });
@@ -239,7 +240,7 @@ describe("projectUsage beside the topology's own sums", () => {
     const reads = readsOfState(
       apply(emptyAccount, answered(USAGE, decoded(usageFamily.zeropsQuery!.decode, current))),
     );
-    const { byService } = projectUsage.derive(reads, { orgId: ORG, projectId: PROJECT });
+    const { byService } = projectUsage.derive(reads, { orgId: ORG, owner: OWNER });
     for (const row of projectTopology(project, services, [], current).services)
       expect(byService[row.serviceId]).toEqual(row.usage);
   });
@@ -251,7 +252,7 @@ describe("projectUsage beside the topology's own sums", () => {
         answered(HISTORY, decoded(usageHistoryFamily.zeropsQuery!.decode, history.toReversed())),
       ),
     );
-    const { history: hours } = projectUsage.derive(reads, { orgId: ORG, projectId: PROJECT });
+    const { history: hours } = projectUsage.derive(reads, { orgId: ORG, owner: OWNER });
     expect(projectTopology(project, services, [], undefined, hours).services).toEqual(
       projectTopology(project, services, [], undefined, history).services,
     );

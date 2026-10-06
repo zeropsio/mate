@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
+import { usageOwnerOf } from "./usage.ts";
 import { usageHistoryFamily } from "./usageHistory.ts";
 
 const decode = usageHistoryFamily.zeropsQuery!.decode;
@@ -63,7 +64,10 @@ describe("usageHistoryFamily.decode", () => {
   });
 
   it("asks for the last day, by the hour, in the viewer's time zone", () => {
-    const body = usageHistoryFamily.zeropsQuery!.body({ orgId: "org", ownerId: "p1" });
+    const body = usageHistoryFamily.zeropsQuery!.body({
+      orgId: "org",
+      ownerId: usageOwnerOf("org", "p1"),
+    });
     expect(body).toMatchObject({
       search: [
         { name: "clientId", operator: "eq", value: "org" },

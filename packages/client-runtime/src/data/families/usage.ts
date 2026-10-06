@@ -48,19 +48,29 @@ const Row = Schema.Struct({
 });
 const decodeRow = Schema.decodeUnknownOption(Row);
 
+/**
+ * Whose resources a demand observes: a project in its own organization, which the shown one
+ * need not be (a thread's Mate may run in another). The detail's owner id.
+ */
+export const usageOwnerOf = (projectOrgId: string, projectId: string): string =>
+  `${projectOrgId}/${projectId}`;
+
+/** The search for an owner's resources: its project, in the project's own organization. */
+export function projectSearchOf(owner: string): ReadonlyArray<Readonly<Record<string, unknown>>> {
+  const at = owner.indexOf("/");
+  return [
+    { name: "clientId", operator: "eq", value: owner.slice(0, at) },
+    { name: "projectId", operator: "eq", value: owner.slice(at + 1) },
+  ];
+}
+
 export const usageFamily: FamilySpec<"usage"> = {
   family: "usage",
   authority: "zerops",
   scope: { source: "zerops", suffix: "usage", leaving: "removed", demand: "detail" },
   zeropsQuery: {
     path: "/current-stats/group-by-search",
-    body: ({ orgId, ownerId }) => ({
-      search: [
-        { name: "clientId", operator: "eq", value: orgId },
-        { name: "projectId", operator: "eq", value: ownerId },
-      ],
-      groupBy: "containerId",
-    }),
+    body: ({ ownerId }) => ({ search: projectSearchOf(ownerId ?? ""), groupBy: "containerId" }),
     frames: "listing",
     decode: (raw) =>
       Option.match(decodeRow(raw), {
@@ -81,6 +91,6 @@ export const usageFamily: FamilySpec<"usage"> = {
   },
 };
 
-/** One project's containers' current use, observed while demanded. */
-export const usageScope = (orgId: string, projectId: string): ScopeKey =>
-  scopeOf(usageFamily, orgId, projectId);
+/** One project's containers' current use (`usageOwnerOf`), observed while demanded. */
+export const usageScope = (orgId: string, owner: string): ScopeKey =>
+  scopeOf(usageFamily, orgId, owner);

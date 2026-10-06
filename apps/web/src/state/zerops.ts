@@ -47,6 +47,7 @@ import {
   projectProcessesAtom,
   projectUsageAtom,
   shownProjectsAtom,
+  usageOwnerOf,
   type ProjectUsage,
   type ProjectValue,
 } from "@t3tools/client-runtime/data";
@@ -605,7 +606,7 @@ const projectTopologies = Atom.family((key: string) =>
       get(listedProjectAtom(project.projectId)),
       topology,
       running,
-      get(projectUsageAtom(project.projectId)),
+      get(projectUsageAtom(usageOwnerOf(project.organization.organizationId, project.projectId))),
     );
   }).pipe(Atom.withLabel(`zerops:project-topology:${key}`)),
 );

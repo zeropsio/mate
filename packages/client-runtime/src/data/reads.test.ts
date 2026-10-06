@@ -15,7 +15,7 @@ import {
   projectsServicesAtom,
 } from "./reads.ts";
 import { makeAccountStore } from "./store.ts";
-import { usageScope } from "./families/usage.ts";
+import { usageOwnerOf, usageScope } from "./families/usage.ts";
 
 describe("projectProcessesAtom", () => {
   it("reads a project's processes through the mounted account, and nothing without one", () => {
@@ -57,14 +57,14 @@ describe("projectUsageAtom", () => {
   it("reads a project's resources through the mounted account, and nothing without one", () => {
     const registry = AtomRegistry.make();
     const store = makeAccountStore(registry);
-    const atom = projectUsageAtom("p1");
+    const atom = projectUsageAtom(usageOwnerOf(ORG, "p1"));
     expect(registry.get(atom)).toEqual(NOT_READ_USAGE);
 
     registry.set(accountReadsAtom, { data: store.data, orgId: ORG, demandDetail: () => () => {} });
     expect(registry.get(atom)).toEqual(NOT_READ_USAGE);
     store.dispatch({
       kind: "stream",
-      key: usageScope(ORG, "p1"),
+      key: usageScope(ORG, usageOwnerOf(ORG, "p1")),
       now: 0,
       event: {
         kind: "fault",

@@ -41,7 +41,8 @@ describe("visible panel metric demand", () => {
     { name: "closed Mate panel", metrics: false, visible: true },
     { name: "background browser tab", metrics: true, visible: false },
   ])("$name holds only topology", ({ metrics, visible }) => {
-    const projectId = held.project!.projectId;
+    // Its own organization's, whichever the menu shows.
+    const projectId = `${held.project!.organization.organizationId}/${held.project!.projectId}`;
     useProjectTopology(null, { metrics: true });
     expect(held.descriptors.filter(Boolean).map((d) => d!.kind)).toEqual(["project-topology"]);
     expect(held.details).toEqual([`usage:${projectId}`, `usageHistory:${projectId}`]);

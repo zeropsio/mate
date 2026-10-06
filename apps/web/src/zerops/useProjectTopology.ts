@@ -5,6 +5,7 @@
  * with nobody writing it. A host that shows the project's resources demands its current use and
  * its last day from the account's store while it shows them in a visible tab.
  */
+import { usageOwnerOf } from "@t3tools/client-runtime/data";
 import type { RuntimeInterestDescriptor } from "@t3tools/client-runtime/zerops/data";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { useMemo, useSyncExternalStore } from "react";
@@ -35,9 +36,13 @@ export function useProjectTopology(
     [project],
   );
   useZeropsDataInterest(topologyDescriptor);
-  const shownProjectId = metrics && tabVisible ? (project?.projectId ?? null) : null;
-  useDetailDemand("usage", undefined, shownProjectId);
-  useDetailDemand("usageHistory", undefined, shownProjectId);
+  // The project's own organization, whichever is shown: a thread's Mate may run in another.
+  const shownOwner =
+    metrics && tabVisible && project !== null
+      ? usageOwnerOf(project.organization.organizationId, project.projectId)
+      : null;
+  useDetailDemand("usage", undefined, shownOwner);
+  useDetailDemand("usageHistory", undefined, shownOwner);
   const snapshot = useEnvironmentTopology(environmentId);
   return {
     ...snapshot,
