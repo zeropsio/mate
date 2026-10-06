@@ -9319,8 +9319,11 @@ button.rv-relrow:hover .rv-relrow-go {
    `data-enter` are set only for a change the tab watched. */
 @media (prefers-reduced-motion: no-preference) {
   /* A need arriving: its words and presses unfold from the top. */
+  /* Its fill holds: the reveal ends clipped to its own box (inset(0)), and
+     the box's ring, shadow and its presses' focus rings have always been cut
+     there; one answer box keeps the one layer that costs. */
   .crew-reveal[data-arrived] {
-    animation: crew-reveal 220ms var(--ease-out-strong) backwards;
+    animation: crew-reveal 220ms var(--ease-out-strong) both;
   }
 
   /* A view slides 24 px in from the right; back, the column from the left. */
