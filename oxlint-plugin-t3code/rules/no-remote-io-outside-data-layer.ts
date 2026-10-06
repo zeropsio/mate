@@ -144,7 +144,6 @@ export const ZEROPS_CLIENT_VERBS = [
   "deleteProject",
   "deleteThrowaway",
   "enableSubdomainAccess",
-  "writeMateFlag",
   "exchangeWebSocketToken",
   "fetchProject",
   "fetchProjectLogAccess",
@@ -225,7 +224,6 @@ export const HQ_CLIENT_VERBS = [
   "closeChange",
   "changeAttachment",
   "mateRecipe",
-  "compare",
   "release",
   "rollback",
 ] as const;
