@@ -667,6 +667,42 @@ describe("a demanded detail", () => {
     }),
   );
 
+  it.effect.each([403, 404])("never repeats a refused own-row read in a round: HTTP %s", (status) =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const fixture = fixtureWire((request) =>
+        request.method === "GET"
+          ? Effect.succeed({ status, body: {} })
+          : answers(() => [])(request),
+      );
+      const { fiber, link } = yield* runLink(store, fixture);
+      const demand = { family: "project", listing: "project", ownerId: PROBE_PROJECT_ID } as const;
+      const scope = `zerops:${ORG}:project:${PROBE_PROJECT_ID}`;
+      const reads = () =>
+        fixture.requests.filter(({ path }) => path === `/project/${PROBE_PROJECT_ID}`).length;
+      const release = link.demandDetail(demand);
+      yield* settle;
+      expect(reads()).toBe(1);
+      expect(store.state().streams.get(scope)?.phase).toBe("refused");
+
+      // Neither the former five-second confirmation nor drawing the same Mate retries it.
+      yield* TestClock.adjust(5_000);
+      yield* settle;
+      expect(reads()).toBe(1);
+      release();
+      yield* settle;
+      link.demandDetail(demand);
+      yield* settle;
+      expect(reads()).toBe(1);
+      // A subsequent round must also respect the refusal, even though it renews held own rows.
+      link.renew(demand);
+      yield* settle;
+      expect(reads()).toBe(1);
+      expect(store.state().streams.get(scope)?.phase).toBe("refused");
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+
   it.effect(
     "takes a service read by its id over the listing's row when Zerops updated it since",
     () =>
