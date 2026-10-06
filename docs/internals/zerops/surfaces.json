@@ -388,6 +388,7 @@
         "apps/web/src/components/zerops/review/ZeropsCrewTaskReview.test.tsx",
         "apps/web/src/components/zerops/review/ZeropsReview.logic.test.ts",
         "apps/web/src/zerops/changeDiscussion.logic.test.ts",
+        "apps/web/src/zerops/useProjectedHqPicture.test.tsx",
         "packages/client-runtime/src/data/projections/hqPicture.test.ts",
         "packages/client-runtime/src/data/adapters/hqPictures.test.ts",
         "apps/web/src/zerops/useZeropsChangeDetail.test.ts",
