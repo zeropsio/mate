@@ -6,7 +6,10 @@ import {
   type ProviderSendTurnInput,
   type RuntimeMode,
 } from "@t3tools/contracts";
-import { ATTACHED_FILE_UNREADABLE } from "@t3tools/shared/threadStatus";
+import {
+  ATTACHED_FILE_UNREADABLE,
+  ATTACHED_PICTURE_UNREADABLE,
+} from "@t3tools/shared/threadStatus";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -280,6 +283,8 @@ export const buildAntigravityPrompt = Effect.fn("buildAntigravityPrompt")(functi
       (mimeType.startsWith("text/") ||
         TEXT_MIME_TYPES.has(mimeType) ||
         TEXT_FILE_EXTENSIONS.has(path.extname(attachment.name).toLowerCase()));
+    // What it could not read, as the person attached it: a picture, or a file.
+    const unreadable = image ? ATTACHED_PICTURE_UNREADABLE : ATTACHED_FILE_UNREADABLE;
     if (!image && !audio && !pdf && !textFile) {
       return yield* EffectAcpErrors.AcpRequestError.invalidParams(
         `Antigravity does not support '${attachment.name}' (${attachment.mimeType}). Attach a BMP, JPEG, PNG, WebP, PDF, audio, or text file.`,
@@ -290,18 +295,14 @@ export const buildAntigravityPrompt = Effect.fn("buildAntigravityPrompt")(functi
       attachment,
     });
     if (!attachmentPath) {
-      return yield* EffectAcpErrors.AcpRequestError.invalidParams(ATTACHED_FILE_UNREADABLE);
+      return yield* EffectAcpErrors.AcpRequestError.invalidParams(unreadable);
     }
     const info = yield* fileSystem
       .stat(attachmentPath)
-      .pipe(
-        Effect.mapError(() =>
-          EffectAcpErrors.AcpRequestError.invalidParams(ATTACHED_FILE_UNREADABLE),
-        ),
-      );
+      .pipe(Effect.mapError(() => EffectAcpErrors.AcpRequestError.invalidParams(unreadable)));
     if (isPastedText) {
       if (info.type !== "File") {
-        return yield* EffectAcpErrors.AcpRequestError.invalidParams(ATTACHED_FILE_UNREADABLE);
+        return yield* EffectAcpErrors.AcpRequestError.invalidParams(unreadable);
       }
       continue;
     }
@@ -321,9 +322,7 @@ export const buildAntigravityPrompt = Effect.fn("buildAntigravityPrompt")(functi
     }
     const uri = yield* path.toFileUrl(attachmentPath).pipe(
       Effect.map((url) => url.href),
-      Effect.mapError(() =>
-        EffectAcpErrors.AcpRequestError.invalidParams(ATTACHED_FILE_UNREADABLE),
-      ),
+      Effect.mapError(() => EffectAcpErrors.AcpRequestError.invalidParams(unreadable)),
     );
     if (pdf) {
       blocks.push({ type: "resource_link", uri, name: attachment.name, mimeType });
@@ -332,9 +331,7 @@ export const buildAntigravityPrompt = Effect.fn("buildAntigravityPrompt")(functi
     const bytes = yield* fileSystem.stream(attachmentPath, { bytesToRead: limit + 1 }).pipe(
       Stream.runCollect,
       Effect.map((chunks) => Buffer.concat(chunks)),
-      Effect.mapError(() =>
-        EffectAcpErrors.AcpRequestError.invalidParams(ATTACHED_FILE_UNREADABLE),
-      ),
+      Effect.mapError(() => EffectAcpErrors.AcpRequestError.invalidParams(unreadable)),
     );
     totalBytes += bytes.length - size;
     if (bytes.length > limit || totalBytes > MAX_TOTAL_ATTACHMENT_BYTES) {

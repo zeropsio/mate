@@ -32,6 +32,7 @@ import {
 } from "@t3tools/contracts";
 import { createModelSelection } from "@t3tools/shared/model";
 import { ThreadToolPolicyRegistry } from "../../spi/threadToolPolicy.ts";
+import { attachmentRelativePath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { buildRuntimeInstructions } from "../RuntimeInstructions.ts";
@@ -1701,6 +1702,52 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
     }),
   );
 
+  // A picture it cannot read — an unknown id, a file gone from disk — fails the
+  // send before any turn opens, in plain words: never skipped, never a path.
+  it.effect.each([
+    { name: "an unknown id", id: "not-an-attachment-id" },
+    {
+      name: "a file gone from disk",
+      id: "thread-picture-gone-12345678-1234-1234-1234-123456789abc",
+    },
+  ])("fails a send whose picture is $name before opening a turn", ({ id }) =>
+    Effect.gen(function* () {
+      const adapter = yield* OpenCodeAdapter;
+      const threadId = asThreadId(`thread-picture-unreadable-${id.length}`);
+      yield* adapter.startSession({
+        provider: ProviderDriverKind.make("opencode"),
+        threadId,
+        runtimeMode: "full-access",
+      });
+      const started: Array<unknown> = [];
+      const observer = yield* adapter.streamEvents.pipe(
+        Stream.filter((event) => event.threadId === threadId && event.type === "turn.started"),
+        Stream.runForEach((event) => Effect.sync(() => started.push(event))),
+        Effect.forkChild,
+      );
+      const promptsBefore = runtimeMock.state.promptCalls.length;
+      const error = yield* adapter
+        .sendTurn({
+          threadId,
+          input: "What is on it?",
+          attachments: [
+            { type: "image", id, name: "shot.png", mimeType: "image/png", sizeBytes: 12 },
+          ],
+          modelSelection: createModelSelection(ProviderInstanceId.make("opencode"), "openai/gpt-5"),
+        })
+        .pipe(Effect.flip);
+      NodeAssert.equal(error._tag, "ProviderAdapterRequestError");
+      NodeAssert.equal(
+        "detail" in error ? error.detail : undefined,
+        "A picture you attached could not be read. Attach it again and send.",
+      );
+      NodeAssert.equal(runtimeMock.state.promptCalls.length, promptsBefore);
+      yield* adapter.stopSession(threadId);
+      NodeAssert.deepEqual(started, []);
+      yield* Fiber.interrupt(observer);
+    }),
+  );
+
   it.effect("keeps a picture's kept original out of the model's files", () =>
     Effect.gen(function* () {
       const adapter = yield* OpenCodeAdapter;
@@ -1724,6 +1771,14 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
         mimeType: "image/png",
         sizeBytes: 34,
       };
+      // The picture is on disk, as an attachment always is when it is sent.
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const { attachmentsDir } = yield* ServerConfig;
+      const picturePath = path.join(attachmentsDir, attachmentRelativePath(picture)!);
+      yield* fileSystem.makeDirectory(path.dirname(picturePath), { recursive: true });
+      yield* fileSystem.writeFile(picturePath, new Uint8Array(12));
+      yield* Effect.addFinalizer(() => fileSystem.remove(picturePath).pipe(Effect.ignore));
       yield* adapter.sendTurn({
         threadId,
         input: "[Picture 1]\nUse the original on the site",

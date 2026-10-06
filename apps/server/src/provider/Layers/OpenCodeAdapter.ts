@@ -50,7 +50,11 @@ import {
   ProviderAdapterValidationError,
   ProviderAdapterTurnEndedError,
 } from "../Errors.ts";
-import { agentStoppedUnexpectedly } from "@t3tools/shared/threadStatus";
+import {
+  agentStoppedUnexpectedly,
+  ATTACHED_FILE_UNREADABLE,
+  ATTACHED_PICTURE_UNREADABLE,
+} from "@t3tools/shared/threadStatus";
 import { buildRuntimeInstructions } from "../RuntimeInstructions.ts";
 import { profiledRuntimeMode } from "../../spi/threadToolPolicy.ts";
 import {
@@ -70,6 +74,7 @@ import {
   loadOpenCodeCommands,
   parseOpenCodeModelSlug,
   runOpenCodeSdk,
+  openCodeFileAttachments,
   toOpenCodeFileParts,
   toOpenCodePermissionReply,
   toOpenCodeQuestionAnswers,
@@ -3112,6 +3117,36 @@ export function makeOpenCodeAdapter(
             Effect.orElseSucceed(() => []),
           )).find((command) => command.name === commandMatch[1])
         : undefined;
+      // Every attachment it takes as a file must be there before the turn
+      // opens: OpenCode skips an unknown one and fails a missing one with its
+      // path, mid-turn. Said plainly, before any turn.
+      yield* Effect.forEach(
+        openCodeFileAttachments(
+          withoutPictureOriginals(input.input ?? "", input.attachments ?? []),
+        ),
+        (attachment) =>
+          Effect.gen(function* () {
+            const attachmentPath = resolveAttachmentPath({
+              attachmentsDir: serverConfig.attachmentsDir,
+              attachment,
+            });
+            const readable =
+              attachmentPath !== null &&
+              (yield* fileSystem.exists(attachmentPath).pipe(Effect.orElseSucceed(() => false)));
+            if (!readable) {
+              return yield* new ProviderAdapterRequestError({
+                provider: PROVIDER,
+                method: "session.promptAsync",
+                detail:
+                  attachment.type === "image"
+                    ? ATTACHED_PICTURE_UNREADABLE
+                    : ATTACHED_FILE_UNREADABLE,
+                cause: attachmentPath ?? `Invalid attachment id '${attachment.id}'.`,
+              });
+            }
+          }),
+        { discard: true },
+      );
       // OpenCode ingests images, text, and PDFs natively; formats its model
       // paths reject ride only as the prompt's file path line.
       const fileParts = toOpenCodeFileParts({

@@ -549,10 +549,11 @@ it.layer(NodeServices.layer)("buildAntigravityPrompt", (it) => {
         attachmentsDir: fixture.attachmentsDir,
       }).pipe(Effect.flip);
 
+      // A picture is said as one.
       expect(error).toMatchObject({
         _tag: "AcpRequestError",
         code: -32602,
-        errorMessage: "A file you attached could not be read. Attach it again and send.",
+        errorMessage: "A picture you attached could not be read. Attach it again and send.",
       });
     }),
   );
