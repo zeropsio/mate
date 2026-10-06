@@ -311,7 +311,7 @@ function projectFlow(
 ): ZeropsProjectFlow {
   const { stops, records, changes } = halves;
   const environmentInputs = stops?.environments ?? [];
-  // A production the grant withholds shows nothing it runs (DESIGN §3.4), so
+  // A production the grant withholds shows nothing it runs, so
   // nothing is measured against it, and no release is listed.
   const withheldProduction = environmentInputs.find(
     (entry) => entry.tier === "production" && withheld.has(entry.projectId),

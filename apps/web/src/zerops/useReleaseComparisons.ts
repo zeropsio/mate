@@ -14,7 +14,7 @@ import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import type { CompareResponse } from "@t3tools/shared/hqChanges";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { useAccountDataOptional } from "./ZeropsAccountData";
+import { useAccountDataOptional, type AccountData } from "./ZeropsAccountData";
 
 /** One application's comparisons as HQ answered them, held under `compareReadKey`. */
 export interface AppCompares {
@@ -33,6 +33,11 @@ interface Held {
   readonly asked: ReadonlySet<string>;
 }
 
+interface AccountHeld extends Held {
+  readonly compare: AccountData["compare"] | undefined;
+  readonly orgId: string | null | undefined;
+}
+
 const NOTHING_HELD: Held = { answers: new Map(), failures: new Map(), asked: new Set() };
 
 const appKey = (appId: string, read: CompareRead): string =>
@@ -42,8 +47,11 @@ export function useReleaseComparisons(
   /** Each application's comparisons to ask, by its id. */
   asks: ReadonlyMap<string, ReadonlyArray<CompareRead>>,
 ): ReadonlyMap<string, AppCompares> {
-  const compare = useAccountDataOptional()?.compare;
-  const [held, setHeld] = useState<Held>(NOTHING_HELD);
+  const account = useAccountDataOptional();
+  const compare = account?.compare;
+  const orgId = account?.orgId;
+  const [stored, setHeld] = useState<AccountHeld>({ ...NOTHING_HELD, compare, orgId });
+  const held = stored.compare === compare && stored.orgId === orgId ? stored : NOTHING_HELD;
   // An answer that comes after the surface went is nobody's.
   const drawn = useRef(true);
   useEffect(() => {
@@ -63,16 +71,23 @@ export function useReleaseComparisons(
     if (compare === undefined) return;
     const wanted = JSON.parse(due) as Array<[string, CompareRead]>;
     if (wanted.length === 0) return;
-    setHeld((current) => ({
-      ...current,
-      asked: new Set([...current.asked, ...wanted.map(([appId, read]) => appKey(appId, read))]),
-    }));
+    setHeld((current) => {
+      const previous =
+        current.compare === compare && current.orgId === orgId ? current : NOTHING_HELD;
+      return {
+        ...previous,
+        compare,
+        orgId,
+        asked: new Set([...previous.asked, ...wanted.map(([appId, read]) => appKey(appId, read))]),
+      };
+    });
     for (const [appId, read] of wanted) {
       const key = appKey(appId, read);
       void compare({ appId, repo: read.repository, ...read.query }).then(
         (answer) => {
           if (!drawn.current) return;
           setHeld((current) => {
+            if (current.compare !== compare || current.orgId !== orgId) return current;
             const failures = new Map(current.failures);
             failures.delete(key);
             return { ...current, answers: new Map(current.answers).set(key, answer), failures };
@@ -80,14 +95,18 @@ export function useReleaseComparisons(
         },
         (cause: unknown) => {
           if (!drawn.current) return;
-          setHeld((current) => ({
-            ...current,
-            failures: new Map(current.failures).set(key, zeropsErrorMessage(cause)),
-          }));
+          setHeld((current) =>
+            current.compare !== compare || current.orgId !== orgId
+              ? current
+              : {
+                  ...current,
+                  failures: new Map(current.failures).set(key, zeropsErrorMessage(cause)),
+                },
+          );
         },
       );
     }
-  }, [compare, due]);
+  }, [compare, due, orgId]);
 
   const again = useCallback((appId: string, selected: ReadonlyArray<CompareRead>) => {
     setHeld((current) => {

@@ -19,6 +19,7 @@ import type { ScopedThreadRef } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useMemo } from "react";
 
+import { useHqAppDetailHold } from "../../zerops/useHqAppDetail";
 import { useFlowVerbs } from "../../zerops/flowVerbs";
 import { useProjectFlows } from "../../zerops/projectFlows";
 import { useOpenReview } from "../../zerops/review";
@@ -43,6 +44,7 @@ export function ZeropsGitSurface({ threadRef }: { readonly threadRef: ScopedThre
    * never its bot login, which is `mate-{projectId}` (`changeAuthorName`).
    */
   const mateName = project === undefined ? undefined : projectNameInApp(project);
+  useHqAppDetailHold(groupId === undefined ? [] : [groupId]);
   // The application's flow, held while the panel is drawn.
   const { flows } = useProjectFlows(
     useMemo(() => (groupId === undefined ? [] : [groupId]), [groupId]),

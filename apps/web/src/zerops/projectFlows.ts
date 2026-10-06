@@ -73,7 +73,7 @@ import {
   type ReleasePlan,
 } from "./projectFlowJoin";
 import { releaseGateOf, useOfferReading } from "./appOffers";
-import { useHqAppRecipes, useHqAppReleases } from "./useHqAppDetail";
+import { useHqAppDetailHold, useHqAppRecipes, useHqAppReleases } from "./useHqAppDetail";
 import { useReleaseComparisons } from "./useReleaseComparisons";
 import { useProjectsServices } from "./ZeropsAccountData";
 import { useZeropsSession, useZeropsSessionOptional } from "./ZeropsSessionProvider";
@@ -247,7 +247,10 @@ const NO_REFUSALS: ReadonlyMap<string, string> = new Map();
 function useOpenChanges(appIds: ReadonlyArray<string>) {
   const every = useAtomValue(shownHqAppChangesAtom);
   return useMemo(
-    () => Object.fromEntries(appIds.flatMap((appId) => (appId in every ? [[appId, every[appId]!]] : []))),
+    () =>
+      Object.fromEntries(
+        appIds.flatMap((appId) => (appId in every ? [[appId, every[appId]!]] : [])),
+      ),
     [appIds, every],
   );
 }
@@ -287,7 +290,7 @@ const NO_INVENTORY = {
 
 /**
  * What each Zerops project's stop runs, by project id — the platform's answer, read for the
- * projects a detail holds; a project the grant withholds says so, at this read (DESIGN §4.2 G12).
+ * projects a detail holds; a project the grant withholds says so, at this read.
  * Only the projects named, where a surface names them. A project missing here is unread.
  */
 export function useStopDeploymentsShown(
@@ -339,8 +342,8 @@ export function useStopDeploymentsShown(
 
 /**
  * The flows of the applications a surface draws (`every` one, for a surface over the whole
- * organization), joined from what each party proves. Each drawn application's detail — its
- * releases, repositories, changes and recipe — is held while the surface is drawn. What a release
+ * organization), joined from what each party proves. Releases, repositories and recipes read
+ * whatever detail the surface explicitly holds; navigation holds none. What a release
  * would put live is compared only for a surface that shows it (`compare`), and only while it is
  * drawn; elsewhere the offer stays unasked.
  */
@@ -373,7 +376,7 @@ export function useProjectFlows(
   /**
    * Each drawn group, with the projects the account tags into it and their runtime services — the
    * account's half of every row. Read from the inventory as held: a project the grant withholds is
-   * still in its group (DESIGN M7), and its stop renders withheld where it is drawn.
+   * still in its group, and its stop renders withheld where it is drawn.
    */
   const held = useContext(HeldInventoryContext);
   const heldProjects = useMemo(
@@ -433,6 +436,8 @@ export function useProjectFlows(
   );
   const stated = useStatedVersions(statedServices);
 
+  // Comparing a release is detail demand; navigation only reads already held detail.
+  useHqAppDetailHold(compare ? appIds : NO_APPS);
   const recipes = useHqAppRecipes(appIds);
   // Each group's stage and production, as HQ's navigation says them.
   const environments = useAppsEnvironments(appIds);
@@ -496,9 +501,12 @@ export function useProjectFlows(
   const permissions = useMemo(
     () =>
       new Map(
-        appIds.map((groupId) => [groupId, releaseGateOf(offers, environments[groupId]?.can)]),
+        appIds.map((groupId) => [
+          groupId,
+          releaseGateOf(offers, told?.find(({ id }) => id === groupId)?.can),
+        ]),
       ),
-    [appIds, environments, offers],
+    [appIds, told, offers],
   );
   // What a release of each group would put live: what HQ compares from what production runs to each
   // runtime's `main` (`releaseReads`) — asked only for a surface that shows it, and only once the
