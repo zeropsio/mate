@@ -9,17 +9,14 @@ export {
   HQ_BIRTH_DOING,
   HQ_BIRTH_START,
   HQ_BIRTH_STEPS,
-  HQ_BIRTH_WAITS,
   HQ_PROJECT_NAME,
   HQ_SERVICE,
   hqImportYaml,
   runHqBirth,
   type HqBirthDeps,
   type HqBirthOutcome,
-  type HqBirthPlatform,
   type HqBirthRecord,
   type HqBirthStep,
-  type HqBirthWaits,
   type HqCoreArtifact,
 } from "./birth.ts";
 export {

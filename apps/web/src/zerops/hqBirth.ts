@@ -1,6 +1,8 @@
 /**
- * Presentation of the automatic admin gate. Zerops project env owns progress and claims; this
- * store holds only what the current account's screen shows. Again never discards the birth id.
+ * Presentation of the automatic admin gate. Zerops project env owns progress and claims; the
+ * birth's writes are the account's operations and its waits Zerops's facts in the account's store
+ * (`runHqBirth`). This tab keeps only what its screen shows, in the account's registry — memory
+ * that goes with the account. Again never discards the birth id.
  */
 import {
   HQ_BIRTH_START,
@@ -8,9 +10,9 @@ import {
   type HqBirthRecord,
   type HqBirthStep,
 } from "@t3tools/client-runtime/zerops/hq";
-import { create } from "zustand";
+import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
 
-import { captureAccountLifetime, onAccountLifetimeClose } from "./accountLifetime";
+import { captureAccountLifetime } from "./accountLifetime";
 
 export interface HeldHqBirth {
   readonly record: HqBirthRecord;
@@ -18,12 +20,16 @@ export interface HeldHqBirth {
   readonly failed: Extract<HqBirthOutcome, { readonly ok: false }> | null;
 }
 
-export const useHqBirths = create<{ readonly byOrg: Readonly<Record<string, HeldHqBirth>> }>(
-  () => ({ byOrg: {} }),
+/** The organization's birth as this tab shows it; `undefined` before it started here. */
+export const hqBirthAtom = Atom.family((clientId: string) =>
+  Atom.make<HeldHqBirth | undefined>(undefined).pipe(
+    Atom.keepAlive,
+    Atom.withLabel(`zerops:hq-birth:${clientId}`),
+  ),
 );
-onAccountLifetimeClose(() => useHqBirths.setState({ byOrg: {} }));
 
 export function bearHq(input: {
+  readonly registry: AtomRegistry.AtomRegistry;
   readonly clientId: string;
   readonly run: (
     record: HqBirthRecord,
@@ -34,14 +40,14 @@ export function bearHq(input: {
   readonly onBorn: () => void;
   readonly again?: boolean;
 }): void {
-  const { clientId } = input;
-  const held = useHqBirths.getState().byOrg[clientId];
+  const { registry } = input;
+  const atom = hqBirthAtom(input.clientId);
+  const held = registry.get(atom);
   if (held?.running || held?.record.step === "done") return;
   let record = held?.record ?? HQ_BIRTH_START;
   const isCurrent = captureAccountLifetime();
   const show = (next: HeldHqBirth) => {
-    if (!isCurrent()) return;
-    useHqBirths.setState((state) => ({ byOrg: { ...state.byOrg, [clientId]: next } }));
+    if (isCurrent()) registry.set(atom, next);
   };
   show({ record, running: true, failed: null });
   void (async () => {

@@ -60,6 +60,7 @@ export { makeOperations, type Operations } from "./operations/coordinator.ts";
 export { HQ_BIRTH_UNFOLLOWED, hqBirthWaits, type HqBirthWaits } from "./hqBirthWaits.ts";
 export { makeHqExecutor, type HqWrites } from "./operations/executors/hq.ts";
 export { makeZeropsExecutor } from "./operations/executors/zerops.ts";
+export { hqBirthReads, type HqBirthReads } from "./operations/executors/hqBirthReads.ts";
 export { restartWay } from "./operations/mateRestart.ts";
 export { runToEnd, type RunToEnd } from "./operations/runToEnd.ts";
 export {

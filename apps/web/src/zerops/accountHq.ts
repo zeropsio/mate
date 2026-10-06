@@ -13,8 +13,8 @@
  * - **Whether it answers:** its structure stream (`hqStructure.ts`): healthy while it serves, and
  *   after it failed, `/health` read once per failed attempt while the tab is visible. An HQ that
  *   stops answering is `unavailable` from the stream's first failure, with that time (SPEC §4).
- * - **Its birth's ports:** Core comes from this very build, same-origin under `hq-core/`
- *   (`apps/hq/scripts/pack-core.ts`).
+ * - **Its Core:** this very build carries it, same-origin under `hq-core/`
+ *   (`apps/hq/scripts/pack-core.ts`); a birth's deploy and HQ's update read it from there.
  */
 import { accountThrowawayDebt } from "./throwawayDebt";
 import {
@@ -25,7 +25,6 @@ import {
   ownersAndAdmins,
   readHqHealth,
   type HqApi,
-  type HqBirthDeps,
   type HqCoreArtifact,
   type HqEndpoint,
   type HqHealth,
@@ -510,20 +509,6 @@ export async function readBundledCore(
 /** The Core this build carries, read from its own bundle: what a birth and HQ's update deploy. */
 export const readCarriedCore = (): Promise<HqCoreArtifact> =>
   readBundledCore((input, init) => fetch(input, init), `${appBasePath()}/hq-core`);
-
-/** What an HQ birth acts through, from this tab. */
-export function hqBirthDeps(client: ZeropsApiClient): HqBirthDeps {
-  return {
-    platform: client,
-    core: readCarriedCore,
-    health: (address) => readHqHealth((input, init) => fetch(input, init), address),
-    sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
-    now: () => Date.now(),
-    newBirthId: randomUUID,
-    // HQ's key (`HQ_KEY_SECRET`) is drawn here, from WebCrypto, and goes only into HQ's env.
-    randomBytes: (bytes) => crypto.getRandomValues(bytes),
-  };
-}
 
 /** The birth's own input beside its record: the API Core reads. */
 export function hqBirthSite(client: ZeropsApiClient): {
