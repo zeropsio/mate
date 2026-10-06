@@ -14,7 +14,7 @@ import {
 import { makeAccountStore } from "../store.ts";
 import type { StreamFault } from "../streamMachine.ts";
 import { superviseLink } from "../supervisor.ts";
-import { zeropsNavigationLink } from "./zerops.ts";
+import { classifyHttp, zeropsNavigationLink } from "./zerops.ts";
 import { historyScope, runningScope } from "../families/process.ts";
 import { projectsScope } from "../families/project.ts";
 import { activeScope, versionScope } from "../families/version.ts";
@@ -22,7 +22,7 @@ import { factOf, indexOf } from "../reducer.ts";
 import { linkKeys } from "../model.ts";
 import { detailScopeOf } from "../demand.ts";
 import { membersScope } from "../families/organizationMembers.ts";
-import { routingScope } from "../families/publicRouting.ts";
+import { projectRoutingsScope, routingsScope } from "../families/publicRouting.ts";
 import { STREAM_POLICY } from "../streamMachine.ts";
 
 const PROCESS_SEARCH = "/process/search";
@@ -229,7 +229,7 @@ describe("zeropsNavigationLink", () => {
       expect(fixture.opens()).toBe(2);
       expect(
         fixture.requests.filter((request) => request.body?.receiverId === "receiver-2"),
-      ).toHaveLength(8);
+      ).toHaveLength(10);
       // One project was taken from the viewer meanwhile: every scope is registered once more.
       const again = store.state().streams.get(linkKeys.zerops(ORG));
       yield* TestClock.adjust(again?.next.kind === "retry" ? again.next.at : 0);
@@ -853,19 +853,10 @@ describe("what a baseline and a read by id may claim", () => {
 describe("a sampled detail", () => {
   const MEMBERS_PATH = `/client/${ORG}/user/list?limit=100`;
   const AGENTS_PATH = "/user-data/search";
-  const ROUTING_PATH = "/project/p1/public-http-routing";
   const MEMBERS = { family: "organizationMembers", ownerId: ORG } as const;
   const AGENTS = { family: "serviceAgents", ownerId: "s1" } as const;
-  const ROUTING = { family: "publicRouting", ownerId: "p1" } as const;
   const members = membersScope(ORG);
-  const routing = routingScope(ORG, "p1");
   const member = (id: string) => ({ id, user: { fullName: id } });
-  const domain = (domainName: string) => ({
-    isSynced: true,
-    sslEnabled: true,
-    domains: [{ domainName }],
-    locations: [{ path: "/", port: 80, serviceStackId: "web" }],
-  });
   const readsOf = (
     fixture: ReturnType<typeof fixtureWire>,
     path: string,
@@ -873,7 +864,7 @@ describe("a sampled detail", () => {
   ) =>
     fixture.requests.filter((request) => request.method === method && request.path === path).length;
   /**
-   * Answers the member list and a project's routing with whatever `list` holds when it is read,
+   * Answers the member list with whatever `list` holds when it is read,
    * and a service's agent keys.
    */
   const sampledAnswers =
@@ -884,8 +875,7 @@ describe("a sampled detail", () => {
           items: [{ id: "e1", key: "ZCP_AGENT_OAUTH_CLAUDE_CODE", content: "1" }],
         });
       if (request.method !== "GET") return answers(() => [])(request);
-      const body =
-        request.path === ROUTING_PATH ? { list: list.current } : { clientUserList: list.current };
+      const body = { clientUserList: list.current };
       return held === undefined
         ? Effect.succeed({ status: 200, body })
         : Effect.andThen(Deferred.await(held), Effect.succeed({ status: 200, body }));
@@ -976,60 +966,6 @@ describe("a sampled detail", () => {
       expect(keys.length).toBeGreaterThan(0);
       expect(keys.every((key) => key.startsWith("ZCP_AGENT_OAUTH_"))).toBe(true);
       expect(fixture.requests.some((request) => request.path.endsWith("/env"))).toBe(false);
-      yield* Fiber.interrupt(fiber);
-    }),
-  );
-
-  it.effect("reads it again on its cadence while demanded, its value shown under the read", () =>
-    Effect.gen(function* () {
-      const store = makeAccountStore(AtomRegistry.make());
-      const list = { current: [domain("a.example")] as ReadonlyArray<unknown> };
-      const fixture = fixtureWire(sampledAnswers(list));
-      const { fiber, link } = yield* runLink(store, fixture);
-      link.demandDetail(ROUTING);
-      yield* settle;
-
-      list.current = [domain("a.example"), domain("b.example")];
-      yield* TestClock.adjust(STREAM_POLICY.sampledIntervalMs - 1);
-      yield* settle;
-      expect(readsOf(fixture, ROUTING_PATH)).toBe(1);
-      yield* TestClock.adjust(1);
-      yield* settle;
-      expect(readsOf(fixture, ROUTING_PATH)).toBe(2);
-      expect(factOf(store.state(), "publicRouting", "p1")?.content).toEqual({
-        kind: "value",
-        value: [domain("a.example"), domain("b.example")],
-      });
-      expect(store.state().streams.get(routing)?.phase).toBe("live");
-      yield* Fiber.interrupt(fiber);
-    }),
-  );
-
-  it.effect("keeps the value while a revalidation is under way", () =>
-    Effect.gen(function* () {
-      const store = makeAccountStore(AtomRegistry.make());
-      const held = yield* Deferred.make<void>();
-      const fixture = fixtureWire((request) =>
-        request.method === "GET" && readsOf(fixture, ROUTING_PATH) > 1
-          ? sampledAnswers({ current: [] }, held)(request)
-          : sampledAnswers({ current: [domain("a.example")] })(request),
-      );
-      const { fiber, link } = yield* runLink(store, fixture);
-      link.demandDetail(ROUTING);
-      yield* settle;
-      yield* TestClock.adjust(STREAM_POLICY.sampledIntervalMs);
-      yield* settle;
-      expect(store.state().streams.get(routing)?.phase).toBe("baselining");
-      expect(factOf(store.state(), "publicRouting", "p1")?.content).toEqual({
-        kind: "value",
-        value: [domain("a.example")],
-      });
-      yield* Deferred.succeed(held, undefined);
-      yield* settle;
-      expect(factOf(store.state(), "publicRouting", "p1")?.content).toEqual({
-        kind: "value",
-        value: [],
-      });
       yield* Fiber.interrupt(fiber);
     }),
   );
@@ -1154,6 +1090,90 @@ describe("a sampled detail", () => {
         value: [member("m1")],
       });
       expect(store.state().streams.get(linkKeys.zerops(ORG))?.phase).toBe("live");
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+});
+
+describe("the organization's routings refused to the viewer", () => {
+  const ROUTING_SEARCH = "/public-http-routing/search";
+  const routingPosts = (fixture: ReturnType<typeof fixtureWire>) =>
+    fixture.requests.filter((request) => request.path === ROUTING_SEARCH).length;
+
+  it.effect.each([
+    { name: "401, a member without organization read", status: 401 },
+    { name: "403, a member without organization read", status: 403 },
+  ])("$name: refuses that scope alone, never the link or its other scopes", ({ status }) =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const base = answers(() => []);
+      const fixture = fixtureWire((request) =>
+        request.path === ROUTING_SEARCH ? Effect.fail(classifyHttp(status)) : base(request),
+      );
+      const fiber = yield* run(store, fixture);
+      expect(store.state().streams.get(linkKeys.zerops(ORG))?.phase).toBe("live");
+      expect(store.state().streams.get(projectsScope(ORG))?.phase).toBe("live");
+      expect(store.state().streams.get(routingsScope(ORG))?.phase).toBe("refused");
+      // Its pair stops at the first refusal: the listing is never asked for.
+      expect(routingPosts(fixture)).toBe(1);
+
+      // The link's next attempt registers the rest again and leaves the refused scope be.
+      yield* fixture.drop({ outcome: "transient", message: "socket closed" });
+      yield* settle;
+      const link = store.state().streams.get(linkKeys.zerops(ORG));
+      yield* TestClock.adjust(link?.next.kind === "retry" ? link.next.at : 0);
+      yield* settle;
+      expect(fixture.opens()).toBe(2);
+      expect(store.state().streams.get(projectsScope(ORG))?.phase).toBe("live");
+      expect(store.state().streams.get(routingsScope(ORG))?.phase).toBe("refused");
+      expect(routingPosts(fixture)).toBe(1);
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+
+  it.effect("a project a surface shows is read through its own listing, once per demand", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const base = answers(() => []);
+      const path = `/project/${PROBE_PROJECT_ID}/public-http-routing`;
+      const fixture = fixtureWire((request) =>
+        request.path === ROUTING_SEARCH
+          ? Effect.fail(classifyHttp(403))
+          : request.path === path
+            ? Effect.succeed({
+                status: 200,
+                body: {
+                  list: [
+                    {
+                      id: "r1",
+                      isSynced: true,
+                      sslEnabled: true,
+                      domains: [{ domainName: "shop.example.com" }],
+                      locations: [{ path: "/", port: 80, serviceStackId: "s1" }],
+                    },
+                  ],
+                },
+              })
+            : base(request),
+      );
+      const { fiber, link } = yield* runLink(store, fixture);
+      const reads = () => fixture.requests.filter((request) => request.path === path).length;
+      expect(reads()).toBe(0);
+      const release = link.demandDetail({
+        family: "publicRouting",
+        listing: "projectRoutings",
+        ownerId: PROBE_PROJECT_ID,
+      });
+      yield* settle;
+      expect(reads()).toBe(1);
+      const scope = projectRoutingsScope(ORG, PROBE_PROJECT_ID);
+      expect(store.state().streams.get(scope)?.phase).toBe("live");
+      expect(store.state().memberships.get(scope)?.members.get("r1")).toBe("member");
+      // Held, it is not read again while the link stays.
+      yield* TestClock.adjust(120_000);
+      yield* settle;
+      expect(reads()).toBe(1);
+      release();
       yield* Fiber.interrupt(fiber);
     }),
   );

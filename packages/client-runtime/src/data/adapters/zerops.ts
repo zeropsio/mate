@@ -142,6 +142,13 @@ function rowsOf(family: Family, raw: ReadonlyArray<unknown>): ReadonlyArray<Row>
   });
 }
 
+/** A registration the owner refused to this viewer alone: its scope's, never the link's. */
+interface RefusedAlone {
+  readonly refusedAlone: StreamFault;
+}
+const isRefusedAlone = (answer: unknown): answer is RefusedAlone =>
+  typeof answer === "object" && answer !== null && "refusedAlone" in answer;
+
 const corrupt = (message: string): StreamFault => ({ outcome: "transient", message });
 
 /** Each item's id: a row too damaged to read still names its member. */
@@ -701,15 +708,19 @@ export function zeropsNavigationLink(options: {
        * answer committed as its scope's baseline.
        */
       const registerNavigation = Effect.gen(function* () {
-        for (const scope of scopes) {
-          yield* signal(scope, { kind: "attempt" });
-          generations.set(scope, streamOf(store.state(), scope).generation);
-          yield* signal(scope, { kind: "handshake" });
-          store.dispatch({ kind: "baseline-begin", scope, generation: generationOf(scope) });
-          for (const registration of registrations.filter((entry) => entry.scope === scope)) {
-            const subscriptionName = options.makeId();
-            subscriptions.set(subscriptionName, registration);
-            const answer = yield* link.post(registration.path, {
+      for (const scope of scopes) {
+        yield* signal(scope, { kind: "attempt" });
+        // A scope refused alone stays so until the person tries again: nothing registers it.
+        if (streamOf(store.state(), scope).phase === "refused") continue;
+        generations.set(scope, streamOf(store.state(), scope).generation);
+        yield* signal(scope, { kind: "handshake" });
+        store.dispatch({ kind: "baseline-begin", scope, generation: generationOf(scope) });
+        const refusedAlone = scopeSpec(scope).zerops?.refusedAlone === true;
+        for (const registration of registrations.filter((entry) => entry.scope === scope)) {
+          const subscriptionName = options.makeId();
+          subscriptions.set(subscriptionName, registration);
+          const answer = yield* link
+            .post(registration.path, {
               search: registration.search,
               sort: [],
               receiverId: link.receiverId,
@@ -717,27 +728,45 @@ export function zeropsNavigationLink(options: {
               ...(registration.role === "membership"
                 ? { wsOutputType: "listStream", limit: ORGANIZATION_SEARCH_LIMIT }
                 : { wsOutputType: "updateStream", disableOutput: true }),
-            });
-            if (registration.role !== "membership") continue;
-            const list = Option.getOrUndefined(decodeList(answer));
-            if (list === undefined)
-              return yield* Effect.fail(corrupt("A baseline answer is malformed."));
-            const rows = rowsOf(registration.family, list.items);
-            yield* carryOut(
-              store.dispatch({
-                kind: "baseline-commit",
-                scope,
-                generation: generationOf(scope),
-                via: "zerops-realtime",
-                // Membership is every item's id: a damaged row keeps its member and its last value.
-                members: membersOf(list.items),
-                rows,
-                partial: partialAnswer(list.items, rows, list.totalHits),
-              }),
+            })
+            .pipe(
+              Effect.catchIf(
+                (fault) =>
+                  refusedAlone &&
+                  (fault.outcome === "recoverable-session" ||
+                    fault.outcome === "authoritative-denial"),
+                (fault) => Effect.succeed<RefusedAlone>({ refusedAlone: fault }),
+              ),
             );
-            yield* signal(scope, { kind: "baseline-committed" });
+          if (isRefusedAlone(answer)) {
+            subscriptions.delete(subscriptionName);
+            yield* signal(scope, {
+              kind: "fault",
+              fault: { outcome: "authoritative-denial", message: answer.refusedAlone.message },
+              jitter: 0,
+            });
+            break;
           }
+          if (registration.role !== "membership") continue;
+          const list = Option.getOrUndefined(decodeList(answer));
+          if (list === undefined)
+            return yield* Effect.fail(corrupt("A baseline answer is malformed."));
+          const rows = rowsOf(registration.family, list.items);
+          yield* carryOut(
+            store.dispatch({
+              kind: "baseline-commit",
+              scope,
+              generation: generationOf(scope),
+              via: "zerops-realtime",
+              // Membership is every item's id: a damaged row keeps its member and its last value.
+              members: membersOf(list.items),
+              rows,
+              partial: partialAnswer(list.items, rows, list.totalHits),
+            }),
+          );
+          yield* signal(scope, { kind: "baseline-committed" });
         }
+      }
       });
       const observeForever = Effect.forever(
         Effect.gen(function* () {

@@ -46,6 +46,12 @@ export interface ZeropsFamilySource<Value> {
   /** The `updateStream` of whole rows. */
   readonly updates: (owner: ScopeOwner) => SearchTerms;
   readonly decode: (raw: unknown) => ZeropsRow<Value> | null;
+  /**
+   * Whether the organization's search may be refused to a viewer who reads the rest of it (a
+   * member without organization read answers 401 or 403 there): that refusal is this scope's
+   * alone — never the link's, never its session's — until the person tries again.
+   */
+  readonly refusedAlone?: boolean;
   /** The owner's answer to "gone or not yours?" (404 / 403), where leaving the scope asks it. */
   readonly verifyPath?: (id: string) => string;
   /**

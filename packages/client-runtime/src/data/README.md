@@ -18,7 +18,9 @@ duplicate family, scope name, index name or operation kind when the layer loads.
   `leaving` the scope means, and `demand` — `navigation`, always and once per organization, or
   `detail`, only while demanded and once per owner id); optional `indexes` (each a `name` and a `keyOf`); for a
   Zerops family, `zerops` (`entity`, the `membership` and `updates` searches, `decode`, and
-  `verifyPath` where leaving must ask "deleted or not yours?");
+  `verifyPath` where leaving must ask "deleted or not yours?", and `refusedAlone` where the
+  organization's search may be refused to a viewer who reads the rest — that refusal is the scope's,
+  never the link's);
 - for an HQ family, `hq` (`scope`, `idOf`, `keyOf`, `decode`, and `wireScope` where it demands a
   scope of its own). A family HQ only relays declares `revisionOf` — its author's revision, read
   with what HQ says beside the value (whether its author is live), which the reducer compares with
