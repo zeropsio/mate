@@ -19,12 +19,10 @@ import {
   attachmentPath,
   ChangeDetailResponse,
   type ChangeDetailQuery,
-  CompareResponse,
   HqChange,
   HqChangeComment,
   type AttachmentLink,
   type ChangeLink,
-  type CompareQuery,
 } from "@t3tools/shared/hqChanges";
 import {
   GitCredential,
@@ -381,16 +379,6 @@ export interface HqApi {
    * or while the stream is down.
    */
   readonly mateRecipe: (appId: string, signal?: AbortSignal) => Promise<RecipeTierResponse>;
-  /**
-   * What lies between two commits of an application's repository, by its name, read as the person
-   * (`GET /api/apps/:appId/repos/:repo/compare`): git's `base..head`, whoever may read its changes.
-   */
-  readonly compare: (
-    appId: string,
-    repo: string,
-    query: CompareQuery,
-    signal?: AbortSignal,
-  ) => Promise<CompareResponse>;
   /** A release made in HQ as the person, of what its offer showed; HQ tags and deploys it. */
   readonly release: (appId: string, request: CreateReleaseRequest) => Promise<Asked<Release>>;
   /** Production back to `tag` as the person: a new release listing its entries. */
@@ -566,7 +554,6 @@ const readMerged = decodedAsked(HqChange);
 
 const readGitCredential = decoded(GitCredential);
 const readGitCredentialList = decoded(GitCredentialList);
-const readCompare = decoded(CompareResponse);
 const readRecipeTier = decoded(RecipeTierResponse);
 const readReleases = decoded(ReleaseListResponse);
 const readRelease = decodedAsked(Release);
@@ -592,12 +579,6 @@ const sameEntries = (
 
 /** An application's releases' path at HQ's API. */
 const releasesPath = (appId: string): string => `/api/apps/${encodeURIComponent(appId)}/releases`;
-
-/** A comparison of two of a repository's commits at HQ's API; no `base` is from its first. */
-const comparePath = (appId: string, repo: string, { base, head }: CompareQuery): string =>
-  `/api/apps/${encodeURIComponent(appId)}/repos/${encodeURIComponent(repo)}/compare?${new URLSearchParams(
-    base === undefined ? { head } : { base, head },
-  ).toString()}`;
 
 /** A change's own path at HQ's API. */
 const changePath = ({ appId, repo, number }: ChangeLink): string =>
@@ -1185,10 +1166,6 @@ export function makeHqApi(input: {
           `/api/apps/${encodeURIComponent(appId)}/repos/${encodeURIComponent(repo)}/source?${new URLSearchParams({ ...query })}`,
           signal === undefined ? {} : { signal },
         ),
-      ),
-    compare: async (appId, repo, query, signal) =>
-      readCompare(
-        await authorized(comparePath(appId, repo, query), signal === undefined ? {} : { signal }),
       ),
     // A release is named by its tag, which HQ gives no second one: the one HQ holds under it is
     // this one where it tags the same `main` with the same commits.

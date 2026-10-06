@@ -1276,36 +1276,6 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
     ]);
   });
 
-  // What lies between two of a repository's commits (`CompareResponse`): what a release puts live.
-  it("compares two commits of a repository by its name, as the person", async () => {
-    const COMPARED = {
-      base: SHA,
-      head: "b".repeat(40),
-      commits: [
-        {
-          sha: "b".repeat(40),
-          subject: "Quicker gallery",
-          authorName: "Ada",
-          at: "2026-10-02T10:00:00.000Z",
-          change: { number: 7, title: "Quicker gallery", mateProjectId: "p1" },
-        },
-      ],
-      truncated: false,
-      total: 1,
-    };
-    const { hq, api: hqApi } = api((seen) =>
-      seen.path === "/api/apps/app-1/repos/appdev/compare" ? json(200, COMPARED) : undefined,
-    );
-    await expect(
-      hqApi.compare("app-1", "appdev", { base: SHA, head: "b".repeat(40) }),
-    ).resolves.toEqual(COMPARED);
-    await hqApi.compare("app-1", "appdev", { head: "b".repeat(40) });
-    expect(hq.seen.slice(-2)).toMatchObject([
-      { method: "GET", search: `?base=${SHA}&head=${"b".repeat(40)}` },
-      { method: "GET", search: `?head=${"b".repeat(40)}` },
-    ]);
-  });
-
   // A write whose answer was lost (F22): what HQ holds now decides, read back once.
   const ROLLED = { ...RELEASE, tag: "v0.1.2", rollbackOf: "v0.1.0" } as const;
   const HARBOR = { id: "app-1", name: "Harbor", projects: [] };
