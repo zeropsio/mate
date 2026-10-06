@@ -38,7 +38,8 @@ const project = (projectId: string, appId: string | null): PlacementValue => ({
     waitsOnViewer: false,
     unseen: null,
   },
-  signers: {},
+  signedInNow: {},
+  everSignedIn: {},
 });
 
 const apply = (state: AccountState, inputs: ReadonlyArray<AccountInput>) =>

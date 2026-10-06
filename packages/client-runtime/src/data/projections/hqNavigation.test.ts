@@ -98,7 +98,8 @@ const rows: ReadonlyArray<Row> = [
       kind: "mate",
       mate,
       person,
-      signers: {},
+      signedInNow: {},
+      everSignedIn: {},
     },
   },
   {
@@ -112,7 +113,8 @@ const rows: ReadonlyArray<Row> = [
       kind: "stage",
       mate: null,
       person,
-      signers: {},
+      signedInNow: {},
+      everSignedIn: {},
     },
   },
   {
@@ -126,7 +128,8 @@ const rows: ReadonlyArray<Row> = [
       kind: "mate",
       mate,
       person,
-      signers: {},
+      signedInNow: {},
+      everSignedIn: {},
     },
   },
   {
