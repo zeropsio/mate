@@ -341,7 +341,7 @@ describe("B: menu liveness", () => {
         yield* Effect.promise(() => s.clock.advance(12 * 60_000));
         yield* s.menu.absent("Bea");
         // Keep observing through any delayed confirmation reads and their rendered results.
-        yield* s.colleague.settlesRefusal("Ada");
+        yield* s.colleague.settlesRefusal;
         yield* retained;
         yield* s.then.noReload;
         yield* s.then.noExternalNetwork;

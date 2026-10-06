@@ -55,7 +55,9 @@ export function mateChat(s: Scenario) {
           name,
         ),
       );
-      yield* Effect.promise(() => page.waitForSelector(composer, { visible: true, timeout: 8000 }));
+      yield* Effect.promise(() =>
+        page.waitForSelector(composer, { visible: true, timeout: page.getDefaultTimeout() }),
+      );
     });
   const timed = (
     kind: keyof typeof openCaps,
@@ -137,10 +139,14 @@ export function mateChat(s: Scenario) {
       noText: (value: string) => text(value, false),
       path: (path: string) =>
         Effect.promise(async () => {
-          await page.waitForFunction((path) => location.pathname === path, { timeout: 8000 }, path);
+          await page.waitForFunction(
+            (path) => location.pathname === path,
+            { timeout: page.getDefaultTimeout() },
+            path,
+          );
         }),
       noComposer: Effect.promise(() =>
-        page.waitForSelector(composer, { hidden: true, timeout: 8000 }),
+        page.waitForSelector(composer, { hidden: true, timeout: page.getDefaultTimeout() }),
       ),
       blockedPromptRemains: (message: string) =>
         Effect.promise(async () => {

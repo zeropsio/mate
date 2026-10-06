@@ -398,7 +398,10 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
       conversation: {
         appears: Effect.promise(async () => {
           try {
-            await page.waitForSelector('[role="textbox"]', { visible: true, timeout: 15_000 });
+            await page.waitForSelector('[role="textbox"]', {
+              visible: true,
+              timeout: page.getDefaultTimeout(),
+            });
           } catch (error) {
             throw new Error(
               `${await page.evaluate(() => document.body.innerText)}\n${web.errors.join("\n")}\nRequests: ${JSON.stringify([...zerops.requests])}\nMate requests: ${JSON.stringify([...mates.values()].map((mate) => mate.requests.map((r) => r.tag)))}`,

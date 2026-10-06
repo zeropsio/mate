@@ -1,6 +1,7 @@
 import type { MateFake } from "../../fakes/mate.ts";
 import * as Effect from "effect/Effect";
 import { clickText } from "../../harness/browser.ts";
+import { completedHttp } from "../../harness/completedHttp.ts";
 import type { ScenarioExtension } from "../../harness/scenario.ts";
 import type { OverviewMain, MateThreadKind } from "@t3tools/shared/mateLink";
 import { createScenario } from "../../harness/scenario.ts";
@@ -193,15 +194,7 @@ export const menuScenario = Effect.fn("menu.scenario")(function* (
       moves: (name: string, app: string | null) => moveMate(s.drivers, name, app),
       deletes: (name: string) => removeProject(s.drivers, name),
       denies: (name: string) => denyProjectRead(s.drivers, name),
-      settlesRefusal: (name: string) =>
-        settleProjectRefusal(s.drivers, name, s.clock.advance, () =>
-          s.page.evaluate(
-            () =>
-              new Promise<void>((resolve) =>
-                requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
-              ),
-          ),
-        ),
+      settlesRefusal: settleProjectRefusal(s.clock.advance, completedHttp(s.page)),
       builds: (name: string) => startStageBuild(s.drivers, name),
     },
   };

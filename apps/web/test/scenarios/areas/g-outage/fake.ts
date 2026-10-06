@@ -55,15 +55,21 @@ export const stallSleepSocket = (page: Page) =>
   });
 
 export const refusedHqRetry = (page: Page) =>
-  page.waitForResponse(
-    (response) => new URL(response.url()).origin === hqOrigin && response.status() === 503,
-    { timeout: 10_000 },
+  deadline(
+    page.waitForResponse(
+      (response) => new URL(response.url()).origin === hqOrigin && response.status() === 503,
+      { timeout: 0 }, // The named receipt deadline owns this wait.
+    ),
+    "HQ retry received 503",
   );
 
 export const refusedZeropsRetry = (page: Page) =>
-  page.waitForResponse(
-    (response) => response.url().includes("api.app-prg1.zerops.io") && response.status() === 503,
-    { timeout: 10_000 },
+  deadline(
+    page.waitForResponse(
+      (response) => response.url().includes("api.app-prg1.zerops.io") && response.status() === 503,
+      { timeout: 0 }, // The named receipt deadline owns this wait.
+    ),
+    "Zerops retry received 503",
   );
 
 const decodeOverview = Schema.decodeUnknownEffect(MateOverview);

@@ -77,6 +77,8 @@ it("full local gates include every CI test job with its shard argument removed",
   const steps = suiteSteps(workflow);
   expect(steps.map((step) => step.name)).toEqual([
     "test: Test",
+    "test_hq: Test HQ navigation budget",
+    "test_hq: Test HQ remaining files",
     "test_mobile: Test",
     "test_web: Test",
     "test_server: Test",

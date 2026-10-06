@@ -151,12 +151,11 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-  # Everything except `t3` (apps/server), `@t3tools/web` and `@t3tools/mobile`,
-  # which have runners of their own. `--parallel` drops the package dependency ordering that
+  # Everything except server, web, mobile and HQ, which have runners of their own.
+  # `--parallel` drops the package dependency ordering that
   # `vp run` applies by default: these `test` tasks declare no `dependsOn` and
   # resolve workspace deps from source, so ordering only bought us idle runners
-  # between dependency layers. The concurrency limit stays at the default 4 so
-  # peak load per runner is unchanged.
+  # between dependency layers.
   test:
     name: Test
     runs-on: ubuntu-latest
@@ -181,7 +180,35 @@ jobs:
         run: vp run --filter @t3tools/desktop ensure:electron
 
       - name: Test
-        run: vp run --parallel --concurrency-limit 4 --filter '!t3' --filter '!@t3tools/web' --filter '!@t3tools/mobile' --filter '!@t3tools/monorepo' test
+        run: vp run --parallel --filter '!t3' --filter '!@t3tools/web' --filter '!@t3tools/mobile' --filter '!@t3tools/hq' --filter '!@t3tools/monorepo' test
+
+  test_hq:
+    name: Test HQ
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /*
+            !/.repos/
+          sparse-checkout-cone-mode: false
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: package.json
+          cache: true
+          run-install: true
+
+      # The cold-navigation assertions measure HQ, so other suites must not compete for its CPU.
+      # Both steps together cover the entire suite with the original latency assertions intact.
+      - name: Test HQ navigation budget
+        run: vp run --filter @t3tools/hq test src/hqScopes.integration.test.ts
+
+      - name: Test HQ remaining files
+        run: vp run --filter @t3tools/hq test --exclude '**/hqScopes.integration.test.ts'
 
   test_mobile:
     name: Test Mobile

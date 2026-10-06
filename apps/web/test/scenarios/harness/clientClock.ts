@@ -1,5 +1,6 @@
 import type { Page } from "puppeteer-core";
 import { completedHttp } from "./completedHttp.ts";
+import { deadline } from "./http.ts";
 
 export interface SteppedAdvanceOptions {
   /** Override the default completed-HTTP condition, e.g. to release held replies and await receipts. */
@@ -199,17 +200,23 @@ export function clientClock(page: Page, wallClock?: ScenarioWallClock) {
       if (!installed) throw new Error("Install clientClock before sign-in/navigation");
       const cdp = await page.createCDPSession();
       try {
-        await cdp.send("Page.setWebLifecycleState", { state: "frozen" });
+        await deadline(
+          cdp.send("Page.setWebLifecycleState", { state: "frozen" }),
+          "Chrome page frozen",
+        );
       } finally {
-        await cdp.detach();
+        await deadline(cdp.detach(), "Chrome freeze session detached");
       }
     },
     async wake(elapsedMs: number) {
       const cdp = await page.createCDPSession();
       try {
-        await cdp.send("Page.setWebLifecycleState", { state: "active" });
+        await deadline(
+          cdp.send("Page.setWebLifecycleState", { state: "active" }),
+          "Chrome page active",
+        );
       } finally {
-        await cdp.detach();
+        await deadline(cdp.detach(), "Chrome wake session detached");
       }
       await advance(elapsedMs, true);
       await page.evaluate(() => {

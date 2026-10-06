@@ -10,6 +10,7 @@ import {
 import { enrollMate } from "../../../../../hq/test/harness/runningCore.ts";
 import type { MateFake } from "../../fakes/mate.ts";
 import type { ScenarioExtension, ScenarioDrivers } from "../../harness/scenario.ts";
+import { DEFAULT_ZEROPS_GRANT_POLICY } from "@t3tools/client-runtime/zerops/data";
 
 // This area drives the real Mate → HQ link, never the browser's stores.
 export const installMenu: ScenarioExtension = () => {};
@@ -143,23 +144,16 @@ export const denyProjectRead = (drivers: ScenarioDrivers, name: string) =>
     });
   });
 export const settleProjectRefusal = (
-  drivers: ScenarioDrivers,
-  name: string,
   advance: (ms: number) => Promise<void>,
-  paint: () => Promise<void>,
+  settle: () => Promise<void>,
 ) =>
   Effect.promise(async () => {
-    const key = `GET /project/${name}`;
-    for (let attempt = 0; attempt < 4; attempt++) {
-      const reads = drivers.zerops.requests.get(key) ?? 0;
-      await advance(60_000);
-      try {
-        await drivers.zerops.waitForRequest(key, reads + 1);
-      } catch (error) {
-        if (error instanceof Error && error.message === `Timed out: ${key} request receipt`) break;
-        throw error;
-      }
-      await paint();
+    // Cross the real denial-confirmation delay and every retry rung, draining replies and their
+    // rendered effects at each boundary. A terminal refusal schedules no request to wait for.
+    const policy = DEFAULT_ZEROPS_GRANT_POLICY;
+    for (const delay of [policy.denialConfirmationDelayMs, ...policy.projectRetryMs]) {
+      await advance(delay);
+      await settle();
     }
   });
 export const startStageBuild = (drivers: ScenarioDrivers, name: string) =>
