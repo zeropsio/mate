@@ -20,6 +20,7 @@ import {
   type ZeropsOperation,
 } from "@t3tools/client-runtime/zerops/model";
 
+import { brokeOffReason } from "@t3tools/shared/threadStatus";
 import { workLogEntryIsToolLike, type TimelineEntry, type WorkLogEntry } from "../../session-logic";
 import type { ChatMessage, TurnDiffSummary } from "../../types";
 import {
@@ -215,17 +216,21 @@ export function isUsageLimitError(entry: TimelineEntry): boolean {
   return (
     entry.kind === "work" &&
     entry.entry.tone === "error" &&
-    readUsageLimitNotice(`${entry.entry.label} ${entry.entry.detail ?? ""}`, entry.createdAt) !==
-      null
+    // Every driver's limit is typed by the server; Claude's older rows by their words.
+    (entry.entry.turnEnd === "usage-limit" ||
+      readUsageLimitNotice(`${entry.entry.label} ${entry.entry.detail ?? ""}`, entry.createdAt) !==
+        null)
   );
 }
 
 function usageLimitErrorNotice(entries: ReadonlyArray<TimelineEntry>): UsageLimitNotice | null {
   for (const entry of entries.toReversed()) {
     if (!isUsageLimitError(entry) || entry.kind !== "work") continue;
-    return readUsageLimitNotice(
-      `${entry.entry.detail ?? ""} ${entry.entry.label}`,
-      entry.createdAt,
+    // A typed limit whose words name no reset is a pause all the same.
+    return (
+      readUsageLimitNotice(`${entry.entry.detail ?? ""} ${entry.entry.label}`, entry.createdAt) ?? {
+        resetsAt: null,
+      }
     );
   }
   return null;
@@ -616,6 +621,13 @@ export interface ConversationTurn {
   readonly interrupted: boolean;
   /** Interrupted by the person's next message, not by their Stop. */
   readonly byMessage: boolean;
+  /**
+   * The run broke off on an error it did nothing after — its agent's process
+   * died, or its turn failed: why, and on the latest run what to do next
+   * (`brokeOffOn`). Such a run
+   * has no answer: its last words were on the way, never its last word.
+   */
+  readonly brokeOff: BrokeOff | null;
   /** The usage-limit notice the turn ended on, when it did. */
   readonly limit: UsageLimitNotice | null;
   /** Nothing but a usage-limit notice: a turn a limit refused before it did anything. */
@@ -658,7 +670,16 @@ export function timelineEntryEnd(entry: TimelineEntry): string {
  * the person, a warning — is not the Mate's step.
  */
 function endedOnAStep(entries: ReadonlyArray<TimelineEntry>): boolean {
-  const last = entries.findLast(
+  const last = lastOwnEntry(entries);
+  if (last === undefined) return false;
+  if (last.kind === "message") return last.message.role === "reasoning";
+  if (last.kind === "proposed-plan") return false;
+  return !(last.kind === "work" && last.entry.tone === "error");
+}
+
+/** A turn's last entry of the Mate's own: what `endedOnAStep` reads. */
+function lastOwnEntry(entries: ReadonlyArray<TimelineEntry>): TimelineEntry | undefined {
+  return entries.findLast(
     (entry) =>
       entry.kind !== "turn-plan" &&
       entry.kind !== "change-landed" &&
@@ -670,10 +691,39 @@ function endedOnAStep(entries: ReadonlyArray<TimelineEntry>): boolean {
           !workLogEntryIsToolLike(entry.entry))
       ),
   );
-  if (last === undefined) return false;
-  if (last.kind === "message") return last.message.role === "reasoning";
-  if (last.kind === "proposed-plan") return false;
-  return !(last.kind === "work" && last.entry.tone === "error");
+}
+
+/**
+ * The words a settled run broke off on, or null for one that ended by itself:
+ * its last own entry is the server's record of the break (`runtime.error`) —
+ * an agent's process that died, a turn that failed, in the turn's own words.
+ * Any other failure the server notes after the Mate's last word (a
+ * checkpoint it could not take, a Stop or an answer that did not reach the
+ * agent) leaves the run finished. A usage limit is a pause, never a break.
+ * Only the conversation's latest run says what to do next.
+ */
+/** Why a run broke off, and — the latest run only — what to do next. */
+export interface BrokeOff {
+  readonly reason: string;
+  readonly next: string | null;
+}
+
+function brokeOffOn(input: {
+  readonly entries: ReadonlyArray<TimelineEntry>;
+  readonly terminal: MessageEntry | null;
+  readonly latest: boolean;
+}): BrokeOff | null {
+  const limited =
+    usageLimitErrorNotice(input.entries) !== null ||
+    (input.terminal !== null &&
+      readUsageLimitNotice(input.terminal.message.text, input.terminal.createdAt) !== null);
+  if (limited) return null;
+  const last = lastOwnEntry(input.entries);
+  if (last?.kind !== "work" || last.entry.sourceActivityKind !== "runtime.error") return null;
+  const words = last.entry.detail?.trim() || last.entry.label;
+  const reason = brokeOffReason(words);
+  const next = words.slice(reason.length).trim();
+  return { reason, next: input.latest && next.length > 0 ? next : null };
 }
 
 /** A background task or a helper reporting in: the task's word, never the Mate's step. */
@@ -930,7 +980,15 @@ export function deriveConversationStructure(given: {
     // words stream in the working row, however much they read as an answer:
     // drawn under a live card, an answer streamed "below while still writing"
     // and turned back into a note when a question followed.
-    const answer = live || waiting ? null : span.terminalEntry;
+    const brokeOff =
+      live || waiting
+        ? null
+        : brokeOffOn({
+            entries: turnEntries,
+            terminal: span.terminalEntry,
+            latest: span === spans.at(-1),
+          });
+    const answer = live || waiting || brokeOff !== null ? null : span.terminalEntry;
     // Words still streaming, nothing after them: the working row's, as they
     // come. Anything after them — a step, a thought — makes them a note in
     // the record, and so does their end: Codex says nothing of a command
@@ -1085,6 +1143,7 @@ export function deriveConversationStructure(given: {
       waiting,
       interrupted,
       byMessage,
+      brokeOff,
       limit,
       limitOnly,
       startMs: parseMs(turnStart),
@@ -1394,7 +1453,9 @@ export type WorkLineFace =
   | "paused"
   | "stopped"
   /** The person's message came in while it worked: it took that up, not stopped. */
-  | "interrupted";
+  | "interrupted"
+  /** It broke off on an error it did nothing after: its agent died, or its turn failed. */
+  | "brokeOff";
 
 /**
  * A platform operation whose call never returned, as a step's words: what was
@@ -1671,6 +1732,7 @@ export function stretchFace(input: {
 }): WorkLineFace {
   const { stretch, turn } = input;
   if (stretch.live) return "working";
+  if (turn.brokeOff !== null && stretch.last) return "brokeOff";
   if (turn.interrupted && stretch.last) return turn.byMessage ? "interrupted" : "stopped";
   if (input.pausedHere) return "paused";
   const operations = stretchOperations(stretch);

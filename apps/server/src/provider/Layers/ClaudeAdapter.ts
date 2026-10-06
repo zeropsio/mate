@@ -7,6 +7,7 @@
  *
  * @module ClaudeAdapterLive
  */
+import { ATTACHED_PICTURE_UNREADABLE } from "@t3tools/shared/threadStatus";
 import * as NodeUtil from "node:util";
 
 import {
@@ -1722,7 +1723,8 @@ const buildUserMessageEffect = Effect.fn("buildUserMessageEffect")(function* (
       return yield* new ProviderAdapterRequestError({
         provider: PROVIDER,
         method: "turn/start",
-        detail: `Invalid attachment id '${attachment.id}'.`,
+        detail: ATTACHED_PICTURE_UNREADABLE,
+        cause: `Invalid attachment id '${attachment.id}'.`,
       });
     }
 
@@ -1732,7 +1734,7 @@ const buildUserMessageEffect = Effect.fn("buildUserMessageEffect")(function* (
           new ProviderAdapterRequestError({
             provider: PROVIDER,
             method: "turn/start",
-            detail: "Failed to read attachment file.",
+            detail: ATTACHED_PICTURE_UNREADABLE,
             cause,
           }),
       ),
@@ -2599,6 +2601,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     context: ClaudeSessionContext,
     message: string,
     cause?: unknown,
+    errorClass: "provider_error" | "usage_limit" | "process_exit" = "provider_error",
   ) {
     if (cause !== undefined) {
       void cause;
@@ -2614,7 +2617,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       ...(turnState ? { turnId: asCanonicalTurnId(turnState.turnId) } : {}),
       payload: {
         message,
-        class: "provider_error",
+        class: errorClass,
         ...(cause !== undefined ? { detail: cause } : {}),
       },
       providerRefs: nativeProviderRefs(context),
@@ -3783,9 +3786,13 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       });
       return;
     }
+    const usageLimited =
+      turn !== undefined &&
+      turn.authenticationFailureMessage === undefined &&
+      (turn.rejectedRateLimitTypes.size > 0 || turn.latestAssistantRateLimited);
     const failureHint =
       turn?.authenticationFailureMessage ??
-      (turn && (turn.rejectedRateLimitTypes.size > 0 || turn.latestAssistantRateLimited)
+      (usageLimited
         ? "Claude usage limit reached. Send the message again once the limit resets."
         : undefined);
     const outcome = resultOutcome(message, failureHint);
@@ -3793,7 +3800,12 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     const errorMessage = turnPictureError(message, turn) ?? outcome.errorMessage;
 
     if (status === "failed") {
-      yield* emitRuntimeError(context, errorMessage ?? "Claude turn failed.");
+      yield* emitRuntimeError(
+        context,
+        errorMessage ?? "Claude turn failed.",
+        undefined,
+        usageLimited ? "usage_limit" : "provider_error",
+      );
     }
 
     yield* completeTurn(context, status, errorMessage, message);
@@ -4631,10 +4643,19 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       const told =
         Exit.isFailure(exit) || context.turnState !== undefined || context.liveTaskIds.size > 0;
       if (told)
-        yield* emitRuntimeError(context, failure.words, {
-          failureCount: failures.length + defects.length,
-          failureTags: [...failures.map((failure) => failure._tag), ...defects.map(() => "Defect")],
-        });
+        yield* emitRuntimeError(
+          context,
+          failure.words,
+          {
+            failureCount: failures.length + defects.length,
+            failureTags: [
+              ...failures.map((failure) => failure._tag),
+              ...defects.map(() => "Defect"),
+            ],
+          },
+          // Its stream died: the turn broke off.
+          "process_exit",
+        );
       if (context.turnState) {
         yield* completeTurn(context, "failed", failure.words);
       }
@@ -5663,6 +5684,43 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       });
     }
 
+    // The message is built before its turn opens: an attachment that cannot
+    // be read fails the send before any turn starts, never leaving one open.
+    // Re-scan on every send: skills are added and switched off mid-session,
+    // and the scan is a few directory reads. A skill switched off via
+    // skillOverrides, or reserved for the agent with `user-invocable: false`,
+    // is left as prose: the CLI would answer `/name` with a notice instead of
+    // running it.
+    const skills = yield* discoverClaudeSkills(
+      claudeSettings,
+      context.session.cwd,
+      claudeEnvironment,
+    ).pipe(
+      Effect.provideService(FileSystem.FileSystem, fileSystem),
+      Effect.provideService(Path.Path, path),
+    );
+    const message = yield* buildUserMessageEffect(input, {
+      fileSystem,
+      attachmentsDir: serverConfig.attachmentsDir,
+      boundInstanceId,
+      modelCatalog,
+      skillNames: new Set(
+        skills
+          .filter((skill) => skill.enabled && skill.userInvocable !== false)
+          .map((skill) => skill.name),
+      ),
+    });
+
+    // Its stream may have ended while the message was built: the prompt
+    // queue is shut, and a turn opened now would never end. The message never
+    // reached Claude: the caller resends it on a new session.
+    if (context.stopped) {
+      return yield* new ProviderAdapterSessionClosedError({
+        provider: PROVIDER,
+        threadId: input.threadId,
+      });
+    }
+
     const turnId = steeringTurnState?.turnId ?? TurnId.make(yield* randomUUIDv4);
     if (steeringTurnState === null) {
       const turnState: ClaudeTurnState = {
@@ -5704,41 +5762,23 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       });
     }
 
-    // Re-scan on every send: skills are added and switched off mid-session,
-    // and the scan is a few directory reads. A skill switched off via
-    // skillOverrides, or reserved for the agent with `user-invocable: false`,
-    // is left as prose: the CLI would answer `/name` with a notice instead of
-    // running it.
-    const skills = yield* discoverClaudeSkills(
-      claudeSettings,
-      context.session.cwd,
-      claudeEnvironment,
-    ).pipe(
-      Effect.provideService(FileSystem.FileSystem, fileSystem),
-      Effect.provideService(Path.Path, path),
-    );
-    const message = yield* buildUserMessageEffect(input, {
-      fileSystem,
-      attachmentsDir: serverConfig.attachmentsDir,
-      boundInstanceId,
-      modelCatalog,
-      skillNames: new Set(
-        skills
-          .filter((skill) => skill.enabled && skill.userInvocable !== false)
-          .map((skill) => skill.name),
-      ),
-    });
-
     if (steeringTurnState === null) context.turnStartMessageIds.push(turnId);
     rememberTurnPictures(context.turnState, input);
     yield* updateResumeCursor(context);
-    yield* Queue.offer(context.promptQueue, {
+    const offered = yield* Queue.offer(context.promptQueue, {
       type: "message",
       message:
         steeringTurnState === null
           ? { ...message, uuid: turnId as NonNullable<SDKUserMessage["uuid"]> }
           : message,
     }).pipe(Effect.mapError((cause) => toRequestError(input.threadId, "turn/start", cause)));
+    // A shut queue takes nothing: the message never reached Claude.
+    if (!offered) {
+      return yield* new ProviderAdapterSessionClosedError({
+        provider: PROVIDER,
+        threadId: input.threadId,
+      });
+    }
 
     return {
       threadId: context.session.threadId,

@@ -99,6 +99,10 @@ const RuntimeErrorClass = Schema.Literals([
   "transport_error",
   "permission_error",
   "validation_error",
+  /** The provider's usage limit refused the turn: a pause, never a crash. */
+  "usage_limit",
+  /** The agent's process died: its turn broke off. */
+  "process_exit",
   "unknown",
 ]);
 export type RuntimeErrorClass = typeof RuntimeErrorClass.Type;

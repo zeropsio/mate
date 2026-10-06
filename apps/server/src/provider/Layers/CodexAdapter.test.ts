@@ -336,6 +336,87 @@ sessionErrorLayer("CodexAdapterLive session errors", (it) => {
     }),
   );
 
+  // An app server that exits — any code — is gone: the session goes with it,
+  // so the next message starts a new one on the conversation. A failed turn
+  // leaves the session and what still runs in it.
+  it.effect.each([
+    {
+      name: "exits with a code",
+      event: "exit",
+      message: "Codex App Server exited with code 134.",
+      kept: false,
+    },
+    {
+      name: "exits cleanly mid-turn",
+      event: "exit",
+      message: "Codex App Server exited.",
+      kept: false,
+    },
+    { name: "fails a turn", event: "failed-turn", message: "", kept: true },
+  ] as const)("a session whose app server $name is kept: $kept", ({ event, message, kept }) =>
+    Effect.gen(function* () {
+      const adapter = yield* CodexAdapter;
+      const threadId = asThreadId(`thread-codex-${event}-${kept}-${message.length}`);
+      yield* adapter.startSession({
+        provider: ProviderDriverKind.make("codex"),
+        threadId,
+        runtimeMode: "full-access",
+      });
+      const runtime = sessionRuntimeFactory.lastRuntime;
+      NodeAssert.ok(runtime);
+      const settled = yield* adapter.streamEvents.pipe(
+        Stream.filter(
+          (runtimeEvent) =>
+            runtimeEvent.threadId === threadId &&
+            (runtimeEvent.type === "session.exited" || runtimeEvent.type === "turn.completed"),
+        ),
+        Stream.runHead,
+        Effect.forkChild,
+      );
+      yield* runtime.emit(
+        event === "exit"
+          ? {
+              id: asEventId(`evt-exit-${message.length}`),
+              kind: "session",
+              provider: ProviderDriverKind.make("codex"),
+              createdAt: "2026-01-01T00:00:00.000Z",
+              method: "session/exited",
+              threadId,
+              message,
+            }
+          : {
+              id: asEventId("evt-turn-failed"),
+              kind: "notification",
+              provider: ProviderDriverKind.make("codex"),
+              createdAt: "2026-01-01T00:00:00.000Z",
+              method: "turn/completed",
+              threadId,
+              turnId: asTurnId("turn-1"),
+              payload: {
+                threadId: "provider-thread-1",
+                turn: {
+                  id: "turn-1",
+                  items: [],
+                  status: "failed",
+                  error: { message: "unexpected status 500", codexErrorInfo: null },
+                },
+              },
+            },
+      );
+      yield* Fiber.join(settled);
+      for (
+        let attempt = 0;
+        attempt < 50 && (yield* adapter.hasSession(threadId)) !== kept;
+        attempt++
+      ) {
+        yield* Effect.promise(() => new Promise((resolve) => setImmediate(resolve)));
+      }
+      NodeAssert.equal(yield* adapter.hasSession(threadId), kept);
+      NodeAssert.equal(runtime.closeImpl.mock.calls.length, kept ? 0 : 1);
+      if (kept) yield* adapter.stopSession(threadId);
+    }),
+  );
+
   it.effect("compacts the active Codex thread and emits compacted state", () =>
     Effect.gen(function* () {
       const adapter = yield* CodexAdapter;
@@ -2396,6 +2477,8 @@ usageLimitLayer("CodexAdapterLive usage limits", (it) => {
         if (event.type === "runtime.error") {
           NodeAssert.equal(event.payload.message, expected);
           NodeAssert.equal(event.payload.detail, CODEX_OUT_OF_CREDITS);
+          // Typed a pause: the conversation never reads its words for it.
+          NodeAssert.equal(event.payload.class, "usage_limit");
         }
         if (event.type === "turn.completed") {
           NodeAssert.equal(event.payload.errorMessage, expected);

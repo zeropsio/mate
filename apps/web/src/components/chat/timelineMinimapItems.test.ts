@@ -148,4 +148,39 @@ describe("timeline minimap previews", () => {
       { tone: "quiet", weight: 0, aside: false, note: null, assistantText: null },
     ]);
   });
+
+  // A run that failed or broke off — its agent died under it — marks the map
+  // the same; a pause and a stop do not read as failures.
+  it.each([
+    ["brokeOff", "failed"],
+    ["failed", "failed"],
+    ["paused", "paused"],
+    ["stopped", "quiet"],
+  ] as const)("marks a run whose face is %s %s", (face, tone) => {
+    const [asked, answered] = rows([
+      ["user", "Fix the basket"],
+      ["assistant", "Restarting it cleanly."],
+    ]);
+    const record: MessagesTimelineRow = {
+      kind: "record",
+      id: "record:0",
+      createdAt: asked!.createdAt,
+      turnKey: `msg:${asked!.id}`,
+      live: false,
+      items: [],
+      now: null,
+      answering: false,
+      status: {
+        live: false,
+        face,
+        startedAt: new Date(0).toISOString(),
+        endedAt: new Date(60_000).toISOString(),
+        waitedMs: 0,
+        waitingSince: null,
+        worked: true,
+      },
+      outcome: null,
+    };
+    expect(deriveTimelineMinimapItems([asked!, record, answered!])[0]?.tone).toBe(tone);
+  });
 });

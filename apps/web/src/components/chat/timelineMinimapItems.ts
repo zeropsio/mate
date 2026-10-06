@@ -58,7 +58,7 @@ function markOf(run: ReturnType<typeof runAfter>) {
   if (run === null) return { tone: "quiet" as const, weight: 0 as const, note: null };
   const { status } = run;
   const tone: TimelineMinimapTone =
-    status.face === "failed"
+    status.face === "failed" || status.face === "brokeOff"
       ? "failed"
       : status.face === "paused"
         ? "paused"

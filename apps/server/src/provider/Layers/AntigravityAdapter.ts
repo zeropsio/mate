@@ -44,6 +44,7 @@ import {
   ProviderAdapterSessionNotFoundError,
   ProviderAdapterValidationError,
   type ProviderAdapterError,
+  ProviderAdapterTurnEndedError,
 } from "../Errors.ts";
 import {
   ANTIGRAVITY_SIGN_IN_REQUIRED_MESSAGE,
@@ -1002,6 +1003,9 @@ export const makeAntigravityAdapter = Effect.fn("makeAntigravityAdapter")(functi
       Effect.mapError((cause) => mapAntigravityError(input.threadId, "session/prompt", cause)),
     );
     let intent: TurnIntent | undefined;
+    // This send's failure ended its turn — the one it opened or the one it
+    // steered: finished failed here, or by its session's exit.
+    let endedTurn = false;
     // The caller holds promptLock while it changes or settles the active turn.
     const finishTurn = (turn: TurnIntent, payload: TurnCompletedPayload) =>
       Effect.gen(function* () {
@@ -1159,13 +1163,45 @@ export const makeAntigravityAdapter = Effect.fn("makeAntigravityAdapter")(functi
         isAcpError(cause) ? mapAntigravityError(input.threadId, "session/prompt", cause) : cause,
       ),
       Effect.tapError((cause) =>
-        Effect.suspend(() =>
-          intent
+        Effect.suspend(() => {
+          const turn = intent;
+          return turn
             ? context.promptLock.withPermit(
-                finishTurn(intent, { state: "failed", errorMessage: cause.message }),
+                Effect.gen(function* () {
+                  const wasSettled = turn.settled;
+                  yield* finishTurn(turn, {
+                    state: "failed",
+                    // The person reads the error's own words, never its prefix.
+                    errorMessage:
+                      "detail" in cause && typeof cause.detail === "string"
+                        ? cause.detail
+                        : cause.message,
+                    // Its process died under the prompt: the turn broke off.
+                    ...(cause._tag === "ProviderAdapterProcessError"
+                      ? { terminalReason: "process_exit" }
+                      : {}),
+                  });
+                  // Ended failed here, or by its session's exit (its connection gone).
+                  endedTurn = (!wasSettled && turn.settled) || context.disconnected;
+                }),
               )
-            : Effect.void,
-        ),
+            : Effect.void;
+        }),
+      ),
+      // This send's failure ended its turn: its failure is that turn's.
+      Effect.mapError((cause) =>
+        endedTurn && intent
+          ? new ProviderAdapterTurnEndedError({
+              provider: PROVIDER,
+              threadId: input.threadId,
+              turnId: intent.turnId,
+              detail:
+                "detail" in cause && typeof cause.detail === "string"
+                  ? cause.detail
+                  : cause.message,
+              cause,
+            })
+          : cause,
       ),
       Effect.onInterrupt(() =>
         context.promptLock.withPermit(

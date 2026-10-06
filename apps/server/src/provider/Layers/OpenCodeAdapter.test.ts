@@ -32,6 +32,7 @@ import {
 } from "@t3tools/contracts";
 import { createModelSelection } from "@t3tools/shared/model";
 import { ThreadToolPolicyRegistry } from "../../spi/threadToolPolicy.ts";
+import { attachmentRelativePath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { buildRuntimeInstructions } from "../RuntimeInstructions.ts";
@@ -1688,12 +1689,62 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
           modelSelection: createModelSelection(ProviderInstanceId.make("opencode"), "openai/gpt-5"),
         })
         .pipe(Effect.flip);
-      NodeAssert.equal(error._tag, "ProviderAdapterRequestError");
-      if (error._tag !== "ProviderAdapterRequestError") throw new Error("Unexpected error type");
-      NodeAssert.equal(error.method, "session.command");
+      // Its turn had opened: the send fails as that turn's, ended in its words.
+      NodeAssert.equal(error._tag, "ProviderAdapterTurnEndedError");
+      if (error._tag !== "ProviderAdapterTurnEndedError") throw new Error("Unexpected error type");
       NodeAssert.equal(error.detail, "command unavailable");
+      NodeAssert.equal(
+        (error.cause as { readonly method?: unknown } | undefined)?.method,
+        "session.command",
+      );
       NodeAssert.equal((yield* adapter.listSessions())[0]?.status, "ready");
       yield* adapter.stopSession(threadId);
+    }),
+  );
+
+  // A picture it cannot read — an unknown id, a file gone from disk — fails the
+  // send before any turn opens, in plain words: never skipped, never a path.
+  it.effect.each([
+    { name: "an unknown id", id: "not-an-attachment-id" },
+    {
+      name: "a file gone from disk",
+      id: "thread-picture-gone-12345678-1234-1234-1234-123456789abc",
+    },
+  ])("fails a send whose picture is $name before opening a turn", ({ id }) =>
+    Effect.gen(function* () {
+      const adapter = yield* OpenCodeAdapter;
+      const threadId = asThreadId(`thread-picture-unreadable-${id.length}`);
+      yield* adapter.startSession({
+        provider: ProviderDriverKind.make("opencode"),
+        threadId,
+        runtimeMode: "full-access",
+      });
+      const started: Array<unknown> = [];
+      const observer = yield* adapter.streamEvents.pipe(
+        Stream.filter((event) => event.threadId === threadId && event.type === "turn.started"),
+        Stream.runForEach((event) => Effect.sync(() => started.push(event))),
+        Effect.forkChild,
+      );
+      const promptsBefore = runtimeMock.state.promptCalls.length;
+      const error = yield* adapter
+        .sendTurn({
+          threadId,
+          input: "What is on it?",
+          attachments: [
+            { type: "image", id, name: "shot.png", mimeType: "image/png", sizeBytes: 12 },
+          ],
+          modelSelection: createModelSelection(ProviderInstanceId.make("opencode"), "openai/gpt-5"),
+        })
+        .pipe(Effect.flip);
+      NodeAssert.equal(error._tag, "ProviderAdapterRequestError");
+      NodeAssert.equal(
+        "detail" in error ? error.detail : undefined,
+        "A picture you attached could not be read. Attach it again and send.",
+      );
+      NodeAssert.equal(runtimeMock.state.promptCalls.length, promptsBefore);
+      yield* adapter.stopSession(threadId);
+      NodeAssert.deepEqual(started, []);
+      yield* Fiber.interrupt(observer);
     }),
   );
 
@@ -1720,6 +1771,14 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
         mimeType: "image/png",
         sizeBytes: 34,
       };
+      // The picture is on disk, as an attachment always is when it is sent.
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const { attachmentsDir } = yield* ServerConfig;
+      const picturePath = path.join(attachmentsDir, attachmentRelativePath(picture)!);
+      yield* fileSystem.makeDirectory(path.dirname(picturePath), { recursive: true });
+      yield* fileSystem.writeFile(picturePath, new Uint8Array(12));
+      yield* Effect.addFinalizer(() => fileSystem.remove(picturePath).pipe(Effect.ignore));
       yield* adapter.sendTurn({
         threadId,
         input: "[Picture 1]\nUse the original on the site",
@@ -1775,6 +1834,15 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
       });
 
       runtimeMock.state.promptAsyncError = new Error("prompt failed");
+      const endedFiber = yield* adapter.streamEvents.pipe(
+        Stream.filter(
+          (event) =>
+            event.threadId === "thread-send-turn-failure" &&
+            (event.type === "turn.completed" || event.type === "turn.aborted"),
+        ),
+        Stream.runHead,
+        Effect.forkChild,
+      );
       const error = yield* adapter
         .sendTurn({
           threadId: asThreadId("thread-send-turn-failure"),
@@ -1787,15 +1855,18 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
         .pipe(Effect.flip);
       const sessions = yield* adapter.listSessions();
 
-      NodeAssert.equal(error._tag, "ProviderAdapterRequestError");
-      if (error._tag !== "ProviderAdapterRequestError") {
+      // Its turn had opened: the send fails as that turn's, ended in its words.
+      NodeAssert.equal(error._tag, "ProviderAdapterTurnEndedError");
+      if (error._tag !== "ProviderAdapterTurnEndedError") {
         throw new Error("Unexpected error type");
       }
       NodeAssert.equal(error.detail, "prompt failed");
-      NodeAssert.equal(
-        error.message,
-        "Provider adapter request failed (opencode) for session.promptAsync: prompt failed",
-      );
+      // Its turn ends failed in the failure's words, never as a Stop.
+      const ended = Option.getOrThrow(yield* Fiber.join(endedFiber));
+      NodeAssert.deepEqual(ended.type === "turn.completed" ? ended.payload : ended.type, {
+        state: "failed",
+        errorMessage: "prompt failed",
+      });
       NodeAssert.equal(sessions.length, 1);
       NodeAssert.equal(sessions[0]?.status, "ready");
       NodeAssert.equal(sessions[0]?.activeTurnId, undefined);
@@ -3401,6 +3472,75 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
       NodeAssert.deepEqual(
         late.map((event) => event.type),
         ["thread.state.changed"],
+      );
+      yield* adapter.stopSession(threadId);
+    }),
+  );
+
+  // A provider error says its error on its turn before the turn it fails —
+  // one record of the break — and a 429 is typed a usage limit, a pause.
+  it.effect.each([
+    {
+      name: "a usage limit",
+      error: { name: "APIError", data: { message: "Rate limited", statusCode: 429 } },
+      limit: true,
+    },
+    {
+      name: "a server error",
+      error: { name: "APIError", data: { message: "Internal error", statusCode: 500 } },
+      limit: false,
+    },
+  ])("says $name on its turn before failing it", ({ error, limit }) =>
+    Effect.gen(function* () {
+      const adapter = yield* OpenCodeAdapter;
+      const threadId = asThreadId(`thread-provider-error-${limit}`);
+      const sessionID = "http://127.0.0.1:9999/session";
+      const failure = promiseWithResolvers<unknown>();
+      runtimeMock.state.subscribedEvents = [failure.promise];
+      yield* adapter.startSession({
+        provider: ProviderDriverKind.make("opencode"),
+        threadId,
+        runtimeMode: "full-access",
+      });
+      const turn = yield* adapter.sendTurn({
+        threadId,
+        input: "Work",
+        modelSelection: createModelSelection(
+          ProviderInstanceId.make("opencode"),
+          "opencode/kimi-k3",
+        ),
+      });
+      const endedFiber = yield* adapter.streamEvents.pipe(
+        Stream.filter(
+          (event) =>
+            event.threadId === threadId &&
+            (event.type === "runtime.error" || event.type === "turn.completed"),
+        ),
+        Stream.takeUntil((event) => event.type === "turn.completed"),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      failure.resolve({
+        id: "evt-provider-error",
+        type: "session.error",
+        properties: { sessionID, error },
+      });
+      const ended = Array.from(yield* Fiber.join(endedFiber));
+      NodeAssert.deepEqual(
+        ended.map((event) => [event.type, event.turnId]),
+        [
+          ["runtime.error", turn.turnId],
+          ["turn.completed", turn.turnId],
+        ],
+      );
+      const [said, completed] = ended;
+      NodeAssert.equal(
+        said?.type === "runtime.error" ? said.payload.class : undefined,
+        limit ? "usage_limit" : "provider_error",
+      );
+      NodeAssert.equal(
+        completed?.type === "turn.completed" ? completed.payload.terminalReason : undefined,
+        limit ? "usage_limit" : undefined,
       );
       yield* adapter.stopSession(threadId);
     }),
@@ -5835,7 +5975,7 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
               event.type === "runtime.error",
           )
           .map((event) => event.type),
-        ["turn.completed", "runtime.error"],
+        ["runtime.error", "turn.completed"],
       );
       const failed = events.find((event) => event.type === "turn.completed");
       NodeAssert.equal(
@@ -6992,9 +7132,15 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
           exited.some((event) => event.type === "request.resolved"),
           false,
         );
-        NodeAssert.match(
-          exited.find((event) => event.type === "runtime.error")?.payload.message ?? "",
-          /event stream ended/,
+        const said = exited.find((event) => event.type === "runtime.error");
+        NodeAssert.equal(
+          said?.type === "runtime.error" ? said.payload.message : undefined,
+          "OpenCode stopped unexpectedly. Send a message to pick up where it left off.",
+        );
+        // Typed a crash.
+        NodeAssert.equal(
+          said?.type === "runtime.error" ? said.payload.class : undefined,
+          "process_exit",
         );
         NodeAssert.equal(yield* adapter.hasSession(threadId), false);
         runtimeMock.state.endEventStream = false;

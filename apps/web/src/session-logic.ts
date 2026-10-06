@@ -141,6 +141,12 @@ function readCallInput(input: Record<string, unknown> | null): WorkCallInput | u
 }
 
 export interface WorkLogEntry {
+  /**
+   * `runtime.error`: how the server says its turn ended — its agent died
+   * (`crash`), it failed (`failed`), or the usage limit refused it
+   * (`usage-limit`, a pause). Typed by the server: never read off the words.
+   */
+  turnEnd?: "crash" | "failed" | "usage-limit";
   questionAnswer?: UserInputAttachmentAnswerPayload;
   /** `user-input.requested`/`.resolved`: which request the entry belongs to. */
   inputRequestId?: string;
@@ -1094,6 +1100,10 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   const itemType = extractWorkLogItemType(payload);
   const requestKind = extractWorkLogRequestKind(payload);
   const viewedImagePath = asTrimmedString(asRecord(payload?.data)?.imagePath);
+  const turnEnd = activity.kind === "runtime.error" ? payload?.turnEnd : undefined;
+  if (turnEnd === "crash" || turnEnd === "failed" || turnEnd === "usage-limit") {
+    entry.turnEnd = turnEnd;
+  }
   if (detail) {
     entry.detail = detail;
   } else if (activity.kind === "runtime.error" || activity.kind === "runtime.warning") {
