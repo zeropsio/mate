@@ -4451,18 +4451,20 @@ code {
   flex-direction: column;
   gap: 12px;
 }
+/* Stood on the line by `translate`, not `top`: a move of the line moves them
+   on the compositor, with no layout. */
 .run-slot-face,
 .run-slot-clock {
   position: absolute;
-  top: var(--run-slot-line, 26px);
-  translate: 0 -50%;
+  top: 0;
+  translate: 0 calc(var(--run-slot-line, 26px) - 50%);
   z-index: 1;
 }
 /* They follow the first line once placed, never from where a first paint
    guessed it. */
 .run-slot[data-placed] > .run-slot-face,
 .run-slot[data-placed] > .run-slot-clock {
-  transition: top 240ms var(--ease-out-strong);
+  transition: translate 240ms var(--ease-out-strong);
 }
 .run-slot-face {
   left: 0;
