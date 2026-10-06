@@ -166,7 +166,6 @@ describe("repair is the exchange driver's", () => {
       },
       readDescriptor: () => new Promise(() => undefined),
       retryLink: () => undefined,
-      refreshPresence: () => undefined,
       retire: () => undefined,
     });
     driver.setAccount({

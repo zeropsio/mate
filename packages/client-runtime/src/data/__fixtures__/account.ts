@@ -8,6 +8,7 @@ import type { StreamEvent } from "../streamMachine.ts";
 import { runningScope, type ProcessValue } from "../families/process.ts";
 import { projectsScope, type ProjectValue } from "../families/project.ts";
 import { activeScope, type VersionValue } from "../families/version.ts";
+import { servicesScope, type ServiceValue } from "../families/service.ts";
 
 export const ORG = "org";
 
@@ -74,7 +75,7 @@ export function liveProjects(
       rows: projects.map((project) => ({
         family: "project",
         id: project.id,
-        value: projectValue(project),
+        value: projectValue({ clientId: orgId, ...project }),
         revision: zeropsVersion(1),
       })),
     },
@@ -86,11 +87,42 @@ export const versionValue = (
   patch: Pick<VersionValue, "id" | "serviceId"> & Partial<VersionValue>,
 ): VersionValue => ({ projectId: "p1", status: "ACTIVE", source: "GIT", ...patch });
 
-/** The organization's link live: its roster, its running work and, where named, its active versions. */
+/** An organization's services read and live: these services, as their rows read. */
+export function liveServices(
+  orgId: string,
+  services: ReadonlyArray<
+    Readonly<Record<string, unknown>> & { readonly id: string; readonly projectId: string }
+  >,
+): ReadonlyArray<AccountInput> {
+  return liveScopes(linkKeys.zerops(orgId), [
+    {
+      scope: servicesScope(orgId),
+      via: "zerops-realtime",
+      members: services.map((service) => service.id),
+      rows: services.map((service) => ({
+        family: "service",
+        id: service.id,
+        value: serviceValue(service),
+        revision: zeropsVersion(1),
+      })),
+    },
+  ]);
+}
+
+/** A service as its whole row reads: what a test does not name is an active runtime. */
+export const serviceValue = (
+  patch: Pick<ServiceValue, "id" | "projectId"> & Partial<ServiceValue>,
+): ServiceValue => ({ name: patch.id, status: "ACTIVE", ...patch });
+
+/**
+ * The organization's link live: its roster, its running work and, where named, its active versions
+ * and its services.
+ */
 export function liveZerops(input: {
   readonly running: ReadonlyArray<Parameters<typeof processValue>[0]>;
   readonly projects?: ReadonlyArray<Parameters<typeof projectValue>[0]>;
   readonly active?: ReadonlyArray<Parameters<typeof versionValue>[0]>;
+  readonly services?: ReadonlyArray<Parameters<typeof serviceValue>[0]>;
 }): ReadonlyArray<AccountInput> {
   const projects = input.projects ?? [];
   return liveScopes(linkKeys.zerops(ORG), [
@@ -127,6 +159,21 @@ export function liveZerops(input: {
               family: "version" as const,
               id: version.id,
               value: versionValue(version),
+              revision: zeropsVersion(1),
+            })),
+          },
+        ]),
+    ...(input.services === undefined
+      ? []
+      : [
+          {
+            scope: servicesScope(ORG),
+            via: "zerops-realtime" as const,
+            members: input.services.map((service) => service.id),
+            rows: input.services.map((service) => ({
+              family: "service" as const,
+              id: service.id,
+              value: serviceValue(service),
               revision: zeropsVersion(1),
             })),
           },

@@ -1,13 +1,12 @@
 import {
   DEFAULT_ZEROPS_DATA_POLICY,
   decodeEntityDirectResponse,
-  decodeEntityQueryResponse,
   decodeMetricRead,
   decodeNativeFrame,
   makeInitialZeropsDataState,
   reduceZeropsDataState,
+  runtimeServicesRead,
   selectHistory,
-  selectServicesOf,
   selectTopology,
   selectUsage,
   serviceRecordToZeropsService,
@@ -31,7 +30,6 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   desiredInterest,
   directTicket,
-  entityRegistration,
   identity,
   project,
   scope,
@@ -189,23 +187,14 @@ function fixture() {
     }
   };
   ingest(decodeEntityDirectResponse(directTicket({ kind: "project", ref: owner }, id), projectDto));
-  const query = {
-    kind: "services-of-project" as const,
-    project: owner,
-    schemaVersion: 1 as const,
+  // The organization's services listing, as the account's store holds it: each row names its
+  // project, and a push replaces a whole row.
+  let rows = services.map((row) => ({ ...row, projectId: owner.projectId }));
+  const listed = () =>
+    runtimeServicesRead(owner, { services: rows, live: true, reconnecting: false });
+  const pushed = (row: Partial<ZeropsService> & { readonly id: string }) => {
+    rows = rows.map((held) => (held.id === row.id ? { ...held, ...row } : held));
   };
-  ingest(
-    decodeEntityQueryResponse(
-      query,
-      directTicket({ kind: "query", descriptor: query }, id),
-      // An organization's rows each name their project.
-      {
-        list: services.map((row) => ({ ...row, projectId: owner.projectId })),
-        totalCount: services.length,
-      },
-      "direct-read",
-    ),
-  );
   const metrics = (items: ReadonlyArray<ZeropsCurrentStat>) =>
     ingest(
       decodeMetricRead(
@@ -223,7 +212,7 @@ function fixture() {
   const snapshot = () =>
     projectTopologySnapshotFromRead(
       projectDto,
-      selectTopology(state, owner),
+      selectTopology(state, owner, listed()),
       [],
       new Map(services.map(({ id }) => [id, selectUsage(state, service(id))])),
       new Map(
@@ -238,14 +227,14 @@ function fixture() {
         ]),
       ),
     ).view!;
-  return { ingest, metrics, past, snapshot, id, state: () => state };
+  return { ingest, metrics, past, snapshot, id, listed, pushed };
 }
 
 describe("original topology behavior through the central data pipeline", () => {
   it("preserves project tags and presentation plus public routes, offers and environment summaries", () => {
     const f = fixture();
     const readDtos = () =>
-      selectServicesOf(f.state(), owner).value.flatMap((entry) => {
+      f.listed().value.flatMap((entry) => {
         if (entry.knowledge !== "observed") return [];
         const dto = serviceRecordToZeropsService(entry.record);
         return dto === null ? [] : [dto];
@@ -255,43 +244,15 @@ describe("original topology behavior through the central data pipeline", () => {
     expect(derivePublicRoutes(projectDto, dtos)).toEqual(derivePublicRoutes(projectDto, services));
     expect(derivePublicRouteOffers(dtos)).toEqual(derivePublicRouteOffers(services));
     expect(summarizeEnvironmentServices(dtos)).toEqual(summarizeEnvironmentServices(services));
-    const registration = entityRegistration("service", f.id);
-    const decoded = decodeNativeFrame(
-      JSON.stringify({
-        type: "search",
-        subscriptionName: registration.subscriptionName,
-        data: {
-          update: services.map(({ id }) => ({
-            id,
-            projectId: owner.projectId,
-            subdomainAccess: false,
-          })),
-        },
-      }),
-      new Map([[registration.subscriptionName, registration]]),
-    );
-    expect(decoded.kind).toBe("observations");
-    if (decoded.kind === "observations") f.ingest(decoded);
+    for (const { id } of services) f.pushed({ id, subdomainAccess: false });
     expect(derivePublicRoutes(projectDto, readDtos())).toEqual([]);
     expect(derivePublicRouteOffers(readDtos())).toEqual([
       { service: "weatherapp", serviceId: "app", port: 3000 },
     ]);
   });
-  it("hides system services even after a partial native update, without hiding zcp", () => {
+  it("hides system services even after a row update, without hiding zcp", () => {
     const f = fixture();
-    const registration = entityRegistration("service", f.id);
-    const decoded = decodeNativeFrame(
-      JSON.stringify({
-        type: "search",
-        subscriptionName: registration.subscriptionName,
-        data: {
-          update: [{ id: "core", projectId: owner.projectId, name: "core", status: "ACTIVE" }],
-        },
-      }),
-      new Map([[registration.subscriptionName, registration]]),
-    );
-    expect(decoded.kind).toBe("observations");
-    if (decoded.kind === "observations") f.ingest(decoded);
+    f.pushed({ id: "core", name: "core", status: "ACTIVE" });
     expect(f.snapshot().services.map((row) => row.serviceId)).toEqual(["zcp", "app"]);
   });
 

@@ -1,8 +1,7 @@
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useMemo, useState } from "react";
 
 import type { InventoryTroubleVoice } from "./inventoryTrouble.logic";
 import type { ZeropsProject } from "@t3tools/client-runtime/zerops";
-import type { ZeropsService } from "@t3tools/client-runtime/zerops";
 import {
   deriveZeropsCandidates,
   type ZeropsCandidate,
@@ -15,18 +14,15 @@ import {
 import type { ConversationAccess } from "@t3tools/client-runtime/zerops/environments";
 import { knownPresentation, type KnownSurface } from "@t3tools/client-runtime/zerops/knowledge";
 
-export type InventoryServiceOutcome =
-  | { readonly status: "resolved"; readonly services: ReadonlyArray<ZeropsService> }
-  | { readonly status: "failed" };
+import { useProjectsServices } from "./ZeropsAccountData";
 
 export interface Inventory {
   /**
    * The projects whose content may be shown: a project the grant withholds (DESIGN §4.2 G12) is
-   * left out of `projects` and `services` at this read, and every project is while the account's
+   * left out of `projects` at this read, and every project is while the account's
    * access lapses. Its identity stays in `projectRefs`.
    */
   readonly projects: ReadonlyArray<ZeropsProject>;
-  readonly services: ReadonlyMap<string, InventoryServiceOutcome>;
   readonly isLoading: boolean;
   readonly error: string | null;
   /** Operable, account-scoped identities used to filter every shared projection. */
@@ -48,7 +44,7 @@ export interface Inventory {
  */
 export type InventoryProjection = Pick<
   Inventory,
-  "projects" | "services" | "projectRefs" | "authority" | "account"
+  "projects" | "projectRefs" | "authority" | "account"
 >;
 
 export function inventoryProjectRefKey(ref: ProjectRef): string {
@@ -130,40 +126,33 @@ export function withheldProjectNotices(inventory: Inventory): ReadonlyArray<stri
 }
 
 /**
- * Folds every inventory project against its resolved services into the flat
- * candidate list every consumer needs to find or classify an environment.
- * Group membership is never known here, so it is always the account-wide
- * fold (an empty group map) — a caller that also needs group tags derives
- * them from the same candidates afterward.
+ * Folds every inventory project against its services, as the organization's services listing
+ * holds them, into the flat candidate list every consumer needs to find or classify an
+ * environment. Group membership is never known here, so it is always the account-wide fold (an
+ * empty group map) — a caller that also needs group tags derives them from the same candidates
+ * afterward.
  */
-export function deriveInventoryCandidates(
-  projects: ReadonlyArray<ZeropsProject>,
-  services: ReadonlyMap<string, InventoryServiceOutcome>,
-): ReadonlyArray<ZeropsCandidate> {
-  return projects.flatMap((project) => {
-    const outcome = services.get(project.id);
-    return deriveZeropsCandidates(
-      project,
-      outcome?.status === "resolved" ? outcome.services : null,
-      new Map(),
-    );
-  });
-}
-
-export function inventoryCandidates(inventory: Inventory): ReadonlyArray<ZeropsCandidate> {
-  return deriveInventoryCandidates(inventory.projects, inventory.services);
+export function useInventoryCandidates(): ReadonlyArray<ZeropsCandidate> {
+  const { projects } = useZeropsInventory();
+  const projectIds = useMemo(() => projects.map(({ id }) => id), [projects]);
+  const services = useProjectsServices(projectIds);
+  return useMemo(
+    () =>
+      projects.flatMap((project) =>
+        deriveZeropsCandidates(project, services[project.id]?.services ?? null, new Map()),
+      ),
+    [projects, services],
+  );
 }
 
 export const InventoryContext = createContext<Inventory | null>(null);
 
 /**
- * The inventory's projects and services as held, before withholding: only for the wiring that a
+ * The inventory's projects as held, before withholding: only for the wiring that a
  * withholding must not end — the projects each group's deploy read covers (DESIGN law 5, M7).
  * Nothing renders from it; every surface reads `InventoryContext`.
  */
-export const HeldInventoryContext = createContext<Pick<Inventory, "projects" | "services"> | null>(
-  null,
-);
+export const HeldInventoryContext = createContext<Pick<Inventory, "projects"> | null>(null);
 
 export function useZeropsInventory(): Inventory {
   const inventory = useContext(InventoryContext);

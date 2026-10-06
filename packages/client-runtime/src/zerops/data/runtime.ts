@@ -25,7 +25,8 @@ import {
   type RetryLadder,
 } from "../knowledge/retryPolicy.ts";
 import { makeGrantDriver, type ZeropsAccessGrant } from "./access/grantDriver.ts";
-import { createZeropsDataAtoms } from "./atoms.ts";
+import { bridgedServicesOf, createZeropsDataAtoms } from "./atoms.ts";
+import type { ServiceDeployObserved } from "./deployedVersion.ts";
 import { grantCapabilities } from "./access/capabilities.ts";
 import { commandAdmissionError, commandTarget } from "./commands.ts";
 import { BuildLogTransportError, type BuildLogTransport } from "./logTransport.ts";
@@ -62,7 +63,6 @@ import type {
   InterestIdentity,
   InterestKey,
   InterestLease,
-  MembershipQueryDescriptor,
   LeaseAdmissionError,
   OrganizationRef,
   PlatformCommand,
@@ -195,7 +195,6 @@ function serializedInterestKey(descriptor: RuntimeInterestDescriptor): InterestK
     case "project-inventory":
     case "project-record":
     case "project-access":
-    case "project-services-check":
     case "project-current-metrics":
       return InterestKeySchema.make(
         JSON.stringify([descriptor.kind, projectKeyOf(descriptor.project)]),
@@ -364,16 +363,28 @@ const queryKeysOfPlan = (plan: InterestPlan): ReadonlyArray<QueryKey> => [
 ];
 
 /**
- * An interest that registers and reads nothing of its own: a project's access (the grant's), and
- * the organization's inventory, whose projects are the account store's — it holds the
- * organization for its projects' reads. It observes from the moment it is held.
+ * An interest that registers and reads nothing of its own: a project's access (the grant's), the
+ * organization's inventory, whose projects are the account store's — it holds the organization
+ * for its projects' reads — and a project's inventory or topology, whose services are the account
+ * store's too (`data/families/service.ts`): they hold the project for its variables', versions'
+ * and metrics' reads. It observes from the moment it is held.
  */
 const readsNothing = (
   descriptor: RuntimeInterestDescriptor,
 ): descriptor is Extract<
   RuntimeInterestDescriptor,
-  { readonly kind: "organization-inventory" | "project-access" }
-> => descriptor.kind === "organization-inventory" || descriptor.kind === "project-access";
+  {
+    readonly kind:
+      | "organization-inventory"
+      | "project-access"
+      | "project-inventory"
+      | "project-topology";
+  }
+> =>
+  descriptor.kind === "organization-inventory" ||
+  descriptor.kind === "project-access" ||
+  descriptor.kind === "project-inventory" ||
+  descriptor.kind === "project-topology";
 
 /**
  * What an interest registers and reads: detail registrations, baselines and direct anchors use the
@@ -381,23 +392,6 @@ const readsNothing = (
  */
 export function planZeropsInterest(descriptor: RuntimeInterestDescriptor): InterestPlan {
   const organization = organizationOfInterest(descriptor);
-  const scopeProject = "project" in descriptor ? descriptor.project : null;
-  const entityUpdate = (entity: "project" | "service"): PlannedRegistration => ({
-    descriptor:
-      entity === "project"
-        ? { kind: "entity-updates", entity, organization }
-        : { kind: "entity-updates", entity, organization, project: scopeProject! },
-    baseline: null,
-  });
-  const membership = (query: MembershipQueryDescriptor): PlannedRegistration => ({
-    descriptor: { kind: "query-membership", query },
-    baseline: { kind: "query", descriptor: query },
-  });
-  const services: MembershipQueryDescriptor = {
-    kind: "services-of-project",
-    project: scopeProject!,
-    schemaVersion: 1,
-  };
   const table = (query: TableQueryDescriptor): ReadonlyArray<PlannedRegistration> => [
     {
       descriptor: {
@@ -416,28 +410,15 @@ export function planZeropsInterest(descriptor: RuntimeInterestDescriptor): Inter
       directReads: [],
     };
   }
-  // The organization's projects are the account store's (`data/families/project.ts`): this
-  // inventory reads none of its own, and only holds the organization for its projects' reads.
+  // The organization's projects and services are the account store's (`data/families/`): these
+  // read none of their own.
   if (readsNothing(descriptor)) return { registrations: [], directReads: [] };
   const project = descriptor.project;
-  if (descriptor.kind === "project-inventory" || descriptor.kind === "project-topology") {
-    return {
-      // The project itself is the organization inventory's, which every app holds beside it.
-      registrations: [entityUpdate("service"), membership(services)],
-      directReads: [{ kind: "query", descriptor: services }],
-    };
-  }
-  if (descriptor.kind === "project-services-check") {
-    return {
-      registrations: [],
-      directReads: [
-        { kind: "query", descriptor: { kind: "services-of-project", project, schemaVersion: 1 } },
-      ],
-    };
-  }
   if (descriptor.kind === "project-record") {
     return {
-      registrations: [entityUpdate("project")],
+      registrations: [
+        { descriptor: { kind: "entity-updates", entity: "project", organization }, baseline: null },
+      ],
       directReads: [{ kind: "project", ref: project }],
     };
   }
@@ -1560,9 +1541,6 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         ),
       { discard: true },
     );
-
-  const runRead = (ticket: ReadTicket, identity: InterestIdentity | null): Effect.Effect<boolean> =>
-    runReadOutcome(ticket, identity).pipe(Effect.map((outcome) => outcome.succeeded));
 
   /** One read attempt and its adapter error, plus raw project evidence for access classification. */
   const runReadOutcome = (
@@ -3355,45 +3333,55 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         yield* requestRecovery(receiverFor(retriesOn(receiver.key)[0]!.interest.descriptor));
     });
 
-  const presenceChecks = new Map<string, Fiber.Fiber<void>>();
-  const refreshPresence: ZeropsDataRuntime["refreshPresence"] = (project) =>
-    lifecycleLock
-      .withPermit(
+  /**
+   * What the services whose variables this runtime holds run now, as the account's store holds
+   * them (F13): a service that moved to another version has its trailing variables read again.
+   */
+  const heldDeploysAtom = Atom.make((get): ReadonlyArray<ServiceDeployObserved> => {
+    const deploys: Array<ServiceDeployObserved> = [];
+    for (const { descriptor, leases } of get(rootAtom).interests.values()) {
+      if (leases <= 0 || descriptor.kind !== "project-variables") continue;
+      for (const entry of bridgedServicesOf(get, descriptor.project).value) {
+        if (entry.knowledge !== "observed") continue;
+        const serviceId = entry.record.ref.serviceId;
+        const facet = entry.record.deployment;
+        const deploy = facet.knowledge === "observed" ? facet.fields.activeDeploy : null;
+        if (!descriptor.serviceIds.includes(serviceId) || deploy == null || deploy.id === null)
+          continue;
+        deploys.push({
+          organization: descriptor.project.organization,
+          serviceId,
+          deployId: deploy.id,
+        });
+      }
+    }
+    return deploys;
+  });
+  let heardDeploys = "";
+  const stopHearingDeploys = options.atomRegistry.subscribe(
+    heldDeploysAtom,
+    (deploys) => {
+      const key = JSON.stringify(deploys);
+      if (key === heardDeploys) return;
+      heardDeploys = key;
+      Effect.runForkWith(runtimeContext)(
         Effect.gen(function* () {
-          if (yield* Ref.get(closed)) return null;
-          const key = projectKeyOf(project);
-          const outstanding = presenceChecks.get(key);
-          if (outstanding !== undefined) return outstanding;
-          // The account holds the organization's inventory for the epoch. Its existing identity
-          // fences these direct observations too; no subscription or receiver is replaced.
-          const owner = interests.get(
-            interestKeyOf({ kind: "organization-inventory", organization: project.organization }),
+          yield* applyControl({
+            kind: "service-deploys-observed",
+            deploys,
+            atMs: yield* Clock.currentTimeMillis,
+          });
+          yield* Effect.forEach(
+            tableRowsWanted((yield* Ref.get(model)).table),
+            (batch) => scheduleTableRead({ kind: "read-table-rows", ...batch }),
+            { discard: true },
           );
-          if (owner === undefined || owner.leases.size === 0) return null;
-          const identity = owner.identity;
-          const check = yield* Effect.gen(function* () {
-            for (const target of [
-              { kind: "project", ref: project },
-              {
-                kind: "query",
-                descriptor: { kind: "services-of-project", project, schemaVersion: 1 },
-              },
-            ] satisfies ReadonlyArray<ReadTarget>) {
-              const ticket = yield* requestTicket(
-                identity,
-                target.kind === "query" ? "baseline" : "direct",
-                target,
-              );
-              if (!(yield* admitRead(ticket))) return;
-              yield* runRead(ticket, identity);
-            }
-            yield* awaitIngress;
-          }).pipe(Effect.ensuring(Effect.sync(() => presenceChecks.delete(key))), forkOwned);
-          presenceChecks.set(key, check);
-          return check;
-        }),
-      )
-      .pipe(Effect.flatMap((check) => (check === null ? Effect.void : Fiber.join(check))));
+        }).pipe(forkOwned),
+      );
+    },
+    { immediate: true },
+  );
+  yield* Scope.addFinalizer(runtimeScope, Effect.sync(stopHearingDeploys));
 
   const refresh: ZeropsDataRuntime["refresh"] = (scope) =>
     lifecycleLock.withPermit(
@@ -4211,7 +4199,6 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
     logs,
     acquire,
     refresh,
-    refreshPresence,
     acquireMany,
     listen,
     shutdown,

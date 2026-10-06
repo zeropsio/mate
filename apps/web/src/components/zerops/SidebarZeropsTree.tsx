@@ -475,7 +475,7 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
   readonly notice?: CandidatesNotice | null;
   /**
    * The listing is still being read: with no row and no notice yet, the tree holds the rows' room
-   * with a skeleton rather than drawing nothing (HANDOFF §4.7: the menu's skeleton at once).
+   * with a skeleton rather than drawing nothing.
    */
   readonly reading?: boolean;
   /** The notice's one affordance, pressed. */

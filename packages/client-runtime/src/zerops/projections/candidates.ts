@@ -27,8 +27,6 @@ import {
 } from "../candidates.ts";
 import { projectNameInApp, readZeropsMembership } from "../groups.ts";
 import type { ProjectProcesses } from "../../data/projections/processes.ts";
-import { serviceRecordToZeropsService } from "../data/dto.ts";
-import type { CollectionRead, ServiceRecord } from "../data/types.ts";
 import type { Known, Shown } from "../knowledge/known.ts";
 import {
   knownPresentation,
@@ -51,17 +49,12 @@ const NO_CONNECTIONS: ReadonlyMap<string, EnvironmentId> = new Map();
  * it has read: a zcp service it holds is there, and one it lacks may still be unread.
  */
 function readServices(
-  services: Known<ReadonlyArray<ServiceRecord>>,
+  services: Known<ReadonlyArray<ZeropsService>>,
 ): ReadonlyArray<ZeropsService> | null {
   if (services.state !== "known") return null;
-  const decoded: ZeropsService[] = [];
-  let complete = services.coverage === "complete";
-  for (const record of services.value) {
-    const service = serviceRecordToZeropsService(record);
-    if (service === null) complete = false;
-    else decoded.push(service);
-  }
-  return complete || decoded.some(isZcpService) ? decoded : null;
+  return services.coverage === "complete" || services.value.some(isZcpService)
+    ? services.value
+    : null;
 }
 
 const known = (candidates: ReadonlyArray<ZeropsCandidate>): ReadonlyArray<CandidateRow> =>
@@ -74,7 +67,7 @@ const known = (candidates: ReadonlyArray<ZeropsCandidate>): ReadonlyArray<Candid
  */
 export function projectCandidates(
   project: ZeropsProject,
-  servicesOf: () => Known<ReadonlyArray<ServiceRecord>>,
+  servicesOf: () => Known<ReadonlyArray<ZeropsService>>,
   facts?: AddressFacts,
 ): ReadonlyArray<CandidateRow> {
   if (project.status !== "ACTIVE")
@@ -92,7 +85,7 @@ export function projectCandidates(
  */
 export function selectCandidates(
   projects: Known<ReadonlyArray<ZeropsProject>>,
-  servicesOf: (project: ZeropsProject) => Known<ReadonlyArray<ServiceRecord>>,
+  servicesOf: (project: ZeropsProject) => Known<ReadonlyArray<ZeropsService>>,
   facts?: AddressFacts,
 ): Known<ReadonlyArray<CandidateRow>> {
   if (projects.state !== "known") return projects;
@@ -125,8 +118,7 @@ export function subdomainEnableIn(
 
 /**
  * When a service's enable ended on Zerops' clock, where its newest enable/disable is a finished
- * enable: a direct read of its services after it brings a record that may have caught up. Null
- * otherwise.
+ * enable: a read of its own row after it brings a record that may have caught up. Null otherwise.
  */
 export function finishedEnableAt(
   activity: ProjectProcesses | null,
@@ -141,15 +133,10 @@ export function finishedEnableAt(
 
 /** When a project's service's record was last updated, on Zerops' clock; null where not said. */
 export function serviceUpdatedAtIn(
-  services: CollectionRead<ServiceRecord> | null,
+  services: ReadonlyArray<ZeropsService> | undefined,
   serviceId: string,
 ): string | null {
-  for (const entry of services?.value ?? []) {
-    if (entry.knowledge !== "observed" || entry.record.ref.serviceId !== serviceId) continue;
-    const lifecycle = entry.record.lifecycle;
-    return lifecycle.knowledge === "observed" ? (lifecycle.fields.updatedAt ?? null) : null;
-  }
-  return null;
+  return services?.find((service) => service.id === serviceId)?.lastUpdate ?? null;
 }
 
 /**

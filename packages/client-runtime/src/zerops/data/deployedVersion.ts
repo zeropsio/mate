@@ -16,8 +16,8 @@ import {
   type EntityTableState,
 } from "./entityTable.ts";
 import type { ZeropsDataState } from "./state.ts";
-import type { IngestionStamp, ServiceRef } from "./types.ts";
-import { organizationKeyOf, serviceKeyOf } from "./types.ts";
+import type { IngestionStamp, OrganizationRef, ServiceRecord, ServiceRef } from "./types.ts";
+import { organizationKeyOf } from "./types.ts";
 
 /**
  * What a service runs (A14): its active version's id and source (`NONE` on a runtime nothing was
@@ -73,11 +73,13 @@ const trimmed = (content: string | null): string | null => {
   return value.length === 0 ? null : value;
 };
 
+/** What the service runs, its row as the account's store holds it (`serviceBridge.ts`). */
 export function selectDeployedVersion(
   state: ZeropsDataState,
   service: ServiceRef,
+  record: ServiceRecord | undefined,
 ): Shown<ZeropsServiceDeployedVersion> {
-  const facet = state.inventory.services.get(serviceKeyOf(service))?.deployment;
+  const facet = record?.deployment;
   // A service the platform no longer shows runs nothing anyone can state.
   if (facet?.knowledge === "unavailable")
     return {
@@ -102,13 +104,12 @@ export function selectDeployedVersion(
     return streamFailure(state, service) ?? UNREAD;
   }
   if (trimmed(started.content) !== deploy.id) {
-    // Variables that may trail the service are being read again: what it runs is checked, not
-    // nameless (`wantStaleVariables`).
-    const trailing = trailingVariables(
-      state.table,
-      service.serviceId,
-      movedAt(state.table, service.serviceId, deploy.id, facet.stamp),
-    );
+    // Until the store's move of the service to this version is recorded (`observeServiceDeploys`),
+    // variables naming another deploy prove nothing: what it runs is still checked, not nameless.
+    const move = state.table.moves.get(service.serviceId);
+    if (move?.deployId !== deploy.id) return streamFailure(state, service) ?? UNREAD;
+    // Variables that may trail the service are being read again: checked, not nameless.
+    const trailing = trailingVariables(state.table, service.serviceId, move.asOf);
     if (trailing !== null) return streamFailure(state, service) ?? UNREAD;
     return known({ activeId: deploy.id, source, name: null }, facet.stamp);
   }
@@ -137,60 +138,42 @@ function trailingVariables(
   return name === null ? [started.id] : [started.id, name.id];
 }
 
-/** The receipt the service moved to `deployId` at; its push's own where no move was recorded. */
-const movedAt = (
-  table: EntityTableState,
-  serviceId: string,
-  deployId: string,
-  stamp: IngestionStamp,
-): number => {
-  const move = table.moves.get(serviceId);
-  return move?.deployId === deployId ? move.asOf : stamp.receiptOrdinal;
-};
+/** What a service's row says it runs now, as the account's store holds it. */
+export interface ServiceDeployObserved {
+  readonly organization: OrganizationRef;
+  readonly serviceId: string;
+  readonly deployId: string;
+}
 
 /**
- * Each service whose variables name another deploy than the one it runs, heard before it moved
- * there, has them read again by id (F13, 2026-10-03): the platform rewrites them in
- * place at a build's start, and no push of theirs is promised. Once read, they are newer than the
- * service, so each move asks once, never in a loop.
+ * Each service whose row now names another version than the one recorded has moved there, as of
+ * the next receipt; its variables that name another deploy, heard before the move, are read again
+ * by id (F13, 2026-10-03): the platform rewrites them in place at a build's start, and no push of
+ * theirs is promised. Once read, they are newer than the move, so each move asks once, never in a
+ * loop. A row naming the version already recorded moves nothing and asks nothing.
  */
-export function wantStaleVariables(
+export function observeServiceDeploys(
   state: ZeropsDataState,
-  receipt: number,
+  deploys: ReadonlyArray<ServiceDeployObserved>,
   nowMs: number,
 ): ZeropsDataState {
   let table = state.table;
   let moves: Map<string, { readonly deployId: string; readonly asOf: number }> | null = null;
-  for (const record of state.inventory.services.values()) {
-    if (
-      ![...state.interests.values()].some(
-        ({ descriptor, leases }) =>
-          leases > 0 &&
-          descriptor.kind === "project-variables" &&
-          descriptor.serviceIds.includes(record.ref.serviceId),
-      )
-    )
-      continue;
-    const facet = record.deployment;
-    if (facet.knowledge !== "observed") continue;
-    const deploy = facet.fields.activeDeploy;
-    if (deploy == null || deploy.id === null) continue;
-    const organization = record.ref.project.organization;
-    const serviceId = record.ref.serviceId;
-    // A push that names another version than the one recorded is a move, as of that push.
-    if ((moves ?? table.moves).get(serviceId)?.deployId !== deploy.id) {
-      moves ??= new Map(table.moves);
-      moves.set(serviceId, { deployId: deploy.id, asOf: facet.stamp.receiptOrdinal });
-    }
-    const moved = (moves ?? table.moves).get(serviceId)?.asOf ?? facet.stamp.receiptOrdinal;
+  // Every receipt so far was heard before the move; a read started from now on answers after it.
+  const heard = state.lastReceiptOrdinal ?? 0;
+  const asOf = heard + 1;
+  for (const { organization, serviceId, deployId } of deploys) {
+    if ((moves ?? table.moves).get(serviceId)?.deployId === deployId) continue;
+    moves ??= new Map(table.moves);
+    moves.set(serviceId, { deployId, asOf });
     const started = serviceVariableOf(table, organization, serviceId, "appVersionId");
-    if (!started.known || trimmed(started.content) === deploy.id) continue;
-    const ids = trailingVariables(table, serviceId, moved);
+    if (!started.known || trimmed(started.content) === deployId) continue;
+    const ids = trailingVariables(table, serviceId, asOf);
     if (ids !== null)
-      table = rereadTableRows(table, "user-data", organization, ids, receipt, nowMs, [serviceId]);
+      table = rereadTableRows(table, "user-data", organization, ids, heard, nowMs, [serviceId]);
   }
-  if (moves !== null) table = { ...table, moves };
-  return table === state.table ? state : { ...state, table };
+  if (moves === null) return state;
+  return { ...state, table: { ...table, moves } };
 }
 
 /**
@@ -214,6 +197,7 @@ export function statedDeployKey(shown: Shown<ZeropsServiceDeployedVersion> | und
 export function selectSetupMarker(
   state: ZeropsDataState,
   service: ServiceRef,
+  record: ServiceRecord | undefined,
 ): boolean | "unknown" | "unread" {
   const marker = serviceVariableOf(
     state.table,
@@ -224,7 +208,7 @@ export function selectSetupMarker(
   // Its presence alone: the value is the tier's import document, and it goes nowhere.
   if (marker.known) {
     if (marker.content !== null) return true;
-    return containerTooYoungToSay(state, service) ? "unread" : false;
+    return containerTooYoungToSay(state, service, record) ? "unread" : false;
   }
   return streamFailure(state, service) === null ? "unread" : "unknown";
 }
@@ -236,14 +220,18 @@ export const SETUP_MARKER_YOUNG_MS = 5 * 60_000;
  * A container made within {@link SETUP_MARKER_YOUNG_MS} of the variables list's answer, none of
  * whose variables the stream has delivered: its marker may be on its way, so absent says nothing.
  */
-function containerTooYoungToSay(state: ZeropsDataState, service: ServiceRef): boolean {
+function containerTooYoungToSay(
+  state: ZeropsDataState,
+  service: ServiceRef,
+  record: ServiceRecord | undefined,
+): boolean {
   const delivered = serviceVariablesDelivered(
     state.table,
     service.project.organization,
     service.serviceId,
   );
   if (delivered.any || delivered.answeredAtMs === null) return false;
-  const lifecycle = state.inventory.services.get(serviceKeyOf(service))?.lifecycle;
+  const lifecycle = record?.lifecycle;
   const createdAt = lifecycle?.knowledge === "observed" ? lifecycle.fields.createdAt : undefined;
   const created =
     createdAt === null || createdAt === undefined ? Number.NaN : Date.parse(createdAt);

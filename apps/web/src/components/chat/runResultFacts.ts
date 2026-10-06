@@ -18,7 +18,8 @@ import type { EnvironmentId } from "@t3tools/contracts";
 import { useContext, useMemo } from "react";
 
 import { useCrew } from "../../zerops/crew/useCrew";
-import { InventoryContext, type InventoryServiceOutcome } from "../../zerops/inventoryContext";
+import { InventoryContext } from "../../zerops/inventoryContext";
+import { useProjectServices } from "../../zerops/ZeropsAccountData";
 import { useZeropsProjectFlowOptional } from "../../zerops/projectFlowContext";
 import { useRegistrationRecord } from "../../zerops/registrationRecords";
 import type { OutcomeModel } from "./conversation.logic";
@@ -39,10 +40,9 @@ function resultChange(
 export function readRunResultFacts(input: {
   /** The Zerops project of the thread's environment: the Mate's. */
   readonly projectId: string | undefined;
-  readonly inventory: {
-    readonly projects: ReadonlyArray<ZeropsProject>;
-    readonly services: ReadonlyMap<string, InventoryServiceOutcome>;
-  } | null;
+  readonly inventory: { readonly projects: ReadonlyArray<ZeropsProject> } | null;
+  /** The Mate project's services; `undefined` while they are not read. */
+  readonly services: ReadonlyArray<ZeropsService> | undefined;
   readonly flows:
     | ReadonlyMap<
         string,
@@ -67,7 +67,6 @@ export function readRunResultFacts(input: {
   if (projectId === undefined) return {};
   const project = inventory?.projects.find((entry) => entry.id === projectId);
   const groupId = project === undefined ? undefined : readZeropsMembership(project).groupId;
-  const read = inventory?.services.get(projectId);
   const flow = groupId === undefined ? undefined : flows?.get(groupId);
   const changes =
     groupId === undefined || flows === undefined
@@ -88,10 +87,10 @@ export function readRunResultFacts(input: {
   return {
     mate: { projectId, groupId },
     ...(changes === undefined ? {} : { changes }),
-    ...(read?.status === "resolved"
+    ...(input.services !== undefined
       ? {
           services: new Map(
-            read.services.map((service: ZeropsService) => [
+            input.services.map((service: ZeropsService) => [
               service.name,
               {
                 status: service.status,
@@ -129,6 +128,7 @@ export function useRunResultFacts(outcome: OutcomeModel | null | undefined): Res
   const environmentId = row?.threadRef?.environmentId ?? null;
   const projectId = useRegistrationRecord(environmentId)?.projectRef?.projectId;
   const inventory = useContext(InventoryContext);
+  const services = useProjectServices(projectId).services;
   const flows = useZeropsProjectFlowOptional()?.flows;
   // The crew's feed only for a run that worked a crew task.
   const crew = useCrew((outcome?.crewTask ?? null) === null ? null : environmentId);
@@ -138,10 +138,11 @@ export function useRunResultFacts(outcome: OutcomeModel | null | undefined): Res
       readRunResultFacts({
         projectId,
         inventory,
+        services,
         flows,
         crew: environmentId === null || tasks === undefined ? null : { environmentId, tasks },
       }),
-    [environmentId, flows, inventory, projectId, tasks],
+    [environmentId, flows, inventory, projectId, services, tasks],
   );
 }
 

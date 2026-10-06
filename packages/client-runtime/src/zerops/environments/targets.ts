@@ -60,20 +60,8 @@ export interface ListedTarget {
 /** The Zerops project of a `projectId:serviceId` target. */
 export const targetProject = (key: TargetKey): string => key.split(":")[0] ?? key;
 
-/**
- * A remembered target its project's services were read without (§9 C19): waiting for a direct
- * read of those services past `past` (null: past the first one held), or confirmed by one.
- */
-export type Absence =
-  | { readonly kind: "waiting"; readonly past: number | null }
-  | { readonly kind: "confirmed" };
-
 export interface ListedTargets {
   readonly targets: ReadonlyArray<ListedTarget>;
-  /** Every absence now; the next evaluation takes it back. */
-  readonly absences: ReadonlyMap<TargetKey, Absence>;
-  /** The targets whose absence began a wait now: each asks for a direct read of its project. */
-  readonly confirm: ReadonlyArray<TargetKey>;
 }
 
 const GONE: Presence = { kind: "gone", evidence: "complete-scope-omits-verified" };
@@ -86,13 +74,6 @@ export function listTargets(input: {
     readonly listing: Known<ReadonlyArray<CandidateRow>>;
   }>;
   readonly records: ReadonlyArray<RegistrationRecord>;
-  /**
-   * The receipt ordinal of each project's latest complete direct read of its services, by
-   * project id; a project with none held is missing.
-   */
-  readonly directReads: ReadonlyMap<string, number>;
-  /** The absences the last evaluation answered. */
-  readonly absences: ReadonlyMap<TargetKey, Absence>;
   /** Each target's presence as last set; null for a target none was set for. */
   readonly lastPresence: (key: TargetKey) => Presence | null;
 }): ListedTargets {
@@ -131,62 +112,35 @@ export function listTargets(input: {
   );
   const byKey = new Map(rows.map((row) => [row.key, row] as const));
   const recorded = new Map(input.records.map((record) => [record.targetKey, record] as const));
-  const absences = new Map<TargetKey, Absence>();
-  const confirm: TargetKey[] = [];
   /** Region P for a target no row names. */
   const unlisted = (key: TargetKey, record: RegistrationRecord | undefined): Presence | null => {
     const projectId = targetProject(key);
-    const held = input.absences.get(key);
-    // Where its record kept it, while no read of its project's services has said anything (A16).
+    // Where its record kept it, while nothing read has said anything of it (A16).
     const remembered =
-      held === undefined && record?.origin != null
-        ? ({ kind: "remembered", origin: record.origin } as const)
-        : null;
-    // Services not read yet say nothing of a Mate in the project, unless a direct read already
-    // confirmed it gone; a listing that cannot say holds the absence as it was.
-    if (unread.has(projectId)) {
-      if (held?.kind !== "confirmed") return remembered ?? { kind: "unknown" };
-      absences.set(key, held);
-      return null;
-    }
+      record?.origin != null ? ({ kind: "remembered", origin: record.origin } as const) : null;
+    // Services not read yet say nothing of a Mate in the project.
+    if (unread.has(projectId)) return remembered ?? { kind: "unknown" };
+    // Its record's organization is not listed here: nothing here says where it is.
+    if (unlistedOrganization(record)) return remembered ?? input.lastPresence(key);
     // Its project's services were read without it, or its organization's complete listing lacks
     // the project: where its record kept it no longer answers (A16), and anything else it was is
-    // held.
-    if (unlistedOrganization(record)) {
-      if (held !== undefined) absences.set(key, held);
-      return remembered ?? input.lastPresence(key);
-    }
+    // held until every listing is whole.
     const omitted =
       input.lastPresence(key)?.kind === "remembered" ? ({ kind: "unknown" } as const) : null;
     if (!settled) {
-      if (held !== undefined) absences.set(key, held);
       if (listed.has(projectId) || ownComplete(record)) return omitted;
       return unanswered(record) ? remembered : null;
     }
-    if (!listed.has(projectId)) return GONE;
-    const read = input.directReads.get(projectId) ?? null;
-    const next: Absence =
-      held === undefined
-        ? { kind: "waiting", past: read }
-        : held.kind === "confirmed"
-          ? held
-          : held.past === null
-            ? { kind: "waiting", past: read }
-            : read !== null && read > held.past
-              ? { kind: "confirmed" }
-              : held;
-    absences.set(key, next);
-    if (next.kind === "confirmed") return GONE;
-    if (held === undefined || (held.kind === "waiting" && held.past !== next.past))
-      confirm.push(key);
-    return omitted;
+    // Every listing whole: its project's services, live and complete in the organization's
+    // listing, or the organization's projects, no longer name it.
+    return GONE;
   };
   const targets = [...new Set([...byKey.keys(), ...recorded.keys()])].map((key) => {
     const row = byKey.get(key);
     const presence = row !== undefined ? candidatePresence(row) : unlisted(key, recorded.get(key));
     return { key, presence, record: recorded.get(key)?.environmentId ?? null };
   });
-  return { targets, absences, confirm };
+  return { targets };
 }
 
 /**

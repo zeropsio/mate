@@ -35,5 +35,14 @@ export async function observeBrowserBudget(zerops: ZeropsFake) {
       }
       return { requests, registrations, otherRequests: requests - registrations };
     },
+    /** The browser's requests whose `METHOD path` matches, CORS preflights included. */
+    matching(pattern: RegExp) {
+      let count = 0;
+      for (const [credential, counts] of zerops.requestsByCredential) {
+        if (!isBrowser(credential)) continue;
+        for (const [key, spent] of counts) if (pattern.test(key)) count += spent;
+      }
+      return count;
+    },
   };
 }

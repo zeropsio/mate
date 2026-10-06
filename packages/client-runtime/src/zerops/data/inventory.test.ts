@@ -1,7 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 
 import { DEFAULT_ZEROPS_DATA_POLICY } from "./policy.ts";
-import { selectServicesOf } from "./projection.ts";
 import { makeInitialZeropsDataState, reduceZeropsDataState } from "./state.ts";
 import { queryKeyOf, serviceKeyOf, type ServiceDeployInfo } from "./types.ts";
 import {
@@ -284,11 +283,6 @@ describe("Zerops inventory model", () => {
     const query = state.inventory.queries.get(queryKeyOf(descriptor));
     expect(query?.memberKeys).toEqual([serviceKeyOf(b)]);
     expect(state.inventory.services.has(serviceKeyOf(a))).toBe(true);
-    expect(
-      selectServicesOf(state, p).value.map((item) =>
-        item.knowledge === "observed" ? item.record.ref.serviceId : item.ref.serviceId,
-      ),
-    ).toEqual([b.serviceId, a.serviceId]);
   });
 
   it("distinguishes a complete empty snapshot from a partial empty window", () => {

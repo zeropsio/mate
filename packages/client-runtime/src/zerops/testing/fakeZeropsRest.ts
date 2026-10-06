@@ -337,13 +337,14 @@ export function makeFakeZeropsRest(): FakeZeropsRest {
           .map((project) => searchRow(bearer, project));
         return json(200, { items, totalHits: items.length });
       }
-      // The account store's receiver: its login, and the running work and active versions it
-      // registers (none here).
+      // The account store's receiver: its login, and the running work, active versions and
+      // services it registers (none here).
       case "POST /web-socket/login":
         if (bearer === undefined) return failure(401, "unauthorized");
         return json(200, { webSocketToken: `ws-${request.token}` });
       case "POST /process/search":
       case "POST /app-version/search":
+      case "POST /service-stack/search":
         if (bearer === undefined) return failure(401, "unauthorized");
         return json(200, { items: [], totalHits: 0 });
       case "GET /user/info": {

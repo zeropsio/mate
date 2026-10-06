@@ -10,6 +10,7 @@ import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
 import type { DetailDemand } from "./demand.ts";
 import { projectProcesses, type ProjectProcesses } from "./projections/processes.ts";
 import type { ProjectValue } from "./families/project.ts";
+import { projectServices, projectsServices, type ProjectServices } from "./projections/services.ts";
 import {
   listedProject,
   organizationProjects,
@@ -55,6 +56,41 @@ export const projectProcessesAtom = Atom.family((projectId: string) =>
     if (account === null || account.orgId === null) return NOT_READ_PROCESSES;
     return get(account.data.project(projectProcesses, { orgId: account.orgId, projectId }));
   }).pipe(Atom.withLabel(`data:project-processes:${projectId}`)),
+);
+
+export const NOT_READ_SERVICES: ProjectServices = {
+  services: undefined,
+  live: false,
+  reconnecting: false,
+};
+
+/** One project's services as the mounted account holds them; not read without one. */
+export const projectServicesAtom = Atom.family((projectId: string) =>
+  Atom.make((get): ProjectServices => {
+    const account = get(accountReadsAtom);
+    if (account === null || account.orgId === null) return NOT_READ_SERVICES;
+    return get(account.data.project(projectServices, { orgId: account.orgId, projectId }));
+  }).pipe(Atom.withLabel(`data:project-services:${projectId}`)),
+);
+
+const NO_PROJECTS_SERVICES: Readonly<Record<string, ProjectServices>> = {};
+
+/**
+ * Several projects' services at once, as the mounted account holds them, by project id; nothing
+ * without one. Keyed by the ids joined with `,`.
+ */
+export const projectsServicesAtom = Atom.family((projectIds: string) =>
+  Atom.make((get): Readonly<Record<string, ProjectServices>> => {
+    const account = get(accountReadsAtom);
+    if (account === null || account.orgId === null || projectIds === "")
+      return NO_PROJECTS_SERVICES;
+    return get(
+      account.data.project(projectsServices, {
+        orgId: account.orgId,
+        projectIds: projectIds.split(","),
+      }),
+    );
+  }).pipe(Atom.withLabel(`data:projects-services:${projectIds}`)),
 );
 
 export const NOT_READ_PROJECTS: OrganizationProjects = {
@@ -165,3 +201,24 @@ export const shownHqStatusAtom = Atom.make((get): HqStatusValue | null => {
   if (account === null || account.orgId === null) return null;
   return get(account.data.project(hqStatus, account.orgId));
 }).pipe(Atom.withLabel("data:shown-hq-status"));
+/**
+ * Holds one service's own read from outside React, through whichever account is mounted in
+ * `registry`: moved to a newly mounted one, let go on release.
+ */
+export function holdServiceRead(
+  registry: AtomRegistry.AtomRegistry,
+  serviceId: string,
+): () => void {
+  let release: (() => void) | null = null;
+  const hold = (account: AccountReads | null) => {
+    release?.();
+    release =
+      account?.demandDetail({ family: "service", listing: "service", ownerId: serviceId }) ?? null;
+  };
+  const unsubscribe = registry.subscribe(accountReadsAtom, hold, { immediate: true });
+  return () => {
+    unsubscribe();
+    release?.();
+    release = null;
+  };
+}

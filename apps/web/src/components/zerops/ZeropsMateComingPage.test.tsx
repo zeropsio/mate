@@ -143,6 +143,7 @@ vi.mock("~/zerops/zeropsContainers", () => ({
 }));
 vi.mock("~/zerops/ZeropsAccountData", () => ({
   useAccountData: () => ({ orgId: "org-1" }),
+  useProjectServices: () => ({ services: undefined, live: false, reconnecting: false }),
 }));
 vi.mock("~/zerops/accountOperations", () => ({
   useAccountOperations: () => ({ submit: () => new Promise(() => {}) }),

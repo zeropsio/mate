@@ -90,10 +90,11 @@ describe("central Zerops data bindings", () => {
     expect(inventory).toContain("organizationProjectsRead(");
     expect(inventory).toContain("projectRead(");
     expect(inventory).not.toContain("runtime.reads.projectsOf(");
-    expect(inventory).toContain("runtime.reads.servicesOf(");
+    // A project's services are the store's organization-wide listing, never the runtime's.
+    expect(inventory).not.toContain("runtime.reads.servicesOf(");
     expect(inventory).not.toContain("runtime.stateAtom");
 
-    // The candidates are the account's listing: the store's projects, the runtime's services.
+    // The candidates are the account's listing: the store's projects and services.
     const candidates = source("../state/zerops.ts");
     expect(candidates).toContain("mateListingsAtom(runtime)");
     expect(candidates).not.toContain("runtime.stateAtom");

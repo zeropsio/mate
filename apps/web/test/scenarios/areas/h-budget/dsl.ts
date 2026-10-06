@@ -14,6 +14,12 @@ export function budgets(s: Scenario) {
       mates: Effect.fn("budgets.given.mates")(function* (names: string[]) {
         for (const name of names) yield* s.given.project(name, { mate: true, app: "Shop" });
       }),
+      /** The Mates' containers ACTIVE with their address not turned on. */
+      addressesOff: Effect.sync(() => {
+        for (const row of s.drivers.zerops.rows("service-stack"))
+          if (row.name === "zcp")
+            s.drivers.zerops.put("service-stack", { ...row, subdomainAccess: false });
+      }),
       plainProjects: Effect.fn("budgets.given.plainProjects")(function* (names: string[]) {
         for (const name of names) yield* s.given.project(name);
       }),
@@ -62,6 +68,12 @@ export function budgets(s: Scenario) {
     },
     measure: {
       browser: observation.browser.sample,
+      /** One project's process history read, `GET /project/{id}/process`, and its preflight. */
+      projectHistoryReads: () =>
+        observation.browser.matching(/^(GET|OPTIONS) \/project\/[^/]+\/process(\?|$)/u),
+      /** One project's own services read, `GET /project/{id}/service-stack`, and its preflight. */
+      projectServiceReads: () =>
+        observation.browser.matching(/^(GET|OPTIONS) \/project\/[^/]+\/service-stack(\?|$)/u),
       hqSegments: () => observation.hq.segments,
       firstData: (after = 0) => {
         const samples = observation.hq.segments.slice(after).map((segment) => {

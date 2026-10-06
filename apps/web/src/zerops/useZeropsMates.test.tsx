@@ -4,12 +4,10 @@ import type { ZeropsProject, ZeropsService } from "@t3tools/client-runtime/zerop
 import {
   DEFAULT_ZEROPS_DATA_POLICY,
   createZeropsDataAtoms,
-  decodeEntityQueryResponse,
   makeInitialZeropsDataState,
   projectKeyOf,
   reduceZeropsDataState,
   type ManagedZeropsDataRuntime,
-  type ProtocolDecodeResult,
 } from "@t3tools/client-runtime/zerops/data";
 import { EnvironmentId } from "@t3tools/contracts";
 import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
@@ -19,12 +17,10 @@ import { zeropsDataRuntimeAtom, zeropsInventoryAtom, zeropsSessionAtom } from ".
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import {
   desiredInterest,
-  directTicket,
   identity,
   organization,
   project,
   scope,
-  stamp,
 } from "./__fixtures__/platformData";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
 import { zeropsMateAt } from "./mateIdentities";
@@ -84,37 +80,11 @@ function registered(input: {
  */
 function readRuntime(): ManagedZeropsDataRuntime {
   const id = identity();
-  let state = reduceZeropsDataState(
+  const state = reduceZeropsDataState(
     makeInitialZeropsDataState(scope()),
     { kind: "interest-upserted", interest: desiredInterest(id) },
     DEFAULT_ZEROPS_DATA_POLICY,
   ).state;
-  let ordinal = 1;
-  const ingest = (decoded: ProtocolDecodeResult) => {
-    for (const input of decoded.observations) {
-      state = reduceZeropsDataState(
-        state,
-        {
-          kind: "observation",
-          observation: { input, stamp: stamp(++ordinal), accessEvidence: null },
-        },
-        DEFAULT_ZEROPS_DATA_POLICY,
-      ).state;
-    }
-  };
-  const services = {
-    kind: "services-of-project" as const,
-    project: owner,
-    schemaVersion: 1 as const,
-  };
-  ingest(
-    decodeEntityQueryResponse(
-      services,
-      directTicket({ kind: "query", descriptor: services }, id, 3, 3),
-      { list: [{ ...ZCP, projectId: owner.projectId }], totalCount: 1 },
-      "direct-read",
-    ),
-  );
   const granted = {
     machine: {
       phase: {
@@ -143,7 +113,9 @@ function readRuntime(): ManagedZeropsDataRuntime {
 
 /** What the account's product publishes once its inventory is granted; its store's roster. */
 function publishAccount(registry: AtomRegistry.AtomRegistry) {
-  mountRoster(registry, organization.organizationId, [PROJECT]);
+  mountRoster(registry, organization.organizationId, [PROJECT], {
+    services: [{ ...ZCP, projectId: PROJECT.id }],
+  });
   registry.set(zeropsDataRuntimeAtom, readRuntime());
   registry.set(zeropsSessionAtom, {
     status: "signed-in",
@@ -152,7 +124,6 @@ function publishAccount(registry: AtomRegistry.AtomRegistry) {
   });
   registry.set(zeropsInventoryAtom, {
     projects: [PROJECT],
-    services: new Map([[PROJECT.id, { status: "resolved" as const, services: [ZCP] }]]),
     projectRefs: new Map([[projectKeyOf(owner), owner]]),
     authority: new Map(),
     account: { kind: "authorized" },

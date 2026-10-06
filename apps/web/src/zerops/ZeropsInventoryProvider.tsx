@@ -8,7 +8,6 @@ import {
   projectGrantsOf,
   withProjectGrants,
   type ZeropsProject,
-  type ZeropsService,
 } from "@t3tools/client-runtime/zerops";
 import {
   evidenceProjectRefs,
@@ -23,7 +22,6 @@ import {
   interestKeyOf,
   organizationKeyOf,
   projectRecordToZeropsProject,
-  serviceRecordToZeropsService,
   type GrantFailure,
   type InterestState,
   type OrganizationRef,
@@ -64,7 +62,6 @@ import {
   type AccountTrouble,
   inventoryProjectRefKey,
   type Inventory,
-  type InventoryServiceOutcome,
 } from "./inventoryContext";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 import {
@@ -89,24 +86,6 @@ type OrganizationInventoryDescriptor = Extract<
   RuntimeInterestDescriptor,
   { readonly kind: "organization-inventory" }
 >;
-
-/**
- * A project's service list can go transiently unread mid-re-projection (its
- * read entry not yet in `serviceReads`, or briefly unobserved) even though
- * nothing about the project actually changed. Falling straight to "failed"
- * there would blank the row's summary line and bring it back a moment
- * later. Carry the previous resolved outcome forward instead; a freshly
- * resolved outcome still replaces it immediately.
- */
-export function carryForwardServiceOutcome(
-  previous: ReadonlyMap<string, InventoryServiceOutcome>,
-  projectId: string,
-  computed: InventoryServiceOutcome,
-): InventoryServiceOutcome {
-  if (computed.status === "resolved") return computed;
-  const prior = previous.get(projectId);
-  return prior?.status === "resolved" ? prior : computed;
-}
 
 function demandedInterest(
   observation: ViewObservation | undefined,
@@ -248,7 +227,6 @@ function makeInventorySnapshotSelector() {
     // DTO consumers do not depend on the canonical record's admission clocks.
     const key = JSON.stringify([
       next.projects,
-      [...next.services],
       [...next.projectRefs.keys()],
       [...next.authority],
       next.account,
@@ -281,8 +259,8 @@ export function accessLapseCopy(failure: GrantFailure | null): {
 const AUTHORIZED: ScopeAuthority = { kind: "authorized" };
 
 /**
- * One account inventory, read from the data runtime: its projects and
- * services, and the access grant the runtime interprets (DESIGN §4.2) — the
+ * One account inventory: its projects, as the account's store lists them
+ * (`projectBridge`), and the access grant the runtime interprets (DESIGN §4.2) — the
  * evidence that names the projects, each project's authority, and the lapse.
  *
  * It holds no demand of its own: the account runtime holds the inventories it
@@ -451,44 +429,6 @@ export function ZeropsInventoryProvider({
     [knownProjectRefs],
   );
   const projectReads = useZeropsAtomSelections(projectReadEntries);
-  const projectDescriptors = useMemo(
-    () =>
-      knownProjectRefs.flatMap((ref) => {
-        const key = inventoryProjectRefKey(ref);
-        const knowledge = projectReads.get(key)?.value;
-        const observed =
-          knowledge?.knowledge === "observed"
-            ? projectRecordToZeropsProject(knowledge.record)
-            : null;
-        const status = observed?.status;
-        // A project withheld until its denial is confirmed is not demanded (G6).
-        return !denied.has(key) && (status === undefined || status === "ACTIVE")
-          ? [{ kind: "project-inventory" as const, project: ref }]
-          : [];
-      }),
-    [denied, knownProjectRefs, projectReads],
-  );
-  const serviceReadEntries = useMemo(
-    () =>
-      projectDescriptors.map(
-        (descriptor) =>
-          [
-            inventoryProjectRefKey(descriptor.project),
-            stabilizeZeropsAtom(
-              runtime.reads.servicesOf(descriptor.project),
-              (left, right) =>
-                left.query === right.query &&
-                zeropsKnowledgeArraysEqual(left.value, right.value) &&
-                left.observation.access === right.observation.access &&
-                demandedInterest(left.observation, descriptor) ===
-                  demandedInterest(right.observation, descriptor),
-            ),
-          ] as const,
-      ),
-    [projectDescriptors, runtime],
-  );
-  const serviceReads = useZeropsAtomSelections(serviceReadEntries);
-  const prevServiceOutcomesRef = useRef<ReadonlyMap<string, InventoryServiceOutcome>>(new Map());
   /** Each organization whose data failed and has not observed since (`troubleLatch`). */
   const troubleRef = useRef<ReadonlyMap<string, TroubleEntry>>(new Map());
   // The latch holds still while the tab is hidden; a tab shown again reads its demand afresh.
@@ -503,117 +443,34 @@ export function ZeropsInventoryProvider({
 
   const projected = useMemo(() => {
     const projects: ZeropsProject[] = [];
-    const services = new Map<string, InventoryServiceOutcome>();
-    // A project that has not (yet, or ever) become ACTIVE gets an empty-services
-    // placeholder below, written straight into `services` for this render only.
-    // It must never enter the carry-forward cache: `resolvedOrCarried` treats any
-    // cached "resolved" entry as trustworthy, and once the project turns ACTIVE
-    // this placeholder would otherwise be handed back as its outcome before that
-    // project's own services have ever actually been read — reading as "no Zerops
-    // Mate container in this project" instead of "still reading".
-    const carryableOutcomes = new Map<string, InventoryServiceOutcome>();
     const projectRefs = new Map<string, ProjectRef>();
-    const previousOutcomes = prevServiceOutcomesRef.current;
-    const resolvedOrCarried = (projectId: string, computed: InventoryServiceOutcome) =>
-      carryForwardServiceOutcome(previousOutcomes, projectId, computed);
-    /** The organizations some of whose projects or services are not read yet. */
+    /** The organizations some of whose projects are not read yet. */
     const unread = new Set<string>();
     for (const ref of knownProjectRefs) {
       const key = inventoryProjectRefKey(ref);
       projectRefs.set(key, ref);
-      // A project withheld until its denial is confirmed holds nothing open (G6).
-      const incomplete = () => {
-        const required = serviceReads.get(key)?.observation.required;
-        if (denied.has(key) || required === undefined) return;
-        const inventoryKey = interestKeyOf({ kind: "project-inventory", project: ref });
-        const topologyKey = interestKeyOf({ kind: "project-topology", project: ref });
-        if (
-          !required.some(
-            ({ identity }) => identity.key === inventoryKey || identity.key === topologyKey,
-          )
-        )
-          return;
-        unread.add(ref.organization.organizationId);
-      };
       const project = projectReads.get(key)?.value;
-      if (project === undefined) {
-        incomplete();
-        continue;
-      }
-      if (project.knowledge !== "observed") {
-        incomplete();
-        continue;
-      }
-      const dto = projectRecordToZeropsProject(project.record);
+      const dto =
+        project?.knowledge === "observed" ? projectRecordToZeropsProject(project.record) : null;
+      // A project withheld until its denial is confirmed holds nothing open (G6).
       if (dto === null) {
-        incomplete();
+        if (!denied.has(key)) unread.add(ref.organization.organizationId);
         continue;
       }
       projects.push(dto);
-      if (dto.status !== "ACTIVE") {
-        services.set(dto.id, { status: "resolved", services: [] });
-        continue;
-      }
-      const serviceRead = serviceReads.get(key);
-      if (serviceRead === undefined) {
-        incomplete();
-        const outcome = resolvedOrCarried(dto.id, { status: "failed" });
-        services.set(dto.id, outcome);
-        carryableOutcomes.set(dto.id, outcome);
-        continue;
-      }
-      if (serviceRead.query.status !== "observed") {
-        if (serviceRead.observation.required.length > 0) incomplete();
-        const outcome = resolvedOrCarried(dto.id, { status: "failed" });
-        services.set(dto.id, outcome);
-        carryableOutcomes.set(dto.id, outcome);
-        continue;
-      }
-      const decoded: ZeropsService[] = [];
-      let serviceComplete = true;
-      for (const knowledge of serviceRead.value) {
-        if (knowledge.knowledge !== "observed") {
-          incomplete();
-          serviceComplete = false;
-          continue;
-        }
-        const service = serviceRecordToZeropsService(knowledge.record);
-        if (service === null) {
-          incomplete();
-          serviceComplete = false;
-        } else decoded.push(service);
-      }
-      const outcome = resolvedOrCarried(
-        dto.id,
-        serviceComplete ? { status: "resolved", services: decoded } : { status: "failed" },
-      );
-      services.set(dto.id, outcome);
-      carryableOutcomes.set(dto.id, outcome);
     }
-    prevServiceOutcomesRef.current = carryableOutcomes;
-    const demanded = [
-      ...organizationDescriptors.map((descriptor) => ({
-        organization: descriptor.organization,
-        projectId: null,
-        interest: demandedInterest(
-          organizationReads.get(interestKeyOf(descriptor))?.observation,
-          descriptor,
-        ),
-      })),
-      ...projectDescriptors.map((descriptor) => ({
-        organization: descriptor.project.organization,
-        projectId: descriptor.project.projectId as string | null,
-        interest: demandedInterest(
-          serviceReads.get(inventoryProjectRefKey(descriptor.project))?.observation,
-          descriptor,
-        ),
-      })),
-    ];
+    const demanded = organizationDescriptors.map((descriptor) => ({
+      organization: descriptor.organization,
+      projectId: null,
+      interest: demandedInterest(
+        organizationReads.get(interestKeyOf(descriptor))?.observation,
+        descriptor,
+      ),
+    }));
     const read = demandedReads(demanded, troubleRef.current, Date.now(), documentHidden);
     troubleRef.current = read.latch;
     return {
       projects,
-      services,
       projectRefs,
       unreadOrganizations: [...unread],
       blockedOrganizations: read.blockedOrganizations,
@@ -626,9 +483,7 @@ export function ZeropsInventoryProvider({
     documentHidden,
     organizationDescriptors,
     organizationReads,
-    projectDescriptors,
     projectReads,
-    serviceReads,
     knownProjectRefs,
   ]);
 
@@ -774,7 +629,7 @@ export function ZeropsInventoryProvider({
   );
 
   // Withholding is applied here, at the inventory's one read (DESIGN law 5, §3.1): a withheld
-  // project's content leaves `projects` and `services` and comes back with its next authority.
+  // project's content leaves `projects` and comes back with its next authority.
   const shown = useMemo(() => {
     const withheld = new Set<string>(
       [...projected.projectRefs].flatMap(([key, ref]) =>
@@ -783,18 +638,11 @@ export function ZeropsInventoryProvider({
           : [],
       ),
     );
-    return {
-      projects: placed.filter(({ id }) => !withheld.has(id)),
-      services: new Map([...projected.services].filter(([id]) => !withheld.has(id))),
-    };
+    return placed.filter(({ id }) => !withheld.has(id));
   }, [account, authority, placed, projected]);
-  const held = useMemo(
-    () => ({ projects: placed, services: projected.services }),
-    [placed, projected.services],
-  );
+  const held = useMemo(() => ({ projects: placed }), [placed]);
   const snapshot = selectSnapshot({
-    projects: shown.projects,
-    services: shown.services,
+    projects: shown,
     projectRefs: projected.projectRefs,
     authority,
     account,
@@ -807,14 +655,12 @@ export function ZeropsInventoryProvider({
     if (!ready) return;
     const {
       projects,
-      services,
       projectRefs,
       authority: projectAuthority,
       account: accountAuthority,
     } = snapshot;
     registry.set(zeropsInventoryAtom, {
       projects,
-      services,
       projectRefs,
       authority: projectAuthority,
       account: accountAuthority,

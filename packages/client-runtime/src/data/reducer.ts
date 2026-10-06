@@ -205,6 +205,20 @@ function admits(
   row: Row,
 ): boolean {
   if (supersedes(current.revision, row.revision, input.method)) return true;
+  // A read with no revision — a by-id read, or a detail listing's baseline read — newer by the
+  // owner's own word (`FamilySpec.readIsNewer`). A push always carries its revision.
+  const readIsNewer = familySpec(row.family).readIsNewer as
+    | ((held: unknown, read: unknown) => boolean)
+    | undefined;
+  if (
+    readIsNewer !== undefined &&
+    input.method !== "push" &&
+    row.revision.kind === "zerops" &&
+    row.revision.version === null &&
+    current.content.kind === "value" &&
+    readIsNewer(current.content.value, row.value)
+  )
+    return true;
   // An end a read brings is the owner's last word, over a value that is no end (`FamilySpec.ended`).
   const ended = familySpec(row.family).ended as ((value: unknown) => boolean) | undefined;
   if (
@@ -238,8 +252,15 @@ function reduceRows(
     const key = factKey(row.family, row.id);
     const current = (draft ?? state.facts).get(key);
     if (current !== undefined && !admits(state, input, current, row)) continue;
+    const merge = familySpec(row.family).merge as
+      | ((held: unknown, pushed: unknown) => unknown)
+      | undefined;
+    const value =
+      merge !== undefined && input.method === "push" && current?.content.kind === "value"
+        ? merge(current.content.value, row.value)
+        : row.value;
     const fact: Fact<unknown> = {
-      content: { kind: "value", value: row.value },
+      content: { kind: "value", value },
       revision: row.revision,
       // The family's owner, whichever path delivered it: HQ's relay of attention stays the Mate's.
       authority: familySpec(row.family).authority,

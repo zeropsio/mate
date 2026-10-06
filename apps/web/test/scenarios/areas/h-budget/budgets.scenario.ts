@@ -165,6 +165,54 @@ describe("H: hosted client budgets", () => {
       }),
     );
 
+    // Catches navigation starting detail reads: a Mate without its address shown nowhere holds no
+    // project history, at start or over an idle session.
+    it.effect("Mates without their address read no project history while nothing shows them", () =>
+      Effect.gen(function* () {
+        const s = yield* createScenario([installBudget]);
+        const b = budgets(s);
+        yield* b.given.mates(names);
+        yield* b.given.addressesOff;
+        yield* Effect.promise(() => s.clock.install());
+        yield* s.given.signedIn;
+        yield* b.when.menuReady(names);
+        yield* b.when.browserSettled;
+        const atStart = b.measure.projectHistoryReads();
+        yield* Effect.promise(() => s.clock.advance(120_000));
+        yield* b.when.browserSettled;
+        const idle = b.measure.projectHistoryReads() - atStart;
+        report(
+          `H no address: GET project process history (with preflights) at start=${atStart}, over 2 min idle=${idle}; 4 Mates`,
+        );
+        yield* s.then.noExternalNetwork;
+        expect(atStart, "Process history reads at start").toBe(0);
+        expect(idle, "Process history reads while idle").toBe(0);
+      }),
+    );
+
+    // Catches a per-project services read: at start, or repeated over an idle session.
+    it.effect("an idle session reads no project's services on its own", () =>
+      Effect.gen(function* () {
+        const s = yield* createScenario([installBudget]);
+        const b = budgets(s);
+        yield* b.given.mates(names);
+        yield* Effect.promise(() => s.clock.install());
+        yield* s.given.signedIn;
+        yield* b.when.menuReady(names);
+        yield* b.when.browserSettled;
+        const atStart = b.measure.projectServiceReads();
+        yield* Effect.promise(() => s.clock.advance(120_000));
+        yield* b.when.browserSettled;
+        const idle = b.measure.projectServiceReads() - atStart;
+        report(
+          `H idle: GET service-stack (with preflights) at start=${atStart}, over 2 min idle=${idle}; 4 Mates`,
+        );
+        yield* s.then.noExternalNetwork;
+        expect(atStart, "Per-project services reads at start").toBe(0);
+        expect(idle, "Per-project services reads while idle").toBe(0);
+      }),
+    );
+
     // Targets today's per-Mate startup reads, which make a large organization slow and expensive.
     it.effect.fails(
       "target: browser startup uses at most eight registrations and eight other requests",

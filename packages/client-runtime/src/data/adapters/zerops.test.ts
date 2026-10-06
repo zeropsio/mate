@@ -58,7 +58,14 @@ function answers(
     const output = request.body?.wsOutputType;
     if (output === "updateStream") return Effect.succeed({ success: true });
     if (output === "listStream")
-      return Effect.succeed({ items: request.path === PROJECT_SEARCH ? projects() : running() });
+      return Effect.succeed({
+        items:
+          request.path === PROJECT_SEARCH
+            ? projects()
+            : request.path === PROCESS_SEARCH
+              ? running()
+              : [],
+      });
     const ids = searched(request).find((term) => term.name === "id")
       ?.value as ReadonlyArray<string>;
     return Effect.succeed({ items: ids.flatMap((id) => firstRows.get(id) ?? []) });
@@ -218,7 +225,7 @@ describe("zeropsNavigationLink", () => {
       expect(fixture.opens()).toBe(2);
       expect(
         fixture.requests.filter((request) => request.body?.receiverId === "receiver-2"),
-      ).toHaveLength(6);
+      ).toHaveLength(8);
       // One project was taken from the viewer meanwhile: every scope is registered once more.
       const again = store.state().streams.get(linkKeys.zerops(ORG));
       yield* TestClock.adjust(again?.next.kind === "retry" ? again.next.at : 0);
@@ -535,6 +542,53 @@ describe("a demanded detail", () => {
       expect(historyReads(fixture)).toBe(2);
       yield* Fiber.interrupt(fiber);
     }),
+  );
+
+  it.effect(
+    "takes a service read by its id over the listing's row when Zerops updated it since",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const zcp = {
+          id: "s1",
+          clientId: ORG,
+          projectId: PROBE_PROJECT_ID,
+          name: "zcp",
+          status: "ACTIVE",
+        };
+        const fixture = fixtureWire((request) =>
+          request.method === "GET" && request.path === "/service-stack/s1"
+            ? // Its own row, after its address was turned on: no `_version`, a newer lastUpdate.
+              Effect.succeed({
+                status: 200,
+                body: { ...zcp, subdomainAccess: true, lastUpdate: "2026-10-02T12:01:50Z" },
+              })
+            : request.path === "/service-stack/search" &&
+                request.body?.wsOutputType === "listStream"
+              ? Effect.succeed({
+                  items: [
+                    {
+                      ...zcp,
+                      subdomainAccess: false,
+                      lastUpdate: "2026-10-02T12:01:40Z",
+                      _version: 3,
+                    },
+                  ],
+                })
+              : answers(() => [])(request),
+        );
+        const { fiber, link } = yield* runLink(store, fixture);
+        expect(factOf(store.state(), "service", "s1")?.content).toMatchObject({
+          value: { subdomainAccess: false },
+        });
+
+        link.demandDetail({ family: "service", listing: "service", ownerId: "s1" });
+        yield* settle;
+        expect(factOf(store.state(), "service", "s1")?.content).toMatchObject({
+          value: { subdomainAccess: true },
+        });
+        yield* Fiber.interrupt(fiber);
+      }),
   );
 
   it.effect("goes stale with its link and reads every demanded history again when it returns", () =>

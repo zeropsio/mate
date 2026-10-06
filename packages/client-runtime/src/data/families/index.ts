@@ -17,6 +17,7 @@ import { hqMateFamily } from "./hqMate.ts";
 import { processFamily } from "./process.ts";
 import { projectFamily } from "./project.ts";
 import { versionFamily } from "./version.ts";
+import { serviceFamily } from "./service.ts";
 import type { AnyFamilySpec, DetailListing } from "./spec.ts";
 
 /** The registry, checked once at startup: a family, a scope name and an index name each once. */
@@ -48,6 +49,7 @@ export const FAMILIES = defineFamilies([
   hqPersonFamily,
   hqPressFamily,
   hqMateFamily,
+  serviceFamily,
 ]);
 
 const byFamily = new Map<string, AnyFamilySpec>(FAMILIES.map((spec) => [spec.family, spec]));

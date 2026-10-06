@@ -638,8 +638,11 @@ export class ZeropsFake {
       const row = this.rows(single[1]!).find((r) => r.id === single[2]);
       if (row && !this.canReadRow(bearer, single[1]!, row))
         return this.error(403, "insufficientPermissions", "Insufficient permissions");
+      // A REST read answers the entity without its `_version`: only the stream's rows carry it
+      // (measured, client-runtime `__fixtures__/z3-eval.service-stack.json`).
+      const { _version: _unversioned, ...answered } = row ?? {};
       return row
-        ? { body: row }
+        ? { body: answered }
         : this.error(
             400,
             `${single[1] === "service-stack" ? "serviceStack" : single[1] === "app-version" ? "appVersion" : single[1]}NotFound`,

@@ -1,13 +1,15 @@
 import { Atom } from "effect/unstable/reactivity";
 
+import { projectServices } from "../../data/projections/services.ts";
+import { accountReadsAtom, NOT_READ_SERVICES } from "../../data/reads.ts";
 import {
   selectCommandAttempt,
   selectHistory,
   selectService,
-  selectServicesOf,
   selectTopology,
   selectUsage,
 } from "./projection.ts";
+import { runtimeServicesRead } from "./serviceBridge.ts";
 import type { Shown } from "../knowledge/known.ts";
 import {
   selectDeployedVersion,
@@ -143,6 +145,58 @@ function remember<Ref>(refs: RefRegistry<Ref>, key: string, ref: Ref): string {
   return key;
 }
 
+/**
+ * A project's services as the runtime's readers take them: the account's store's, through the
+ * in-transit bridge (`serviceBridge.ts`).
+ */
+export function bridgedServicesOf(
+  get: Atom.AtomContext,
+  project: ProjectRef,
+): CollectionRead<ServiceRecord> {
+  const account = get(accountReadsAtom);
+  return runtimeServicesRead(
+    project,
+    account === null
+      ? NOT_READ_SERVICES
+      : get(
+          account.data.project(projectServices, {
+            orgId: project.organization.organizationId,
+            projectId: project.projectId,
+          }),
+        ),
+  );
+}
+
+/** One service's record as the account's store holds it; none while it is not listed. */
+const bridgedServiceOf = (
+  get: Atom.AtomContext,
+  service: ServiceRef,
+): ServiceRecord | undefined => {
+  for (const entry of bridgedServicesOf(get, service.project).value)
+    if (entry.knowledge === "observed" && entry.record.ref.serviceId === service.serviceId)
+      return entry.record;
+  return undefined;
+};
+
+/**
+ * One value derived from the runtime's state and the account's store, published only when it
+ * reads differently.
+ */
+function stableBridgedAtom<Value>(
+  stateAtom: Atom.Atom<ZeropsDataState>,
+  select: (state: ZeropsDataState, get: Atom.AtomContext) => Value,
+  equal: (left: Value, right: Value) => boolean,
+  label: string,
+): Atom.Atom<Value> {
+  let previous: Value | undefined;
+  return Atom.make((get) => {
+    const next = select(get(stateAtom), get);
+    if (previous !== undefined && equal(previous, next)) return previous;
+    previous = next;
+    return next;
+  }).pipe(Atom.withLabel(label));
+}
+
 /** Creates account-data projections without owning or disposing the application AtomRegistry. */
 export function createZeropsDataAtoms(stateAtom: Atom.Atom<ZeropsDataState>): {
   readonly stateAtom: Atom.Atom<ZeropsDataState>;
@@ -154,17 +208,18 @@ export function createZeropsDataAtoms(stateAtom: Atom.Atom<ZeropsDataState>): {
   const attempts = new Map<string, CommandAttemptRef>();
 
   const serviceAtom = Atom.family((key: string) =>
-    stableAtom(
+    stableBridgedAtom(
       stateAtom,
-      (state) => selectService(state, services.get(key)!),
+      (state, get) =>
+        selectService(state, services.get(key)!, bridgedServiceOf(get, services.get(key)!)),
       entityReadsEqual,
       `zerops-service:${key}`,
     ),
   );
   const servicesOfAtom = Atom.family((key: string) =>
-    stableAtom(
+    stableBridgedAtom(
       stateAtom,
-      (state) => selectServicesOf(state, projects.get(key)!),
+      (_state, get) => bridgedServicesOf(get, projects.get(key)!),
       collectionReadsEqual,
       `zerops-services:${key}`,
     ),
@@ -203,9 +258,10 @@ export function createZeropsDataAtoms(stateAtom: Atom.Atom<ZeropsDataState>): {
     ),
   );
   const topologyAtom = Atom.family((key: string) =>
-    stableAtom(
+    stableBridgedAtom(
       stateAtom,
-      (state) => selectTopology(state, projects.get(key)!),
+      (state, get) =>
+        selectTopology(state, projects.get(key)!, bridgedServicesOf(get, projects.get(key)!)),
       (left: ProjectTopologyRead, right: ProjectTopologyRead) =>
         entityReadsEqual(left.project, right.project) &&
         collectionReadsEqual(left.services, right.services) &&
@@ -223,9 +279,10 @@ export function createZeropsDataAtoms(stateAtom: Atom.Atom<ZeropsDataState>): {
   );
 
   const deployedVersionAtom = Atom.family((key: string) =>
-    stableAtom(
+    stableBridgedAtom(
       stateAtom,
-      (state) => selectDeployedVersion(state, services.get(key)!),
+      (state, get) =>
+        selectDeployedVersion(state, services.get(key)!, bridgedServiceOf(get, services.get(key)!)),
       shownVersionsEqual,
       `zerops-deployed-version:${key}`,
     ),
@@ -240,9 +297,10 @@ export function createZeropsDataAtoms(stateAtom: Atom.Atom<ZeropsDataState>): {
   );
 
   const setupMarkerAtom = Atom.family((key: string) =>
-    stableAtom(
+    stableBridgedAtom(
       stateAtom,
-      (state) => selectSetupMarker(state, services.get(key)!),
+      (state, get) =>
+        selectSetupMarker(state, services.get(key)!, bridgedServiceOf(get, services.get(key)!)),
       Object.is,
       `zerops-setup-marker:${key}`,
     ),

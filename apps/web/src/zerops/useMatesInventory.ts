@@ -1,10 +1,9 @@
 /**
- * The project inventories of the Mates a surface draws, held while it draws them (R7: the drawn
- * stop owns its service demand). Access is verified and services read only for a project some
- * surface demands, so whatever draws a Mate with its menu demands its project: without it, the
- * Mate's container stays unread — no service to restart, nothing up to add an environment beside.
- * Its project is read as a route's is, and nothing connects to it. Only the Mates drawn are read:
- * the projects page's, a project page's own, the left menu's rows as they are mounted.
+ * The project inventories of the Mates a surface draws, held while it draws them. A Mate's
+ * services are the organization's services listing's, read for every project at once; what the
+ * held inventory still demands is the Mate's container's variables (its setup marker and Mate
+ * flag), read only for the Mates drawn: the projects page's, a project page's own, the left
+ * menu's rows as they are mounted.
  */
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { isMateKind } from "@t3tools/shared/zeropsRoles";

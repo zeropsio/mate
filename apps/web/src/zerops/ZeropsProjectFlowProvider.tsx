@@ -102,6 +102,7 @@ import {
   projectAuthority,
   withheldProjectNotice,
 } from "./inventoryContext";
+import { useProjectsServices } from "./ZeropsAccountData";
 import { useZeropsInventory } from "./ZeropsInventoryProvider";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
@@ -505,6 +506,11 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
    * (DESIGN M7), and its stop renders withheld where it is drawn.
    */
   const held = useContext(HeldInventoryContext);
+  const heldProjectIds = useMemo(
+    () => (held === null ? [] : held.projects.map(({ id }) => id)),
+    [held],
+  );
+  const heldServices = useProjectsServices(heldProjectIds);
   const groupProjects = useMemo(
     () =>
       new Map(
@@ -513,23 +519,23 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
           (held === null ? [] : held.projects)
             .filter((project) => readZeropsMembership(project).groupId === entry.groupId)
             .map((project): GroupStopProject => {
-              const services = held?.services.get(project.id);
+              const services = heldServices[project.id]?.services;
               const { role } = readZeropsMembership(project);
               return {
                 projectId: project.id,
                 name: projectNameInApp(project),
                 ...(role === undefined ? {} : { role }),
                 services:
-                  services?.status === "resolved"
-                    ? summarizeEnvironmentServices(services.services).deployable.map(
+                  services === undefined
+                    ? []
+                    : summarizeEnvironmentServices(services).deployable.map(
                         ({ serviceId, hostname }) => ({ serviceId, hostname }),
-                      )
-                    : [],
+                      ),
               };
             }),
         ]),
       ),
-    [held, registry.registry.groups],
+    [held, heldServices, registry.registry.groups],
   );
   // What each group service runs, as the account's stops state it, read live.
   const statedServices = useMemo(
@@ -690,7 +696,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       if (production === undefined) continue;
       const productionId = ZeropsProjectId.make(production.projectId);
       if (withheld.has(productionId)) continue;
-      const listed = held?.services.get(productionId)?.status === "resolved";
+      const listed = heldServices[productionId]?.services !== undefined;
       const running = productionRuns({
         services: listed
           ? groupProjects.get(groupId)?.find(({ projectId }) => projectId === production.projectId)
@@ -725,7 +731,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
     flowGroups,
     groupProjects,
     groupStops,
-    held,
+    heldServices,
     recipes,
     releaseRecords,
     stated,

@@ -52,7 +52,7 @@ import {
   birthRuntimesFacts,
   type BirthCopyService,
 } from "@t3tools/client-runtime/zerops/birthProgress";
-import { mateArriving, type ZeropsService } from "@t3tools/client-runtime/zerops";
+import { mateArriving } from "@t3tools/client-runtime/zerops";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/serviceMap";
 import { stageSpeaks } from "~/zerops/mateOpeningStage";
@@ -119,7 +119,7 @@ import { useUsualAgent } from "~/zerops/useUsualAgent";
 import { useZeropsBirthProgress } from "~/zerops/useZeropsBirthProgress";
 import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
 import { useProjectCreations } from "~/zerops/useProjectCreations";
-import { useZeropsInventory, type InventoryServiceOutcome } from "~/zerops/inventoryContext";
+import { useProjectServices } from "~/zerops/ZeropsAccountData";
 import {
   closeOffHoldOf,
   finishSetupView,
@@ -193,7 +193,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   const listed = held.rows.find((candidate) => candidate.project.id === projectId);
   // What this tab pressed for it, while it holds it.
   const press = useMatePress(projectId);
-  const inventory = useZeropsInventory();
+  const { services } = useProjectServices(projectId);
   const creation = useNewMate((state) => state.creations[projectId]);
   // The New project or the Add this tab made whose Mate this is, while the tab holds it.
   const made = useNewProjectBirths((state) => newProjectBirthOf(state.births, projectId));
@@ -532,7 +532,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
           runtimes: birthRuntimesFacts({
             planned: planned.runtimes,
             setup: setup?.runtimes,
-            services: resolvedServices(inventory.services.get(projectId)),
+            services,
           }),
         },
   );
@@ -542,9 +542,9 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
     () =>
       birthCopyServices({
         planned: planned.managed,
-        services: resolvedServices(inventory.services.get(projectId)),
+        services,
       }),
-    [planned.managed, inventory.services, projectId],
+    [planned.managed, services],
   );
   // A New project's first Mate: the project's own steps stay before the Mate's, done, as its view
   // drew them before the platform took the Mate's project — one line, one clock, from the press.
@@ -1141,10 +1141,3 @@ export type ArrivalProgress = BirthLineProgress & {
   /** It runs on an agent that needs no sign-in, ready (`MateEmptyState.agentReady`). */
   readonly agentReady?: boolean | undefined;
 };
-
-/** A project's services once the inventory has read them; nothing while it hasn't, or failed. */
-function resolvedServices(
-  outcome: InventoryServiceOutcome | undefined,
-): ReadonlyArray<ZeropsService> | undefined {
-  return outcome?.status === "resolved" ? outcome.services : undefined;
-}

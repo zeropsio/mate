@@ -155,6 +155,27 @@ describe("the Zerops wire", () => {
       ),
   );
 
+  it.effect.each([
+    { path: "/service-stack/s1", code: "serviceStackNotFound", status: 404 },
+    { path: "/project/p1", code: "serviceStackNotFound", status: null },
+    { path: "/service-stack/s1", code: "projectNotFound", status: null },
+  ])(
+    "answers $path refused with 400 $code as gone only when the code is that entity's own",
+    ({ path, code, status }) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { wire } = harness({
+            requestData: async () => {
+              throw new ZeropsApiError("Not found.", "not-found", 400, code);
+            },
+          });
+          const link = yield* wire.open;
+          const answer = yield* Effect.result(link.get(path));
+          expect(answer._tag === "Success" ? answer.success.status : null).toBe(status);
+        }),
+      ),
+  );
+
   it.effect(
     "fails a read answered by another 400 not-found code: only a project's proves it gone",
     () =>

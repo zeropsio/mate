@@ -110,7 +110,7 @@ vi.mock("./zeropsDataContext", () => ({
 }));
 vi.mock("./inventoryContext", () => ({
   useZeropsInventory: () => ({ error: null }),
-  inventoryCandidates: () => [
+  useInventoryCandidates: () => [
     {
       key: KEY,
       project: { id: "project-1", status: "ACTIVE" },

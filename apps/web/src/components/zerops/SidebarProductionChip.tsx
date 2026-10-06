@@ -13,7 +13,7 @@
  *
  * What it says is `SidebarProductionChip.logic.ts`'s; this draws it.
  */
-import { useStopPublicAccess, useStopPublicAccesses } from "~/zerops/useStopPublicAccess";
+import { useStopDeploymentDemand, useStopPublicAccess } from "~/zerops/useStopPublicAccess";
 import { StopPublicAccessStatus } from "./StopPublicAccess";
 import { StopReadAgain } from "./StopReadAgain";
 import { Popover as PopoverPrimitive } from "@base-ui/react/popover";
@@ -84,7 +84,7 @@ export function SidebarProductionChip({
   readonly onAskToFix: ((mateProjectId: string, problem: FixProblem) => void) | undefined;
   readonly onOpenStop: OpenStop;
 }) {
-  useStopPublicAccesses(stops);
+  useStopDeploymentDemand(stops);
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const face = chipFace(chip);

@@ -10,6 +10,7 @@ import { useContext, useMemo } from "react";
 
 import { InventoryContext } from "./inventoryContext";
 import { groupAddressEnvironments, mateAddresses, type MateAddress } from "./mateAddresses.logic";
+import { useProjectsServices } from "./ZeropsAccountData";
 import { useEnvironmentProjectRef, useEnvironmentTopology } from "./useZeropsFeeds";
 
 const NO_ADDRESSES: ReadonlyArray<MateAddress> = [];
@@ -24,6 +25,11 @@ export function useMateAddresses(environmentId: EnvironmentId | null): MateAddre
   const topology = useEnvironmentTopology(environmentId).view;
   const project = useEnvironmentProjectRef(environmentId);
   const inventory = useContext(InventoryContext);
+  const projectIds = useMemo(
+    () => (inventory === null ? [] : inventory.projects.map(({ id }) => id)),
+    [inventory],
+  );
+  const services = useProjectsServices(projectIds);
   return useMemo(() => {
     if (topology === undefined) return { addresses: NO_ADDRESSES, known: false };
     const group =
@@ -33,10 +39,8 @@ export function useMateAddresses(environmentId: EnvironmentId | null): MateAddre
             projectId: project.projectId,
             projects: inventory.projects,
             routesOf: (entry) => {
-              const outcome = inventory.services.get(entry.id);
-              return outcome?.status === "resolved"
-                ? derivePublicRoutes(entry, outcome.services)
-                : undefined;
+              const listed = services[entry.id]?.services;
+              return listed === undefined ? undefined : derivePublicRoutes(entry, listed);
             },
           });
     const addresses = mateAddresses({
@@ -49,5 +53,5 @@ export function useMateAddresses(environmentId: EnvironmentId | null): MateAddre
       // An unread project reads as failed once the account's read settles: then it is known absent.
       known: group === undefined || !group.pending || inventory?.isLoading !== true,
     };
-  }, [topology, project, inventory]);
+  }, [topology, project, inventory, services]);
 }

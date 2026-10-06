@@ -9,13 +9,10 @@ import type {
   HistoryReadView,
   HistorySeriesKey,
   InterestState,
-  EntityQueryDescriptor,
   ProjectKey,
   ProjectRecord,
   ProjectRef,
   ProjectTopologyRead,
-  QueryState,
-  ServiceKey,
   ServiceRecord,
   ServiceRef,
   UsageRead,
@@ -96,36 +93,6 @@ const observationOf = (state: ZeropsDataState, project?: ProjectRef): ViewObserv
   access: state.access,
 });
 
-const runtimeViews = new WeakMap<Interests, Map<ProjectKey, InterestsOfView>>();
-
-/**
- * A project's service listing depends on its service stream alone. Metadata, history and metrics
- * can fail independently after a deploy; their failure must not stale a current runtime answer.
- */
-function runtimeObservationOf(state: ZeropsDataState, project: ProjectRef): ViewObservation {
-  let views = runtimeViews.get(state.interests);
-  if (views === undefined) {
-    views = new Map();
-    runtimeViews.set(state.interests, views);
-  }
-  const key = projectKeyOf(project);
-  let view = views.get(key);
-  if (view === undefined) {
-    const index = interestIndexOf(state.interests);
-    const services: InterestState[] = [];
-    const optionalServices: InterestState[] = [];
-    for (const position of index.positions.get(key) ?? []) {
-      const desired = index.interests[position]!;
-      const kind = desired.descriptor.kind;
-      if (kind === "project-topology" || kind === "project-inventory")
-        (desired.required ? services : optionalServices).push(desired.interest);
-    }
-    view = { required: services, optional: optionalServices };
-    views.set(key, view);
-  }
-  return { ...view, access: state.access };
-}
-
 const projectKnowledge = (
   record: ProjectRecord | undefined,
   ref: ProjectRef,
@@ -172,98 +139,15 @@ export const selectProject = (
   observation: observationOf(state, ref),
 });
 
+/** One service: its record as the account's store holds it (`serviceBridge.ts`). */
 export const selectService = (
   state: ZeropsDataState,
   ref: ServiceRef,
+  record: ServiceRecord | undefined,
 ): EntityRead<ServiceRecord> => ({
-  value: serviceKnowledge(state.inventory.services.get(serviceKeyOf(ref)), ref),
+  value: serviceKnowledge(record, ref),
   observation: observationOf(state, ref.project),
 });
-
-type ServiceQuery = Extract<EntityQueryDescriptor, { readonly kind: "services-of-project" }>;
-
-const unresolvedServiceQuery = (project: ProjectRef): QueryState<ServiceQuery> => {
-  const descriptor: ServiceQuery = {
-    kind: "services-of-project",
-    project,
-    schemaVersion: 1,
-  };
-  return {
-    status: "unresolved",
-    descriptor,
-    key: queryKeyOf(descriptor),
-    memberKeys: [],
-    unresolvedMemberKeys: [],
-    coverage: { kind: "none" },
-    lastAppliedReadStartOrdinal: null,
-    membershipOperations: new Map(),
-  };
-};
-
-type InventoryServices = ZeropsDataState["inventory"]["services"];
-
-/** Each project's service keys, once per service map, in the order the map holds them. */
-const serviceKeyIndexes = new WeakMap<
-  InventoryServices,
-  ReadonlyMap<ProjectKey, ReadonlyArray<ServiceKey>>
->();
-
-function serviceKeysOf(
-  services: InventoryServices,
-  project: ProjectKey,
-): ReadonlyArray<ServiceKey> {
-  let index = serviceKeyIndexes.get(services);
-  if (index === undefined) {
-    const byProject = new Map<ProjectKey, Array<ServiceKey>>();
-    for (const [key, record] of services) {
-      const owner = projectKeyOf(record.ref.project);
-      const keys = byProject.get(owner);
-      if (keys === undefined) byProject.set(owner, [key]);
-      else keys.push(key);
-    }
-    index = byProject;
-    serviceKeyIndexes.set(services, index);
-  }
-  return index.get(project) ?? [];
-}
-
-/**
- * One project's services: its slice of the organization's services read (DESIGN §4.1), whose
- * state says whether they are known. A member the read names but has not resolved yet is the
- * project's when its ref says so.
- */
-export function selectServicesOf(
-  state: ZeropsDataState,
-  project: ProjectRef,
-): CollectionRead<ServiceRecord> {
-  const projectKey = projectKeyOf(project);
-  const descriptor: ServiceQuery = {
-    kind: "services-of-project",
-    project: project,
-    schemaVersion: 1,
-  };
-  const query =
-    (state.inventory.queries.get(queryKeyOf(descriptor)) as QueryState<ServiceQuery> | undefined) ??
-    unresolvedServiceQuery(project);
-  const relationshipKeys = new Set<ServiceKey>();
-  for (const key of query.memberKeys) {
-    const ref = state.inventory.memberRefs.get(key);
-    if (ref?.kind === "service" && projectKeyOf(ref.project) === projectKey)
-      relationshipKeys.add(key as ServiceKey);
-  }
-  for (const key of serviceKeysOf(state.inventory.services, projectKey)) relationshipKeys.add(key);
-  return {
-    value: [...relationshipKeys].flatMap((key) => {
-      const record = state.inventory.services.get(key);
-      const ref = state.inventory.memberRefs.get(key);
-      if (record !== undefined) return [serviceKnowledge(record, record.ref)];
-      return ref?.kind === "service" ? [{ knowledge: "unresolved" as const, ref }] : [];
-    }),
-    query,
-    observation: runtimeObservationOf(state, project),
-    project,
-  };
-}
 
 const sumPair = (pairs: ReadonlyArray<{ readonly used: number; readonly limit: number } | null>) =>
   pairs.every((pair) => pair !== null)
@@ -323,9 +207,13 @@ export function selectHistory(state: ZeropsDataState, key: HistorySeriesKey): Hi
   return { series, observation: observationOf(state, key.service.project) };
 }
 
-export function selectTopology(state: ZeropsDataState, project: ProjectRef): ProjectTopologyRead {
+/** A project's topology: its services as the account's store holds them (`serviceBridge.ts`). */
+export function selectTopology(
+  state: ZeropsDataState,
+  project: ProjectRef,
+  services: CollectionRead<ServiceRecord>,
+): ProjectTopologyRead {
   const projectRead = selectProject(state, project);
-  const services = selectServicesOf(state, project);
   return {
     project: projectRead,
     services,

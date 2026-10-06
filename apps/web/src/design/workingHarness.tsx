@@ -1428,7 +1428,6 @@ function Harness() {
 function Standins({ children }: { readonly children: ReactNode }) {
   const inventory: Inventory = {
     projects: [],
-    services: new Map(),
     isLoading: false,
     error: null,
     projectRefs: new Map(),

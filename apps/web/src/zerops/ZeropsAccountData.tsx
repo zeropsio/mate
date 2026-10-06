@@ -9,9 +9,13 @@ import {
   makeAccountStore,
   makeZeropsWire,
   observeAccount,
+  NOT_READ_SERVICES,
+  projectServicesAtom,
+  projectsServicesAtom,
   repairZeropsSession,
   accountReadsAtom,
   type AccountObservation,
+  type ProjectServices,
   type AccountReads,
   type DetailDemand,
   type Projection,
@@ -138,13 +142,27 @@ export function useBuildsUnderWay(projectIds: ReadonlyArray<string>): ReadonlySe
   return useMemo(() => new Set(building), [building]);
 }
 
+const UNREAD_SERVICES = Atom.make(NOT_READ_SERVICES);
+
+/** One project's services, as the organization's services listing holds them. */
+export function useProjectServices(projectId: string | null | undefined): ProjectServices {
+  return useAtomValue(projectId == null ? UNREAD_SERVICES : projectServicesAtom(projectId));
+}
+
+/** Each listed project's services, as the organization's services listing holds them, by id. */
+export function useProjectsServices(
+  projectIds: ReadonlyArray<string>,
+): Readonly<Record<string, ProjectServices>> {
+  return useAtomValue(projectsServicesAtom(projectIds.join(",")));
+}
+
 /** Holds one of a family's detail listings for an owner while the caller is drawn with one. */
 export function useDetailDemand(
   family: DetailDemand["family"],
   listing: string,
   ownerId: string | null,
 ): void {
-  const demandDetail = useAccountDataOptional()?.demandDetail;
+  const demandDetail = useAtomValue(accountReadsAtom)?.demandDetail;
   useEffect(() => {
     if (demandDetail === undefined || ownerId === null) return;
     return demandDetail({ family, listing, ownerId });

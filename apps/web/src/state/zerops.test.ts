@@ -2,12 +2,10 @@ import type { ZeropsProject, ZeropsService } from "@t3tools/client-runtime/zerop
 import {
   DEFAULT_ZEROPS_DATA_POLICY,
   createZeropsDataAtoms,
-  decodeEntityQueryResponse,
   makeInitialZeropsDataState,
   projectKeyOf,
   reduceZeropsDataState,
   type ManagedZeropsDataRuntime,
-  type ProtocolDecodeResult,
 } from "@t3tools/client-runtime/zerops/data";
 import { mateListingsAtom } from "@t3tools/client-runtime/zerops/environments";
 import type { HqStructure } from "@t3tools/client-runtime/zerops/hq";
@@ -19,12 +17,10 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   desiredInterest,
-  directTicket,
   identity,
   organization,
   project,
   scope,
-  stamp,
 } from "../zerops/__fixtures__/platformData";
 import { mountRoster } from "@t3tools/client-runtime/zerops/testing";
 import type { InventoryProjection } from "../zerops/inventoryContext";
@@ -67,42 +63,16 @@ const ZCP: ZeropsService = {
 };
 
 /**
- * A runtime that has read the project's zcp container, under a grant that names the organization;
- * the organization's projects are the account store's (`mountRoster`).
+ * A runtime under a grant that names the organization; the organization's projects and services
+ * are the account store's (`mountRoster`).
  */
 function readRuntime(): ManagedZeropsDataRuntime {
   const id = identity();
-  let state = reduceZeropsDataState(
+  const state = reduceZeropsDataState(
     makeInitialZeropsDataState(scope()),
     { kind: "interest-upserted", interest: desiredInterest(id) },
     DEFAULT_ZEROPS_DATA_POLICY,
   ).state;
-  let ordinal = 1;
-  const ingest = (decoded: ProtocolDecodeResult) => {
-    for (const input of decoded.observations) {
-      state = reduceZeropsDataState(
-        state,
-        {
-          kind: "observation",
-          observation: { input, stamp: stamp(++ordinal), accessEvidence: null },
-        },
-        DEFAULT_ZEROPS_DATA_POLICY,
-      ).state;
-    }
-  };
-  const services = {
-    kind: "services-of-project" as const,
-    project: owner,
-    schemaVersion: 1 as const,
-  };
-  ingest(
-    decodeEntityQueryResponse(
-      services,
-      directTicket({ kind: "query", descriptor: services }, id, 3, 3),
-      { list: [{ ...ZCP, projectId: owner.projectId }], totalCount: 1 },
-      "direct-read",
-    ),
-  );
   const granted = {
     machine: {
       phase: {
@@ -133,7 +103,9 @@ describe("the candidate rows", () => {
   it("the web candidate rows are the account listing's rows", () => {
     const registry = AtomRegistry.make();
     const runtime = readRuntime();
-    mountRoster(registry, organization.organizationId, [PROJECT]);
+    mountRoster(registry, organization.organizationId, [PROJECT], {
+      services: [{ ...ZCP, projectId: PROJECT.id }],
+    });
     registry.set(zeropsDataRuntimeAtom, runtime);
     registry.set(zeropsSessionAtom, {
       status: "signed-in",
@@ -142,7 +114,6 @@ describe("the candidate rows", () => {
     });
     registry.set(zeropsInventoryAtom, {
       projects: [PROJECT],
-      services: new Map([[PROJECT.id, { status: "resolved" as const, services: [ZCP] }]]),
       projectRefs: new Map([[projectKeyOf(owner), owner]]),
       authority: new Map(),
       account: { kind: "authorized" },
@@ -161,7 +132,9 @@ describe("the candidate rows", () => {
 
   it("each row carries where the organization's HQ places its project", () => {
     const registry = AtomRegistry.make();
-    const roster = mountRoster(registry, organization.organizationId, [PROJECT]);
+    const roster = mountRoster(registry, organization.organizationId, [PROJECT], {
+      services: [{ ...ZCP, projectId: PROJECT.id }],
+    });
     registry.set(zeropsDataRuntimeAtom, readRuntime());
     registry.set(zeropsSessionAtom, {
       status: "signed-in",
@@ -170,7 +143,6 @@ describe("the candidate rows", () => {
     });
     registry.set(zeropsInventoryAtom, {
       projects: [PROJECT],
-      services: new Map([[PROJECT.id, { status: "resolved" as const, services: [ZCP] }]]),
       projectRefs: new Map([[projectKeyOf(owner), owner]]),
       authority: new Map(),
       account: { kind: "authorized" },
@@ -304,7 +276,6 @@ describe("the names the organization's Mates go by", () => {
     // The inventory holds only the project the last round verified.
     registry.set(zeropsInventoryAtom, {
       projects: [named],
-      services: new Map([[PROJECT.id, { status: "resolved" as const, services: [ZCP] }]]),
       projectRefs: new Map([[projectKeyOf(owner), owner]]),
       authority: new Map(),
       account,

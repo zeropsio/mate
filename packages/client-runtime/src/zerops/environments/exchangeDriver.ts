@@ -145,8 +145,6 @@ export interface ExchangeDriverPorts<C> {
   readonly kept?: (key: TargetKey) => boolean;
   /** The supervisor's `retryNow` for a link in backoff. */
   readonly retryLink: (environmentId: EnvironmentId) => void;
-  /** The inventory re-reads this target's presence. */
-  readonly refreshPresence: (key: TargetKey) => void;
   /**
    * `catalog.remove`; drafts keep their keys (AL-13). The record and the door's session stay: a
    * target found gone that the inventory names again is restored by its record.
@@ -415,9 +413,6 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
       }
       case "retry-link":
         ports.retryLink(op.environmentId);
-        return;
-      case "refresh-presence":
-        ports.refreshPresence(key);
         return;
       case "retire":
         ports.retire(key, op.environmentId);

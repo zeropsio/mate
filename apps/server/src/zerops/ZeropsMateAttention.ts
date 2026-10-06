@@ -1,5 +1,5 @@
 /**
- * The Mate's attention (`@t3tools/contracts` `MateAttention`, HANDOFF §4.2 "Mate") as one value
+ * The Mate's attention (`@t3tools/contracts` `MateAttention`) as one value
  * with its revision, for the link up to HQ and for the Mate's own clients — one instance, so both
  * carry the same incarnation and the same revisions.
  *
