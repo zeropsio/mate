@@ -1777,6 +1777,8 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
         const promptProcessExitedRef = yield* Ref.make(false);
         // The prompt's failure ended its turn failed: the send fails as that turn's.
         const promptEndedTurnRef = yield* Ref.make(false);
+        // The send was interrupted: the person's Stop reached it before the agent answered.
+        const sendInterruptedRef = yield* Ref.make(false);
 
         return yield* Effect.gen(function* () {
           const promptStart = yield* prepared.promptLifecycle.withPermit(
@@ -2000,6 +2002,7 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
             }),
           );
         }).pipe(
+          Effect.onInterrupt(() => Ref.set(sendInterruptedRef, true)),
           Effect.ensuring(
             Effect.gen(function* () {
               if (yield* Ref.get(promptSettled)) {
@@ -2054,6 +2057,12 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
                     );
                   }),
                 );
+                return;
+              }
+
+              // Its turn ends as the Stop ends it: cancelled at the agent, never failed.
+              if (yield* Ref.get(sendInterruptedRef)) {
+                yield* interruptTurn(input.threadId, prepared.turnId);
                 return;
               }
 

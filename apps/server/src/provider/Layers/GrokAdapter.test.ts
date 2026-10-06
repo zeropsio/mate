@@ -1289,6 +1289,53 @@ it.layer(grokAdapterTestLayer)("GrokAdapterLive", (it) => {
     }).pipe(TestClock.withLive),
   );
 
+  it.effect("a Stop that interrupts its send ends the turn cancelled, and the next turn runs", () =>
+    Effect.gen(function* () {
+      const threadId = ThreadId.make("grok-send-interrupted");
+      const wrapperPath = yield* Effect.promise(() =>
+        makeMockGrokWrapper({
+          T3_ACP_HANG_FIRST_PROMPT_FOREVER: "1",
+        }),
+      );
+      const adapter = yield* makeTestAdapter(wrapperPath);
+      const runtimeEvents: ProviderRuntimeEvent[] = [];
+      const runtimeEventsFiber = yield* Stream.runForEach(adapter.streamEvents, (event) =>
+        Effect.sync(() => {
+          runtimeEvents.push(event);
+        }),
+      ).pipe(Effect.forkChild);
+      yield* adapter.startSession({
+        threadId,
+        provider: ProviderDriverKind.make("grok"),
+        cwd: process.cwd(),
+        runtimeMode: "full-access",
+        modelSelection: { instanceId: ProviderInstanceId.make("grok"), model: "grok-build" },
+      });
+
+      const sending = yield* adapter
+        .sendTurn({ threadId, input: "hang forever", attachments: [] })
+        .pipe(Effect.forkChild({ startImmediately: true }));
+      yield* Effect.sleep("500 millis");
+      // The person's Stop reaches the send before the agent answers.
+      yield* Fiber.interrupt(sending);
+      yield* adapter.sendTurn({ threadId, input: "continue after stop", attachments: [] });
+      for (let yieldAttempt = 0; yieldAttempt < 8; yieldAttempt += 1) {
+        yield* Effect.yieldNow;
+      }
+
+      const ends = runtimeEvents.filter(
+        (event): event is Extract<ProviderRuntimeEvent, { type: "turn.completed" }> =>
+          event.type === "turn.completed" && String(event.threadId) === String(threadId),
+      );
+      assert.deepStrictEqual(
+        ends.map((event) => event.payload.state),
+        ["cancelled", "completed"],
+      );
+      yield* Fiber.interrupt(runtimeEventsFiber);
+      yield* adapter.stopSession(threadId);
+    }).pipe(TestClock.withLive),
+  );
+
   it.effect("does not let a cancelled prompt settlement consume the follow-up prompt slot", () =>
     Effect.gen(function* () {
       const threadId = ThreadId.make("grok-cancelled-settlement-before-follow-up");

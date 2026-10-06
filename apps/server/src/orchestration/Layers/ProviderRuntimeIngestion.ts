@@ -1970,6 +1970,15 @@ const make = Effect.gen(function* () {
     });
   });
 
+  /**
+   * The person stopped this turn: their Stop marked it interrupted
+   * (`thread.turn-interrupt-requested`), or its agent said it ended so.
+   */
+  const turnStoppedByPerson = (threadId: ThreadId, turnId: TurnId) =>
+    projectionTurnRepository
+      .getByTurnId({ threadId, turnId })
+      .pipe(Effect.map((turn) => Option.isSome(turn) && turn.value.state === "interrupted"));
+
   const processRuntimeEvent = (event: ProviderRuntimeEvent) =>
     Effect.gen(function* () {
       if (
@@ -2017,6 +2026,18 @@ const make = Effect.gen(function* () {
           : thread.session?.status === "error" && thread.session.lastError
             ? null
             : agentStoppedUnexpectedly(event.provider);
+
+      // A failure told of a turn the person stopped — one their Stop raced,
+      // or the agent's answer to it — is no break: the turn ended stopped.
+      const failedTurnId =
+        event.type === "turn.completed" &&
+        normalizeRuntimeTurnState(event.payload.state) === "failed"
+          ? (eventTurnId ?? activeTurnId)
+          : event.type === "runtime.error"
+            ? (eventTurnId ?? null)
+            : null;
+      const failedAfterStop =
+        failedTurnId !== null && (yield* turnStoppedByPerson(thread.id, failedTurnId));
 
       const conflictsWithActiveTurn =
         activeTurnId !== null && eventTurnId !== undefined && !sameId(activeTurnId, eventTurnId);
@@ -2089,9 +2110,11 @@ const make = Effect.gen(function* () {
             case "turn.aborted":
               return "interrupted";
             case "turn.completed":
-              return normalizeRuntimeTurnState(event.payload.state) === "failed"
-                ? "error"
-                : "ready";
+              return failedAfterStop
+                ? "interrupted"
+                : normalizeRuntimeTurnState(event.payload.state) === "failed"
+                  ? "error"
+                  : "ready";
             case "session.started":
             case "thread.started":
               // Provider thread/session start notifications can arrive during an
@@ -2116,7 +2139,8 @@ const make = Effect.gen(function* () {
             : event.type === "session.state.changed" && event.payload.state === "error"
               ? (event.payload.reason ?? thread.session?.lastError ?? "Provider session error")
               : event.type === "turn.completed" &&
-                  normalizeRuntimeTurnState(event.payload.state) === "failed"
+                  normalizeRuntimeTurnState(event.payload.state) === "failed" &&
+                  !failedAfterStop
                 ? (event.payload.errorMessage ?? thread.session?.lastError ?? "Turn failed")
                 : status === "ready" || status === "interrupted"
                   ? null
@@ -2135,9 +2159,9 @@ const make = Effect.gen(function* () {
             });
           } else if (
             event.type === "turn.completed" &&
-            normalizeRuntimeTurnState(event.payload.state) === "failed"
+            normalizeRuntimeTurnState(event.payload.state) === "failed" &&
+            !failedAfterStop
           ) {
-            const failedTurnId = eventTurnId ?? activeTurnId;
             if (failedTurnId !== null) {
               yield* recordBreak({
                 event,
@@ -2879,7 +2903,7 @@ const make = Effect.gen(function* () {
       // An adapter's error that says its turn broke off — its process died,
       // the usage limit refused it — is that turn's one break record.
       const breakEnd =
-        event.type === "runtime.error" && eventTurnId !== undefined
+        event.type === "runtime.error" && eventTurnId !== undefined && !failedAfterStop
           ? turnEndOfErrorClass(event.payload.class)
           : undefined;
       if (event.type === "runtime.error" && eventTurnId !== undefined && breakEnd !== undefined) {
@@ -2891,7 +2915,8 @@ const make = Effect.gen(function* () {
           turnEnd: breakEnd,
         });
       }
-      yield* Effect.forEach(repeatsRecord || breakEnd !== undefined ? [] : activities, (activity) =>
+      const unsaid = repeatsRecord || breakEnd !== undefined || failedAfterStop;
+      yield* Effect.forEach(unsaid ? [] : activities, (activity) =>
         providerCommandId(event, "thread-activity-append").pipe(
           Effect.flatMap((commandId) =>
             orchestrationEngine.dispatch({
@@ -2911,13 +2936,14 @@ const make = Effect.gen(function* () {
 
         // The same error said again, its turn's record already standing,
         // changes nothing (OpenCode's after the turn it failed).
-        const shouldApplyRuntimeError = repeatsRecord
-          ? false
-          : !STRICT_PROVIDER_LIFECYCLE_GUARD
-            ? true
-            : activeTurnId === null ||
-              eventTurnId === undefined ||
-              sameId(activeTurnId, eventTurnId);
+        const shouldApplyRuntimeError =
+          repeatsRecord || failedAfterStop
+            ? false
+            : !STRICT_PROVIDER_LIFECYCLE_GUARD
+              ? true
+              : activeTurnId === null ||
+                eventTurnId === undefined ||
+                sameId(activeTurnId, eventTurnId);
 
         if (shouldApplyRuntimeError) {
           threadLiveStep.clearThread(thread.id);
