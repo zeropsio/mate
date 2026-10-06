@@ -4,6 +4,11 @@ import type {
   OrchestrationThreadDetailSnapshot,
 } from "@t3tools/contracts";
 import { isWorkspaceImagePreviewPath } from "@t3tools/shared/filePreview";
+import {
+  isToolCallEcho,
+  toolCallEchoKey,
+  toolLifecycleIdentity,
+} from "@t3tools/shared/toolCallEcho";
 
 import { sniffToolCallShape } from "../spi/toolCall.ts";
 import {
@@ -670,37 +675,6 @@ function dropStaleContextWindowActivities(
 }
 
 /**
- * Identity used to retain only the newest lifecycle row for each call in a
- * thread snapshot. Prefer the runtime item id, then the legacy nested id, and
- * finally the itemType/title/detail triple. Rows without any identity remain
- * untouched.
- */
-function toolLifecycleIdentity(activity: OrchestrationThreadActivity): string | null {
-  const payload = asRecord(activity.payload);
-  if (!payload) {
-    return null;
-  }
-
-  const toolCallId =
-    asTrimmedString(payload.toolCallId) ?? asTrimmedString(asRecord(payload.data)?.toolCallId);
-  if (toolCallId) {
-    return `id:${toolCallId}`;
-  }
-
-  const itemType = asTrimmedString(payload.itemType) ?? "";
-  // Mirrors the clients' `normalizeCompactToolLabel`: a completion's title may
-  // gain a trailing "complete"/"completed" the in-flight updates lack.
-  const label = (asTrimmedString(payload.title) ?? activity.summary)
-    .replace(/\s+(?:complete|completed)\s*$/iu, "")
-    .trim();
-  const detail = asTrimmedString(payload.detail) ?? "";
-  if (itemType.length === 0 && label.length === 0 && detail.length === 0) {
-    return null;
-  }
-  return [itemType, label, detail].join("");
-}
-
-/**
  * Drops `tool.updated` rows a `tool.completed` row already supersedes —
  * except a call's first sight, where it has no `tool.started` before it. An
  * update is the in-flight snapshot of a call; once the call completes, the
@@ -714,7 +688,8 @@ function toolLifecycleIdentity(activity: OrchestrationThreadActivity): string | 
  * turns, so a completion in a different turn could vanish and leave the
  * dropped update unrepresented. The completion must also come *after* the
  * update within the turn — a later update belongs to a subsequent call that
- * reuses the same identity and is still in flight. Rows without a lifecycle
+ * reuses the same identity and is still in flight — but for a completion's
+ * echo, which goes wherever it sorts (see below). Rows without a lifecycle
  * identity pass through, matching the clients, which never collapse them.
  * Deliberate divergence from client collapse: clients fold only *adjacent*
  * lifecycle rows, so a superseded update separated from its completion by an
@@ -733,10 +708,15 @@ function dropSupersededToolUpdatedActivities(
   activities: ReadonlyArray<OrchestrationThreadActivity>,
 ): ReadonlyArray<OrchestrationThreadActivity> {
   const completionIndicesByKey = new Map<string, number[]>();
+  const completionsByEchoKey = new Map<string, OrchestrationThreadActivity[]>();
   for (let index = 0; index < activities.length; index += 1) {
     const activity = activities[index]!;
     if (activity.kind !== "tool.completed") {
       continue;
+    }
+    const echoKey = toolCallEchoKey(activity);
+    if (echoKey !== null) {
+      completionsByEchoKey.set(echoKey, [...(completionsByEchoKey.get(echoKey) ?? []), activity]);
     }
     const identity = toolLifecycleIdentity(activity);
     if (!identity) {
@@ -758,7 +738,34 @@ function dropSupersededToolUpdatedActivities(
   // An ACP call never sends a start — its first update is its first sight —
   // so that update stays, or a reload would start the step at its end.
   const seen = new Set<string>();
+  // A completion's echo — its update stamped with the same instant and the
+  // same payload but its status (`isToolCallEcho`) — goes wherever it sorts,
+  // first sight or not. Both rows are compared projected, the form the client
+  // receives: the snapshot query hands most rows here projected already, but
+  // a raw read hands a stored completion as it was written, and projecting a
+  // projected row again changes nothing.
+  const projected = new Map<OrchestrationThreadActivity, OrchestrationThreadActivity>();
+  const projectedOf = (row: OrchestrationThreadActivity) => {
+    const known = projected.get(row);
+    if (known !== undefined) return known;
+    const next = projectActivityPayload(row);
+    projected.set(row, next);
+    return next;
+  };
+  const isEcho = (activity: OrchestrationThreadActivity) => {
+    if (activity.kind !== "tool.updated") return false;
+    const echoKey = toolCallEchoKey(activity);
+    const completions = echoKey === null ? undefined : completionsByEchoKey.get(echoKey);
+    return (
+      completions?.some((completion) =>
+        isToolCallEcho(projectedOf(activity), projectedOf(completion)),
+      ) === true
+    );
+  };
   return activities.filter((activity, index) => {
+    if (isEcho(activity)) {
+      return false;
+    }
     const lifecycle =
       activity.kind === "tool.started" ||
       activity.kind === "tool.updated" ||
