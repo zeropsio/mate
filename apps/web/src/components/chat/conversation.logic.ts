@@ -943,7 +943,7 @@ export function deriveConversationStructure(given: {
 
   const stretchByIndex = new Map<number, Stretch>();
   const turns: ConversationTurn[] = [];
-  for (const span of spans) {
+  for (const [spanIndex, span] of spans.entries()) {
     const members = membersBySpan.get(span) ?? [];
     const live = span === liveSpan;
     const turnEntries = members
@@ -959,7 +959,7 @@ export function deriveConversationStructure(given: {
       ((isLatestTurn && input.latestTurn?.state === "interrupted") || endedOnAStep(turnEntries));
     // The person's next message came while it ran: their message interrupted
     // it, never their Stop (Noibit, run 11: "stopped after 8m 11s").
-    const next = spans[spans.indexOf(span) + 1];
+    const next = spans[spanIndex + 1];
     const lastOwn = turnEntries.at(-1);
     // The person's Stop ends every task the run started (stop-everything);
     // their message leaves them running.

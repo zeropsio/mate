@@ -2317,9 +2317,28 @@ export function deriveMessagesTimelineRows(input: {
     if (at < 0) return null;
     return helperQueue.splice(at, 1)[0] ?? null;
   };
+  // The tasks that finished in a turn, each a line of its own, in the order
+  // they finished: read once, and each run asks only of its own moments.
+  const finishedTasks = entries
+    .flatMap((entry, index) => {
+      if (
+        entry.kind !== "work" ||
+        entry.entry.sourceActivityKind !== "task.completed" ||
+        structure.looseIndexes.has(index) ||
+        // A command's own task is told on its command's card.
+        tracked.trackers.has(entry.entry.id) ||
+        (entry.entry.agentSpawn?.agentTaskIds.length ?? 1) > 1
+      ) {
+        return [];
+      }
+      const ms = finishedAt(entry.entry);
+      return Number.isNaN(ms) ? [] : [{ work: entry.entry, ms }];
+    })
+    .toSorted((left, right) => left.ms - right.ms);
   /** When the run before `turn` ended: what finished since is what may have woken it. */
+  const turnIndex = new Map(structure.turns.map((turn, index) => [turn, index] as const));
   const previousEndMs = (turn: ConversationTurn): number => {
-    const previous = structure.turns[structure.turns.indexOf(turn) - 1];
+    const previous = structure.turns[(turnIndex.get(turn) ?? -1) - 1];
     return previous === undefined
       ? -Infinity
       : Date.parse(previous.stretches.at(-1)?.endedAt ?? "");
@@ -2348,20 +2367,18 @@ export function deriveMessagesTimelineRows(input: {
     const fromMs = lagging ? startMs : previousEndMs;
     const untilMs = lagging ? startMs + WOKE_LAG_MS : startMs;
     if (!Number.isFinite(untilMs) || Number.isNaN(fromMs)) return [];
-    return entries
-      .flatMap((entry, index) =>
-        entry.kind === "work" &&
-        entry.entry.sourceActivityKind === "task.completed" &&
-        !structure.looseIndexes.has(index) &&
-        // A command's own task is told on its command's card.
-        !tracked.trackers.has(entry.entry.id) &&
-        (entry.entry.agentSpawn?.agentTaskIds.length ?? 1) <= 1 &&
-        finishedAt(entry.entry) > fromMs &&
-        finishedAt(entry.entry) <= untilMs
-          ? [entry.entry]
-          : [],
-      )
-      .toSorted((left, right) => finishedAt(left) - finishedAt(right));
+    let low = 0;
+    let high = finishedTasks.length;
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      if (finishedTasks[middle]!.ms > fromMs) high = middle;
+      else low = middle + 1;
+    }
+    const found: WorkLogEntry[] = [];
+    for (let at = low; at < finishedTasks.length && finishedTasks[at]!.ms <= untilMs; at += 1) {
+      found.push(finishedTasks[at]!.work);
+    }
+    return found;
   };
   /**
    * One run of the Mate as the conversation draws it — a turn, from the
