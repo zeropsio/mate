@@ -134,29 +134,5 @@
     "owner": "data-layer rewrite: result pictures",
     "reason": "source data stays out of browser storage: remembers which of a conversation's result pictures the workspace said are not there; the result's read paints the first frame",
     "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/writerMemory.ts",
-    "kind": "CallExpression",
-    "fingerprint": "accountLocalStorage.getItem(WRITER_MEMORY_KEY)",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "source data stays out of browser storage: remembers who may write in each conversation as a verdict; the footer waits for the live answer",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/writerMemory.ts",
-    "kind": "CallExpression",
-    "fingerprint": "accountLocalStorage.removeItem(WRITER_MEMORY_KEY)",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "source data stays out of browser storage: remembers who may write in each conversation as a verdict; the footer waits for the live answer",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/writerMemory.ts",
-    "kind": "CallExpression",
-    "fingerprint": "accountLocalStorage.setItem(WRITER_MEMORY_KEY)",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "source data stays out of browser storage: remembers who may write in each conversation as a verdict; the footer waits for the live answer",
-    "expires": "never"
   }
 ]

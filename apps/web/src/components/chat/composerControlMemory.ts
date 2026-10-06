@@ -28,7 +28,7 @@ export function composerControlKey(instanceId: string, model: string): string {
   return `${instanceId}\u0000${model}`;
 }
 
-/** A conversation's own control, for its composer's stand-in before the conversation is read. */
+/** A conversation's own control, drawn while the agents' catalog is read. */
 export function composerThreadControlKey(threadKey: string): string {
   return `${THREAD_PREFIX}${threadKey}`;
 }

@@ -42,7 +42,7 @@ export function MateLinkStage({
   readonly environmentId: EnvironmentId | null;
   readonly voice: Spoken;
   readonly projectId: string | null;
-  /** The composer standing where its conversation's will (`ComposerStandIn`). */
+  /** What stands where its conversation's composer will (`ConversationFooterStandIn`). */
   readonly composer?: ReactNode;
 }) {
   const { failure, again } = useMateDetailRead(projectId, environmentId);
@@ -183,9 +183,9 @@ function MateOpeningPage({
 
 /**
  * A Mate's own view while its conversation is on its way (a reload, before the catalog names its
- * thread or before the chat layout can draw it): its header's place at once, the composer standing in —
- * typed into, the conversation's own draft, which its composer reads as it takes over — and the
- * one opening line past its beat, or the link's own words where it has any.
+ * thread or before the chat layout can draw it): its header's place at once, the composer's room
+ * held at its draft's height, and the one opening line past its beat, or the link's own words
+ * where it has any.
  */
 export function MateOpeningView({ threadRef }: { readonly threadRef: ScopedThreadRef }) {
   const voice = useMateVoice();

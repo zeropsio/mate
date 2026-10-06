@@ -75,7 +75,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
    * model (`composerControlMemory`) rather than as the raw selection.
    */
   catalogPending?: boolean;
-  /** Also remembers the control's look under this key: its conversation's, for its stand-in. */
+  /** Also remembers the control's look under this key: its conversation's own, preferred while the catalog is read. */
   rememberAs?: string | undefined;
   terminalOpen?: boolean;
   open?: boolean;
@@ -408,37 +408,3 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
     </Popover>
   );
 });
-
-/**
- * The composer's control as it stood last for a conversation (`composerControlMemory`), still and
- * inert: drawn by the composer standing in before the conversation is read, so the toolbar has its
- * one look from the first frame and the conversation's own control takes over in place.
- */
-export function ComposerModelControlStill({ look }: { readonly look: ComposerControlLook }) {
-  return (
-    <ComposerControl
-      aria-hidden="true"
-      className="min-w-0 shrink"
-      data-composer-control-still=""
-      inert
-      size="quiet"
-      tabIndex={-1}
-    >
-      <ProviderInstanceIcon
-        driverKind={look.driverKind}
-        displayName={look.displayName}
-        accentColor={look.accentColor}
-        showBadge={false}
-        className="size-3.5"
-        iconClassName="size-3.5"
-        indicatorBackground="var(--contrast-input)"
-      />
-      <span className="min-w-0 truncate">{look.label.model}</span>
-      {look.label.traits.length === 0 ? null : (
-        <span className="shrink-0 whitespace-nowrap">{`· ${look.label.traits.join(" · ")}`}</span>
-      )}
-      {look.label.fast ? <ZapIcon className="size-3.5 shrink-0 fill-current" /> : null}
-      <ComposerControlChevron size="quiet" />
-    </ComposerControl>
-  );
-}

@@ -2050,7 +2050,7 @@ describe("MessagesTimeline — placing its rows", () => {
     }
   });
 
-  // Handed over from its Mate's own view (a reload's stage), its Mate stays at
+  // Handed over from its Mate's own view, its Mate stays at
   // work in the pane while the rows are placed out of sight: a face on screen
   // the whole way, never an empty pane.
   it.each([
@@ -2058,9 +2058,9 @@ describe("MessagesTimeline — placing its rows", () => {
     { case: "opened from another conversation", handedOver: false, face: false },
   ])("while its rows are placed, $case: its Mate at work $face", async ({ handedOver, face }) => {
     const { LegendList } = await import("@legendapp/list/react");
-    const { standInForConversation } = await import("../../zerops/mateHandOver");
+    const { handOverMateConversation } = await import("../../zerops/mateHandOver");
     const key = `environment-local:thread-handed-${String(handedOver)}`;
-    const standing = handedOver ? standInForConversation(key) : null;
+    if (handedOver) handOverMateConversation(key, Date.now());
     let renderer: ReactTestRenderer | undefined;
     await act(() => {
       renderer = create(
@@ -2072,7 +2072,6 @@ describe("MessagesTimeline — placing its rows", () => {
         />,
       );
     });
-    standing?.release(Date.now());
     const atWork = () => renderer!.root.findAll((node) => node.props.role === "status").length > 0;
     try {
       await settleFrames(2);
