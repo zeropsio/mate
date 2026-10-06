@@ -1,5 +1,5 @@
 /**
- * Where one operation stands, as the person sees it (HANDOFF §4.6): accepted by its owner, then
+ * Where one operation stands, as the person sees it: accepted by its owner, then
  * reflected in the scope it changes, then done — the end only as the owner says it. A lost answer
  * is shown as uncertain while the owner is asked; an observation that ran out is unresolved, with
  * who must act next, never a failure nobody reported.

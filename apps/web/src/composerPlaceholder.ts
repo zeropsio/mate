@@ -11,7 +11,7 @@ export const ZEROPS_CONNECTED_COMPOSER_PLACEHOLDER = "Describe what you want to 
  * conversation says one thing — the stand-in's words, before its link is made and after — where it
  * said upstream's "Ask for changes…" until it connected and the plain task words only once the
  * project was read (pass 30). Before the directory says who lives there it says nothing: no
- * upstream words to flip from, nothing guessed (HANDOFF §4.4).
+ * upstream words to flip from, nothing guessed.
  */
 export function resolveComposerPlaceholders(input: {
   /** Who lives where this conversation runs, as the directory has read it. */

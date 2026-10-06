@@ -1,5 +1,5 @@
 /**
- * The one lifecycle every connection and every logical scope runs (HANDOFF §4.3): a pure
+ * The one lifecycle every connection and every logical scope runs: a pure
  * transition function from a phase, an event and the time to the next phase, its named next
  * action, and what the runtime must do. Adapters only classify a failure into an
  * {@link OutcomeClass}; this module alone owns retry, backoff and refusal.
@@ -24,7 +24,7 @@ export type Phase =
   | "unsupported"
   | "closed";
 
-/** Every answer a source gives falls into one of these classes (HANDOFF §4.3 table). */
+/** Every answer a source gives falls into one of these classes. */
 export type OutcomeClass =
   | "definitive-refusal"
   | "recoverable-session"

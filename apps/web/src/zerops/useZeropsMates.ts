@@ -48,7 +48,7 @@ export function useZeropsMate(environmentId: EnvironmentId): ZeropsMateAt {
 
 /**
  * The Mate a page draws in `environmentId` now: undefined until the directory names one there,
- * so a page holds its place and never wears a guessed face (HANDOFF §4.4).
+ * so a page holds its place and never wears a guessed face.
  */
 export function useKnownMate(environmentId: EnvironmentId): ZeropsMateIdentity | undefined {
   const at = useZeropsMate(environmentId);

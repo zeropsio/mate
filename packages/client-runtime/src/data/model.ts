@@ -1,5 +1,5 @@
 /**
- * The account's knowledge, as one store holds it (HANDOFF §4.4): facts keyed by domain id, never
+ * The account's knowledge, as one store holds it: facts keyed by domain id, never
  * by the source that delivered them, each carrying its value, its owner's revision, the scope that
  * observed it (its coverage, and through that scope's stream its freshness) and its access state,
  * each apart. Memberships say which ids a scope admits; they never say an entity exists.
@@ -68,7 +68,7 @@ export interface Fact<T> {
   readonly access: Access;
   /**
    * A relayed value's producer leg: whether its author's link to the relay is up. A healthy relay
-   * cannot make a value whose producer is down live (HANDOFF §4.2).
+   * cannot make a value whose producer is down live.
    */
   readonly producer?: "up" | "down";
 }

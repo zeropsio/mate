@@ -1,5 +1,5 @@
 /**
- * Zerops, a fixed source (HANDOFF §4.2): one receiver per account, organization and renderer
+ * Zerops, a fixed source: one receiver per account, organization and renderer
  * carries the organization's navigation registrations (`demand.ts`). An attempt opens the
  * receiver, starts reading frames before it registers anything, then registers each scope —
  * updates first — and commits the membership answer as that scope's baseline. Frames that arrive
@@ -55,7 +55,7 @@ export interface ZeropsWire {
   readonly open: Effect.Effect<ZeropsLink, StreamFault, Scope.Scope>;
 }
 
-/** How an HTTP answer classifies (HANDOFF §4.3); the wire applies it to every failed request. */
+/** How an HTTP answer classifies; the wire applies it to every failed request. */
 export function classifyHttp(status: number, retryAfterMs?: number): StreamFault {
   const message = `HTTP ${status}`;
   if (status === 401) return { outcome: "recoverable-session", message };

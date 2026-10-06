@@ -32,7 +32,7 @@ export type ZeropsWireClient = Pick<
 
 const transient = (message: string): StreamFault => ({ outcome: "transient", message });
 
-/** How a failed Zerops request classifies (HANDOFF §4.3). */
+/** How a failed Zerops request classifies. */
 export function zeropsFault(cause: unknown): StreamFault {
   if (!(cause instanceof ZeropsApiError)) return transient(String(cause));
   if (cause.status !== null) return classifyHttp(cause.status, cause.retryAfterMs ?? undefined);

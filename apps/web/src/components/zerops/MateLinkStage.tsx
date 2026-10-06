@@ -2,7 +2,7 @@
  * A Mate's page while its conversation cannot show yet (a reload before the catalog names its
  * thread, the route's link being made, the Mate down): its header — the face and the name — as its
  * conversation will draw it, awake where its container runs; until the directory names who lives
- * there, the header's place held empty, never a guess (HANDOFF §4.4). Opening, the
+ * there, the header's place held empty, never a guess. Opening, the
  * page under it is quiet, with one line where the messages will land past its beat; where the link
  * has words of its own (a restart, a reconnect, a container that is not running) the Mate's face
  * stands asleep over its name with them, on one axis (`stageSpeaks`).
@@ -91,7 +91,7 @@ function MateLinkStageOf({
   const tryAgain = useTryMateAgain();
   if (at.kind === "nobody") return <MateLinkWords voice={voice} />;
   // Before the directory names who lives here, the stage is the named one's with the face, the
-  // name and the header's place held (HANDOFF §4.4): its verbs, its processes and its words need
+  // name and the header's place held: its verbs, its processes and its words need
   // no name, and nothing moves when the name arrives.
   const known = at.kind === "mate" ? at.mate : null;
   const askAgain = askAgainLabel(voice.actions);

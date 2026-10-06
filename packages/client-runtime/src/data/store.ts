@@ -1,5 +1,5 @@
 /**
- * The account's store: its state behind the one reducer, and keyed publication (HANDOFF §4.5).
+ * The account's store: its state behind the one reducer, and keyed publication.
  * Every read key — a fact, a scope's membership, a project's running work, a stream — has its own
  * atom, created on first read; a reduction sets only the atoms of the keys it changed, inside one
  * `Atom.batch`. A reader never gets a raw record or a writable atom: facts arrive as

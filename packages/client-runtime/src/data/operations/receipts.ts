@@ -1,5 +1,5 @@
 /**
- * The operation family's one reducer (HANDOFF §4.6): intent and request id recorded before the
+ * The operation family's one reducer: intent and request id recorded before the
  * request leaves, a lost answer marked uncertain, the owner's receipts admitted as they come — from
  * the answer, from a lookup by the original id, or from the owner's own stream. A receipt never
  * regresses: a settled outcome stays settled. No input here comes from a clock.

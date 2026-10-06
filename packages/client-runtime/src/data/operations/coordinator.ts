@@ -1,5 +1,5 @@
 /**
- * Submitting an operation to its owner (HANDOFF §4.6): the intent and its request id are recorded
+ * Submitting an operation to its owner: the intent and its request id are recorded
  * before the request leaves; the owner's receipt goes through the store's one reducer. A lost answer
  * is never sent again blindly: the owner is asked by the original id first, and only an owner that
  * holds no such request is sent it again — under the same id, which the owner applies once.

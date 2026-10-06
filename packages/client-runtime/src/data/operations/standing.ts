@@ -1,5 +1,5 @@
 /**
- * An accepted operation is a standing demand at its owner (HANDOFF §4.3): the detail that holds its
+ * An accepted operation is a standing demand at its owner: the detail that holds its
  * handle — declared by its kind's `observedIn` — is held through the same `demandDetail` screens
  * use, from acceptance until the operation is done or refused. An end that came while the account
  * was away is then read in that detail's next baseline, and settles the operation.

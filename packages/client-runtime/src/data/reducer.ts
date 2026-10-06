@@ -1,5 +1,5 @@
 /**
- * The account's one writer (HANDOFF §4.4): every input — a stream event, a baseline, a membership
+ * The account's one writer: every input — a stream event, a baseline, a membership
  * delta, versioned rows, evidence of deletion or access — enters here and is dispatched to the one
  * reducer of its family. A reduction names the read keys it changed, for keyed publication, and
  * the work it asks of the runtime. No transport event deletes a fact: only proven deletion does.

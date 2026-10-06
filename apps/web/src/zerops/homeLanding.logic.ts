@@ -2,7 +2,7 @@
  * What the home (`/`) shows while it works out where to land (unknown is not empty): it lands on
  * the most recently active Mate once the Mates' connections have said so, seconds on a cold load —
  * and meanwhile it shows the boot's one wait line, never a blank page and never a guess of where
- * it will land (HANDOFF §5 rule 10). Nowhere to land is an answer only once the read is whole, and
+ * it will land. Nowhere to land is an answer only once the read is whole, and
  * it is the projects page, where New project works; once painted, it stays until somebody here
  * sends the home elsewhere. Pure.
  */

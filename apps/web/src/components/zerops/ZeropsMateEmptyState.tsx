@@ -226,7 +226,7 @@ export function useMateEmptyState({
 type DrawnMate = Omit<ZeropsMateIdentity, "projectUrl">;
 
 /**
- * The places a Mate not yet named holds (HANDOFF §4.4): a face's room, drawn unseen, and a
+ * The places a Mate not yet named holds: a face's room, drawn unseen, and a
  * headline's line with no words — the named view's footprint, so nothing moves when it arrives.
  */
 const UNNAMED: DrawnMate = {

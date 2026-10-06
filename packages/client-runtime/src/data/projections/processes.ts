@@ -1,5 +1,5 @@
 /**
- * What surfaces read of running work (HANDOFF §2.2, §4.5): whether a project has a build or a
+ * What surfaces read of running work: whether a project has a build or a
  * deploy under way — the menu's indicator — and the processes the account holds of one project,
  * with where the organization's running work and the project's history read stand. Both say
  * "not known yet" until the running scope's first baseline; through an outage they keep what was

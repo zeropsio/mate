@@ -184,7 +184,7 @@ function StartFreshMenuItem({ onStartFresh }: { readonly onStartFresh: () => voi
 /**
  * Who heads a conversation's header: a Mate's line of conversations once the directory names the
  * Mate; upstream's breadcrumb where nobody lives; until the directory says, the strip's place held
- * empty — never the breadcrumb, to flip from (HANDOFF §4.4).
+ * empty — never the breadcrumb, to flip from.
  */
 export function headerLead(
   whoLivesHere: ZeropsMateAt["kind"],

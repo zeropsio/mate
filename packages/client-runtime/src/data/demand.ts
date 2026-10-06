@@ -1,5 +1,5 @@
 /**
- * What the account observes, and what that costs each source (HANDOFF §4.1, §4.2). Navigation is
+ * What the account observes, and what that costs each source. Navigation is
  * always demanded: for Zerops a constant set of organization registrations, never one per menu row.
  * A detail family is registered only for the owners a screen demands it for (one project's
  * services while that project is open). Each observed scope is a pair: a membership `listStream`,
