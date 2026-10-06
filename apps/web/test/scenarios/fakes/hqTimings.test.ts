@@ -11,7 +11,7 @@ import {
   ticketFor,
   untilHealth,
 } from "../../../../hq/test/harness/runningCore.ts";
-import { startScenarioCore, type HqTimings } from "../harness/hqCore.ts";
+import { openScenarioNavigation, startScenarioCore, type HqTimings } from "../harness/hqCore.ts";
 import { serve, deadline } from "../harness/http.ts";
 import { ZeropsFake } from "./zerops.ts";
 
@@ -57,26 +57,9 @@ it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
             yield* untilHealth(core.call, "active");
             const session = yield* sessionFor(core.call, "door-owner");
             const ticket = yield* ticketFor(core.call, session);
-            const socket = yield* Effect.acquireRelease(
-              Effect.sync(
-                () =>
-                  new WebSocket(
-                    `${core.origin.replace("http:", "ws:")}/api/structure/ws?ticket=${ticket}`,
-                  ),
-              ),
-              (socket) => Effect.sync(() => socket.terminate()),
-            );
-            yield* Effect.promise(() =>
-              deadline(
-                new Promise<void>((resolve, reject) => {
-                  socket.once("message", () => resolve());
-                  socket.once("error", reject);
-                }),
-                "Core structure first frame",
-              ),
-            );
-            // The initial snapshot can precede starting the stream's recheck timer. Wait for its
-            // scheduling receipt, never a wall-time delay or an assumption about snapshot ordering.
+            const socket = yield* openScenarioNavigation(core.origin, ticket);
+            // Data delivery can precede starting the recheck timer. Wait for its scheduling receipt,
+            // never a wall-time delay or an assumption about delivery ordering.
             yield* Effect.promise(() =>
               deadline(
                 new Promise<void>((resolve) => {
