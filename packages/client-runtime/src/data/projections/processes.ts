@@ -8,10 +8,10 @@
  * @module data/projections/processes
  */
 import { historyScope, runningScope, runsStill, type ProcessValue } from "../families/process.ts";
-import { linkKeys } from "../model.ts";
 import type { Projection, ProjectionReads } from "../store.ts";
 import type { StreamState } from "../streamMachine.ts";
 import { sameValue } from "./equal.ts";
+import { scopeFreshness, type UnavailableReason } from "./freshness.ts";
 
 export interface ProjectKey {
   readonly orgId: string;
@@ -20,39 +20,9 @@ export interface ProjectKey {
 
 const keyOf = ({ orgId, projectId }: ProjectKey) => `${orgId}/${projectId}`;
 
-const CATCHING_UP: ReadonlySet<StreamState["phase"]> = new Set(["recovering", "reauthenticating"]);
-
 /** How the organization's running work is observed now: live, catching up, or refused. */
-function freshness(read: ProjectionReads, orgId: string) {
-  const link = read.stream(linkKeys.zerops(orgId));
-  const running = read.stream(runningScope(orgId));
-  const refusal = [link, running].find((stream) => stream.phase === "refused");
-  const complete = read.coverage(runningScope(orgId)) === "complete";
-  // Catching up is the streams' own word — a link retrying or repairing its session, a scope an
-  // attempt already registered left stale — whether or not anything was read before; the first
-  // connect is not.
-  const catchingUp =
-    CATCHING_UP.has(link.phase) || (running.phase === "stale" && running.generation > 0);
-  return {
-    complete,
-    live: link.phase === "live" && running.phase === "live",
-    reconnecting: refusal === undefined && catchingUp,
-    ...(refusal === undefined ? {} : { unavailableReason: refusalReason(refusal) }),
-  };
-}
-
-/** What a refusal says to a surface: its session ended, it may not read, or it was refused. */
-function refusalReason(stream: StreamState): "expired-session" | "forbidden" | "refused" {
-  switch (stream.fault?.outcome) {
-    case "authoritative-denial":
-      return "forbidden";
-    case "definitive-refusal":
-    case "recoverable-session":
-      return "expired-session";
-    default:
-      return "refused";
-  }
-}
+const freshness = (read: ProjectionReads, orgId: string) =>
+  scopeFreshness(read, orgId, runningScope(orgId));
 
 export type RunningWork =
   | { readonly kind: "unknown"; readonly live: boolean }
@@ -120,7 +90,7 @@ export interface ProjectProcesses {
   /** Read before and not live now: what is held stays, catching up. */
   readonly reconnecting: boolean;
   /** The organization's running work was refused: why. */
-  readonly unavailableReason?: "expired-session" | "forbidden" | "refused";
+  readonly unavailableReason?: UnavailableReason;
   readonly history: HistoryRead;
 }
 

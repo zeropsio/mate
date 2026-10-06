@@ -9,6 +9,7 @@ import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
 
 import type { DetailDemand } from "./demand.ts";
 import { projectProcesses, type ProjectProcesses } from "./projections/processes.ts";
+import { organizationProjects, type OrganizationProjects } from "./projections/projects.ts";
 import type { AccountStore } from "./store.ts";
 
 export interface AccountReads {
@@ -41,6 +42,29 @@ export const projectProcessesAtom = Atom.family((projectId: string) =>
     return get(account.data.project(projectProcesses, { orgId: account.orgId, projectId }));
   }).pipe(Atom.withLabel(`data:project-processes:${projectId}`)),
 );
+
+export const NOT_READ_PROJECTS: OrganizationProjects = {
+  projects: [],
+  read: "unread",
+  complete: false,
+  live: false,
+  reconnecting: false,
+};
+
+/**
+ * The organization's projects as the mounted account observes them — the organization it shows;
+ * not read without one.
+ */
+export const shownProjectsAtom = Atom.make(
+  (get): OrganizationProjects & { readonly orgId: string | null } => {
+    const account = get(accountReadsAtom);
+    if (account === null || account.orgId === null) return { ...NOT_READ_PROJECTS, orgId: null };
+    return {
+      ...get(account.data.project(organizationProjects, account.orgId)),
+      orgId: account.orgId,
+    };
+  },
+).pipe(Atom.withLabel("data:shown-projects"));
 
 /**
  * Holds a project's newest process history from outside React, through whichever account is

@@ -22,6 +22,7 @@ export {
 } from "../zerops/data/zeropsSession.ts";
 export { endIssuedSession } from "./adapters/issuedSessions.ts";
 export { historyScope, runningScope, type ProcessValue } from "./families/process.ts";
+export { projectsScope, type ProjectValue } from "./families/project.ts";
 export {
   buildsUnderWay,
   projectProcesses,
@@ -32,6 +33,12 @@ export {
   type ProjectProcesses,
   type RunningWork,
 } from "./projections/processes.ts";
+export {
+  organizationProjects,
+  type OrganizationProjects,
+  type RosterRead,
+} from "./projections/projects.ts";
+export type { UnavailableReason } from "./projections/freshness.ts";
 export { makeOperations, type Operations } from "./operations/coordinator.ts";
 export { makeZeropsExecutor } from "./operations/executors/zerops.ts";
 export { restartWay } from "./operations/mateRestart.ts";
@@ -41,6 +48,8 @@ export { operationEnd, type OperationEnd } from "./projections/operationEnd.ts";
 export {
   accountReadsAtom,
   NOT_READ_PROCESSES,
+  NOT_READ_PROJECTS,
   projectProcessesAtom,
+  shownProjectsAtom,
   type AccountReads,
 } from "./reads.ts";
