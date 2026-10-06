@@ -171,8 +171,13 @@ async function main(args: ReadonlySet<string>): Promise<void> {
       NodeFS.writeFileSync(path, bumpVersion(NodeFS.readFileSync(path, "utf8"), current, next));
     }
     git(tree, "add", ...VERSIONED_PACKAGES);
-    // Three version strings: the formatter has nothing to do, and a throwaway tree has no node_modules.
-    git(tree, "commit", "--quiet", "--no-verify", "-m", message);
+    // The release worktree shares installed tooling so the normal commit hooks can run.
+    NodeFS.symlinkSync(
+      NodePath.join(repo, "node_modules"),
+      NodePath.join(tree, "node_modules"),
+      "dir",
+    );
+    git(tree, "commit", "--quiet", "-m", message);
     // A fast-forward only: if main moved since the fetch, this fails and nothing is tagged.
     git(tree, "push", "--quiet", "origin", "HEAD:main");
     git(tree, "tag", "-a", `v${next}`, "-m", `mate ${next}`);
