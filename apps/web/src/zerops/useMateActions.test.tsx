@@ -704,6 +704,27 @@ describe("useMateActions — Hand this Mate over", () => {
     expect(mock.invalidated).toEqual([{ topic: "access", change: "grants-written" }]);
   });
 
+  it("says a hand-over it could not tell landed, and reads the grants again", async () => {
+    mock.assignMateOwner.mockResolvedValue(
+      answered({
+        stage: "unresolved",
+        operationId: null,
+        nextActor: "person",
+        nextAction: "Check who owns the Mate, then hand it over again",
+      }),
+    );
+    mount();
+    openAssign();
+    await act(async () => {
+      mock.assignDialog.current!.onSubmit("cu-eva");
+    });
+    expect(mock.assignDialog.current).toMatchObject({
+      pending: false,
+      error: "Check who owns the Mate, then hand it over again.",
+    });
+    expect(mock.invalidated).toEqual([{ topic: "access", change: "grants-written" }]);
+  });
+
   it("closes once the platform takes it", async () => {
     let answer: (value: unknown) => void = () => {};
     mock.assignMateOwner.mockReturnValue(

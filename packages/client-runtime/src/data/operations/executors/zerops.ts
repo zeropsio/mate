@@ -37,7 +37,7 @@ type ZeropsOperationsClient = Pick<
   | "listIntegrationTokens"
   | "deleteIntegrationToken"
   | "enableSubdomainAccess"
-  | "enableZeropsMate"
+  | "writeMateFlag"
   | "startProject"
   | "fetchProject"
   | "writeProject"
@@ -94,13 +94,15 @@ export function makeZeropsExecutor(input: {
     startProject: (projectId) => client.startProject(projectId),
   });
   const enableMate = enableZeropsMateExecutor({
-    enableZeropsMate: (serviceId) => client.enableZeropsMate(serviceId),
+    writeMateFlag: (serviceId) => client.writeMateFlag(serviceId),
+    restartService: (serviceId) => client.restartService(serviceId),
   });
   const tags = makeProjectTagWriter({ source: client, locks: input.locks });
   const rename = renameProjectExecutor(tags);
   const retag = updateProjectTagsExecutor(tags);
   const assign = assignMateOwnerExecutor({
     setProjectMemberRole: (input) => client.setProjectMemberRole(input),
+    fetchProject: (projectId) => client.fetchProject(projectId),
   });
   return {
     submit: (requestId, intent) => {

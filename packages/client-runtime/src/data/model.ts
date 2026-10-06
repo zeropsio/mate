@@ -170,6 +170,8 @@ export interface OperationRecord {
   readonly handles: ReadonlyArray<string>;
   /** The owner can no longer observe it: who must act next, never an invented failure. */
   readonly unresolved: Unobservable | null;
+  /** Why it was not taken, where its owner or the door before it said: its words, shown as is. */
+  readonly unsentBecause?: string;
 }
 
 /** A fact's key in the one facts map: its family and its domain id. */

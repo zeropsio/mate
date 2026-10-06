@@ -89,7 +89,7 @@ describe("same-origin Zerops identity bootstrap", () => {
     for (const method of [
       "writeProject",
       "importDevelopmentContainer",
-      "enableZeropsMate",
+      "writeMateFlag",
       "enableSubdomainAccess",
       "createProject",
       "importProject",

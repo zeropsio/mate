@@ -8,8 +8,14 @@
  */
 import * as Effect from "effect/Effect";
 
-import type { Authority, OperationIntent, OperationReceipt, Unobservable } from "../model.ts";
-import { readsOfState, type AccountStore } from "../store.ts";
+import type {
+  Authority,
+  OperationIntent,
+  OperationReceipt,
+  OperationRecord,
+  Unobservable,
+} from "../model.ts";
+import { readsOfState, type AccountStore, type ProjectionReads } from "../store.ts";
 import type { StreamFault } from "../streamMachine.ts";
 import type { RegisteredOperationKind } from "./kind.ts";
 import { OPERATION_KINDS, operationKind } from "./kinds.ts";
@@ -109,23 +115,34 @@ export function makeOperations(options: {
             }),
           );
         // Not taken: shown as unsent, sent again under the same id when the person asks.
-        return Effect.sync(() => store.dispatch({ kind: "operation-unsent", requestId }));
+        return Effect.sync(() =>
+          store.dispatch({ kind: "operation-unsent", requestId, reason: fault.message }),
+        );
       },
     });
 
+  /** Whether an operation has ended — by its owner's receipt, or by its owner's facts. */
+  const ended = (read: ProjectionReads, record: OperationRecord) =>
+    record.receipt !== null &&
+    (record.receipt.outcome.kind !== "pending" ||
+      (kindOf(record.intent).settledBy?.(read, record.intent, record.receipt) ?? null) !== null);
+
   /**
    * The one effect handle in the owner's facts that can only be this operation's: absent when it
-   * was sent, held by no other operation. None, or more than one, adopts nothing.
+   * was sent, held by no other operation still under way. None, or more than one, adopts nothing.
    */
   const adoptable = (requestId: string, intent: OperationIntent): string | null => {
     const state = store.state();
+    const read = readsOfState(state);
     const before = state.operations.get(requestId)?.before;
     const effectHandles = kindOf(intent).effectHandles;
     if (before === null || before === undefined || effectHandles === undefined) return null;
+    // An ended operation holds its handles no more: a later one may show the same target.
     const claimed = new Set<string>();
     for (const [other, record] of state.operations)
-      if (other !== requestId) for (const handle of record.handles) claimed.add(handle);
-    const candidates = effectHandles(readsOfState(state), intent).filter(
+      if (other !== requestId && !ended(read, record))
+        for (const handle of record.handles) claimed.add(handle);
+    const candidates = effectHandles(read, intent).filter(
       (handle) => !before.includes(handle) && !claimed.has(handle),
     );
     return candidates.length === 1 ? candidates[0]! : null;

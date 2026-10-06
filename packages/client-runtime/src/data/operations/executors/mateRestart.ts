@@ -6,6 +6,7 @@
  * @module data/operations/executors/mateRestart
  */
 import * as Effect from "effect/Effect";
+import * as Result from "effect/Result";
 import type { AtomRegistry } from "effect/unstable/reactivity";
 
 import type { OperationReceipt } from "../../model.ts";
@@ -32,7 +33,8 @@ export interface MateRestartPlatform {
  * history from the moment it is sent, so a reconnect's baseline shows a stop that ended meanwhile;
  * the start follows the stop's end. A stop whose end can no longer be observed — its organization
  * or account left, its link refused — is never started blindly: Zerops answers it as unobservable,
- * with the stop's process kept and starting the Mate as the person's next action.
+ * with the stop's process kept and starting the Mate as the person's next action. So is a start
+ * Zerops did not take after the stop landed; only a start whose answer was lost stays uncertain.
  */
 export function mateRestartOwner(ports: {
   readonly platform: MateRestartPlatform;
@@ -50,19 +52,25 @@ export function mateRestartOwner(ports: {
       () =>
         Effect.gen(function* () {
           const stopped = yield* verb(() => platform.stopService(intent.serviceId));
+          const stopHandles = stopped.processId === undefined ? [] : [stopped.processId];
+          const startTheMate = {
+            unobservable: {
+              nextActor: "person",
+              nextAction: "Start the Mate",
+              handles: stopHandles,
+            },
+          } satisfies OwnerUnobservable;
           if (stopped.processId !== undefined) {
-            const stop = stopped.processId;
-            const watch = yield* stopSettles(intent.orgId, intent.projectId, stop);
-            if (watch === "unobservable")
-              return {
-                unobservable: {
-                  nextActor: "person",
-                  nextAction: "Start the Mate",
-                  handles: [stop],
-                },
-              } satisfies OwnerUnobservable;
+            const watch = yield* stopSettles(intent.orgId, intent.projectId, stopped.processId);
+            if (watch === "unobservable") return startTheMate;
           }
-          return yield* verb(() => platform.startService(intent.serviceId));
+          // The stop landed: a start not taken leaves the Mate stopped, its start the next step.
+          // Only a start whose answer was lost stays uncertain, its process adopting it.
+          const started = yield* Effect.result(verb(() => platform.startService(intent.serviceId)));
+          if (Result.isSuccess(started)) return started.success;
+          if (started.failure.outcome === "uncertain-acceptance")
+            return yield* Effect.fail(started.failure);
+          return startTheMate;
         }),
       (release) => Effect.sync(release),
     );

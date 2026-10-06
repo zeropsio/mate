@@ -65,6 +65,7 @@ function platformOf(
   options: {
     readonly restart?: () => Promise<{ processId: string }>;
     readonly stop?: () => Promise<{ processId: string }>;
+    readonly start?: () => Promise<{ processId: string }>;
   } = {},
 ) {
   const calls: string[] = [];
@@ -79,7 +80,7 @@ function platformOf(
     },
     startService: async (serviceId) => {
       calls.push(`start ${serviceId}`);
-      return { processId: "proc-start" };
+      return options.start === undefined ? { processId: "proc-start" } : options.start();
     },
   };
   return { platform, calls };
@@ -264,7 +265,11 @@ describe("mate-restart", () => {
           ),
       });
       yield* operationsOf(store, registry, platform).submit(RESTART);
-      expect(progress(store)).toEqual({ stage: "unsent", next: "send-again" });
+      expect(progress(store)).toEqual({
+        stage: "unsent",
+        next: "send-again",
+        reason: "Project access could not be verified.",
+      });
     }),
   );
 
@@ -285,6 +290,40 @@ describe("mate-restart", () => {
       yield* operationsOf(store, registry, platform).submit(RESTART);
       expect(progress(store)).toEqual({ stage: "refused", reason: "Service stack is failed." });
     }),
+  );
+
+  it.effect.each([
+    [
+      "Zerops refused it",
+      () => Promise.reject(new ZeropsApiError("Service is busy.", "invalid-input", 400)),
+    ],
+    [
+      "its admission refused it before sending",
+      () =>
+        Promise.reject(
+          new ZeropsWriteNotSent({ message: "Project access could not be verified." }),
+        ),
+    ],
+  ] as const)(
+    "a start not taken after the stop landed ends unresolved, starting the Mate next: %s",
+    ([, start]) =>
+      Effect.gen(function* () {
+        const { store, registry } = account();
+        const { platform, calls } = platformOf({ start });
+        const fiber = yield* Effect.forkChild(
+          operationsOf(store, registry, platform).submit(REVIVE),
+        );
+        yield* Effect.yieldNow;
+        processRow(store, "proc-stop", "FINISHED", 1, "stack.stop");
+        yield* Fiber.join(fiber);
+        expect(calls).toEqual(["stop s1", "start s1"]);
+        expect(progress(store)).toEqual({
+          stage: "unresolved",
+          operationId: null,
+          nextActor: "person",
+          nextAction: "Start the Mate",
+        });
+      }),
   );
 
   it.effect("holds its project's process history from the moment the stop is sent", () =>

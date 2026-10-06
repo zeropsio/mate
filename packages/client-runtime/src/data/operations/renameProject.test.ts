@@ -19,7 +19,7 @@ const RENAME = {
 const account = () =>
   accountOf(liveZerops({ running: [], projects: [{ id: "p1", name: "shop · Bob" }] }));
 
-const named = (store: AccountStore, name: string) =>
+const named = (store: AccountStore, name: string, version = 2) =>
   store.dispatch({
     kind: "rows",
     scope: projectsScope(ORG),
@@ -31,7 +31,7 @@ const named = (store: AccountStore, name: string) =>
         family: "project",
         id: "p1",
         value: projectValue({ id: "p1", name }),
-        revision: zeropsVersion(2),
+        revision: zeropsVersion(version),
       },
     ],
   });
@@ -92,6 +92,27 @@ describe("rename-project", () => {
         expect(progressOf(store)).toEqual(expected);
         expect(calls).toEqual([["p1", "shop · Ada", "shop · Bob"]]);
       }
+    }),
+  );
+
+  it.effect("adopts a later lost rename on a project an earlier one ended on", () =>
+    Effect.gen(function* () {
+      const store = account();
+      let lose = false;
+      const { operations } = operationsOf(store, () =>
+        lose ? Promise.reject(new ZeropsApiError("No answer.", "network")) : Promise.resolve(),
+      );
+      yield* operations.submit(RENAME);
+      named(store, "shop · Ada", 2);
+      lose = true;
+      yield* operations.submit({ ...RENAME, name: "shop · Eva", from: "shop · Ada" });
+      named(store, "shop · Eva", 3);
+      yield* operations.retry("r2");
+      expect(progressOf(store, "r2")).toEqual({
+        stage: "done",
+        operationId: "p1",
+        outcome: "succeeded",
+      });
     }),
   );
 });

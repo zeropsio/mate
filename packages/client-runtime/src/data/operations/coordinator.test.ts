@@ -229,7 +229,11 @@ describe("makeOperations", () => {
       });
 
       const requestId = yield* operations.submit(MOVE);
-      expect(progress(store, requestId)).toEqual({ stage: "unsent", next: "send-again" });
+      expect(progress(store, requestId)).toEqual({
+        stage: "unsent",
+        next: "send-again",
+        reason: "HTTP 503",
+      });
       expect(owner.effects).toEqual([]);
 
       yield* operations.retry(requestId);

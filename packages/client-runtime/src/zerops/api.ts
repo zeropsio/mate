@@ -2919,54 +2919,36 @@ export class ZeropsApiClient {
    * cloned from dev comes up unpublished whatever its recipe said, and answers
    * 502 after its first deploy until this runs (`verified.md`, 2026-09-07).
    */
-  async enableSubdomainAccess(
-    serviceId: string,
-    signal?: AbortSignal,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<void> {
+  async enableSubdomainAccess(serviceId: string): Promise<void> {
     await this.#request(
       `/service-stack/${serviceId}/enable-subdomain-access`,
-      { method: "PUT", signal: signal ?? null },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
+      { method: "PUT" },
+      { operationKind: "project-write" },
     );
   }
 
   /** `POST /service-stack/{id}/user-data` — writes the Zerops Mate flag as on. */
-  async #createMateFlag(
-    serviceId: string,
-    signal?: AbortSignal,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<void> {
+  async #createMateFlag(serviceId: string): Promise<void> {
     await this.#request(
       `/service-stack/${serviceId}/user-data`,
       {
         method: "POST",
-        signal: signal ?? null,
         // `sensitive` is required on every service userData write — the
         // platform rejects a body without it as "field is required".
         body: JSON.stringify({ key: ZEROPS_MATE_ENV_KEY, content: "1", sensitive: true }),
       },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
+      { operationKind: "project-write" },
     );
   }
 
   /**
-   * Turns Zerops Mate on for a container that is not serving it: write the
-   * flag, then restart.
+   * Writes the Zerops Mate flag on for a container that is not serving it. Its restart is the
+   * caller's next write: a service env change reaches a container's process environment only at
+   * boot, which is the same boot `zcp init` reads it on.
    *
-   * Both halves are needed and neither is enough. `ZCP_MATE_ENABLED` is the one
-   * input zcp keys every mate-shaped effect off — without it `zcp init` does not
-   * register the mate step at all, so no bundle is installed, no `zerops@mate` unit
-   * is created and nginx publishes no `/mate/` location. And a service env change
-   * reaches a container's process environment only at boot, which is the same
-   * boot `zcp init` reads it on. So a restart without the write comes back in
-   * the identical state, and a write without the restart changes nothing yet.
+   * `ZCP_MATE_ENABLED` is the one input zcp keys every mate-shaped effect off — without it `zcp
+   * init` does not register the mate step at all, so no bundle is installed, no `zerops@mate`
+   * unit is created and nginx publishes no `/mate/` location.
    *
    * The write is an upsert done as delete-then-create, because the platform
    * exposes create and delete for a single key and no update. The bulk
@@ -2981,44 +2963,32 @@ export class ZeropsApiClient {
    *
    * The create can race the platform's own read path, so it is followed by
    * one read-back; a miss there gets exactly one more create attempt, never
-   * an unbounded retry loop, before the container restarts either way.
+   * an unbounded retry loop.
    */
-  async enableZeropsMate(
-    serviceId: string,
-    signal?: AbortSignal,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<void> {
+  async writeMateFlag(serviceId: string): Promise<void> {
     const generation = this.#generation;
-    const current = (await this.#serviceEnv(serviceId, signal)).find(
+    const current = (await this.#serviceEnv(serviceId)).find(
       (entry) => entry.key === ZEROPS_MATE_ENV_KEY,
     );
-
-    if (!current || !readsAsEnabled(current.content)) {
-      if (current) {
-        this.#assertGeneration(generation);
-        await this.#request(
-          `/user-data/${current.id}`,
-          { method: "DELETE", signal: signal ?? null },
-          {
-            operationKind: "project-write",
-            ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-          },
-        );
-      }
+    if (current !== undefined && readsAsEnabled(current.content)) return;
+    if (current) {
       this.#assertGeneration(generation);
-      await this.#createMateFlag(serviceId, signal, beforeWrite);
-
-      const after = (await this.#serviceEnv(serviceId, signal)).find(
-        (entry) => entry.key === ZEROPS_MATE_ENV_KEY,
+      await this.#request(
+        `/user-data/${current.id}`,
+        { method: "DELETE" },
+        { operationKind: "project-write" },
       );
-      if (!after || !readsAsEnabled(after.content)) {
-        this.#assertGeneration(generation);
-        await this.#createMateFlag(serviceId, signal, beforeWrite);
-      }
     }
-
     this.#assertGeneration(generation);
-    await this.restartService(serviceId, signal, beforeWrite);
+    await this.#createMateFlag(serviceId);
+
+    const after = (await this.#serviceEnv(serviceId)).find(
+      (entry) => entry.key === ZEROPS_MATE_ENV_KEY,
+    );
+    if (!after || !readsAsEnabled(after.content)) {
+      this.#assertGeneration(generation);
+      await this.#createMateFlag(serviceId);
+    }
   }
 
   async #setSession(session: ZeropsSession | null): Promise<void> {

@@ -1,9 +1,8 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 
-import { liveZerops, ORG, projectValue, zeropsVersion } from "../__fixtures__/account.ts";
+import { liveZerops, ORG } from "../__fixtures__/account.ts";
 import { accountOf, progressOf, zeropsOperations } from "../__fixtures__/operations.ts";
-import { projectsScope } from "../families/project.ts";
 import type { AccountStore } from "../store.ts";
 import { ZeropsApiError, type ZeropsProject } from "../../zerops/api.ts";
 import { assignMateOwnerExecutor } from "./executors/projectWrites.ts";
@@ -21,31 +20,22 @@ const owners = (...ids: ReadonlyArray<string>) =>
 const account = () =>
   accountOf(liveZerops({ running: [], projects: [{ id: "p1", userRoles: owners("bob") }] }));
 
-const roles = (store: AccountStore, userRoles: ReturnType<typeof owners>, version: number) =>
-  store.dispatch({
-    kind: "rows",
-    scope: projectsScope(ORG),
-    generation: 1,
-    method: "push",
-    via: "zerops-realtime",
-    rows: [
-      {
-        family: "project",
-        id: "p1",
-        value: projectValue({ id: "p1", userRoles }),
-        revision: zeropsVersion(version),
-      },
-    ],
-  });
-
 type Write = { readonly clientUserId: string; readonly roleCode: "OWNER" | null };
 
-function operationsOf(store: AccountStore, answer: (write: Write) => Promise<ZeropsProject>) {
-  const calls: Write[] = [];
+function operationsOf(
+  store: AccountStore,
+  answer: (write: Write) => Promise<ZeropsProject>,
+  read: () => Promise<ZeropsProject> = () => Promise.reject(new Error("not read")),
+) {
+  const calls: Array<Write | "read"> = [];
   const submit = assignMateOwnerExecutor({
     setProjectMemberRole: (input) => {
       calls.push({ clientUserId: input.clientUserId, roleCode: input.roleCode });
       return answer(input);
+    },
+    fetchProject: () => {
+      calls.push("read");
+      return read();
     },
   });
   return { operations: zeropsOperations(store, submit), calls };
@@ -99,20 +89,48 @@ describe("assign-mate-owner", () => {
       }),
   );
 
-  it.effect("adopts a lost answer only once the project names the Mate's one owner", () =>
+  it.effect("resolves a first write whose answer was lost by reading the project", () =>
     Effect.gen(function* () {
-      const store = account();
-      const { operations, calls } = operationsOf(store, () =>
-        Promise.reject(new ZeropsApiError("No answer.", "network")),
-      );
-      yield* operations.submit(ASSIGN);
-      roles(store, owners("ada", "bob"), 2);
-      yield* operations.retry("r1");
-      expect(progressOf(store)).toEqual({ stage: "uncertain", next: "ask-owner-again" });
-      roles(store, owners("ada"), 3);
-      yield* operations.retry("r1");
-      expect(progressOf(store)).toEqual({ stage: "done", operationId: "p1", outcome: "succeeded" });
-      expect(calls).toEqual([{ clientUserId: "ada", roleCode: "OWNER" }]);
+      const lost = (write: Write) =>
+        write.roleCode === "OWNER"
+          ? Promise.reject(new ZeropsApiError("No answer.", "network"))
+          : Promise.resolve(handed);
+      for (const [read, expected, calls] of [
+        [
+          () => Promise.resolve(handed),
+          { stage: "done", operationId: "p1", outcome: "succeeded" },
+          [
+            { clientUserId: "ada", roleCode: "OWNER" },
+            "read",
+            { clientUserId: "bob", roleCode: null },
+          ],
+        ],
+        [
+          () => Promise.resolve({ ...handed, userRoles: owners("bob") }),
+          {
+            stage: "unsent",
+            next: "send-again",
+            reason: "Zerops did not take the hand-over.",
+          },
+          [{ clientUserId: "ada", roleCode: "OWNER" }, "read"],
+        ],
+        [
+          () => Promise.reject(new ZeropsApiError("No answer.", "network")),
+          {
+            stage: "unresolved",
+            operationId: null,
+            nextActor: "person",
+            nextAction: "Check who owns the Mate, then hand it over again",
+          },
+          [{ clientUserId: "ada", roleCode: "OWNER" }, "read"],
+        ],
+      ] as const) {
+        const store = account();
+        const { operations, calls: sent } = operationsOf(store, lost, read);
+        yield* operations.submit(ASSIGN);
+        expect(progressOf(store)).toEqual(expected);
+        expect(sent).toEqual(calls);
+      }
     }),
   );
 });

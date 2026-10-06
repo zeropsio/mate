@@ -26,6 +26,10 @@ describe("submitZeropsWrite", () => {
       [{ stage: "refused", reason: "Not allowed." }, "Not allowed."],
       [{ stage: "unsent", next: "send-again" }, "Zerops did not take the change. Try again."],
       [
+        { stage: "unsent", next: "send-again", reason: "Project access could not be verified." },
+        "Project access could not be verified.",
+      ],
+      [
         { stage: "uncertain", next: "ask-owner-again" },
         "Zerops may have accepted this operation, but its response was lost. Check the project and its services before starting another operation.",
       ],
@@ -40,6 +44,24 @@ describe("submitZeropsWrite", () => {
       else await expect(written).rejects.toThrow(trouble);
       expect(sent).toEqual([{ ...PUBLISH, orgId: "org-1" }]);
     }
+  });
+
+  it("says what landed of a write whose next step is the person's", async () => {
+    const { operations } = answering({
+      stage: "unresolved",
+      operationId: null,
+      nextActor: "person",
+      nextAction: "Restart the Mate",
+    });
+    await expect(
+      submitZeropsWrite(operations, "org-1", {
+        kind: "enable-zerops-mate",
+        projectId: "p1",
+        serviceId: "s1",
+      }),
+    ).rejects.toThrow(
+      "Zerops Mate is turned on, but its container was not restarted. Restart the Mate.",
+    );
   });
 
   it("refuses without an open organization and sends nothing", async () => {

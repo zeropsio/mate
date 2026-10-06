@@ -63,6 +63,20 @@ describe("enable-subdomain-access", () => {
             { stage: "refused", reason: "Not allowed." },
           ],
           [
+            () =>
+              Promise.reject(
+                new ZeropsApiError(
+                  "This Zerops account is not allowed to do that.",
+                  "forbidden",
+                  403,
+                  "projectAccessDenied",
+                  "Only the project's owner may publish it.",
+                ),
+              ),
+            false,
+            { stage: "refused", reason: "Only the project's owner may publish it." },
+          ],
+          [
             () => Promise.reject(new ZeropsApiError("No answer.", "network")),
             false,
             { stage: "uncertain", next: "ask-owner-again" },

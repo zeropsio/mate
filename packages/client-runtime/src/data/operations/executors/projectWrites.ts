@@ -8,7 +8,9 @@ import * as Result from "effect/Result";
 
 import { ZeropsApiError, type ZeropsProject } from "../../../zerops/api.ts";
 import type { OperationReceipt } from "../../model.ts";
+import type { StreamFault } from "../../streamMachine.ts";
 import type { ProjectTagWriter } from "../../../zerops/data/tagWriter.ts";
+import type { OwnerUnobservable } from "../coordinator.ts";
 import type { IntentOf } from "../kind.ts";
 import { answeredReceipt } from "./answered.ts";
 import { verb } from "./write.ts";
@@ -61,24 +63,55 @@ export function updateProjectTagsExecutor(tags: Pick<ProjectTagWriter, "write">)
     );
 }
 
+const ownersOf = (project: ZeropsProject) =>
+  (project.userRoles ?? [])
+    .filter((role) => role.roleCode === "OWNER")
+    .map((role) => role.clientUserId);
+
 export function assignMateOwnerExecutor(platform: {
   readonly setProjectMemberRole: (input: {
     readonly projectId: string;
     readonly clientUserId: string;
     readonly roleCode: "OWNER" | null;
   }) => Promise<ZeropsProject>;
+  readonly fetchProject: (projectId: string) => Promise<ZeropsProject>;
 }) {
   const write = (projectId: string, clientUserId: string, roleCode: "OWNER" | null) =>
     verb(() => platform.setProjectMemberRole({ projectId, clientUserId, roleCode }));
+  /**
+   * The project as Zerops holds it after the first write: its own answer, or — that answer lost —
+   * the project read again, which says whether the person picked was made its OWNER.
+   */
+  const handedOver = (intent: IntentOf<"assign-mate-owner">) =>
+    Effect.gen(function* () {
+      const first = yield* Effect.result(write(intent.projectId, intent.clientUserId, "OWNER"));
+      if (Result.isSuccess(first)) return first.success;
+      if (first.failure.outcome !== "uncertain-acceptance")
+        return yield* Effect.fail(first.failure);
+      const read = yield* Effect.result(verb(() => platform.fetchProject(intent.projectId)));
+      if (Result.isFailure(read))
+        return {
+          unobservable: {
+            nextActor: "person",
+            nextAction: "Check who owns the Mate, then hand it over again",
+            handles: [],
+          },
+        } satisfies OwnerUnobservable;
+      if (!ownersOf(read.success).includes(intent.clientUserId))
+        return yield* Effect.fail<StreamFault>({
+          outcome: "transient",
+          message: "Zerops did not take the hand-over.",
+        });
+      return read.success;
+    });
   return (requestId: string, intent: IntentOf<"assign-mate-owner">) =>
     Effect.gen(function* () {
-      const handed = yield* write(intent.projectId, intent.clientUserId, "OWNER");
+      const handed = yield* handedOver(intent);
+      if ("unobservable" in handed) return handed;
       const receipt = answeredReceipt(requestId, { family: "project", id: intent.projectId });
-      const previous = (handed.userRoles ?? []).filter(
-        (role) => role.roleCode === "OWNER" && role.clientUserId !== intent.clientUserId,
-      );
-      for (const owner of previous) {
-        const taken = yield* Effect.result(write(intent.projectId, owner.clientUserId, null));
+      // Only once the first write is known to have landed is the Mate taken off its previous owner.
+      for (const owner of ownersOf(handed).filter((id) => id !== intent.clientUserId)) {
+        const taken = yield* Effect.result(write(intent.projectId, owner, null));
         if (Result.isFailure(taken))
           return {
             ...receipt,

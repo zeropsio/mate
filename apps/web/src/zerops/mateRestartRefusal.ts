@@ -7,11 +7,11 @@ export function restartRefusal(progress: OperationProgress): string | null {
     case "refused":
       return progress.reason;
     case "unsent":
-      return "Zerops did not take the restart. Try again.";
+      return progress.reason ?? "Zerops did not take the restart. Try again.";
     case "uncertain":
       return "Zerops did not answer whether it took the restart. Check the Mate before trying again.";
     case "unresolved":
-      return `The Mate was stopped, but its stop could not be followed here. ${progress.nextAction ?? "Start the Mate"}.`;
+      return `The Mate was stopped, but it was not started again here. ${progress.nextAction ?? "Start the Mate"}.`;
     default:
       return null;
   }

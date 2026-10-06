@@ -67,7 +67,7 @@ describe("useReviveFailedMate", () => {
     expect(mock.toasts).toEqual([
       {
         type: "error",
-        title: "The Mate was stopped, but its stop could not be followed here. Start the Mate.",
+        title: "The Mate was stopped, but it was not started again here. Start the Mate.",
       },
     ]);
   });

@@ -148,11 +148,15 @@ describe("useZeropsUpgradeRestart", () => {
     expect(recovery.error).toMatch(/has not come back yet/);
   });
 
-  it("says a restart Zerops refuses in its words, and holds no container for it", async () => {
+  it("refuses a restart its project's access does not admit, in the refusal's words, and holds no container", async () => {
     mock.restart.mockResolvedValue({
       requestId: "r1",
       evidence: null,
-      progress: { stage: "refused", reason: "Your role in this project doesn't allow this." },
+      progress: {
+        stage: "unsent",
+        next: "send-again",
+        reason: "Your role in this project doesn't allow this.",
+      },
     });
 
     render().request();
@@ -160,6 +164,21 @@ describe("useZeropsUpgradeRestart", () => {
     await vi.waitFor(() => expect(render().state).toBe("failed"));
 
     expect(render().error).toBe("Your role in this project doesn't allow this.");
+    expect(mock.intents).toEqual([]);
+  });
+
+  it("says a restart Zerops refuses in its words, and holds no container for it", async () => {
+    mock.restart.mockResolvedValue({
+      requestId: "r1",
+      evidence: null,
+      progress: { stage: "refused", reason: "Service stack is failed." },
+    });
+
+    render().request();
+    render().confirm();
+    await vi.waitFor(() => expect(render().state).toBe("failed"));
+
+    expect(render().error).toBe("Service stack is failed.");
     expect(mock.intents).toEqual([]);
   });
 });

@@ -536,7 +536,8 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
         .then(({ progress, evidence }) => {
           if (!isCurrent()) return;
           const trouble = writeTrouble(progress, evidence);
-          if (progress.stage === "done")
+          // Something may have been written: the grants are read again.
+          if (progress.stage === "done" || progress.stage === "unresolved")
             invalidateZerops({ topic: "access", change: "grants-written" });
           if (trouble !== null) setPress({ pending: false, error: trouble });
           else setDialog(null);

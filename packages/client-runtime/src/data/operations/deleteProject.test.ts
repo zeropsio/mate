@@ -162,7 +162,11 @@ describe("delete-project", () => {
         ),
       );
       yield* operations.submit(DELETE);
-      expect(progress(store)).toEqual({ stage: "unsent", next: "send-again" });
+      expect(progress(store)).toEqual({
+        stage: "unsent",
+        next: "send-again",
+        reason: "Project access could not be verified.",
+      });
     }),
   );
 
