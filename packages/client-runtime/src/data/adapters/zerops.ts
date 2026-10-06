@@ -441,43 +441,6 @@ export function zeropsNavigationLink(options: {
       yield* signal(key, { kind: "baseline-committed" });
       const frames = yield* Effect.forkIn(Stream.runForEach(link.frames, onFrame), attemptScope);
 
-      for (const scope of scopes) {
-        yield* signal(scope, { kind: "attempt" });
-        generations.set(scope, streamOf(store.state(), scope).generation);
-        yield* signal(scope, { kind: "handshake" });
-        store.dispatch({ kind: "baseline-begin", scope, generation: generationOf(scope) });
-        for (const registration of registrations.filter((entry) => entry.scope === scope)) {
-          const subscriptionName = options.makeId();
-          subscriptions.set(subscriptionName, registration);
-          const answer = yield* link.post(registration.path, {
-            search: registration.search,
-            sort: [],
-            receiverId: link.receiverId,
-            subscriptionName,
-            ...(registration.role === "membership"
-              ? { wsOutputType: "listStream", limit: ORGANIZATION_SEARCH_LIMIT }
-              : { wsOutputType: "updateStream", disableOutput: true }),
-          });
-          if (registration.role !== "membership") continue;
-          const list = Option.getOrUndefined(decodeList(answer));
-          if (list === undefined)
-            return yield* Effect.fail(corrupt("A baseline answer is malformed."));
-          const rows = rowsOf(registration.family, list.items);
-          yield* carryOut(
-            store.dispatch({
-              kind: "baseline-commit",
-              scope,
-              generation: generationOf(scope),
-              via: "zerops-realtime",
-              // Membership is every item's id: a damaged row keeps its member and its last value.
-              members: membersOf(list.items),
-              rows,
-              partial: partialAnswer(list.items, rows, list.totalHits),
-            }),
-          );
-          yield* signal(scope, { kind: "baseline-committed" });
-        }
-      }
       /**
        * One demanded detail listing, read while the receiver is up: its answer is the scope's
        * baseline. The owner refusing that one read refuses that scope alone; a transient failure,
@@ -651,6 +614,12 @@ export function zeropsNavigationLink(options: {
        * generation), and then it is read again.
        */
       const observed = new Map<ScopeKey, number>();
+      let navigationRegistered = false;
+      /** A sampled detail reads nothing a registration observes: it is read at once. */
+      const readsAtOnce = (scope: ScopeKey) => {
+        const { spec, detail } = scopeListing(scope);
+        return detail === null && spec.sampled !== undefined;
+      };
       const inFlight = new Set<ScopeKey>();
       const wakes = yield* Queue.sliding<void>(1);
       const wake = () => Queue.offerUnsafe(wakes, undefined);
@@ -675,6 +644,7 @@ export function zeropsNavigationLink(options: {
         const fresh: Array<ScopeKey> = [];
         let wakeAt = Number.POSITIVE_INFINITY;
         for (const scope of demanded) {
+          if (!navigationRegistered && !readsAtOnce(scope)) continue;
           const stream = streamOf(store.state(), scope);
           if (stream.phase === "refused") continue;
           // A read that passed its deadline may still hang: its retry does not wait for it, and
@@ -726,6 +696,49 @@ export function zeropsNavigationLink(options: {
         }
         return wakeAt;
       });
+      /**
+       * The organization's navigation, registered scope by scope: updates first, each membership
+       * answer committed as its scope's baseline.
+       */
+      const registerNavigation = Effect.gen(function* () {
+        for (const scope of scopes) {
+          yield* signal(scope, { kind: "attempt" });
+          generations.set(scope, streamOf(store.state(), scope).generation);
+          yield* signal(scope, { kind: "handshake" });
+          store.dispatch({ kind: "baseline-begin", scope, generation: generationOf(scope) });
+          for (const registration of registrations.filter((entry) => entry.scope === scope)) {
+            const subscriptionName = options.makeId();
+            subscriptions.set(subscriptionName, registration);
+            const answer = yield* link.post(registration.path, {
+              search: registration.search,
+              sort: [],
+              receiverId: link.receiverId,
+              subscriptionName,
+              ...(registration.role === "membership"
+                ? { wsOutputType: "listStream", limit: ORGANIZATION_SEARCH_LIMIT }
+                : { wsOutputType: "updateStream", disableOutput: true }),
+            });
+            if (registration.role !== "membership") continue;
+            const list = Option.getOrUndefined(decodeList(answer));
+            if (list === undefined)
+              return yield* Effect.fail(corrupt("A baseline answer is malformed."));
+            const rows = rowsOf(registration.family, list.items);
+            yield* carryOut(
+              store.dispatch({
+                kind: "baseline-commit",
+                scope,
+                generation: generationOf(scope),
+                via: "zerops-realtime",
+                // Membership is every item's id: a damaged row keeps its member and its last value.
+                members: membersOf(list.items),
+                rows,
+                partial: partialAnswer(list.items, rows, list.totalHits),
+              }),
+            );
+            yield* signal(scope, { kind: "baseline-committed" });
+          }
+        }
+      });
       const observeForever = Effect.forever(
         Effect.gen(function* () {
           const wakeAt = yield* observeDemanded;
@@ -735,7 +748,14 @@ export function zeropsNavigationLink(options: {
             : Queue.take(wakes);
         }),
       );
-      yield* Effect.raceAllFirst([Fiber.join(frames), observeForever, Deferred.await(ended)]);
+      // A sampled detail is read at once, beside the registrations: it waits for none of them
+      // (the official HQ's anchor gates the product). Every other detail waits for its family's
+      // own scope to be registered first, so no change of its members slips between.
+      const details = yield* Effect.forkIn(observeForever, attemptScope);
+      yield* registerNavigation;
+      navigationRegistered = true;
+      wake();
+      yield* Effect.raceAllFirst([Fiber.join(frames), Fiber.join(details), Deferred.await(ended)]);
       return yield* Effect.fail(corrupt("The receiver's socket closed."));
     });
 

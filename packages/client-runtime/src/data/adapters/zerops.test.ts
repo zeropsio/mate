@@ -912,6 +912,33 @@ describe("a sampled detail", () => {
     }),
   );
 
+  it.effect("reads a sampled detail without waiting for the navigation's baselines", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const held = yield* Deferred.make<void>();
+      const fixture = fixtureWire((request) =>
+        request.body?.wsOutputType === "listStream"
+          ? Effect.andThen(Deferred.await(held), answers(() => [])(request))
+          : sampledAnswers({ current: [member("m1")] })(request),
+      );
+      const link = zeropsNavigationLink({
+        orgId: ORG,
+        wire: fixture.wire,
+        store,
+        makeId: counter(),
+      });
+      link.demandDetail(MEMBERS);
+      const supervisor = yield* superviseLink({ ...link, store, repairSession: Effect.void });
+      const fiber = yield* Effect.forkChild(supervisor.run);
+      yield* settle;
+      expect(readsOf(fixture, MEMBERS_PATH)).toBe(1);
+      expect(factOf(store.state(), "organizationMembers", ORG)?.content.kind).toBe("value");
+      yield* Deferred.succeed(held, undefined);
+      yield* settle;
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+
   it.effect("reads a member list once: no cadence, and a new demand reads nothing", () =>
     Effect.gen(function* () {
       const store = makeAccountStore(AtomRegistry.make());
