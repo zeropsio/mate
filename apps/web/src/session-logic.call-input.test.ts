@@ -205,3 +205,38 @@ describe("a call whose output was saved to a file", () => {
     expect(entry?.spilledTo).toBe(spilled);
   });
 });
+
+describe("a call that wrote a file is marked on its entry by its end", () => {
+  it.each([
+    { name: "its start and its end say so", started: true, completed: true, wrote: true },
+    { name: "only its end says so", started: false, completed: true, wrote: true },
+    { name: "neither says so", started: false, completed: false, wrote: false },
+  ])("$name", ({ started, completed, wrote }) => {
+    const data = (marked: boolean) => ({
+      toolName: "Write",
+      input: { file_path: "/srv/a.md" },
+      ...(marked ? { wrote: true } : {}),
+    });
+    const entries = deriveWorkLogEntries(
+      [
+        activity({
+          kind: "tool.started",
+          payload: { itemType: "file_change", toolCallId: "toolu_w", data: data(started) },
+        }),
+        activity({
+          kind: "tool.completed",
+          createdAt: "2026-09-27T08:00:01.000Z",
+          payload: {
+            itemType: "file_change",
+            status: "completed",
+            toolCallId: "toolu_w",
+            data: data(completed),
+          },
+        }),
+      ],
+      undefined,
+    );
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.wroteFile === true).toBe(wrote);
+  });
+});

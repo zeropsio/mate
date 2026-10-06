@@ -112,6 +112,29 @@ describe("opens — a control is drawn only when it opens onto something not on 
       opens: false,
     },
     {
+      name: "a write whose call sent what it wrote opens onto it",
+      opener: {
+        control: "step",
+        step: step({ itemType: "file_change", changedFiles: ["notes.md"], wroteFile: true }),
+        codeCut: false,
+      },
+      opens: true,
+    },
+    {
+      name: "a write that failed wrote nothing to open onto",
+      opener: {
+        control: "step",
+        step: step({
+          itemType: "file_change",
+          changedFiles: ["notes.md"],
+          wroteFile: true,
+          toolLifecycleStatus: "failed",
+        }),
+        codeCut: false,
+      },
+      opens: false,
+    },
+    {
       name: "an edit of several files opens onto them",
       opener: { control: "step", step: twoFileEdit, codeCut: false },
       opens: true,
