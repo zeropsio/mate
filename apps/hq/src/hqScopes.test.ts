@@ -402,14 +402,19 @@ const fixture = Effect.gen(function* () {
       state: "ok",
       status: Effect.succeed("ok"),
     } as unknown as DeployKeys["Service"]),
-    Layer.succeed(SqlClient.SqlClient, ((
-      strings: TemplateStringsArray,
-      ...values: ReadonlyArray<unknown>
-    ) =>
-      Effect.sync(() => {
-        sqlReads.push({ query: strings.join("?"), values });
-        return [];
-      })) as unknown as SqlClient.SqlClient),
+    Layer.succeed(
+      SqlClient.SqlClient,
+      Object.assign(
+        (strings: TemplateStringsArray, ...values: ReadonlyArray<unknown>) =>
+          Effect.sync(() => {
+            sqlReads.push({ query: strings.join("?"), values });
+            return [];
+          }),
+        {
+          in: (column: string, values: ReadonlyArray<unknown>) => ({ column, values }),
+        },
+      ) as unknown as SqlClient.SqlClient,
+    ),
     Layer.succeed(Leader, {
       write: (effect: Effect.Effect<unknown>) => effect,
     } as unknown as Leader["Service"]),
@@ -582,6 +587,19 @@ const resetOf = (message: ScopeOutput) => {
 };
 
 describe("revisioned HQ values", () => {
+  it.effect("a cold navigation delivery budgets one role read before and one after loading", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const f = yield* fixture;
+        const client = yield* f.connect("owner");
+        yield* client.subscribe([{ scope: nav }]);
+        assert.include(json(resetOf(yield* client.take).values), "project:P");
+        assert.strictEqual((yield* client.take).type, "scope-ready");
+        assert.strictEqual(yield* Ref.get(f.reads), 1);
+        assert.isAtMost(f.roleReads(), 2);
+      }),
+    ),
+  );
   it.effect("navigation shares compact menu changes and filters them before person delivery", () =>
     Effect.scoped(
       Effect.gen(function* () {
@@ -1325,7 +1343,12 @@ describe("revisioned HQ values", () => {
           (read) => read.query.includes("SELECT") && read.query.includes("hq_attention_seen"),
         );
         assert.isTrue(
-          queries.every((read) => read.query.includes("project_id =") && read.values.includes("P")),
+          queries.every(
+            (read) =>
+              read.query.includes("WHERE user_id =") &&
+              read.values[0] === "owner" &&
+              json(read.values[1]) === json({ column: "project_id", values: ["P"] }),
+          ),
         );
         assert.strictEqual(yield* Queue.size(reader.queue), 0);
       }),

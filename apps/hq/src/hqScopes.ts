@@ -304,22 +304,40 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
         [...view.ungrouped, ...view.apps.flatMap((app) => app.projects)].filter(
           (project) => project.can?.observe_mate?.allow === true,
         );
-      const loadSeen = (userId: string, projectId: string) =>
+      // One read for the visible projects this delivery needs, never the person's whole history.
+      const loadSeenFor = (userId: string, projectIds: ReadonlyArray<string>) =>
         Effect.gen(function* () {
-          const key = json([userId, projectId]);
           for (;;) {
             const epoch = yield* overviews.seenEpoch;
-            const prior = seen.get(key);
-            if (prior !== undefined && prior.epoch === epoch) return prior.ids;
-            const rows = yield* sql<{
-              readonly result_id: string;
-            }>`SELECT result_id FROM hq_attention_seen WHERE user_id = ${userId} AND project_id = ${projectId}`;
+            const keys = new Map(
+              projectIds.map((projectId) => [projectId, json([userId, projectId])]),
+            );
+            const missing = [...keys]
+              .filter(([, key]) => seen.get(key)?.epoch !== epoch)
+              .map(([projectId]) => projectId);
+            const rows =
+              missing.length === 0
+                ? []
+                : yield* sql<{
+                    readonly project_id: string;
+                    readonly result_id: string;
+                  }>`SELECT project_id, result_id FROM hq_attention_seen
+               WHERE user_id = ${userId} AND ${sql.in("project_id", missing)}`;
             if (epoch !== (yield* overviews.seenEpoch)) continue;
-            const ids = new Set(rows.map((row) => row.result_id));
-            seen.set(key, { userId, projectId, epoch, ids });
-            return ids;
+            const result = new Map<string, Set<string>>();
+            for (const [projectId, key] of keys) {
+              const prior = seen.get(key);
+              // Another socket may have acknowledged a result while the SELECT was in flight.
+              const ids = prior?.epoch === epoch ? prior.ids : new Set<string>();
+              seen.set(key, { userId, projectId, epoch, ids });
+              result.set(projectId, ids);
+            }
+            for (const row of rows) result.get(row.project_id)?.add(row.result_id);
+            return result;
           }
         });
+      const loadSeen = (userId: string, projectId: string) =>
+        Effect.map(loadSeenFor(userId, [projectId]), (result) => result.get(projectId)!);
       const statusValue = Effect.gen(function* () {
         const parts = yield* readHealth;
         return {
@@ -330,9 +348,8 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
           },
         };
       });
-      const load = (entry: Entry, projects?: ReadonlySet<string>) =>
+      const load = (entry: Entry, current: StructureSource, projects?: ReadonlySet<string>) =>
         Effect.gen(function* () {
-          const current = projects === undefined ? yield* sourceNow : source!;
           const view = viewFor(current, entry.userId);
           const scope = entry.scope;
           const all = yield* overviewsNow;
@@ -352,18 +369,15 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
             const member = current.facts.members.find(
               (member) => member.kind === "person" && member.userId === entry.userId,
             );
-            const acknowledgements = new Map<string, Set<string>>();
-            yield* Effect.forEach(
-              observable.filter(
-                (project) =>
-                  (projects === undefined || projects.has(project.projectId)) &&
-                  (all.get(project.projectId)?.attention?.results.length ?? 0) > 0,
-              ),
-              (project) =>
-                Effect.map(loadSeen(entry.userId, project.projectId), (ids) =>
-                  acknowledgements.set(project.projectId, ids),
-                ),
-              { discard: true, concurrency: "unbounded" },
+            const acknowledgements = yield* loadSeenFor(
+              entry.userId,
+              observable
+                .filter(
+                  (project) =>
+                    (projects === undefined || projects.has(project.projectId)) &&
+                    (all.get(project.projectId)?.attention?.results.length ?? 0) > 0,
+                )
+                .map((project) => project.projectId),
             );
             const listed = [...view.ungrouped, ...view.apps.flatMap((app) => app.projects)];
             const signersFor = (projectId: string) => {
@@ -611,16 +625,18 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
         Effect.gen(function* () {
           while (true) {
             if (entry.failure?.disposition === "refused") return;
-            yield* sourceNow;
+            const current = yield* sourceNow;
             if (entry.sourceVersion !== sourceVersion) entry.dirty = true;
             if (!entry.dirty) return;
             const generation = entry.generation;
             const version = sourceVersion;
             if (entry.scope.kind === "navigation") yield* changeSourceNow;
             const menuVersion = changeVersion;
-            const data = yield* load(entry);
+            // Reuse the validated source; the check after the read still fences revocations.
+            const data = yield* load(entry, current);
             yield* sourceNow;
-            if (generation !== entry.generation || version !== sourceVersion) continue;
+            if (current !== source || generation !== entry.generation || version !== sourceVersion)
+              continue;
             if (
               entry.scope.kind === "navigation" &&
               (changeFence.dirty() || menuVersion !== changeVersion)
@@ -753,7 +769,7 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
                   if (sourceFence.dirty() || entry.sourceVersion !== sourceVersion)
                     return yield* scheduleRefresh(entry);
                   const generation = entry.generation;
-                  const data = yield* load(entry, new Set([projectId]));
+                  const data = yield* load(entry, source!, new Set([projectId]));
                   if (generation !== entry.generation || sourceFence.dirty()) return;
                   const message = entry.journal.commit(data.values);
                   if (message !== undefined) yield* send(entry, [message]);
