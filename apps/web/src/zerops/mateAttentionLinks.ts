@@ -102,7 +102,7 @@ export function useMateResultsSeen(
   const lastVisitedAtById = useUiStateStore((state) => state.threadLastVisitedAtById);
   /**
    * What was told HQ already, by project, while it counted the same unseen: told again once its
-   * count moves — a word HQ never heard (its link down) is told on its next count.
+   * count moves. A word told while HQ's link is down, the link tells HQ once it is up again.
    */
   const told = useRef(new Map<string, { readonly unseen: number; readonly ids: Set<string> }>());
   useEffect(() => {

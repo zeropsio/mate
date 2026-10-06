@@ -116,7 +116,7 @@ export function hqNavigationLink(options: {
   readonly handoverCandidates: (
     projectId: string,
   ) => Effect.Effect<HqHandoverCandidates, StreamFault>;
-  /** Tells HQ the reader saw these results of a Mate. */
+  /** Tells HQ the reader saw these results of a Mate: on the open socket, else on the next. */
   readonly seen: (projectId: string, resultIds: ReadonlyArray<string>) => Effect.Effect<void>;
   /** Ends the link's own holds (each Mate's attention). */
   readonly stop: () => void;
@@ -216,6 +216,8 @@ export function hqNavigationLink(options: {
   const cursors = new Map<string, HqCursor>();
   /** The segment open now, if any: what a request is sent on. */
   let open: HqSegment | null = null;
+  /** What the person saw while no socket was open, by project: told HQ on the next one. */
+  const untold = new Map<string, Set<string>>();
   /** The asks sent on the open socket that HQ has not answered yet, by request id. */
   const pendingOffers = new Map<string, Deferred.Deferred<unknown, StreamFault>>();
   let requests = 0;
@@ -512,6 +514,9 @@ export function hqNavigationLink(options: {
               yield* opened.send({ type: "subscribe", scopes: resumed.map(subscription) });
               for (const { wire } of resumed) asked.add(hqScopeKey(wire));
             }
+            for (const [projectId, resultIds] of untold)
+              yield* opened.send({ type: "seen", projectId, resultIds: [...resultIds] });
+            untold.clear();
             wake();
             const watching = Effect.forever(
               Effect.gen(function* () {
@@ -570,9 +575,13 @@ export function hqNavigationLink(options: {
     moveOffers: (projectId) => ask<HqMoveOffers>("move-offers", projectId),
     handoverCandidates: (projectId) => ask<HqHandoverCandidates>("handover-candidates", projectId),
     seen: (projectId, resultIds) =>
-      Effect.suspend(() =>
-        open === null ? Effect.void : open.send({ type: "seen", projectId, resultIds }),
-      ),
+      Effect.suspend(() => {
+        if (open !== null) return open.send({ type: "seen", projectId, resultIds });
+        const held = untold.get(projectId) ?? new Set<string>();
+        for (const id of resultIds) held.add(id);
+        untold.set(projectId, held);
+        return Effect.void;
+      }),
     rewire: (next) => {
       wire = next;
     },

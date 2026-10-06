@@ -582,6 +582,36 @@ describe("an HQ outage", () => {
       yield* Fiber.interrupt(fiber);
     }),
   );
+
+  it.effect("tells HQ what the person saw while its socket was down once one opens again", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const fixture = hqFixtureWire();
+      const { fiber, link } = yield* live(store, fixture);
+      const seen = (segment: number) =>
+        fixture.sent
+          .filter(({ request, segment: at }) => at === segment && request.type === "seen")
+          .map(({ request }) => request);
+      yield* fixture.drop({ outcome: "transient", message: "HQ's stream broke." });
+      yield* settle;
+      yield* link.seen("ada", ["r1"]);
+      yield* link.seen("ada", ["r2"]);
+      yield* link.seen("bea", ["r3"]);
+      yield* TestClock.adjust(1_000);
+      yield* settle;
+      expect(seen(2)).toEqual([
+        { type: "seen", projectId: "ada", resultIds: ["r1", "r2"] },
+        { type: "seen", projectId: "bea", resultIds: ["r3"] },
+      ]);
+      yield* link.seen("ada", ["r4"]);
+      expect(seen(2).at(-1)).toEqual({ type: "seen", projectId: "ada", resultIds: ["r4"] });
+      yield* fixture.drop({ outcome: "transient", message: "HQ's stream broke." });
+      yield* TestClock.adjust(2_000);
+      yield* settle;
+      expect(seen(3)).toEqual([]);
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
 });
 
 describe("an HQ session", () => {
