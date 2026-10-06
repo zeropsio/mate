@@ -2778,3 +2778,33 @@ describe("HQ birth project env", () => {
     });
   });
 });
+
+describe("ZeropsApiClient.hasServiceVariable", () => {
+  it("asks for the one key on the one service, never the service's every variable", async () => {
+    for (const [items, has] of [
+      [[{ key: "HQ_ORG_TOKEN", content: "REDACTED" }], true],
+      [[], false],
+    ] as const) {
+      const stub = recordingFetch(() => jsonResponse(200, { items }));
+      const client = new ZeropsApiClient({ fetch: stub.fetch });
+      client.restoreSession(SESSION);
+      await expect(
+        client.hasServiceVariable({ clientId: "org-1", serviceId: "svc-hq", key: "HQ_ORG_TOKEN" }),
+      ).resolves.toBe(has);
+      expect(stub.requests).toHaveLength(1);
+      expect(stub.requests[0]).toMatchObject({
+        method: "POST",
+        url: expect.stringMatching(/\/user-data\/search$/),
+      });
+      expect(JSON.parse(stub.requests[0]!.body!)).toEqual({
+        search: [
+          { name: "clientId", operator: "eq", value: "org-1" },
+          { name: "serviceStackId", operator: "eq", value: "svc-hq" },
+          { name: "key", operator: "eq", value: "HQ_ORG_TOKEN" },
+        ],
+        sort: [],
+        limit: 1,
+      });
+    }
+  });
+});

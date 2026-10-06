@@ -123,7 +123,7 @@ export type HqBirthPlatform = Pick<
   | "fetchProject"
   | "mintIntegrationToken"
   | "regenerateIntegrationToken"
-  | "listServiceVariableNames"
+  | "hasServiceVariable"
   | "writeServiceSecret"
   | "createAppVersion"
   | "uploadAppVersionArchive"
@@ -454,8 +454,8 @@ export async function runHqBirth(input: {
 
     const serviceId = record.serviceId!;
     if (record.step === "credential") {
-      const written = await platform.listServiceVariableNames(serviceId);
-      if (!written.includes(HQ_ORG_TOKEN_ENV)) {
+      const holds = (key: string) => platform.hasServiceVariable({ clientId, serviceId, key });
+      if (!(await holds(HQ_ORG_TOKEN_ENV))) {
         const name = hqOrgTokenName(projectId);
         const held = (await platform.listIntegrationTokens(clientId)).filter(
           (token) => token.name === name,
@@ -500,7 +500,7 @@ export async function runHqBirth(input: {
           return { serviceId, tokenId };
         });
       }
-      if (!written.includes(HQ_KEY_SECRET_ENV)) {
+      if (!(await holds(HQ_KEY_SECRET_ENV))) {
         await effect("key_secret", { serviceId }, async () => {
           const key = deps.randomBytes(new Uint8Array(HQ_KEY_SECRET_BYTES));
           await platform.writeServiceSecret({

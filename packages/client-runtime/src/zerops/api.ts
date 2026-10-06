@@ -2510,6 +2510,33 @@ export class ZeropsApiClient {
     return (await this.#serviceEnv(serviceId, signal)).map((entry) => entry.key);
   }
 
+  /**
+   * Whether a service holds the variable `key` — its presence, never its value or any other
+   * variable: one key searched (`POST /user-data/search`); a sensitive value answers `REDACTED`.
+   */
+  async hasServiceVariable(
+    input: { readonly clientId: string; readonly serviceId: string; readonly key: string },
+    signal?: AbortSignal,
+  ): Promise<boolean> {
+    const found = await this.#request<{ readonly items?: ReadonlyArray<unknown> }>(
+      "/user-data/search",
+      {
+        method: "POST",
+        signal: signal ?? null,
+        body: JSON.stringify({
+          search: [
+            { name: "clientId", operator: "eq", value: input.clientId },
+            { name: "serviceStackId", operator: "eq", value: input.serviceId },
+            { name: "key", operator: "eq", value: input.key },
+          ],
+          sort: [],
+          limit: 1,
+        }),
+      },
+    );
+    return (found.items ?? []).length > 0;
+  }
+
   /** `POST /service-stack/{id}/user-data` — one sensitive variable on a service, written once. */
   async writeServiceSecret(
     input: { readonly serviceId: string; readonly key: string; readonly content: string },

@@ -178,9 +178,9 @@ function fakeZerops(
       token.value = `${token.value}-again`;
       return token.value;
     },
-    listServiceVariableNames: async () => {
+    hasServiceVariable: async ({ key }) => {
       step("env");
-      return [...env.keys()];
+      return env.has(key);
     },
     writeServiceSecret: async ({ serviceId, key, content }) => {
       step(`secret ${serviceId} ${key}`);
@@ -380,10 +380,12 @@ describe("runHqBirth", () => {
       "services",
       "services",
       // Core gets its access and is deployed first: it starts as a standby, its anchor missing.
+      // Each of its variables is asked after by its own key, never the service's every one.
       "env",
       "tokens",
       "mint mate-hq-org:hq1 READ_ONLY",
       "secret svc-hq HQ_ORG_TOKEN",
+      "env",
       "secret svc-hq HQ_KEY_SECRET",
       "app-version svc-hq",
       "upload av-1 7",

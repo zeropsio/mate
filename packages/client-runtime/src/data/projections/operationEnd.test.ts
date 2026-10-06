@@ -6,6 +6,7 @@ import { makeAccountStore, readsOfState } from "../store.ts";
 import { AtomRegistry } from "effect/unstable/reactivity";
 import { operationEnd } from "./operationEnd.ts";
 import { detailScopeOf } from "../demand.ts";
+import type { StreamEvent } from "../streamMachine.ts";
 
 const INTENT = { kind: "delete-project", orgId: ORG, projectId: "p1" } as const;
 /** A write HQ executes, its answer lost and adopted: its end is read in HQ's navigation. */
@@ -24,11 +25,12 @@ function stateWith(
 ): AccountState {
   const store = makeAccountStore(AtomRegistry.make());
   liveZerops({ running: [] }).forEach(store.dispatch);
-  for (const event of [
+  const hqEvents: ReadonlyArray<StreamEvent> = [
     { kind: "demand", demanded: true },
     { kind: "handshake" },
-    ...(linkEvent === "pause-hq" ? [{ kind: "demand", demanded: false }] : []),
-  ] as const)
+    ...(linkEvent === "pause-hq" ? [{ kind: "demand", demanded: false } as const] : []),
+  ];
+  for (const event of hqEvents)
     store.dispatch({ kind: "stream", key: linkKeys.hq(ORG), event, now: 0 });
   if (linkEvent === "pause")
     store.dispatch({

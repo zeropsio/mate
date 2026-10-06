@@ -150,6 +150,7 @@ export const ZEROPS_CLIENT_VERBS = [
   "fetchProjectLogAccess",
   "fetchUser",
   "hardenMate",
+  "hasServiceVariable",
   "importDevelopmentContainer",
   "importProject",
   "importServicesIntoProject",
