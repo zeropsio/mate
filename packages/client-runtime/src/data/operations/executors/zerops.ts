@@ -18,6 +18,7 @@ import { projectsScope } from "../../families/project.ts";
 import type { OperationExecutor } from "../coordinator.ts";
 import { createProjectExecutor } from "./createProject.ts";
 import { deleteProjectExecutor } from "./deleteProject.ts";
+import { hqBirthExecutor } from "./hqBirth.ts";
 import { hqUpdateExecutor } from "./hqUpdate.ts";
 import { creationWritesExecutor } from "./creationWrites.ts";
 import { mateRestartOwner } from "./mateRestart.ts";
@@ -58,6 +59,15 @@ type ZeropsOperationsClient = Pick<
   | "createAppVersion"
   | "uploadAppVersionArchive"
   | "buildAndDeployAppVersion"
+  | "createProjectEnv"
+  | "hasServiceVariable"
+  | "mintIntegrationToken"
+  | "regenerateIntegrationToken"
+  | "writeServiceSecret"
+  | "listPublicHttpRoutings"
+  | "createPublicHttpRouting"
+  | "syncPublicHttpRouting"
+  | "listOrganizationMembers"
 >;
 
 export function makeZeropsExecutor(input: {
@@ -150,6 +160,19 @@ export function makeZeropsExecutor(input: {
     setProjectMemberRole: (input) => client.setProjectMemberRole(input),
     fetchProject: (projectId) => client.fetchProject(projectId),
   });
+  const birthWrite = hqBirthExecutor({
+    createProjectEnv: (projectId, key, content) => client.createProjectEnv(projectId, key, content),
+    hasServiceVariable: (input) => client.hasServiceVariable(input),
+    listIntegrationTokens: (clientId) => client.listIntegrationTokens(clientId),
+    mintIntegrationToken: (input) => client.mintIntegrationToken(input),
+    regenerateIntegrationToken: (input) => client.regenerateIntegrationToken(input),
+    writeServiceSecret: (input) => client.writeServiceSecret(input),
+    listPublicHttpRoutings: (projectId) => client.listPublicHttpRoutings(projectId),
+    createPublicHttpRouting: (projectId, routing) =>
+      client.createPublicHttpRouting(projectId, routing),
+    syncPublicHttpRouting: (projectId) => client.syncPublicHttpRouting(projectId),
+    listOrganizationMembers: (clientId) => client.listOrganizationMembers(clientId),
+  });
   return {
     submit: (requestId, intent) => {
       switch (intent.kind) {
@@ -182,6 +205,12 @@ export function makeZeropsExecutor(input: {
         case "import-container":
         case "harden-project":
           return creationWrite(requestId, intent);
+        case "hq-birth-note":
+        case "hq-org-token":
+        case "hq-key-secret":
+        case "route-hq-domain":
+        case "mark-official-hq":
+          return birthWrite(requestId, intent);
         default:
           // HQ's own writes go to HQ's executor; the coordinator never routes one here.
           return Effect.die(new Error(`Zerops executes no ${intent.kind}.`));

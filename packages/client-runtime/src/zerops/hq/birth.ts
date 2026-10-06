@@ -22,13 +22,13 @@ export const HQ_PROJECT_NAME = "Headquarters";
 const GONE_PROJECT_STATUSES: ReadonlySet<string> = new Set(["DELETING", "DELETED"]);
 /** Core's service: never `core`, every project's reserved system service. */
 export const HQ_SERVICE = "hq";
-const HQ_PORT = 8080;
+export const HQ_PORT = 8080;
 const HQ_SERVICES = ["db", "vol", HQ_SERVICE] as const;
 /** Core's working credential, as Core reads it (`apps/hq/src/main.ts`). */
-const HQ_ORG_TOKEN_ENV = "HQ_ORG_TOKEN";
+export const HQ_ORG_TOKEN_ENV = "HQ_ORG_TOKEN";
 /** Core's key for its environments' deploy tokens, as Core reads it: an AES-256 key's 32 bytes. */
-const HQ_KEY_SECRET_ENV = "HQ_KEY_SECRET";
-const HQ_KEY_SECRET_BYTES = 32;
+export const HQ_KEY_SECRET_ENV = "HQ_KEY_SECRET";
+export const HQ_KEY_SECRET_BYTES = 32;
 /** The `zerops.yml` entry Core deploys from (`apps/hq/zerops.yml`). */
 export const HQ_SETUP = "hq";
 /** The app version a birth or an update names after the Core it deploys (`update.ts`). */
