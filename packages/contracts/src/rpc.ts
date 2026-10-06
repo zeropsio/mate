@@ -224,6 +224,13 @@ import {
 } from "./sourceControl.ts";
 import { ExecError, ExecRunInput, ExecRunResult } from "./exec.ts";
 import { VcsError } from "./vcs.ts";
+import {
+  ThreadFileWritesError,
+  ThreadFileWritesInput,
+  ThreadFileWritesResult,
+  ThreadWrittenFileInput,
+  ThreadWrittenFileResult,
+} from "./threadFileWrites.ts";
 
 export const WS_METHODS = {
   // Project registry methods
@@ -354,6 +361,8 @@ export const WS_METHODS = {
   zeropsCrewFilesGet: "zerops.crew.files.get",
   zeropsCrewFilesPut: "zerops.crew.files.put",
   zeropsCrewCommand: "zerops.crew.command",
+  threadsFileWrites: "threads.fileWrites",
+  threadsWrittenFile: "threads.writtenFile",
 
   // Streaming subscriptions
   subscribeVcsStatus: "subscribeVcsStatus",
@@ -1147,6 +1156,20 @@ const WsZeropsGitProbeRemoteRpc = Rpc.make(WS_METHODS.zeropsGitProbeRemote, {
   error: Schema.Union([ZeropsGitRemoteProbeError, EnvironmentAuthorizationError]),
 });
 
+/** What a thread's write or edit calls wrote, from their stored payloads (`threadFileWrites.ts`). */
+const WsThreadsFileWritesRpc = Rpc.make(WS_METHODS.threadsFileWrites, {
+  payload: ThreadFileWritesInput,
+  success: ThreadFileWritesResult,
+  error: Schema.Union([ThreadFileWritesError, EnvironmentAuthorizationError]),
+});
+
+/** What this thread's agent wrote in a file outside the workspace, from its record (`threadFileWrites.ts`). */
+const WsThreadsWrittenFileRpc = Rpc.make(WS_METHODS.threadsWrittenFile, {
+  payload: ThreadWrittenFileInput,
+  success: ThreadWrittenFileResult,
+  error: Schema.Union([ThreadFileWritesError, EnvironmentAuthorizationError]),
+});
+
 /** The console child process's own lifecycle — idle/starting/ready/unavailable — so the panel can show a spawn/degrade state without polling. */
 const WsSubscribeZeropsDataConsoleRpc = Rpc.make(WS_METHODS.subscribeZeropsDataConsole, {
   payload: Schema.Struct({}),
@@ -1292,6 +1315,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsZeropsMateCheckUpdateRpc,
   WsZeropsDataConsoleCallRpc,
   WsZeropsGitProbeRemoteRpc,
+  WsThreadsFileWritesRpc,
+  WsThreadsWrittenFileRpc,
   WsSubscribeZeropsDataConsoleRpc,
   WsSubscribeZeropsCrewRpc,
   WsZeropsCrewFilesGetRpc,

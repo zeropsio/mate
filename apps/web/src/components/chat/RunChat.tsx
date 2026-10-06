@@ -80,6 +80,8 @@ import {
 import { flushSync } from "react-dom";
 
 import { cn } from "~/lib/utils";
+import { FileWriteDetail } from "./FileWriteDetail";
+import { stepWriteCalls } from "./fileWrites.logic";
 import { useAssetUrls, useAssetUrlState } from "../../assets/assetUrls";
 import {
   selectMessageImageResources,
@@ -1515,6 +1517,7 @@ function StepBubble({
   const bare = script !== null && step.words === null;
   const disclosure = useDisclosure(false, "open");
   const outputs = stepOutput(step);
+  const writeCalls = stepWriteCalls(step);
   const failure: Failure | null = step.state !== "failed" ? null : undone ? "undone" : "broken";
   const running = step.state === "running";
   const time = stepTime(step);
@@ -1563,7 +1566,7 @@ function StepBubble({
       {opens ? (
         <DisclosureButton
           className={pad}
-          label={`${title}. ${disclosure.open ? "Hide" : "Show"} ${outputs.length > 0 ? "what it returned" : "all of its code"}`}
+          label={`${title}. ${disclosure.open ? "Hide" : "Show"} ${outputs.length > 0 ? "what it returned" : writeCalls.length > 0 ? "what it wrote" : "all of its code"}`}
           onToggle={disclosure.toggle}
           open={disclosure.open}
         >
@@ -1597,6 +1600,18 @@ function StepBubble({
               text={output.text}
             />
           ))}
+        </div>
+      ) : null}
+      {disclosure.open && writeCalls.length > 0 ? (
+        <div className={cn("px-3 pb-2", rises(disclosure.made))} data-chat-detail>
+          <FileWriteDetail
+            box={(part, text) => (
+              <CappedBox className="rounded-xl bg-foreground/4" detail part={part}>
+                {text}
+              </CappedBox>
+            )}
+            callIds={writeCalls}
+          />
         </div>
       ) : null}
     </CallRow>
