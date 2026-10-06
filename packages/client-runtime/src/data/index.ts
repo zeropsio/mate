@@ -16,7 +16,13 @@ export type {
   HqStatusValue,
   PlacementValue,
 } from "./families/hqNavigation.ts";
-export { hqNavigation, hqPersonFacts, type HqNavigationRead } from "./projections/hqNavigation.ts";
+export {
+  hqAppChanges,
+  hqNavigation,
+  hqPersonFacts,
+  hqStatus,
+  type HqNavigationRead,
+} from "./projections/hqNavigation.ts";
 export { hqMates, type HqMatesRead } from "./projections/hqMates.ts";
 export type { DetailDemand } from "./demand.ts";
 export { makeAccountStore, type AccountStore, type Projection } from "./store.ts";
@@ -76,6 +82,7 @@ export {
   NOT_READ_HQ,
   shownHqMatesAtom,
   shownHqNavigationAtom,
+  shownHqAppChangesAtom,
   shownHqPersonFactsAtom,
   shownHqStatusAtom,
   type AccountReads,

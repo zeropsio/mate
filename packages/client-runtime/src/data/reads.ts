@@ -19,12 +19,13 @@ import {
 } from "./projections/projects.ts";
 import { hqMates, type HqMatesRead } from "./projections/hqMates.ts";
 import {
+  hqAppChanges,
   hqNavigation,
   hqPersonFacts,
   hqStatus,
   type HqNavigationRead,
 } from "./projections/hqNavigation.ts";
-import type { HqPersonFacts, HqStatusValue } from "./families/hqNavigation.ts";
+import type { HqAppValue, HqPersonFacts, HqStatusValue } from "./families/hqNavigation.ts";
 import type { AccountStore } from "./store.ts";
 
 export interface AccountReads {
@@ -222,3 +223,14 @@ export function holdServiceRead(
     release = null;
   };
 }
+
+const NO_CHANGES: Readonly<Record<string, HqAppValue["changes"]>> = {};
+
+/** Each application's open changes in the organization shown, as HQ's navigation says them. */
+export const shownHqAppChangesAtom = Atom.make(
+  (get): Readonly<Record<string, HqAppValue["changes"]>> => {
+    const account = get(accountReadsAtom);
+    if (account === null || account.orgId === null) return NO_CHANGES;
+    return get(account.data.project(hqAppChanges, account.orgId));
+  },
+).pipe(Atom.withLabel("data:shown-hq-app-changes"));

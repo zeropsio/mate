@@ -206,3 +206,18 @@ export const hqStatus: Projection<string, HqStatusValue | null> = {
   },
   equals: sameValue,
 };
+
+/**
+ * Each application's open changes as HQ's navigation says them, for the menu's change rows: what
+ * the menu draws and orders, never a change's contents. HQ's refusal with its reason to one who
+ * may not read them.
+ */
+export const hqAppChanges: Projection<string, Readonly<Record<string, HqAppValue["changes"]>>> = {
+  name: "hqAppChanges",
+  keyOf: (orgId) => orgId,
+  derive: (read, orgId) =>
+    Object.fromEntries(
+      listed(read, "hqApp", hqAppsScope(orgId)).map(({ id, value }) => [id, value.changes]),
+    ),
+  equals: sameValue,
+};

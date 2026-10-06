@@ -26,6 +26,7 @@ const app = (id: string, name: string, projectIds: ReadonlyArray<string> = []) =
   projectIds,
   births: [],
   environments: [],
+  changes: [],
 });
 const project = (projectId: string, appId: string | null, mate = true) => ({
   projectId,
