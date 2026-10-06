@@ -80,18 +80,29 @@ export function forgetScrollTop(scroll: HTMLElement): void {
  * which a long run fills with thousands of rows.
  */
 function unclamp(element: HTMLElement): void {
-  // A move the person just made is theirs to keep.
-  if (personActedWithin(PERSON_INPUT_MS)) return;
-  const card = element.closest("[data-run-chat]") ?? element;
-  for (const [scroll, top] of scrollTops) {
-    // One gone from the page is forgotten.
-    if (!scroll.isConnected) {
-      scrollTops.delete(scroll);
-      continue;
-    }
-    if (!scroll.hasAttribute("data-follows") || !card.contains(scroll)) continue;
-    if (scroll.scrollTop < top - 0.5) scroll.scrollTop = top;
+  const card = cardOf(element);
+  // A move the person just made in the card is theirs to keep; typing in
+  // the composer is no move of it.
+  if (personActedWithin(PERSON_INPUT_MS, card)) return;
+  for (const scroll of scrollsIn(card)) {
+    const top = scrollTops.get(scroll)!;
+    if (scroll.hasAttribute("data-follows") && scroll.scrollTop < top - 0.5) scroll.scrollTop = top;
   }
+}
+
+/** The run's card around `element`, or itself outside one. */
+function cardOf(element: HTMLElement): Element {
+  return element.closest("[data-run-chat]") ?? element;
+}
+
+/** The noted scrolls in `card`; one gone from the page is forgotten. */
+function scrollsIn(card: Element): HTMLElement[] {
+  const scrolls: HTMLElement[] = [];
+  for (const scroll of scrollTops.keys()) {
+    if (!scroll.isConnected) scrollTops.delete(scroll);
+    else if (card.contains(scroll)) scrolls.push(scroll);
+  }
+  return scrolls;
 }
 
 /** Said on the root of a set of rooms: what holds it leaves what changes inside to it. */
@@ -164,6 +175,11 @@ export function easeRooms({
    * so a height they hold for a moment never squeezes it.
    */
   const natural = (box: Box) => {
+    // Read before any height is let go: the reading lays the card out
+    // without them for a moment, and the browser clamps its scrolls to that.
+    const tops = scrollsIn(cardOf(box.element)).map(
+      (scroll) => [scroll, scroll.scrollTop] as const,
+    );
     const held: Array<readonly [HTMLElement, string]> = [];
     for (
       let holder = box.element.parentElement?.closest<HTMLElement>(`[${EASING}]`) ?? null;
@@ -173,13 +189,16 @@ export function easeRooms({
       held.push([holder, holder.style.height]);
       holder.style.height = "";
     }
+    // Each scroll is put back where it stood, always: the clamp was this
+    // reading's own layout, never the person's move (the p43 verification:
+    // a keydown in the composer left the clamp, read next as a move of
+    // theirs, and the history stopped following).
     const own = box.element.style.height;
     box.element.style.height = "";
     const height = heightOf(box.element);
     box.element.style.height = own;
     for (const [holder, height] of held) holder.style.height = height;
-    // The reading laid the card out without these heights for a moment.
-    unclamp(box.element);
+    for (const [scroll, top] of tops) if (scroll.scrollTop !== top) scroll.scrollTop = top;
     return height;
   };
   const release = (box: Box) => {
@@ -326,21 +345,29 @@ function depthOf(element: Element): number {
   return depth;
 }
 
+/** Where the person last gave the page an input that can scroll. */
+let lastInputTarget: EventTarget | null = null;
+
 /** When the person last gave the page an input that can scroll; heard from the first room on. */
 let lastInputAt = Number.NEGATIVE_INFINITY;
 let inputHeard = false;
 
-function personActedWithin(ms: number): boolean {
+function personActedWithin(ms: number, card: Element): boolean {
   if (!inputHeard && typeof document !== "undefined") {
     inputHeard = true;
-    const heard = () => {
+    const heard = (event: Event) => {
       lastInputAt = performance.now();
+      lastInputTarget = event.target;
     };
     for (const type of ["wheel", "touchmove", "keydown", "pointerdown"]) {
       document.addEventListener(type, heard, { capture: true, passive: true });
     }
   }
-  return performance.now() - lastInputAt <= ms;
+  return (
+    performance.now() - lastInputAt <= ms &&
+    lastInputTarget instanceof Node &&
+    card.contains(lastInputTarget)
+  );
 }
 
 /** A tab out of sight: nobody watches a box ease. */
