@@ -69,6 +69,15 @@ describe("ZeropsAssignMateForm", () => {
     expect(html).toMatch(/<button[^>]*>Try again<\/button>/u);
   });
 
+  // HQ's definitive refusal is its word, not a read to try again.
+  it("says HQ refused to list the organization's people, with no Try again", () => {
+    const html = renderToStaticMarkup(
+      form({ candidates: [], readRefused: { organization: "Acme" } }),
+    );
+    expect(html).toMatch(/role="alert"[^>]*>HQ refused to list Acme(&#x27;|')s people\.</u);
+    expect(html).not.toContain("Try again");
+  });
+
   it("picks nobody: the hand-over waits on the person's own pick", () => {
     const html = renderToStaticMarkup(form());
     expect(html).toMatch(/<option(?=[^>]*selected="")[^>]*>Pick a person<\/option>/u);

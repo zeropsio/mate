@@ -37,6 +37,7 @@ export function ZeropsAssignMateForm({
   error,
   readingOrganization,
   readFailed,
+  readRefused,
 }: {
   readonly projectName: string;
   /** Whom HQ lets the Mate be handed over to. */
@@ -47,6 +48,8 @@ export function ZeropsAssignMateForm({
   readonly readFailed?:
     | { readonly organization: string; readonly onReadAgain: () => void }
     | undefined;
+  /** The organization whose people HQ refused to list: its word, nothing to try again. */
+  readonly readRefused?: { readonly organization: string } | undefined;
   readonly onCancel: () => void;
   readonly onSubmit: (clientUserId: string) => void;
   /** The platform is answering the hand-over. */
@@ -100,6 +103,11 @@ export function ZeropsAssignMateForm({
             ))}
           </select>
         </div>
+        {readRefused === undefined ? null : (
+          <p className="mt-3 text-sm text-foreground" role="alert">
+            HQ refused to list {readRefused.organization}'s people.
+          </p>
+        )}
         {readFailed === undefined ? null : (
           <div className="mt-3 flex flex-col items-start gap-3">
             <p className="text-sm text-foreground" role="alert">

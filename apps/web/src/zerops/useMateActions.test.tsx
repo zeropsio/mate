@@ -29,6 +29,7 @@ interface AssignDialogProps {
   readonly readFailed?:
     | { readonly organization: string; readonly onReadAgain: () => void }
     | undefined;
+  readonly readRefused?: { readonly organization: string } | undefined;
   readonly pending: boolean;
   readonly error: string | null;
   readonly onSubmit: (clientUserId: string) => void;
@@ -132,6 +133,8 @@ const mock = vi.hoisted(() => ({
   handoverAsked: [] as Array<string>,
   /** HQ's answer of whom a Mate may be handed over to. */
   handoverAnswer: (): Promise<ReadonlyArray<unknown>> => Promise.resolve([]),
+  /** No account data is mounted: there is no HQ to ask. */
+  noAccountData: false,
   /** The account HQ's read of the member list again. */
   reread: vi.fn(),
   /** The Move dialog as the hook mounts it: where it offers the Mate to go. */
@@ -156,13 +159,16 @@ vi.mock("./useHqOffers", () => ({
       : { kind: "refused", reason: "not_structure_writer" },
 }));
 vi.mock("./ZeropsAccountData", () => ({
-  useAccountDataOptional: () => ({
-    moveOffers: () => Promise.resolve(mock.moveTo),
-    handoverCandidates: (projectId: string) => {
-      mock.handoverAsked.push(projectId);
-      return mock.handoverAnswer();
-    },
-  }),
+  useAccountDataOptional: () =>
+    mock.noAccountData
+      ? null
+      : {
+          moveOffers: () => Promise.resolve(mock.moveTo),
+          handoverCandidates: (projectId: string) => {
+            mock.handoverAsked.push(projectId);
+            return mock.handoverAnswer();
+          },
+        },
 }));
 vi.mock("./deleteProject", () => ({
   useDeleteProject: () => mock.deleteProject,
@@ -408,6 +414,7 @@ beforeEach(() => {
   mock.setDeleting.mockReset();
   mock.handoverAsked = [];
   mock.handoverAnswer = () => Promise.resolve([]);
+  mock.noAccountData = false;
   mock.reread.mockReset();
   mock.mateKey = null;
   mock.deleteDialog.current = null;
@@ -660,6 +667,28 @@ describe("useMateActions — Hand this Mate over", () => {
       mock.assignDialog.current!.readFailed!.onReadAgain();
     });
     expect(mock.handoverAsked).toEqual([FEN.project.id, FEN.project.id]);
+  });
+
+  it("says HQ refused to list them, and asks nothing again", async () => {
+    mock.handoverAnswer = () =>
+      Promise.reject({ outcome: "definitive-refusal", message: "HQ refused." });
+    mount();
+    await act(async () => {
+      verbs(FEN)
+        .find((verb) => verb.id === "assign")!
+        .onSelect();
+    });
+    expect(mock.assignDialog.current?.readRefused?.organization).toBe("Acme");
+    expect(mock.assignDialog.current?.readFailed).toBeUndefined();
+    expect(mock.assignDialog.current?.readingOrganization).toBeUndefined();
+  });
+
+  it("says it could not read them where there is no HQ to ask, never reading forever", () => {
+    mock.noAccountData = true;
+    mount();
+    openAssign();
+    expect(mock.assignDialog.current?.readingOrganization).toBeUndefined();
+    expect(mock.assignDialog.current?.readFailed?.organization).toBe("Acme");
   });
 
   const answered = (progress: unknown, evidence: string | null = null) => ({

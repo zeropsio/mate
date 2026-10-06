@@ -373,17 +373,23 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
     readonly read:
       | { readonly kind: "reading" }
       | { readonly kind: "read"; readonly candidates: HqHandoverCandidates }
+      /** HQ refused it for good: its word, nothing asked again on its own. */
+      | { readonly kind: "refused" }
       | { readonly kind: "failed" };
   } | null>(null);
   const askHandover = useCallback(
     (projectId: string) => {
-      if (askHandoverCandidates === undefined) return;
+      // No HQ to ask: the read has failed, never left reading.
+      if (askHandoverCandidates === undefined) {
+        setHandover({ projectId, read: { kind: "failed" } });
+        return;
+      }
       setHandover({ projectId, read: { kind: "reading" } });
       const settle = (read: NonNullable<typeof handover>["read"]) =>
         setHandover((now) => (now?.projectId === projectId ? { projectId, read } : now));
       askHandoverCandidates(projectId).then(
         (candidates) => settle({ kind: "read", candidates }),
-        () => settle({ kind: "failed" }),
+        (fault: unknown) => settle({ kind: definitiveRefusal(fault) ? "refused" : "failed" }),
       );
     },
     [askHandoverCandidates],
@@ -1293,6 +1299,11 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
               ? activeOrganization?.name
               : undefined
           }
+          readRefused={
+            handover?.read.kind === "refused" && activeOrganization !== null
+              ? { organization: activeOrganization.name }
+              : undefined
+          }
           readFailed={
             handover?.read.kind === "failed" && activeOrganization !== null
               ? {
@@ -1372,6 +1383,15 @@ export function mateContainerMissing(
   pressedElsewhere: boolean,
 ): boolean {
   return candidate.missingContainer === true && !pressedHere && !pressedElsewhere;
+}
+
+/** Whether an HQ answer failed for good (`StreamFault` outcome `definitive-refusal`). */
+function definitiveRefusal(fault: unknown): boolean {
+  return (
+    typeof fault === "object" &&
+    fault !== null &&
+    (fault as { readonly outcome?: unknown }).outcome === "definitive-refusal"
+  );
 }
 
 /**
