@@ -115,7 +115,7 @@ describe("F: creation through the hosted client", () => {
     // in 165 s (harness finding, reported). Settled requests show nothing is sent again.
     // Catches replaying a creation whose accepted response was lost. Its one new project of its
     // name, which a wholly read listing did not hold at the send, is its own: the creation goes on
-    // with it (HANDOFF §4.3, orchestrator 2026-10-06), never making a second.
+    // with it, never making a second.
     it.effect("an uncertain creation goes on with its one new project, never a duplicate", () =>
       Effect.gen(function* () {
         const s = yield* createScenario([installCreation]);

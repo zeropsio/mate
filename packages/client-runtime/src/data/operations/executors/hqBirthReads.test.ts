@@ -36,7 +36,7 @@ describe("hqBirthReads", () => {
     const mark = (name: string) => ({
       roleCode: "ADMIN",
       status: "ACTIVE",
-      user: { fullName: name, email: "token-1@zerops.io" },
+      user: { fullName: name, email: "" },
     });
     const reads = (members: ReadonlyArray<ReturnType<typeof mark>>) =>
       hqBirthReads({

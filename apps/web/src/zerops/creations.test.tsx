@@ -156,7 +156,7 @@ describe("the creations this tab holds", () => {
     expect(again).toHaveBeenCalledTimes(1);
   });
 
-  // Reload is an account close/open: what the tab was asked lived in its memory alone (HANDOFF §4.4).
+  // Reload is an account close/open: what the tab was asked lived in its memory alone.
   it("keeps nothing of a creation once its account closes, and runs nothing again", () => {
     const run = vi.fn();
     beginCreation({ ask: ACME, hq: HQ, now: 0, run });
