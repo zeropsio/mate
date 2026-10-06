@@ -514,11 +514,22 @@ function usePanelRoom({
   // The room it stood at: its height once drawn, as it last settled.
   const stoodRef = useRef(0);
   const closingRef = useRef<{ readonly stop: () => void; readonly to: number } | null>(null);
+  // What changed in its room since it last settled. A draw that changed
+  // nothing there cannot have shrunk it — what does with no draw of its own
+  // is the observer's below — so it reads no layout: most of its draws, while
+  // a run streams beside it, changed nothing in it.
+  const changesRef = useRef<{ readonly observer: MutationObserver; heard: boolean } | null>(null);
   const settle = () => {
     const panel = panelRef.current;
     if (panel === null) return;
     const room = roomOf(panel);
     const closing = closingRef.current;
+    const changes = changesRef.current;
+    if (changes !== null) {
+      const changed = changes.heard || changes.observer.takeRecords().length > 0;
+      changes.heard = false;
+      if (!changed && closing === null) return;
+    }
     const stood = closing === null ? stoodRef.current : room.getBoundingClientRect().height;
     if (closing !== null) room.style.height = "";
     const holds = room.getBoundingClientRect().height;
@@ -566,7 +577,25 @@ function usePanelRoom({
       if (closingRef.current === null) stoodRef.current = room.getBoundingClientRect().height;
     });
     observer.observe(room);
+    const changes =
+      typeof MutationObserver === "undefined"
+        ? null
+        : {
+            observer: new MutationObserver(() => {
+              if (changes !== null) changes.heard = true;
+            }),
+            heard: false,
+          };
+    changes?.observer.observe(room, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+      attributes: true,
+    });
+    changesRef.current = changes;
     return () => {
+      changes?.observer.disconnect();
+      changesRef.current = null;
       observer.disconnect();
       closingRef.current?.stop();
       closingRef.current = null;

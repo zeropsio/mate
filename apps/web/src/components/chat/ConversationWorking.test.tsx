@@ -345,6 +345,73 @@ describe("what runs alongside the Mate", () => {
     }
   });
 
+  // While a run streams beside it the panel is drawn on every word, its own
+  // bars unchanged: a draw that changed nothing in its room reads no layout.
+  it("reads its room only after a draw that changed something in it", () => {
+    const saved = { resize: globalThis.ResizeObserver, mutation: globalThis.MutationObserver };
+    globalThis.ResizeObserver = class {
+      observe() {}
+      disconnect() {}
+      unobserve() {}
+    } as unknown as typeof ResizeObserver;
+    // What the page changed in the room since the last look.
+    let changed: unknown[] = [];
+    globalThis.MutationObserver = class {
+      observe() {}
+      disconnect() {}
+      takeRecords() {
+        const records = changed;
+        changed = [];
+        return records;
+      }
+    } as unknown as typeof MutationObserver;
+    closings.length = 0;
+    try {
+      let bars = 96;
+      let reads = 0;
+      const panel = {
+        style: { height: "" },
+        closest: () => null,
+        getBoundingClientRect: () => {
+          reads += 1;
+          return {
+            height: panel.style.height === "" ? bars : Number.parseFloat(panel.style.height),
+          };
+        },
+      };
+      const draw = (dock: DockModel | null) => (
+        <ConversationWorking
+          dock={dock}
+          environmentId={null}
+          incidents={[]}
+          onOpenAgents={() => undefined}
+          threadRef={null}
+        />
+      );
+      let renderer!: ReactTestRenderer;
+      act(() => {
+        renderer = mounted(draw(DOCK), {
+          createNodeMock: (element) =>
+            (element.props as Record<string, unknown>)["data-conversation-working"] === undefined
+              ? {}
+              : panel,
+        });
+      });
+      const mountedReads = reads;
+      act(() => renderer.update(draw({ ...DOCK })));
+      expect(reads).toBe(mountedReads);
+      bars = 0;
+      changed = [{ type: "childList" }];
+      act(() => renderer.update(draw(null)));
+      expect(reads).toBeGreaterThan(mountedReads);
+      expect(closings).toHaveLength(1);
+      expect(closings[0]).toMatchObject({ from: 96, to: 0 });
+    } finally {
+      globalThis.ResizeObserver = saved.resize;
+      globalThis.MutationObserver = saved.mutation;
+    }
+  });
+
   // Under reduced motion a bar that leaves gives its room back at once.
   it("gives back the room of a bar that leaves at once under reduced motion", () => {
     const observers = globalThis.ResizeObserver;
