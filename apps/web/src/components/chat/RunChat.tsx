@@ -4666,8 +4666,10 @@ function glideFrom(element: HTMLElement, stood: number): number {
 /** An element gliding from `moved` px off its place to it, on the plop's curve. */
 function glideBy(element: HTMLElement, moved: number): number {
   if (Math.abs(moved) < 0.5) return 0;
+  // Added to what moves it already: a call's rise keeps the rest of its way.
   element.animate([{ translate: `0 ${moved}px` }, { translate: "0 0" }], {
     id: GLIDE_ID,
+    composite: "add",
     duration: PLOP_MS,
     easing: "cubic-bezier(0.23, 1, 0.32, 1)",
   }).currentTime = 0;
