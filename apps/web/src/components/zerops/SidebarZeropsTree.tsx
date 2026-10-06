@@ -447,7 +447,7 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
    */
   readonly getOwner?: ((candidate: T) => ZeropsMateOwner | undefined) | undefined;
   /**
-   * The project's flow, when the account has read it (`projectFlowContext`).
+   * The project's flow, when the menu has read it (`useProjectFlows`).
    * Absent — no HQ open, nothing read yet — the menu keeps its
    * shape and simply carries none of what the flow says: no change row.
    */

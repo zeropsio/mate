@@ -5,8 +5,8 @@
  * this is what tells it *whose*: the group this Mate's project belongs to, and
  * whether this person is the Mate's owner (D11). The group's side — its
  * changes as HQ's stream tells them, the declarations that say which
- * environment picks a branch up — is the project flow's, read once for the
- * whole account (`ZeropsProjectFlowProvider`); the tab adds only what is this
+ * environment picks a branch up — is the project flow's, read for its
+ * application while the tab is drawn (`useProjectFlows`); the tab adds only what is this
  * Mate's: its checkouts, and its change in each.
  */
 import {
