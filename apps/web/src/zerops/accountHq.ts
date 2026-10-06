@@ -97,9 +97,8 @@ export function useAccountHq(clientId: string | undefined): AccountHq {
   const named = useMemo(() => findOfficialHq(members), [members]);
   // The HQ whose session the account kept: verified official when the session was minted, so
   // the page goes to it while the member list verifies it behind.
-  const trustedKey = useSyncExternalStore(subscribeKeptHq, () =>
-    clientId === undefined ? undefined : keptHqOf(clientId),
-  );
+  const keptKey = () => (clientId === undefined ? undefined : keptHqOf(clientId));
+  const trustedKey = useSyncExternalStore(subscribeKeptHq, keptKey, keptKey);
   const trusted = useMemo(() => endpointOf(trustedKey), [trustedKey]);
   // What a read of the member list settles is this page's verdict from then on: the official
   // HQ it names, or that it names none — never a list being read again. A kept HQ it does not
