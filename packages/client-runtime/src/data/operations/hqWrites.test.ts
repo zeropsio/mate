@@ -40,6 +40,8 @@ function operationsOf(store: AccountStore, api: Partial<HqWrites>, zerops = fake
     apiOf: (orgId) => {
       calls.push(`hq ${orgId}`);
       return {
+        renameApp: asked("renameApp"),
+        deleteApp: asked("deleteApp"),
         createApp: asked("createApp"),
         recordBirth: asked("recordBirth"),
         bindBirth: asked("bindBirth"),

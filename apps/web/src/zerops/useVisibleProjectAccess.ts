@@ -1,16 +1,10 @@
-/**
- * The project inventories of the Mates a surface draws, held while it draws them. A Mate's
- * Services come from the organization listing and Mate variables from the data layer.
- * Drawn Mates hold their project inventory and, where needed, the viewer’s access verdict.
- */
+/** Drawn rows hold only the project detail needed to decide the viewer’s access. */
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { useAtomValue } from "@effect/atom-react";
 import { accountReadsAtom, ownRowWanted, shownProjectsAtom } from "@t3tools/client-runtime/data";
 import { isMateKind } from "@t3tools/shared/zeropsRoles";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { findInventoryProjectRef, projectAuthority, useZeropsInventory } from "./inventoryContext";
-import { useInterestLeases } from "./useInterestLeases";
 import { useZeropsSessionOptional } from "./sessionContext";
 
 /** The projects HQ places a Mate in, once each. */
@@ -28,25 +22,7 @@ export function drawnMateProjects(
   ];
 }
 
-export function useMatesInventory(projectIds: ReadonlyArray<string>): void {
-  const inventory = useZeropsInventory();
-  const projects = useMemo(
-    () =>
-      [...new Set(projectIds)].flatMap((projectId) => {
-        // A refused project is not asked again by drawing it; one still being verified is.
-        const authority = projectAuthority(inventory, projectId);
-        if (authority.kind === "withheld" && authority.reason === "access-denied") return [];
-        const ref = findInventoryProjectRef(inventory, projectId);
-        return ref === null ? [] : [ref];
-      }),
-    [projectIds, inventory],
-  );
-  useInterestLeases(
-    useMemo(
-      () => projects.map((project) => ({ kind: "project-inventory" as const, project })),
-      [projects],
-    ),
-  );
+export function useVisibleProjectAccess(projectIds: ReadonlyArray<string>): void {
   // Each row held once while its Mate is drawn and it decides the viewer's access: one drawn or
   // let go moves no other's hold.
   const demandDetail = useAtomValue(accountReadsAtom)?.demandDetail;
@@ -54,12 +30,10 @@ export function useMatesInventory(projectIds: ReadonlyArray<string>): void {
   const roster = useAtomValue(shownProjectsAtom).projects;
   const wanted = useMemo(
     () =>
-      projects
-        .map(({ projectId }) => projectId)
-        .filter((projectId) =>
-          ownRowWanted(viewerRole, roster.find(({ id }) => id === projectId) ?? null),
-        ),
-    [projects, roster, viewerRole],
+      [...new Set(projectIds)].filter((projectId) =>
+        ownRowWanted(viewerRole, roster.find(({ id }) => id === projectId) ?? null),
+      ),
+    [projectIds, roster, viewerRole],
   );
   const rows = useRef(new Map<string, () => void>());
   const heldBy = useRef(demandDetail);
@@ -94,13 +68,13 @@ export function useMatesInventory(projectIds: ReadonlyArray<string>): void {
 /**
  * For a surface whose Mates are drawn row by row, each mounted on its own: `drawn(projectId)`
  * says a row of that Mate is drawn, until the function it returns is called. Each Mate's project
- * is read while any row of it is drawn. The same function for a Mate on every render, so a row's
+ * access detail is held while any row of it is drawn. The same function for a Mate on every render, so a row's
  * effect keyed by it runs once.
  */
-export function useDrawnMates(): (projectId: string) => () => () => void {
+export function useDrawnProjectAccess(): (projectId: string) => () => () => void {
   const [rows, setRows] = useState<ReadonlyMap<string, number>>(() => new Map());
   const projectIds = useMemo(() => [...rows.keys()], [rows]);
-  useMatesInventory(projectIds);
+  useVisibleProjectAccess(projectIds);
   const byProject = useRef(new Map<string, () => () => void>());
   return useCallback((projectId: string) => {
     const known = byProject.current.get(projectId);

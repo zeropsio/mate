@@ -28,8 +28,19 @@ export function classifyHqCall(cause: unknown): StreamFault {
     : { outcome: "definitive-refusal", message };
 }
 
-export function makeHqWire(api: Pick<HqApi, "openScopeSocket">): HqWire {
+export function makeHqWire(
+  api: Pick<HqApi, "openScopeSocket"> & Partial<Pick<HqApi, "changeAttachment">>,
+): HqWire {
   return {
+    ...(api.changeAttachment === undefined
+      ? {}
+      : {
+          picture: (link: Parameters<HqApi["changeAttachment"]>[0]) =>
+            Effect.tryPromise({
+              try: (signal) => api.changeAttachment!(link, signal),
+              catch: classifyHqCall,
+            }),
+        }),
     open: Effect.gen(function* () {
       const messages = yield* Queue.unbounded<string, StreamFault | Cause.Done>();
       const socket = yield* Effect.acquireRelease(

@@ -18,6 +18,7 @@ import { HQ_WRITE_KINDS } from "./hqWrites.ts";
 import { importContainer } from "./importContainer.ts";
 import { importProject } from "./importProject.ts";
 import { importServices } from "./importServices.ts";
+import { renameApp, deleteApp } from "./hqAppWrites.ts";
 import { FLOW_WRITE_KINDS } from "./flowWrites.ts";
 import type { RegisteredOperationKind } from "./kind.ts";
 import { mateRestart } from "./mateRestart.ts";
@@ -59,6 +60,8 @@ export const OPERATION_KINDS = defineOperationKinds([
   ...HQ_WRITE_KINDS,
   ...HQ_BIRTH_KINDS,
   changeComment,
+  renameApp,
+  deleteApp,
   ...FLOW_WRITE_KINDS,
 ]);
 

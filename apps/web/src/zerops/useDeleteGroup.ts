@@ -9,23 +9,26 @@
 import type { ZeropsGroup } from "@t3tools/client-runtime/zerops";
 import { useCallback } from "react";
 
-import { accountHqApi, officialHq, useAccountHq } from "./accountHq";
+import { useAccountOperations } from "./accountOperations";
+import { submitHqAppWrite } from "./hqAppWrite";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
 /** Deletes the group's application in HQ. */
 export type DeleteGroup = (group: ZeropsGroup) => Promise<void>;
 
 export function useDeleteGroup(): DeleteGroup {
-  const { activeOrganization, client } = useZeropsSession();
-  const accountHq = useAccountHq(activeOrganization?.id);
+  const { activeOrganization } = useZeropsSession();
+  const operations = useAccountOperations();
 
   return useCallback(
     async (group: ZeropsGroup) => {
       if (activeOrganization === null) throw new Error("No organization is open.");
-      await accountHqApi(client, activeOrganization.id, officialHq(accountHq)).deleteApp(
-        group.groupId,
-      );
+      await submitHqAppWrite(operations, {
+        kind: "delete-app",
+        orgId: activeOrganization.id,
+        appId: group.groupId,
+      });
     },
-    [accountHq, activeOrganization, client],
+    [activeOrganization, operations],
   );
 }

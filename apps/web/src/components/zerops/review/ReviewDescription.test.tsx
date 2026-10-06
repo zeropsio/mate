@@ -3,14 +3,32 @@
  * as the person from the organization's HQ, holding their room, anything else a plain link — or
  * what the run that made it said, or nothing at all.
  */
+import { RegistryContext } from "@effect/atom-react";
+import {
+  makeAccountStore,
+  pictureId,
+  pictureLink,
+  pictureScope,
+} from "@t3tools/client-runtime/data";
+import { parseAttachmentUrl } from "@t3tools/shared/hqChanges";
+import { AtomRegistry } from "effect/unstable/reactivity";
 import { act, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { elementsOf, TestNode } from "~/zerops/__fixtures__/testDom";
-import type { ChangePictureSource } from "~/zerops/useChangePicture";
+import type { ChangePictureSource } from "~/zerops/useProjectedHqPicture";
 
-import { ReviewDescription } from "./ReviewDescription";
+import { ReviewDescription as Description } from "./ReviewDescription";
+
+const registry = AtomRegistry.make();
+function ReviewDescription(props: Parameters<typeof Description>[0]) {
+  return (
+    <RegistryContext value={registry}>
+      <Description {...props} />
+    </RegistryContext>
+  );
+}
 
 // The chat's renderer, down to what the description hands it: its text, and its pictures drawn by
 // the review — a Markdown picture, or an <img> with the width and height rehype hands over as
@@ -55,8 +73,60 @@ const HQ = "https://hq.example.test";
 const PICTURES = "/api/apps/g1/changes/appdev/2/attachments";
 const NO_RUN = { words: undefined, reading: false } as const;
 
-function source(): ChangePictureSource & { readonly read: ReturnType<typeof vi.fn> } {
-  return { read: vi.fn(() => new Promise<Blob>(() => {})) };
+function source(readBytes: (url: string) => Promise<Blob> = () => new Promise(() => {})) {
+  const store = makeAccountStore(registry);
+  const read = vi.fn(readBytes);
+  const asked = new Set<string>();
+  const source: ChangePictureSource & { readonly read: typeof read } = {
+    read,
+    data: store.data,
+    key: (url) => {
+      const link = parseAttachmentUrl(url, HQ);
+      return link === null ? null : { orgId: "org", link };
+    },
+    demand: (ownerId) => {
+      const link = pictureLink(ownerId);
+      if (link === null) return () => {};
+      const key = { orgId: "org", link };
+      const id = pictureId(key);
+      if (asked.has(id)) return () => {};
+      asked.add(id);
+      const scope = pictureScope(key);
+      void read(`${HQ}${PICTURES}/${link.id}`).then(
+        (blob) => {
+          store.dispatch({
+            kind: "baseline-commit",
+            scope,
+            generation: 0,
+            via: "hq-stream",
+            members: [id],
+            rows: [
+              {
+                family: "hqPicture",
+                id,
+                value: blob,
+                revision: { kind: "hq", incarnation: id, revision: 0 },
+              },
+            ],
+          });
+        },
+        (cause: unknown) => {
+          store.dispatch({
+            kind: "stream",
+            key: scope,
+            now: 0,
+            event: {
+              kind: "fault",
+              jitter: 0,
+              fault: { outcome: "definitive-refusal", message: String(cause) },
+            },
+          });
+        },
+      );
+      return () => {};
+    },
+  };
+  return source;
 }
 
 function html(props: Partial<Parameters<typeof ReviewDescription>[0]> = {}): string {
@@ -206,9 +276,7 @@ describe("reading its pictures", () => {
 
   it("keeps a sized picture's box when it cannot be read, its line in it: nothing moves", async () => {
     const { container, root } = await mount();
-    const refused: ChangePictureSource = {
-      read: () => Promise.reject(new Error("HQ has no such picture.")),
-    };
+    const refused = source(() => Promise.reject(new Error("HQ has no such picture.")));
     try {
       await act(async () => {
         root.render(
@@ -234,10 +302,9 @@ describe("reading its pictures", () => {
 
   it("draws a sized picture in the same box once read, at the size its description gave", async () => {
     const { container, root } = await mount();
-    const read: ChangePictureSource = {
-      read: () =>
-        Promise.resolve(new Blob([new Uint8Array([137, 80, 78, 71])], { type: "image/png" })),
-    };
+    const read = source(() =>
+      Promise.resolve(new Blob([new Uint8Array([137, 80, 78, 71])], { type: "image/png" })),
+    );
     try {
       await act(async () => {
         root.render(
@@ -265,9 +332,7 @@ describe("reading its pictures", () => {
 
   it("settles a picture HQ does not hand over on its line, never on a spinner", async () => {
     const { container, root } = await mount();
-    const refused: ChangePictureSource = {
-      read: () => Promise.reject(new TypeError("Failed to fetch")),
-    };
+    const refused = source(() => Promise.reject(new TypeError("Failed to fetch")));
     try {
       await act(async () => {
         root.render(

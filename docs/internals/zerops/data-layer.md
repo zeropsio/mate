@@ -241,3 +241,12 @@ layer, not on the old runtime: `packages/client-runtime/src/zerops/data/runtime.
 stores, grant plumbing and wrappers are being deleted. An old call site is migration debt, not a
 pattern to copy. The start-epoch contract above is part of that in-flight work; check the current
 source contracts when integrating it.
+
+HQ change attachments are the `hqPicture` detail family. A description picture near the viewport demands its immutable
+attachment identity; the HQ link reads its bytes through the wire once and publishes the answer
+through the reducer. Refusal survives remount and segment rotation until explicit retry. Blob URLs
+belong to the mounted view and are revoked when it releases them; bytes remain in account memory.
+
+Build-log transport opening is not evidence that its baseline is read. A valid source frame,
+including an explicitly empty frame, ends the initial loading state. Publication batching only
+coalesces updates; elapsed time never declares a log live.

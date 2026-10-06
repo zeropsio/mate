@@ -11,7 +11,8 @@ import type { ZeropsGroup } from "@t3tools/client-runtime/zerops";
 import { readZeropsMembership } from "@t3tools/client-runtime/zerops";
 import { useCallback, useContext } from "react";
 
-import { accountHqApi, officialHq, useAccountHq } from "./accountHq";
+import { useAccountOperations } from "./accountOperations";
+import { submitHqAppWrite } from "./hqAppWrite";
 import {
   planProjectRenames,
   type ProjectRename,
@@ -37,8 +38,8 @@ export interface GroupRenaming {
 }
 
 export function useRenameGroup(): GroupRenaming {
-  const { activeOrganization, client } = useZeropsSession();
-  const accountHq = useAccountHq(activeOrganization?.id);
+  const { activeOrganization } = useZeropsSession();
+  const operations = useAccountOperations();
   const inventory = useZeropsInventory();
   // Every project the account holds, one the grant withholds included: it is a member still.
   const held = useContext(HeldInventoryContext);
@@ -54,13 +55,15 @@ export function useRenameGroup(): GroupRenaming {
         group.nameSource === "unread" ? undefined : group.name,
         name.trim(),
       );
-      await accountHqApi(client, activeOrganization.id, officialHq(accountHq)).renameApp(
-        group.groupId,
+      await submitHqAppWrite(operations, {
+        kind: "rename-app",
+        orgId: activeOrganization.id,
+        appId: group.groupId,
         name,
-      );
+      });
       return renameProjects(plan);
     },
-    [accountHq, activeOrganization, client, projects, renameProjects],
+    [activeOrganization, operations, projects, renameProjects],
   );
 
   return { rename, retry: renameProjects };

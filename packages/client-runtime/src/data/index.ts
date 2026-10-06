@@ -201,3 +201,11 @@ export type { HqVerdict } from "./families/hqVerdict.ts";
 export { environmentSetup } from "./projections/environmentSetup.ts";
 
 export { hqMateSetup, type HqMateSetup } from "./projections/hqMateSetup.ts";
+export { hqPicture, type HqPictureRead } from "./projections/hqPicture.ts";
+export {
+  pictureOwner,
+  pictureId,
+  pictureScope,
+  pictureLink,
+  type HqPictureKey,
+} from "./families/hqPicture.ts";

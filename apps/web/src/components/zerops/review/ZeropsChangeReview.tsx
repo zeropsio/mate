@@ -55,7 +55,7 @@ import {
 } from "~/zerops/useZeropsChangeDetail";
 import { useChangeDiscussion, type ChangeDiscussion } from "~/zerops/useChangeDiscussion";
 import { useZeropsChangeRun } from "~/zerops/useZeropsChangeRun";
-import { useHqPictureSource, type ChangePictureSource } from "~/zerops/useChangePicture";
+import { useHqPictureSource, type ChangePictureSource } from "~/zerops/useProjectedHqPicture";
 import { useZeropsLandedChange } from "~/zerops/useZeropsLandedChange";
 import { useNowMs } from "~/zerops/useNowMs";
 import { useFixMates } from "~/zerops/fixMates";

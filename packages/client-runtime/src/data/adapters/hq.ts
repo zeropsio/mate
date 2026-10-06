@@ -28,7 +28,8 @@ import {
   type HqScopeDelivery,
   type HqStreamRequest,
 } from "@t3tools/shared/hqStream";
-import type { CompareQuery, CompareResponse } from "@t3tools/shared/hqChanges";
+import { makeHqPictureReads } from "./hqPictures.ts";
+import type { AttachmentLink, CompareQuery, CompareResponse } from "@t3tools/shared/hqChanges";
 import * as Clock from "effect/Clock";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -72,6 +73,7 @@ export interface HqSegment {
 /** Today's HQ transport behind the adapter — a ticket, then the socket — or a fixture. */
 export interface HqWire {
   readonly open: Effect.Effect<HqSegment, StreamFault, Scope.Scope>;
+  readonly picture?: (link: AttachmentLink) => Effect.Effect<Blob, StreamFault>;
 }
 
 /** How an HQ socket's ending classifies, its planned segment end aside. */
@@ -524,7 +526,7 @@ export function hqNavigationLink(options: {
           yield* open.send({ type: "unsubscribe", scopes: [entry.registered.wire] });
         }
         const fresh: Registered[] = [];
-        let wakeAt = Number.POSITIVE_INFINITY;
+        let wakeAt = yield* pictures(demands.scopes());
         for (const registered of wanted) {
           const stream = streamOf(store.state(), registered.families[0]!.scope);
           if (stream.phase === "refused") continue;
@@ -549,6 +551,18 @@ export function hqNavigationLink(options: {
       const wake = () => Queue.offerUnsafe(wakes, undefined);
       const stopListening = demands.onChange(wake);
       wakeAttempt = wake;
+      const pictures = yield* makeHqPictureReads({
+        orgId,
+        store,
+        signal,
+        wake,
+        read: (link) =>
+          wire.picture?.(link) ??
+          Effect.fail({
+            outcome: "definitive-refusal",
+            message: "This HQ cannot read change pictures.",
+          }),
+      });
       yield* Effect.addFinalizer(() =>
         Effect.sync(() => {
           stopListening();

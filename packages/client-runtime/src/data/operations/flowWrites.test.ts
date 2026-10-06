@@ -144,6 +144,8 @@ function hqOf(answer: () => Promise<unknown>) {
     createMate: call("createMate"),
     recordClosedOff: call("recordClosedOff"),
     keepDeployToken: call("keepDeployToken"),
+    renameApp: call("renameApp"),
+    deleteApp: call("deleteApp"),
     release: call("release"),
     rollback: call("rollback"),
     redeploy: call("redeploy"),

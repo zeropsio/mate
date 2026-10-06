@@ -4,7 +4,7 @@
  * it; and the way back to that run, where it is known (`reviewDescription`).
  *
  * The description's pictures are the change's own, kept by the organization's HQ. Each is read as
- * the person through HQ's API (`useChangePicture`). Once read it is drawn from its bytes, at most
+ * the person from HQ's picture projection (`useProjectedHqPicture`). Once read it is drawn from its bytes, at most
  * the column's width; a click opens it large, the description's others beside it. Until then, and
  * wherever it cannot be read, it stands as one quiet line — its words, or "Picture". A picture
  * whose description gives its size (zcp writes `<img alt width height src>`) holds that box from
@@ -22,7 +22,7 @@ import ChatMarkdown, {
   type MarkdownPicture,
 } from "~/components/ChatMarkdown";
 import { gatedPortal } from "~/components/ui/portal-gate";
-import { useChangePicture, type ChangePictureSource } from "~/zerops/useChangePicture";
+import { useProjectedHqPicture, type ChangePictureSource } from "~/zerops/useProjectedHqPicture";
 
 import {
   absoluteDescription,
@@ -167,7 +167,7 @@ function HqPicture({
   readonly onOpen: (view: PictureView) => void;
 }) {
   const { ref, near } = useNearViewport<HTMLSpanElement>();
-  const state = useChangePicture(source, url, near);
+  const state = useProjectedHqPicture(source, url, near);
   // Only a picture seen arriving fades in: one already read stands as it was.
   const [arriving] = useState(state.kind === "reading");
   const box = reviewPictureBox(width, height);

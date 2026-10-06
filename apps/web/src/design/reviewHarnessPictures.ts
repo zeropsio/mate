@@ -3,7 +3,14 @@
  * never fetched, each after the delay its address names — so a review shows its pictures
  * arriving slowly, settled, and one that cannot be read. Fixtures only.
  */
-import type { ChangePictureSource } from "~/zerops/useChangePicture";
+import {
+  makeAccountStore,
+  pictureId,
+  pictureLink,
+  pictureScope,
+} from "@t3tools/client-runtime/data";
+import { AtomRegistry } from "effect/unstable/reactivity";
+import type { ChangePictureSource } from "~/zerops/useProjectedHqPicture";
 
 /** The harness's HQ: an address no browser resolves. */
 export const HARNESS_HQ = "https://hq.example.test";
@@ -60,20 +67,67 @@ const DRAWN = new Map<string, string>([
  * `${PICTURES_AT}/<drawing>?after=<ms>`: the drawing, handed over after `ms`; an address naming no
  * drawing fails as a read HQ does not answer does.
  */
+export const HARNESS_PICTURE_REGISTRY = AtomRegistry.make();
+const pictures = makeAccountStore(HARNESS_PICTURE_REGISTRY);
+const reading = new Set<string>();
+
 export const HARNESS_PICTURES: ChangePictureSource = {
-  read: (address) => {
+  data: pictures.data,
+  key: (address) => {
     const url = new URL(address);
-    const drawing = DRAWN.get(url.pathname.split("/").at(-1) ?? "");
-    const after = Number(url.searchParams.get("after") ?? "0");
-    return new Promise((resolve, reject) => {
-      setTimeout(() => {
+    return {
+      orgId: "harness",
+      link: {
+        appId: "g-snap",
+        repo: "appdev",
+        number: 2,
+        id: `${url.pathname.split("/").at(-1) ?? ""}?${url.searchParams.toString()}`,
+      },
+    };
+  },
+  demand: (ownerId) => {
+    const link = pictureLink(ownerId);
+    if (link === null) return () => {};
+    const key = { orgId: "harness", link };
+    const id = pictureId(key);
+    if (reading.has(id)) return () => {};
+    reading.add(id);
+    const url = new URL(`https://fixture.test/${link.id}`);
+    const drawing = DRAWN.get(url.pathname.slice(1));
+    setTimeout(
+      () => {
+        const scope = pictureScope(key);
         if (drawing === undefined) {
-          reject(new TypeError("Failed to fetch"));
-          return;
-        }
-        resolve(new Blob([drawing], { type: "image/svg+xml" }));
-      }, after);
-    });
+          pictures.dispatch({
+            kind: "stream",
+            key: scope,
+            now: 0,
+            event: {
+              kind: "fault",
+              jitter: 0,
+              fault: { outcome: "definitive-refusal", message: "Failed to fetch" },
+            },
+          });
+        } else
+          pictures.dispatch({
+            kind: "baseline-commit",
+            scope,
+            generation: 0,
+            via: "hq-stream",
+            members: [id],
+            rows: [
+              {
+                family: "hqPicture",
+                id,
+                value: new Blob([drawing], { type: "image/svg+xml" }),
+                revision: { kind: "hq", incarnation: id, revision: 0 },
+              },
+            ],
+          });
+      },
+      Number(url.searchParams.get("after") ?? "0"),
+    );
+    return () => {};
   },
 };
 
