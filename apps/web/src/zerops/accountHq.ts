@@ -56,7 +56,7 @@ import {
   useKeptHqVerdict,
   type HqVerdictOwner,
 } from "./hqVerdict";
-import { endHqSession, keptHqSessions } from "./keptSessions";
+import { keptHqSessions } from "./keptSessions";
 import { useZeropsOrganizationMembersRead } from "./useZeropsMateOwners";
 import { whenShown } from "./whenShown";
 import { ZeropsDataContext } from "./zeropsDataContext";
@@ -205,13 +205,15 @@ export function accountHqApi(client: ZeropsApiClient, clientId: string, hq: HqEn
       keep: ({ token, expiresAt }) => {
         const expiresAtEpochMs = Date.parse(expiresAt);
         if (!Number.isFinite(expiresAtEpochMs)) return;
-        // A session another tab kept meanwhile is revoked, never left live for its 12 hours.
+        // A session another tab kept meanwhile may still be that tab's: it is never revoked from
+        // here. It stays kept beside this one, so the account's close ends it with the rest.
         const displaced = keptHqSessions.keep(keptKey, {
           address: hq.address,
           token,
           expiresAtEpochMs,
         });
-        if (displaced !== null) endHqSession(displaced);
+        if (displaced !== null)
+          keptHqSessions.keep(`${keptKey}:displaced:${displaced.token}`, displaced);
       },
       forget: (token) => void keptHqSessions.forget(keptKey, token),
     },

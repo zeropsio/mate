@@ -246,6 +246,31 @@ describe("A: sign-in, session and organizations", () => {
       }),
     );
 
+    // Catches one tab's new HQ session revoking the one a neighbouring tab of the account still uses.
+    it.effect("a second tab entering HQ leaves the first tab's HQ live", () =>
+      Effect.gen(function* () {
+        const s = yield* accountScenario(true);
+        yield* s.given.project("Ada", { mate: true, app: "Shop" });
+        const b = yield* s.given.browserActor({ context: s.page.browserContext() });
+        // Tab B waits at the door; the sign-in in tab A signs it in too, and both enter HQ.
+        yield* Effect.promise(async () => {
+          await b.page.goto(s.web.origin);
+          await s.page.bringToFront();
+        });
+        yield* s.given.signedIn;
+        yield* s.then.menu.row("Shop").appears();
+        yield* Effect.promise(() => b.page.bringToFront());
+        yield* b.then.menu.row("Shop").appears();
+        yield* s.when.hq.colleague.renamesProject("Shop", "Both live");
+        yield* b.then.menu.row("Both live").appears({ within: 10_000 });
+        yield* Effect.promise(() => s.page.bringToFront());
+        yield* s.then.menu.row("Both live").appears({ within: 10_000 });
+        yield* account(s.page).showsPerson("owner");
+        yield* s.then.noReload;
+        yield* s.then.noExternalNetwork;
+      }),
+    );
+
     // Catches an expired HQ session permanently stopping live work until the user retries.
     it.effect.fails("HQ session expires and renews itself", () =>
       Effect.gen(function* () {
