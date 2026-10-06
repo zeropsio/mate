@@ -9,7 +9,14 @@
 import type { Atom, AtomRegistry } from "effect/unstable/reactivity";
 
 import type { DetailDemand } from "./demand.ts";
-import { hqBirthProcess, hqBirthServices, hqBirthZone } from "./projections/hqBirth.ts";
+import {
+  hqBirthProcess,
+  hqBirthServices,
+  hqBirthZone,
+  type HqBirthProcess,
+  type HqBirthServices,
+  type HqBirthZone,
+} from "./projections/hqBirth.ts";
 import type { AccountStore } from "./store.ts";
 
 /** What a wait says once its facts can no longer be followed here. */
@@ -73,7 +80,10 @@ export function hqBirthWaits(input: {
     });
   return {
     untilServices: (orgId, projectId) =>
-      until(projectId, input.data.project(hqBirthServices, { orgId, projectId }), (services) => {
+      until<
+        HqBirthServices,
+        { readonly serviceId: string; readonly serviceIds: Readonly<Record<string, string>> }
+      >(projectId, input.data.project(hqBirthServices, { orgId, projectId }), (services) => {
         switch (services.kind) {
           case "waiting":
             return null;
@@ -86,15 +96,18 @@ export function hqBirthWaits(input: {
         }
       }),
     untilZone: (orgId, projectId) =>
-      until(projectId, input.data.project(hqBirthZone, { orgId, projectId }), (zone) =>
-        zone.kind === "zone"
-          ? { done: zone.zone }
-          : zone.kind === "unobserved"
-            ? { stop: HQ_BIRTH_UNFOLLOWED }
-            : null,
+      until<HqBirthZone, string>(
+        projectId,
+        input.data.project(hqBirthZone, { orgId, projectId }),
+        (zone) =>
+          zone.kind === "zone"
+            ? { done: zone.zone }
+            : zone.kind === "unobserved"
+              ? { stop: HQ_BIRTH_UNFOLLOWED }
+              : null,
       ),
     untilProcessEnds: (orgId, projectId, processId) =>
-      until(
+      until<HqBirthProcess, string>(
         projectId,
         input.data.project(hqBirthProcess, { orgId, projectId, processId }),
         (process) =>

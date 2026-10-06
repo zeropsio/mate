@@ -351,10 +351,14 @@ export async function runHqBirth(input: {
 
     const serviceId = record.serviceId!;
     if (record.step === "credential") {
-      const token = await performed("org_token", { projectId, serviceId }, async () => {
-        const { tokenId } = await run({ kind: "hq-org-token", orgId, projectId, serviceId }, ran);
-        return tokenId === null ? {} : { tokenId };
-      });
+      const token = await performed(
+        "org_token",
+        { projectId, serviceId },
+        async (): Promise<Readonly<Record<string, string>>> => {
+          const { tokenId } = await run({ kind: "hq-org-token", orgId, projectId, serviceId }, ran);
+          return tokenId === null ? {} : { tokenId };
+        },
+      );
       if (token.tokenId !== undefined) await advance({ orgTokenId: token.tokenId });
       await performed("key_secret", { serviceId }, async () => {
         await run({ kind: "hq-key-secret", orgId, serviceId }, ran);
@@ -396,7 +400,7 @@ export async function runHqBirth(input: {
               { kind: "route-hq-domain", orgId, projectId, serviceId, domain },
               { ...ran, accepted },
             ),
-          ).then(({ processId }) =>
+          ).then(({ processId }): Readonly<Record<string, string>> =>
             processId === null ? { projectId } : { projectId, processId },
           ),
         );
