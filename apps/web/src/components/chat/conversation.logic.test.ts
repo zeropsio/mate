@@ -1153,6 +1153,123 @@ describe("activityCounts", () => {
   });
 });
 
+/** What the server records where an agent's process died under its turn (`runtime.error`). */
+function crashed(id: string, turnId: string, minute: number, words: string): TimelineEntry {
+  return tool(id, turnId, minute, {
+    label: "Runtime error",
+    tone: "error",
+    detail: words,
+    command: undefined as never,
+    toolCallId: undefined as never,
+    toolLifecycleStatus: undefined as never,
+    sourceActivityKind: "runtime.error",
+  });
+}
+
+/** A background task the crash took down with it, reporting in. */
+function taskStopped(id: string, turnId: string, minute: number): TimelineEntry {
+  return tool(id, turnId, minute, {
+    label: "Task stopped",
+    tone: "info",
+    command: undefined as never,
+    toolCallId: undefined as never,
+    toolLifecycleStatus: undefined as never,
+    sourceActivityKind: "task.completed",
+  });
+}
+
+describe("a run that broke off", () => {
+  const STOPPED = "Codex stopped unexpectedly. Send a message to pick up where it left off.";
+  const NO_WORDS = "It stopped unexpectedly. Send a message to pick up where it left off.";
+  it.each([
+    {
+      name: "its agent died after its last words, a task stopping with it",
+      entries: [
+        user("m0", 0),
+        tool("w1", "t1", 1),
+        assistant("a1", "t1", 2, "Restarting the dev server cleanly…"),
+        tool("w2", "t1", 3),
+        crashed("e1", "t1", 5, STOPPED),
+        taskStopped("k1", "t1", 5),
+      ],
+      latest: { id: "t1", state: "error", completed: true },
+      brokeOff: STOPPED,
+      answer: null,
+      face: "brokeOff",
+    },
+    {
+      name: "the same run once the next one began",
+      entries: [
+        user("m0", 0),
+        tool("w1", "t1", 1),
+        assistant("a1", "t1", 2, "Restarting the dev server cleanly…"),
+        crashed("e1", "t1", 5, STOPPED),
+        user("m1", 10),
+        assistant("a2", "t2", 11, "Picked it up."),
+      ],
+      latest: { id: "t2", state: "completed", completed: true },
+      brokeOff: STOPPED,
+      answer: null,
+      face: "brokeOff",
+    },
+    {
+      name: "its turn failed with no error recorded",
+      entries: [user("m0", 0), tool("w1", "t1", 1)],
+      latest: { id: "t1", state: "error", completed: true },
+      brokeOff: NO_WORDS,
+      answer: null,
+      face: "brokeOff",
+    },
+    {
+      name: "an error it worked past",
+      entries: [
+        user("m0", 0),
+        crashed("e1", "t1", 1, STOPPED),
+        tool("w1", "t1", 2),
+        assistant("a1", "t1", 3, "Done."),
+      ],
+      latest: { id: "t1", state: "completed", completed: true },
+      brokeOff: null,
+      answer: "a1",
+      face: "idle",
+    },
+    {
+      name: "a run the person stopped",
+      entries: [user("m0", 0), tool("w1", "t1", 1)],
+      latest: { id: "t1", state: "interrupted", completed: true },
+      brokeOff: null,
+      answer: null,
+      face: "stopped",
+    },
+    {
+      name: "a run the usage limit ended",
+      entries: [
+        user("m0", 0),
+        tool("w1", "t1", 1),
+        assistant("a1", "t1", 2, "You've hit your session limit · resets 9:20pm (UTC)"),
+      ],
+      latest: { id: "t1", state: "error", completed: true },
+      brokeOff: null,
+      answer: "a1",
+      face: "idle",
+    },
+  ] as const)("$name", ({ entries, latest, brokeOff, answer, face }) => {
+    const [first] = structure([...entries], { latest }).turns;
+    expect(first!.brokeOff).toBe(brokeOff);
+    expect(first!.answer?.id ?? null).toBe(answer);
+    expect(
+      stretchFace({ stretch: first!.stretches.at(-1)!, turn: first!, pausedHere: false }),
+    ).toBe(face);
+  });
+
+  it("is not over while it runs", () => {
+    const [only] = structure([user("m0", 0), crashed("e1", "t1", 1, STOPPED)], {
+      live: "t1",
+    }).turns;
+    expect(only!.brokeOff).toBeNull();
+  });
+});
+
 describe("stretchFace", () => {
   const settled = { latest: { id: "t1", state: "completed", completed: true } } as const;
   it.each([

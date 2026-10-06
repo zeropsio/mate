@@ -3017,6 +3017,36 @@ describe("thoughtPreview", () => {
   });
 });
 
+describe("a run that broke off", () => {
+  // Its agent died under it (Sage, run 12: a SIGABRT an hour in): the card
+  // ends on why, and the words it had written last stay in its record — they
+  // were on the way, never its answer.
+  it("ends its card on why, its last words kept in its record", () => {
+    const words = "Codex stopped unexpectedly. Send a message to pick up where it left off.";
+    const list = rows({
+      entries: [
+        user("m0", 0),
+        tool("w1", "t1", 1),
+        assistant("a1", "t1", 2, "Restarting the dev server cleanly…"),
+        tool("w2", "t1", 3),
+        tool("e1", "t1", 5, {
+          label: "Runtime error",
+          tone: "error",
+          detail: words,
+          command: undefined as never,
+          toolCallId: undefined as never,
+          toolLifecycleStatus: undefined as never,
+          sourceActivityKind: "runtime.error",
+        }),
+      ],
+      settled: "t1",
+    });
+    expect(statusOf(list)).toMatchObject({ live: false, face: "brokeOff", brokeOff: words });
+    expect(list.filter((row) => row.kind === "message").map((row) => row.id)).toEqual(["m0"]);
+    expect(allItems(list).some((item) => item.kind === "note")).toBe(true);
+  });
+});
+
 describe("a run's card", () => {
   // Every run with work is one card, from its heading to its edge: its
   // record, what runs alongside while it works, and its result inside; the

@@ -3049,6 +3049,16 @@ function NowLine({
         ) : null}
       </div>
       {status.live ? <RunTicker status={status} /> : (end ?? <span />)}
+      {/* A run that broke off ends on why, under its line, in the words the
+          server gave it: never a stack. */}
+      {!status.live && status.brokeOff !== undefined ? (
+        <p
+          className="min-w-0 pt-0.5 text-sm leading-5 text-status-failed-text [grid-column:2/-1]"
+          data-run-broke-off
+        >
+          {status.brokeOff}
+        </p>
+      ) : null}
     </div>
   );
 }

@@ -697,6 +697,25 @@ export function CardStates() {
         />
       </CardState>
       <CardState
+        label="Its agent stopped under it"
+        note="Its agent's process died mid-run: the line says it stopped, and why stands under it in the server's words, never a stack. Its last words stay in its work: no answer under the card."
+      >
+        <Turn
+          row={record("status-broke-off", {
+            live: false,
+            status: status({
+              live: false,
+              face: "brokeOff",
+              startedAt: ago(61 * 60),
+              endedAt: ago(0),
+              brokeOff:
+                "Claude Code stopped unexpectedly. Send a message to pick up where it left off.",
+            }),
+            outcome: OUTCOME,
+          })}
+        />
+      </CardState>
+      <CardState
         label="A failure that stands"
         note="A red mark and Failed on the right edge, never a pink row."
       >
