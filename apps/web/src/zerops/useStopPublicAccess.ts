@@ -16,6 +16,24 @@ const UNREAD: Shown<ZeropsPublicAccess> = { state: "unread", waitingFor: null };
 const NO_READ = Atom.make<ReadonlyMap<string, Shown<ZeropsPublicAccess>>>(new Map());
 
 /** Mounting the cell atoms owns the demand; unmounting the last surface releases it. */
+/**
+ * A chip's stops' deployments, demanded while the chip is drawn — without reading their public
+ * access, which only an open stop menu reads (navigation starts no detail read).
+ */
+export function useStopDeploymentDemand(projectIds: ReadonlyArray<string>): void {
+  const data = useContext(ZeropsDataContext);
+  const organizationId = useZeropsSessionOptional()?.activeOrganization?.id;
+  const key = JSON.stringify(projectIds);
+  const refs = useMemo(
+    () =>
+      data === null || organizationId === undefined
+        ? []
+        : (JSON.parse(key) as string[]).map((id) => data.projectRef(organizationId, id)),
+    [data, organizationId, key],
+  );
+  useStopDeployments(refs);
+}
+
 export function useStopPublicAccesses(projectIds: ReadonlyArray<string>): {
   readonly reads: ReadonlyMap<string, Shown<ZeropsPublicAccess>>;
   readonly again: (projectId: string) => void;
