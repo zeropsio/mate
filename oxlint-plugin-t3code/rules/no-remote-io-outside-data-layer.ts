@@ -187,6 +187,7 @@ export const ZEROPS_CLIENT_VERBS = [
   "syncPublicHttpRouting",
   "uploadAppVersionArchive",
   "verifyTotp",
+  "writeMateFlag",
   "writeProject",
   "writeServiceSecret",
 ] as const;
