@@ -163,6 +163,9 @@ export function makeOperations(options: {
                   ...(answer.unobservable.nextAction === undefined
                     ? {}
                     : { nextAction: answer.unobservable.nextAction }),
+                  ...(answer.unobservable.reason === undefined
+                    ? {}
+                    : { reason: answer.unobservable.reason }),
                 },
                 ...(answer.unobservable.handles === undefined
                   ? {}

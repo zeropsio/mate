@@ -8,7 +8,6 @@ import * as Result from "effect/Result";
 
 import { ZeropsApiError, type ZeropsProject } from "../../../zerops/api.ts";
 import type { OperationReceipt } from "../../model.ts";
-import type { StreamFault } from "../../streamMachine.ts";
 import type { ProjectTagWriter } from "../../../zerops/data/tagWriter.ts";
 import type { OwnerUnobservable } from "../coordinator.ts";
 import type { IntentOf } from "../kind.ts";
@@ -80,7 +79,7 @@ export function assignMateOwnerExecutor(platform: {
     verb(() => platform.setProjectMemberRole({ projectId, clientUserId, roleCode }));
   /**
    * The project as Zerops holds it after the first write: its own answer, or — that answer lost —
-   * the project read again, which says whether the person picked was made its OWNER.
+   * the project read again, once it shows the person picked as its OWNER.
    */
   const handedOver = (intent: IntentOf<"assign-mate-owner">) =>
     Effect.gen(function* () {
@@ -88,21 +87,18 @@ export function assignMateOwnerExecutor(platform: {
       if (Result.isSuccess(first)) return first.success;
       if (first.failure.outcome !== "uncertain-acceptance")
         return yield* Effect.fail(first.failure);
+      // One read right after cannot say a write that timed out will never land: only one that
+      // shows it landed lets the hand-over go on; anything else is the person's to check.
       const read = yield* Effect.result(verb(() => platform.fetchProject(intent.projectId)));
-      if (Result.isFailure(read))
-        return {
-          unobservable: {
-            nextActor: "person",
-            nextAction: "Check who owns the Mate, then hand it over again",
-            handles: [],
-          },
-        } satisfies OwnerUnobservable;
-      if (!ownersOf(read.success).includes(intent.clientUserId))
-        return yield* Effect.fail<StreamFault>({
-          outcome: "transient",
-          message: "Zerops did not take the hand-over.",
-        });
-      return read.success;
+      if (Result.isSuccess(read) && ownersOf(read.success).includes(intent.clientUserId))
+        return read.success;
+      return {
+        unobservable: {
+          nextActor: "person",
+          nextAction: "Check who owns the Mate, then hand it over again",
+          handles: [],
+        },
+      } satisfies OwnerUnobservable;
     });
   return (requestId: string, intent: IntentOf<"assign-mate-owner">) =>
     Effect.gen(function* () {

@@ -36,6 +36,8 @@ export type OperationProgress =
       readonly nextActor: string;
       /** What the owner named as the next step, where it named one. */
       readonly nextAction?: string;
+      /** Why the owner stopped there, where it said. */
+      readonly reason?: string;
     };
 
 /** Progress over a registry of operation kinds: the account's, or a test's own. */

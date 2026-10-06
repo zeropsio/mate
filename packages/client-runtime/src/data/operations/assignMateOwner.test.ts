@@ -108,9 +108,10 @@ describe("assign-mate-owner", () => {
         [
           () => Promise.resolve({ ...handed, userRoles: owners("bob") }),
           {
-            stage: "unsent",
-            next: "send-again",
-            reason: "Zerops did not take the hand-over.",
+            stage: "unresolved",
+            operationId: null,
+            nextActor: "person",
+            nextAction: "Check who owns the Mate, then hand it over again",
           },
           [{ clientUserId: "ada", roleCode: "OWNER" }, "read"],
         ],

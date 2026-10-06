@@ -72,6 +72,33 @@ describe("useReviveFailedMate", () => {
     ]);
   });
 
+  it("says why Zerops refused the start after the stop, with starting the Mate next", async () => {
+    mock.submit.mockResolvedValue({
+      requestId: "r1",
+      evidence: null,
+      progress: {
+        stage: "unresolved",
+        operationId: null,
+        nextActor: "person",
+        nextAction: "Start the Mate",
+        reason: "Service is busy.",
+      },
+    });
+    await act(async () => {
+      create(<Probe />);
+    });
+    await act(async () => {
+      expect(revive("s1")).toBe(true);
+    });
+    expect(mock.toasts).toEqual([
+      {
+        type: "error",
+        title:
+          "The Mate was stopped, but it was not started again here: Service is busy. Start the Mate.",
+      },
+    ]);
+  });
+
   it("says nothing once Zerops took the restart", async () => {
     mock.submit.mockResolvedValue({
       requestId: "r1",

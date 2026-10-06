@@ -70,7 +70,9 @@ export function mateRestartOwner(ports: {
           if (Result.isSuccess(started)) return started.success;
           if (started.failure.outcome === "uncertain-acceptance")
             return yield* Effect.fail(started.failure);
-          return startTheMate;
+          return {
+            unobservable: { ...startTheMate.unobservable, reason: started.failure.message },
+          } satisfies OwnerUnobservable;
         }),
       (release) => Effect.sync(release),
     );

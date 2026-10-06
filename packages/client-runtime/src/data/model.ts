@@ -140,6 +140,8 @@ export interface OperationReceipt {
 export interface Unobservable {
   readonly nextActor: string;
   readonly nextAction?: string;
+  /** Why the owner stopped there, where it said: its words, shown as is. */
+  readonly reason?: string;
 }
 
 /**

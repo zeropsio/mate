@@ -296,6 +296,7 @@ describe("mate-restart", () => {
     [
       "Zerops refused it",
       () => Promise.reject(new ZeropsApiError("Service is busy.", "invalid-input", 400)),
+      "Service is busy.",
     ],
     [
       "its admission refused it before sending",
@@ -303,10 +304,11 @@ describe("mate-restart", () => {
         Promise.reject(
           new ZeropsWriteNotSent({ message: "Project access could not be verified." }),
         ),
+      "Project access could not be verified.",
     ],
   ] as const)(
     "a start not taken after the stop landed ends unresolved, starting the Mate next: %s",
-    ([, start]) =>
+    ([, start, reason]) =>
       Effect.gen(function* () {
         const { store, registry } = account();
         const { platform, calls } = platformOf({ start });
@@ -322,6 +324,7 @@ describe("mate-restart", () => {
           operationId: null,
           nextActor: "person",
           nextAction: "Start the Mate",
+          reason,
         });
       }),
   );
