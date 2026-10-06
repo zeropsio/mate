@@ -8,9 +8,11 @@
  */
 import type { ChangeLink, HqChangeComment } from "@t3tools/shared/hqChanges";
 
+import { hqRefusalWords, ZEROPS_UNANSWERED } from "../../zerops/hq/refusals.ts";
 import { discussionId, hqDiscussionScope } from "../families/hqDiscussion.ts";
 import { linkKeys } from "../model.ts";
 import type { Projection, ProjectionReads } from "../store.ts";
+import type { StreamFault } from "../streamMachine.ts";
 import { sameValue } from "./equal.ts";
 
 export type ChangeDiscussionRead =
@@ -21,11 +23,24 @@ export type ChangeDiscussionRead =
 /** Phases in which a stream says why it does not read, rather than that it is reading. */
 const FAILING: ReadonlySet<string> = new Set(["recovering", "refused", "unsupported"]);
 
+/**
+ * A scope's failure in the words HQ's own answers say it with (`hqRefusalWords`). HQ's scope error
+ * carries its code and, where it named one, its reason — which the fault's message then is.
+ */
+function words(fault: StreamFault): string {
+  const { code } = fault;
+  if (code === undefined) return fault.message;
+  if (fault.outcome !== "definitive-refusal")
+    return code === "zerops_unanswered" ? ZEROPS_UNANSWERED : "HQ is not answering right now.";
+  const named = fault.message !== `HQ could not read this (${code}).`;
+  return hqRefusalWords({ code, reason: named ? fault.message : undefined });
+}
+
 /** Why the conversation's scope, or HQ's link it hangs on, does not read now; `null` while it does. */
 function failure(read: ProjectionReads, orgId: string, link: ChangeLink): string | null {
   for (const key of [hqDiscussionScope(orgId, link), linkKeys.hq(orgId)]) {
     const stream = read.stream(key);
-    if (FAILING.has(stream.phase) && stream.fault !== null) return stream.fault.message;
+    if (FAILING.has(stream.phase) && stream.fault !== null) return words(stream.fault);
   }
   return null;
 }

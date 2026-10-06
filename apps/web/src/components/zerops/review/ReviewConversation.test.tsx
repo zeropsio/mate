@@ -40,7 +40,7 @@ function comments(
   state: ChangeDiscussion["state"],
   over: Partial<ChangeDiscussion> = {},
 ): ChangeDiscussion {
-  return { state, say: async () => null, saying: false, retry: () => {}, ...over };
+  return { state, say: async () => null, saying: false, pending: null, retry: () => {}, ...over };
 }
 
 function html(props: Partial<Parameters<typeof ReviewConversation>[0]> = {}): string {
@@ -105,6 +105,26 @@ describe("a change's conversation in its review", () => {
     expect(markup).toMatch(/<button[^>]*aria-disabled="true"[^>]*>.*Ask Nova<\/button>/u);
     expect(markup).not.toMatch(/<button[^>]*disabled=""/u);
   });
+
+  it.each([
+    { reconnecting: false, line: false },
+    { reconnecting: true, line: true },
+  ])(
+    "shows words HQ took, off, until its conversation holds them (reconnecting: $reconnecting)",
+    ({ reconnecting, line }) => {
+      const markup = html({
+        comments: comments(
+          { kind: "read", comments: [] },
+          { saying: true, pending: { body: "Ship it", reconnecting } },
+        ),
+      });
+      expect(markup).toMatch(/<textarea[^>]*readOnly=""[^>]*>Ship it<\/textarea>/u);
+      expect(markup).toMatch(/<button[^>]*aria-disabled="true"[^>]*>Comment<\/button>/u);
+      expect(markup.includes("HQ is reconnecting. Your comment shows here once HQ has it.")).toBe(
+        line,
+      );
+    },
+  );
 
   it.each([
     ["the page: every comment", "page", 9, 9, false],
@@ -177,7 +197,11 @@ describe("the box", () => {
     }
   }
 
-  async function mount(conversation: ChangeDiscussion, onAsk: (said: string) => Promise<void>) {
+  async function mount(
+    conversation: ChangeDiscussion,
+    onAsk: (said: string) => Promise<void>,
+    draftKey = `appdev#${String(Math.random())}`,
+  ) {
     const document = new FaceNode("#document", null, 9);
     vi.stubGlobal("document", document);
     vi.stubGlobal("window", {
@@ -203,7 +227,7 @@ describe("the box", () => {
           asker={{ name: "Nova", tint: "slate" }}
           commentable
           comments={conversation}
-          draftKey={`appdev#${String(Math.random())}`}
+          draftKey={draftKey}
           frame="dialog"
           now={NOW}
           onAsk={onAsk}
@@ -239,7 +263,8 @@ describe("the box", () => {
         props(box).onKeyDown?.({ preventDefault() {}, repeat: false, ...event });
       });
     };
-    return { type, press, key, unmount: () => act(async () => root.unmount()) };
+    const value = () => props(box).value as unknown as string;
+    return { type, press, key, value, unmount: () => act(async () => root.unmount()) };
   }
 
   it("comments what was written, and ⌘↵ in it comments too", async () => {
@@ -260,5 +285,30 @@ describe("the box", () => {
     await box.press("Ask Nova");
     expect(onAsk.mock.calls).toEqual([["Rename the route to /health/full."]]);
     await box.unmount();
+  });
+
+  it("keeps no draft of words HQ took, so a review opened again cannot post them twice", async () => {
+    const read = comments({ kind: "read", comments: [] });
+    const first = await mount(read, async () => {}, "appdev#taken");
+    await first.type("Ship it");
+    await first.press("Comment");
+    await first.unmount();
+    const again = await mount(read, async () => {}, "appdev#taken");
+    expect(again.value()).toBe("");
+    await again.unmount();
+  });
+
+  it("keeps the draft of words HQ did not take", async () => {
+    const refused = comments(
+      { kind: "read", comments: [] },
+      { say: async () => "You may not comment." },
+    );
+    const first = await mount(refused, async () => {}, "appdev#refused");
+    await first.type("Ship it");
+    await first.press("Comment");
+    await first.unmount();
+    const again = await mount(refused, async () => {}, "appdev#refused");
+    expect(again.value()).toBe("Ship it");
+    await again.unmount();
   });
 });

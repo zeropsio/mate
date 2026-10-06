@@ -8,6 +8,7 @@ import { discussionId, hqDiscussionScope } from "../families/hqDiscussion.ts";
 import { operationProgress } from "../projections/operation.ts";
 import { makeAccountStore, readsOfState, type AccountStore } from "../store.ts";
 import { HqError } from "../../zerops/hq/client.ts";
+import { changeComment } from "./changeComment.ts";
 import { makeOperations } from "./coordinator.ts";
 import { makeHqExecutor } from "./executors/hq.ts";
 
@@ -148,4 +149,12 @@ describe("change-comment", () => {
       expect(calls).toEqual(["web#7 Ship it"]);
     }),
   );
+
+  it("never takes a Mate's words for a person whose id is not known", () => {
+    const store = makeAccountStore(AtomRegistry.make());
+    discussed(store, [comment("c1", { authorUserId: null, authorMateProjectId: "mate-1" })]);
+    expect(
+      changeComment.effectHandles!(readsOfState(store.state()), { ...SAY, authorUserId: null }),
+    ).toEqual([]);
+  });
 });

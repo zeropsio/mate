@@ -44,9 +44,12 @@ export const changeComment: OperationKind<"change-comment"> = {
   settledBy: (read, intent, receipt) =>
     holds(read, intent.link, receipt) ? { kind: "succeeded" } : null,
   observedIn: (intent) => discussionDemand(intent.link),
-  // After a lost answer: the person's own comment in these very words.
+  // After a lost answer: the person's own comment in these very words; without the person's id,
+  // none can be told from anybody else's.
   effectHandles: (read, intent) =>
-    commentsOn(read, intent.link)
-      .filter((said) => said.authorUserId === intent.authorUserId && said.body === intent.body)
-      .map((said) => said.id),
+    intent.authorUserId === null
+      ? []
+      : commentsOn(read, intent.link)
+          .filter((said) => said.authorUserId === intent.authorUserId && said.body === intent.body)
+          .map((said) => said.id),
 };

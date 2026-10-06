@@ -67,6 +67,24 @@ const refused = apply(demanded, [
   }),
 ]);
 
+/** HQ's scope error, as the HQ adapter hands it to the scope: its reason, else its code named. */
+const scopeError = (
+  disposition: "refused" | "transient",
+  code: string,
+  reason: string | null,
+): AccountState =>
+  apply(demanded, [
+    stream(SCOPE, {
+      kind: "fault",
+      fault: {
+        outcome: disposition === "refused" ? "definitive-refusal" : "transient",
+        message: reason ?? `HQ could not read this (${code}).`,
+        code,
+      },
+      jitter: 0,
+    }),
+  ]);
+
 const discussion = (state: AccountState) =>
   changeDiscussion.derive(readsOfState(state), { orgId: ORG, link: LINK });
 
@@ -85,6 +103,21 @@ describe("changeDiscussion", () => {
       name: "refused",
       state: refused,
       expected: { kind: "failed", reason: "You may not read this change." },
+    },
+    {
+      name: "a change HQ has no record of",
+      state: scopeError("refused", "change_not_found", "change_not_found"),
+      expected: { kind: "failed", reason: "HQ has no such change." },
+    },
+    {
+      name: "a refusal HQ gave no reason for",
+      state: scopeError("refused", "forbidden", null),
+      expected: { kind: "failed", reason: "HQ refused this (forbidden)." },
+    },
+    {
+      name: "HQ failing to read it for now",
+      state: scopeError("transient", "read_failed", null),
+      expected: { kind: "failed", reason: "HQ is not answering right now." },
     },
   ])("$name", ({ state, expected }) => {
     expect(discussion(state)).toEqual(expected);

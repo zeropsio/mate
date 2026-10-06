@@ -71,6 +71,7 @@ export { restartWay } from "./operations/mateRestart.ts";
 export { operationProgress, type OperationProgress } from "./projections/operation.ts";
 export { SWEEP_FAILED_REASON } from "./operations/executors/throwawaySweep.ts";
 export { operationEnd, type OperationEnd } from "./projections/operationEnd.ts";
+export { operationWait, type OperationWait } from "./projections/operationWait.ts";
 export {
   accountReadsAtom,
   NOT_READ_PROCESSES,

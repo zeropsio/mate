@@ -10,7 +10,8 @@
  * The box is one quiet line that grows as it is written in (`field-sizing: content`); ⌘↵ in it
  * comments, never merges.
  * What was typed is kept for the change while the tab is open, so closing the review loses
- * nothing. While the conversation is read it holds the room of the comments the change has; one
+ * nothing; once HQ took it, it is the change's and no draft — the box shows it, off, until the
+ * conversation holds it, and says so while HQ reconnects. While the conversation is read it holds the room of the comments the change has; one
  * that cannot be read says so, with *Try again*, and the box still takes words. Only people comment on a change (SPEC §3.2a): each remark wears its speaker's initial.
  */
 import {
@@ -176,7 +177,7 @@ function SayBox({
 }) {
   const [said, setSaid] = useState(() => drafts.get(draftKey) ?? "");
   const [trouble, setTrouble] = useState<string | null>(null);
-  const { say, saying } = comments;
+  const { say, saying, pending } = comments;
   const empty = said.trim().length === 0;
 
   const write = (next: string) => {
@@ -219,8 +220,9 @@ function SayBox({
               ? "Comment on this change…"
               : `Comment, or tell ${asker.name} what to change…`
           }
+          readOnly={pending !== null}
           rows={1}
-          value={said}
+          value={pending?.body ?? said}
         />
         <SayVerb
           explains="Adds it to the change's conversation, for everyone on it"
@@ -257,6 +259,11 @@ function SayBox({
         )}
       </div>
       {trouble === null ? null : <p className="rv-say-trouble">{trouble}</p>}
+      {pending?.reconnecting === true ? (
+        <p className="rv-say-trouble">
+          HQ is reconnecting. Your comment shows here once HQ has it.
+        </p>
+      ) : null}
     </>
   );
 }
