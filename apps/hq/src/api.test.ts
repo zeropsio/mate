@@ -402,7 +402,15 @@ describe("HQ API", () => {
         assert.deepStrictEqual(
           [read.apps[0]?.projects, read.apps[0]?.environments],
           [
-            [{ projectId: "P_MATE", name: "P_MATE", kind: "production", mate: null }],
+            [
+              {
+                projectId: "P_MATE",
+                name: "P_MATE",
+                kind: "production",
+                mate: null,
+                can: { finish: ALLOW },
+              },
+            ],
             [
               {
                 projectId: "P_MATE",

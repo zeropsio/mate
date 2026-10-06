@@ -302,7 +302,7 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
         });
       const observedProjects = (view: ReturnType<StructureSource["forPerson"]>) =>
         [...view.ungrouped, ...view.apps.flatMap((app) => app.projects)].filter(
-          (project) => project.can?.observe_mate.allow === true,
+          (project) => project.can?.observe_mate?.allow === true,
         );
       const loadSeen = (userId: string, projectId: string) =>
         Effect.gen(function* () {
@@ -367,23 +367,33 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
             );
             const listed = [...view.ungrouped, ...view.apps.flatMap((app) => app.projects)];
             const signersFor = (projectId: string) => {
-              if (!observable.some((project) => project.projectId === projectId)) return {};
-              const login = all.get(projectId)?.overview?.logins;
+              const signedInNow: Record<string, string> = {};
+              const everSignedIn: Record<string, string> = {};
+              if (!observable.some((project) => project.projectId === projectId))
+                return { signedInNow, everSignedIn };
+              const logins = all.get(projectId)?.overview?.logins;
               const saved = listed.find((project) => project.projectId === projectId)?.mate
                 ?.signers;
-              const signers: { "claude-code"?: string; codex?: string } = {};
-              for (const key of ["claude-code", "codex"] as const) {
-                const id = login?.[key]?.signedInBy ?? login?.[key]?.lastSignedInBy ?? saved?.[key];
-                if (
-                  typeof id === "string" &&
-                  id.length > 0 &&
-                  !current.facts.members.some(
-                    (member) => member.kind === "token" && member.userId === id,
-                  )
-                )
-                  signers[key] = id;
+              const isPerson = (id: string | null | undefined): id is string =>
+                typeof id === "string" &&
+                id.length > 0 &&
+                !current.facts.members.some(
+                  (member) => member.kind === "token" && member.userId === id,
+                );
+              for (const key of new Set([
+                ...Object.keys(logins ?? {}),
+                ...Object.keys(saved ?? {}),
+              ])) {
+                const login = logins?.[key];
+                if (login?.present && !login.token && isPerson(login.signedInBy))
+                  signedInNow[key] = login.signedInBy;
+                const previous =
+                  (login?.token ? undefined : login?.signedInBy) ??
+                  login?.lastSignedInBy ??
+                  saved?.[key];
+                if (isPerson(previous)) everSignedIn[key] = previous;
               }
-              return signers;
+              return { signedInNow, everSignedIn };
             };
             const person = (projectId: string) => {
               const project = current.facts.projects.find((project) => project.id === projectId);
@@ -397,18 +407,18 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
               const attention = observable.some((project) => project.projectId === projectId)
                 ? all.get(projectId)?.attention
                 : null;
-              const signers = signersFor(projectId);
+              const { signedInNow, everSignedIn } = signersFor(projectId);
               const ownerUserId =
                 owner !== undefined
                   ? (current.facts.members.find(
                       (member) =>
                         member.kind === "person" && member.clientUserId === owner.clientUserId,
                     )?.userId ?? null)
-                  : (signers["claude-code"] ?? signers.codex ?? null);
+                  : (everSignedIn["claude-code"] ?? everSignedIn.codex ?? null);
               return {
                 role,
                 ownerUserId,
-                waitsOnViewer: (signers["claude-code"] ?? signers.codex) === entry.userId,
+                waitsOnViewer: (signedInNow["claude-code"] ?? signedInNow.codex) === entry.userId,
                 mayWrite: observable.some((project) => project.projectId === projectId),
                 mine: ownerUserId === entry.userId,
                 unseen:
@@ -437,7 +447,7 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
                   ...project,
                   appId: app.id,
                   person: person(project.projectId),
-                  signers: signersFor(project.projectId),
+                  ...signersFor(project.projectId),
                 });
                 if (Option.isSome(read))
                   values.push({ key: `project:${project.projectId}`, value: read.value });
@@ -450,7 +460,7 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
                 kind: "mate",
                 appId: null,
                 person: person(project.projectId),
-                signers: signersFor(project.projectId),
+                ...signersFor(project.projectId),
               });
               if (Option.isSome(read))
                 values.push({ key: `project:${project.projectId}`, value: read.value });
@@ -466,7 +476,7 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
               ...relevant.flatMap((project) => [
                 project.mate?.madeBy,
                 project.mate?.standupRequestedBy,
-                ...Object.values(signersFor(project.projectId)),
+                ...Object.values(signersFor(project.projectId).everSignedIn),
               ]),
               ...observable
                 .filter((project) =>
