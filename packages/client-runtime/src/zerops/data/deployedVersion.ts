@@ -104,7 +104,11 @@ export function selectDeployedVersion(
   if (trimmed(started.content) !== deploy.id) {
     // Variables that may trail the service are being read again: what it runs is checked, not
     // nameless (`wantStaleVariables`).
-    const trailing = trailingVariables(state.table, service.serviceId, facet.stamp);
+    const trailing = trailingVariables(
+      state.table,
+      service.serviceId,
+      movedAt(state.table, service.serviceId, deploy.id, facet.stamp),
+    );
     if (trailing !== null) return streamFailure(state, service) ?? UNREAD;
     return known({ activeId: deploy.id, source, name: null }, facet.stamp);
   }
@@ -119,19 +123,30 @@ export function selectDeployedVersion(
  * before it moved there: they may only trail it, so they are read again by id. Heard after, they
  * name a build started since (A11), and stand. `null` for none.
  *
- * It moved as of the service's own push, which every push of the service moves, whatever it
- * carries.
+ * It moved when its push first named the version it runs (`movedAt`): a later push that changes
+ * nothing of what it runs moves nothing, and asks nothing again.
  */
 function trailingVariables(
   table: EntityTableState,
   serviceId: string,
-  moved: IngestionStamp,
+  moved: number,
 ): ReadonlyArray<string> | null {
   const started = serviceVariableHeard(table, serviceId, "appVersionId");
-  if (started === null || started.asOf >= moved.receiptOrdinal) return null;
+  if (started === null || started.asOf >= moved) return null;
   const name = serviceVariableHeard(table, serviceId, "appVersionName");
   return name === null ? [started.id] : [started.id, name.id];
 }
+
+/** The receipt the service moved to `deployId` at; its push's own where no move was recorded. */
+const movedAt = (
+  table: EntityTableState,
+  serviceId: string,
+  deployId: string,
+  stamp: IngestionStamp,
+): number => {
+  const move = table.moves.get(serviceId);
+  return move?.deployId === deployId ? move.asOf : stamp.receiptOrdinal;
+};
 
 /**
  * Each service whose variables name another deploy than the one it runs, heard before it moved
@@ -145,6 +160,7 @@ export function wantStaleVariables(
   nowMs: number,
 ): ZeropsDataState {
   let table = state.table;
+  let moves: Map<string, { readonly deployId: string; readonly asOf: number }> | null = null;
   for (const record of state.inventory.services.values()) {
     if (
       ![...state.interests.values()].some(
@@ -161,12 +177,19 @@ export function wantStaleVariables(
     if (deploy == null || deploy.id === null) continue;
     const organization = record.ref.project.organization;
     const serviceId = record.ref.serviceId;
+    // A push that names another version than the one recorded is a move, as of that push.
+    if ((moves ?? table.moves).get(serviceId)?.deployId !== deploy.id) {
+      moves ??= new Map(table.moves);
+      moves.set(serviceId, { deployId: deploy.id, asOf: facet.stamp.receiptOrdinal });
+    }
+    const moved = (moves ?? table.moves).get(serviceId)?.asOf ?? facet.stamp.receiptOrdinal;
     const started = serviceVariableOf(table, organization, serviceId, "appVersionId");
     if (!started.known || trimmed(started.content) === deploy.id) continue;
-    const ids = trailingVariables(table, serviceId, facet.stamp);
+    const ids = trailingVariables(table, serviceId, moved);
     if (ids !== null)
       table = rereadTableRows(table, "user-data", organization, ids, receipt, nowMs, [serviceId]);
   }
+  if (moves !== null) table = { ...table, moves };
   return table === state.table ? state : { ...state, table };
 }
 

@@ -107,6 +107,11 @@ export interface EntityTableState {
   };
   readonly lists: ReadonlyMap<QueryKey, TableListState>;
   readonly wanted: ReadonlyMap<string, WantedRow>;
+  /**
+   * When each service last moved to the version it runs, by service id: the receipt its push
+   * first named that version at. Variables heard before it may trail it (`deployedVersion.ts`).
+   */
+  readonly moves: ReadonlyMap<string, { readonly deployId: string; readonly asOf: number }>;
 }
 
 export interface EntityTableReduction {
@@ -118,6 +123,7 @@ export const makeInitialEntityTableState = (): EntityTableState => ({
   rows: { "user-data": new Map() },
   lists: new Map(),
   wanted: new Map(),
+  moves: new Map(),
 });
 
 export const serviceVariablesDescriptor = (

@@ -511,6 +511,35 @@ describe("a service's variables heard before it moved to another version", () =>
     expect(selectDeployedVersion(moved.state, ref).state).toBe("unread");
   });
 
+  it("stand when a later push of the service leaves it on the version it ran: no move, no read", () => {
+    // The service moved to v-2 at receipt 3; a build started since named v-3 in the variables at
+    // 5 and failed; a push at 9 that changes nothing of what it runs moves nothing.
+    const moved = wantStaleVariables(
+      withService(
+        answered(makeInitialZeropsDataState(scope()), variables, []),
+        deploy({ id: "v-2", source: "CLI" }),
+        stamp(3),
+      ),
+      3,
+      1_000,
+    );
+    const started = pushed(
+      moved,
+      [variable("appVersionId", "v-3"), variable("appVersionName", "main 7e2d4c1")],
+      5,
+    );
+    const later = wantStaleVariables(
+      withService(started, deploy({ id: "v-2", source: "CLI" }), stamp(9)),
+      9,
+      2_000,
+    );
+    expect(tableRowsWanted(later.table)).toEqual([]);
+    expect(selectDeployedVersion(later, ref)).toMatchObject({
+      state: "known",
+      value: { activeId: "v-2", name: null },
+    });
+  });
+
   it("are read again once per move, never in a loop, whatever the read answers", () => {
     let state = wantStaleVariables(deployed, 4, 1_000);
     state = readById(
