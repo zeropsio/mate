@@ -148,6 +148,8 @@ describe("F: creation through the hosted client", () => {
       Effect.gen(function* () {
         const s = yield* createScenario([installCreation]);
         yield* Effect.promise(() => s.clock.install());
+        // New project is offered once the account has a Mate; an empty account offers setup.
+        yield* s.given.project("Ada", { mate: true, app: "Shop" });
         yield* s.given.signedIn;
         const c = creation(s);
         c.refuseCreatedProjectAccess();
