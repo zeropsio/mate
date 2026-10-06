@@ -3,11 +3,23 @@
  * over the account's registry, the active organization's Zerops navigation observed while it is
  * shown. Screens read the store through projections only.
  */
-import { accountReadsAtom, type AccountReads } from "@t3tools/client-runtime/data";
+import {
+  accountReadsAtom,
+  type AccountObservation,
+  type AccountReads,
+  type AccountStore,
+} from "@t3tools/client-runtime/data";
 import type { AtomRegistry } from "effect/unstable/reactivity";
 import { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
 
-import type { ZeropsDataBinding } from "./ZeropsDataProvider";
+/** What this layer reads of the data provider's binding, which renders it. */
+interface AccountBinding {
+  readonly registry: AtomRegistry.AtomRegistry;
+  readonly accountData: {
+    readonly data: AccountStore["data"];
+    readonly observation: AccountObservation;
+  };
+}
 
 /** What a screen may reach of the account's data: the store's reads, never its writer. */
 interface AccountData extends AccountReads {
@@ -22,7 +34,7 @@ export function ZeropsAccountData({
   children,
 }: {
   /** The account's data provider binding; `null` while no account is open. */
-  readonly binding: ZeropsDataBinding | null;
+  readonly binding: AccountBinding | null;
   readonly activeOrganizationId: string | null;
   readonly children: ReactNode;
 }) {
