@@ -1043,6 +1043,60 @@ describe("ClaudeAdapterLive", () => {
     );
   });
 
+  // A picture that cannot be read fails the send before any turn opens: no
+  // turn is left working, and the person reads it plainly.
+  it.effect("fails a send whose picture cannot be read before opening its turn", () => {
+    const baseDir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "claude-attachments-"));
+    const harness = makeHarness({ cwd: "/tmp/project-claude-attachments", baseDir });
+    return Effect.gen(function* () {
+      yield* Effect.addFinalizer(() =>
+        Effect.sync(() => NodeFS.rmSync(baseDir, { recursive: true, force: true })),
+      );
+      const adapter = yield* ClaudeAdapter;
+      const started: Array<string> = [];
+      const observer = yield* adapter.streamEvents.pipe(
+        Stream.runForEach((event) =>
+          Effect.sync(() => {
+            if (event.type === "turn.started") started.push(event.turnId ?? "");
+          }),
+        ),
+        Effect.forkChild,
+      );
+      const session = yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "full-access",
+      });
+      const error = yield* adapter
+        .sendTurn({
+          threadId: session.threadId,
+          input: "What's in this image?",
+          attachments: [
+            {
+              type: "image" as const,
+              id: "thread-claude-attachment-12345678-1234-1234-1234-123456789abd",
+              name: "gone.png",
+              mimeType: "image/png",
+              sizeBytes: 4,
+            },
+          ],
+        })
+        .pipe(Effect.flip);
+      for (let tick = 0; tick < 20; tick += 1) yield* Effect.yieldNow;
+      assert.equal(error._tag, "ProviderAdapterRequestError");
+      assert.equal(
+        "detail" in error ? error.detail : undefined,
+        "A picture you attached could not be read. Attach it again and send.",
+      );
+      assert.deepEqual(started, []);
+      assert.isUndefined((yield* adapter.listSessions())[0]?.activeTurnId);
+      yield* Fiber.interrupt(observer);
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
   it.effect("embeds image attachments in Claude user messages", () => {
     const baseDir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "claude-attachments-"));
     const harness = makeHarness({
@@ -6380,6 +6434,14 @@ describe("ClaudeAdapterLive", () => {
       });
       if (turnOpen) {
         yield* adapter.sendTurn({ threadId: THREAD_ID, input: "/mcp", attachments: [] });
+        // The turn's start reaches the observer a few ticks after the send.
+        for (
+          let tick = 0;
+          tick < 20 && !runtimeEvents.some((event) => event.type === "turn.started");
+          tick += 1
+        ) {
+          yield* Effect.yieldNow;
+        }
       }
       const turnsBefore = runtimeEvents.filter((event) => event.type === "turn.started").length;
 

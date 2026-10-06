@@ -6,6 +6,7 @@ import {
   type ProviderSendTurnInput,
   type RuntimeMode,
 } from "@t3tools/contracts";
+import { ATTACHED_FILE_UNREADABLE } from "@t3tools/shared/threadStatus";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -289,24 +290,18 @@ export const buildAntigravityPrompt = Effect.fn("buildAntigravityPrompt")(functi
       attachment,
     });
     if (!attachmentPath) {
-      return yield* EffectAcpErrors.AcpRequestError.invalidParams(
-        `Invalid attachment '${attachment.name}'.`,
-      );
+      return yield* EffectAcpErrors.AcpRequestError.invalidParams(ATTACHED_FILE_UNREADABLE);
     }
     const info = yield* fileSystem
       .stat(attachmentPath)
       .pipe(
         Effect.mapError(() =>
-          EffectAcpErrors.AcpRequestError.invalidParams(
-            `Could not read attachment '${attachment.name}'.`,
-          ),
+          EffectAcpErrors.AcpRequestError.invalidParams(ATTACHED_FILE_UNREADABLE),
         ),
       );
     if (isPastedText) {
       if (info.type !== "File") {
-        return yield* EffectAcpErrors.AcpRequestError.invalidParams(
-          `Could not read attachment '${attachment.name}'.`,
-        );
+        return yield* EffectAcpErrors.AcpRequestError.invalidParams(ATTACHED_FILE_UNREADABLE);
       }
       continue;
     }
@@ -327,7 +322,7 @@ export const buildAntigravityPrompt = Effect.fn("buildAntigravityPrompt")(functi
     const uri = yield* path.toFileUrl(attachmentPath).pipe(
       Effect.map((url) => url.href),
       Effect.mapError(() =>
-        EffectAcpErrors.AcpRequestError.invalidParams(`Invalid attachment '${attachment.name}'.`),
+        EffectAcpErrors.AcpRequestError.invalidParams(ATTACHED_FILE_UNREADABLE),
       ),
     );
     if (pdf) {
@@ -338,9 +333,7 @@ export const buildAntigravityPrompt = Effect.fn("buildAntigravityPrompt")(functi
       Stream.runCollect,
       Effect.map((chunks) => Buffer.concat(chunks)),
       Effect.mapError(() =>
-        EffectAcpErrors.AcpRequestError.invalidParams(
-          `Could not read attachment '${attachment.name}'.`,
-        ),
+        EffectAcpErrors.AcpRequestError.invalidParams(ATTACHED_FILE_UNREADABLE),
       ),
     );
     totalBytes += bytes.length - size;

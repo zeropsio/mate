@@ -51,6 +51,7 @@ import {
   ProviderAdapterTurnEndedError,
   type ProviderAdapterError,
 } from "../Errors.ts";
+import { ATTACHED_PICTURE_UNREADABLE } from "@t3tools/shared/threadStatus";
 import { acpPermissionOutcome, mapAcpToAdapterError } from "../acp/AcpAdapterSupport.ts";
 import type * as AcpSessionRuntime from "../acp/AcpSessionRuntime.ts";
 import {
@@ -1072,7 +1073,8 @@ export function makeCursorAdapter(
                 return yield* new ProviderAdapterRequestError({
                   provider: PROVIDER,
                   method: "session/prompt",
-                  detail: `Invalid attachment id '${attachment.id}'.`,
+                  detail: ATTACHED_PICTURE_UNREADABLE,
+                  cause: `Invalid attachment id '${attachment.id}'.`,
                 });
               }
               const bytes = yield* fileSystem.readFile(attachmentPath).pipe(
@@ -1081,7 +1083,7 @@ export function makeCursorAdapter(
                     new ProviderAdapterRequestError({
                       provider: PROVIDER,
                       method: "session/prompt",
-                      detail: cause.message,
+                      detail: ATTACHED_PICTURE_UNREADABLE,
                       cause,
                     }),
                 ),

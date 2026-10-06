@@ -348,7 +348,7 @@ it.layer(NodeServices.layer)("buildAntigravityPrompt", (it) => {
       expect(error).toMatchObject({
         _tag: "AcpRequestError",
         code: -32602,
-        errorMessage: "Could not read attachment 'pasted-text.txt'.",
+        errorMessage: "A file you attached could not be read. Attach it again and send.",
       });
     }),
   );
@@ -552,7 +552,7 @@ it.layer(NodeServices.layer)("buildAntigravityPrompt", (it) => {
       expect(error).toMatchObject({
         _tag: "AcpRequestError",
         code: -32602,
-        errorMessage: "Could not read attachment 'screen.png'.",
+        errorMessage: "A file you attached could not be read. Attach it again and send.",
       });
     }),
   );

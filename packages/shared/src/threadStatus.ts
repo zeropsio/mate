@@ -236,6 +236,14 @@ export function agentStoppedUnexpectedly(provider: ProviderDriverKind | string):
   return `${name} stopped unexpectedly. ${PICK_UP_NEXT}`;
 }
 
+/** What the conversation says of a picture the agent could not be given. */
+export const ATTACHED_PICTURE_UNREADABLE =
+  "A picture you attached could not be read. Attach it again and send.";
+
+/** What the conversation says of a file the agent could not be given. */
+export const ATTACHED_FILE_UNREADABLE =
+  "A file you attached could not be read. Attach it again and send.";
+
 /** The trailing sentence that says what to do next about a run that broke off. */
 const NEXT_STEP = /\s*[^.!?]*pick up where it left off\.$/u;
 

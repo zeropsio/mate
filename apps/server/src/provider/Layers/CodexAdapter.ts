@@ -7,6 +7,7 @@
  *
  * @module CodexAdapterLive
  */
+import { ATTACHED_PICTURE_UNREADABLE } from "@t3tools/shared/threadStatus";
 import {
   EventId,
   type CanonicalItemType,
@@ -2005,7 +2006,8 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
       return yield* new ProviderAdapterRequestError({
         provider: PROVIDER,
         method: "turn/start",
-        detail: `Invalid attachment id '${attachment.id}'.`,
+        detail: ATTACHED_PICTURE_UNREADABLE,
+        cause: `Invalid attachment id '${attachment.id}'.`,
       });
     }
     return {
