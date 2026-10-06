@@ -62,20 +62,26 @@ export interface AccessGrantView {
   readonly overdue: boolean;
 }
 
-/** The tab's signals, and the organizations' live lists, as the account runtime hands them over. */
-export type GrantSignal = Extract<
-  GrantEvent,
-  {
-    readonly type:
-      | "VISIBILITY"
-      | "WAKE"
-      | "ONLINE"
-      | "OFFLINE"
-      | "USER_RETRY"
-      | "PROJECTS_DEMANDED"
-      | "PROJECT_DENIED";
-  }
->;
+/**
+ * The tab's signals, and the organizations' live lists, as the account runtime hands them over;
+ * `PROJECT_GRANTS_CHANGED`, a listed project whose row names other grants now: the verifier judges
+ * it again on that row, between rounds.
+ */
+export type GrantSignal =
+  | Extract<
+      GrantEvent,
+      {
+        readonly type:
+          | "VISIBILITY"
+          | "WAKE"
+          | "ONLINE"
+          | "OFFLINE"
+          | "USER_RETRY"
+          | "PROJECTS_DEMANDED"
+          | "PROJECT_DENIED";
+      }
+    >
+  | { readonly type: "PROJECT_GRANTS_CHANGED"; readonly project: ProjectRef };
 
 /** What the grant asks the account's owners of pull-based facts to revalidate. */
 export type GrantInvalidation = Extract<
@@ -518,7 +524,24 @@ export const makeGrantDriver = Effect.fnUntraced(function* (options: GrantDriver
           }),
         )
         .pipe(Effect.flatMap((started) => (started ? send({ type: "START" }) : Effect.void))),
-    signal: (event) => send(event),
+    signal: (event) =>
+      event.type !== "PROJECT_GRANTS_CHANGED"
+        ? send(event)
+        : Effect.suspend(() =>
+            verifier === null
+              ? Effect.void
+              : options
+                  .fork(
+                    verifier
+                      .verifyProject(event.project)
+                      .pipe(
+                        Effect.flatMap((outcome) =>
+                          send({ type: "PROJECT_JUDGED", project: event.project, outcome }),
+                        ),
+                      ),
+                  )
+                  .pipe(Effect.asVoid),
+          ),
     listen: (bus) =>
       Effect.flatMap(bus.subscribe, (subscription) =>
         Stream.fromSubscription(subscription).pipe(

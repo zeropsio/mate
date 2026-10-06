@@ -265,6 +265,16 @@ export type GrantEvent =
    * waiting out the window for the next renewal.
    */
   | { readonly type: "PROJECTS_DEMANDED"; readonly projects: ReadonlyArray<ProjectRef> }
+  /**
+   * A project judged again between rounds because the grants its row names changed (an override,
+   * a lowered grant, a hand over): its access moves at once, and a round in flight that answered
+   * it already takes the newer judgement.
+   */
+  | {
+      readonly type: "PROJECT_JUDGED";
+      readonly project: ProjectRef;
+      readonly outcome: ProjectOutcome;
+    }
   /** Any GET on the project answered 403/404 (G6). */
   | {
       readonly type: "PROJECT_DENIED";
@@ -1014,26 +1024,74 @@ const apply = (
     }
     case "PROJECTS_DEMANDED":
       return demandProjects({ ...machine, demandedProjects: event.projects }, event.projects, ctx);
-    case "PROJECT_DENIED": {
-      if (heldEvidence(machine) !== null) {
-        return closeProject(machine, event.project, event.evidence, ctx, out);
-      }
-      const round = grantRoundInFlight(machine);
-      if (round === null) return machine;
-      const denied: GrantRound = {
-        ...round,
-        outcomes: new Map(round.outcomes).set(event.project.projectId, {
-          outcome: { kind: "denied", evidence: event.evidence },
-          at: ctx.now,
-        }),
-      };
-      // The denial may be the last outcome the round waited for: the round is complete now.
-      const next = withRound(machine, denied);
-      return roundComplete(denied) ? completeRound(next, denied, ctx, out) : next;
-    }
+    case "PROJECT_JUDGED":
+      return event.outcome.kind === "denied"
+        ? denyProject(machine, event.project, event.outcome.evidence, ctx, out)
+        : judgeAgain(machine, event.project, event.outcome, ctx);
+    case "PROJECT_DENIED":
+      return denyProject(machine, event.project, event.evidence, ctx, out);
     case "EPOCH_CLOSED":
       return machine;
   }
+};
+
+const denyProject = (
+  machine: GrantMachine,
+  project: ProjectRef,
+  evidence: DenialEvidence,
+  ctx: GrantContext,
+  out: Effects,
+): GrantMachine => {
+  if (heldEvidence(machine) !== null) return closeProject(machine, project, evidence, ctx, out);
+  const round = grantRoundInFlight(machine);
+  if (round === null) return machine;
+  const denied: GrantRound = {
+    ...round,
+    outcomes: new Map(round.outcomes).set(project.projectId, {
+      outcome: { kind: "denied", evidence },
+      at: ctx.now,
+    }),
+  };
+  // The denial may be the last outcome the round waited for: the round is complete now.
+  const next = withRound(machine, denied);
+  return roundComplete(denied) ? completeRound(next, denied, ctx, out) : next;
+};
+
+/**
+ * A project judged again on its row: a round in flight that answered it takes the newer
+ * judgement, and the held evidence moves at once — a lowered role under any evidence, any other
+ * only under fresh granted evidence, like a project's own read. A refusal stands; a judgement that
+ * did not answer changes nothing.
+ */
+const judgeAgain = (
+  machine: GrantMachine,
+  project: ProjectRef,
+  outcome: Exclude<ProjectOutcome, { readonly kind: "denied" }>,
+  ctx: GrantContext,
+): GrantMachine => {
+  if (outcome.kind === "failed") return machine;
+  const id = project.projectId;
+  let next = machine;
+  const round = grantRoundInFlight(machine);
+  const answered = round?.outcomes.get(id);
+  if (round !== null && answered !== undefined && answered.outcome.kind !== "denied")
+    next = withRound(next, {
+      ...round,
+      outcomes: new Map(round.outcomes).set(id, { outcome, at: ctx.now }),
+    });
+  const held = heldEvidence(next);
+  if (held === null || held.closedProjects.has(id)) return next;
+  const own = held.projects.get(id);
+  if (own === undefined && !held.unverified.has(id)) return next;
+  const lowered = own?.access.mutationsAllowed === true && !outcome.access.mutationsAllowed;
+  const fresh =
+    next.phase.phase === "granted" && !expired(held.account.startedAt, ctx.now, ctx.policy);
+  if (!lowered && !fresh) return next;
+  const projects = new Map(held.projects);
+  projects.set(id, { access: outcome.access, startedAt: own?.startedAt ?? held.account.startedAt });
+  const unverified = new Map(held.unverified);
+  unverified.delete(id);
+  return withEvidence(next, { ...held, projects, unverified });
 };
 
 /**

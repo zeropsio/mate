@@ -166,7 +166,8 @@ export const holdInventoryDemand = (input: {
 /**
  * The projects the grant judges are the ones the shown organization's roster lists: Zerops filters
  * that listing by the viewer's token, so a listed project is the viewer's at once, judged on the
- * row the account's store holds, and no screen has to hold it first.
+ * row the account's store holds, and no screen has to hold it first. A listed project whose row
+ * names other grants than before is judged again on it at once (an override, a lowered grant).
  */
 export const holdListedAccess = (input: {
   readonly data: ManagedZeropsDataRuntime;
@@ -175,7 +176,8 @@ export const holdListedAccess = (input: {
   Effect.gen(function* () {
     const wanted = yield* Queue.unbounded<ReadonlyArray<GrantSignal>>();
     const account = input.data.scope.account;
-    const listed = Atom.make((get): ReadonlyArray<ProjectRef> => {
+    type Listed = { readonly ref: ProjectRef; readonly grants: string };
+    const listed = Atom.make((get): ReadonlyArray<Listed> => {
       const { orgId, projects } = get(shownProjectsAtom);
       if (orgId === null) return [];
       const organization = {
@@ -183,36 +185,47 @@ export const holdListedAccess = (input: {
         account,
         organizationId: ZeropsOrganizationId.make(orgId),
       };
-      return projects.map((project): ProjectRef => ({
-        kind: "project",
-        organization,
-        projectId: ZeropsProjectId.make(project.id),
+      return projects.map(({ id, userRoles, viewerRoleCode }) => ({
+        ref: { kind: "project", organization, projectId: ZeropsProjectId.make(id) },
+        grants: JSON.stringify([userRoles ?? null, viewerRoleCode ?? null]),
       }));
     });
-    let last = new Map<ReturnType<typeof projectKeyOf>, ProjectRef>();
+    let last = new Map<ReturnType<typeof projectKeyOf>, Listed>();
     const unsubscribe = input.atomRegistry.subscribe(
       listed,
-      (projects) => {
-        const next = new Map(projects.map((project) => [projectKeyOf(project), project]));
-        if (next.size === last.size && [...next.keys()].every((key) => last.has(key))) return;
+      (entries) => {
+        const next = new Map(entries.map((entry) => [projectKeyOf(entry.ref), entry]));
+        const regranted = [...next].flatMap(
+          ([key, { ref, grants }]): ReadonlyArray<GrantSignal> => {
+            const before = last.get(key);
+            return before === undefined || before.grants === grants
+              ? []
+              : [{ type: "PROJECT_GRANTS_CHANGED", project: ref }];
+          },
+        );
+        const same = next.size === last.size && [...next.keys()].every((key) => last.has(key));
         // A project the roster stops listing because its owner refused it, or proved it deleted,
         // is that project's denial: the grant closes it at once.
         const denied = [...last]
           .filter(([key]) => !next.has(key))
-          .flatMap(([, project]): ReadonlyArray<GrantSignal> => {
-            const standing = input.atomRegistry.get(projectStandingAtom(project.projectId));
+          .flatMap(([, { ref }]): ReadonlyArray<GrantSignal> => {
+            const standing = input.atomRegistry.get(projectStandingAtom(ref.projectId));
             return standing.kind === "denied" || standing.kind === "deleted"
               ? [
                   {
                     type: "PROJECT_DENIED",
-                    project,
+                    project: ref,
                     evidence: standing.kind === "denied" ? "direct-forbidden" : "direct-not-found",
                   },
                 ]
               : [];
           });
         last = next;
-        Queue.offerUnsafe(wanted, [...denied, { type: "PROJECTS_DEMANDED", projects }]);
+        const demanded: ReadonlyArray<GrantSignal> = same
+          ? []
+          : [{ type: "PROJECTS_DEMANDED", projects: entries.map(({ ref }) => ref) }];
+        const signals = [...denied, ...demanded, ...regranted];
+        if (signals.length > 0) Queue.offerUnsafe(wanted, signals);
       },
       { immediate: true },
     );

@@ -7,7 +7,7 @@ import * as Effect from "effect/Effect";
 import { Atom, AtomRegistry } from "effect/unstable/reactivity";
 
 import { liveProjects, projectValue, zeropsVersion } from "../../data/__fixtures__/account.ts";
-import { projectsScope } from "../../data/families/project.ts";
+import { projectsScope, type ProjectValue } from "../../data/families/project.ts";
 import { accountReadsAtom, projectStandingAtom } from "../../data/reads.ts";
 import { makeAccountStore } from "../../data/store.ts";
 import { account, organization, project, scope } from "../data/__fixtures__/index.ts";
@@ -325,6 +325,92 @@ describe("holdListedAccess", () => {
           expect([
             ...(heldEvidence(registry.get(data.access.view).machine)?.closedProjects.keys() ?? []),
           ]).toEqual(["project-a"]);
+        }),
+      ),
+  );
+
+  it.effect(
+    "a listed project whose row names other grants is judged again at once, on that row alone",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const orgId = organization.organizationId;
+          const registry = AtomRegistry.make();
+          const store = makeAccountStore(registry);
+          const scopeKey = projectsScope(orgId);
+          const push = (value: Partial<ProjectValue>, version: number) =>
+            store.dispatch({
+              kind: "rows",
+              scope: scopeKey,
+              generation: 1,
+              method: "push",
+              via: "zerops-realtime",
+              rows: [
+                {
+                  family: "project",
+                  id: "project-a",
+                  value: { ...projectValue({ id: "project-a", clientId: orgId }), ...value },
+                  revision: zeropsVersion(version),
+                },
+              ],
+            });
+          liveProjects(orgId, [{ id: "project-a" }]).forEach(store.dispatch);
+          push({ viewerRoleCode: "READ_ONLY" }, 2);
+          registry.set(accountReadsAtom, { data: store.data, orgId, demandDetail: () => () => {} });
+          const data = yield* makeZeropsDataRuntime({
+            scope: scope(),
+            adapter: silentAdapter,
+            atomRegistry: registry,
+            makeOpaqueId: () => "opaque",
+          });
+          yield* Effect.addFinalizer(() =>
+            data
+              .shutdown("application-close")
+              .pipe(Effect.andThen(Effect.sync(() => registry.dispose()))),
+          );
+          let judged = 0;
+          yield* holdListedAccess({ data, atomRegistry: registry });
+          yield* data.access.start({
+            verifier: makeRestAccessVerifier({
+              client: {
+                fetchUser: async () => ({
+                  id: account.accountId,
+                  email: "person@example.test",
+                  clientUserList: [{ id: "membership", clientId: orgId, roleCode: "NO_ACCESS" }],
+                }),
+              },
+              standing: (ref) => {
+                judged++;
+                return registry.get(projectStandingAtom(ref.projectId));
+              },
+              account,
+              onUser: () => {},
+            }),
+            hidden: false,
+            online: true,
+          });
+          yield* settle;
+          const admitted = () =>
+            [
+              ...(heldEvidence(registry.get(data.access.view).machine)?.projects.values() ?? []),
+            ].map(({ access }) => `${access.project.projectId}:${access.role}`);
+          expect(admitted()).toEqual(["project-a:READ_ONLY"]);
+          const rounds = () => {
+            const phase = registry.get(data.access.view).machine.phase;
+            return phase.phase === "granted" ? phase.renewal.status : phase.phase;
+          };
+
+          // An override is granted the READ_ONLY member: it applies with the push that names it.
+          push({ viewerRoleCode: "BASIC_USER" }, 3);
+          yield* settle;
+          expect(admitted()).toEqual(["project-a:BASIC_USER"]);
+          expect(rounds()).toBe("idle");
+
+          // A push that names the same grants judges nothing again.
+          const before = judged;
+          push({ viewerRoleCode: "BASIC_USER", name: "Renamed" }, 4);
+          yield* settle;
+          expect(judged).toBe(before);
         }),
       ),
   );

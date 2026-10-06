@@ -805,6 +805,30 @@ describe("the access grant inside the data runtime", () => {
     ),
   );
 
+  it.effect("a project's changed grants judge it again at once, with no round", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const platform = healthy();
+        const readOnly: ProjectOutcome = {
+          kind: "verified",
+          access: { project: A, role: "READ_ONLY", mutationsAllowed: false },
+        };
+        platform.outcome = (target) => (target === A ? readOnly : verified(target));
+        const opened = yield* grantedTab(platform);
+        expect(opened.write(A).allowed).toBe(false);
+        const rounds = opened.platform.rounds.length;
+
+        platform.outcome = (target) => verified(target);
+        yield* opened.runtime.access.signal({ type: "PROJECT_GRANTS_CHANGED", project: A });
+        yield* opened.pass(platform.projectMs);
+
+        expect(opened.write(A)).toEqual({ allowed: true });
+        expect(opened.platform.rounds).toHaveLength(rounds);
+        expect(opened.platform.reads.map(({ project: read }) => read)).toEqual([A]);
+      }),
+    ),
+  );
+
   it.effect.each([
     ["a fresh lapse", 1500, false, [0, 3 * SECOND, 9 * SECOND]],
     ["a lapse on its 60 s cadence", 3 * MINUTE, false, [0, 3 * SECOND, 9 * SECOND]],

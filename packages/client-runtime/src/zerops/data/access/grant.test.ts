@@ -1284,6 +1284,61 @@ describe("access grant: grants this account wrote", () => {
   });
 });
 
+describe("access grant: a project judged again on its row's changed grants", () => {
+  /** A tab granted A at `mutationsAllowed`, and B, a minute ago. */
+  const judgedSim = (mutationsAllowed: boolean) => {
+    const sim = new GrantSim();
+    sim.send({ type: "PROJECTS_DEMANDED", projects: [A, B] });
+    sim.send({ type: "START" });
+    sim.answerRound([
+      [A, verified(A, mutationsAllowed)],
+      [B, verified(B)],
+    ]);
+    sim.elapse(MINUTE);
+    return sim;
+  };
+
+  it.each([
+    { name: "an override granted to a READ_ONLY member applies at once", from: false, to: true },
+    { name: "a grant lowered to READ_ONLY applies at once", from: true, to: false },
+  ])("$name, with no read", ({ from, to }) => {
+    const sim = judgedSim(from);
+    const runs = sim.runs.length;
+    sim.send({ type: "PROJECT_JUDGED", project: A, outcome: verified(A, to) });
+    expect(sim.write(A).allowed).toBe(to);
+    expect(sim.write(B).allowed).toBe(true);
+    expect(sim.runs.slice(runs)).toEqual([]);
+  });
+
+  it("closes a project its row's owner refused", () => {
+    const sim = judgedSim(true);
+    sim.send({ type: "PROJECT_JUDGED", project: A, outcome: forbidden });
+    expect(sim.write(A)).toEqual({ allowed: false, reason: "project-closed", waitable: false });
+  });
+
+  it("revives no refusal, and takes no judgement that did not answer", () => {
+    const sim = judgedSim(true);
+    sim.send({ type: "PROJECT_DENIED", project: A, evidence: "direct-forbidden" });
+    sim.send({ type: "PROJECT_JUDGED", project: A, outcome: verified(A) });
+    expect(sim.write(A)).toEqual({ allowed: false, reason: "project-closed", waitable: false });
+    sim.send({ type: "PROJECT_JUDGED", project: B, outcome: failed });
+    expect(sim.write(B).allowed).toBe(true);
+  });
+
+  it("judges a round in flight's own answer again, so its completion takes the newer one", () => {
+    const sim = judgedSim(false);
+    sim.elapse(12 * MINUTE);
+    sim.send({ type: "TICK" });
+    const round = sim.round();
+    sim.send({ type: "ROUND_ACCOUNT", round, organizations, projects: [A, B] });
+    sim.send({ type: "ROUND_PROJECT", round, project: A, outcome: verified(A, false) });
+    sim.send({ type: "PROJECT_JUDGED", project: A, outcome: verified(A) });
+    sim.send({ type: "ROUND_PROJECT", round, project: B, outcome: verified(B) });
+    expect(grantRoundInFlight(sim.state)).toBeNull();
+    expect(sim.write(A).allowed).toBe(true);
+  });
+});
+
 describe("access grant invariants over enumerated event sequences", () => {
   interface GrantNode {
     readonly state: GrantMachine;
