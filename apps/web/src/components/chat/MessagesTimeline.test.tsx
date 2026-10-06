@@ -1351,7 +1351,7 @@ describe("MessagesTimeline — the conversation", () => {
     // The chat's last line says who worked and how long: to the answer, not
     // to when the server closed the turn — the same span once another turn
     // follows. No heading stands over the card.
-    expect(markup).toContain(">Assistant worked 1m<");
+    expect(markup).toContain(">This Mate worked 1m<");
     expect(markup).not.toContain('data-timeline-row-kind="work-line"');
     // Come back to, the run is closed to its summary line (D3): everything it
     // said and did behind "Show work".
