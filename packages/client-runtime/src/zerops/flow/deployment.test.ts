@@ -385,6 +385,9 @@ const UNSTATED: ServiceDeployInfo = {
 };
 
 /** The one listed service's deployment, its processes read and none of them a build. */
+/** The direct read the store asks about every version nothing named, before it answers. */
+const ASKED = { state: "unread", waitingFor: null } as const;
+
 function serviceDeployment(read: CollectionRead<ServiceRecord>): Shown<Deployment> | undefined {
   const stops = stopServices(
     {
@@ -392,7 +395,7 @@ function serviceDeployment(read: CollectionRead<ServiceRecord>): Shown<Deploymen
       processes: processesRead([]),
       names: new Map(),
       refused: null,
-      stated: new Map(),
+      stated: new Map([[UNSTATED.id!, ASKED]]),
     },
     NOW,
   );
@@ -654,8 +657,9 @@ describe("stopServices", () => {
       expected: [["app", "running"]],
     },
     {
-      name: "a version nobody named or sourced stays pending",
+      name: "a version nobody named or sourced stays pending while its direct read is asked",
       read: listed([record("s1", "app", deployed(UNSTATED))]),
+      stated: new Map([[UNSTATED.id!, ASKED]]),
       expected: [["app", "unread"]],
     },
     {
@@ -1161,11 +1165,11 @@ it.each([
     tag: null,
     repository: null,
   },
-])("a summary settles from services without demanding processes (%j)", (deploy) => {
+])("a stop settles from its services and its read running work (%j)", (deploy) => {
   const answer = stopServices(
     {
       services: servicesRead([record("app", "app", deployed(deploy))]),
-      processes: null,
+      processes: processesRead([]),
       names: new Map(),
       refused: null,
       stated: new Map(),
@@ -1186,11 +1190,11 @@ it.each([
   });
 });
 
-it("a completed summary missing the active version ends visibly instead of checking forever", () => {
+it("a version no build names and no direct read can state ends visibly instead of checking forever", () => {
   const answer = stopServices(
     {
       services: servicesRead([record("app", "app", deployed(UNSTATED))]),
-      processes: null,
+      processes: processesRead([]),
       names: new Map(),
       refused: null,
       stated: new Map(),
@@ -1203,11 +1207,11 @@ it("a completed summary missing the active version ends visibly instead of check
   });
 });
 
-it("the embedded name of the active version settles a summary even when source is omitted", () => {
+it("the embedded name of the active version settles a stop even when source is omitted", () => {
   const answer = stopServices(
     {
       services: servicesRead([record("app", "app", deployed({ ...UNSTATED, name: "v1.0.0" }))]),
-      processes: null,
+      processes: processesRead([]),
       names: new Map(),
       refused: null,
       stated: new Map(),
@@ -1222,11 +1226,11 @@ it("the embedded name of the active version settles a summary even when source i
   });
 });
 
-it("a completed summary with an omitted deployment facet ends visibly", () => {
+it("a deployment facet not stated yet is unknown until the service says, never a failure", () => {
   const answer = stopServices(
     {
       services: servicesRead([record("app", "app", UNRESOLVED_DEPLOYMENT)]),
-      processes: null,
+      processes: processesRead([]),
       names: new Map(),
       refused: null,
       stated: new Map(),
@@ -1235,6 +1239,6 @@ it("a completed summary with an omitted deployment facet ends visibly", () => {
   );
   expect(answer).toMatchObject({
     state: "known",
-    value: [{ deployment: { state: "failed", retryAtMs: null } }],
+    value: [{ deployment: { state: "unread" } }],
   });
 });

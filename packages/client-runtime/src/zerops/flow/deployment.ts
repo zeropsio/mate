@@ -292,7 +292,7 @@ export interface StopService {
 export interface StopReads {
   readonly services: CollectionRead<ServiceRecord>;
   /** The project's running processes. */
-  readonly processes: CollectionRead<ProcessRecord> | null;
+  readonly processes: CollectionRead<ProcessRecord>;
   /** Every app version a build named, by id: a name outlives its build (A11). */
   readonly names: ReadonlyMap<string, string>;
   /** Why the platform took no demand for the running processes; they are never read then. */
@@ -327,8 +327,7 @@ interface StopBuilds {
   readonly complete: boolean;
 }
 
-function runningBuilds(read: CollectionRead<ProcessRecord> | null): StopBuilds {
-  if (read === null) return { builds: [], complete: true };
+function runningBuilds(read: CollectionRead<ProcessRecord>): StopBuilds {
   let complete =
     read.query.status === "observed" && read.query.coverage.kind === "exhausted-traversal";
   const builds: Array<RunningBuild> = [];
@@ -365,7 +364,7 @@ function runningBuilds(read: CollectionRead<ProcessRecord> | null): StopBuilds {
  */
 export function buildNames(
   held: ReadonlyMap<string, string>,
-  processes: CollectionRead<ProcessRecord> | null,
+  processes: CollectionRead<ProcessRecord>,
 ): ReadonlyMap<string, string> {
   return namedBy(held, runningBuilds(processes).builds);
 }
@@ -414,7 +413,6 @@ function activeVersionId(answer: ServiceAnswer): string | null {
 
 /** What a stop's services are measured against: its builds, every name one gave, what was read. */
 interface StopContext extends StopBuilds {
-  readonly summary: boolean;
   readonly names: ReadonlyMap<string, string>;
   readonly stated: StopReads["stated"];
   readonly source: SourceState;
@@ -466,9 +464,17 @@ function activeDeployment(
   }
 }
 
-/** A completed summary must end with an answer or a manual failure, never an idle placeholder. */
-function pendingDeployment(context: StopContext): Known<Deployment> {
-  if (context.summary && context.source.kind === "observing")
+/**
+ * An active version nothing states yet: a stop read whole — its services and its running work both
+ * observed — whose version no build names and no direct read can still state ends with a manual
+ * failure, never an idle placeholder. One a direct read is asked about waits for that read, which
+ * itself says a version that is not there.
+ */
+function unstatedDeployment(
+  context: StopContext,
+  read: Shown<ZeropsServiceDeployedVersion> | undefined,
+): Known<Deployment> {
+  if (read === undefined && context.complete && context.source.kind === "observing")
     return {
       state: "failed",
       failure: { kind: "malformed", detail: "Zerops did not state the active version." },
@@ -512,7 +518,7 @@ function serviceDeployment(
         // A direct read that failed says why nothing states the version, and when it is tried again.
         const read = directReadOf(answer, stated);
         if (read?.state === "failed") return read;
-        return pendingDeployment(context);
+        return unstatedDeployment(context, read);
       }
       // Nothing active is no proof while a build for it may be running unseen.
       if (settled.kind === "none" && !complete) return notYetKnown(source, nowMs);
@@ -526,8 +532,9 @@ function serviceDeployment(
         attempt: 1,
         retryAtMs: null,
       };
+    // A facet the service has not stated yet is unknown until it does.
     case "pending":
-      return pendingDeployment(context);
+      return notYetKnown(source, nowMs);
   }
 }
 
@@ -562,16 +569,12 @@ export function stopServices(reads: StopReads, nowMs: number): Known<ReadonlyArr
   const stopBuilds = runningBuilds(reads.processes);
   const context: StopContext = {
     ...stopBuilds,
-    summary: reads.processes === null,
     names: namedBy(reads.names, stopBuilds.builds),
     stated: reads.stated,
     // A service's deployment stands on both listings: its builds are the processes'.
     source:
       reads.refused === null
-        ? worstSource([
-            ...read.observation.required,
-            ...(reads.processes?.observation.required ?? []),
-          ])
+        ? worstSource([...read.observation.required, ...reads.processes.observation.required])
         : {
             kind: "failed",
             failure: { kind: "refused", code: reads.refused.reason, words: "" },
@@ -685,7 +688,7 @@ function failedWords(status: ProcessStatus | undefined): string | undefined {
 export function buildEnds(
   followed: ReadonlyMap<string, ProcessRef>,
   next: Known<ReadonlyArray<StopService>>,
-  processes: CollectionRead<ProcessRecord> | null,
+  processes: CollectionRead<ProcessRecord>,
   status: (process: ProcessRef) => ProcessStatus | undefined,
 ): {
   readonly followed: ReadonlyMap<string, ProcessRef>;

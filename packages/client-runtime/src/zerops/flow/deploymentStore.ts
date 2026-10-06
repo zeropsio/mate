@@ -45,8 +45,8 @@ export type DeploymentInvalidation = Extract<Invalidation, { readonly topic: "de
 export interface DeploymentStorePorts {
   /** The project's service listing, as the data runtime holds it now. */
   readonly services: (project: ProjectRef) => CollectionRead<ServiceRecord>;
-  /** The project's running processes while demanded by detail; `null` for summary alone. */
-  readonly processes: (project: ProjectRef) => CollectionRead<ProcessRecord> | null;
+  /** The project's running processes: the organization's running work, read for every stop. */
+  readonly processes: (project: ProjectRef) => CollectionRead<ProcessRecord>;
   /** What the account's store states the service runs now (A14), without a read. */
   readonly deployedVersion: (service: ServiceRef) => Shown<ZeropsServiceDeployedVersion>;
   /**
