@@ -57,6 +57,7 @@ export {
 export type { UnavailableReason } from "./projections/freshness.ts";
 export { projectCreations } from "./projections/creation.ts";
 export { makeOperations, type Operations } from "./operations/coordinator.ts";
+export { HQ_BIRTH_UNFOLLOWED, hqBirthWaits, type HqBirthWaits } from "./hqBirthWaits.ts";
 export { makeHqExecutor, type HqWrites } from "./operations/executors/hq.ts";
 export { makeZeropsExecutor } from "./operations/executors/zerops.ts";
 export { restartWay } from "./operations/mateRestart.ts";
