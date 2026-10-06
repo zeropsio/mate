@@ -139,7 +139,14 @@ import {
 } from "./backgroundLine.logic";
 import { useRunEffortWords } from "./runResultFacts";
 import { foldWork } from "./foldWork";
-import { FOLLOW_TAU_MS, ROOM_TAU_MS, approach, keepsFoot, movesAsPerson } from "./runMotion.logic";
+import {
+  type EaseBudget,
+  FOLLOW_TAU_MS,
+  ROOM_TAU_MS,
+  approach,
+  keepsFoot,
+  movesAsPerson,
+} from "./runMotion.logic";
 import { easeRooms, forgetScrollTop, noteScrollTop, type Rooms } from "./runRoom";
 import { StatusBar } from "./StatusBar";
 import { versionText } from "../zerops/operation/version";
@@ -3131,6 +3138,8 @@ const EASED_BOXES = "[data-chat-bubble],[data-chat-calls],[data-zerops-pipeline-
 /** What the motions of a run's card share: the live slot's rooms, read by the history beside it. */
 interface RunMotion {
   slot: Rooms | null;
+  /** The speed a frame gives the slot's and the history's eases together. */
+  readonly budget: EaseBudget;
 }
 
 const NO_KEYS: ReadonlyArray<string> = [];
@@ -3457,6 +3466,7 @@ function LiveSlot({
       selector: EASED_BOXES,
       eases: () => shownRef.current && !syncingRef.current,
       rootClips: true,
+      budget: motionRef.current.budget,
     });
     slotRoomsRef.current = rooms;
     const motion = motionRef.current;
@@ -3589,7 +3599,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   // How its boxes ease (`easeRooms`), for a line landing in it.
   const historyRoomsRef = useRef<Rooms | null>(null);
   // What its parts' motions share (`RunMotion`).
-  const motionRef = useRef<RunMotion>({ slot: null });
+  const motionRef = useRef<RunMotion>({ slot: null, budget: { at: -1, left: 0 } });
   const { fold, foldNow, settling } = useRunFold({
     conversation: ctx.routeThreadKey,
     run: row.turnKey,
@@ -4194,6 +4204,7 @@ function RunScroll({
       // Earlier lines drawn over the ones in view take their room at once:
       // where the person reads is kept by the scroll (`keepFromFootRef`).
       eases: () => easesRef.current && shownRef.current && !drawingEarlierRef.current,
+      budget: motionRef?.current.budget ?? null,
     });
     roomRef.current = rooms;
     if (roomsRef !== undefined) roomsRef.current = rooms;
@@ -4203,7 +4214,7 @@ function RunScroll({
       roomRef.current = null;
       if (roomsRef !== undefined) roomsRef.current = null;
     };
-  }, [roomsRef]);
+  }, [roomsRef, motionRef]);
   // Every commit, before the list's row measures it in its own.
   useLayoutEffect(() => roomRef.current?.flush());
   // It follows its foot until the person moves it up or opens something in

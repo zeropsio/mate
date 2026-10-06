@@ -20,7 +20,13 @@
  */
 import { useLayoutEffect, useRef, type RefObject } from "react";
 
-import { PERSON_INPUT_MS, ROOM_TAU_MS, approach } from "./runMotion.logic";
+import {
+  type EaseBudget,
+  PERSON_INPUT_MS,
+  ROOM_TAU_MS,
+  approach,
+  spendStep,
+} from "./runMotion.logic";
 
 export interface Rooms {
   /**
@@ -119,6 +125,7 @@ export function easeRooms({
   eases,
   rootClips = false,
   attributes = [],
+  budget = null,
 }: {
   /** A box itself, and what holds the others. */
   readonly root: HTMLElement;
@@ -129,6 +136,8 @@ export function easeRooms({
   readonly rootClips?: boolean;
   /** Attributes of what it holds that change its height, besides a class, `hidden` and `open`. */
   readonly attributes?: ReadonlyArray<string>;
+  /** The speed a frame gives the eases of its card together (`spendStep`). */
+  readonly budget?: EaseBudget | null;
 }): Rooms {
   if (
     typeof ResizeObserver === "undefined" ||
@@ -187,7 +196,11 @@ export function easeRooms({
       // What it holds may have moved on since (a box inside it easing, a
       // height animated in it): it eases to that.
       box.target = natural(box);
-      const next = approach(box.shown, box.target, dt, ROOM_TAU_MS);
+      const eased = approach(box.shown, box.target, dt, ROOM_TAU_MS);
+      // What is left of the frame's speed, shared with the card's other eases.
+      const taken =
+        budget === null ? eased - box.shown : spendStep(budget, now, dt, eased - box.shown);
+      const next = taken === box.target - box.shown ? box.target : box.shown + taken;
       if (next === box.target) {
         release(box);
       } else {

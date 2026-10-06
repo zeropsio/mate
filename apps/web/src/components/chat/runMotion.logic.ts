@@ -46,6 +46,33 @@ export function approach(current: number, target: number, dtMs: number, tauMs: n
   return Math.abs(target - next) < SETTLED_PX ? target : next;
 }
 
+/**
+ * The speed a frame gives every ease of one card together: a landed line's
+ * room and the slot squeezing the history each took their own 32 px, and
+ * the history moved up to 53 px in one frame (the p43 review). `at` is the
+ * frame it was given for, `left` what is left of it.
+ */
+export interface EaseBudget {
+  at: number;
+  left: number;
+}
+
+/**
+ * What of `step` an ease takes in the frame at `now`, `dtMs` after its last:
+ * the first ease heard in a frame gives the budget that frame's speed, and
+ * each takes from what is left. A frame long gone stands at its target.
+ */
+export function spendStep(budget: EaseBudget, now: number, dtMs: number, step: number): number {
+  if (dtMs >= LONG_GONE_MS) return step;
+  if (budget.at !== now) {
+    budget.at = now;
+    budget.left = MAX_SPEED_PX_PER_MS * Math.min(dtMs, ON_TIME_FRAME_MS);
+  }
+  const taken = Math.sign(step) * Math.min(Math.abs(step), budget.left);
+  budget.left -= Math.abs(taken);
+  return taken;
+}
+
 /** How long after the person's input a move of a run's scroll is still theirs. */
 export const PERSON_INPUT_MS = 500;
 

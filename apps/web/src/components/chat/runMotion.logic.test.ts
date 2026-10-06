@@ -7,7 +7,9 @@ import {
   SETTLED_PX,
   approach,
   keepsFoot,
+  LONG_GONE_MS,
   movesAsPerson,
+  spendStep,
 } from "./runMotion.logic";
 
 const FRAME_MS = 1000 / 60;
@@ -221,5 +223,47 @@ describe("keepsFoot", () => {
     },
   ] as const)("$what: it $keeps", ({ given, keeps }) => {
     expect(keepsFoot({ ...at, ...given })).toBe(keeps);
+  });
+});
+
+// Two eases in one card — a landed line's room and the slot squeezing the
+// history — each took their own 32 px a frame, and moved the history up to
+// 53 px in one (the p43 review): they share one speed a frame.
+describe("spendStep", () => {
+  it.each([
+    { what: "one ease alone", steps: [[1000, 20]], taken: [20] },
+    { what: "one ease past the frame's speed", steps: [[1000, 45]], taken: [32] },
+    {
+      what: "two eases in one frame",
+      steps: [
+        [1000, 30],
+        [1000, 30],
+      ],
+      taken: [30, 2],
+    },
+    {
+      what: "two eases growing and shrinking",
+      steps: [
+        [1000, 20],
+        [1000, -20],
+      ],
+      taken: [20, -12],
+    },
+    {
+      what: "a new frame has its speed again",
+      steps: [
+        [1000, 30],
+        [1020, 30],
+      ],
+      taken: [30, 30],
+    },
+  ])("$what", ({ steps, taken }) => {
+    const budget = { at: -1, left: 0 };
+    expect(steps.map(([now, step]) => spendStep(budget, now!, 20, step!))).toEqual(taken);
+  });
+
+  it("lets a frame long gone stand at its target", () => {
+    const budget = { at: -1, left: 0 };
+    expect(spendStep(budget, 1000, LONG_GONE_MS, 400)).toBe(400);
   });
 });
