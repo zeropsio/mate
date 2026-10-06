@@ -159,4 +159,8 @@ it("revises its attention for its link to HQ alone, and starts it over when it r
   expect(fake.publishAttention()).toMatchObject({
     source: { epoch: 2, incarnation: "fake-Ada:1", revision: 1 },
   });
+  expect(fake.lateFromRunBefore({ working: 1 })).toMatchObject({
+    source: { epoch: 1, incarnation: "fake-Ada", revision: 3 },
+    working: 1,
+  });
 });
