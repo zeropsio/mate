@@ -6,7 +6,7 @@ import { AtomRegistry } from "effect/unstable/reactivity";
 
 import { liveZerops, ORG } from "../__fixtures__/account.ts";
 import { linkKeys, type OperationReceipt } from "../model.ts";
-import { ZeropsApiError } from "../../zerops/api.ts";
+import { ZeropsApiError, ZeropsWriteNotSent } from "../../zerops/api.ts";
 import { runningScope } from "../families/process.ts";
 import { operationProgress } from "../projections/operation.ts";
 import { makeAccountStore, readsOfState, type AccountStore } from "../store.ts";
@@ -248,6 +248,20 @@ describe("mate-restart", () => {
       yield* operations.retry("r1");
       expect(progress(store).stage).toBe("uncertain");
       expect(calls).toEqual(["stop s1"]);
+    }),
+  );
+
+  it.effect("a restart its admission refused before sending is unsent, never maybe-landed", () =>
+    Effect.gen(function* () {
+      const { store, registry } = account();
+      const { platform } = platformOf({
+        restart: () =>
+          Promise.reject(
+            new ZeropsWriteNotSent({ message: "Project access could not be verified." }),
+          ),
+      });
+      yield* operationsOf(store, registry, platform).submit(RESTART);
+      expect(progress(store)).toEqual({ stage: "unsent", next: "send-again" });
     }),
   );
 

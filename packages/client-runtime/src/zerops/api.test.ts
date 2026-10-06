@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "@effect/vitest";
 import {
   DEFAULT_ZEROPS_API_BASE,
   ZeropsApiClient,
+  ZeropsWriteNotSent,
   ZeropsApiError,
   parseRetryAfterMs,
   servicePortOrigin,
@@ -1974,7 +1975,7 @@ describe("ZeropsApiClient.exchangeWebSocketToken", () => {
         signal: new AbortController().signal,
         background: false,
       }),
-    ).rejects.toBe(refusal);
+    ).rejects.toBeInstanceOf(ZeropsWriteNotSent);
     expect(stub.requests).toHaveLength(1);
   });
 
@@ -1994,7 +1995,7 @@ describe("ZeropsApiClient.exchangeWebSocketToken", () => {
     expect(stub.requests).toHaveLength(1);
   });
 
-  it("hands a refused write's refusal to its caller as it came, with nothing sent", async () => {
+  it("says a write its admission refused was never sent, in the admission's words", async () => {
     const stub = recordingFetch(() => jsonResponse(204, {}));
     const client = new ZeropsApiClient({ fetch: stub.fetch });
     client.restoreSession(SESSION);
@@ -2005,7 +2006,9 @@ describe("ZeropsApiClient.exchangeWebSocketToken", () => {
     await vi.waitFor(() => expect(held.asked()).toBe(1));
     held.refuse(refusal);
 
-    await expect(restart).rejects.toBe(refusal);
+    const refused = await restart.catch((cause: unknown) => cause);
+    expect(refused).toBeInstanceOf(ZeropsWriteNotSent);
+    expect(refused).toMatchObject({ message: refusal.message, refusal });
     expect(stub.requests).toHaveLength(0);
   });
 
@@ -2042,7 +2045,7 @@ describe("ZeropsApiClient.exchangeWebSocketToken", () => {
       beforeProjectWrite: () => (writes === 0 ? Promise.resolve() : Promise.reject(refusal)),
     });
 
-    await expect(client.restartService("service-1")).rejects.toBe(refusal);
+    await expect(client.restartService("service-1")).rejects.toBeInstanceOf(ZeropsWriteNotSent);
 
     expect(stub.requests.filter((request) => request.url.includes("/restart"))).toHaveLength(1);
     expect(stub.requests.filter((request) => request.url.endsWith("/auth/refresh"))).toHaveLength(

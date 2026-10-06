@@ -39,7 +39,7 @@ import type {
 } from "./types.ts";
 import type { TableQueryDescriptor } from "./types.ts";
 import { decodeTableSearch } from "./tableProtocol.ts";
-import { ZeropsApiError, type ZeropsApiClient } from "../api.ts";
+import { ZeropsApiError, ZeropsWriteNotSent, type ZeropsApiClient } from "../api.ts";
 import type { ZeropsIntegrationToken } from "../groupReach.ts";
 import type { PlatformWatchSocket, PlatformWatchTimers } from "./platformSocket.ts";
 import type {
@@ -121,6 +121,8 @@ function importProcessesWellFormed(value: unknown): boolean {
 }
 
 function errorFrom(cause: unknown, fallback: AdapterError["kind"]): AdapterError {
+  // Refused before it was sent: classified as the admission's own refusal.
+  if (cause instanceof ZeropsWriteNotSent) return errorFrom(cause.refusal, fallback);
   if (
     typeof cause === "object" &&
     cause !== null &&

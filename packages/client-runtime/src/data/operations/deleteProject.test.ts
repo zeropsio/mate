@@ -8,7 +8,7 @@ import { runningScope } from "../families/process.ts";
 import type { OperationReceipt } from "../model.ts";
 import { operationProgress } from "../projections/operation.ts";
 import { makeAccountStore, readsOfState, type AccountStore } from "../store.ts";
-import { ZeropsApiError } from "../../zerops/api.ts";
+import { ZeropsApiError, ZeropsWriteNotSent } from "../../zerops/api.ts";
 import { makeOperations } from "./coordinator.ts";
 import { deleteProject } from "./deleteProject.ts";
 import { deleteProjectExecutor } from "./executors/deleteProject.ts";
@@ -150,6 +150,19 @@ describe("delete-project", () => {
       yield* operations.retry("r1");
       expect(progress(store)).toEqual({ stage: "reflected", operationId: "proc-del" });
       expect(calls).toEqual(["delete p1"]);
+    }),
+  );
+
+  it.effect("a deletion its admission refused before sending is unsent, never maybe-landed", () =>
+    Effect.gen(function* () {
+      const store = account();
+      const { operations } = operationsOf(store, () =>
+        Promise.reject(
+          new ZeropsWriteNotSent({ message: "Project access could not be verified." }),
+        ),
+      );
+      yield* operations.submit(DELETE);
+      expect(progress(store)).toEqual({ stage: "unsent", next: "send-again" });
     }),
   );
 

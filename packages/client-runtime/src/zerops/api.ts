@@ -458,6 +458,27 @@ export type ZeropsApiErrorKind =
   | "server"
   | "unexpected";
 
+/**
+ * A project write its admission refused before anything was sent: nothing reached Zerops, so it
+ * cannot have landed. Says the admission's own words; `refusal` is what the admission threw.
+ */
+export class ZeropsWriteNotSent extends Error {
+  readonly refusal: unknown;
+
+  constructor(refusal: unknown) {
+    super(
+      typeof refusal === "object" &&
+        refusal !== null &&
+        "message" in refusal &&
+        typeof refusal.message === "string"
+        ? refusal.message
+        : "The write was not sent.",
+    );
+    this.name = "ZeropsWriteNotSent";
+    this.refusal = refusal;
+  }
+}
+
 export class ZeropsApiError extends Error {
   readonly kind: ZeropsApiErrorKind;
   readonly status: number | null;
@@ -3097,7 +3118,7 @@ export class ZeropsApiClient {
     const retryAfterRefresh = options.retryAfterRefresh ?? true;
     const clearSessionOnUnauthorized = options.clearSessionOnUnauthorized ?? true;
 
-    /** A refusal before anything was sent reaches the caller as it came. */
+    /** A refusal before anything was sent reaches the caller as one: never as maybe written. */
     let refusedBeforeSending = false;
     const run = async () => {
       if (mutatesProject) {
@@ -3108,7 +3129,9 @@ export class ZeropsApiClient {
           await options.beforeProjectWrite?.();
         } catch (cause) {
           refusedBeforeSending = true;
-          throw cause;
+          // The caller's own giving up stays an abort; anything else is the admission's refusal.
+          if (cause instanceof DOMException && cause.name === "AbortError") throw cause;
+          throw new ZeropsWriteNotSent(cause);
         }
         // An admission can wait, and whoever holds the session once it
         // resolves is not necessarily who asked for the write.
