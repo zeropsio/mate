@@ -267,6 +267,57 @@ describe("matesActivityOf — a Mate from before the attention value", () => {
   });
 });
 
+describe("matesActivityOf — what a Mate's row keeps between reads", () => {
+  const IDA_ENV = EnvironmentId.make("env-ida");
+  const IDA = { ...VERA, identity: { ...VERA.identity!, environmentId: IDA_ENV } };
+  const twoMates = (threads: ReadonlyArray<EnvironmentThreadShell>): MatesActivityInput => ({
+    projectIds: ["p-ida", "p-vera"],
+    attention: attention(said({ working: 1 })),
+    overviews: new Map([
+      ["p-vera", VERA],
+      ["p-ida", IDA],
+    ]),
+    hqCurrent: true,
+    threads,
+    sockets: new Map(),
+    standing: new Set(),
+    lastVisitedAtById: {},
+  });
+  const first = matesActivityOf(twoMates([WORKING]));
+
+  it("gives back the whole reading when no Mate's inputs changed what it says", () => {
+    // A streaming chat's shell moves its `updatedAt` on every event.
+    const next = matesActivityOf(twoMates([{ ...WORKING, updatedAt: DONE }]), first);
+    expect(next).toBe(first);
+  });
+
+  it.each<[string, Partial<EnvironmentThreadShell>]>([
+    ["subject", { title: "Fix the build" }],
+    [
+      "its last words",
+      {
+        latestMessagePreview: { role: "assistant", text: "Built.", createdAt: DONE },
+        latestUserMessagePreview: null,
+      },
+    ],
+    ["step", { liveStep: { kind: "thinking", since: ASKED } }],
+  ])("gives only the Mate whose %s changed a new entry", (_, change) => {
+    const next = matesActivityOf(twoMates([{ ...WORKING, ...change }]), first);
+    expect(next).not.toBe(first);
+    expect(next.get("p-ida")).toBe(first.get("p-ida"));
+    expect(next.get("p-vera")).not.toBe(first.get("p-vera"));
+    expect(next.get("p-vera")).toEqual(
+      matesActivityOf(twoMates([{ ...WORKING, ...change }])).get("p-vera"),
+    );
+  });
+
+  it("drops a Mate that is no longer read", () => {
+    const next = matesActivityOf({ ...twoMates([WORKING]), projectIds: ["p-vera"] }, first);
+    expect([...next.keys()]).toEqual(["p-vera"]);
+    expect(next.get("p-vera")).toBe(first.get("p-vera"));
+  });
+});
+
 describe("seenResultsOf — what the person saw of a Mate's results", () => {
   const results = [
     { threadId: "t1", turnId: "turn-2", completedAt: DONE },
