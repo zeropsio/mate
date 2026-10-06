@@ -174,8 +174,9 @@ export function streamOf(state: AccountState, key: StreamKey): StreamState {
  * Whether `incoming` may replace `current` in its owner's ordering. Revisions compare only inside
  * their own domain: a Mate's own attention revision always outranks HQ's relay of it, which never
  * replaces it back; another incarnation of an HQ scope is not ordered, so only a baseline replaces
- * it; another incarnation of a Mate replaces the held one iff it is live (the Mate restarted), by
- * whichever path and delivery it comes, and never when it is what HQ stored; a value of another
+ * it; a Mate's runs order by their epoch, a later run's value replacing an earlier run's by
+ * whichever path and delivery it comes, live or stored, and never the other way round; between two
+ * environments of a Mate, which have no order, only a live value replaces; a value of another
  * domain never replaces one. Time never decides.
  */
 export function supersedes(
@@ -196,9 +197,9 @@ export function supersedes(
     case "mate-attention":
       if (current.kind === "hq") return true;
       if (current.kind !== "mate-attention") return false;
-      return current.incarnation === incoming.incarnation
-        ? incoming.revision > current.revision
-        : incoming.live;
+      if (current.environmentId !== incoming.environmentId) return incoming.live;
+      if (current.epoch !== incoming.epoch) return incoming.epoch > current.epoch;
+      return current.incarnation === incoming.incarnation && incoming.revision > current.revision;
     case "mate-link":
       return current.kind === "mate-link" && incoming.sequence > current.sequence;
   }

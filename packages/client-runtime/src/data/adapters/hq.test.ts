@@ -432,6 +432,8 @@ describe("a Mate's attention, relayed", () => {
           value,
           revision: {
             kind: "mate-attention",
+            environmentId: value.source.environmentId,
+            epoch: value.source.epoch,
             incarnation: value.source.incarnation,
             revision: value.source.revision,
             live: true,
@@ -538,58 +540,74 @@ describe("a Mate's attention, relayed", () => {
     value,
   });
 
+  /** The run before the restart, and the restarted one: start 1 and start 2. */
+  const before = (revision: number, working = 0) => attention("m1", revision, working, 1);
+  const after = (revision: number, working = 0) => attention("m2", revision, working, 2);
+
   it.effect.each([
     {
       name: "the Mate restarts while open, HQ relaying it live",
-      steps: [
-        relayStep("scope-reset", 1, attention("m1", 9)),
-        relayStep("scope-values", 2, attention("m2", 0, 1)),
-      ],
-      held: attention("m2", 0, 1),
+      steps: [relayStep("scope-reset", 1, before(9)), relayStep("scope-values", 2, after(0, 1))],
+      held: after(0, 1),
     },
     {
       name: "the Mate restarts while open, its own link saying it",
-      steps: [
-        directStep("baseline", attention("m1", 9)),
-        directStep("push", attention("m2", 0, 1)),
-      ],
-      held: attention("m2", 0, 1),
+      steps: [directStep("baseline", before(9)), directStep("push", after(0, 1))],
+      held: after(0, 1),
     },
     {
       name: "a restarted Mate's own word, then what HQ stored of the run before",
       steps: [
-        directStep("baseline", attention("m2", 0, 1)),
-        relayStep("scope-reset", 1, attention("m1", 9), "stored"),
+        directStep("baseline", after(0, 1)),
+        relayStep("scope-reset", 1, before(9), "stored"),
       ],
-      held: attention("m2", 0, 1),
+      held: after(0, 1),
     },
     {
       name: "what HQ stored of the run before, then the restarted Mate's own word",
       steps: [
-        relayStep("scope-reset", 1, attention("m1", 9), "stored"),
-        directStep("baseline", attention("m2", 0, 1)),
+        relayStep("scope-reset", 1, before(9), "stored"),
+        directStep("baseline", after(0, 1)),
       ],
-      held: attention("m2", 0, 1),
+      held: after(0, 1),
     },
     {
       name: "a reload just after a restart: both paths go on after HQ's stored value",
       steps: [
-        directStep("baseline", attention("m2", 0, 1)),
-        relayStep("scope-reset", 1, attention("m1", 9), "stored"),
-        directStep("push", attention("m2", 1, 2)),
-        relayStep("scope-values", 2, attention("m2", 2, 0)),
+        directStep("baseline", after(0, 1)),
+        relayStep("scope-reset", 1, before(9), "stored"),
+        directStep("push", after(1, 2)),
+        relayStep("scope-values", 2, after(2, 0)),
       ],
-      held: attention("m2", 2, 0),
+      held: after(2, 0),
     },
     {
-      name: "what HQ stored of another run, pushed, never over a live one",
+      name: "what HQ stored of the run before, pushed, never over the later run",
       steps: [
-        relayStep("scope-reset", 1, attention("m2", 3)),
-        relayStep("scope-values", 2, attention("m1", 9), "stored"),
+        relayStep("scope-reset", 1, after(3)),
+        relayStep("scope-values", 2, before(9), "stored"),
       ],
-      held: attention("m2", 3),
+      held: after(3),
     },
-  ])("orders another incarnation by its being live: $name", ({ steps, held: expected }) =>
+    {
+      name: "the run before, relayed live after a partition, never over the later run",
+      steps: [relayStep("scope-reset", 1, after(3)), relayStep("scope-values", 2, before(9))],
+      held: after(3),
+    },
+    {
+      name: "the run before, said straight late, never over the later run HQ relayed",
+      steps: [relayStep("scope-reset", 1, after(3)), directStep("push", before(9))],
+      held: after(3),
+    },
+    {
+      name: "what HQ stored of the later run replaces the run before, said straight",
+      steps: [
+        directStep("baseline", before(9)),
+        relayStep("scope-reset", 1, after(0, 1), "stored"),
+      ],
+      held: after(0, 1),
+    },
+  ])("orders a Mate's runs by their epoch, on either path: $name", ({ steps, held: expected }) =>
     Effect.gen(function* () {
       const store = makeAccountStore(AtomRegistry.make());
       const fixture = hqFixtureWire();

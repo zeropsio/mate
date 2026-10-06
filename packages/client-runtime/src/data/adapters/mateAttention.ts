@@ -122,6 +122,8 @@ export function mateAttentionLink(options: {
                 value: event.value,
                 revision: {
                   kind: "mate-attention",
+                  environmentId: event.value.source.environmentId,
+                  epoch: event.value.source.epoch,
                   incarnation: event.value.source.incarnation,
                   revision: event.value.source.revision,
                   live: true,

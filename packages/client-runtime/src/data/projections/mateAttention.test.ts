@@ -53,6 +53,8 @@ const direct = (value: MateAttention): ReadonlyArray<AccountInput> => [
         value,
         revision: {
           kind: "mate-attention",
+          environmentId: value.source.environmentId,
+          epoch: value.source.epoch,
           incarnation: value.source.incarnation,
           revision: value.source.revision,
           live: true,
@@ -95,6 +97,8 @@ const relay = (
         id: P,
         revision: {
           kind: "mate-attention",
+          environmentId: value.source.environmentId,
+          epoch: value.source.epoch,
           incarnation: value.source.incarnation,
           revision: value.source.revision,
           live: state === "live",

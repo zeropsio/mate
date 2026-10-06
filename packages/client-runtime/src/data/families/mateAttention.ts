@@ -36,9 +36,11 @@ export const mateAttentionFamily: FamilySpec<"mateAttention"> = {
     decode: (raw) => Option.getOrNull(decodeRelayed(raw))?.attention ?? null,
     revisionOf: ({ source }, raw) => ({
       kind: "mate-attention",
+      environmentId: source.environmentId,
+      epoch: source.epoch,
       incarnation: source.incarnation,
       revision: source.revision,
-      // What HQ stored of a Mate it does not hear is no word of a running incarnation.
+      // What HQ stored of a Mate it does not hear is no word of the run now running.
       live: Option.getOrNull(decodeRelayed(raw))?.attentionState === "live",
     }),
   },
