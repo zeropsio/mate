@@ -14,6 +14,7 @@ import {
   type HqMoveOffers,
   type HqWire,
 } from "./adapters/hq.ts";
+import { mateAttentionLink, type MateAttentionWire } from "./adapters/mateAttention.ts";
 import { zeropsNavigationLink, type ZeropsWire } from "./adapters/zerops.ts";
 import type { DetailDemand } from "./demand.ts";
 import { familySpec } from "./families/index.ts";
@@ -95,6 +96,28 @@ export function startHqNavigation(options: {
     rewire: link.rewire,
     stop: () => {
       link.stop();
+      Effect.runSync(supervisor.release);
+      Effect.runFork(Fiber.interrupt(fiber));
+    },
+  };
+}
+
+/**
+ * An open Mate's attention, straight from it, for as long as the app holds the Mate open: its own
+ * link, supervised like the others; stopping it pauses the link and keeps what it said.
+ */
+export function startMateAttention(options: {
+  readonly projectId: string;
+  readonly store: AccountStore;
+  readonly wire: MateAttentionWire;
+}): Pick<RunningLink, "signal" | "stop"> {
+  const { store } = options;
+  const link = mateAttentionLink(options);
+  const supervisor = Effect.runSync(superviseLink({ ...link, store, repairSession: Effect.void }));
+  const fiber = Effect.runFork(supervisor.run);
+  return {
+    signal: (signal) => void Effect.runFork(supervisor.signal(signal)),
+    stop: () => {
       Effect.runSync(supervisor.release);
       Effect.runFork(Fiber.interrupt(fiber));
     },

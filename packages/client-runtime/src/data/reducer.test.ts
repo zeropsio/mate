@@ -476,10 +476,11 @@ describe("reduceAccount", () => {
       incarnation,
       revision,
     });
-    const mate = (incarnation: string, revision: number): Revision => ({
+    const mate = (incarnation: string, revision: number, live = true): Revision => ({
       kind: "mate-attention",
       incarnation,
       revision,
+      live,
     });
 
     it.each([
@@ -510,6 +511,12 @@ describe("reduceAccount", () => {
       { name: "newer mate revision", current: mate("a", 5), incoming: mate("a", 6), push: true },
       { name: "older mate revision", current: mate("a", 6), incoming: mate("a", 5), push: false },
       {
+        name: "newer mate revision HQ stored",
+        current: mate("a", 5),
+        incoming: mate("a", 6, false),
+        push: true,
+      },
+      {
         name: "hq relay over mate's own",
         current: mate("a", 1),
         incoming: hq("a", 9),
@@ -517,19 +524,27 @@ describe("reduceAccount", () => {
       },
       { name: "mate's own over hq relay", current: hq("a", 9), incoming: mate("a", 1), push: true },
       {
-        name: "another incarnation, pushed",
+        name: "another incarnation, live, pushed",
         current: mate("a", 9),
         incoming: mate("b", 1),
-        push: false,
+        push: true,
       },
       { name: "zerops against hq", current: zerops(1), incoming: hq("a", 1), push: false },
     ])("$name: $push", ({ current, incoming, push }) => {
       expect(supersedes(current, incoming, "push")).toBe(push);
     });
 
-    it("lets another incarnation in only through a baseline", () => {
-      expect(supersedes(mate("a", 9), mate("b", 1), "baseline")).toBe(true);
+    it("lets another HQ incarnation in only through a baseline", () => {
       expect(supersedes(hq("a", 9), hq("b", 1), "baseline")).toBe(true);
     });
+
+    it.each(["baseline", "push"] as const)(
+      "lets another Mate incarnation in by being live, never by being stored: %s",
+      (method) => {
+        expect(supersedes(mate("a", 9), mate("b", 1), method)).toBe(true);
+        expect(supersedes(mate("a", 9), mate("b", 1, false), method)).toBe(false);
+        expect(supersedes(mate("a", 9, false), mate("b", 1, false), method)).toBe(false);
+      },
+    );
   });
 });

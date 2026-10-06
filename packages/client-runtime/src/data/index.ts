@@ -5,7 +5,8 @@
  *
  * @module data
  */
-export { observeAccount, type AccountObservation } from "./account.ts";
+export { observeAccount, startMateAttention, type AccountObservation } from "./account.ts";
+export { makeMateAttentionWire, type MateAttentionWire } from "./adapters/mateAttention.ts";
 export { makeHqWire } from "./adapters/hqWire.ts";
 export type { HqHandoverCandidates, HqMoveOffers, HqWire } from "./adapters/hq.ts";
 export type {
@@ -24,6 +25,7 @@ export {
   type HqNavigationRead,
 } from "./projections/hqNavigation.ts";
 export { hqMates, type HqMatesRead } from "./projections/hqMates.ts";
+export { matesAttention, type MateAttentionRead } from "./projections/mateAttention.ts";
 export type { DetailDemand } from "./demand.ts";
 export { makeAccountStore, type AccountStore, type Projection } from "./store.ts";
 export {

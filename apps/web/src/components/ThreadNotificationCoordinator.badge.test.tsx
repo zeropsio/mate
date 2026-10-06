@@ -15,6 +15,8 @@ const state = vi.hoisted(() => ({
   environmentIds: ["one", "two"],
   /** Whether HQ's view is its answer now: false while its stream is down. */
   current: true,
+  /** Each Mate's attention as the store reads it, by project. */
+  attention: {} as Record<string, unknown>,
 }));
 vi.mock("@effect/atom-react", () => ({
   useAtomValue: () => ({
@@ -41,6 +43,11 @@ vi.mock("@tanstack/react-router", () => ({
 }));
 vi.mock("./ui/toast", () => ({ toastManager: { add: state.toast } }));
 vi.mock("../state/zerops", () => ({ hqMatesAtom: "hq-mates" }));
+// Each Mate's attention, where a test gives one; else it rings off HQ's overview of it.
+vi.mock("../zerops/ZeropsAccountData", () => ({
+  useAccountOrgId: () => "org-1",
+  useProjection: () => state.attention,
+}));
 vi.mock("../hooks/useSettings", () => ({
   useClientSettings: (
     select: (settings: { notificationMode: string; inAppNotificationsEnabled: boolean }) => unknown,
@@ -104,6 +111,7 @@ beforeEach(() => {
   state.inApp = false;
   state.environmentIds = ["one", "two"];
   state.current = true;
+  state.attention = {};
   state.chats.set("one", digest());
   state.chats.set("two", digest());
   focused = false;
@@ -265,4 +273,31 @@ it("badges background failures with in-app notifications enabled", async () => {
   expect(TestNotification.sent[0]?.title).toBe("Thread failed");
   expect(state.badge).toHaveBeenLastCalledWith(1);
   expect(state.toast).not.toHaveBeenCalled();
+});
+
+it("badges a Mate's attention while it is of now, whatever HQ's overview says", async () => {
+  const said = (questions: ReadonlyArray<unknown>, live = true) => ({
+    attention: {
+      source: { environmentId: "one", incarnation: "m1", revision: questions.length },
+      mainThreadId: "thread",
+      lastThreadId: "thread",
+      working: 0,
+      waiting: questions.length,
+      results: [],
+      questions,
+      truncated: false,
+    },
+    live,
+    unseen: null,
+  });
+  state.attention = { one: said([]) };
+  await render();
+  // HQ's overview of it says it finished: its attention is the word, so nothing rings.
+  complete();
+  await render();
+  expect(state.badge).not.toHaveBeenCalledWith(1);
+  state.attention = { one: said([{ threadId: "thread", kind: "approval", turnId: "turn" }]) };
+  await render();
+  expect(state.badge).toHaveBeenLastCalledWith(1);
+  expect(TestNotification.sent.at(-1)?.title).toBe("Approval needed");
 });

@@ -34,8 +34,6 @@ export interface ProjectsFlowGroup<T> {
   readonly contents?: HqAppContents | undefined;
   /** Its Mates' activity, HQ's word or their sockets', as the row's line reads it (`projectRowLine`). */
   readonly activities: ReadonlyArray<RowMateActivity>;
-  /** No Mate of it may be asking unseen (`matesKnownOf`). */
-  readonly matesKnown: boolean;
   /** Why its changes are not known, where they are not: the row says so (`projectRowLine`). */
   readonly changesUnknown?: ChangesUnknown | undefined;
   /**

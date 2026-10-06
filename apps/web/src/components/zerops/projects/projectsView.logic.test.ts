@@ -27,12 +27,10 @@ import {
   stopLine,
   nextStepAwaitsSomebody,
   parseProjectsSearch,
-  matesKnownOf,
   mayAddEnvironment,
   tiersAddable,
   rowMateActivitiesOf,
   risenFirst,
-  rowRise,
   productionMark,
   projectRowLine,
   withoutOfficialHq,
@@ -943,41 +941,7 @@ describe("risenFirst — the rows that need the person rise, the custom order ke
   });
 });
 
-describe("rowRise — a row whose answer is out stays where it was drawn", () => {
-  const NEEDS = { kind: "needs-you", text: "x", tone: "attention" } as const;
-  it.each([
-    ["needs you", NEEDS, undefined, true, { rises: true, known: true }],
-    ["needs you, a Mate reconnecting", NEEDS, undefined, false, { rises: true, known: true }],
-    ["quiet", { kind: "none" }, true, true, { rises: false, known: true }],
-    [
-      "quiet while a Mate reconnects, last drawn risen: it stays",
-      { kind: "none" },
-      true,
-      false,
-      { rises: true, known: false },
-    ],
-    [
-      "quiet while a Mate reconnects, never drawn risen",
-      { kind: "none" },
-      undefined,
-      false,
-      { rises: false, known: false },
-    ],
-    ["pending, last drawn risen", { kind: "pending" }, true, true, { rises: true, known: false }],
-    ["pending, never drawn", { kind: "pending" }, undefined, true, { rises: false, known: false }],
-    [
-      "its changes unknown, last drawn risen: it stays",
-      { kind: "unread", text: "HQ didn’t answer" },
-      true,
-      true,
-      { rises: true, known: false },
-    ],
-  ] as const)("%s", (_name, line, remembered, matesKnown, expected) => {
-    expect(rowRise(line, remembered, matesKnown)).toEqual(expected);
-  });
-});
-
-describe("a project row's Mates — what each is on, and whether each is known", () => {
+describe("a project row's Mates — what each is on", () => {
   const mate = (
     group: ZeropsCandidate["group"],
     linked: boolean,
@@ -1024,26 +988,6 @@ describe("a project row's Mates — what each is on, and whether each is known",
     expect(
       rowMateActivitiesOf([{ item: mate("ready", false), name: "Wren" }], () => activity),
     ).toEqual(expected);
-  });
-
-  it.each([
-    ["every Mate connected and read", "connected", true, undefined, true, true],
-    ["a Mate connected, its conversations not arrived", "connected", true, undefined, false, false],
-    // Its link held and not up: a restart, an update, a blip — it may be asking.
-    ["a Mate reconnecting", "ready", true, undefined, true, false],
-    // HQ holds it live: its word says whether it asks, whatever this tab's link.
-    ["a Mate reconnecting that HQ holds live", "ready", true, working, true, true],
-    ["a Mate reconnecting that HQ only remembers", "ready", true, resting, true, false],
-    // No link this tab holds: nothing to come back from.
-    ["a Mate this tab never linked", "ready", false, undefined, true, true],
-  ] as const)("matesKnown: %s", (_name, group, linked, activity, read, expected) => {
-    expect(
-      matesKnownOf(
-        [mate(group, linked)],
-        () => activity,
-        () => read,
-      ),
-    ).toBe(expected);
   });
 });
 

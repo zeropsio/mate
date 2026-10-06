@@ -19,6 +19,11 @@ duplicate family, scope name, index name or operation kind when the layer loads.
   `detail`, only while demanded and once per owner id); optional `indexes` (each a `name` and a `keyOf`); for a
   Zerops family, `zerops` (`entity`, the `membership` and `updates` searches, `decode`, and
   `verifyPath` where leaving must ask "deleted or not yours?");
+- for an HQ family, `hq` (`scope`, `idOf`, `keyOf`, `decode`, and `wireScope` where it demands a
+  scope of its own). A family HQ only relays declares `revisionOf` — its author's revision, read
+  with what HQ says beside the value (whether its author is live), which the reducer compares with
+  the same value arriving straight from the author — and no `wireScope`:
+  it rides the scope another family demands for the same kind (`mateAttention` beside `hqMate`);
 - export its scope helper (`scopeOf(spec, orgId)`);
 - add one line to `FAMILIES`.
 

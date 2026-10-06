@@ -34,8 +34,17 @@ export type Revision =
   | { readonly kind: "zerops"; readonly version: number | null }
   /** An HQ scope's revision, inside one incarnation of that scope (`@t3tools/shared/hqStream`). */
   | { readonly kind: "hq"; readonly incarnation: string; readonly revision: number }
-  /** A Mate's own attention revision, inside one incarnation of its store. */
-  | { readonly kind: "mate-attention"; readonly incarnation: string; readonly revision: number };
+  /**
+   * A Mate's own attention revision, inside one incarnation of its store; `live` while that
+   * incarnation is the one running (straight from the Mate, or HQ relaying it live), not when HQ
+   * hands back what it stored of a Mate it does not hear.
+   */
+  | {
+      readonly kind: "mate-attention";
+      readonly incarnation: string;
+      readonly revision: number;
+      readonly live: boolean;
+    };
 
 export type Authority = Source;
 export type Delivery = "zerops-realtime" | "zerops-read" | "hq-stream" | "mate-direct";
