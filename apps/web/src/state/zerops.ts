@@ -13,10 +13,7 @@ import {
   type ProjectRef,
   type ProjectTopologyRead,
 } from "@t3tools/client-runtime/zerops/data";
-import {
-  mateListingsAtom,
-  type RegistrationRecord,
-} from "@t3tools/client-runtime/zerops/environments";
+import { mateListingsAtom } from "@t3tools/client-runtime/zerops/environments";
 import {
   placeListing,
   placementsOf,
@@ -414,24 +411,28 @@ export const environmentProjectsAtom = Atom.make((get): EnvironmentProjects => {
 }).pipe(Atom.withLabel("zerops:environment-projects"));
 
 /**
- * The project an environment belongs to (C3): its descriptor's word first, then its registration
- * record, then a listing row that reaches it — each resolved to the inventory's one operable
- * reference. Null while none of them places it in a project the inventory holds.
+ * The project an environment belongs to (C3): its descriptor's word first, then the Mate this tab
+ * read serving it, then a listing row that reaches it — each resolved to the inventory's one
+ * operable reference. Null while none of them places it in a project the inventory holds.
  */
 export function environmentProjectRef(input: {
   readonly environmentId: EnvironmentId;
-  readonly record: RegistrationRecord | undefined;
+  readonly mate: { readonly projectId: string; readonly orgId: string | null } | undefined;
   readonly located: EnvironmentProjects;
   readonly inventory: Pick<InventoryProjection, "projectRefs">;
 }): ProjectRef | null {
   const described = input.located.described.get(input.environmentId);
-  const remembered = input.record?.projectRef ?? null;
+  const remembered = input.mate ?? null;
   const listed = input.located.listed.get(input.environmentId);
   return (
     (described === undefined ? null : findInventoryProjectRef(input.inventory, described)) ??
     (remembered === null
       ? null
-      : findInventoryProjectRef(input.inventory, remembered.projectId, remembered.orgId)) ??
+      : findInventoryProjectRef(
+          input.inventory,
+          remembered.projectId,
+          remembered.orgId ?? undefined,
+        )) ??
     (listed === undefined ? null : findInventoryProjectRef(input.inventory, listed))
   );
 }

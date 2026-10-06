@@ -1,8 +1,8 @@
 /**
  * The account runtime's ports on a device (DESIGN §7.5): the device's signals, the access grant's
  * verifier over the session's client, and the Mate environments' — the door through the
- * connection runtime, the connection catalog and its links, the probe over `fetch`, and the
- * account's personal context. Adapters only: every decision is the runtime's.
+ * connection runtime, the connection catalog and its links, and the probe through the data
+ * layer's reads (`mateContainerReads`). Adapters only: every decision is the runtime's.
  */
 import type { BearerConnectionRegistration } from "@t3tools/client-runtime/connection";
 import {
@@ -20,11 +20,7 @@ import type {
   RegisteredEnvironment,
 } from "@t3tools/client-runtime/zerops/account/runtime";
 import { normalizeOrigin, zeropsMateBaseUrl } from "@t3tools/client-runtime/zerops/candidates";
-import {
-  readZeropsContainer,
-  readZeropsInitAt,
-} from "@t3tools/client-runtime/zerops/containerHealth";
-import { projectStandingAtom } from "@t3tools/client-runtime/data";
+import { mateContainerReads, projectStandingAtom } from "@t3tools/client-runtime/data";
 import { makeRestAccessVerifier, type AccountScope } from "@t3tools/client-runtime/zerops/data";
 import { zeropsThrowawayPlatform } from "@t3tools/client-runtime/zerops/doorThrowaway";
 import { systemExchangeClock, type LinkPhase } from "@t3tools/client-runtime/zerops/environments";
@@ -49,12 +45,11 @@ import { environmentCatalog } from "../../connection/catalog";
 import { connectionAtomRuntime } from "../../connection/runtime";
 import { uuidv4 } from "../../lib/uuid";
 import { appAtomRegistry } from "../../state/atom-registry";
-import { hqAbsent, loadAccountRecords, memoryIntents } from "./account-ports";
+import { hqAbsent, memoryIntents } from "./account-ports";
 import { closeOffFacts } from "./close-off";
 import { mateDescriptors } from "./mate-descriptors";
 import { openMateRoute } from "./open-mate";
 import { mobilePlatformSignals } from "./platform-signals";
-import { mobileZeropsStorage } from "./storage";
 
 // ── The door, through the connection runtime ─────────────────────────────────────────────────
 
@@ -217,7 +212,7 @@ export type MobileAccountPorts = Pick<AccountRuntimePorts, "verifier" | "signals
 
 /**
  * The account runtime's ports for one verified account: `client` is the session's, and `onUser`
- * hears each user a grant round reads. The account's records are read from the device first.
+ * hears each user a grant round reads.
  */
 export async function mobileAccountPorts(input: {
   readonly account: AccountScope;
@@ -227,7 +222,6 @@ export async function mobileAccountPorts(input: {
   readonly onUser: (user: ZeropsUser) => void;
 }): Promise<MobileAccountPorts> {
   const { account, client } = input;
-  const records = await loadAccountRecords(mobileZeropsStorage, account.account.accountId);
   return {
     verifier: makeRestAccessVerifier({
       client,
@@ -281,17 +275,8 @@ export async function mobileAccountPorts(input: {
           void runAtomCommand(appAtomRegistry, unparkCommand, environmentId, quiet);
         },
       },
-      probe: (origin, signal, ask) =>
-        readZeropsContainer(
-          origin,
-          { descriptor: mateDescriptors.read, fetch: (url, init) => globalThis.fetch(url, init) },
-          signal,
-          ask,
-        ),
-      readInitAt: (origin, signal) =>
-        readZeropsInitAt(origin, (url, init) => globalThis.fetch(url, init), signal),
+      ...mateContainerReads(mateDescriptors.read),
       intents: memoryIntents(),
-      records,
       catalog: catalogPort,
       // The Mate whose screen is open as the stage starts: its target is wanted first.
       route: openMateRoute,

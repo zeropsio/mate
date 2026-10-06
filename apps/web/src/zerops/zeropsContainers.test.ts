@@ -9,14 +9,14 @@ import { describe, expect, it, vi } from "vite-plus/test";
 
 import {
   containerSnapshotWithHq,
-  serverVersionOf,
+  mateServerVersion,
   useTargetContainer,
   useZeropsContainers,
 } from "./zeropsContainers";
 
-/** What the hooks read: the container store's machines and HQ's Mates in view. */
+/** What the hooks read: each Mate as the account's store holds it, and HQ's Mates in view. */
 const held = vi.hoisted(() => ({
-  machines: new Map<string, unknown>(),
+  links: new Map<string, unknown>(),
   mates: null as ReadonlyMap<string, unknown> | null,
 }));
 
@@ -31,7 +31,7 @@ vi.mock("@effect/atom-react", async (importOriginal) => ({
 vi.mock("./accountEnvironments", () => ({
   accountEnvironmentsReady: () => new Promise(() => undefined),
   currentAccountEnvironments: () => null,
-  useContainerMachines: () => held.machines,
+  useMateLinkValues: () => held.links,
   useEnvironmentMachines: () => new Map(),
 }));
 
@@ -66,48 +66,59 @@ const told = (serverVersion: string | null): MateLiveView =>
       : { identity: { environmentId: "env-a", serverVersion, update: null } }),
   }) as MateLiveView;
 
-describe("serverVersionOf: the newer of HQ's identity and the last read", () => {
+/** A Mate as the account's store holds it: its container's last read, and whether it is read now. */
+const link = (reading: ProbeReading, watched: boolean) => ({
+  container: readAt(reading, 0),
+  watched,
+});
+
+describe("mateServerVersion: a read Mate's own word, else HQ's", () => {
   it.each([
     ["HQ's word alone, for a Mate never read", undefined, told("0.12.0"), "0.12.0"],
-    ["the read alone, where HQ knows no Mate", readAt(answering("0.11.9"), 0), undefined, "0.11.9"],
+    [
+      "the read alone, where HQ knows no Mate",
+      link(answering("0.11.9"), false),
+      undefined,
+      "0.11.9",
+    ],
     [
       "the read, where HQ holds the Mate without an overview",
-      readAt(answering("0.11.9"), 0),
+      link(answering("0.11.9"), false),
       told(null),
       "0.11.9",
     ],
     [
-      "HQ's word over a read sent before its presence moved",
-      readAt(answering("0.11.9"), -60_000),
+      "HQ's word over a read no longer current: nothing reads the Mate now",
+      link(answering("0.11.9"), false),
       told("0.12.0"),
       "0.12.0",
     ],
     [
-      "a read sent since, as a restart of ours comes back before HQ hears the Mate",
-      readAt(answering("0.12.1"), 60_000),
+      "the Mate's own read while it is read, as a restart of ours comes back before HQ hears it",
+      link(answering("0.12.1"), true),
       told("0.12.0"),
       "0.12.1",
     ],
     [
       "HQ's word over a read that found no Mate answering",
-      readAt({ kind: "unreachable" }, 60_000),
+      link({ kind: "unreachable" }, true),
       told("0.12.0"),
       "0.12.0",
     ],
-    ["nothing, where neither says", readAt({ kind: "unreachable" }, 0), undefined, undefined],
-  ] as const)("reads %s", (_name, machine, mate, expected) => {
-    expect(serverVersionOf(machine, mate)).toBe(expected);
+    ["nothing, where neither says", link({ kind: "unreachable" }, true), undefined, undefined],
+  ] as const)("reads %s", (_name, mate, hq, expected) => {
+    expect(mateServerVersion(mate, hq)).toBe(expected);
   });
 });
 
 describe("containerSnapshotWithHq: the rows' containers, their versions from HQ too", () => {
   it("gives a Mate never read HQ's version, and one HQ does not know its read's", () => {
-    const machines = new Map<string, ContainerMachine>([
-      ["project-1:zcp", initialContainer()],
-      ["project-2:zcp", readAt(answering("0.11.9"), 0)],
+    const links = new Map([
+      ["project-1:zcp", { container: initialContainer(), watched: false }],
+      ["project-2:zcp", link(answering("0.11.9"), true)],
     ]);
     const mates = new Map([["project-1", told("0.12.0")]]);
-    expect([...containerSnapshotWithHq(machines, mates).serverVersions]).toEqual([
+    expect([...containerSnapshotWithHq(links, mates).serverVersions]).toEqual([
       ["project-1:zcp", "0.12.0"],
       ["project-2:zcp", "0.11.9"],
     ]);
@@ -118,13 +129,13 @@ describe("the container hooks: a Mate never read runs the version HQ names", () 
   const KEY = "project-1:zcp";
 
   it("useTargetContainer", () => {
-    held.machines = new Map([[KEY, initialContainer()]]);
+    held.links = new Map([[KEY, { container: initialContainer(), watched: false }]]);
     held.mates = new Map([["project-1", told("0.12.0")]]);
     expect(useTargetContainer(KEY).serverVersion).toBe("0.12.0");
   });
 
   it("useZeropsContainers", () => {
-    held.machines = new Map([[KEY, initialContainer()]]);
+    held.links = new Map([[KEY, { container: initialContainer(), watched: false }]]);
     held.mates = new Map([["project-1", told("0.12.0")]]);
     expect(useZeropsContainers().serverVersions.get(KEY)).toBe("0.12.0");
   });

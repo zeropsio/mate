@@ -21,7 +21,7 @@ import { useThreadShells } from "~/state/entities";
 import { buildThreadRouteParams } from "~/threadRoutes";
 import { useUiStateStore } from "~/uiStateStore";
 import { useCrew, useMateCrew } from "~/zerops/crew/useCrew";
-import { useRegistrationRecord } from "~/zerops/registrationRecords";
+import { useMateOfEnvironment } from "~/zerops/accountEnvironments";
 import { mateIdentityPose } from "~/zerops/mateIdentities";
 import { useNowMs } from "~/zerops/useNowMs";
 import { useKnownMate, useZeropsMate } from "~/zerops/useZeropsMates";
@@ -710,7 +710,7 @@ export function ConversationStrip({
   const shells = useThreadShells();
   const lastVisitedAtById = useUiStateStore((state) => state.threadLastVisitedAtById);
   const { view } = useCrew(environmentId);
-  const projectId = useRegistrationRecord(environmentId)?.projectRef?.projectId;
+  const projectId = useMateOfEnvironment(environmentId)?.projectId;
   // Until its feed answers, the crew HQ holds of the Mate, at rest.
   const held = useMateCrew(projectId ?? null).crew;
   const router = useRouter();

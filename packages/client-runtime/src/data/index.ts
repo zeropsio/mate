@@ -76,6 +76,14 @@ export {
   type BuildLogSnapshot,
   type BuildLogStatus,
 } from "./buildLogs.ts";
+export { makeMateAdapter, mateContainerReads, type MateAdapter } from "./adapters/mate.ts";
+export type { MateLinkValue } from "./families/mateLink.ts";
+export {
+  mateLink,
+  mateLinks,
+  mateOfEnvironment,
+  type MateLinksRead,
+} from "./projections/mateLinks.ts";
 export { historyScope, runningScope, type ProcessValue } from "./families/process.ts";
 export { projectsScope, type ProjectValue } from "./families/project.ts";
 export { servicesScope, type ServiceValue } from "./families/service.ts";
@@ -151,6 +159,9 @@ export {
   shownHqPersonFactsAtom,
   shownHqStatusAtom,
   shownHqVerdictAtom,
+  mateOfEnvironmentAtom,
+  NO_MATE_LINKS,
+  shownMateLinksAtom,
   type AccountReads,
 } from "./reads.ts";
 export { shownHqProjectPeopleAtom } from "./personReads.ts";

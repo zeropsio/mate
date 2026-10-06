@@ -1,4 +1,7 @@
 import * as Effect from "effect/Effect";
+import { makeAccountStore } from "@t3tools/client-runtime/data";
+import { AtomRegistry } from "effect/unstable/reactivity";
+import { AccountStoreContext } from "./ZeropsAccountData";
 import { act, Children, isValidElement, StrictMode, useContext, useEffect } from "react";
 import { describe, expect, it, vi } from "vite-plus/test";
 
@@ -110,6 +113,9 @@ async function flushEffects(): Promise<void> {
   });
 }
 
+/** The account store the Mate adapter writes to, as `ZeropsAccountData` hands it over. */
+const TEST_STORE = makeAccountStore(AtomRegistry.make());
+
 describe("ZeropsDataStartupFailure", () => {
   it("offers finite recovery when account runtime creation fails", () => {
     const retry = vi.fn();
@@ -147,9 +153,11 @@ describe("ZeropsDataProvider ownership (M8)", () => {
     try {
       await act(async () => {
         root.render(
-          <ZeropsDataProvider makeRuntime={factory}>
-            <Consumer />
-          </ZeropsDataProvider>,
+          <AccountStoreContext value={TEST_STORE}>
+            <ZeropsDataProvider makeRuntime={factory}>
+              <Consumer />
+            </ZeropsDataProvider>
+          </AccountStoreContext>,
         );
       });
       await flushEffects();
@@ -170,7 +178,11 @@ describe("ZeropsDataProvider ownership (M8)", () => {
     const root = createRoot(document.createElement("div") as unknown as Element);
     try {
       await act(async () => {
-        root.render(<ZeropsDataProvider makeRuntime={factory}>{null}</ZeropsDataProvider>);
+        root.render(
+          <AccountStoreContext value={TEST_STORE}>
+            <ZeropsDataProvider makeRuntime={factory}>{null}</ZeropsDataProvider>
+          </AccountStoreContext>,
+        );
       });
       await flushEffects();
       expect(handles).toHaveLength(1);
@@ -193,14 +205,22 @@ describe("ZeropsDataProvider ownership (M8)", () => {
     try {
       session.current = sessionFor("account-1");
       await act(async () => {
-        root.render(<ZeropsDataProvider makeRuntime={factory}>{null}</ZeropsDataProvider>);
+        root.render(
+          <AccountStoreContext value={TEST_STORE}>
+            <ZeropsDataProvider makeRuntime={factory}>{null}</ZeropsDataProvider>
+          </AccountStoreContext>,
+        );
       });
       await flushEffects();
       expect(handles).toHaveLength(1);
 
       session.current = sessionFor("account-2");
       await act(async () => {
-        root.render(<ZeropsDataProvider makeRuntime={factory}>{null}</ZeropsDataProvider>);
+        root.render(
+          <AccountStoreContext value={TEST_STORE}>
+            <ZeropsDataProvider makeRuntime={factory}>{null}</ZeropsDataProvider>
+          </AccountStoreContext>,
+        );
       });
       await flushEffects();
 
@@ -228,7 +248,11 @@ describe("ZeropsDataProvider ownership (M8)", () => {
     session.current = sessionFor("account-1");
     const firstRoot = createRoot(document.createElement("div") as unknown as Element);
     await act(async () => {
-      firstRoot.render(<ZeropsDataProvider makeRuntime={factory}>{null}</ZeropsDataProvider>);
+      firstRoot.render(
+        <AccountStoreContext value={TEST_STORE}>
+          <ZeropsDataProvider makeRuntime={factory}>{null}</ZeropsDataProvider>
+        </AccountStoreContext>,
+      );
     });
     await flushEffects();
     expect(handles).toHaveLength(1);
@@ -244,7 +268,11 @@ describe("ZeropsDataProvider ownership (M8)", () => {
     const secondRoot = createRoot(document.createElement("div") as unknown as Element);
     try {
       await act(async () => {
-        secondRoot.render(<ZeropsDataProvider makeRuntime={factory}>{null}</ZeropsDataProvider>);
+        secondRoot.render(
+          <AccountStoreContext value={TEST_STORE}>
+            <ZeropsDataProvider makeRuntime={factory}>{null}</ZeropsDataProvider>
+          </AccountStoreContext>,
+        );
         handles[1]?.resolve?.();
         await Promise.resolve();
       });
@@ -268,7 +296,11 @@ describe("ZeropsDataProvider ownership (M8)", () => {
     const root = createRoot(container as unknown as Element);
     try {
       await act(async () => {
-        root.render(<ZeropsDataProvider makeRuntime={factory}>{null}</ZeropsDataProvider>);
+        root.render(
+          <AccountStoreContext value={TEST_STORE}>
+            <ZeropsDataProvider makeRuntime={factory}>{null}</ZeropsDataProvider>
+          </AccountStoreContext>,
+        );
       });
       await flushEffects();
       await flushEffects();
@@ -291,7 +323,11 @@ describe("ZeropsDataProvider ownership (M8)", () => {
     session.current = sessionFor("account-1");
     const root = createRoot(document.createElement("div") as unknown as Element);
     await act(async () => {
-      root.render(<ZeropsDataProvider makeRuntime={factory}>{null}</ZeropsDataProvider>);
+      root.render(
+        <AccountStoreContext value={TEST_STORE}>
+          <ZeropsDataProvider makeRuntime={factory}>{null}</ZeropsDataProvider>
+        </AccountStoreContext>,
+      );
     });
     await flushEffects();
     expect(handles).toHaveLength(1);
@@ -312,7 +348,9 @@ describe("ZeropsDataProvider ownership (M8)", () => {
       await act(async () => {
         root.render(
           <StrictMode>
-            <ZeropsDataProvider makeRuntime={factory}>{null}</ZeropsDataProvider>
+            <AccountStoreContext value={TEST_STORE}>
+              <ZeropsDataProvider makeRuntime={factory}>{null}</ZeropsDataProvider>
+            </AccountStoreContext>
           </StrictMode>,
         );
       });
@@ -353,7 +391,9 @@ describe("ZeropsDataProvider ownership (M8)", () => {
       await act(async () => {
         root.render(
           <StrictMode>
-            <ZeropsDataProvider makeRuntime={factory}>{null}</ZeropsDataProvider>
+            <AccountStoreContext value={TEST_STORE}>
+              <ZeropsDataProvider makeRuntime={factory}>{null}</ZeropsDataProvider>
+            </AccountStoreContext>
           </StrictMode>,
         );
       });
@@ -413,7 +453,9 @@ describe("ZeropsDataProvider — signing out while it starts", () => {
     await act(async () => {
       root.render(
         <AppAtomRegistryProvider>
-          <ZeropsDataProvider makeRuntime={factory}>{null}</ZeropsDataProvider>
+          <AccountStoreContext value={TEST_STORE}>
+            <ZeropsDataProvider makeRuntime={factory}>{null}</ZeropsDataProvider>
+          </AccountStoreContext>
         </AppAtomRegistryProvider>,
       );
     });

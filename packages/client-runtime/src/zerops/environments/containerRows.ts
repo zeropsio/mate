@@ -4,7 +4,7 @@
  */
 import type { ZeropsContainerHealth } from "../containerHealth.ts";
 import { unansweredSinceUp, type ContainerMachine, type MateFlag } from "./containerMachine.ts";
-import type { TargetKey } from "./exchangeDriver.ts";
+import type { TargetKey } from "./exchange.ts";
 
 export interface ContainerSnapshot {
   /** The row vocabulary of each target's container; absent until something was read. */

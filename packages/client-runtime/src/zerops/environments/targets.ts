@@ -1,30 +1,43 @@
 /**
- * The account's Mate targets, as its listings and its records name them (DESIGN §4.4 region P,
- * §2.B B4, §2.C C1). Pure.
+ * The account's Mate targets, as its listings and the sessions kept for its Mates name them
+ * (DESIGN §4.4 region P, §2.B B4, §2.C C1). Pure.
  *
  * - A row the inventory read names its target's presence: present at its origin, in a platform
  *   transition, young and ACTIVE before its address landed, inactive, or without a public address.
  * - A row whose project's services are not read yet says nothing of any Mate in it: those
- *   targets' presence is `unknown`. A target a record names there, like one whose organization's
- *   listing no read has answered yet, is `remembered` at the origin the record kept (A16): its
- *   Mate is looked for there before the services are read, never found gone.
- * - A target only a record names holds its last value until every listing is known and complete.
+ *   targets' presence is `unknown`. A target a kept session names there, like one whose
+ *   organization's listing no read has answered yet, is `remembered` at the origin its session
+ *   opened at (A16): its Mate is looked for there before the services are read, never found gone.
+ * - A target only a kept session names holds its last value until every listing is known and
+ *   complete.
  *   Then it is `gone` when its project is not listed. When its project's services were read
  *   without it, it is `gone` only once a direct read of those services, finished after the
  *   omission was seen, lacks it too (§9 C19): a service the listing drops for a moment keeps its
  *   Mate.
  * - A remembered target its project's services were read without, or whose organization's complete
  *   listing lacks its project, is `unknown` until then, whether or not the other listings settled:
- *   that read replaces what its record kept (A16).
+ *   that read replaces what its session kept (A16).
  */
 import type { EnvironmentId } from "@t3tools/contracts";
 
 import type { Known } from "../knowledge/known.ts";
 import { heldCandidates, type CandidateRow } from "../projections/candidates.ts";
-import type { ContainerTarget } from "./containerStore.ts";
+import type { PlatformStatus } from "./containerMachine.ts";
 import type { Presence, ServiceTransition } from "./environmentMachine.ts";
-import type { TargetKey } from "./exchangeDriver.ts";
-import type { RegistrationRecord } from "./records.ts";
+import type { TargetKey } from "./exchange.ts";
+
+/**
+ * A Mate an earlier load reached, as the session it kept names it (`keptSessions.ts`): personal
+ * context, never authority for its existence or access — absent means "not reached here".
+ */
+export interface RememberedTarget {
+  readonly targetKey: TargetKey;
+  readonly environmentId: EnvironmentId;
+  /** The address its session was opened at; null when it names none. */
+  readonly origin: string | null;
+  /** The organization it was reached in; null where the session does not say. */
+  readonly orgId: string | null;
+}
 
 const SERVICE_TRANSITIONS: ReadonlySet<string> = new Set<ServiceTransition>([
   "NEW",
@@ -48,12 +61,12 @@ export function candidatePresence(row: CandidateRow): Presence {
   return { kind: "inactive", status };
 }
 
-/** One target as the listings and the records describe it now. */
+/** One target as the listings and the kept sessions describe it now. */
 export interface ListedTarget {
   readonly key: TargetKey;
   /** Null while the listings cannot say: presence holds its last value. */
   readonly presence: Presence | null;
-  /** The registration record's environment (C1). */
+  /** The environment its kept session names (C1). */
   readonly record: EnvironmentId | null;
 }
 
@@ -66,14 +79,14 @@ export interface ListedTargets {
 
 const GONE: Presence = { kind: "gone", evidence: "complete-scope-omits-verified" };
 
-/** Every target a listing row or a record names, with its presence (region P). */
+/** Every target a listing row or a kept session names, with its presence (region P). */
 export function listTargets(input: {
   /** Each organization's listing. */
   readonly listings: ReadonlyArray<{
     readonly organizationId: string;
     readonly listing: Known<ReadonlyArray<CandidateRow>>;
   }>;
-  readonly records: ReadonlyArray<RegistrationRecord>;
+  readonly remembered: ReadonlyArray<RememberedTarget>;
   /** Each target's presence as last set; null for a target none was set for. */
   readonly lastPresence: (key: TargetKey) => Presence | null;
 }): ListedTargets {
@@ -84,25 +97,25 @@ export function listTargets(input: {
     input.listings.every(
       ({ listing }) => listing.state === "known" && listing.coverage === "complete",
     );
-  /** The record's own organization has no listing here: nothing here may say it is gone. */
-  const unlistedOrganization = (record: RegistrationRecord | undefined): boolean =>
-    record?.projectRef != null &&
-    !input.listings.some(({ organizationId }) => organizationId === record.projectRef!.orgId);
+  /** A kept session's own organization has no listing here: nothing here may say it is gone. */
+  const unlistedOrganization = (record: RememberedTarget | undefined): boolean =>
+    record?.orgId != null &&
+    !input.listings.some(({ organizationId }) => organizationId === record.orgId);
   /**
-   * The record's organization's listing, or any listing for a record that kept no organization,
+   * A kept session's organization's listing, or any listing for one that names no organization,
    * that no read has answered yet: the projects it will name are not read either.
    */
-  const unanswered = (record: RegistrationRecord | undefined): boolean =>
+  const unanswered = (record: RememberedTarget | undefined): boolean =>
     input.listings.some(
       ({ organizationId, listing }) =>
-        (record?.projectRef == null || record.projectRef.orgId === organizationId) &&
+        (record?.orgId == null || record.orgId === organizationId) &&
         (listing.state === "unread" || listing.state === "reading"),
     );
-  /** The record's organization's listing is known and complete: a project it lacks is not there. */
-  const ownComplete = (record: RegistrationRecord | undefined): boolean =>
+  /** A kept session's organization's listing is known and complete: a project it lacks is not there. */
+  const ownComplete = (record: RememberedTarget | undefined): boolean =>
     input.listings.some(
       ({ organizationId, listing }) =>
-        record?.projectRef?.orgId === organizationId &&
+        record?.orgId === organizationId &&
         listing.state === "known" &&
         listing.coverage === "complete",
     );
@@ -111,19 +124,19 @@ export function listTargets(input: {
     rows.filter((row) => row.presence === "unknown").map((row) => row.project.id),
   );
   const byKey = new Map(rows.map((row) => [row.key, row] as const));
-  const recorded = new Map(input.records.map((record) => [record.targetKey, record] as const));
+  const recorded = new Map(input.remembered.map((record) => [record.targetKey, record] as const));
   /** Region P for a target no row names. */
-  const unlisted = (key: TargetKey, record: RegistrationRecord | undefined): Presence | null => {
+  const unlisted = (key: TargetKey, record: RememberedTarget | undefined): Presence | null => {
     const projectId = targetProject(key);
-    // Where its record kept it, while nothing read has said anything of it (A16).
+    // Where its session kept it, while nothing read has said anything of it (A16).
     const remembered =
       record?.origin != null ? ({ kind: "remembered", origin: record.origin } as const) : null;
     // Services not read yet say nothing of a Mate in the project.
     if (unread.has(projectId)) return remembered ?? { kind: "unknown" };
-    // Its record's organization is not listed here: nothing here says where it is.
+    // Its session's organization is not listed here: nothing here says where it is.
     if (unlistedOrganization(record)) return remembered ?? input.lastPresence(key);
     // Its project's services were read without it, or its organization's complete listing lacks
-    // the project: where its record kept it no longer answers (A16), and anything else it was is
+    // the project: where its session kept it no longer answers (A16), and anything else it was is
     // held until every listing is whole.
     const omitted =
       input.lastPresence(key)?.kind === "remembered" ? ({ kind: "unknown" } as const) : null;
@@ -143,15 +156,21 @@ export function listTargets(input: {
   return { targets };
 }
 
+/** One target's container as the listing describes it: where it is reached, and its statuses. */
+export interface ContainerTarget {
+  readonly key: TargetKey;
+  /** The Mate's public origin; null while the platform gives it none. */
+  readonly origin: string | null;
+  readonly platform: PlatformStatus;
+}
+
 /**
- * The container store's targets: each row, at its origin and with its platform statuses, and each
- * remembered target of a listed project at the origin its record kept, its service unread (A16).
- * `first` — the route's target — is read before any other.
+ * Each target's container: each row, at its origin and with its platform statuses, and each
+ * remembered target of a listed project at the origin its session kept, its service unread (A16).
  */
 export function containerTargetsOf(
   rows: ReadonlyArray<CandidateRow>,
   targets: ReadonlyArray<ListedTarget>,
-  first: TargetKey | null,
 ): ReadonlyArray<ContainerTarget> {
   const projects = new Map(rows.map((row) => [row.project.id, row.project] as const));
   const remembered = targets.flatMap((target): ReadonlyArray<ContainerTarget> => {
@@ -175,7 +194,5 @@ export function containerTargetsOf(
       ...(row.service?.created === undefined ? {} : { serviceCreated: row.service.created }),
     },
   }));
-  const all = [...remembered, ...listed];
-  const route = all.find((target) => target.key === first);
-  return route === undefined ? all : [route, ...all.filter((target) => target !== route)];
+  return [...remembered, ...listed];
 }

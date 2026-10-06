@@ -272,7 +272,7 @@ export function ZeropsDataProvider({
         });
         if (!active) return disposeOnce();
         opened = await Effect.runPromise(
-          makeAccountRuntime({ ...ports, data: runtime, atomRegistry: registry }),
+          makeAccountRuntime({ ...ports, data: runtime, atomRegistry: registry, store: store! }),
         );
         if (!active) return disposeOnce();
         owner.current = opened;

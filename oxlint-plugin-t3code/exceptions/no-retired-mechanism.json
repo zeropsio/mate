@@ -1608,22 +1608,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/zerops/environmentPorts.ts",
-    "kind": "retired-token",
-    "fingerprint": "recordsStorage",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "registration records are kept in browser storage across loads; the listing's projection replaces them",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/environmentPorts.ts",
-    "kind": "retired-token",
-    "fingerprint": "recordsStorage",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "registration records are kept in browser storage across loads; the listing's projection replaces them",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/zerops/feeds.ts",
     "kind": "retired-token",
     "fingerprint": "createZeropsFeedAtoms",
@@ -2376,38 +2360,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/zerops/zeropsContainers.ts",
-    "kind": "retired-token",
-    "fingerprint": "read.sentAt",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "the container version is picked by send time; the source decides, never the clock",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/zeropsContainers.ts",
-    "kind": "retired-token",
-    "fingerprint": "serverVersionOf(",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "the container version is picked by send time; the source decides, never the clock",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/zeropsContainers.ts",
-    "kind": "retired-token",
-    "fingerprint": "serverVersionOf(",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "the container version is picked by send time; the source decides, never the clock",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/zeropsContainers.ts",
-    "kind": "retired-token",
-    "fingerprint": "serverVersionOf(",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "the container version is picked by send time; the source decides, never the clock",
-    "expires": "never"
-  },
-  {
     "path": "packages/client-runtime/src/rpc/session.ts",
     "kind": "retired-token",
     "fingerprint": "serverConfigState",
@@ -2688,38 +2640,6 @@
     "expires": "never"
   },
   {
-    "path": "packages/client-runtime/src/zerops/account/accountRuntime.ts",
-    "kind": "retired-token",
-    "fingerprint": "makeContainerStore(",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "container, probe and exchange stores duplicate the Mate identity family",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/account/accountRuntime.ts",
-    "kind": "retired-token",
-    "fingerprint": "makeExchangeDriver",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "container, probe and exchange stores duplicate the Mate identity family",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/account/accountRuntime.ts",
-    "kind": "retired-token",
-    "fingerprint": "makeExchangeDriver",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "container, probe and exchange stores duplicate the Mate identity family",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/account/accountRuntime.ts",
-    "kind": "retired-token",
-    "fingerprint": "makeRegistrationRecords(",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "registration records duplicate the listing; the listing's projection replaces them",
-    "expires": "never"
-  },
-  {
     "path": "packages/client-runtime/src/zerops/data/access/capabilities.ts",
     "kind": "retired-token",
     "fingerprint": "\"runtime-closed\"",
@@ -2912,30 +2832,6 @@
     "expires": "never"
   },
   {
-    "path": "packages/client-runtime/src/zerops/environments/containerStore.ts",
-    "kind": "retired-token",
-    "fingerprint": "makeContainerStore(",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "container, probe and exchange stores duplicate the Mate identity family",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/environments/containerStore.ts",
-    "kind": "retired-token",
-    "fingerprint": "makeProbeStore(",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "container, probe and exchange stores duplicate the Mate identity family",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/environments/exchangeDriver.ts",
-    "kind": "retired-token",
-    "fingerprint": "makeExchangeDriver",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "container, probe and exchange stores duplicate the Mate identity family",
-    "expires": "never"
-  },
-  {
     "path": "packages/client-runtime/src/zerops/environments/gate.ts",
     "kind": "retired-token",
     "fingerprint": "CONVERSATION_UNVERIFIED_BOUND_MS",
@@ -2957,30 +2853,6 @@
     "fingerprint": "CONVERSATION_UNVERIFIED_BOUND_MS",
     "owner": "data-layer rewrite: Mate identity/connection",
     "reason": "an unverified conversation is shown until a timer bound; the source verifies it",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/environments/probeStore.ts",
-    "kind": "retired-token",
-    "fingerprint": "makeProbeStore(",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "container, probe and exchange stores duplicate the Mate identity family",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/environments/records.ts",
-    "kind": "retired-token",
-    "fingerprint": "makeRegistrationRecords(",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "registration records duplicate the listing; the listing's projection replaces them",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/environments/records.ts",
-    "kind": "retired-token",
-    "fingerprint": "zerops-mate.registration-records.v1",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "registration records are kept in browser storage across loads; the listing's projection replaces them",
     "expires": "never"
   },
   {

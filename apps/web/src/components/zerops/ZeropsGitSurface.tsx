@@ -23,7 +23,7 @@ import { useHqAppDetailHold } from "../../zerops/useHqAppDetail";
 import { useFlowVerbs } from "../../zerops/flowVerbs";
 import { useProjectFlows } from "../../zerops/projectFlows";
 import { useOpenReview } from "../../zerops/review";
-import { useRegistrationRecord } from "../../zerops/registrationRecords";
+import { useZeropsEnvironmentProject } from "../../zerops/useZeropsEnvironmentProject";
 import { useZeropsInventory } from "../../zerops/ZeropsInventoryProvider";
 import { useZeropsSessionOptional } from "../../zerops/ZeropsSessionProvider";
 import { ZeropsGitTab } from "./ZeropsGitTab";
@@ -34,7 +34,7 @@ export function ZeropsGitSurface({ threadRef }: { readonly threadRef: ScopedThre
   const inventory = useZeropsInventory();
   const { trouble } = useFlowVerbs();
   const environmentId = threadRef?.environmentId;
-  const projectRef = useRegistrationRecord(environmentId)?.projectRef;
+  const projectRef = useZeropsEnvironmentProject(environmentId ?? null);
 
   const project = inventory.projects.find((entry) => entry.id === projectRef?.projectId);
   const tags = readZeropsMembership(project);

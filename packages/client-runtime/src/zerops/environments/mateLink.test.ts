@@ -4,7 +4,6 @@ import { describe, expect, it } from "vite-plus/test";
 import type { DescriptorIndex } from "./descriptorIndex.ts";
 import { IDLE_GUARDS, initialEnvironment, type EnvironmentMachine } from "./environmentMachine.ts";
 import { mateLink, rowTarget, type MateLink } from "./mateLink.ts";
-import type { RegistrationRecord } from "./records.ts";
 
 const ENV_A = EnvironmentId.make("env-a");
 const ENV_B = EnvironmentId.make("env-b");
@@ -36,14 +35,6 @@ const NOBODY: EnvironmentMachine = {
   presence: { kind: "unknown" },
 };
 
-const record = (targetKey: string, environmentId = ENV_A): RegistrationRecord => ({
-  targetKey,
-  environmentId,
-  origin: "https://zcp-1-8080.prg1.zerops.app",
-  projectRef: { projectId: PROJECT, orgId: "org-1" },
-  name: "shop",
-});
-
 const NO_INDEX: DescriptorIndex = {
   serving: new Map(),
   reported: new Map(),
@@ -54,14 +45,12 @@ describe("rowTarget — the Mate a listing row stands for", () => {
     readonly case: string;
     readonly key: string;
     readonly machines: ReadonlyArray<readonly [string, EnvironmentMachine]>;
-    readonly records: ReadonlyArray<RegistrationRecord>;
     readonly target: string | undefined;
   }>([
     {
       case: "a row naming its target: that target, machine or not",
       key: KEY,
       machines: [],
-      records: [],
       target: KEY,
     },
     {
@@ -71,7 +60,6 @@ describe("rowTarget — the Mate a listing row stands for", () => {
         [PROJECT, NOBODY],
         [KEY, machine({ credential: HELD })],
       ],
-      records: [],
       target: KEY,
     },
     {
@@ -81,7 +69,6 @@ describe("rowTarget — the Mate a listing row stands for", () => {
         [PROJECT, NOBODY],
         [KEY, machine()],
       ],
-      records: [],
       target: KEY,
     },
     {
@@ -91,14 +78,6 @@ describe("rowTarget — the Mate a listing row stands for", () => {
         ["project-1:service-0", machine()],
         [KEY, machine({ credential: HELD })],
       ],
-      records: [],
-      target: KEY,
-    },
-    {
-      case: "the project's row, no machine of its Mate yet: its record's target",
-      key: PROJECT,
-      machines: [[PROJECT, NOBODY]],
-      records: [record("project-2:service-2"), record(KEY)],
       target: KEY,
     },
     {
@@ -108,20 +87,16 @@ describe("rowTarget — the Mate a listing row stands for", () => {
         [PROJECT, NOBODY],
         ["project-10:service-1", machine({ credential: HELD })],
       ],
-      records: [record("project-10:service-1")],
       target: undefined,
     },
     {
       case: "the project's row, nothing of its Mate known",
       key: PROJECT,
       machines: [[PROJECT, NOBODY]],
-      records: [],
       target: undefined,
     },
-  ])("$case", ({ key, machines, records, target }) => {
-    expect(rowTarget({ key, projectId: PROJECT, machines: new Map(machines), records })).toBe(
-      target,
-    );
+  ])("$case", ({ key, machines, target }) => {
+    expect(rowTarget({ key, projectId: PROJECT, machines: new Map(machines) })).toBe(target);
   });
 });
 
@@ -365,7 +340,6 @@ describe("mateLink — what a door opens of a Mate, and what its own view waits 
         projectId: PROJECT,
         machines: new Map(machines),
         index: index ?? NO_INDEX,
-        records: [],
         registered: new Set(registered),
       }),
     ).toEqual({ failuresSinceConnect: 0, errorsSinceConnect: 0, answered: true, ...link });

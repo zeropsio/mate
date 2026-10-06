@@ -24,22 +24,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/mobile/src/features/zerops/environment-ports.ts",
-    "kind": "CallExpression",
-    "fingerprint": "globalThis.fetch",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "only the data layer's adapters reach a remote: the app opens a Mate or Zerops stream or reads a Mate itself; the adapter owns it and the app reads the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/mobile/src/features/zerops/environment-ports.ts",
-    "kind": "CallExpression",
-    "fingerprint": "globalThis.fetch",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "only the data layer's adapters reach a remote: the app opens a Mate or Zerops stream or reads a Mate itself; the adapter owns it and the app reads the projection",
-    "expires": "never"
-  },
-  {
     "path": "apps/mobile/src/features/zerops/mate-descriptors.ts",
     "kind": "CallExpression",
     "fingerprint": "globalThis.fetch",
@@ -453,22 +437,6 @@
     "fingerprint": "input.hq.keepDeployToken",
     "owner": "data-layer rewrite: HQ",
     "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/environmentPorts.ts",
-    "kind": "CallExpression",
-    "fingerprint": "globalThis.fetch",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "only the data layer's adapters reach a remote: the app opens a Mate or Zerops stream or reads a Mate itself; the adapter owns it and the app reads the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/environmentPorts.ts",
-    "kind": "CallExpression",
-    "fingerprint": "globalThis.fetch",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "only the data layer's adapters reach a remote: the app opens a Mate or Zerops stream or reads a Mate itself; the adapter owns it and the app reads the projection",
     "expires": "never"
   },
   {

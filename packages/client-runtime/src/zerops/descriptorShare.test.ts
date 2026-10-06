@@ -212,7 +212,6 @@ describe("descriptor share: one read of a Mate's descriptor serves one connect",
         const first = readers.probe(setup, signal);
         await flush();
         await setup.answer(DESCRIPTOR_URL, blocked);
-        await setup.answer(HEALTHZ_URL, blocked);
         await first;
         const second = readers.door(setup, signal);
         await flush();
@@ -220,7 +219,6 @@ describe("descriptor share: one read of a Mate's descriptor serves one connect",
         await second;
       },
       reads: 2,
-      health: 1,
     },
     {
       name: "a reader after a fresh read went unanswered where an earlier one answered",

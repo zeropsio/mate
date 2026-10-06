@@ -8,7 +8,7 @@ import {
   type ContainerMachine,
 } from "./containerMachine.ts";
 import { containerHealthOf, containerSnapshotOf } from "./containerRows.ts";
-import type { ProbeReading } from "./probeStore.ts";
+import type { ProbeReading } from "./probe.ts";
 
 const SINCE = { wall: 1_800_000_000_000, mono: 0 };
 

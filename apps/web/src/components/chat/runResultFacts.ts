@@ -21,7 +21,7 @@ import { useCrew } from "../../zerops/crew/useCrew";
 import { InventoryContext } from "../../zerops/inventoryContext";
 import { useProjectServices } from "../../zerops/ZeropsAccountData";
 import { useAppsChanges } from "../../zerops/projectFlows";
-import { useRegistrationRecord } from "../../zerops/registrationRecords";
+import { useMateOfEnvironment } from "../../zerops/accountEnvironments";
 import type { OutcomeModel } from "./conversation.logic";
 import { runEffortWords, type ResultChange, type ResultFacts } from "./runResult.logic";
 import { TimelineRowCtx, type TimelineRowSharedState } from "./timelineContext";
@@ -128,7 +128,7 @@ export function useRunResultFacts(outcome: OutcomeModel | null | undefined): Res
   // The row context is absent where a result is drawn on its own.
   const row = useContext(TimelineRowCtx) as TimelineRowSharedState | null;
   const environmentId = row?.threadRef?.environmentId ?? null;
-  const projectId = useRegistrationRecord(environmentId)?.projectRef?.projectId;
+  const projectId = useMateOfEnvironment(environmentId)?.projectId;
   const inventory = useContext(InventoryContext);
   const services = useProjectServices(projectId).services;
   // The Mate's application's changes, held while its result is drawn.

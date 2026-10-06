@@ -26,6 +26,8 @@ import {
 import { hqMates, type HqMatesRead } from "./projections/hqMates.ts";
 import { hqVerdict } from "./projections/hqVerdict.ts";
 import type { HqVerdict } from "./families/hqVerdict.ts";
+import type { MateLinkValue } from "./families/mateLink.ts";
+import { mateLinks, mateOfEnvironment, type MateLinksRead } from "./projections/mateLinks.ts";
 import {
   hqAppChanges,
   hqNavigation,
@@ -252,6 +254,28 @@ export const shownHqStatusAtom = Atom.make((get): HqStatusValue | null => {
   if (account === null || account.orgId === null) return null;
   return get(account.data.project(hqStatus, account.orgId));
 }).pipe(Atom.withLabel("data:shown-hq-status"));
+export const NO_MATE_LINKS: MateLinksRead = {
+  targets: new Map(),
+  machines: new Map(),
+  containers: new Map(),
+};
+
+/** The Mates shown, as this tab read them from each Mate; none without an account. */
+export const shownMateLinksAtom = Atom.make((get): MateLinksRead => {
+  const account = get(accountReadsAtom);
+  if (account === null) return NO_MATE_LINKS;
+  return get(account.data.project(mateLinks, null));
+}).pipe(Atom.withLabel("data:shown-mate-links"));
+
+/** The Mate an environment is served by, as this tab read it; null while none read names it. */
+export const mateOfEnvironmentAtom = Atom.family((environmentId: string) =>
+  Atom.make((get): MateLinkValue | null => {
+    const account = get(accountReadsAtom);
+    if (account === null) return null;
+    return get(account.data.project(mateOfEnvironment, environmentId));
+  }).pipe(Atom.withLabel(`data:mate-of-environment:${environmentId}`)),
+);
+
 /**
  * Holds one service's own read from outside React, through whichever account is mounted in
  * `registry`: moved to a newly mounted one, let go on release.

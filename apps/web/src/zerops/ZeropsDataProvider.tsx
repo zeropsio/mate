@@ -46,6 +46,7 @@ import { currentAccountEpoch, onAccountLifetimeClose } from "./accountLifetime";
 import { browserPlatformSignals, signalsVisibility } from "./browserSignals";
 import { makeBrowserDataScheduler } from "./dataScheduler";
 import { webEnvironmentPorts } from "./environmentPorts";
+import { useAccountStoreForAdapters } from "./ZeropsAccountData";
 import { tabClock } from "./tabClock";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 import { ZeropsDataContext, type ZeropsDataContextValue } from "./zeropsDataContext";
@@ -184,6 +185,8 @@ export function ZeropsDataProvider({
     updateVerifiedMemberships(verified),
   );
   const registry = useContext(RegistryContext);
+  const store = useAccountStoreForAdapters();
+  if (store === null) throw new Error("ZeropsDataProvider must be inside ZeropsAccountData.");
   const activeId = useRef(activeOrganization?.id ?? null);
   const accountOwner = useRef<AccountRuntime | null>(null);
   useEffect(() => {
@@ -275,6 +278,7 @@ export function ZeropsDataProvider({
             signals,
             atomRegistry: registry,
             environments: webEnvironmentPorts({ client, registry }),
+            store,
           }),
         );
         void account.then(
@@ -329,7 +333,7 @@ export function ZeropsDataProvider({
       setOpened(null);
       if (current !== null) void shutdown(current, "account-replaced");
     };
-  }, [accountId, client, makeRuntime, registry, startupAttempt]);
+  }, [accountId, client, makeRuntime, registry, startupAttempt, store]);
 
   const value = useMemo<ZeropsDataContextValue | null>(() => {
     if (opened === null || opened.runtime.scope.account.accountId !== accountId) return null;

@@ -13,7 +13,7 @@ import {
   type ContainerMachine,
 } from "./containerMachine.ts";
 import type { DescriptorFacts } from "./environmentMachine.ts";
-import type { ProbeReading } from "./probeStore.ts";
+import type { ProbeReading } from "./probe.ts";
 
 const START_MS = 1_800_000_000_000;
 

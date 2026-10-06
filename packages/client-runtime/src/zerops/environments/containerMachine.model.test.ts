@@ -10,7 +10,7 @@ import {
   type ContainerEvent,
   type ContainerMachine,
 } from "./containerMachine.ts";
-import type { ProbeReading } from "./probeStore.ts";
+import type { ProbeReading } from "./probe.ts";
 
 /**
  * Every sequence to depth N is enumerated on the CPU alone: ~1-3 s locally, but CI runs the whole

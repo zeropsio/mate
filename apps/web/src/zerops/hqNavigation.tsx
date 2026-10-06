@@ -13,7 +13,7 @@ import type { TimestampFormat } from "@t3tools/contracts/settings";
 import { useEffect, useMemo } from "react";
 
 import { formatDayAwareTimestamp } from "../timestampFormat";
-import { accountHqApi, useAccountHq, type AccountHq } from "./accountHq";
+import { accountHqApi, useAccountHq } from "./accountHq";
 import { holdHqWrites } from "./hqWrites";
 import { useAccountDataOptional } from "./ZeropsAccountData";
 import { useZeropsSession } from "./ZeropsSessionProvider";
@@ -73,14 +73,6 @@ export function hqOutage(
   };
 }
 
-/**
- * Whether the organization has an official HQ, once its verdict is decided: kept, or read off its
- * member list. Null before — no answer of HQ's is waited for where it is false.
- */
-export function hqOfficialOf(accountHq: Pick<AccountHq, "status" | "hq">): boolean | null {
-  return accountHq.status === "ready" ? accountHq.hq.kind === "official" : null;
-}
-
 /** Observes the organization in view's HQ for as long as the account shows it. */
 export function ZeropsHqNavigation(): null {
   const { activeOrganization, client, status } = useZeropsSession();
@@ -89,7 +81,6 @@ export function ZeropsHqNavigation(): null {
   const accountHq = useAccountHq(organizationId);
   const hqProjectId = accountHq.hq.kind === "official" ? accountHq.hq.projectId : undefined;
   const hqAddress = accountHq.hq.kind === "official" ? accountHq.hq.address : undefined;
-  const official = organizationId === undefined ? null : hqOfficialOf(accountHq);
 
   const api = useMemo(
     () =>
@@ -109,7 +100,11 @@ export function ZeropsHqNavigation(): null {
   // HQ is named, or with this mount. Without one, the account holds its verdict: none, the member
   // list unreadable, or not decided yet.
   const verdict =
-    accountHq.status === "failed" ? "unreadable" : official === false ? "none" : "pending";
+    accountHq.status === "failed"
+      ? "unreadable"
+      : accountHq.status === "ready" && accountHq.hq.kind !== "official"
+        ? "none"
+        : "pending";
   useEffect(() => {
     showHq?.(
       organizationId === undefined

@@ -9,7 +9,7 @@
  * project's inventory lease was released and its services query with it: the row then stands for
  * the whole project (`projectCandidates`, the project's id for its key), and the target that key
  * names is nobody's Mate. Its Mate is then the target of that project a machine holds a credential
- * for, else one whose machine remembers an environment, else one a registration record names.
+ * for, else one whose machine remembers an environment (a session kept for it names one).
  *
  * Pure.
  */
@@ -17,9 +17,8 @@ import type { EnvironmentId } from "@t3tools/contracts";
 
 import { resolveEnvironment, type DescriptorIndex } from "./descriptorIndex.ts";
 import type { EnvironmentMachine } from "./environmentMachine.ts";
-import type { TargetKey } from "./exchangeDriver.ts";
+import type { TargetKey } from "./exchange.ts";
 import { environmentLinkable, selectReachability, type Reachability } from "./reachability.ts";
-import type { RegistrationRecord } from "./records.ts";
 import { targetProject } from "./targets.ts";
 
 /** The Mate target a listing row stands for; undefined while nothing names one. */
@@ -28,7 +27,6 @@ export function rowTarget(input: {
   readonly key: string;
   readonly projectId: string;
   readonly machines: ReadonlyMap<TargetKey, EnvironmentMachine>;
-  readonly records: ReadonlyArray<RegistrationRecord>;
 }): TargetKey | undefined {
   const { key, projectId } = input;
   if (key !== projectId) return key;
@@ -38,8 +36,7 @@ export function rowTarget(input: {
   const [holding] = own.find(([, machine]) => machine.credential.kind === "held") ?? [];
   if (holding !== undefined) return holding;
   const [remembering] = own.find(([, machine]) => machine.record !== null) ?? [];
-  if (remembering !== undefined) return remembering;
-  return input.records.find(({ targetKey }) => targetProject(targetKey) === projectId)?.targetKey;
+  return remembering;
 }
 
 export interface MateLink {
@@ -70,7 +67,6 @@ export function mateLink(input: {
   readonly projectId: string;
   readonly machines: ReadonlyMap<TargetKey, EnvironmentMachine>;
   readonly index: DescriptorIndex;
-  readonly records: ReadonlyArray<RegistrationRecord>;
   /** The environments the connection catalog holds. */
   readonly registered: ReadonlySet<EnvironmentId>;
 }): MateLink {

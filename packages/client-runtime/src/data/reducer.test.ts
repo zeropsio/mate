@@ -2,7 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { linkKeys, emptyAccount, type AccountState } from "./model.ts";
 import type { Revision } from "./model.ts";
-import { reduceAccount, supersedes, type AccountInput } from "./reducer.ts";
+import { reduceAccount, streamOf, supersedes, type AccountInput } from "./reducer.ts";
 import { historyScope, runningScope } from "./families/process.ts";
 import { projectsScope } from "./families/project.ts";
 import { factOf, indexOf } from "./reducer.ts";
@@ -68,6 +68,17 @@ function apply(state: AccountState, inputs: ReadonlyArray<AccountInput>): Accoun
 }
 
 describe("reduceAccount", () => {
+  it.each([
+    { key: linkKeys.mate("p1"), mode: "sampled" },
+    { key: "mate:p1:link", mode: "sampled" },
+    { key: linkKeys.zerops(ORG), mode: "realtime" },
+    { key: linkKeys.hq(ORG), mode: "realtime" },
+    { key: `zerops:${ORG}:routing`, mode: "sampled" },
+    { key: `zerops:${ORG}:members`, mode: "once" },
+  ] as const)("runs $key in its declared $mode mode", ({ key, mode }) => {
+    expect(streamOf(emptyAccount, key).mode).toBe(mode);
+  });
+
   it("keeps the newer Zerops version of a row whichever order the rows arrive in", () => {
     const newer = row("p1", 5, "FINISHED");
     const older = row("p1", 4, "RUNNING");
@@ -482,6 +493,7 @@ describe("reduceAccount", () => {
       revision,
       live,
     });
+    const link = (sequence: number): Revision => ({ kind: "mate-link", sequence });
 
     it.each([
       { name: "newer zerops version", current: zerops(4), incoming: zerops(5), push: true },
@@ -530,6 +542,14 @@ describe("reduceAccount", () => {
         push: true,
       },
       { name: "zerops against hq", current: zerops(1), incoming: hq("a", 1), push: false },
+      { name: "a later Mate link reading", current: link(3), incoming: link(4), push: true },
+      { name: "an earlier Mate link reading", current: link(4), incoming: link(3), push: false },
+      {
+        name: "a Mate link reading against hq",
+        current: hq("a", 1),
+        incoming: link(9),
+        push: false,
+      },
     ])("$name: $push", ({ current, incoming, push }) => {
       expect(supersedes(current, incoming, "push")).toBe(push);
     });

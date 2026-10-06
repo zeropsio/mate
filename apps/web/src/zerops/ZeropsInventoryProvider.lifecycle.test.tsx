@@ -33,10 +33,14 @@ import type { Invalidation } from "@t3tools/client-runtime/zerops/knowledge";
 import { buttonsLabelled, press } from "./__fixtures__/testDom";
 import { invalidateZerops, onZeropsInvalidation } from "./accountInvalidations";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
+import { AccountStoreContext } from "./ZeropsAccountData";
 import { ZeropsDataProvider } from "./ZeropsDataProvider";
-import { useZeropsInventory, type Inventory } from "./inventoryContext";
-import { projectsScope } from "@t3tools/client-runtime/data";
+import { inventoryProjectRefKey, useZeropsInventory, type Inventory } from "./inventoryContext";
+import { makeAccountStore, projectsScope } from "@t3tools/client-runtime/data";
 import { mountRoster } from "@t3tools/client-runtime/zerops/testing";
+
+/** The account store the Mate adapter writes to, as `ZeropsAccountData` hands it over. */
+const TEST_STORE = makeAccountStore(AtomRegistry.make());
 import { mountHqNavigation } from "./__fixtures__/hqNavigation";
 import { ZeropsInventoryProvider } from "./ZeropsInventoryProvider";
 
@@ -395,12 +399,14 @@ const mountInventory = Effect.fn(function* (
   );
   const tree = () => (
     <RegistryContext value={registry}>
-      <ZeropsDataProvider makeRuntime={makeRuntime}>
-        <ZeropsInventoryProvider>
-          <Consumer />
-          <AccountVoiceLine />
-        </ZeropsInventoryProvider>
-      </ZeropsDataProvider>
+      <AccountStoreContext value={TEST_STORE}>
+        <ZeropsDataProvider makeRuntime={makeRuntime}>
+          <ZeropsInventoryProvider>
+            <Consumer />
+            <AccountVoiceLine />
+          </ZeropsInventoryProvider>
+        </ZeropsDataProvider>
+      </AccountStoreContext>
     </RegistryContext>
   );
   yield* Effect.promise(async () => act(async () => root.render(tree())));

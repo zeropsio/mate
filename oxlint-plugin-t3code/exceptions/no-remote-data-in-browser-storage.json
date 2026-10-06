@@ -42,30 +42,6 @@
   {
     "path": "apps/web/src/zerops/environmentPorts.ts",
     "kind": "CallExpression",
-    "fingerprint": "accountLocalStorage.getItem(key)",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "source data stays out of browser storage: registration records (Mate origin, project, name) kept across loads and tabs; the listing's projection replaces them",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/environmentPorts.ts",
-    "kind": "CallExpression",
-    "fingerprint": "accountLocalStorage.setItem(key)",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "source data stays out of browser storage: registration records (Mate origin, project, name) kept across loads and tabs; the listing's projection replaces them",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/environmentPorts.ts",
-    "kind": "CallExpression",
-    "fingerprint": "window.addEventListener(\"storage\")",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "source data stays out of browser storage: registration records (Mate origin, project, name) kept across loads and tabs; the listing's projection replaces them",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/environmentPorts.ts",
-    "kind": "CallExpression",
     "fingerprint": "window.sessionStorage.getItem(key)",
     "owner": "data-layer rewrite: operations",
     "reason": "source data stays out of browser storage: this tab's own container intents (restart, update it started), not a source's answer; moves to an allowlisted module",
