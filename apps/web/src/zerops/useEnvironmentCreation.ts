@@ -31,14 +31,14 @@ import { ZeropsServiceId, type AgentsCellRequest } from "@t3tools/client-runtime
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import type { HqApi } from "@t3tools/client-runtime/zerops/hq";
 import { RegistryContext } from "@effect/atom-react";
-import { projectServicesAtom } from "@t3tools/client-runtime/data";
-import type { AtomRegistry } from "effect/unstable/reactivity";
+import { projectServicesAtom, type ProjectServices } from "@t3tools/client-runtime/data";
+import type { Atom, AtomRegistry } from "effect/unstable/reactivity";
 import { useCallback, useContext } from "react";
 
 import type { EnvironmentCreationChoice } from "../components/zerops/ZeropsEnvironmentCreationDialog";
 import { accountHqApi, officialHq, useAccountHq } from "./accountHq";
 import { invalidateZerops } from "./accountInvalidations";
-import { captureAccountLifetime } from "./accountLifetime";
+import { captureAccountLifetime, onAccountLifetimeClose } from "./accountLifetime";
 import { beginPress, pressHold, pressPlatform, pressRegistration, runPress } from "./matePress";
 import { readZeropsCellOnce } from "./readZeropsCell";
 import { useZeropsSession } from "./ZeropsSessionProvider";
@@ -148,32 +148,48 @@ export function environmentProjectName(
 
 /** What an environment's services' wait says where Zerops refused to say how they stand. */
 const SERVICES_REFUSED = "Zerops refused to say how the environment's services stand.";
+/** What it says where the account closed while it waited: as a creation's own stop says it. */
+const ACCOUNT_CLOSED = "This account session has ended.";
 
 /**
  * Resolves with a project's services once every one has settled (`servicesSettled`), as the
  * account's services listing holds them — read as they change, never on a clock; rejects where
- * that listing is refused.
+ * that listing is refused, and where the account it waits in closes.
  */
-function untilServicesSettled(
+export function untilServicesSettled(
   registry: AtomRegistry.AtomRegistry,
-  projectId: string,
+  /** The project's services as the account's store holds them (`projectServicesAtom`). */
+  listed: Atom.Atom<ProjectServices>,
 ): Promise<ReadonlyArray<{ readonly name: string; readonly status: string }>> {
   return new Promise((resolve, reject) => {
-    let cancel: () => void = () => {};
+    let ended = false;
+    let cancel: (() => void) | undefined;
+    const finish = () => {
+      ended = true;
+      cancel?.();
+      leave();
+    };
+    const leave = onAccountLifetimeClose(() => {
+      if (ended) return;
+      reject(new Error(ACCOUNT_CLOSED));
+      finish();
+    });
     cancel = registry.subscribe(
-      projectServicesAtom(projectId),
+      listed,
       ({ services, unavailableReason }) => {
+        if (ended) return;
         if (unavailableReason !== undefined) {
           reject(new Error(SERVICES_REFUSED));
-          cancel();
-          return;
+          finish();
+        } else if (servicesSettled(services)) {
+          resolve(services!.map((service) => ({ name: service.name, status: service.status })));
+          finish();
         }
-        if (!servicesSettled(services)) return;
-        resolve(services!.map((service) => ({ name: service.name, status: service.status })));
-        cancel();
       },
       { immediate: true },
     );
+    // Its first value may have ended it before its subscription was in hand.
+    if (ended) cancel();
   });
 }
 
@@ -283,7 +299,8 @@ export function useEnvironmentCreation(): (
             : { hq, groupId: group.groupId, kind: tier },
         ),
         hq,
-        untilServicesSettled: (projectId) => untilServicesSettled(registry, projectId),
+        untilServicesSettled: (projectId) =>
+          untilServicesSettled(registry, projectServicesAtom(projectId)),
       });
 
       request.onPlanned?.(plan.steps);

@@ -44,7 +44,12 @@ lives in `operations/executors/`, the one place besides `adapters/` that may rea
 kind itself runs inside projections and stays pure. Where a step's end can no longer be observed
 (a stop ran, then the link paused), `submit` — like a lookup — answers `{ unobservable: { nextActor,
 nextAction, handles } }`: the operation ends unresolved with that named next step ("Start the
-Mate"), and nothing further is sent blindly.
+Mate"), and nothing further is sent blindly. A kind whose callers need the owner's answer (the
+project a create made) declares it in `OperationResults` and its receipt carries it as
+`acceptance.result`, read with `operationResult(record, kind)`; where a lost answer is adopted by
+an effect handle, the kind's `adoptedResult(handle)` gives the same. A step that waits on its
+operation runs it with `runToEnd`: the result once its owner's facts end it, else what stopped
+it — uncertain where it may have landed.
 
 **Mounting.** An app makes one store per account (`makeAccountStore`) and starts the active
 organization's navigation with `startZeropsNavigation`, over `makeZeropsWire` (today's receiver
