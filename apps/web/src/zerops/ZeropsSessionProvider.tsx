@@ -32,12 +32,15 @@ import {
   ZEROPS_SESSION_OWNER_STORAGE_KEY,
   makeZeropsSessionDriver,
   parseZeropsSessionOwner,
-  unavailableVerdict,
   type ZeropsSessionDriver,
   type ZeropsSessionOwner,
   type ZeropsSessionState,
 } from "@t3tools/client-runtime/zerops/account";
-import { makeZeropsSessionCalls, probeZeropsPrincipal } from "@t3tools/client-runtime/data";
+import {
+  makeZeropsSessionCalls,
+  probeZeropsPrincipal,
+  unavailableVerdict,
+} from "@t3tools/client-runtime/data";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
 import { rememberBootFrame } from "./bootFrame";
 // Its account hooks hold the account open and end its kept sessions: loaded before any account opens.

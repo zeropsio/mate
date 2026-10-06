@@ -1,9 +1,12 @@
 import { describe, expect, it } from "@effect/vitest";
 
 import type { ZeropsUser } from "../api.ts";
-import type { ZeropsPrincipalVerdict } from "../account/session.ts";
 import type { ZeropsSession } from "../session.ts";
-import { makeZeropsSessionCalls, probeZeropsPrincipal } from "./zeropsSession.ts";
+import {
+  makeZeropsSessionCalls,
+  probeZeropsPrincipal,
+  type ZeropsPrincipalVerdict,
+} from "./zeropsSession.ts";
 
 const BASE_URL = "https://api.example.test";
 const person: ZeropsUser = { id: "user-1", email: "person@example.test", clientUserList: [] };

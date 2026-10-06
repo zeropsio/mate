@@ -2,13 +2,13 @@ import { describe, expect, it } from "@effect/vitest";
 
 import { ZeropsApiError, type ZeropsUser } from "../api.ts";
 import { INITIAL_BACKOFF, RETRY_RUNGS_MS } from "../knowledge/retryPolicy.ts";
+import type { ZeropsPrincipalVerdict } from "../data/zeropsSession.ts";
 import type { ZeropsSession } from "../session.ts";
 import {
   ZEROPS_SESSION_OWNER_STORAGE_KEY,
   makeZeropsSessionDriver,
   parseZeropsSessionOwner,
   transitionZeropsSession,
-  type ZeropsPrincipalVerdict,
   type ZeropsSessionEffect,
   type ZeropsSessionEvent,
   type ZeropsSessionOwner,

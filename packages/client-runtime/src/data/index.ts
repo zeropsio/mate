@@ -16,6 +16,8 @@ export {
 export {
   makeZeropsSessionCalls,
   probeZeropsPrincipal,
+  unavailableVerdict,
+  type ZeropsPrincipalVerdict,
   type ZeropsSessionCalls,
 } from "../zerops/data/zeropsSession.ts";
 export { endIssuedSession } from "./adapters/issuedSessions.ts";

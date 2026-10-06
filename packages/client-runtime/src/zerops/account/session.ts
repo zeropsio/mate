@@ -20,6 +20,7 @@
  * UI-free and platform-free: storage, locks, timers and the network are ports.
  */
 import { ZeropsApiError, type ZeropsUser } from "../api.ts";
+import type { ZeropsPrincipalVerdict } from "../data/zeropsSession.ts";
 import {
   INITIAL_BACKOFF,
   backoffOn,
@@ -53,13 +54,6 @@ export function parseZeropsSessionOwner(raw: string | null): ZeropsSessionOwner 
     return null;
   }
 }
-
-/** What `user/info` said about a session. */
-export type ZeropsPrincipalVerdict =
-  | { readonly kind: "user"; readonly user: ZeropsUser }
-  | { readonly kind: "unauthorized" }
-  /** Zerops did not answer; a 429 says how long to wait (`Retry-After`). */
-  | { readonly kind: "unavailable"; readonly retryAfterMs?: number };
 
 /** The held token of an open account: current, or a stored one being verified. */
 export type ZeropsTokenState =
@@ -697,11 +691,4 @@ export function makeZeropsSessionDriver(ports: ZeropsSessionPorts): ZeropsSessio
         throw refusal();
       }),
   };
-}
-
-/** Zerops did not answer `cause`: a 429 carries the Retry-After the next check waits out. */
-export function unavailableVerdict(cause: unknown): ZeropsPrincipalVerdict {
-  return cause instanceof ZeropsApiError && cause.status === 429 && cause.retryAfterMs !== null
-    ? { kind: "unavailable", retryAfterMs: cause.retryAfterMs }
-    : { kind: "unavailable" };
 }

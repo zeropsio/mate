@@ -14,8 +14,21 @@ import {
   type ZeropsUser,
 } from "../api.ts";
 import type { ZeropsRegistrationInput } from "../registration.ts";
-import { unavailableVerdict, type ZeropsPrincipalVerdict } from "../account/session.ts";
 import { requiresZeropsTwoFactor, type ZeropsSession } from "../session.ts";
+
+/** What `user/info` said about a session. */
+export type ZeropsPrincipalVerdict =
+  | { readonly kind: "user"; readonly user: ZeropsUser }
+  | { readonly kind: "unauthorized" }
+  /** Zerops did not answer; a 429 says how long to wait (`Retry-After`). */
+  | { readonly kind: "unavailable"; readonly retryAfterMs?: number };
+
+/** Zerops did not answer `cause`: a 429 carries the Retry-After the next check waits out. */
+export function unavailableVerdict(cause: unknown): ZeropsPrincipalVerdict {
+  return cause instanceof ZeropsApiError && cause.status === 429 && cause.retryAfterMs !== null
+    ? { kind: "unavailable", retryAfterMs: cause.retryAfterMs }
+    : { kind: "unavailable" };
+}
 
 export interface ZeropsSessionCalls {
   /** The client the session holds its token in; the app's other readers share it. */
