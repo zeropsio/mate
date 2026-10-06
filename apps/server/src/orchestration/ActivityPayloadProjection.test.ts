@@ -994,17 +994,31 @@ describe("every driver's call reaches the client in one form", () => {
  */
 describe("a call's echoed update goes, live and on reload alike", () => {
   const AT = "2026-10-05T21:54:17.030Z";
-  const payloadOf = (status: string, output: string) => ({
+  const PICTURE = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk";
+  /** A zerops_browser call as Claude's adapter writes it: the raw tool_result, screenshot block included. */
+  const payloadOf = (kind: string, output: string) => ({
     itemType: "mcp_tool_call",
     toolCallId: "toolu_1",
-    status,
+    status: kind === "tool.completed" ? "completed" : "inProgress",
+    detail: 'mcp__zerops__zerops_browser: {"url":"https://app.example/"}',
     data: {
       toolName: "mcp__zerops__zerops_browser",
-      zerops: {
-        toolName: "zerops_browser",
-        resultText: output,
-        images: [{ mimeType: "image/png", data: "iVBORw0KGgo=" }],
-      },
+      input: { url: "https://app.example/", screenshot: true },
+      ...(kind === "tool.started"
+        ? {}
+        : {
+            result: {
+              type: "tool_result",
+              tool_use_id: "toolu_1",
+              content: [
+                { type: "text", text: output },
+                {
+                  type: "image",
+                  source: { type: "base64", media_type: "image/png", data: PICTURE },
+                },
+              ],
+            },
+          }),
     },
   });
   type Row = readonly [id: string, kind: string, createdAt?: string, output?: string];
@@ -1014,53 +1028,65 @@ describe("a call's echoed update goes, live and on reload alike", () => {
       tone: "tool",
       kind,
       summary: "MCP tool call",
-      payload: payloadOf(kind === "tool.completed" ? "completed" : "inProgress", output),
+      payload: payloadOf(kind, output),
       turnId: "turn-1",
       createdAt,
     }) as unknown as OrchestrationThreadActivity;
 
-  /** What a reload shows: the stored rows in their order (instant, then id), as the snapshot projects them. */
-  const reload = (rows: ReadonlyArray<Row>) =>
+  const pictureOf = (activity: OrchestrationThreadActivity | undefined) =>
+    (activity?.payload as { data?: { zerops?: { images?: Array<{ data: string }> } } } | undefined)
+      ?.data?.zerops?.images?.[0]?.data;
+
+  /**
+   * What a reload shows: each row as stored — a streamed update projected as
+   * it was written, the rest raw — read back projected by the snapshot query
+   * in its order (sequence, instant, id), then projected by the snapshot.
+   */
+  const reloaded = (rows: ReadonlyArray<Row>) =>
     (
       projectThreadDetailSnapshot({
         thread: {
           messages: [],
           activities: rows
             .map(rowOf)
-            .toSorted((a, b) =>
-              a.createdAt === b.createdAt
-                ? a.id.localeCompare(b.id)
-                : a.createdAt.localeCompare(b.createdAt),
+            .map((row) => (row.kind === "tool.updated" ? projectActivityPayload(row) : row))
+            .map(projectActivityPayload)
+            .toSorted(
+              (left, right) =>
+                (left.sequence ?? -1) - (right.sequence ?? -1) ||
+                left.createdAt.localeCompare(right.createdAt) ||
+                left.id.localeCompare(right.id),
             ),
         },
       } as unknown as OrchestrationThreadDetailSnapshot) as unknown as {
         thread: { activities: OrchestrationThreadActivity[] };
       }
-    ).thread.activities.map((activity) => activity.id);
+    ).thread.activities;
+  const reload = (rows: ReadonlyArray<Row>) => reloaded(rows).map((activity) => activity.id);
 
-  /** What a live page shows: each row folded by the client's reducer in the order it arrived. */
-  const live = (rows: ReadonlyArray<Row>) =>
-    rows
-      .reduce<OrchestrationThread>(
-        (thread, row, index) => {
-          const result = applyThreadDetailEvent(thread, {
-            sequence: index + 1,
-            eventId: `event-${index}`,
-            commandId: null,
-            causationEventId: null,
-            correlationId: null,
-            metadata: {},
-            occurredAt: AT,
-            aggregateKind: "thread",
-            aggregateId: "thread-1",
-            type: "thread.activity-appended",
-            payload: { threadId: "thread-1", activity: rowOf(row) },
-          } as unknown as OrchestrationEvent);
-          return result.kind === "updated" ? result.thread : thread;
-        },
-        { id: "thread-1", activities: [], messages: [] } as unknown as OrchestrationThread,
-      )
-      .activities.map((activity) => activity.id);
+  /** What a live page shows: each row's event as the socket sends it, folded by the client's reducer in the order it arrived. */
+  const lived = (rows: ReadonlyArray<Row>) =>
+    rows.reduce<OrchestrationThread>(
+      (thread, row, index) => {
+        const event = projectActivityEvent({
+          sequence: index + 1,
+          eventId: `event-${index}`,
+          commandId: null,
+          causationEventId: null,
+          correlationId: null,
+          metadata: {},
+          occurredAt: AT,
+          aggregateKind: "thread",
+          aggregateId: "thread-1",
+          type: "thread.activity-appended",
+          payload: { threadId: "thread-1", activity: rowOf(row) },
+        } as unknown as OrchestrationEvent);
+        const result = applyThreadDetailEvent(thread, event);
+        return result.kind === "updated" ? result.thread : thread;
+      },
+      { id: "thread-1", activities: [], messages: [] } as unknown as OrchestrationThread,
+    ).activities;
+  const live = (rows: ReadonlyArray<Row>) => lived(rows).map((activity) => activity.id);
 
   const START: Row = ["m-start", "tool.started", "2026-10-05T21:54:00.000Z"];
   const permutations = <T>(items: ReadonlyArray<T>): T[][] =>
@@ -1083,14 +1109,18 @@ describe("a call's echoed update goes, live and on reload alike", () => {
     ];
     const expected = start ? ["m-start", "c-done"] : ["c-done"];
     expect(reload(rows)).toEqual(expected);
+    // The projection read the screenshot out of the raw result: the kept
+    // completion carries it, live and on reload.
+    expect(pictureOf(reloaded(rows).at(-1))).toBe(PICTURE);
     for (const arrival of permutations(rows)) {
       expect(live(arrival)).toEqual(expected);
+      expect(pictureOf(lived(arrival).at(-1))).toBe(PICTURE);
     }
   });
 
   it.each([
     {
-      name: "an update with new output after the completion stays (an ACP agent's late output)",
+      name: "an update with new output after the completion stays (late output)",
       rows: [
         START,
         ["c-done", "tool.completed"],

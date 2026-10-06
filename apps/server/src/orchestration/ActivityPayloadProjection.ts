@@ -678,7 +678,8 @@ function dropStaleContextWindowActivities(
  * turns, so a completion in a different turn could vanish and leave the
  * dropped update unrepresented. The completion must also come *after* the
  * update within the turn — a later update belongs to a subsequent call that
- * reuses the same identity and is still in flight. Rows without a lifecycle
+ * reuses the same identity and is still in flight — but for a completion's
+ * echo, which goes wherever it sorts (see below). Rows without a lifecycle
  * identity pass through, matching the clients, which never collapse them.
  * Deliberate divergence from client collapse: clients fold only *adjacent*
  * lifecycle rows, so a superseded update separated from its completion by an
@@ -728,9 +729,11 @@ function dropSupersededToolUpdatedActivities(
   // so that update stays, or a reload would start the step at its end.
   const seen = new Set<string>();
   // A completion's echo — its update stamped with the same instant and the
-  // same payload but its status — goes wherever it sorts, first sight or not:
-  // compared as the client receives both (a stored update is already
-  // projected, a stored completion is not).
+  // same payload but its status (`isToolCallEcho`) — goes wherever it sorts,
+  // first sight or not. Both rows are compared projected, the form the client
+  // receives: the snapshot query hands most rows here projected already, but
+  // a raw read hands a stored completion as it was written, and projecting a
+  // projected row again changes nothing.
   const projected = new Map<OrchestrationThreadActivity, OrchestrationThreadActivity>();
   const projectedOf = (row: OrchestrationThreadActivity) => {
     const known = projected.get(row);
