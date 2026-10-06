@@ -138,6 +138,23 @@ export interface MateComingInput {
   readonly closeOffHold?: "open" | "checking" | "awaiting-hq" | undefined;
 }
 
+/**
+ * The moments at which what `mateComing` says of a listed Mate changes by time alone, wall ms: its
+ * arrival's window closing, its first build's grace running out. A surface that draws the line
+ * redraws at the earliest of them still ahead (`useComingClock`), not on whatever else happens.
+ */
+export function mateComingDeadlines(
+  candidate: MateComingInput["candidate"],
+): ReadonlyArray<number> {
+  const deadlines: number[] = [];
+  if (candidate?.arriving !== undefined) deadlines.push(candidate.arriving.until);
+  if (candidate?.service?.status === "READY_TO_DEPLOY") {
+    const created = Date.parse(candidate.service.created ?? "");
+    if (!Number.isNaN(created)) deadlines.push(created + FIRST_BUILD_GRACE_MS);
+  }
+  return deadlines;
+}
+
 /** Whether `at` is within `graceMs` of now; an unknown time or now counts as young. */
 function youngAt(at: string | undefined, nowMs: number | undefined, graceMs: number): boolean {
   const ms = Date.parse(at ?? "");

@@ -20,7 +20,14 @@ import { hqMatesAtom } from "../state/zerops";
 import { overviewAgentActivity, type ZeropsAgentActivity } from "./agentActivity";
 import type { MatesActivity } from "./useZeropsAgentActivity";
 import { useEnvironmentLinks } from "../routes/-environmentTargets";
-import { arrivalAwaitsAnswer, arrivalLinkHolds, mateComing, type MateComing } from "./mateComing";
+import {
+  arrivalAwaitsAnswer,
+  arrivalLinkHolds,
+  mateComing,
+  mateComingDeadlines,
+  type MateComing,
+} from "./mateComing";
+import { useWakeAt } from "./useNowMs";
 import { useNewMate } from "./newMate";
 import { useProjectCreations } from "./useProjectCreations";
 import { useCloseOffHolds } from "./accountEnvironments";
@@ -137,6 +144,7 @@ export function useMateComingOf(
   const verdicts = useProjectCreations(candidates);
   const firstBuilds = useZeropsFirstBuilds(candidates);
   const pressOf = usePressesElsewhere(candidates);
+  const wokeAt = useComingClock(candidates);
   return useCallback(
     (candidate: ZeropsCandidate) => {
       const { press, setUpFailed } = pressComingInput(presses, candidate.project.id);
@@ -152,7 +160,9 @@ export function useMateComingOf(
           : undefined,
         candidate: applyProjectCreationVerdict(candidate, verdicts.get(candidate.project.id)),
         setUpFailed: setUpFailed ?? creations[candidate.project.id]?.failed,
-        nowMs: Date.now(),
+        // A new getter at each deadline (`useComingClock`): the menu is memoised, and nothing
+        // else may change then.
+        nowMs: Math.max(Date.now(), wokeAt),
         created: creations[candidate.project.id] !== undefined,
         linkHolds:
           creations[candidate.project.id] === undefined
@@ -164,6 +174,14 @@ export function useMateComingOf(
         pressElsewhere: pressOf(candidate.project.id),
       });
     },
-    [presses, creations, firstBuilds, mateLink, pressOf, verdicts, closeOffHolds],
+    [presses, creations, firstBuilds, mateLink, pressOf, verdicts, closeOffHolds, wokeAt],
   );
+}
+
+/**
+ * The moment a listed Mate's coming-up line may last have changed by time alone
+ * (`mateComingDeadlines`): its arrival's window closing, its first build's grace running out.
+ */
+export function useComingClock(candidates: ReadonlyArray<ZeropsCandidate>): number {
+  return useWakeAt(useMemo(() => candidates.flatMap(mateComingDeadlines), [candidates]));
 }
