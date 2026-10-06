@@ -82,15 +82,53 @@ describe("hqBirthWaits", () => {
     expect(held).toEqual([]);
   });
 
-  it("end visibly once Zerops can no longer be followed, or says it stopped", async () => {
-    const { store, waits } = account();
-    const zone = waits.untilZone(ORG, "hq");
+  it.each(["services", "zone", "process"] as const)(
+    "losing observation of %s leaves its outcome uncertain",
+    async (step) => {
+      const { store, waits, held } = account();
+      const pending =
+        step === "services"
+          ? waits.untilServices(ORG, "hq")
+          : step === "zone"
+            ? waits.untilZone(ORG, "hq")
+            : waits.untilProcessEnds(ORG, "hq", "deploy");
+      store.dispatch({
+        kind: "stream",
+        key: linkKeys.zerops(ORG),
+        now: 0,
+        event: { kind: "demand", demanded: false },
+      });
+      await expect(pending).rejects.toMatchObject({
+        message: HQ_BIRTH_UNFOLLOWED,
+        kind: "uncertain",
+      });
+      expect(held).toEqual([]);
+    },
+  );
+
+  it("keeps Zerops's reported import failure definitive", async () => {
+    const { store, waits, held } = account();
+    const pending = waits.untilServices(ORG, "hq");
     store.dispatch({
-      kind: "stream",
-      key: linkKeys.zerops(ORG),
-      now: 0,
-      event: { kind: "demand", demanded: false },
+      kind: "rows",
+      scope: runningScope(ORG),
+      generation: 1,
+      method: "push",
+      via: "zerops-realtime",
+      rows: [
+        {
+          family: "process",
+          id: "deploy",
+          value: processValue({ id: "deploy", projectId: "hq", status: "FAILED" }),
+          revision: zeropsVersion(2),
+        },
+      ],
     });
-    await expect(zone).rejects.toThrow(HQ_BIRTH_UNFOLLOWED);
+    await expect(pending).rejects.toMatchObject({
+      name: "Error",
+      message:
+        "HQ's service import is FAILED. Inspect process deploy in Zerops, fix the cause, then press Again.",
+    });
+    expect(held).toEqual([]);
   });
 });

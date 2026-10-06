@@ -1,6 +1,7 @@
 /** Runs HQ's setup through operations, publishing its journal progress as receipts rather than a second UI store. */
 import * as Effect from "effect/Effect";
 
+import { ZeropsApiError } from "../../../zerops/api.ts";
 import {
   HQ_BIRTH_START,
   runHqBirth,
@@ -73,7 +74,9 @@ export function hqProvisionExecutor(input: {
           ok: false,
           step: record.step === "done" ? "ready" : record.step,
           reason: cause instanceof Error ? cause.message : "Zerops could not be reached.",
-          uncertain: false,
+          uncertain:
+            cause instanceof ZeropsApiError &&
+            (cause.kind === "network" || cause.kind === "uncertain"),
         };
       }
       if (outcome.ok) {

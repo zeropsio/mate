@@ -8,6 +8,7 @@
  */
 import type { Atom, AtomRegistry } from "effect/unstable/reactivity";
 
+import { ZeropsApiError } from "../zerops/api.ts";
 import type { DetailDemand } from "./demand.ts";
 import {
   hqBirthProcess,
@@ -51,7 +52,7 @@ export function hqBirthWaits(input: {
   const until = <A, B>(
     projectId: string,
     atom: Atom.Atom<A>,
-    decide: (value: A) => { readonly done: B } | { readonly stop: string } | null,
+    decide: (value: A) => { readonly done: B } | { readonly stop: Error } | null,
   ) =>
     new Promise<B>((resolve, reject) => {
       const release = input.demandDetail({
@@ -69,7 +70,7 @@ export function hqBirthWaits(input: {
           if (decided === null) return;
           ended = true;
           if ("done" in decided) resolve(decided.done);
-          else reject(new Error(decided.stop));
+          else reject(decided.stop);
           cancel?.();
           release();
         },
@@ -88,9 +89,9 @@ export function hqBirthWaits(input: {
           case "waiting":
             return null;
           case "unobserved":
-            return { stop: HQ_BIRTH_UNFOLLOWED };
+            return { stop: new ZeropsApiError(HQ_BIRTH_UNFOLLOWED, "uncertain") };
           case "stopped":
-            return { stop: services.reason };
+            return { stop: new Error(services.reason) };
           case "up":
             return { done: { serviceId: services.serviceId, serviceIds: services.serviceIds } };
         }
@@ -103,7 +104,7 @@ export function hqBirthWaits(input: {
           zone.kind === "zone"
             ? { done: zone.zone }
             : zone.kind === "unobserved"
-              ? { stop: HQ_BIRTH_UNFOLLOWED }
+              ? { stop: new ZeropsApiError(HQ_BIRTH_UNFOLLOWED, "uncertain") }
               : null,
       ),
     untilProcessEnds: (orgId, projectId, processId) =>
@@ -114,7 +115,7 @@ export function hqBirthWaits(input: {
           process.kind === "ended"
             ? { done: process.status }
             : process.kind === "unobserved"
-              ? { stop: HQ_BIRTH_UNFOLLOWED }
+              ? { stop: new ZeropsApiError(HQ_BIRTH_UNFOLLOWED, "uncertain") }
               : null,
       ),
   };
