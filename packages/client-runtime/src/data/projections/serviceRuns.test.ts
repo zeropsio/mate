@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { liveServices, ORG } from "../__fixtures__/account.ts";
-import type { ServiceValue } from "../families/service.ts";
+import { liveServices, ORG, zeropsVersion } from "../__fixtures__/account.ts";
+import { serviceFamily, servicesScope, type ServiceValue } from "../families/service.ts";
 import { emptyAccount, type AccountState } from "../model.ts";
 import { reduceAccount, type AccountInput } from "../reducer.ts";
 import { readsOfState } from "../store.ts";
@@ -79,3 +79,35 @@ describe("serviceRuns", () => {
   });
 });
 
+/** A pushed frame, as the platform sends it, decoded as the adapter decodes it. */
+const pushed = (frame: Readonly<Record<string, unknown>>): AccountInput => {
+  const row = serviceFamily.zerops!.decode(frame)!;
+  return {
+    kind: "rows",
+    scope: servicesScope(ORG),
+    generation: 1,
+    method: "push",
+    via: "zerops-realtime",
+    rows: [{ family: "service", id: row.id, value: row.value, revision: zeropsVersion(2) }],
+  };
+};
+
+it("a push that names only part of a service's row keeps what it runs", () => {
+  const running = listed({
+    activeAppVersion: { id: "v2", source: "GIT" },
+    userData: named("v2", "main 6aeae99"),
+  });
+  const state = reduceAccount(
+    running,
+    pushed({ id: "app", projectId: "p1", name: "app", status: "STOPPED", _version: 2 }),
+  ).state;
+  expect(readsOfState(state).fact("service", "app")).toMatchObject({
+    kind: "known",
+    value: { status: "STOPPED" },
+  });
+  expect(serviceRuns.derive(readsOfState(state), { orgId: ORG, serviceId: "app" })).toEqual({
+    activeId: "v2",
+    source: "GIT",
+    name: "main 6aeae99",
+  });
+});
