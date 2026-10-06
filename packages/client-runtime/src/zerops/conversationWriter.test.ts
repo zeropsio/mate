@@ -73,6 +73,12 @@ describe("resolveConversationWriter", () => {
       expected: "unknown",
     },
     {
+      // The environment's providers still loading: whose agent it is cannot be told yet.
+      name: "an instance the providers do not name yet is unknown, never yours",
+      input: input({ instanceId: "opencode", providers: [], ownership: "none" }),
+      expected: "unknown",
+    },
+    {
       name: "a signed-in agent missing from the snapshot is unknown, not nobody's",
       input: input({ feed: known(snapshot([])), ownership: "none" }),
       expected: "unknown",
@@ -232,6 +238,17 @@ describe("hqConversationWriter", () => {
         viewerSubject: undefined,
       },
       expected: "you",
+    },
+    {
+      // The environment's providers still loading: whose agent it is cannot be told yet.
+      name: "an instance the providers do not name yet: unknown, never yours",
+      input: {
+        instanceId: "opencode",
+        providers: [],
+        signers: SIGNERS,
+        viewerSubject: "u-ada",
+      },
+      expected: "unknown",
     },
   ])("$name", ({ input, expected }) => {
     expect(hqConversationWriter(input).kind).toBe(expected);

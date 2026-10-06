@@ -53,6 +53,18 @@ const YOU: ConversationWriter = { kind: "you" };
 const SOMEONE: ConversationWriter = { kind: "someone" };
 const NOBODY_YET: ConversationWriter = { kind: "nobody-yet" };
 
+/**
+ * Whether the agent an instance runs is told at all: the providers name the instance, or its id is
+ * one of the two agents' own. While the environment's providers load, it is not — and an agent not
+ * told is unknown, never one nobody signs in to.
+ */
+const agentTold = (
+  instanceId: string,
+  providers: ReadonlyArray<{ readonly instanceId: string }>,
+): boolean =>
+  providers.some((provider) => provider.instanceId === instanceId) ||
+  agentIdForProviderInstance(instanceId) !== undefined;
+
 export function resolveConversationWriter(input: ConversationWriterInput): ConversationWriter {
   const { feed } = input;
   // No environment: no Mate, nothing anybody signs in to.
@@ -68,7 +80,8 @@ export function resolveConversationWriter(input: ConversationWriterInput): Conve
   const spent = resolveSpentLogin(input.instanceId, snapshot, input.providers);
   if (spent === undefined) {
     // An agent Mate never signs anybody in to has no signer to wait for; one it does, missing
-    // from the snapshot, is not read yet.
+    // from the snapshot, is not read yet — and one the providers do not name yet is not told.
+    if (!agentTold(input.instanceId, input.providers)) return UNKNOWN;
     return resolveOwnedAgentId(input.instanceId, input.providers) === undefined ? YOU : UNKNOWN;
   }
   // A token belongs to the project, not to a person.
@@ -109,7 +122,9 @@ export function hqConversationWriter(input: {
   /** The signed-in Zerops user's id; `undefined` while the session is not read. */
   readonly viewerSubject: string | undefined;
 }): ConversationWriter {
-  if (input.instanceId === undefined) return UNKNOWN;
+  if (input.instanceId === undefined || !agentTold(input.instanceId, input.providers)) {
+    return UNKNOWN;
+  }
   if (resolveOwnedAgentId(input.instanceId, input.providers) === undefined) return YOU;
   const agent = agentIdForProviderInstance(input.instanceId);
   if (agent === undefined || input.signers === undefined) return UNKNOWN;
