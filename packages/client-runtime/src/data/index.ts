@@ -21,6 +21,15 @@ export {
   type ZeropsSessionCalls,
 } from "../zerops/data/zeropsSession.ts";
 export { endIssuedSession } from "./adapters/issuedSessions.ts";
+export { makeBuildLogTransport } from "./adapters/buildLog.ts";
+export {
+  buildLogSessionKeyOf,
+  makeAccountBuildLogs,
+  type BuildLogLease,
+  type BuildLogRegistry,
+  type BuildLogSnapshot,
+  type BuildLogStatus,
+} from "./buildLogs.ts";
 export { historyScope, runningScope, type ProcessValue } from "./families/process.ts";
 export { projectsScope, type ProjectValue } from "./families/project.ts";
 export { servicesScope, type ServiceValue } from "./families/service.ts";

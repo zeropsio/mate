@@ -29,8 +29,6 @@ import { bridgedServicesOf, createZeropsDataAtoms } from "./atoms.ts";
 import type { ServiceDeployObserved } from "./deployedVersion.ts";
 import { grantCapabilities } from "./access/capabilities.ts";
 import { commandAdmissionError, commandTarget } from "./commands.ts";
-import { BuildLogTransportError, type BuildLogTransport } from "./logTransport.ts";
-import { makeBuildLogRegistry, type BuildLogRegistry } from "./logs.ts";
 import {
   commandDeadlineMs,
   DEFAULT_ZEROPS_DATA_POLICY,
@@ -598,13 +596,8 @@ export interface ZeropsDataRuntimeOptions {
   readonly policy?: ZeropsDataPolicy;
   readonly initialAccess?: AccessState;
   readonly visibility?: ZeropsVisibility;
-  readonly buildLogTransport?: BuildLogTransport;
   /** The jitter source of every backoff: a retry comes up to `RETRY_JITTER` of its wait sooner. */
   readonly random?: () => number;
-  readonly logTimers?: {
-    readonly setTimer: (callback: () => void, delayMs: number) => unknown;
-    readonly clearTimer: (handle: unknown) => void;
-  };
 }
 
 interface ZeropsDataRuntimeDiagnostics {
@@ -620,7 +613,6 @@ export type ManagedZeropsDataRuntime = ZeropsDataRuntime &
       project: ProjectRef,
     ) => Effect.Effect<ZeropsProject, ZeropsApiError>;
     readonly cells: ZeropsCells;
-    readonly logs: BuildLogRegistry;
     /** The epoch's access grant, interpreted here (DESIGN §4.2, D16(a)). */
     readonly access: ZeropsAccessGrant;
     /**
@@ -650,13 +642,6 @@ const unavailableCellAdapter: ZeropsCellAdapter = {
   readServiceMateFlag: unavailableResource,
   readOrganizationIntegrationTokens: unavailableResource,
   readOrganizationMembers: unavailableResource,
-};
-
-const unavailableLogTransport: BuildLogTransport = {
-  loadPage: () => Promise.reject(new BuildLogTransportError("closed")),
-  openFollow: () => Promise.reject(new BuildLogTransportError("closed")),
-  shutdown: () => undefined,
-  diagnostics: () => ({ activeFollowers: 0, closed: true }),
 };
 
 function registrationInterest(observation: PlatformObservation): InterestIdentity | null {
@@ -926,26 +911,8 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         }),
       ),
     ) ?? (() => undefined);
-  const logTimers = options.logTimers ?? {
-    setTimer: (callback: () => void, delayMs: number) =>
-      Effect.runForkWith(runtimeContext)(
-        Effect.sleep(Duration.millis(delayMs)).pipe(Effect.andThen(Effect.sync(callback))),
-      ),
-    clearTimer: (handle: unknown) => {
-      if (Fiber.isFiber(handle)) handle.interruptUnsafe();
-    },
-  };
   const clock = yield* Clock.Clock;
-  const logs = makeBuildLogRegistry({
-    scope: options.scope,
-    access: () => Ref.getUnsafe(model).access,
-    now: () => clock.currentTimeMillisUnsafe(),
-    transport: options.buildLogTransport ?? unavailableLogTransport,
-    policy,
-    setTimer: logTimers.setTimer,
-    clearTimer: logTimers.clearTimer,
-  });
-  /** The access the build logs and the cells were last reconciled with. */
+  /** The access the cells were last reconciled with. */
   let reconciledAccess = Ref.getUnsafe(model).access;
   const runtimeScope = yield* Scope.make();
   // Demand arrives from independently run UI effects; workers retain the account clock and scheduler.
@@ -1073,7 +1040,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
   };
 
   /**
-   * Every change of access reaches the build logs and the cells, whatever made it. The
+   * Every change of access reaches the cells, whatever made it. The
    * atoms hear the change now, after the task, or when the ingress loop flushes its batch.
    */
   /** A held interest failed on its own and retryable, whose retry nobody has scheduled yet. */
@@ -1100,7 +1067,6 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           const retry = awaitsInterestRetry(next) ? requestInterestRetries : Effect.void;
           if (next.access === reconciledAccess) return retry;
           reconciledAccess = next.access;
-          logs.reconcileAccess();
           return Effect.andThen(retry, cells.reconcileAccess);
         }),
       ),
@@ -4100,7 +4066,6 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         barriers.clear();
         stopTokenWrites();
         yield* cells.shutdown;
-        logs.shutdown();
         yield* Scope.close(runtimeScope, Exit.void);
         interests.clear();
         leases.clear();
@@ -4120,7 +4085,6 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
     reads: atoms.reads,
     commands,
     cells,
-    logs,
     acquire,
     refresh,
     acquireMany,

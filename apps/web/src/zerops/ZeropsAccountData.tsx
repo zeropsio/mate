@@ -6,7 +6,9 @@
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import {
   buildsUnderWay,
+  makeAccountBuildLogs,
   makeAccountStore,
+  makeBuildLogTransport,
   makeZeropsWire,
   observeAccount,
   NOT_READ_SERVICES,
@@ -16,6 +18,7 @@ import {
   accountReadsAtom,
   type ProjectServices,
   type AccountReads,
+  type BuildLogRegistry,
   type DetailDemand,
   type Projection,
 } from "@t3tools/client-runtime/data";
@@ -27,11 +30,12 @@ import { accountOperations, AccountOperationsContext } from "./accountOperations
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
 /**
- * What a screen may reach of the account's data: the store's reads, never its writer, and the
- * person's "try now" for what it observes.
+ * What a screen may reach of the account's data: the store's reads, never its writer, the
+ * person's "try now" for what it observes, and the builds' logs a card holds while it shows one.
  */
 export interface AccountData extends AccountReads {
   readonly retry: () => void;
+  readonly logs: BuildLogRegistry;
 }
 
 const AccountDataContext = createContext<AccountData | null>(null);
@@ -49,11 +53,17 @@ export function ZeropsAccountData({ children }: { readonly children: ReactNode }
       }),
     [client, store],
   );
+  const logs = useMemo(
+    () => makeAccountBuildLogs({ store, transport: makeBuildLogTransport({ client }) }),
+    [client, store],
+  );
   const orgId = status === "signed-in" ? (activeOrganization?.id ?? null) : null;
   // The account's lifetime closes (sign-out, another account) before React unmounts this, and
   // disposes the registry right after: the account's data ends first, so what the unmounting
   // screens still release publishes nothing.
   useEffect(() => onAccountLifetimeClose(observation.close), [observation]);
+  useEffect(() => onAccountLifetimeClose(logs.shutdown), [logs]);
+  useEffect(() => () => logs.shutdown(), [logs]);
   useEffect(() => {
     observation.show(orgId);
   }, [observation, orgId]);
@@ -64,8 +74,9 @@ export function ZeropsAccountData({ children }: { readonly children: ReactNode }
       orgId,
       demandDetail: observation.demandDetail,
       retry: observation.retry,
+      logs,
     }),
-    [observation, orgId, store],
+    [logs, observation, orgId, store],
   );
   // The operations are built here, over the store this mount owns: no screen reaches its writer.
   const operations = useMemo(

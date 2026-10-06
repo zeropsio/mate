@@ -1,18 +1,29 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { buildLogLineBytes, type BuildLogLine } from "../activity/buildLog.ts";
-import { project, scope, verifiedAccess, grant } from "./__fixtures__/index.ts";
+import { AtomRegistry } from "effect/unstable/reactivity";
+
+import { buildLogLineBytes, type BuildLogLine } from "../zerops/activity/buildLog.ts";
+import { liveZerops } from "./__fixtures__/account.ts";
 import type {
   BuildLogFollowHandle,
   BuildLogFollowRequest,
   BuildLogPageRequest,
   BuildLogTransport,
   BuildLogTransportPage,
-} from "./logTransport.ts";
-import { BuildLogTransportError } from "./logTransport.ts";
-import { BuildLogRegistryError, buildLogSessionKeyOf, makeBuildLogRegistry } from "./logs.ts";
-import { makeZeropsDataPolicy } from "./policy.ts";
-import { ZeropsAccountId, ZeropsOrganizationId, type AccessState } from "./types.ts";
+} from "./adapters/buildLog.ts";
+import { BuildLogTransportError } from "./adapters/buildLog.ts";
+import {
+  BUILD_LOG_POLICY,
+  BuildLogRegistryError,
+  buildLogSessionKeyOf,
+  makeAccountBuildLogs,
+  makeBuildLogRegistry,
+  type BuildLogPolicy,
+} from "./buildLogs.ts";
+import { makeAccountStore } from "./store.ts";
+
+const PROJECT = "p1";
+const OTHER_PROJECT = "p2";
 
 const QUERY = { buildServiceStackId: "build-1", appVersionId: "version-1" };
 
@@ -139,36 +150,14 @@ class FakeTransport implements BuildLogTransport {
   }
 }
 
-function harness(
-  transport = new FakeTransport(),
-  overrides: Parameters<typeof makeZeropsDataPolicy>[0] = {},
-) {
+function harness(transport = new FakeTransport(), overrides: Partial<BuildLogPolicy> = {}) {
   const timers = new ManualTimers();
-  const otherProject = {
-    ...project(),
-    organization: { ...project().organization, organizationId: ZeropsOrganizationId.make("org-2") },
-  };
-  const access: { current: AccessState } = {
-    current: {
-      ...verifiedAccess(),
-      status: "verified",
-      ...grant(),
-      organizations: [
-        ...grant().organizations,
-        { organization: otherProject.organization, mutationsAllowed: true },
-      ],
-      projects: [
-        ...grant().projects,
-        { project: otherProject, role: "OWNER", mutationsAllowed: true },
-      ],
-    },
-  };
+  /** The projects the account's store withholds or deleted. */
+  const access = { denied: new Set<string>() };
   const registry = makeBuildLogRegistry({
-    scope: scope(),
-    access: () => access.current,
-    now: () => timers.now,
+    readable: (projectId) => !access.denied.has(projectId),
     transport,
-    policy: makeZeropsDataPolicy(overrides),
+    policy: { ...BUILD_LOG_POLICY, ...overrides },
     setTimer: timers.set,
     clearTimer: timers.clear,
   });
@@ -176,11 +165,11 @@ function harness(
 }
 
 describe("shared build log registry", () => {
-  it("keys by the full ProjectRef and filter, shares ref-counted sessions, and disposes a grace after the last release", async () => {
+  it("keys by the project and filter, shares ref-counted sessions, and disposes a grace after the last release", async () => {
     const { registry, transport, timers } = harness();
     transport.pages.push({ lines: [line("l1")], rejectedItems: 0 });
-    const first = registry.acquire(project(), QUERY, { follow: true });
-    const second = registry.acquire(project(), { ...QUERY }, { follow: true });
+    const first = registry.acquire(PROJECT, QUERY, { follow: true });
+    const second = registry.acquire(PROJECT, { ...QUERY }, { follow: true });
     await registry.drain();
 
     expect(first.session).toBe(second.session);
@@ -188,16 +177,9 @@ describe("shared build log registry", () => {
     expect(transport.followRequests).toHaveLength(1);
     expect(registry.diagnostics()).toEqual({ activeSessions: 1, leases: 2, closed: false });
 
-    const otherOrganization = {
-      ...project(),
-      organization: {
-        ...project().organization,
-        organizationId: ZeropsOrganizationId.make("org-2"),
-      },
-    };
     transport.pages.push({ lines: [], rejectedItems: 0 }, { lines: [], rejectedItems: 0 });
-    const otherProjectLease = registry.acquire(otherOrganization, QUERY);
-    const otherFilterLease = registry.acquire(project(), {
+    const otherProjectLease = registry.acquire(OTHER_PROJECT, QUERY);
+    const otherFilterLease = registry.acquire(PROJECT, {
       ...QUERY,
       fromIso: "2026-09-08T00:00:00.000Z",
     });
@@ -219,19 +201,19 @@ describe("shared build log registry", () => {
     timers.flushOne();
     expect(registry.diagnostics().activeSessions).toBe(0);
 
-    expect(buildLogSessionKeyOf(project(), QUERY)).not.toBe(
-      buildLogSessionKeyOf(otherOrganization, QUERY),
+    expect(buildLogSessionKeyOf(PROJECT, QUERY)).not.toBe(
+      buildLogSessionKeyOf(OTHER_PROJECT, QUERY),
     );
-    expect(buildLogSessionKeyOf(project(), QUERY)).not.toBe(
-      buildLogSessionKeyOf(project(), { ...QUERY, fromIso: "2026-09-08T00:00:00.000Z" }),
+    expect(buildLogSessionKeyOf(PROJECT, QUERY)).not.toBe(
+      buildLogSessionKeyOf(PROJECT, { ...QUERY, fromIso: "2026-09-08T00:00:00.000Z" }),
     );
   });
 
   it("ORs follow demand across leases and reopens once with the latest retained cursor", async () => {
     const { registry, transport, timers } = harness();
     transport.pages.push({ lines: [line("l1")], rejectedItems: 0 });
-    const passive = registry.acquire(project(), QUERY);
-    const follower = registry.acquire(project(), QUERY, { follow: true });
+    const passive = registry.acquire(PROJECT, QUERY);
+    const follower = registry.acquire(PROJECT, QUERY, { follow: true });
     await registry.drain();
 
     expect(transport.followRequests[0]?.fromLineId).toBe("l1");
@@ -291,7 +273,7 @@ describe("shared build log registry", () => {
     },
   ] as const)("a followed build's stream is live: $name", async (row) => {
     const { registry, transport, timers } = harness();
-    const lease = registry.acquire(project(), QUERY, { follow: true });
+    const lease = registry.acquire(PROJECT, QUERY, { follow: true });
     const published: Array<{ status: string; lines: number }> = [];
     lease.session.subscribe(() => {
       const snapshot = lease.session.getSnapshot();
@@ -318,7 +300,7 @@ describe("shared build log registry", () => {
   // A stream that stops being followed before its handshake has ended too.
   it("a stream let go before its handshake ends", async () => {
     const { registry, transport } = harness();
-    const lease = registry.acquire(project(), QUERY, { follow: true });
+    const lease = registry.acquire(PROJECT, QUERY, { follow: true });
     await registry.drain();
     lease.setFollow(false);
     expect(transport.followers[0]?.closed).toBe(true);
@@ -335,12 +317,12 @@ describe("shared build log registry", () => {
   ])("a build's released log, $name", async ({ wait, pages, same }) => {
     const { registry, transport, timers } = harness();
     transport.pages.push({ lines: [line("l1")], rejectedItems: 0 });
-    const first = registry.acquire(project(), QUERY, { follow: true });
+    const first = registry.acquire(PROJECT, QUERY, { follow: true });
     await registry.drain();
     first.release();
     expect(transport.followers[0]?.closed).toBe(true);
     if (wait) timers.flushOne();
-    const next = registry.acquire(project(), QUERY);
+    const next = registry.acquire(PROJECT, QUERY);
     await registry.drain();
     expect(transport.pageRequests).toHaveLength(pages);
     expect(next.session === first.session).toBe(same);
@@ -350,21 +332,15 @@ describe("shared build log registry", () => {
     expect(registry.diagnostics().activeSessions).toBe(0);
   });
 
-  it("retries a rejected grant without retaining its error and reacquires successfully", async () => {
+  it("shows a refused grant as no access, without its text", async () => {
     const { registry, transport } = harness();
     transport.nextPageError = new BuildLogTransportError("grant");
-    const lease = registry.acquire(project(), QUERY);
+    const lease = registry.acquire(PROJECT, QUERY);
     await registry.drain();
 
     expect(lease.session.getSnapshot().status).toBe("error");
     expect(lease.session.getSnapshot().error).toBe("access");
     expect(JSON.stringify(lease.session.getSnapshot())).not.toContain("http");
-
-    transport.pages.push({ lines: [line("l1")], rejectedItems: 0 });
-    await lease.retry();
-    expect(lease.session.getSnapshot().status).toBe("ended");
-    expect(lease.session.getSnapshot().error).toBeNull();
-    expect(transport.pageRequests).toHaveLength(2);
   });
 
   it("bounds lines and bytes while publishing explicit cursor, gaps and truncation", async () => {
@@ -374,7 +350,7 @@ describe("shared build log registry", () => {
       retainedLogBytesPerSession: maxBytes,
     });
     transport.pages.push({ lines: [line("l1"), line("l2"), line("l3")], rejectedItems: 0 });
-    const lease = registry.acquire(project(), QUERY);
+    const lease = registry.acquire(PROJECT, QUERY);
     await registry.drain();
 
     const snapshot = lease.session.getSnapshot();
@@ -385,26 +361,6 @@ describe("shared build log registry", () => {
     expect(snapshot.truncation.lines).toBe(1);
   });
 
-  it("deduplicates overlapping older pages and moves the bounded cursor toward history", async () => {
-    const { registry, transport } = harness(undefined, { retainedLogLinesPerSession: 3 });
-    transport.pages.push(
-      { lines: [line("l3"), line("l4")], rejectedItems: 0 },
-      { lines: [line("l1"), line("l2"), line("l3")], rejectedItems: 0 },
-    );
-    const lease = registry.acquire(project(), QUERY);
-    await registry.drain();
-    await lease.loadOlder();
-
-    expect(transport.pageRequests[1]?.beforeLineId).toBe("l3");
-    expect(lease.session.getSnapshot().lines.map(({ id }) => id)).toEqual(["l1", "l2", "l3"]);
-    expect(lease.session.getSnapshot().cursor).toEqual({
-      oldestLineId: "l1",
-      newestLineId: "l3",
-    });
-    expect(lease.session.getSnapshot().gaps.newer).toBe(true);
-    expect(lease.session.getSnapshot().truncation.lines).toBe(1);
-  });
-
   it("coalesces follow publication at 100ms and keeps its pending queue bounded", async () => {
     const { registry, transport, timers } = harness(undefined, {
       logPublicationCoalescingMs: 100,
@@ -412,7 +368,7 @@ describe("shared build log registry", () => {
       retainedLogLinesPerSession: 3,
     });
     transport.pages.push({ lines: [], rejectedItems: 0 });
-    const lease = registry.acquire(project(), QUERY, { follow: true });
+    const lease = registry.acquire(PROJECT, QUERY, { follow: true });
     await registry.drain();
     let publications = 0;
     lease.session.subscribe(() => {
@@ -421,12 +377,12 @@ describe("shared build log registry", () => {
 
     transport.emit(0, [line("l1"), line("l2"), line("l3"), line("l4")]);
     expect(lease.session.getSnapshot().lines).toEqual([]);
-    expect(timers.pending.size).toBe(2);
+    expect(timers.pending.size).toBe(1);
     expect(publications).toBe(0);
 
     timers.flushOne();
     expect(lease.session.getSnapshot().lines.map(({ id }) => id)).toEqual(["l2", "l3"]);
-    expect(timers.pending.size).toBe(2);
+    expect(timers.pending.size).toBe(1);
     timers.flushOne();
     expect(lease.session.getSnapshot().lines.map(({ id }) => id)).toEqual(["l2", "l3", "l4"]);
     expect(lease.session.getSnapshot().gaps.older).toBe(true);
@@ -440,7 +396,7 @@ describe("shared build log registry", () => {
     const { registry, transport, timers } = harness();
     const latePage = deferred<BuildLogTransportPage>();
     transport.pages.push(latePage.promise);
-    const lease = registry.acquire(project(), QUERY, { follow: true });
+    const lease = registry.acquire(PROJECT, QUERY, { follow: true });
     const beforeShutdown = lease.session.getSnapshot();
 
     registry.shutdown();
@@ -454,7 +410,6 @@ describe("shared build log registry", () => {
       lines: [],
       bytes: 0,
       status: "idle",
-      loadingOlder: false,
       cursor: { oldestLineId: null, newestLineId: null },
       gaps: { older: false, newer: false },
       truncation: { lines: 0, bytes: 0 },
@@ -463,15 +418,15 @@ describe("shared build log registry", () => {
     expect(transport.shutdownCalls).toBe(1);
     expect(registry.diagnostics()).toEqual({ activeSessions: 0, leases: 0, closed: true });
     expect(JSON.stringify(lease.session.getSnapshot())).not.toContain("secret");
-    expect(() => registry.acquire(project(), QUERY)).toThrow(BuildLogRegistryError);
+    expect(() => registry.acquire(PROJECT, QUERY)).toThrow(BuildLogRegistryError);
   });
 
   it("aborts pending transport work a grace after the final lease releases", async () => {
     const { registry, transport, timers } = harness();
     const latePage = deferred<BuildLogTransportPage>();
     transport.pages.push(latePage.promise);
-    const first = registry.acquire(project(), QUERY, { follow: true });
-    const second = registry.acquire(project(), QUERY, { follow: true });
+    const first = registry.acquire(PROJECT, QUERY, { follow: true });
+    const second = registry.acquire(PROJECT, QUERY, { follow: true });
     const signal = transport.pageRequests[0]?.signal;
 
     first.release();
@@ -491,7 +446,7 @@ describe("shared build log registry", () => {
   it("ignores late callbacks from a previously opened socket after account shutdown", async () => {
     const { registry, transport, timers } = harness();
     transport.pages.push({ lines: [], rejectedItems: 0 });
-    const lease = registry.acquire(project(), QUERY, { follow: true });
+    const lease = registry.acquire(PROJECT, QUERY, { follow: true });
     await registry.drain();
     const callbacks = transport.followRequests[0]!.callbacks;
 
@@ -515,43 +470,28 @@ describe("shared build log registry", () => {
   ])("at capacity, a build's log asked for: $name", async ({ held, opens }) => {
     const { registry, transport } = harness(undefined, { activeLogSessionsPerAccount: 1 });
     transport.pages.push({ lines: [], rejectedItems: 0 }, { lines: [], rejectedItems: 0 });
-    const first = registry.acquire(project(), QUERY);
+    const first = registry.acquire(PROJECT, QUERY);
     await registry.drain();
     if (!held) first.release();
     const other = { ...QUERY, appVersionId: "version-2" };
     if (!opens) {
-      expect(() => registry.acquire(project(), other)).toThrow(BuildLogRegistryError);
+      expect(() => registry.acquire(PROJECT, other)).toThrow(BuildLogRegistryError);
       return;
     }
-    const next = registry.acquire(project(), other);
+    const next = registry.acquire(PROJECT, other);
     await registry.drain();
     expect(next.session === first.session).toBe(false);
     expect(registry.diagnostics()).toMatchObject({ activeSessions: 1, leases: 1 });
     expect(transport.pageRequests).toHaveLength(2);
   });
 
-  it("rejects foreign accounts and session over-capacity with sanitized errors", async () => {
+  it("rejects a log over capacity with a sanitized error", async () => {
     const { registry, transport } = harness(undefined, { activeLogSessionsPerAccount: 1 });
     transport.pages.push({ lines: [], rejectedItems: 0 });
-    registry.acquire(project(), QUERY);
-    expect(() => registry.acquire(project(), { ...QUERY, appVersionId: "version-2" })).toThrow(
-      BuildLogRegistryError,
-    );
-
-    const foreign = project();
-    const foreignProject = {
-      ...foreign,
-      organization: {
-        ...foreign.organization,
-        account: {
-          ...foreign.organization.account,
-          accountId: ZeropsAccountId.make("other"),
-        },
-      },
-    };
+    registry.acquire(PROJECT, QUERY);
     let error: unknown;
     try {
-      registry.acquire(foreignProject, QUERY);
+      registry.acquire(PROJECT, { ...QUERY, appVersionId: "version-2" });
     } catch (cause) {
       error = cause;
     }
@@ -562,36 +502,28 @@ describe("shared build log registry", () => {
 });
 
 describe("build log access lifetime", () => {
-  it.each(["unverified", "revoked", "deadline"] as const)(
-    "rejects %s access before loading",
-    (reason) => {
-      const { registry, transport, access, timers } = harness();
-      if (reason === "unverified") access.current = { status: "unverified" };
-      else if (reason === "revoked")
-        access.current = { status: "verified", ...grant(), projects: [] };
-      else timers.now = grant().deadlineMs;
-      expect(() => registry.acquire(project(), QUERY)).toThrow(BuildLogRegistryError);
-      expect(transport.pageRequests).toHaveLength(0);
-    },
-  );
+  it("rejects a project the store withholds before loading", () => {
+    const { registry, transport, access } = harness();
+    access.denied.add(PROJECT);
+    expect(() => registry.acquire(PROJECT, QUERY)).toThrow(BuildLogRegistryError);
+    expect(transport.pageRequests).toHaveLength(0);
+  });
 
-  it.each(["revoked", "expiry timer", "throttled timer"] as const)(
-    "erases and cancels open logs after %s",
-    async (reason) => {
+  it.each(["reconciled", "noticed by a late frame"] as const)(
+    "erases and cancels open logs once their project is withheld, %s",
+    async (how) => {
       const { registry, transport, access, timers } = harness();
       transport.pages.push({ lines: [line("l1")], rejectedItems: 0 });
-      const lease = registry.acquire(project(), QUERY, { follow: true });
+      const lease = registry.acquire(PROJECT, QUERY, { follow: true });
       await registry.drain();
       let notices = 0;
       lease.session.subscribe(() => notices++);
-      if (reason === "revoked") {
-        access.current = { status: "verified", ...grant(), projects: [] };
-        registry.reconcileAccess();
-      } else if (reason === "expiry timer") timers.flushOne();
+      access.denied.add(PROJECT);
+      if (how === "reconciled") registry.reconcileAccess();
       else {
-        timers.now = grant().deadlineMs;
         transport.emit(0, [line("late")]);
         timers.flushOne();
+        registry.reconcileAccess();
       }
       expect(lease.session.getSnapshot()).toMatchObject({
         lines: [],
@@ -603,14 +535,12 @@ describe("build log access lifetime", () => {
       expect(transport.followers[0]?.closed).toBe(true);
       expect(transport.pageRequests[0]?.signal?.aborted).toBe(true);
       expect(registry.diagnostics().activeSessions).toBe(0);
-      await lease.retry();
-      await lease.loadOlder();
       lease.setFollow(true);
       transport.emit(0, [line("late")]);
       expect(transport.pageRequests).toHaveLength(1);
       expect(transport.followRequests).toHaveLength(1);
       expect(lease.session.getSnapshot().lines).toEqual([]);
-      expect(() => registry.acquire(project(), QUERY)).toThrow(BuildLogRegistryError);
+      expect(() => registry.acquire(PROJECT, QUERY)).toThrow(BuildLogRegistryError);
       registry.shutdown();
     },
   );
@@ -618,11 +548,11 @@ describe("build log access lifetime", () => {
   it("does not reconcile access or notify listeners from getSnapshot alone", async () => {
     const { registry, transport, access } = harness();
     transport.pages.push({ lines: [line("l1")], rejectedItems: 0 });
-    const lease = registry.acquire(project(), QUERY, { follow: true });
+    const lease = registry.acquire(PROJECT, QUERY, { follow: true });
     await registry.drain();
     let notices = 0;
     lease.session.subscribe(() => notices++);
-    access.current = { status: "verified", ...grant(), projects: [] };
+    access.denied.add(PROJECT);
     lease.session.getSnapshot();
     lease.session.getSnapshot();
     expect(notices).toBe(0);
@@ -636,11 +566,11 @@ describe("build log access lifetime", () => {
     const { registry, transport, access } = harness();
     const page = deferred<BuildLogTransportPage>();
     transport.pages.push(page.promise);
-    const old = registry.acquire(project(), QUERY, { follow: true });
-    access.current = { status: "verified", ...grant(), projects: [] };
+    const old = registry.acquire(PROJECT, QUERY, { follow: true });
+    access.denied.add(PROJECT);
     registry.reconcileAccess();
-    access.current = verifiedAccess();
-    const fresh = registry.acquire(project(), QUERY);
+    access.denied.delete(PROJECT);
+    const fresh = registry.acquire(PROJECT, QUERY);
     old.release();
     expect(registry.diagnostics().activeSessions).toBe(1);
     page.resolve({ lines: [line("late")], rejectedItems: 0 });
@@ -650,5 +580,31 @@ describe("build log access lifetime", () => {
     expect(fresh.session).not.toBe(old.session);
     expect(transport.followRequests).toHaveLength(0);
     registry.shutdown();
+  });
+});
+
+describe("the account's build logs", () => {
+  it("erase a project's log the moment the account's store withholds the project", async () => {
+    const store = makeAccountStore(AtomRegistry.make());
+    liveZerops({ running: [], projects: [{ id: PROJECT }] }).forEach(store.dispatch);
+    const transport = new FakeTransport();
+    transport.pages.push({ lines: [line("l1")], rejectedItems: 0 });
+    const timers = new ManualTimers();
+    const logs = makeAccountBuildLogs({
+      store,
+      transport,
+      setTimer: timers.set,
+      clearTimer: timers.clear,
+    });
+    const lease = logs.acquire(PROJECT, QUERY);
+    await logs.drain();
+    expect(lease.session.getSnapshot().lines.map(({ id }) => id)).toEqual(["l1"]);
+
+    store.dispatch({ kind: "access", family: "project", id: PROJECT, access: "denied" });
+    expect(lease.session.getSnapshot()).toMatchObject({ lines: [], error: "access" });
+    expect(() => logs.acquire(PROJECT, QUERY)).toThrow(BuildLogRegistryError);
+
+    logs.shutdown();
+    expect(transport.shutdownCalls).toBe(1);
   });
 });

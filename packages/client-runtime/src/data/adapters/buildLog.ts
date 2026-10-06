@@ -1,3 +1,10 @@
+/**
+ * A build's log, read from Zerops beside the receiver: a page over HTTP and a stream on a socket
+ * of its own, each behind a fresh signed URL the project's log grant (`GET /project/{id}/log`)
+ * hands out. The URL is a bearer credential: it never leaves this module.
+ *
+ * @module data/adapters/buildLog
+ */
 import {
   buildLogStreamUrl,
   buildLogUrls,
@@ -6,16 +13,10 @@ import {
   withStreamFrom,
   type BuildLogLine,
   type BuildLogQuery,
-} from "../activity/buildLog.ts";
-import type { AccountScope, ProjectRef } from "./types.ts";
+} from "../../zerops/activity/buildLog.ts";
+import type { ZeropsApiClient } from "../../zerops/api.ts";
 
-export type BuildLogTransportErrorKind =
-  | "account-fence"
-  | "closed"
-  | "grant"
-  | "http"
-  | "decode"
-  | "socket";
+export type BuildLogTransportErrorKind = "closed" | "grant" | "http" | "decode" | "socket";
 
 /** A deliberately sanitized error: signed URLs and transport causes never cross this boundary. */
 export class BuildLogTransportError extends Error {
@@ -26,11 +27,6 @@ export class BuildLogTransportError extends Error {
     this.name = "BuildLogTransportError";
     this.kind = kind;
   }
-}
-
-export interface BuildLogGrant {
-  /** Bearer-like signed URL. It must remain inside the transport. */
-  readonly url: string;
 }
 
 interface MinimalFetchResponse {
@@ -49,7 +45,7 @@ export interface BuildLogSocket {
 export type BuildLogSocketConstructor = new (url: string) => BuildLogSocket;
 
 export interface BuildLogPageRequest {
-  readonly project: ProjectRef;
+  readonly projectId: string;
   readonly query: BuildLogQuery;
   readonly limit: number;
   readonly beforeLineId?: string;
@@ -72,7 +68,7 @@ export interface BuildLogFollowCallbacks {
 }
 
 export interface BuildLogFollowRequest {
-  readonly project: ProjectRef;
+  readonly projectId: string;
   readonly query: BuildLogQuery;
   readonly fromLineId?: string;
   readonly callbacks: BuildLogFollowCallbacks;
@@ -93,19 +89,12 @@ export interface BuildLogTransport {
 }
 
 export interface BuildLogTransportOptions {
-  readonly scope: AccountScope;
-  /** `GET /project/{id}/log`; the endpoint only proves access to that project's log URL. */
-  readonly acquireGrant: (project: ProjectRef, signal: AbortSignal) => Promise<BuildLogGrant>;
-  readonly fetchImpl: BuildLogFetch;
-  readonly WebSocketCtor: BuildLogSocketConstructor;
+  /** Its log grant, `GET /project/{id}/log`: it only proves access to that project's log URL. */
+  readonly client: Pick<ZeropsApiClient, "fetchProjectLogAccess">;
+  /** The browser's `fetch` and `WebSocket` unless a test gives its own. */
+  readonly fetchImpl?: BuildLogFetch;
+  readonly WebSocketCtor?: BuildLogSocketConstructor;
 }
-
-const belongsToScope = (scope: AccountScope, project: ProjectRef): boolean => {
-  const account = project.organization.account;
-  return (
-    account.apiOrigin === scope.account.apiOrigin && account.accountId === scope.account.accountId
-  );
-};
 
 const parseFrame = (data: unknown): unknown => {
   if (typeof data !== "string") return data;
@@ -122,29 +111,30 @@ const parseFrame = (data: unknown): unknown => {
  * client can safely cache or interpret.
  */
 export function makeBuildLogTransport(options: BuildLogTransportOptions): BuildLogTransport {
-  const fetchImpl = options.fetchImpl;
-  const WebSocketCtor = options.WebSocketCtor;
+  const fetchImpl: BuildLogFetch =
+    options.fetchImpl ??
+    // @effect-diagnostics-next-line globalFetch:off -- a signed URL off the API client, read with plain promises.
+    ((url, signal) => globalThis.fetch(url, { signal }));
+  const WebSocketCtor =
+    options.WebSocketCtor ?? (globalThis.WebSocket as unknown as BuildLogSocketConstructor);
   const followers = new Set<BuildLogFollowHandle>();
   const requests = new Set<AbortController>();
   let generation = 0;
   let closed = false;
 
-  const guard = (project: ProjectRef): number => {
+  const guard = (): number => {
     if (closed) throw new BuildLogTransportError("closed");
-    if (!belongsToScope(options.scope, project)) {
-      throw new BuildLogTransportError("account-fence");
-    }
     return generation;
   };
 
   const acquire = async (
-    project: ProjectRef,
+    projectId: string,
     expectedGeneration: number,
     signal: AbortSignal,
   ): Promise<string> => {
-    let grant: BuildLogGrant;
+    let grant: { readonly url: string };
     try {
-      grant = await options.acquireGrant(project, signal);
+      grant = await options.client.fetchProjectLogAccess(projectId, signal);
     } catch {
       if (closed || generation !== expectedGeneration || signal.aborted) {
         throw new BuildLogTransportError("closed");
@@ -161,7 +151,7 @@ export function makeBuildLogTransport(options: BuildLogTransportOptions): BuildL
   };
 
   const loadPage = async (request: BuildLogPageRequest): Promise<BuildLogTransportPage> => {
-    const expectedGeneration = guard(request.project);
+    const expectedGeneration = guard();
     const controller = new AbortController();
     const abort = () => controller.abort();
     request.signal?.addEventListener("abort", abort, { once: true });
@@ -171,7 +161,7 @@ export function makeBuildLogTransport(options: BuildLogTransportOptions): BuildL
     let requestUrl = "";
     try {
       if (controller.signal.aborted) throw new BuildLogTransportError("closed");
-      grantUrl = await acquire(request.project, expectedGeneration, controller.signal);
+      grantUrl = await acquire(request.projectId, expectedGeneration, controller.signal);
       requestUrl =
         request.beforeLineId === undefined
           ? buildLogUrls({ url: grantUrl }, request.query, request.limit).http
@@ -215,7 +205,7 @@ export function makeBuildLogTransport(options: BuildLogTransportOptions): BuildL
   };
 
   const openFollow = async (request: BuildLogFollowRequest): Promise<BuildLogFollowHandle> => {
-    const expectedGeneration = guard(request.project);
+    const expectedGeneration = guard();
     const controller = new AbortController();
     const abort = () => controller.abort();
     request.signal?.addEventListener("abort", abort, { once: true });
@@ -226,8 +216,8 @@ export function makeBuildLogTransport(options: BuildLogTransportOptions): BuildL
     let socketUrl = "";
     try {
       if (controller.signal.aborted) throw new BuildLogTransportError("closed");
-      grantUrl = await acquire(request.project, expectedGeneration, controller.signal);
-      baseUrl = buildLogStreamUrl({ url: grantUrl }, request.query, request.project.projectId);
+      grantUrl = await acquire(request.projectId, expectedGeneration, controller.signal);
+      baseUrl = buildLogStreamUrl({ url: grantUrl }, request.query, request.projectId);
       grantUrl = "";
       socketUrl =
         request.fromLineId === undefined ? baseUrl : withStreamFrom(baseUrl, request.fromLineId);

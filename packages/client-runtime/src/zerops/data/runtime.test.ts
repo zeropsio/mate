@@ -2731,65 +2731,6 @@ it.effect(
     }),
 );
 
-it.effect("reconciles open logs on runtime access denial and the injected deadline", () =>
-  Effect.gen(function* () {
-    for (const reason of ["denial", "deadline"] as const) {
-      const registry = AtomRegistry.make();
-      const ref = project("project-a");
-      let closes = 0;
-      const runtime = yield* makeZeropsDataRuntime({
-        scope: runtimeScope,
-        adapter: makeAdapterHarness().adapter,
-        atomRegistry: registry,
-        makeOpaqueId: makeIdFactory(),
-        initialAccess: {
-          status: "verified",
-          account: runtimeScope.account,
-          accountEpoch: runtimeScope.epoch,
-          verifiedAtMs: reason === "denial" ? 0 : 100,
-          deadlineMs: reason === "denial" ? 100 : 200,
-          mutationsAllowed: true,
-          organizations: [{ organization: ref.organization, mutationsAllowed: true }],
-          projects: [{ project: ref, role: "OWNER", mutationsAllowed: true }],
-        },
-        buildLogTransport: {
-          loadPage: async () => ({
-            lines: [{ id: "line", at: "2026-09-08T00:00:00Z", text: "test line", severity: 6 }],
-            rejectedItems: 0,
-          }),
-          openFollow: async () => ({
-            close: () => {
-              closes++;
-            },
-          }),
-          shutdown: () => undefined,
-          diagnostics: () => ({ activeFollowers: 0, closed: false }),
-        },
-      });
-      const lease = runtime.logs.acquire(
-        ref,
-        { buildServiceStackId: "build", appVersionId: "version" },
-        { follow: true },
-      );
-      yield* Effect.promise(() => runtime.logs.drain());
-      expect(lease.session.getSnapshot().lines).toHaveLength(1);
-      if (reason === "denial")
-        yield* runtime.observeAccess({
-          kind: "access-denied",
-          accountEpoch: runtimeScope.epoch,
-          scope: { kind: "project", project: ref },
-          deniedAtMs: 0,
-        });
-      yield* TestClock.adjust("100 millis");
-      expect(lease.session.getSnapshot()).toMatchObject({ lines: [], error: "access" });
-      expect(closes).toBe(1);
-      expect(runtime.logs.diagnostics().activeSessions).toBe(0);
-      yield* runtime.shutdown("application-close");
-      registry.dispose();
-    }
-  }),
-);
-
 describe("inventory demand", () => {
   it.effect(
     "holds the organization's inventory reading and registering nothing: its projects are the account store's",
