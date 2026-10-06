@@ -19,6 +19,9 @@ import type {
   Source,
 } from "../model.ts";
 
+import type { Row } from "../reducer.ts";
+import type { ProjectionReads } from "../store.ts";
+
 export type SearchTerms = ReadonlyArray<Readonly<Record<string, unknown>>>;
 
 /** A Zerops row as a family reads it; `null` for a row it cannot read. */
@@ -119,6 +122,10 @@ export interface DetailListing {
   readonly zerops: {
     readonly path: (owner: ScopeOwner) => string;
     readonly items: (answer: unknown) => ReadonlyArray<unknown> | undefined;
+    /** Try a project-filtered list/update pair before falling back to the GET. */
+    readonly subscription?: (owner: ScopeOwner) => SearchTerms;
+    /** Owner evidence that refreshes a GET fallback after its subscription was refused. */
+    readonly refreshOn?: (owner: ScopeOwner, row: Row, previous: ProjectionReads) => boolean;
   };
 }
 

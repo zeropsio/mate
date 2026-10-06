@@ -27,6 +27,7 @@ import { STREAM_POLICY } from "../streamMachine.ts";
 
 import {
   RECORDED_ROUTING,
+  RECORDED_SERVICE,
   REMOVED_ROUTING,
   ROUTING_PROJECT,
 } from "../__fixtures__/publicRouting.ts";
@@ -1258,6 +1259,209 @@ describe("recorded routing membership frames", () => {
         expect([...indexOf(store.state(), "routingProject", ROUTING_PROJECT)]).toEqual([
           RECORDED_ROUTING.id,
         ]);
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
+});
+
+describe("project routing subscriptions after organization refusal", () => {
+  const path = "/public-http-routing/search";
+  const readPath = `/project/${ROUTING_PROJECT}/public-http-routing`;
+  const demand = {
+    family: "publicRouting",
+    listing: "projectRoutings",
+    ownerId: ROUTING_PROJECT,
+  } as const;
+
+  it.effect.each([
+    { name: "project pair allowed", refusal: 0 },
+    { name: "project pair refused with 401", refusal: 401 },
+    { name: "project pair refused with 403", refusal: 403 },
+  ])("$name stays current through the recorded disable/enable", ({ refusal }) =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const base = answers(
+        () => [],
+        () => [{ ...PROBE_PROJECT, id: ROUTING_PROJECT }],
+      );
+      let routings = [RECORDED_ROUTING];
+      const fixture = fixtureWire((request) => {
+        if (request.path === path) {
+          const project = searched(request).some(
+            (term) => term.name === "projectId" && term.value === ROUTING_PROJECT,
+          );
+          if (!project || refusal) return Effect.fail(classifyHttp(project ? refusal : 403));
+          return Effect.succeed(
+            request.body?.wsOutputType === "updateStream" ? {} : { items: routings },
+          );
+        }
+        if (request.path === readPath)
+          return Effect.succeed({ status: 200, body: { list: routings } });
+        if (request.path === "/service-stack/search" && request.body?.wsOutputType === "listStream")
+          return Effect.succeed({ items: [RECORDED_SERVICE] });
+        return base(request);
+      });
+      const { fiber, link } = yield* runLink(store, fixture);
+      const scope = projectRoutingsScope(ORG, ROUTING_PROJECT);
+      const reads = () => fixture.requests.filter((request) => request.path === readPath).length;
+      const registrations = () =>
+        fixture.requests.filter(
+          (request) =>
+            request.path === path && searched(request).some((term) => term.name === "projectId"),
+        );
+      expect(reads()).toBe(0);
+      const release = link.demandDetail(demand);
+      yield* settle;
+      expect(registrations()).toHaveLength(refusal ? 1 : 2);
+      expect(reads()).toBe(refusal ? 1 : 0);
+      expect(store.state().memberships.get(scope)?.members.get(RECORDED_ROUTING.id)).toBe("member");
+      routings = [];
+      if (!refusal)
+        yield* fixture.push(fixture.subscription(path, "listStream"), {
+          delete: [RECORDED_ROUTING.id],
+        });
+      yield* fixture.push(fixture.subscription("/service-stack/search", "updateStream"), {
+        update: [{ ...RECORDED_SERVICE, subdomainAccess: false, _version: 46 }],
+      });
+      yield* settle;
+      expect(store.state().memberships.get(scope)?.members.get(RECORDED_ROUTING.id)).toBe(
+        "removed",
+      );
+      expect(reads()).toBe(refusal ? 2 : 0);
+      routings = [RECORDED_ROUTING];
+      if (!refusal)
+        yield* fixture.push(fixture.subscription(path, "listStream"), {
+          add: [RECORDED_ROUTING.id],
+        });
+      // The routing process ends before the service's on push.
+      const process = {
+        id: "routing-process",
+        projectId: ROUTING_PROJECT,
+        serviceStackId: RECORDED_SERVICE.id,
+        created: "2026-10-06T00:00:00Z",
+        status: "FINISHED",
+        actionName: "stack.enableSubdomainAccess",
+        _version: 2,
+      };
+      yield* fixture.push(fixture.subscription(PROCESS_SEARCH, "updateStream"), {
+        update: [process],
+      });
+      yield* settle;
+      expect(store.state().memberships.get(scope)?.members.get(RECORDED_ROUTING.id)).toBe("member");
+      const readCount = reads();
+      // Duplicates, unrelated work, stale service rows and elapsed time are not invalidations.
+      yield* fixture.push(fixture.subscription(PROCESS_SEARCH, "updateStream"), {
+        update: [process, { ...process, id: "unrelated", actionName: "stack.build" }],
+      });
+      yield* fixture.push(fixture.subscription("/service-stack/search", "updateStream"), {
+        update: [RECORDED_SERVICE],
+      });
+      yield* TestClock.adjust(120_000);
+      yield* settle;
+      expect(reads()).toBe(readCount);
+      expect(registrations()).toHaveLength(refusal ? 1 : 2);
+      release();
+      yield* settle;
+      yield* fixture.push(fixture.subscription("/service-stack/search", "updateStream"), {
+        update: [{ ...RECORDED_SERVICE, _version: 47 }],
+      });
+      yield* settle;
+      expect(reads()).toBe(readCount);
+      link.demandDetail(demand);
+      yield* settle;
+      expect(registrations()).toHaveLength(refusal ? 1 : 4);
+      expect(reads()).toBe(refusal ? readCount + 1 : 0);
+      yield* fixture.drop({ outcome: "transient", message: "socket closed" });
+      yield* settle;
+      const stream = store.state().streams.get(linkKeys.zerops(ORG));
+      yield* TestClock.adjust(
+        stream?.next.kind === "retry" ? Math.max(0, stream.next.at - 120_000) : 0,
+      );
+      yield* settle;
+      expect(fixture.opens()).toBe(2);
+      expect(registrations()).toHaveLength(refusal ? 1 : 6);
+      expect(reads()).toBe(refusal ? readCount + 2 : 0);
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+});
+
+describe("routing fallback refresh races", () => {
+  it.effect.each([403, 404])(
+    "a refused project GET (%s) stays refused after owner pushes",
+    (status) =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const base = answers(() => []);
+        const fixture = fixtureWire((request) =>
+          request.path === "/public-http-routing/search"
+            ? Effect.fail(classifyHttp(403))
+            : request.method === "GET"
+              ? Effect.succeed({ status, body: {} })
+              : base(request),
+        );
+        const { fiber, link } = yield* runLink(store, fixture);
+        link.demandDetail({
+          family: "publicRouting",
+          listing: "projectRoutings",
+          ownerId: ROUTING_PROJECT,
+        });
+        yield* settle;
+        expect(store.state().streams.get(projectRoutingsScope(ORG, ROUTING_PROJECT))?.phase).toBe(
+          "refused",
+        );
+        yield* fixture.push(fixture.subscription("/service-stack/search", "updateStream"), {
+          update: [RECORDED_SERVICE],
+        });
+        yield* TestClock.adjust(120_000);
+        yield* settle;
+        expect(fixture.requests.filter((request) => request.method === "GET")).toHaveLength(1);
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
+
+  it.effect.each([false, true])(
+    "a service push racing the fallback read is not lost (partial=%s)",
+    (partial) =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const first = yield* Deferred.make<void>();
+        const base = answers(() => []);
+        let reads = 0;
+        const fixture = fixtureWire((request) => {
+          if (request.path === "/public-http-routing/search") return Effect.fail(classifyHttp(403));
+          if (request.method === "GET") {
+            reads += 1;
+            return reads === 1
+              ? Effect.as(Deferred.await(first), {
+                  status: 200,
+                  body: { list: partial ? [{ id: RECORDED_ROUTING.id }] : [] },
+                })
+              : Effect.succeed({ status: 200, body: { list: [RECORDED_ROUTING] } });
+          }
+          return base(request);
+        });
+        const { fiber, link } = yield* runLink(store, fixture);
+        link.demandDetail({
+          family: "publicRouting",
+          listing: "projectRoutings",
+          ownerId: ROUTING_PROJECT,
+        });
+        yield* settle;
+        yield* fixture.push(fixture.subscription("/service-stack/search", "updateStream"), {
+          update: [RECORDED_SERVICE],
+        });
+        yield* settle;
+        expect(reads).toBe(1);
+        yield* Deferred.succeed(first, undefined);
+        yield* settle;
+        expect(reads).toBe(2);
+        expect(
+          store
+            .state()
+            .memberships.get(projectRoutingsScope(ORG, ROUTING_PROJECT))
+            ?.members.get(RECORDED_ROUTING.id),
+        ).toBe("member");
         yield* Fiber.interrupt(fiber);
       }),
   );

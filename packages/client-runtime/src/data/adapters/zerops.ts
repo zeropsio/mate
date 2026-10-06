@@ -39,8 +39,9 @@ import {
 } from "../demand.ts";
 import { familySpec, scopeListing, scopeSpec } from "../families/index.ts";
 import { factKey, linkKeys, type Family, type LinkKey, type ScopeKey } from "../model.ts";
-import { streamOf, type Row, type RuntimeDirective } from "../reducer.ts";
-import type { AccountStore } from "../store.ts";
+import { factOf, streamOf, type Row, type RuntimeDirective } from "../reducer.ts";
+import { readsOfState, type AccountStore } from "../store.ts";
+import { scopeOf } from "../families/spec.ts";
 import { retryDelayMs, type StreamEvent, type StreamFault } from "../streamMachine.ts";
 import type { LinkOptions } from "../supervisor.ts";
 
@@ -220,6 +221,10 @@ export function zeropsNavigationLink(options: {
     wakeAttempt?.();
   };
 
+  // A refused filtered pair stays refused across remounts and receiver rotations. Only a
+  // changed generation of its navigation scope (manual retry / changed input) permits it again.
+  const refusedPairs = new Map<ScopeKey, number>();
+
   const attempt = (): Effect.Effect<never, StreamFault, Scope.Scope> =>
     Effect.gen(function* () {
       const link = yield* options.wire.open;
@@ -294,15 +299,20 @@ export function zeropsNavigationLink(options: {
         ids: ReadonlyArray<string>,
       ): Effect.Effect<void, StreamFault> =>
         Effect.gen(function* () {
+          // A damaged fallback row cannot be resolved through the search already refused to
+          // this viewer. Keep it unknown until the next owner-triggered project read.
+          if (refusedPairs.has(scope)) return;
           const family = familyOf(scope);
           const entity = familySpec(family).zerops?.entity;
           if (entity === undefined) return;
+          const generation = generationOf(scope);
+          const ownerId = scope.split(":").slice(3).join(":");
+          const filter = scopeListing(scope).detail?.zerops.subscription?.({ orgId, ownerId }) ?? [
+            { name: "clientId", operator: "eq", value: orgId },
+          ];
           const answer = yield* readAgain(
             link.post(`/${entity}/search`, {
-              search: [
-                { name: "clientId", operator: "eq", value: orgId },
-                { name: "id", operator: "in", value: ids },
-              ],
+              search: [...filter, { name: "id", operator: "in", value: ids }],
               sort: [],
               limit: ids.length,
             }),
@@ -312,7 +322,7 @@ export function zeropsNavigationLink(options: {
             store.dispatch({
               kind: "rows",
               scope,
-              generation: generationOf(scope),
+              generation,
               method: "read",
               via: "zerops-read",
               rows: rowsOf(family, items),
@@ -347,7 +357,32 @@ export function zeropsNavigationLink(options: {
           return status === 403;
         });
 
-      const subscriptions = new Map<string, Registration>();
+      const subscriptions = new Map<string, Registration & { readonly generation: number }>();
+      const dirtyDetails = new Set<ScopeKey>();
+      const acceptRows = (scope: ScopeKey, generation: number, rows: ReadonlyArray<Row>) => {
+        const before = store.state();
+        const directives = store.dispatch({
+          kind: "rows",
+          scope,
+          generation,
+          method: "push",
+          via: "zerops-realtime",
+          rows,
+        });
+        const changed = rows.filter(
+          (row) => factOf(before, row.family, row.id) !== factOf(store.state(), row.family, row.id),
+        );
+        for (const detailScope of demands.scopes()) {
+          if (!refusedPairs.has(detailScope)) continue;
+          const refresh = scopeListing(detailScope).detail?.zerops.refreshOn;
+          const ownerId = detailScope.split(":").slice(3).join(":");
+          if (changed.some((row) => refresh?.({ orgId, ownerId }, row, readsOfState(before)))) {
+            dirtyDetails.add(detailScope);
+            wakeAttempt?.();
+          }
+        }
+        return carryOut(directives);
+      };
       /**
        * Each demanded query's registration, by its subscription: the scope and generation it was
        * made for, and its frames held back until its answer is the scope's baseline. A released
@@ -423,34 +458,30 @@ export function zeropsNavigationLink(options: {
             const delta = Option.getOrUndefined(decodeMembership(frame.data));
             if (delta === undefined) return Effect.void;
             // Some listStream frames carry rows too; admit them before resolving id-only adds.
+            const rows = rowsOf(registration.family, delta.update ?? []);
             store.dispatch({
               kind: "rows",
               scope,
-              generation: generationOf(scope),
+              generation: registration.generation,
               method: "push",
               via: "zerops-realtime",
-              rows: rowsOf(registration.family, delta.update ?? []),
+              rows,
             });
             return carryOut(
               store.dispatch({
                 kind: "membership",
                 scope,
-                generation: generationOf(scope),
+                generation: registration.generation,
                 delta: { add: delta.add ?? [], remove: delta.delete ?? [] },
               }),
             );
           }
           const updates = Option.getOrUndefined(decodeUpdates(frame.data));
           if (updates === undefined) return Effect.void;
-          return carryOut(
-            store.dispatch({
-              kind: "rows",
-              scope,
-              generation: generationOf(scope),
-              method: "push",
-              via: "zerops-realtime",
-              rows: rowsOf(registration.family, updates.update),
-            }),
+          return acceptRows(
+            scope,
+            registration.generation,
+            rowsOf(registration.family, updates.update),
           );
         });
 
@@ -524,6 +555,11 @@ export function zeropsNavigationLink(options: {
               queries.delete(name);
               released += 1;
             }
+          for (const [name, registration] of subscriptions)
+            if (registration.scope === scope) {
+              subscriptions.delete(name);
+              released += 1;
+            }
           return released > RELEASED_QUERIES_PER_RECEIVER
             ? Effect.asVoid(
                 Deferred.fail(ended, {
@@ -540,7 +576,8 @@ export function zeropsNavigationLink(options: {
           const sampled = detail === null ? spec.sampled : undefined;
           if (detail === null && sampled === undefined) return yield* observeQuery(scope);
           yield* signal(scope, { kind: "attempt" });
-          generations.set(scope, streamOf(store.state(), scope).generation);
+          const generation = streamOf(store.state(), scope).generation;
+          generations.set(scope, generation);
           yield* signal(scope, { kind: "handshake" });
           const ownerId = scope.split(":").slice(3).join(":");
           const readAt = sampledAt.get(scope);
@@ -555,15 +592,82 @@ export function zeropsNavigationLink(options: {
           )
             return yield* signal(scope, { kind: "baseline-committed" });
           store.dispatch({ kind: "baseline-begin", scope, generation: generationOf(scope) });
+          const navigationGeneration = streamOf(store.state(), scopeOf(spec, orgId)).generation;
+          const search = detail?.zerops.subscription?.({ orgId, ownerId });
+          if (
+            search !== undefined &&
+            refusedPairs.get(scope) !== navigationGeneration &&
+            spec.zerops !== undefined
+          ) {
+            refusedPairs.delete(scope);
+            yield* forgetQueries(scope);
+            for (const role of ["updates", "membership"] as const) {
+              const subscriptionName = options.makeId();
+              const path = `/${spec.zerops.entity}/search`;
+              subscriptions.set(subscriptionName, {
+                scope,
+                generation,
+                family: spec.family,
+                role,
+                path,
+                search,
+              });
+              const answer = yield* link
+                .post(path, {
+                  search,
+                  sort: [],
+                  receiverId: link.receiverId,
+                  subscriptionName,
+                  ...(role === "membership"
+                    ? { wsOutputType: "listStream", limit: ORGANIZATION_SEARCH_LIMIT }
+                    : { wsOutputType: "updateStream", disableOutput: true }),
+                })
+                .pipe(Effect.catch(Effect.succeed));
+              if (typeof answer === "object" && answer !== null && "outcome" in answer) {
+                const fault = answer as StreamFault;
+                yield* forgetQueries(scope);
+                if (
+                  fault.outcome === "recoverable-session" ||
+                  fault.outcome === "authoritative-denial" ||
+                  fault.outcome === "definitive-refusal"
+                ) {
+                  refusedPairs.set(scope, navigationGeneration);
+                  break;
+                }
+                return yield* signal(scope, { kind: "fault", fault, jitter: yield* Random.next });
+              }
+              if (role !== "membership") continue;
+              const list = Option.getOrUndefined(decodeList(answer));
+              if (list === undefined)
+                return yield* signal(scope, {
+                  kind: "fault",
+                  fault: corrupt("A detail baseline answer is malformed."),
+                  jitter: yield* Random.next,
+                });
+              const rows = rowsOf(spec.family, list.items);
+              yield* carryOut(
+                store.dispatch({
+                  kind: "baseline-commit",
+                  scope,
+                  generation,
+                  via: "zerops-realtime",
+                  members: membersOf(list.items),
+                  rows,
+                  partial: partialAnswer(list.items, rows, list.totalHits),
+                }),
+              );
+              return yield* signal(scope, { kind: "baseline-committed" });
+            }
+          }
           const owner = { orgId, ownerId };
           const path =
             sampled !== undefined ? sampled.path(owner) : (detail?.zerops.path(owner) ?? "");
-          const search = sampled?.search?.(owner);
+          const sampledSearch = sampled?.search?.(owner);
           // A search is a POST of it: its answer is the rows asked for, never a whole set.
           const read =
-            search === undefined
+            sampledSearch === undefined
               ? link.get(path)
-              : link.post(path, search).pipe(Effect.map((body) => ({ status: 200, body })));
+              : link.post(path, sampledSearch).pipe(Effect.map((body) => ({ status: 200, body })));
           const answer = yield* read.pipe(
             Effect.map((read) =>
               read.status === 403
@@ -614,7 +718,7 @@ export function zeropsNavigationLink(options: {
             store.dispatch({
               kind: "baseline-commit",
               scope,
-              generation: generationOf(scope),
+              generation,
               via: "zerops-read",
               members: membersOf(items),
               rows,
@@ -654,6 +758,7 @@ export function zeropsNavigationLink(options: {
         for (const scope of observed.keys())
           if (!demanded.has(scope)) {
             observed.delete(scope);
+            dirtyDetails.delete(scope);
             yield* forgetQueries(scope);
           }
         // A write to a detail no longer demanded is read by its next demand anyway.
@@ -692,6 +797,7 @@ export function zeropsNavigationLink(options: {
           const seen = observed.get(scope);
           if (
             seen === undefined ||
+            dirtyDetails.has(scope) ||
             stream.phase === "stale" ||
             (stream.phase === "connecting" && stream.generation !== seen)
           )
@@ -699,6 +805,7 @@ export function zeropsNavigationLink(options: {
         }
         for (const scope of fresh) {
           inFlight.add(scope);
+          dirtyDetails.delete(scope);
           yield* observeDetail(scope).pipe(
             Effect.catch(sessionEnds),
             Effect.ensuring(
@@ -728,7 +835,7 @@ export function zeropsNavigationLink(options: {
         const refusedAlone = scopeSpec(scope).zerops?.refusedAlone === true;
         for (const registration of registrations.filter((entry) => entry.scope === scope)) {
           const subscriptionName = options.makeId();
-          subscriptions.set(subscriptionName, registration);
+          subscriptions.set(subscriptionName, { ...registration, generation: generationOf(scope) });
           const answer = yield* link
             .post(registration.path, {
               search: registration.search,

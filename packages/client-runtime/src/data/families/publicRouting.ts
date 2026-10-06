@@ -7,7 +7,9 @@
  * served, nothing about its existence: no owner is asked.
  *
  * A viewer the organization's search refuses (a member without organization read) reads a drawn
- * project's routings through that project's own listing, demanded while a surface shows it.
+ * project's routings through a filtered registration pair, demanded while a surface shows it.
+ * If that too is refused, its GET listing is refreshed by service-switch or routing-process
+ * evidence from the organization streams, never by a timer.
  *
  * @module data/families/publicRouting
  */
@@ -15,6 +17,7 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
 import type { ScopeKey } from "../model.ts";
+import { runsStill } from "./process.ts";
 import { scopeOf, type FamilySpec } from "./spec.ts";
 
 /** What an address is made of, as the routing's row says it: nothing else is kept. */
@@ -93,10 +96,35 @@ export const publicRoutingFamily: FamilySpec<"publicRouting"> = {
   },
   details: [
     {
-      // One project's routings, read where the organization's search is refused to the viewer.
+      // One project's live routings where the organization's search is refused.
       suffix: PROJECT_ROUTINGS,
       leaving: "removed",
       zerops: {
+        subscription: ({ ownerId }) => [{ name: "projectId", operator: "eq", value: ownerId }],
+        refreshOn: ({ ownerId }, row, previous) => {
+          if (row.family === "service" && row.value.projectId === ownerId) {
+            const held = previous.fact("service", row.id);
+            return (
+              row.value.subdomainAccess !== undefined &&
+              (held.kind !== "known" || held.value.subdomainAccess !== row.value.subdomainAccess)
+            );
+          }
+          if (
+            row.family !== "process" ||
+            row.value.projectId !== ownerId ||
+            runsStill(row.value.status)
+          )
+            return false;
+          const held = previous.fact("process", row.id);
+          return (
+            (held.kind !== "known" || runsStill(held.value.status)) &&
+            [
+              "stack.enableSubdomainAccess",
+              "stack.disableSubdomainAccess",
+              "project.syncPublicHttpRouting",
+            ].includes(row.value.actionName)
+          );
+        },
         path: ({ ownerId }) => `/project/${encodeURIComponent(ownerId ?? "")}/public-http-routing`,
         items: (answer) =>
           typeof answer === "object" &&

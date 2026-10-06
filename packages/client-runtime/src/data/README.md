@@ -111,7 +111,10 @@ baseline, and ends only by failing with a classified fault. Run it under
   `reducer.ts`.
 - **Detail demand** is declared per family: a detail family's own scope (`demand: "detail"`,
   registered per owner by `zeropsRegistrations`), or a family's `details` listing (one read is its
-  baseline; its members' later changes arrive through the family's own updates). A screen holds a
+  baseline; its members' later changes arrive through the family's own updates). A detail listing
+  whose navigation is refused may declare `subscription` to try a filtered registration pair,
+  and `refreshOn` to name owner pushes that refresh its GET fallback if that pair is refused.
+  Refused pairs are not retried on remount or reconnect; the fallback never polls. A screen holds a
   detail through `demandDetail({ family, listing?, ownerId })` while it is drawn and releases it on
   unmount; the Zerops adapter reads each demanded listing once per attempt — never one refused —
   and again when its own retry comes due, and the supervisor treats demanded details as children
