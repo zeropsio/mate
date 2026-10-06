@@ -53,8 +53,6 @@ export const ZeropsServiceId = SourceId.pipe(Schema.brand("ZeropsServiceId"));
 export type ZeropsServiceId = typeof ZeropsServiceId.Type;
 export const ZeropsProcessId = SourceId.pipe(Schema.brand("ZeropsProcessId"));
 export type ZeropsProcessId = typeof ZeropsProcessId.Type;
-export const ZeropsContainerId = SourceId.pipe(Schema.brand("ZeropsContainerId"));
-export type ZeropsContainerId = typeof ZeropsContainerId.Type;
 export const ZeropsReceiverId = SourceId.pipe(Schema.brand("ZeropsReceiverId"));
 export type ZeropsReceiverId = typeof ZeropsReceiverId.Type;
 export const ZeropsWireSubscriptionName = SourceId.pipe(Schema.brand("ZeropsWireSubscriptionName"));
@@ -494,12 +492,6 @@ export type QueryCoverage =
       readonly reason: "malformed" | "contradictory-total" | "overflow" | "budget" | "read-failed";
     };
 
-export interface MetricWindow {
-  readonly timeGroupBy: "1m" | "1h" | "1d" | "1w" | "1M";
-  readonly limit: number;
-  readonly timeZone: string;
-}
-
 export type QueryDescriptor =
   | {
       readonly kind: "projects-of-organization";
@@ -514,19 +506,6 @@ export type QueryDescriptor =
        */
       readonly kind: "services-of-project";
       readonly project: ProjectRef;
-      readonly schemaVersion: 1;
-    }
-  | {
-      readonly kind: "current-metrics-of-project";
-      readonly project: ProjectRef;
-      readonly groupBy: "containerId";
-      readonly schemaVersion: 1;
-    }
-  | {
-      readonly kind: "metric-history-of-project";
-      readonly project: ProjectRef;
-      readonly groupBy: "serviceStackId";
-      readonly window: MetricWindow;
       readonly schemaVersion: 1;
     }
   | {
@@ -594,27 +573,6 @@ export const queryKeyOf = (descriptor: QueryDescriptor): QueryKey => {
           String(descriptor.schemaVersion),
         ]),
       );
-    case "current-metrics-of-project":
-      return QueryKey.make(
-        scopedKey([
-          descriptor.kind,
-          projectKeyOf(descriptor.project),
-          descriptor.groupBy,
-          String(descriptor.schemaVersion),
-        ]),
-      );
-    case "metric-history-of-project":
-      return QueryKey.make(
-        scopedKey([
-          descriptor.kind,
-          projectKeyOf(descriptor.project),
-          descriptor.groupBy,
-          descriptor.window.timeGroupBy,
-          String(descriptor.window.limit),
-          descriptor.window.timeZone,
-          String(descriptor.schemaVersion),
-        ]),
-      );
     case "service-variables-of-services":
       return QueryKey.make(
         scopedKey([
@@ -660,19 +618,6 @@ export interface MembershipQueryReadTarget<
   readonly descriptor: Descriptor;
 }
 
-export interface MetricQueryReadTarget<
-  Descriptor extends Extract<
-    QueryDescriptor,
-    { readonly kind: "current-metrics-of-project" | "metric-history-of-project" }
-  > = Extract<
-    QueryDescriptor,
-    { readonly kind: "current-metrics-of-project" | "metric-history-of-project" }
-  >,
-> {
-  readonly kind: "query";
-  readonly descriptor: Descriptor;
-}
-
 export interface TableQueryReadTarget<
   Descriptor extends TableQueryDescriptor = TableQueryDescriptor,
 > {
@@ -680,11 +625,7 @@ export interface TableQueryReadTarget<
   readonly descriptor: Descriptor;
 }
 
-export type ReadTarget =
-  | EntityReadTarget
-  | MembershipQueryReadTarget
-  | MetricQueryReadTarget
-  | TableQueryReadTarget;
+export type ReadTarget = EntityReadTarget | MembershipQueryReadTarget | TableQueryReadTarget;
 
 export type ReadOwner =
   | { readonly kind: "interest"; readonly identity: InterestIdentity }
@@ -719,15 +660,10 @@ export type ReadTicket =
       readonly membershipReceiptOrdinalAtStart?: never;
     })
   | (ReadTicketBase & {
-      readonly kind: "baseline" | "history";
+      readonly kind: "baseline";
       readonly target: MembershipQueryReadTarget;
       /** Native membership after this marker overlays an admitted baseline. */
       readonly membershipReceiptOrdinalAtStart: ReceiptOrdinal;
-    })
-  | (ReadTicketBase & {
-      readonly kind: "baseline" | "history";
-      readonly target: MetricQueryReadTarget;
-      readonly membershipReceiptOrdinalAtStart?: never;
     })
   | (ReadTicketBase & {
       readonly kind: "baseline";
@@ -751,8 +687,6 @@ export type ReadContribution =
   | `project:${ProjectFacetName}`
   | `service:${ServiceFacetName}`
   | "query-membership"
-  | "current-metrics"
-  | "metric-history"
   | "table";
 
 export type ReadState =
@@ -799,7 +733,7 @@ type QueryBaselineFor<Descriptor extends MembershipQueryDescriptor> =
         readonly coverage: QueryCoverage;
         readonly source: "indexed-search" | "direct-read";
         readonly ticket: ReadTicketBase & {
-          readonly kind: "baseline" | "history";
+          readonly kind: "baseline";
           readonly target: MembershipQueryReadTarget<Descriptor>;
           /** Native membership after this marker overlays an admitted baseline. */
           readonly membershipReceiptOrdinalAtStart: ReceiptOrdinal;
@@ -829,127 +763,6 @@ export interface EntityUnavailableObservation {
   readonly reason: "forbidden" | "not-found" | "access-revoked";
   readonly ticket: ReadTicket & { readonly target: EntityReadTarget };
 }
-
-export interface CurrentMetricKey {
-  readonly service: ServiceRef;
-  readonly containerId: ZeropsContainerId;
-  readonly groupBy: "containerId";
-  readonly schemaVersion: 1;
-}
-
-export const CurrentMetricMapKey = Schema.String.pipe(Schema.brand("ZeropsCurrentMetricMapKey"));
-export type CurrentMetricMapKey = typeof CurrentMetricMapKey.Type;
-
-export interface HistorySeriesKey {
-  readonly service: ServiceRef;
-  readonly groupBy: "serviceStackId";
-  readonly window: MetricWindow;
-  readonly schemaVersion: 1;
-}
-
-export const HistorySeriesMapKey = Schema.String.pipe(Schema.brand("ZeropsHistorySeriesMapKey"));
-export type HistorySeriesMapKey = typeof HistorySeriesMapKey.Type;
-
-export interface HistoryBucketKey {
-  readonly series: HistorySeriesKey;
-  readonly from: string;
-  readonly till: string;
-}
-
-export const HistoryBucketMapKey = Schema.String.pipe(Schema.brand("ZeropsHistoryBucketMapKey"));
-export type HistoryBucketMapKey = typeof HistoryBucketMapKey.Type;
-
-export const currentMetricKeyOf = (key: CurrentMetricKey): CurrentMetricMapKey =>
-  CurrentMetricMapKey.make(
-    scopedKey([serviceKeyOf(key.service), key.containerId, key.groupBy, String(key.schemaVersion)]),
-  );
-
-export const historySeriesKeyOf = (key: HistorySeriesKey): HistorySeriesMapKey =>
-  HistorySeriesMapKey.make(
-    scopedKey([
-      serviceKeyOf(key.service),
-      key.groupBy,
-      key.window.timeGroupBy,
-      String(key.window.limit),
-      key.window.timeZone,
-      String(key.schemaVersion),
-    ]),
-  );
-
-export const historyBucketKeyOf = (key: HistoryBucketKey): HistoryBucketMapKey =>
-  HistoryBucketMapKey.make(scopedKey([historySeriesKeyOf(key.series), key.from, key.till]));
-
-export interface StatPair {
-  readonly used: number;
-  readonly limit: number;
-}
-
-export interface CurrentMetricSample {
-  readonly key: CurrentMetricKey;
-  readonly cpu: StatPair | null;
-  readonly virtualCpu: StatPair | null;
-  readonly memoryGb: StatPair | null;
-  readonly diskGb: StatPair | null;
-}
-
-interface CurrentMetricObservationBase {
-  readonly kind: "current-metrics-replaced";
-  readonly samples: ReadonlyArray<CurrentMetricSample>;
-  readonly coverage: QueryCoverage;
-}
-
-export type CurrentMetricObservation = CurrentMetricObservationBase &
-  (
-    | {
-        readonly source: "direct-read";
-        readonly ticket: ReadTicket & {
-          readonly target: MetricQueryReadTarget<
-            Extract<QueryDescriptor, { readonly kind: "current-metrics-of-project" }>
-          >;
-        };
-      }
-    | {
-        readonly source: "native-push";
-        readonly registration: RegistrationRequest & {
-          readonly descriptor: { readonly kind: "current-metrics" };
-        };
-      }
-  );
-
-export interface HistoryMetricBucket {
-  readonly key: HistoryBucketKey;
-  readonly containers: number | null;
-  readonly cpu: StatPair | null;
-  readonly virtualCpu: StatPair | null;
-  readonly memoryGb: StatPair | null;
-  readonly diskGb: StatPair | null;
-}
-
-interface HistoryMetricObservationBase {
-  readonly kind: "metric-history-window-observed";
-  readonly buckets: ReadonlyArray<HistoryMetricBucket>;
-  readonly coverage: QueryCoverage;
-  /** Replacement is a full admitted window; correction replaces matching bucket keys only. */
-  readonly operation: "replace-window" | "correct-buckets";
-}
-
-export type HistoryMetricObservation = HistoryMetricObservationBase &
-  (
-    | {
-        readonly source: "direct-read";
-        readonly ticket: ReadTicket & {
-          readonly target: MetricQueryReadTarget<
-            Extract<QueryDescriptor, { readonly kind: "metric-history-of-project" }>
-          >;
-        };
-      }
-    | {
-        readonly source: "native-push";
-        readonly registration: RegistrationRequest & {
-          readonly descriptor: { readonly kind: "metric-history" };
-        };
-      }
-  );
 
 /** One service variable, as `POST /user-data/search` states it. */
 export interface ServiceVariableRow {
@@ -1005,8 +818,6 @@ export type PlatformObservation =
   | QueryBaselineObservation
   | QueryMembershipObservation
   | EntityUnavailableObservation
-  | CurrentMetricObservation
-  | HistoryMetricObservation
   | TableObservation;
 
 export interface AdmittedObservation {
@@ -1200,21 +1011,6 @@ type QueryStateFor<Descriptor extends EntityQueryDescriptor> =
 
 export type QueryState<Descriptor extends EntityQueryDescriptor = EntityQueryDescriptor> =
   QueryStateFor<Descriptor>;
-
-export type HistorySeriesState =
-  | {
-      readonly status: "unresolved";
-      readonly key: HistorySeriesKey;
-      readonly buckets: ReadonlyMap<HistoryBucketMapKey, HistoryMetricBucket>;
-      readonly coverage: Extract<QueryCoverage, { readonly kind: "none" | "partial" }>;
-    }
-  | {
-      readonly status: "observed";
-      readonly key: HistorySeriesKey;
-      readonly buckets: ReadonlyMap<HistoryBucketMapKey, HistoryMetricBucket>;
-      readonly coverage: Exclude<QueryCoverage, { readonly kind: "none" }>;
-      readonly stamp: IngestionStamp;
-    };
 
 export interface InterestProgress {
   readonly requiredRegistrations: number;
@@ -1466,13 +1262,7 @@ export type RuntimeInterestDescriptor =
    */
   | { readonly kind: "project-record"; readonly project: ProjectRef }
   /** A visible permission decision demands its access facts; the grant owns the sole read. */
-  | { readonly kind: "project-access"; readonly project: ProjectRef }
-  | { readonly kind: "project-current-metrics"; readonly project: ProjectRef }
-  | {
-      readonly kind: "project-metric-history";
-      readonly project: ProjectRef;
-      readonly window: MetricWindow;
-    };
+  | { readonly kind: "project-access"; readonly project: ProjectRef };
 
 export type RegistrationDescriptor =
   | {
@@ -1487,14 +1277,6 @@ export type RegistrationDescriptor =
       readonly organization: OrganizationRef;
     }
   | { readonly kind: "query-membership"; readonly query: MembershipQueryDescriptor }
-  | {
-      readonly kind: "current-metrics";
-      readonly query: Extract<QueryDescriptor, { readonly kind: "current-metrics-of-project" }>;
-    }
-  | {
-      readonly kind: "metric-history";
-      readonly query: Extract<QueryDescriptor, { readonly kind: "metric-history-of-project" }>;
-    }
   /** A table list's membership stream (`listStream`): the ids its search admits, as they change. */
   | { readonly kind: "table-list"; readonly query: TableQueryDescriptor }
   /** A table entity's update stream (`updateStream`) restricted to its service IDs. */
@@ -1602,35 +1384,12 @@ type MembershipRegistrationRequest<Descriptor extends MembershipQueryDescriptor>
       }
     : never;
 
-type MetricRegistrationRequest<
-  Descriptor extends Extract<
-    QueryDescriptor,
-    { readonly kind: "current-metrics-of-project" | "metric-history-of-project" }
-  >,
-> = Descriptor extends QueryDescriptor
-  ? RegistrationRequestBase & {
-      readonly descriptor: Descriptor["kind"] extends "current-metrics-of-project"
-        ? { readonly kind: "current-metrics"; readonly query: Descriptor }
-        : { readonly kind: "metric-history"; readonly query: Descriptor };
-      readonly baselineTicket: ReadTicket & {
-        readonly owner: { readonly kind: "interest"; readonly identity: InterestIdentity };
-        readonly target: MetricQueryReadTarget<Descriptor>;
-      };
-    }
-  : never;
-
 export type RegistrationRequest =
   | (RegistrationRequestBase & {
       readonly descriptor: Extract<RegistrationDescriptor, { readonly kind: "entity-updates" }>;
       readonly baselineTicket: null;
     })
   | MembershipRegistrationRequest<MembershipQueryDescriptor>
-  | MetricRegistrationRequest<
-      Extract<QueryDescriptor, { readonly kind: "current-metrics-of-project" }>
-    >
-  | MetricRegistrationRequest<
-      Extract<QueryDescriptor, { readonly kind: "metric-history-of-project" }>
-    >
   | (RegistrationRequestBase & {
       readonly descriptor: Extract<RegistrationDescriptor, { readonly kind: "table-updates" }>;
       readonly baselineTicket: null;
@@ -1835,28 +1594,9 @@ export interface CollectionRead<Record extends ZeropsEntityRecord> {
   readonly project?: ProjectRef;
 }
 
-export interface ServiceUsage {
-  readonly containers: number;
-  /** Dedicated plus shared CPU, in cores, summed across the service's containers. */
-  readonly cpu: StatPair;
-  readonly memoryGb: StatPair;
-  readonly diskGb: StatPair;
-}
-
-export interface UsageRead {
-  readonly value: ServiceUsage | null;
-  readonly coverage: QueryCoverage;
-  readonly observation: ViewObservation;
-}
-
 export interface ProjectTopologyRead {
   readonly project: EntityRead<ProjectRecord>;
   readonly services: CollectionRead<ServiceRecord>;
-  readonly observation: ViewObservation;
-}
-
-export interface HistoryReadView {
-  readonly series: HistorySeriesState;
   readonly observation: ViewObservation;
 }
 
@@ -1870,8 +1610,6 @@ export interface ZeropsDataReads {
   readonly access: Atom.Atom<AccessState>;
   readonly service: (ref: ServiceRef) => Atom.Atom<EntityRead<ServiceRecord>>;
   readonly servicesOf: (project: ProjectRef) => Atom.Atom<CollectionRead<ServiceRecord>>;
-  readonly usage: (service: ServiceRef) => Atom.Atom<UsageRead>;
-  readonly history: (key: HistorySeriesKey) => Atom.Atom<HistoryReadView>;
   readonly topology: (project: ProjectRef) => Atom.Atom<ProjectTopologyRead>;
   readonly commandAttempt: (attempt: CommandAttemptRef) => Atom.Atom<CommandAttemptState | null>;
   /** What the service runs, as the account's store states it (`deployedVersion.ts`). */

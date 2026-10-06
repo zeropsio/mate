@@ -193,19 +193,8 @@ function serializedInterestKey(descriptor: RuntimeInterestDescriptor): InterestK
     case "project-inventory":
     case "project-record":
     case "project-access":
-    case "project-current-metrics":
       return InterestKeySchema.make(
         JSON.stringify([descriptor.kind, projectKeyOf(descriptor.project)]),
-      );
-    case "project-metric-history":
-      return InterestKeySchema.make(
-        JSON.stringify([
-          descriptor.kind,
-          projectKeyOf(descriptor.project),
-          descriptor.window.timeGroupBy,
-          descriptor.window.limit,
-          descriptor.window.timeZone,
-        ]),
       );
   }
 }
@@ -411,47 +400,11 @@ export function planZeropsInterest(descriptor: RuntimeInterestDescriptor): Inter
   // The organization's projects and services are the account store's (`data/families/`): these
   // read none of their own.
   if (readsNothing(descriptor)) return { registrations: [], directReads: [] };
-  const project = descriptor.project;
-  if (descriptor.kind === "project-record") {
-    return {
-      registrations: [
-        { descriptor: { kind: "entity-updates", entity: "project", organization }, baseline: null },
-      ],
-      directReads: [{ kind: "project", ref: project }],
-    };
-  }
-  if (descriptor.kind === "project-current-metrics") {
-    const query: QueryDescriptor = {
-      kind: "current-metrics-of-project",
-      project,
-      groupBy: "containerId",
-      schemaVersion: 1,
-    };
-    return {
-      registrations: [
-        {
-          descriptor: { kind: "current-metrics", query },
-          baseline: { kind: "query", descriptor: query },
-        },
-      ],
-      directReads: [],
-    };
-  }
-  const query: QueryDescriptor = {
-    kind: "metric-history-of-project",
-    project,
-    groupBy: "serviceStackId",
-    window: descriptor.window,
-    schemaVersion: 1,
-  };
   return {
     registrations: [
-      {
-        descriptor: { kind: "metric-history", query },
-        baseline: { kind: "query", descriptor: query },
-      },
+      { descriptor: { kind: "entity-updates", entity: "project", organization }, baseline: null },
     ],
-    directReads: [],
+    directReads: [{ kind: "project", ref: descriptor.project }],
   };
 }
 
@@ -646,12 +599,6 @@ const unavailableCellAdapter: ZeropsCellAdapter = {
 
 function registrationInterest(observation: PlatformObservation): InterestIdentity | null {
   if (observation.kind === "query-membership-observed") return observation.registration.identity;
-  if (
-    observation.kind === "current-metrics-replaced" ||
-    observation.kind === "metric-history-window-observed"
-  ) {
-    return observation.source === "native-push" ? observation.registration.identity : null;
-  }
   if ("observation" in observation) {
     const source = observation.observation;
     if (source.source === "native-push") return source.registration.identity;
@@ -664,12 +611,6 @@ function registrationInterest(observation: PlatformObservation): InterestIdentit
 
 function observationRegistration(observation: PlatformObservation): RegistrationRequest | null {
   if (observation.kind === "query-membership-observed") return observation.registration;
-  if (
-    (observation.kind === "current-metrics-replaced" ||
-      observation.kind === "metric-history-window-observed") &&
-    observation.source === "native-push"
-  )
-    return observation.registration;
   if ("observation" in observation) {
     const source = observation.observation;
     if (source.source === "native-push") return source.registration;
@@ -684,15 +625,6 @@ function retargetRegistrationObservation(
   identity: InterestIdentity,
 ): PlatformObservation {
   if (observation.kind === "query-membership-observed")
-    return {
-      ...observation,
-      registration: { ...observation.registration, identity },
-    } as PlatformObservation;
-  if (
-    (observation.kind === "current-metrics-replaced" ||
-      observation.kind === "metric-history-window-observed") &&
-    observation.source === "native-push"
-  )
     return {
       ...observation,
       registration: { ...observation.registration, identity },
@@ -724,12 +656,6 @@ function retargetRegistrationObservation(
 
 function observationReadTicket(observation: PlatformObservation): ReadTicket | null {
   if (observation.kind === "query-baseline-observed" || observation.kind === "entity-unavailable")
-    return observation.ticket;
-  if (
-    (observation.kind === "current-metrics-replaced" ||
-      observation.kind === "metric-history-window-observed") &&
-    observation.source === "direct-read"
-  )
     return observation.ticket;
   if ("observation" in observation) {
     const source = observation.observation;
@@ -1474,7 +1400,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           target.descriptor.kind === "service-variables-of-services")
           ? {
               ...base,
-              kind: kind as "baseline" | "history",
+              kind: kind as "baseline",
               target,
               membershipReceiptOrdinalAtStart: ReceiptOrdinal.make(receiptOrdinal),
             }
@@ -2246,11 +2172,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         const ticket =
           planned.baseline === null
             ? null
-            : yield* sharedReadTicket(
-                planned.baseline,
-                owner,
-                planned.descriptor.kind === "metric-history" ? "history" : "baseline",
-              );
+            : yield* sharedReadTicket(planned.baseline, owner, "baseline");
         const base = {
           identity,
           subscriptionName: ZeropsWireSubscriptionName.make(options.makeOpaqueId()),
@@ -2381,11 +2303,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         const logicalTicket =
           planned.baseline === null
             ? null
-            : yield* requestTicket(
-                identity,
-                planned.descriptor.kind === "metric-history" ? "history" : "baseline",
-                planned.baseline,
-              );
+            : yield* requestTicket(identity, "baseline", planned.baseline);
         if (logicalTicket !== null && !(yield* admitRead(logicalTicket))) {
           return yield* Effect.fail(readCapacityError());
         }
@@ -3481,18 +3399,6 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
             leaseError("account-capacity", "The account active-query budget is full."),
           );
         }
-        const activeHistorySeries = [...interests.values()].filter(
-          (interest) =>
-            interest.leases.size > 0 && interest.descriptor.kind === "project-metric-history",
-        ).length;
-        if (
-          descriptor.kind === "project-metric-history" &&
-          activeHistorySeries >= policy.activeHistorySeriesPerAccount
-        ) {
-          return yield* Effect.fail(
-            leaseError("account-capacity", "The account history-series budget is full."),
-          );
-        }
         const organizationInterestCount = [...interests.values()].filter(
           (interest) => receiverKeyOf(interest.descriptor) === organizationKey,
         ).length;
@@ -3537,11 +3443,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           descriptor,
           key,
           leases: new Set(),
-          // Metrics and history enrich what the inventory interests hold: their
-          // failures stay visible and never replace the organization's receiver.
-          required:
-            descriptor.kind !== "project-current-metrics" &&
-            descriptor.kind !== "project-metric-history",
+          required: true,
           identity,
           recoveryAttempts: 0,
           readController: new AbortController(),

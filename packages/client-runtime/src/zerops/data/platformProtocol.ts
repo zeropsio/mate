@@ -6,12 +6,8 @@ import { coverageFor } from "./coverage.ts";
 import { decodeTableFrame, decodeTableSearch } from "./tableProtocol.ts";
 
 import type {
-  CurrentMetricObservation,
-  CurrentMetricSample,
   EntityObservation,
   MembershipQueryDescriptor,
-  HistoryMetricBucket,
-  HistoryMetricObservation,
   PlatformCommand,
   PlatformObservation,
   ProjectRef,
@@ -24,7 +20,6 @@ import type {
   SourceMetadata,
 } from "./types.ts";
 import {
-  ZeropsContainerId,
   ZeropsProcessId,
   ZeropsProjectId,
   ZeropsServiceId,
@@ -162,41 +157,14 @@ const DirectListEnvelope = Schema.Struct({
   totalCount: Schema.optionalKey(Schema.Finite),
 });
 
-const StatPairRow = Schema.Struct({ used: Schema.Finite, limit: Schema.Finite });
-const CurrentMetricRow = Schema.Struct({
-  serviceStackId: Schema.String,
-  containerId: Schema.String,
-  cpu: Schema.optionalKey(StatPairRow),
-  vCpu: Schema.optionalKey(StatPairRow),
-  ramGBytes: Schema.optionalKey(StatPairRow),
-  diskGBytes: Schema.optionalKey(StatPairRow),
-});
-const HistoryMetricRow = Schema.Struct({
-  serviceStackId: Schema.String,
-  from: Schema.String,
-  till: Schema.String,
-  containerCount: OptionalNumber,
-  cpuLimit: OptionalNumber,
-  cpuUsed: OptionalNumber,
-  vCpuLimit: OptionalNumber,
-  vCpuUsed: OptionalNumber,
-  ramLimit: OptionalNumber,
-  ramUsed: OptionalNumber,
-  diskLimit: OptionalNumber,
-  diskUsed: OptionalNumber,
-});
-
 const decodeProjectRow = Schema.decodeUnknownOption(ProjectRow);
 const decodeServiceRow = Schema.decodeUnknownOption(ServiceRow);
 
 const decodeSearchEnvelope = Schema.decodeUnknownOption(SearchEnvelope);
 const decodeDirectListEnvelope = Schema.decodeUnknownOption(DirectListEnvelope);
-const decodeCurrentMetricRow = Schema.decodeUnknownOption(CurrentMetricRow);
-const decodeHistoryMetricRow = Schema.decodeUnknownOption(HistoryMetricRow);
 const decodeProjectId = Schema.decodeUnknownOption(ZeropsProjectId);
 const decodeServiceId = Schema.decodeUnknownOption(ZeropsServiceId);
 const decodeProcessId = Schema.decodeUnknownOption(ZeropsProcessId);
-const decodeContainerId = Schema.decodeUnknownOption(ZeropsContainerId);
 const decodeSubscriptionName = Schema.decodeUnknownOption(ZeropsWireSubscriptionName);
 const decodeRegistrationSuccess = Schema.decodeUnknownOption(
   Schema.Union([
@@ -208,7 +176,6 @@ const decodeRegistrationSuccess = Schema.decodeUnknownOption(
 const isProjectId = (value: string): boolean => Option.isSome(decodeProjectId(value));
 const isServiceId = (value: string): boolean => Option.isSome(decodeServiceId(value));
 const isProcessId = (value: string): boolean => Option.isSome(decodeProcessId(value));
-const isContainerId = (value: string): boolean => Option.isSome(decodeContainerId(value));
 
 const hasValidMetadataIds = (row: {
   readonly parentId?: string | null;
@@ -849,128 +816,6 @@ export function decodeProjectCommandResponse(
   };
 }
 
-function pair(used: number | undefined, limit: number | undefined) {
-  return used === undefined || limit === undefined ? null : { used, limit };
-}
-
-function currentMetrics(
-  registration: RegistrationRequest | null,
-  descriptor: Extract<
-    import("./types.ts").QueryDescriptor,
-    { readonly kind: "current-metrics-of-project" }
-  >,
-  ticket: ReadTicket | null,
-  rows: ReadonlyArray<unknown>,
-): ProtocolDecodeResult {
-  const samples: CurrentMetricSample[] = [];
-  const issues: ProtocolDecodeIssue[] = [];
-  rows.forEach((raw, rowIndex) => {
-    const row = Option.getOrUndefined(decodeCurrentMetricRow(raw));
-    if (!row || !isServiceId(row.serviceStackId) || !isContainerId(row.containerId)) {
-      issues.push({
-        kind: "malformed-row",
-        message: "Current metric row lacks serviceStackId or containerId.",
-        rowIndex,
-      });
-      return;
-    }
-    samples.push({
-      key: {
-        service: {
-          kind: "service",
-          project: descriptor.project,
-          serviceId: ZeropsServiceId.make(row.serviceStackId),
-        },
-        containerId: ZeropsContainerId.make(row.containerId),
-        groupBy: "containerId",
-        schemaVersion: 1,
-      },
-      cpu: row.cpu ?? null,
-      virtualCpu: row.vCpu ?? null,
-      memoryGb: row.ramGBytes ?? null,
-      diskGb: row.diskGBytes ?? null,
-    });
-  });
-  const base = {
-    kind: "current-metrics-replaced" as const,
-    samples,
-    coverage: issues.length
-      ? ({ kind: "partial", reason: "malformed" } as const)
-      : ({
-          kind: "exhausted-traversal",
-          traversedPages: 1,
-          observedTotal: samples.length,
-          guarantee: "non-atomic",
-        } as const),
-  };
-  const observation: CurrentMetricObservation = registration
-    ? { ...base, source: "native-push", registration: registration as never }
-    : { ...base, source: "direct-read", ticket: ticket as never };
-  return { observations: [observation], issues };
-}
-
-function historyMetrics(
-  registration: RegistrationRequest | null,
-  descriptor: Extract<
-    import("./types.ts").QueryDescriptor,
-    { readonly kind: "metric-history-of-project" }
-  >,
-  ticket: ReadTicket | null,
-  rows: ReadonlyArray<unknown>,
-  operation: "replace-window" | "correct-buckets",
-): ProtocolDecodeResult {
-  const buckets: HistoryMetricBucket[] = [];
-  const issues: ProtocolDecodeIssue[] = [];
-  rows.forEach((raw, rowIndex) => {
-    const row = Option.getOrUndefined(decodeHistoryMetricRow(raw));
-    if (!row || !isServiceId(row.serviceStackId)) {
-      issues.push({
-        kind: "malformed-row",
-        message: "History row lacks serviceStackId/from/till.",
-        rowIndex,
-      });
-      return;
-    }
-    const service: ServiceRef = {
-      kind: "service",
-      project: descriptor.project,
-      serviceId: ZeropsServiceId.make(row.serviceStackId),
-    };
-    const series = {
-      service,
-      groupBy: "serviceStackId" as const,
-      window: descriptor.window,
-      schemaVersion: 1 as const,
-    };
-    buckets.push({
-      key: { series, from: row.from, till: row.till },
-      containers: row.containerCount ?? null,
-      cpu: pair(row.cpuUsed, row.cpuLimit),
-      virtualCpu: pair(row.vCpuUsed, row.vCpuLimit),
-      memoryGb: pair(row.ramUsed, row.ramLimit),
-      diskGb: pair(row.diskUsed, row.diskLimit),
-    });
-  });
-  const base = {
-    kind: "metric-history-window-observed" as const,
-    buckets,
-    coverage: issues.length
-      ? ({ kind: "partial", reason: "malformed" } as const)
-      : ({
-          kind: "partial-window",
-          offset: 0,
-          limit: descriptor.window.limit,
-          traversedPages: 1,
-          observedTotal: null,
-        } as const),
-    operation,
-  };
-  const observation: HistoryMetricObservation = registration
-    ? { ...base, source: "native-push", registration: registration as never }
-    : { ...base, source: "direct-read", ticket: ticket as never };
-  return { observations: [observation], issues };
-}
-
 export type NativeFrameDecode =
   | { readonly kind: "pong" }
   | {
@@ -995,10 +840,8 @@ const MembershipDelta = Schema.Struct({
   delete: Schema.Array(Schema.String),
 });
 const UpdateEnvelope = Schema.Struct({ update: Schema.Array(Schema.Unknown) });
-const CurrentEnvelope = Schema.Struct({ items: Schema.Array(Schema.Unknown) });
 const decodeMembershipDelta = Schema.decodeUnknownOption(MembershipDelta);
 const decodeUpdateEnvelope = Schema.decodeUnknownOption(UpdateEnvelope);
-const decodeCurrentEnvelope = Schema.decodeUnknownOption(CurrentEnvelope);
 
 export function decodeNativeFrame(
   encoded: string,
@@ -1076,34 +919,6 @@ export function decodeNativeFrame(
     return { kind: "observations", observations, issues: [] };
   }
   const descriptor = registration.descriptor;
-  if (descriptor.kind === "current-metrics") {
-    const data = Option.getOrUndefined(decodeCurrentEnvelope(frame.data));
-    if (!data)
-      return {
-        kind: "malformed",
-        subscriptionName: name,
-        message: "Current metric frame must use data.items.",
-      };
-    const result = currentMetrics(registration, descriptor.query, null, data.items);
-    return { kind: "observations", ...result };
-  }
-  if (descriptor.kind === "metric-history") {
-    const data = Option.getOrUndefined(decodeUpdateEnvelope(frame.data));
-    if (!data)
-      return {
-        kind: "malformed",
-        subscriptionName: name,
-        message: "History frame must use data.update.",
-      };
-    const result = historyMetrics(
-      registration,
-      descriptor.query,
-      null,
-      data.update,
-      "correct-buckets",
-    );
-    return { kind: "observations", ...result };
-  }
   const entityDescriptor = descriptor as Extract<
     RegistrationDescriptor,
     { readonly kind: "entity-updates" }
@@ -1181,44 +996,10 @@ export function decodeRegistrationResponse(
             },
           ],
         };
-  if (descriptor.kind === "query-membership")
-    return decodeEntityQueryResponse(
-      descriptor.query,
-      request.baselineTicket as ReadTicket,
-      input,
-      "indexed-search",
-    );
-  const envelope = Option.getOrUndefined(decodeSearchEnvelope(input));
-  if (!envelope)
-    return {
-      observations: [],
-      issues: [
-        { kind: "malformed-envelope", message: "Metric registration response has no items." },
-      ],
-    };
-  return descriptor.kind === "current-metrics"
-    ? currentMetrics(request, descriptor.query, null, envelope.items)
-    : historyMetrics(request, descriptor.query, null, envelope.items, "replace-window");
-}
-
-export function decodeMetricRead(ticket: ReadTicket, input: unknown): ProtocolDecodeResult {
-  if (ticket.target.kind !== "query")
-    return {
-      observations: [],
-      issues: [{ kind: "malformed-envelope", message: "Metric read has no metric query." }],
-    };
-  const envelope = Option.getOrUndefined(decodeSearchEnvelope(input));
-  if (!envelope)
-    return {
-      observations: [],
-      issues: [{ kind: "malformed-envelope", message: "Metric read response has no items." }],
-    };
-  return ticket.target.descriptor.kind === "current-metrics-of-project"
-    ? currentMetrics(null, ticket.target.descriptor, ticket, envelope.items)
-    : ticket.target.descriptor.kind === "metric-history-of-project"
-      ? historyMetrics(null, ticket.target.descriptor, ticket, envelope.items, "replace-window")
-      : {
-          observations: [],
-          issues: [{ kind: "malformed-envelope", message: "Read is not a metric query." }],
-        };
+  return decodeEntityQueryResponse(
+    descriptor.query,
+    request.baselineTicket as ReadTicket,
+    input,
+    "indexed-search",
+  );
 }

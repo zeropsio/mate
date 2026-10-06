@@ -46,10 +46,7 @@ describe("Zerops data runtime policy", () => {
     expect(DEFAULT_ZEROPS_DATA_POLICY.establishmentDeadlineMs).toBe(60_000);
   });
 
-  it("bounds account-wide entity, telemetry and history retention", () => {
-    expect(DEFAULT_ZEROPS_DATA_POLICY.retainedCurrentMetricSamplesPerAccount).toBe(10_000);
-    expect(DEFAULT_ZEROPS_DATA_POLICY.retainedHistoryBucketsPerSeries).toBe(720);
-    expect(DEFAULT_ZEROPS_DATA_POLICY.activeHistorySeriesPerAccount).toBe(128);
+  it("bounds account-wide receivers, queries, reads and commands", () => {
     expect(DEFAULT_ZEROPS_DATA_POLICY.receiversPerAccount).toBe(16);
     expect(DEFAULT_ZEROPS_DATA_POLICY.activeQueriesPerAccount).toBe(512);
     expect(DEFAULT_ZEROPS_DATA_POLICY.queuedReadRequestsPerAccount).toBe(1_024);

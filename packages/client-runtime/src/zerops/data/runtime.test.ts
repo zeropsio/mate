@@ -212,7 +212,7 @@ describe("makeZeropsBoundedIngress — interrupted producers", () => {
 });
 
 describe("interestKeyOf", () => {
-  it("shares identical descriptors and separates project or metric-window demand", () => {
+  it("shares identical descriptors and separates project demand", () => {
     const first = {
       kind: "project-topology" as const,
       project: project("project-a"),
@@ -221,15 +221,8 @@ describe("interestKeyOf", () => {
     expect(interestKeyOf({ ...first, project: project("project-b") })).not.toBe(
       interestKeyOf(first),
     );
-    expect(interestKeyOf({ kind: "project-current-metrics", project: first.project })).not.toBe(
+    expect(interestKeyOf({ kind: "project-inventory", project: first.project })).not.toBe(
       interestKeyOf(first),
-    );
-  });
-
-  it("keeps optional current metrics distinct from required topology", () => {
-    const ref = project("project-a");
-    expect(interestKeyOf({ kind: "project-current-metrics", project: ref })).not.toBe(
-      interestKeyOf({ kind: "project-topology", project: ref }),
     );
   });
 });
@@ -242,7 +235,7 @@ function makeIdFactory(): () => string {
   return () => `opaque-${++next}`;
 }
 
-function makeAdapterHarness(options: { readonly failCurrentMetrics?: boolean } = {}) {
+function makeAdapterHarness() {
   let opens = 0;
   let registrations = 0;
   let reads = 0;
@@ -257,18 +250,8 @@ function makeAdapterHarness(options: { readonly failCurrentMetrics?: boolean } =
         events: Stream.never,
       } satisfies ReceiverHandle);
     },
-    register: (_receiver, request) => {
+    register: () => {
       registrations += 1;
-      if (options.failCurrentMetrics && request.descriptor.kind === "current-metrics") {
-        return Effect.fail({
-          _tag: "ZeropsDataAdapterError",
-          kind: "registration",
-          message: "metrics unavailable",
-          status: 403,
-          retryable: true,
-          accountRevocationEvidence: false,
-        } satisfies AdapterError);
-      }
       return Effect.succeed({ responseObservations: [] });
     },
     read: () => {
@@ -455,7 +438,7 @@ describe("makeZeropsDataRuntime", () => {
     }),
   );
 
-  it.effect("rejects active query and history-series demand at account capacity", () =>
+  it.effect("rejects active query demand at account capacity", () =>
     Effect.gen(function* () {
       const registry = AtomRegistry.make();
       const harness = makeAdapterHarness();
@@ -464,52 +447,24 @@ describe("makeZeropsDataRuntime", () => {
         adapter: harness.adapter,
         atomRegistry: registry,
         makeOpaqueId: makeIdFactory(),
-        // The variables' one query, their list, fills it; the metrics' own is one too many.
+        // The variables' one query, their list, fills it; another service's is one too many.
         policy: makeZeropsDataPolicy({ activeQueriesPerAccount: 1 }),
       });
       const variablesScope = yield* Scope.make();
       yield* queryBounded.acquire(variablesDescriptor).pipe(Scope.provide(variablesScope));
-      const metricsScope = yield* Scope.make();
-      const metrics = yield* queryBounded
-        .acquire({ kind: "project-current-metrics", project: variablesDescriptor.project })
-        .pipe(Scope.provide(metricsScope), Effect.result);
-      expect(metrics._tag).toBe("Failure");
-      if (metrics._tag === "Failure") expect(metrics.failure.reason).toBe("account-capacity");
+      const otherScope = yield* Scope.make();
+      const other = yield* queryBounded
+        .acquire({
+          kind: "project-variables",
+          serviceIds: [ZeropsServiceId.make("service-b")],
+          project: variablesDescriptor.project,
+        })
+        .pipe(Scope.provide(otherScope), Effect.result);
+      expect(other._tag).toBe("Failure");
+      if (other._tag === "Failure") expect(other.failure.reason).toBe("account-capacity");
       yield* queryBounded.shutdown("application-close");
       yield* Scope.close(variablesScope, Exit.void);
-      yield* Scope.close(metricsScope, Exit.void);
-
-      const historyBounded = yield* makeZeropsDataRuntime({
-        scope: runtimeScope,
-        adapter: harness.adapter,
-        atomRegistry: registry,
-        makeOpaqueId: makeIdFactory(),
-        policy: makeZeropsDataPolicy({
-          activeQueriesPerAccount: 4,
-          activeHistorySeriesPerAccount: 1,
-        }),
-      });
-      const firstScope = yield* Scope.make();
-      yield* historyBounded
-        .acquire({
-          kind: "project-metric-history",
-          project: variablesDescriptor.project,
-          window: { timeGroupBy: "1m", limit: 10, timeZone: "Europe/Prague" },
-        })
-        .pipe(Scope.provide(firstScope));
-      const secondScope = yield* Scope.make();
-      const second = yield* historyBounded
-        .acquire({
-          kind: "project-metric-history",
-          project: variablesDescriptor.project,
-          window: { timeGroupBy: "1h", limit: 10, timeZone: "Europe/Prague" },
-        })
-        .pipe(Scope.provide(secondScope), Effect.result);
-      expect(second._tag).toBe("Failure");
-      if (second._tag === "Failure") expect(second.failure.reason).toBe("account-capacity");
-      yield* historyBounded.shutdown("application-close");
-      yield* Scope.close(firstScope, Exit.void);
-      yield* Scope.close(secondScope, Exit.void);
+      yield* Scope.close(otherScope, Exit.void);
       registry.dispose();
     }),
   );
@@ -976,136 +931,6 @@ describe("makeZeropsDataRuntime", () => {
       registry.dispose();
     }),
   );
-
-  it.effect("keeps required variables observing when optional current metrics fail", () =>
-    Effect.gen(function* () {
-      const registry = AtomRegistry.make();
-      const harness = makeAdapterHarness({ failCurrentMetrics: true });
-      const runtime = yield* makeZeropsDataRuntime({
-        scope: runtimeScope,
-        adapter: harness.adapter,
-        atomRegistry: registry,
-        makeOpaqueId: makeIdFactory(),
-      });
-      const states = yield* Queue.unbounded<ZeropsDataState>();
-      const unsubscribe = registry.subscribe(runtime.stateAtom, (state) => {
-        Queue.offerUnsafe(states, state);
-      });
-      const requiredScope = yield* Scope.make();
-      const optionalScope = yield* Scope.make();
-      const required = yield* runtime
-        .acquire(variablesDescriptor)
-        .pipe(Scope.provide(requiredScope));
-      const optional = yield* runtime
-        .acquire({ kind: "project-current-metrics", project: variablesDescriptor.project })
-        .pipe(Scope.provide(optionalScope));
-
-      const settled = yield* waitForState(states, (state) => {
-        const requiredState = state.interests.get(required.interest)?.interest.status;
-        const optionalState = state.interests.get(optional.interest)?.interest.status;
-        return requiredState === "observing" && optionalState === "failed";
-      });
-      expect(settled.interests.get(required.interest)?.required).toBe(true);
-      expect(settled.interests.get(optional.interest)?.required).toBe(false);
-      expect(settled.interests.get(required.interest)?.interest.status).toBe("observing");
-
-      yield* runtime.shutdown("application-close");
-      yield* Scope.close(requiredScope, Exit.void);
-      yield* Scope.close(optionalScope, Exit.void);
-      unsubscribe();
-      registry.dispose();
-    }),
-  );
-
-  describe("a history interest is optional", () => {
-    const histories = {
-      "metric history": {
-        descriptor: {
-          kind: "project-metric-history",
-          project: variablesDescriptor.project,
-          window: { timeGroupBy: "1h", limit: 24, timeZone: "UTC" },
-        },
-        fails: (request: RegistrationRequest) => request.descriptor.kind === "metric-history",
-      },
-    } as const satisfies Record<
-      string,
-      {
-        readonly descriptor: RuntimeInterestDescriptor;
-        readonly fails: (request: RegistrationRequest) => boolean;
-      }
-    >;
-
-    for (const [name, history] of Object.entries(histories)) {
-      it.effect(`keeps variables observing on its receiver when the ${name} fails`, () =>
-        Effect.gen(function* () {
-          const registry = AtomRegistry.make();
-          const harness = makeAdapterHarness();
-          let opens = 0;
-          const runtime = yield* makeZeropsDataRuntime({
-            scope: runtimeScope,
-            adapter: {
-              ...harness.adapter,
-              openReceiver: (...args) => {
-                opens += 1;
-                return harness.adapter.openReceiver(...args);
-              },
-              register: (receiver, request, context) => {
-                if (!history.fails(request))
-                  return harness.adapter.register(receiver, request, context);
-                return Effect.fail({
-                  _tag: "ZeropsDataAdapterError",
-                  kind: "registration",
-                  message: "history unavailable",
-                  status: 403,
-                  retryable: true,
-                  accountRevocationEvidence: false,
-                } satisfies AdapterError);
-              },
-            },
-            atomRegistry: registry,
-            makeOpaqueId: makeIdFactory(),
-          });
-          const states = yield* Queue.unbounded<ZeropsDataState>();
-          const unsubscribe = registry.subscribe(runtime.stateAtom, (state) => {
-            Queue.offerUnsafe(states, state);
-          });
-          const leaseScope = yield* Scope.make();
-          const variables = yield* runtime
-            .acquire(variablesDescriptor)
-            .pipe(Scope.provide(leaseScope));
-          const observed = yield* waitForState(
-            states,
-            (state) => state.interests.get(variables.interest)?.interest.status === "observing",
-          );
-          const variablesIdentity = observed.interests.get(variables.interest)!.interest.identity;
-          const historyLease = yield* runtime
-            .acquire(history.descriptor)
-            .pipe(Scope.provide(leaseScope));
-          // It fails alone; refused (403), it waits for a person or a grant, not a timer.
-          const settled = yield* waitForState(
-            states,
-            (state) => state.interests.get(historyLease.interest)?.interest.status === "failed",
-          );
-          expect(settled.interests.get(historyLease.interest)?.required).toBe(false);
-          expect(settled.interests.get(historyLease.interest)?.interest).toMatchObject({
-            status: "failed",
-            retryable: false,
-            retryAtMs: null,
-          });
-          expect(settled.interests.get(variables.interest)?.interest).toMatchObject({
-            status: "observing",
-            identity: variablesIdentity,
-          });
-          expect(opens).toBe(1);
-
-          yield* runtime.shutdown("application-close");
-          yield* Scope.close(leaseScope, Exit.void);
-          unsubscribe();
-          registry.dispose();
-        }),
-      );
-    }
-  });
 
   it.effect(
     "admits project-scoped continuation writes after an organization-authorized create",
@@ -3023,75 +2848,6 @@ describe("a registration two interests share", () => {
   );
 });
 
-describe("opening a Mate on a loaded organization", () => {
-  it.effect("adds no call of the organization's: only the project's own metrics", () =>
-    Effect.gen(function* () {
-      const registry = AtomRegistry.make();
-      const sent: string[] = [];
-      const adapter: ZeropsDataAdapter = {
-        ...makeAdapterHarness().adapter,
-        register: (_receiver, request) =>
-          Effect.sync(() => {
-            sent.push(
-              request.descriptor.kind === "entity-updates"
-                ? `${request.descriptor.entity} updates`
-                : request.descriptor.kind,
-            );
-            return { responseObservations: [] };
-          }),
-        read: (ticket) =>
-          Effect.sync(() => {
-            sent.push(`read ${ticket.target.kind}`);
-            return { observations: [] };
-          }),
-      };
-      const runtime = yield* makeZeropsDataRuntime({
-        scope: runtimeScope,
-        adapter,
-        atomRegistry: registry,
-        makeOpaqueId: makeIdFactory(),
-      });
-      const leases = yield* Scope.make();
-      const projects = ["a", "b", "c"].map((id) => project(`project-${id}`));
-      const resting = yield* Effect.forEach(
-        [
-          { kind: "organization-inventory" as const, organization: projects[0]!.organization },
-          ...projects.map((ref) => ({
-            kind: "project-variables" as const,
-            serviceIds: vehicleServices,
-            project: ref,
-          })),
-        ],
-        (descriptor) => runtime.acquire(descriptor).pipe(Scope.provide(leases)),
-      );
-      const observing = (state: ZeropsDataState, held: ReadonlyArray<InterestLease>) =>
-        held.every((lease) => state.interests.get(lease.interest)?.interest.status === "observing");
-      yield* settleUntil(runtime, (state) => observing(state, resting), 2_000);
-      const atRest = sent.length;
-
-      // The Mate's conversation: its variables, then its live usage.
-      const open = yield* Effect.forEach(
-        [
-          {
-            kind: "project-variables" as const,
-            serviceIds: vehicleServices,
-            project: projects[1]!,
-          },
-          { kind: "project-current-metrics" as const, project: projects[1]! },
-        ],
-        (descriptor) => runtime.acquire(descriptor).pipe(Scope.provide(leases)),
-      );
-      yield* settleUntil(runtime, (state) => observing(state, open), 2_000);
-
-      expect(sent.slice(atRest)).toEqual(["current-metrics"]);
-
-      yield* runtime.shutdown("application-close");
-      yield* Scope.close(leases, Exit.void);
-      registry.dispose();
-    }),
-  );
-});
-
 describe("the entity table's reads by id", () => {
   it.effect("reads the rows its list's frames named without one, batched once after a grace", () =>
     Effect.gen(function* () {
@@ -3530,7 +3286,11 @@ it.effect("uses the access project read as the runtime's direct project observat
             ),
         },
       });
-      yield* runtime.acquire({ kind: "project-current-metrics", project: target });
+      yield* runtime.acquire({
+        kind: "project-variables",
+        serviceIds: vehicleServices,
+        project: target,
+      });
       expect(typeof runtime.readProjectForAccess).toBe("function");
       const row = yield* runtime.readProjectForAccess(target);
       expect(row.name).toBe("Fresh name");
@@ -3578,7 +3338,11 @@ it.effect.each(["forbidden", "not-found"] as const)(
               }),
           },
         });
-        yield* runtime.acquire({ kind: "project-current-metrics", project: target });
+        yield* runtime.acquire({
+          kind: "project-variables",
+          serviceIds: vehicleServices,
+          project: target,
+        });
         const outcome = yield* runtime.readProjectForAccess(target).pipe(Effect.result);
         expect(Result.isFailure(outcome) && outcome.failure.kind).toBe(reason);
         yield* runtime.shutdown("application-close");
@@ -3949,75 +3713,6 @@ describe("owed table coverage", () => {
       ),
   );
 });
-
-it.effect(
-  "an uncertain optional registration closes its receiver before automatically reconnecting",
-  () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const registry = AtomRegistry.make();
-        const harness = makeAdapterHarness();
-        const sent = yield* Deferred.make<void>();
-        let attempts = 0;
-        let refusesToAnswer = true;
-        const runtime = yield* makeZeropsDataRuntime({
-          scope: runtimeScope,
-          adapter: {
-            ...harness.adapter,
-            register: (receiver, request, context) => {
-              if (request.descriptor.kind !== "current-metrics")
-                return harness.adapter.register(receiver, request, context);
-              attempts += 1;
-              return refusesToAnswer
-                ? Deferred.succeed(sent, undefined).pipe(
-                    Effect.andThen(
-                      Effect.fail({
-                        _tag: "ZeropsDataAdapterError",
-                        kind: "timeout",
-                        message: "Registration answer timed out.",
-                        retryable: true,
-                        accountRevocationEvidence: false,
-                      } satisfies AdapterError),
-                    ),
-                  )
-                : Effect.succeed({ responseObservations: [] });
-            },
-          },
-          policy: makeZeropsDataPolicy({ registrationDeadlineMs: 10 }),
-          atomRegistry: registry,
-          makeOpaqueId: makeIdFactory(),
-        });
-        const states = yield* Queue.unbounded<ZeropsDataState>();
-        const stop = registry.subscribe(runtime.stateAtom, (state) =>
-          Queue.offerUnsafe(states, state),
-        );
-        const lease = yield* runtime.acquire({
-          kind: "project-current-metrics",
-          project: variablesDescriptor.project,
-        });
-        yield* Deferred.await(sent);
-        yield* TestClock.adjust("10 millis");
-        yield* waitForState(
-          states,
-          (state) => state.interests.get(lease.interest)?.interest.status === "failed",
-        );
-        expect(harness.counts().closes).toBe(1);
-        expect(attempts).toBe(1);
-        expect(harness.counts().opens).toBe(1);
-        refusesToAnswer = false;
-        yield* TestClock.adjust("1 second");
-        yield* waitForState(
-          states,
-          (state) => state.interests.get(lease.interest)?.interest.status === "observing",
-        );
-        expect(attempts).toBe(2);
-        expect(harness.counts().closes).toBe(1);
-        yield* runtime.shutdown("application-close");
-        stop();
-        registry.dispose();
-      }),
-    ),
-);
 
 it.effect("retains a malformed registration failure for later dependents", () =>
   Effect.scoped(
@@ -4542,7 +4237,7 @@ describe("an interest that fails alone recovers alone", () => {
         // Another project's demand comes and goes: its released subscription replaces the socket.
         const passing = yield* Scope.make();
         yield* rig.runtime
-          .acquire({ kind: "project-current-metrics", project: project("project-b") })
+          .acquire({ kind: "project-record", project: project("project-b") })
           .pipe(Scope.provide(passing));
         yield* settle;
         yield* Scope.close(passing, Exit.void);

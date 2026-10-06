@@ -13,7 +13,6 @@ import {
   decodeDirectListPage,
   decodeEntityQueryPages,
   decodeEntityQueryResponse,
-  decodeMetricRead,
   decodeNativeFrame,
   decodeRegistrationResponse,
   decodeSearchListPage,
@@ -282,11 +281,9 @@ function registrationOrganization(request: RegistrationRequest) {
   if (descriptor.kind === "table-list") return descriptor.query.organization;
   return descriptor.kind === "entity-updates" || descriptor.kind === "table-updates"
     ? descriptor.organization
-    : descriptor.kind === "query-membership"
-      ? "project" in descriptor.query
-        ? descriptor.query.project.organization
-        : descriptor.query.organization
-      : descriptor.query.project.organization;
+    : "project" in descriptor.query
+      ? descriptor.query.project.organization
+      : descriptor.query.organization;
 }
 
 function sameReceiverIdentity(
@@ -381,39 +378,15 @@ function registrationHttp(request: RegistrationRequest, receiver: ReceiverHandle
       },
     };
   }
-  if (descriptor.kind === "query-membership") {
-    const entity =
-      descriptor.query.kind === "projects-of-organization" ? "project" : "service-stack";
-    return {
-      path: `/${entity}/search`,
-      body: {
-        search: searchTerms(descriptor.query),
-        sort: [],
-        limit: ORGANIZATION_SEARCH_LIMIT,
-        ...common,
-        wsOutputType: "listStream",
-      },
-    };
-  }
-  const query = descriptor.query;
-  const metricCommon = {
-    search: [
-      { name: "clientId", operator: "eq", value: query.project.organization.organizationId },
-      { name: "projectId", operator: "eq", value: query.project.projectId },
-    ],
-    groupBy: query.groupBy,
-    ...common,
-  };
-  if (descriptor.kind === "current-metrics")
-    return { path: "/current-stats/group-by-search", body: metricCommon };
-  const historyQuery = descriptor.query;
+  const entity = descriptor.query.kind === "projects-of-organization" ? "project" : "service-stack";
   return {
-    path: "/stats-history/group-by-search",
+    path: `/${entity}/search`,
     body: {
-      ...metricCommon,
-      timeGroupBy: historyQuery.window.timeGroupBy,
-      limit: historyQuery.window.limit,
-      timeZone: historyQuery.window.timeZone,
+      search: searchTerms(descriptor.query),
+      sort: [],
+      limit: ORGANIZATION_SEARCH_LIMIT,
+      ...common,
+      wsOutputType: "listStream",
     },
   };
 }
@@ -438,32 +411,9 @@ function readHttp(ticket: PlatformReadRequest, offset = 0) {
       path: `/client/${query.organization.organizationId}/project?limit=500${offset ? `&offset=${offset}` : ""}`,
       method: "GET" as const,
     };
-  if (query.kind === "services-of-project")
-    return {
-      path: `/project/${query.project.projectId}/service-stack?limit=500${offset ? `&offset=${offset}` : ""}`,
-      method: "GET" as const,
-    };
-  const body = {
-    search: [
-      { name: "clientId", operator: "eq", value: query.project.organization.organizationId },
-      { name: "projectId", operator: "eq", value: query.project.projectId },
-    ],
-    groupBy: query.groupBy,
-    ...(query.kind === "metric-history-of-project"
-      ? {
-          timeGroupBy: query.window.timeGroupBy,
-          limit: query.window.limit,
-          timeZone: query.window.timeZone,
-        }
-      : {}),
-  };
   return {
-    path:
-      query.kind === "current-metrics-of-project"
-        ? "/current-stats/group-by-search"
-        : "/stats-history/group-by-search",
-    method: "POST" as const,
-    body,
+    path: `/project/${query.project.projectId}/service-stack?limit=500${offset ? `&offset=${offset}` : ""}`,
+    method: "GET" as const,
   };
 }
 
@@ -473,9 +423,6 @@ function decodeRead(ticket: PlatformReadRequest, body: unknown) {
     case "projects-of-organization":
     case "services-of-project":
       return decodeEntityQueryResponse(ticket.target.descriptor, ticket, body, "direct-read");
-    case "current-metrics-of-project":
-    case "metric-history-of-project":
-      return decodeMetricRead(ticket, body);
     case "service-variables-of-services":
       return decodeTableSearch(ticket, body);
   }

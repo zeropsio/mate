@@ -6,8 +6,6 @@ import type {
   DesiredInterestState,
   EntityKnowledge,
   EntityRead,
-  HistoryReadView,
-  HistorySeriesKey,
   InterestState,
   ProjectKey,
   ProjectRecord,
@@ -15,10 +13,9 @@ import type {
   ProjectTopologyRead,
   ServiceRecord,
   ServiceRef,
-  UsageRead,
   ViewObservation,
 } from "./types.ts";
-import { historySeriesKeyOf, projectKeyOf, queryKeyOf, serviceKeyOf } from "./types.ts";
+import { projectKeyOf, queryKeyOf, serviceKeyOf } from "./types.ts";
 
 type Interests = ZeropsDataState["interests"];
 type InterestsOfView = Pick<ViewObservation, "required" | "optional">;
@@ -148,64 +145,6 @@ export const selectService = (
   value: serviceKnowledge(record, ref),
   observation: observationOf(state, ref.project),
 });
-
-const sumPair = (pairs: ReadonlyArray<{ readonly used: number; readonly limit: number } | null>) =>
-  pairs.every((pair) => pair !== null)
-    ? pairs.reduce(
-        (total, pair) => ({
-          used: total.used + (pair?.used ?? 0),
-          limit: total.limit + (pair?.limit ?? 0),
-        }),
-        { used: 0, limit: 0 },
-      )
-    : null;
-
-export function selectUsage(state: ZeropsDataState, service: ServiceRef): UsageRead {
-  const query = state.observability.current.get(
-    queryKeyOf({
-      kind: "current-metrics-of-project",
-      project: service.project,
-      groupBy: "containerId",
-      schemaVersion: 1,
-    }),
-  );
-  const samples = [...(query?.samples.values() ?? [])].filter(
-    (sample) => serviceKeyOf(sample.key.service) === serviceKeyOf(service),
-  );
-  const coverage = query?.coverage ?? { kind: "none" as const };
-  // Shared services report cpu=0/0 and their allocation in vCpu. Either field
-  // may be omitted; a sample with neither remains unknown.
-  const cpu = sumPair(
-    samples.map((sample) =>
-      sample.cpu === null && sample.virtualCpu === null
-        ? null
-        : {
-            used: (sample.cpu?.used ?? 0) + (sample.virtualCpu?.used ?? 0),
-            limit: (sample.cpu?.limit ?? 0) + (sample.virtualCpu?.limit ?? 0),
-          },
-    ),
-  );
-  const memoryGb = sumPair(samples.map((sample) => sample.memoryGb));
-  const diskGb = sumPair(samples.map((sample) => sample.diskGb));
-  return {
-    value:
-      samples.length > 0 && cpu !== null && memoryGb !== null && diskGb !== null
-        ? { containers: samples.length, cpu, memoryGb, diskGb }
-        : null,
-    coverage,
-    observation: observationOf(state, service.project),
-  };
-}
-
-export function selectHistory(state: ZeropsDataState, key: HistorySeriesKey): HistoryReadView {
-  const series = state.observability.history.get(historySeriesKeyOf(key)) ?? {
-    status: "unresolved" as const,
-    key,
-    buckets: new Map(),
-    coverage: { kind: "none" as const },
-  };
-  return { series, observation: observationOf(state, key.service.project) };
-}
 
 /** A project's topology: its services as the account's store holds them (`serviceBridge.ts`). */
 export function selectTopology(
