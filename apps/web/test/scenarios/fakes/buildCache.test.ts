@@ -28,8 +28,12 @@ it("reuses identical input bytes, invalidates bundle inputs, and isolates worktr
     await NodeFSP.writeFile(NodePath.join(root, "unrelated.test.ts"), "tests only");
     expect(await cachedBundle(root, {}, build)).toBe(a);
     await NodeFSP.writeFile(input, "second");
-    expect(await cachedBundle(root, {}, build)).not.toBe(a);
+    const updated = await cachedBundle(root, {}, build);
+    expect(updated).not.toBe(a);
     expect(builds).toBe(2);
+    await NodeFSP.writeFile(NodePath.join(root, ".gitignore"), "src/ignored.ts\n");
+    expect(await cachedBundle(root, {}, build)).not.toBe(updated);
+    expect(builds).toBe(3);
     expect(await bundleKey(root, { VITE_BASE_PATH: "/mate" })).not.toBe(await bundleKey(root, {}));
     expect(await cachedBundle(other, {}, build)).not.toBe(a);
   } finally {
