@@ -58,7 +58,11 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import { HQ_NOT_OPEN, hqRefusalWords, type HqApi } from "@t3tools/client-runtime/zerops/hq";
 import { type Deployment } from "@t3tools/client-runtime/zerops/flow";
-import { ZeropsProjectId, ZeropsServiceId } from "@t3tools/client-runtime/zerops/data";
+import {
+  ZeropsProjectId,
+  ZeropsServiceId,
+  type ServiceRef,
+} from "@t3tools/client-runtime/zerops/data";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
@@ -78,7 +82,7 @@ import {
 
 import { hqChangesAtom, hqEnvironmentsAtom, hqStructureAtom } from "../state/zerops";
 import { useDetailProjects } from "./accountEnvironments";
-import { useStopDeployments } from "./accountForge";
+import { useStatedVersions, useStopDeployments } from "./accountForge";
 import { accountHqApi, useAccountHq } from "./accountHq";
 import {
   ZeropsProjectFlowContext,
@@ -86,7 +90,6 @@ import {
   type ZeropsProjectFlow,
   type ZeropsProjectFlowValue,
 } from "./projectFlowContext";
-import { useZeropsAtomSelections, ZeropsDataContext } from "./zeropsDataContext";
 import { useZeropsAppRecipes } from "./useZeropsAppRecipes";
 import { useZeropsAppReleases } from "./useZeropsAppReleases";
 import { useZeropsCompares, type ComparedCommits } from "./useZeropsCompares";
@@ -502,7 +505,6 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
    * (DESIGN M7), and its stop renders withheld where it is drawn.
    */
   const held = useContext(HeldInventoryContext);
-  const data = useContext(ZeropsDataContext);
   const groupProjects = useMemo(
     () =>
       new Map(
@@ -529,30 +531,25 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       ),
     [held, registry.registry.groups],
   );
-  // What each group service runs, as the account's store states it, read live.
-  const statedServices = useMemo(() => {
-    if (data === null) return [];
-    return [...groupProjects.values()].flat().flatMap((project) => {
-      // The inventory keys each ref by its project key, never by the bare id (F10).
-      const ref = findInventoryProjectRef(
-        { projectRefs: inventory.projectRefs },
-        project.projectId,
-      );
-      if (ref === null) return [];
-      return project.services.map(
-        (service) =>
-          [
-            service.serviceId,
-            data.runtime.reads.deployedVersion({
-              kind: "service",
-              project: ref,
-              serviceId: ZeropsServiceId.make(service.serviceId),
-            }),
-          ] as const,
-      );
-    });
-  }, [data, groupProjects, inventory.projectRefs]);
-  const stated = useZeropsAtomSelections(statedServices);
+  // What each group service runs, as the account's stops state it, read live.
+  const statedServices = useMemo(
+    () =>
+      [...groupProjects.values()].flat().flatMap((project) => {
+        // The inventory keys each ref by its project key, never by the bare id (F10).
+        const ref = findInventoryProjectRef(
+          { projectRefs: inventory.projectRefs },
+          project.projectId,
+        );
+        if (ref === null) return [];
+        return project.services.map((service): ServiceRef => ({
+          kind: "service",
+          project: ref,
+          serviceId: ZeropsServiceId.make(service.serviceId),
+        }));
+      }),
+    [groupProjects, inventory.projectRefs],
+  );
+  const stated = useStatedVersions(statedServices);
   const flowGroups = useMemo(
     () => registry.registry.groups.map(({ groupId }) => ({ groupId })),
     [registry.registry.groups],

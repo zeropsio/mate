@@ -24,16 +24,13 @@ describe("visible project demand", () => {
   });
 });
 
-it.each(["project-versions", "project-variables"] as const)(
-  "restricts %s to the opened service IDs",
-  (kind) => {
-    const serviceIds = ["mate", "app"];
-    const plan = planZeropsInterest({ kind, project: opened, serviceIds });
-    expect(plan.registrations).toHaveLength(2);
-    for (const { descriptor } of plan.registrations) {
-      expect(descriptor.kind === "table-list" ? descriptor.query : descriptor).toMatchObject({
-        serviceIds,
-      });
-    }
-  },
-);
+it("restricts the project's variables to the opened service IDs", () => {
+  const serviceIds = ["mate", "app"];
+  const plan = planZeropsInterest({ kind: "project-variables", project: opened, serviceIds });
+  expect(plan.registrations).toHaveLength(2);
+  for (const { descriptor } of plan.registrations) {
+    expect(descriptor.kind === "table-list" ? descriptor.query : descriptor).toMatchObject({
+      serviceIds,
+    });
+  }
+});

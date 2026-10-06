@@ -1,4 +1,8 @@
-import type { ProjectRef, ServiceRef } from "@t3tools/client-runtime/zerops/data";
+import type {
+  ProjectRef,
+  ServiceRef,
+  ZeropsServiceDeployedVersion,
+} from "@t3tools/client-runtime/zerops/data";
 import { RegistryContext } from "@effect/atom-react";
 import type { Stops } from "@t3tools/client-runtime/zerops/account/runtime";
 import type { Deployment, StopService } from "@t3tools/client-runtime/zerops/flow";
@@ -62,8 +66,18 @@ function stage() {
     }
     return atom;
   };
+  const versionAtoms = new Map<string, Atom.Writable<Shown<ZeropsServiceDeployedVersion>>>();
+  const versionOf = (serviceId: string) => {
+    let atom = versionAtoms.get(serviceId);
+    if (atom === undefined) {
+      atom = Atom.make<Shown<ZeropsServiceDeployedVersion>>({ state: "unread", waitingFor: null });
+      versionAtoms.set(serviceId, atom);
+    }
+    return atom;
+  };
   const stops = {
     services: (project: ProjectRef) => atomOf(project.projectId),
+    version: (service: ServiceRef) => versionOf(service.serviceId),
     demand: (project: ProjectRef) => {
       stopDemandCalls += 1;
       stopDemands.push(project.projectId);
@@ -85,6 +99,9 @@ function stage() {
     ),
     holdStop: (projectId: string, shown: Shown<ReadonlyArray<StopService>>) => {
       registry.set(atomOf(projectId), shown);
+    },
+    holdVersion: (serviceId: string, shown: Shown<ZeropsServiceDeployedVersion>) => {
+      registry.set(versionOf(serviceId), shown);
     },
   };
 }
@@ -349,6 +366,42 @@ describe("the account's project flow in the web", () => {
       await nextMacrotask();
       expect(answers.at(-1)).toEqual({ state: "unread", waitingFor: "access-grant" });
       expect(rig.stopDemandCalls()).toBe(0);
+    } finally {
+      root.unmount();
+      await nextMacrotask();
+      unbind();
+    }
+  });
+  it("reads what each service runs, and nothing before the stops are bound", async () => {
+    const document = installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const { bindAccountFlow, useStatedVersions } = await import("./accountForge");
+    const rig = stage();
+    const answers: Array<ReadonlyMap<string, Shown<ZeropsServiceDeployedVersion>>> = [];
+
+    function Services({ services }: { readonly services: ReadonlyArray<ServiceRef> }) {
+      answers.push(useStatedVersions(services));
+      return null;
+    }
+
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    let unbind = () => undefined as void;
+    try {
+      root.render(rig.wrap(<Services services={[APPSTAGE]} />));
+      await vi.waitFor(() =>
+        expect(answers.at(-1)?.get("s-app")).toEqual({
+          state: "unread",
+          waitingFor: "access-grant",
+        }),
+      );
+      unbind = bindAccountFlow(rig.stage);
+      await vi.waitFor(() =>
+        expect(answers.at(-1)?.get("s-app")).toEqual({ state: "unread", waitingFor: null }),
+      );
+      rig.holdVersion("s-app", known({ activeId: "v1", source: "GIT", name: "v1.0.0" }));
+      await vi.waitFor(() =>
+        expect(answers.at(-1)?.get("s-app")).toMatchObject({ value: { name: "v1.0.0" } }),
+      );
     } finally {
       root.unmount();
       await nextMacrotask();

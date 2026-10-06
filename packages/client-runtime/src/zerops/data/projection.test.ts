@@ -54,7 +54,7 @@ describe("Zerops data projections", () => {
             {
               ...metadata,
               descriptor: {
-                kind: "project-versions" as const,
+                kind: "project-variables" as const,
                 project: project(),
                 serviceIds: ["app"],
               },
@@ -80,7 +80,7 @@ describe("Zerops data projections", () => {
           ...state,
           interests: new Map(state.interests).set(metadata.key, {
             ...metadata,
-            descriptor: { kind: "project-versions", project: project(), serviceIds: ["app"] },
+            descriptor: { kind: "project-variables", project: project(), serviceIds: ["app"] },
             interest: {
               status: "failed",
               identity: metadata.interest.identity,
@@ -142,7 +142,6 @@ describe("Zerops data projections", () => {
   );
 
   it.each([
-    { kind: "project-versions", project: project(), serviceIds: ["app"] },
     { kind: "project-variables", project: project(), serviceIds: ["app"] },
     { kind: "project-current-metrics", project: project() },
     { kind: "organization-inventory", organization },

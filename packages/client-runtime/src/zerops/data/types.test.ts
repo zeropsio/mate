@@ -142,19 +142,13 @@ describe("Zerops platform data identities", () => {
   });
 });
 
-it.each(["active-versions-of-services", "service-variables-of-services"] as const)(
-  "keeps %s queries separate for different opened services",
-  (kind) => {
-    const first =
-      kind === "active-versions-of-services"
-        ? { kind, organization: organization(), serviceIds: ["a"], schemaVersion: 1 as const }
-        : {
-            kind,
-            organization: organization(),
-            serviceIds: ["a"],
-            keys: ["ZEROPS_MATE_ENABLED"],
-            schemaVersion: 1 as const,
-          };
-    expect(queryKeyOf(first)).not.toBe(queryKeyOf({ ...first, serviceIds: ["b"] }));
-  },
-);
+it("keeps variables queries separate for different opened services", () => {
+  const first = {
+    kind: "service-variables-of-services" as const,
+    organization: organization(),
+    serviceIds: ["a"],
+    keys: ["ZEROPS_MATE_ENABLED"],
+    schemaVersion: 1 as const,
+  };
+  expect(queryKeyOf(first)).not.toBe(queryKeyOf({ ...first, serviceIds: ["b"] }));
+});

@@ -11,15 +11,12 @@ import {
   type InventoryState,
 } from "./inventory.ts";
 import {
-  activeVersionOf,
   deferFailedTableRowRead,
   makeInitialEntityTableState,
   reduceTableObservation,
   releaseTableLists,
   retryAbsentTableRows,
   tableRowsWanted,
-  forgetAbsentRows,
-  wantTableRows,
   type EntityTableState,
 } from "./entityTable.ts";
 import {
@@ -501,12 +498,10 @@ function completeRead(
   let incomplete = false;
   if (
     target.kind === "query" &&
-    (target.descriptor.kind === "active-versions-of-services" ||
-      target.descriptor.kind === "service-variables-of-services") &&
+    target.descriptor.kind === "service-variables-of-services" &&
     target.descriptor.ids !== undefined
   ) {
-    const entity =
-      target.descriptor.kind === "active-versions-of-services" ? "app-version" : "user-data";
+    const entity = "user-data";
     // A failed read asks again after its wait; a read that answered settled each id itself.
     if (input.completion.kind === "read-failed")
       table = deferFailedTableRowRead(
@@ -1384,46 +1379,6 @@ function scheduleRetention(state: ZeropsDataState, policy: ZeropsDataPolicy): Ze
   };
 }
 
-/**
- * A version a service runs that its organization's answered list of active versions lacks, with
- * no push to state its source: the list may trail the service, so the version is read by id.
- */
-export function wantActiveVersions(
-  state: ZeropsDataState,
-  receipt: number,
-  nowMs: number,
-): ZeropsDataState {
-  const missing: Array<{ organization: OrganizationRef; serviceId: string; id: string }> = [];
-  const running = new Set<string>();
-  for (const record of state.inventory.services.values()) {
-    if (
-      ![...state.interests.values()].some(
-        ({ descriptor, leases }) =>
-          leases > 0 &&
-          descriptor.kind === "project-versions" &&
-          descriptor.serviceIds.includes(record.ref.serviceId),
-      )
-    )
-      continue;
-    const facet = record.deployment;
-    if (facet.knowledge !== "observed") continue;
-    const deploy = facet.fields.activeDeploy;
-    if (deploy == null || deploy.id === null) continue;
-    const organization = record.ref.project.organization;
-    running.add(`${organizationKeyOf(organization)}:${deploy.id}`);
-    if (deploy.source !== null) continue;
-    const version = activeVersionOf(state.table, organization, deploy.id, record.ref.serviceId);
-    if (!version.known || version.row !== null) continue;
-    missing.push({ organization, serviceId: record.ref.serviceId, id: deploy.id });
-  }
-  let table = forgetAbsentRows(state.table, "app-version", (organization, id) =>
-    running.has(`${organizationKeyOf(organization)}:${id}`),
-  );
-  for (const { organization, serviceId, id } of missing)
-    table = wantTableRows(table, "app-version", organization, [id], receipt, nowMs, [serviceId]);
-  return table === state.table ? state : { ...state, table };
-}
-
 export function reduceZeropsDataState(
   initial: ZeropsDataState,
   input: ZeropsDataModelInput,
@@ -1464,7 +1419,6 @@ export function reduceZeropsDataState(
   state = trimDiagnostics(state, policy);
   state = scheduleRetention(state, policy);
   if (input.kind === "observation") {
-    state = wantActiveVersions(state, stamp.receiptOrdinal, stamp.observedAtMs);
     state = wantStaleVariables(state, stamp.receiptOrdinal, stamp.observedAtMs);
   }
   const followUps: ZeropsDataFollowUp[] = [];

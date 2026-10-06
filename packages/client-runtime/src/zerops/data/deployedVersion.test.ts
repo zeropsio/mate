@@ -7,19 +7,13 @@ import {
   statedDeployKey,
   wantStaleVariables,
 } from "./deployedVersion.ts";
-import {
-  ABSENT_BACKOFF_MS,
-  reduceTableObservation,
-  SERVICE_VARIABLE_KEYS,
-  tableRowsWanted,
-} from "./entityTable.ts";
+import { reduceTableObservation, SERVICE_VARIABLE_KEYS, tableRowsWanted } from "./entityTable.ts";
 import { makeUnresolvedService } from "./inventory.ts";
 import { decodeEntityQueryResponse } from "./platformProtocol.ts";
 import { DEFAULT_ZEROPS_DATA_POLICY } from "./policy.ts";
 import {
   makeInitialZeropsDataState,
   reduceZeropsDataState,
-  wantActiveVersions,
   type ZeropsDataState,
 } from "./state.ts";
 import type {
@@ -77,15 +71,12 @@ const withService = (
   const services = new Map(state.inventory.services);
   services.set(serviceKeyOf(ref), record);
   const interests = new Map(state.interests);
-  for (const kind of ["project-versions", "project-variables"] as const) {
-    const held = desiredInterest(identity());
-    const key = InterestKey.make(kind);
-    interests.set(key, {
-      ...held,
-      key,
-      descriptor: { kind, project: ref.project, serviceIds: [ref.serviceId] },
-    });
-  }
+  const key = InterestKey.make("project-variables");
+  interests.set(key, {
+    ...desiredInterest(identity()),
+    key,
+    descriptor: { kind: "project-variables", project: ref.project, serviceIds: [ref.serviceId] },
+  });
   return { ...state, interests, inventory: { ...state.inventory, services } };
 };
 
@@ -103,15 +94,12 @@ const withGoneService = (state: ZeropsDataState) => {
   const services = new Map(state.inventory.services);
   services.set(serviceKeyOf(ref), record);
   const interests = new Map(state.interests);
-  for (const kind of ["project-versions", "project-variables"] as const) {
-    const held = desiredInterest(identity());
-    const key = InterestKey.make(kind);
-    interests.set(key, {
-      ...held,
-      key,
-      descriptor: { kind, project: ref.project, serviceIds: [ref.serviceId] },
-    });
-  }
+  const key = InterestKey.make("project-variables");
+  interests.set(key, {
+    ...desiredInterest(identity()),
+    key,
+    descriptor: { kind: "project-variables", project: ref.project, serviceIds: [ref.serviceId] },
+  });
   return { ...state, interests, inventory: { ...state.inventory, services } };
 };
 
@@ -126,7 +114,7 @@ const answered = (
     accessEvidence: null,
     input: {
       kind: "table-rows-observed",
-      entity: descriptor.kind === "active-versions-of-services" ? "app-version" : "user-data",
+      entity: "user-data",
       rows: rows as never,
       source: "direct-read",
       coverage: {
@@ -143,12 +131,11 @@ const answered = (
   }).state,
 });
 
-/** The organization's variables (or active versions) as its stream pushed them, at `ordinal`. */
+/** The organization's variables as its stream pushed them, at `ordinal`. */
 const pushed = (
   state: ZeropsDataState,
   rows: ReadonlyArray<Record<string, unknown>>,
   ordinal: number,
-  entity: "user-data" | "app-version" = "user-data",
 ): ZeropsDataState => ({
   ...state,
   table: reduceTableObservation(state.table, {
@@ -156,20 +143,16 @@ const pushed = (
     accessEvidence: null,
     input: {
       kind: "table-rows-observed",
-      entity,
+      entity: "user-data",
       rows: rows as never,
       source: "native-push",
-      registration: { descriptor: { kind: "table-updates", entity, organization } } as never,
+      registration: {
+        descriptor: { kind: "table-updates", entity: "user-data", organization },
+      } as never,
     },
   }).state,
 });
 
-const versions: TableQueryDescriptor = {
-  kind: "active-versions-of-services",
-  organization,
-  serviceIds: ["s-1", "s-2", "service", "service-a", "app", "mate"],
-  schemaVersion: 1,
-};
 const variables: TableQueryDescriptor = {
   kind: "service-variables-of-services",
   organization,
@@ -185,12 +168,13 @@ const variable = (key: string, content: string) => ({
   content,
 });
 
-const failedInterest = (state: ZeropsDataState, kind: "project-versions" | "project-variables") => {
+/** The organization's variables stream failed. */
+const failedInterest = (state: ZeropsDataState) => {
   const interests = new Map(state.interests);
   interests.set(
     "failed" as never,
     {
-      descriptor: { kind, project: ref.project, serviceIds: [ref.serviceId] },
+      descriptor: { kind: "project-variables", project: ref.project, serviceIds: [ref.serviceId] },
       key: "failed",
       leases: 1,
       required: true,
@@ -218,7 +202,7 @@ describe("what a service runs, as the account's store states it (A14)", () => {
   }> = [
     {
       name: "is unread while the service is not",
-      state: answered(empty, versions, []),
+      state: answered(empty, variables, []),
       expected: { state: "unread" },
     },
     {
@@ -232,23 +216,9 @@ describe("what a service runs, as the account's store states it (A14)", () => {
       expected: { state: "known", value: { activeId: "v-2", source: "GIT", name: "pushed" } },
     },
     {
-      name: "waits for the organization's active versions for a source the push left unstated",
-      state: withService(empty, deploy({})),
-      expected: { state: "unread" },
-    },
-    {
-      name: "takes the source from the organization's active versions",
-      state: withService(
-        answered(
-          answered(empty, versions, [
-            { id: "v-2", serviceId: "s-1", projectId: null, status: "ACTIVE", source: "NONE" },
-          ]),
-          variables,
-          [],
-        ),
-        deploy({}),
-      ),
-      expected: { state: "known", value: { activeId: "v-2", source: "NONE", name: null } },
+      name: "leaves a source the push did not state to the organization's active versions",
+      state: withService(answered(empty, variables, []), deploy({})),
+      expected: { state: "known", value: { activeId: "v-2", source: null, name: null } },
     },
     {
       name: "names the version the service last started only while it is the active one",
@@ -304,7 +274,7 @@ describe("what a service runs, as the account's store states it (A14)", () => {
     },
     {
       name: "fails as its stream failed",
-      state: failedInterest(withService(empty, deploy({})), "project-versions"),
+      state: failedInterest(withService(empty, deploy({}))),
       expected: { state: "failed", retryAtMs: 9_000 },
     },
   ];
@@ -340,7 +310,7 @@ describe("the Mate flag, as the account's store states it", () => {
     },
     {
       name: "is unknown when its stream failed",
-      state: failedInterest(empty, "project-variables"),
+      state: failedInterest(empty),
       expected: "unknown",
     },
   ];
@@ -373,7 +343,7 @@ describe("the press's marker, as the account's store states it", () => {
     },
     {
       name: "is unknown when its stream failed",
-      state: failedInterest(empty, "project-variables"),
+      state: failedInterest(empty),
       expected: "unknown",
     },
   ];
@@ -423,84 +393,6 @@ describe("the press's marker, as the account's store states it", () => {
       MINUTE_BEFORE,
     );
     expect(selectSetupMarker(state, ref)).toBe(false);
-  });
-});
-
-describe("a version a service runs that its organization's list lacks", () => {
-  /** A read by id of `ids` that began at `startedAtMs` and found none of them. */
-  const absentById = (
-    state: ZeropsDataState,
-    ids: ReadonlyArray<string>,
-    receipt: number,
-    startedAtMs: number,
-  ): ZeropsDataState => ({
-    ...state,
-    table: reduceTableObservation(state.table, {
-      stamp: { receiptOrdinal: ReceiptOrdinal.make(receipt), observedAtMs: startedAtMs + 500 },
-      accessEvidence: null,
-      input: {
-        kind: "table-rows-observed",
-        entity: "app-version",
-        rows: [],
-        source: "direct-read",
-        coverage: {
-          kind: "exhausted-traversal",
-          traversedPages: 1,
-          observedTotal: 0,
-          guarantee: "non-atomic",
-        },
-        ticket: {
-          ...directTicket(
-            { kind: "query", descriptor: { ...versions, ids } as never },
-            identity(),
-            receipt - 1,
-            receipt - 1,
-            receipt - 1,
-          ),
-          startedAtMs,
-        } as never,
-      },
-    }).state,
-  });
-  const fresh = (): ZeropsDataState =>
-    withService(
-      answered(answered(makeInitialZeropsDataState(scope()), versions, []), variables, []),
-      deploy({}),
-    );
-
-  it("is read by id, waits out the index's lag, then reads unknown on a back-off, never in a loop", () => {
-    let state = wantActiveVersions(fresh(), 3, 1_000);
-    expect(tableRowsWanted(state.table)).toMatchObject([
-      { entity: "app-version", ids: ["v-2"], dueAtMs: 1_000 },
-    ]);
-    // A read right after it was owed may trail it: no verdict, one more look after the lag.
-    state = absentById(state, ["v-2"], 5, 1_500);
-    expect(selectDeployedVersion(state, ref).state).toBe("unread");
-    expect(tableRowsWanted(state.table)).toMatchObject([{ ids: ["v-2"], dueAtMs: 11_000 }]);
-    // The read past the lag finds it absent too.
-    state = absentById(state, ["v-2"], 7, 11_000);
-    // Every later message asks nothing sooner than its back-off.
-    for (const [receipt, nowMs] of [
-      [8, 12_100],
-      [9, 12_200],
-      [10, 13_000],
-    ] as const)
-      state = wantActiveVersions(state, receipt, nowMs);
-    expect(tableRowsWanted(state.table)).toMatchObject([
-      { ids: ["v-2"], dueAtMs: 11_500 + ABSENT_BACKOFF_MS[0]! },
-    ]);
-    expect(selectDeployedVersion(state, ref)).toMatchObject({
-      state: "failed",
-      retryAtMs: 11_500 + ABSENT_BACKOFF_MS[0]!,
-    });
-  });
-
-  it("stops asking about a version once no service runs it", () => {
-    let state = wantActiveVersions(fresh(), 3, 1_000);
-    state = absentById(state, ["v-2"], 5, 11_000);
-    expect(tableRowsWanted(state.table)).toMatchObject([{ ids: ["v-2"] }]);
-    state = wantActiveVersions(withService(state, null), 6, 12_000);
-    expect(tableRowsWanted(state.table)).toEqual([]);
   });
 });
 
@@ -619,24 +511,6 @@ describe("a service's variables heard before it moved to another version", () =>
     expect(selectDeployedVersion(moved.state, ref).state).toBe("unread");
   });
 
-  it("count from when the version it runs was heard active, not from the service's last push", () => {
-    const active = pushed(
-      loaded,
-      [{ id: "v-2", serviceId: "s-1", projectId: null, status: "ACTIVE", source: "CLI" }],
-      6,
-      "app-version",
-    );
-    // Its version went active after the variables were heard, its push long after both.
-    const state = wantStaleVariables(
-      withService(active, deploy({ id: "v-2" }), stamp(9)),
-      10,
-      1_000,
-    );
-    expect(tableRowsWanted(state.table)).toMatchObject([
-      { entity: "user-data", ids: ["u-appVersionId", "u-appVersionName"] },
-    ]);
-  });
-
   it("are read again once per move, never in a loop, whatever the read answers", () => {
     let state = wantStaleVariables(deployed, 4, 1_000);
     state = readById(
@@ -675,32 +549,14 @@ describe("a service's variables heard before it moved to another version", () =>
       name: "the service runs nothing",
       state: withService(loaded, null),
     },
-    {
-      // The service's push moves its stamp whatever it carries; its version's row does not.
-      name: "a later push of the service leaves it on the version whose build failed since",
-      state: withService(
-        pushed(
-          answered(
-            answered(makeInitialZeropsDataState(scope()), versions, [
-              { id: "v-2", serviceId: "s-1", projectId: null, status: "ACTIVE", source: "CLI" },
-            ]),
-            variables,
-            [],
-          ),
-          [variable("appVersionId", "v-3"), variable("appVersionName", "main 7e2d4c1")],
-          5,
-        ),
-        deploy({ id: "v-2" }),
-        stamp(9),
-      ),
-    },
   ])("are not read again when $name", ({ state }) => {
     expect(tableRowsWanted(wantStaleVariables(state, 9, 1_000).table)).toEqual([]);
   });
 });
 
 // F10, 2026-10-03: B's production `app` as the platform answered t10 — the import's own no-code
-// version, which the service's row names without a source and the versions list sources NONE.
+// version, which the service's row names without a source. The organization's active versions
+// source it NONE, in the account's store (`account/stops.ts`).
 describe("a production on the import's no-code version, as the platform answers it", () => {
   const VERSION = "fJCalELVSOuR53ZwvjA1GA";
   const services = {
@@ -709,7 +565,7 @@ describe("a production on the import's no-code version, as the platform answers 
     schemaVersion: 1 as const,
   };
 
-  it("is known to run that version, sourced NONE and named nothing", () => {
+  it("is known to run that version, its source left to the active versions, named nothing", () => {
     const decoded = decodeEntityQueryResponse(
       services,
       queryTicket(services),
@@ -745,40 +601,27 @@ describe("a production on the import's no-code version, as the platform answers 
     // The row names the version and nothing of where it came from.
     expect(activeDeploy).toMatchObject({ id: VERSION, source: null, name: null });
     const state = withService(
-      answered(
-        answered(makeInitialZeropsDataState(scope()), versions, [
-          decodeTableRow("app-version", {
-            id: VERSION,
-            serviceStackId: "s-1",
-            projectId: ref.project.projectId,
-            status: "ACTIVE",
-            source: "NONE",
-            name: null,
-          })!,
-        ] as never),
-        variables,
-        [
-          decodeTableRow("user-data", {
-            id: "u-appVersionId",
-            serviceStackId: "s-1",
-            projectId: ref.project.projectId,
-            key: "appVersionId",
-            content: VERSION,
-          })!,
-          decodeTableRow("user-data", {
-            id: "u-appVersionName",
-            serviceStackId: "s-1",
-            projectId: ref.project.projectId,
-            key: "appVersionName",
-            content: "",
-          })!,
-        ] as never,
-      ),
+      answered(makeInitialZeropsDataState(scope()), variables, [
+        decodeTableRow("user-data", {
+          id: "u-appVersionId",
+          serviceStackId: "s-1",
+          projectId: ref.project.projectId,
+          key: "appVersionId",
+          content: VERSION,
+        })!,
+        decodeTableRow("user-data", {
+          id: "u-appVersionName",
+          serviceStackId: "s-1",
+          projectId: ref.project.projectId,
+          key: "appVersionName",
+          content: "",
+        })!,
+      ] as never),
       activeDeploy,
     );
     expect(selectDeployedVersion(state, ref)).toMatchObject({
       state: "known",
-      value: { activeId: VERSION, source: "NONE", name: null },
+      value: { activeId: VERSION, source: null, name: null },
     });
   });
 });

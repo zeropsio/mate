@@ -40,7 +40,7 @@ import type {
   ZeropsDataAdapter,
   ZeropsWireSubscriptionName,
 } from "./types.ts";
-import { tableEntityOf, type TableQueryDescriptor } from "./types.ts";
+import type { TableQueryDescriptor } from "./types.ts";
 import { decodeTableSearch } from "./tableProtocol.ts";
 import { ZeropsApiError, type ZeropsApiClient } from "../api.ts";
 import type { ZeropsIntegrationToken } from "../groupReach.ts";
@@ -331,14 +331,12 @@ const ORGANIZATION_SEARCH_LIMIT = 2000;
 /** The search a table list is: its organization's rows its kind holds (`entityTable.ts`). */
 function tableSearch(query: TableQueryDescriptor) {
   return {
-    path: `/${tableEntityOf(query)}/search`,
+    path: "/user-data/search",
     body: {
       search: [
         { name: "clientId", operator: "eq", value: query.organization.organizationId },
         { name: "serviceStackId", operator: "in", value: query.serviceIds },
-        query.kind === "active-versions-of-services"
-          ? { name: "status", operator: "eq", value: "ACTIVE" }
-          : { name: "key", operator: "in", value: query.keys },
+        { name: "key", operator: "in", value: query.keys },
         ...(query.ids === undefined ? [] : [{ name: "id", operator: "in", value: query.ids }]),
       ],
       sort: [],
@@ -434,10 +432,7 @@ function readHttp(ticket: PlatformReadRequest, offset = 0) {
   if (target.kind === "service")
     return { path: `/service-stack/${target.ref.serviceId}`, method: "GET" as const };
   const query = target.descriptor;
-  if (
-    query.kind === "active-versions-of-services" ||
-    query.kind === "service-variables-of-services"
-  ) {
+  if (query.kind === "service-variables-of-services") {
     const search = tableSearch(query);
     return {
       path: search.path,
@@ -488,7 +483,6 @@ function decodeRead(ticket: PlatformReadRequest, body: unknown) {
     case "current-metrics-of-project":
     case "metric-history-of-project":
       return decodeMetricRead(ticket, body);
-    case "active-versions-of-services":
     case "service-variables-of-services":
       return decodeTableSearch(ticket, body);
   }

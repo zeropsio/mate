@@ -3538,7 +3538,6 @@ describe("the entity table's reads by id", () => {
         () => import("./platformProtocol.ts"),
       );
       const { decodeTableSearch } = yield* Effect.promise(() => import("./tableProtocol.ts"));
-      const { activeVersionOf } = yield* Effect.promise(() => import("./entityTable.ts"));
       let list: RegistrationRequest | undefined;
       const reads: Array<ReadonlyArray<string>> = [];
       const adapter: ZeropsDataAdapter = {
@@ -3567,8 +3566,8 @@ describe("the entity table's reads by id", () => {
               items: (descriptor.ids ?? []).map((id) => ({
                 id,
                 serviceStackId: `service-of-${id}`,
-                status: "ACTIVE",
-                source: "CLI",
+                key: "appVersionId",
+                content: "v",
               })),
               totalHits: descriptor.ids?.length ?? 0,
             }).observations,
@@ -3587,11 +3586,10 @@ describe("the entity table's reads by id", () => {
       const unsubscribe = registry.subscribe(runtime.stateAtom, (state) => {
         Queue.offerUnsafe(states, state);
       });
-      const organization = topologyDescriptor.project.organization;
       const leaseScope = yield* Scope.make();
       const lease = yield* runtime
         .acquire({
-          kind: "project-versions",
+          kind: "project-variables",
           project: project("project-a"),
           serviceIds: ["service-a"],
         })
@@ -3618,8 +3616,8 @@ describe("the entity table's reads by id", () => {
       yield* waitForState(
         states,
         (state) =>
-          activeVersionOf(state.table, organization, "v-1", "service-a").row !== null &&
-          activeVersionOf(state.table, organization, "v-2", "service-a").row !== null,
+          state.table.rows["user-data"].get("v-1")?.row != null &&
+          state.table.rows["user-data"].get("v-2")?.row != null,
       );
       expect(reads).toEqual([["v-1", "v-2"]]);
 
@@ -3639,7 +3637,6 @@ describe("the entity table's reads by id", () => {
           () => import("./platformProtocol.ts"),
         );
         const { decodeTableSearch } = yield* Effect.promise(() => import("./tableProtocol.ts"));
-        const { activeVersionOf } = yield* Effect.promise(() => import("./entityTable.ts"));
         let list: RegistrationRequest | undefined;
         const reads: Array<ReadonlyArray<string>> = [];
         const gate = yield* Deferred.make<void>();
@@ -3671,8 +3668,8 @@ describe("the entity table's reads by id", () => {
                   items: (descriptor.ids ?? []).map((id) => ({
                     id,
                     serviceStackId: `service-of-${id}`,
-                    status: "ACTIVE",
-                    source: "CLI",
+                    key: "appVersionId",
+                    content: "v",
                   })),
                   totalHits: descriptor.ids?.length ?? 0,
                 }).observations,
@@ -3692,11 +3689,10 @@ describe("the entity table's reads by id", () => {
         const unsubscribe = registry.subscribe(runtime.stateAtom, (state) => {
           Queue.offerUnsafe(states, state);
         });
-        const organization = topologyDescriptor.project.organization;
         const leaseScope = yield* Scope.make();
         const lease = yield* runtime
           .acquire({
-            kind: "project-versions",
+            kind: "project-variables",
             project: project("project-a"),
             serviceIds: ["service-a"],
           })
@@ -3732,7 +3728,7 @@ describe("the entity table's reads by id", () => {
         yield* TestClock.adjust("1 second");
         yield* waitForState(
           states,
-          (state) => activeVersionOf(state.table, organization, "v-2", "service-a").row !== null,
+          (state) => state.table.rows["user-data"].get("v-2")?.row != null,
         );
         expect(reads).toEqual([["v-1"], ["v-2"]]);
 

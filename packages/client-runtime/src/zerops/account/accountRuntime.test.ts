@@ -1150,7 +1150,7 @@ describe("the account runtime", () => {
               [...state.interests.values()]
                 .filter(({ interest }) => interest.status === "observing")
                 .map(({ descriptor }) => descriptor.kind)
-                .filter((kind) => kind === "project-versions" || kind === "project-variables")
+                .filter((kind) => kind === "project-variables")
                 .toSorted(),
             );
           expect(yield* streamed()).toEqual([]);

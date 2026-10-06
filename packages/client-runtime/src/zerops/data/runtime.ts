@@ -112,10 +112,8 @@ import {
   entityKeyOf,
   projectKeyOf,
   queryKeyOf,
-  tableEntityOf,
 } from "./types.ts";
 import {
-  activeVersionsDescriptor,
   serviceVariablesDescriptor,
   TABLE_READ_RETRY_MS,
   tableRowsDue,
@@ -182,7 +180,6 @@ function serializedInterestKey(descriptor: RuntimeInterestDescriptor): InterestK
       return InterestKeySchema.make(
         JSON.stringify([descriptor.kind, organizationKeyOf(descriptor.organization)]),
       );
-    case "project-versions":
     case "project-variables":
       return InterestKeySchema.make(
         JSON.stringify([
@@ -405,7 +402,7 @@ export function planZeropsInterest(descriptor: RuntimeInterestDescriptor): Inter
     {
       descriptor: {
         kind: "table-updates",
-        entity: tableEntityOf(query),
+        entity: "user-data",
         organization,
         serviceIds: query.serviceIds,
       },
@@ -413,12 +410,6 @@ export function planZeropsInterest(descriptor: RuntimeInterestDescriptor): Inter
     },
     { descriptor: { kind: "table-list", query }, baseline: { kind: "query", descriptor: query } },
   ];
-  if (descriptor.kind === "project-versions") {
-    return {
-      registrations: table(activeVersionsDescriptor(organization, descriptor.serviceIds)),
-      directReads: [],
-    };
-  }
   if (descriptor.kind === "project-variables") {
     return {
       registrations: table(serviceVariablesDescriptor(organization, descriptor.serviceIds)),
@@ -1533,7 +1524,6 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         target.kind === "query" &&
         (target.descriptor.kind === "projects-of-organization" ||
           target.descriptor.kind === "services-of-project" ||
-          target.descriptor.kind === "active-versions-of-services" ||
           target.descriptor.kind === "service-variables-of-services")
           ? {
               ...base,
@@ -1732,12 +1722,10 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         let lastReadAt = yield* Clock.currentTimeMillis;
         while (true) {
           const before = yield* Clock.currentTimeMillis;
-          const streamKind =
-            followUp.entity === "app-version" ? "project-versions" : "project-variables";
           const eligible = [...interests.values()].filter(
             (interest) =>
               interest.leases.size > 0 &&
-              interest.descriptor.kind === streamKind &&
+              interest.descriptor.kind === "project-variables" &&
               organizationKeyOf(interest.descriptor.project.organization) === organizationKey &&
               receivers.get(receiverKeyOf(interest.descriptor))?.openFailure === null,
           );
@@ -1786,10 +1774,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
             serviceIds,
           ).slice(0, TABLE_READ_BATCH);
           if (ids.length === 0) continue;
-          const list =
-            followUp.entity === "app-version"
-              ? activeVersionsDescriptor(followUp.organization, serviceIds)
-              : serviceVariablesDescriptor(followUp.organization, serviceIds);
+          const list = serviceVariablesDescriptor(followUp.organization, serviceIds);
           const owner = {
             kind: "shared" as const,
             account: options.scope,

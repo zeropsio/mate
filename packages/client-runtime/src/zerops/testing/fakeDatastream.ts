@@ -48,8 +48,6 @@ const forbidden = failure("forbidden", "Zerops rejected the request (forbidden).
 export interface FakeTableRows {
   /** `POST /user-data/search` rows: `{ id, serviceStackId, key, content }`. */
   readonly variables?: (clientId: string) => ReadonlyArray<unknown>;
-  /** `POST /app-version/search` rows: `{ id, serviceStackId, status, source }`. */
-  readonly versions?: (clientId: string) => ReadonlyArray<unknown>;
 }
 
 export function makeFakeDatastream(
@@ -99,9 +97,7 @@ export function makeFakeDatastream(
                 ? platform.projectsOf(query.organization.organizationId)
                 : query.kind === "service-variables-of-services"
                   ? (tables.variables?.(query.organization.organizationId) ?? [])
-                  : query.kind === "active-versions-of-services"
-                    ? (tables.versions?.(query.organization.organizationId) ?? [])
-                    : null;
+                  : null;
             // A search this platform models answers with its total, so its list is complete; one
             // it does not (services, processes) answers no total, and says nothing of absence.
             return {

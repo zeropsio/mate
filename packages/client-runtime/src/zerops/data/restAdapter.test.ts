@@ -2002,18 +2002,19 @@ describe("one malformed row of the organization's", () => {
 });
 
 describe("the entity table's streams", () => {
-  const versions = {
-    kind: "active-versions-of-services" as const,
+  const variables = {
+    kind: "service-variables-of-services" as const,
     organization,
     serviceIds: ["s-1", "s-2", "service", "service-a", "app", "mate"],
+    keys: ["ZCP_MATE_ENABLED", "appVersionId"],
     schemaVersion: 1 as const,
   };
-  const versionsTicket = (): ReadTicket =>
+  const variablesTicket = (): ReadTicket =>
     ({
       kind: "baseline",
-      requestId: ZeropsRequestId.make("versions-read"),
+      requestId: ZeropsRequestId.make("variables-read"),
       owner: { kind: "interest", identity: interest },
-      target: { kind: "query", descriptor: versions },
+      target: { kind: "query", descriptor: variables },
       receiptOrdinalAtStart: ReceiptOrdinal.make(0),
       membershipReceiptOrdinalAtStart: ReceiptOrdinal.make(0),
       readStartOrdinal: ReadStartOrdinal.make(1),
@@ -2032,9 +2033,11 @@ describe("the entity table's streams", () => {
             return new Response('{"webSocketToken":"socket-token"}', { status: 200 });
           requests.push({ url, body: String(init?.body) });
           return new Response(
-            url.endsWith("/app-version/search") && String(init?.body).includes("listStream")
+            url.endsWith("/user-data/search") && String(init?.body).includes("listStream")
               ? JSON.stringify({
-                  items: [{ id: "v-1", serviceStackId: "s-1", status: "ACTIVE", source: "CLI" }],
+                  items: [
+                    { id: "u-0", serviceStackId: "s-1", key: "appVersionId", content: "v-1" },
+                  ],
                   limit: 2000,
                   offset: 0,
                   totalHits: 1,
@@ -2050,9 +2053,9 @@ describe("the entity table's streams", () => {
         });
         const list = {
           identity: interest,
-          subscriptionName: ZeropsWireSubscriptionName.make("opaque/versions"),
-          descriptor: { kind: "table-list", query: versions },
-          baselineTicket: versionsTicket(),
+          subscriptionName: ZeropsWireSubscriptionName.make("opaque/list"),
+          descriptor: { kind: "table-list", query: variables },
+          baselineTicket: variablesTicket(),
         } as RegistrationRequest;
         const updates = {
           identity: interest,
@@ -2061,7 +2064,7 @@ describe("the entity table's streams", () => {
             kind: "table-updates",
             entity: "user-data",
             organization,
-            serviceIds: versions.serviceIds,
+            serviceIds: variables.serviceIds,
           },
           baselineTicket: null,
         } as RegistrationRequest;
@@ -2078,8 +2081,8 @@ describe("the entity table's streams", () => {
             yield* adapter.register(receiver, updates, context());
             sockets[0]!.receive({
               type: "search",
-              subscriptionName: "opaque/versions",
-              data: { add: ["v-2"], delete: ["v-1"] },
+              subscriptionName: "opaque/list",
+              data: { add: ["u-2"], delete: ["u-0"] },
             });
             sockets[0]!.receive({
               type: "search",
@@ -2096,29 +2099,29 @@ describe("the entity table's streams", () => {
         );
 
         expect(requests.map(({ url }) => new URL(url).pathname.replace(/^.*public/, ""))).toEqual([
-          "/app-version/search",
+          "/user-data/search",
           "/user-data/search",
         ]);
         expect(decodeBody(requests[0]!.body).search).toContainEqual({
           name: "serviceStackId",
           operator: "in",
-          value: versions.serviceIds,
+          value: variables.serviceIds,
         });
         expect(requests[0]!.body).toContain('"wsOutputType":"listStream"');
-        expect(requests[0]!.body).toContain('"subscriptionName":"opaque/versions"');
+        expect(requests[0]!.body).toContain('"subscriptionName":"opaque/list"');
         expect(decodeBody(requests[1]!.body).search).toContainEqual({
           name: "serviceStackId",
           operator: "in",
-          value: versions.serviceIds,
+          value: variables.serviceIds,
         });
         expect(requests[1]!.body).toContain('"wsOutputType":"updateStream"');
         expect(answered.responseObservations).toEqual([
           expect.objectContaining({
             kind: "table-rows-observed",
-            entity: "app-version",
+            entity: "user-data",
             source: "direct-read",
             rows: [
-              { id: "v-1", serviceId: "s-1", projectId: null, status: "ACTIVE", source: "CLI" },
+              { id: "u-0", serviceId: "s-1", projectId: null, key: "appVersionId", content: "v-1" },
             ],
             coverage: expect.objectContaining({ kind: "exhausted-traversal" }),
           }),
@@ -2130,12 +2133,12 @@ describe("the entity table's streams", () => {
           expect.objectContaining({
             kind: "table-membership-observed",
             operation: "add",
-            id: "v-2",
+            id: "u-2",
           }),
           expect.objectContaining({
             kind: "table-membership-observed",
             operation: "remove",
-            id: "v-1",
+            id: "u-0",
           }),
           expect.objectContaining({
             kind: "table-rows-observed",

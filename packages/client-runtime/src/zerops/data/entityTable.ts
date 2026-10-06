@@ -18,7 +18,6 @@
  */
 import type {
   AdmittedObservation,
-  AppVersionRow,
   IngestionStamp,
   OrganizationRef,
   QueryCoverage,
@@ -31,7 +30,7 @@ import type {
   TableRow,
   TableRowsOf,
 } from "./types.ts";
-import { organizationKeyOf, queryKeyOf, tableEntityOf } from "./types.ts";
+import { organizationKeyOf, queryKeyOf } from "./types.ts";
 import { noOutcome, type DomainObservationOutcome } from "./inventory.ts";
 
 /**
@@ -116,19 +115,9 @@ export interface EntityTableReduction {
 }
 
 export const makeInitialEntityTableState = (): EntityTableState => ({
-  rows: { "app-version": new Map(), "user-data": new Map() },
+  rows: { "user-data": new Map() },
   lists: new Map(),
   wanted: new Map(),
-});
-
-export const activeVersionsDescriptor = (
-  organization: OrganizationRef,
-  serviceIds: ReadonlyArray<string>,
-): TableQueryDescriptor => ({
-  kind: "active-versions-of-services",
-  organization,
-  serviceIds,
-  schemaVersion: 1,
 });
 
 export const serviceVariablesDescriptor = (
@@ -142,22 +131,8 @@ export const serviceVariablesDescriptor = (
   schemaVersion: 1,
 });
 
-/** The one list each organization holds of a kind. */
-const listDescriptorOf = (
-  entity: TableEntity,
-  organization: OrganizationRef,
-  serviceIds: ReadonlyArray<string>,
-) =>
-  entity === "app-version"
-    ? activeVersionsDescriptor(organization, serviceIds)
-    : serviceVariablesDescriptor(organization, serviceIds);
-
-/** Whether a kind holds this row at all: an active version, a variable the app reads. */
-function admits(entity: TableEntity, row: TableRow): boolean {
-  return entity === "app-version"
-    ? (row as AppVersionRow).status === "ACTIVE"
-    : SERVICE_VARIABLE_KEYS.includes((row as ServiceVariableRow).key);
-}
+/** Whether the table holds this row at all: a variable the app reads. */
+const admits = (row: TableRow): boolean => SERVICE_VARIABLE_KEYS.includes(row.key);
 
 const wantedKey = (entity: TableEntity, id: string) => `${entity}:${id}`;
 
@@ -218,7 +193,7 @@ export function reduceTableObservation(
   // A list's frame names an id, nothing more: it is read by id, and the row stands meanwhile.
   if (observation.kind === "table-membership-observed") {
     const descriptor = observation.registration.descriptor.query;
-    const entity = tableEntityOf(descriptor);
+    const entity = "user-data";
     const state = withList(initial, descriptor);
     const held = state.rows[entity].get(observation.id);
     // An id added whose row a push already brought is proven by that push.
@@ -226,7 +201,7 @@ export function reduceTableObservation(
       return { state, outcome: outcomeOf(observation, "applied") };
     const wanted = new Map(state.wanted);
     // A variable's removal is final: only a newer push brings it back.
-    if (observation.operation === "remove" && entity === "user-data") {
+    if (observation.operation === "remove") {
       wanted.delete(wantedKey(entity, observation.id));
       if (held === undefined)
         return { state: { ...state, wanted }, outcome: outcomeOf(observation, "applied") };
@@ -255,15 +230,15 @@ export function reduceTableObservation(
     const organization = observation.registration.descriptor.organization;
     const state = withList(
       initial,
-      listDescriptorOf(entity, organization, observation.registration.descriptor.serviceIds),
+      serviceVariablesDescriptor(organization, observation.registration.descriptor.serviceIds),
     );
     const rows = rowsOf(state, entity);
     const wanted = new Map(state.wanted);
     for (const row of observation.rows) {
       // A variable the app does not read is none of the table's business, ever.
-      if (entity === "user-data" && !admits(entity, row) && !rows.has(row.id)) continue;
+      if (!admits(row) && !rows.has(row.id)) continue;
       rows.set(row.id, {
-        row: admits(entity, row) ? row : null,
+        row: admits(row) ? row : null,
         asOf: receipt,
         atMs,
         source: "push",
@@ -284,7 +259,7 @@ export function reduceTableObservation(
   const descriptor = ticket.target.descriptor;
   const startedAt = ticket.receiptOrdinalAtStart;
   const organizationId = descriptor.organization.organizationId;
-  const listDescriptor = listDescriptorOf(entity, descriptor.organization, descriptor.serviceIds);
+  const listDescriptor = serviceVariablesDescriptor(descriptor.organization, descriptor.serviceIds);
   const key = queryKeyOf(listDescriptor);
   const state = withList(initial, listDescriptor);
   const rows = rowsOf(state, entity);
@@ -311,7 +286,7 @@ export function reduceTableObservation(
    */
   const settle = (id: string, answer: TableRow | null) => {
     const held = rows.get(id);
-    const admitted = answer !== null && admits(entity, answer) ? answer : null;
+    const admitted = answer !== null && admits(answer) ? answer : null;
     if (held !== undefined && held.asOf > startedAt) return;
     if (held === undefined && admitted === null) return;
     // A push the index may not show yet keeps its content, whatever the answer says of it.
@@ -410,7 +385,7 @@ export function releaseTableLists(
   const wanted = new Map(state.wanted);
   for (const list of gone) {
     lists.delete(list.key);
-    const entity = tableEntityOf(list.descriptor);
+    const entity = "user-data";
     const organization = organizationKeyOf(list.descriptor.organization);
     const organizationId = list.descriptor.organization.organizationId;
     const kept: Rows = new Map();
@@ -418,7 +393,6 @@ export function releaseTableLists(
       const remains = [...lists.values()].some(
         (remaining) =>
           !released.has(remaining.key) &&
-          tableEntityOf(remaining.descriptor) === entity &&
           remaining.descriptor.organization.organizationId === organizationId &&
           (held.row === null ||
             (held.row.serviceId !== null &&
@@ -437,7 +411,6 @@ export function releaseTableLists(
         ![...lists.values()].some(
           (remaining) =>
             !released.has(remaining.key) &&
-            tableEntityOf(remaining.descriptor) === entity &&
             organizationKeyOf(remaining.descriptor.organization) === organization,
         )
       )
@@ -445,30 +418,6 @@ export function releaseTableLists(
     }
   }
   return { ...next, lists, wanted };
-}
-
-/**
- * Asks for rows the table is owed and does not hold (a service runs a version it lacks). One
- * already asked about waits out its own back-off.
- */
-export function wantTableRows(
-  state: EntityTableState,
-  entity: TableEntity,
-  organization: OrganizationRef,
-  ids: ReadonlyArray<string>,
-  since: number,
-  nowMs: number,
-  serviceIds: ReadonlyArray<string>,
-): EntityTableState {
-  return want(
-    state,
-    entity,
-    organization,
-    ids.filter((id) => state.rows[entity].get(id) === undefined),
-    since,
-    nowMs,
-    serviceIds,
-  );
 }
 
 /**
@@ -521,24 +470,6 @@ function want(
   return { ...state, wanted };
 }
 
-/**
- * Stops asking about rows a read already found absent that nothing needs any more: a version no
- * service runs now waits out no back-off.
- */
-export function forgetAbsentRows(
-  state: EntityTableState,
-  entity: TableEntity,
-  needed: (organization: OrganizationRef, id: string) => boolean,
-): EntityTableState {
-  const gone = [...state.wanted].filter(
-    ([, owed]) => owed.entity === entity && owed.absent > 0 && !needed(owed.organization, owed.id),
-  );
-  if (gone.length === 0) return state;
-  const wanted = new Map(state.wanted);
-  for (const [key] of gone) wanted.delete(key);
-  return { ...state, wanted };
-}
-
 /** The ids each organization's kind is owed a read of, batched, with the earliest one due. */
 export function tableRowsWanted(state: EntityTableState): ReadonlyArray<{
   readonly entity: TableEntity;
@@ -584,49 +515,6 @@ export function tableRowsDue(
   );
 }
 
-/** A row the table is owed that a read found absent: when it is asked about again. */
-export function askedAbsent(
-  state: EntityTableState,
-  entity: TableEntity,
-  id: string,
-): { readonly retryAtMs: number } | null {
-  const owed = state.wanted.get(wantedKey(entity, id));
-  return owed !== undefined && owed.absent > 0 ? { retryAtMs: owed.dueAtMs } : null;
-}
-
-/** The organization's list of a kind has answered in full: a row the table lacks is not there. */
-function answered(
-  state: EntityTableState,
-  entity: TableEntity,
-  organization: OrganizationRef,
-  serviceId: string,
-): boolean {
-  return [...state.lists.values()].some(
-    (list) =>
-      tableEntityOf(list.descriptor) === entity &&
-      organizationKeyOf(list.descriptor.organization) === organizationKeyOf(organization) &&
-      list.descriptor.serviceIds.includes(serviceId) &&
-      list.answered?.coverage.kind === "exhausted-traversal",
-  );
-}
-
-/**
- * An active version of the organization: `known` once its list answered, with `row` `null` for a
- * version that is not active (or not the organization's).
- */
-export function activeVersionOf(
-  state: EntityTableState,
-  organization: OrganizationRef,
-  versionId: string,
-  serviceId: string,
-): { readonly known: boolean; readonly row: AppVersionRow | null } {
-  const held = state.rows["app-version"].get(versionId);
-  return {
-    known: answered(state, "app-version", organization, serviceId),
-    row: held?.organizationId === organization.organizationId ? held.row : null,
-  };
-}
-
 /** Each service's variables the app reads, by service id: indexed once per table state. */
 const variablesIndex = new WeakMap<
   ReadonlyMap<string, HeldRow<ServiceVariableRow>>,
@@ -653,6 +541,20 @@ function variablesByService(
   return index;
 }
 
+/** The organization's variables list has answered in full: a row the table lacks is not there. */
+function answered(
+  state: EntityTableState,
+  organization: OrganizationRef,
+  serviceId: string,
+): boolean {
+  return [...state.lists.values()].some(
+    (list) =>
+      organizationKeyOf(list.descriptor.organization) === organizationKeyOf(organization) &&
+      list.descriptor.serviceIds.includes(serviceId) &&
+      list.answered?.coverage.kind === "exhausted-traversal",
+  );
+}
+
 /**
  * One of a service's variables the app reads: `known` once its organization's list answered and
  * the key is one the list holds, with `content` `null` for a variable the service does not have.
@@ -664,8 +566,7 @@ export function serviceVariableOf(
   key: string,
 ): { readonly known: boolean; readonly content: string | null } {
   return {
-    known:
-      SERVICE_VARIABLE_KEYS.includes(key) && answered(state, "user-data", organization, serviceId),
+    known: SERVICE_VARIABLE_KEYS.includes(key) && answered(state, organization, serviceId),
     content: variablesByService(state).get(serviceId)?.get(key)?.content ?? null,
   };
 }
@@ -704,7 +605,6 @@ export function serviceVariablesDelivered(
     answeredAtMs:
       [...state.lists.values()].find(
         (list) =>
-          tableEntityOf(list.descriptor) === "user-data" &&
           organizationKeyOf(list.descriptor.organization) === organizationKeyOf(organization) &&
           list.descriptor.serviceIds.includes(serviceId),
       )?.answered?.stamp.observedAtMs ?? null,

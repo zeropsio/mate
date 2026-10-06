@@ -1,31 +1,29 @@
 /**
- * What a service runs and whether it serves Zerops Mate, as the account's store states them —
- * never read per service. The service's own row, from its organization's search and stream, names
- * its active version and, while a push states it, that version's source; the organization's active
- * versions (`project-versions`) state every source; its variables (`project-variables`)
- * name the deploy the service last started (A11) and carry its Mate flag (H9).
+ * What a service runs and whether it serves Zerops Mate, as the data runtime states them — never
+ * read per service. The service's own row, from its organization's search and stream, names its
+ * active version and, while a push states it, that version's source; its variables
+ * (`project-variables`) name the deploy the service last started (A11) and carry its Mate flag
+ * (H9). A source the push left unstated is the organization's active versions' to state, in the
+ * account's store (`account/stops.ts`).
  */
 import { readsAsEnabled } from "../api.ts";
 import type { Shown } from "../knowledge/known.ts";
 import {
-  activeVersionOf,
-  askedAbsent,
   rereadTableRows,
-  rowHeard,
   serviceVariableHeard,
   serviceVariableOf,
   serviceVariablesDelivered,
   type EntityTableState,
 } from "./entityTable.ts";
 import type { ZeropsDataState } from "./state.ts";
-import type { IngestionStamp, RuntimeInterestDescriptor, ServiceRef } from "./types.ts";
+import type { IngestionStamp, ServiceRef } from "./types.ts";
 import { organizationKeyOf, serviceKeyOf } from "./types.ts";
 
 /**
  * What a service runs (A14): its active version's id and source (`NONE` on a runtime nothing was
- * ever deployed to), each `null` when it has no active version, and that version's name — `null`
- * unless the deploy the service last started is the active one (A11), since only then is the name
- * it carries the one it runs.
+ * ever deployed to), each `null` when it has no active version — the source also while its push
+ * left it unstated — and that version's name — `null` unless the deploy the service last started is
+ * the active one (A11), since only then is the name it carries the one it runs.
  */
 export interface ZeropsServiceDeployedVersion {
   readonly activeId: string | null;
@@ -35,17 +33,13 @@ export interface ZeropsServiceDeployedVersion {
 
 const UNREAD = { state: "unread", waitingFor: null } as const;
 
-/** The stream an organization-wide fact waits on, failed: its failure; otherwise `null`. */
-function streamFailure(
-  state: ZeropsDataState,
-  kind: Extract<RuntimeInterestDescriptor["kind"], "project-versions" | "project-variables">,
-  service: ServiceRef,
-): Shown<never> | null {
+/** The organization's variables stream, failed: its failure; otherwise `null`. */
+function streamFailure(state: ZeropsDataState, service: ServiceRef): Shown<never> | null {
   const organization = organizationKeyOf(service.project.organization);
   for (const desired of state.interests.values()) {
     const descriptor = desired.descriptor;
     if (
-      descriptor.kind !== kind ||
+      descriptor.kind !== "project-variables" ||
       organizationKeyOf(descriptor.project.organization) !== organization ||
       !descriptor.serviceIds.includes(service.serviceId)
     )
@@ -99,40 +93,19 @@ export function selectDeployedVersion(
   if (deploy === null || deploy.id === null)
     return known({ activeId: null, source: null, name: null }, facet.stamp);
   const organization = service.project.organization;
-  let source = deploy.source;
-  if (source === null) {
-    const version = activeVersionOf(state.table, organization, deploy.id, service.serviceId);
-    // A version not listed active yet is one the list has not caught up with: it waits. One a
-    // read by id found absent too is unknown until its next look.
-    if (!version.known || version.row === null) {
-      const absent = askedAbsent(state.table, "app-version", deploy.id);
-      if (absent !== null)
-        return {
-          state: "failed",
-          failure: { kind: "malformed", detail: "Its active version is not listed." },
-          atMs: facet.stamp.observedAtMs,
-          attempt: 1,
-          retryAtMs: absent.retryAtMs,
-        };
-      return streamFailure(state, "project-versions", service) ?? UNREAD;
-    }
-    source = version.row.source;
-  }
+  const source = deploy.source;
   const started = serviceVariableOf(state.table, organization, service.serviceId, "appVersionId");
   if (!started.known) {
     // The push's own name stands until the variables answer; with none, the name waits for them.
     if (deploy.name !== null)
       return known({ activeId: deploy.id, source, name: deploy.name }, facet.stamp);
-    return streamFailure(state, "project-variables", service) ?? UNREAD;
+    return streamFailure(state, service) ?? UNREAD;
   }
   if (trimmed(started.content) !== deploy.id) {
     // Variables that may trail the service are being read again: what it runs is checked, not
     // nameless (`wantStaleVariables`).
-    const trailing = trailingVariables(state.table, service.serviceId, {
-      id: deploy.id,
-      stamp: facet.stamp,
-    });
-    if (trailing !== null) return streamFailure(state, "project-variables", service) ?? UNREAD;
+    const trailing = trailingVariables(state.table, service.serviceId, facet.stamp);
+    if (trailing !== null) return streamFailure(state, service) ?? UNREAD;
     return known({ activeId: deploy.id, source, name: null }, facet.stamp);
   }
   const name = trimmed(
@@ -146,17 +119,16 @@ export function selectDeployedVersion(
  * before it moved there: they may only trail it, so they are read again by id. Heard after, they
  * name a build started since (A11), and stand. `null` for none.
  *
- * It moved when the version it runs was heard active; the service's own push stands in only
- * where that row is not held, as every push of the service moves its stamp, whatever it carries.
+ * It moved as of the service's own push, which every push of the service moves, whatever it
+ * carries.
  */
 function trailingVariables(
   table: EntityTableState,
   serviceId: string,
-  deploy: { readonly id: string; readonly stamp: IngestionStamp },
+  moved: IngestionStamp,
 ): ReadonlyArray<string> | null {
-  const moved = rowHeard(table, "app-version", deploy.id) ?? deploy.stamp.receiptOrdinal;
   const started = serviceVariableHeard(table, serviceId, "appVersionId");
-  if (started === null || started.asOf >= moved) return null;
+  if (started === null || started.asOf >= moved.receiptOrdinal) return null;
   const name = serviceVariableHeard(table, serviceId, "appVersionName");
   return name === null ? [started.id] : [started.id, name.id];
 }
@@ -191,7 +163,7 @@ export function wantStaleVariables(
     const serviceId = record.ref.serviceId;
     const started = serviceVariableOf(table, organization, serviceId, "appVersionId");
     if (!started.known || trimmed(started.content) === deploy.id) continue;
-    const ids = trailingVariables(table, serviceId, { id: deploy.id, stamp: facet.stamp });
+    const ids = trailingVariables(table, serviceId, facet.stamp);
     if (ids !== null)
       table = rereadTableRows(table, "user-data", organization, ids, receipt, nowMs, [serviceId]);
   }
@@ -231,7 +203,7 @@ export function selectSetupMarker(
     if (marker.content !== null) return true;
     return containerTooYoungToSay(state, service) ? "unread" : false;
   }
-  return streamFailure(state, "project-variables", service) === null ? "unread" : "unknown";
+  return streamFailure(state, service) === null ? "unread" : "unknown";
 }
 
 /** How young a container is, at the list's answer, whose variables may still be on their way. */
@@ -266,5 +238,5 @@ export function selectMateFlag(
     "ZCP_MATE_ENABLED",
   );
   if (flag.known) return flag.content !== null && readsAsEnabled(flag.content);
-  return streamFailure(state, "project-variables", service) === null ? "unread" : "unknown";
+  return streamFailure(state, service) === null ? "unread" : "unknown";
 }

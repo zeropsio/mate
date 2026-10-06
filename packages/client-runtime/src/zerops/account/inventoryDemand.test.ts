@@ -209,7 +209,7 @@ it("does not turn admitted navigation projects into detail or deploy demand", ()
   ).toEqual(["organization-inventory"]);
 });
 
-it("navigation reads only Mate flags; opened detail reads versions and all variables", () => {
+it("navigation reads only Mate flags; opened detail reads all variables", () => {
   const grant = drive(granted);
   const descriptors = inventoryDemand({
     activeOrganizationId: organization.organizationId,
@@ -223,7 +223,6 @@ it("navigation reads only Mate flags; opened detail reads versions and all varia
   });
   expect(descriptors.filter((row) => row.kind !== "organization-inventory")).toEqual([
     { kind: "project-variables", project: B, serviceIds: ["zcp"] },
-    { kind: "project-versions", project: C, serviceIds: ["app"] },
     { kind: "project-variables", project: C, serviceIds: ["app"] },
   ]);
 });

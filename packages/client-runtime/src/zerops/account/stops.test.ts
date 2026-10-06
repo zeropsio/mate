@@ -3,7 +3,7 @@ import * as Effect from "effect/Effect";
 import { Atom, AtomRegistry } from "effect/unstable/reactivity";
 import { describe, expect, it } from "vite-plus/test";
 
-import { project } from "../data/__fixtures__/index.ts";
+import { project, service } from "../data/__fixtures__/index.ts";
 import type { ManagedZeropsDataRuntime } from "../data/runtime.ts";
 import type {
   CollectionRead,
@@ -232,6 +232,55 @@ describe("a stop's services as the account's store and listing say them", () => 
       freshness: { kind: "live" },
     });
     expect(app()).toMatchObject({ value: { kind: "running", version: { label: "v0.2.0" } } });
+  });
+
+  describe("what a service runs, its source stated", () => {
+    const APP = service("app-id", STAGE);
+    const statedAs = (source: string | null): Shown<ZeropsServiceDeployedVersion> => ({
+      state: "known",
+      value: { activeId: "v-new", source, name: "v0.2.0" },
+      asOf: { ordinal: 1, atMs: NOW },
+      coverage: "complete",
+      freshness: { kind: "live" },
+    });
+
+    it("passes a version whose push stated its source through", () => {
+      const { stops, registry, state } = rig();
+      state(statedAs("GIT"));
+      expect(registry.get(stops.version(APP))).toMatchObject({ value: { source: "GIT" } });
+    });
+
+    it("waits for the active versions to source a version the push left unstated", () => {
+      const { stops, registry, state, dispatch } = rig();
+      dispatch(liveZerops({ running: [], active: [] }));
+      state(statedAs(null));
+      expect(registry.get(stops.version(APP))).toEqual({ state: "unread", waitingFor: null });
+
+      dispatch([versionRows({ id: "v-new", status: "ACTIVE", source: "NONE" })]);
+      expect(registry.get(stops.version(APP))).toMatchObject({
+        state: "known",
+        value: { activeId: "v-new", source: "NONE", name: "v0.2.0" },
+      });
+    });
+
+    it("fails a version the refused active versions will never source", () => {
+      const { stops, registry, state, dispatch } = rig();
+      dispatch([
+        ...liveZerops({ running: [], active: [] }),
+        {
+          kind: "stream",
+          key: activeScope(ORG_ID),
+          now: 0,
+          event: {
+            kind: "fault",
+            jitter: 0,
+            fault: { outcome: "authoritative-denial", message: "no" },
+          },
+        },
+      ]);
+      state(statedAs(null));
+      expect(registry.get(stops.version(APP))).toMatchObject({ state: "failed" });
+    });
   });
 
   it("holds summary demand, and detail adds the project's topology", () => {

@@ -33,7 +33,6 @@ import {
 } from "../state/zerops";
 import { bindAccountFlow } from "./accountForge";
 import { type InventoryServiceOutcome, HeldInventoryContext } from "./inventoryContext";
-import { ZeropsDataContext, type ZeropsDataContextValue } from "./zeropsDataContext";
 import { useZeropsProjectFlow, type ZeropsProjectFlowValue } from "./projectFlowContext";
 import {
   HQ_CHANGES_UNANSWERED,
@@ -183,19 +182,19 @@ vi.mock("./useChangeOffers", () => ({
   useReleasePermission: () => () => permission.gate,
 }));
 /**
- * What the account's store states each service runs, by service id — answered only for a service the
- * provider asked the store about — and what it asked, as the read it selected.
+ * What the account's stops state each service runs, by service id — answered only for a service the
+ * provider asked about — and the services it asked about.
  */
 const versions = vi.hoisted(() => ({
   stated: new Map<string, unknown>(),
-  asked: [] as ReadonlyArray<readonly [string, unknown]>,
+  asked: [] as ReadonlyArray<{ readonly serviceId: string }>,
 }));
-vi.mock("./zeropsDataContext", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("./zeropsDataContext")>()),
-  useZeropsAtomSelections: (entries: ReadonlyArray<readonly [string, unknown]>) => {
-    versions.asked = entries;
+vi.mock("./accountForge", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./accountForge")>()),
+  useStatedVersions: (services: ReadonlyArray<{ readonly serviceId: string }>) => {
+    versions.asked = services;
     return new Map(
-      entries.flatMap(([serviceId]) =>
+      services.flatMap(({ serviceId }) =>
         versions.stated.has(serviceId) ? [[serviceId, versions.stated.get(serviceId)]] : [],
       ),
     );
@@ -460,6 +459,7 @@ describe("ZeropsProjectFlowProvider", () => {
             ? running
             : { state: "unread", waitingFor: null },
         ),
+      version: () => Atom.make<Shown<never>>({ state: "unread", waitingFor: null }),
       dispose: () => undefined,
     };
     const unbind = bindAccountFlow({ stops });
@@ -553,6 +553,7 @@ describe("ZeropsProjectFlowProvider", () => {
             state: "unread",
             waitingFor: null,
           }),
+        version: () => Atom.make<Shown<never>>({ state: "unread", waitingFor: null }),
         dispose: () => undefined,
       },
     });
@@ -763,10 +764,6 @@ describe("ZeropsProjectFlowProvider", () => {
       },
       projectId: ZeropsProjectId.make("prod-1"),
     };
-    /** The account's store, whose read of what a service runs is the service it reads. */
-    const STORE = {
-      runtime: { reads: { deployedVersion: (service: unknown) => service } },
-    } as unknown as ZeropsDataContextValue;
     /** What the store states `app` runs: no version at all. */
     const RUNS_NOTHING = {
       state: "known",
@@ -830,13 +827,9 @@ describe("ZeropsProjectFlowProvider", () => {
               RegistryContext.Provider,
               { value: atoms },
               createElement(
-                ZeropsDataContext,
-                { value: STORE },
-                createElement(
-                  HeldInventoryContext,
-                  { value: held as never },
-                  createElement(ZeropsProjectFlowProvider, null, createElement(Probe)),
-                ),
+                HeldInventoryContext,
+                { value: held as never },
+                createElement(ZeropsProjectFlowProvider, null, createElement(Probe)),
               ),
             ),
           );
@@ -861,7 +854,7 @@ describe("ZeropsProjectFlowProvider", () => {
         new Map([["s-app", { ...RUNS_NOTHING, value: runs }]]),
       );
       expect(versions.asked).toEqual([
-        ["s-app", { kind: "service", project: PRODUCTION, serviceId: "s-app" }],
+        { kind: "service", project: PRODUCTION, serviceId: "s-app" },
       ]);
       expect(compares.asked.get("g1")).toEqual([
         { repository: "appdev", query: { head: MERGED }, services: ["app"] },

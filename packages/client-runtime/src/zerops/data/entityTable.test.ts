@@ -1,9 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 
 import {
-  activeVersionOf,
-  askedAbsent,
-  activeVersionsDescriptor,
   makeInitialEntityTableState,
   reduceTableObservation,
   releaseTableLists,
@@ -17,11 +14,9 @@ import {
   deferFailedTableRowRead,
   TABLE_READ_RETRY_MS,
   tableRowsDue,
-  wantTableRows,
   type EntityTableState,
 } from "./entityTable.ts";
 import type {
-  AppVersionRow,
   OrganizationRef,
   QueryCoverage,
   RegistrationRequest,
@@ -44,15 +39,6 @@ const other: OrganizationRef = {
   ...organization,
   organizationId: ZeropsOrganizationId.make("org-other"),
 };
-const versions = activeVersionsDescriptor(organization, [
-  "s-1",
-  "s-2",
-  "s-3",
-  "service",
-  "service-a",
-  "app",
-  "mate",
-]);
 const variables = serviceVariablesDescriptor(organization, [
   "s-1",
   "s-2",
@@ -69,13 +55,6 @@ const complete: QueryCoverage = {
   guarantee: "non-atomic",
 };
 
-const version = (id: string, status = "ACTIVE", source = "CLI"): AppVersionRow => ({
-  id,
-  serviceId: "s-1",
-  projectId: "project-1",
-  status,
-  source,
-});
 const variable = (
   id: string,
   serviceId: string,
@@ -86,12 +65,12 @@ const variable = (
 /** A search answer that began at receipt `start`, at wall time `startMs`. */
 const answered = (
   descriptor: TableQueryDescriptor,
-  rows: ReadonlyArray<AppVersionRow | ServiceVariableRow>,
+  rows: ReadonlyArray<ServiceVariableRow>,
   start: number,
   startMs = start,
 ): TableObservation => ({
   kind: "table-rows-observed",
-  entity: descriptor.kind === "active-versions-of-services" ? "app-version" : "user-data",
+  entity: "user-data",
   rows,
   source: "direct-read",
   coverage: complete,
@@ -108,20 +87,19 @@ const answered = (
   } as never,
 });
 const pushed = (
-  entity: "app-version" | "user-data",
-  rows: ReadonlyArray<AppVersionRow | ServiceVariableRow>,
+  rows: ReadonlyArray<ServiceVariableRow>,
   owner: OrganizationRef = organization,
 ): TableObservation => ({
   kind: "table-rows-observed",
-  entity,
+  entity: "user-data",
   rows,
   source: "native-push",
   registration: {
     identity: identity(),
-    subscriptionName: ZeropsWireSubscriptionName.make(`wire-${entity}-updates`),
+    subscriptionName: ZeropsWireSubscriptionName.make("wire-user-data-updates"),
     descriptor: {
       kind: "table-updates",
-      entity,
+      entity: "user-data",
       organization: owner,
       serviceIds: ["s-1", "s-2", "s-3", "service", "service-a", "app", "mate"],
     },
@@ -160,158 +138,21 @@ const run = (
     initial,
   );
 
-const sourceOf = (state: EntityTableState, id: string, owner = organization) => {
-  const answer = activeVersionOf(state, owner, id, "s-1");
-  return answer.known ? (answer.row?.source ?? null) : "unknown";
+/** A variable the app reads, of service `s-1`, by its row id. */
+const flag = (id: string, content = "1") => variable(id, "s-1", "ZCP_MATE_ENABLED", content);
+/** What the table holds of a row: its content, `null` for a tombstone, `undefined` for none. */
+const contentOf = (state: EntityTableState, id: string) => {
+  const held = state.rows["user-data"].get(id);
+  return held === undefined ? undefined : (held.row?.content ?? null);
 };
 
-describe("the entity table's active versions", () => {
-  const cases: ReadonlyArray<{
-    readonly name: string;
-    readonly steps: ReadonlyArray<Step>;
-    readonly versions: Record<string, string | null | "unknown">;
-    readonly wanted?: ReadonlyArray<string>;
-  }> = [
-    {
-      name: "is unknown until its list's search answered",
-      steps: [[2, pushed("app-version", [version("v-1")])]],
-      versions: { "v-1": "unknown" },
-    },
-    {
-      name: "holds what the search answered, and knows a version it lacks is not active",
-      steps: [[2, answered(versions, [version("v-1"), version("v-2", "ACTIVE", "NONE")], 1)]],
-      versions: { "v-1": "CLI", "v-2": "NONE", "v-3": null },
-    },
-    {
-      name: "takes an update frame's row in place, without reading",
-      steps: [
-        [2, answered(versions, [version("v-1")], 1)],
-        [3, pushed("app-version", [version("v-2", "ACTIVE", "GIT")])],
-      ],
-      versions: { "v-1": "CLI", "v-2": "GIT" },
-    },
-    {
-      name: "takes a version inactive at first once a push activates it",
-      steps: [
-        [2, answered(versions, [], 1)],
-        [3, pushed("app-version", [version("v-1", "BUILDING")])],
-        [4, pushed("app-version", [version("v-1", "ACTIVE")])],
-      ],
-      versions: { "v-1": "CLI" },
-    },
-    {
-      name: "lets go of a version an update says is no longer active",
-      steps: [
-        [2, answered(versions, [version("v-1")], 1)],
-        [3, pushed("app-version", [version("v-1", "BACKUP")])],
-      ],
-      versions: { "v-1": null },
-    },
-    {
-      name: "asks for a row its list added without one, and keeps nothing it cannot prove",
-      steps: [
-        [2, answered(versions, [], 1)],
-        [3, membership(versions, "add", "v-1")],
-      ],
-      versions: { "v-1": null },
-      wanted: ["v-1"],
-    },
-    {
-      name: "asks again about a version its list removed, and keeps the row until it knows",
-      steps: [
-        [2, answered(versions, [version("v-1")], 1)],
-        [3, membership(versions, "remove", "v-1")],
-      ],
-      versions: { "v-1": "CLI" },
-      wanted: ["v-1"],
-    },
-    {
-      name: "keeps a row pushed after the search began over the search's older answer",
-      steps: [
-        [3, pushed("app-version", [version("v-1", "ACTIVE", "GIT")])],
-        [4, answered(versions, [version("v-1", "ACTIVE", "CLI")], 2)],
-      ],
-      versions: { "v-1": "GIT" },
-    },
-    {
-      name: "keeps a row pushed just before a search its index may not show yet, and asks",
-      steps: [
-        [2, pushed("app-version", [version("v-1")]), 1_000],
-        [4, answered(versions, [], 3, 1_000 + SEARCH_LAG_MS - 1)],
-      ],
-      versions: { "v-1": "CLI" },
-      wanted: ["v-1"],
-    },
-    {
-      name: "drops a row pushed long before a search that no longer names it",
-      steps: [
-        [2, pushed("app-version", [version("v-1")]), 1_000],
-        [4, answered(versions, [], 3, 1_000 + SEARCH_LAG_MS)],
-      ],
-      versions: { "v-1": null },
-    },
-    {
-      name: "does not bring back a version an update retired after the search began",
-      steps: [
-        [3, pushed("app-version", [version("v-1", "BACKUP")])],
-        [4, answered(versions, [version("v-1")], 2)],
-      ],
-      versions: { "v-1": null },
-    },
-    {
-      name: "ignores a search answer that began before the one it already applied",
-      steps: [
-        [3, answered(versions, [version("v-2")], 2)],
-        [4, answered(versions, [version("v-1")], 1)],
-      ],
-      versions: { "v-1": null, "v-2": "CLI" },
-    },
-    {
-      name: "keeps each organization's versions to its own search",
-      steps: [
-        [2, answered(versions, [version("v-1")], 1)],
-        [3, pushed("app-version", [version("v-9")], other)],
-        [
-          4,
-          answered(
-            activeVersionsDescriptor(other, [
-              "s-1",
-              "s-2",
-              "s-3",
-              "service",
-              "service-a",
-              "app",
-              "mate",
-            ]),
-            [version("v-9")],
-            3,
-          ),
-        ],
-        [6, answered(versions, [], 5, 10_000_000)],
-      ],
-      versions: { "v-1": null },
-    },
-  ];
-  for (const testCase of cases) {
-    it(testCase.name, () => {
-      const state = run(testCase.steps);
-      for (const [id, expected] of Object.entries(testCase.versions)) {
-        expect(sourceOf(state, id)).toBe(expected);
-      }
-      expect(
-        tableRowsWanted(state).flatMap((wanted) =>
-          wanted.entity === "app-version" ? wanted.ids : [],
-        ),
-      ).toEqual(testCase.wanted ?? []);
-    });
-  }
-
-  it("keeps another organization's versions when one organization's search answers", () => {
+describe("the entity table's lists", () => {
+  it("keeps another organization's rows when one organization's search answers", () => {
     const state = run([
       [
         2,
         answered(
-          activeVersionsDescriptor(other, [
+          serviceVariablesDescriptor(other, [
             "s-1",
             "s-2",
             "s-3",
@@ -320,60 +161,58 @@ describe("the entity table's active versions", () => {
             "app",
             "mate",
           ]),
-          [version("v-9")],
+          [flag("u-9")],
           1,
         ),
       ],
-      [4, answered(versions, [], 3, 10_000_000)],
+      [4, answered(variables, [], 3, 10_000_000)],
     ]);
-    expect(sourceOf(state, "v-9", other)).toBe("CLI");
+    expect(contentOf(state, "u-9")).toBe("1");
   });
 
-  it("forgets a retired version once no read could still bring it back", () => {
+  it("forgets a removed row once no read could still bring it back", () => {
     const state = run([
-      [2, answered(versions, [], 1)],
-      [3, pushed("app-version", [version("v-1", "BUILDING")]), 1_000],
-      [4, pushed("app-version", [version("v-2")]), 1_000 + TOMBSTONE_MS + 1],
+      [2, answered(variables, [flag("u-1")], 1)],
+      [3, membership(variables, "remove", "u-1"), 1_000],
+      [4, pushed([flag("u-2")]), 1_000 + TOMBSTONE_MS + 1],
     ]);
-    expect([...state.rows["app-version"].keys()]).toEqual(["v-2"]);
+    expect([...state.rows["user-data"].keys()]).toEqual(["u-2"]);
   });
 
   it("settles a row it asked about by the read of it, and stops asking", () => {
-    const byId = { ...versions, ids: ["v-1", "v-2"] } as TableQueryDescriptor;
+    const byId = { ...variables, ids: ["u-1"] } as TableQueryDescriptor;
     const state = run([
-      [2, answered(versions, [version("v-2")], 1, 1_000), 1_000],
-      [3, membership(versions, "add", "v-1"), 2_000],
-      [4, membership(versions, "remove", "v-2"), 2_000],
-      [6, answered(byId, [version("v-1")], 5, 1_000 + SEARCH_LAG_MS + 1), 20_000],
+      [2, answered(variables, [], 1, 1_000), 1_000],
+      [3, membership(variables, "add", "u-1"), 2_000],
+      [6, answered(byId, [flag("u-1")], 5, 1_000 + SEARCH_LAG_MS + 1), 20_000],
     ]);
-    expect(sourceOf(state, "v-1")).toBe("CLI");
-    expect(sourceOf(state, "v-2")).toBe(null);
+    expect(contentOf(state, "u-1")).toBe("1");
     expect(tableRowsWanted(state)).toEqual([]);
   });
 
   it("forgets a list nothing demands any more, every row it kept and every row it waits on", () => {
     const state = run([
-      [2, pushed("app-version", [version("v-0")])],
-      [3, answered(versions, [version("v-1")], 2)],
-      [4, membership(versions, "add", "v-2")],
+      [2, pushed([flag("u-0")])],
+      [3, answered(variables, [flag("u-1")], 2)],
+      [4, membership(variables, "add", "u-2")],
     ]);
-    const released = releaseTableLists(state, new Set([queryKeyOf(versions)]));
-    expect(activeVersionOf(released, organization, "v-1", "s-1")).toEqual({
+    const released = releaseTableLists(state, new Set([queryKeyOf(variables)]));
+    expect(serviceVariableOf(released, organization, "s-1", "ZCP_MATE_ENABLED")).toEqual({
       known: false,
-      row: null,
+      content: null,
     });
-    expect(released.rows["app-version"].size).toBe(0);
+    expect(released.rows["user-data"].size).toBe(0);
     expect(tableRowsWanted(released)).toEqual([]);
   });
 
   it("forgets a list that never answered, and the rows pushed for it", () => {
-    const state = run([[2, pushed("app-version", [version("v-0")])]]);
-    const released = releaseTableLists(state, new Set([queryKeyOf(versions)]));
-    expect(released.rows["app-version"].size).toBe(0);
+    const state = run([[2, pushed([flag("u-0")])]]);
+    const released = releaseTableLists(state, new Set([queryKeyOf(variables)]));
+    expect(released.rows["user-data"].size).toBe(0);
   });
 
   it("knows no list whose search answered only a window of it", () => {
-    const partial = answered(versions, [version("v-1")], 1);
+    const partial = answered(variables, [flag("u-1")], 1);
     const state = run([
       [
         2,
@@ -389,7 +228,7 @@ describe("the entity table's active versions", () => {
         } as TableObservation,
       ],
     ]);
-    expect(activeVersionOf(state, organization, "v-2", "s-1").known).toBe(false);
+    expect(serviceVariableOf(state, organization, "s-1", "appVersionId").known).toBe(false);
   });
 });
 
@@ -407,8 +246,8 @@ describe("the entity table's service variables", () => {
           1,
         ),
       ],
-      [3, pushed("user-data", [variable("u-3", "s-2", "SOME_SECRET", "x")])],
-      [4, pushed("user-data", [variable("u-4", "s-2", "ZCP_MATE_ENABLED", "0")])],
+      [3, pushed([variable("u-3", "s-2", "SOME_SECRET", "x")])],
+      [4, pushed([variable("u-4", "s-2", "ZCP_MATE_ENABLED", "0")])],
     ]);
     expect(serviceVariableOf(state, organization, "s-1", "ZCP_MATE_ENABLED")).toEqual({
       known: true,
@@ -439,7 +278,7 @@ describe("the entity table's service variables", () => {
     const back = reduceTableObservation(removed, {
       stamp: { receiptOrdinal: ReceiptOrdinal.make(4), observedAtMs: 4 },
       accessEvidence: null,
-      input: pushed("user-data", [variable("u-1", "s-1", "ZCP_MATE_ENABLED", "1")]),
+      input: pushed([variable("u-1", "s-1", "ZCP_MATE_ENABLED", "1")]),
     }).state;
     expect(serviceVariableOf(back, organization, "s-1", "ZCP_MATE_ENABLED").content).toBe("1");
   });
@@ -477,9 +316,7 @@ describe("the entity table's service variables", () => {
   });
 
   it("knows no variable before its list's search answered", () => {
-    const state = run([
-      [2, pushed("user-data", [variable("u-1", "s-1", "ZCP_MATE_ENABLED", "1")])],
-    ]);
+    const state = run([[2, pushed([variable("u-1", "s-1", "ZCP_MATE_ENABLED", "1")])]]);
     expect(serviceVariableOf(state, organization, "s-1", "ZCP_MATE_ENABLED")).toEqual({
       known: false,
       content: "1",
@@ -488,63 +325,56 @@ describe("the entity table's service variables", () => {
 });
 
 describe("the entity table's reads by id", () => {
-  const byId = (ids: ReadonlyArray<string>) => ({ ...versions, ids }) as TableQueryDescriptor;
+  const byId = (ids: ReadonlyArray<string>) => ({ ...variables, ids }) as TableQueryDescriptor;
   const dueOf = (state: EntityTableState, id: string) =>
     tableRowsWanted(state).find(({ ids }) => ids.includes(id))?.dueAtMs ?? null;
+  /** The table owed `ids` from receipt `since`, at wall time `nowMs`: its list named them. */
+  const owed = (
+    ids: ReadonlyArray<string>,
+    since: number,
+    nowMs: number,
+    initial?: EntityTableState,
+  ) =>
+    run(
+      ids.map((id): Step => [since, membership(variables, "add", id), nowMs]),
+      initial,
+    );
 
   it("keeps a row pushed within the index's lag when a read by id does not return it", () => {
     // The reviewer's case: a push, a full search that lags it, then a read by id that lags it too.
     const state = run([
-      [2, answered(versions, [], 1, 0), 0],
-      [3, pushed("app-version", [version("v-1")]), 1_000],
-      [5, answered(versions, [], 4, 3_000), 3_000],
-      [7, answered(byId(["v-1"]), [], 6, 4_000), 4_000],
+      [2, answered(variables, [], 1, 0), 0],
+      [3, pushed([flag("u-1")]), 1_000],
+      [5, answered(variables, [], 4, 3_000), 3_000],
+      [7, answered(byId(["u-1"]), [], 6, 4_000), 4_000],
     ]);
-    expect(sourceOf(state, "v-1")).toBe("CLI");
-    expect(dueOf(state, "v-1")).toBe(1_000 + SEARCH_LAG_MS);
+    expect(contentOf(state, "u-1")).toBe("1");
+    expect(dueOf(state, "u-1")).toBe(1_000 + SEARCH_LAG_MS);
   });
 
   it("retires a row a read by id no longer returns once the lag has passed", () => {
     const state = run([
-      [2, answered(versions, [], 1, 0), 0],
-      [3, pushed("app-version", [version("v-1")]), 1_000],
-      [5, answered(byId(["v-1"]), [], 4, 1_000 + SEARCH_LAG_MS), 1_000 + SEARCH_LAG_MS],
+      [2, answered(variables, [], 1, 0), 0],
+      [3, pushed([flag("u-1")]), 1_000],
+      [5, answered(byId(["u-1"]), [], 4, 1_000 + SEARCH_LAG_MS), 1_000 + SEARCH_LAG_MS],
     ]);
-    expect(sourceOf(state, "v-1")).toBe(null);
-    expect(dueOf(state, "v-1")).toBe(null);
-  });
-
-  it("does not bring back a row a push retired within the lag", () => {
-    const state = run([
-      [2, answered(versions, [version("v-1")], 1, 0), 0],
-      [3, pushed("app-version", [version("v-1", "BACKUP")]), 1_000],
-      [4, membership(versions, "remove", "v-1"), 1_100],
-      [6, answered(byId(["v-1"]), [version("v-1")], 5, 2_000), 2_000],
-    ]);
-    expect(sourceOf(state, "v-1")).toBe(null);
+    expect(contentOf(state, "u-1")).toBe(null);
+    expect(dueOf(state, "u-1")).toBe(null);
   });
 
   it("keeps asking for an id its list named after a full search began", () => {
     const state = run([
-      [2, answered(versions, [], 1, 0), 0],
-      [5, membership(versions, "add", "v-2"), 5_000],
-      // A full search that began at receipt 4, before the list named v-2.
-      [6, answered(versions, [version("v-2")], 4, 4_000), 6_000],
+      [2, answered(variables, [], 1, 0), 0],
+      [5, membership(variables, "add", "u-2"), 5_000],
+      // A full search that began at receipt 4, before the list named u-2.
+      [6, answered(variables, [flag("u-2")], 4, 4_000), 6_000],
     ]);
-    expect(dueOf(state, "v-2")).not.toBe(null);
+    expect(dueOf(state, "u-2")).not.toBe(null);
   });
 
-  it("asks again about a version it was owed and found absent, on a widening back-off", () => {
-    let state = wantTableRows(
-      makeInitialEntityTableState(),
-      "app-version",
-      organization,
-      ["v-9"],
-      1,
-      0,
-      ["s-1"],
-    );
-    state = run([[2, answered(versions, [], 1, 0), 0]], state);
+  it("asks again about a row it was owed and found absent, on a widening back-off", () => {
+    let state = owed(["u-9"], 1, 0);
+    state = run([[2, answered(variables, [], 1, 0), 0]], state);
     const due: Array<number | null> = [];
     for (const [at, ms] of [
       [3, SEARCH_LAG_MS],
@@ -552,100 +382,83 @@ describe("the entity table's reads by id", () => {
       [5, 200_000],
       [6, 900_000],
     ] as const) {
-      state = run([[at, answered(byId(["v-9"]), [], at - 1, ms), ms]], state);
-      due.push(dueOf(state, "v-9"));
+      state = run([[at, answered(byId(["u-9"]), [], at - 1, ms), ms]], state);
+      due.push(dueOf(state, "u-9"));
     }
     expect(due).toEqual([SEARCH_LAG_MS + 30_000, 160_000, 800_000, 1_500_000]);
-    expect(askedAbsent(state, "app-version", "v-9")).toEqual({ retryAtMs: 1_500_000 });
-    // Owed and asked already: wanting it again asks nothing sooner.
-    expect(
-      dueOf(wantTableRows(state, "app-version", organization, ["v-9"], 7, 900_001, ["s-1"]), "v-9"),
-    ).toBe(1_500_000);
   });
 
   it("does not call an id absent before the index could show it, and looks again after the lag", () => {
-    let state = wantTableRows(
-      makeInitialEntityTableState(),
-      "app-version",
-      organization,
-      ["v-9"],
-      1,
-      5_000,
-      ["s-1"],
-    );
-    state = run([[3, answered(byId(["v-9"]), [], 2, 6_000), 6_000]], state);
-    expect(askedAbsent(state, "app-version", "v-9")).toBe(null);
-    expect(dueOf(state, "v-9")).toBe(5_000 + SEARCH_LAG_MS);
-    state = run([[5, answered(byId(["v-9"]), [], 4, 15_000), 15_000]], state);
-    expect(askedAbsent(state, "app-version", "v-9")).toEqual({ retryAtMs: 15_000 + 30_000 });
+    let state = owed(["u-9"], 1, 5_000);
+    state = run([[3, answered(byId(["u-9"]), [], 2, 6_000), 6_000]], state);
+    expect(dueOf(state, "u-9")).toBe(5_000 + SEARCH_LAG_MS);
+    state = run([[5, answered(byId(["u-9"]), [], 4, 15_000), 15_000]], state);
+    expect(dueOf(state, "u-9")).toBe(15_000 + 30_000);
   });
 
   it("never lets an answer that lags a push replace the push's content", () => {
-    const flag = (content: string) => variable("u-1", "s-1", "ZCP_MATE_ENABLED", content);
-    const byIdVariables = { ...variables, ids: ["u-1"] } as TableQueryDescriptor;
+    const byIdVariables = byId(["u-1"]);
     for (const lagging of [
-      answered(variables, [flag("0")], 4, 2_000),
-      answered(byIdVariables, [flag("0")], 4, 2_000),
+      answered(variables, [flag("u-1", "0")], 4, 2_000),
+      answered(byIdVariables, [flag("u-1", "0")], 4, 2_000),
     ]) {
       const state = run([
-        [2, answered(variables, [flag("0")], 1, 0), 0],
-        [3, pushed("user-data", [flag("1")]), 1_000],
+        [2, answered(variables, [flag("u-1", "0")], 1, 0), 0],
+        [3, pushed([flag("u-1", "1")]), 1_000],
         [5, lagging, 2_500],
       ]);
       expect(serviceVariableOf(state, organization, "s-1", "ZCP_MATE_ENABLED").content).toBe("1");
       expect(dueOf(state, "u-1")).toBe(1_000 + SEARCH_LAG_MS);
     }
   });
-});
 
-it("reads an absent row unknown, and asks about it again after its back-off", () => {
-  const requested = wantTableRows(
-    makeInitialEntityTableState(),
-    "app-version",
-    organization,
-    ["missing"],
-    1,
-    0,
-    ["s-1"],
-  );
-  const state = run(
-    [[3, answered({ ...versions, ids: ["missing"] }, [], 2, 20_000), 20_000]],
-    requested,
-  );
-  expect(askedAbsent(state, "app-version", "missing")).toEqual({
-    retryAtMs: 20_000 + ABSENT_BACKOFF_MS[0]!,
+  it("reads an absent row unknown, and asks about it again after its back-off", () => {
+    const state = run(
+      [[3, answered({ ...variables, ids: ["missing"] }, [], 2, 20_000), 20_000]],
+      owed(["missing"], 1, 0),
+    );
+    expect(tableRowsDue(state, "user-data", organization, 20_000, ["s-1"])).toEqual([]);
+    expect(
+      tableRowsDue(state, "user-data", organization, 20_000 + ABSENT_BACKOFF_MS[0]!, ["s-1"]),
+    ).toEqual(["missing"]);
   });
-  expect(tableRowsDue(state, "app-version", organization, 20_000, ["s-1"])).toEqual([]);
-  expect(
-    tableRowsDue(state, "app-version", organization, 20_000 + ABSENT_BACKOFF_MS[0]!, ["s-1"]),
-  ).toEqual(["missing"]);
+
+  it("asks again after a failed read's wait, never delaying an id owed since it began", () => {
+    let state = owed(["old"], 1, 0);
+    state = owed(["new"], 3, 0, state);
+    state = deferFailedTableRowRead(state, "user-data", organization, ["old", "new"], 2, 5);
+    expect(tableRowsDue(state, "user-data", organization, 10, ["s-1"])).toEqual(["new"]);
+    expect(
+      tableRowsDue(state, "user-data", organization, 5 + TABLE_READ_RETRY_MS, ["s-1"]),
+    ).toEqual(["old", "new"]);
+  });
 });
 
-it("releases one project's metadata without discarding another project's rows", () => {
-  const first = activeVersionsDescriptor(organization, ["s-1"]);
-  const second = activeVersionsDescriptor(organization, ["s-2"]);
+it("releases one project's variables without discarding another project's rows", () => {
+  const first = serviceVariablesDescriptor(organization, ["s-1"]);
+  const second = serviceVariablesDescriptor(organization, ["s-2"]);
   const state = run([
-    [2, answered(first, [{ ...version("v-1"), serviceId: "s-1" }], 1, 0), 0],
-    [4, answered(second, [{ ...version("v-2"), serviceId: "s-2" }], 3, 20_000), 20_000],
+    [2, answered(first, [variable("u-1", "s-1", "ZCP_MATE_ENABLED", "1")], 1, 0), 0],
+    [4, answered(second, [variable("u-2", "s-2", "ZCP_MATE_ENABLED", "1")], 3, 20_000), 20_000],
   ]);
   const released = releaseTableLists(state, new Set([queryKeyOf(first)]));
-  expect(activeVersionOf(released, organization, "v-2", "s-2").row?.id).toBe("v-2");
-  expect(activeVersionOf(released, organization, "v-1", "s-1").row).toBeNull();
+  expect(serviceVariableOf(released, organization, "s-2", "ZCP_MATE_ENABLED").content).toBe("1");
+  expect(serviceVariableOf(released, organization, "s-1", "ZCP_MATE_ENABLED").content).toBeNull();
 });
 
 it.each(["unopened-a", "unopened-b"])(
-  "a version list for another service does not answer %s",
+  "a variables list for another service does not answer %s",
   (serviceId) => {
-    const state = run([[2, answered(versions, [], 1, 0), 0]]);
-    expect(activeVersionOf(state, organization, "unlisted-version", serviceId).known).toBe(false);
+    const state = run([[2, answered(variables, [], 1, 0), 0]]);
+    expect(serviceVariableOf(state, organization, serviceId, "ZCP_MATE_ENABLED").known).toBe(false);
   },
 );
 
 it.each(["s-1", "s-2"])(
   "manual metadata again asks at once only about absent rows for %s",
   (serviceId) => {
-    const query = activeVersionsDescriptor(organization, [serviceId]);
-    const other = activeVersionsDescriptor(organization, ["other-service"]);
+    const query = serviceVariablesDescriptor(organization, [serviceId]);
+    const other = serviceVariablesDescriptor(organization, ["other-service"]);
     const failed = run([
       [1, membership(query, "add", "missing"), 0],
       [3, answered({ ...query, ids: ["missing"] }, [], 2, 20_000), 20_000],
@@ -653,30 +466,13 @@ it.each(["s-1", "s-2"])(
       [6, answered({ ...other, ids: ["other-missing"] }, [], 5, 30_000), 30_000],
     ]);
     const both = [serviceId, "other-service"];
-    expect(tableRowsDue(failed, "app-version", organization, 40_000, both)).toEqual([]);
+    expect(tableRowsDue(failed, "user-data", organization, 40_000, both)).toEqual([]);
     const retried = retryAbsentTableRows(failed, organization, [serviceId], 40_000);
-    expect(tableRowsDue(retried, "app-version", organization, 40_000, both)).toEqual(["missing"]);
-    expect(askedAbsent(retried, "app-version", "other-missing")).toEqual({
-      retryAtMs: 30_000 + ABSENT_BACKOFF_MS[0]!,
-    });
+    expect(tableRowsDue(retried, "user-data", organization, 40_000, both)).toEqual(["missing"]);
+    expect(
+      tableRowsDue(retried, "user-data", organization, 30_000 + ABSENT_BACKOFF_MS[0]!, [
+        "other-service",
+      ]),
+    ).toEqual(["other-missing"]);
   },
 );
-
-it("asks again after a failed read's wait, never delaying an id owed since it began", () => {
-  let state = wantTableRows(
-    makeInitialEntityTableState(),
-    "app-version",
-    organization,
-    ["old"],
-    1,
-    0,
-    ["s-1"],
-  );
-  state = wantTableRows(state, "app-version", organization, ["new"], 3, 0, ["s-1"]);
-  state = deferFailedTableRowRead(state, "app-version", organization, ["old", "new"], 2, 5);
-  expect(tableRowsDue(state, "app-version", organization, 10, ["s-1"])).toEqual(["new"]);
-  expect(
-    tableRowsDue(state, "app-version", organization, 5 + TABLE_READ_RETRY_MS, ["s-1"]),
-  ).toEqual(["old", "new"]);
-  expect(askedAbsent(state, "app-version", "old")).toBeNull();
-});

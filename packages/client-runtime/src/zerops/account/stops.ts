@@ -17,9 +17,11 @@ import * as Fiber from "effect/Fiber";
 import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
 
 import { stopWork, type StopWork } from "../../data/projections/stopWork.ts";
+import { versionSource } from "../../data/projections/versionSource.ts";
 import { accountReadsAtom } from "../../data/reads.ts";
 import type { ManagedZeropsDataRuntime } from "../data/runtime.ts";
-import { projectKeyOf, type ProjectRef } from "../data/types.ts";
+import type { ZeropsServiceDeployedVersion } from "../data/deployedVersion.ts";
+import { projectKeyOf, serviceKeyOf, type ProjectRef, type ServiceRef } from "../data/types.ts";
 import {
   listedVersions,
   stopServices,
@@ -34,6 +36,11 @@ export interface Stops {
   readonly services: (project: ProjectRef) => Atom.Atom<Shown<ReadonlyArray<StopService>>>;
   /** Shows the stop until the returned release; `detail` adds its project's topology. */
   readonly demand: (project: ProjectRef, scope?: "summary" | "detail") => () => void;
+  /**
+   * What the service runs: the version it started, as its own row and variables say, with that
+   * version's source from the organization's active versions where its push left it unstated.
+   */
+  readonly version: (service: ServiceRef) => Atom.Atom<Shown<ZeropsServiceDeployedVersion>>;
   /** One manual attempt for a stop a view still shows. */
   readonly again: (project: ProjectRef) => void;
   /** The account closed: every demand is let go. */
@@ -126,6 +133,46 @@ export function makeStops(
     }),
   );
 
+  /** Each service a version was asked of, by its key. */
+  const serviceRefs = new Map<string, ServiceRef>();
+  const versionAtom = Atom.family((key: string) =>
+    Atom.make((get): Shown<ZeropsServiceDeployedVersion> => {
+      const service = serviceRefs.get(key);
+      if (service === undefined) return UNREAD;
+      const started = get(data.reads.deployedVersion(service));
+      if (
+        started.state !== "known" ||
+        started.value.activeId === null ||
+        started.value.source !== null
+      )
+        return started;
+      const account = get(accountReadsAtom);
+      const source =
+        account === null || account.orgId === null
+          ? { kind: "unknown" as const }
+          : get(
+              account.data.project(versionSource, {
+                orgId: account.orgId,
+                versionId: started.value.activeId,
+              }),
+            );
+      switch (source.kind) {
+        case "known":
+          return { ...started, value: { ...started.value, source: source.source } };
+        case "unknown":
+          return UNREAD;
+        case "refused":
+          return {
+            state: "failed",
+            failure: { kind: "transport", detail: "Zerops refused its active versions." },
+            atMs: data.access.clock.currentTimeMillisUnsafe(),
+            attempt: 1,
+            retryAtMs: null,
+          };
+      }
+    }),
+  );
+
   /** Asks for the stop's demand; a refusal fails the stop until it is asked for again. */
   const follow = (key: string, entry: Entry): void => {
     const project = entry.project;
@@ -158,6 +205,11 @@ export function makeStops(
 
   return {
     services: (project) => servicesAtom(projectKeyOf(project)),
+    version: (service) => {
+      const key = serviceKeyOf(service);
+      serviceRefs.set(key, service);
+      return versionAtom(key);
+    },
     demand: (project, scope = "summary") => {
       if (disposed) return () => undefined;
       const key = projectKeyOf(project);

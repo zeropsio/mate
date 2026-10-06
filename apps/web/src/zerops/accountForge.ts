@@ -13,7 +13,12 @@ import {
   type Deployment,
   type StopService,
 } from "@t3tools/client-runtime/zerops/flow";
-import { projectKeyOf, type ProjectRef } from "@t3tools/client-runtime/zerops/data";
+import type { ZeropsServiceDeployedVersion } from "@t3tools/client-runtime/zerops/data";
+import {
+  projectKeyOf,
+  type ProjectRef,
+  type ServiceRef,
+} from "@t3tools/client-runtime/zerops/data";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { Atom } from "effect/unstable/reactivity";
 import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
@@ -160,6 +165,30 @@ function useStopDemand(
     if (stops === null || projectKey === null) return;
     return stops.demand(JSON.parse(projectKey) as ProjectRef, scope);
   }, [stops, projectKey, scope]);
+}
+
+/**
+ * What each service runs, by service id: the version it started, its source stated where its push
+ * left it unstated. One answer per change of what they read.
+ */
+export function useStatedVersions(
+  services: ReadonlyArray<ServiceRef>,
+): ReadonlyMap<string, Shown<ZeropsServiceDeployedVersion>> {
+  const stops = useBoundStops();
+  const serviceKeys = JSON.stringify(services);
+  const versions = useMemo(() => {
+    const refs = JSON.parse(serviceKeys) as ReadonlyArray<ServiceRef>;
+    return Atom.make(
+      (get): ReadonlyMap<string, Shown<ZeropsServiceDeployedVersion>> =>
+        new Map(
+          refs.map((service) => [
+            service.serviceId,
+            stops === null ? UNBOUND : get(stops.version(service)),
+          ]),
+        ),
+    );
+  }, [stops, serviceKeys]);
+  return useAtomValue(versions);
 }
 
 /** Restarts a refused visible demand only when the person asks. The runtime refresh is the caller's. */

@@ -74,10 +74,7 @@ export function inventoryDemand(
           mateServiceIds,
         }): ReadonlyArray<RuntimeInterestDescriptor> =>
           detail
-            ? [
-                { kind: "project-versions", project, serviceIds },
-                { kind: "project-variables", project, serviceIds },
-              ]
+            ? [{ kind: "project-variables", project, serviceIds }]
             : mateServiceIds.length === 0
               ? []
               : [{ kind: "project-variables", project, serviceIds: mateServiceIds }],

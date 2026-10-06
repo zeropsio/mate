@@ -533,18 +533,6 @@ export type QueryDescriptor =
     }
   | {
       /**
-       * Every version the organization's services run now (`POST /app-version/search`, status
-       * `ACTIVE`): what each runs and from where, which a service's own row does not say (A14).
-       */
-      readonly kind: "active-versions-of-services";
-      readonly organization: OrganizationRef;
-      readonly serviceIds: ReadonlyArray<string>;
-      /** Only these versions: a read by id of rows the list's frames named (`entityTable.ts`). */
-      readonly ids?: ReadonlyArray<string>;
-      readonly schemaVersion: 1;
-    }
-  | {
-      /**
        * The organization's service variables of these keys (`POST /user-data/search`, `key in`):
        * the Mate flag and the deploy a service last started, for every service in one search.
        */
@@ -560,14 +548,11 @@ export type QueryDescriptor =
 /** The searches whose rows the entity table holds as the platform sends them (`entityTable.ts`). */
 export type TableQueryDescriptor = Extract<
   QueryDescriptor,
-  { readonly kind: "active-versions-of-services" | "service-variables-of-services" }
+  { readonly kind: "service-variables-of-services" }
 >;
 
 /** The platform entities the entity table holds, by their search's path. */
-export type TableEntity = "app-version" | "user-data";
-
-export const tableEntityOf = (descriptor: TableQueryDescriptor): TableEntity =>
-  descriptor.kind === "active-versions-of-services" ? "app-version" : "user-data";
+export type TableEntity = "user-data";
 
 export type EntityQueryDescriptor = Extract<
   QueryDescriptor,
@@ -629,16 +614,6 @@ export const queryKeyOf = (descriptor: QueryDescriptor): QueryKey => {
           descriptor.window.timeGroupBy,
           String(descriptor.window.limit),
           descriptor.window.timeZone,
-          String(descriptor.schemaVersion),
-        ]),
-      );
-    case "active-versions-of-services":
-      return QueryKey.make(
-        scopedKey([
-          descriptor.kind,
-          organizationKeyOf(descriptor.organization),
-          canonicalStringSet(descriptor.serviceIds),
-          descriptor.ids === undefined ? "" : canonicalStringSet(descriptor.ids),
           String(descriptor.schemaVersion),
         ]),
       );
@@ -978,16 +953,6 @@ export type HistoryMetricObservation = HistoryMetricObservationBase &
       }
   );
 
-/** One version a service runs, as `POST /app-version/search` states it. */
-export interface AppVersionRow {
-  readonly id: string;
-  readonly serviceId: string | null;
-  readonly projectId: string | null;
-  readonly status: string | null;
-  /** `GIT`, `CLI`, or `NONE` on a runtime nothing was ever deployed to. */
-  readonly source: string | null;
-}
-
 /** One service variable, as `POST /user-data/search` states it. */
 export interface ServiceVariableRow {
   readonly id: string;
@@ -997,10 +962,9 @@ export interface ServiceVariableRow {
   readonly content: string | null;
 }
 
-export type TableRow = AppVersionRow | ServiceVariableRow;
+export type TableRow = ServiceVariableRow;
 
 export interface TableRowsOf {
-  readonly "app-version": AppVersionRow;
   readonly "user-data": ServiceVariableRow;
 }
 
@@ -1493,12 +1457,6 @@ export type CommandAttemptState =
 
 export type RuntimeInterestDescriptor =
   | { readonly kind: "organization-inventory"; readonly organization: OrganizationRef }
-  /** What the organization's services run: its active versions, listed and streamed (A14). */
-  | {
-      readonly kind: "project-versions";
-      readonly project: ProjectRef;
-      readonly serviceIds: ReadonlyArray<string>;
-    }
   /**
    * The organization's service variables the app reads (`SERVICE_VARIABLE_KEYS`): the Mate flag
    * and the deploy a service last started, listed and streamed.

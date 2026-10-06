@@ -4,7 +4,6 @@
  * (a variable's key), is dropped alone, never the answer it rode.
  */
 import type {
-  AppVersionRow,
   PlatformObservation,
   ReadTicket,
   RegistrationRequest,
@@ -13,7 +12,6 @@ import type {
   TableQueryReadTarget,
   TableRow,
 } from "./types.ts";
-import { tableEntityOf } from "./types.ts";
 import { coverageFor } from "./coverage.ts";
 import type { ProtocolDecodeIssue, ProtocolDecodeResult } from "./platformProtocol.ts";
 
@@ -25,15 +23,6 @@ export function decodeTableRow(entity: TableEntity, raw: unknown): TableRow | nu
   const record = raw as Record<string, unknown>;
   const id = text(record.id);
   if (id === null || id.length === 0) return null;
-  if (entity === "app-version") {
-    return {
-      id,
-      serviceId: text(record.serviceStackId),
-      projectId: text(record.projectId),
-      status: text(record.status),
-      source: text(record.source),
-    } satisfies AppVersionRow;
-  }
   const key = text(record.key);
   if (key === null) return null;
   return {
@@ -77,7 +66,7 @@ export function decodeTableSearch(ticket: ReadTicket, input: unknown): ProtocolD
       observations: [],
       issues: [{ kind: "malformed-envelope", message: "The search answered no items." }],
     };
-  const entity = tableEntityOf(target.descriptor);
+  const entity = "user-data";
   const { rows, issues } = decodeRows(entity, envelope.items);
   const total = finite(envelope.totalHits) ?? finite(envelope.totalCount);
   const limit = finite(envelope.limit);
