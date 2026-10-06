@@ -579,6 +579,42 @@ describe("a demanded detail", () => {
   );
 
   it.effect(
+    "renews a held detail it read already, once; one unread, in flight or unheld not at all",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const gate = yield* Deferred.make<void>();
+        const fixture = fixtureWire((request) =>
+          request.method === "GET"
+            ? Deferred.await(gate).pipe(Effect.as({ status: 200, body: { list: [finished] } }))
+            : answers(() => [])(request),
+        );
+        const { fiber, link } = yield* runLink(store, fixture);
+        link.renew(DEMAND);
+        yield* settle;
+        expect(historyReads(fixture)).toBe(0);
+
+        // Held, and its first read still in flight: a renewal asks nothing more of it.
+        link.demandDetail(DEMAND);
+        yield* settle;
+        link.renew(DEMAND);
+        yield* settle;
+        expect(historyReads(fixture)).toBe(1);
+        yield* Deferred.succeed(gate, undefined);
+        yield* settle;
+        expect(historyReads(fixture)).toBe(1);
+
+        link.renew(DEMAND);
+        link.renew(DEMAND);
+        yield* settle;
+        expect(historyReads(fixture)).toBe(2);
+        yield* settle;
+        expect(historyReads(fixture)).toBe(2);
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
+
+  it.effect(
     "takes a service read by its id over the listing's row when Zerops updated it since",
     () =>
       Effect.gen(function* () {

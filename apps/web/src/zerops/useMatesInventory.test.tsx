@@ -186,6 +186,7 @@ describe("a drawn Mate's own project row", () => {
         holds.push(key);
         return () => rowsHeld.splice(rowsHeld.indexOf(key), 1);
       },
+      renewHeld: () => {},
     });
     const probe = (candidates: ReadonlyArray<ZeropsCandidate>) =>
       createElement(

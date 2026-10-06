@@ -506,7 +506,12 @@ const rosterOf = (registry: AtomRegistry.AtomRegistry, rest: FakeZeropsRest) => 
   const store = makeAccountStore(registry);
   const orgId = organization.organizationId;
   liveProjects(orgId, [...rest.projectsOf(orgId)] as never).forEach(store.dispatch);
-  registry.set(accountReadsAtom, { data: store.data, orgId, demandDetail: () => () => {} });
+  registry.set(accountReadsAtom, {
+    data: store.data,
+    orgId,
+    demandDetail: () => () => {},
+    renewHeld: () => {},
+  });
   return ({ projectId }: { readonly projectId: string }) =>
     registry.get(projectStandingAtom(projectId));
 };
@@ -754,6 +759,48 @@ describe("the account runtime", () => {
         yield* clock.advance(250);
         yield* settle;
         expect(grant.rounds()).toBe(2);
+      }),
+    ),
+  );
+
+  it.effect("each access round renews the own rows the account holds, once", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const clock = yield* makeDeadlineClock({ startWallMs: START_WALL_MS });
+        const registry = AtomRegistry.make();
+        let renewed = 0;
+        registry.set(accountReadsAtom, {
+          data: makeAccountStore(registry).data,
+          orgId: organization.organizationId,
+          demandDetail: () => () => {},
+          renewHeld: () => void renewed++,
+        });
+        const page = yield* makePage(clock);
+        const grant = heldVerifier();
+        const built = yield* Effect.gen(function* () {
+          const data = yield* makeZeropsDataRuntime({
+            random: () => 0,
+            scope: scope(),
+            adapter: inertAdapter,
+            atomRegistry: registry,
+            makeOpaqueId: () => "opaque",
+          });
+          return yield* makeAccountRuntime({
+            data,
+            verifier: grant.verifier,
+            signals: page.signals,
+            atomRegistry: registry,
+            environments: inertEnvironments(clock),
+          });
+        }).pipe(Effect.provideService(Clock.Clock, clock));
+        yield* Effect.addFinalizer(() => built.close("application-close"));
+        yield* settle;
+        expect([grant.rounds(), renewed]).toEqual([1, 1]);
+
+        yield* grant.answer({ kind: "server", status: 503 });
+        yield* clock.advance(2_000);
+        yield* settle;
+        expect([grant.rounds(), renewed]).toEqual([2, 2]);
       }),
     ),
   );
@@ -1481,6 +1528,7 @@ describe("the post-grant stage's Mate environments", () => {
       data: store.data,
       orgId: organization.organizationId,
       demandDetail: () => () => undefined,
+      renewHeld: () => {},
     });
     // As a page loads: the services listing lands once the account's first grant is in.
     const answered = {
@@ -1781,6 +1829,7 @@ describe("the post-grant stage's Mate environments", () => {
         held.add(`${listing} ${ownerId}`);
         return () => void held.delete(`${listing} ${ownerId}`);
       },
+      renewHeld: () => {},
     });
     return held;
   };

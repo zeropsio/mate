@@ -176,6 +176,8 @@ export function zeropsNavigationLink(options: {
   readonly revalidate: (demand: DetailDemand) => void;
   /** The person's "try again" on one detail: a failed or refused read is read again. */
   readonly retryDetail: (demand: DetailDemand) => void;
+  /** Renew a held own row without reviving a refusal. */
+  readonly renew: (demand: DetailDemand) => void;
 } {
   const { orgId, store } = options;
   const demands = makeDetailDemands({
@@ -644,6 +646,7 @@ export function zeropsNavigationLink(options: {
         const fresh: Array<ScopeKey> = [];
         let wakeAt = Number.POSITIVE_INFINITY;
         for (const scope of demanded) {
+          const renewed = demands.takeRenewal(scope);
           if (!navigationRegistered && !readsAtOnce(scope)) continue;
           const stream = streamOf(store.state(), scope);
           if (stream.phase === "refused") continue;
@@ -660,7 +663,7 @@ export function zeropsNavigationLink(options: {
           }
           if (inFlight.has(scope)) continue;
           // Our write landed while its last read was under way: it is read once more, now.
-          if (stream.phase === "live" && written.delete(scope)) {
+          if (stream.phase === "live" && (written.delete(scope) || (renewed && observed.has(scope)))) {
             sampledAt.delete(scope);
             yield* signal(scope, { kind: "revalidate" });
             fresh.push(scope);
@@ -775,5 +778,6 @@ export function zeropsNavigationLink(options: {
       tellDetail(demand, { kind: "revalidate" });
     },
     retryDetail: (demand) => tellDetail(demand, { kind: "manual-retry" }),
+    renew: (demand) => demands.renew(detailScopeOf(orgId, demand)),
   };
 }

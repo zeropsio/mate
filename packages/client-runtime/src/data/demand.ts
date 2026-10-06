@@ -54,6 +54,13 @@ export interface DetailDemands {
   readonly again: (scope: ScopeKey) => void;
   /** Whether a scope was marked to be read again, consuming the mark. */
   readonly takeAgain: (scope: ScopeKey) => boolean;
+  /**
+   * A held scope no push keeps current (a project's own row) is renewed: read again once, if it
+   * was read already and no read of it is in flight — the reader decides, on taking the mark.
+   */
+  readonly renew: (scope: ScopeKey) => void;
+  /** Whether a scope was marked to be renewed, consuming the mark. */
+  readonly takeRenewal: (scope: ScopeKey) => boolean;
 }
 
 export function makeDetailDemands(options: {
@@ -62,6 +69,7 @@ export function makeDetailDemands(options: {
 }): DetailDemands {
   const holds = new Map<ScopeKey, number>();
   const rereads = new Set<ScopeKey>();
+  const renewals = new Set<ScopeKey>();
   const listeners = new Set<() => void>();
   const changed = () => {
     for (const listener of listeners) listener();
@@ -82,6 +90,7 @@ export function makeDetailDemands(options: {
         if (left > 0) return void holds.set(scope, left);
         holds.delete(scope);
         rereads.delete(scope);
+        renewals.delete(scope);
         options.demanded(scope, false);
         changed();
       };
@@ -93,6 +102,12 @@ export function makeDetailDemands(options: {
       changed();
     },
     takeAgain: (scope) => rereads.delete(scope),
+    renew: (scope) => {
+      if (!holds.has(scope)) return;
+      renewals.add(scope);
+      changed();
+    },
+    takeRenewal: (scope) => renewals.delete(scope),
     onChange: (listener) => {
       listeners.add(listener);
       return () => void listeners.delete(listener);

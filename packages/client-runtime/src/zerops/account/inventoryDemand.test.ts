@@ -256,7 +256,12 @@ describe("holdListedAccess", () => {
           const registry = AtomRegistry.make();
           const store = makeAccountStore(registry);
           liveProjects(orgId, [{ id: "project-a" }]).forEach(store.dispatch);
-          registry.set(accountReadsAtom, { data: store.data, orgId, demandDetail: () => () => {} });
+          registry.set(accountReadsAtom, {
+            data: store.data,
+            orgId,
+            demandDetail: () => () => {},
+            renewHeld: () => {},
+          });
           const data = yield* makeZeropsDataRuntime({
             scope: scope(),
             adapter: silentAdapter,
@@ -356,7 +361,12 @@ describe("holdListedAccess", () => {
             });
           liveProjects(orgId, [{ id: "project-a" }]).forEach(store.dispatch);
           push({ viewerRoleCode: "READ_ONLY" }, 2);
-          registry.set(accountReadsAtom, { data: store.data, orgId, demandDetail: () => () => {} });
+          registry.set(accountReadsAtom, {
+            data: store.data,
+            orgId,
+            demandDetail: () => () => {},
+            renewHeld: () => {},
+          });
           const data = yield* makeZeropsDataRuntime({
             scope: scope(),
             adapter: silentAdapter,

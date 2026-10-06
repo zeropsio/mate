@@ -80,6 +80,7 @@ function rig(options: { readonly refuse?: LeaseAdmissionError["reason"] } = {}) 
       readById.add(demand.ownerId);
       return () => readById.delete(demand.ownerId);
     },
+    renewHeld: () => {},
   });
   const stops = makeStops(data, registry, Context.empty());
   const services = () => registry.get(stops.services(STAGE));

@@ -1,5 +1,4 @@
 import type { ZeropsUser } from "@t3tools/client-runtime/zerops";
-import { INVALIDATION_COALESCE_MS } from "@t3tools/client-runtime/zerops/knowledge/invalidation";
 import { makeAccountHarness } from "@t3tools/client-runtime/zerops/testing";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -65,6 +64,7 @@ function mountProduct(harness: ReturnType<typeof signedInHarness>) {
 afterEach(async () => {
   await unmountTabs();
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 describe("ZeropsInventoryProvider first admission", () => {
@@ -348,6 +348,54 @@ describe("ZeropsInventoryProvider grants", () => {
     expect(tab.text()).toContain("owner cu-1");
 
     await tab.run(() => handOver());
+    await settle();
+    expect(tab.text()).toContain("owner cu-dev");
+  });
+
+  // Another admin hands the Mate over: no push brings a project's grants, so the access grant's
+  // renewal reads the drawn Mate's own row again, and its row shows the new owner.
+  it("shows another admin's hand over on the menu's row once the grant renews", async () => {
+    vi.useFakeTimers({
+      toFake: ["Date", "performance", "setTimeout", "clearTimeout"],
+      shouldAdvanceTime: true,
+    });
+    const harness = makeAccountHarness({
+      people: [{ user: person, password: "secret" }],
+      projects: [{ ...CYD, userRoles: [{ clientUserId: "cu-1", roleCode: "OWNER" }] }],
+      signedIn: "user-1",
+    });
+    const tab = await mountTab(harness, harness.browser.openTab(), {
+      page: async () => {
+        const { AccountProduct } = await import("./__fixtures__/accountProduct");
+        const { useAtomValue } = await import("@effect/atom-react");
+        const { heldCandidates } = await import("@t3tools/client-runtime/zerops/projections");
+        const { mateRowsAtom } = await import("../state/zerops");
+        const { useMatesInventory } = await import("./useMatesInventory");
+        function Owner() {
+          useMatesInventory(["p1"]);
+          const rows = heldCandidates(useAtomValue(mateRowsAtom)).rows;
+          const owner = rows[0]?.project.userRoles?.find(({ roleCode }) => roleCode === "OWNER");
+          return `owner ${owner?.clientUserId ?? "none"}`;
+        }
+        return (
+          <AccountProduct datastream={harness.datastream} demandedProjects={["p1"]}>
+            <Owner />
+          </AccountProduct>
+        );
+      },
+    });
+    await settle();
+    expect(tab.text()).toContain("owner cu-1");
+
+    harness.rest.addProject({ ...CYD, userRoles: [{ clientUserId: "cu-dev", roleCode: "OWNER" }] });
+    await settle();
+    expect(tab.text()).toContain("owner cu-1");
+
+    await tab.run(() => vi.advanceTimersByTimeAsync(10 * 60_000));
+    await settle();
+    expect(tab.text()).toContain("owner cu-1");
+
+    await tab.run(() => vi.advanceTimersByTimeAsync(3 * 60_000));
     await settle();
     expect(tab.text()).toContain("owner cu-dev");
   });

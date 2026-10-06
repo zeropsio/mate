@@ -66,6 +66,11 @@ export function mountRoster(
         revision: { kind: "zerops", version: 1 },
       })),
     );
-  registry.set(accountReadsAtom, { data: store.data, orgId, demandDetail: () => () => undefined });
+  registry.set(accountReadsAtom, {
+    data: store.data,
+    orgId,
+    demandDetail: () => () => undefined,
+    renewHeld: () => undefined,
+  });
   return store;
 }

@@ -37,6 +37,8 @@ export interface AccountReads {
   readonly orgId: string | null;
   /** A hold on a detail while it is wanted; the release lets it go. */
   readonly demandDetail: (demand: DetailDemand) => () => void;
+  /** Renews each held own row no push keeps current (a project's, naming everybody's grants). */
+  readonly renewHeld: () => void;
 }
 
 /** The mounted account's reads; `null` while no account is mounted. */

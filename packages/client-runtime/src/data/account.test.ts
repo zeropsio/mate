@@ -113,6 +113,52 @@ describe("observeAccount", () => {
       }),
   );
 
+  it.live("renews each held project's own row once, and no other held detail", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const fixture = fixtureWire((request) =>
+        Effect.succeed(
+          request.method === "GET"
+            ? {
+                status: 200,
+                body: request.path.endsWith("/process?limit=100")
+                  ? { list: [] }
+                  : { id: request.path.split("/").at(-1), name: "p", status: "ACTIVE" },
+              }
+            : request.body?.wsOutputType === "listStream"
+              ? { items: [] }
+              : {},
+        ),
+      );
+      const account = observeAccount({ store, wire: fixture.wire, repairSession: Effect.void });
+      const reads = (path: string) =>
+        fixture.requests.filter((request) => request.path === path).length;
+      account.renewHeld();
+      account.show("org");
+      account.demandDetail({ family: "project", listing: "project", ownerId: "p1" });
+      account.demandDetail({ family: "project", listing: "project", ownerId: "p2" });
+      account.demandDetail({ family: "process", listing: "history", ownerId: "p1" });
+      yield* until(
+        () =>
+          reads("/project/p1") === 1 &&
+          reads("/project/p2") === 1 &&
+          reads(HISTORY_PATH) === 1 &&
+          streamOf(store.state(), "zerops:org:project:p2").phase === "live" &&
+          streamOf(store.state(), "zerops:org:project:p1").phase === "live",
+        "the held details to be read",
+      );
+
+      account.renewHeld();
+      yield* until(
+        () => reads("/project/p1") === 2 && reads("/project/p2") === 2,
+        "the own rows to be renewed",
+      );
+      yield* Effect.sleep(20);
+      expect([reads("/project/p1"), reads("/project/p2"), reads(HISTORY_PATH)]).toEqual([2, 2, 1]);
+      account.show(null);
+    }),
+  );
+
   it.live("holds an open operation's detail as a standing demand, without any screen", () =>
     Effect.gen(function* () {
       const store = makeAccountStore(AtomRegistry.make());

@@ -135,6 +135,7 @@ function HarnessAccountData({
       data: store.data,
       orgId,
       demandDetail: observation.demandDetail,
+      renewHeld: observation.renewHeld,
     });
   }, [observation, orgId, registry, store]);
   // The account's operations over this store, as `ZeropsAccountData` builds them.

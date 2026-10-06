@@ -22,7 +22,12 @@ describe("ZeropsAccountData on mobile", () => {
       registry,
       accountData: {
         data: {},
-        observation: { show: () => undefined, closed: () => false, demandDetail: () => () => {} },
+        observation: {
+          show: () => undefined,
+          closed: () => false,
+          demandDetail: () => () => {},
+          renewHeld: () => {},
+        },
       },
     } as unknown as ZeropsDataBinding;
     const render = (activeOrganizationId: string) => {
