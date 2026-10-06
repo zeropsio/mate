@@ -719,7 +719,7 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
   const history = useRepositoryHistory({ appId: groupId, repo, repos: flow?.repos });
   const tags = useReleaseTags(flow?.releases);
   const openChange = useOpenChange(groupId, repo);
-  const waiting = releaseContentsSummary(flow?.release.contents ?? [], 20);
+  const waiting = flow?.release.summary ?? releaseContentsSummary(flow?.release.contents ?? [], 20);
   const groupName = useGroupName(groupId);
   const openProjects = useOpenProjects();
   // The New Mate dialog over this page, as from every "Add a Mate" (`ZeropsNewMateHost`).
@@ -1288,7 +1288,10 @@ export function ZeropsStopDetailPage({
   const releasedAge = live?.taggedAt === undefined ? "" : formatRelativeTimeLabel(live.taggedAt);
   const redeploy = failedDeploy?.redeploy;
   // How many changes production lacks, at least that many where HQ stopped counting.
-  const notLive = movedCount(flow.release.contents);
+  const notLive =
+    flow.release.summary === undefined
+      ? movedCount(flow.release.contents)
+      : { count: flow.release.summary.total, atLeast: flow.release.summary.atLeast };
   const verdict = stopVerdict({
     tier: stop.tier,
     view,

@@ -82,6 +82,16 @@ The existing per-person `read_change` filter applies: environments are `{ refuse
 that person cannot read application changes. Navigation carries no application release catalog,
 recipes, repositories or move destinations; those remain app detail.
 
+Each navigation app carries `releaseOffer`: the recorded recipe head, suggested version, a bounded
+summary of changes production has not received, the recipient's release decision and any release
+in flight. `null` means not read yet; `{ refused: reason }` withholds it from a person without
+`read_change`. HQ reuses the release writer's production recipe interpretation, recorded repository
+heads and retained live deploy evidence. It shares candidates across people, filters at delivery,
+and revises only affected app values after head, release or deploy changes. Reading candidates runs
+outside the navigation baseline lock; menu and project pages demand no app-detail scope for an
+offer. Service entries and comparisons load when review opens, and the write still checks current
+permission and heads.
+
 Each navigation app also carries `changes`, its compact open menu rows (`HqNavigationChange`):
 repo, number, title, mateProjectId, state `open`, updatedAt, mergeability, ready and hasHead.
 Repository supplies the code/recipe label and link, Mate identity groups the row and supplies its

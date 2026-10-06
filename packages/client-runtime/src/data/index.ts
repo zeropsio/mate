@@ -25,6 +25,7 @@ export type {
 } from "./families/hqNavigation.ts";
 export {
   hqAppChanges,
+  hqAppReleaseOffers,
   hqNavigation,
   hqPersonFacts,
   hqStatus,

@@ -1844,6 +1844,7 @@ export default function Sidebar() {
         // What a release would put in front of people: the count the
         // chips' menus say waits for production.
         releaseContents: flow.release.contents,
+        releaseSummary: flow.release.summary,
         releaseUntold: flow.release.untold,
         // Until HQ answers the releases, production's chip says only what the platform says.
         releasesKnown: flow.releasesKnown,

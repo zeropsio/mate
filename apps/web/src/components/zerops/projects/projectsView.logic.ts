@@ -486,6 +486,7 @@ export interface GroupFlowReads {
     readonly inFlight?: string | undefined;
     /** What it would put live, per comparison HQ answered (`Moved`). */
     readonly contents: ReadonlyArray<Moved>;
+    readonly summary?: { readonly total: number; readonly atLeast: boolean } | undefined;
     /** Production's services whose commit cannot be told. */
     readonly untold: ReadonlyArray<string>;
   };
@@ -504,7 +505,7 @@ const STOP_TIER: Partial<Record<ZeropsEnvironmentRole, GroupEnvironmentTier>> = 
 
 /** What `groupFlow` is told of a release: how many changes it would put live, and how sure. */
 function releaseInputOf(release: GroupFlowReads["release"]): GroupFlowInput["release"] {
-  const { total, atLeast } = releaseContentsSummary(release.contents);
+  const { total, atLeast } = release.summary ?? releaseContentsSummary(release.contents);
   return {
     gate: release.gate,
     suggestion: release.suggestion,

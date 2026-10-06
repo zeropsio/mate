@@ -39,6 +39,7 @@ const app = (id: string, environments: unknown): Row =>
       births: [],
       environments,
       changes: [],
+      releaseOffer: null,
     },
   }) as Row;
 

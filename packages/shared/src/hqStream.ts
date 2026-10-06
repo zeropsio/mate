@@ -337,6 +337,25 @@ export const HqNavigationChanges = Schema.Union([
   Schema.Array(HqNavigationChange),
   Schema.Struct({ refused: Schema.String }),
 ]);
+/** Compact navigation offer; review contents and service entries remain in detail. */
+export const HqNavigationReleaseOffer = Schema.Struct({
+  head: Schema.NullOr(Schema.String),
+  suggestion: Schema.String,
+  summary: Schema.Struct({
+    subjects: Schema.Array(Schema.String).check(Schema.isMaxLength(20)),
+    total: Schema.Int,
+    more: Schema.Int,
+    atLeast: Schema.Boolean,
+  }),
+  gate: HqDecision,
+  inFlight: Schema.NullOr(Schema.String),
+});
+export type HqNavigationReleaseOffer = typeof HqNavigationReleaseOffer.Type;
+export const HqNavigationRelease = Schema.Union([
+  Schema.NullOr(HqNavigationReleaseOffer),
+  Schema.Struct({ refused: Schema.String }),
+]);
+
 export const HqNavigationApp = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
@@ -347,6 +366,7 @@ export const HqNavigationApp = Schema.Struct({
   }),
   environments: HqNavigationEnvironments,
   changes: HqNavigationChanges,
+  releaseOffer: HqNavigationRelease,
   projectIds: Schema.Array(Schema.String),
   births: Schema.Array(Schema.Unknown),
 });

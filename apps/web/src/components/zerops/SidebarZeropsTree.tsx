@@ -321,6 +321,7 @@ function groupFlowReadsOf(flow: SidebarProjectFlow): GroupFlowReads {
       suggestion: flow.releaseTag ?? "",
       inFlight: flow.releaseInFlight,
       contents: flow.releaseContents ?? [],
+      summary: flow.releaseSummary,
       untold: flow.releaseUntold ?? [],
     },
   };
@@ -358,6 +359,7 @@ export interface SidebarProjectFlow {
    * What a release would carry, per production service: how many changes wait
    * for production, the count the production chip wears.
    */
+  readonly releaseSummary?: { readonly total: number; readonly atLeast: boolean } | undefined;
   readonly releaseContents?: ReadonlyArray<Moved> | undefined;
   /** Production's services whose commit cannot be told: nothing is said to wait on them. */
   readonly releaseUntold?: ReadonlyArray<string> | undefined;

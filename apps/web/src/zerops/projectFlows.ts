@@ -8,6 +8,7 @@ import { useAtomValue } from "@effect/atom-react";
 import {
   accountReadsAtom,
   appsEnvironments,
+  hqAppReleaseOffers,
   shownHqAppChangesAtom,
   type AppEnvironmentsRead,
 } from "@t3tools/client-runtime/data";
@@ -35,6 +36,7 @@ import {
   type ReleaseComparison,
   type ReleaseEntry,
   type ReleaseGate,
+  type ReleaseContentsSummary,
 } from "@t3tools/client-runtime/zerops";
 import {
   ZeropsProjectId,
@@ -75,7 +77,7 @@ import {
 import { releaseGateOf, useOfferReading } from "./appOffers";
 import { useHqAppDetailHold, useHqAppRecipes, useHqAppReleases } from "./useHqAppDetail";
 import { useReleaseComparisons } from "./useReleaseComparisons";
-import { useProjectsServices } from "./ZeropsAccountData";
+import { useAccountOrgId, useProjection, useProjectsServices } from "./ZeropsAccountData";
 import { useZeropsSession, useZeropsSessionOptional } from "./ZeropsSessionProvider";
 
 /** What *Release* offers on a project, when it is offered at all. */
@@ -83,6 +85,7 @@ export interface ZeropsReleaseOffer {
   readonly comparisonFailure?:
     | { readonly reason: string; readonly again?: (() => void) | undefined }
     | undefined;
+  readonly summary?: ReleaseContentsSummary | undefined;
   readonly gate: ReleaseGate;
   /**
    * HQ's offer to this person (`can`'s `release`), its refusal in words; `undefined` while HQ
@@ -240,6 +243,8 @@ export interface AppsChanges {
   readonly changes: ReadonlyMap<string, GroupChanges>;
 }
 
+const NO_OFFERS_ATOM = Atom.make<ReturnType<typeof hqAppReleaseOffers.derive>>({});
+
 const NO_CHANGES: ReadonlyMap<string, GroupChanges> = new Map();
 const NO_REFUSALS: ReadonlyMap<string, string> = new Map();
 
@@ -352,6 +357,8 @@ export function useProjectFlows(
   options: { readonly compare?: boolean } = {},
 ): ProjectFlows {
   const compare = options.compare === true;
+  const orgId = useAccountOrgId();
+  const navigationOffers = useProjection(hqAppReleaseOffers, orgId, NO_OFFERS_ATOM);
   const session = useZeropsSession();
   const inventory = useZeropsInventory();
   const clientId = session.activeOrganization?.id;
@@ -602,6 +609,8 @@ export function useProjectFlows(
       signedInToMate
         ? joinProjectFlows({
             groups: flowGroups,
+            navigationOffers,
+            review: compare,
             stops: groupStops,
             releases: releaseRecords,
             repos: appRepos,
@@ -616,6 +625,8 @@ export function useProjectFlows(
         : EMPTY_FLOWS,
     [
       appRepos,
+      navigationOffers,
+      compare,
       changes,
       changesFailure,
       changesRefused,

@@ -15,7 +15,13 @@ import { reduceAccount, type AccountInput, type Row } from "../reducer.ts";
 import { readsOfState } from "../store.ts";
 import type { StreamEvent } from "../streamMachine.ts";
 import { hqMates } from "./hqMates.ts";
-import { hqAppChanges, hqNavigation, hqPersonFacts, hqStatus } from "./hqNavigation.ts";
+import {
+  hqAppReleaseOffers,
+  hqAppChanges,
+  hqNavigation,
+  hqPersonFacts,
+  hqStatus,
+} from "./hqNavigation.ts";
 
 const ORG = "org";
 const NAV: ReadonlyArray<ScopeKey> = [
@@ -86,6 +92,7 @@ const rows: ReadonlyArray<Row> = [
       births: [],
       environments: [],
       changes: [CHANGE],
+      releaseOffer: null,
     },
   },
   {
@@ -437,5 +444,39 @@ describe("HQ-computed Mate owners", () => {
       ada: { userId: "u1", name: "Jan" },
     });
     expect(owners(readsOfState(after), ORG)).toEqual({});
+  });
+});
+
+describe("release offers from navigation", () => {
+  const offer = {
+    head: "a".repeat(40),
+    suggestion: "v0.1.1",
+    gate: { allow: true },
+    inFlight: null,
+    summary: { subjects: ["Dynamic bakery greeting"], total: 1, more: 0, atLeast: false },
+  } as const;
+  it.each([
+    ["live", read],
+    ["outage", down],
+    ["refused scope retains facts", refused],
+  ] as const)("%s needs no app detail and preserves the owner's offer", (_label, state) => {
+    const next = reduceAccount(state, {
+      kind: "hq-delivery",
+      scopes: generations,
+      reset: false,
+      removals: [],
+      rows: [
+        {
+          family: "hqApp",
+          id: "shop",
+          revision: { ...revision, revision: 2 },
+          value: {
+            ...(rows[2]!.value as import("../families/hqNavigation.ts").HqAppValue),
+            releaseOffer: offer,
+          },
+        },
+      ],
+    }).state;
+    expect(hqAppReleaseOffers.derive(readsOfState(next), ORG).shop).toEqual(offer);
   });
 });
