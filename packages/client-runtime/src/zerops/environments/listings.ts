@@ -27,16 +27,9 @@ import type { ProjectServices } from "../../data/projections/services.ts";
 import { projectProcessesAtom, projectServicesAtom, shownProjectsAtom } from "../../data/reads.ts";
 import type { ZeropsService } from "../api.ts";
 
-import { pendingDenials, projectsNeverSeen } from "../data/access/grantProjects.ts";
+import { projectsNeverSeen } from "../data/access/grantProjects.ts";
 import type { Evidence, GrantMachine } from "../data/access/grant.ts";
 import type { ManagedZeropsDataRuntime } from "../data/runtime.ts";
-import {
-  projectKeyOf,
-  ZeropsOrganizationId,
-  ZeropsProjectId,
-  type OrganizationRef,
-  type ProjectRef,
-} from "../data/types.ts";
 import type { Freshness, Known } from "../knowledge/known.ts";
 import {
   addressFactsOf,
@@ -234,27 +227,12 @@ export function mateListingsAtom(
       organization = null;
       return publish(null);
     }
-    const organizationRef: OrganizationRef = {
-      kind: "organization",
-      account: data.scope.account,
-      organizationId: ZeropsOrganizationId.make(orgId),
-    };
-    const refOf = (projectId: string): ProjectRef => ({
-      kind: "project",
-      organization: organizationRef,
-      projectId: ZeropsProjectId.make(projectId),
-    });
     // Every project the organization's roster lists is the viewer's: Zerops filters the
     // organization-wide listing and its pushes by the viewer's token, so being listed is the
     // evidence of access, and no grant round has to name it first. Only a project the grant knows
     // this person can never see — NO_ACCESS, or denied — keeps its services from being its Mates':
     // its Mate gets no address, no probe and no connection.
-    const withheld = pendingDenials(evidence);
-    const neverSeen = projectsNeverSeen({
-      evidence,
-      access: get(data.reads.access),
-      withheld: (projectId) => withheld.has(projectKeyOf(refOf(projectId))),
-    });
+    const neverSeen = projectsNeverSeen({ evidence, access: get(data.reads.access) });
 
     const derive = (
       project: ProjectValue,

@@ -94,6 +94,7 @@ export const serviceFamily: FamilySpec<"service"> = {
       // turned on, which no push is promised to bring (8c076ec029).
       suffix: "service",
       leaving: "absent-unverified",
+      member: true,
       zerops: {
         path: ({ ownerId }) => `/service-stack/${encodeURIComponent(ownerId ?? "")}`,
         items: (answer) =>

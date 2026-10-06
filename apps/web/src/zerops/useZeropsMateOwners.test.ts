@@ -197,8 +197,22 @@ describe("useZeropsMateOwners", () => {
       organizationStatus: "selected",
       activeOrganization: organizationRef("org-1"),
     });
-    // HQ names the people the view names: Eva, who signed Vera's agent in.
-    mountHqNavigation(registry, "org-1", { people: { "u-eva": { name: "Eva Dvořák" } } });
+    // HQ names Eva as Vera's owner; the agent's signer is a different person.
+    mountHqNavigation(registry, "org-1", {
+      structure: {
+        apps: [],
+        ungrouped: [{ projectId: "p-vera", name: "Vera", mate: { face: "" } }],
+      },
+      people: { "u-eva": { name: "Eva Dvořák" } },
+      person: {
+        role: "DEVELOPER",
+        mayWrite: true,
+        mine: true,
+        ownerUserId: "u-eva",
+        waitsOnViewer: false,
+        unseen: null,
+      },
+    });
     const vera = {
       key: "p-vera:zcp",
       project: {
@@ -212,7 +226,7 @@ describe("useZeropsMateOwners", () => {
           mate: {
             name: "Vera",
             face: "",
-            logins: { "claude-code": { signedInBy: "u-eva", present: true, token: false } },
+            logins: { "claude-code": { signedInBy: "somebody-else", present: true, token: false } },
           },
         },
       },

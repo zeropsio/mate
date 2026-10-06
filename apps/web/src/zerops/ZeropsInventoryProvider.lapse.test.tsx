@@ -1,4 +1,5 @@
 import { ZEROPS_SESSION_STORAGE_KEY, type ZeropsUser } from "@t3tools/client-runtime/zerops";
+import type { AccountStore } from "@t3tools/client-runtime/data";
 import type { Link } from "@t3tools/client-runtime/zerops/environments";
 import { INVALIDATION_COALESCE_MS } from "@t3tools/client-runtime/zerops/knowledge/invalidation";
 import { makeAccountHarness, type AccountHarness } from "@t3tools/client-runtime/zerops/testing";
@@ -88,6 +89,7 @@ async function admittedProduct(
     signedIn: "user-1",
   });
   let mounts = 0;
+  let store: AccountStore | null = null;
   const conversation = options.conversation;
   const linkLostAt =
     conversation?.lostAfterMs === undefined || conversation.lostAfterMs === null
@@ -102,7 +104,12 @@ async function admittedProduct(
         await import("./__fixtures__/accountProduct");
       const { ProjectDialog, ProjectTitle } = await import("./__fixtures__/platformLayers");
       return (
-        <AccountProduct datastream={harness.datastream}>
+        <AccountProduct
+          datastream={harness.datastream}
+          onStore={(held) => {
+            store = held;
+          }}
+        >
           <ProductChild
             label={CHILD}
             onMount={() => {
@@ -126,7 +133,17 @@ async function admittedProduct(
   });
   const pass = (ms: number) => tab.run(() => vi.advanceTimersByTimeAsync(ms));
   expect(tab.text()).toContain(CHILD);
-  return { harness, tab, pass, mounts: () => mounts };
+  return {
+    harness,
+    tab,
+    pass,
+    mounts: () => mounts,
+    /** The account's store, as the platform's answers reach it. */
+    store: () => {
+      if (store === null) throw new Error("The account's store is not mounted.");
+      return store;
+    },
+  };
 }
 
 afterEach(async () => {
@@ -232,15 +249,17 @@ describe("ZeropsInventoryProvider lapse", () => {
     expect(mounts()).toBe(1);
   });
 
-  it("confirmed loss suppresses the target's content and drafts", async () => {
-    const { harness, tab, pass } = await admittedProduct({
+  it("a project its owner refused suppresses the target's content and drafts", async () => {
+    const { tab, pass, store } = await admittedProduct({
       conversation: { link: CONNECTED, lostAfterMs: null },
     });
-    harness.rest.failProject("p1", 403);
 
-    // The renewal meets the 403 and closes p1; a confirming read at least 5 s later proves it.
-    await pass(14 * MINUTE_MS);
-    await pass(5_000);
+    // The platform refuses p1 (a 403 on its own read): the store withholds it, and the grant
+    // closes it at once.
+    await tab.run(() =>
+      store().dispatch({ kind: "access", family: "project", id: "p1", access: "denied" }),
+    );
+    await pass(0);
 
     expect(tab.readable()).not.toContain(MESSAGES);
     expect(tab.readable()).not.toContain(DRAFT);

@@ -563,10 +563,9 @@ describe("capabilities over the access grant", () => {
                   ],
                 };
               },
-              fetchProject: async () => read,
             },
+            standing: () => ({ kind: "listed", project: read }),
             account,
-            concurrency: 4,
             onUser: () => undefined,
           });
           const opened = yield* tab(answering(), rest);

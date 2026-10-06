@@ -24,6 +24,8 @@ import { detailScopeOf } from "../demand.ts";
 import { membersScope } from "../families/organizationMembers.ts";
 import { routingScope } from "../families/publicRouting.ts";
 import { STREAM_POLICY } from "../streamMachine.ts";
+import { ownRowWanted, listedProject } from "../projections/projects.ts";
+import { readsOfState } from "../store.ts";
 
 const PROCESS_SEARCH = "/process/search";
 const PROJECT_SEARCH = "/project/search";
@@ -544,6 +546,159 @@ describe("a demanded detail", () => {
       link.demandDetail(DEMAND);
       yield* settle;
       expect(historyReads(fixture)).toBe(2);
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+
+  it.effect(
+    "reads a held detail again, once, after our own write; one nobody holds not at all",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const fixture = fixtureWire((request) =>
+          request.method === "GET"
+            ? Effect.succeed({ status: 200, body: { list: [finished] } })
+            : answers(() => [])(request),
+        );
+        const { fiber, link } = yield* runLink(store, fixture);
+        link.revalidate(DEMAND);
+        yield* settle;
+        expect(historyReads(fixture)).toBe(0);
+
+        link.demandDetail(DEMAND);
+        link.demandDetail(DEMAND);
+        yield* settle;
+        expect(historyReads(fixture)).toBe(1);
+
+        link.revalidate(DEMAND);
+        yield* settle;
+        expect(historyReads(fixture)).toBe(2);
+        expect(store.state().streams.get(history)?.phase).toBe("live");
+        yield* settle;
+        expect(historyReads(fixture)).toBe(2);
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
+
+  it.effect(
+    "renews a held detail it read already, once; one unread, in flight or unheld not at all",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const gate = yield* Deferred.make<void>();
+        const fixture = fixtureWire((request) =>
+          request.method === "GET"
+            ? Deferred.await(gate).pipe(Effect.as({ status: 200, body: { list: [finished] } }))
+            : answers(() => [])(request),
+        );
+        const { fiber, link } = yield* runLink(store, fixture);
+        link.renew(DEMAND);
+        yield* settle;
+        expect(historyReads(fixture)).toBe(0);
+
+        // Held, and its first read still in flight: a renewal asks nothing more of it.
+        link.demandDetail(DEMAND);
+        yield* settle;
+        link.renew(DEMAND);
+        yield* settle;
+        expect(historyReads(fixture)).toBe(1);
+        yield* Deferred.succeed(gate, undefined);
+        yield* settle;
+        expect(historyReads(fixture)).toBe(1);
+
+        link.renew(DEMAND);
+        link.renew(DEMAND);
+        yield* settle;
+        expect(historyReads(fixture)).toBe(2);
+        yield* settle;
+        expect(historyReads(fixture)).toBe(2);
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
+
+  it.effect.each([
+    { name: "a downgrade", grants: [{ clientUserId: "viewer", roleCode: "READ_ONLY" }] },
+    { name: "a removed grant", grants: [] },
+  ])("keeps an own row demanded through renewal: $name", ({ grants }) =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      let userRoles = [{ clientUserId: "viewer", roleCode: "OWNER" }];
+      const fixture = fixtureWire((request) =>
+        request.method === "GET"
+          ? Effect.succeed({
+              status: 200,
+              body: {
+                id: PROBE_PROJECT_ID,
+                name: "Mate",
+                status: "ACTIVE",
+                lastUpdate: "2026-10-06T12:00:00Z",
+                userRoles,
+              },
+            })
+          : answers(() => [])(request),
+      );
+      const { fiber, link } = yield* runLink(store, fixture);
+      const demand = { family: "project", listing: "project", ownerId: PROBE_PROJECT_ID } as const;
+      const row = () =>
+        listedProject.derive(readsOfState(store.state()), {
+          orgId: ORG,
+          projectId: PROBE_PROJECT_ID,
+        });
+      const reads = () =>
+        fixture.requests.filter(({ path }) => path === `/project/${PROBE_PROJECT_ID}`).length;
+      expect(ownRowWanted("NO_ACCESS", row())).toBe(true);
+      const release = link.demandDetail(demand);
+      yield* settle;
+      expect(row()?.userRoles).toEqual(userRoles);
+      expect(ownRowWanted("NO_ACCESS", row())).toBe(true);
+
+      userRoles = grants;
+      link.renew(demand);
+      link.renew(demand);
+      yield* settle;
+      expect(reads()).toBe(2);
+      expect(row()?.userRoles).toEqual(grants);
+      expect(ownRowWanted("NO_ACCESS", row())).toBe(true);
+      release();
+      link.renew(demand);
+      yield* settle;
+      expect(reads()).toBe(2);
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+
+  it.effect.each([403, 404])("never repeats a refused own-row read in a round: HTTP %s", (status) =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const fixture = fixtureWire((request) =>
+        request.method === "GET"
+          ? Effect.succeed({ status, body: {} })
+          : answers(() => [])(request),
+      );
+      const { fiber, link } = yield* runLink(store, fixture);
+      const demand = { family: "project", listing: "project", ownerId: PROBE_PROJECT_ID } as const;
+      const scope = `zerops:${ORG}:project:${PROBE_PROJECT_ID}`;
+      const reads = () =>
+        fixture.requests.filter(({ path }) => path === `/project/${PROBE_PROJECT_ID}`).length;
+      const release = link.demandDetail(demand);
+      yield* settle;
+      expect(reads()).toBe(1);
+      expect(store.state().streams.get(scope)?.phase).toBe("refused");
+
+      // Neither the former five-second confirmation nor drawing the same Mate retries it.
+      yield* TestClock.adjust(5_000);
+      yield* settle;
+      expect(reads()).toBe(1);
+      release();
+      yield* settle;
+      link.demandDetail(demand);
+      yield* settle;
+      expect(reads()).toBe(1);
+      // A subsequent round must also respect the refusal, even though it renews held own rows.
+      link.renew(demand);
+      yield* settle;
+      expect(reads()).toBe(1);
+      expect(store.state().streams.get(scope)?.phase).toBe("refused");
       yield* Fiber.interrupt(fiber);
     }),
   );

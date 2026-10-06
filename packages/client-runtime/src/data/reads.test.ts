@@ -13,6 +13,7 @@ import {
   projectUsageAtom,
   projectServicesAtom,
   projectsServicesAtom,
+  projectStandingAtom,
 } from "./reads.ts";
 import { makeAccountStore } from "./store.ts";
 import { usageOwnerOf, usageScope } from "./families/usage.ts";
@@ -25,11 +26,47 @@ describe("projectProcessesAtom", () => {
     const atom = projectProcessesAtom("p1");
     expect(registry.get(atom)).toEqual(NOT_READ_PROCESSES);
 
-    registry.set(accountReadsAtom, { data: store.data, orgId: ORG, demandDetail: () => () => {} });
+    registry.set(accountReadsAtom, {
+      data: store.data,
+      orgId: ORG,
+      demandDetail: () => () => {},
+      renewHeld: () => {},
+    });
     expect(registry.get(atom).running.map((process) => process.id)).toEqual(["build"]);
 
-    registry.set(accountReadsAtom, { data: store.data, orgId: null, demandDetail: () => () => {} });
+    registry.set(accountReadsAtom, {
+      data: store.data,
+      orgId: null,
+      demandDetail: () => () => {},
+      renewHeld: () => {},
+    });
     expect(registry.get(atom)).toEqual(NOT_READ_PROCESSES);
+  });
+});
+
+describe("projectStandingAtom", () => {
+  it("reads where a project stands through the mounted account, and not known without one", () => {
+    const registry = AtomRegistry.make();
+    const store = makeAccountStore(registry);
+    liveZerops({ running: [], projects: [{ id: "p1" }] }).forEach(store.dispatch);
+    const atom = projectStandingAtom("p1");
+    expect(registry.get(atom)).toEqual({ kind: "unknown" });
+
+    registry.set(accountReadsAtom, {
+      data: store.data,
+      orgId: ORG,
+      demandDetail: () => () => {},
+      renewHeld: () => {},
+    });
+    expect(registry.get(atom)).toMatchObject({ kind: "listed", project: { id: "p1" } });
+
+    registry.set(accountReadsAtom, {
+      data: store.data,
+      orgId: null,
+      demandDetail: () => () => {},
+      renewHeld: () => {},
+    });
+    expect(registry.get(atom)).toEqual({ kind: "unknown" });
   });
 });
 
@@ -45,10 +82,20 @@ describe("projectServicesAtom", () => {
     const atom = projectServicesAtom("p1");
     expect(registry.get(atom)).toEqual(NOT_READ_SERVICES);
 
-    registry.set(accountReadsAtom, { data: store.data, orgId: ORG, demandDetail: () => () => {} });
+    registry.set(accountReadsAtom, {
+      data: store.data,
+      orgId: ORG,
+      demandDetail: () => () => {},
+      renewHeld: () => {},
+    });
     expect(registry.get(atom).services?.map((service) => service.id)).toEqual(["zcp"]);
 
-    registry.set(accountReadsAtom, { data: store.data, orgId: null, demandDetail: () => () => {} });
+    registry.set(accountReadsAtom, {
+      data: store.data,
+      orgId: null,
+      demandDetail: () => () => {},
+      renewHeld: () => {},
+    });
     expect(registry.get(atom)).toEqual(NOT_READ_SERVICES);
   });
 });
@@ -60,7 +107,12 @@ describe("projectUsageAtom", () => {
     const atom = projectUsageAtom(usageOwnerOf(ORG, "p1"));
     expect(registry.get(atom)).toEqual(NOT_READ_USAGE);
 
-    registry.set(accountReadsAtom, { data: store.data, orgId: ORG, demandDetail: () => () => {} });
+    registry.set(accountReadsAtom, {
+      data: store.data,
+      orgId: ORG,
+      demandDetail: () => () => {},
+      renewHeld: () => {},
+    });
     expect(registry.get(atom)).toEqual(NOT_READ_USAGE);
     store.dispatch({
       kind: "stream",
@@ -74,7 +126,12 @@ describe("projectUsageAtom", () => {
     });
     expect(registry.get(atom).failure).toBe("HTTP 400");
 
-    registry.set(accountReadsAtom, { data: store.data, orgId: null, demandDetail: () => () => {} });
+    registry.set(accountReadsAtom, {
+      data: store.data,
+      orgId: null,
+      demandDetail: () => () => {},
+      renewHeld: () => {},
+    });
     expect(registry.get(atom)).toEqual(NOT_READ_USAGE);
   });
 });
@@ -94,7 +151,12 @@ describe("projectsServicesAtom", () => {
     const atom = projectsServicesAtom("p1,p2");
     expect(registry.get(atom)).toEqual({});
 
-    registry.set(accountReadsAtom, { data: store.data, orgId: ORG, demandDetail: () => () => {} });
+    registry.set(accountReadsAtom, {
+      data: store.data,
+      orgId: ORG,
+      demandDetail: () => () => {},
+      renewHeld: () => {},
+    });
     const read = registry.get(atom);
     expect([read.p1?.services?.[0]?.id, read.p2?.services?.[0]?.id]).toEqual(["zcp", "db"]);
   });
@@ -111,6 +173,7 @@ describe("holdProjectHistory", () => {
         held.push(`${name} ${demand.ownerId}`);
         return () => void held.splice(held.indexOf(`${name} ${demand.ownerId}`), 1);
       },
+      renewHeld: () => {},
     });
     const release = holdProjectHistory(registry, "p1");
     expect(held).toEqual([]);
@@ -135,6 +198,7 @@ describe("holdServiceRead", () => {
         held.push(`${demand.listing} ${demand.ownerId}`);
         return () => void held.splice(held.indexOf(`${demand.listing} ${demand.ownerId}`), 1);
       },
+      renewHeld: () => {},
     });
     const release = holdServiceRead(registry, "s1");
     expect(held).toEqual(["service s1"]);

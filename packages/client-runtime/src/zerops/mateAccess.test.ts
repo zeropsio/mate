@@ -6,7 +6,6 @@ import {
   mateOnlyOwnerOpensIt,
   mateOwnerRecords,
   mateIsViewers,
-  resolveMateOwnerPerson,
   resolveMateVerbs,
   resolveMateVisibility,
   withMateProjectRole,
@@ -124,80 +123,6 @@ const placedWith = (signers: Readonly<Record<string, string>>): HqPlacement => (
       ]),
     ),
   },
-});
-
-// A7: the owner named from HQ's people (`hqMates.ts`), never a member list read — HQ names exactly
-// the people the reader's view names, a token never.
-describe("resolveMateOwnerPerson — a Mate's owner, named from HQ's people", () => {
-  const signedIn = (signers: Readonly<Record<string, string>>, userRoles = [] as const) => ({
-    id: PROJECT,
-    clientId: ORG,
-    userRoles,
-    hq: placedWith(signers),
-  });
-  const PEOPLE = { "u-eva": { name: "Eva Dvořák" }, "u-jan": { name: "Jan Novák" } };
-
-  it("names a Mate's signer from HQ's people", () => {
-    expect(
-      resolveMateOwnerPerson({ project: signedIn({ "claude-code": "u-eva" }), people: PEOPLE }),
-    ).toEqual({ userId: "u-eva", name: "Eva Dvořák" });
-  });
-
-  it("names Claude Code's signer where two agents were signed in", () => {
-    expect(
-      resolveMateOwnerPerson({
-        project: signedIn({ codex: "u-jan", "claude-code": "u-eva" }),
-        people: PEOPLE,
-      }),
-    ).toEqual({ userId: "u-eva", name: "Eva Dvořák" });
-  });
-
-  // F23: a hand-over raises its person to OWNER, by member id, and that outranks the signer.
-  describe("a hand-over's OWNER", () => {
-    const handed = (...owners: ReadonlyArray<string>) => ({
-      id: PROJECT,
-      clientId: ORG,
-      userRoles: [
-        { clientUserId: "cu-key", roleCode: "BASIC_USER" },
-        ...owners.map((clientUserId) => ({ clientUserId, roleCode: "OWNER" })),
-      ],
-      hq: placedWith({ "claude-code": "u-eva" }),
-    });
-    const NAMED = {
-      "u-eva": { name: "Eva Dvořák", clientUserId: "cu-eva" },
-      "u-karlos": { name: "Karlos", clientUserId: "cu-karlos" },
-      "u-krls": { name: "Krls", clientUserId: "cu-krls" },
-    };
-
-    it.each([
-      {
-        name: "the person it names, over the signer",
-        owners: ["cu-karlos"],
-        want: { userId: "u-karlos", name: "Karlos" },
-      },
-      {
-        name: "of two a hand-over before the transfer left, the first HQ names",
-        owners: ["cu-gone", "cu-krls"],
-        want: { userId: "u-krls", name: "Krls" },
-      },
-      {
-        name: "nobody where HQ names none of them, never the signer",
-        owners: ["cu-gone"],
-        want: undefined,
-      },
-    ])("is $name", ({ owners, want }) => {
-      expect(resolveMateOwnerPerson({ project: handed(...owners), people: NAMED })).toEqual(want);
-    });
-  });
-
-  it.each([
-    { name: "HQ names nobody yet", people: null },
-    { name: "HQ's people leave the signer out", people: { "u-jan": { name: "Jan Novák" } } },
-  ])("names nobody where $name", ({ people }) => {
-    expect(
-      resolveMateOwnerPerson({ project: signedIn({ "claude-code": "u-eva" }), people }),
-    ).toBeUndefined();
-  });
 });
 
 // What the menu knows of a Mate's person before anybody is named: whether its records
@@ -378,12 +303,6 @@ describe("a ready agent's person from HQ", () => {
     expect(mateOwnerRecords(project).person).toBe(person);
     expect(mateOwnerRecords(project).runsWithoutSignIn).toBe(ready);
     expect(mateIsViewers(project, "u-maker")).toBe(person === "u-maker");
-    expect(
-      resolveMateOwnerPerson({
-        project,
-        people: { "u-maker": { name: "Maker" }, "u-signer": { name: "Signer" } },
-      })?.userId,
-    ).toBe(person);
   });
 });
 
@@ -416,10 +335,6 @@ it.each([false, true])(
     });
     expect(mateIsViewers(project, "u-eva")).toBe(true);
     expect(mateIsViewers(project, "u-maker")).toBe(false);
-    expect(resolveMateOwnerPerson({ project, people: { "u-eva": { name: "Eva" } } })).toEqual({
-      userId: "u-eva",
-      name: "Eva",
-    });
   },
 );
 

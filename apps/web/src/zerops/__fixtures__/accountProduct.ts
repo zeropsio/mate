@@ -12,6 +12,7 @@ import { RegistryContext } from "@effect/atom-react";
 import {
   accountReadsAtom,
   makeAccountStore,
+  type AccountStore,
   makeZeropsWire,
   observeAccount,
   repairZeropsSession,
@@ -36,12 +37,14 @@ import { useNowMs } from "../useNowMs";
 import { useZeropsCandidates } from "../useZeropsCandidates";
 import { ZeropsInventoryProvider } from "../ZeropsInventoryProvider";
 import { useZeropsData, useZeropsDataInterest } from "../zeropsDataContext";
+import { accountOperations, AccountOperationsContext } from "../accountOperations";
 import { harnessRuntime } from "./harnessRuntime";
 
 export function AccountProduct({
   datastream,
   overRest,
   demandedProjects = [],
+  onStore,
   children,
 }: {
   readonly datastream: FakeDatastream;
@@ -49,6 +52,8 @@ export function AccountProduct({
   readonly overRest?: boolean;
   readonly children: ReactNode;
   readonly demandedProjects?: ReadonlyArray<string>;
+  /** Hands a test the account's store, as the platform's answers reach it. */
+  readonly onStore?: (store: AccountStore) => void;
 }) {
   const [registry] = useState(() => AtomRegistry.make());
   const [makeRuntime] = useState(() =>
@@ -58,7 +63,7 @@ export function AccountProduct({
     value: registry,
     children: createElement(
       HarnessAccountData,
-      { registry },
+      { registry, ...(onStore === undefined ? {} : { onStore }) },
       createElement(ZeropsDataProvider, {
         makeRuntime,
         // The product and the account's one line at the menu's foot, as the sidebar places it.
@@ -101,13 +106,16 @@ function quietSocket(): PlatformWatchSocket {
  */
 function HarnessAccountData({
   registry,
+  onStore,
   children,
 }: {
   readonly registry: AtomRegistry.AtomRegistry;
+  readonly onStore?: (store: AccountStore) => void;
   readonly children?: ReactNode;
 }) {
   const { client, status, activeOrganization } = useZeropsSession();
   const store = useMemo(() => makeAccountStore(registry), [registry]);
+  useEffect(() => onStore?.(store), [onStore, store]);
   const observation = useMemo(
     () =>
       observeAccount({
@@ -127,9 +135,15 @@ function HarnessAccountData({
       data: store.data,
       orgId,
       demandDetail: observation.demandDetail,
+      renewHeld: observation.renewHeld,
     });
   }, [observation, orgId, registry, store]);
-  return children;
+  // The account's operations over this store, as `ZeropsAccountData` builds them.
+  const operations = useMemo(
+    () => accountOperations(store, registry, client, observation.demandDetail),
+    [client, observation, registry, store],
+  );
+  return createElement(AccountOperationsContext, { value: operations }, children);
 }
 
 /**

@@ -85,6 +85,7 @@ export function ZeropsAccountData({ children }: { readonly children: ReactNode }
       data: store.data,
       orgId,
       demandDetail: observation.demandDetail,
+      renewHeld: observation.renewHeld,
       readDetail: observation.readDetail,
       revalidate: observation.revalidate,
       retryDetail: observation.retryDetail,

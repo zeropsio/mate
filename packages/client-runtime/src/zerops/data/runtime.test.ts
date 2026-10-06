@@ -34,7 +34,6 @@ import {
   ZeropsServiceId,
   type AccountScope,
   type AdapterError,
-  type InterestLease,
   type ProjectRef,
   type PlatformObservation,
   type ReceiverEvent,
@@ -3196,98 +3195,6 @@ describe("visible demand transport", () => {
   );
 });
 
-it.effect("uses the access project read as the runtime's direct project observation", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const { decodeEntityDirectResponse } = yield* Effect.promise(
-        () => import("./platformProtocol.ts"),
-      );
-      const registry = AtomRegistry.make();
-      const harness = makeAdapterHarness();
-      const target = project("project-a");
-      const runtime = yield* makeZeropsDataRuntime({
-        scope: runtimeScope,
-        atomRegistry: registry,
-        makeOpaqueId: makeIdFactory(),
-        adapter: {
-          ...harness.adapter,
-          read: (ticket) =>
-            Effect.succeed(
-              decodeEntityDirectResponse(ticket, {
-                id: target.projectId,
-                clientId: target.organization.organizationId,
-                name: "Fresh name",
-                status: "ACTIVE",
-                userRoles: [],
-              }),
-            ),
-        },
-      });
-      yield* runtime.acquire({
-        kind: "project-variables",
-        serviceIds: vehicleServices,
-        project: target,
-      });
-      expect(typeof runtime.readProjectForAccess).toBe("function");
-      const row = yield* runtime.readProjectForAccess(target);
-      expect(row.name).toBe("Fresh name");
-      const record = (yield* runtime.state).inventory.projects.get(projectKeyOf(target));
-      expect(record?.identity.knowledge === "observed" && record.identity.fields.name).toBe(
-        row.name,
-      );
-      yield* runtime.shutdown("application-close");
-      registry.dispose();
-    }),
-  ),
-);
-
-it.effect.each(["forbidden", "not-found"] as const)(
-  "keeps a shared access read's %s denial distinct from a failed transport",
-  (reason) =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const registry = AtomRegistry.make();
-        const harness = makeAdapterHarness();
-        const target = project("project-a");
-        const runtime = yield* makeZeropsDataRuntime({
-          scope: runtimeScope,
-          atomRegistry: registry,
-          makeOpaqueId: makeIdFactory(),
-          adapter: {
-            ...harness.adapter,
-            read: (ticket) =>
-              Effect.succeed({
-                observations:
-                  ticket.kind === "direct" && ticket.target.kind === "project"
-                    ? [
-                        {
-                          kind: "entity-unavailable" as const,
-                          ref: target,
-                          reason,
-                          ticket: {
-                            ...ticket,
-                            kind: "direct" as const,
-                            target: { kind: "project" as const, ref: target },
-                          },
-                        },
-                      ]
-                    : [],
-              }),
-          },
-        });
-        yield* runtime.acquire({
-          kind: "project-variables",
-          serviceIds: vehicleServices,
-          project: target,
-        });
-        const outcome = yield* runtime.readProjectForAccess(target).pipe(Effect.result);
-        expect(Result.isFailure(outcome) && outcome.failure.kind).toBe(reason);
-        yield* runtime.shutdown("application-close");
-        registry.dispose();
-      }),
-    ),
-);
-
 describe("incomplete data says so, with its retry", () => {
   it.effect("retains a refused shared registration until Reconnect", () =>
     Effect.scoped(
@@ -3342,22 +3249,21 @@ describe("incomplete data says so, with its retry", () => {
           retryAtMs: null,
         });
         expect(attempts).toBe(1);
-        // A grant that changes for the project is the other thing that may lift a refusal.
+        // Nor does the grant's word on the project: only the person's again asks once more.
         yield* runtime.observeAccess({
           kind: "project-access-established",
           accountEpoch: runtimeScope.epoch,
           project: variablesDescriptor.project,
         });
-        yield* waitForState(states, () => attempts === 2);
         yield* TestClock.adjust("2 minutes");
-        expect(attempts).toBe(2);
+        expect(attempts).toBe(1);
         yield* runtime.refresh(variablesDescriptor.project);
         yield* waitForState(
           states,
           (state) =>
-            attempts === 3 && state.interests.get(second.interest)?.interest.status === "failed",
+            attempts === 2 && state.interests.get(second.interest)?.interest.status === "failed",
         );
-        expect(attempts).toBe(3);
+        expect(attempts).toBe(2);
         yield* runtime.shutdown("application-close");
         stop();
         registry.dispose();
@@ -3365,7 +3271,7 @@ describe("incomplete data says so, with its retry", () => {
     ),
   );
 
-  it.effect("each grant round asks a refusal once more, the same role included", () =>
+  it.effect("no grant round asks a refusal again: a definitive refusal stands", () =>
     Effect.scoped(
       Effect.gen(function* () {
         const registry = AtomRegistry.make();
@@ -3417,12 +3323,10 @@ describe("incomplete data says so, with its retry", () => {
           });
         expect(attempts).toBe(1);
         yield* round(0);
-        yield* waitForState(states, () => attempts === 2);
         yield* TestClock.adjust("12 minutes");
-        expect(attempts).toBe(2);
-        // The next round, with the same role, asks once more.
         yield* round(12 * 60_000);
-        yield* waitForState(states, () => attempts === 3);
+        yield* TestClock.adjust("1 minute");
+        expect(attempts).toBe(1);
         yield* runtime.shutdown("application-close");
         stop();
         registry.dispose();

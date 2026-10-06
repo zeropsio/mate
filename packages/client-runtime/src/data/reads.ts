@@ -7,6 +7,7 @@
  */
 import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
 
+import type { MateOwnerPerson } from "../zerops/mateAccess.ts";
 import type { DetailDemand } from "./demand.ts";
 import { projectProcesses, type ProjectProcesses } from "./projections/processes.ts";
 import type { ProjectValue } from "./families/project.ts";
@@ -16,13 +17,16 @@ import {
   listedProject,
   organizationProjects,
   projectGone,
+  projectStanding,
   type OrganizationProjects,
+  type ProjectStanding,
 } from "./projections/projects.ts";
 import { hqMates, type HqMatesRead } from "./projections/hqMates.ts";
 import {
   hqAppChanges,
   hqNavigation,
   hqPersonFacts,
+  hqMateOwners,
   hqStatus,
   type HqNavigationRead,
 } from "./projections/hqNavigation.ts";
@@ -35,6 +39,8 @@ export interface AccountReads {
   readonly orgId: string | null;
   /** A hold on a detail while it is wanted; the release lets it go. */
   readonly demandDetail: (demand: DetailDemand) => () => void;
+  /** Renews each held own row no push keeps current (a project's, naming everybody's grants). */
+  readonly renewHeld: () => void;
 }
 
 /** The mounted account's reads; `null` while no account is mounted. */
@@ -155,6 +161,17 @@ export const projectGoneAtom = Atom.family((projectId: string) =>
   }).pipe(Atom.withLabel(`data:project-gone:${projectId}`)),
 );
 
+const NOT_KNOWN: ProjectStanding = { kind: "unknown" };
+
+/** Where one project stands with the viewer as the mounted account holds it; not known without one. */
+export const projectStandingAtom = Atom.family((projectId: string) =>
+  Atom.make((get): ProjectStanding => {
+    const account = get(accountReadsAtom);
+    if (account === null || account.orgId === null) return NOT_KNOWN;
+    return get(account.data.project(projectStanding, { orgId: account.orgId, projectId }));
+  }).pipe(Atom.withLabel(`data:project-standing:${projectId}`)),
+);
+
 /**
  * Holds a project's newest process history from outside React, through whichever account is
  * mounted in `registry`: moved to a newly mounted one, let go on release.
@@ -215,6 +232,14 @@ export const shownHqPersonFactsAtom = Atom.make((get): Readonly<Record<string, H
   if (account === null || account.orgId === null) return NO_PERSON_FACTS;
   return get(account.data.project(hqPersonFacts, account.orgId));
 }).pipe(Atom.withLabel("data:shown-hq-person-facts"));
+
+/** The owners HQ names for the Mates in the organization shown. */
+export const shownHqMateOwnersAtom = Atom.make((get): Readonly<Record<string, MateOwnerPerson>> => {
+  const account = get(accountReadsAtom);
+  return account === null || account.orgId === null
+    ? {}
+    : get(account.data.project(hqMateOwners, account.orgId));
+}).pipe(Atom.withLabel("data:shown-hq-mate-owners"));
 
 /** How the organization shown's HQ stands, as its navigation says it; `null` before it said. */
 export const shownHqStatusAtom = Atom.make((get): HqStatusValue | null => {

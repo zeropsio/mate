@@ -109,6 +109,11 @@ export interface DetailListing {
   readonly suffix: string;
   /** What leaving the listing says of a member. */
   readonly leaving: MemberState;
+  /**
+   * The listing reads one member by its own id (a project's own row): our own write to that
+   * member reads it again while a screen holds it (`holdStandingDemands`).
+   */
+  readonly member?: true;
   /** Zerops: the `GET` whose answer is the listing's baseline, and the rows in that answer. */
   readonly zerops: {
     readonly path: (owner: ScopeOwner) => string;
@@ -182,6 +187,18 @@ export interface FamilySpec<F extends Family> {
    * names replace the held ones, the rest stay. Without it, a push replaces the value whole.
    */
   readonly merge?: (held: FamilyValues[F], pushed: FamilyValues[F]) => FamilyValues[F];
+  /**
+   * What a row of any kind — a push, a read, a baseline — says, by where it came from: `own`, the
+   * member's own row read by its id (a `member` detail listing), Zerops' whole word on it; else a
+   * listing's row, which may leave unsaid what the value held says (a project's listing never
+   * names everybody's grants). `held` is the value held, if any. Without it, a row that is not
+   * merged replaces the value whole.
+   */
+  readonly keepUnsaid?: (
+    held: FamilyValues[F] | undefined,
+    row: FamilyValues[F],
+    own: boolean,
+  ) => FamilyValues[F];
   /**
    * The owner's own ordering of a read that carries no revision (a by-id read, or a detail
    * listing's baseline): whether the value it read is

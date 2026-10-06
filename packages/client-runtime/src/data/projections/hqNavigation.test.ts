@@ -14,7 +14,13 @@ import { reduceAccount, type AccountInput, type Row } from "../reducer.ts";
 import { readsOfState } from "../store.ts";
 import type { StreamEvent } from "../streamMachine.ts";
 import { hqMates } from "./hqMates.ts";
-import { hqAppChanges, hqNavigation, hqPersonFacts, hqStatus } from "./hqNavigation.ts";
+import {
+  hqAppChanges,
+  hqMateOwners,
+  hqNavigation,
+  hqPersonFacts,
+  hqStatus,
+} from "./hqNavigation.ts";
 
 const ORG = "org";
 const NAV: ReadonlyArray<ScopeKey> = [
@@ -344,5 +350,91 @@ describe("hqAppChanges", () => {
   it("is each application's open changes as HQ's navigation says them", () => {
     expect(hqAppChanges.derive(readsOfState(read), ORG)).toEqual({ shop: [CHANGE] });
     expect(hqAppChanges.derive(readsOfState(emptyAccount), ORG)).toEqual({});
+  });
+});
+
+describe("hqMateOwners", () => {
+  const owned = (state: AccountState, ownerUserId: string | null) =>
+    apply(state, [
+      {
+        kind: "hq-delivery",
+        scopes: generations,
+        reset: false,
+        removals: [],
+        rows: [
+          {
+            family: "placement",
+            id: "ada",
+            revision: { ...revision, revision: 2 },
+            value: {
+              projectId: "ada",
+              appId: "shop",
+              name: "Ada",
+              kind: "mate",
+              mate,
+              person: { ...person, ownerUserId },
+              signedInNow: {},
+              everSignedIn: { codex: "other" },
+            },
+          },
+        ],
+      },
+    ]);
+  it.each([
+    { name: "live", state: read, owner: "u1", expected: { ada: { userId: "u1", name: "Jan" } } },
+    {
+      name: "outage keeps the owner",
+      state: down,
+      owner: "u1",
+      expected: { ada: { userId: "u1", name: "Jan" } },
+    },
+    {
+      name: "a scope refusal keeps known evidence",
+      state: refused,
+      owner: "u1",
+      expected: { ada: { userId: "u1", name: "Jan" } },
+    },
+    { name: "partial person coverage", state: read, owner: "unknown", expected: {} },
+    { name: "HQ names no owner despite a saved signer", state: read, owner: null, expected: {} },
+  ])("$name", ({ state, owner, expected }) => {
+    expect(hqMateOwners.derive(readsOfState(owned(state, owner)), ORG)).toEqual(expected);
+  });
+  it("withholds an owner when HQ denies their person fact", () => {
+    const state = apply(owned(read, "u1"), [
+      { kind: "access", family: "hqPerson", id: "u1", access: "denied" },
+    ]);
+    expect(hqMateOwners.derive(readsOfState(state), ORG)).toEqual({});
+  });
+  it("moves the owner on newer HQ evidence without reading project grants", () => {
+    const before = owned(read, "u1");
+    const after = apply(before, [
+      {
+        kind: "hq-delivery",
+        scopes: generations,
+        reset: false,
+        removals: [],
+        rows: [
+          {
+            family: "placement",
+            id: "ada",
+            revision: { ...revision, revision: 3 },
+            value: {
+              projectId: "ada",
+              appId: "shop",
+              name: "Ada",
+              kind: "mate",
+              mate,
+              person: { ...person, ownerUserId: null },
+              signedInNow: {},
+              everSignedIn: { codex: "u1" },
+            },
+          },
+        ],
+      },
+    ]);
+    expect(hqMateOwners.derive(readsOfState(before), ORG)).toEqual({
+      ada: { userId: "u1", name: "Jan" },
+    });
+    expect(hqMateOwners.derive(readsOfState(after), ORG)).toEqual({});
   });
 });

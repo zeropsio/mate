@@ -36,6 +36,8 @@ export interface RunningLink {
   readonly revalidate: (demand: DetailDemand) => void;
   /** The person's "try again" on one detail. */
   readonly retryDetail: (demand: DetailDemand) => void;
+  /** Renew a held own row without reviving a refusal. */
+  readonly renew: (demand: DetailDemand) => void;
   /** Ends the demand: the link and its scopes pause, their facts stay. */
   readonly stop: () => void;
 }
@@ -62,6 +64,7 @@ export function startZeropsNavigation(options: {
   return {
     signal: (signal) => void Effect.runFork(supervisor.signal(signal)),
     demandDetail: link.demandDetail,
+    renew: link.renew,
     revalidate: link.revalidate,
     retryDetail: link.retryDetail,
     stop: () => {
@@ -71,7 +74,7 @@ export function startZeropsNavigation(options: {
   };
 }
 
-export interface RunningHq extends Omit<RunningLink, "revalidate" | "retryDetail"> {
+export interface RunningHq extends Omit<RunningLink, "revalidate" | "retryDetail" | "renew"> {
   /** The same organization's HQ reached over a new wire: the next socket opens over it. */
   readonly rewire: (wire: HqWire) => void;
   /** Asks HQ where a Mate may move, as the move opens. */
@@ -178,6 +181,11 @@ export interface AccountObservation {
   readonly retryDetail: (demand: DetailDemand) => void;
   /** The person's "try now". */
   readonly retry: () => void;
+  /**
+   * Renews each held member row no push keeps current (a project's own row, whose grants only it
+   * names): an access round's renewal of what the account knows of everybody's grants.
+   */
+  readonly renewHeld: () => void;
   /** Ends the observation: no organization shown, and its operations' standing demands let go. */
   readonly stop: () => void;
   /**
@@ -260,6 +268,7 @@ export function observeAccount(options: {
       stopStanding ??= holdStandingDemands({
         store: options.store,
         demandDetail: observation.demandDetail,
+        revalidate: (demand) => shown?.link.revalidate(demand),
         ...(options.kinds === undefined ? {} : { kinds: options.kinds }),
       });
       const link = startZeropsNavigation({ ...options, orgId });
@@ -298,6 +307,16 @@ export function observeAccount(options: {
         if (!holds.delete(hold)) return;
         hold.release?.();
       };
+    },
+    renewHeld: () => {
+      if (shown === null) return;
+      for (const { demand } of holds)
+        if (
+          familySpec(demand.family).details?.some(
+            ({ suffix, member }) => suffix === demand.listing && member === true,
+          ) === true
+        )
+          shown.link.renew(demand);
     },
     readDetail: (demand) =>
       new Promise((resolve) => {

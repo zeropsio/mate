@@ -935,10 +935,7 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
       const decoded = decodeRead(ticket, body);
       if (decoded.issues.length && decoded.observations.length === 0)
         return yield* Effect.fail(adapterError("malformed", decoded.issues[0]!.message));
-      return {
-        observations: decoded.observations,
-        ...(decoded.project === undefined ? {} : { project: decoded.project }),
-      } satisfies PlatformReadResult;
+      return { observations: decoded.observations } satisfies PlatformReadResult;
     });
     return result.pipe(
       Effect.catch((error) => {

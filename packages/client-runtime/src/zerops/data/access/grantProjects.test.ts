@@ -90,16 +90,15 @@ describe("which projects a person can see: one rule", () => {
   });
 
   it.each([
-    { name: "a confirmed denial", status: "confirmed", withheld: false, never: true },
-    { name: "a denial due its confirming read", status: "due", withheld: false, never: false },
-    { name: "one the grant withholds", status: undefined, withheld: true, never: true },
-    { name: "one only named so far", status: undefined, withheld: false, never: false },
-  ] as const)("$name: never seen $never", ({ status, withheld, never }) => {
+    { name: "a denial", denied: true, withheld: false, never: true },
+    { name: "one the grant withholds", denied: false, withheld: true, never: true },
+    { name: "one only named so far", denied: false, withheld: false, never: false },
+  ] as const)("$name: never seen $never", ({ denied, withheld, never }) => {
     const evidence = {
       projects: new Map(),
       unverified: new Map([[P.projectId, { project: P, failure: null }]]),
       closedProjects: new Map(
-        status === undefined ? [] : [[P.projectId, { project: P, confirmation: { status } }]],
+        denied ? [[P.projectId, { project: P, evidence: "direct-forbidden" }]] : [],
       ),
     } as unknown as Evidence;
     expect(

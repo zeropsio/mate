@@ -26,6 +26,7 @@ export {
   hqAppChanges,
   hqNavigation,
   hqPersonFacts,
+  hqMateOwners,
   hqStatus,
   type HqNavigationRead,
 } from "./projections/hqNavigation.ts";
@@ -89,6 +90,7 @@ export {
 export {
   listedProject,
   organizationProjects,
+  ownRowWanted,
   projectGone,
   type OrganizationProjects,
   type RosterRead,
@@ -120,6 +122,7 @@ export {
   NOT_READ_SERVICES,
   NOT_READ_USAGE,
   projectGoneAtom,
+  projectStandingAtom,
   projectProcessesAtom,
   projectServicesAtom,
   projectsServicesAtom,
@@ -130,6 +133,7 @@ export {
   shownHqNavigationAtom,
   shownHqAppChangesAtom,
   shownHqPersonFactsAtom,
+  shownHqMateOwnersAtom,
   shownHqStatusAtom,
   type AccountReads,
 } from "./reads.ts";

@@ -42,8 +42,6 @@ const person: ZeropsUser = {
 async function admittedProduct(
   options: {
     readonly before?: (harness: AccountHarness) => void;
-    /** How long the first round's project read takes to answer. */
-    readonly firstRoundMs?: number;
   } = {},
 ) {
   vi.useFakeTimers({
@@ -59,8 +57,6 @@ async function admittedProduct(
     signedIn: "user-1",
   });
   options.before?.(harness);
-  const firstRead =
-    options.firstRoundMs === undefined ? null : harness.rest.hold("GET /project/p1");
   let mounts = 0;
   const tab: MountedTab = await mountTab(harness, harness.browser.openTab(), {
     page: async () => {
@@ -81,19 +77,10 @@ async function admittedProduct(
     },
   });
   const pass = (ms: number) => tab.run(() => vi.advanceTimersByTimeAsync(ms));
-  // The first round's read is out, so the round started no later than this.
-  const firstRoundBy = performance.now();
-  if (firstRead !== null) {
-    expect(firstRead.waiting()).toBe(1);
-    await pass(options.firstRoundMs!);
-    expect(tab.text()).toContain(CHILD);
-    await tab.run(() => firstRead.release());
-    await pass(0);
-  }
   expect(tab.text()).toContain(CHILD);
   const rounds = () =>
     harness.rest.requests().filter(({ route }) => route === "GET /user/info").length;
-  return { harness, tab, pass, rounds, mounts: () => mounts, firstRoundBy };
+  return { harness, tab, pass, rounds, mounts: () => mounts };
 }
 
 type Product = Awaited<ReturnType<typeof admittedProduct>>;
@@ -204,21 +191,6 @@ describe("ZeropsInventoryProvider renewal", () => {
     },
   );
 
-  it("a round that answers 40 s after it started ends its writes 15 min after it started", async () => {
-    const product = await admittedProduct({ firstRoundMs: 40_000 });
-    const { harness, tab, pass, firstRoundBy } = product;
-    harness.rest.hang("GET /user/info");
-    const write = () => tab.run(() => markTags(tab.session().client));
-    const toDeadline = () => firstRoundBy + 15 * MINUTE_MS - performance.now();
-
-    // Admitted 40 s into its round, the evidence is stamped when the round
-    // started, not when it answered (G2, T-L4).
-    await pass(toDeadline() - 10_000);
-    await expect(write()).resolves.toMatchObject({ id: "p1" });
-    await pass(toDeadline());
-    await refusedWrite(product);
-  });
-
   it("a lapse names its cause once, beside one way to try again", async () => {
     const { harness, tab, pass } = await admittedProduct();
     harness.rest.hang("GET /user/info");
@@ -294,31 +266,6 @@ describe("ZeropsInventoryProvider renewal", () => {
       await pass(TRY_NOW_SETTLE_MS);
       expect(tab.readable()).toContain("Still not answering.");
       expect(seen[0]!.match(/Try (again|now)|Sign out/g)).toEqual(["Try now", "Sign out"]);
-    },
-  );
-
-  // One project's read failing is that project's problem, never the account's (DESIGN G1, C2b).
-  it.each([
-    ["the first round", (harness: AccountHarness) => harness.rest.failProject("p2", 503), 0],
-    ["a renewal", () => undefined, 16 * MINUTE_MS],
-  ] as const)(
-    "a round with one failing project admits the account: %s",
-    async (_round, before, renewAfterMs) => {
-      const { harness, tab, pass, rounds } = await admittedProduct({ before });
-      const admitted = rounds();
-      harness.rest.failProject("p2", 503);
-
-      await pass(renewAfterMs);
-
-      expect(rounds()).toBeGreaterThanOrEqual(admitted + (renewAfterMs === 0 ? 0 : 1));
-      expect(tab.text()).toContain(CHILD);
-      expect(tab.text()).not.toContain("Could not load your Zerops projects.");
-      // The failing project keeps its place; its content waits for fresh evidence.
-      expect(tab.text()).toContain("p2: Checking your access to this project…");
-      expect(tab.text()).not.toContain("p1:");
-      await expect(tab.run(() => markTags(tab.session().client))).resolves.toMatchObject({
-        id: "p1",
-      });
     },
   );
 });

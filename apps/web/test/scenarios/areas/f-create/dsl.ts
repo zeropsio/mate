@@ -70,9 +70,6 @@ export function creation(s: Scenario) {
       drivers.zerops.faults.set("GET /project/created-1", { status: 403 });
     },
     refusedReads: () => drivers.zerops.requests.get("GET /project/created-1") ?? 0,
-    refusedReadArrives: Effect.promise(() =>
-      drivers.zerops.waitForRequest("GET /project/created-1", 1),
-    ),
     settled: Effect.promise(network.settled),
     pastRetryWindow: Effect.gen(function* () {
       yield* Effect.promise(network.settled);

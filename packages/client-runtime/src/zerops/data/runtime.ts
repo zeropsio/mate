@@ -15,7 +15,6 @@ import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import { Atom, AtomRegistry } from "effect/unstable/reactivity";
 
-import { ZeropsApiError, type ZeropsProject } from "../api.ts";
 import type { InvalidationBus } from "../knowledge/invalidation.ts";
 import {
   doublingLadder,
@@ -69,7 +68,6 @@ import type {
   PlatformCommandResult,
   PlatformObservation,
   ProjectRef,
-  QueryDescriptor,
   QueryKey,
   ReadCompletionInput,
   ReadFailureKind,
@@ -561,9 +559,6 @@ interface ZeropsDataRuntimeDiagnostics {
 
 export type ManagedZeropsDataRuntime = ZeropsDataRuntime &
   ZeropsDataRuntimeDiagnostics & {
-    readonly readProjectForAccess: (
-      project: ProjectRef,
-    ) => Effect.Effect<ZeropsProject, ZeropsApiError>;
     readonly cells: ZeropsCells;
     /** The epoch's access grant, interpreted here (DESIGN §4.2, D16(a)). */
     readonly access: ZeropsAccessGrant;
@@ -700,7 +695,7 @@ const canReconnect = (error: AdapterError): boolean =>
 
 /**
  * How a failed hydration is retried: an entity the platform says is not there for this account
- * (403, 404, 410) is `gone` until a grant change or a person's again; a 429 is `throttled` and
+ * (403, 404, 410) is `gone` until a person's again; a 429 is `throttled` and
  * waits its Retry-After; anything else (a 5xx, the network, an answer without it) backs off.
  */
 export type HydrationRefusal =
@@ -724,7 +719,7 @@ export function hydrationRefusal(error: AdapterError | null): HydrationRefusal {
 
 /**
  * A failure no timer repairs: the platform refused (400/401/403/404/410, or said so outright).
- * Only a person's again, or a grant that changed, sends it again.
+ * Only a person's again sends it again.
  */
 const permanentFailure = (error: AdapterError | null): boolean =>
   error !== null &&
@@ -1413,15 +1408,13 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
       { discard: true },
     );
 
-  /** One read attempt and its adapter error, plus raw project evidence for access classification. */
+  /** One read attempt and its adapter error. */
   const runReadOutcome = (
     ticket: ReadTicket,
     identity: InterestIdentity | null,
   ): Effect.Effect<{
     readonly succeeded: boolean;
     readonly error: AdapterError | null;
-    readonly project?: ZeropsProject;
-    readonly projectDenial?: "forbidden" | "not-found";
   }> =>
     Effect.suspend(() => {
       const owner = identity === null ? null : interests.get(identity.key);
@@ -1443,23 +1436,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
                   interest: identity,
                 }),
               ),
-              Effect.as({
-                succeeded: true,
-                error: null,
-                ...(result.project === undefined ? {} : { project: result.project }),
-                ...(() => {
-                  const denied = result.observations.find(
-                    (observation) =>
-                      observation.kind === "entity-unavailable" &&
-                      observation.ref.kind === "project" &&
-                      observation.ticket.requestId === ticket.requestId,
-                  );
-                  return denied?.kind === "entity-unavailable" &&
-                    (denied.reason === "forbidden" || denied.reason === "not-found")
-                    ? { projectDenial: denied.reason }
-                    : {};
-                })(),
-              }),
+              Effect.as({ succeeded: true, error: null }),
             ),
           ),
           Effect.catch((error) =>
@@ -1488,8 +1465,6 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         Effect.callback<{
           readonly succeeded: boolean;
           readonly error: AdapterError | null;
-          readonly project?: ZeropsProject;
-          readonly projectDenial?: "forbidden" | "not-found";
         }>((resume) => {
           const abort = () => resume(Effect.succeed({ succeeded: false, error: null }));
           if (parentSignal.aborted) abort();
@@ -1787,7 +1762,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         }
         heldReads.delete(key);
         const attempted = hydrationAttempts.get(key);
-        // A failed entity waits out its own retry; one the platform refused waits for a grant.
+        // A failed entity waits out its own retry; one the platform refused waits for a person.
         if (
           hydrations.size >= policy.activeSharedReadsPerAccount ||
           (attempted !== undefined &&
@@ -1907,7 +1882,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
    * moment (a service the platform lists before it serves it) would spend the budget in a few
    * milliseconds. A spent budget stays at the backoff's cap, so an entity is never left
    * unresolved for good while an interest holds it, and never read faster than the cap again. A 429 waits at least its
-   * Retry-After; a refusal waits for a grant change. Nothing reads while the tab is hidden: the
+   * Retry-After; a refusal waits for a person's again. Nothing reads while the tab is hidden: the
    * visible wake reads it at once (`resumeFromBackground`).
    */
   const scheduleHydrationRetry = (
@@ -3658,8 +3633,6 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
               },
               interest: null,
             });
-            // The project this account just made is granted: a refusal of it is asked again.
-            yield* retryRefusedInterestsSoon;
           }
           yield* enqueueObservations(outcome.success.observations, null);
           yield* enqueue({
@@ -3767,79 +3740,9 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
   };
 
   const observeAccess = (observation: AccessObservation): Effect.Effect<void> =>
-    Effect.gen(function* () {
-      yield* enqueue({ kind: "access-observation", observation, interest: null });
-      yield* awaitIngress;
-      if (
-        observation.kind === "access-verified" ||
-        observation.kind === "project-access-established"
-      ) {
-        // Both outside the grant's lock: a full read queue fails a receiver under the lifecycle's.
-        yield* retryRefusedHydrations.pipe(forkOwned);
-        yield* retryRefusedInterestsSoon;
-      }
-    });
-
-  /**
-   * A grant round answered: each refusal is sent once more, outside the grant's own lock (the
-   * grant reports from inside it, and a shutdown holding the lifecycle waits for that lock).
-   */
-  const refusedOnItsOwn = (state: ZeropsDataState, runtimeInterest: RuntimeInterest): boolean => {
-    const failed = state.interests.get(runtimeInterest.key)?.interest;
-    return (
-      runtimeInterest.leases.size > 0 &&
-      failed?.status === "failed" &&
-      !failed.retryable &&
-      // A read's refusal is the read's to retry: registering again would hide its next answer.
-      !readFailures.has(runtimeInterest.key)
+    enqueue({ kind: "access-observation", observation, interest: null }).pipe(
+      Effect.andThen(awaitIngress),
     );
-  };
-  const retryRefusedInterestsSoon = Effect.suspend(() => {
-    const state = Ref.getUnsafe(model);
-    const anyRefused = [...interests.values()].some((runtimeInterest) =>
-      refusedOnItsOwn(state, runtimeInterest),
-    );
-    return anyRefused ? retryRefusedInterests.pipe(forkOwned, Effect.asVoid) : Effect.void;
-  });
-
-  /**
-   * Each held interest a refusal failed for good registers once more, as a person's again would —
-   * at most once a grant round; a refusal that stands fails it the same way.
-   */
-  const retryRefusedInterests: Effect.Effect<void> = lifecycleLock.withPermit(
-    Effect.gen(function* () {
-      if (yield* Ref.get(closed)) return;
-      const state = yield* Ref.get(model);
-      const refused = [...interests.values()].filter((runtimeInterest) =>
-        refusedOnItsOwn(state, runtimeInterest),
-      );
-      const retried: RuntimeInterest[] = [];
-      for (const runtimeInterest of refused) {
-        const receiver = receivers.get(receiverKeyOf(runtimeInterest.descriptor));
-        if (receiver === undefined || receiver.failed || receiver.openFailure !== null) continue;
-        yield* releaseFailedRegistrations(receiver, runtimeInterest.key);
-        const desired = yield* updateInterestIdentity(runtimeInterest, receiver);
-        yield* applyControl({ kind: "interest-upserted", interest: desired });
-        retried.push(runtimeInterest);
-      }
-      yield* Effect.forEach(
-        retried,
-        (runtimeInterest) => establishInterest(runtimeInterest).pipe(forkOwned),
-        { discard: true },
-      );
-    }),
-  );
-
-  /** A grant changed: every entity the platform refused is read once more under it. */
-  const retryRefusedHydrations = Effect.suspend(() => {
-    const queries = new Set<QueryKey>();
-    for (const [key, record] of hydrationAttempts) {
-      if (record.refusal.kind !== "gone") continue;
-      hydrationAttempts.delete(key);
-      queries.add(record.query);
-    }
-    return Effect.forEach(queries, (query) => scheduleHydration(query), { discard: true });
-  });
 
   const grant = yield* makeGrantDriver({
     scope: options.scope,
@@ -3874,62 +3777,6 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         Effect.forkScoped,
       ),
     ).pipe(Effect.asVoid);
-
-  const readProjectForAccess = (
-    project: ProjectRef,
-  ): Effect.Effect<ZeropsProject, ZeropsApiError> =>
-    Effect.gen(function* () {
-      const owner = {
-        kind: "shared" as const,
-        account: options.scope,
-        sharedReadId: ZeropsSharedReadId.make(options.makeOpaqueId()),
-      };
-      const ticket = yield* sharedReadTicket({ kind: "project", ref: project }, owner, "direct");
-      const dependents = new Map(
-        [...interests.values()]
-          .filter(
-            (interest) =>
-              interest.leases.size > 0 &&
-              "project" in interest.descriptor &&
-              projectKeyOf(interest.descriptor.project) === projectKeyOf(project),
-          )
-          .map((interest) => [interest.key, interest.identity]),
-      );
-      yield* applyControl({
-        kind: "shared-read-upserted",
-        requestId: ticket.requestId,
-        ownership: { owner, target: ticket.target, dependents, status: "active" },
-      });
-      return yield* Effect.gen(function* () {
-        if (!(yield* admitRead(ticket)))
-          return yield* Effect.fail(
-            new ZeropsApiError("Project read was not admitted.", "network"),
-          );
-        const outcome = yield* runReadOutcome(ticket, null);
-        yield* awaitIngress;
-        if (!outcome.succeeded) {
-          const error = outcome.error;
-          const kind =
-            error?.kind === "not-found" || error?.kind === "forbidden" || error?.kind === "server"
-              ? error.kind
-              : "network";
-          return yield* Effect.fail(
-            new ZeropsApiError(error?.message ?? "Project read failed.", kind, error?.status),
-          );
-        }
-        if (outcome.projectDenial !== undefined)
-          return yield* Effect.fail(
-            new ZeropsApiError("Project access was denied.", outcome.projectDenial),
-          );
-        return outcome.project === undefined
-          ? yield* Effect.fail(new ZeropsApiError("Project answer was incomplete.", "network"))
-          : outcome.project;
-      }).pipe(
-        Effect.ensuring(
-          applyControl({ kind: "shared-read-released", requestId: ticket.requestId }),
-        ),
-      );
-    });
 
   const shutdown: ZeropsDataRuntime["shutdown"] = (_reason) =>
     lifecycleLock.withPermit(
@@ -3974,7 +3821,6 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
     stateAtom: rootAtom,
     ingress: ingress.snapshot,
     observeAccess,
-    readProjectForAccess,
     access: grant.grant,
   } satisfies ManagedZeropsDataRuntime;
 });

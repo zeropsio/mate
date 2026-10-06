@@ -1,4 +1,3 @@
-import type { ZeropsProject } from "../api.ts";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
@@ -202,7 +201,6 @@ export interface ProtocolDecodeIssue {
 export const isRowIssue = (issue: ProtocolDecodeIssue): boolean => issue.kind === "malformed-row";
 
 export interface ProtocolDecodeResult {
-  readonly project?: ZeropsProject;
   readonly observations: ReadonlyArray<PlatformObservation>;
   readonly issues: ReadonlyArray<ProtocolDecodeIssue>;
 }
@@ -754,13 +752,6 @@ export function decodeEntityDirectResponse(
       };
     return {
       observations: projectObservations(target.ref, row, { source: "direct-read", ticket }),
-      project: {
-        id: row.id,
-        clientId: target.ref.organization.organizationId,
-        name: row.name,
-        status: row.status,
-        ...(row.userRoles === undefined ? {} : { userRoles: row.userRoles }),
-      },
       issues: [],
     };
   }

@@ -1410,8 +1410,6 @@ export interface RegistrationReceipt {
 export type PlatformReadRequest = ReadTicket;
 
 export interface PlatformReadResult {
-  /** Direct project answer, retained for access classification of this same read. */
-  readonly project?: ZeropsProject;
   readonly observations: ReadonlyArray<PlatformObservation>;
 }
 

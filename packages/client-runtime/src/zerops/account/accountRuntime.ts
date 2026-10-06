@@ -31,6 +31,7 @@ import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
 
+import { accountReadsAtom } from "../../data/reads.ts";
 import type { AccessGrantView } from "../data/access/grantDriver.ts";
 import type { AccessVerifier } from "../data/access/verifier.ts";
 import type { ManagedZeropsDataRuntime } from "../data/runtime.ts";
@@ -46,7 +47,7 @@ import { makeContainerStore } from "../environments/containerStore.ts";
 import { makeExchangeDriver } from "../environments/exchangeDriver.ts";
 import { makeRegistrationRecords } from "../environments/records.ts";
 import { makeStops, type Stops } from "./stops.ts";
-import { holdInventoryDemand, holdAccessDemand } from "./inventoryDemand.ts";
+import { holdInventoryDemand, holdListedAccess } from "./inventoryDemand.ts";
 export { organizationProjectsRead, projectRead } from "./projectBridge.ts";
 import {
   makeEnvironmentWiring,
@@ -69,7 +70,6 @@ export {
   evidenceProjectRefs,
   heldEvidence,
   inventoryProjectRefs,
-  pendingDenials,
   projectsNeverSeen,
 } from "./inventoryDemand.ts";
 
@@ -267,14 +267,22 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
     yield* holdInventoryDemand({ data, atomRegistry: ports.atomRegistry, activeOrganization }).pipe(
       Scope.provide(demandScope),
     );
-    yield* holdAccessDemand({ data, atomRegistry: ports.atomRegistry }).pipe(
+    yield* holdListedAccess({ data, atomRegistry: ports.atomRegistry }).pipe(
       Scope.provide(demandScope),
     );
     yield* Queue.take(heard).pipe(Effect.flatMap(hear), Effect.forever, Effect.forkIn(epoch));
     // The views stream replays the latest, so it misses nothing the start publishes.
     yield* data.access.changes.pipe(Stream.runForEach(follow), Effect.forkIn(epoch));
     yield* data.access.start({
-      verifier: ports.verifier,
+      verifier: {
+        ...ports.verifier,
+        // No push brings a project's grants: each round renews the own rows the account holds,
+        // which name them, so the grant and the Mate owners stand on what Zerops says now.
+        verifyRound: (request) =>
+          Effect.sync(() => ports.atomRegistry.get(accountReadsAtom)?.renewHeld()).pipe(
+            Effect.andThen(ports.verifier.verifyRound(request)),
+          ),
+      },
       hidden: signals.hidden(),
       online: signals.online(),
     });

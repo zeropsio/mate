@@ -10,6 +10,7 @@
  */
 import type { HqPeople } from "@t3tools/shared/hqMates";
 
+import type { MateOwnerPerson } from "../../zerops/mateAccess.ts";
 import type { HqMate, HqStructure } from "../../zerops/hq/client.ts";
 import { environmentsOf } from "../../zerops/hq/environments.ts";
 import {
@@ -193,6 +194,24 @@ export const hqPersonFacts: Projection<string, Readonly<Record<string, HqPersonF
     Object.fromEntries(
       listed(read, "placement", placementsScope(orgId)).map(({ id, value }) => [id, value.person]),
     ),
+  equals: sameValue,
+};
+
+/** Each Mate's owner, decided by HQ and named from its person facts. */
+export const hqMateOwners: Projection<string, Readonly<Record<string, MateOwnerPerson>>> = {
+  name: "hqMateOwners",
+  keyOf: (orgId) => orgId,
+  derive: (read, orgId) => {
+    const people = read.members(hqPeopleScope(orgId)).ids;
+    return Object.fromEntries(
+      listed(read, "placement", placementsScope(orgId)).flatMap(({ id, value }) => {
+        const userId = value.person.ownerUserId;
+        if (userId === null || !people.includes(userId)) return [];
+        const person = read.fact("hqPerson", userId);
+        return person.kind === "known" ? [[id, { userId, name: person.value.name }]] : [];
+      }),
+    );
+  },
   equals: sameValue,
 };
 

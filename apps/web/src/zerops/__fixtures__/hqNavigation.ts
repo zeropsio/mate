@@ -23,6 +23,11 @@ export function mountHqNavigation(
   const store = into ?? makeAccountStore(registry);
   seedHqNavigation(store, orgId, seed);
   if (into === undefined)
-    registry.set(accountReadsAtom, { data: store.data, orgId, demandDetail: () => () => {} });
+    registry.set(accountReadsAtom, {
+      data: store.data,
+      orgId,
+      demandDetail: () => () => {},
+      renewHeld: () => {},
+    });
   return { store, seed: (next) => seedHqNavigation(store, orgId, next) };
 }

@@ -1,7 +1,13 @@
-/** Account membership and direct reads of demanded projects, one attempt per read. */
+/**
+ * Account membership, read once a round, and each demanded project judged on the row the account's
+ * store holds: Zerops filters the organization's project listing by the viewer's token, so the
+ * store already knows which projects are the viewer's, and nothing is read per project.
+ */
+import { asOrgRole, roleAtLeast } from "@t3tools/shared/zeropsRoles";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 
+import type { ProjectStanding } from "../../../data/projections/projects.ts";
 import { canCreateProjectsInOrganization } from "../../accountScope.ts";
 import {
   ZeropsApiError,
@@ -46,11 +52,11 @@ export interface AccessRoundFailure {
 export interface AccessVerifier {
   /** Runs one round, reporting each answer as it arrives; fails only as a round (G1). */
   readonly verifyRound: (request: AccessRoundRequest) => Effect.Effect<void, AccessRoundFailure>;
-  /** Reads one project between rounds: a per-project retry, or a denial's confirmation (G6). */
+  /** Judges one project between rounds: a per-project retry, or a denial's confirmation (G6). */
   readonly verifyProject: (project: ProjectRef) => Effect.Effect<ProjectOutcome>;
 }
 
-export type AccessVerifierClient = Pick<ZeropsApiClient, "fetchUser" | "fetchProject">;
+export type AccessVerifierClient = Pick<ZeropsApiClient, "fetchUser">;
 
 // ── The per-project classifier ────────────────────────────────────────────────────────────────
 
@@ -137,7 +143,7 @@ const readPlatform = <A>(
   read: (signal: AbortSignal) => Promise<A>,
 ): Effect.Effect<A, ReadFailure> => Effect.tryPromise({ try: read, catch: (cause) => ({ cause }) });
 
-/** A project's row — its own read, or the direct list's — judged against the viewer's membership. */
+/** A project's row, as the account's store holds it, judged against the viewer's membership. */
 const projectOutcome = (
   project: ProjectRef,
   row: ZeropsProject,
@@ -159,38 +165,72 @@ const projectOutcome = (
 };
 
 /**
- * One project's read, judged against the viewer's membership. A hidden project
- * is verified with no access; a 403/404 is that project's denial (G6).
+ * Where the store says a project stands, judged against the viewer's membership. A hidden project
+ * is verified with no access; one its owner refused or proved deleted is that project's denial
+ * (G6); one the store does not know yet waits like a read that did not answer.
  */
-const readProjectAccess = (
-  client: Pick<AccessVerifierClient, "fetchProject">,
+const judgeProject = (
   project: ProjectRef,
+  standing: ProjectStanding,
   membership: ZeropsOrganization,
-  readProject?: RestAccessVerifierOptions["readProject"],
-): Effect.Effect<ProjectOutcome> =>
-  (readProject === undefined
-    ? readPlatform((signal) => client.fetchProject(project.projectId, signal))
-    : readProject(project).pipe(Effect.mapError((cause): ReadFailure => ({ cause })))
-  ).pipe(
-    Effect.map((read) => projectOutcome(project, read, membership)),
-    Effect.catch(({ cause }) =>
-      Effect.succeed<ProjectOutcome>(
-        cause instanceof ZeropsApiError && cause.kind === "forbidden"
-          ? { kind: "denied", evidence: "direct-forbidden" }
-          : cause instanceof ZeropsApiError && cause.kind === "not-found"
-            ? { kind: "denied", evidence: "direct-not-found" }
-            : { kind: "failed", failure: grantFailure(cause) },
-      ),
-    ),
-  );
+): ProjectOutcome => {
+  switch (standing.kind) {
+    case "listed": {
+      // A listing row names the viewer's own grant without whose it is: theirs, as a grant. Held
+      // beside everybody's, it is the newer word on the viewer: a row's own read retires it.
+      const { viewerRoleCode: held, ...row } = standing.project;
+      // A listing's viewer grant can raise any member's access. A weaker listing grant does
+      // not lower the organization's role; whole own-row overrides keep their existing rule.
+      const viewerRoleCode =
+        held === undefined
+          ? undefined
+          : roleAtLeast(held, asOrgRole(membership.roleCode))
+            ? held
+            : membership.roleCode;
+      // A NO_ACCESS member's access is only what a row names (their own grant, or everybody's):
+      // a row naming none (a push of a project they just created) is no judgement yet.
+      if (
+        membership.roleCode === "NO_ACCESS" &&
+        viewerRoleCode === undefined &&
+        row.userRoles === undefined
+      )
+        return {
+          kind: "failed",
+          failure: { kind: "transport", detail: "The project's row names no grant yet." },
+        };
+      return projectOutcome(
+        project,
+        viewerRoleCode === undefined
+          ? row
+          : {
+              ...row,
+              userRoles: [
+                ...(row.userRoles ?? []).filter(
+                  ({ clientUserId }) => clientUserId !== membership.membershipId,
+                ),
+                { clientUserId: membership.membershipId, roleCode: viewerRoleCode },
+              ],
+            },
+        membership,
+      );
+    }
+    case "denied":
+      return { kind: "denied", evidence: "direct-forbidden" };
+    case "deleted":
+      return { kind: "denied", evidence: "direct-not-found" };
+    case "unknown":
+      return {
+        kind: "failed",
+        failure: { kind: "transport", detail: "The project's row is not read yet." },
+      };
+  }
+};
 
 export interface RestAccessVerifierOptions {
   readonly client: AccessVerifierClient;
-  /** The direct read also ingests its answer into the runtime. */
-  readonly readProject?: (project: ProjectRef) => Effect.Effect<ZeropsProject, ZeropsApiError>;
+  /** Where one project stands as the account's store holds it now. */
+  readonly standing: (project: ProjectRef) => ProjectStanding;
   readonly account: AccountRef;
-  /** `fetchProject` reads a round runs at once. */
-  readonly concurrency: number;
   /** Told each user a round reads, so the session's memberships stay current. */
   readonly onUser: (user: ZeropsUser) => void;
   /**
@@ -216,7 +256,7 @@ export function makeRestAccessVerifier(options: RestAccessVerifierOptions): Acce
   return {
     verifyRound: ({ round, carried, report }) => {
       const span = mateDiagnostics.span("access-round", { round });
-      // Identity and membership first, then only demanded projects.
+      // Identity and membership are read; the demanded projects are the store's.
       let reads = 0;
       return Effect.gen(function* () {
         const recent = options.recentUser?.() ?? null;
@@ -251,15 +291,13 @@ export function makeRestAccessVerifier(options: RestAccessVerifierOptions): Acce
         yield* Effect.forEach(
           queue,
           ({ ref, membership }) =>
-            Effect.suspend(() => {
-              reads++;
-              return readProjectAccess(client, ref, membership, options.readProject);
-            }).pipe(
-              Effect.flatMap((outcome) =>
-                report({ type: "ROUND_PROJECT", round, project: ref, outcome }),
-              ),
-            ),
-          { concurrency: options.concurrency, discard: true },
+            report({
+              type: "ROUND_PROJECT",
+              round,
+              project: ref,
+              outcome: judgeProject(ref, options.standing(ref), membership),
+            }),
+          { discard: true },
         );
       }).pipe(
         Effect.tap(() => Effect.sync(() => span.end({ outcome: "verified", reads }))),
@@ -278,7 +316,7 @@ export function makeRestAccessVerifier(options: RestAccessVerifierOptions): Acce
             kind: "failed",
             failure: { kind: "malformed", detail: "No round has read this organization." },
           })
-        : readProjectAccess(client, project, membership, options.readProject);
+        : Effect.succeed(judgeProject(project, options.standing(project), membership));
     },
   };
 }

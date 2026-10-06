@@ -14,7 +14,6 @@ import {
   heldEvidence,
   inventoryProjectRefs,
   organizationProjectsRead,
-  pendingDenials,
   projectRead,
 } from "@t3tools/client-runtime/zerops/account/runtime";
 import {
@@ -326,19 +325,10 @@ export function ZeropsInventoryProvider({
   );
   const accessReadEntries = useMemo(() => [["access", runtime.reads.access] as const], [runtime]);
   const access = useZeropsAtomSelections(accessReadEntries).get("access");
-  const denied = useMemo(() => pendingDenials(evidence), [evidence]);
   /** The account's authority, as the grant last published it (G12). */
   const account = grant.machine.published.account ?? AUTHORIZED;
-  /** The projects a confirming read proved lost (G6). */
-  const lost = useMemo(
-    () =>
-      new Set(
-        [...(evidence?.closedProjects.values() ?? [])]
-          .filter(({ confirmation }) => confirmation.status === "confirmed")
-          .map(({ project }) => project.projectId),
-      ),
-    [evidence],
-  );
+  /** The projects the platform refused or proved gone (G6). */
+  const lost = useMemo(() => new Set<string>(evidence?.closedProjects.keys() ?? []), [evidence]);
 
   const organizationReadEntries = useMemo(
     () =>
@@ -452,9 +442,8 @@ export function ZeropsInventoryProvider({
       const project = projectReads.get(key)?.value;
       const dto =
         project?.knowledge === "observed" ? projectRecordToZeropsProject(project.record) : null;
-      // A project withheld until its denial is confirmed holds nothing open (G6).
       if (dto === null) {
-        if (!denied.has(key)) unread.add(ref.organization.organizationId);
+        unread.add(ref.organization.organizationId);
         continue;
       }
       projects.push(dto);
@@ -478,14 +467,7 @@ export function ZeropsInventoryProvider({
       pendingOrganizations: read.pending,
       retrying: read.retrying,
     };
-  }, [
-    denied,
-    documentHidden,
-    organizationDescriptors,
-    organizationReads,
-    projectReads,
-    knownProjectRefs,
-  ]);
+  }, [documentHidden, organizationDescriptors, organizationReads, projectReads, knownProjectRefs]);
 
   const phase = grant.machine.phase;
   /** What the first mount's gate says when its wait failed. */

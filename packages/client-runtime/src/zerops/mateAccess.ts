@@ -34,8 +34,6 @@ import {
   type ZeropsOrgRole,
 } from "@t3tools/shared/zeropsRoles";
 
-import type { HqPeople } from "@t3tools/shared/hqMates";
-
 import type { HqPlacement } from "./hq/placement.ts";
 
 export type { RoleMateVisibility };
@@ -226,40 +224,8 @@ export interface MateOwnerPerson {
 }
 
 /**
- * Who owns this Mate, named from HQ's people (`hqMates.ts`) — no member list read: the person
- * its project raised to `OWNER`, found by the member id the entry names — of two a hand-over
- * before the transfer left, the first HQ names — else whoever signed its agent in (D6), Claude
- * Code's first. HQ names exactly the people the reader's view names, never a token.
- *
- * The `OWNER` entry is there only where somebody put it — a creator below `ADMIN` (verified.md,
- * 2026-09-15) or a hand-over, which moves it (F23) — and so wins: a Mate whose `OWNER` HQ does
- * not name is nobody's here, never its signer's. An org owner or admin who creates a Mate gets no
- * entry at all — the project's roles are then only token users' (measured 2026-09-24) — and the
- * one record naming a person is D6's signer, as the Mate's server saw them sign in.
- */
-export function resolveMateOwnerPerson(input: {
-  readonly project: MateAccessProject;
-  readonly people: HqPeople | null;
-}): MateOwnerPerson | undefined {
-  const people = Object.entries(input.people ?? {});
-  const owners = (input.project.userRoles ?? []).filter((entry) => entry.roleCode === "OWNER");
-  if (owners.length > 0) {
-    for (const owner of owners) {
-      const named = people.find(([, person]) => person.clientUserId === owner.clientUserId);
-      if (named !== undefined) return { userId: named[0], name: named[1].name };
-    }
-    return undefined;
-  }
-  const { person } = matePerson(input.project);
-  const named = person === undefined ? undefined : input.people?.[person];
-  return person === undefined || named === undefined
-    ? undefined
-    : { userId: person, name: named.name };
-}
-
-/**
  * What a Mate's own records say of its person before anybody is looked up —
- * the records `resolveMateOwnerPerson` reads, as facts: whether they name anybody at
+ * its records, as facts: whether they name anybody at
  * all (an `OWNER` entry, or the signer of its agent), and whether anybody has
  * signed its agent in (D6's signer of the agent's own login; a login added
  * beside it names only who uses that one).

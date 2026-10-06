@@ -1,7 +1,7 @@
 /**
  * Whose each Mate is, and the org's members where a surface names somebody else.
  *
- * A Mate's owner is named from HQ's people (`useZeropsMateOwners`): HQ names
+ * A Mate's owner is named from HQ's person facts (`useZeropsMateOwners`): HQ names
  * exactly the people the reader's view names — whoever signed a Mate's agent
  * in among them — out of the member list it reads itself, so a load reads none
  * for "Jan's Mate — only Jan opens it" (D5). The face in the corner of the
@@ -26,11 +26,14 @@ import type { ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import {
   mateMemberName,
-  resolveMateOwnerPerson,
   type MateOwnerCandidate,
   type MateOwnerPerson,
 } from "@t3tools/client-runtime/zerops/mateAccess";
-import { organizationMembers, type MembersRead } from "@t3tools/client-runtime/data";
+import {
+  organizationMembers,
+  shownHqMateOwnersAtom,
+  type MembersRead,
+} from "@t3tools/client-runtime/data";
 import { Atom } from "effect/unstable/reactivity";
 import { useCallback, useContext, useEffect, useMemo } from "react";
 
@@ -39,7 +42,7 @@ import {
   zeropsInitials,
 } from "~/components/zerops/landing/ZeropsAccountControl.logic";
 
-import { hqDown, hqNavigationAtom, hqPeopleAtom } from "../state/zerops";
+import { hqDown, hqNavigationAtom } from "../state/zerops";
 import { noHq, useHqVerdict, type HqVerdictOwner } from "./hqVerdict";
 import { useAccountDataOptional, useProjection } from "./ZeropsAccountData";
 import { ZeropsDataContext } from "./zeropsDataContext";
@@ -162,7 +165,7 @@ export function useZeropsMemberNames(input: {
 }
 
 /**
- * A Mate's owner as HQ's people name them (`resolveMateOwnerPerson`), as a face in the corner of
+ * A Mate's owner as HQ's people name them (`hqMateOwners`), as a face in the corner of
  * the Mate's own draws them: their name and its initials, and their picture the way the account
  * bar picks one — the platform's, off the member whose Zerops user id HQ names. HQ keeps no
  * picture; a person the member list does not have (yet) wears their initials.
@@ -183,25 +186,21 @@ export function zeropsMateOwnerOf(
 }
 
 /**
- * Each Mate's owner, for the account's active organization, named from HQ's people
- * (`resolveMateOwnerPerson`). Their picture is the platform's: the member list is read for it
- * once HQ names anybody, and the list this browser read last stands in until then.
+ * Each Mate's owner, for the account's active organization, named by HQ's owner decision
+ * (`hqMateOwners`). Their picture is the platform's: the member list is read for it
+ * once HQ names anybody, while a surface needs their picture.
  */
 export function useZeropsMateOwners(): (candidate: ZeropsCandidate) => ZeropsMateOwner | undefined {
   const { activeOrganization, user } = useZeropsSession();
-  const people = useAtomValue(hqPeopleAtom);
+  const owners = useAtomValue(shownHqMateOwnersAtom);
   const members = useZeropsOrganizationMembers({
     clientId: activeOrganization?.id,
-    enabled: people !== null && Object.keys(people).length > 0,
+    enabled: Object.keys(owners).length > 0,
   });
   const viewerUserId = user?.id;
   return useCallback(
     (candidate: ZeropsCandidate) =>
-      zeropsMateOwnerOf(
-        resolveMateOwnerPerson({ project: candidate.project, people }),
-        viewerUserId,
-        members,
-      ),
-    [members, people, viewerUserId],
+      zeropsMateOwnerOf(owners[candidate.project.id], viewerUserId, members),
+    [members, owners, viewerUserId],
   );
 }
