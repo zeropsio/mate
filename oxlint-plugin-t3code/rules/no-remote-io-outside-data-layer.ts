@@ -144,7 +144,7 @@ export const ZEROPS_CLIENT_VERBS = [
   "deleteProject",
   "deleteThrowaway",
   "enableSubdomainAccess",
-  "enableZeropsMate",
+  "writeMateFlag",
   "exchangeWebSocketToken",
   "fetchProject",
   "fetchProjectLogAccess",
@@ -196,7 +196,7 @@ export const ZEROPS_CLIENT_VERBS = [
 /** The HQ client's remote verbs (`HqApi`, `client-runtime/src/zerops/hq/client.ts`). */
 export const HQ_CLIENT_VERBS = [
   "structure",
-  "streamStructure",
+  "openScopeSocket",
   "prepareProjectDeletion",
   "completeProjectDeletion",
   "mateKey",
