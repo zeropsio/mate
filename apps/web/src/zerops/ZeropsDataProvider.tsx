@@ -8,7 +8,6 @@ import {
   AccountEpoch,
   DEFAULT_ZEROPS_GRANT_POLICY,
   grantCapabilities,
-  makeBuildLogTransport,
   makeRestAccessVerifier,
   makeZeropsApiOrigin,
   makeZeropsDataAdapter,
@@ -19,7 +18,6 @@ import {
   ZeropsProjectId,
   type AccountScope,
   type ManagedZeropsDataRuntime,
-  type BuildLogSocketConstructor,
   type PlatformWatchSocket,
 } from "@t3tools/client-runtime/zerops/data";
 import type { ZeropsApiClient, ZeropsUser } from "@t3tools/client-runtime/zerops";
@@ -106,22 +104,10 @@ export const defaultMakeZeropsDataRuntime: MakeZeropsDataRuntime = ({
       clearTimer: (handle) => window.clearTimeout(handle as number),
     },
   });
-  const logTimers = {
-    setTimer: (callback: () => void, delayMs: number) => window.setTimeout(callback, delayMs),
-    clearTimer: (handle: unknown) => window.clearTimeout(handle as number),
-  };
   return Effect.runPromise(
     makeZeropsDataRuntime({
       scope,
       adapter,
-      buildLogTransport: makeBuildLogTransport({
-        scope,
-        acquireGrant: (project, projectSignal) =>
-          client.fetchProjectLogAccess(project.projectId, projectSignal),
-        fetchImpl: (url, fetchSignal) => fetch(url, { signal: fetchSignal }),
-        WebSocketCtor: WebSocket as unknown as BuildLogSocketConstructor,
-      }),
-      logTimers,
       atomRegistry: registry,
       makeOpaqueId: () => crypto.randomUUID(),
       visibility: signalsVisibility(signals),

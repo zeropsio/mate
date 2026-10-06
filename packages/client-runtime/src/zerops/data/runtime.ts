@@ -29,8 +29,6 @@ import { bridgedServicesOf, createZeropsDataAtoms } from "./atoms.ts";
 import type { ServiceDeployObserved } from "./deployedVersion.ts";
 import { grantCapabilities } from "./access/capabilities.ts";
 import { commandAdmissionError, commandTarget } from "./commands.ts";
-import { BuildLogTransportError, type BuildLogTransport } from "./logTransport.ts";
-import { makeBuildLogRegistry, type BuildLogRegistry } from "./logs.ts";
 import {
   commandDeadlineMs,
   DEFAULT_ZEROPS_DATA_POLICY,
@@ -104,7 +102,6 @@ import {
   ZeropsLeaseId,
   ZeropsProjectId,
   ZeropsReceiverId,
-  ZeropsOrganizationId,
   ZeropsRequestId,
   ZeropsSharedReadId,
   ZeropsWireSubscriptionName,
@@ -195,19 +192,8 @@ function serializedInterestKey(descriptor: RuntimeInterestDescriptor): InterestK
     case "project-inventory":
     case "project-record":
     case "project-access":
-    case "project-current-metrics":
       return InterestKeySchema.make(
         JSON.stringify([descriptor.kind, projectKeyOf(descriptor.project)]),
-      );
-    case "project-metric-history":
-      return InterestKeySchema.make(
-        JSON.stringify([
-          descriptor.kind,
-          projectKeyOf(descriptor.project),
-          descriptor.window.timeGroupBy,
-          descriptor.window.limit,
-          descriptor.window.timeZone,
-        ]),
       );
   }
 }
@@ -413,47 +399,11 @@ export function planZeropsInterest(descriptor: RuntimeInterestDescriptor): Inter
   // The organization's projects and services are the account store's (`data/families/`): these
   // read none of their own.
   if (readsNothing(descriptor)) return { registrations: [], directReads: [] };
-  const project = descriptor.project;
-  if (descriptor.kind === "project-record") {
-    return {
-      registrations: [
-        { descriptor: { kind: "entity-updates", entity: "project", organization }, baseline: null },
-      ],
-      directReads: [{ kind: "project", ref: project }],
-    };
-  }
-  if (descriptor.kind === "project-current-metrics") {
-    const query: QueryDescriptor = {
-      kind: "current-metrics-of-project",
-      project,
-      groupBy: "containerId",
-      schemaVersion: 1,
-    };
-    return {
-      registrations: [
-        {
-          descriptor: { kind: "current-metrics", query },
-          baseline: { kind: "query", descriptor: query },
-        },
-      ],
-      directReads: [],
-    };
-  }
-  const query: QueryDescriptor = {
-    kind: "metric-history-of-project",
-    project,
-    groupBy: "serviceStackId",
-    window: descriptor.window,
-    schemaVersion: 1,
-  };
   return {
     registrations: [
-      {
-        descriptor: { kind: "metric-history", query },
-        baseline: { kind: "query", descriptor: query },
-      },
+      { descriptor: { kind: "entity-updates", entity: "project", organization }, baseline: null },
     ],
-    directReads: [],
+    directReads: [{ kind: "project", ref: descriptor.project }],
   };
 }
 
@@ -598,13 +548,8 @@ export interface ZeropsDataRuntimeOptions {
   readonly policy?: ZeropsDataPolicy;
   readonly initialAccess?: AccessState;
   readonly visibility?: ZeropsVisibility;
-  readonly buildLogTransport?: BuildLogTransport;
   /** The jitter source of every backoff: a retry comes up to `RETRY_JITTER` of its wait sooner. */
   readonly random?: () => number;
-  readonly logTimers?: {
-    readonly setTimer: (callback: () => void, delayMs: number) => unknown;
-    readonly clearTimer: (handle: unknown) => void;
-  };
 }
 
 interface ZeropsDataRuntimeDiagnostics {
@@ -620,7 +565,6 @@ export type ManagedZeropsDataRuntime = ZeropsDataRuntime &
       project: ProjectRef,
     ) => Effect.Effect<ZeropsProject, ZeropsApiError>;
     readonly cells: ZeropsCells;
-    readonly logs: BuildLogRegistry;
     /** The epoch's access grant, interpreted here (DESIGN §4.2, D16(a)). */
     readonly access: ZeropsAccessGrant;
     /**
@@ -644,29 +588,11 @@ const unavailableResource = (): Effect.Effect<never, ZeropsCellSourceError> =>
   });
 
 const unavailableCellAdapter: ZeropsCellAdapter = {
-  readProjectPublicAccess: unavailableResource,
-  readOrganizationLocations: unavailableResource,
-  readServiceAuthorizedAgents: unavailableResource,
   readServiceMateFlag: unavailableResource,
-  readOrganizationIntegrationTokens: unavailableResource,
-  readOrganizationMembers: unavailableResource,
-};
-
-const unavailableLogTransport: BuildLogTransport = {
-  loadPage: () => Promise.reject(new BuildLogTransportError("closed")),
-  openFollow: () => Promise.reject(new BuildLogTransportError("closed")),
-  shutdown: () => undefined,
-  diagnostics: () => ({ activeFollowers: 0, closed: true }),
 };
 
 function registrationInterest(observation: PlatformObservation): InterestIdentity | null {
   if (observation.kind === "query-membership-observed") return observation.registration.identity;
-  if (
-    observation.kind === "current-metrics-replaced" ||
-    observation.kind === "metric-history-window-observed"
-  ) {
-    return observation.source === "native-push" ? observation.registration.identity : null;
-  }
   if ("observation" in observation) {
     const source = observation.observation;
     if (source.source === "native-push") return source.registration.identity;
@@ -679,12 +605,6 @@ function registrationInterest(observation: PlatformObservation): InterestIdentit
 
 function observationRegistration(observation: PlatformObservation): RegistrationRequest | null {
   if (observation.kind === "query-membership-observed") return observation.registration;
-  if (
-    (observation.kind === "current-metrics-replaced" ||
-      observation.kind === "metric-history-window-observed") &&
-    observation.source === "native-push"
-  )
-    return observation.registration;
   if ("observation" in observation) {
     const source = observation.observation;
     if (source.source === "native-push") return source.registration;
@@ -699,15 +619,6 @@ function retargetRegistrationObservation(
   identity: InterestIdentity,
 ): PlatformObservation {
   if (observation.kind === "query-membership-observed")
-    return {
-      ...observation,
-      registration: { ...observation.registration, identity },
-    } as PlatformObservation;
-  if (
-    (observation.kind === "current-metrics-replaced" ||
-      observation.kind === "metric-history-window-observed") &&
-    observation.source === "native-push"
-  )
     return {
       ...observation,
       registration: { ...observation.registration, identity },
@@ -739,12 +650,6 @@ function retargetRegistrationObservation(
 
 function observationReadTicket(observation: PlatformObservation): ReadTicket | null {
   if (observation.kind === "query-baseline-observed" || observation.kind === "entity-unavailable")
-    return observation.ticket;
-  if (
-    (observation.kind === "current-metrics-replaced" ||
-      observation.kind === "metric-history-window-observed") &&
-    observation.source === "direct-read"
-  )
     return observation.ticket;
   if ("observation" in observation) {
     const source = observation.observation;
@@ -911,41 +816,8 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
     // A failed cell's retry waits while the tab is hidden; the visible wake below reads it.
     visible: () => Ref.getUnsafe(currentVisibility) === "visible",
   });
-  // Every write to an organization's tokens, wherever the app made it, makes its list read again.
-  const stopTokenWrites =
-    options.adapter.onTokensWritten?.((organizationId) =>
-      Effect.runForkWith(runtimeContext)(
-        cells.invalidate({
-          kind: "tokens",
-          account: options.scope,
-          organization: {
-            kind: "organization",
-            account: options.scope.account,
-            organizationId: ZeropsOrganizationId.make(organizationId),
-          },
-        }),
-      ),
-    ) ?? (() => undefined);
-  const logTimers = options.logTimers ?? {
-    setTimer: (callback: () => void, delayMs: number) =>
-      Effect.runForkWith(runtimeContext)(
-        Effect.sleep(Duration.millis(delayMs)).pipe(Effect.andThen(Effect.sync(callback))),
-      ),
-    clearTimer: (handle: unknown) => {
-      if (Fiber.isFiber(handle)) handle.interruptUnsafe();
-    },
-  };
   const clock = yield* Clock.Clock;
-  const logs = makeBuildLogRegistry({
-    scope: options.scope,
-    access: () => Ref.getUnsafe(model).access,
-    now: () => clock.currentTimeMillisUnsafe(),
-    transport: options.buildLogTransport ?? unavailableLogTransport,
-    policy,
-    setTimer: logTimers.setTimer,
-    clearTimer: logTimers.clearTimer,
-  });
-  /** The access the build logs and the cells were last reconciled with. */
+  /** The access the cells were last reconciled with. */
   let reconciledAccess = Ref.getUnsafe(model).access;
   const runtimeScope = yield* Scope.make();
   // Demand arrives from independently run UI effects; workers retain the account clock and scheduler.
@@ -1073,7 +945,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
   };
 
   /**
-   * Every change of access reaches the build logs and the cells, whatever made it. The
+   * Every change of access reaches the cells, whatever made it. The
    * atoms hear the change now, after the task, or when the ingress loop flushes its batch.
    */
   /** A held interest failed on its own and retryable, whose retry nobody has scheduled yet. */
@@ -1100,7 +972,6 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           const retry = awaitsInterestRetry(next) ? requestInterestRetries : Effect.void;
           if (next.access === reconciledAccess) return retry;
           reconciledAccess = next.access;
-          logs.reconcileAccess();
           return Effect.andThen(retry, cells.reconcileAccess);
         }),
       ),
@@ -1508,7 +1379,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           target.descriptor.kind === "service-variables-of-services")
           ? {
               ...base,
-              kind: kind as "baseline" | "history",
+              kind: kind as "baseline",
               target,
               membershipReceiptOrdinalAtStart: ReceiptOrdinal.make(receiptOrdinal),
             }
@@ -2280,11 +2151,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         const ticket =
           planned.baseline === null
             ? null
-            : yield* sharedReadTicket(
-                planned.baseline,
-                owner,
-                planned.descriptor.kind === "metric-history" ? "history" : "baseline",
-              );
+            : yield* sharedReadTicket(planned.baseline, owner, "baseline");
         const base = {
           identity,
           subscriptionName: ZeropsWireSubscriptionName.make(options.makeOpaqueId()),
@@ -2415,11 +2282,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         const logicalTicket =
           planned.baseline === null
             ? null
-            : yield* requestTicket(
-                identity,
-                planned.descriptor.kind === "metric-history" ? "history" : "baseline",
-                planned.baseline,
-              );
+            : yield* requestTicket(identity, "baseline", planned.baseline);
         if (logicalTicket !== null && !(yield* admitRead(logicalTicket))) {
           return yield* Effect.fail(readCapacityError());
         }
@@ -3515,18 +3378,6 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
             leaseError("account-capacity", "The account active-query budget is full."),
           );
         }
-        const activeHistorySeries = [...interests.values()].filter(
-          (interest) =>
-            interest.leases.size > 0 && interest.descriptor.kind === "project-metric-history",
-        ).length;
-        if (
-          descriptor.kind === "project-metric-history" &&
-          activeHistorySeries >= policy.activeHistorySeriesPerAccount
-        ) {
-          return yield* Effect.fail(
-            leaseError("account-capacity", "The account history-series budget is full."),
-          );
-        }
         const organizationInterestCount = [...interests.values()].filter(
           (interest) => receiverKeyOf(interest.descriptor) === organizationKey,
         ).length;
@@ -3571,11 +3422,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           descriptor,
           key,
           leases: new Set(),
-          // Metrics and history enrich what the inventory interests hold: their
-          // failures stay visible and never replace the organization's receiver.
-          required:
-            descriptor.kind !== "project-current-metrics" &&
-            descriptor.kind !== "project-metric-history",
+          required: true,
           identity,
           recoveryAttempts: 0,
           readController: new AbortController(),
@@ -4098,9 +3945,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         // What the shutdown dropped is never reached: its waiters are let go now.
         for (const barrier of barriers) yield* Deferred.succeed(barrier, undefined);
         barriers.clear();
-        stopTokenWrites();
         yield* cells.shutdown;
-        logs.shutdown();
         yield* Scope.close(runtimeScope, Exit.void);
         interests.clear();
         leases.clear();
@@ -4120,7 +3965,6 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
     reads: atoms.reads,
     commands,
     cells,
-    logs,
     acquire,
     refresh,
     acquireMany,

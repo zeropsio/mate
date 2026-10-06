@@ -15,11 +15,7 @@ import * as DateTime from "effect/DateTime";
 import { useNavigate, useRouteContext, useSearch } from "@tanstack/react-router";
 import type { EnvironmentId } from "@t3tools/contracts";
 import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
-import {
-  ZeropsServiceId,
-  type OrganizationRef,
-  type AgentsCellRequest,
-} from "@t3tools/client-runtime/zerops/data";
+import { ZeropsServiceId, type OrganizationRef } from "@t3tools/client-runtime/zerops/data";
 import type * as React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -67,6 +63,7 @@ import { useAddMate } from "~/zerops/newMate";
 import { useSetUpEnvironment } from "~/zerops/setUpEnvironment";
 import { askNewProject } from "~/zerops/newProjectAsk";
 import { useEnvironmentCreation } from "~/zerops/useEnvironmentCreation";
+import { useHqAppDetailHold } from "~/zerops/useHqAppDetail";
 import { useConnectMate, type MateConnectTarget } from "~/zerops/accountEnvironments";
 import { intendContainer, useZeropsContainers } from "~/zerops/zeropsContainers";
 import { useDeleteProject } from "~/zerops/deleteProject";
@@ -131,11 +128,9 @@ import {
   type FlowPullRequest,
   projectNameInApp,
   readZeropsMembership,
-  unionAgents,
   type EnvironmentCreationStepProgress,
   type EnvironmentRow,
   type GroupEnvironmentTier,
-  type ZeropsAgentType,
   type ZeropsEnvironmentRole,
   type ZeropsGroup,
   type ZeropsMembership,
@@ -155,7 +150,7 @@ import { MateUpdateStatusText } from "./MateUpdateLine";
 import { cn } from "~/lib/utils";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
 import { useMateRowActivity } from "~/zerops/useMenuMateReadings";
-import { useZeropsAgentActivity } from "~/zerops/useZeropsAgentActivity";
+import { useMatesActivity } from "~/zerops/useZeropsAgentActivity";
 import { ZeropsEnvironmentCreation } from "./ZeropsEnvironmentCreation";
 import {
   ZeropsEnvironmentCreationDialog,
@@ -175,7 +170,7 @@ import { useHalfMadeEnvironments } from "~/zerops/useHalfMadeEnvironments";
 import { useZeropsRegistry } from "~/zerops/useZeropsRegistry";
 import { useZeropsProjectFlow } from "~/zerops/projectFlowContext";
 import { REVIEW_LABEL, REVIEW_RELEASE_LABEL, useOpenReview } from "~/zerops/review";
-import { readZeropsCellOnce } from "~/zerops/readZeropsCell";
+import { useReadGroupAgents } from "~/zerops/groupAgents";
 import { deployRowTone } from "./ZeropsProjectRow.logic";
 import { ZeropsSetUpMateDialog } from "./ZeropsSetUpMateDialog";
 import { ZeropsReleaseRows } from "./ZeropsReleaseRows";
@@ -196,7 +191,6 @@ import {
   groupMemberFactsOf,
   lastMergedCode,
   parseProjectsSearch,
-  matesKnownOf,
   rowMateActivitiesOf,
   withoutOfficialHq,
   shownUngrouped,
@@ -904,11 +898,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   // The server that served this page gets one automatic identity exchange.
   // A failed exchange stays manual so rerenders cannot hammer the door.
   const autoConnectingRef = useRef(false);
-  // One-shot resource reads (readZeropsCellOnce) hold their lease under
-  // this signal, so a component unmounted mid-read releases immediately.
-  const unmountRef = useRef<AbortController>(undefined);
-  if (unmountRef.current === undefined) unmountRef.current = new AbortController();
-  useEffect(() => () => unmountRef.current?.abort(), []);
 
   const [toolError, setToolError] = useState<string | null>(null);
   const [creation, setCreation] = useState<EnvironmentCreationView | null>(null);
@@ -941,7 +930,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   });
   const tints = useMemo(() => assignCandidateMateTints(candidates), [candidates]);
   // Each Mate as its menu row reads it: HQ's word of it, or its socket's.
-  const activityOf = useMateRowActivity(useZeropsAgentActivity());
+  const activityOf = useMateRowActivity(useMatesActivity());
   const updates = useZeropsMateUpdateStates();
   const withConversations = useAtomValue(environmentsWithSnapshotAtom);
   // What this person may do with each Mate, from the one role function the
@@ -1045,43 +1034,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   /** The project a Set up Mate waits on its confirm for (`ZeropsSetUpMateDialog`). */
   const [confirmingSetUp, setConfirmingSetUp] = useState<ZeropsCandidate | null>(null);
 
-  /**
-   * The agents a group's existing environments are signed in with, so a Mate
-   * born into that group offers the same ones instead of the platform's whole
-   * menu (`agentSelection.ts`).
-   *
-   * Read per environment and unioned. A read that fails is not a reason to
-   * refuse a creation: the empty answer omits `ZCP_AGENTS` from the import,
-   * and the container falls back to offering every agent — which is exactly
-   * what it did before this existed.
-   */
-  const readGroupAgents = useCallback(
-    async (
-      environments: ReadonlyArray<{ readonly item: ZeropsCandidate }>,
-    ): Promise<ReadonlyArray<ZeropsAgentType>> =>
-      unionAgents(
-        await Promise.all(
-          environments.flatMap(({ item }) => {
-            if (item.service === undefined || activeOrganization === null) return [];
-            const request: AgentsCellRequest = {
-              kind: "agents",
-              account: runtime.scope,
-              service: {
-                kind: "service",
-                project: projectRef(activeOrganization.id, item.project.id),
-                serviceId: ZeropsServiceId.make(item.service.id),
-              },
-            };
-            return [
-              readZeropsCellOnce(runtime.cells, request, unmountRef.current?.signal).then(
-                (agents): ReadonlyArray<ZeropsAgentType> => agents ?? [],
-              ),
-            ];
-          }),
-        ),
-      ),
-    [activeOrganization, projectRef, runtime.cells, runtime.scope],
-  );
+  const readGroupAgents = useReadGroupAgents();
 
   const setUpMate = useCallback(
     async (candidate: ZeropsCandidate) => {
@@ -1601,6 +1554,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   );
   // The registry — which groups exist and which projects are in them (ADR 0002), read from HQ.
   const registryState = useZeropsRegistry();
+  // What each application released and landed is its detail: held while the page draws it.
+  useHqAppDetailHold(registryState.registry.groups.map(({ groupId }) => groupId));
 
   // Every verb a Mate has, from the one place that defines them — shared with
   // a project's own page, which listed its Mates and could do nothing to them.
@@ -2531,11 +2486,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
             return name === undefined ? [] : [{ item, name }];
           }),
           activityOf,
-        ),
-        matesKnown: matesKnownOf(
-          environments.filter(({ item }) => hasMate(item)).map(({ item }) => item),
-          activityOf,
-          conversationsRead,
         ),
         awaiting: awaiting.steps,
         changesAwaiting: awaiting.changes,

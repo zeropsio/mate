@@ -1,101 +1,76 @@
-/** Public access belongs to the drawn stop's id, independently of navigation and deployment reads. */
-import { useAtomValue } from "@effect/atom-react";
-import type { PublicAccessCellRequest } from "@t3tools/client-runtime/zerops/data";
-import type { ZeropsPublicAccess } from "@t3tools/client-runtime/zerops";
-import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
-import * as Effect from "effect/Effect";
+/**
+ * A stop's public face — its addresses and what it could open — belongs to the drawn stop's id,
+ * apart from navigation and deployment reads: its routing is held — read again on its cadence —
+ * only while a surface draws that stop's addresses (`publicAccess`); its project's and services'
+ * rows are the account's live ones.
+ */
+import { publicAccess, type PublicAccessView } from "@t3tools/client-runtime/data";
+import type { ProjectRef } from "@t3tools/client-runtime/zerops/data";
 import { Atom } from "effect/unstable/reactivity";
-import { useContext, useMemo } from "react";
-import { ZeropsDataContext } from "./zeropsDataContext";
-import { invalidateZerops } from "./accountInvalidations";
+import { useContext, useEffect, useMemo } from "react";
+
 import { againStopDeployment, useStopDeployments } from "./accountForge";
-import { selectPublicAccess } from "@t3tools/client-runtime/zerops/data";
+import { invalidateZerops } from "./accountInvalidations";
+import { useAccountDataOptional, useProjection } from "./ZeropsAccountData";
+import { ZeropsDataContext } from "./zeropsDataContext";
 import { useZeropsSessionOptional } from "./ZeropsSessionProvider";
 
-const UNREAD: Shown<ZeropsPublicAccess> = { state: "unread", waitingFor: null };
-const NO_READ = Atom.make<ReadonlyMap<string, Shown<ZeropsPublicAccess>>>(new Map());
+const READING: PublicAccessView = { routes: [], offers: [], state: "reading", denied: false };
+const NOT_READ = Atom.make(READING);
 
-/** Mounting the cell atoms owns the demand; unmounting the last surface releases it. */
+/** The stops' project refs, as their deployments are read. */
+function useStopRefs(projectIds: ReadonlyArray<string>): ReadonlyArray<ProjectRef> {
+  const data = useContext(ZeropsDataContext);
+  const organizationId = useZeropsSessionOptional()?.activeOrganization?.id;
+  const key = projectIds.join(",");
+  return useMemo(
+    () =>
+      data === null || organizationId === undefined || key === ""
+        ? []
+        : key.split(",").map((id) => data.projectRef(organizationId, id)),
+    [data, organizationId, key],
+  );
+}
+
 /**
  * A chip's stops' deployments, demanded while the chip is drawn — without reading their public
  * access, which only an open stop menu reads (navigation starts no detail read).
  */
 export function useStopDeploymentDemand(projectIds: ReadonlyArray<string>): void {
-  const data = useContext(ZeropsDataContext);
-  const organizationId = useZeropsSessionOptional()?.activeOrganization?.id;
-  const key = JSON.stringify(projectIds);
-  const refs = useMemo(
-    () =>
-      data === null || organizationId === undefined
-        ? []
-        : (JSON.parse(key) as string[]).map((id) => data.projectRef(organizationId, id)),
-    [data, organizationId, key],
-  );
-  useStopDeployments(refs);
+  useStopDeployments(useStopRefs(projectIds));
 }
 
-export function useStopPublicAccesses(projectIds: ReadonlyArray<string>): {
-  readonly reads: ReadonlyMap<string, Shown<ZeropsPublicAccess>>;
-  readonly again: (projectId: string) => void;
+export function useStopPublicAccess(projectId: string | undefined): {
+  /** The stop is read: a surface shows its own addresses, not the ones it was handed. */
+  readonly bound: boolean;
+  readonly shown: PublicAccessView | undefined;
+  readonly access: PublicAccessView;
+  /** Reads it again after a failure; a denial asks for the viewer's access anew first. */
+  readonly again: () => void;
 } {
-  const data = useContext(ZeropsDataContext);
-  const organizationId = useZeropsSessionOptional()?.activeOrganization?.id;
-  const key = JSON.stringify(projectIds);
-  const requests = useMemo<ReadonlyArray<PublicAccessCellRequest>>(
-    () =>
-      data === null || organizationId === undefined
-        ? []
-        : (JSON.parse(key) as string[]).map((id) => ({
-            kind: "public-access",
-            account: data.runtime.scope,
-            project: data.projectRef(organizationId, id),
-          })),
-    [data, organizationId, key],
-  );
-  useStopDeployments(requests.map((request) => request.project));
-  const atom = useMemo(
-    () =>
-      data === null || requests.length === 0
-        ? NO_READ
-        : Atom.make(
-            (get) =>
-              new Map(
-                requests.map((request) => [
-                  request.project.projectId as string,
-                  get(data.runtime.cells.known(request)),
-                ]),
-              ),
-          ),
-    [data, requests],
-  );
-  const reads = useAtomValue(atom);
-  return {
-    reads,
-    again: (id) => {
-      const request = requests.find((request) => request.project.projectId === id);
-      if (request === undefined || data === null) return;
-      const shown = reads.get(id);
-      if (shown?.state === "withheld") {
-        if (shown.reason === "access-denied" || shown.reason === "access-lapsed")
-          invalidateZerops({ topic: "access", change: "renew-now" });
-        againStopDeployment(request.project);
-      }
-      void Effect.runPromise(data.runtime.cells.readAgain(request));
-    },
-  };
-}
-
-export function useStopPublicAccess(projectId: string | undefined) {
-  const { reads, again } = useStopPublicAccesses(projectId === undefined ? [] : [projectId]);
-  const data = useContext(ZeropsDataContext);
-  const bound = projectId !== undefined && data !== null;
-  const shown = bound ? (reads.get(projectId) ?? UNREAD) : undefined;
+  const account = useAccountDataOptional();
+  const demandDetail = account?.demandDetail;
+  const orgId = account?.orgId ?? null;
+  const refs = useStopRefs(projectId === undefined ? [] : [projectId]);
+  useStopDeployments(refs);
+  const [ref] = refs;
+  useEffect(() => {
+    if (demandDetail === undefined || projectId === undefined) return;
+    return demandDetail({ family: "publicRouting", ownerId: projectId });
+  }, [demandDetail, projectId]);
+  const bound = projectId !== undefined && orgId !== null;
+  const access = useProjection(publicAccess, bound ? { orgId, projectId } : null, NOT_READ);
   return {
     bound,
-    shown,
-    access: selectPublicAccess(shown ?? UNREAD),
+    shown: bound ? access : undefined,
+    access,
     again: () => {
-      if (projectId !== undefined) again(projectId);
+      if (projectId === undefined || account === null) return;
+      if (access.denied) {
+        invalidateZerops({ topic: "access", change: "renew-now" });
+        if (ref !== undefined) againStopDeployment(ref);
+      }
+      account.retryDetail({ family: "publicRouting", ownerId: projectId });
     },
   };
 }

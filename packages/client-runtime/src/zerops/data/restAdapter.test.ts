@@ -715,27 +715,6 @@ describe("ZeropsDataAdapter receiver", () => {
     }),
   );
 
-  it.effect("tells the runtime of every token write its client makes", () =>
-    Effect.gen(function* () {
-      const client = clientFor(() => new Response(JSON.stringify({}), { status: 200 }));
-      const adapter = makeZeropsDataAdapter({ client, makeSocket: () => new FakeSocket(), timers });
-      const heard: string[] = [];
-      const stop = adapter.onTokensWritten?.((organizationId) => heard.push(organizationId));
-
-      yield* Effect.promise(() =>
-        client.setIntegrationTokenProjects({
-          clientId: organization.organizationId,
-          tokenId: "token-a",
-          name: "t",
-          projects: [],
-        }),
-      );
-      stop?.();
-
-      expect(heard).toEqual([organization.organizationId]);
-    }),
-  );
-
   // Several requests in one command — its services, the org's keys, a key, the import — have a
   // minute between them, not one request's 15 s (`commandDeadlineMs`).
   it.effect("gives a Mate's container import a minute, and a project's creation its 15 s", () =>
@@ -884,79 +863,6 @@ describe("ZeropsDataAdapter receiver", () => {
           coverage: { kind: "exhausted-traversal", traversedPages: 2, observedTotal: 2001 },
         });
         expect(bodies.map(({ offset }) => Number(offset ?? 0))).toEqual([0, 2000]);
-      }),
-  );
-
-  it.effect(
-    "registers current and history metrics under distinct opaque names with native bodies",
-    () =>
-      Effect.gen(function* () {
-        const sockets: FakeSocket[] = [];
-        const requests: Array<{ readonly url: string; readonly body: string }> = [];
-        const client = clientFor((url, init) => {
-          if (url.endsWith("/web-socket/login"))
-            return new Response('{"webSocketToken":"socket-token"}', { status: 200 });
-          requests.push({ url, body: String(init?.body) });
-          return new Response('{"items":[],"limit":500,"offset":0,"totalHits":0}', {
-            status: 200,
-          });
-        });
-        const adapter = makeZeropsDataAdapter({
-          client,
-          makeSocket: socketFactory(sockets),
-          timers,
-        });
-        const current = {
-          identity: interest,
-          subscriptionName: ZeropsWireSubscriptionName.make("opaque/current"),
-          descriptor: {
-            kind: "current-metrics",
-            query: {
-              kind: "current-metrics-of-project",
-              project,
-              groupBy: "containerId",
-              schemaVersion: 1,
-            },
-          },
-          baselineTicket: servicesTicket(),
-        } as RegistrationRequest;
-        const history = {
-          identity: interest,
-          subscriptionName: ZeropsWireSubscriptionName.make("opaque/history"),
-          descriptor: {
-            kind: "metric-history",
-            query: {
-              kind: "metric-history-of-project",
-              project,
-              groupBy: "serviceStackId",
-              window: { timeGroupBy: "1m", limit: 10, timeZone: "UTC" },
-              schemaVersion: 1,
-            },
-          },
-          baselineTicket: servicesTicket(),
-        } as RegistrationRequest;
-
-        yield* Effect.scoped(
-          Effect.gen(function* () {
-            const receiver = yield* adapter.openReceiver(
-              scope,
-              organization,
-              receiverIdentity,
-              context(),
-            );
-            yield* adapter.register(receiver, current, context());
-            yield* adapter.register(receiver, history, context());
-          }),
-        );
-
-        expect(requests[0]!.url).toMatch(/\/current-stats\/group-by-search$/);
-        expect(requests[1]!.url).toMatch(/\/stats-history\/group-by-search$/);
-        expect(requests[0]!.body).toContain('"subscriptionName":"opaque/current"');
-        expect(requests[0]!.body).toContain('"groupBy":"containerId"');
-        expect(requests[1]!.body).toContain('"subscriptionName":"opaque/history"');
-        expect(requests[1]!.body).toContain('"groupBy":"serviceStackId"');
-        expect(requests[1]!.body).toContain('"timeGroupBy":"1m"');
-        expect(requests[1]!.body).not.toContain("billingEnabled");
       }),
   );
 

@@ -118,7 +118,7 @@ import {
 } from "~/zerops/agentActivity";
 import { useMateRowActivity } from "~/zerops/useMenuMateReadings";
 import { useAddMate } from "~/zerops/newMate";
-import { useZeropsAgentActivity } from "~/zerops/useZeropsAgentActivity";
+import { useMatesActivity } from "~/zerops/useZeropsAgentActivity";
 import { useListingPatience } from "~/zerops/useListingPatience";
 import { useNowMs } from "~/zerops/useNowMs";
 import { mateUpdateStatus, type MateUpdateStatus } from "~/zerops/mateUpdate";
@@ -132,7 +132,7 @@ import {
 import { useChangeOffers, useKeepDeployKeyOffer } from "~/zerops/useChangeOffers";
 import { REVIEW_RELEASE_LABEL, useOpenReview } from "~/zerops/review";
 import { useZeropsCompares, type ComparedCommits } from "~/zerops/useZeropsCompares";
-import { useZeropsRecipeFailure } from "~/zerops/useZeropsAppRecipes";
+import { useHqRecipeFailure } from "~/zerops/useHqAppDetail";
 import {
   useAddEnvironment,
   useGroupPendingEnvironments,
@@ -372,7 +372,7 @@ function useGroupMates(groupId: string): {
 } {
   const { listing, refresh } = useZeropsCandidates();
   // Each Mate as its menu row reads it: HQ's word, or its socket's.
-  const activityOf = useMateRowActivity(useZeropsAgentActivity());
+  const activityOf = useMateRowActivity(useMatesActivity());
   // HQ's word of who is up, as the menu reads it (`mateAwake`).
   const hqView = useAtomValue(hqMatesAtom);
   const hqMates = hqView?.current === true ? hqView.mates : null;
@@ -693,7 +693,7 @@ export function ZeropsRuntimeStops({
 }
 
 export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string }) {
-  const recipeFailure = useZeropsRecipeFailure(groupId);
+  const recipeFailure = useHqRecipeFailure(groupId);
   const flowValue = useZeropsProjectFlowOptional();
   const flow = flowValue?.flows.get(groupId);
   const runtimeStops = useRuntimeStops(groupId);
@@ -1153,7 +1153,7 @@ export function ZeropsStopDetailPage({
   readonly groupId: string;
   readonly projectId: string;
 }) {
-  const recipeFailure = useZeropsRecipeFailure(groupId);
+  const recipeFailure = useHqRecipeFailure(groupId);
   const flowValue = useZeropsProjectFlowOptional();
   const flow = flowValue?.flows.get(groupId);
   const runtimeStops = useRuntimeStops(groupId).filter((entry) => entry.projectId === projectId);
@@ -2782,7 +2782,7 @@ function ProjectReadFailures({
   recipe,
   comparison,
 }: {
-  readonly recipe: ReturnType<typeof useZeropsRecipeFailure>;
+  readonly recipe: ReturnType<typeof useHqRecipeFailure>;
   readonly comparison: ZeropsProjectFlow["release"]["comparisonFailure"];
 }) {
   return (

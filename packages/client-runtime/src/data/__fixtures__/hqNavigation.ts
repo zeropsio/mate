@@ -37,6 +37,8 @@ export interface SeededHq {
   /** HQ answers now; `false` leaves it as it was read, its link down. */
   readonly live?: boolean;
   readonly person?: HqPersonFacts;
+  /** Each application's open changes as the menu draws them, by its id. */
+  readonly changes?: Readonly<Record<string, HqAppValue["changes"]>>;
 }
 
 const PERSON: HqPersonFacts = {
@@ -136,6 +138,7 @@ export function seedHqNavigation(store: AccountStore, orgId: string, seed: Seede
           projectIds: app.projects.map(({ projectId }) => projectId),
           births: app.births ?? [],
           environments: (app.environments ?? []) as HqAppValue["environments"],
+          changes: seed.changes?.[app.id] ?? [],
         },
       },
       ...app.projects.map((project): Row => ({

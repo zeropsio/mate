@@ -1,6 +1,7 @@
 /**
- * The tier a new environment or a new Mate starts from, as the organization's HQ stream last said
- * it (`appReads`), **as the person** (guide 4.3, SPEC §3.2c).
+ * The tier a new environment or a new Mate starts from, as the application's detail on HQ's stream
+ * last said it (`useHqAppDetail`, held while the creation asks), **as the person** (guide 4.3,
+ * SPEC §3.2c).
  *
  * The recipe is not a Zerops object and never was: it is `import.yaml` in the application's recipe
  * repository, proposed by a Mate and landed on its `main` — by Core where it only adds files, by a
@@ -24,8 +25,8 @@
  */
 
 import { useAtomValue } from "@effect/atom-react";
+import type { HqAppDetailRead } from "@t3tools/client-runtime/data";
 import type { RecipeTierResponse } from "@t3tools/shared/hqRecipe";
-import type { AppRead } from "@t3tools/shared/hqAppReads";
 import {
   recipeTierServices,
   type EnvironmentRecipeChoice,
@@ -33,7 +34,8 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import { useCallback, useState } from "react";
 
-import { hqAppReadsAtom, hqDown, hqNavigationAtom } from "../state/zerops";
+import { hqDown, hqNavigationAtom } from "../state/zerops";
+import { useHqAppDetail } from "./useHqAppDetail";
 import { useAccountDataOptional } from "./ZeropsAccountData";
 
 export type GroupRecipeTier = Extract<EnvironmentRecipeChoice, { kind: "tier" }>;
@@ -79,9 +81,8 @@ export function useZeropsGroupRecipe(input: {
 }): GroupRecipe {
   const { appId, enabled, tier } = input;
   const navigation = useAtomValue(hqNavigationAtom);
-  const reads = useAtomValue(hqAppReadsAtom);
-  const appRead = appId === undefined ? undefined : reads?.get(appId);
-  const [retrying, setRetrying] = useState<AppRead | undefined>(undefined);
+  const appRead = useHqAppDetail(enabled ? (appId ?? null) : null);
+  const [retrying, setRetrying] = useState<HqAppDetailRead | undefined>(undefined);
   const retry = useAccountDataOptional()?.retry;
 
   const reread = useCallback(() => {
@@ -90,12 +91,16 @@ export function useZeropsGroupRecipe(input: {
     retry();
   }, [appRead, retry]);
 
+  const said = appRead.recipes[tier];
+  // A tier HQ has not said is loading while its read is under way, and unreadable once read.
   const answer =
-    !enabled || appRead === undefined
+    !enabled || appId === undefined
       ? LOADING
-      : appRead.failure !== null || appRead.value === null
+      : appRead.failure !== null
         ? UNREADABLE
-        : answerOf(appRead.value.recipes[tier], tier);
+        : said === undefined && appRead.read !== "read"
+          ? LOADING
+          : answerOf(said, tier);
   const down = hqDown(navigation);
   return {
     ...answer,

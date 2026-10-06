@@ -1,7 +1,7 @@
 /**
  * What a release would put live, and what a rollback takes off production and brings back (main
  * C06, C30), from HQ's comparisons of a repository's commits
- * (`GET /api/apps/:appId/repos/:repo/compare`, git's `base..head`): which to ask for, and how
+ * (`compare` on HQ's scope socket, git's `base..head`): which to ask for, and how
  * their answers read.
  *
  * HQ compares whole shas only, so production's side is the commit each service runs, whole

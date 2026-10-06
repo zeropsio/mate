@@ -1,4 +1,5 @@
 import { COMPARE_COUNT_MAX, type HqChange } from "@t3tools/shared/hqChanges";
+import type { HqNavigationChange } from "@t3tools/shared/hqStream";
 import { describe, expect, it } from "vite-plus/test";
 
 import { pullRequestBlocked, pullRequestBlockedReason } from "./gitTab.ts";
@@ -16,6 +17,7 @@ import {
   releaseContentsSummary,
   releaseWaitingLabel,
   flowChange,
+  flowAppChanges,
   flowChanges,
   flowVerbKey,
   flowVerbLabel,
@@ -183,6 +185,118 @@ describe("a Mate's changes in HQ, as the flow shows them", () => {
       mergeCommitSha: "m".repeat(39) + "2",
       updatedAt: "2026-10-02T11:00:00.000Z",
     });
+  });
+});
+
+describe("an application's changes: the menu's rows, and its detail while a surface holds it", () => {
+  const HQ = "https://hq-30db-8080.prg1.zerops.app";
+  const SHA = "a".repeat(40);
+  const menuRow = (over: Partial<HqNavigationChange> = {}): HqNavigationChange => ({
+    repo: "appdev",
+    number: 3,
+    mateProjectId: VERA,
+    title: "Add a due date to each todo",
+    state: "open",
+    hasHead: true,
+    updatedAt: "2026-10-02T09:30:00.000Z",
+    mergeability: "clean",
+    ready: true,
+    ...over,
+  });
+
+  it("draws each open change navigation lists that a push reached, without the detail", () => {
+    expect(
+      flowAppChanges({
+        appId: "g1",
+        open: [menuRow(), menuRow({ number: 4, hasHead: false })],
+        detail: undefined,
+        hqAddress: `${HQ}/`,
+      }),
+    ).toEqual({
+      pullRequests: [
+        {
+          repository: "appdev",
+          number: 3,
+          title: "Add a due date to each todo",
+          kind: "code",
+          mateProjectId: VERA,
+          url: `${HQ}/changes/g1/appdev/3`,
+          mergeability: "mergeable",
+          behind: false,
+          merged: false,
+          mergedAt: undefined,
+          state: "open",
+          headSha: undefined,
+          baseBranch: "main",
+          line: "appdev #3",
+          updatedAt: "2026-10-02T09:30:00.000Z",
+          headBranch: `mate/${VERA}/3`,
+          ready: true,
+        },
+      ],
+      merged: [],
+    });
+  });
+
+  it("draws an open row from the held detail, and lists the landed ones only from it", () => {
+    const detail: ReadonlyArray<HqChange> = [
+      {
+        appId: "g1",
+        repo: "appdev",
+        number: 3,
+        mateProjectId: VERA,
+        title: "Add a due date to each todo",
+        body: "Adds the field.",
+        state: "open",
+        head: SHA,
+        mergedSha: null,
+        landedHead: null,
+        openedAt: "2026-10-02T09:00:00.000Z",
+        mergedAt: null,
+        closedAt: null,
+        updatedAt: "2026-10-02T09:30:00.000Z",
+        mergeability: "clean",
+        behind: true,
+        ready: true,
+        comments: 2,
+      },
+      {
+        appId: "g1",
+        repo: "appdev",
+        number: 1,
+        mateProjectId: VERA,
+        title: "First page",
+        body: "",
+        state: "merged",
+        head: SHA,
+        mergedSha: "m".repeat(40),
+        landedHead: SHA,
+        openedAt: "2026-10-01T09:00:00.000Z",
+        mergedAt: "2026-10-01T10:00:00.000Z",
+        closedAt: null,
+        updatedAt: "2026-10-01T10:00:00.000Z",
+        mergeability: "clean",
+        behind: false,
+        ready: true,
+        comments: 0,
+      },
+    ];
+    const { pullRequests, merged } = flowAppChanges({
+      appId: "g1",
+      open: [menuRow()],
+      detail,
+      hqAddress: `${HQ}/`,
+    });
+    expect(pullRequests).toEqual([
+      expect.objectContaining({
+        number: 3,
+        headSha: SHA,
+        behind: true,
+        description: "Adds the field.",
+        commentCount: 2,
+      }),
+    ]);
+    expect(merged.map(({ number }) => number)).toEqual([1]);
   });
 });
 

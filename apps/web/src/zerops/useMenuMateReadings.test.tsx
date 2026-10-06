@@ -11,7 +11,7 @@ import { mateRowReading } from "~/components/zerops/SidebarMateRow.logic";
 
 import { zeropsSessionAtom } from "../state/zerops";
 import { useMateConversationsRead, useMateRowActivity } from "./useMenuMateReadings";
-import { zeropsAgentActivityOf } from "./useZeropsAgentActivity";
+import { useMatesActivity } from "./useZeropsAgentActivity";
 import { mountHqNavigation } from "~/zerops/__fixtures__/hqNavigation";
 
 const AT = "2026-10-03T09:00:00.000Z";
@@ -100,15 +100,7 @@ function told(view: MateLiveView): AtomRegistry.AtomRegistry {
 
 describe("useMenuMateReadings — a Mate HQ tells of, no socket to it", () => {
   it("a Mate HQ holds online is not asleep without a socket", () => {
-    const hq = { mates: new Map([["p-vera", VERA]]), current: true };
-    const activity = zeropsAgentActivityOf({
-      hq,
-      threads: [],
-      standing: new Set(),
-      lastVisitedAtById: {},
-    });
-
-    const read = mountedOver(told(VERA), () => useMateRowActivity(activity))(UNOPENED);
+    const read = mountedOver(told(VERA), () => useMateRowActivity(useMatesActivity()))(UNOPENED);
     expect(read).toMatchObject({ threadId: "t1", kind: "working" });
     expect(mateRowReading({ connected: false, activity: read, mine: false }).face).toBe("working");
   });

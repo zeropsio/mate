@@ -112,7 +112,10 @@ vi.mock("../../zerops/useZeropsMates", () => ({
 }));
 
 vi.mock("../../zerops/useZeropsAgentActivity", () => ({
-  useZeropsAgentActivity: () => mateState.faces,
+  useMatesActivity: () => ({
+    ofProject: () => undefined,
+    ofEnvironment: (environmentId: string) => mateState.faces.get(environmentId),
+  }),
 }));
 
 /** What the crew feed answers: nothing read yet, unless a test hands it a crew. */

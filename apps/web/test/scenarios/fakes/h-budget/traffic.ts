@@ -9,8 +9,12 @@ import type { Page } from "puppeteer-core";
 const bytesOf = (data: RawData) =>
   Buffer.isBuffer(data) ? data : Array.isArray(data) ? Buffer.concat(data) : Buffer.from(data);
 
+/** A scope's catchup end names its scope (a Mate's project id), never a fact. */
+const scopeReady = (bytes: Buffer) => bytes.includes('"type":"scope-ready"');
+
 /** Menu sentinels identify state without depending on HQ's frame types or heartbeat cadence. */
-const carriesMenu = (bytes: Buffer) => ["Shop", "Ada", "Bea"].some((name) => bytes.includes(name));
+const carriesMenu = (bytes: Buffer) =>
+  !scopeReady(bytes) && ["Shop", "Ada", "Bea"].some((name) => bytes.includes(name));
 
 /** Observe real HQ bytes without replacing its responses. */
 export async function observeTraffic(origin: string) {

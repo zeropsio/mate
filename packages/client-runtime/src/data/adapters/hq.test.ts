@@ -1,4 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
+import type { MateAttention } from "@t3tools/contracts";
 import type { HqScopeDelivery, HqStreamMessage } from "@t3tools/shared/hqStream";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -6,14 +7,16 @@ import * as TestClock from "effect/testing/TestClock";
 import { AtomRegistry } from "effect/unstable/reactivity";
 
 import { hqFixtureWire, type HqFixtureWire } from "../__fixtures__/hqWire.ts";
+import { attention } from "../__fixtures__/mateAttention.ts";
 import { settle } from "../__fixtures__/zeropsWire.ts";
 import { hqAppsScope, placementsScope } from "../families/hqNavigation.ts";
 import { hqMateScope } from "../families/hqMate.ts";
+import { hqMateAttentionScope, mateAttentionScope } from "../families/mateAttention.ts";
 import { linkKeys, type StreamKey } from "../model.ts";
-import { factOf } from "../reducer.ts";
+import { factOf, streamOf } from "../reducer.ts";
 import { makeAccountStore, publicRead, readsOfState, type AccountStore } from "../store.ts";
 import { superviseLink } from "../supervisor.ts";
-import { classifyHqClose, hqNavigationLink } from "./hq.ts";
+import { classifyHqClose, HQ_SILENCE_MS, hqNavigationLink } from "./hq.ts";
 
 const ORG = "org";
 const NAVIGATION = { kind: "navigation" } as const;
@@ -26,6 +29,7 @@ const app = (id: string, name: string, projectIds: ReadonlyArray<string> = []) =
   projectIds,
   births: [],
   environments: [],
+  changes: [],
 });
 const project = (projectId: string, appId: string | null, mate = true) => ({
   projectId,
@@ -335,9 +339,294 @@ describe("asking HQ on the open socket", () => {
       yield* Fiber.interrupt(fiber);
     }),
   );
+
+  it.effect.each([
+    { disposition: "refused", outcome: "definitive-refusal" },
+    { disposition: "transient", outcome: "transient" },
+  ] as const)(
+    "compares two commits when asked, and hands HQ's $disposition answer back as $outcome",
+    ({ disposition, outcome }) =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const fixture = hqFixtureWire();
+        const { fiber, link } = yield* live(store, fixture);
+        const head = "b".repeat(40);
+        const asked = yield* Effect.forkChild(
+          link.compare({ appId: "shop", repo: "api", base: "a".repeat(40), head }),
+        );
+        yield* settle;
+        const request = fixture.sent.at(-1)?.request as { requestId: string };
+        expect(request).toMatchObject({
+          type: "compare",
+          appId: "shop",
+          repo: "api",
+          base: "a".repeat(40),
+          head,
+        });
+        const answer = { base: "a".repeat(40), head, commits: [], truncated: false, total: 0 };
+        yield* fixture.send({
+          type: "compare",
+          requestId: request.requestId,
+          appId: "shop",
+          repo: "api",
+          result: answer,
+        });
+        expect(yield* Fiber.join(asked)).toEqual(answer);
+
+        const failed = yield* Effect.forkChild(
+          Effect.flip(link.compare({ appId: "shop", repo: "api", head })),
+        );
+        yield* settle;
+        const second = fixture.sent.at(-1)?.request as { requestId: string };
+        expect(second).not.toHaveProperty("base");
+        yield* fixture.send({
+          type: "compare-error",
+          requestId: second.requestId,
+          appId: "shop",
+          repo: "api",
+          code: "commit_not_found",
+          reason: null,
+          disposition,
+        });
+        expect((yield* Fiber.join(failed)).outcome).toBe(outcome);
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
+});
+
+describe("a Mate's attention, relayed", () => {
+  const ATTENTION = { kind: "attention", projectId: "ada" } as const;
+  const presence = { online: true, since: "2026-10-06T00:00:00Z", overview: "live" } as const;
+  const relayed = (value: MateAttention | null, state: "live" | "stored") => ({
+    presence,
+    overview: null,
+    attention: value,
+    attentionState: value === null ? "none" : state,
+  });
+  const relay = (
+    type: HqScopeDelivery["type"],
+    revision: number,
+    value: MateAttention | null,
+    state: "live" | "stored" = "live",
+  ): HqStreamMessage => ({
+    type,
+    scope: ATTENTION,
+    incarnation: "a1",
+    revision,
+    values: [{ key: "ada", value: relayed(value, state) }],
+    removals: [],
+  });
+  /** What an open Mate said straight, as its own link commits it. */
+  const direct = (store: AccountStore, value: MateAttention, method: "baseline" | "push") =>
+    store.dispatch({
+      kind: "rows",
+      scope: mateAttentionScope("ada"),
+      generation: streamOf(store.state(), mateAttentionScope("ada")).generation,
+      method,
+      via: "mate-direct",
+      rows: [
+        {
+          family: "mateAttention",
+          id: "ada",
+          value,
+          revision: {
+            kind: "mate-attention",
+            incarnation: value.source.incarnation,
+            revision: value.source.revision,
+            live: true,
+          },
+        },
+      ],
+    });
+  const held = (store: AccountStore) => factOf(store.state(), "mateAttention", "ada");
+
+  it.effect("holds the attention HQ relays by the Mate's own revision, beside HQ's record", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const fixture = hqFixtureWire();
+      const { fiber } = yield* live(store, fixture);
+      yield* fixture.send(relay("scope-reset", 1, attention("m1", 4, 1)));
+      yield* fixture.send({
+        type: "scope-ready",
+        scope: ATTENTION,
+        incarnation: "a1",
+        revision: 1,
+      });
+      yield* settle;
+      expect(held(store)).toMatchObject({
+        content: { kind: "value", value: attention("m1", 4, 1) },
+        revision: { kind: "mate-attention", incarnation: "m1", revision: 4 },
+        via: "hq-stream",
+        authority: "mate",
+      });
+      expect(phase(store, hqMateAttentionScope(ORG, "ada"))).toBe("live");
+      expect(publicRead(factOf(store.state(), "hqMate", "ada"))).toMatchObject({ kind: "known" });
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+
+  it.effect("holds nothing of a Mate from before the attention value", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const fixture = hqFixtureWire();
+      const { fiber } = yield* live(store, fixture);
+      yield* fixture.send(relay("scope-reset", 1, null));
+      yield* settle;
+      expect(held(store)).toBeUndefined();
+      expect(publicRead(factOf(store.state(), "hqMate", "ada"))).toMatchObject({ kind: "known" });
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+
+  it.effect("never lets a relay older than what the Mate said straight win", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const fixture = hqFixtureWire();
+      const { fiber } = yield* live(store, fixture);
+      direct(store, attention("m1", 7, 2), "baseline");
+      yield* fixture.send(relay("scope-reset", 1, attention("m1", 6, 1)));
+      yield* settle;
+      expect(held(store)).toMatchObject({
+        content: { value: attention("m1", 7, 2) },
+        via: "mate-direct",
+      });
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+
+  it.effect("takes a newer relay once the Mate is not open: its revision, not its path", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const fixture = hqFixtureWire();
+      const { fiber } = yield* live(store, fixture);
+      yield* fixture.send(relay("scope-reset", 1, attention("m1", 6)));
+      yield* settle;
+      direct(store, attention("m1", 7, 2), "push");
+      yield* fixture.send(relay("scope-values", 2, attention("m1", 8)));
+      yield* settle;
+      expect(held(store)).toMatchObject({
+        content: { value: attention("m1", 8) },
+        via: "hq-stream",
+      });
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+
+  type Step =
+    | {
+        readonly by: "relay";
+        readonly type: HqScopeDelivery["type"];
+        readonly hq: number;
+        readonly value: MateAttention;
+        readonly state: "live" | "stored";
+      }
+    | {
+        readonly by: "direct";
+        readonly method: "baseline" | "push";
+        readonly value: MateAttention;
+      };
+  const relayStep = (
+    type: HqScopeDelivery["type"],
+    hq: number,
+    value: MateAttention,
+    state: "live" | "stored" = "live",
+  ): Step => ({ by: "relay", type, hq, value, state });
+  const directStep = (method: "baseline" | "push", value: MateAttention): Step => ({
+    by: "direct",
+    method,
+    value,
+  });
+
+  it.effect.each([
+    {
+      name: "the Mate restarts while open, HQ relaying it live",
+      steps: [
+        relayStep("scope-reset", 1, attention("m1", 9)),
+        relayStep("scope-values", 2, attention("m2", 0, 1)),
+      ],
+      held: attention("m2", 0, 1),
+    },
+    {
+      name: "the Mate restarts while open, its own link saying it",
+      steps: [
+        directStep("baseline", attention("m1", 9)),
+        directStep("push", attention("m2", 0, 1)),
+      ],
+      held: attention("m2", 0, 1),
+    },
+    {
+      name: "a restarted Mate's own word, then what HQ stored of the run before",
+      steps: [
+        directStep("baseline", attention("m2", 0, 1)),
+        relayStep("scope-reset", 1, attention("m1", 9), "stored"),
+      ],
+      held: attention("m2", 0, 1),
+    },
+    {
+      name: "what HQ stored of the run before, then the restarted Mate's own word",
+      steps: [
+        relayStep("scope-reset", 1, attention("m1", 9), "stored"),
+        directStep("baseline", attention("m2", 0, 1)),
+      ],
+      held: attention("m2", 0, 1),
+    },
+    {
+      name: "a reload just after a restart: both paths go on after HQ's stored value",
+      steps: [
+        directStep("baseline", attention("m2", 0, 1)),
+        relayStep("scope-reset", 1, attention("m1", 9), "stored"),
+        directStep("push", attention("m2", 1, 2)),
+        relayStep("scope-values", 2, attention("m2", 2, 0)),
+      ],
+      held: attention("m2", 2, 0),
+    },
+    {
+      name: "what HQ stored of another run, pushed, never over a live one",
+      steps: [
+        relayStep("scope-reset", 1, attention("m2", 3)),
+        relayStep("scope-values", 2, attention("m1", 9), "stored"),
+      ],
+      held: attention("m2", 3),
+    },
+  ])("orders another incarnation by its being live: $name", ({ steps, held: expected }) =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const fixture = hqFixtureWire();
+      const { fiber } = yield* live(store, fixture);
+      for (const step of steps) {
+        if (step.by === "direct") direct(store, step.value, step.method);
+        else yield* fixture.send(relay(step.type, step.hq, step.value, step.state));
+        yield* settle;
+      }
+      expect(held(store)).toMatchObject({ content: { value: expected } });
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
 });
 
 describe("an HQ outage", () => {
+  it.effect("a socket that says nothing, not even a ping, is given up and asked again", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const fixture = hqFixtureWire();
+      const { fiber } = yield* live(store, fixture);
+      // HQ pings every 20 s: a minute of silence is a socket that no longer carries anything.
+      yield* TestClock.adjust(HQ_SILENCE_MS - 1);
+      expect(fixture.opens()).toBe(1);
+      yield* fixture.send({ type: "ping" });
+      yield* TestClock.adjust(HQ_SILENCE_MS - 1);
+      expect(fixture.opens()).toBe(1);
+      yield* TestClock.adjust(1);
+      yield* settle;
+      expect(phase(store, linkKeys.hq(ORG))).toBe("recovering");
+      expect(appName(store, "shop")).toBe("Shop");
+      yield* TestClock.adjust(1_000);
+      yield* settle;
+      expect(fixture.opens()).toBe(2);
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+
   it.effect("keeps every fact while down, then resumes each scope from its cursor", () =>
     Effect.gen(function* () {
       const store = makeAccountStore(AtomRegistry.make());
@@ -367,6 +656,36 @@ describe("an HQ outage", () => {
       yield* fixture.send(ready(3));
       yield* settle;
       expect(phase(store, hqAppsScope(ORG))).toBe("live");
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+
+  it.effect("tells HQ what the person saw while its socket was down once one opens again", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const fixture = hqFixtureWire();
+      const { fiber, link } = yield* live(store, fixture);
+      const seen = (segment: number) =>
+        fixture.sent
+          .filter(({ request, segment: at }) => at === segment && request.type === "seen")
+          .map(({ request }) => request);
+      yield* fixture.drop({ outcome: "transient", message: "HQ's stream broke." });
+      yield* settle;
+      yield* link.seen("ada", ["r1"]);
+      yield* link.seen("ada", ["r2"]);
+      yield* link.seen("bea", ["r3"]);
+      yield* TestClock.adjust(1_000);
+      yield* settle;
+      expect(seen(2)).toEqual([
+        { type: "seen", projectId: "ada", resultIds: ["r1", "r2"] },
+        { type: "seen", projectId: "bea", resultIds: ["r3"] },
+      ]);
+      yield* link.seen("ada", ["r4"]);
+      expect(seen(2).at(-1)).toEqual({ type: "seen", projectId: "ada", resultIds: ["r4"] });
+      yield* fixture.drop({ outcome: "transient", message: "HQ's stream broke." });
+      yield* TestClock.adjust(2_000);
+      yield* settle;
+      expect(seen(3)).toEqual([]);
       yield* Fiber.interrupt(fiber);
     }),
   );

@@ -8,7 +8,14 @@
  *
  * @module data/reducer
  */
-import { FAMILIES, familySpec, ownScopeOf, scopeListing, scopeSpec } from "./families/index.ts";
+import {
+  FAMILIES,
+  familySpec,
+  ownScopeOf,
+  scopeListing,
+  scopeSpec,
+  streamMode,
+} from "./families/index.ts";
 import type { FamilyIndex } from "./families/spec.ts";
 import {
   factKey,
@@ -160,14 +167,16 @@ function parentOf(key: StreamKey): string | null {
 }
 
 export function streamOf(state: AccountState, key: StreamKey): StreamState {
-  return state.streams.get(key) ?? initialStream({ parent: parentOf(key), mode: "realtime" });
+  return state.streams.get(key) ?? initialStream({ parent: parentOf(key), mode: streamMode(key) });
 }
 
 /**
  * Whether `incoming` may replace `current` in its owner's ordering. Revisions compare only inside
  * their own domain: a Mate's own attention revision always outranks HQ's relay of it, which never
- * replaces it back; another incarnation of a Mate or of an HQ scope is not ordered, so only a
- * baseline replaces it; a value of another domain never replaces one. Time never decides.
+ * replaces it back; another incarnation of an HQ scope is not ordered, so only a baseline replaces
+ * it; another incarnation of a Mate replaces the held one iff it is live (the Mate restarted), by
+ * whichever path and delivery it comes, and never when it is what HQ stored; a value of another
+ * domain never replaces one. Time never decides.
  */
 export function supersedes(
   current: Revision,
@@ -189,7 +198,7 @@ export function supersedes(
       if (current.kind !== "mate-attention") return false;
       return current.incarnation === incoming.incarnation
         ? incoming.revision > current.revision
-        : method === "baseline";
+        : incoming.live;
   }
 }
 

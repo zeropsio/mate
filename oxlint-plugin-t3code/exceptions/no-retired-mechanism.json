@@ -424,14 +424,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/components/zerops/SidebarJumpBox.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useMateActivityByProject(",
-    "owner": "data-layer rewrite: Mate attention/overview",
-    "reason": "Mate activity is picked by send time; the source decides, never the clock",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
     "kind": "retired-token",
     "fingerprint": "useSentAsks",
@@ -557,14 +549,6 @@
     "fingerprint": "useMatesInventory",
     "owner": "data-layer rewrite: services",
     "reason": "the Mates inventory prepares containers, services and variables for every listed Mate; read on open",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsAppRecipes",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "registry, recipes and releases are read by app hooks; the HQ adapter feeds the store",
     "expires": "never"
   },
   {
@@ -1096,70 +1080,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/components/zerops/projects/ProjectList.tsx",
-    "kind": "retired-token",
-    "fingerprint": "lastRowRisen",
-    "owner": "data-layer rewrite: Mate attention/overview",
-    "reason": "risen project rows are remembered in browser storage; the attention projection decides on load",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/projects/ProjectList.tsx",
-    "kind": "retired-token",
-    "fingerprint": "lastRowRisen",
-    "owner": "data-layer rewrite: Mate attention/overview",
-    "reason": "risen project rows are remembered in browser storage; the attention projection decides on load",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/projects/ProjectList.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useRememberRisenRows",
-    "owner": "data-layer rewrite: Mate attention/overview",
-    "reason": "risen project rows are remembered in browser storage; the attention projection decides on load",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/projects/ProjectList.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useRememberRisenRows",
-    "owner": "data-layer rewrite: Mate attention/overview",
-    "reason": "risen project rows are remembered in browser storage; the attention projection decides on load",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/projects/rowRiseMemory.ts",
-    "kind": "retired-token",
-    "fingerprint": "lastRowRisen",
-    "owner": "data-layer rewrite: Mate attention/overview",
-    "reason": "risen project rows are remembered in browser storage; the attention projection decides on load",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/projects/rowRiseMemory.ts",
-    "kind": "retired-token",
-    "fingerprint": "mate:zerops:projects-risen",
-    "owner": "data-layer rewrite: Mate attention/overview",
-    "reason": "risen project rows are remembered in browser storage; the attention projection decides on load",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/projects/rowRiseMemory.ts",
-    "kind": "retired-token",
-    "fingerprint": "useRememberRisenRows",
-    "owner": "data-layer rewrite: Mate attention/overview",
-    "reason": "risen project rows are remembered in browser storage; the attention projection decides on load",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/review/ReviewConversation.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsChangeComments",
-    "owner": "data-layer rewrite: discussions/comments",
-    "reason": "a component-level LRU holds change comments; the discussions adapter owns them",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/components/zerops/review/ReviewDescription.tsx",
     "kind": "retired-token",
     "fingerprint": "useChangePicture",
@@ -1189,30 +1109,6 @@
     "fingerprint": "useChangePicture",
     "owner": "data-layer rewrite: changes/review",
     "reason": "a hook reads change pictures itself; the changes adapter owns the read",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/review/ZeropsChangeReview.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsChangeComments",
-    "owner": "data-layer rewrite: discussions/comments",
-    "reason": "a component-level LRU holds change comments; the discussions adapter owns them",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/review/ZeropsChangeReview.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsChangeComments",
-    "owner": "data-layer rewrite: discussions/comments",
-    "reason": "a component-level LRU holds change comments; the discussions adapter owns them",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/review/ZeropsChangeReview.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsChangeComments",
-    "owner": "data-layer rewrite: discussions/comments",
-    "reason": "a component-level LRU holds change comments; the discussions adapter owns them",
     "expires": "never"
   },
   {
@@ -1285,14 +1181,6 @@
     "fingerprint": "useChangePicture",
     "owner": "data-layer rewrite: changes/review",
     "reason": "a hook reads change pictures itself; the changes adapter owns the read",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/design/reviewHarnessStates.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsChangeComments",
-    "owner": "data-layer rewrite: discussions/comments",
-    "reason": "a component-level LRU holds change comments; the discussions adapter owns them",
     "expires": "never"
   },
   {
@@ -1693,54 +1581,6 @@
     "fingerprint": "setAwaiting",
     "owner": "data-layer rewrite: releases/environments",
     "reason": "a lost grant empties every flow and hooks read on their own; hide the project when it is read",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsAppRecipes",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "registry, recipes and releases are read by app hooks; the HQ adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsAppRecipes",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "registry, recipes and releases are read by app hooks; the HQ adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsAppRecipes",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "registry, recipes and releases are read by app hooks; the HQ adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsAppReleases",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "registry, recipes and releases are read by app hooks; the HQ adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsAppReleases",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "registry, recipes and releases are read by app hooks; the HQ adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsAppReleases",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "registry, recipes and releases are read by app hooks; the HQ adapter feeds the store",
     "expires": "never"
   },
   {
@@ -2578,22 +2418,6 @@
   {
     "path": "apps/web/src/zerops/useMenuMateReadings.ts",
     "kind": "retired-token",
-    "fingerprint": "useMateActivityByProject(",
-    "owner": "data-layer rewrite: Mate attention/overview",
-    "reason": "Mate activity is picked by send time; the source decides, never the clock",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useMenuMateReadings.ts",
-    "kind": "retired-token",
-    "fingerprint": "useMateActivityByProject(",
-    "owner": "data-layer rewrite: Mate attention/overview",
-    "reason": "Mate activity is picked by send time; the source decides, never the clock",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useMenuMateReadings.ts",
-    "kind": "retired-token",
     "fingerprint": "useNewMate",
     "owner": "data-layer rewrite: operations",
     "reason": "births are tracked by app hooks; the operations adapter feeds the store",
@@ -2704,54 +2528,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/zerops/useZeropsAgentActivity.ts",
-    "kind": "retired-token",
-    "fingerprint": "zeropsAgentActivityOf(",
-    "owner": "data-layer rewrite: Mate attention/overview",
-    "reason": "Mate activity is picked by send time; the source decides, never the clock",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsAgentActivity.ts",
-    "kind": "retired-token",
-    "fingerprint": "zeropsAgentActivityOf(",
-    "owner": "data-layer rewrite: Mate attention/overview",
-    "reason": "Mate activity is picked by send time; the source decides, never the clock",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsAppRecipes.ts",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsAppRecipes",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "registry, recipes and releases are read by app hooks; the HQ adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsAppReleases.ts",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsAppReleases",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "registry, recipes and releases are read by app hooks; the HQ adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsChangeComments.ts",
-    "kind": "retired-token",
-    "fingerprint": "new LRUCache<ReadonlyArray<HqChangeComment>>",
-    "owner": "data-layer rewrite: discussions/comments",
-    "reason": "a component-level LRU holds change comments; the discussions adapter owns them",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsChangeComments.ts",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsChangeComments",
-    "owner": "data-layer rewrite: discussions/comments",
-    "reason": "a component-level LRU holds change comments; the discussions adapter owns them",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/zerops/useZeropsChangeDetail.ts",
     "kind": "retired-token",
     "fingerprint": "function readOnce(",
@@ -2771,14 +2547,6 @@
     "path": "apps/web/src/zerops/useZeropsCompares.ts",
     "kind": "retired-token",
     "fingerprint": "const stores = new Map<string, Store>()",
-    "owner": "data-layer rewrite: releases/environments",
-    "reason": "compare stores per HQ are kept in the app; the HQ adapter answers on open",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsCompares.ts",
-    "kind": "retired-token",
-    "fingerprint": "hq.api.compare(",
     "owner": "data-layer rewrite: releases/environments",
     "reason": "compare stores per HQ are kept in the app; the HQ adapter answers on open",
     "expires": "never"

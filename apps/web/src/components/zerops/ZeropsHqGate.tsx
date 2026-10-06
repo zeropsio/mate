@@ -9,7 +9,8 @@ import { useCallback, useContext, useEffect } from "react";
 
 import { cn } from "~/lib/utils";
 import { hqBirthDeps, hqBirthSite, readOfficialHqNow, useAccountHq } from "~/zerops/accountHq";
-import { ZeropsDataContext } from "~/zerops/zeropsDataContext";
+import { RegistryContext } from "@effect/atom-react";
+import { useAccountDataOptional } from "~/zerops/ZeropsAccountData";
 import { bearHq, hqBirthView, useHqBirths, type HqBirthView } from "~/zerops/hqBirth";
 import type { HqGate } from "~/zerops/hqGate";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
@@ -26,7 +27,8 @@ export function ZeropsHqGate({ gate }: { readonly gate: ClosedGate }) {
   const accountHq = useAccountHq(activeOrganization?.id);
   const held = useHqBirths((state) => state.byOrg[clientId]);
   const { reread } = accountHq;
-  const data = useContext(ZeropsDataContext);
+  const data = useAccountDataOptional();
+  const registry = useContext(RegistryContext);
   const bear = useCallback(
     (again: boolean) =>
       bearHq({
@@ -42,13 +44,16 @@ export function ZeropsHqGate({ gate }: { readonly gate: ClosedGate }) {
           }),
         // Another admin may have set an HQ up since this page decided there is none: the member
         // list is read afresh at every attempt, and an HQ it names ends the birth as made.
-        alreadyBorn: async () =>
-          data !== null && (await readOfficialHqNow(data, clientId)).kind === "official",
+        alreadyBorn: async () => {
+          if (data === null) throw new Error("No account data is available to verify this HQ.");
+          if (again) data.retryDetail({ family: "organizationMembers", ownerId: clientId });
+          return (await readOfficialHqNow(data, registry, clientId)).kind === "official";
+        },
         // Its anchor is in the member list now: the gate opens once it is read again.
         onBorn: reread,
         again,
       }),
-    [client, clientId, data, reread],
+    [client, clientId, data, registry, reread],
   );
   const birthDue = gate.kind === "birth" && held === undefined;
   useEffect(() => {

@@ -1,4 +1,4 @@
-import { RegistryContext, useAtomValue } from "@effect/atom-react";
+import { RegistryContext } from "@effect/atom-react";
 import type {
   EntityKnowledge,
   ManagedZeropsDataRuntime,
@@ -7,7 +7,7 @@ import type {
   RuntimeInterestDescriptor,
   ZeropsEntityRecord,
 } from "@t3tools/client-runtime/zerops/data";
-import type { PlatformSignals, Shown } from "@t3tools/client-runtime/zerops/knowledge";
+import type { PlatformSignals } from "@t3tools/client-runtime/zerops/knowledge";
 import * as Effect from "effect/Effect";
 import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
 import { createContext, useContext, useEffect, useMemo, useSyncExternalStore } from "react";
@@ -148,15 +148,4 @@ export function useZeropsDataInterest(descriptor: RuntimeInterestDescriptor | nu
       controller.abort();
     };
   }, [runtime, identity]);
-}
-
-const NOT_DEMANDED = Atom.make<Shown<never>>({ state: "unread", waitingFor: null });
-
-/**
- * Reads one fact through withholding. A store's atom holds the demand for its
- * fact while it is mounted, so a lapse and the next grant reach this view
- * without a remount; `null` demands nothing and reads `unread`.
- */
-export function useKnown<T>(atom: Atom.Atom<Shown<T>> | null): Shown<T> {
-  return useAtomValue(atom ?? NOT_DEMANDED);
 }

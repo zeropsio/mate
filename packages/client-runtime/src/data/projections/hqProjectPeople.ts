@@ -1,5 +1,5 @@
 /**
- * Who each project HQ places is, for the reader, as HQ computed it (HANDOFF §5 invariant 11): its
+ * Who each project HQ places is, for the reader, as HQ computed it: its
  * owner — named and pictured from HQ's person records —, whether its Mate waits on the reader, and
  * who is signed in to each agent's own login now and who ever was. Nothing is computed here from member lists or roles; an
  * owner HQ names no person record of is drawn as nobody's. A project HQ removed, or withheld, is in
@@ -25,7 +25,7 @@ export interface HqProjectPeople {
   /** HQ names an owner of it (`ownerUserId`), whether or not it sends their person record. */
   readonly owned: boolean;
   readonly owner: HqMateOwner | null;
-  /** Its Mate waits on the reader: they signed its agent in (HQ's `waitsOnViewer`). */
+  /** Its Mate waits on the reader, as HQ says (`waitsOnViewer`). */
   readonly waitsOnViewer: boolean;
   /** Who is signed in to each login now, by login id: whose the composer is. */
   readonly signedInNow: HqNavigationProject["signedInNow"];

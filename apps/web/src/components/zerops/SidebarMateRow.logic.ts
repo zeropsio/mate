@@ -124,7 +124,7 @@ export function mateOwnerView(input: {
     | { readonly name: string; readonly initials: string; readonly avatarUrl: string | null }
     | undefined;
   /**
-   * What its records say (`mateOwnerRecords`): `named` unknown while its roles are not read; a
+   * What its records say (`mateOwnerRecords`): `named` unknown while HQ has not named its owner; a
    * Mate that runs on an agent Mate signs nobody in to (HQ's overview) waits on no sign-in.
    */
   readonly records: {
@@ -135,7 +135,7 @@ export function mateOwnerView(input: {
   /** The row already says what was asked under the name. */
   readonly asked: boolean;
   /**
-   * Whether HQ names anybody who signed its agents in (its project's `signers`): `some`, `none`,
+   * Whether HQ names anybody who signed its agents in (its project's `everSignedIn`): `some`, `none`,
    * or `undefined` while HQ has not said — then the row says nothing of a sign-in.
    */
   readonly hqSigners: "some" | "none" | undefined;

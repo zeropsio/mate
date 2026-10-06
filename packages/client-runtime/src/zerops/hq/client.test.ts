@@ -1156,7 +1156,7 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
     });
   });
 
-  it("reads a change's conversation, and says something in it as the person", async () => {
+  it("says something in a change's conversation as the person", async () => {
     const { hq, api: hqApi } = api((seen) =>
       seen.path === "/api/apps/app-1/changes/app/3/comments"
         ? seen.method === "POST"
@@ -1164,7 +1164,6 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
           : json(200, { comments: [COMMENT] })
         : undefined,
     );
-    await expect(hqApi.changeComments(LINK)).resolves.toEqual([COMMENT]);
     await expect(hqApi.commentOnChange(LINK, "Ship it")).resolves.toEqual({
       ...COMMENT,
       body: "Ship it",
@@ -1277,36 +1276,6 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
     ]);
   });
 
-  // What lies between two of a repository's commits (`CompareResponse`): what a release puts live.
-  it("compares two commits of a repository by its name, as the person", async () => {
-    const COMPARED = {
-      base: SHA,
-      head: "b".repeat(40),
-      commits: [
-        {
-          sha: "b".repeat(40),
-          subject: "Quicker gallery",
-          authorName: "Ada",
-          at: "2026-10-02T10:00:00.000Z",
-          change: { number: 7, title: "Quicker gallery", mateProjectId: "p1" },
-        },
-      ],
-      truncated: false,
-      total: 1,
-    };
-    const { hq, api: hqApi } = api((seen) =>
-      seen.path === "/api/apps/app-1/repos/appdev/compare" ? json(200, COMPARED) : undefined,
-    );
-    await expect(
-      hqApi.compare("app-1", "appdev", { base: SHA, head: "b".repeat(40) }),
-    ).resolves.toEqual(COMPARED);
-    await hqApi.compare("app-1", "appdev", { head: "b".repeat(40) });
-    expect(hq.seen.slice(-2)).toMatchObject([
-      { method: "GET", search: `?base=${SHA}&head=${"b".repeat(40)}` },
-      { method: "GET", search: `?head=${"b".repeat(40)}` },
-    ]);
-  });
-
   // A write whose answer was lost (F22): what HQ holds now decides, read back once.
   const ROLLED = { ...RELEASE, tag: "v0.1.2", rollbackOf: "v0.1.0" } as const;
   const HARBOR = { id: "app-1", name: "Harbor", projects: [] };
@@ -1337,16 +1306,6 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
           : undefined,
       ask: (hqApi) => hqApi.closeChange(LINK),
       made: { ...CHANGE, state: "closed" },
-    },
-    {
-      name: "a comment HQ holds as the newest said",
-      write: { method: "POST", path: "/api/apps/app-1/changes/app/3/comments" },
-      holds: (seen) =>
-        seen.path === "/api/apps/app-1/changes/app/3/comments"
-          ? json(200, { comments: [COMMENT] })
-          : undefined,
-      ask: (hqApi) => hqApi.commentOnChange(LINK, COMMENT.body),
-      made: COMMENT,
     },
     {
       name: "a roll back HQ holds as its newest release",
@@ -1424,6 +1383,22 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
     expect(
       hq.seen.filter((entry) => entry.method === write.method && entry.path === write.path),
     ).toHaveLength(1);
+  });
+
+  // A comment has no name of its own: whose it is, the account's operation decides from HQ's
+  // conversation, by its author — the client never takes anybody's newest words for it.
+  it("leaves a comment whose answer was lost uncertain, reading nothing back", async () => {
+    const { hq, api: hqApi } = api((seen) => {
+      if (seen.path !== "/api/apps/app-1/changes/app/3/comments") return undefined;
+      if (seen.method === "POST") throw new TypeError("Failed to fetch");
+      return json(200, { comments: [COMMENT] });
+    });
+    await expect(hqApi.commentOnChange(LINK, COMMENT.body)).rejects.toMatchObject({
+      kind: "uncertain",
+    });
+    expect(
+      hq.seen.filter((entry) => entry.path === "/api/apps/app-1/changes/app/3/comments"),
+    ).toMatchObject([{ method: "POST" }]);
   });
 
   // HQ finishes a write whose client went away (F22): pressed again, it can meet itself as a refusal.

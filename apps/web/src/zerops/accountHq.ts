@@ -37,10 +37,10 @@ import {
   connectThroughThrowaway,
   zeropsThrowawayPlatform,
 } from "@t3tools/client-runtime/zerops/doorThrowaway";
+import { organizationMembers } from "@t3tools/client-runtime/data";
+import type { AtomRegistry } from "effect/unstable/reactivity";
 import type { ZeropsApiClient, ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
-import { selectMembers, type MembersCellRequest } from "@t3tools/client-runtime/zerops/data";
-import * as Effect from "effect/Effect";
-import { useCallback, useContext, useEffect, useMemo, useSyncExternalStore } from "react";
+import { useCallback, useContext, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 
 import { appBasePath } from "~/basePath";
 import { randomUUID } from "~/lib/utils";
@@ -59,8 +59,9 @@ import {
 } from "./hqVerdict";
 import { endHqSession, keptHqSessions } from "./keptSessions";
 import { useZeropsOrganizationMembersRead } from "./useZeropsMateOwners";
+import { useAccountDataOptional, type AccountData } from "./ZeropsAccountData";
 import { whenShown } from "./whenShown";
-import { ZeropsDataContext, type ZeropsDataContextValue } from "./zeropsDataContext";
+import { ZeropsDataContext } from "./zeropsDataContext";
 import { useZeropsSessionOptional } from "./ZeropsSessionProvider";
 
 export interface AccountHq {
@@ -134,16 +135,26 @@ export function useAccountHq(clientId: string | undefined): AccountHq {
     [kept, named, settled, trusted],
   );
   const admins = useMemo(() => ownersAndAdmins(members), [members]);
+  const account = useAccountDataOptional();
+  const revalidate = account?.revalidate;
+  const retryDetail = account?.retryDetail;
+  // A verdict this page held and forgot — its HQ said it is not the official one — says the list it
+  // was read from is old: the member list is read again, whenever it was read this session.
+  const heldVerdict = useRef(kept !== undefined);
+  useEffect(() => {
+    const held = kept !== undefined;
+    if (heldVerdict.current && !held && clientId !== undefined)
+      revalidate?.({ family: "organizationMembers", ownerId: clientId });
+    heldVerdict.current = held;
+  }, [clientId, kept, revalidate]);
   const reread = useCallback(() => {
-    if (data === null || owner === undefined) return;
-    const request: MembersCellRequest = {
-      kind: "members",
-      account: data.runtime.scope,
-      organization: data.organizationRef(owner.clientId),
-    };
-    Effect.runFork(data.runtime.cells.invalidate(request));
+    if (owner === undefined) return;
+    const members = { family: "organizationMembers", ownerId: owner.clientId } as const;
+    // Our own write made the list old; the person's again also lifts a refusal.
+    revalidate?.(members);
+    retryDetail?.(members);
     forgetNoHqVerdict(owner);
-  }, [data, owner]);
+  }, [owner, retryDetail, revalidate]);
   return {
     status: kept !== undefined || (!settled && trusted !== undefined) ? "ready" : status,
     hq,
@@ -212,31 +223,23 @@ function forgetKeptHq(clientId: string, hq: HqEndpoint): void {
 const apis = new Map<string, HqApi>();
 onAccountLifetimeClose(() => apis.clear());
 
-/**
- * The organization's official HQ as its member list names it now: the list read afresh through the
- * account's cells, never a verdict read before — another admin may have set one up since. A list
- * that cannot be read names none.
- */
-export function readOfficialHqNow(
-  data: Pick<ZeropsDataContextValue, "runtime" | "organizationRef">,
+/** The official HQ from the account's current member fact, refreshed for this birth attempt. */
+export async function readOfficialHqNow(
+  account: AccountData,
+  registry: AtomRegistry.AtomRegistry,
   clientId: string,
 ): Promise<OfficialHq> {
-  const request: MembersCellRequest = {
-    kind: "members",
-    account: data.runtime.scope,
-    organization: data.organizationRef(clientId),
-  };
-  const { cells } = data.runtime;
-  return Effect.runPromise(
-    Effect.scoped(
-      Effect.gen(function* () {
-        yield* cells.invalidate(request);
-        const lease = yield* cells.acquire(request);
-        const read = selectMembers(yield* lease.awaitSettled);
-        return findOfficialHq(read.status === "ready" ? read.members : []);
-      }),
-    ),
-  );
+  const orgId = account.orgId;
+  if (orgId === null) throw new Error("No organization is observed for this account.");
+  const demand = { family: "organizationMembers", ownerId: clientId } as const;
+  account.revalidate(demand);
+  if (!(await account.readDetail(demand))) {
+    throw new Error("Couldn't verify this organization's official HQ from Zerops.");
+  }
+  const read = registry.get(account.data.project(organizationMembers, { orgId, clientId }));
+  if (read.status !== "ready")
+    throw new Error("Couldn't verify this organization's official HQ from Zerops.");
+  return findOfficialHq(read.members);
 }
 
 /**

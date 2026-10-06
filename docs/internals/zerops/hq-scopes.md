@@ -82,6 +82,17 @@ The existing per-person `read_change` filter applies: environments are `{ refuse
 that person cannot read application changes. Navigation carries no application release catalog,
 recipes, repositories or move destinations; those remain app detail.
 
+Each navigation app also carries `changes`, its compact open menu rows (`HqNavigationChange`):
+repo, number, title, mateProjectId, state `open`, updatedAt, mergeability, ready and hasHead.
+Repository supplies the code/recipe label and link, Mate identity groups the row and supplies its
+author from navigation projects, updatedAt orders rows, mergeability drives the mark, and ready
+controls Review alongside the Mate's existing activity facts. hasHead preserves the provider's
+first-push filter without transferring a commit SHA. Descriptions, comments, commit contents and
+settled changes remain in app-detail/change/discussion scopes. A complete authorized read with no
+open changes is `[]`; a person without `read_change` receives `{ refused: reason }`.
+Navigation never subscribes to or hydrates application detail to obtain these rows.
+`scope-error` retains its `code`, reason and disposition on the wire for worded refusals.
+
 `HqNavigationPress` retains `heldForMs`, HQ's remaining hold duration at the read, along with
 `until`, kind, optional appId and importProcessId. The client can present elapsed time from the
 received duration; a clock or transport silence never decides whether the press succeeded or ended.
@@ -120,6 +131,20 @@ Invited/suspended members and integration tokens are excluded. Replies are
 `HqHandoverCandidatesMessage` with `candidates`, or
 `HqHandoverCandidatesError` with `refused` / `transient`. The reply is correlated and delivered
 only to the requesting connection; candidate enumeration is not part of navigation.
+
+Send `{type:"compare", requestId, appId, repo, base?, head}` for an on-demand repository
+comparison. `repo` keeps the repository name; `base` and `head` are full commit SHAs. Omitting
+`base` reads history through `head`. The private correlated reply is
+`{type:"compare", requestId, appId, repo, result: CompareResponse}`: nullable base, head,
+commits (SHA, subject, authorName, at, optional landed change), truncated and total, with the
+same bounds and ordering as before. It requires no scope subscription and creates no journal.
+`Changes.compare` checks this person's `read_change` permission before app/repository existence
+or git reads. A person without access gets the same refusal for hidden and unknown apps.
+Failures are `{type:"compare-error", requestId, appId, repo, code, reason, disposition}`;
+`disposition` is `refused` for denied access, source refusal or missing app/repository/commit,
+and `transient` for outages. `code` and nullable `reason` retain the server's explanation.
+Replies go only to the requesting connection. The HTTP
+`GET /api/apps/:appId/repos/:repo/compare` route is removed; clients use this socket request.
 
 An accepted attention report from a restarted Mate's newest link, with a new source environment
 or incarnation, rotates only that Mate's attention scope journal and sends an atomic `scope-reset`.
@@ -162,6 +187,25 @@ action. Omission never deletes a retained operation. Future explicit removals sh
 reader result. Isolated scope tests may replace the reader; an unbound reader refuses
 `unsupported` / `operation_reader_not_installed` rather than manufacturing an empty result.
 
+`Changes.navigation` reads every open menu row in one compact SQL query, without bodies,
+comment counts, git, recipes, repositories or releases. The scope hub shares that source across
+people and checks `read_change` at delivery. Change events compare shared per-app fingerprints
+and revise only changed app values, preserving other navigation facts. The source generation
+fences an in-flight baseline; permission changes fence delivery. Closing or merging a change
+replaces that application's complete open-row list. An unchanged event transfers no values.
+
 The production Core composition is shared by the running-Core harness. The retired
 `test/harness/coreWithDeployTimings.ts` remains deleted. Both distinct `0046_*.sql` migrations
 coexist, and guard exceptions are reconciled against the combined source.
+
+## Connection shutdown
+
+Renderer sockets and Mate links authorize before upgrading. At the lazy reader acquisition,
+Core rechecks that the Node TCP stream is still readable and writable. A peer can send FIN
+while those authorization reads are in flight; `ws.handleUpgrade` then skips its callback,
+leaving the platform's masked acquisition uninterruptible and preventing the served-routes
+scope from closing. Core cancels that abandoned request before entering the acquisition.
+The check and synchronous Node handshake run in one scheduler turn; subsequent reads use
+normal scheduling. No detached production fibers or shutdown timeout hide unfinished work.
+The HQ shutdown test keeps a Mate overview link live, closes a subscribed renderer, abandons
+the next renderer/Mate upgrade, waits for the server's FIN receipt, and bounds Core stop.

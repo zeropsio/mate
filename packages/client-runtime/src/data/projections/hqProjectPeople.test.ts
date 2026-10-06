@@ -146,6 +146,43 @@ describe("hqProjectPeople", () => {
     expect(people(read)[project]).toEqual(expected);
   });
 
+  it.each(["transient", "definitive-refusal"] as const)(
+    "preserves person facts when the HQ transport reports %s",
+    (outcome) => {
+      const unavailable = apply(read, [
+        stream(linkKeys.hq(ORG), {
+          kind: "fault",
+          fault: { outcome, message: "HQ unavailable" },
+          jitter: 0,
+        }),
+      ]);
+      expect(people(unavailable)).toEqual(people(read));
+    },
+  );
+
+  it("keeps an owner's id when person coverage is partial, without inventing their name", () => {
+    const partial = apply(emptyAccount, [
+      ...SCOPES.flatMap((scope) => [
+        stream(scope, { kind: "demand", demanded: true }),
+        stream(scope, { kind: "attempt" }),
+      ]),
+      {
+        kind: "hq-delivery",
+        scopes: generations,
+        reset: true,
+        rows: rows.slice(0, 1),
+        removals: [],
+      },
+    ]);
+    expect(people(partial).ada).toEqual({
+      owned: true,
+      owner: null,
+      waitsOnViewer: true,
+      signedInNow: { "claude-code": "u-jan" },
+      everSignedIn: { "claude-code": "u-jan" },
+    });
+  });
+
   it("draws nobody for an owner HQ withdrew from the reader", () => {
     const withdrawn = apply(read, [
       {

@@ -1,7 +1,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import { useNavigate, useParams } from "@tanstack/react-router";
+import { matesAttention, type MateAttentionRead } from "@t3tools/client-runtime/data";
 import type { EnvironmentId } from "@t3tools/contracts";
-import type { HqMates } from "@t3tools/client-runtime/zerops/hq";
 import { maskSecrets } from "@t3tools/shared/messagePreview";
 import { toneIdForKind } from "@t3tools/shared/threadStatus";
 import {
@@ -10,11 +10,13 @@ import {
   MessageCircleQuestionIcon,
   ShieldQuestionIcon,
 } from "lucide-react";
-import { useCallback, useEffect, useRef } from "react";
+import { Atom } from "effect/unstable/reactivity";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 
 import { getClientSettings, useClientSettings } from "../hooks/useSettings";
 import { hqMatesAtom } from "../state/zerops";
 import { useMutedMates } from "../zerops/mutedMates";
+import { useAccountOrgId, useProjection } from "../zerops/ZeropsAccountData";
 import {
   hasDesktopNotifications,
   hasNotificationSound,
@@ -23,22 +25,60 @@ import {
   unlockNotificationAudio,
 } from "../threadNotifications";
 import {
+  attentionWatch,
   observedEnvironments,
+  overviewWatch,
   watchMates,
   type MatesBaseline,
+  type WatchedMate,
 } from "./ThreadNotificationCoordinator.logic";
 import { toastManager } from "./ui/toast";
 import { threadStatusToneTextClass } from "./Sidebar.logic";
 import { cn } from "~/lib/utils";
 
+const NO_ATTENTION_READ: Readonly<Record<string, MateAttentionRead>> = {};
+const NO_ATTENTION = Atom.make(NO_ATTENTION_READ);
+
 /**
- * Notifications for every Mate the person may observe, from HQ's overview of it (step A): no
- * socket to a Mate is needed for its chats to ring. The view HQ answers now is the baseline;
- * while it is not current — HQ's stream ended or broke — nothing rings, and the next view is a
- * baseline again, so nothing that happened meanwhile is replayed.
+ * Notifications for every Mate the person may observe, off its attention (`matesAttention`), or for
+ * a Mate from before it, off HQ's overview of it: no socket to a Mate is needed for its chats to
+ * ring. What is known of a Mate when its word comes to be of now is its baseline; while its word is
+ * not of now — its link or HQ's broke — nothing of it rings, and the next look is a baseline again,
+ * so nothing that happened meanwhile is replayed. Its count is the dock's badge.
  */
 export function ThreadNotificationCoordinator() {
   const view = useAtomValue(hqMatesAtom);
+  const orgId = useAccountOrgId();
+  const projectIds = useMemo(
+    () => (view === null ? [] : [...view.mates.keys()].toSorted()),
+    [view],
+  );
+  const attention = useProjection(
+    matesAttention,
+    orgId === null ? null : { orgId, projectIds },
+    NO_ATTENTION,
+  );
+  const told = view?.mates ?? null;
+  const current = view?.current === true;
+  const watched = useMemo(() => {
+    const mates = new Map<string, WatchedMate>();
+    for (const projectId of projectIds) {
+      const overview = told?.get(projectId);
+      const read = attention[projectId];
+      const titled = (threadId: string) =>
+        overview?.threads?.list.find((digest) => digest.id === threadId)?.title ?? "";
+      const look =
+        read !== undefined && read.attention !== null
+          ? read.live
+            ? attentionWatch(read.attention, titled)
+            : undefined
+          : current && overview !== undefined
+            ? overviewWatch(overview)
+            : undefined;
+      if (look !== undefined) mates.set(projectId, look);
+    }
+    return mates;
+  }, [attention, current, projectIds, told]);
   const mode = useClientSettings((settings) => settings.notificationMode);
   const inAppNotificationsEnabled = useClientSettings(
     (settings) => settings.inAppNotificationsEnabled,
@@ -52,11 +92,16 @@ export function ThreadNotificationCoordinator() {
     setNotificationBadge(pending.current.size);
   }, []);
 
-  // A pending notification closes once its Mate leaves HQ's view — as last known, so a stream
-  // that broke for a moment closes none.
-  const known = view?.mates ?? null;
+  // A pending notification closes once its Mate leaves what is known — as last known, so a
+  // stream that broke for a moment closes none.
+  const known = told;
+  const said = useMemo(
+    () =>
+      Object.values(attention).flatMap((read) => (read.attention === null ? [] : [read.attention])),
+    [attention],
+  );
   useEffect(() => {
-    const observed = observedEnvironments(known);
+    const observed = observedEnvironments(known, said);
     const count = pending.current.size;
     for (const [tag, { environmentId, notification }] of pending.current) {
       if (observed.has(environmentId)) continue;
@@ -64,7 +109,7 @@ export function ThreadNotificationCoordinator() {
       pending.current.delete(tag);
     }
     if (count !== pending.current.size) setNotificationBadge(pending.current.size);
-  }, [known]);
+  }, [known, said]);
 
   useEffect(() => {
     const clear = () => {
@@ -95,20 +140,15 @@ export function ThreadNotificationCoordinator() {
 
   if (mode === "off" && !inAppNotificationsEnabled) return null;
 
-  return (
-    <MatesNotifications
-      mates={view?.current === true ? view.mates : null}
-      onNotification={onNotification}
-    />
-  );
+  return <MatesNotifications mates={watched} onNotification={onNotification} />;
 }
 
 function MatesNotifications({
   mates,
   onNotification,
 }: {
-  /** HQ's view of the Mates now; none while it is not HQ's answer now. */
-  mates: HqMates | null;
+  /** Each Mate whose word is of now, as the watch reads it. */
+  mates: ReadonlyMap<string, WatchedMate>;
   onNotification: (environmentId: EnvironmentId, notification: Notification) => void;
 }) {
   const mode = useClientSettings((settings) => settings.notificationMode);

@@ -42,14 +42,12 @@ vi.mock("~/zerops/zeropsDataContext", () => ({
     projectRef: (organizationId: string, projectId: string) => ({ organizationId, projectId }),
     runtime: {
       scope: "account",
-      cells: { known: () => ({}) },
       commands: {
         updateProjectTags: app.pending,
         createProjectWithMate: app.pending,
       },
     },
   }),
-  useKnown: () => ({ state: "known", value: [] }),
   runZeropsCommand: (command: Promise<unknown>) => command,
 }));
 vi.mock("~/zerops/useZeropsCandidates", () => ({

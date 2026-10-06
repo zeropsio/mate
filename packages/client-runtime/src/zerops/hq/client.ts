@@ -19,13 +19,10 @@ import {
   attachmentPath,
   ChangeDetailResponse,
   type ChangeDetailQuery,
-  CommentListResponse,
-  CompareResponse,
   HqChange,
   HqChangeComment,
   type AttachmentLink,
   type ChangeLink,
-  type CompareQuery,
 } from "@t3tools/shared/hqChanges";
 import {
   GitCredential,
@@ -365,11 +362,6 @@ export interface HqApi {
     signal?: AbortSignal,
     snapshot?: ChangeDetailQuery,
   ) => Promise<ChangeDetailResponse>;
-  /** What was said on a change, oldest first. */
-  readonly changeComments: (
-    link: ChangeLink,
-    signal?: AbortSignal,
-  ) => Promise<ReadonlyArray<HqChangeComment>>;
   /** Says `body` on a change, as the person. */
   readonly commentOnChange: (link: ChangeLink, body: string) => Promise<HqChangeComment>;
   /**
@@ -387,16 +379,6 @@ export interface HqApi {
    * or while the stream is down.
    */
   readonly mateRecipe: (appId: string, signal?: AbortSignal) => Promise<RecipeTierResponse>;
-  /**
-   * What lies between two commits of an application's repository, by its name, read as the person
-   * (`GET /api/apps/:appId/repos/:repo/compare`): git's `base..head`, whoever may read its changes.
-   */
-  readonly compare: (
-    appId: string,
-    repo: string,
-    query: CompareQuery,
-    signal?: AbortSignal,
-  ) => Promise<CompareResponse>;
   /** A release made in HQ as the person, of what its offer showed; HQ tags and deploys it. */
   readonly release: (appId: string, request: CreateReleaseRequest) => Promise<Asked<Release>>;
   /** Production back to `tag` as the person: a new release listing its entries. */
@@ -566,14 +548,12 @@ const unreadable = () =>
   });
 
 const readChangeDetail = decoded(ChangeDetailResponse);
-const readComments = decoded(CommentListResponse);
 const readComment = decoded(HqChangeComment);
 const readChange = decoded(HqChange);
 const readMerged = decodedAsked(HqChange);
 
 const readGitCredential = decoded(GitCredential);
 const readGitCredentialList = decoded(GitCredentialList);
-const readCompare = decoded(CompareResponse);
 const readRecipeTier = decoded(RecipeTierResponse);
 const readReleases = decoded(ReleaseListResponse);
 const readRelease = decodedAsked(Release);
@@ -599,12 +579,6 @@ const sameEntries = (
 
 /** An application's releases' path at HQ's API. */
 const releasesPath = (appId: string): string => `/api/apps/${encodeURIComponent(appId)}/releases`;
-
-/** A comparison of two of a repository's commits at HQ's API; no `base` is from its first. */
-const comparePath = (appId: string, repo: string, { base, head }: CompareQuery): string =>
-  `/api/apps/${encodeURIComponent(appId)}/repos/${encodeURIComponent(repo)}/compare?${new URLSearchParams(
-    base === undefined ? { head } : { base, head },
-  ).toString()}`;
 
 /** A change's own path at HQ's API. */
 const changePath = ({ appId, repo, number }: ChangeLink): string =>
@@ -952,12 +926,6 @@ export function makeHqApi(input: {
       ),
     );
   };
-  const commentsOf = async (link: ChangeLink, signal?: AbortSignal) =>
-    (
-      await readComments(
-        await authorized(`${changePath(link)}/comments`, signal === undefined ? {} : { signal }),
-      )
-    ).comments;
   /** The change as HQ holds it, if it is in `state`. */
   const changeIn = async (link: ChangeLink, state: HqChange["state"]) => {
     const { change } = await changeOf(link);
@@ -1134,23 +1102,15 @@ export function makeHqApi(input: {
         },
       ),
     change: changeOf,
-    changeComments: commentsOf,
-    // A comment has no name of its own: the newest said on the change, in the very words, is taken
-    // for it.
-    commentOnChange: (link, body) =>
-      confirmed(
-        async () =>
-          readComment(
-            await authorized(
-              `${changePath(link)}/comments`,
-              { method: "POST", body: JSON.stringify({ body }) },
-              true,
-            ),
-          ),
-        async () => {
-          const newest = (await commentsOf(link)).at(-1);
-          return newest?.body === body ? newest : undefined;
-        },
+    // A comment has no name of its own: one whose answer was lost stays uncertain here, and the
+    // account's operation tells it from HQ's conversation by its author.
+    commentOnChange: async (link, body) =>
+      readComment(
+        await authorized(
+          `${changePath(link)}/comments`,
+          { method: "POST", body: JSON.stringify({ body }) },
+          true,
+        ),
       ),
     mergeChange: (link, expectedHead) =>
       confirmed(
@@ -1206,10 +1166,6 @@ export function makeHqApi(input: {
           `/api/apps/${encodeURIComponent(appId)}/repos/${encodeURIComponent(repo)}/source?${new URLSearchParams({ ...query })}`,
           signal === undefined ? {} : { signal },
         ),
-      ),
-    compare: async (appId, repo, query, signal) =>
-      readCompare(
-        await authorized(comparePath(appId, repo, query), signal === undefined ? {} : { signal }),
       ),
     // A release is named by its tag, which HQ gives no second one: the one HQ holds under it is
     // this one where it tags the same `main` with the same commits.

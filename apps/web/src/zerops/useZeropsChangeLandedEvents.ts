@@ -19,6 +19,7 @@
 import {
   changeLandedEvents,
   linkedChanges,
+  readZeropsMembership,
   type ChangeLandedEvent,
   type FlowPullRequest,
 } from "@t3tools/client-runtime/zerops";
@@ -27,6 +28,7 @@ import { findCandidate, type CandidateRow } from "@t3tools/client-runtime/zerops
 import { useMemo } from "react";
 
 import { useZeropsProjectFlowOptional } from "./projectFlowContext";
+import { useHqAppDetailHold } from "./useHqAppDetail";
 import { useZeropsCandidates } from "./useZeropsCandidates";
 
 const NONE: ReadonlyArray<ChangeLandedEvent> = [];
@@ -49,6 +51,21 @@ export function changeLandedEventsFor(
   const merged = [...flows.values()].flatMap((flow) => [...flow.merged]);
   const events = changeLandedEvents(merged, mate.row.project.id);
   return events.length === 0 ? NONE : events;
+}
+
+/**
+ * Holds the application detail of the Mate that lives in `environmentId` while its conversation is
+ * drawn: its landings are that detail's, and nothing else holds it for a conversation.
+ */
+export function useZeropsMateAppDetailHold(environmentId: string | null | undefined): void {
+  const { listing } = useZeropsCandidates();
+  const mate =
+    environmentId === null || environmentId === undefined
+      ? undefined
+      : findCandidate(listing, (candidate) => String(candidate.environmentId) === environmentId);
+  const groupId =
+    mate?.kind === "found" ? readZeropsMembership(mate.row.project).groupId : undefined;
+  useHqAppDetailHold(groupId === undefined || groupId === null ? [] : [groupId]);
 }
 
 export function useZeropsChangeLandedEvents(

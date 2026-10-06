@@ -367,7 +367,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   );
   const askHandoverCandidates = useAccountDataOptional()?.handoverCandidates;
   // Whom a Mate may be handed over to is HQ's answer, asked once its picker opens: a load asks
-  // nothing (D49). HQ alone decides who may hand over and to whom; its refusal is a failed read.
+  // nothing. HQ alone decides who may hand over and to whom; its refusal is a failed read.
   const [handover, setHandover] = useState<{
     readonly projectId: string;
     readonly read:

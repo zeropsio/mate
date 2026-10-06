@@ -19,6 +19,19 @@ duplicate family, scope name, index name or operation kind when the layer loads.
   `detail`, only while demanded and once per owner id); optional `indexes` (each a `name` and a `keyOf`); for a
   Zerops family, `zerops` (`entity`, the `membership` and `updates` searches, `decode`, and
   `verifyPath` where leaving must ask "deleted or not yours?");
+- for an HQ family, `hq` (`scope`, `idOf`, `keyOf`, `decode`, and `wireScope` where it demands a
+  scope of its own). A family HQ only relays declares `revisionOf` — its author's revision, read
+  with what HQ says beside the value (whether its author is live), which the reducer compares with
+  the same value arriving straight from the author — and no `wireScope`:
+  it rides the scope another family demands for the same kind (`mateAttention` beside `hqMate`);
+- for a source without realtime, `sampled` instead of `zerops` (its scope's `demand` is `detail`):
+  the `path` read whole for one owner — a `GET`, or with a `search` a `POST` of it, so only the
+  rows asked travel — a `decode` that keeps only what a screen needs, and `freshMs`. Its one fact
+  is keyed by the owner; its stream runs in sampled mode — read again every
+  `STREAM_POLICY.sampledIntervalMs` while demanded, on a new demand once older than `freshMs`, and
+  at once after our own write (`revalidate`) — or, with `freshMs: null`, in `once` mode: read once,
+  again only on our write or the person's again. Never claimed live. A flow awaiting one
+  (`readDetail`) gets "no answer" at once while the link is down or refused, never a wait;
 - export its scope helper (`scopeOf(spec, orgId)`);
 - add one line to `FAMILIES`.
 

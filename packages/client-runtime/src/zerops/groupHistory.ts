@@ -5,7 +5,7 @@
  * *time*, and it is assembled rather than fetched, from three answers:
  *
  * - **What `main` holds** — HQ's comparison from the repository's first commit to `main`'s head
- *   (`GET /api/apps/:appId/repos/:repo/compare`), newest first and bounded: the spine. Each commit
+ *   (`compare` on HQ's scope socket), newest first and bounded: the spine. Each commit
  *   names the change of HQ's that landed it, where one did.
  * - **What each environment runs** — the sha in the deployed version's name, read from Zerops
  *   (`groupDeploys.ts`), so a commit knows it is live.

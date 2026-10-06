@@ -5,6 +5,7 @@ import {
   HqZeropsRefusedResponse,
   HQ_ZEROPS_REFUSED,
   HqStreamRequest,
+  HqStreamMessage,
   HqNavigationStatus,
   HqNavigationApp,
   HqNavigationPress,
@@ -29,6 +30,7 @@ const readRequest = Schema.decodeUnknownSync(HqStreamRequest);
 const readApp = Schema.decodeUnknownSync(HqNavigationApp);
 const readPress = Schema.decodeUnknownSync(HqNavigationPress);
 const readStatus = Schema.decodeUnknownSync(HqNavigationStatus);
+const readWire = Schema.decodeUnknownSync(Schema.fromJsonString(HqStreamMessage));
 
 it.each([{ type: "retry" }, { type: "retry", scopes: [{ kind: "navigation" }] }])(
   "decodes a person's explicit retry: %j",
@@ -62,6 +64,19 @@ it("navigation preserves production release standing and deploy evidence", () =>
     contents: { empty: false, deletingProjectIds: [] },
     projectIds: ["production"],
     births: [],
+    changes: [
+      {
+        repo: "appdev",
+        number: 1,
+        mateProjectId: "mate",
+        title: "Add a login page",
+        state: "open",
+        hasHead: true,
+        updatedAt: "2026-10-06T00:00:00Z",
+        mergeability: "conflict",
+        ready: false,
+      },
+    ],
     environments: [
       {
         projectId: "production",
@@ -128,6 +143,20 @@ it("navigation preserves production release standing and deploy evidence", () =>
   expect(readPress(press)).toEqual(press);
 });
 
+it.each(["forbidden", "zerops_refused", "scope_not_found"])(
+  "keeps scope-error code %s in the wire for worded refusals",
+  (code) => {
+    const failure = {
+      type: "scope-error",
+      scope: { kind: "navigation" },
+      code,
+      reason: "no-access",
+      disposition: "refused",
+    };
+    expect(readWire(JSON.stringify(failure))).toEqual(failure);
+  },
+);
+
 const readFacts = Schema.decodeUnknownSync(HqPersonFacts);
 const readPerson = Schema.decodeUnknownSync(HqNavigationPerson);
 const readCandidates = Schema.decodeUnknownSync(HqHandoverCandidatesMessage);
@@ -158,6 +187,50 @@ it("defines person ownership separately from who the Mate waits on, and correlat
     };
     expect(readCandidatesError(failure)).toEqual(failure);
   }
+});
+
+for (const base of [undefined, "a".repeat(40)]) {
+  it(`carries a correlated compare ${base === undefined ? "history" : "range"} read`, () => {
+    const request = {
+      type: "compare",
+      requestId: "r",
+      appId: "app",
+      repo: "appdev",
+      ...(base === undefined ? {} : { base }),
+      head: "b".repeat(40),
+    };
+    expect(readRequest(request)).toEqual(request);
+    const reply = {
+      type: "compare",
+      requestId: "r",
+      appId: "app",
+      repo: "appdev",
+      result: { base: base ?? null, head: request.head, commits: [], truncated: false, total: 0 },
+    };
+    expect(readWire(JSON.stringify(reply))).toEqual(reply);
+    for (const disposition of ["refused", "transient"]) {
+      const failure = {
+        type: "compare-error",
+        requestId: "r",
+        appId: "app",
+        repo: "appdev",
+        code: "unavailable",
+        reason: null,
+        disposition,
+      };
+      expect(readWire(JSON.stringify(failure))).toEqual(failure);
+    }
+  });
+}
+it.each([
+  { head: "main" },
+  { base: "--all", head: "a".repeat(40) },
+  { base: "", head: "a".repeat(40) },
+  {},
+])("rejects malformed compare refs %j", (query) => {
+  expect(() =>
+    readRequest({ type: "compare", requestId: "r", appId: "app", repo: "appdev", ...query }),
+  ).toThrow();
 });
 
 it("navigation distinguishes current and historical login people and carries finish decisions", () => {

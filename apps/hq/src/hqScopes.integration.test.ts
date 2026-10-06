@@ -76,6 +76,18 @@ describe("HQ scoped socket", () => {
                       });
                 assert.strictEqual(app.status, 201);
                 const appId = (app.body as { id: string }).id;
+                yield* core.sql`INSERT INTO hq_repo (app_id, name, created_by)
+                  VALUES (${appId}::uuid, ${"appdev"}, ${"owner"})`;
+                const head = "a".repeat(40);
+                yield* core.sql`INSERT INTO hq_change
+                  (app_id, repo, number, mate_project_id, title, body, head, ready_head, mergeability)
+                  VALUES (${appId}::uuid, ${"appdev"}, ${1}, ${projectId},
+                    ${"Menu change " + index}, ${"private description ".repeat(500)},
+                    ${head}, ${head}, ${"clean"})`;
+                yield* core.sql`INSERT INTO hq_change
+                  (app_id, repo, number, mate_project_id, title, state)
+                  VALUES (${appId}::uuid, ${"appdev"}, ${2}, ${projectId},
+                    ${"settled private title"}, ${"closed"})`;
                 assert.strictEqual(
                   (yield* core.call("POST", "/api/mates", {
                     session,
@@ -187,7 +199,7 @@ describe("HQ scoped socket", () => {
             `HQ five people / 30 Mates / cold roles: p50=${times[2]?.toFixed(1)}ms p95=${times[4]?.toFixed(1)}ms\n`,
           );
           assert.isAtMost(times[2]!, 300);
-          assert.isAtMost(times[4]!, 600);
+          assert.isAtMost(times[4]!, 300);
           for (const sample of samples) {
             assert.lengthOf(sample.deliveries, 1);
             const payload = JSON.stringify(sample.deliveries);
@@ -198,6 +210,10 @@ describe("HQ scoped socket", () => {
             assert.notInclude(payload, '"releases"');
             assert.notInclude(payload, '"repos"');
             assert.notInclude(payload, '"moveTo"');
+            assert.include(payload, '"title":"Menu change 0"');
+            assert.include(payload, '"hasHead":true');
+            assert.notInclude(payload, "private description");
+            assert.notInclude(payload, "settled private title");
           }
           const ticket = yield* ticketFor(core.call, session);
           const resumed = yield* Effect.promise(

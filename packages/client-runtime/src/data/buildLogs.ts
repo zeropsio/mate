@@ -1,18 +1,24 @@
+/**
+ * The builds' logs a screen shows, one window per build shared by every card drawn for it: a
+ * backfilled page, then, while a card follows it, its own stream — reopened from the newest line
+ * when the platform closes it. Each window is read only while a card holds it (and a moment after,
+ * for the next card drawn for the same build), and erased once the account's store withholds or
+ * deletes its project. Lines live in memory only.
+ *
+ * @module data/buildLogs
+ */
 import {
   mergeBoundedBuildLogLines,
   type BuildLogLine,
   type BuildLogQuery,
-} from "../activity/buildLog.ts";
-import type { ZeropsDataPolicy } from "./policy.ts";
-import type { BuildLogFollowHandle, BuildLogTransport } from "./logTransport.ts";
-import { BuildLogTransportError } from "./logTransport.ts";
+} from "../zerops/activity/buildLog.ts";
 import {
-  organizationKeyOf,
-  projectRoleGrantsAccess,
-  type AccessState,
-  type AccountScope,
-  type ProjectRef,
-} from "./types.ts";
+  BuildLogTransportError,
+  type BuildLogFollowHandle,
+  type BuildLogTransport,
+} from "./adapters/buildLog.ts";
+import { factOf } from "./reducer.ts";
+import type { AccountStore } from "./store.ts";
 
 export type BuildLogStatus = "idle" | "loading" | "live" | "ended" | "error";
 export type BuildLogPublicError = "access" | "backfill" | "stream" | "account";
@@ -37,7 +43,6 @@ export interface BuildLogSnapshot {
   readonly lines: ReadonlyArray<BuildLogLine>;
   readonly bytes: number;
   readonly status: BuildLogStatus;
-  readonly loadingOlder: boolean;
   readonly cursor: BuildLogCursor;
   readonly gaps: BuildLogGaps;
   readonly truncation: BuildLogTruncation;
@@ -47,8 +52,6 @@ export interface BuildLogSnapshot {
 export interface SharedBuildLogSession {
   getSnapshot(): BuildLogSnapshot;
   subscribe(listener: () => void): () => void;
-  loadOlder(): Promise<void>;
-  retry(): Promise<void>;
   /** Resolves after currently reachable asynchronous transport work settles. */
   drain(): Promise<void>;
 }
@@ -56,8 +59,6 @@ export interface SharedBuildLogSession {
 export interface BuildLogLease {
   readonly session: SharedBuildLogSession;
   setFollow(follow: boolean): void;
-  loadOlder(): Promise<void>;
-  retry(): Promise<void>;
   /**
    * Idempotent. The final release stops following at once and keeps what was read for
    * {@link LOG_RELEASE_GRACE_MS}: a card drawn again for the same build in it (a row that
@@ -68,7 +69,7 @@ export interface BuildLogLease {
 
 export type BuildLogSessionKey = string & { readonly BuildLogSessionKey: unique symbol };
 
-export type BuildLogRegistryErrorKind = "account" | "access" | "capacity" | "closed";
+export type BuildLogRegistryErrorKind = "access" | "capacity" | "closed";
 
 export class BuildLogRegistryError extends Error {
   readonly kind: BuildLogRegistryErrorKind;
@@ -82,12 +83,12 @@ export class BuildLogRegistryError extends Error {
 
 export interface BuildLogRegistry {
   acquire(
-    project: ProjectRef,
+    projectId: string,
     query: BuildLogQuery,
     options?: { readonly follow?: boolean },
   ): BuildLogLease;
   drain(): Promise<void>;
-  /** Erases sessions no longer covered by the current account grant. */
+  /** Erases the logs of projects the viewer may no longer read. */
   reconcileAccess(): void;
   diagnostics(): {
     readonly activeSessions: number;
@@ -98,21 +99,35 @@ export interface BuildLogRegistry {
   shutdown(): void;
 }
 
+export interface BuildLogPolicy {
+  readonly logBackfillLines: number;
+  readonly logPublishBatchLines: number;
+  readonly retainedLogLinesPerSession: number;
+  readonly retainedLogBytesPerSession: number;
+  readonly activeLogSessionsPerAccount: number;
+  readonly logPublicationCoalescingMs: number;
+  /**
+   * How long a build log's stream stands open with no frame before it counts
+   * as live: its first frame replays what was written since the backfill.
+   */
+  readonly logStreamSettleMs: number;
+}
+
+export const BUILD_LOG_POLICY: BuildLogPolicy = {
+  logBackfillLines: 500,
+  logPublishBatchLines: 100,
+  retainedLogLinesPerSession: 2_000,
+  retainedLogBytesPerSession: 5 * 1_024 * 1_024,
+  activeLogSessionsPerAccount: 32,
+  logPublicationCoalescingMs: 100,
+  logStreamSettleMs: 1_000,
+};
+
 export interface BuildLogRegistryOptions {
-  readonly scope: AccountScope;
-  readonly access: () => AccessState;
-  readonly now: () => number;
+  /** Whether the viewer may read a project's logs now, as the account's store holds it. */
+  readonly readable: (projectId: string) => boolean;
   readonly transport: BuildLogTransport;
-  readonly policy: Pick<
-    ZeropsDataPolicy,
-    | "logBackfillLines"
-    | "logPublishBatchLines"
-    | "retainedLogLinesPerSession"
-    | "retainedLogBytesPerSession"
-    | "activeLogSessionsPerAccount"
-    | "logPublicationCoalescingMs"
-    | "logStreamSettleMs"
-  >;
+  readonly policy: BuildLogPolicy;
   readonly setTimer: (callback: () => void, delayMs: number) => unknown;
   readonly clearTimer: (handle: unknown) => void;
 }
@@ -121,30 +136,16 @@ const emptySnapshot = (): BuildLogSnapshot => ({
   lines: [],
   bytes: 0,
   status: "idle",
-  loadingOlder: false,
   cursor: { oldestLineId: null, newestLineId: null },
   gaps: { older: false, newer: false },
   truncation: { lines: 0, bytes: 0 },
   error: null,
 });
 
-const sameAccount = (scope: AccountScope, project: ProjectRef): boolean => {
-  const account = project.organization.account;
-  return (
-    account.apiOrigin === scope.account.apiOrigin && account.accountId === scope.account.accountId
-  );
-};
-
-/** Full ProjectRef plus every supported filter field; token material is never part of identity. */
-export function buildLogSessionKeyOf(
-  project: ProjectRef,
-  query: BuildLogQuery,
-): BuildLogSessionKey {
+/** The project plus every supported filter field; token material is never part of identity. */
+export function buildLogSessionKeyOf(projectId: string, query: BuildLogQuery): BuildLogSessionKey {
   return JSON.stringify([
-    project.organization.account.apiOrigin,
-    project.organization.account.accountId,
-    project.organization.organizationId,
-    project.projectId,
+    projectId,
     query.buildServiceStackId,
     query.appVersionId,
     query.fromIso ?? null,
@@ -153,14 +154,14 @@ export function buildLogSessionKeyOf(
 
 const publicError = (error: unknown, fallback: "backfill" | "stream"): BuildLogPublicError => {
   if (error instanceof BuildLogTransportError) {
-    if (error.kind === "account-fence" || error.kind === "closed") return "account";
+    if (error.kind === "closed") return "account";
     if (error.kind === "grant") return "access";
   }
   return fallback;
 };
 
 class BuildLogSession implements SharedBuildLogSession {
-  readonly #project: ProjectRef;
+  readonly #projectId: string;
   readonly #query: BuildLogQuery;
   readonly #transport: BuildLogTransport;
   readonly #policy: BuildLogRegistryOptions["policy"];
@@ -174,13 +175,11 @@ class BuildLogSession implements SharedBuildLogSession {
   #disposed = false;
   #lifecycleGeneration = 0;
   #initialGeneration = 0;
-  #olderGeneration = 0;
   #followGeneration = 0;
   #followDesired = false;
   #followHandle: BuildLogFollowHandle | undefined;
   #reopening = false;
   #initialLoading = false;
-  #olderLoading = false;
   #pending: ReadonlyArray<BuildLogLine> = [];
   #pendingDroppedLines = 0;
   #pendingDroppedBytes = 0;
@@ -193,12 +192,12 @@ class BuildLogSession implements SharedBuildLogSession {
   #liveWithFlush = false;
 
   constructor(
-    project: ProjectRef,
+    projectId: string,
     query: BuildLogQuery,
     options: BuildLogRegistryOptions,
     canRead: () => boolean,
   ) {
-    this.#project = project;
+    this.#projectId = projectId;
     this.#query = query;
     this.#transport = options.transport;
     this.#policy = options.policy;
@@ -236,63 +235,6 @@ class BuildLogSession implements SharedBuildLogSession {
     if (this.#snapshot.status === "ended") this.#openFollow();
   }
 
-  async loadOlder(): Promise<void> {
-    if (!this.#canRead() || this.#olderLoading) return;
-    const beforeLineId = this.#snapshot.cursor.oldestLineId;
-    if (beforeLineId === null) return;
-    this.#olderLoading = true;
-    const older = ++this.#olderGeneration;
-    this.#publish({ ...this.#snapshot, loadingOlder: true, error: null });
-    const lifecycle = this.#lifecycleGeneration;
-    const operation = this.#transport
-      .loadPage({
-        project: this.#project,
-        query: this.#query,
-        limit: this.#policy.logBackfillLines,
-        beforeLineId,
-        signal: this.#lifecycleController.signal,
-      })
-      .then((page) => {
-        if (!this.#isCurrent(lifecycle) || older !== this.#olderGeneration) return;
-        const merged = mergeBoundedBuildLogLines(
-          this.#snapshot.lines,
-          page.lines,
-          {
-            maxLines: this.#policy.retainedLogLinesPerSession,
-            maxBytes: this.#policy.retainedLogBytesPerSession,
-          },
-          "oldest",
-        );
-        this.#publishWindow(merged, {
-          older: page.rejectedItems > 0 || merged.droppedOlder,
-          newer: merged.droppedNewer,
-          loadingOlder: false,
-        });
-      })
-      .catch((error: unknown) => {
-        if (!this.#isCurrent(lifecycle) || older !== this.#olderGeneration) return;
-        this.#publish({
-          ...this.#snapshot,
-          loadingOlder: false,
-          error: publicError(error, "backfill"),
-        });
-      })
-      .finally(() => {
-        if (older === this.#olderGeneration) this.#olderLoading = false;
-      });
-    this.#track(operation);
-    await operation;
-  }
-
-  async retry(): Promise<void> {
-    if (!this.#canRead() || this.#initialLoading) return;
-    this.#stopFollow();
-    this.#olderGeneration += 1;
-    this.#olderLoading = false;
-    this.#loadInitial();
-    await this.drain();
-  }
-
   async drain(): Promise<void> {
     while (this.#operations.size > 0) {
       await Promise.allSettled(this.#operations);
@@ -305,7 +247,6 @@ class BuildLogSession implements SharedBuildLogSession {
     this.#lifecycleController.abort();
     this.#lifecycleGeneration += 1;
     this.#initialGeneration += 1;
-    this.#olderGeneration += 1;
     this.#stopFollow();
     if (this.#flushHandle !== undefined) {
       this.#clearTimer(this.#flushHandle);
@@ -327,10 +268,10 @@ class BuildLogSession implements SharedBuildLogSession {
     this.#initialLoading = true;
     const lifecycle = this.#lifecycleGeneration;
     const initial = ++this.#initialGeneration;
-    this.#publish({ ...this.#snapshot, status: "loading", loadingOlder: false, error: null });
+    this.#publish({ ...this.#snapshot, status: "loading", error: null });
     const operation = this.#transport
       .loadPage({
-        project: this.#project,
+        projectId: this.#projectId,
         query: this.#query,
         limit: this.#policy.logBackfillLines,
         signal: this.#lifecycleController.signal,
@@ -349,7 +290,6 @@ class BuildLogSession implements SharedBuildLogSession {
         this.#publishWindow(merged, {
           older: page.rejectedItems > 0 || merged.droppedOlder,
           newer: merged.droppedNewer,
-          loadingOlder: false,
           status: this.#followDesired ? "loading" : "ended",
           error: null,
         });
@@ -375,7 +315,7 @@ class BuildLogSession implements SharedBuildLogSession {
     const follow = ++this.#followGeneration;
     const operation = this.#transport
       .openFollow({
-        project: this.#project,
+        projectId: this.#projectId,
         query: this.#query,
         signal: this.#lifecycleController.signal,
         ...(this.#snapshot.cursor.newestLineId === null
@@ -547,7 +487,6 @@ class BuildLogSession implements SharedBuildLogSession {
       this.#publishWindow(merged, {
         older: this.#pendingOlderGap || merged.droppedOlder,
         newer: this.#pendingNewerGap || merged.droppedNewer,
-        loadingOlder: this.#snapshot.loadingOlder,
         truncatedLines: this.#pendingDroppedLines,
         truncatedBytes: this.#pendingDroppedBytes,
       });
@@ -571,7 +510,6 @@ class BuildLogSession implements SharedBuildLogSession {
     change: {
       readonly older: boolean;
       readonly newer: boolean;
-      readonly loadingOlder: boolean;
       readonly status?: BuildLogStatus;
       readonly error?: BuildLogPublicError | null;
       readonly truncatedLines?: number;
@@ -583,7 +521,6 @@ class BuildLogSession implements SharedBuildLogSession {
       lines: window.lines,
       bytes: window.bytes,
       status: change.status ?? this.#snapshot.status,
-      loadingOlder: change.loadingOlder,
       cursor: {
         oldestLineId: window.lines.at(0)?.id ?? null,
         newestLineId: window.lines.at(-1)?.id ?? null,
@@ -624,7 +561,7 @@ class BuildLogSession implements SharedBuildLogSession {
 export const LOG_RELEASE_GRACE_MS = 5_000;
 
 interface RegistryEntry {
-  readonly project: ProjectRef;
+  readonly projectId: string;
   readonly session: BuildLogSession;
   readonly follows: Map<number, boolean>;
   /** Its close, pending since its final release. */
@@ -635,56 +572,13 @@ export function makeBuildLogRegistry(options: BuildLogRegistryOptions): BuildLog
   const sessions = new Map<BuildLogSessionKey, RegistryEntry>();
   let nextLeaseId = 0;
   let closed = false;
-  let expiryTimer: unknown;
-  let expiryDeadline: number | null = null;
-
-  const accessDeadline = (project: ProjectRef): number | null => {
-    const access = options.access();
-    const grant =
-      access.status === "verified"
-        ? access
-        : access.status === "verifying" || access.status === "failed"
-          ? access.previous
-          : null;
-    if (
-      grant === null ||
-      grant.accountEpoch !== options.scope.epoch ||
-      grant.account.accountId !== options.scope.account.accountId ||
-      grant.account.apiOrigin !== options.scope.account.apiOrigin ||
-      grant.deadlineMs <= options.now() ||
-      !grant.organizations.some(
-        ({ organization }) =>
-          organizationKeyOf(organization) === organizationKeyOf(project.organization),
-      ) ||
-      !projectRoleGrantsAccess(grant, project, "any-role")
-    )
-      return null;
-    return grant.deadlineMs;
-  };
 
   const reconcileAccess = (): void => {
-    let deadline: number | null = null;
     for (const [key, entry] of sessions) {
-      const allowedUntil = accessDeadline(entry.project);
-      if (allowedUntil === null) {
-        sessions.delete(key);
-        if (entry.closing !== undefined) options.clearTimer(entry.closing);
-        entry.session.dispose("access");
-      } else deadline = allowedUntil;
-    }
-    if (deadline === expiryDeadline) return;
-    if (expiryTimer !== undefined) options.clearTimer(expiryTimer);
-    expiryTimer = undefined;
-    expiryDeadline = deadline;
-    if (deadline !== null) {
-      expiryTimer = options.setTimer(
-        () => {
-          expiryTimer = undefined;
-          expiryDeadline = null;
-          reconcileAccess();
-        },
-        Math.max(0, deadline - options.now()),
-      );
+      if (options.readable(entry.projectId)) continue;
+      sessions.delete(key);
+      if (entry.closing !== undefined) options.clearTimer(entry.closing);
+      entry.session.dispose("access");
     }
   };
 
@@ -693,15 +587,13 @@ export function makeBuildLogRegistry(options: BuildLogRegistryOptions): BuildLog
     entry.closing = undefined;
     if (sessions.get(key) === entry) sessions.delete(key);
     entry.session.dispose();
-    reconcileAccess();
   };
 
-  const acquire: BuildLogRegistry["acquire"] = (project, query, leaseOptions = {}) => {
+  const acquire: BuildLogRegistry["acquire"] = (projectId, query, leaseOptions = {}) => {
     if (closed) throw new BuildLogRegistryError("closed");
-    if (!sameAccount(options.scope, project)) throw new BuildLogRegistryError("account");
     reconcileAccess();
-    if (accessDeadline(project) === null) throw new BuildLogRegistryError("access");
-    const key = buildLogSessionKeyOf(project, query);
+    if (!options.readable(projectId)) throw new BuildLogRegistryError("access");
+    const key = buildLogSessionKeyOf(projectId, query);
     let entry = sessions.get(key);
     if (entry?.closing !== undefined) {
       options.clearTimer(entry.closing);
@@ -716,11 +608,13 @@ export function makeBuildLogRegistry(options: BuildLogRegistryOptions): BuildLog
       if (sessions.size >= options.policy.activeLogSessionsPerAccount) {
         throw new BuildLogRegistryError("capacity");
       }
-      const session = new BuildLogSession(project, query, options, () => {
-        reconcileAccess();
-        return sessions.get(key) === entry;
-      });
-      entry = { project, session, follows: new Map() };
+      const session = new BuildLogSession(
+        projectId,
+        query,
+        options,
+        () => options.readable(projectId) && sessions.get(key) === entry,
+      );
+      entry = { projectId, session, follows: new Map() };
       sessions.set(key, entry);
     }
 
@@ -750,8 +644,6 @@ export function makeBuildLogRegistry(options: BuildLogRegistryOptions): BuildLog
       ownedEntry.session.setFollow([...ownedEntry.follows.values()].some(Boolean));
     };
 
-    reconcileAccess();
-
     return {
       session: ownedEntry.session,
       setFollow: (follow) => {
@@ -759,8 +651,6 @@ export function makeBuildLogRegistry(options: BuildLogRegistryOptions): BuildLog
         ownedEntry.follows.set(leaseId, follow);
         ownedEntry.session.setFollow([...ownedEntry.follows.values()].some(Boolean));
       },
-      loadOlder: () => (released ? Promise.resolve() : ownedEntry.session.loadOlder()),
-      retry: () => (released ? Promise.resolve() : ownedEntry.session.retry()),
       release,
     };
   };
@@ -773,7 +663,6 @@ export function makeBuildLogRegistry(options: BuildLogRegistryOptions): BuildLog
       entry.session.dispose();
     }
     sessions.clear();
-    reconcileAccess();
     options.transport.shutdown();
   };
 
@@ -789,5 +678,42 @@ export function makeBuildLogRegistry(options: BuildLogRegistryOptions): BuildLog
       closed,
     }),
     shutdown,
+  };
+}
+
+/**
+ * The account's build logs over its store: a project's logs are read while the store does not
+ * withhold or delete it, and erased the moment it does.
+ */
+export function makeAccountBuildLogs(options: {
+  readonly store: AccountStore;
+  readonly transport: BuildLogTransport;
+  readonly policy?: Partial<BuildLogPolicy>;
+  readonly setTimer?: (callback: () => void, delayMs: number) => unknown;
+  readonly clearTimer?: (handle: unknown) => void;
+}): BuildLogRegistry {
+  const { store } = options;
+  const registry = makeBuildLogRegistry({
+    readable: (projectId) => {
+      const content = factOf(store.state(), "project", projectId)?.content.kind;
+      return content !== "purged" && content !== "deleted";
+    },
+    transport: options.transport,
+    policy: { ...BUILD_LOG_POLICY, ...options.policy },
+    setTimer:
+      options.setTimer ??
+      // @effect-diagnostics-next-line globalTimers:off -- the logs' one timer port; plain promises, no Effect runtime.
+      ((callback, delayMs) => globalThis.setTimeout(callback, delayMs)),
+    clearTimer:
+      options.clearTimer ??
+      ((handle) => globalThis.clearTimeout(handle as ReturnType<typeof setTimeout>)),
+  });
+  const unsubscribe = store.subscribe(registry.reconcileAccess);
+  return {
+    ...registry,
+    shutdown: () => {
+      unsubscribe();
+      registry.shutdown();
+    },
   };
 }

@@ -16,7 +16,8 @@ import { AtomRegistry } from "effect/unstable/reactivity";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 
 import { zeropsSessionAtom } from "../state/zerops";
-import { makeMemberCells } from "./__fixtures__/memberCells";
+import { LAYER_TURNS_MS, makeMemberAccount } from "./__fixtures__/sampledAccount";
+import { AccountDataContext } from "./ZeropsAccountData";
 import { ZeropsDataContext, type ZeropsDataContextValue } from "./zeropsDataContext";
 import {
   useWaitsOnViewer,
@@ -73,24 +74,17 @@ describe("useZeropsOrganizationMembersRead", () => {
       },
       epoch: AccountEpoch.make(1),
     };
-    const organizationRef = (organizationId: string): OrganizationRef => ({
-      kind: "organization",
-      account: scope.account,
-      organizationId: ZeropsOrganizationId.make(organizationId),
-    });
     let reads = 0;
-    const cells = await makeMemberCells({
-      scope,
-      organization: organizationRef("org-1"),
+    const registry = AtomRegistry.make();
+    const account = makeMemberAccount({
+      registry,
+      orgId: "org-1",
       members: async () => {
         reads += 1;
         return [{ id: "cu-jan", user: { fullName: "Jan Novák" } }] as never;
       },
     });
-    const data = {
-      runtime: { scope, cells },
-      organizationRef,
-    } as unknown as ZeropsDataContextValue;
+    const data = { runtime: { scope } } as unknown as ZeropsDataContextValue;
     const seen: Array<ReturnType<typeof useZeropsOrganizationMembersRead>> = [];
     function Probe() {
       seen.push(useZeropsOrganizationMembersRead({ clientId: "org-1", enabled: true }));
@@ -103,21 +97,25 @@ describe("useZeropsOrganizationMembersRead", () => {
           null,
           createElement(
             RegistryContext.Provider,
-            { value: AtomRegistry.make() },
+            { value: registry },
             createElement(
               ZeropsDataContext.Provider,
               { value: data },
-              createElement(Probe),
-              createElement(Probe),
-              createElement(Probe),
-              createElement(Probe),
+              createElement(
+                AccountDataContext.Provider,
+                { value: account.value },
+                createElement(Probe),
+                createElement(Probe),
+                createElement(Probe),
+                createElement(Probe),
+              ),
             ),
           ),
         ),
       );
     });
     await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, LAYER_TURNS_MS));
     });
     expect(seen.at(-1)?.status).toBe("ready");
     expect(seen.at(-1)?.members).toHaveLength(1);

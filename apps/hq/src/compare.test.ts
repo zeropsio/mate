@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off -- the tests reach Core as zcp and a person do: over HTTP and git.
+// @effect-diagnostics nodeBuiltinImport:off -- the tests reach Core as zcp and a person do: over HTTP, the scope socket and git.
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
@@ -9,7 +9,7 @@ import * as Schedule from "effect/Schedule";
 
 import { gitClient } from "../test/harness/gitClient.ts";
 import { mateWithChange, remoteOf, rowsWhere } from "../test/harness/mates.ts";
-import { sessionFor, startCore, untilHealth } from "../test/harness/runningCore.ts";
+import { sessionFor, startCore, ticketFor, untilHealth } from "../test/harness/runningCore.ts";
 import { tempPostgresLayer } from "../test/harness/tempPostgres.ts";
 
 interface Compared {
@@ -26,12 +26,25 @@ interface Compared {
 
 describe("what lies between two commits of a repository", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    it.effect("retires the HTTP comparison read", () =>
+      Effect.gen(function* () {
+        const { call } = yield* startCore(true);
+        yield* untilHealth(call, "active");
+        const owner = yield* sessionFor(call, "door-owner");
+        assert.strictEqual(
+          (yield* call("GET", "/api/apps/unknown/repos/appdev/compare?head=main", {
+            session: owner,
+          })).status,
+          404,
+        );
+      }).pipe(Effect.scoped),
+    );
     /**
      * `appdev` with HQ's own first commit, then change 1 and change 2 merged, each a squash on
      * main; change 2's own commit, which main never holds; change 3 open with 101 commits.
      */
     const repository = Effect.gen(function* () {
-      const { call, fake, origin, url } = yield* startCore(true);
+      const { call, fake, origin, url, socket } = yield* startCore(true);
       yield* untilHealth(call, "active");
       const owner = yield* sessionFor(call, "door-owner");
       const { appId, credential, auth } = yield* mateWithChange(call, fake, owner);
@@ -103,8 +116,39 @@ describe("what lies between two commits of a repository", () => {
       }
       const long = yield* headOf;
       yield* git.checked(["push", "-q", "origin", "HEAD:refs/heads/mate/P_MATE/3"], work);
+      let sequence = 0;
       const compare = (session: string, query: string, app = appId, repo = "appdev") =>
-        call("GET", `/api/apps/${app}/repos/${repo}/compare?${query}`, { session });
+        Effect.gen(function* () {
+          const client = yield* socket(
+            `/api/structure/ws?ticket=${yield* ticketFor(call, session)}`,
+          );
+          yield* Effect.addFinalizer(() => client.close);
+          assert.isTrue(client.opened);
+          const params = new URLSearchParams(query);
+          const requestId = `comparison-${++sequence}`;
+          yield* client.send({
+            type: "compare",
+            requestId,
+            appId: app,
+            repo,
+            ...(params.has("base") ? { base: params.get("base") } : {}),
+            head: params.get("head"),
+          });
+          const reply = yield* client.takeWhere(
+            "comparison reply",
+            (message) => message.requestId === requestId,
+          );
+          assert.strictEqual(reply.appId, app);
+          assert.strictEqual(reply.repo, repo);
+          yield* client.close;
+          return reply.type === "compare"
+            ? { type: reply.type, body: reply.result }
+            : {
+                type: reply.type,
+                body: { code: reply.code, reason: reply.reason },
+                disposition: reply.disposition,
+              };
+        });
       return { call, fake, owner, appId, root, one, two, long, compare };
     });
 
@@ -115,7 +159,7 @@ describe("what lies between two commits of a repository", () => {
           const { owner, one, two, compare } = yield* repository;
           const between = (query: string) =>
             Effect.map(compare(owner, query), (answer) => {
-              assert.strictEqual(answer.status, 200);
+              assert.strictEqual(answer.type, "compare");
               return answer.body as Compared;
             });
           const forward = yield* between(`base=${one.squash}&head=${two.squash}`);
@@ -175,38 +219,24 @@ describe("what lies between two commits of a repository", () => {
       }).pipe(Effect.scoped),
     );
 
-    it.effect(
-      "refuses a commit the repository lacks, a malformed one, and an unknown repository",
-      () =>
-        Effect.gen(function* () {
-          const { owner, two, compare } = yield* repository;
-          const unknown = "f".repeat(40);
-          for (const query of [`head=${unknown}`, `base=${unknown}&head=${two.squash}`]) {
-            assert.deepStrictEqual((yield* compare(owner, query)).body, {
-              code: "commit_not_found",
-              reason: "commit_not_found",
-            });
-          }
-          for (const query of [
-            "head=main",
-            `base=--all&head=${two.squash}`,
-            `base=&head=${two.squash}`,
-            "",
-          ]) {
-            assert.deepStrictEqual(
-              [(yield* compare(owner, query)).status, (yield* compare(owner, query)).body],
-              [400, { code: "invalid" }],
-              query,
-            );
-          }
-          assert.deepStrictEqual(
-            (yield* compare(owner, `head=${two.squash}`, undefined, "nothing")).body,
-            {
-              code: "repo_not_found",
-              reason: "repo_not_found",
-            },
-          );
-        }).pipe(Effect.scoped),
+    it.effect("refuses a commit the repository lacks, and an unknown repository", () =>
+      Effect.gen(function* () {
+        const { owner, two, compare } = yield* repository;
+        const unknown = "f".repeat(40);
+        for (const query of [`head=${unknown}`, `base=${unknown}&head=${two.squash}`]) {
+          assert.deepStrictEqual((yield* compare(owner, query)).body, {
+            code: "commit_not_found",
+            reason: "commit_not_found",
+          });
+        }
+        assert.deepStrictEqual(
+          (yield* compare(owner, `head=${two.squash}`, undefined, "nothing")).body,
+          {
+            code: "repo_not_found",
+            reason: "repo_not_found",
+          },
+        );
+      }).pipe(Effect.scoped),
     );
 
     it.effect("answers no one who may not read the application's changes, and leaks nothing", () =>
@@ -234,7 +264,7 @@ describe("what lies between two commits of a repository", () => {
         const refused = yield* compare(dev, `head=${two.squash}`).pipe(
           Effect.filterOrFail(
             (answer) =>
-              answer.status === 403 &&
+              answer.type === "compare-error" &&
               (answer.body as { reason?: string }).reason === "changes_not_seen",
           ),
           Effect.retry(Schedule.spaced(Duration.millis(50))),

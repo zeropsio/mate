@@ -41,6 +41,7 @@ import { Fragment, useCallback, useEffect, useMemo, useState, type ReactNode } f
 import { Button } from "~/components/ui/button";
 import { buildThreadRouteParams } from "~/threadRoutes";
 import { useAskMateToFix, type FixProblem } from "~/zerops/fixRequest";
+import { useHqAppDetailHold } from "~/zerops/useHqAppDetail";
 import {
   useZeropsProjectFlowOptional,
   type ZeropsProjectFlow,
@@ -55,10 +56,7 @@ import {
   useZeropsChangeDetail,
   type ReadoutPart,
 } from "~/zerops/useZeropsChangeDetail";
-import {
-  useZeropsChangeComments,
-  type ZeropsChangeComments,
-} from "~/zerops/useZeropsChangeComments";
+import { useChangeDiscussion, type ChangeDiscussion } from "~/zerops/useChangeDiscussion";
 import { useZeropsChangeRun } from "~/zerops/useZeropsChangeRun";
 import { useHqPictureSource, type ChangePictureSource } from "~/zerops/useChangePicture";
 import { useZeropsLandedChange } from "~/zerops/useZeropsLandedChange";
@@ -114,6 +112,8 @@ export function ZeropsChangeReview({
    */
   readonly back?: ReviewButton | undefined;
 }) {
+  // The change's head, words and landing are its application's detail: held while it is drawn.
+  useHqAppDetailHold([target.groupId]);
   const reviewOffers = useChangeOffers()(target.groupId);
   const router = useRouter();
   const flowValue = useZeropsProjectFlowOptional();
@@ -272,7 +272,7 @@ function ChangeReviewData({
     repository: pull.repository,
     number: pull.number,
   });
-  const comments = useZeropsChangeComments({
+  const comments = useChangeDiscussion({
     appId: target.groupId,
     repo: pull.repository,
     number: pull.number,
@@ -411,7 +411,7 @@ export interface ChangeReviewViewProps {
   /** HQ's detail of it: its files and diffs, its commits, how it merges. */
   readonly readout: ReadoutPart<ChangeReadout>;
   /** What was said on it, and the way to say something back. */
-  readonly comments: ZeropsChangeComments;
+  readonly comments: ChangeDiscussion;
   readonly remarks: ReadonlyArray<ChangeRemark>;
   /**
    * What HQ offers the person (`useChangeOffers`): the comment box, Merge, Close — each only

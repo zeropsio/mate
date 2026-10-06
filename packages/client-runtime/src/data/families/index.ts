@@ -13,11 +13,20 @@ import {
   hqStatusFamily,
   placementFamily,
 } from "./hqNavigation.ts";
+import { hqDiscussionFamily } from "./hqDiscussion.ts";
+import { hqAppDetailFamily } from "./hqAppDetail.ts";
 import { hqMateFamily } from "./hqMate.ts";
+import { mateAttentionFamily } from "./mateAttention.ts";
+import { organizationLocationsFamily } from "./organizationLocations.ts";
+import { organizationMembersFamily } from "./organizationMembers.ts";
 import { processFamily } from "./process.ts";
 import { projectFamily } from "./project.ts";
 import { versionFamily } from "./version.ts";
+import { publicRoutingFamily } from "./publicRouting.ts";
+import { serviceAgentsFamily } from "./serviceAgents.ts";
 import { serviceFamily } from "./service.ts";
+import { usageFamily } from "./usage.ts";
+import { usageHistoryFamily } from "./usageHistory.ts";
 import type { AnyFamilySpec, DetailListing } from "./spec.ts";
 
 /** The registry, checked once at startup: a family, a scope name and an index name each once. */
@@ -30,6 +39,8 @@ export function defineFamilies(
     seen.add(what);
   };
   for (const spec of families) {
+    if (spec.sampled !== undefined && (spec.zerops !== undefined || spec.scope.demand !== "detail"))
+      throw new Error(`The sampled family ${spec.family} is read on demand, never registered.`);
     once(`family ${spec.family}`);
     once(`scope ${spec.scope.suffix}`);
     for (const listing of spec.details ?? []) once(`scope ${listing.suffix}`);
@@ -50,6 +61,15 @@ export const FAMILIES = defineFamilies([
   hqPressFamily,
   hqMateFamily,
   serviceFamily,
+  mateAttentionFamily,
+  hqDiscussionFamily,
+  usageFamily,
+  usageHistoryFamily,
+  organizationMembersFamily,
+  organizationLocationsFamily,
+  serviceAgentsFamily,
+  publicRoutingFamily,
+  hqAppDetailFamily,
 ]);
 
 const byFamily = new Map<string, AnyFamilySpec>(FAMILIES.map((spec) => [spec.family, spec]));
@@ -80,6 +100,16 @@ export function scopeListing(scope: ScopeKey): ScopeListing {
   const listing = bySuffix.get(scope.split(":")[2] ?? "");
   if (listing === undefined) throw new Error(`No family lists the scope ${scope}.`);
   return listing;
+}
+
+/**
+ * How a stream is observed: a sampled family's scope is read, never pushed to — on a cadence, or
+ * once where time never ages it; the rest realtime.
+ */
+export function streamMode(key: string): "realtime" | "sampled" | "once" {
+  const sampled = bySuffix.get(key.split(":")[2] ?? "")?.spec.sampled;
+  if (sampled === undefined) return "realtime";
+  return sampled.freshMs === null ? "once" : "sampled";
 }
 
 /** The family whose members a scope lists. */

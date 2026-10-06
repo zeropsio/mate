@@ -1,6 +1,4 @@
-import { selectPublicAccess } from "@t3tools/client-runtime/zerops/data";
-import type { ZeropsPublicAccess } from "@t3tools/client-runtime/zerops";
-import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
+import type { PublicAccessView } from "@t3tools/client-runtime/data";
 import { useStopPublicAccess } from "~/zerops/useStopPublicAccess";
 import { Button } from "../ui/button";
 
@@ -9,13 +7,11 @@ export function StopPublicAccessStatus({
   shown,
   again,
 }: {
-  readonly shown: Shown<ZeropsPublicAccess> | undefined;
+  readonly shown: PublicAccessView | undefined;
   readonly again: () => void;
 }) {
-  if (shown === undefined) return null;
-  const access = selectPublicAccess(shown);
-  const failed = access.state === "failed";
-  if (access.state === "ready") return null;
+  if (shown === undefined || shown.state === "ready") return null;
+  const failed = shown.state === "failed";
   return (
     <div
       data-zerops-surface="stop-public-access-status"
@@ -41,15 +37,14 @@ export function StopPublicAccessLinks({
   shown,
   again,
 }: {
-  readonly shown: Shown<ZeropsPublicAccess> | undefined;
+  readonly shown: PublicAccessView | undefined;
   readonly again: () => void;
 }) {
   if (shown === undefined) return null;
-  const access = selectPublicAccess(shown);
   return (
     <div className="flex min-w-0 flex-col gap-1">
       <StopPublicAccessStatus shown={shown} again={again} />
-      {access.routes.map((route) => (
+      {shown.routes.map((route) => (
         <a
           className="truncate text-xs underline underline-offset-2"
           key={route.url}

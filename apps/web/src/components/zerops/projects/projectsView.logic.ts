@@ -730,23 +730,6 @@ export function productionMark(
   return { version, tone: STOP_TONE[production.stop.state] };
 }
 
-/**
- * Whether a row rises, and whether that is known — what the list may remember of it. A row that
- * needs the person rises. One whose answer is out (`pending`, `unread`), or whose Mates are not
- * all known (`matesKnown`: a Mate reconnecting may be asking), stays where it was last drawn and
- * is not remembered either way.
- */
-export function rowRise(
-  line: ProjectRowLine,
-  remembered: boolean | undefined,
-  matesKnown: boolean,
-): { readonly rises: boolean; readonly known: boolean } {
-  if (line.kind === "needs-you") return { rises: true, known: true };
-  if (line.kind === "pending" || line.kind === "unread" || !matesKnown)
-    return { rises: remembered === true, known: false };
-  return { rises: false, known: true };
-}
-
 /** The rows that rise first, then the rest, each keeping the order it was given. */
 export function risenFirst<E>(
   rows: ReadonlyArray<E>,
@@ -778,26 +761,4 @@ export function rowMateActivitiesOf<T>(
       },
     ];
   });
-}
-
-/** A Mate's candidate as a row reads its link: the join with the environment at its origin. */
-type RowMateCandidate = ZeropsCandidate & { readonly connection?: unknown };
-
-/**
- * Whether every Mate of a row is known not to be asking: HQ holds it live (its word says), or the
- * link this tab holds to it is up and its conversations read. One whose link is down and HQ does
- * not hold live — a restart, an update, a blip — may be asking, so its row stays where it was
- * drawn (`rowRise`). A Mate this tab never linked has nothing to come back from.
- */
-export function matesKnownOf<T extends RowMateCandidate>(
-  mates: ReadonlyArray<T>,
-  activityOf: (item: T) => ZeropsAgentActivity | undefined,
-  conversationsRead: (item: T) => boolean,
-): boolean {
-  return mates.every(
-    (item) =>
-      activityOfNow(activityOf(item)) !== undefined ||
-      item.connection === undefined ||
-      (item.group === "connected" && item.environmentId !== undefined && conversationsRead(item)),
-  );
 }

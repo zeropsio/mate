@@ -17,6 +17,7 @@ import type { CompareResponse } from "@t3tools/shared/hqChanges";
 import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
 
 import { useOfficialHq } from "./accountHq";
+import { useAccountDataOptional } from "./ZeropsAccountData";
 
 /** One application's comparisons as HQ answered them, held under `compareReadKey`. */
 export interface AppCompares {
@@ -74,6 +75,7 @@ export function useZeropsCompares(
   asks: ReadonlyMap<string, ReadonlyArray<CompareRead>>,
 ): ZeropsCompares {
   const hq = useOfficialHq();
+  const account = useAccountDataOptional();
   const store = hq === null ? null : storeAt(hq.address);
   const subscribe = useCallback(
     (listener: () => void) => {
@@ -94,12 +96,12 @@ export function useZeropsCompares(
   );
 
   useEffect(() => {
-    if (hq === null || store === null) return;
+    if (account === null || store === null) return;
     for (const [appId, read] of JSON.parse(due) as Array<[string, CompareRead]>) {
       const key = appKey(appId, read);
       if (store.snapshot.asked.has(key)) continue;
       update(store, (held) => ({ ...held, asked: new Set(held.asked).add(key) }));
-      void hq.api.compare(appId, read.repository, read.query).then(
+      void account.compare({ appId, repo: read.repository, ...read.query }).then(
         (answer) => {
           update(store, (held) => {
             const failures = new Map(held.failures);
@@ -115,7 +117,7 @@ export function useZeropsCompares(
         },
       );
     }
-  }, [due, hq, store]);
+  }, [account, due, store]);
 
   return useMemo(
     () =>

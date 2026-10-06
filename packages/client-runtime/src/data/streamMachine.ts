@@ -79,7 +79,7 @@ export const NEXT_ACTIONS: Readonly<Record<Phase, ReadonlyArray<NextAction["kind
   idle: ["await-demand"],
   connecting: ["await-handshake"],
   baselining: ["await-baseline"],
-  live: ["await-changes", "revalidate"],
+  live: ["await-changes", "revalidate", "await-input-change"],
   stale: ["await-parent"],
   recovering: ["retry"],
   reauthenticating: ["repair-session"],
@@ -91,7 +91,11 @@ export const NEXT_ACTIONS: Readonly<Record<Phase, ReadonlyArray<NextAction["kind
 
 export interface StreamState {
   readonly phase: Phase;
-  readonly mode: "realtime" | "sampled";
+  /**
+   * `sampled`: no realtime, read again on a cadence while demanded. `once`: no realtime and nothing
+   * that ages it by time — read again only when our write or the person's again asks.
+   */
+  readonly mode: "realtime" | "sampled" | "once";
   /** A root owns recovery; a child waits for its parent's attempts. */
   readonly parent: string | null;
   readonly demanded: boolean;
@@ -117,6 +121,11 @@ export type StreamEvent =
   | { readonly kind: "deadline" }
   /** The person asked to try again. */
   | { readonly kind: "manual-retry" }
+  /**
+   * A sampled or read-once scope's value is old: its revalidation came due, or our own write
+   * changed it. It is read again, under its value; a refusal stays refused.
+   */
+  | { readonly kind: "revalidate" }
   /** An input the refusal was decided over changed (credential, grant, filter). */
   | { readonly kind: "input-changed" }
   /** The single-flight session repair succeeded. */
@@ -145,9 +154,12 @@ export const STREAM_POLICY = {
   baselineTimeoutMs: 20_000,
   backoffBaseMs: 1_000,
   backoffCapMs: 60_000,
-  /** Where realtime is unverified, a demanded sampled source revalidates this often (§10.5). */
+  /** Where realtime is unverified, a demanded sampled source revalidates this often. */
   sampledIntervalMs: 30_000,
 } as const;
+
+/** What a connection or scope that passed its deadline says to the person. */
+export const NO_ANSWER_IN_TIME = "No answer came in time.";
 
 export function initialStream(input: {
   readonly parent: string | null;
@@ -291,7 +303,9 @@ export function transition(state: StreamState, event: StreamEvent, now: number):
             next:
               state.mode === "sampled"
                 ? { kind: "revalidate", at: now + STREAM_POLICY.sampledIntervalMs }
-                : { kind: "await-changes" },
+                : state.mode === "once"
+                  ? { kind: "await-input-change" }
+                  : { kind: "await-changes" },
           })
         : settle(state);
     case "fault":
@@ -306,11 +320,15 @@ export function transition(state: StreamState, event: StreamEvent, now: number):
       return state.parent !== null && isActive(state.phase) ? awaitParent(state) : settle(state);
     case "deadline":
       return state.phase === "connecting" || state.phase === "baselining"
-        ? fail(state, { outcome: "transient", message: `No answer while ${state.phase}.` }, 1, now)
+        ? fail(state, { outcome: "transient", message: NO_ANSWER_IN_TIME }, 1, now)
         : settle(state);
     case "session-repaired":
       return state.phase === "reauthenticating"
         ? attempt({ ...state, repaired: true }, now)
+        : settle(state);
+    case "revalidate":
+      return state.mode !== "realtime" && (state.phase === "live" || state.phase === "recovering")
+        ? attempt(state, now)
         : settle(state);
     case "manual-retry":
     case "input-changed":

@@ -1,9 +1,7 @@
 import { ZEROPS_SESSION_STORAGE_KEY, type ZeropsUser } from "@t3tools/client-runtime/zerops";
-import type { ZeropsCellAdapter } from "@t3tools/client-runtime/zerops/data";
 import type { Link } from "@t3tools/client-runtime/zerops/environments";
 import { INVALIDATION_COALESCE_MS } from "@t3tools/client-runtime/zerops/knowledge/invalidation";
 import { makeAccountHarness, type AccountHarness } from "@t3tools/client-runtime/zerops/testing";
-import * as Effect from "effect/Effect";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -65,37 +63,12 @@ const person: ZeropsUser = {
 const storedSession = (harness: AccountHarness) =>
   harness.browser.openTab().localStorage.getItem(ZEROPS_SESSION_STORAGE_KEY);
 
-/** The platform's locations, counting how often the broker reads them. */
-function locationsSource() {
-  let reads = 0;
-  const unavailable = () =>
-    Effect.fail({
-      _tag: "ZeropsCellSourceError" as const,
-      kind: "unavailable" as const,
-      retryable: false,
-    });
-  const adapter: ZeropsCellAdapter = {
-    readProjectPublicAccess: () => Effect.never,
-    readOrganizationLocations: () =>
-      Effect.sync(() => {
-        reads++;
-        return [{ id: "loc-1", name: "Prague", pingUrl: "https://prague.example.test" }];
-      }),
-    readServiceAuthorizedAgents: unavailable,
-    readServiceMateFlag: unavailable,
-    readOrganizationIntegrationTokens: unavailable,
-    readOrganizationMembers: unavailable,
-  };
-  return { adapter, reads: () => reads };
-}
-
 /**
  * The signed-in product, admitted, on a clock the test moves. Timers still
  * run on their own between moves, so the harness's task turns go by.
  */
 async function admittedProduct(
   options: {
-    readonly cellAdapter?: ZeropsCellAdapter;
     /** An open dialog and a document title that name the projects. */
     readonly layers?: boolean;
     /** Mate p1's conversation over this link, which dropped this long after the mount (null: never). */
@@ -125,20 +98,11 @@ async function admittedProduct(
         };
   const tab: MountedTab = await mountTab(harness, harness.browser.openTab(), {
     page: async () => {
-      const {
-        AccountProduct,
-        Conversation,
-        ListingState,
-        OrganizationLocations,
-        ProductChild,
-        ProjectNames,
-      } = await import("./__fixtures__/accountProduct");
+      const { AccountProduct, Conversation, ListingState, ProductChild, ProjectNames } =
+        await import("./__fixtures__/accountProduct");
       const { ProjectDialog, ProjectTitle } = await import("./__fixtures__/platformLayers");
       return (
-        <AccountProduct
-          datastream={harness.datastream}
-          {...(options.cellAdapter === undefined ? {} : { cellAdapter: options.cellAdapter })}
-        >
+        <AccountProduct datastream={harness.datastream}>
           <ProductChild
             label={CHILD}
             onMount={() => {
@@ -149,9 +113,6 @@ async function admittedProduct(
           <ListingState />
           {conversation === undefined ? null : (
             <Conversation projectId="p1" link={conversation.link} linkLostAt={linkLostAt} />
-          )}
-          {options.cellAdapter === undefined ? null : (
-            <OrganizationLocations organizationId="org-1" />
           )}
           {options.layers === true ? (
             <>
@@ -175,42 +136,6 @@ afterEach(async () => {
 });
 
 describe("ZeropsInventoryProvider lapse", () => {
-  // The one erasure a lapse keeps: the broker's values (DESIGN law 5, §9 C4).
-  it("broker values erased at the deadline", async () => {
-    const source = locationsSource();
-    const { harness, tab, pass, mounts } = await admittedProduct({
-      cellAdapter: source.adapter,
-    });
-    await pass(0);
-    expect(tab.text()).toContain("locations: known Prague");
-    harness.rest.hang("GET /user/info");
-
-    await pass(16 * MINUTE_MS);
-
-    expect(mounts()).toBe(1);
-    expect(tab.text()).toContain("locations: withheld");
-    expect(tab.text()).not.toContain("Prague");
-    expect(source.reads()).toBe(1);
-  });
-
-  it("a resource erased by lapse reads again on the next grant", async () => {
-    const source = locationsSource();
-    const { harness, tab, pass, mounts } = await admittedProduct({
-      cellAdapter: source.adapter,
-    });
-    await pass(0);
-    const renewals = harness.rest.hang("GET /user/info");
-    await pass(16 * MINUTE_MS);
-    expect(tab.text()).toContain("locations: withheld");
-
-    renewals();
-    await pass(2 * MINUTE_MS);
-
-    expect(mounts()).toBe(1);
-    expect(source.reads()).toBe(2);
-    expect(tab.text()).toContain("locations: known Prague");
-  });
-
   // T-L2: the product stays mounted and usable; only its platform regions are withheld.
   it("a frozen tab past the deadline keeps children mounted, shows no platform text, renews on return", async () => {
     const { harness, tab, pass, mounts } = await admittedProduct();
@@ -242,14 +167,9 @@ describe("ZeropsInventoryProvider lapse", () => {
   });
 
   it("no platform text anywhere in the document while lapsed", async () => {
-    const source = locationsSource();
-    const { harness, tab, pass } = await admittedProduct({
-      layers: true,
-      cellAdapter: source.adapter,
-    });
+    const { harness, tab, pass } = await admittedProduct({ layers: true });
     await pass(0);
     expect(tab.readable()).toContain("dialog: One, Two");
-    expect(tab.readable()).toContain("locations: known Prague");
     expect(tab.title()).toBe("One, Two · Zerops Mate");
     const renewals = harness.rest.hold("GET /user/info");
 
@@ -257,7 +177,7 @@ describe("ZeropsInventoryProvider lapse", () => {
 
     // Every region reads its platform facts withheld, and the title; the open dialog, which held
     // what it showed, closed.
-    expect(tab.readable()).not.toMatch(/One|Two|Prague/);
+    expect(tab.readable()).not.toMatch(/One|Two/);
     expect(tab.title()).not.toMatch(/One|Two/);
     expect(tab.readable()).toContain(CHILD);
     expect(tab.readable()).toContain("listing: withheld");

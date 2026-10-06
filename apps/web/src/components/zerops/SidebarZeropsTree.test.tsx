@@ -1212,7 +1212,7 @@ describe("a Mate's face follows its work in the menu", () => {
     status: null,
     face: "working",
     subject: "Add a size guide to the product page",
-    at: "2026-09-29T20:10:00.000Z",
+    at: new Date().toISOString(),
     snippet: undefined,
     awaitingWords: true,
     unread: false,
