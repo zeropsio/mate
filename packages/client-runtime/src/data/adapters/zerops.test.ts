@@ -58,7 +58,14 @@ function answers(
     const output = request.body?.wsOutputType;
     if (output === "updateStream") return Effect.succeed({ success: true });
     if (output === "listStream")
-      return Effect.succeed({ items: request.path === PROJECT_SEARCH ? projects() : running() });
+      return Effect.succeed({
+        items:
+          request.path === PROJECT_SEARCH
+            ? projects()
+            : request.path === PROCESS_SEARCH
+              ? running()
+              : [],
+      });
     const ids = searched(request).find((term) => term.name === "id")
       ?.value as ReadonlyArray<string>;
     return Effect.succeed({ items: ids.flatMap((id) => firstRows.get(id) ?? []) });
@@ -218,7 +225,7 @@ describe("zeropsNavigationLink", () => {
       expect(fixture.opens()).toBe(2);
       expect(
         fixture.requests.filter((request) => request.body?.receiverId === "receiver-2"),
-      ).toHaveLength(6);
+      ).toHaveLength(8);
       // One project was taken from the viewer meanwhile: every scope is registered once more.
       const again = store.state().streams.get(linkKeys.zerops(ORG));
       yield* TestClock.adjust(again?.next.kind === "retry" ? again.next.at : 0);

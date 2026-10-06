@@ -7,15 +7,15 @@ import { emptyAccount } from "./model.ts";
 import { streamOf } from "./reducer.ts";
 
 /**
- * A detail family, for this test alone: one project's services, registered only while a screen
- * demands that project — never as part of the organization's navigation.
+ * A detail family, for this test alone: one project's app versions, registered only while a
+ * screen demands that project — never as part of the organization's navigation.
  */
-const serviceFamily = {
-  family: "service",
+const detailFamily = {
+  family: "appVersion",
   authority: "zerops",
-  scope: { source: "zerops", suffix: "services", leaving: "absent-unverified", demand: "detail" },
+  scope: { source: "zerops", suffix: "versions", leaving: "absent-unverified", demand: "detail" },
   zerops: {
-    entity: "service-stack",
+    entity: "app-version",
     membership: ({ orgId, ownerId }: ScopeOwner) => [
       { name: "clientId", operator: "eq", value: orgId },
       { name: "projectId", operator: "eq", value: ownerId },
@@ -28,9 +28,9 @@ const serviceFamily = {
   },
 } as unknown as AnyFamilySpec;
 
-const families = [...FAMILIES, serviceFamily];
+const families = [...FAMILIES, detailFamily];
 /** The fixture family's name, outside the registered `Family` names on purpose. */
-const SERVICE = serviceFamily.family;
+const DETAIL = detailFamily.family;
 
 describe("zeropsRegistrations", () => {
   it("registers navigation families for the organization always, a detail family never unasked", () => {
@@ -42,6 +42,8 @@ describe("zeropsRegistrations", () => {
       "zerops:org:running",
       "zerops:org:active",
       "zerops:org:active",
+      "zerops:org:services",
+      "zerops:org:services",
     ]);
   });
 
@@ -57,22 +59,22 @@ describe("zeropsRegistrations", () => {
 
   it("registers a detail family for each owner it is demanded for, under the organization's link", () => {
     const registrations = zeropsRegistrations(families, "org", [
-      { family: SERVICE, ownerId: "p1" },
-      { family: SERVICE, ownerId: "p2" },
-    ]).filter((registration) => registration.family === SERVICE);
+      { family: DETAIL, ownerId: "p1" },
+      { family: DETAIL, ownerId: "p2" },
+    ]).filter((registration) => registration.family === DETAIL);
 
     expect(registrations.map(({ scope, role, path }) => [scope, role, path])).toEqual([
-      ["zerops:org:services:p1", "updates", "/service-stack/search"],
-      ["zerops:org:services:p1", "membership", "/service-stack/search"],
-      ["zerops:org:services:p2", "updates", "/service-stack/search"],
-      ["zerops:org:services:p2", "membership", "/service-stack/search"],
+      ["zerops:org:versions:p1", "updates", "/app-version/search"],
+      ["zerops:org:versions:p1", "membership", "/app-version/search"],
+      ["zerops:org:versions:p2", "updates", "/app-version/search"],
+      ["zerops:org:versions:p2", "membership", "/app-version/search"],
     ]);
     expect(registrations[0]?.search).toContainEqual({
       name: "projectId",
       operator: "eq",
       value: "p1",
     });
-    const scope = scopeOf(serviceFamily, "org", "p1");
+    const scope = scopeOf(detailFamily, "org", "p1");
     expect(streamOf(emptyAccount, scope).parent).toBe("zerops:org");
   });
 });
