@@ -42,10 +42,27 @@ const Row = Schema.Struct({
 });
 const decodeRow = Schema.decodeUnknownOption(Row);
 
-/** The row's fields, as it states them. */
+/**
+ * The variables a surface reads off a row (A14): which deploy the service last started and its
+ * name. Every other one — the user's own `ZEROPS_YAML` among them, which may hold secrets — is
+ * dropped here and never stored.
+ */
+const KEPT_VARIABLES: ReadonlySet<string> = new Set(["appVersionId", "appVersionName"]);
+
+/** The row's fields, as it states them, its variables but the kept ones dropped. */
 function valueOf(raw: Readonly<Record<string, unknown>>): ServiceValue {
-  const { _version: _ignored, ...fields } = raw;
-  return fields as unknown as ServiceValue;
+  const { _version: _ignored, userData, ...fields } = raw;
+  if (!Array.isArray(userData)) return fields as unknown as ServiceValue;
+  const kept = userData.flatMap((entry: unknown) =>
+    typeof entry === "object" &&
+    entry !== null &&
+    "key" in entry &&
+    typeof entry.key === "string" &&
+    KEPT_VARIABLES.has(entry.key)
+      ? [{ key: entry.key, content: "content" in entry ? entry.content : null }]
+      : [],
+  );
+  return { ...fields, userData: kept } as unknown as ServiceValue;
 }
 
 const organization = (orgId: string) => [{ name: "clientId", operator: "eq", value: orgId }];

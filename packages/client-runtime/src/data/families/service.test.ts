@@ -215,3 +215,25 @@ describe("a service read by its id", () => {
     });
   });
 });
+
+describe("a service row's variables", () => {
+  it("keep only what surfaces read of them: every other variable is dropped at decode", () => {
+    const row = decode({
+      id: "s1",
+      projectId: "p1",
+      name: "app",
+      status: "ACTIVE",
+      userData: [
+        { key: "appVersionId", content: "v1" },
+        { key: "appVersionName", content: "build 7" },
+        { key: "ZEROPS_YAML", content: "secret: hunter2" },
+        { key: "DB_PASSWORD", content: "hunter2" },
+      ],
+    });
+    expect(row?.value.userData).toEqual([
+      { key: "appVersionId", content: "v1" },
+      { key: "appVersionName", content: "build 7" },
+    ]);
+    expect(JSON.stringify(row)).not.toContain("hunter2");
+  });
+});
