@@ -92,6 +92,19 @@ export { PROJECT_ROUTINGS_LISTING } from "./families/publicRouting.ts";
 export { publicAccess, type PublicAccess } from "./projections/publicAccess.ts";
 export { projectServices, projectsServices, type ProjectServices } from "./projections/services.ts";
 export { mateVariables, type MateVariables } from "./projections/mateVariables.ts";
+export type {
+  VaultChange,
+  VaultImpact,
+  VaultNotLive,
+  VaultRead,
+  VaultReader,
+  VaultRef,
+  VaultScope,
+  VaultScopeRef,
+  VaultValue,
+  VaultView,
+  VaultWrite,
+} from "./projections/vaultModel.ts";
 export {
   serviceRuns,
   type ServiceRuns,
