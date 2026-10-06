@@ -47,7 +47,7 @@ import type { Invalidation } from "../knowledge/invalidation.ts";
 import { makePlatformSignals, type PageEvent } from "../knowledge/signals.ts";
 import { makeDeadlineClock, type DeadlineClock } from "../testing/deadlineClock.ts";
 import { makeFakeDatastream } from "../testing/fakeDatastream.ts";
-import { makeFakeZeropsRest } from "../testing/fakeZeropsRest.ts";
+import { makeFakeZeropsRest, type FakeZeropsRest } from "../testing/fakeZeropsRest.ts";
 import {
   makeAccountRuntime,
   type AccountEnvironmentPorts,
@@ -56,7 +56,7 @@ import {
   type DoorRequest,
 } from "./accountRuntime.ts";
 import { liveProjects, liveServices } from "../../data/__fixtures__/account.ts";
-import { accountReadsAtom } from "../../data/reads.ts";
+import { accountReadsAtom, projectStandingAtom } from "../../data/reads.ts";
 import { makeAccountStore, type AccountStore } from "../../data/store.ts";
 import { historyScope } from "../../data/families/process.ts";
 
@@ -498,6 +498,19 @@ const passWith = (clock: DeadlineClock, nextTimer: () => number) =>
     yield* settle;
   });
 
+/**
+ * The account's store, mounted in `registry` with the shown organization's roster as the fake
+ * platform lists it: where each project stands, as the grant's verifier asks.
+ */
+const rosterOf = (registry: AtomRegistry.AtomRegistry, rest: FakeZeropsRest) => {
+  const store = makeAccountStore(registry);
+  const orgId = organization.organizationId;
+  liveProjects(orgId, [...rest.projectsOf(orgId)] as never).forEach(store.dispatch);
+  registry.set(accountReadsAtom, { data: store.data, orgId, demandDetail: () => () => {} });
+  return ({ projectId }: { readonly projectId: string }) =>
+    registry.get(projectStandingAtom(projectId));
+};
+
 describe("the account runtime", () => {
   it.effect(
     "builds nothing post-grant before the epoch's first grant, and keeps it through a lapse (I10, AL-04, G11)",
@@ -796,7 +809,7 @@ describe("the account runtime", () => {
             verifier: makeRestAccessVerifier({
               client,
               account,
-              concurrency: policy.roundProjectConcurrency,
+              standing: rosterOf(registry, rest),
               onUser: () => undefined,
             }),
             signals: page.signals,
@@ -896,7 +909,7 @@ describe("the account runtime", () => {
               verifier: makeRestAccessVerifier({
                 client,
                 account,
-                concurrency: policy.roundProjectConcurrency,
+                standing: rosterOf(registry, rest),
                 onUser: () => undefined,
               }),
               signals: page.signals,
@@ -1016,7 +1029,7 @@ describe("the account runtime", () => {
               verifier: makeRestAccessVerifier({
                 client,
                 account,
-                concurrency: policy.roundProjectConcurrency,
+                standing: rosterOf(registry, rest),
                 onUser: () => undefined,
               }),
               signals: page.signals,
@@ -1061,129 +1074,133 @@ describe("the account runtime", () => {
       ),
   );
 
-  it.effect(
-    "navigation discovers a new project without verifying access or reading its services",
-    () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const clock = yield* makeDeadlineClock({ startWallMs: START_WALL_MS });
-          const registry = AtomRegistry.make();
-          const page = yield* makePage(clock);
-          const rest = makeFakeZeropsRest();
-          rest.addUser({
-            user: {
-              id: account.accountId,
-              email: "person@example.test",
-              clientUserList: [
-                { id: "cu-1", clientId: organization.organizationId, roleCode: "OWNER" },
-              ],
-            },
-            password: "secret",
+  it.effect("navigation discovers a new project without reading its access or its services", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const clock = yield* makeDeadlineClock({ startWallMs: START_WALL_MS });
+        const registry = AtomRegistry.make();
+        const page = yield* makePage(clock);
+        const rest = makeFakeZeropsRest();
+        rest.addUser({
+          user: {
+            id: account.accountId,
+            email: "person@example.test",
+            clientUserList: [
+              { id: "cu-1", clientId: organization.organizationId, roleCode: "OWNER" },
+            ],
+          },
+          password: "secret",
+        });
+        rest.addProject({
+          id: "project-1",
+          clientId: organization.organizationId,
+          name: "project-1",
+          status: "ACTIVE",
+        });
+        const client = new ZeropsApiClient({ fetch: rest.fetch });
+        client.restoreSession(rest.issueSession(account.accountId));
+        const built = yield* Effect.gen(function* () {
+          const data = yield* makeZeropsDataRuntime({
+            random: () => 0,
+            scope: scope(),
+            adapter: makeFakeDatastream(rest).adapter,
+            atomRegistry: registry,
+            makeOpaqueId: (() => {
+              let next = 0;
+              return () => `opaque-${++next}`;
+            })(),
           });
-          rest.addProject({
-            id: "project-1",
-            clientId: organization.organizationId,
-            name: "project-1",
-            status: "ACTIVE",
-          });
-          const client = new ZeropsApiClient({ fetch: rest.fetch });
-          client.restoreSession(rest.issueSession(account.accountId));
-          const built = yield* Effect.gen(function* () {
-            const data = yield* makeZeropsDataRuntime({
-              random: () => 0,
-              scope: scope(),
-              adapter: makeFakeDatastream(rest).adapter,
-              atomRegistry: registry,
-              makeOpaqueId: (() => {
-                let next = 0;
-                return () => `opaque-${++next}`;
-              })(),
-            });
-            return yield* makeAccountRuntime({
-              data,
-              verifier: makeRestAccessVerifier({
-                client,
-                account,
-                concurrency: policy.roundProjectConcurrency,
-                onUser: () => undefined,
-              }),
-              signals: page.signals,
-              atomRegistry: registry,
-              environments: inertEnvironments(clock),
-            }).pipe(
-              Effect.tap((runtime) =>
-                Effect.sync(() => runtime.selectOrganization(organization.organizationId)),
-              ),
-            );
-          }).pipe(Effect.provideService(Clock.Clock, clock));
-          yield* Effect.addFinalizer(() => built.close("application-close"));
-          const data = built.data;
-          const rounds = () => rest.requests().filter(({ route }) => route === "GET /user/info");
-          const verifiedProjects = () => {
-            const phase = registry.get(data.access.view).machine.phase;
-            return phase.phase === "granted" ? [...phase.evidence.projects.keys()].toSorted() : [];
-          };
-          const observing = () =>
-            Effect.map(
-              data.state,
-              (state) =>
-                [...state.interests.values()].filter(
-                  ({ interest }) => interest.status === "observing",
-                ).length,
-            );
-          const unsubscribe = registry.subscribe(mateListingsAtom(data), () => undefined);
-          yield* Effect.addFinalizer(() => Effect.sync(unsubscribe));
-          yield* clock.advance(SECOND);
-          yield* settle;
-          yield* settle;
-          expect(verifiedProjects()).toEqual([]);
-          expect(yield* observing()).toBe(1);
-          const roundsBefore = rounds().length;
+          return yield* makeAccountRuntime({
+            data,
+            verifier: makeRestAccessVerifier({
+              client,
+              account,
+              standing: rosterOf(registry, rest),
+              onUser: () => undefined,
+            }),
+            signals: page.signals,
+            atomRegistry: registry,
+            environments: inertEnvironments(clock),
+          }).pipe(
+            Effect.tap((runtime) =>
+              Effect.sync(() => runtime.selectOrganization(organization.organizationId)),
+            ),
+          );
+        }).pipe(Effect.provideService(Clock.Clock, clock));
+        yield* Effect.addFinalizer(() => built.close("application-close"));
+        const data = built.data;
+        const rounds = () => rest.requests().filter(({ route }) => route === "GET /user/info");
+        /** Each project read of its own, `GET /project/{id}`: the grant reads none. */
+        const projectReads = () =>
+          rest.requests().filter(({ route }) => /^GET \/project\/[^/]+$/u.test(route));
+        const verifiedProjects = () => {
+          const phase = registry.get(data.access.view).machine.phase;
+          return phase.phase === "granted" ? [...phase.evidence.projects.keys()].toSorted() : [];
+        };
+        const observing = () =>
+          Effect.map(
+            data.state,
+            (state) =>
+              [...state.interests.values()].filter(
+                ({ interest }) => interest.status === "observing",
+              ).length,
+          );
+        const unsubscribe = registry.subscribe(mateListingsAtom(data), () => undefined);
+        yield* Effect.addFinalizer(() => Effect.sync(unsubscribe));
+        yield* clock.advance(SECOND);
+        yield* settle;
+        yield* settle;
+        // The roster's project is the viewer's on its row alone.
+        expect(verifiedProjects()).toEqual(["project-1"]);
+        expect(projectReads()).toEqual([]);
+        expect(yield* observing()).toBe(1);
+        const roundsBefore = rounds().length;
 
-          const streamed = () =>
-            Effect.map(data.state, (state) =>
-              [...state.interests.values()]
-                .filter(({ interest }) => interest.status === "observing")
-                .map(({ descriptor }) => descriptor.kind)
-                .filter((kind) => kind === "project-variables")
-                .toSorted(),
-            );
-          expect(yield* streamed()).toEqual([]);
+        const streamed = () =>
+          Effect.map(data.state, (state) =>
+            [...state.interests.values()]
+              .filter(({ interest }) => interest.status === "observing")
+              .map(({ descriptor }) => descriptor.kind)
+              .filter((kind) => kind === "project-variables")
+              .toSorted(),
+          );
+        expect(yield* streamed()).toEqual([]);
 
-          // Someone else adds the organization's first Mate: its project appears in the list.
-          const mate = {
-            id: "project-2",
-            clientId: organization.organizationId,
-            name: "project-2",
-            status: "ACTIVE",
-          } as const;
-          rest.addProject({ ...mate, tagList: ["mate"] });
-          yield* built.invalidations
-            .invalidate({ topic: "inventory", organization })
-            .pipe(Effect.provideService(Clock.Clock, clock));
-          yield* clock.advance(SECOND);
-          yield* settle;
-          yield* settle;
+        // Someone else adds the organization's first Mate: its project appears in the list.
+        const mate = {
+          id: "project-2",
+          clientId: organization.organizationId,
+          name: "project-2",
+          status: "ACTIVE",
+        } as const;
+        rest.addProject({ ...mate, tagList: ["mate"] });
+        yield* built.invalidations
+          .invalidate({ topic: "inventory", organization })
+          .pipe(Effect.provideService(Clock.Clock, clock));
+        yield* clock.advance(SECOND);
+        yield* settle;
+        yield* settle;
 
-          expect(verifiedProjects()).toEqual([]);
-          // Its services are read: the organization's inventory and both projects'; and, with a
-          // Mate there now, what its services run and their Mate flags are streamed.
-          expect(yield* observing()).toBe(1);
-          expect(yield* streamed()).toEqual([]);
-          expect(rounds()).toHaveLength(roundsBefore);
+        expect(verifiedProjects()).toEqual(["project-1"]);
+        expect(projectReads()).toEqual([]);
+        // Its services are read: the organization's inventory and both projects'; and, with a
+        // Mate there now, what its services run and their Mate flags are streamed.
+        expect(yield* observing()).toBe(1);
+        expect(yield* streamed()).toEqual([]);
+        expect(rounds()).toHaveLength(roundsBefore);
 
-          // The organization's last Mate stops being one: nothing reads the streams, so they go.
-          rest.addProject({ ...mate, tagList: [] });
-          yield* built.invalidations
-            .invalidate({ topic: "inventory", organization })
-            .pipe(Effect.provideService(Clock.Clock, clock));
-          yield* clock.advance(SECOND);
-          yield* settle;
-          yield* settle;
-          expect(yield* streamed()).toEqual([]);
-          expect(yield* observing()).toBe(1);
-        }),
-      ),
+        // The organization's last Mate stops being one: nothing reads the streams, so they go.
+        rest.addProject({ ...mate, tagList: [] });
+        yield* built.invalidations
+          .invalidate({ topic: "inventory", organization })
+          .pipe(Effect.provideService(Clock.Clock, clock));
+        yield* clock.advance(SECOND);
+        yield* settle;
+        yield* settle;
+        expect(yield* streamed()).toEqual([]);
+        expect(yield* observing()).toBe(1);
+      }),
+    ),
   );
 
   it.effect(
@@ -1321,7 +1338,7 @@ describe("the account runtime", () => {
               verifier: makeRestAccessVerifier({
                 client,
                 account,
-                concurrency: policy.roundProjectConcurrency,
+                standing: rosterOf(registry, rest),
                 onUser: () => undefined,
               }),
               signals: page.signals,

@@ -24,11 +24,8 @@ import {
   readZeropsContainer,
   readZeropsInitAt,
 } from "@t3tools/client-runtime/zerops/containerHealth";
-import {
-  DEFAULT_ZEROPS_GRANT_POLICY,
-  makeRestAccessVerifier,
-  type AccountScope,
-} from "@t3tools/client-runtime/zerops/data";
+import { projectStandingAtom } from "@t3tools/client-runtime/data";
+import { makeRestAccessVerifier, type AccountScope } from "@t3tools/client-runtime/zerops/data";
 import { zeropsThrowawayPlatform } from "@t3tools/client-runtime/zerops/doorThrowaway";
 import { systemExchangeClock, type LinkPhase } from "@t3tools/client-runtime/zerops/environments";
 import {
@@ -46,7 +43,7 @@ import type { EnvironmentId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
-import { AsyncResult } from "effect/unstable/reactivity";
+import { AsyncResult, type AtomRegistry } from "effect/unstable/reactivity";
 
 import { environmentCatalog } from "../../connection/catalog";
 import { connectionAtomRuntime } from "../../connection/runtime";
@@ -225,7 +222,8 @@ export type MobileAccountPorts = Pick<AccountRuntimePorts, "verifier" | "signals
 export async function mobileAccountPorts(input: {
   readonly account: AccountScope;
   readonly client: ZeropsApiClient;
-  readonly readProject: import("@t3tools/client-runtime/zerops/data").ManagedZeropsDataRuntime["readProjectForAccess"];
+  /** The account's registry, where its store says where each project stands. */
+  readonly registry: AtomRegistry.AtomRegistry;
   readonly onUser: (user: ZeropsUser) => void;
 }): Promise<MobileAccountPorts> {
   const { account, client } = input;
@@ -233,9 +231,8 @@ export async function mobileAccountPorts(input: {
   return {
     verifier: makeRestAccessVerifier({
       client,
-      readProject: input.readProject,
+      standing: (project) => input.registry.get(projectStandingAtom(project.projectId)),
       account: account.account,
-      concurrency: DEFAULT_ZEROPS_GRANT_POLICY.roundProjectConcurrency,
       onUser: input.onUser,
       recentUser: () => client.verifiedUser(),
     }),

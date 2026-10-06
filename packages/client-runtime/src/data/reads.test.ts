@@ -13,6 +13,7 @@ import {
   projectUsageAtom,
   projectServicesAtom,
   projectsServicesAtom,
+  projectStandingAtom,
 } from "./reads.ts";
 import { makeAccountStore } from "./store.ts";
 import { usageOwnerOf, usageScope } from "./families/usage.ts";
@@ -30,6 +31,22 @@ describe("projectProcessesAtom", () => {
 
     registry.set(accountReadsAtom, { data: store.data, orgId: null, demandDetail: () => () => {} });
     expect(registry.get(atom)).toEqual(NOT_READ_PROCESSES);
+  });
+});
+
+describe("projectStandingAtom", () => {
+  it("reads where a project stands through the mounted account, and not known without one", () => {
+    const registry = AtomRegistry.make();
+    const store = makeAccountStore(registry);
+    liveZerops({ running: [], projects: [{ id: "p1" }] }).forEach(store.dispatch);
+    const atom = projectStandingAtom("p1");
+    expect(registry.get(atom)).toEqual({ kind: "unknown" });
+
+    registry.set(accountReadsAtom, { data: store.data, orgId: ORG, demandDetail: () => () => {} });
+    expect(registry.get(atom)).toMatchObject({ kind: "listed", project: { id: "p1" } });
+
+    registry.set(accountReadsAtom, { data: store.data, orgId: null, demandDetail: () => () => {} });
+    expect(registry.get(atom)).toEqual({ kind: "unknown" });
   });
 });
 

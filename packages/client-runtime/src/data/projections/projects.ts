@@ -79,3 +79,37 @@ export const projectGone: Projection<
   derive: (read, { projectId }) => read.fact("project", projectId).kind === "deleted",
   equals: sameValue,
 };
+
+/**
+ * Where one project stands with the viewer, as the account's store holds it: its row while the
+ * roster lists it — Zerops filters the organization's listing by the viewer's token, so a listed
+ * project is the viewer's — denied once its owner refused it, deleted once proven, otherwise not
+ * known.
+ */
+export type ProjectStanding =
+  | { readonly kind: "listed"; readonly project: ProjectValue }
+  | { readonly kind: "denied" }
+  | { readonly kind: "deleted" }
+  | { readonly kind: "unknown" };
+
+export const projectStanding: Projection<
+  { readonly orgId: string; readonly projectId: string },
+  ProjectStanding
+> = {
+  name: "projectStanding",
+  keyOf: ({ orgId, projectId }) => `${orgId}/${projectId}`,
+  derive: (read, { projectId }) => {
+    const fact = read.fact("project", projectId);
+    switch (fact.kind) {
+      case "known":
+        return { kind: "listed", project: fact.value };
+      case "deleted":
+        return { kind: "deleted" };
+      case "withheld":
+        return fact.reason === "denied" ? { kind: "denied" } : { kind: "unknown" };
+      case "unknown":
+        return { kind: "unknown" };
+    }
+  },
+  equals: sameValue,
+};

@@ -5,10 +5,12 @@ import * as Result from "effect/Result";
 import * as Scope from "effect/Scope";
 import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
 
+import { projectStandingAtom, shownProjectsAtom } from "../../data/reads.ts";
 import { isZcpService } from "../containerAddress.ts";
 import { serviceRecordToZeropsService } from "../data/dto.ts";
 
 import { grantRoundInFlight, type Evidence, type GrantMachine } from "../data/access/grant.ts";
+import type { GrantSignal } from "../data/access/grantDriver.ts";
 import {
   evidenceProjectRefs,
   inventoryProjectRefs,
@@ -18,6 +20,8 @@ import {
 import { interestKeyOf, type ManagedZeropsDataRuntime } from "../data/runtime.ts";
 import {
   projectKeyOf,
+  ZeropsOrganizationId,
+  ZeropsProjectId,
   type InterestKey,
   type InterestLease,
   type ProjectRef,
@@ -160,36 +164,63 @@ export const holdInventoryDemand = (input: {
     yield* Effect.addFinalizer(() => Effect.sync(unsubscribe));
   });
 
-/** Admission demand comes from project-scoped leases, not from navigation rows. */
-export const holdAccessDemand = (input: {
+/**
+ * The projects the grant judges are the ones the shown organization's roster lists: Zerops filters
+ * that listing by the viewer's token, so a listed project is the viewer's at once, judged on the
+ * row the account's store holds, and no screen has to hold it first.
+ */
+export const holdListedAccess = (input: {
   readonly data: ManagedZeropsDataRuntime;
   readonly atomRegistry: AtomRegistry.AtomRegistry;
 }): Effect.Effect<void, never, Scope.Scope> =>
   Effect.gen(function* () {
-    const wanted = yield* Queue.sliding<ReadonlyArray<ProjectRef>>(1);
-    const demand = Atom.make((get) => {
-      const projects = new Map<string, ProjectRef>();
-      for (const { descriptor, leases } of get(input.data.stateAtom).interests.values()) {
-        if (leases > 0 && "project" in descriptor)
-          projects.set(projectKeyOf(descriptor.project), descriptor.project);
-      }
-      return [...projects.values()];
+    const wanted = yield* Queue.unbounded<ReadonlyArray<GrantSignal>>();
+    const account = input.data.scope.account;
+    const listed = Atom.make((get): ReadonlyArray<ProjectRef> => {
+      const { orgId, projects } = get(shownProjectsAtom);
+      if (orgId === null) return [];
+      const organization = {
+        kind: "organization" as const,
+        account,
+        organizationId: ZeropsOrganizationId.make(orgId),
+      };
+      return projects.map((project): ProjectRef => ({
+        kind: "project",
+        organization,
+        projectId: ZeropsProjectId.make(project.id),
+      }));
     });
-    let last = "";
+    let last = new Map<ReturnType<typeof projectKeyOf>, ProjectRef>();
     const unsubscribe = input.atomRegistry.subscribe(
-      demand,
+      listed,
       (projects) => {
-        const key = projects.map(projectKeyOf).sort().join(",");
-        if (key === last) return;
-        last = key;
-        Queue.offerUnsafe(wanted, projects);
+        const next = new Map(projects.map((project) => [projectKeyOf(project), project]));
+        if (next.size === last.size && [...next.keys()].every((key) => last.has(key))) return;
+        // A project the roster stops listing because its owner refused it, or proved it deleted,
+        // is that project's denial: the grant closes it at once.
+        const denied = [...last]
+          .filter(([key]) => !next.has(key))
+          .flatMap(([, project]): ReadonlyArray<GrantSignal> => {
+            const standing = input.atomRegistry.get(projectStandingAtom(project.projectId));
+            return standing.kind === "denied" || standing.kind === "deleted"
+              ? [
+                  {
+                    type: "PROJECT_DENIED",
+                    project,
+                    evidence: standing.kind === "denied" ? "direct-forbidden" : "direct-not-found",
+                  },
+                ]
+              : [];
+          });
+        last = next;
+        Queue.offerUnsafe(wanted, [...denied, { type: "PROJECTS_DEMANDED", projects }]);
       },
       { immediate: true },
     );
     yield* Effect.addFinalizer(() => Effect.sync(unsubscribe));
     yield* Queue.take(wanted).pipe(
-      Effect.flatMap((projects) =>
-        input.data.access.signal({ type: "PROJECTS_DEMANDED", projects }),
+      Effect.flatMap((signals) =>
+        Effect.forEach(signals, (signal) => input.data.access.signal(signal), { discard: true }),
       ),
       Effect.forever,
       Effect.forkScoped,

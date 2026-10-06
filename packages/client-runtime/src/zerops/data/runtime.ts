@@ -15,7 +15,6 @@ import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import { Atom, AtomRegistry } from "effect/unstable/reactivity";
 
-import { ZeropsApiError, type ZeropsProject } from "../api.ts";
 import type { InvalidationBus } from "../knowledge/invalidation.ts";
 import {
   doublingLadder,
@@ -561,9 +560,6 @@ interface ZeropsDataRuntimeDiagnostics {
 
 export type ManagedZeropsDataRuntime = ZeropsDataRuntime &
   ZeropsDataRuntimeDiagnostics & {
-    readonly readProjectForAccess: (
-      project: ProjectRef,
-    ) => Effect.Effect<ZeropsProject, ZeropsApiError>;
     readonly cells: ZeropsCells;
     /** The epoch's access grant, interpreted here (DESIGN §4.2, D16(a)). */
     readonly access: ZeropsAccessGrant;
@@ -1413,15 +1409,13 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
       { discard: true },
     );
 
-  /** One read attempt and its adapter error, plus raw project evidence for access classification. */
+  /** One read attempt and its adapter error. */
   const runReadOutcome = (
     ticket: ReadTicket,
     identity: InterestIdentity | null,
   ): Effect.Effect<{
     readonly succeeded: boolean;
     readonly error: AdapterError | null;
-    readonly project?: ZeropsProject;
-    readonly projectDenial?: "forbidden" | "not-found";
   }> =>
     Effect.suspend(() => {
       const owner = identity === null ? null : interests.get(identity.key);
@@ -1443,23 +1437,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
                   interest: identity,
                 }),
               ),
-              Effect.as({
-                succeeded: true,
-                error: null,
-                ...(result.project === undefined ? {} : { project: result.project }),
-                ...(() => {
-                  const denied = result.observations.find(
-                    (observation) =>
-                      observation.kind === "entity-unavailable" &&
-                      observation.ref.kind === "project" &&
-                      observation.ticket.requestId === ticket.requestId,
-                  );
-                  return denied?.kind === "entity-unavailable" &&
-                    (denied.reason === "forbidden" || denied.reason === "not-found")
-                    ? { projectDenial: denied.reason }
-                    : {};
-                })(),
-              }),
+              Effect.as({ succeeded: true, error: null }),
             ),
           ),
           Effect.catch((error) =>
@@ -1488,8 +1466,6 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         Effect.callback<{
           readonly succeeded: boolean;
           readonly error: AdapterError | null;
-          readonly project?: ZeropsProject;
-          readonly projectDenial?: "forbidden" | "not-found";
         }>((resume) => {
           const abort = () => resume(Effect.succeed({ succeeded: false, error: null }));
           if (parentSignal.aborted) abort();
@@ -3875,62 +3851,6 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
       ),
     ).pipe(Effect.asVoid);
 
-  const readProjectForAccess = (
-    project: ProjectRef,
-  ): Effect.Effect<ZeropsProject, ZeropsApiError> =>
-    Effect.gen(function* () {
-      const owner = {
-        kind: "shared" as const,
-        account: options.scope,
-        sharedReadId: ZeropsSharedReadId.make(options.makeOpaqueId()),
-      };
-      const ticket = yield* sharedReadTicket({ kind: "project", ref: project }, owner, "direct");
-      const dependents = new Map(
-        [...interests.values()]
-          .filter(
-            (interest) =>
-              interest.leases.size > 0 &&
-              "project" in interest.descriptor &&
-              projectKeyOf(interest.descriptor.project) === projectKeyOf(project),
-          )
-          .map((interest) => [interest.key, interest.identity]),
-      );
-      yield* applyControl({
-        kind: "shared-read-upserted",
-        requestId: ticket.requestId,
-        ownership: { owner, target: ticket.target, dependents, status: "active" },
-      });
-      return yield* Effect.gen(function* () {
-        if (!(yield* admitRead(ticket)))
-          return yield* Effect.fail(
-            new ZeropsApiError("Project read was not admitted.", "network"),
-          );
-        const outcome = yield* runReadOutcome(ticket, null);
-        yield* awaitIngress;
-        if (!outcome.succeeded) {
-          const error = outcome.error;
-          const kind =
-            error?.kind === "not-found" || error?.kind === "forbidden" || error?.kind === "server"
-              ? error.kind
-              : "network";
-          return yield* Effect.fail(
-            new ZeropsApiError(error?.message ?? "Project read failed.", kind, error?.status),
-          );
-        }
-        if (outcome.projectDenial !== undefined)
-          return yield* Effect.fail(
-            new ZeropsApiError("Project access was denied.", outcome.projectDenial),
-          );
-        return outcome.project === undefined
-          ? yield* Effect.fail(new ZeropsApiError("Project answer was incomplete.", "network"))
-          : outcome.project;
-      }).pipe(
-        Effect.ensuring(
-          applyControl({ kind: "shared-read-released", requestId: ticket.requestId }),
-        ),
-      );
-    });
-
   const shutdown: ZeropsDataRuntime["shutdown"] = (_reason) =>
     lifecycleLock.withPermit(
       Effect.gen(function* () {
@@ -3974,7 +3894,6 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
     stateAtom: rootAtom,
     ingress: ingress.snapshot,
     observeAccess,
-    readProjectForAccess,
     access: grant.grant,
   } satisfies ManagedZeropsDataRuntime;
 });

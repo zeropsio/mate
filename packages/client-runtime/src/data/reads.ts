@@ -16,7 +16,9 @@ import {
   listedProject,
   organizationProjects,
   projectGone,
+  projectStanding,
   type OrganizationProjects,
+  type ProjectStanding,
 } from "./projections/projects.ts";
 import { hqMates, type HqMatesRead } from "./projections/hqMates.ts";
 import {
@@ -153,6 +155,17 @@ export const projectGoneAtom = Atom.family((projectId: string) =>
     if (account === null || account.orgId === null) return false;
     return get(account.data.project(projectGone, { orgId: account.orgId, projectId }));
   }).pipe(Atom.withLabel(`data:project-gone:${projectId}`)),
+);
+
+const NOT_KNOWN: ProjectStanding = { kind: "unknown" };
+
+/** Where one project stands with the viewer as the mounted account holds it; not known without one. */
+export const projectStandingAtom = Atom.family((projectId: string) =>
+  Atom.make((get): ProjectStanding => {
+    const account = get(accountReadsAtom);
+    if (account === null || account.orgId === null) return NOT_KNOWN;
+    return get(account.data.project(projectStanding, { orgId: account.orgId, projectId }));
+  }).pipe(Atom.withLabel(`data:project-standing:${projectId}`)),
 );
 
 /**

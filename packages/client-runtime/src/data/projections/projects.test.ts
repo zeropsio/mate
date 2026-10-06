@@ -9,7 +9,9 @@ import {
   listedProject,
   organizationProjects,
   projectGone,
+  projectStanding,
   type OrganizationProjects,
+  type ProjectStanding,
 } from "./projects.ts";
 
 const SCOPE = projectsScope(ORG);
@@ -188,5 +190,37 @@ describe("projectGone", () => {
     },
   ])("$name", ({ state, gone }) => {
     expect(projectGone.derive(readsOfState(state()), { orgId: ORG, projectId: "a" })).toBe(gone);
+  });
+});
+
+describe("projectStanding", () => {
+  it.each<{
+    readonly name: string;
+    readonly state: () => AccountState;
+    readonly standing: ProjectStanding["kind"];
+  }>([
+    { name: "listed: its row", state: live, standing: "listed" },
+    { name: "never read: not known", state: () => emptyAccount, standing: "unknown" },
+    {
+      name: "left the roster, its owner's word awaited: still listed",
+      state: () => apply(live(), [delta([], ["a"])]),
+      standing: "listed",
+    },
+    {
+      name: "proven deleted",
+      state: () =>
+        apply(live(), [{ kind: "proven-deletion", family: "project", id: "a", evidence: "404" }]),
+      standing: "deleted",
+    },
+    {
+      name: "the owner refused it: denied",
+      state: () =>
+        apply(live(), [{ kind: "access", family: "project", id: "a", access: "denied" }]),
+      standing: "denied",
+    },
+  ])("$name", ({ state, standing }) => {
+    const read = projectStanding.derive(readsOfState(state()), { orgId: ORG, projectId: "a" });
+    expect(read.kind).toBe(standing);
+    if (read.kind === "listed") expect(read.project.id).toBe("a");
   });
 });

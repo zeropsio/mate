@@ -46,7 +46,7 @@ import { makeContainerStore } from "../environments/containerStore.ts";
 import { makeExchangeDriver } from "../environments/exchangeDriver.ts";
 import { makeRegistrationRecords } from "../environments/records.ts";
 import { makeStops, type Stops } from "./stops.ts";
-import { holdInventoryDemand, holdAccessDemand } from "./inventoryDemand.ts";
+import { holdInventoryDemand, holdListedAccess } from "./inventoryDemand.ts";
 export { organizationProjectsRead, projectRead } from "./projectBridge.ts";
 import {
   makeEnvironmentWiring,
@@ -267,7 +267,7 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
     yield* holdInventoryDemand({ data, atomRegistry: ports.atomRegistry, activeOrganization }).pipe(
       Scope.provide(demandScope),
     );
-    yield* holdAccessDemand({ data, atomRegistry: ports.atomRegistry }).pipe(
+    yield* holdListedAccess({ data, atomRegistry: ports.atomRegistry }).pipe(
       Scope.provide(demandScope),
     );
     yield* Queue.take(heard).pipe(Effect.flatMap(hear), Effect.forever, Effect.forkIn(epoch));

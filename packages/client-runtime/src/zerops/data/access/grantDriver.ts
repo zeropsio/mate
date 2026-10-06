@@ -72,7 +72,8 @@ export type GrantSignal = Extract<
       | "ONLINE"
       | "OFFLINE"
       | "USER_RETRY"
-      | "PROJECTS_DEMANDED";
+      | "PROJECTS_DEMANDED"
+      | "PROJECT_DENIED";
   }
 >;
 

@@ -120,6 +120,7 @@ export {
   NOT_READ_SERVICES,
   NOT_READ_USAGE,
   projectGoneAtom,
+  projectStandingAtom,
   projectProcessesAtom,
   projectServicesAtom,
   projectsServicesAtom,

@@ -6,7 +6,6 @@ import {
 } from "@t3tools/client-runtime/zerops/account/runtime";
 import {
   AccountEpoch,
-  DEFAULT_ZEROPS_GRANT_POLICY,
   grantCapabilities,
   makeRestAccessVerifier,
   makeZeropsApiOrigin,
@@ -20,6 +19,7 @@ import {
   type ManagedZeropsDataRuntime,
   type PlatformWatchSocket,
 } from "@t3tools/client-runtime/zerops/data";
+import { projectStandingAtom } from "@t3tools/client-runtime/data";
 import type { ZeropsApiClient, ZeropsUser } from "@t3tools/client-runtime/zerops";
 import type { PlatformSignals } from "@t3tools/client-runtime/zerops/knowledge";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
@@ -266,9 +266,8 @@ export function ZeropsDataProvider({
             data: created,
             verifier: makeRestAccessVerifier({
               client,
-              readProject: created.readProjectForAccess,
+              standing: (project) => registry.get(projectStandingAtom(project.projectId)),
               account: scope.account,
-              concurrency: DEFAULT_ZEROPS_GRANT_POLICY.roundProjectConcurrency,
               onUser: (verified) => verifiedMemberships(verified),
               // The session read the user as it opened: the first round takes it.
               recentUser: () => client.verifiedUser(),
