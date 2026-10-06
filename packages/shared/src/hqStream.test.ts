@@ -10,6 +10,7 @@ import {
   HqNavigationPress,
   HqPersonFacts,
   HqNavigationPerson,
+  HqNavigationProject,
   HqHandoverCandidatesMessage,
   HqHandoverCandidatesError,
 } from "./hqStream.ts";
@@ -157,4 +158,29 @@ it("defines person ownership separately from who the Mate waits on, and correlat
     };
     expect(readCandidatesError(failure)).toEqual(failure);
   }
+});
+
+it("navigation distinguishes current and historical login people and carries finish decisions", () => {
+  const read = Schema.decodeUnknownSync(HqNavigationProject);
+  const value = {
+    projectId: "P",
+    appId: "A",
+    name: "Stage",
+    kind: "devstage",
+    mate: null,
+    can: { finish: { allow: false, reason: "not_structure_writer" } },
+    person: {
+      role: "OWNER",
+      mayWrite: true,
+      mine: true,
+      ownerUserId: "owner",
+      waitsOnViewer: false,
+      unseen: null,
+    },
+    signedInNow: { "custom-agent": "reader" },
+    everSignedIn: { "claude-code": "owner", "custom-agent": "reader" },
+  };
+  expect(read(value)).toEqual(value);
+  const { signedInNow: _now, everSignedIn: _ever, ...old } = value;
+  expect(() => read({ ...old, signers: { "claude-code": "owner" } })).toThrow();
 });

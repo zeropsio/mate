@@ -313,12 +313,13 @@ export const HqNavigationProject = Schema.Struct({
   name: Schema.String,
   kind: Schema.String,
   mate: Schema.NullOr(HqNavigationMate),
+  /** Environment projects include finish: the attach decision for their current placement. */
   can: Schema.optionalKey(Decisions),
   person: HqPersonFacts,
-  signers: Schema.Struct({
-    "claude-code": Schema.optionalKey(Schema.String),
-    codex: Schema.optionalKey(Schema.String),
-  }),
+  /** Login ID to current person; only credentials present and not API tokens. */
+  signedInNow: Schema.Record(Schema.String, Schema.String),
+  /** Login ID to its latest known person, including saved history after sign-out. */
+  everSignedIn: Schema.Record(Schema.String, Schema.String),
 });
 export type HqNavigationProject = typeof HqNavigationProject.Type;
 /** Independent app-detail record values, keyed as documented in hq-scopes.md. */

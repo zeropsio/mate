@@ -557,14 +557,76 @@ describe("revisioned HQ values", () => {
           yield* client.take;
           const project = delivery.values.find((value) => value.key === "project:P")!.value as {
             person: Record<string, unknown>;
-            signers: unknown;
+            signedInNow: unknown;
+            everSignedIn: unknown;
           };
           assert.strictEqual(project.person.ownerUserId, "owner");
           assert.strictEqual(project.person.mine, mine);
           assert.strictEqual(project.person.waitsOnViewer, waits);
-          assert.deepStrictEqual(project.signers, signers);
+          assert.deepStrictEqual(project.signedInNow, signers);
+          assert.deepStrictEqual(project.everSignedIn, signers);
           assert.include(json(delivery.values), '"avatarUrl":"avatar-owner"');
           if (client === reader) assert.notInclude(json(delivery.values), "avatar-signer");
+        }
+      }),
+    ),
+  );
+  it.effect("navigation separates current login holders from historical and saved signers", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const f = yield* fixture;
+        f.savedSigners({ codex: "owner", "saved-agent": "reader" });
+        const link = yield* f.overviews.connect("P");
+        yield* f.overviews.report("P", link, {
+          type: "overview",
+          full: true,
+          overview: overviewOf({
+            logins: {
+              "claude-code": {
+                signedInBy: null,
+                lastSignedInBy: "owner",
+                present: false,
+                token: false,
+              },
+              "custom-agent": {
+                signedInBy: "reader",
+                lastSignedInBy: "signer",
+                present: true,
+                token: false,
+              },
+              "stale-agent": { signedInBy: "owner", present: false, token: false },
+              "api-key": { signedInBy: "owner", present: true, token: true },
+            },
+          }),
+        });
+        for (const user of ["owner", "reader"]) {
+          const client = yield* f.connect(user);
+          yield* client.subscribe([{ scope: nav }]);
+          const project = resetOf(yield* client.take).values.find(
+            (value) => value.key === "project:P",
+          )!.value as {
+            signedInNow: unknown;
+            everSignedIn: unknown;
+            person: { waitsOnViewer: boolean };
+          };
+          assert.deepStrictEqual(
+            project.signedInNow,
+            user === "owner" ? { "custom-agent": "reader" } : {},
+          );
+          assert.deepStrictEqual(
+            project.everSignedIn,
+            user === "owner"
+              ? {
+                  "claude-code": "owner",
+                  codex: "owner",
+                  "saved-agent": "reader",
+                  "custom-agent": "reader",
+                  "stale-agent": "owner",
+                }
+              : {},
+          );
+          assert.strictEqual(project.person.waitsOnViewer, false);
+          assert.notProperty(project, "signers");
         }
       }),
     ),
@@ -737,7 +799,11 @@ describe("revisioned HQ values", () => {
           );
           const project = updated.values[0]!.value as {
             person: { ownerUserId: string | null; waitsOnViewer: boolean };
+            signedInNow: unknown;
+            everSignedIn: unknown;
           };
+          assert.deepStrictEqual(project.signedInNow, { github: "reader" });
+          assert.deepStrictEqual(project.everSignedIn, { codex: "signer", github: "reader" });
           assert.strictEqual(project.person.ownerUserId, "signer");
           assert.strictEqual(project.person.waitsOnViewer, false);
           assert.strictEqual(yield* Ref.get(f.reads), reads);

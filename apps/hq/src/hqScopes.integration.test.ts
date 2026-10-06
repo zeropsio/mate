@@ -460,12 +460,24 @@ describe("HQ scoped socket", () => {
                 ws.addEventListener("message", (event) => {
                   const message = JSON.parse(String(event.data)) as {
                     type: string;
-                    values?: Array<{ key: string; value: { person?: { unseen: number | null } } }>;
+                    values?: Array<{
+                      key: string;
+                      value: {
+                        person?: { unseen: number | null };
+                        can?: { finish?: { allow: boolean } };
+                      };
+                    }>;
                   };
                   if (message.type === "ping") ws.send('{"type":"pong"}');
                   if (message.type === "scope-error") return fail(new Error(String(event.data)));
                   const project = message.values?.find((value) => value.key === "project:P_MATE");
-                  if (project !== undefined) values.push(project.value.person!.unseen);
+                  if (project !== undefined) {
+                    if (project.value.can?.finish?.allow !== true)
+                      return fail(
+                        new Error("Navigation did not offer the owner finish for devstage"),
+                      );
+                    values.push(project.value.person!.unseen);
+                  }
                   if (message.type === "scope-ready")
                     ws.send(
                       JSON.stringify({

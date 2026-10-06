@@ -131,6 +131,31 @@ export const appOffers = (
   add_production: newEnvironmentOffer(userId, projects, facts, "production"),
 });
 
+/** Finishing a held environment reuses attach, independently of the create flow's empty slot. */
+export const environmentSetupOffers = (
+  userId: string,
+  project: AppProjectRow,
+  projects: ReadonlyArray<AppProjectRow>,
+  facts: Facts,
+): Partial<HqOffersOf<"finish">> => {
+  const tier = project.kind === "devstage" ? "stage" : project.kind;
+  if (tier !== "stage" && tier !== "production") return {};
+  return {
+    finish: offer(
+      userId,
+      "attach",
+      {
+        projectId: project.project_id,
+        held: project.kind,
+        to: tier,
+        appProjectIds: appTarget(projects).projectIds,
+        slotTaken: true,
+      },
+      facts,
+    ),
+  };
+};
+
 /** What the person may do with the environment of `projectId`. */
 export const environmentOffers = (
   userId: string,

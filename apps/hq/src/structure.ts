@@ -62,6 +62,7 @@ import {
   moveDestinations,
   moveTarget,
   orgOffers,
+  environmentSetupOffers,
   productionTaken,
   recordOffers,
 } from "./offers.ts";
@@ -328,7 +329,7 @@ export interface StructureRead {
         readonly name: string;
         readonly kind: string;
         readonly mate: MateView | null;
-      } & Partial<MateOffers>
+      } & { readonly can?: Partial<HqOffersOf<MateVerb | "finish">> }
     >;
     /** What the reader may do with it: its changes, its deploys, its release (`offers.ts`). */
     readonly can: HqOffersOf<AppVerb>;
@@ -946,7 +947,12 @@ export const structureLayer = (options: {
                               name: names.get(row.project_id) ?? "",
                               kind: row.kind,
                               mate: row.mate,
-                              ...(isMateKind(row.kind) ? mateCan(row.project_id, row.kind) : {}),
+                              can: {
+                                ...(isMateKind(row.kind)
+                                  ? mateCan(row.project_id, row.kind).can
+                                  : {}),
+                                ...environmentSetupOffers(userId, row, held, view),
+                              },
                             })),
                           environments: environmentSource.forApp(
                             userId,
