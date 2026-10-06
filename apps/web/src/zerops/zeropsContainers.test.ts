@@ -9,7 +9,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 
 import {
   containerSnapshotWithHq,
-  serverVersionOf,
+  mateServerVersion,
   useTargetContainer,
   useZeropsContainers,
 } from "./zeropsContainers";
@@ -72,7 +72,7 @@ const link = (reading: ProbeReading, watched: boolean) => ({
   watched,
 });
 
-describe("serverVersionOf: a read Mate's own word, else HQ's", () => {
+describe("mateServerVersion: a read Mate's own word, else HQ's", () => {
   it.each([
     ["HQ's word alone, for a Mate never read", undefined, told("0.12.0"), "0.12.0"],
     [
@@ -107,7 +107,7 @@ describe("serverVersionOf: a read Mate's own word, else HQ's", () => {
     ],
     ["nothing, where neither says", link({ kind: "unreachable" }, true), undefined, undefined],
   ] as const)("reads %s", (_name, mate, hq, expected) => {
-    expect(serverVersionOf(mate, hq)).toBe(expected);
+    expect(mateServerVersion(mate, hq)).toBe(expected);
   });
 });
 

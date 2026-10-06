@@ -55,7 +55,7 @@ export async function nextContainerReading(origin: string): Promise<ProbeReading
 export interface TargetContainer {
   readonly key: TargetKey | null;
   readonly verdict: ContainerVerdict;
-  /** The server version its Mate runs (`serverVersionOf`); undefined while nothing says. */
+  /** The server version its Mate runs (`mateServerVersion`); undefined while nothing says. */
   readonly serverVersion: string | undefined;
 }
 
@@ -69,7 +69,7 @@ export type MateReading = Pick<MateLinkValue, "container" | "watched">;
  * Mate, a restart of ours coming back before HQ hears it — else HQ's overview identity, else the
  * last answer it gave here. No clock decides between them.
  */
-export function serverVersionOf(
+export function mateServerVersion(
   link: MateReading | undefined,
   mate: MateLiveView | undefined,
 ): string | undefined {
@@ -79,14 +79,14 @@ export function serverVersionOf(
   return mate?.identity?.serverVersion ?? own;
 }
 
-/** Every Mate container in the rows' words, each server version as `serverVersionOf` reads it. */
+/** Every Mate container in the rows' words, each server version as `mateServerVersion` reads it. */
 export function containerSnapshotWithHq(
   links: ReadonlyMap<TargetKey, MateReading>,
   mates: HqMates | null | undefined,
 ): ContainerSnapshot {
   const serverVersions = new Map<TargetKey, string>();
   for (const [key, link] of links) {
-    const version = serverVersionOf(link, mates?.get(targetProject(key)));
+    const version = mateServerVersion(link, mates?.get(targetProject(key)));
     if (version !== undefined) serverVersions.set(key, version);
   }
   const machines = new Map([...links].map(([key, link]) => [key, link.container] as const));
@@ -103,7 +103,7 @@ export function useTargetContainer(key: TargetKey | null): TargetContainer {
     () => ({
       key,
       verdict: link === undefined ? UNKNOWN : containerVerdict(link.container),
-      serverVersion: serverVersionOf(link, mate),
+      serverVersion: mateServerVersion(link, mate),
     }),
     [key, link, mate],
   );
