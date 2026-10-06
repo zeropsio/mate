@@ -381,3 +381,48 @@ describe("ZeropsDataProvider ownership (M8)", () => {
     }
   });
 });
+
+describe("ZeropsDataProvider — signing out while it starts", () => {
+  it("keeps the account's registry until the starting runtime has shut down", async () => {
+    installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const { AppAtomRegistryProvider } = await import("../rpc/atomRegistry");
+    const { openAccountLifetime } = await import("./accountLifetime");
+    const { Atom } = await import("effect/unstable/reactivity");
+    session.current = sessionFor("account-1");
+    openAccountLifetime("account-1");
+    const last = Atom.keepAlive(Atom.make("open"));
+    let wrote = false;
+    let start: (runtime: unknown) => void = () => {};
+    const factory: Parameters<typeof ZeropsDataProvider>[0]["makeRuntime"] = ({ registry }) =>
+      new Promise((resolve) => {
+        start = (runtime) => resolve(runtime as never);
+      }).then((runtime) => {
+        registry.get(last);
+        return {
+          ...(runtime as object),
+          // Its shutdown still publishes its last state, as the access grant closing does.
+          shutdown: () =>
+            Effect.sync(() => {
+              registry.set(last, "closed");
+              wrote = true;
+            }),
+        } as never;
+      });
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    await act(async () => {
+      root.render(
+        <AppAtomRegistryProvider>
+          <ZeropsDataProvider makeRuntime={factory}>{null}</ZeropsDataProvider>
+        </AppAtomRegistryProvider>,
+      );
+    });
+    // Sign-out before the runtime stood: the lifetime closes, then the page unmounts.
+    closeAccountLifetime();
+    await act(() => root.unmount());
+    start({ access: {} });
+    await flushEffects();
+    await flushEffects();
+    expect(wrote).toBe(true);
+  });
+});

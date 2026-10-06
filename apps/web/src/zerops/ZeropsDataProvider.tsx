@@ -240,6 +240,15 @@ export function ZeropsDataProvider({
     /** The account runtime being built on the data runtime, once there is one. */
     let account: Promise<AccountRuntime> | null = null;
     let shutdownPromise: Promise<void> | null = null;
+    // The account's registry outlives this epoch's teardown, from the moment it starts: whenever
+    // the account's lifetime closes — mid-startup too — its registry goes only once whatever runtime
+    // stood has shut down (a grant closing still publishes its last view).
+    let endTeardown: () => void = () => undefined;
+    const teardown = new Promise<void>((resolve) => {
+      endTeardown = resolve;
+    });
+    const removeTeardownHold = onAccountLifetimeClose(() => holdRegistryUntil(teardown));
+    void teardown.then(removeTeardownHold);
     const shutdown = (created: ManagedZeropsDataRuntime, reason: "account-replaced" | "logout") => {
       shutdownPromise ??= (account ?? Promise.resolve(null))
         .then(
@@ -247,7 +256,10 @@ export function ZeropsDataProvider({
           // An account runtime that never stood leaves only the data runtime to close.
           () => Effect.runPromise(created.shutdown(reason)),
         )
-        .finally(taskScheduler.dispose);
+        .finally(() => {
+          taskScheduler.dispose();
+          endTeardown();
+        });
       return shutdownPromise;
     };
     void makeRuntime({
@@ -287,10 +299,8 @@ export function ZeropsDataProvider({
           (built) => {
             // A cleanup before the account runtime stood closes it through `shutdown`.
             if (cancelled) return;
-            // The account's registry outlives its runtime's shutdown: a grant closing still
-            // publishes its last view.
             removeLifetimeClose = onAccountLifetimeClose(() => {
-              holdRegistryUntil(shutdown(created, "logout"));
+              void shutdown(created, "logout");
             });
             accountOwner.current = built;
             built.selectOrganization(activeId.current);
@@ -318,8 +328,10 @@ export function ZeropsDataProvider({
       (cause: unknown) => {
         // Also reached when `abort` fires on unmount before startup settled
         // on its own — the interrupted fiber rejects, and cleanup below has
-        // already flipped `cancelled`, so this only disposes the scheduler.
+        // already flipped `cancelled`, so this only disposes the scheduler. No runtime stood:
+        // nothing holds the registry any longer.
         taskScheduler.dispose();
+        endTeardown();
         if (!cancelled) setStartupFailure({ accountId, message: zeropsErrorMessage(cause) });
       },
     );
