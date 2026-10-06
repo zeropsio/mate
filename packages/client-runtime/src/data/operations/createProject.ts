@@ -7,7 +7,6 @@
  * @module data/operations/createProject
  */
 import type { ProcessValue } from "../families/process.ts";
-import { projectsScope } from "../families/project.ts";
 import type { OperationReceipt } from "../model.ts";
 import type { ProjectionReads } from "../store.ts";
 import {
@@ -66,16 +65,4 @@ export const createProject: OperationKind<"create-project"> = {
     receipt.handles.length === 0
       ? null
       : { family: "process", listing: "history", ownerId: projectOf(receipt) },
-  // After a lost answer: a project of its name in the organization; one already there at the send
-  // is never it.
-  effectHandles: (read, intent) => {
-    // Only a wholly read listing says which projects were there before the send.
-    const listed = read.members(projectsScope(intent.orgId));
-    if (listed.coverage !== "complete") return null;
-    return listed.ids.filter((id) => {
-      const project = read.fact("project", id);
-      return project.kind === "known" && project.value.name === intent.name;
-    });
-  },
-  adoptedResult: (projectId) => ({ projectId }),
 };

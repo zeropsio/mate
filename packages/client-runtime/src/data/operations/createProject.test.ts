@@ -78,12 +78,26 @@ const projectAppears = (store: AccountStore, id: string, name: string) => {
   });
 };
 
-function operationsOf(store: AccountStore, answer: () => Promise<{ readonly id: string }>) {
+/** The organization's projects as Zerops lists them, read before the send and after a lost answer. */
+type Listing = ReadonlyArray<{ readonly id: string; readonly name: string }>;
+
+function operationsOf(
+  store: AccountStore,
+  answer: () => Promise<{ readonly id: string }>,
+  listings: ReadonlyArray<Listing> = [[], []],
+) {
   const calls: unknown[] = [];
+  const reads = [...listings];
   const submit = createProjectExecutor({
     createProject: (input) => {
       calls.push(input);
       return answer();
+    },
+    listClientProjects: async () => {
+      calls.push("list");
+      const listing = reads.shift();
+      if (listing === undefined) throw new Error("Zerops could not be reached.");
+      return listing;
     },
   });
   const operations = makeOperations({
@@ -126,7 +140,7 @@ describe("create-project", () => {
         const store = account();
         const { operations, calls } = operationsOf(store, async () => ({ id: "p9" }));
         yield* operations.submit(CREATE);
-        expect(calls).toEqual([{ clientId: ORG, name: "shop-stage", tagList: ["app"] }]);
+        expect(calls).toEqual(["list", { clientId: ORG, name: "shop-stage", tagList: ["app"] }]);
         expect(operationResult(store.state().operations.get("r1"), "create-project")).toEqual({
           projectId: "p9",
         });
@@ -145,6 +159,7 @@ describe("create-project", () => {
       const { operations, calls } = operationsOf(store, async () => ({ id: "p9" }));
       yield* operations.submit({ ...CREATE, location: "prg1" });
       expect(calls).toEqual([
+        "list",
         { clientId: ORG, name: "shop-stage", tagList: ["app"], location: "prg1" },
       ]);
     }),
@@ -160,59 +175,42 @@ describe("create-project", () => {
     }),
   );
 
-  it.effect("a lost answer adopts the one project of its name that was absent at the send", () =>
-    Effect.gen(function* () {
-      const store = account([{ id: "p1", name: "shop-stage" }]);
-      const { operations } = operationsOf(store, async () => {
-        projectAppears(store, "p9", "shop-stage");
-        throw new ZeropsApiError("No answer.", "uncertain");
-      });
-      yield* operations.submit(CREATE);
-      expect(progress(store)).toEqual({ stage: "reflected", operationId: "p9" });
-      expect(operationResult(store.state().operations.get("r1"), "create-project")).toEqual({
-        projectId: "p9",
-      });
-    }),
-  );
-
-  it.effect("a lost answer adopts none of two new projects of its name: it stays uncertain", () =>
-    Effect.gen(function* () {
-      const store = account();
-      const { operations } = operationsOf(store, async () => {
-        projectAppears(store, "p9", "shop-stage");
-        projectAppears(store, "p8", "shop-stage");
-        throw new ZeropsApiError("No answer.", "uncertain");
-      });
-      yield* operations.submit(CREATE);
-      expect(progress(store)).toEqual({ stage: "uncertain", next: "ask-owner-again" });
-    }),
-  );
+  const lost = async (): Promise<{ readonly id: string }> => {
+    throw new ZeropsApiError("No answer.", "uncertain");
+  };
+  const OTHER = { id: "p1", name: "shop-stage" };
 
   it.effect(
-    "adopts nothing where the organization's projects were not wholly read at the send",
+    "a lost answer adopts the one project of its name Zerops lists now and did not before",
     () =>
       Effect.gen(function* () {
-        // No listing read yet: a project of its name there now may be one it held already.
-        const store = makeAccountStore(AtomRegistry.make());
-        const { operations } = operationsOf(store, async () => {
-          liveZerops({ running: [], projects: [{ id: "p9", name: "shop-stage" }] }).forEach(
-            store.dispatch,
-          );
-          throw new ZeropsApiError("No answer.", "uncertain");
-        });
+        const store = account();
+        const { operations, calls } = operationsOf(store, lost, [
+          [OTHER],
+          [OTHER, { id: "p9", name: "shop-stage" }],
+        ]);
         yield* operations.submit(CREATE);
-        expect(progress(store)).toEqual({ stage: "uncertain", next: "ask-owner-again" });
+        expect(calls.filter((call) => call !== "list")).toHaveLength(1);
+        expect(progress(store)).toEqual({ stage: "accepted", operationId: "p9" });
+        expect(operationResult(store.state().operations.get("r1"), "create-project")).toEqual({
+          projectId: "p9",
+        });
       }),
   );
 
-  it.effect("a lost answer with no new project of its name stays uncertain, never sent again", () =>
+  it.effect.each([
+    ["no new project of its name", [[OTHER], [OTHER]]],
+    [
+      "two new projects of its name",
+      [[OTHER], [OTHER, { id: "p8", name: "shop-stage" }, { id: "p9", name: "shop-stage" }]],
+    ],
+    ["a listing that could not be read again", [[OTHER]]],
+  ] as const)("a lost answer with %s stays uncertain, never sent again", ([, listings]) =>
     Effect.gen(function* () {
       const store = account();
-      const { operations, calls } = operationsOf(store, async () => {
-        throw new ZeropsApiError("No answer.", "uncertain");
-      });
+      const { operations, calls } = operationsOf(store, lost, listings);
       yield* operations.submit(CREATE);
-      expect(calls).toHaveLength(1);
+      expect(calls.filter((call) => call !== "list")).toHaveLength(1);
       expect(progress(store)).toEqual({ stage: "uncertain", next: "ask-owner-again" });
     }),
   );

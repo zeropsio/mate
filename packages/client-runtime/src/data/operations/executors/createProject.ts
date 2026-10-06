@@ -2,9 +2,16 @@
  * A project's creation, at Zerops: `POST /client/{id}/project`, answered with the project — the
  * operation's handle and its result.
  *
+ * Zerops keeps no request ids, so its lost answer is settled by Zerops's own listing, read as the
+ * write is sent and again once its answer is lost: the one project of its name listed then that
+ * was not before is its own. None, or more than one — somebody else's of the same name may have
+ * appeared too — and it stays uncertain, for the person to look at the projects; nothing is sent
+ * again. A listing that could not be read at the send adopts nothing.
+ *
  * @module data/operations/executors/createProject
  */
 import * as Effect from "effect/Effect";
+import * as Result from "effect/Result";
 
 import type { OperationReceipt } from "../../model.ts";
 import type { IntentOf } from "../kind.ts";
@@ -17,25 +24,52 @@ export function createProjectExecutor(platform: {
     readonly tagList: ReadonlyArray<string>;
     readonly location?: string;
   }) => Promise<{ readonly id: string }>;
+  readonly listClientProjects: (
+    clientId: string,
+  ) => Promise<ReadonlyArray<{ readonly id: string; readonly name: string }>>;
 }) {
-  return (requestId: string, intent: IntentOf<"create-project">) =>
+  /** The ids of the organization's projects of `name`, as Zerops lists them now; `null` unread. */
+  const named = (intent: IntentOf<"create-project">) =>
     Effect.map(
-      verb(() =>
-        platform.createProject({
-          clientId: intent.orgId,
-          name: intent.name,
-          tagList: intent.tagList,
-          ...(intent.location === undefined ? {} : { location: intent.location }),
+      Effect.result(
+        Effect.tryPromise({
+          try: () => platform.listClientProjects(intent.orgId),
+          catch: () => null,
         }),
       ),
-      ({ id }): OperationReceipt => ({
-        requestId,
-        operationId: id,
-        executor: "zerops",
-        affected: [{ family: "project", id }],
-        handles: [id],
-        acceptance: { kind: "accepted", result: { projectId: id } },
-        outcome: { kind: "pending" },
-      }),
+      (listed) =>
+        Result.isSuccess(listed)
+          ? listed.success.filter((project) => project.name === intent.name).map(({ id }) => id)
+          : null,
     );
+  const receipt = (requestId: string, id: string): OperationReceipt => ({
+    requestId,
+    operationId: id,
+    executor: "zerops",
+    affected: [{ family: "project", id }],
+    handles: [id],
+    acceptance: { kind: "accepted", result: { projectId: id } },
+    outcome: { kind: "pending" },
+  });
+  return (requestId: string, intent: IntentOf<"create-project">) =>
+    Effect.gen(function* () {
+      const before = yield* named(intent);
+      const sent = yield* Effect.result(
+        verb(() =>
+          platform.createProject({
+            clientId: intent.orgId,
+            name: intent.name,
+            tagList: intent.tagList,
+            ...(intent.location === undefined ? {} : { location: intent.location }),
+          }),
+        ),
+      );
+      if (Result.isSuccess(sent)) return receipt(requestId, sent.success.id);
+      if (sent.failure.outcome !== "uncertain-acceptance" || before === null)
+        return yield* Effect.fail(sent.failure);
+      const after = yield* named(intent);
+      const made = after?.filter((id) => !before.includes(id)) ?? [];
+      if (made.length !== 1) return yield* Effect.fail(sent.failure);
+      return receipt(requestId, made[0]!);
+    });
 }

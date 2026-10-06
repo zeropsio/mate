@@ -48,6 +48,7 @@ type ZeropsOperationsClient = Pick<
   | "writeProject"
   | "setProjectMemberRole"
   | "createProject"
+  | "listClientProjects"
   | "importProject"
   | "importServicesIntoProject"
   | "importDevelopmentContainer"
@@ -88,6 +89,7 @@ export function makeZeropsExecutor(input: {
   });
   const create = createProjectExecutor({
     createProject: (input) => client.createProject(input),
+    listClientProjects: (clientId) => client.listClientProjects(clientId),
   });
   const creationWrite = creationWritesExecutor({
     importProject: (clientId, yaml) => client.importProject(clientId, yaml),

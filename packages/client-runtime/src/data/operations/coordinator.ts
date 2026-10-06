@@ -142,7 +142,7 @@ export function makeOperations(options: {
     for (const [other, record] of state.operations)
       if (other !== requestId && !ended(read, record))
         for (const handle of record.handles) claimed.add(handle);
-    const candidates = (effectHandles(read, intent) ?? []).filter(
+    const candidates = effectHandles(read, intent).filter(
       (handle) => !before.includes(handle) && !claimed.has(handle),
     );
     return candidates.length === 1 ? candidates[0]! : null;
@@ -232,14 +232,15 @@ export function makeOperations(options: {
     submit: (intent) =>
       Effect.gen(function* () {
         const requestId = options.makeId();
-        // What the owner's facts show before the send is never this operation's own effect; where
-        // they cannot say yet, nothing they show later is adopted.
-        const before = kindOf(intent).effectHandles?.(readsOfState(store.state()), intent) ?? null;
+        const effectHandles = kindOf(intent).effectHandles;
         store.dispatch({
           kind: "operation-recorded",
           requestId,
           intent,
-          ...(before === null ? {} : { before }),
+          // What the owner's facts show before the send is never this operation's own effect.
+          ...(effectHandles === undefined
+            ? {}
+            : { before: effectHandles(readsOfState(store.state()), intent) }),
         });
         yield* send(requestId, intent, true);
         return requestId;
