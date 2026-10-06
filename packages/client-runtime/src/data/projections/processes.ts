@@ -20,16 +20,23 @@ export interface ProjectKey {
 
 const keyOf = ({ orgId, projectId }: ProjectKey) => `${orgId}/${projectId}`;
 
+const CATCHING_UP: ReadonlySet<StreamState["phase"]> = new Set(["recovering", "reauthenticating"]);
+
 /** How the organization's running work is observed now: live, catching up, or refused. */
 function freshness(read: ProjectionReads, orgId: string) {
   const link = read.stream(linkKeys.zerops(orgId));
   const running = read.stream(runningScope(orgId));
   const refusal = [link, running].find((stream) => stream.phase === "refused");
   const complete = read.coverage(runningScope(orgId)) === "complete";
+  // Catching up is the streams' own word — a link retrying or repairing its session, a scope an
+  // attempt already registered left stale — whether or not anything was read before; the first
+  // connect is not.
+  const catchingUp =
+    CATCHING_UP.has(link.phase) || (running.phase === "stale" && running.generation > 0);
   return {
     complete,
     live: link.phase === "live" && running.phase === "live",
-    reconnecting: complete && refusal === undefined && running.phase !== "live",
+    reconnecting: refusal === undefined && catchingUp,
     ...(refusal === undefined ? {} : { unavailableReason: refusalReason(refusal) }),
   };
 }

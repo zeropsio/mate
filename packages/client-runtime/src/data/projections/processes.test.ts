@@ -94,6 +94,32 @@ const ids = (state: AccountState) =>
   projectProcesses.derive(readsOfState(state), KEY).processes?.map((process) => process.id);
 
 describe("projectProcesses", () => {
+  it("says it catches up when Zerops is down from the start, before anything was read", () => {
+    const down = apply(emptyAccount, [
+      event(linkKeys.zerops(ORG), { kind: "demand", demanded: true }),
+      event(linkKeys.zerops(ORG), {
+        kind: "fault",
+        jitter: 0,
+        fault: { outcome: "transient", message: "socket closed" },
+      }),
+    ]);
+    expect(projectProcesses.derive(readsOfState(down), KEY)).toMatchObject({
+      processes: undefined,
+      live: false,
+      reconnecting: true,
+    });
+  });
+
+  it("keeps catching up while its link tries again, and not on the first connect", () => {
+    const retrying = apply(outage(live()), [event(linkKeys.zerops(ORG), { kind: "retry-due" })]);
+    expect(projectProcesses.derive(readsOfState(retrying), KEY).reconnecting).toBe(true);
+    const connecting = apply(emptyAccount, [
+      event(linkKeys.zerops(ORG), { kind: "demand", demanded: true }),
+      event(runningScope(ORG), { kind: "demand", demanded: true }),
+    ]);
+    expect(projectProcesses.derive(readsOfState(connecting), KEY).reconnecting).toBe(false);
+  });
+
   it("leaves out a process that stopped running unseen, its end never pushed", () => {
     // A rotation, an outage, a laptop asleep: the running scope's next baseline lists it no more.
     const ended = apply(live(), [
