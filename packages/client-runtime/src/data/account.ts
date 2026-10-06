@@ -64,6 +64,13 @@ export interface AccountObservation {
   readonly retry: () => void;
   /** Ends the observation: no organization shown, and its operations' standing demands let go. */
   readonly stop: () => void;
+  /**
+   * Ends it with its account: stopped, and its store closed, so the account's registry may be
+   * disposed right after — whatever still arrives publishes nothing.
+   */
+  readonly close: () => void;
+  /** Whether it was closed with its account: its registry may be gone. */
+  readonly closed: () => boolean;
 }
 
 export function observeAccount(options: {
@@ -78,10 +85,11 @@ export function observeAccount(options: {
   // standing demand at its owner, whichever organization is shown, from the first shown on until
   // the observation stops — and again if it is shown after that.
   let stopStanding: (() => void) | null = null;
+  let closed = false;
   const holds = new Set<{ readonly demand: DetailDemand; release: (() => void) | null }>();
   const observation: AccountObservation = {
     show: (orgId) => {
-      if (shown?.orgId === orgId) return;
+      if (shown?.orgId === orgId || (closed && orgId !== null)) return;
       if (shown !== null) {
         for (const hold of holds) {
           hold.release?.();
@@ -114,6 +122,12 @@ export function observeAccount(options: {
       stopStanding = null;
       observation.show(null);
     },
+    close: () => {
+      closed = true;
+      observation.stop();
+      options.store.close();
+    },
+    closed: () => closed,
   };
   return observation;
 }

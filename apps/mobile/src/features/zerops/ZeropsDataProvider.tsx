@@ -33,6 +33,15 @@ import type { ZeropsApiClient, ZeropsUser } from "@t3tools/client-runtime/zerops
 import type { PlatformWatchSocket } from "@t3tools/client-runtime/zerops/data";
 
 import { mobileAccountPorts, type MobileAccountPorts } from "./environment-ports";
+import {
+  makeAccountStore,
+  makeZeropsWire,
+  observeAccount,
+  repairZeropsSession,
+  type AccountObservation,
+  type AccountStore,
+} from "@t3tools/client-runtime/data";
+
 import { ZeropsAccountData } from "./ZeropsAccountData";
 
 export interface MobileZeropsDataAccount {
@@ -47,6 +56,14 @@ export interface ZeropsDataBinding {
   readonly account: AccountScope;
   readonly runtime: ManagedZeropsDataRuntime;
   readonly registry: AtomRegistry.AtomRegistry;
+  /**
+   * The account's data layer over the same registry: its store's reads and its observation,
+   * closed with the account before the registry goes.
+   */
+  readonly accountData: {
+    readonly data: AccountStore["data"];
+    readonly observation: AccountObservation;
+  };
 }
 
 export interface ZeropsDataValue {
@@ -196,6 +213,15 @@ export function ZeropsDataProvider({
     let disposed = false;
     let reason: "logout" | "account-replaced" = "account-replaced";
     const registry = account === null ? null : AtomRegistry.make();
+    const store = registry === null ? null : makeAccountStore(registry);
+    const observation =
+      store === null || account === null
+        ? null
+        : observeAccount({
+            store,
+            wire: makeZeropsWire({ client: account.client }),
+            repairSession: repairZeropsSession(account.client),
+          });
 
     if (account === null || registry === null) {
       setValue(CLOSED);
@@ -210,6 +236,8 @@ export function ZeropsDataProvider({
     const disposeOnce = async () => {
       if (disposed) return;
       disposed = true;
+      // The account's data ends first: what its screens still release publishes nothing.
+      observation?.close();
       if (opened !== null) {
         if (owner.current === opened) owner.current = null;
         await closeAccount(opened, registry, reason);
@@ -249,7 +277,12 @@ export function ZeropsDataProvider({
         if (!active) return disposeOnce();
         owner.current = opened;
         opened.selectOrganization(activeOrg.current);
-        const current: ZeropsDataBinding = { account: scope, runtime, registry };
+        const current: ZeropsDataBinding = {
+          account: scope,
+          runtime,
+          registry,
+          accountData: { data: store!.data, observation: observation! },
+        };
         binding = current;
         setValue({ binding: current, environments: null, error: null });
         // The post-grant stage stands on the epoch's first grant: rows read its Mate
@@ -289,11 +322,7 @@ export function ZeropsDataProvider({
   const context = useMemo(() => value, [value]);
   return (
     <ZeropsDataContext value={context}>
-      <ZeropsAccountData
-        account={account}
-        registry={value.binding?.registry ?? null}
-        activeOrganizationId={activeOrganizationId}
-      >
+      <ZeropsAccountData binding={value.binding} activeOrganizationId={activeOrganizationId}>
         {children}
       </ZeropsAccountData>
     </ZeropsDataContext>

@@ -71,6 +71,12 @@ export interface AccountStore {
   readonly state: () => AccountState;
   /** Hears every reduction, after its keys are published: for the runtime's own holds, not for UI. */
   readonly subscribe: (listener: () => void) => () => void;
+  /**
+   * Ends the store with its account: from now on nothing is reduced or published, so the
+   * account's registry may be disposed while late input (an interrupted link's last events, a
+   * screen's release) still arrives.
+   */
+  readonly close: () => void;
 }
 
 const EMPTY_IDS: ReadonlySet<string> = new Set();
@@ -153,6 +159,7 @@ export function makeAccountStore(registry: AtomRegistry.AtomRegistry): AccountSt
     }
     return atom as Atom.Writable<T>;
   };
+  let closed = false;
   const projected = new WeakMap<Projection<never, unknown>, Map<string, Atom.Atom<unknown>>>();
   const project = <Key, Value>(projection: Projection<Key, Value>, key: Key): Atom.Atom<Value> => {
     let byKey = projected.get(projection as Projection<never, unknown>);
@@ -181,6 +188,7 @@ export function makeAccountStore(registry: AtomRegistry.AtomRegistry): AccountSt
       project,
     },
     dispatch: (input) => {
+      if (closed) return [];
       const reduction = reduceAccount(state, input);
       state = reduction.state;
       Atom.batch(() => {
@@ -195,6 +203,10 @@ export function makeAccountStore(registry: AtomRegistry.AtomRegistry): AccountSt
     subscribe: (listener) => {
       listeners.add(listener);
       return () => void listeners.delete(listener);
+    },
+    close: () => {
+      closed = true;
+      listeners.clear();
     },
   };
 }

@@ -178,3 +178,46 @@ describe("observeAccount — its end", () => {
     }),
   );
 });
+
+describe("observeAccount — closed with its account", () => {
+  it.live("publishes nothing once closed, so the account's registry may go right after", () =>
+    Effect.gen(function* () {
+      const registry = AtomRegistry.make();
+      const store = makeAccountStore(registry);
+      const fixture = fixtureWire((request) =>
+        Effect.succeed(
+          request.method === "GET"
+            ? { status: 200, body: { list: [] } }
+            : request.body?.wsOutputType === "listStream"
+              ? { items: [] }
+              : {},
+        ),
+      );
+      const account = observeAccount({ store, wire: fixture.wire, repairSession: Effect.void });
+      const release = account.demandDetail({
+        family: "process",
+        listing: "history",
+        ownerId: "p1",
+      });
+      account.show("org");
+      yield* turns;
+      registry.mount(store.data.stream(linkKeys.zerops("org")));
+
+      account.close();
+      // The account's registry goes at once; what the closed observation still does is silent:
+      // a screen's release, a new hold, an interrupted link's last event.
+      registry.dispose();
+      release();
+      account.demandDetail({ family: "process", listing: "history", ownerId: "p2" })();
+      expect(() =>
+        store.dispatch({
+          kind: "stream",
+          key: linkKeys.zerops("org"),
+          now: 0,
+          event: { kind: "demand", demanded: false },
+        }),
+      ).not.toThrow();
+      yield* turns;
+    }),
+  );
+});

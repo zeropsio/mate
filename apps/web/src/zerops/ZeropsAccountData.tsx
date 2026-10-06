@@ -18,6 +18,7 @@ import {
 import { Atom } from "effect/unstable/reactivity";
 import { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
 
+import { onAccountLifetimeClose } from "./accountLifetime";
 import { accountOperations, AccountOperationsContext } from "./accountOperations";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
@@ -40,6 +41,10 @@ export function ZeropsAccountData({ children }: { readonly children: ReactNode }
     [client, store],
   );
   const orgId = status === "signed-in" ? (activeOrganization?.id ?? null) : null;
+  // The account's lifetime closes (sign-out, another account) before React unmounts this, and
+  // disposes the registry right after: the account's data ends first, so what the unmounting
+  // screens still release publishes nothing.
+  useEffect(() => onAccountLifetimeClose(observation.close), [observation]);
   useEffect(() => {
     observation.show(orgId);
   }, [observation, orgId]);
@@ -54,9 +59,12 @@ export function ZeropsAccountData({ children }: { readonly children: ReactNode }
     [client, observation, registry, store],
   );
   useEffect(() => {
+    if (observation.closed()) return;
     registry.set(accountReadsAtom, value);
-    return () => registry.set(accountReadsAtom, null);
-  }, [registry, value]);
+    return () => {
+      if (!observation.closed()) registry.set(accountReadsAtom, null);
+    };
+  }, [observation, registry, value]);
   return (
     <AccountDataContext value={value}>
       <AccountOperationsContext value={operations}>{children}</AccountOperationsContext>

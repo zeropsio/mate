@@ -1,81 +1,55 @@
 /**
- * The signed-in account's data layer on mobile: one store and atom registry per account, and the
- * active organization's Zerops navigation observed while it is shown. Screens read the store
- * through projections only.
+ * The signed-in account's data layer on mobile: the store and observation its data provider owns
+ * over the account's registry, the active organization's Zerops navigation observed while it is
+ * shown. Screens read the store through projections only.
  */
-import {
-  accountReadsAtom,
-  makeAccountStore,
-  makeZeropsWire,
-  observeAccount,
-  repairZeropsSession,
-  type AccountStore,
-  type DetailDemand,
-  type ZeropsWireClient,
-} from "@t3tools/client-runtime/data";
+import { accountReadsAtom, type AccountReads } from "@t3tools/client-runtime/data";
 import type { AtomRegistry } from "effect/unstable/reactivity";
 import { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
 
+import type { ZeropsDataBinding } from "./ZeropsDataProvider";
+
 /** What a screen may reach of the account's data: the store's reads, never its writer. */
-interface AccountData {
-  readonly data: AccountStore["data"];
+interface AccountData extends AccountReads {
   readonly registry: AtomRegistry.AtomRegistry;
-  /** The organization whose navigation is observed; `null` before one is chosen. */
-  readonly orgId: string | null;
-  /** A screen's hold on a detail while it is drawn; the release lets it go. */
-  readonly demandDetail: (demand: DetailDemand) => () => void;
 }
 
 const AccountDataContext = createContext<AccountData | null>(null);
 
 export function ZeropsAccountData({
-  account,
-  registry,
+  binding,
   activeOrganizationId,
   children,
 }: {
-  readonly account: { readonly client: ZeropsWireClient; readonly userId: string } | null;
-  /**
-   * The account's atom registry, which its data provider owns: the store publishes into the
-   * registry the account runtime's derivations read, so they read one store.
-   */
-  readonly registry: AtomRegistry.AtomRegistry | null;
+  /** The account's data provider binding; `null` while no account is open. */
+  readonly binding: ZeropsDataBinding | null;
   readonly activeOrganizationId: string | null;
   readonly children: ReactNode;
 }) {
-  const client = account?.client ?? null;
-  // One store per account and registry: a new account starts empty, nothing carries over.
-  const held = useMemo(() => {
-    if (registry === null || client === null) return null;
-    const store = makeAccountStore(registry);
-    const observation = observeAccount({
-      store,
-      wire: makeZeropsWire({ client }),
-      repairSession: repairZeropsSession(client),
-    });
-    return { registry, store, observation };
-  }, [client, registry]);
-  useEffect(() => (held === null ? undefined : () => held.observation.stop()), [held]);
+  const observation = binding?.accountData.observation ?? null;
   useEffect(() => {
-    held?.observation.show(activeOrganizationId);
-  }, [activeOrganizationId, held]);
+    observation?.show(activeOrganizationId);
+  }, [activeOrganizationId, observation]);
   const value = useMemo(
     () =>
-      held === null
+      binding === null
         ? null
         : {
-            data: held.store.data,
-            registry: held.registry,
+            data: binding.accountData.data,
+            registry: binding.registry,
             orgId: activeOrganizationId,
-            demandDetail: held.observation.demandDetail,
+            demandDetail: binding.accountData.observation.demandDetail,
           },
-    [activeOrganizationId, held],
+    [activeOrganizationId, binding],
   );
   useEffect(() => {
-    if (value === null) return;
+    if (value === null || observation === null || observation.closed()) return;
     value.registry.set(accountReadsAtom, value);
-    return () => value.registry.set(accountReadsAtom, null);
-  }, [value]);
+    return () => {
+      // A closed account's registry may already be gone.
+      if (!observation.closed()) value.registry.set(accountReadsAtom, null);
+    };
+  }, [observation, value]);
   return <AccountDataContext value={value}>{children}</AccountDataContext>;
 }
 

@@ -234,6 +234,28 @@ describe("ZeropsDataProvider account lifecycle", () => {
     expect(events).toEqual(["start:account-a", "shutdown:account-a:logout"]);
   });
 
+  it("closes the account's data before its registry goes, so a late release writes nothing", async () => {
+    const events: string[] = [];
+    const runtimeFactory = vi.fn(recordingRuntime(events));
+
+    const cleanupA = render(account("account-a"), runtimeFactory);
+    await settle();
+    const binding = rendered(account("account-a"), runtimeFactory).binding!;
+    binding.accountData.observation.show("org-1");
+    const release = binding.accountData.observation.demandDetail({
+      family: "process",
+      listing: "history",
+      ownerId: "project-1",
+    });
+    render(null, runtimeFactory);
+    cleanupA();
+    await settle();
+
+    // The registry is gone; the card that held the history unmounts only now.
+    expect(binding.accountData.observation.closed()).toBe(true);
+    expect(release).not.toThrow();
+  });
+
   it("shuts down the runtime only once when cleanup races a still-resolving startup", async () => {
     const events: string[] = [];
     let resolveRuntime: () => void = () => undefined;
