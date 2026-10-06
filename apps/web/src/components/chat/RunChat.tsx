@@ -4202,12 +4202,22 @@ function RunScroll({
     const holds = holdsRef.current;
     if (holds[kind]) return;
     holds[kind] = true;
-    const ends = kind === "pointer" ? ["pointerup", "pointercancel"] : ["touchend", "touchcancel"];
+    // It lifts with its own end, or with anything that ends a press without
+    // one (a context menu, the window losing focus, a drag), or after a
+    // while: a lost end never holds it for good.
+    const ends = [
+      ...(kind === "pointer" ? ["pointerup", "pointercancel"] : ["touchend", "touchcancel"]),
+      "contextmenu",
+      "blur",
+      "dragstart",
+    ];
     const lifted = () => {
+      clearTimeout(cap);
       holds[kind] = false;
       heardPerson();
       for (const type of ends) window.removeEventListener(type, lifted, true);
     };
+    const cap = setTimeout(lifted, HOLD_LONGEST_MS);
     for (const type of ends) window.addEventListener(type, lifted, true);
   };
   useLayoutEffect(() => {
@@ -4750,6 +4760,9 @@ function rowsIn(holder: HTMLElement, was: HolderRows | undefined): HolderRows {
     })),
   };
 }
+
+/** The longest a pointer or finger held on a run's history counts as input with no end heard. */
+const HOLD_LONGEST_MS = 4000;
 
 /** Whether two draws of a run's history hold the same lines, each a call or not alike. */
 function sameLines(left: ReadonlyArray<ChatLine>, right: ReadonlyArray<ChatLine>): boolean {
