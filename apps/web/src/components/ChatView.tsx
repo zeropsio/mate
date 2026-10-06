@@ -214,6 +214,7 @@ import { useZeropsAgentAuth, useZeropsLifecycle } from "../zerops/useZeropsFeeds
 import { useDeployBuilds, useRunningBuildDemand } from "../zerops/activity/useDeployBuilds";
 import {
   useZeropsChangeLandedEvents,
+  useZeropsMateAppDetailHold,
   useZeropsConversationLandings,
 } from "../zerops/useZeropsChangeLandedEvents";
 import { agentLastSpokeAt, agentNotesFor, agentTurnNotes } from "@t3tools/client-runtime/zerops";
@@ -2991,6 +2992,7 @@ export default function ChatView(props: ChatViewProps) {
   ]);
   // A change of this Mate's landing is a fact about the forge, not about the
   // agent, so it does not come from the activity stream.
+  useZeropsMateAppDetailHold(activeThreadEnvironmentId);
   const changeLandedEvents = useZeropsChangeLandedEvents(activeThreadEnvironmentId);
   // When the agent last spoke — the line between what it knows and what has
   // happened since. Without one nothing is said rather than everything.

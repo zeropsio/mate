@@ -112,6 +112,22 @@ const offers = vi.hoisted(() => {
   };
   return { held, of: () => held.current };
 });
+/** The applications whose detail the review holds now. */
+const detailHeld = vi.hoisted(() => ({ now: [] as ReadonlyArray<string> }));
+vi.mock("~/zerops/useHqAppDetail", async () => {
+  const { useEffect } = await import("react");
+  return {
+    useHqAppDetailHold: (appIds: ReadonlyArray<string>) => {
+      const key = appIds.join(",");
+      useEffect(() => {
+        detailHeld.now = key === "" ? [] : key.split(",");
+        return () => {
+          detailHeld.now = [];
+        };
+      }, [key]);
+    },
+  };
+});
 vi.mock("~/zerops/useChangeOffers", () => ({ useChangeOffers: () => () => offers.of() }));
 
 const NOW = Date.parse("2026-09-30T10:00:00Z");
@@ -490,6 +506,13 @@ describe("ZeropsChangeReview: a change its project's flow does not hold yet", ()
       root.unmount();
     });
   }
+
+  it("holds its application's detail while it is drawn, and lets it go when it closes", async () => {
+    await reviewed(() => {
+      expect(detailHeld.now).toEqual(["group-orchard"]);
+    });
+    expect(detailHeld.now).toEqual([]);
+  });
 
   /** The review's buttons that say `label` — the primary by its action, its keys beside it. */
   const buttonsOf = (host: TestNode, label: string) =>

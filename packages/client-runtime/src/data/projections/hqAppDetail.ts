@@ -13,6 +13,7 @@ import type { Release } from "@t3tools/shared/hqRelease";
 import { hqAppDetailScope, type HqAppDetailValue } from "../families/hqAppDetail.ts";
 import type { Projection, ProjectionReads } from "../store.ts";
 import { sameValue } from "./equal.ts";
+import type { StreamFault } from "../streamMachine.ts";
 import { scopeFreshness, type ScopeFreshness } from "./freshness.ts";
 import type { RosterRead } from "./projects.ts";
 
@@ -30,8 +31,14 @@ export interface HqAppDetailRead extends Omit<ScopeFreshness, "complete"> {
   readonly recipes: HqAppRecipes;
   /** Where the application's read stands: not asked for, its first catchup under way, or read. */
   readonly read: RosterRead;
-  /** HQ's own word on why it cannot read the application now, while it says one. */
-  readonly failure: string | null;
+  /** HQ's code and words for why it cannot read the application now, while it says one. */
+  readonly failure: HqAppFailure | null;
+}
+
+/** Why HQ cannot read an application: its `scope-error` code where it named one, and its words. */
+export interface HqAppFailure {
+  readonly code?: string;
+  readonly message: string;
 }
 
 export interface HqAppKey {
@@ -48,6 +55,13 @@ const changesOf = (value: HqAppDetailValue | undefined): ReadonlyArray<HqChange>
 
 const tierOf = (value: HqAppDetailValue | undefined) =>
   value?.kind === "recipe" ? value.value : undefined;
+
+const failureOf = (fault: StreamFault | null | undefined): HqAppFailure | null =>
+  fault == null
+    ? null
+    : fault.code === undefined
+      ? { message: fault.message }
+      : { code: fault.code, message: fault.message };
 
 /** The records the application's scope lists now, by record key. */
 function recordsOf(read: ProjectionReads, { orgId, appId }: HqAppKey) {
@@ -82,7 +96,7 @@ export const hqAppDetail: Projection<HqAppKey, HqAppDetailRead> = {
         : stream.phase === "idle" || stream.phase === "paused"
           ? "unread"
           : "reading",
-      failure: freshness.live ? null : (stream.fault?.message ?? null),
+      failure: freshness.live ? null : failureOf(stream.fault),
       ...freshness,
     };
   },

@@ -67,6 +67,7 @@ import { useAddMate } from "~/zerops/newMate";
 import { useSetUpEnvironment } from "~/zerops/setUpEnvironment";
 import { askNewProject } from "~/zerops/newProjectAsk";
 import { useEnvironmentCreation } from "~/zerops/useEnvironmentCreation";
+import { useHqAppDetailHold } from "~/zerops/useHqAppDetail";
 import { useConnectMate, type MateConnectTarget } from "~/zerops/accountEnvironments";
 import { intendContainer, useZeropsContainers } from "~/zerops/zeropsContainers";
 import { useDeleteProject } from "~/zerops/deleteProject";
@@ -1615,6 +1616,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   );
   // The registry — which groups exist and which projects are in them (ADR 0002), read from HQ.
   const registryState = useZeropsRegistry();
+  // What each application released and landed is its detail: held while the page draws it.
+  useHqAppDetailHold(registryState.registry.groups.map(({ groupId }) => groupId));
 
   // Every verb a Mate has, from the one place that defines them — shared with
   // a project's own page, which listed its Mates and could do nothing to them.

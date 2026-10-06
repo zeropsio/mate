@@ -69,7 +69,7 @@ describe("useZeropsGroupRecipe", () => {
     },
     {
       name: "HQ cannot read the application",
-      detail: { ...NOT_READ, failure: "app_unreadable" },
+      detail: { ...NOT_READ, failure: { code: "forbidden", message: "app_unreadable" } },
       state: "unreadable",
     },
     {

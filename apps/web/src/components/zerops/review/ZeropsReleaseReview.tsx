@@ -55,6 +55,7 @@ import { Fragment, useId, useMemo, useState, type ReactNode } from "react";
 import { Input } from "~/components/ui/input";
 
 import { useFixMates } from "~/zerops/fixMates";
+import { useHqAppDetailHold } from "~/zerops/useHqAppDetail";
 import { useAskMateToFix, type FixProblem } from "~/zerops/fixRequest";
 import { useZeropsProjectFlowOptional, type ZeropsProjectFlow } from "~/zerops/projectFlowContext";
 import type { ReviewTarget } from "~/zerops/review";
@@ -105,6 +106,8 @@ export function ZeropsReleaseReview({
   readonly titleId: string;
   readonly onClose: () => void;
 }) {
+  // What a release lists and compares is its application's detail: held while it is drawn.
+  useHqAppDetailHold([target.groupId]);
   const flowValue = useZeropsProjectFlowOptional();
   const flow = flowValue?.flows.get(target.groupId);
   const name = useGroupName(target.groupId);

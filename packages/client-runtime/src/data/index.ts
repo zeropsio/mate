@@ -28,6 +28,7 @@ export {
   hqAppDetail,
   hqAppDetails,
   type HqAppDetailRead,
+  type HqAppFailure,
   type HqAppRecipes,
 } from "./projections/hqAppDetail.ts";
 export type { DetailDemand } from "./demand.ts";

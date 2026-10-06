@@ -41,6 +41,7 @@ import { Fragment, useCallback, useEffect, useMemo, useState, type ReactNode } f
 import { Button } from "~/components/ui/button";
 import { buildThreadRouteParams } from "~/threadRoutes";
 import { useAskMateToFix, type FixProblem } from "~/zerops/fixRequest";
+import { useHqAppDetailHold } from "~/zerops/useHqAppDetail";
 import {
   useZeropsProjectFlowOptional,
   type ZeropsProjectFlow,
@@ -114,6 +115,8 @@ export function ZeropsChangeReview({
    */
   readonly back?: ReviewButton | undefined;
 }) {
+  // The change's head, words and landing are its application's detail: held while it is drawn.
+  useHqAppDetailHold([target.groupId]);
   const reviewOffers = useChangeOffers()(target.groupId);
   const router = useRouter();
   const flowValue = useZeropsProjectFlowOptional();

@@ -1,9 +1,15 @@
 /**
- * Applications' detail as HQ says it (`hqAppDetail`): demanded for each application a surface draws
- * while it draws it, and let go when it goes. Nothing here reads HQ on its own; the account's HQ
- * link subscribes each demanded application's `app-detail` scope.
+ * Applications' detail as HQ says it (`hqAppDetail`): held for each application a detail surface
+ * draws while it draws it, and let go when it goes. What reads every application at once — the
+ * flows the menu draws — reads only what those surfaces hold, and holds nothing. Nothing here reads
+ * HQ on its own; the account's HQ link subscribes each held application's `app-detail` scope.
  */
-import { hqAppDetail, hqAppDetails, type HqAppDetailRead } from "@t3tools/client-runtime/data";
+import {
+  hqAppDetail,
+  hqAppDetails,
+  type HqAppDetailRead,
+  type HqAppFailure,
+} from "@t3tools/client-runtime/data";
 import { appRecipeOf, type AppRecipe } from "@t3tools/client-runtime/zerops";
 import { hqRefusalWords } from "@t3tools/client-runtime/zerops/hq";
 import type { HqChange, RepoListEntry } from "@t3tools/shared/hqChanges";
@@ -28,10 +34,10 @@ const NONE: Readonly<Record<string, HqAppDetailRead>> = {};
 const NONE_ATOM = Atom.make(NONE);
 
 /**
- * Holds each application's detail while the caller is drawn with it: one joining or leaving takes
- * or lets go of its own hold only, never the others'.
+ * Holds each application's detail while the caller — a detail surface — is drawn with it: one
+ * joining or leaving takes or lets go of its own hold only, never the others'.
  */
-function useHqAppDetailDemand(appIds: ReadonlyArray<string>): void {
+export function useHqAppDetailHold(appIds: ReadonlyArray<string>): void {
   const demandDetail = useAccountDataOptional()?.demandDetail;
   const holds = useRef<{
     readonly demandDetail: typeof demandDetail;
@@ -67,7 +73,7 @@ function useHqAppDetailDemand(appIds: ReadonlyArray<string>): void {
 
 /** One application's detail, held while the caller is drawn; not read without one. */
 export function useHqAppDetail(appId: string | null): HqAppDetailRead {
-  useHqAppDetailDemand(appId === null ? [] : [appId]);
+  useHqAppDetailHold(appId === null ? [] : [appId]);
   const orgId = useAccountOrgId();
   return useProjection(
     hqAppDetail,
@@ -76,9 +82,8 @@ export function useHqAppDetail(appId: string | null): HqAppDetailRead {
   );
 }
 
-/** Each application's detail by its id, each held while the caller is drawn. */
+/** Each application's detail by its id, as far as a detail surface holds it; holds none. */
 function useHqAppDetails(appIds: ReadonlyArray<string>): Readonly<Record<string, HqAppDetailRead>> {
-  useHqAppDetailDemand(appIds);
   const orgId = useAccountOrgId();
   const key = useMemo(
     () => (orgId === null || appIds.length === 0 ? null : { orgId, appIds }),
@@ -88,12 +93,13 @@ function useHqAppDetails(appIds: ReadonlyArray<string>): Readonly<Record<string,
 }
 
 /**
- * HQ's reason it cannot read an application, in its words: a reason HQ names is worded as every
- * refusal is; any other is said as HQ said it.
+ * HQ's reason it cannot read an application, in its words: a refusal HQ coded is worded as every
+ * refusal is, by its code; a reason no wording knows, and a failure HQ coded none, as HQ said it.
  */
-function hqAppFailureWords(failure: string): string {
-  const words = hqRefusalWords({ code: failure, reason: failure });
-  return words === `HQ refused this (${failure}).` ? failure : words;
+function hqAppFailureWords({ code, message }: HqAppFailure): string {
+  if (code === undefined) return message;
+  const words = hqRefusalWords({ code, reason: message });
+  return words === `HQ refused this (${message}).` ? message : words;
 }
 
 /** An application's recipe HQ cannot read, with the person's *Try again*; `undefined` otherwise. */
@@ -106,7 +112,10 @@ export function useHqRecipeFailure(
   return { reason: hqAppFailureWords(failure), again: retry };
 }
 
-/** Each application's recipe, once HQ said both its stage's and its production's tier. */
+/**
+ * Each application's recipe, once HQ said both its stage's and its production's tier to a detail
+ * surface that holds it.
+ */
 export function useHqAppRecipes(appIds: ReadonlyArray<string>): ReadonlyMap<string, AppRecipe> {
   const details = useHqAppDetails(appIds);
   return useMemo(() => {
@@ -137,8 +146,8 @@ export interface HqAppReleases {
 }
 
 /**
- * Each application's releases, repositories and changes, by its id: an application HQ has not said
- * a list of is absent from it — unread, never an earned "none".
+ * Each application's releases, repositories and changes, by its id, as a detail surface holds them:
+ * an application HQ has not said a list of is absent from it — unread, never an earned "none".
  */
 export function useHqAppReleases(appIds: ReadonlyArray<string>): HqAppReleases {
   const details = useHqAppDetails(appIds);

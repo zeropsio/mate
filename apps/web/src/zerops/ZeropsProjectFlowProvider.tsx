@@ -4,11 +4,12 @@
  *
  * Each part is read from the party that can prove it. HQ says which of a
  * group's projects are its stage and production, and how each deploy of
- * theirs went (`hqEnvironmentsAtom`), and — in each group's application
- * detail, held while the account is drawn — what is waiting to land and what
- * landed, its Mates' changes, and what was released (`useHqAppReleases`); and
- * its recipe, which says which tiers a group can add and the repository each
- * runtime builds from (`useHqAppRecipes`). The account says which projects a
+ * theirs went (`hqEnvironmentsAtom`), and its Mates' open changes as the
+ * menu draws them (`shownHqAppChangesAtom`). Each group's application detail —
+ * what landed, what was released (`useHqAppReleases`), and its recipe, which
+ * says which tiers a group can add and the repository each runtime builds from
+ * (`useHqAppRecipes`) — is read as far as a detail surface holds it; the flows
+ * hold it only for a verb that waits on it. The account says which projects a
  * group holds and which version each service runs, as its store states it.
  * Each group's flow is the same object until one of its own parts changes, so
  * one group answering never republishes another.
@@ -23,7 +24,7 @@ import { useAtomValue } from "@effect/atom-react";
 import {
   deployedCommit,
   environmentRow,
-  flowChanges,
+  flowAppChanges,
   flowReleaseOf,
   flowVerbKey,
   groupStopsOf,
@@ -56,6 +57,7 @@ import {
   type ProductionRun,
   type ReleaseGate,
 } from "@t3tools/client-runtime/zerops";
+import { shownHqAppChangesAtom } from "@t3tools/client-runtime/data";
 import { HQ_NOT_OPEN, hqRefusalWords, type HqApi } from "@t3tools/client-runtime/zerops/hq";
 import { type Deployment } from "@t3tools/client-runtime/zerops/flow";
 import {
@@ -68,6 +70,7 @@ import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import type { ChangeLink, HqChange, RepoListEntry } from "@t3tools/shared/hqChanges";
 import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
+import type { HqNavigationChange } from "@t3tools/shared/hqStream";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import type { Release } from "@t3tools/shared/hqRelease";
 import {
@@ -90,7 +93,7 @@ import {
   type ZeropsProjectFlow,
   type ZeropsProjectFlowValue,
 } from "./projectFlowContext";
-import { useHqAppRecipes, useHqAppReleases } from "./useHqAppDetail";
+import { useHqAppDetailHold, useHqAppRecipes, useHqAppReleases } from "./useHqAppDetail";
 import { useZeropsCompares, type ComparedCommits } from "./useZeropsCompares";
 import { useReleasePermission } from "./useChangeOffers";
 import { useZeropsRegistry } from "./useZeropsRegistry";
@@ -166,32 +169,57 @@ export interface GroupChanges {
   readonly merged: ReadonlyArray<FlowPullRequest>;
 }
 
-/**
- * Each application's changes as rows, by the identity of its changes as HQ last sent them, so an
- * application nothing came down for keeps its rows.
- */
-const changeRows = new WeakMap<ReadonlyArray<HqChange>, Map<string, GroupChanges>>();
+/** Stands for an application's detail no surface holds, as a key of {@link changeRows}. */
+const UNHELD_DETAIL: ReadonlyArray<HqChange> = [];
 
-/** Every application's changes as its group's flow shows them, at HQ's official address. */
+/**
+ * Each application's changes as rows, by the identity of its menu rows and of its detail's changes
+ * as HQ last sent them, so an application nothing came down for keeps its rows.
+ */
+const changeRows = new WeakMap<
+  ReadonlyArray<HqNavigationChange>,
+  WeakMap<ReadonlyArray<HqChange>, Map<string, GroupChanges>>
+>();
+
+/**
+ * Every application's changes as its group's flow shows them, at HQ's official address: the open
+ * ones from HQ's navigation, with what a held detail adds; and, apart, HQ's refusal of them in its
+ * words for each application whose changes it refuses this person.
+ */
 function groupChangesOf(
-  changes: ReadonlyMap<string, ReadonlyArray<HqChange>>,
+  open: Readonly<Record<string, ReadonlyArray<HqNavigationChange> | { readonly refused: string }>>,
+  detail: ReadonlyMap<string, ReadonlyArray<HqChange>>,
   hqAddress: string,
-): ReadonlyMap<string, GroupChanges> {
-  const byGroup = new Map<string, GroupChanges>();
-  for (const [appId, list] of changes) {
-    let byAddress = changeRows.get(list);
+): {
+  readonly rows: ReadonlyMap<string, GroupChanges>;
+  readonly refused: ReadonlyMap<string, string>;
+} {
+  const rows = new Map<string, GroupChanges>();
+  const refused = new Map<string, string>();
+  for (const [appId, listed] of Object.entries(open)) {
+    if ("refused" in listed) {
+      refused.set(appId, hqRefusalWords({ code: listed.refused, reason: listed.refused }));
+      continue;
+    }
+    const held = detail.get(appId);
+    let byDetail = changeRows.get(listed);
+    if (byDetail === undefined) {
+      byDetail = new WeakMap();
+      changeRows.set(listed, byDetail);
+    }
+    let byAddress = byDetail.get(held ?? UNHELD_DETAIL);
     if (byAddress === undefined) {
       byAddress = new Map();
-      changeRows.set(list, byAddress);
+      byDetail.set(held ?? UNHELD_DETAIL, byAddress);
     }
-    let rows = byAddress.get(hqAddress);
-    if (rows === undefined) {
-      rows = flowChanges({ changes: list, hqAddress });
-      byAddress.set(hqAddress, rows);
+    let shown = byAddress.get(hqAddress);
+    if (shown === undefined) {
+      shown = flowAppChanges({ appId, open: listed, detail: held, hqAddress });
+      byAddress.set(hqAddress, shown);
     }
-    byGroup.set(appId, rows);
+    rows.set(appId, shown);
   }
-  return byGroup;
+  return { rows, refused };
 }
 
 /** What the flow says while HQ has never told it any change, and does not answer. */
@@ -290,6 +318,8 @@ export function joinProjectFlows(input: {
   readonly changes: ReadonlyMap<string, GroupChanges> | null;
   /** Why HQ has told nothing of them, while it does not answer. */
   readonly changesFailure: string | undefined;
+  /** HQ's refusal of each group's changes to this person, in its words, by its id. */
+  readonly changesRefused: ReadonlyMap<string, string>;
   /** Why the grant withholds a project, by project id, for each project it withholds alone. */
   readonly withheld: ReadonlyMap<string, string>;
 }): ReadonlyMap<string, ZeropsProjectFlow> {
@@ -330,11 +360,12 @@ export function joinProjectFlows(input: {
     const recipe = input.recipes.get(group.groupId);
     const permission = input.permissions.get(group.groupId);
     const live = input.live.get(group.groupId) ?? NOT_ASKED;
+    const changesFailure = input.changesRefused.get(group.groupId) ?? input.changesFailure;
     const key = JSON.stringify([
       group.groupId,
       deploy.inFlight ?? null,
       deploy.stalled ?? null,
-      changes === undefined ? (input.changesFailure ?? null) : null,
+      changes === undefined ? (changesFailure ?? null) : null,
       [...withheld],
       repos ?? null,
       recipe === undefined ? null : [...recipe.productionRepositories],
@@ -347,7 +378,7 @@ export function joinProjectFlows(input: {
     if (flow === undefined) {
       flow = projectFlow(
         group,
-        { stops, records, changes, changesFailure: input.changesFailure },
+        { stops, records, changes, changesFailure },
         { repos, recipe, permission, live },
         deploy,
         withheld,
@@ -663,10 +694,13 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
         : null,
     [accountHq.hq, clientId, session.client],
   );
-  const changes = useMemo(
-    () => (hqAddress === undefined ? null : groupChangesOf(hqChanges, hqAddress)),
-    [hqAddress, hqChanges],
+  const openChanges = useAtomValue(shownHqAppChangesAtom);
+  const shownChanges = useMemo(
+    () => (hqAddress === undefined ? null : groupChangesOf(openChanges, hqChanges, hqAddress)),
+    [hqAddress, hqChanges, openChanges],
   );
+  const changes = shownChanges?.rows ?? null;
+  const changesRefused = shownChanges?.refused ?? NO_FAILURES;
   const changesFailure = hqDown(hqStructure) ? HQ_CHANGES_UNANSWERED : undefined;
   // HQ's rule for this person releasing each group, in its words.
   const releasePermissionOf = useReleasePermission();
@@ -773,6 +807,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
             live,
             changes,
             changesFailure,
+            changesRefused,
             withheld,
           })
         : EMPTY_FLOWS,
@@ -780,6 +815,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       appRepos,
       changes,
       changesFailure,
+      changesRefused,
       flowGroups,
       groupStops,
       live,
@@ -840,6 +876,18 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
   const hold = useCallback((verb: FlowVerb, groupId: string, against: HeldVerb["against"]) => {
     setAwaiting((current) => new Map(current).set(flowVerbKey(verb), { groupId, against }));
   }, []);
+  // A release waits for the application's releases to list it: its detail is held until they do.
+  const awaitedDetail = useMemo(
+    () => [
+      ...new Set(
+        [...awaiting.values()]
+          .filter(({ against }) => against.kind === "release")
+          .map(({ groupId }) => groupId),
+      ),
+    ],
+    [awaiting],
+  );
+  useHqAppDetailHold(awaitedDetail);
 
   const mateNames = useMemo(
     () => new Map(inventory.projects.map((project) => [project.id, projectNameInApp(project)])),

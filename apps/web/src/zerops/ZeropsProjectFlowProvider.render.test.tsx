@@ -228,7 +228,10 @@ vi.mock("./useZeropsCompares", async () => {
     },
   };
 });
+/** Each set of applications the provider held the detail of, render by render. */
+const detailHolds = vi.hoisted(() => ({ held: [] as Array<ReadonlyArray<string>> }));
 vi.mock("./useHqAppDetail", () => ({
+  useHqAppDetailHold: (appIds: ReadonlyArray<string>) => void detailHolds.held.push([...appIds]),
   useHqAppRecipes: () => recipes.read,
   useHqAppReleases: () => ({
     releases: new Map([["g1", released.releases]]),
@@ -351,6 +354,7 @@ describe("ZeropsProjectFlowProvider", () => {
     released.releases = [];
     released.repos = [];
     released.failures = new Map();
+    detailHolds.held = [];
     permission.gate = { allowed: true };
     compares.commits = [];
     compares.asked.clear();
@@ -589,6 +593,66 @@ describe("ZeropsProjectFlowProvider", () => {
     });
     expect([...(seen.at(-1)?.flows.keys() ?? [])]).toEqual(["g1"]);
 
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it("draws each application's open changes from HQ's navigation, holding no application's detail", async () => {
+    installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const seen: Array<ZeropsProjectFlowValue> = [];
+    function Probe() {
+      seen.push(useZeropsProjectFlow());
+      return null;
+    }
+    const atoms = signedInAtoms();
+    const change = {
+      repo: "appdev",
+      number: 4,
+      mateProjectId: "mate-1",
+      title: "Quicker gallery",
+      state: "open",
+      hasHead: true,
+      updatedAt: "2026-10-02T09:00:00.000Z",
+      mergeability: "clean",
+      ready: true,
+    } as const;
+    mountHqNavigation(atoms, "org-1", { ...structureWith([]), changes: { g1: [change] } });
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    await act(async () => {
+      root.render(
+        createElement(
+          RegistryContext.Provider,
+          { value: atoms },
+          createElement(ZeropsProjectFlowProvider, null, createElement(Probe)),
+        ),
+      );
+    });
+    const flow = seen.at(-1)?.flows.get("g1");
+    expect(flow?.changesKnown).toBe(true);
+    expect(flow?.pullRequests.map(({ line, title }) => [line, title])).toEqual([
+      ["appdev #4", "Quicker gallery"],
+    ]);
+    expect(detailHolds.held.flat()).toEqual([]);
+
+    mountHqNavigation(atoms, "org-1", {
+      ...structureWith([]),
+      changes: { g1: { refused: "app_not_seen" } },
+    });
+    await act(async () => {
+      root.render(
+        createElement(
+          RegistryContext.Provider,
+          { value: atoms },
+          createElement(ZeropsProjectFlowProvider, null, createElement(Probe)),
+        ),
+      );
+    });
+    expect(seen.at(-1)?.flows.get("g1")).toMatchObject({
+      changesKnown: false,
+      changesFailure: "You have no access to that project.",
+    });
     await act(async () => {
       root.unmount();
     });
@@ -921,9 +985,12 @@ describe("ZeropsProjectFlowProvider", () => {
       // Beside the tag, where HQ answered the release's deploys stand.
       expect(outcome).toEqual({ ok: true, tag: "v0.1.0", deploys: DEPLOYS });
       expect(seen.at(-1)?.pending.has(RELEASE)).toBe(true);
+      // Its application's detail is held while it waits, since no surface may hold it.
+      expect(detailHolds.held.at(-1)).toEqual(["g1"]);
       released.releases = [MADE];
       await render();
       expect(seen.at(-1)?.pending.has(RELEASE)).toBe(false);
+      expect(detailHolds.held.at(-1)).toEqual([]);
       await act(async () => {
         root.unmount();
       });

@@ -1,12 +1,13 @@
 /**
- * A surface over several applications holds each one's HQ detail while it draws it: an application
- * joining or leaving takes or lets go of its own hold only, never the others'.
+ * A detail surface holds each application's HQ detail while it draws it: an application joining or
+ * leaving takes or lets go of its own hold only, never the others'. What reads every application's
+ * detail at once — the flows the menu draws — holds none.
  */
 import { act, createElement } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { useHqAppReleases } from "./useHqAppDetail";
+import { useHqAppDetailHold, useHqAppRecipes, useHqAppReleases } from "./useHqAppDetail";
 
 const holds = vi.hoisted(() => ({
   /** Each hold held now, as `family owner`. */
@@ -32,7 +33,7 @@ vi.mock("./ZeropsAccountData", () => {
 });
 
 function Probe({ appIds }: { readonly appIds: ReadonlyArray<string> }) {
-  useHqAppReleases(appIds);
+  useHqAppDetailHold(appIds);
   return null;
 }
 
@@ -55,7 +56,7 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-describe("useHqAppReleases", () => {
+describe("useHqAppDetailHold", () => {
   it("holds each drawn application's detail, taking and letting go only its own", async () => {
     await render(["shop"]);
     await render(["shop", "blog"]);
@@ -66,5 +67,20 @@ describe("useHqAppReleases", () => {
     await act(async () => tree?.unmount());
     tree = undefined;
     expect(holds.held).toEqual([]);
+  });
+});
+
+describe("the flows' reads over every application", () => {
+  function Reader({ appIds }: { readonly appIds: ReadonlyArray<string> }) {
+    useHqAppReleases(appIds);
+    useHqAppRecipes(appIds);
+    return null;
+  }
+
+  it("read what a detail surface holds, and hold nothing themselves", async () => {
+    await act(async () => {
+      tree = create(createElement(Reader, { appIds: ["shop", "blog"] }));
+    });
+    expect(holds.taken).toEqual([]);
   });
 });

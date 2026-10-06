@@ -77,7 +77,11 @@ const down = apply(read, [
 const refused = apply(read, [
   stream(SCOPE, {
     kind: "fault",
-    fault: { outcome: "definitive-refusal", message: "app_unreadable" },
+    fault: {
+      outcome: "definitive-refusal",
+      message: "You cannot read this application.",
+      code: "forbidden",
+    },
     jitter: 0,
   }),
 ]);
@@ -112,7 +116,14 @@ describe("hqAppDetail", () => {
       state: down,
       expected: { read: "read", live: false, reconnecting: true, failure: null },
     },
-    { name: "refused", state: refused, expected: { live: false, failure: "app_unreadable" } },
+    {
+      name: "refused, with HQ's code and words",
+      state: refused,
+      expected: {
+        live: false,
+        failure: { code: "forbidden", message: "You cannot read this application." },
+      },
+    },
   ])("$name", ({ state, expected }) => {
     expect(detail(state)).toMatchObject(expected);
   });
