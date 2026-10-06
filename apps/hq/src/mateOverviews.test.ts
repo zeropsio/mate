@@ -23,6 +23,23 @@ import { makeMateOverviews } from "./mateOverviews.ts";
 
 /** What `saves` holds once the store's worker, which runs beside the link, has had its turns. */
 const readAttention = Schema.decodeEffect(HqAttentionValue);
+it.effect("forget cleans retained result acknowledgements even without an overview", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const forgotten: string[] = [];
+      const { store } = memoryStore();
+      const overviews = yield* makeMateOverviews({
+        ...store,
+        forgetSeen: (ids) =>
+          Effect.sync(() => {
+            forgotten.push(...ids);
+          }),
+      });
+      yield* overviews.forget(["P"]);
+      assert.deepStrictEqual(forgotten, ["P"]);
+    }),
+  ),
+);
 
 const settled = (saves: ReadonlyArray<string>) =>
   Effect.map(Effect.repeat(Effect.yieldNow, { times: 100 }), () => [...saves]);

@@ -51,6 +51,7 @@ export interface StoredOverview {
 export interface OverviewStore {
   readonly load: Effect.Effect<ReadonlyArray<StoredOverview>>;
   readonly save: (projectId: string, overview: MateOverview) => Effect.Effect<void>;
+  readonly forgetSeen?: (projectIds: ReadonlyArray<string>) => Effect.Effect<void>;
 }
 
 export class MateOverviews extends Context.Service<
@@ -76,6 +77,9 @@ export class MateOverviews extends Context.Service<
     readonly all: Effect.Effect<ReadonlyMap<string, MateOverviewEntry>>;
     /** The projects whose Mate changed, as they change. */
     readonly changes: Stream.Stream<string>;
+    readonly forgotten: Stream.Stream<string>;
+    /** Synchronous cache fence after durable acknowledgements are forgotten. */
+    readonly seenEpoch: Effect.Effect<number>;
   }
 >()("@t3tools/hq/mateOverviews") {}
 
@@ -102,7 +106,9 @@ export const makeMateOverviews = (
 ): Effect.Effect<MateOverviews["Service"], never, Scope.Scope> =>
   Effect.gen(function* () {
     const entries = new Map<string, Entry>();
+    let seenEpoch = 0;
     const changed = yield* PubSub.unbounded<string>();
+    const forgotten = yield* PubSub.unbounded<string>();
     // Beside the links, one at a time, each save the overview as it stands by then.
     const unsaved = yield* Queue.unbounded<string>();
     yield* Effect.forkScoped(
@@ -231,12 +237,15 @@ export const makeMateOverviews = (
         }
       }),
       forget: (projectIds) =>
-        Effect.forEach(
-          projectIds,
-          (projectId) =>
-            entries.delete(projectId) ? PubSub.publish(changed, projectId) : Effect.void,
-          { discard: true },
-        ),
+        Effect.gen(function* () {
+          if (store.forgetSeen !== undefined) yield* store.forgetSeen(projectIds);
+          seenEpoch += 1;
+          for (const projectId of projectIds) {
+            entries.delete(projectId);
+            yield* PubSub.publish(forgotten, projectId);
+            yield* PubSub.publish(changed, projectId);
+          }
+        }),
       all: Effect.sync(
         () =>
           new Map(
@@ -257,6 +266,8 @@ export const makeMateOverviews = (
           ),
       ),
       changes: Stream.fromPubSub(changed),
+      forgotten: Stream.fromPubSub(forgotten),
+      seenEpoch: Effect.sync(() => seenEpoch),
     });
   });
 
@@ -271,6 +282,16 @@ const postgresStore = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const leader = yield* Leader;
   const store: OverviewStore = {
+    forgetSeen: (projectIds) =>
+      Effect.forEach(
+        projectIds,
+        (projectId) =>
+          leader.write(sql`DELETE FROM hq_attention_seen WHERE project_id = ${projectId}`).pipe(
+            Effect.asVoid,
+            Effect.catch((error) => Effect.logWarning("seen results not forgotten", error)),
+          ),
+        { discard: true },
+      ),
     load: sql<{ readonly project_id: string; readonly overview: unknown; readonly at: string }>`
       SELECT project_id, overview,
              to_char(reported_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS at

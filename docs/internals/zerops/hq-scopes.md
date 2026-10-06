@@ -16,8 +16,9 @@ scopes. Independent scopes have independent incarnations and revisions. Requests
 including scopes in one subscription batch; unsubscribe cancels delivery from an unfinished baseline.
 
 For a reconnect, send the last successfully committed `{ incarnation, revision }` cursor **and**
-the keys the renderer retains in that scope. Retained keys allow HQ to prove removals after Core
-restart or journal eviction. A cursor without `knownKeys` fails request decoding. An unchanged
+the keys the renderer retains in that scope. Retained keys let HQ withhold facts after Core restart or journal eviction. Unknown keys receive
+`no-access` without revealing whether the id exists. Only server-held prior delivery evidence may
+distinguish a deletion from lost access. A cursor without `knownKeys` fails request decoding. An unchanged
 resume sends only `scope-ready`. A retained history sends later `scope-values`; otherwise HQ sends
 one `scope-reset` for that scope. A reset replaces the revision baseline, not the entire facts map.
 
@@ -28,8 +29,13 @@ socket closure, silence, an error or a missing key. After a reset accept its inc
 after a delta require the same incarnation and the next revision. `scope-ready` marks the end of
 catchup and carries the resulting cursor; it carries no facts.
 
-A `scope-error` affects only its named scope. `refused` is definitive until new authoritative
-source facts grant access; reconnect alone does not retry the refused read. `transient` preserves
+A `scope-error` affects only its named scope. `refused` ends the attempt: timers and a same-session
+reconnect do not retry it. A roles or record change clears the refusal and re-evaluates current
+access. A newly authorized session also re-evaluates its demanded scopes, including when it follows
+a failing old-session read. A person can send `{ type: "retry", scopes: [scope] }` for selected
+scopes or `{ type: "retry" }` for all their journals. Retry is scoped to that person. After a `4403`
+close, open a new socket and send the explicit retry before subscribing; a transport reconnect alone
+is not an explicit retry. `transient` preserves
 facts while coverage is unavailable. Before a proven scope access refusal HQ explicitly removes retained
 protected keys. A source `zerops_refused` is definitive but proves no record removal. Protected historical values are never replayed through an access revocation.
 
@@ -37,7 +43,9 @@ The L7 segment still closes with `HQ_STREAM_SEGMENT_CLOSE` after 100 seconds. Mi
 and resume the demanded scopes with their cursors and retained keys. Respond to `ping` with `pong`.
 Segment rotation triggers neither a full snapshot nor app detail hydration.
 
-`HQ_STREAM_REFUSED_CLOSE` (`4403`) ends a failed source read definitively. Client adapters use
+`HQ_STREAM_REFUSED_CLOSE` (`4403`) ends the socket only when every demanded scope has reported
+`zerops_refused`, with no usable or pending demanded scope remaining. Scope failures are delivered
+before the close; a mixed connection remains open. Client adapters use
 `hqStreamCloseFailure` to classify it as `zerops_refused` / `refused`, and must not reconnect it
 automatically. A `1011` read failure remains transient. A `4401` ending enters the session flow:
 PA renews once automatically before exposing an explicit retry. It is not an unconditional request
@@ -46,14 +54,14 @@ to sign in manually. PA's HTTP refusal is `HQ_ZEROPS_REFUSED` (`403 zerops_refus
 
 ## Record keys
 
-| Scope      | Keys and values                                                                                                                                                                                                                                                         |
-| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| navigation | `org`: organization offers, unheld project offers, tools, official verdict, build, health parts; `app:<id>`: `HqNavigationApp`; `project:<id>`: `HqNavigationProject`; `press:<id>`: press state without ticking elapsed time; `person:<userId>`: name and clientUserId |
-| app-detail | `releases`, `repos`, `recipe:mate`, `recipe:stage`, `recipe:production`, `changes`; decode each using `HqAppDetailFields`                                                                                                                                               |
-| change     | `<repo>:<number>`: existing change detail value                                                                                                                                                                                                                         |
-| discussion | `<repo>:<number>`: `{ comments }`                                                                                                                                                                                                                                       |
-| attention  | `<projectId>`: `HqAttentionScopeValue`, including presence, today's overview and source attention                                                                                                                                                                       |
-| operation  | `<appId>:<operationId>`: values supplied by the operation reader                                                                                                                                                                                                        |
+| Scope      | Keys and values                                                                                                                                                                                                                                                                                                |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| navigation | `org`: organization offers, unheld project offers, tools, build; `status`: `HqNavigationStatus` with official verdict and health parts; `app:<id>`: `HqNavigationApp`; `project:<id>`: `HqNavigationProject`; `press:<id>`: press state without ticking elapsed time; `person:<userId>`: name and clientUserId |
+| app-detail | `releases`, `repos`, `recipe:mate`, `recipe:stage`, `recipe:production`, `changes`; decode each using `HqAppDetailFields`                                                                                                                                                                                      |
+| change     | `<repo>:<number>`: existing change detail value                                                                                                                                                                                                                                                                |
+| discussion | `<repo>:<number>`: `{ comments }`                                                                                                                                                                                                                                                                              |
+| attention  | `<projectId>`: `HqAttentionScopeValue`, including presence, today's overview and source attention                                                                                                                                                                                                              |
+| operation  | `<appId>:<operationId>`: values supplied by the operation reader                                                                                                                                                                                                                                               |
 
 Navigation has no recipes, repositories, releases or move destinations. Project `person` facts
 are already computed for the recipient: role, mayWrite, mine and unseen. Mine uses a project OWNER
@@ -61,7 +69,9 @@ when present, otherwise the current or last Claude signer, then the Codex signer
 until source attention proves result identities and the person may observe the Mate. `seen` takes
 `projectId` and result IDs (attention result `turnId`); HQ accepts only currently published IDs,
 stores acknowledgement by person/project/result, and updates only that person's navigation.
-Acknowledgements survive Core restart. A missing source attention report does not mean zero unseen.
+Acknowledgements survive Core restart. They load only for observed projects in the scope, and are
+deleted on forgetting a Mate (also by the Mate foreign key on record deletion). A synchronous epoch
+fences the per-person cache so a recreated Mate cannot inherit an old result acknowledgement. A missing source attention report does not mean zero unseen.
 
 Send `move-offers` with `requestId` and `projectId` when the move dialog opens. The correlated reply
 is `move-offers` with `moveTo`, or `move-offers-error`. Destination enumeration runs only on request;
@@ -73,7 +83,10 @@ A Core reads one repeatable PostgreSQL snapshot of raw navigation records and sh
 subscribers. Recipient filtering happens afterward. Detail reads are shared by scope after access
 checks, and never hold the navigation lock. Source and per-scope generations discard reads
 superseded by invalidations or permission changes. Inactive journals, detail caches, history and
-tombstones are bounded. Dropping old removal proof rotates only that scope's incarnation; delivery
+tombstones are bounded. Idle journals are retained by most recent use, including unsubscribe and
+connection close; pong does not scan retention. Attention updates compute only the changed project
+for people who may observe it. Status ticks commit only `status`, sharing that value between people
+and leaving navigation and role reads untouched. Dropping old removal proof rotates only that scope's incarnation; delivery
 still contains every newly removed key, and reconnect retained keys reconstruct missing proof.
 
 Today's overview frames continue to ingest. New Mate frames use

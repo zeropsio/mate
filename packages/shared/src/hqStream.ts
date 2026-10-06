@@ -37,6 +37,15 @@ export type HqOfficialVerdict =
   | "credentials_wrong"
   | "unknown";
 
+/** A small navigation fact; status ticks do not replace organization or project values. */
+export const HqNavigationStatus = Schema.Struct({
+  official: Schema.NullOr(
+    Schema.Literals(["ok", "anchor_missing", "anchor_elsewhere", "credentials_wrong", "unknown"]),
+  ),
+  parts: Schema.Record(Schema.String, Schema.Unknown),
+});
+export type HqNavigationStatus = typeof HqNavigationStatus.Type;
+
 /** One renderer opens one socket for its organization and registers only demanded scopes. */
 export const HqScope = Schema.Union([
   Schema.Struct({ kind: Schema.Literal("navigation") }),
@@ -86,6 +95,11 @@ export const HqSubscription = Schema.Struct({
 );
 export type HqSubscription = typeof HqSubscription.Type;
 export const HqStreamRequest = Schema.Union([
+  Schema.Struct({
+    type: Schema.Literal("retry"),
+    /** Omitted scopes retry this person's refused journals, including before subscribing. */
+    scopes: Schema.optionalKey(Schema.Array(HqScope).check(Schema.isMaxLength(128))),
+  }),
   Schema.Struct({
     type: Schema.Literal("subscribe"),
     scopes: Schema.Array(HqSubscription).check(Schema.isMaxLength(128)),

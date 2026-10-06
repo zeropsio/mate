@@ -1,6 +1,12 @@
 import { expect, it } from "@effect/vitest";
 import * as Schema from "effect/Schema";
-import { hqStreamCloseFailure, HqZeropsRefusedResponse, HQ_ZEROPS_REFUSED } from "./hqStream.ts";
+import {
+  hqStreamCloseFailure,
+  HqZeropsRefusedResponse,
+  HQ_ZEROPS_REFUSED,
+  HqStreamRequest,
+  HqNavigationStatus,
+} from "./hqStream.ts";
 
 it.each([
   { close: 4403, failure: { code: "zerops_refused", disposition: "refused" } },
@@ -12,6 +18,22 @@ it.each([
 });
 
 const read = Schema.decodeUnknownSync(HqZeropsRefusedResponse);
+const readRequest = Schema.decodeUnknownSync(HqStreamRequest);
+const readStatus = Schema.decodeUnknownSync(HqNavigationStatus);
+
+it.each([{ type: "retry" }, { type: "retry", scopes: [{ kind: "navigation" }] }])(
+  "decodes a person's explicit retry: %j",
+  (request) => {
+    expect(readRequest(request)).toEqual(request);
+  },
+);
+
+it("status is a separate small navigation fact", () => {
+  expect(readStatus({ official: null, parts: { db: "up" } })).toEqual({
+    official: null,
+    parts: { db: "up" },
+  });
+});
 
 it("defines the definitive HTTP refusal separately from an unavailable response", () => {
   expect(HQ_ZEROPS_REFUSED.status).toBe(403);

@@ -10,30 +10,7 @@ import * as TestClock from "effect/testing/TestClock";
 import * as Socket from "effect/unstable/socket/Socket";
 import { liveSocketsLayer, serveHqSocket, serveStructureSocket } from "./stream.ts";
 import { HqScopes } from "./hqScopes.ts";
-import { ZeropsRefused, ZeropsUnavailable } from "./zerops/api.ts";
 describe("serveStructureSocket: who ended a socket, and with what code", () => {
-  for (const [error, code] of [
-    [
-      new ZeropsRefused({
-        operation: "structure",
-        reason: "forbidden",
-        status: 403,
-        code: "platform_denied",
-      }),
-      4403,
-    ],
-    [new ZeropsUnavailable({ operation: "structure", message: "offline" }), 1011],
-  ] as const) {
-    it.effect(`${error._tag} has a distinct ending`, () =>
-      Effect.gen(function* () {
-        const { socket } = yield* clientSocket;
-        assert.deepStrictEqual(
-          yield* serveStructureSocket(socket, Stream.fail(error), Duration.seconds(20)),
-          { by: "hq", code },
-        );
-      }).pipe(Effect.provide(liveSocketsLayer)),
-    );
-  }
   /** A socket whose client stays until `closeBy` closes it with a code; it answers every ping. */
   const clientSocket = Effect.gen(function* () {
     const closing = yield* Deferred.make<number>();

@@ -20,21 +20,21 @@ import type * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import * as Socket from "effect/unstable/socket/Socket";
 import { HqScopes, type ScopeOutput } from "./hqScopes.ts";
-import { ZeropsRefused } from "./zerops/api.ts";
-
-const isZeropsRefused = Schema.is(ZeropsRefused);
 
 export interface StreamOptions {
+  /** Authorized session identity, hashed before the hub stores it. */
+  readonly sessionId?: string;
   readonly recheck?: Duration.Duration;
   readonly pingEvery?: Duration.Duration;
   readonly build?: string;
 }
-export type Ending = "session" | "lead";
+export type Ending = "session" | "lead" | "refused";
 type Outgoing = ScopeOutput | { readonly type: "end"; readonly ending: Ending };
 const L7_SEGMENT_LIMIT = Duration.seconds(100);
 /** 4401 enters the session flow: renew once automatically, then expose an explicit retry. */
 const CLOSE = {
   session: [4401, "session ended"],
+  refused: [HQ_STREAM_REFUSED_CLOSE.code, HQ_STREAM_REFUSED_CLOSE.reason],
   lead: [1001, "going away"],
   unreadable: [1011, "the view could not be read"],
   silent: [4408, "no pong"],
@@ -51,7 +51,12 @@ export const serveHqSocket = <R>(
 ) =>
   Effect.scoped(
     Effect.gen(function* () {
-      const connection = yield* (yield* HqScopes).open(userId);
+      const connection = yield* (yield* HqScopes).open(
+        userId,
+        options.sessionId === undefined
+          ? undefined
+          : NodeCrypto.createHash("sha256").update(options.sessionId).digest("hex"),
+      );
       const checks = Stream.fromEffectSchedule(
         ending,
         Schedule.spaced(options.recheck ?? Duration.seconds(30)),
@@ -167,15 +172,11 @@ export const serveStructureSocket = <E, R>(
           yield* writer.write(toJson({ type: "ping" }));
         }
       }).pipe(Effect.ignore);
-      const deliver = Stream.runForEach(messages, (message) =>
-        message.type === "end" ? close(CLOSE[message.ending]) : writer.write(toJson(message)),
-      ).pipe(
-        Effect.catch((error) =>
-          isZeropsRefused(error)
-            ? ends.close(HQ_STREAM_REFUSED_CLOSE.code, HQ_STREAM_REFUSED_CLOSE.reason)
-            : close(CLOSE.unreadable),
-        ),
-      );
+      const deliver = Stream.runForEach(
+        messages.pipe(Stream.takeUntil((message) => message.type === "end")),
+        (message) =>
+          message.type === "end" ? close(CLOSE[message.ending]) : writer.write(toJson(message)),
+      ).pipe(Effect.catch(() => close(CLOSE.unreadable)));
       const segment = Effect.andThen(
         Effect.sleep(L7_SEGMENT_LIMIT),
         ends.close(HQ_STREAM_SEGMENT_CLOSE.code, HQ_STREAM_SEGMENT_CLOSE.reason),

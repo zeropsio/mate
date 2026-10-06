@@ -28,6 +28,8 @@ import { Roles, type OrgView } from "./roles.ts";
 import { Structure, type StructureRead, type StructureSource } from "./structure.ts";
 import { memoryStore, overviewOf, mainAt } from "../test/harness/overviews.ts";
 import { ZeropsRefused } from "./zerops/api.ts";
+import * as Socket from "effect/unstable/socket/Socket";
+import { liveSocketsLayer, serveHqSocket } from "./stream.ts";
 
 const nav = { kind: "navigation" } as const;
 const attention = { kind: "attention", projectId: "P" } as const;
@@ -65,6 +67,7 @@ const fixture = Effect.gen(function* () {
   let corrupt = false;
   let appName = "App";
   let detailRefused = false;
+  let missingChange = true;
   let granted = false;
   let revoked = false;
   let gate: Effect.Effect<void> = Effect.void;
@@ -72,7 +75,9 @@ const fixture = Effect.gen(function* () {
   const readingDetail = yield* Deferred.make<void>();
   const rolesPaused = yield* Deferred.make<void>();
   let rolesRead = 0;
+  let projections = 0;
   let pauseRolesAt: number | undefined;
+  let failPausedRole = false;
   let rolesGate: Effect.Effect<void> = Effect.void;
   const roleView = Effect.gen(function* () {
     rolesRead += 1;
@@ -86,11 +91,21 @@ const fixture = Effect.gen(function* () {
     if (rolesRead === pauseRolesAt) {
       yield* Deferred.succeed(rolesPaused, undefined);
       yield* rolesGate;
+      if (failPausedRole) {
+        failPausedRole = false;
+        return yield* new ZeropsRefused({
+          operation: "organization",
+          reason: "forbidden",
+          status: 403,
+          code: "denied",
+        });
+      }
     }
     return org;
   });
   const reads = yield* Ref.make(0);
   const detailReads: string[] = [];
+  const sqlReads: Array<{ query: string; values: ReadonlyArray<unknown> }> = [];
   const recipeRead = yield* Queue.unbounded<string>();
   const structureChanged = yield* PubSub.unbounded<number>();
   const rolesChanged = yield* PubSub.unbounded<{
@@ -108,6 +123,7 @@ const fixture = Effect.gen(function* () {
     projectIds: new Set(deleted ? [] : ["P"]),
     pressProjectIds: new Set(),
     forPerson: (userId) => {
+      projections += 1;
       const can = mateOffers(userId, "P", "mate", org);
       return {
         can: {
@@ -185,6 +201,15 @@ const fixture = Effect.gen(function* () {
     } as unknown as Roles["Service"]),
     Layer.succeed(Changes, {
       changes: Stream.fromPubSub(detailsChanged),
+      changeDetail: () =>
+        Effect.gen(function* () {
+          if (missingChange)
+            return yield* new ChangeRefused({
+              code: "change_not_found",
+              reason: "change_not_found",
+            });
+          return { state: "recreated" };
+        }),
       readRecipe: (_user: string, _app: string, tier: string) =>
         Effect.gen(function* () {
           detailReads.push(tier);
@@ -225,8 +250,14 @@ const fixture = Effect.gen(function* () {
       state: "ok",
       status: Effect.succeed("ok"),
     } as unknown as DeployKeys["Service"]),
-    Layer.succeed(SqlClient.SqlClient, (() =>
-      Effect.succeed([])) as unknown as SqlClient.SqlClient),
+    Layer.succeed(SqlClient.SqlClient, ((
+      strings: TemplateStringsArray,
+      ...values: ReadonlyArray<unknown>
+    ) =>
+      Effect.sync(() => {
+        sqlReads.push({ query: strings.join("?"), values });
+        return [];
+      })) as unknown as SqlClient.SqlClient),
     Layer.succeed(Leader, {
       write: (effect: Effect.Effect<unknown>) => effect,
     } as unknown as Leader["Service"]),
@@ -235,12 +266,15 @@ const fixture = Effect.gen(function* () {
     hqScopesLayer("BUILD", Duration.seconds(30)).pipe(Layer.provide(services)),
   );
   const hub = Context.get(context, HqScopes);
-  const connect = (userId: string) =>
+  const connect = (userId: string, sessionId = "session") =>
     Effect.gen(function* () {
-      const client = yield* hub.open(userId);
+      const client = yield* hub.open(userId, sessionId);
       const queue = yield* Queue.unbounded<ScopeOutput>();
       yield* Effect.forkScoped(
-        Stream.runForEach(client.messages, (message) => Queue.offer(queue, message)),
+        Stream.runForEach(
+          client.messages.pipe(Stream.filter((message) => message.type !== "end")),
+          (message) => Queue.offer(queue, message),
+        ),
       );
       const take = Queue.take(queue);
       const subscribe = (scopes: ReadonlyArray<HqSubscription>) =>
@@ -248,6 +282,23 @@ const fixture = Effect.gen(function* () {
       return { ...client, queue, take, subscribe };
     });
   return {
+    recoverSource: () => {
+      sourceRefused = false;
+      recentRefused = false;
+    },
+    projections: () => projections,
+    recreate: Effect.andThen(
+      Effect.sync(() => {
+        deleted = false;
+      }),
+      PubSub.publish(structureChanged, 1),
+    ),
+    recreateChange: Effect.andThen(
+      Effect.sync(() => {
+        missingChange = false;
+      }),
+      PubSub.publish(detailsChanged, 1),
+    ),
     refuseSource: () => {
       sourceRefused = true;
     },
@@ -260,6 +311,7 @@ const fixture = Effect.gen(function* () {
     connect,
     reads,
     detailReads,
+    sqlReads,
     recipeRead,
     overviews,
     official,
@@ -278,6 +330,9 @@ const fixture = Effect.gen(function* () {
       rolesGate = gate;
     },
     rolesPaused,
+    failPausedRole: () => {
+      failPausedRole = true;
+    },
     sourceChangeWithoutSignal: Effect.sync(() => {
       appName = "Subscribed change";
       org = {
@@ -341,6 +396,312 @@ const resetOf = (message: ScopeOutput) => {
 };
 
 describe("revisioned HQ values", () => {
+  it.effect("a new session behind a failing old read still re-evaluates", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const f = yield* fixture;
+        const gate = yield* Deferred.make<void>();
+        f.pauseRoleRead(Deferred.await(gate));
+        f.failPausedRole();
+        const old = yield* f.connect("owner", "old-session");
+        const first = yield* Effect.forkScoped(old.subscribe([{ scope: nav }]));
+        yield* Deferred.await(f.rolesPaused);
+        const fresh = yield* f.connect("owner", "new-session");
+        const next = yield* Effect.forkScoped(fresh.subscribe([{ scope: nav }]), {
+          startImmediately: true,
+        });
+        yield* Deferred.succeed(gate, undefined);
+        yield* Fiber.join(first);
+        yield* Fiber.join(next);
+        assert.strictEqual((yield* fresh.take).type, "scope-reset");
+      }),
+    ),
+  );
+  it.effect("a recreated change clears not-found while a status tick does not", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const f = yield* fixture;
+        const client = yield* f.connect("owner");
+        const scope = { kind: "change", appId: "A", repo: "repo", number: 1 } as const;
+        yield* client.subscribe([{ scope }]);
+        const failure = yield* client.take;
+        assert.strictEqual(failure.type, "scope-error");
+        if (failure.type === "scope-error") assert.strictEqual(failure.code, "change_not_found");
+        yield* TestClock.adjust("30 seconds");
+        assert.strictEqual(yield* Queue.size(client.queue), 0);
+        yield* f.recreateChange;
+        assert.deepStrictEqual(resetOf(yield* client.take).values, [
+          { key: "repo:1", value: { state: "recreated" } },
+        ]);
+      }),
+    ),
+  );
+  it.effect("an all-scope person retry does not clear another person's refusal", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const f = yield* fixture;
+        f.refuseSource();
+        const owner = yield* f.connect("owner");
+        const reader = yield* f.connect("reader");
+        yield* owner.subscribe([{ scope: nav }]);
+        yield* owner.take;
+        yield* reader.subscribe([{ scope: nav }]);
+        const failure = yield* reader.take;
+        f.recoverSource();
+        yield* owner.request({ type: "retry" });
+        assert.strictEqual((yield* owner.take).type, "scope-values");
+        const reads = f.roleReads();
+        yield* reader.subscribe([{ scope: nav }]);
+        assert.deepStrictEqual(yield* reader.take, failure);
+        assert.strictEqual(f.roleReads(), reads);
+      }),
+    ),
+  );
+  it.effect("a source-refused operation keeps a socket carrying readable navigation", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const f = yield* fixture.pipe(
+          Effect.provideService(HqOperationReader, {
+            read: () =>
+              Effect.fail(
+                new ZeropsRefused({
+                  operation: "operation",
+                  reason: "forbidden",
+                  status: 403,
+                  code: "denied",
+                }),
+              ),
+          }),
+        );
+        const incoming = yield* Queue.unbounded<readonly [Uint8Array]>();
+        const outgoing = yield* Queue.unbounded<string | Socket.CloseEvent>();
+        const socket = Socket.make({
+          reader: Effect.succeed({ pull: Queue.take(incoming), upgrade: () => Effect.void }),
+          writer: Effect.succeed({
+            write: (frame) =>
+              Queue.offer(outgoing, Socket.isCloseEvent(frame) ? frame : String(frame)).pipe(
+                Effect.asVoid,
+              ),
+            writeAll: () => Effect.void,
+          }),
+        });
+        const serving = yield* Effect.forkScoped(
+          serveHqSocket(socket, "owner", Effect.succeed(undefined), {}).pipe(
+            Effect.provideService(HqScopes, f.hub),
+            Effect.provide(liveSocketsLayer),
+          ),
+        );
+        yield* Queue.offer(incoming, [
+          new TextEncoder().encode(
+            '{"type":"subscribe","scopes":[{"scope":{"kind":"navigation"}},{"scope":{"kind":"operation","appId":"A"}}]}',
+          ),
+        ]);
+        let ready = false;
+        let refused = false;
+        while (!ready || !refused) {
+          const frame = yield* Queue.take(outgoing);
+          assert.isFalse(Socket.isCloseEvent(frame));
+          if (typeof frame === "string") {
+            ready ||= frame.includes("scope-ready");
+            refused ||= frame.includes("zerops_refused");
+          }
+        }
+        assert.isUndefined(serving.pollUnsafe());
+        yield* Fiber.interrupt(serving);
+      }),
+    ),
+  );
+  it.effect("attention refreshes only observable project facts and loads seen by project", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const f = yield* fixture;
+        const link = yield* f.overviews.connect("P");
+        const value = {
+          source: { environmentId: "env", incarnation: "boot", revision: 1 },
+          mainThreadId: "thread",
+          lastThreadId: "thread",
+          working: 0,
+          waiting: 0,
+          results: [],
+          questions: [],
+          truncated: false,
+        };
+        yield* f.overviews.reportAttention("P", link, value);
+        const owner = yield* f.connect("owner");
+        const reader = yield* f.connect("reader");
+        yield* owner.subscribe([{ scope: nav }]);
+        yield* owner.take;
+        yield* owner.take;
+        yield* reader.subscribe([{ scope: nav }]);
+        yield* reader.take;
+        yield* reader.take;
+        const reads = f.roleReads();
+        yield* f.overviews.reportAttention("P", link, {
+          ...value,
+          source: { ...value.source, revision: 2 },
+          results: [
+            { threadId: "thread", turnId: "result", completedAt: "2026-10-06T00:00:00.000Z" },
+          ],
+        });
+        assert.deepStrictEqual(
+          resetOf(yield* owner.take).values.map((value) => value.key),
+          ["project:P"],
+        );
+        assert.strictEqual(f.roleReads(), reads);
+        const queries = f.sqlReads.filter(
+          (read) => read.query.includes("SELECT") && read.query.includes("hq_attention_seen"),
+        );
+        assert.isTrue(
+          queries.every((read) => read.query.includes("project_id =") && read.values.includes("P")),
+        );
+        assert.strictEqual(yield* Queue.size(reader.queue), 0);
+      }),
+    ),
+  );
+  it.effect("explicit scoped and all retries reopen a definitive refusal", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const f = yield* fixture;
+        f.refuseSource();
+        const client = yield* f.connect("owner");
+        yield* client.subscribe([{ scope: nav }]);
+        yield* client.take;
+        const reads = f.roleReads();
+        f.recoverSource();
+        yield* client.request({ type: "retry", scopes: [nav] });
+        assert.isAbove(f.roleReads(), reads);
+        assert.strictEqual((yield* client.take).type, "scope-values");
+        yield* client.request({ type: "retry" });
+      }),
+    ),
+  );
+  it.effect("a new authorized session re-evaluates a refused journal", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const f = yield* fixture;
+        f.refuseSource();
+        const before = yield* f.connect("owner", "old-session");
+        yield* before.subscribe([{ scope: nav }]);
+        yield* before.take;
+        f.recoverSource();
+        const after = yield* f.connect("owner", "new-session");
+        yield* after.subscribe([{ scope: nav }]);
+        assert.strictEqual((yield* after.take).type, "scope-reset");
+      }),
+    ),
+  );
+  it.effect("changed roles and re-created records clear definitive refusals", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const f = yield* fixture;
+        f.refuseSource();
+        const client = yield* f.connect("owner");
+        yield* client.subscribe([{ scope: nav }]);
+        yield* client.take;
+        f.recoverSource();
+        yield* f.roles({
+          ...facts,
+          members: facts.members.map((member) => ({ ...member, name: "changed" })),
+        });
+        assert.strictEqual((yield* client.take).type, "scope-values");
+        yield* f.remove;
+        yield* client.take;
+        yield* client.subscribe([{ scope: attention }]);
+        yield* client.take;
+        yield* f.recreate;
+        const link = yield* f.overviews.connect("P");
+        yield* f.overviews.report("P", link, {
+          type: "overview",
+          full: true,
+          overview: overviewOf(),
+        });
+        // Navigation and attention regain their own values, never another person's journal.
+        let regained = false;
+        while (!regained) {
+          const message = yield* client.take;
+          regained =
+            (message.type === "scope-values" || message.type === "scope-reset") &&
+            message.scope.kind === "attention";
+        }
+      }),
+    ),
+  );
+  it.effect("the real hub closes 4403 only when all demanded scopes are source-refused", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const f = yield* fixture;
+        f.refuseSource();
+        const incoming = yield* Queue.unbounded<readonly [Uint8Array]>();
+        const outgoing = yield* Queue.unbounded<string | Socket.CloseEvent>();
+        const socket = Socket.make({
+          reader: Effect.succeed({ pull: Queue.take(incoming), upgrade: () => Effect.void }),
+          writer: Effect.succeed({
+            write: (frame) =>
+              Queue.offer(outgoing, Socket.isCloseEvent(frame) ? frame : String(frame)).pipe(
+                Effect.asVoid,
+              ),
+            writeAll: () => Effect.void,
+          }),
+        });
+        const serving = yield* Effect.forkScoped(
+          serveHqSocket(socket, "owner", Effect.succeed(undefined), {}).pipe(
+            Effect.provideService(HqScopes, f.hub),
+            Effect.provide(liveSocketsLayer),
+          ),
+        );
+        yield* Queue.offer(incoming, [
+          new TextEncoder().encode(
+            '{"type":"subscribe","scopes":[{"scope":{"kind":"navigation"}},{"scope":{"kind":"attention","projectId":"P"}}]}',
+          ),
+        ]);
+        assert.deepStrictEqual(yield* Fiber.join(serving), { by: "hq", code: 4403 });
+        const writes = yield* Queue.takeAll(outgoing);
+        assert.strictEqual(writes.filter(Socket.isCloseEvent).length, 1);
+        assert.strictEqual(
+          writes.filter((frame) => typeof frame === "string" && frame.includes("scope-error"))
+            .length,
+          2,
+        );
+      }),
+    ),
+  );
+  it.effect("status ticks do not re-read roles or rebuild person navigation", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const f = yield* fixture;
+        const client = yield* f.connect("owner");
+        yield* client.subscribe([{ scope: nav }]);
+        yield* client.take;
+        yield* client.take;
+        const reads = f.roleReads();
+        yield* Ref.set(f.checked, true);
+        yield* Ref.set(f.official, { official: "unknown" as const, allowed: true });
+        yield* TestClock.adjust("30 seconds");
+        const changed = resetOf(yield* client.take);
+        assert.deepStrictEqual(
+          changed.values.map((value) => value.key),
+          ["status"],
+        );
+        assert.strictEqual(f.roleReads(), reads);
+      }),
+    ),
+  );
+  it.effect("an invisible and a nonexistent requested app have the same refusal", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const f = yield* fixture;
+        const client = yield* f.connect("reader");
+        yield* client.subscribe([{ scope: { kind: "app-detail", appId: "A" } }]);
+        const first = yield* client.take;
+        yield* client.subscribe([{ scope: { kind: "app-detail", appId: "unknown" } }]);
+        const second = yield* client.take;
+        assert.strictEqual(first.type, "scope-error");
+        assert.strictEqual(second.type, "scope-error");
+        if (first.type === "scope-error" && second.type === "scope-error")
+          assert.deepStrictEqual([first.code, first.reason], [second.code, second.reason]);
+      }),
+    ),
+  );
   it.effect("a recheck source refusal ends the attempt without automatic rechecks", () =>
     Effect.scoped(
       Effect.gen(function* () {

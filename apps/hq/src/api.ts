@@ -1176,7 +1176,10 @@ const routes = (
             );
           });
           const socket = yield* request.upgrade;
-          const ended = yield* serveHqSocket(socket, userId, ending, options);
+          const ended = yield* serveHqSocket(socket, userId, ending, {
+            ...options,
+            ...(token === undefined ? {} : { sessionId: token }),
+          });
           // Which side ended it says whether a cut was HQ's or the way's (F26).
           yield* Effect.logInfo(`structure socket closed by ${ended.by} (${String(ended.code)})`);
           return HttpServerResponse.empty();
