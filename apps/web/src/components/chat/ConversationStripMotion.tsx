@@ -22,6 +22,8 @@
  */
 import { Component, createRef } from "react";
 
+import { afterLayout } from "~/lib/afterLayout";
+
 import { lineMotion, MATE_SEAT, sameLineStage, type LineStage } from "./ConversationStrip.logic";
 import { fadeAlong, lowestTrack } from "./ConversationStripMotion.logic";
 
@@ -33,8 +35,9 @@ import { fadeAlong, lowestTrack } from "./ConversationStripMotion.logic";
  * 24 % in its first two frames, which read as a jump on a 200 px travel; the
  * ease-in-out held still for four frames, then took 28 % in one.
  */
+const TRAVEL_MS = 240;
 const TRAVEL: KeyframeAnimationOptions = {
-  duration: 240,
+  duration: TRAVEL_MS,
   easing: "cubic-bezier(0.19, 0.06, 0.24, 1)",
 };
 /** Reduced motion: nothing travels; the band and the names cross-fade. */
@@ -83,7 +86,17 @@ interface LineSeen {
   readonly names: ReadonlyMap<string, NameSeen>;
   /** The crewmate whose press held the focus. */
   readonly focus: string | null;
+  /**
+   * Seen with nothing on the line moving and nothing switched: no box was
+   * read, since a draw at rest only follows a reflow, from where things stand.
+   */
+  readonly still?: true;
 }
+
+const NOTHING_SEEN: ReadonlyMap<never, never> = new Map();
+
+/** How long after a move set off something on the line may still be moving. */
+const MOVING_MS = TRAVEL_MS + 60;
 
 function boxOf(element: Element, origin: DOMRect): Box {
   const rect = element.getBoundingClientRect();
@@ -160,11 +173,7 @@ function readLine(line: HTMLElement, band: HTMLElement): LineSeen {
       width: label.getBoundingClientRect().width,
     });
   }
-  const active = document.activeElement;
-  const focus =
-    active !== null && line.contains(active)
-      ? (active.closest<HTMLElement>("[data-conversation-seat]")?.dataset.conversationSeat ?? null)
-      : null;
+  const focus = focusIn(line);
   return {
     band: band.hasAttribute("data-on")
       ? [...band.children].map((piece) => boxOf(piece, origin))
@@ -173,6 +182,14 @@ function readLine(line: HTMLElement, band: HTMLElement): LineSeen {
     names: seen,
     focus,
   };
+}
+
+/** The crewmate whose press holds the focus on the line. */
+function focusIn(line: HTMLElement): string | null {
+  const active = document.activeElement;
+  return active !== null && line.contains(active)
+    ? (active.closest<HTMLElement>("[data-conversation-seat]")?.dataset.conversationSeat ?? null)
+    : null;
 }
 
 /** The band's three pieces over `target`: a round end, the run tucked under both ends, a round end. */
@@ -324,6 +341,10 @@ export class LineMotion extends Component<LineMotionProps> {
   private readonly band = createRef<HTMLSpanElement>();
   private bandAt: BandTarget | null = null;
   private live = false;
+  /** Until when something this line set moving may still move. */
+  private movingUntil = Number.NEGATIVE_INFINITY;
+  /** A follow at rest waits for the page to be laid out. */
+  private followWaits = false;
 
   override componentDidMount(): void {
     this.live = true;
@@ -335,10 +356,27 @@ export class LineMotion extends Component<LineMotionProps> {
     this.live = false;
   }
 
-  override getSnapshotBeforeUpdate(): LineSeen | null {
+  /**
+   * The line as seen before React changes it. A draw that switches nothing
+   * while nothing on the line moves — a face changing state, a chat's title
+   * — reads no box: it is most of the line's draws while a Mate works, and a
+   * box read here, before the commit's other changes are laid out, forced a
+   * layout of the page on each.
+   */
+  override getSnapshotBeforeUpdate(previous: LineMotionProps): LineSeen | null {
     const line = this.line();
     const band = this.band.current;
-    return line === null || band === null ? null : readLine(line, band);
+    if (line === null || band === null) return null;
+    if (sameLineStage(previous.stage, this.props.stage) && !this.moving()) {
+      return {
+        band: null,
+        seats: NOTHING_SEEN,
+        names: NOTHING_SEEN,
+        focus: focusIn(line),
+        still: true,
+      };
+    }
+    return readLine(line, band);
   }
 
   override componentDidUpdate(
@@ -352,6 +390,7 @@ export class LineMotion extends Component<LineMotionProps> {
     const motion = lineMotion(previous.stage, this.props.stage, { reducedMotion });
     if (motion === "travel") this.travel(line, seen);
     else if (motion === "fade") this.crossfade(line, seen);
+    else if (seen.still === true) this.followAtRest();
     else if (sameLineStage(previous.stage, this.props.stage)) this.follow(line, seen);
     else this.place(line);
     keepFocus(line, seen.focus);
@@ -365,6 +404,32 @@ export class LineMotion extends Component<LineMotionProps> {
         <span />
       </span>
     );
+  }
+
+  private moving(): boolean {
+    return performance.now() < this.movingUntil;
+  }
+
+  private setMoving(): void {
+    this.movingUntil = performance.now() + MOVING_MS;
+  }
+
+  /**
+   * A draw that switched nothing, with nothing moving: the band follows a
+   * reflow at once — once the page is laid out and before it paints, where
+   * reading where its seat now stands costs no layout of its own.
+   */
+  private followAtRest(): void {
+    if (this.followWaits) return;
+    this.followWaits = true;
+    afterLayout(() => {
+      this.followWaits = false;
+      const line = this.line();
+      // A switch drawn since moves it, from what it saw.
+      if (!this.live || line === null || this.moving()) return;
+      const target = this.target(line, line.getBoundingClientRect());
+      if (!sameTarget(target, this.bandAt)) this.stand(target);
+    });
   }
 
   private line(): HTMLElement | null {
@@ -415,6 +480,7 @@ export class LineMotion extends Component<LineMotionProps> {
 
   /** The band from its pieces as seen to `target`. */
   private carry(from: ReadonlyArray<Box>, target: BandTarget): void {
+    this.setMoving();
     this.stand(target);
     const pieces = [...(this.band.current?.children ?? [])];
     piecesOf(target).forEach((at, index) => {
@@ -438,6 +504,7 @@ export class LineMotion extends Component<LineMotionProps> {
 
   /** A switch the person made: everything from where it was seen to where it now stands. */
   private travel(line: HTMLElement, seen: LineSeen): void {
+    this.setMoving();
     const origin = line.getBoundingClientRect();
     const places = new Map<string, Place>();
     for (const { key, node } of movers(line)) {
@@ -490,6 +557,7 @@ export class LineMotion extends Component<LineMotionProps> {
    * name opened fades in.
    */
   private crossfade(line: HTMLElement, seen: LineSeen): void {
+    this.setMoving();
     for (const { node } of movers(line)) stop(node);
     const band = this.band.current;
     if (band !== null && seen.band !== null) {
@@ -539,7 +607,10 @@ export class LineMotion extends Component<LineMotionProps> {
       const was = seen.seats.get(key);
       if (was === undefined || node.getAnimations().length === 0) continue;
       const flowLeft = boxOf(node, origin).left - shiftOf(node);
-      if (Math.abs(flowLeft - was.flowLeft) >= 0.5) slide(node, was.drawn.left, origin);
+      if (Math.abs(flowLeft - was.flowLeft) >= 0.5) {
+        this.setMoving();
+        slide(node, was.drawn.left, origin);
+      }
     }
     const target = this.target(line, origin);
     if (sameTarget(target, this.bandAt)) return;
