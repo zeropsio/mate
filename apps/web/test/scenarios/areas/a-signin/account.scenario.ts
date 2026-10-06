@@ -99,23 +99,37 @@ describe("A: sign-in, session and organizations", () => {
 
     // Catches a reload minting a throwaway Zerops token for HQ's door though the account kept a
     // live HQ session: only HQ asking for a new session may mint one.
-    it.effect("a reload with a kept HQ session mints no door token", () =>
-      Effect.gen(function* () {
-        const s = yield* accountScenario();
-        yield* s.given.project("Ada", { mate: true, app: "Shop" });
-        yield* s.given.signedIn;
-        yield* s.then.menu.row("Shop").appears();
-        const mints = () =>
-          s.drivers.zerops.requests.get("POST /client/ORG/integration-token") ?? 0;
-        const first = mints();
-        expect(first, "The first load enters HQ's door once").toBe(1);
-        yield* account(s.page).reload;
-        yield* s.then.menu.row("Shop").appears();
-        yield* account(s.page).reload;
-        yield* s.then.menu.row("Shop").appears();
-        expect(mints(), "Two reloads mint no further door token").toBe(first);
-        yield* s.then.noExternalNetwork;
-      }),
+    it.effect.each([
+      { members: "read at once", lateMs: 0 },
+      { members: "read late, as KRLS's", lateMs: 3_000 },
+    ])(
+      "a reload with a kept HQ session mints no door token, its member list $members",
+      ({ lateMs }) =>
+        Effect.gen(function* () {
+          const s = yield* accountScenario();
+          if (lateMs > 0) slowMemberList(s.drivers, lateMs);
+          yield* s.given.project("Ada", { mate: true, app: "Shop" });
+          yield* s.given.signedIn;
+          yield* s.then.menu.row("Shop").appears();
+          const mints = () =>
+            s.drivers.zerops.requests.get("POST /client/ORG/integration-token") ?? 0;
+          const first = mints();
+          expect(first, "The first load enters HQ's door once").toBe(1);
+          for (let load = 0; load < 2; load++) {
+            const reads = (s.drivers.zerops.requests.get("GET /client/ORG/user/list") ?? 0) + 1;
+            yield* account(s.page).reload;
+            yield* s.then.menu.row(load === 0 ? "Shop" : "Shop 0").appears();
+            // The member list read behind verifies the kept HQ; HQ's next word comes after it.
+            yield* Effect.promise(() =>
+              s.drivers.zerops.waitForRequest("GET /client/ORG/user/list", reads),
+            );
+            // The application keeps its id: the colleague renames it by its first name each time.
+            yield* s.when.hq.colleague.renamesProject("Shop", `Shop ${load}`);
+            yield* s.then.menu.row(`Shop ${load}`).appears({ within: lateMs + 10_000 });
+          }
+          expect(mints(), "Two reloads mint no further door token").toBe(first);
+          yield* s.then.noExternalNetwork;
+        }),
     );
 
     // Catches organization selection showing the previous organization's projects or losing the way back.
