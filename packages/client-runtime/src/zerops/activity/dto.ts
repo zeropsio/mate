@@ -131,6 +131,15 @@ export interface ActivityProcess {
    * reading zcp's own direct process list makes.
    */
   readonly failReason?: string;
+  /** Its error as the platform gave it, where it gave one: its code and its own words. */
+  readonly error?: { readonly code: string; readonly message: string };
+}
+
+function readError(entry: Record<string, unknown>): ActivityProcess["error"] {
+  const error = readRecord(entry.error);
+  const code = readString(error?.code) ?? "";
+  const message = readString(error?.message) ?? "";
+  return code === "" && message === "" ? undefined : { code, message };
 }
 
 function readFailReason(entry: Record<string, unknown>): string | undefined {
@@ -196,6 +205,7 @@ export function readActivityProcess(value: unknown): ActivityProcess | undefined
   const started = readString(entry.started);
   const finished = readString(entry.finished);
   const failReason = readFailReason(entry);
+  const error = readError(entry);
   return {
     id,
     projectId,
@@ -207,6 +217,7 @@ export function readActivityProcess(value: unknown): ActivityProcess | undefined
     ...(finished === undefined ? {} : { finished }),
     ...(appVersion === undefined ? {} : { appVersion }),
     ...(failReason === undefined ? {} : { failReason }),
+    ...(error === undefined ? {} : { error }),
   };
 }
 

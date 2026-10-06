@@ -135,8 +135,8 @@ vi.mock("~/zerops/newMate", () => ({
   useNewMate: (select: (state: unknown) => unknown) =>
     select({ creations: app.creations, forget: () => undefined, handingOver: app.handingOver }),
 }));
-vi.mock("~/zerops/useZeropsCreationVerdicts", () => ({
-  useZeropsCreationVerdicts: () => new Map(),
+vi.mock("~/zerops/useProjectCreations", () => ({
+  useProjectCreations: () => new Map(),
 }));
 vi.mock("~/zerops/zeropsContainers", () => ({
   useZeropsContainers: () => ({ health: new Map() }),

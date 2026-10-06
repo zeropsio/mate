@@ -41,6 +41,7 @@ export {
   type RosterRead,
 } from "./projections/projects.ts";
 export type { UnavailableReason } from "./projections/freshness.ts";
+export { projectCreations } from "./projections/creation.ts";
 export { makeOperations, type Operations } from "./operations/coordinator.ts";
 export { makeZeropsExecutor } from "./operations/executors/zerops.ts";
 export { restartWay } from "./operations/mateRestart.ts";

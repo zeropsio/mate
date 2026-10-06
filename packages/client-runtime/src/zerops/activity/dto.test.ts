@@ -179,6 +179,31 @@ describe("readProjectProcesses", () => {
     expect(processes?.[0]?.failReason).toBe(reason);
   });
 
+  it.each([
+    {
+      name: "its code and words",
+      error: { code: "internalServerError", message: "Internal server error" },
+      read: { code: "internalServerError", message: "Internal server error" },
+    },
+    { name: "its words alone", error: { message: "Gone" }, read: { code: "", message: "Gone" } },
+    { name: "nothing, for an empty one", error: {}, read: undefined },
+    { name: "nothing, for none", error: undefined, read: undefined },
+  ])("keeps the error a process carries, as the platform gave it: $name", ({ error, read }) => {
+    const processes = readProjectProcesses({
+      list: [
+        {
+          id: "p1",
+          projectId: "proj-1",
+          status: "FAILED",
+          actionName: "project.create",
+          created: "2026-09-02T10:00:00.000Z",
+          ...(error === undefined ? {} : { error }),
+        },
+      ],
+    });
+    expect(processes?.[0]?.error).toEqual(read);
+  });
+
   it("drops a process entry missing an identifying field, keeping the rest", () => {
     const processes = readProjectProcesses({
       list: [

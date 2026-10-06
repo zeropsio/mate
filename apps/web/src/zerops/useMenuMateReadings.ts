@@ -20,7 +20,7 @@ import { overviewAgentActivity, type ZeropsAgentActivity } from "./agentActivity
 import { useEnvironmentLinks } from "../routes/-environmentTargets";
 import { arrivalAwaitsAnswer, arrivalLinkHolds, mateComing, type MateComing } from "./mateComing";
 import { useNewMate } from "./newMate";
-import { useZeropsCreationVerdicts } from "./useZeropsCreationVerdicts";
+import { useProjectCreations } from "./useProjectCreations";
 import { useCloseOffHolds } from "./accountEnvironments";
 import { useZeropsFirstBuilds } from "./useZeropsFirstBuilds";
 import { usePressesElsewhere } from "./usePressesElsewhere";
@@ -133,10 +133,7 @@ export function useMateComingOf(
   const creations = useNewMate((state) => state.creations);
   const { mateLink } = useEnvironmentLinks();
   const closeOffHolds = useCloseOffHolds();
-  const verdicts = useZeropsCreationVerdicts(
-    candidates,
-    presses.find((press) => press.container && press.state.kind === "pressing")?.projectId ?? null,
-  );
+  const verdicts = useProjectCreations(candidates);
   const firstBuilds = useZeropsFirstBuilds(candidates);
   const pressOf = usePressesElsewhere(candidates);
   return useCallback(

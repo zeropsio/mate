@@ -94,7 +94,7 @@ import { useZeropsThrowawaySweep } from "~/zerops/useZeropsThrowawaySweep";
 import { useZeropsSession, type ZeropsSessionStatus } from "~/zerops/ZeropsSessionProvider";
 import { withheldProjectNotices } from "~/zerops/inventoryContext";
 import { useZeropsInventory } from "~/zerops/ZeropsInventoryProvider";
-import { useZeropsCreationVerdicts } from "~/zerops/useZeropsCreationVerdicts";
+import { useProjectCreations } from "~/zerops/useProjectCreations";
 import { useZeropsFirstBuilds } from "~/zerops/useZeropsFirstBuilds";
 import { drawnMateProjects, useMatesInventory } from "~/zerops/useMatesInventory";
 import { useNowMs } from "~/zerops/useNowMs";
@@ -838,14 +838,9 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   );
   // A project on its way up is read against the platform's verdict on its
   // creation: one whose `project.create` failed is not coming up, however
-  // long the page waits, and its row says so instead. H20: also re-asked
-  // periodically for a press of the organization on show, so a creation that
-  // fails late still turns "Coming up." into "Could not be created." on its own.
-  const creationVerdicts = useZeropsCreationVerdicts(
-    observedCandidates,
-    presses.find((press) => press.organizationId === activeOrganization?.id && press.container)
-      ?.projectId ?? null,
-  );
+  // long the page waits, and its row says so instead — a creation that fails
+  // late too (H20), as the process's own change arrives.
+  const creationVerdicts = useProjectCreations(observedCandidates);
   // A first build whose process failed reads as the platform leaves it, with what removes it.
   const firstBuilds = useZeropsFirstBuilds(observedCandidates);
   // Each Mate the page draws has its project read: its container is what Restart and the

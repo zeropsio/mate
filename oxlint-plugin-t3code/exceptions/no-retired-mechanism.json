@@ -1314,30 +1314,6 @@
   {
     "path": "apps/web/src/components/zerops/ZeropsMateComingPage.tsx",
     "kind": "retired-token",
-    "fingerprint": "useZeropsCreationVerdicts",
-    "owner": "data-layer rewrite: projects",
-    "reason": "a hook polls creation verdicts itself; the operations adapter owns the read",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsMateComingPage.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsCreationVerdicts",
-    "owner": "data-layer rewrite: projects",
-    "reason": "a hook polls creation verdicts itself; the operations adapter owns the read",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsMateComingPage.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsCreationVerdicts",
-    "owner": "data-layer rewrite: projects",
-    "reason": "a hook polls creation verdicts itself; the operations adapter owns the read",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsMateComingPage.tsx",
-    "kind": "retired-token",
     "fingerprint": "useZeropsRegistry",
     "owner": "data-layer rewrite: HQ structure/apps",
     "reason": "registry, recipes and releases are read by app hooks; the HQ adapter feeds the store",
@@ -1725,30 +1701,6 @@
     "fingerprint": "useNewProjectBirths",
     "owner": "data-layer rewrite: operations",
     "reason": "births are tracked by app hooks; the operations adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsCreationVerdicts",
-    "owner": "data-layer rewrite: projects",
-    "reason": "a hook polls creation verdicts itself; the operations adapter owns the read",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsCreationVerdicts",
-    "owner": "data-layer rewrite: projects",
-    "reason": "a hook polls creation verdicts itself; the operations adapter owns the read",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsCreationVerdicts",
-    "owner": "data-layer rewrite: projects",
-    "reason": "a hook polls creation verdicts itself; the operations adapter owns the read",
     "expires": "never"
   },
   {
@@ -4064,30 +4016,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/zerops/useMenuMateReadings.ts",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsCreationVerdicts",
-    "owner": "data-layer rewrite: projects",
-    "reason": "a hook polls creation verdicts itself; the operations adapter owns the read",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useMenuMateReadings.ts",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsCreationVerdicts",
-    "owner": "data-layer rewrite: projects",
-    "reason": "a hook polls creation verdicts itself; the operations adapter owns the read",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useMenuMateReadings.ts",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsCreationVerdicts",
-    "owner": "data-layer rewrite: projects",
-    "reason": "a hook polls creation verdicts itself; the operations adapter owns the read",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/zerops/useNewProjectBirthPorts.ts",
     "kind": "retired-token",
     "fingerprint": "useNewMate",
@@ -4365,22 +4293,6 @@
     "fingerprint": "hq.api.compare(",
     "owner": "data-layer rewrite: releases/environments",
     "reason": "compare stores per HQ are kept in the app; the HQ adapter answers on open",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsCreationVerdicts.ts",
-    "kind": "retired-token",
-    "fingerprint": "client.readProjectCreation(",
-    "owner": "data-layer rewrite: projects",
-    "reason": "a hook polls creation verdicts itself; the operations adapter owns the read",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsCreationVerdicts.ts",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsCreationVerdicts",
-    "owner": "data-layer rewrite: projects",
-    "reason": "a hook polls creation verdicts itself; the operations adapter owns the read",
     "expires": "never"
   },
   {

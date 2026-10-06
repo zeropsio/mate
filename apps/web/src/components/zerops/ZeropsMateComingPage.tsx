@@ -118,7 +118,7 @@ import { usePressesElsewhere } from "~/zerops/usePressesElsewhere";
 import { useUsualAgent } from "~/zerops/useUsualAgent";
 import { useZeropsBirthProgress } from "~/zerops/useZeropsBirthProgress";
 import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
-import { useZeropsCreationVerdicts } from "~/zerops/useZeropsCreationVerdicts";
+import { useProjectCreations } from "~/zerops/useProjectCreations";
 import { useZeropsInventory, type InventoryServiceOutcome } from "~/zerops/inventoryContext";
 import {
   closeOffHoldOf,
@@ -199,10 +199,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   const made = useNewProjectBirths((state) => newProjectBirthOf(state.births, projectId));
   const forgetCreation = useNewMate((state) => state.forget);
   // The platform's verdict on its creation, read while it may still be refused (H20).
-  const verdicts = useZeropsCreationVerdicts(
-    listed === undefined ? [] : [listed],
-    press !== undefined ? projectId : null,
-  );
+  const verdicts = useProjectCreations(listed === undefined ? [] : [listed]);
   const candidate = useMemo(
     () =>
       listed === undefined
