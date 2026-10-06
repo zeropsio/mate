@@ -4116,10 +4116,7 @@ export default function Sidebar() {
               className="mb-2"
               complete={zeropsHeld.complete}
               notice={zeropsNotice}
-              reading={
-                zeropsSession.organizationStatus === "selected" &&
-                (zeropsListing.state === "unread" || zeropsListing.state === "reading")
-              }
+              reading={zeropsSession.organizationStatus === "selected" && !zeropsHeld.complete}
               onNoticeAct={(affordance) => {
                 if (affordance.kind === "go-to-projects") navigateToZeropsProjects();
                 else refreshZeropsCandidates();

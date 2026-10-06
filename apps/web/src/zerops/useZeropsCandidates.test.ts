@@ -44,6 +44,10 @@ vi.mock("./zeropsDataContext", async (importOriginal) => ({
   ...(await importOriginal<object>()),
   useZeropsData: () => ({ organizationRef }),
 }));
+const account = vi.hoisted(() => ({ retry: vi.fn() }));
+vi.mock("./ZeropsAccountData", () => ({
+  useAccountDataOptional: () => ({ retry: account.retry }),
+}));
 vi.mock("./inventoryContext", async (importOriginal) => ({
   ...(await importOriginal<object>()),
   useZeropsInventory: () => ({
@@ -116,7 +120,7 @@ describe("authenticatedZeropsOrigins", () => {
 });
 
 describe("useZeropsCandidates", () => {
-  it("the header's reload reads the active organization's inventory again", async () => {
+  it("the header's reload asks the account's store again, and reads the inventory again", async () => {
     vi.useFakeTimers({ toFake: ["Date", "performance", "setTimeout", "clearTimeout"] });
     vi.spyOn(process.hrtime, "bigint").mockImplementation(() =>
       BigInt(Math.round(performance.now() * 1_000_000)),
@@ -142,6 +146,7 @@ describe("useZeropsCandidates", () => {
       act(() => root.render(createElement(Header)));
       refresh();
       await act(() => vi.advanceTimersByTimeAsync(INVALIDATION_COALESCE_MS));
+      expect(account.retry).toHaveBeenCalledTimes(1);
       expect(heard).toEqual([{ topic: "inventory", organization: organizationRef("org-1") }]);
     } finally {
       stop();

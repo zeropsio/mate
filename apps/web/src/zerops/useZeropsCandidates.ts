@@ -32,6 +32,7 @@ import {
   zeropsInventoryAtom,
 } from "../state/zerops";
 import { invalidateZerops } from "./accountInvalidations";
+import { useAccountDataOptional } from "./ZeropsAccountData";
 import { useZeropsInventory } from "./inventoryContext";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 import { useZeropsData } from "./zeropsDataContext";
@@ -179,11 +180,15 @@ export function useZeropsCandidates(): {
     [activeOrganization, organizationRef],
   );
 
-  // The header's reload: the active organization's inventory is read again (DESIGN §6.2).
+  // The header's reload, and a refused listing's Try again: the account's store asks again — a
+  // refusal it holds revives only so — and the active organization's inventory is read again
+  // (DESIGN §6.2).
+  const retryAccount = useAccountDataOptional()?.retry;
   const refresh = useCallback(() => {
+    retryAccount?.();
     if (activeOrganizationRef === null) return;
     invalidateZerops({ topic: "inventory", organization: activeOrganizationRef });
-  }, [activeOrganizationRef]);
+  }, [activeOrganizationRef, retryAccount]);
 
   return { listing, wholeForPerson, isLoading, error: inventory.error, refresh };
 }

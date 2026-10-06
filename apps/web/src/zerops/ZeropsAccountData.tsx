@@ -22,8 +22,13 @@ import { onAccountLifetimeClose } from "./accountLifetime";
 import { accountOperations, AccountOperationsContext } from "./accountOperations";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
-/** What a screen may reach of the account's data: the store's reads, never its writer. */
-export type AccountData = AccountReads;
+/**
+ * What a screen may reach of the account's data: the store's reads, never its writer, and the
+ * person's "try now" for what it observes.
+ */
+export interface AccountData extends AccountReads {
+  readonly retry: () => void;
+}
 
 const AccountDataContext = createContext<AccountData | null>(null);
 
@@ -50,7 +55,12 @@ export function ZeropsAccountData({ children }: { readonly children: ReactNode }
   }, [observation, orgId]);
   useEffect(() => () => observation.stop(), [observation]);
   const value = useMemo(
-    () => ({ data: store.data, orgId, demandDetail: observation.demandDetail }),
+    () => ({
+      data: store.data,
+      orgId,
+      demandDetail: observation.demandDetail,
+      retry: observation.retry,
+    }),
     [observation, orgId, store],
   );
   // The operations are built here, over the store this mount owns: no screen reaches its writer.
