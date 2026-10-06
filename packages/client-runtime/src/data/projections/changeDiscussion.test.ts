@@ -9,7 +9,7 @@ import { emptyAccount, linkKeys, type AccountState, type ScopeKey } from "../mod
 import { reduceAccount, type AccountInput } from "../reducer.ts";
 import { readsOfState } from "../store.ts";
 import type { StreamEvent } from "../streamMachine.ts";
-import { changeDiscussion } from "./changeDiscussion.ts";
+import { changeDiscussion, discussionGate } from "./changeDiscussion.ts";
 
 const ORG = "org";
 const LINK = { appId: "shop", repo: "web", number: 7 };
@@ -97,7 +97,7 @@ describe("changeDiscussion", () => {
     {
       name: "HQ down before any read",
       state: neverRead,
-      expected: { kind: "failed", reason: "HQ's stream broke." },
+      expected: { kind: "failed", reason: "HQ is not answering right now." },
     },
     {
       name: "refused",
@@ -119,7 +119,45 @@ describe("changeDiscussion", () => {
       state: scopeError("transient", "read_failed", null),
       expected: { kind: "failed", reason: "HQ is not answering right now." },
     },
+    {
+      name: "a deadline the supervisor named",
+      state: apply(demanded, [
+        stream(SCOPE, {
+          kind: "fault",
+          fault: { outcome: "transient", message: `No answer for ${SCOPE}.` },
+          jitter: 0,
+        }),
+      ]),
+      expected: { kind: "failed", reason: "HQ is not answering right now." },
+    },
   ])("$name", ({ state, expected }) => {
     expect(discussion(state)).toEqual(expected);
+  });
+});
+
+const gate = (state: AccountState) =>
+  discussionGate.derive(readsOfState(state), { orgId: ORG, link: LINK });
+
+describe("discussionGate", () => {
+  it.each([
+    {
+      name: "no HQ named",
+      state: emptyAccount,
+      expected: { kind: "failed", reason: "HQ is not answering right now." },
+    },
+    { name: "first read", state: demanded, expected: { kind: "reading" } },
+    { name: "read", state: read, expected: { kind: "read" } },
+    {
+      name: "HQ let go",
+      state: apply(demanded, [stream(linkKeys.hq(ORG), { kind: "demand", demanded: false })]),
+      expected: { kind: "failed", reason: "HQ is not answering right now." },
+    },
+    {
+      name: "refused",
+      state: refused,
+      expected: { kind: "failed", reason: "You may not read this change." },
+    },
+  ])("$name", ({ state, expected }) => {
+    expect(gate(state)).toEqual(expected);
   });
 });

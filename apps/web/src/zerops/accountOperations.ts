@@ -35,6 +35,11 @@ export interface AccountOperations {
     /** What the owner said of how it ended, once it has; `null` before. */
     readonly evidence: string | null;
   }>;
+  /**
+   * Asks the owner again after a lost answer — by its facts where it keeps no ids: never a send.
+   * What it cannot tell yet stays uncertain.
+   */
+  readonly askAgain: (requestId: string) => Promise<void>;
   /** Resolves once the operation is final for now, or can no longer be followed (`operationEnd`). */
   readonly untilEnd: (requestId: string, orgId: string) => Promise<NonNullable<OperationEnd>>;
 }
@@ -88,6 +93,7 @@ export function accountOperations(
     });
   const made: AccountOperations = {
     untilEnd,
+    askAgain: (requestId) => Effect.runPromise(operations.retry(requestId)),
     submit: async (intent) => {
       const requestId = await Effect.runPromise(operations.submit(intent));
       const outcome = store.state().operations.get(requestId)?.receipt?.outcome;

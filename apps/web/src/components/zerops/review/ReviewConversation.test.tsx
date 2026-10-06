@@ -40,7 +40,16 @@ function comments(
   state: ChangeDiscussion["state"],
   over: Partial<ChangeDiscussion> = {},
 ): ChangeDiscussion {
-  return { state, say: async () => null, saying: false, pending: null, retry: () => {}, ...over };
+  return {
+    state,
+    say: async () => null,
+    saying: false,
+    waiting: false,
+    pending: null,
+    landed: null,
+    retry: () => {},
+    ...over,
+  };
 }
 
 function html(props: Partial<Parameters<typeof ReviewConversation>[0]> = {}): string {
@@ -104,6 +113,13 @@ describe("a change's conversation in its review", () => {
     expect(markup).toMatch(/<button[^>]*aria-disabled="true"[^>]*>Comment<\/button>/u);
     expect(markup).toMatch(/<button[^>]*aria-disabled="true"[^>]*>.*Ask Nova<\/button>/u);
     expect(markup).not.toMatch(/<button[^>]*disabled=""/u);
+  });
+
+  it("says a press waits until the conversation is read", () => {
+    const markup = html({
+      comments: comments({ kind: "reading" }, { saying: true, waiting: true }),
+    });
+    expect(markup.includes("Sends once HQ has read the conversation.")).toBe(true);
   });
 
   it.each([
@@ -309,6 +325,20 @@ describe("the box", () => {
     await first.unmount();
     const again = await mount(refused, async () => {}, "appdev#refused");
     expect(again.value()).toBe("Ship it");
+    await again.unmount();
+  });
+
+  it("drops the draft of words whose answer was lost once HQ shows them as the person's", async () => {
+    const lost = comments(
+      { kind: "read", comments: [] },
+      { say: async () => "HQ could not confirm whether this finished." },
+    );
+    const first = await mount(lost, async () => {}, "appdev#lost");
+    await first.type("Ship it");
+    await first.press("Comment");
+    await first.unmount();
+    const again = await mount({ ...lost, landed: "Ship it" }, async () => {}, "appdev#lost");
+    expect(again.value()).toBe("");
     await again.unmount();
   });
 });

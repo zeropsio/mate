@@ -24,7 +24,12 @@ export {
   type HqNavigationRead,
 } from "./projections/hqNavigation.ts";
 export { hqMates, type HqMatesRead } from "./projections/hqMates.ts";
-export { changeDiscussion, type ChangeDiscussionRead } from "./projections/changeDiscussion.ts";
+export {
+  changeDiscussion,
+  discussionGate,
+  type ChangeDiscussionRead,
+  type DiscussionGate,
+} from "./projections/changeDiscussion.ts";
 export { discussionDemand } from "./families/hqDiscussion.ts";
 export type { DetailDemand } from "./demand.ts";
 export { makeAccountStore, type AccountStore, type Projection } from "./store.ts";

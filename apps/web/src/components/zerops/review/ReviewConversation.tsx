@@ -11,7 +11,8 @@
  * comments, never merges.
  * What was typed is kept for the change while the tab is open, so closing the review loses
  * nothing; once HQ took it, it is the change's and no draft — the box shows it, off, until the
- * conversation holds it, and says so while HQ reconnects. While the conversation is read it holds the room of the comments the change has; one
+ * conversation holds it, and says so while HQ reconnects. A press made before the conversation is
+ * read says it waits for that read; words whose answer was lost stay a draft until HQ shows them. While the conversation is read it holds the room of the comments the change has; one
  * that cannot be read says so, with *Try again*, and the box still takes words. Only people comment on a change (SPEC §3.2a): each remark wears its speaker's initial.
  */
 import {
@@ -177,7 +178,7 @@ function SayBox({
 }) {
   const [said, setSaid] = useState(() => drafts.get(draftKey) ?? "");
   const [trouble, setTrouble] = useState<string | null>(null);
-  const { say, saying, pending } = comments;
+  const { say, saying, waiting, pending, landed } = comments;
   const empty = said.trim().length === 0;
 
   const write = (next: string) => {
@@ -185,6 +186,13 @@ function SayBox({
     if (next.length === 0) drafts.delete(draftKey);
     else drafts.set(draftKey, next);
   };
+  // Words whose answer was lost are the change's once HQ shows them as the person's: no draft.
+  const [cleared, setCleared] = useState<string | null>(null);
+  if (landed !== null && landed !== cleared) {
+    setCleared(landed);
+    if (said.trim() === landed) write("");
+    setTrouble(null);
+  }
   const comment = async () => {
     const body = said.trim();
     if (body.length === 0 || saying) return;
@@ -259,6 +267,7 @@ function SayBox({
         )}
       </div>
       {trouble === null ? null : <p className="rv-say-trouble">{trouble}</p>}
+      {waiting ? <p className="rv-say-trouble">Sends once HQ has read the conversation.</p> : null}
       {pending?.reconnecting === true ? (
         <p className="rv-say-trouble">
           HQ is reconnecting. Your comment shows here once HQ has it.

@@ -249,7 +249,15 @@ const LONG_TALK: ReadonlyArray<HqChangeComment> = Array.from({ length: 9 }, (_, 
 );
 
 function comments(state: ChangeDiscussion["state"]): ChangeDiscussion {
-  return { state, say: async () => null, saying: false, pending: null, retry: noop };
+  return {
+    state,
+    say: async () => null,
+    saying: false,
+    waiting: false,
+    pending: null,
+    landed: null,
+    retry: noop,
+  };
 }
 
 /** The organization's members by their Zerops user id. */
