@@ -36,8 +36,10 @@ vi.mock("~/zerops/ZeropsSessionProvider", () => ({
     client: {},
   }),
 }));
+// HQ's writes are the account's operations: still under way while the dialog closes.
 vi.mock("~/zerops/accountOperations", () => ({
-  useAccountOperations: () => ({ run: async () => undefined }),
+  useAccountOperations: () => ({ run: app.pending }),
+  HQ_UNFOLLOWED: "HQ isn't answering.",
 }));
 vi.mock("~/zerops/zeropsDataContext", () => ({
   useZeropsData: () => ({
@@ -65,7 +67,6 @@ vi.mock("~/zerops/accountHq", () => ({
     hq: { kind: "official", projectId: "hq", address: "https://hq.example" },
   }),
   officialHq: (account: { hq: unknown }) => account.hq,
-  accountHqApi: () => ({ createApp: app.pending, recordBirth: app.pending }),
 }));
 vi.mock("./ZeropsNewProjectForm", () => ({
   ZeropsNewProjectDialog: (props: { readonly onCreate: (choice: NewProjectChoice) => void }) => {
