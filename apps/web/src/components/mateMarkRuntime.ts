@@ -26,6 +26,8 @@ import {
   type MateMarkState,
 } from "@t3tools/shared/brand";
 
+import { afterLayout } from "../lib/afterLayout";
+
 export interface LiveMarkParts {
   svg?: SVGSVGElement | null;
   bob?: SVGGElement | null;
@@ -658,26 +660,8 @@ const browserHost: MarkLoopHost = {
   reducedMotion: () => globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false,
   random: Math.random,
   viewport: () => ({ width: window.innerWidth, height: window.innerHeight }),
-  afterLayout: (callback) => {
-    if (typeof ResizeObserver !== "function") {
-      callback();
-      return;
-    }
-    afterLayoutCallbacks.push(callback);
-    if (afterLayoutCallbacks.length > 1) return;
-    // An element observed anew is reported once the page is laid out, before it paints.
-    afterLayoutWatch ??= new ResizeObserver(() => {
-      const callbacks = afterLayoutCallbacks;
-      afterLayoutCallbacks = [];
-      for (const run of callbacks) run();
-    });
-    afterLayoutWatch.unobserve(document.documentElement);
-    afterLayoutWatch.observe(document.documentElement);
-  },
+  afterLayout,
 };
-
-let afterLayoutCallbacks: Array<() => void> = [];
-let afterLayoutWatch: ResizeObserver | undefined;
 
 let pageLoop: MarkLoop | undefined;
 let observer: IntersectionObserver | undefined;
