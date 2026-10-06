@@ -1,7 +1,7 @@
 import { NOT_READ_HQ, type HqNavigationRead } from "@t3tools/client-runtime/data";
 import { describe, expect, it } from "vite-plus/test";
 
-import { hqOfficialOf, hqOutage } from "./hqNavigation";
+import { hqOutage } from "./hqNavigation";
 
 const at = (hour: number, minute: number) => new Date(2026, 9, 2, hour, minute).getTime();
 const STRUCTURE = { apps: [], ungrouped: [] };
@@ -46,19 +46,5 @@ describe("hqOutage: what the menu says while HQ does not answer", () => {
     ],
   ])("%s", (_case, navigation, downSince, said) => {
     expect(hqOutage(navigation, downSince, "24-hour", at(14, 20))).toEqual(said);
-  });
-});
-
-describe("hqOfficialOf: whether the organization has an official HQ, as decided", () => {
-  const OFFICIAL = { kind: "official", projectId: "p-hq", address: "hq.example:443" } as const;
-  it.each([
-    ["the kept verdict or the member list names one", "ready", OFFICIAL, true],
-    ["the member list names none", "ready", { kind: "none" }, false],
-    ["the member list's names are unclear", "ready", { kind: "unclear", projectIds: [] }, false],
-    ["the member list is being read", "loading", { kind: "none" }, null],
-    ["nothing has been read", "idle", { kind: "none" }, null],
-    ["the member list could not be read", "failed", { kind: "none" }, null],
-  ] as const)("%s", (_name, status, hq, expected) => {
-    expect(hqOfficialOf({ status, hq })).toBe(expected);
   });
 });

@@ -1834,14 +1834,6 @@
   {
     "path": "apps/web/src/state/zerops.ts",
     "kind": "retired-token",
-    "fingerprint": "hqOfficialAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/state/zerops.ts",
-    "kind": "retired-token",
     "fingerprint": "zeropsInventoryAtom",
     "owner": "data-layer rewrite: services",
     "reason": "inventory atoms and trouble refs remember a verdict; the services projection reads the store",
@@ -2237,22 +2229,6 @@
     "fingerprint": "useHqBirths",
     "owner": "data-layer rewrite: operations",
     "reason": "births are tracked by app hooks; the operations adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/hqNavigation.tsx",
-    "kind": "retired-token",
-    "fingerprint": "hqOfficialAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "the official-HQ verdict from the member list (PA/PERM discovery) is not the HQ stream; it moves with that discovery",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/hqNavigation.tsx",
-    "kind": "retired-token",
-    "fingerprint": "hqOfficialAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "the official-HQ verdict from the member list (PA/PERM discovery) is not the HQ stream; it moves with that discovery",
     "expires": "never"
   },
   {

@@ -8,14 +8,12 @@
  * - **HQ down:** what was read stands, and the menu says since when HQ does not answer
  *   (SPEC §4); chat and terminal to the Mates do not go through HQ and keep working.
  */
-import { RegistryContext } from "@effect/atom-react";
 import { makeHqWire, type HqNavigationRead } from "@t3tools/client-runtime/data";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
-import { useContext, useEffect, useMemo } from "react";
+import { useEffect, useMemo } from "react";
 
-import { hqOfficialAtom } from "../state/zerops";
 import { formatDayAwareTimestamp } from "../timestampFormat";
-import { accountHqApi, useAccountHq, type AccountHq } from "./accountHq";
+import { accountHqApi, useAccountHq } from "./accountHq";
 import { holdHqWrites } from "./hqWrites";
 import { useAccountDataOptional } from "./ZeropsAccountData";
 import { useZeropsSession } from "./ZeropsSessionProvider";
@@ -58,28 +56,14 @@ export function hqOutage(
   return { kind: "unavailable", line: `${refusal}HQ unavailable${since}.${retry}`, again: true };
 }
 
-/**
- * Whether the organization has an official HQ, once its verdict is decided: kept, or read off its
- * member list. Null before — no answer of HQ's is waited for where it is false.
- */
-export function hqOfficialOf(accountHq: Pick<AccountHq, "status" | "hq">): boolean | null {
-  return accountHq.status === "ready" ? accountHq.hq.kind === "official" : null;
-}
-
 /** Observes the organization in view's HQ for as long as the account shows it. */
 export function ZeropsHqNavigation(): null {
   const { activeOrganization, client, status } = useZeropsSession();
-  const registry = useContext(RegistryContext);
   const showHq = useAccountDataOptional()?.showHq;
   const organizationId = status === "signed-in" ? activeOrganization?.id : undefined;
   const accountHq = useAccountHq(organizationId);
   const hqProjectId = accountHq.hq.kind === "official" ? accountHq.hq.projectId : undefined;
   const hqAddress = accountHq.hq.kind === "official" ? accountHq.hq.address : undefined;
-  const official = organizationId === undefined ? null : hqOfficialOf(accountHq);
-
-  useEffect(() => {
-    registry.set(hqOfficialAtom, official);
-  }, [official, registry]);
 
   const api = useMemo(
     () =>

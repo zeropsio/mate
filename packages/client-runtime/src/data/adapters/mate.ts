@@ -302,7 +302,7 @@ const delayUntil = (at: Instant, now: Instant): number =>
   Math.max(0, Math.min(at.mono - now.mono, at.wall - now.wall));
 
 /** A visible wake reads a container no socket holds once its last reading is this old. */
-export const WAKE_REREAD_MS = 60_000;
+const WAKE_REREAD_MS = 60_000;
 
 const unreadSince = (machine: ContainerMachine, now: Instant): boolean => {
   const sentAt = machine.reading?.sentAt;
@@ -377,6 +377,8 @@ interface Origin {
   /** Asked for once more, after whatever is in flight. */
   requested: boolean;
   requestedFresh: boolean;
+  /** One of those asks wants `/healthz` read beside the descriptor. */
+  requestedHealth: boolean;
   /** When the cadence reads it next; null while it does not poll. */
   pollAt: Instant | null;
   rung: number;
@@ -687,6 +689,10 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
     if (reading === null) return;
     transition(entry, { type: "PROBED", reading, sentAt });
     entry.answering = reading.kind === "ready";
+    // A Mate the person waits on whose door did not answer is read once more, `/healthz` beside
+    // its descriptor: up but not answering, or still coming up, is said at once.
+    if (reading.kind === "unreachable" && personWaits(entry))
+      requestFor(entry, { fresh: true }, { health: true });
   };
 
   const guardsFor = (key: TargetKey, budget: boolean): EnvironmentGuards => {
@@ -815,12 +821,13 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
    * Reads the container once this batch ends — only one something waits on, with an address, no
    * socket proving it up, and no platform status saying it is down.
    */
-  const requestFor = (entry: Entry, ask: ProbeAsk) => {
+  const requestFor = (entry: Entry, ask: ProbeAsk, options: { readonly health?: boolean } = {}) => {
     if (entry.origin === null || entry.container.connectedSince !== null) return;
     if (platformSaysDown(entry.container) || !watched(entry)) return;
     const origin = originFor(entry.origin);
     origin.requested = true;
     origin.requestedFresh ||= ask.fresh;
+    origin.requestedHealth ||= options.health === true;
   };
 
   // ── Probes ─────────────────────────────────────────────────────────────────────────────────
@@ -833,6 +840,7 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
       inFlight: null,
       requested: false,
       requestedFresh: false,
+      requestedHealth: false,
       pollAt: null,
       rung: 0,
       lastSentAt: null,
@@ -882,6 +890,7 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
         origin.cadence = { kind: "none" };
         origin.pollAt = null;
         origin.requested = false;
+        origin.requestedHealth = false;
         continue;
       }
       origin.inFlight?.abort();
@@ -944,11 +953,12 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
   const startProbe = (at: string, origin: Origin) => {
     const controller = new AbortController();
     const sentAt = clock.now();
-    const initAt = polls(origin.cadence) || origin.waiting.length > 0;
+    const initAt = polls(origin.cadence) || origin.waiting.length > 0 || origin.requestedHealth;
     const ask: ProbeRead = { fresh: initAt || origin.requestedFresh, initAt };
     origin.inFlight = controller;
     origin.requested = false;
     origin.requestedFresh = false;
+    origin.requestedHealth = false;
     origin.answering = [...origin.answering, ...origin.waiting];
     origin.waiting = [];
     let settled = false;

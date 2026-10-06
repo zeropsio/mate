@@ -408,4 +408,36 @@ describe("makeMateAdapter", () => {
     await flush();
     expect(probes.length).toBe(before + 1);
   });
+
+  it("tells a Mate the person opened that is up but not answering at once, with one read beside its door", async () => {
+    const { adapter, store, probes } = rig({
+      answer: () => ({
+        ok: false,
+        failure: { class: "retryable", cause: { kind: "descriptor-unreachable" } },
+        descriptor: null,
+      }),
+      reading: () => ({ kind: "not-answering", initAt: "init-1" }),
+    });
+    adapter.setTargets([target("p1")]);
+    adapter.setDemand("route", ["p1:zcp"]);
+    await flush();
+    expect(probes.map(({ ask }) => ask)).toEqual([{ fresh: true, initAt: true }]);
+    expect(mateLink.derive(read(store), "p1:zcp")?.container.reading?.reading.kind).toBe(
+      "not-answering",
+    );
+  });
+
+  it("reads nothing beside the door of a background Mate that does not answer", async () => {
+    const { adapter, probes } = rig({
+      answer: () => ({
+        ok: false,
+        failure: { class: "retryable", cause: { kind: "descriptor-unreachable" } },
+        descriptor: null,
+      }),
+    });
+    adapter.setTargets([target("p1")]);
+    adapter.setDemand("drawn", ["p1:zcp"]);
+    await flush();
+    expect(probes).toEqual([]);
+  });
 });

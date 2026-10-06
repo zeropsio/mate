@@ -7,7 +7,6 @@ import {
   type ManagedZeropsDataRuntime,
 } from "@t3tools/client-runtime/zerops/data";
 import type { AccountStore } from "@t3tools/client-runtime/data";
-import type { RegistrationRecord } from "@t3tools/client-runtime/zerops/environments";
 import { EnvironmentId } from "@t3tools/contracts";
 import { Atom, AtomRegistry } from "effect/unstable/reactivity";
 import { describe, expect, it } from "vite-plus/test";
