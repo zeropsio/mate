@@ -9,10 +9,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { elementsOf, TestNode } from "~/zerops/__fixtures__/testDom";
-import type {
-  ZeropsChangeComments,
-  ZeropsChangeCommentsState,
-} from "~/zerops/useZeropsChangeComments";
+import type { ChangeDiscussion } from "~/zerops/useChangeDiscussion";
 
 import { ReviewConversation } from "./ReviewConversation";
 
@@ -40,9 +37,9 @@ function remarks(count = 2): ReadonlyArray<ChangeRemark> {
 }
 
 function comments(
-  state: ZeropsChangeCommentsState,
-  over: Partial<ZeropsChangeComments> = {},
-): ZeropsChangeComments {
+  state: ChangeDiscussion["state"],
+  over: Partial<ChangeDiscussion> = {},
+): ChangeDiscussion {
   return { state, say: async () => null, saying: false, retry: () => {}, ...over };
 }
 
@@ -180,7 +177,7 @@ describe("the box", () => {
     }
   }
 
-  async function mount(conversation: ZeropsChangeComments, onAsk: (said: string) => Promise<void>) {
+  async function mount(conversation: ChangeDiscussion, onAsk: (said: string) => Promise<void>) {
     const document = new FaceNode("#document", null, 9);
     vi.stubGlobal("document", document);
     vi.stubGlobal("window", {

@@ -365,11 +365,6 @@ export interface HqApi {
     signal?: AbortSignal,
     snapshot?: ChangeDetailQuery,
   ) => Promise<ChangeDetailResponse>;
-  /** What was said on a change, oldest first. */
-  readonly changeComments: (
-    link: ChangeLink,
-    signal?: AbortSignal,
-  ) => Promise<ReadonlyArray<HqChangeComment>>;
   /** Says `body` on a change, as the person. */
   readonly commentOnChange: (link: ChangeLink, body: string) => Promise<HqChangeComment>;
   /**
@@ -952,12 +947,8 @@ export function makeHqApi(input: {
       ),
     );
   };
-  const commentsOf = async (link: ChangeLink, signal?: AbortSignal) =>
-    (
-      await readComments(
-        await authorized(`${changePath(link)}/comments`, signal === undefined ? {} : { signal }),
-      )
-    ).comments;
+  const commentsOf = async (link: ChangeLink) =>
+    (await readComments(await authorized(`${changePath(link)}/comments`, {}))).comments;
   /** The change as HQ holds it, if it is in `state`. */
   const changeIn = async (link: ChangeLink, state: HqChange["state"]) => {
     const { change } = await changeOf(link);
@@ -1134,7 +1125,6 @@ export function makeHqApi(input: {
         },
       ),
     change: changeOf,
-    changeComments: commentsOf,
     // A comment has no name of its own: the newest said on the change, in the very words, is taken
     // for it.
     commentOnChange: (link, body) =>

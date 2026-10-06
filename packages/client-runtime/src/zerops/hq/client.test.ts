@@ -1156,7 +1156,7 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
     });
   });
 
-  it("reads a change's conversation, and says something in it as the person", async () => {
+  it("says something in a change's conversation as the person", async () => {
     const { hq, api: hqApi } = api((seen) =>
       seen.path === "/api/apps/app-1/changes/app/3/comments"
         ? seen.method === "POST"
@@ -1164,7 +1164,6 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
           : json(200, { comments: [COMMENT] })
         : undefined,
     );
-    await expect(hqApi.changeComments(LINK)).resolves.toEqual([COMMENT]);
     await expect(hqApi.commentOnChange(LINK, "Ship it")).resolves.toEqual({
       ...COMMENT,
       body: "Ship it",

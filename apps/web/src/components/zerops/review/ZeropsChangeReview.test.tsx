@@ -71,8 +71,8 @@ vi.mock("~/zerops/useZeropsChangeDetail", async () => ({
   )),
   useZeropsChangeDetail: () => ({ readout: detail.readout, retry: () => undefined }),
 }));
-vi.mock("~/zerops/useZeropsChangeComments", () => ({
-  useZeropsChangeComments: () => ({
+vi.mock("~/zerops/useChangeDiscussion", () => ({
+  useChangeDiscussion: () => ({
     state: { kind: "reading" },
     say: async () => null,
     saying: false,

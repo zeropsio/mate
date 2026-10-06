@@ -1,9 +1,10 @@
 /**
  * The account's operations: one coordinator per account store and session client, with Zerops
- * wired as the owner of its kinds. A verb submits an intent here and reads where it stands through
+ * and the organization's official HQ wired as the owners of their kinds. A verb submits an intent here and reads where it stands through
  * the operation's progress projection; it never calls the platform itself.
  */
 import {
+  makeHqExecutor,
   makeOperations,
   makeZeropsExecutor,
   operationEnd,
@@ -20,6 +21,7 @@ import { createContext, useContext } from "react";
 
 import { randomUUID } from "~/lib/utils";
 
+import { hqWritesOf } from "./hqWrites";
 import { accountThrowawayDebt } from "./throwawayDebt";
 import type { ZeropsSessionValue } from "./ZeropsSessionProvider";
 
@@ -66,6 +68,7 @@ export function accountOperations(
         nowMs: () => Date.now(),
         ...(locks === undefined ? {} : { locks }),
       }),
+      hq: makeHqExecutor({ apiOf: hqWritesOf }),
     },
     makeId: randomUUID,
   });

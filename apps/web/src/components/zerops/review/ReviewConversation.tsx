@@ -23,7 +23,7 @@ import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { useState, type KeyboardEvent, type ReactElement } from "react";
 
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
-import type { ZeropsChangeComments } from "~/zerops/useZeropsChangeComments";
+import type { ChangeDiscussion } from "~/zerops/useChangeDiscussion";
 
 import { Avatar, MateFace } from "../primitives";
 import { remarkFold, type ReviewFrame } from "./ZeropsReview.logic";
@@ -58,7 +58,7 @@ export function ReviewConversation({
   readonly frame: ReviewFrame;
   /** The change the draft belongs to. */
   readonly draftKey: string;
-  readonly comments: ZeropsChangeComments;
+  readonly comments: ChangeDiscussion;
   readonly remarks: ReadonlyArray<ChangeRemark>;
   /** How many comments the change has, as HQ counts them: the room its conversation holds. */
   readonly count?: number | undefined;
@@ -170,7 +170,7 @@ function SayBox({
   onAsk,
 }: {
   readonly draftKey: string;
-  readonly comments: ZeropsChangeComments;
+  readonly comments: ChangeDiscussion;
   readonly asker: Asker | undefined;
   readonly onAsk: (said: string) => Promise<void>;
 }) {

@@ -16,6 +16,7 @@ import { useContext, useEffect, useMemo } from "react";
 import { hqOfficialAtom } from "../state/zerops";
 import { formatDayAwareTimestamp } from "../timestampFormat";
 import { accountHqApi, useAccountHq, type AccountHq } from "./accountHq";
+import { holdHqWrites } from "./hqWrites";
 import { useAccountDataOptional } from "./ZeropsAccountData";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
@@ -80,14 +81,19 @@ export function ZeropsHqNavigation(): null {
     registry.set(hqOfficialAtom, official);
   }, [official, registry]);
 
-  const wire = useMemo(
+  const api = useMemo(
     () =>
       organizationId === undefined || hqProjectId === undefined || hqAddress === undefined
         ? null
-        : makeHqWire(
-            accountHqApi(client, organizationId, { projectId: hqProjectId, address: hqAddress }),
-          ),
+        : accountHqApi(client, organizationId, { projectId: hqProjectId, address: hqAddress }),
     [client, hqAddress, hqProjectId, organizationId],
+  );
+  const wire = useMemo(() => (api === null ? null : makeHqWire(api)), [api]);
+  // The account's operations write to the HQ it observes, and to none once it observes none.
+  useEffect(
+    () =>
+      organizationId === undefined || api === null ? undefined : holdHqWrites(organizationId, api),
+    [api, organizationId],
   );
   // A new wire for the same organization's HQ moves the link to it; the link stops only once no
   // HQ is named, or with this mount.

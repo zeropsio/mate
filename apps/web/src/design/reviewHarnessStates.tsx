@@ -40,10 +40,7 @@ import {
   WorkspaceBreadcrumbItem,
   WorkspaceBreadcrumbSeparator,
 } from "~/components/WorkspaceBreadcrumb";
-import type {
-  ZeropsChangeComments,
-  ZeropsChangeCommentsState,
-} from "~/zerops/useZeropsChangeComments";
+import type { ChangeDiscussion } from "~/zerops/useChangeDiscussion";
 import type { ZeropsChangeOffers } from "~/zerops/useChangeOffers";
 import type { ReadoutPart } from "~/zerops/useZeropsChangeDetail";
 
@@ -251,7 +248,7 @@ const LONG_TALK: ReadonlyArray<HqChangeComment> = Array.from({ length: 9 }, (_, 
     : said(index + 1, "u-wren", "Checked again on a 390 px screen: still fine.", 390 - index * 40),
 );
 
-function comments(state: ZeropsChangeCommentsState): ZeropsChangeComments {
+function comments(state: ChangeDiscussion["state"]): ChangeDiscussion {
   return { state, say: async () => null, saying: false, retry: noop };
 }
 
@@ -261,7 +258,7 @@ const MEMBERS = new Map([
   ["u-wren", "Wren"],
 ]);
 
-function remarksOf(conversation: ZeropsChangeComments) {
+function remarksOf(conversation: ChangeDiscussion) {
   return conversation.state.kind === "read"
     ? changeRemarks({
         comments: conversation.state.comments,
@@ -443,7 +440,7 @@ function Change({
   readonly readout?: ChangeReviewViewProps["readout"];
   readonly open?: ReadonlyArray<string>;
   readonly run?: { readonly words: string | undefined; readonly reading: boolean };
-  readonly conversation?: ZeropsChangeComments;
+  readonly conversation?: ChangeDiscussion;
   readonly environments?: ChangeReviewViewProps["environments"];
   readonly offers?: ChangeReviewViewProps["offers"];
   readonly press?: ReviewPress;

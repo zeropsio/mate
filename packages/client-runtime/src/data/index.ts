@@ -24,6 +24,8 @@ export {
   type HqNavigationRead,
 } from "./projections/hqNavigation.ts";
 export { hqMates, type HqMatesRead } from "./projections/hqMates.ts";
+export { changeDiscussion, type ChangeDiscussionRead } from "./projections/changeDiscussion.ts";
+export { discussionDemand } from "./families/hqDiscussion.ts";
 export type { DetailDemand } from "./demand.ts";
 export { makeAccountStore, type AccountStore, type Projection } from "./store.ts";
 export {
@@ -64,6 +66,7 @@ export type { UnavailableReason } from "./projections/freshness.ts";
 export { projectCreations } from "./projections/creation.ts";
 export { makeOperations, type Operations } from "./operations/coordinator.ts";
 export { makeZeropsExecutor } from "./operations/executors/zerops.ts";
+export { makeHqExecutor, type HqWrites } from "./operations/executors/hq.ts";
 export { restartWay } from "./operations/mateRestart.ts";
 export { operationProgress, type OperationProgress } from "./projections/operation.ts";
 export { SWEEP_FAILED_REASON } from "./operations/executors/throwawaySweep.ts";

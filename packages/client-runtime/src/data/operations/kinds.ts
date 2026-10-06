@@ -6,6 +6,7 @@
  */
 import type { OperationIntent } from "../model.ts";
 import { assignMateOwner } from "./assignMateOwner.ts";
+import { changeComment } from "./changeComment.ts";
 import { deleteProject } from "./deleteProject.ts";
 import { enableSubdomainAccess } from "./enableSubdomainAccess.ts";
 import { enableZeropsMate } from "./enableZeropsMate.ts";
@@ -40,6 +41,7 @@ export const OPERATION_KINDS = defineOperationKinds([
   renameProject,
   updateProjectTags,
   assignMateOwner,
+  changeComment,
 ]);
 
 /** The kind an intent belongs to, in a registry: the account's, or a test's own. */
