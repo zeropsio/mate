@@ -11,10 +11,9 @@
  *   and projects' inventories, from the first round's listing on (`inventoryDemand.ts`).
  * - **Post-grant stage**, built on the epoch's first `granted` and kept for the epoch — a later
  *   lapse never tears it down (G11). Nothing in it runs before the platform confirmed the
- *   account's organizations, projects and roles (AL-01, AL-04, MC-10): the Mate environments —
- *   the registration records, the container store with its probe store, and the exchange driver,
- *   joined and fed by `environments.ts` — and the services demand of each drawn stop, whose
- *   read joins the account's store (`stops.ts`).
+ *   account's organizations, projects and roles (AL-01, AL-04, MC-10): the Mate adapter, fed by
+ *   `environments.ts`, which writes what it reads of each Mate to the account's store — and the
+ *   services demand of each drawn stop, whose read joins the account's store (`stops.ts`).
  *
  * It hands the tab's signals (§6.4, the PlatformSignals port) to the grant, the bus and the
  * post-grant stage: the page's visibility, its network and the coalesced wake become the grant's
@@ -31,6 +30,7 @@ import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
 
+import { accountReadsAtom } from "../../data/reads.ts";
 import type { AccessGrantView } from "../data/access/grantDriver.ts";
 import type { AccessVerifier } from "../data/access/verifier.ts";
 import type { ManagedZeropsDataRuntime } from "../data/runtime.ts";
@@ -42,11 +42,10 @@ import {
   type InvalidationSignal,
 } from "../knowledge/invalidation.ts";
 import type { PlatformSignal, PlatformSignals } from "../knowledge/signals.ts";
-import { makeContainerStore } from "../environments/containerStore.ts";
-import { makeExchangeDriver } from "../environments/exchangeDriver.ts";
-import { makeRegistrationRecords } from "../environments/records.ts";
+import { makeMateAdapter } from "../../data/adapters/mate.ts";
+import type { AccountStore } from "../../data/store.ts";
 import { makeStops, type Stops } from "./stops.ts";
-import { holdInventoryDemand, holdAccessDemand } from "./inventoryDemand.ts";
+import { holdInventoryDemand, holdListedAccess } from "./inventoryDemand.ts";
 export { organizationProjectsRead, projectRead } from "./projectBridge.ts";
 import {
   makeEnvironmentWiring,
@@ -69,7 +68,6 @@ export {
   evidenceProjectRefs,
   heldEvidence,
   inventoryProjectRefs,
-  pendingDenials,
   projectsNeverSeen,
 } from "./inventoryDemand.ts";
 
@@ -83,6 +81,8 @@ export interface AccountRuntimePorts {
   readonly atomRegistry: AtomRegistry.AtomRegistry;
   /** What the post-grant stage's Mate environments reach their sources through. */
   readonly environments: AccountEnvironmentPorts;
+  /** The account's store: the Mate adapter writes what it reads of each Mate there. */
+  readonly store: AccountStore;
 }
 
 /** The epoch's post-grant stage, as surfaces read it. */
@@ -179,17 +179,14 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
   const buildPostGrant = Effect.gen(function* () {
     const wiring = makeEnvironmentWiring({
       ports: ports.environments,
+      store: ports.store,
       data,
       atomRegistry: ports.atomRegistry,
       invalidations,
       services,
       hidden: signals.hidden(),
     });
-    const built = wiring.start({
-      records: makeRegistrationRecords(ports.environments.records),
-      containers: makeContainerStore(wiring.containerPorts),
-      driver: makeExchangeDriver(wiring.driverPorts),
-    });
+    const built = wiring.start(makeMateAdapter(wiring.adapterPorts));
     const stops = makeStops(data, ports.atomRegistry, services);
     // Finalizers run in reverse: the stops' demand ends, then the environments.
     yield* Scope.addFinalizer(postGrantScope, Effect.sync(built.dispose));
@@ -267,14 +264,22 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
     yield* holdInventoryDemand({ data, atomRegistry: ports.atomRegistry, activeOrganization }).pipe(
       Scope.provide(demandScope),
     );
-    yield* holdAccessDemand({ data, atomRegistry: ports.atomRegistry }).pipe(
+    yield* holdListedAccess({ data, atomRegistry: ports.atomRegistry }).pipe(
       Scope.provide(demandScope),
     );
     yield* Queue.take(heard).pipe(Effect.flatMap(hear), Effect.forever, Effect.forkIn(epoch));
     // The views stream replays the latest, so it misses nothing the start publishes.
     yield* data.access.changes.pipe(Stream.runForEach(follow), Effect.forkIn(epoch));
     yield* data.access.start({
-      verifier: ports.verifier,
+      verifier: {
+        ...ports.verifier,
+        // No push brings a project's grants: each round renews the own rows the account holds,
+        // which name them, so the grant and the Mate owners stand on what Zerops says now.
+        verifyRound: (request) =>
+          Effect.sync(() => ports.atomRegistry.get(accountReadsAtom)?.renewHeld()).pipe(
+            Effect.andThen(ports.verifier.verifyRound(request)),
+          ),
+      },
       hidden: signals.hidden(),
       online: signals.online(),
     });

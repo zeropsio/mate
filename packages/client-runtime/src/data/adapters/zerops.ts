@@ -39,8 +39,9 @@ import {
 } from "../demand.ts";
 import { familySpec, scopeListing, scopeSpec } from "../families/index.ts";
 import { factKey, linkKeys, type Family, type LinkKey, type ScopeKey } from "../model.ts";
-import { streamOf, type Row, type RuntimeDirective } from "../reducer.ts";
-import type { AccountStore } from "../store.ts";
+import { factOf, streamOf, type Row, type RuntimeDirective } from "../reducer.ts";
+import { readsOfState, type AccountStore } from "../store.ts";
+import { scopeOf } from "../families/spec.ts";
 import { retryDelayMs, type StreamEvent, type StreamFault } from "../streamMachine.ts";
 import type { LinkOptions } from "../supervisor.ts";
 
@@ -105,8 +106,9 @@ const Frame = Schema.Struct({
   data: Schema.optionalKey(Schema.Unknown),
 });
 const MembershipData = Schema.Struct({
-  add: Schema.Array(Schema.String),
-  delete: Schema.Array(Schema.String),
+  add: Schema.optionalKey(Schema.Array(Schema.String)),
+  update: Schema.optionalKey(Schema.Array(Schema.Unknown)),
+  delete: Schema.optionalKey(Schema.Array(Schema.String)),
 });
 const UpdateData = Schema.Struct({ update: Schema.Array(Schema.Unknown) });
 const ListAnswer = Schema.Struct({
@@ -142,6 +144,13 @@ function rowsOf(family: Family, raw: ReadonlyArray<unknown>): ReadonlyArray<Row>
   });
 }
 
+/** A registration the owner refused to this viewer alone: its scope's, never the link's. */
+interface RefusedAlone {
+  readonly refusedAlone: StreamFault;
+}
+const isRefusedAlone = (answer: unknown): answer is RefusedAlone =>
+  typeof answer === "object" && answer !== null && "refusedAlone" in answer;
+
 const corrupt = (message: string): StreamFault => ({ outcome: "transient", message });
 
 /** Each item's id: a row too damaged to read still names its member. */
@@ -176,6 +185,8 @@ export function zeropsNavigationLink(options: {
   readonly revalidate: (demand: DetailDemand) => void;
   /** The person's "try again" on one detail: a failed or refused read is read again. */
   readonly retryDetail: (demand: DetailDemand) => void;
+  /** Renew a held own row without reviving a refusal. */
+  readonly renew: (demand: DetailDemand) => void;
 } {
   const { orgId, store } = options;
   const demands = makeDetailDemands({
@@ -211,6 +222,10 @@ export function zeropsNavigationLink(options: {
     );
     wakeAttempt?.();
   };
+
+  // A refused filtered pair stays refused across remounts and receiver rotations. Only a
+  // changed generation of its navigation scope (manual retry / changed input) permits it again.
+  const refusedPairs = new Map<ScopeKey, number>();
 
   const attempt = (): Effect.Effect<never, StreamFault, Scope.Scope> =>
     Effect.gen(function* () {
@@ -286,15 +301,20 @@ export function zeropsNavigationLink(options: {
         ids: ReadonlyArray<string>,
       ): Effect.Effect<void, StreamFault> =>
         Effect.gen(function* () {
+          // A damaged fallback row cannot be resolved through the search already refused to
+          // this viewer. Keep it unknown until the next owner-triggered project read.
+          if (refusedPairs.has(scope)) return;
           const family = familyOf(scope);
           const entity = familySpec(family).zerops?.entity;
           if (entity === undefined) return;
+          const generation = generationOf(scope);
+          const ownerId = scope.split(":").slice(3).join(":");
+          const filter = scopeListing(scope).detail?.zerops.subscription?.({ orgId, ownerId }) ?? [
+            { name: "clientId", operator: "eq", value: orgId },
+          ];
           const answer = yield* readAgain(
             link.post(`/${entity}/search`, {
-              search: [
-                { name: "clientId", operator: "eq", value: orgId },
-                { name: "id", operator: "in", value: ids },
-              ],
+              search: [...filter, { name: "id", operator: "in", value: ids }],
               sort: [],
               limit: ids.length,
             }),
@@ -304,7 +324,7 @@ export function zeropsNavigationLink(options: {
             store.dispatch({
               kind: "rows",
               scope,
-              generation: generationOf(scope),
+              generation,
               method: "read",
               via: "zerops-read",
               rows: rowsOf(family, items),
@@ -339,7 +359,32 @@ export function zeropsNavigationLink(options: {
           return status === 403;
         });
 
-      const subscriptions = new Map<string, Registration>();
+      const subscriptions = new Map<string, Registration & { readonly generation: number }>();
+      const dirtyDetails = new Set<ScopeKey>();
+      const acceptRows = (scope: ScopeKey, generation: number, rows: ReadonlyArray<Row>) => {
+        const before = store.state();
+        const directives = store.dispatch({
+          kind: "rows",
+          scope,
+          generation,
+          method: "push",
+          via: "zerops-realtime",
+          rows,
+        });
+        const changed = rows.filter(
+          (row) => factOf(before, row.family, row.id) !== factOf(store.state(), row.family, row.id),
+        );
+        for (const detailScope of demands.scopes()) {
+          if (!refusedPairs.has(detailScope)) continue;
+          const refresh = scopeListing(detailScope).detail?.zerops.refreshOn;
+          const ownerId = detailScope.split(":").slice(3).join(":");
+          if (changed.some((row) => refresh?.({ orgId, ownerId }, row, readsOfState(before)))) {
+            dirtyDetails.add(detailScope);
+            wakeAttempt?.();
+          }
+        }
+        return carryOut(directives);
+      };
       /**
        * Each demanded query's registration, by its subscription: the scope and generation it was
        * made for, and its frames held back until its answer is the scope's baseline. A released
@@ -414,26 +459,31 @@ export function zeropsNavigationLink(options: {
           if (registration.role === "membership") {
             const delta = Option.getOrUndefined(decodeMembership(frame.data));
             if (delta === undefined) return Effect.void;
+            // Some listStream frames carry rows too; admit them before resolving id-only adds.
+            const rows = rowsOf(registration.family, delta.update ?? []);
+            store.dispatch({
+              kind: "rows",
+              scope,
+              generation: registration.generation,
+              method: "push",
+              via: "zerops-realtime",
+              rows,
+            });
             return carryOut(
               store.dispatch({
                 kind: "membership",
                 scope,
-                generation: generationOf(scope),
-                delta: { add: delta.add, remove: delta.delete },
+                generation: registration.generation,
+                delta: { add: delta.add ?? [], remove: delta.delete ?? [] },
               }),
             );
           }
           const updates = Option.getOrUndefined(decodeUpdates(frame.data));
           if (updates === undefined) return Effect.void;
-          return carryOut(
-            store.dispatch({
-              kind: "rows",
-              scope,
-              generation: generationOf(scope),
-              method: "push",
-              via: "zerops-realtime",
-              rows: rowsOf(registration.family, updates.update),
-            }),
+          return acceptRows(
+            scope,
+            registration.generation,
+            rowsOf(registration.family, updates.update),
           );
         });
 
@@ -507,6 +557,11 @@ export function zeropsNavigationLink(options: {
               queries.delete(name);
               released += 1;
             }
+          for (const [name, registration] of subscriptions)
+            if (registration.scope === scope) {
+              subscriptions.delete(name);
+              released += 1;
+            }
           return released > RELEASED_QUERIES_PER_RECEIVER
             ? Effect.asVoid(
                 Deferred.fail(ended, {
@@ -523,7 +578,8 @@ export function zeropsNavigationLink(options: {
           const sampled = detail === null ? spec.sampled : undefined;
           if (detail === null && sampled === undefined) return yield* observeQuery(scope);
           yield* signal(scope, { kind: "attempt" });
-          generations.set(scope, streamOf(store.state(), scope).generation);
+          const generation = streamOf(store.state(), scope).generation;
+          generations.set(scope, generation);
           yield* signal(scope, { kind: "handshake" });
           const ownerId = scope.split(":").slice(3).join(":");
           const readAt = sampledAt.get(scope);
@@ -538,15 +594,82 @@ export function zeropsNavigationLink(options: {
           )
             return yield* signal(scope, { kind: "baseline-committed" });
           store.dispatch({ kind: "baseline-begin", scope, generation: generationOf(scope) });
+          const navigationGeneration = streamOf(store.state(), scopeOf(spec, orgId)).generation;
+          const search = detail?.zerops.subscription?.({ orgId, ownerId });
+          if (
+            search !== undefined &&
+            refusedPairs.get(scope) !== navigationGeneration &&
+            spec.zerops !== undefined
+          ) {
+            refusedPairs.delete(scope);
+            yield* forgetQueries(scope);
+            for (const role of ["updates", "membership"] as const) {
+              const subscriptionName = options.makeId();
+              const path = `/${spec.zerops.entity}/search`;
+              subscriptions.set(subscriptionName, {
+                scope,
+                generation,
+                family: spec.family,
+                role,
+                path,
+                search,
+              });
+              const answer = yield* link
+                .post(path, {
+                  search,
+                  sort: [],
+                  receiverId: link.receiverId,
+                  subscriptionName,
+                  ...(role === "membership"
+                    ? { wsOutputType: "listStream", limit: ORGANIZATION_SEARCH_LIMIT }
+                    : { wsOutputType: "updateStream", disableOutput: true }),
+                })
+                .pipe(Effect.catch(Effect.succeed));
+              if (typeof answer === "object" && answer !== null && "outcome" in answer) {
+                const fault = answer as StreamFault;
+                yield* forgetQueries(scope);
+                if (
+                  fault.outcome === "recoverable-session" ||
+                  fault.outcome === "authoritative-denial" ||
+                  fault.outcome === "definitive-refusal"
+                ) {
+                  refusedPairs.set(scope, navigationGeneration);
+                  break;
+                }
+                return yield* signal(scope, { kind: "fault", fault, jitter: yield* Random.next });
+              }
+              if (role !== "membership") continue;
+              const list = Option.getOrUndefined(decodeList(answer));
+              if (list === undefined)
+                return yield* signal(scope, {
+                  kind: "fault",
+                  fault: corrupt("A detail baseline answer is malformed."),
+                  jitter: yield* Random.next,
+                });
+              const rows = rowsOf(spec.family, list.items);
+              yield* carryOut(
+                store.dispatch({
+                  kind: "baseline-commit",
+                  scope,
+                  generation,
+                  via: "zerops-realtime",
+                  members: membersOf(list.items),
+                  rows,
+                  partial: partialAnswer(list.items, rows, list.totalHits),
+                }),
+              );
+              return yield* signal(scope, { kind: "baseline-committed" });
+            }
+          }
           const owner = { orgId, ownerId };
           const path =
             sampled !== undefined ? sampled.path(owner) : (detail?.zerops.path(owner) ?? "");
-          const search = sampled?.search?.(owner);
+          const sampledSearch = sampled?.search?.(owner);
           // A search is a POST of it: its answer is the rows asked for, never a whole set.
           const read =
-            search === undefined
+            sampledSearch === undefined
               ? link.get(path)
-              : link.post(path, search).pipe(Effect.map((body) => ({ status: 200, body })));
+              : link.post(path, sampledSearch).pipe(Effect.map((body) => ({ status: 200, body })));
           const answer = yield* read.pipe(
             Effect.map((read) =>
               read.status === 403
@@ -597,7 +720,7 @@ export function zeropsNavigationLink(options: {
             store.dispatch({
               kind: "baseline-commit",
               scope,
-              generation: generationOf(scope),
+              generation,
               via: "zerops-read",
               members: membersOf(items),
               rows,
@@ -637,6 +760,7 @@ export function zeropsNavigationLink(options: {
         for (const scope of observed.keys())
           if (!demanded.has(scope)) {
             observed.delete(scope);
+            dirtyDetails.delete(scope);
             yield* forgetQueries(scope);
           }
         // A write to a detail no longer demanded is read by its next demand anyway.
@@ -644,6 +768,7 @@ export function zeropsNavigationLink(options: {
         const fresh: Array<ScopeKey> = [];
         let wakeAt = Number.POSITIVE_INFINITY;
         for (const scope of demanded) {
+          const renewed = demands.takeRenewal(scope);
           if (!navigationRegistered && !readsAtOnce(scope)) continue;
           const stream = streamOf(store.state(), scope);
           if (stream.phase === "refused") continue;
@@ -660,7 +785,10 @@ export function zeropsNavigationLink(options: {
           }
           if (inFlight.has(scope)) continue;
           // Our write landed while its last read was under way: it is read once more, now.
-          if (stream.phase === "live" && written.delete(scope)) {
+          if (
+            stream.phase === "live" &&
+            (written.delete(scope) || (renewed && observed.has(scope)))
+          ) {
             sampledAt.delete(scope);
             yield* signal(scope, { kind: "revalidate" });
             fresh.push(scope);
@@ -675,6 +803,7 @@ export function zeropsNavigationLink(options: {
           const seen = observed.get(scope);
           if (
             seen === undefined ||
+            dirtyDetails.has(scope) ||
             stream.phase === "stale" ||
             (stream.phase === "connecting" && stream.generation !== seen)
           )
@@ -682,6 +811,7 @@ export function zeropsNavigationLink(options: {
         }
         for (const scope of fresh) {
           inFlight.add(scope);
+          dirtyDetails.delete(scope);
           yield* observeDetail(scope).pipe(
             Effect.catch(sessionEnds),
             Effect.ensuring(
@@ -703,21 +833,46 @@ export function zeropsNavigationLink(options: {
       const registerNavigation = Effect.gen(function* () {
         for (const scope of scopes) {
           yield* signal(scope, { kind: "attempt" });
+          // A scope refused alone stays so until the person tries again: nothing registers it.
+          if (streamOf(store.state(), scope).phase === "refused") continue;
           generations.set(scope, streamOf(store.state(), scope).generation);
           yield* signal(scope, { kind: "handshake" });
           store.dispatch({ kind: "baseline-begin", scope, generation: generationOf(scope) });
+          const refusedAlone = scopeSpec(scope).zerops?.refusedAlone === true;
           for (const registration of registrations.filter((entry) => entry.scope === scope)) {
             const subscriptionName = options.makeId();
-            subscriptions.set(subscriptionName, registration);
-            const answer = yield* link.post(registration.path, {
-              search: registration.search,
-              sort: [],
-              receiverId: link.receiverId,
-              subscriptionName,
-              ...(registration.role === "membership"
-                ? { wsOutputType: "listStream", limit: ORGANIZATION_SEARCH_LIMIT }
-                : { wsOutputType: "updateStream", disableOutput: true }),
+            subscriptions.set(subscriptionName, {
+              ...registration,
+              generation: generationOf(scope),
             });
+            const answer = yield* link
+              .post(registration.path, {
+                search: registration.search,
+                sort: [],
+                receiverId: link.receiverId,
+                subscriptionName,
+                ...(registration.role === "membership"
+                  ? { wsOutputType: "listStream", limit: ORGANIZATION_SEARCH_LIMIT }
+                  : { wsOutputType: "updateStream", disableOutput: true }),
+              })
+              .pipe(
+                Effect.catchIf(
+                  (fault) =>
+                    refusedAlone &&
+                    (fault.outcome === "recoverable-session" ||
+                      fault.outcome === "authoritative-denial"),
+                  (fault) => Effect.succeed<RefusedAlone>({ refusedAlone: fault }),
+                ),
+              );
+            if (isRefusedAlone(answer)) {
+              subscriptions.delete(subscriptionName);
+              yield* signal(scope, {
+                kind: "fault",
+                fault: { outcome: "authoritative-denial", message: answer.refusedAlone.message },
+                jitter: 0,
+              });
+              break;
+            }
             if (registration.role !== "membership") continue;
             const list = Option.getOrUndefined(decodeList(answer));
             if (list === undefined)
@@ -770,10 +925,16 @@ export function zeropsNavigationLink(options: {
     revalidate: (demand) => {
       const scope = detailScopeOf(orgId, demand);
       sampledAt.delete(scope);
-      const { phase } = streamOf(store.state(), scope);
-      if (phase === "connecting" || phase === "baselining") written.add(scope);
+      const { phase, mode } = streamOf(store.state(), scope);
+      if (
+        phase === "connecting" ||
+        phase === "baselining" ||
+        (phase === "live" && mode === "realtime")
+      )
+        written.add(scope);
       tellDetail(demand, { kind: "revalidate" });
     },
     retryDetail: (demand) => tellDetail(demand, { kind: "manual-retry" }),
+    renew: (demand) => demands.renew(detailScopeOf(orgId, demand)),
   };
 }

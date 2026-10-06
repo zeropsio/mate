@@ -14,16 +14,15 @@ import {
   readZeropsMembership,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import { mateIsViewers } from "@t3tools/client-runtime/zerops/mateAccess";
 import type { MateTintId } from "@t3tools/shared/brand";
 import { useCallback, useEffect, useMemo } from "react";
 
 import type { WaitingMate } from "~/components/zerops/SidebarWaitingStack";
 
 import { mateFaceOf, mateReviewWaits, type ZeropsAgentActivity } from "./agentActivity";
-import { useZeropsProjectFlowOptional } from "./projectFlowContext";
+import { useAppsChanges, useEveryAppId } from "./projectFlows";
 import { nextWaitingMate, useSidebarReveal } from "./sidebarReveal";
-import { useZeropsSessionOptional } from "./ZeropsSessionProvider";
+import { useWaitsOnViewer } from "./useZeropsMateOwners";
 
 /**
  * The Mates that wait on the viewer — their own, asking or with a change for review — in the
@@ -35,8 +34,8 @@ export function waitingMatesOf<T extends ZeropsCandidate>(input: {
   readonly activityOf: (candidate: T) => ZeropsAgentActivity | undefined;
   /** Its own change waits for the person's review (`mateReviewWaits`). */
   readonly reviewWaits: (candidate: T) => boolean;
-  /** Who is looking: only their own Mates wait on them (`mateIsViewers`). */
-  readonly viewer: string | undefined;
+  /** Whether a project's Mate waits on the viewer, as HQ says it (`waitsOnViewer`). */
+  readonly waitsOnViewer: (projectId: string) => boolean;
   readonly tints: ReadonlyMap<string, MateTintId>;
   readonly order: ReadonlyArray<string>;
   readonly shown: (candidate: T) => boolean;
@@ -54,7 +53,7 @@ export function waitingMatesOf<T extends ZeropsCandidate>(input: {
         connected: candidate.group === "connected",
         activity: input.activityOf(candidate),
         reviewWaits: input.reviewWaits(candidate),
-        mine: mateIsViewers(candidate.project, input.viewer),
+        mine: input.waitsOnViewer(candidate.project.id),
         // Only a face that needs you stands here, and no pose of its life gives that.
         pose: undefined,
       });
@@ -94,21 +93,22 @@ export function useSidebarWaiting<T extends ZeropsCandidate>(input: {
   const tints = useMemo(() => assignCandidateMateTints(input.candidates), [input.candidates]);
   const { activityOf, candidates, shown, activeProjectId, beforeReveal, enabled } = input;
   // Its change waiting for your review, read off the project flow the row reads.
-  const flows = useZeropsProjectFlowOptional()?.flows;
-  const viewer = useZeropsSessionOptional()?.user?.id;
+  const { changes } = useAppsChanges(useEveryAppId());
+  const waitsOnViewer = useWaitsOnViewer();
   const reviewWaits = useCallback(
     (candidate: T) => {
       const groupId = readZeropsMembership(candidate.project).groupId;
       return mateReviewWaits(
-        groupId === undefined ? undefined : flows?.get(groupId),
+        groupId === undefined ? undefined : changes.get(groupId),
         candidate.project.id,
       );
     },
-    [flows],
+    [changes],
   );
   const mates = useMemo(
-    () => waitingMatesOf({ candidates, activityOf, reviewWaits, viewer, tints, order, shown }),
-    [activityOf, candidates, order, reviewWaits, shown, tints, viewer],
+    () =>
+      waitingMatesOf({ candidates, activityOf, reviewWaits, waitsOnViewer, tints, order, shown }),
+    [activityOf, candidates, order, reviewWaits, shown, tints, waitsOnViewer],
   );
   const next = useCallback(() => {
     const { cursor, reveal, mateOrder } = useSidebarReveal.getState();

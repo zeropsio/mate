@@ -15,7 +15,7 @@ import { useMemo } from "react";
 
 import { changeRunMessage, runWords } from "../components/zerops/review/ZeropsReview.logic";
 import { useThreadMessages, useThreadShells, useThreadStatus } from "../state/entities";
-import { useZeropsProjectFlowOptional } from "./projectFlowContext";
+import { useHqAddress } from "./projectFlows";
 import { askMateThread } from "./useAskMate";
 import { useZeropsCandidates } from "./useZeropsCandidates";
 
@@ -39,7 +39,7 @@ export function useZeropsChangeRun(
     readonly number: number;
   } | null,
 ): ZeropsChangeRun {
-  const hqAddress = useZeropsProjectFlowOptional()?.hqAddress;
+  const hqAddress = useHqAddress();
   const { listing } = useZeropsCandidates();
   const shells = useThreadShells();
   const mateProjectId = change?.mateProjectId;

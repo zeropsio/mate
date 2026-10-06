@@ -7,12 +7,12 @@ import { environmentFixture } from "./fake.ts";
 import { environmentActions } from "./dsl.ts";
 
 const setupFailures: string[] = [];
-afterAll(() => expect(setupFailures, "Known failure must reach its target assertion").toEqual([]));
+afterAll(() => expect(setupFailures, "Scenario must reach its target assertion").toEqual([]));
 
-describe("E: known release failures", () => {
+describe("E: release failure history", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
-    // Rebuild target: catches a failed release flashing Approved when a newer release replaces its newest deploy.
-    it.effect.fails(
+    // A newer release must not erase the failed deployment of an earlier release.
+    it.effect(
       "failed release stays failed while a colleague starts the next release",
       () => {
         let reachedTarget = false;

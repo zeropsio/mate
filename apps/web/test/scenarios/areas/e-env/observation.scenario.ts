@@ -25,9 +25,7 @@ describe("E: deploy observation and the person's next action", () => {
           yield* a.when.open("stage");
           const sha = yield* f.merge();
           yield* a.then.text("Waiting for Zerops to start the build.");
-          yield* a.then.text(
-            "A person acts next: Inspect the original version in Zerops; use Run again if no build started",
-          );
+          yield* a.then.text("Check it in Zerops, or run it again.");
           unanswered = false;
           yield* Effect.promise(() =>
             f.s.page.locator('[data-zerops-surface="stop-service-job"] button').click(),
@@ -58,10 +56,8 @@ describe("E: deploy observation and the person's next action", () => {
         );
         expect(follow).toBeDefined();
         zerops.sockets.get(follow!.receiver)!.close();
-        yield* a.then.text("HQ could not follow this deploy to its end.");
-        yield* a.then.text(
-          "A person acts next: Inspect the original handles in Zerops; Run again is a new explicit operation",
-        );
+        yield* a.then.text("HQ lost track of this deploy.");
+        yield* a.then.text("Check it in Zerops, or run it again.");
         yield* Effect.promise(async () => {
           const row = await f.s.page.$(
             '[data-zerops-surface="stop-service-job"][data-zerops-job-state="unresolved"]',

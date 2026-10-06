@@ -10,6 +10,7 @@ import { changeComment } from "./changeComment.ts";
 import { deleteProject } from "./deleteProject.ts";
 import { enableSubdomainAccess } from "./enableSubdomainAccess.ts";
 import { enableZeropsMate } from "./enableZeropsMate.ts";
+import { FLOW_WRITE_KINDS } from "./flowWrites.ts";
 import type { RegisteredOperationKind } from "./kind.ts";
 import { mateRestart } from "./mateRestart.ts";
 import { renameProject } from "./renameProject.ts";
@@ -42,6 +43,7 @@ export const OPERATION_KINDS = defineOperationKinds([
   updateProjectTags,
   assignMateOwner,
   changeComment,
+  ...FLOW_WRITE_KINDS,
 ]);
 
 /** The kind an intent belongs to, in a registry: the account's, or a test's own. */

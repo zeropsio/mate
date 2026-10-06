@@ -258,7 +258,7 @@ export interface ChangeReviewInput {
   readonly productionHeld?: boolean | undefined;
   /**
    * The environments this person may add now: those the recipe on `main` holds, the application
-   * lacks, and the person may add (`mayAddEnvironment`). Absent, none: nothing is offered on a guess.
+   * lacks, and HQ offers the person (`add_stage` / `add_production`). Absent, none: nothing is offered on a guess.
    */
   readonly addable?: { readonly stage: boolean; readonly production: boolean } | undefined;
   /** Once merged: how many changes wait for production now, and what production runs. */
@@ -754,7 +754,7 @@ export type ReleaseOutcome =
   | { readonly kind: "offered" }
   | { readonly kind: "releasing"; readonly progress?: string | undefined }
   | { readonly kind: "released"; readonly at: string | undefined }
-  /** Made longer ago than the wait for it, and production doesn't run it: the wait is over. */
+  /** HQ ended its follow without confirming the deploy's outcome. */
   | { readonly kind: "stalled"; readonly at: string | undefined }
   /**
    * A newer release HQ did not refuse sits above it: the release it followed is over, and `live`
@@ -838,8 +838,8 @@ export function releaseReview(input: ReleaseReviewInput): ReleaseReviewModel {
   const { tag, replaces } = input;
   // The release a roll back goes to — never the tag itself, which is a release read after it
   // landed; none for the first release, and production's menu for one no release names.
-  // Nothing went out — a release that hasn't landed, one a newer release followed, a failure
-  // that moved nothing: production runs what it ran, and there is nothing to roll back from.
+  // Offer no roll back based on an unknown outcome, a superseded release, or a failure that
+  // moved nothing.
   const nothingWentOut =
     input.outcome.kind === "stalled" ||
     input.outcome.kind === "superseded" ||
@@ -937,8 +937,6 @@ function releaseVerdictOf(input: ReleaseReviewInput, back: string | undefined): 
         tag,
         what: "release",
         at: outcome.at,
-        ran,
-        now: input.now,
       });
     case "superseded":
       return supersededModel({ state: "release-superseded", tag, outcome });
@@ -985,41 +983,32 @@ function releaseVerdictOf(input: ReleaseReviewInput, back: string | undefined): 
 }
 
 /**
- * A tag that went out and that production hasn't run past the wait for it: what is true — when it
- * was tagged, that production doesn't run it, what production still runs — and the person's Mate
- * to find out why. No clock, nothing to press: another tag would wait behind the same cause.
+ * HQ stopped following a tag without proving a landing or a failure. The platform may still be
+ * deploying it, or already running it; ask the person's Mate to check the original deploy.
  */
 function stalledModel(input: {
   readonly state: "release-stalled" | "rollback-stalled";
-  /** The tag that hasn't landed. */
+  /** The tag whose deploy outcome is unconfirmed. */
   readonly tag: string;
   readonly what: "release" | "roll back";
   readonly at: string | undefined;
-  /** What production still runs, where one release names it. */
-  readonly ran: string | undefined;
-  readonly now: number;
 }): ReviewModel {
-  const age = input.at === undefined ? undefined : reviewAge(input.at, input.now)?.toLowerCase();
-  const tagged = age === undefined ? "Tagged" : `Tagged ${age}`;
   return {
     verdict: {
       state: input.state,
       tone: "attention",
-      title: `${input.tag} hasn't landed`,
-      why: `${tagged} · production doesn't run it`,
+      title: `Deploy status unknown for ${input.tag}`,
+      why: "HQ couldn't confirm how the deploy ended",
       fix: {
-        verb: "find out why",
+        verb: "check it",
         problem: {
-          what: `Production doesn't run ${input.what} ${input.tag}`,
+          what: `The deploy status of ${input.what} ${input.tag} is unknown`,
           ...(input.at === undefined ? {} : { at: input.at }),
-          ask: "Find out why production hasn't deployed it, and fix what holds it.",
+          ask: "Check how the deploy ended in Zerops, and resolve anything that needs attention.",
         },
       },
     },
-    consequence:
-      input.ran === undefined
-        ? "Production still runs what it ran before."
-        : `Production still runs ${input.ran}.`,
+    consequence: "Check the deploy in Zerops.",
     primary: undefined,
   };
 }
@@ -1160,8 +1149,6 @@ function rollbackVerdictOf(input: RollbackReviewInput): ReviewModel {
         tag: nextTag,
         what: "roll back",
         at: outcome.at,
-        ran: input.live,
-        now: input.now,
       });
     case "failed":
       return {

@@ -38,6 +38,7 @@ export interface SeededHq {
   readonly live?: boolean;
   readonly person?: HqPersonFacts;
   /** Each application's open changes as the menu draws them, by its id. */
+  readonly releaseOffers?: Readonly<Record<string, HqAppValue["releaseOffer"]>>;
   readonly changes?: Readonly<Record<string, HqAppValue["changes"]>>;
 }
 
@@ -139,6 +140,7 @@ export function seedHqNavigation(store: AccountStore, orgId: string, seed: Seede
           births: app.births ?? [],
           environments: (app.environments ?? []) as HqAppValue["environments"],
           changes: seed.changes?.[app.id] ?? [],
+          releaseOffer: seed.releaseOffers?.[app.id] ?? null,
         },
       },
       ...app.projects.map((project): Row => ({

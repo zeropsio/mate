@@ -883,7 +883,7 @@ describe("a creation under way on the projects page", () => {
       projectsPageSource.indexOf("const trouble ="),
       projectsPageSource.indexOf(";", projectsPageSource.indexOf("const trouble =")),
     );
-    expect(trouble).toContain("projectFlow.trouble");
+    expect(trouble).toContain("verbs.trouble");
     expect(projectsPageSource).toContain(
       '<p className="text-sm text-[var(--zerops-status-failed-text)]">{trouble}</p>',
     );
@@ -995,9 +995,7 @@ describe("project rename permissions on the projects surfaces", () => {
   it("preserves the existing environment creation offers independently of rename permission", () => {
     expect(projectsPageSource).toContain("...(groupIsEmpty(group)");
     expect(projectsPageSource).toContain("...(addsOfferedFor(group)");
-    expect(projectsPageSource).toContain(
-      '...(mayAddFor(group) && !groupIsEmpty(group) && creatableRoles(group).includes("prod")',
-    );
+    expect(projectsPageSource).toContain('creatableRoles(group).includes("prod")');
     expect(projectsPageSource).toContain("if (creationRunning) return;");
   });
 });

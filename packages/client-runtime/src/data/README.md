@@ -18,7 +18,9 @@ duplicate family, scope name, index name or operation kind when the layer loads.
   `leaving` the scope means, and `demand` — `navigation`, always and once per organization, or
   `detail`, only while demanded and once per owner id); optional `indexes` (each a `name` and a `keyOf`); for a
   Zerops family, `zerops` (`entity`, the `membership` and `updates` searches, `decode`, and
-  `verifyPath` where leaving must ask "deleted or not yours?");
+  `verifyPath` where leaving must ask "deleted or not yours?", and `refusedAlone` where the
+  organization's search may be refused to a viewer who reads the rest — that refusal is the scope's,
+  never the link's);
 - for an HQ family, `hq` (`scope`, `idOf`, `keyOf`, `decode`, and `wireScope` where it demands a
   scope of its own). A family HQ only relays declares `revisionOf` — its author's revision, read
   with what HQ says beside the value (whether its author is live), which the reducer compares with
@@ -109,7 +111,10 @@ baseline, and ends only by failing with a classified fault. Run it under
   `reducer.ts`.
 - **Detail demand** is declared per family: a detail family's own scope (`demand: "detail"`,
   registered per owner by `zeropsRegistrations`), or a family's `details` listing (one read is its
-  baseline; its members' later changes arrive through the family's own updates). A screen holds a
+  baseline; its members' later changes arrive through the family's own updates). A detail listing
+  whose navigation is refused may declare `subscription` to try a filtered registration pair,
+  and `refreshOn` to name owner pushes that refresh its GET fallback if that pair is refused.
+  Refused pairs are not retried on remount or reconnect; the fallback never polls. A screen holds a
   detail through `demandDetail({ family, listing?, ownerId })` while it is drawn and releases it on
   unmount; the Zerops adapter reads each demanded listing once per attempt — never one refused —
   and again when its own retry comes due, and the supervisor treats demanded details as children

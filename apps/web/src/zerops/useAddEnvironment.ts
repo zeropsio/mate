@@ -1,9 +1,10 @@
 /**
- * What every door to *Add stage* and *Add production* asks: whether this person may add one to an
- * application (`mayAddEnvironment`) and is a writer, what the one question after a first merge may
+ * What every door to *Add stage* and *Add production* asks: which tiers HQ offers this person to
+ * add to an application (`environmentOffersOf`), what the one question after a first merge may
  * offer (`questionFactsOf`), and the way in — the projects page's own creation form, asked for
  * through `useSetUpEnvironment`.
  */
+import { useAtomValue } from "@effect/atom-react";
 import { useNavigate } from "@tanstack/react-router";
 import {
   buildZeropsGroupTree,
@@ -12,16 +13,14 @@ import {
   type ZeropsProject,
 } from "@t3tools/client-runtime/zerops";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
-import { roleAtLeast } from "@t3tools/shared/zeropsRoles";
 import { useCallback, useContext, useMemo } from "react";
 
-import { mayAddEnvironment } from "~/components/zerops/projects/projectsView.logic";
-
-import { questionFactsOf } from "./addEnvironment.logic";
+import { hqDown, hqNavigationAtom } from "../state/zerops";
+import { environmentOffersOf, questionFactsOf } from "./addEnvironment.logic";
 import { HeldInventoryContext } from "./inventoryContext";
 import { placedPressesIn, useMatePresses } from "./matePress";
 import { useNewProjectBirths } from "./newProjectBirth";
-import type { ZeropsProjectFlow } from "./projectFlowContext";
+import type { ZeropsProjectFlow } from "./projectFlows";
 import { useSetUpEnvironment } from "./setUpEnvironment";
 import { useZeropsCandidates } from "./useZeropsCandidates";
 import { useZeropsInventory } from "./ZeropsInventoryProvider";
@@ -64,22 +63,21 @@ export function useGroupPendingEnvironments(groupId: string): ReadonlyArray<Held
 }
 
 /**
- * Whether this person may add a stage or a production to an application, by its id, and whether
- * they are a writer of the structure (an organization owner or admin).
+ * The tiers HQ offers this person to add to an application, by its id (`environmentOffersOf`);
+ * `null` while HQ has not said of it.
  */
-export function useMayAddEnvironment(): (groupId: string) => {
-  readonly mayAdd: boolean;
-  readonly writer: boolean;
-} {
-  const organization = useZeropsSession().activeOrganization;
-  const projectsOf = useGroupProjects();
+export function useEnvironmentOffers(): (
+  groupId: string,
+) => ReturnType<typeof environmentOffersOf> {
+  const navigation = useAtomValue(hqNavigationAtom);
   return useCallback(
-    (groupId) => ({
-      mayAdd:
-        organization !== null && mayAddEnvironment({ organization, projects: projectsOf(groupId) }),
-      writer: organization !== null && roleAtLeast(organization.roleCode, "ADMIN"),
-    }),
-    [organization, projectsOf],
+    (groupId) =>
+      environmentOffersOf(
+        navigation.structure?.apps.find((app) => app.id === groupId)?.can,
+        // Since when HQ stopped answering is words only; nothing is offered meanwhile.
+        { current: navigation.live, unavailableSince: hqDown(navigation) ? 0 : null },
+      ),
+    [navigation],
   );
 }
 
@@ -92,14 +90,15 @@ export function useEnvironmentQuestionFacts(
   groupId: string,
   flow: Pick<ZeropsProjectFlow, "recipeRead" | "recipeTiers" | "environmentInputs"> | undefined,
 ): ReturnType<typeof questionFactsOf> {
-  const { mayAdd, writer } = useMayAddEnvironment()(groupId);
+  const offered = useEnvironmentOffers()(groupId);
+  const stage = offered?.stage === true;
+  const production = offered?.production === true;
   const projects = useGroupProjects()(groupId);
   const pending = useGroupPendingEnvironments(groupId);
   return useMemo(
     () =>
       questionFactsOf({
-        mayAdd,
-        writer,
+        offered: { stage, production },
         recipeRead: flow?.recipeRead === true,
         recipeTiers: flow?.recipeTiers ?? [],
         held: [
@@ -118,7 +117,7 @@ export function useEnvironmentQuestionFacts(
           ...pending,
         ],
       }),
-    [flow, mayAdd, pending, projects, writer],
+    [flow, pending, production, projects, stage],
   );
 }
 

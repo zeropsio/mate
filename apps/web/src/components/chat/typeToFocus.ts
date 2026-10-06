@@ -1,7 +1,7 @@
 /**
  * Typing with nothing to type into goes to the composer: a printable key,
  * unmodified, outside every field, control and open layer. `ChatView` routes
- * it into the conversation's composer, `ComposerStandIn` into itself.
+ * it into the conversation's composer.
  */
 const TYPE_TO_FOCUS_EDITABLE_SELECTOR = [
   "input",
@@ -34,18 +34,6 @@ const TYPE_TO_FOCUS_FLOATING_LAYER_SELECTOR = [
   '[data-slot="combobox-popup"]:is([data-open],[data-ending-style])',
   '[data-slot="autocomplete-popup"]:is([data-open],[data-ending-style])',
 ].join(",");
-
-/**
- * Whether the person holds the focus where it stays — a field other than `own`, or an open layer:
- * a composer that shows late (`composerOpenFocus`) does not take it from there.
- */
-export function focusHeldElsewhere(own: Element | null): boolean {
-  const active = document.activeElement;
-  if (active !== null && active !== own && active.closest(TYPE_TO_FOCUS_EDITABLE_SELECTOR)) {
-    return true;
-  }
-  return document.querySelector(TYPE_TO_FOCUS_FLOATING_LAYER_SELECTOR) !== null;
-}
 
 function eventPathContainsSelector(event: Event, selector: string): boolean {
   const path = event.composedPath();

@@ -5,6 +5,7 @@ import * as Schema from "effect/Schema";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
+import * as Statement from "effect/unstable/sql/Statement";
 import { overviewOf } from "../test/harness/overviews.ts";
 import {
   startCore,
@@ -24,10 +25,19 @@ describe("HQ scoped socket", () => {
       "five distinct people get cold navigation with Mate facts within budget; unchanged resumes send no values",
       () =>
         Effect.gen(function* () {
+          const queries: string[] = [];
+          let recording = false;
           const core = yield* startCore(true, {
             reconcileEvery: Duration.hours(1),
             viewTtl: Duration.zero,
-          });
+          }).pipe(
+            Effect.provideService(Statement.CurrentTransformer, (statement) =>
+              Effect.sync(() => {
+                if (recording) queries.push(statement.compile()[0]);
+                return statement;
+              }),
+            ),
+          );
           yield* untilHealth(core.call, "active");
           const session = yield* sessionFor(core.call, "door-owner");
           const created = yield* core.call("POST", "/api/apps", {
@@ -127,6 +137,8 @@ describe("HQ scoped socket", () => {
               }),
             { concurrency: 4 },
           );
+          yield* core.sql`INSERT INTO hq_attention_seen (user_id, project_id, result_id)
+            VALUES (${"owner"}, ${"P_MATE"}, ${"result"})`;
           const sessions = yield* Effect.forEach(people, (userId) =>
             userId === "owner" ? Effect.succeed(session) : sessionFor(core.call, `door-${userId}`),
           );
@@ -137,6 +149,8 @@ describe("HQ scoped socket", () => {
             { concurrency: "unbounded" },
           );
           const coldReads = core.fake.calls.filter((call) => call === "members:hq").length;
+          const coldCalls = core.fake.calls.length;
+          recording = true;
           const samples = yield* Effect.promise(() =>
             Promise.all(
               tickets.map(
@@ -189,6 +203,14 @@ describe("HQ scoped socket", () => {
               ),
             ),
           );
+          recording = false;
+          const seenQueries = queries.filter((query) => /\bhq_attention_seen\b/.test(query));
+          const memberReads = core.fake.calls
+            .slice(coldCalls)
+            .filter((call) => call === "members:hq").length;
+          process.stdout.write(
+            `HQ cold reads: SQL=${queries.length}, seen=${seenQueries.length}, members=${memberReads}\n`,
+          );
           assert.isAbove(
             core.fake.calls.filter((call) => call === "members:hq").length,
             coldReads,
@@ -198,10 +220,27 @@ describe("HQ scoped socket", () => {
           process.stdout.write(
             `HQ five people / 30 Mates / cold roles: p50=${times[2]?.toFixed(1)}ms p95=${times[4]?.toFixed(1)}ms\n`,
           );
-          assert.isAtMost(times[2]!, 300);
+          assert.isAtMost(
+            seenQueries.length,
+            people.length,
+            "one scoped seen read per person, not per Mate",
+          );
+          assert.isAtMost(times[2]!, 60);
           assert.isAtMost(times[4]!, 300);
-          for (const sample of samples) {
+          for (const [index, sample] of samples.entries()) {
             assert.lengthOf(sample.deliveries, 1);
+            const values = sample.deliveries[0]!.values as Array<{
+              key: string;
+              value: { person?: { unseen: number } };
+            }>;
+            assert.strictEqual(
+              values.find((value) => value.key === "project:P_MATE")!.value.person!.unseen,
+              index === 0 ? 0 : 1,
+            );
+            assert.strictEqual(
+              values.find((value) => value.key === "project:P_MATE_1")!.value.person!.unseen,
+              1,
+            );
             const payload = JSON.stringify(sample.deliveries);
             assert.include(payload, "Alpha");
             assert.include(payload, "project:P_MATE");

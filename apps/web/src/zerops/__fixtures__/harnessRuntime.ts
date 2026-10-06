@@ -21,7 +21,7 @@ import type { MakeZeropsDataRuntime } from "../ZeropsDataProvider";
 import { tabClock } from "../tabClock";
 
 /**
- * `overRest` reads the runtime's cells and runs its commands through the harness's REST platform,
+ * `overRest` runs the runtime's commands through the harness's REST platform,
  * as the browser's REST adapter does, so a test counts what reached the platform.
  */
 export function harnessRuntime(
@@ -59,10 +59,7 @@ export function harnessRuntime(
           clearTimer: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
         },
       });
-      Object.assign(rest, {
-        cells: adapter.cells,
-        execute: adapter.execute,
-      });
+      Object.assign(rest, { execute: adapter.execute });
     }
     return Effect.runPromise(
       makeZeropsDataRuntime({

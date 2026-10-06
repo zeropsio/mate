@@ -835,22 +835,7 @@ export const RETIRED_MECHANISMS: ReadonlyArray<RetiredMechanism> = [
       "who may write in a conversation is remembered in browser storage; the footer waits for the live answer",
   },
   {
-    token: "useHqOffers",
-    family: "permissions/members",
-    reason: "offers are read and decided by app hooks; HQ sends what the person may do",
-  },
-  {
-    token: "useChangeOffers",
-    family: "permissions/members",
-    reason: "offers are read and decided by app hooks; HQ sends what the person may do",
-  },
-  {
     token: "useZeropsMemberNames(",
-    family: "permissions/members",
-    reason: "member names and Mate owners come from the member list; HQ sends them finished",
-  },
-  {
-    token: "useZeropsMateOwners()",
     family: "permissions/members",
     reason: "member names and Mate owners come from the member list; HQ sends them finished",
   },
@@ -897,22 +882,7 @@ export const RETIRED_MECHANISMS: ReadonlyArray<RetiredMechanism> = [
     reason: "the client reads organization members for owners and admins; HQ sends them finished",
   },
   {
-    token: "shownInScope(",
-    family: "permissions/members",
-    reason: "the Mine filter and owner records are computed in the client; HQ sends them finished",
-    paths: [
-      "apps/web/src/components/Sidebar.tsx",
-      "apps/web/src/design/sidebarHarness.tsx",
-      "apps/web/src/zerops/mateScope.ts",
-    ],
-  },
-  {
     token: "mateIsViewers(",
-    family: "permissions/members",
-    reason: "the Mine filter and owner records are computed in the client; HQ sends them finished",
-  },
-  {
-    token: "mateOwnerRecords(",
     family: "permissions/members",
     reason: "the Mine filter and owner records are computed in the client; HQ sends them finished",
   },
@@ -927,15 +897,6 @@ export const RETIRED_MECHANISMS: ReadonlyArray<RetiredMechanism> = [
     ],
   },
   {
-    token: "tiersAddable(",
-    family: "permissions/members",
-    reason: "tiers addable are computed from the organization role in the client; HQ sends it",
-    paths: [
-      "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
-      "apps/web/src/components/zerops/projects/projectsView.logic.ts",
-    ],
-  },
-  {
     token: 'const writer = roleAtLeast(organization.roleCode, "ADMIN")',
     family: "permissions/members",
     reason: "tiers addable are computed from the organization role in the client; HQ sends it",
@@ -943,11 +904,6 @@ export const RETIRED_MECHANISMS: ReadonlyArray<RetiredMechanism> = [
   },
   {
     token: "useMayAddEnvironment",
-    family: "permissions/members",
-    reason: "add-environment facts are computed in the client; HQ sends what the person may do",
-  },
-  {
-    token: "useEnvironmentQuestionFacts",
     family: "permissions/members",
     reason: "add-environment facts are computed in the client; HQ sends what the person may do",
   },

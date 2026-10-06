@@ -79,3 +79,50 @@ export const projectGone: Projection<
   derive: (read, { projectId }) => read.fact("project", projectId).kind === "deleted",
   equals: sameValue,
 };
+
+/**
+ * Where one project stands with the viewer, as the account's store holds it: its row while the
+ * roster lists it — Zerops filters the organization's listing by the viewer's token, so a listed
+ * project is the viewer's — denied once its owner refused it, deleted once proven, otherwise not
+ * known.
+ */
+export type ProjectStanding =
+  | { readonly kind: "listed"; readonly project: ProjectValue }
+  | { readonly kind: "denied" }
+  | { readonly kind: "deleted" }
+  | { readonly kind: "unknown" };
+
+export const projectStanding: Projection<
+  { readonly orgId: string; readonly projectId: string },
+  ProjectStanding
+> = {
+  name: "projectStanding",
+  keyOf: ({ orgId, projectId }) => `${orgId}/${projectId}`,
+  derive: (read, { projectId }) => {
+    const fact = read.fact("project", projectId);
+    switch (fact.kind) {
+      case "known":
+        return { kind: "listed", project: fact.value };
+      case "deleted":
+        return { kind: "deleted" };
+      case "withheld":
+        return fact.reason === "denied" ? { kind: "denied" } : { kind: "unknown" };
+      case "unknown":
+        return { kind: "unknown" };
+    }
+  },
+  equals: sameValue,
+};
+
+/**
+ * Whether a project's own row is read, by its id, while its Mate is drawn: only where it decides
+ * the viewer's access — a NO_ACCESS member's project whose listing row names no grant of theirs
+ * (or that the roster does not list yet). An organization member is judged on their membership,
+ * and whose a Mate is comes from HQ's person facts; neither asks Zerops per project.
+ * Held `userRoles` came from the own row and never release this demand: only the listing
+ * naming the viewer's grant makes the own read unnecessary.
+ */
+export const ownRowWanted = (
+  viewerRole: string | undefined,
+  listed: Pick<ProjectValue, "listingNamesGrants"> | null,
+): boolean => viewerRole === "NO_ACCESS" && listed?.listingNamesGrants !== true;

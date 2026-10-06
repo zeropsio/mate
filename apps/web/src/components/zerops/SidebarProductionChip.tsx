@@ -13,7 +13,7 @@
  *
  * What it says is `SidebarProductionChip.logic.ts`'s; this draws it.
  */
-import { useStopDeploymentDemand, useStopPublicAccess } from "~/zerops/useStopPublicAccess";
+import { usePublicAccess } from "~/zerops/usePublicAccess";
 import { StopPublicAccessStatus } from "./StopPublicAccess";
 import { StopReadAgain } from "./StopReadAgain";
 import { Popover as PopoverPrimitive } from "@base-ui/react/popover";
@@ -84,7 +84,6 @@ export function SidebarProductionChip({
   readonly onAskToFix: ((mateProjectId: string, problem: FixProblem) => void) | undefined;
   readonly onOpenStop: OpenStop;
 }) {
-  useStopDeploymentDemand(stops);
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const face = chipFace(chip);
@@ -233,7 +232,7 @@ function StopGroup({
   readonly onOpenStop: OpenStop;
   readonly ownZerops: boolean;
 }) {
-  const publicAccess = useStopPublicAccess(stop.projectId);
+  const publicAccess = usePublicAccess(stop.projectId);
   const opens = stop.projectId === undefined ? undefined : onOpenStop(stop.projectId);
   const row = (
     <>
@@ -280,28 +279,26 @@ function StopGroup({
           projectId={stop.projectId}
         />
       )}
-      <StopPublicAccessStatus shown={publicAccess.shown} again={publicAccess.again} />
-      {routeMenuEntries(publicAccess.bound ? publicAccess.access.routes : stop.routes).map(
-        (entry) => (
-          <a
-            className="zerops-envpop-link"
-            data-zerops-surface="sidebar-production-link"
-            href={entry.url}
-            key={entry.key}
-            rel="noreferrer"
-            target="_blank"
-          >
-            <span className="zerops-envpop-service">
-              {entry.service}
-              {entry.port === undefined ? null : (
-                <span className="zerops-envpop-port">:{entry.port}</span>
-              )}
-            </span>
-            <span className="min-w-0 truncate">{entry.host}</span>
-            <ArrowUpRightIcon aria-hidden="true" className="size-3.25 shrink-0" />
-          </a>
-        ),
-      )}
+      <StopPublicAccessStatus access={publicAccess} />
+      {routeMenuEntries(publicAccess.bound ? publicAccess.routes : stop.routes).map((entry) => (
+        <a
+          className="zerops-envpop-link"
+          data-zerops-surface="sidebar-production-link"
+          href={entry.url}
+          key={entry.key}
+          rel="noreferrer"
+          target="_blank"
+        >
+          <span className="zerops-envpop-service">
+            {entry.service}
+            {entry.port === undefined ? null : (
+              <span className="zerops-envpop-port">:{entry.port}</span>
+            )}
+          </span>
+          <span className="min-w-0 truncate">{entry.host}</span>
+          <ArrowUpRightIcon aria-hidden="true" className="size-3.25 shrink-0" />
+        </a>
+      ))}
       {ownZerops && stop.projectId !== undefined ? (
         <OpenInZerops projectId={stop.projectId} />
       ) : null}

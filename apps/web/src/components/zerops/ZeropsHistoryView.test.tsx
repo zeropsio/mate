@@ -2,7 +2,7 @@ import type { CompareCommit } from "@t3tools/shared/hqChanges";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
-import type { ZeropsHistoryState } from "~/zerops/useZeropsHistory";
+import type { ZeropsHistoryState } from "~/zerops/useRepositoryHistory";
 
 import { ZeropsHistoryView } from "./ZeropsHistoryView";
 

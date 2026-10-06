@@ -34,7 +34,6 @@ import {
   ProjectCustomOrderSchema,
   ProjectOrderSchema,
 } from "~/zerops/projectOrderPreference";
-import { ZeropsProjectFlowContext, type ZeropsProjectFlowValue } from "~/zerops/projectFlowContext";
 import { InventoryContext, type Inventory } from "~/zerops/inventoryContext";
 import type { ProjectRef } from "@t3tools/client-runtime/zerops/data";
 
@@ -43,6 +42,11 @@ import type { ProjectRef } from "@t3tools/client-runtime/zerops/data";
 const stored = vi.hoisted(() => ({
   collapsed: new Set<string>(),
   written: undefined as ReadonlySet<string> | undefined,
+}));
+/** What each stop runs, as the platform says it, for the tests that draw it. */
+const stops = vi.hoisted(() => ({ deployments: new Map<string, unknown>() }));
+vi.mock("~/zerops/projectFlows", () => ({
+  useStopDeploymentsShown: () => stops.deployments,
 }));
 vi.mock("~/zerops/collapsedProjects", () => ({
   readCollapsedProjects: () => stored.collapsed,
@@ -95,7 +99,32 @@ vi.mock("~/zerops/ZeropsSessionProvider", async (original) => ({
   useZeropsSessionOptional: () =>
     session.viewer === undefined ? null : { user: { id: session.viewer } },
 }));
+// Whom each Mate waits on, as HQ says it (`waitsOnViewer`): the viewer who signed its agent in.
+const signerOf = vi.hoisted(() => new Map<string, string>());
+// Who HQ says signed each Mate's agent in (`signers`): nobody, unless a test says whom or that HQ
+// has not said.
+const hqSigners = vi.hoisted(() => ({ said: true }));
+// The Mates HQ names an owner of (`ownerUserId`).
+const ownedBy = vi.hoisted(() => new Set<string>());
+vi.mock("~/zerops/useZeropsMateOwners", async (original) => ({
+  ...(await original<typeof import("~/zerops/useZeropsMateOwners")>()),
+  useWaitsOnViewer: () => (projectId: string) =>
+    session.viewer !== undefined && signerOf.get(projectId) === session.viewer,
+  useHqProjectPeopleOf: () => (projectId: string) => {
+    if (!hqSigners.said) return undefined;
+    const signer = signerOf.get(projectId);
+    const signers = signer === undefined ? {} : { "claude-code": signer };
+    return {
+      owned: ownedBy.has(projectId),
+      owner: null,
+      waitsOnViewer: false,
+      signedInNow: signers,
+      everSignedIn: signers,
+    };
+  },
+}));
 afterEach(() => {
+  stops.deployments = new Map();
   // A tree left mounted would answer the next test's asks of the one menu.
   for (const tree of mountedTrees.splice(0)) {
     act(() => {
@@ -105,6 +134,9 @@ afterEach(() => {
   stored.collapsed = new Set();
   stored.written = undefined;
   session.viewer = undefined;
+  signerOf.clear();
+  hqSigners.said = true;
+  ownedBy.clear();
   hqCrews.clear();
   demandedStops.clear();
   vi.unstubAllGlobals();
@@ -207,6 +239,7 @@ const signedBy = (signer: string): Partial<HqMate> => ({
 
 /** A Mate signed in by `u-ada` — the viewer's own, where a test makes her the viewer. */
 function mine(item: ZeropsCandidate, signer = SIGNER): ZeropsCandidate {
+  signerOf.set(item.project.id, signer);
   return {
     ...item,
     project: { ...item.project, hq: recorded(item.project.hq!, signedBy(signer)) },
@@ -568,19 +601,23 @@ describe("SidebarZeropsTree", () => {
   });
 
   // The menu's header says it instead (the owner, 2026-10-05: a notice pushed the menu down and
-  // back on every reconnect): a spinner while HQ is read again, words once it does not answer.
+  // back on every reconnect): a spinner while HQ's first read catches up, and words — in view,
+  // not only in a tooltip — once what HQ said is no longer current, or it never answered.
   it.each([
-    ["syncing", false, false, false],
-    ["syncing", true, false, false],
-    ["unavailable", false, true, false],
-    ["unavailable", true, true, true],
+    ["syncing", false, null, false],
+    ["syncing", true, null, false],
+    ["last-known", false, "HQ is not reachable — showing what it last said", false],
+    ["last-known", true, "HQ is not reachable — showing what it last said", true],
+    ["unavailable", false, "HQ unavailable", false],
+    ["unavailable", true, "HQ unavailable", true],
   ] as const)("the header's HQ standing: %s, a retry offered %s", (kind, offered, words, again) => {
-    const line = "HQ unavailable since 14:05. Projects as of 13:58.";
+    const line = "HQ is not reachable since 14:05 — showing what it last said.";
     const html = renderToStaticMarkup(
       <SidebarHqStatus kind={kind} line={line} onAgain={offered ? () => {} : undefined} />,
     );
     expect(html).toContain(line);
-    expect(html.includes(">HQ unavailable<")).toBe(words);
+    const shown = /<span aria-hidden="true"[^>]*>([^<]+)<\/span>/u.exec(html)?.[1] ?? null;
+    expect(shown).toBe(words);
     expect(html.includes("<button")).toBe(again);
   });
 
@@ -798,6 +835,20 @@ describe("a Mate with no owner, or nobody signed in", () => {
     expect(html).toContain("No owner yet. Whoever signs in its coding agent owns it.");
   });
 
+  // Whether a Mate is nobody's is HQ's word (`ownerUserId`), never Zerops' project roles.
+  it.each([
+    {
+      case: "HQ names an owner it sends no person of: a neutral seat",
+      owned: true,
+      seat: undefined,
+    },
+    { case: "HQ names no owner: the empty seat", owned: false, seat: "nobody" },
+  ])("$case", ({ owned, seat: expected }) => {
+    const item = mate(null, { group: "connected" });
+    if (owned) ownedBy.add(item.project.id);
+    expect(seat(render([item], { getOwner: () => undefined }))).toBe(expected);
+  });
+
   it.each([
     { case: "nobody's, open here", group: "connected", roles: [], owner: undefined },
     { case: "nobody's, not open here yet", group: "ready", roles: [], owner: undefined },
@@ -818,6 +869,20 @@ describe("a Mate with no owner, or nobody signed in", () => {
       expect(html).not.toContain("sidebar-mate-sign-in-verb");
     },
   );
+
+  // The owner, 2026-10-06: every row said "Nobody has signed in yet" of Mates in use. The line
+  // reads HQ's signers of the project: it stands only where HQ names nobody.
+  it.each([
+    { case: "HQ names a signer", said: true, signer: "u-eva", shown: false },
+    { case: "HQ names nobody", said: true, signer: undefined, shown: true },
+    { case: "HQ has not said", said: false, signer: undefined, shown: false },
+  ])("says nobody has signed in only where HQ names nobody: $case", ({ said, signer, shown }) => {
+    hqSigners.said = said;
+    const item = mate(null, { group: "connected" });
+    if (signer !== undefined) signerOf.set(item.project.id, signer);
+    const html = render([item], { getOwner: () => undefined });
+    expect(html.includes("Nobody has signed in yet")).toBe(shown);
+  });
 
   // E2E 2026-10-03 (F6): a `mate` project whose press stopped before its container read "Nobody
   // has signed in yet" after a reload — a Mate nobody can sign in, its container never made, or
@@ -1156,7 +1221,7 @@ describe("a Mate's face follows its work in the menu", () => {
     status: null,
     face: "working",
     subject: "Add a size guide to the product page",
-    at: "2026-09-29T20:10:00.000Z",
+    at: new Date().toISOString(),
     snippet: undefined,
     awaitingWords: true,
     unread: false,
@@ -1185,7 +1250,7 @@ describe("a Mate's face follows its work in the menu", () => {
       dots: true,
     },
     {
-      case: "a running Mate with HQ's last word at rest, its socket not open yet",
+      case: "a running Mate with HQ's recent last word at rest, its socket not open yet",
       group: "ready",
       activity: restingActivity(working),
       face: "idle",
@@ -1688,7 +1753,7 @@ describe("a Mate and its crew, one unit in the menu", () => {
 
 // An HQ is open, so its releases are coming — but it has not answered them.
 const HQ_OPEN = {
-  deployments: new Map([
+  deployments: new Map<string, unknown>([
     [
       "crm-prod",
       {
@@ -1710,9 +1775,7 @@ const HQ_OPEN = {
       },
     ],
   ]),
-  flows: new Map(),
-  hqAddress: "https://hq.example.test",
-} as unknown as ZeropsProjectFlowValue;
+};
 
 describe("production and the stages are two chips on the project's heading (M2, M1)", () => {
   const released = (label: string): EnvironmentRow => ({
@@ -1767,6 +1830,39 @@ describe("production and the stages are two chips on the project's heading (M2, 
     // No stop is a row under the heading, and no chip draws a dot.
     expect(html).not.toContain('sidebar-environment"');
     expect(heading(html)).not.toContain("zerops-envdot");
+  });
+
+  // HQ declares which project is the stage and which production, and their releases: while its
+  // link is paused, what the chips say of them is what it last said, never current.
+  it.each([
+    [true, ""],
+    [false, "Last known: "],
+  ])("with HQ answering %s, the chips say %j before their state", (live, prefix) => {
+    const registry = AtomRegistry.make();
+    registry.set(zeropsSessionAtom, {
+      status: "signed-in",
+      organizationStatus: "selected",
+      activeOrganization: organization,
+    });
+    mountHqNavigation(registry, organization.organizationId, {
+      structure: { apps: [], ungrouped: [] },
+      live,
+    });
+    const html = renderToStaticMarkup(
+      <RegistryContext.Provider value={registry}>
+        <SidebarZeropsTree
+          candidates={[CRM_DEV, up(CRM_STAGE), up(CRM_PROD)]}
+          complete
+          onBrowseProjects={() => {}}
+          onSelect={() => {}}
+          getFlow={() => flow()}
+        />
+      </RegistryContext.Provider>,
+    );
+    expect(chipsOf(html).map(({ words }) => words)).toEqual([
+      `${prefix}Stage main, healthy`,
+      `${prefix}Production v2.4.0, healthy`,
+    ]);
   });
 
   it("says what waits for production nowhere on the pill: it is healthy, and neutral", () => {
@@ -1966,15 +2062,14 @@ describe("production and the stages are two chips on the project's heading (M2, 
   });
 
   it("draws what the platform alone says while HQ has not answered the releases", () => {
+    stops.deployments = HQ_OPEN.deployments;
     const tree = mount(
-      <ZeropsProjectFlowContext.Provider value={HQ_OPEN}>
-        <SidebarZeropsTree
-          candidates={[CRM_DEV, up(CRM_PROD)]}
-          complete
-          onBrowseProjects={() => {}}
-          onSelect={() => {}}
-        />
-      </ZeropsProjectFlowContext.Provider>,
+      <SidebarZeropsTree
+        candidates={[CRM_DEV, up(CRM_PROD)]}
+        complete
+        onBrowseProjects={() => {}}
+        onSelect={() => {}}
+      />,
     );
     const chips = tree.root.findAll(
       (node) =>
@@ -2823,7 +2918,7 @@ describe("the sidebar and the projects page read one group the same way", () => 
           group.environments,
           () => undefined,
           () => false,
-          undefined,
+          () => false,
         ),
         flow: groupReads,
         deployments: new Map(),
@@ -3167,6 +3262,7 @@ describe("a Mate's row says more without words", () => {
   ])("draws $case", ({ activity, face, dot, third }) => {
     // The viewer's own Mate: what it waits on waits on them.
     session.viewer = "u-ada";
+    signerOf.set(SIGNED_IN.project.id, SIGNER);
     const html = render([SIGNED_IN], { getActivity: () => activity });
     expect(html).toContain(`data-mate-face-state="${face}"`);
     if (dot === undefined) expect(html).not.toContain("sidebar-mate-dot");

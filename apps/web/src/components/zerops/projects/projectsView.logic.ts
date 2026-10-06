@@ -6,7 +6,6 @@
  */
 
 import type { OfficialHq } from "@t3tools/client-runtime/zerops/hq";
-import { mateIsViewers } from "@t3tools/client-runtime/zerops/mateAccess";
 import {
   deployWord,
   firstDeployLine,
@@ -40,8 +39,6 @@ import {
   type ZeropsEnvironmentServices,
   type ZeropsGroup,
   type ZeropsGroupPendingMember,
-  type ZeropsOrganization,
-  type ZeropsProject,
   type ZeropsPublicRoute,
 } from "@t3tools/client-runtime/zerops";
 import {
@@ -51,7 +48,6 @@ import {
 } from "@t3tools/client-runtime/zerops/flow";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
-import { roleAtLeast } from "@t3tools/shared/zeropsRoles";
 
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { activityOfNow, mateFaceFor, type ZeropsAgentActivity } from "~/zerops/agentActivity";
@@ -396,8 +392,8 @@ export function groupMemberFactsOf<T extends GroupMemberCandidate>(
   }>,
   activityOf: (item: T) => ZeropsAgentActivity | undefined,
   conversationsRead: (item: T) => boolean,
-  /** Who is looking: only their own Mate's question waits on them (`mateIsViewers`). */
-  viewer: string | undefined,
+  /** Whether a project's Mate waits on the viewer, as HQ says it (`waitsOnViewer`). */
+  waitsOnViewer: (projectId: string) => boolean,
 ): ReadonlyArray<GroupMemberFacts> {
   return environments.map(({ item, role }) => {
     const activity = activityOfNow(activityOf(item));
@@ -415,8 +411,7 @@ export function groupMemberFactsOf<T extends GroupMemberCandidate>(
             // Waiting on an answer: its conversation's question. A change of its waiting for
             // review wears the same face (`mateFaceOf`) and is the flow's own step — *Review* —
             // never "waiting on an answer". Another's Mate waits on its owner, not the viewer.
-            waiting:
-              mateIsViewers(item.project, viewer) && mateFaceFor(connected, activity) === "needs",
+            waiting: waitsOnViewer(item.project.id) && mateFaceFor(connected, activity) === "needs",
             ...(connected && activity?.kind === "failed" ? { failed: true } : {}),
             ...(connected && activity?.face === "working" ? { working: true } : {}),
             talked: !connected
@@ -435,52 +430,22 @@ export function groupMemberFactsOf<T extends GroupMemberCandidate>(
 }
 
 /**
- * Whether this person may add a stage or a production to an application: the people HQ's
- * `attach` takes for a project made now - an organization owner or admin, or a member who may
- * create projects (`canCreateProjects`) and develops the application, which is at least a Basic
- * user on one of its projects (their own grant there, else their organization role). Every
- * surface that offers an environment asks this one question.
- */
-export function mayAddEnvironment(input: {
-  readonly organization: Pick<
-    ZeropsOrganization,
-    "membershipId" | "roleCode" | "canCreateProjects"
-  >;
-  /** The application's projects as the account lists them. */
-  readonly projects: ReadonlyArray<Pick<ZeropsProject, "userRoles">>;
-}): boolean {
-  const { organization } = input;
-  if (roleAtLeast(organization.roleCode, "ADMIN")) return true;
-  if (organization.canCreateProjects !== true) return false;
-  return input.projects.some((project) =>
-    roleAtLeast(
-      project.userRoles?.find((entry) => entry.clientUserId === organization.membershipId)
-        ?.roleCode ?? organization.roleCode,
-      "BASIC_USER",
-    ),
-  );
-}
-
-/**
  * The tiers a project's menu offers *Add* for — the one answer (`environmentAddable`) for the
  * group as its tree holds it: its projects by role (a Mate that is also the stage counts as the
  * stage), its creations under way, and what HQ records of it, each counted once; whether the
- * recipe holds the tier; and whether this person may add (`mayAddEnvironment`) and is a writer.
- * Nothing is offered before the person's organization is known.
+ * recipe holds the tier; and whether HQ offers this person the tier. Nothing is offered before HQ
+ * says.
  */
 export function tiersAddable(input: {
-  readonly organization: Parameters<typeof mayAddEnvironment>[0]["organization"] | null;
+  /** The tiers HQ offers this person to add (`add_stage` / `add_production`); `null` before it says. */
+  readonly offered: { readonly stage: boolean; readonly production: boolean } | null;
   readonly group: Pick<ZeropsGroup, "environments" | "pending">;
   /** The application's environments as HQ records them. */
   readonly hq: ReadonlyArray<HeldEnvironment>;
   readonly recipe: { readonly read: boolean; readonly tiers: ReadonlyArray<GroupEnvironmentTier> };
 }): ReadonlyArray<GroupEnvironmentTier> {
-  const { organization, group } = input;
-  if (organization === null) return [];
-  const mayAdd = mayAddEnvironment({
-    organization,
-    projects: group.environments.map((entry) => entry.project),
-  });
+  const { offered, group } = input;
+  if (offered === null) return [];
   const held = heldTiers([
     ...input.hq,
     ...group.environments.flatMap((entry): ReadonlyArray<HeldEnvironment> => {
@@ -498,14 +463,12 @@ export function tiersAddable(input: {
         : [],
     ),
   ]);
-  const writer = roleAtLeast(organization.roleCode, "ADMIN");
   return (["stage", "production"] as const).filter((tier) =>
     environmentAddable({
       tier,
       recipeRead: input.recipe.read,
       recipeTiers: input.recipe.tiers,
-      mayAdd,
-      writer,
+      offered: offered[tier],
       held,
     }),
   );
@@ -523,6 +486,7 @@ export interface GroupFlowReads {
     readonly inFlight?: string | undefined;
     /** What it would put live, per comparison HQ answered (`Moved`). */
     readonly contents: ReadonlyArray<Moved>;
+    readonly summary?: { readonly total: number; readonly atLeast: boolean } | undefined;
     /** Production's services whose commit cannot be told. */
     readonly untold: ReadonlyArray<string>;
   };
@@ -541,7 +505,7 @@ const STOP_TIER: Partial<Record<ZeropsEnvironmentRole, GroupEnvironmentTier>> = 
 
 /** What `groupFlow` is told of a release: how many changes it would put live, and how sure. */
 function releaseInputOf(release: GroupFlowReads["release"]): GroupFlowInput["release"] {
-  const { total, atLeast } = releaseContentsSummary(release.contents);
+  const { total, atLeast } = release.summary ?? releaseContentsSummary(release.contents);
   return {
     gate: release.gate,
     suggestion: release.suggestion,

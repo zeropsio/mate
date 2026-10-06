@@ -61,6 +61,7 @@ export function makeSampledAccount(input: {
     data: store.data,
     orgId: input.orgId,
     demandDetail: observation.demandDetail,
+    renewHeld: observation.renewHeld,
     readDetail: observation.readDetail,
     revalidate: observation.revalidate,
     retryDetail: observation.retryDetail,

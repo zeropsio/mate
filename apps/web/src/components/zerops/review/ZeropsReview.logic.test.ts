@@ -518,7 +518,7 @@ describe("keyStaysInReview: what is typed in the review acts on nothing behind i
 });
 
 describe("changeReadVerdict: a change the flow does not hold, until it is read", () => {
-  const base = { repository: "apidev", number: 1, provided: true } as const;
+  const base = { repository: "apidev", number: 1 } as const;
   it.each([
     ["a read in flight", { read: { kind: "reading" } }, "busy", "Reading this change"],
     [
@@ -568,12 +568,6 @@ describe("changeReadVerdict: a change the flow does not hold, until it is read",
       { read: { kind: "idle" }, projectKnown: false },
       "attention",
       "This change's project isn't known here",
-    ],
-    [
-      "no read sent: nothing to read it with",
-      { read: { kind: "idle" }, provided: false },
-      "quiet",
-      "Nothing here reads this change",
     ],
   ] as const)("%s", (_case, over, tone, title) => {
     const verdict = changeReadVerdict({ ...base, ...over });

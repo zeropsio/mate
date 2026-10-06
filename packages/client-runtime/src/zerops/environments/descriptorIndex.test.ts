@@ -9,7 +9,7 @@ import {
   type ResolvedEnvironment,
 } from "./descriptorIndex.ts";
 import { initialEnvironment, type EnvironmentMachine } from "./environmentMachine.ts";
-import type { ProbeReading } from "./probeStore.ts";
+import type { ProbeReading } from "./probe.ts";
 import { selectReachability } from "./reachability.ts";
 
 const ENV_A = EnvironmentId.make("env-a");

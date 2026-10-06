@@ -998,7 +998,7 @@ describe("jobOf — a service's newest job, said where it is not live", () => {
       }),
       expected: {
         state: "unresolved",
-        line: "5c3ea18: HQ could not follow this deploy to its end. A person acts next: Inspect the original version in Zerops before asking Run again",
+        line: "5c3ea18: HQ lost track of this deploy. Check it in Zerops, or run it again.",
         reason: undefined,
         redeploy: { service: "api", sha: SHA, after: "1" },
       },
@@ -1015,7 +1015,7 @@ describe("jobOf — a service's newest job, said where it is not live", () => {
       }),
       expected: {
         state: "submitting",
-        line: "5c3ea18: Waiting for Zerops to start the build. A person acts next: Inspect the original version in Zerops; Run again if no build started",
+        line: "5c3ea18: Waiting for Zerops to start the build. Check it in Zerops, or run it again.",
         reason: undefined,
         redeploy: { service: "api", sha: SHA, after: "1" },
       },

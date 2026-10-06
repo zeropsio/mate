@@ -199,6 +199,8 @@ export function supersedes(
       return current.incarnation === incoming.incarnation
         ? incoming.revision > current.revision
         : incoming.live;
+    case "mate-link":
+      return current.kind === "mate-link" && incoming.sequence > current.sequence;
   }
 }
 
@@ -261,18 +263,25 @@ function reduceRows(
     const key = factKey(row.family, row.id);
     const current = (draft ?? state.facts).get(key);
     if (current !== undefined && !admits(state, input, current, row)) continue;
-    const merge = familySpec(row.family).merge as
-      | ((held: unknown, pushed: unknown) => unknown)
+    const spec = familySpec(row.family);
+    const merge = spec.merge as ((held: unknown, pushed: unknown) => unknown) | undefined;
+    const keepUnsaid = spec.keepUnsaid as
+      | ((held: unknown, row: unknown, own: boolean) => unknown)
       | undefined;
-    const value =
-      merge !== undefined && input.method === "push" && current?.content.kind === "value"
-        ? merge(current.content.value, row.value)
+    const held = current?.content.kind === "value" ? current.content : null;
+    const merged =
+      merge !== undefined && input.method === "push" && held !== null
+        ? merge(held.value, row.value)
         : row.value;
+    const value =
+      keepUnsaid === undefined
+        ? merged
+        : keepUnsaid(held?.value, merged, scopeListing(input.scope).detail?.member === true);
     const fact: Fact<unknown> = {
       content: { kind: "value", value },
       revision: row.revision,
       // The family's owner, whichever path delivered it: HQ's relay of attention stays the Mate's.
-      authority: familySpec(row.family).authority,
+      authority: spec.authority,
       via: input.via,
       method: input.method,
       scope: input.scope,

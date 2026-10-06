@@ -151,7 +151,7 @@ export function mateOwnerView(input: {
     | { readonly name: string; readonly initials: string; readonly avatarUrl: string | null }
     | undefined;
   /**
-   * What its records say (`mateOwnerRecords`): `named` unknown while its roles are not read; a
+   * What its records say (`mateOwnerRecords`): `named` unknown while HQ has not named its owner; a
    * Mate that runs on an agent Mate signs nobody in to (HQ's overview) waits on no sign-in.
    */
   readonly records: {
@@ -161,6 +161,11 @@ export function mateOwnerView(input: {
   };
   /** The row already says what was asked under the name. */
   readonly asked: boolean;
+  /**
+   * Whether HQ names anybody who signed its agents in (its project's `everSignedIn`): `some`, `none`,
+   * or `undefined` while HQ has not said — then the row says nothing of a sign-in.
+   */
+  readonly hqSigners: "some" | "none" | undefined;
   /** Who added it, as HQ's stand-up record names them (`readZeropsMembership(…).standUp`). */
   readonly standUpBy?: string | undefined;
   /** Who made it, as HQ's record names them (`readZeropsMembership(…).madeBy`). */
@@ -181,7 +186,12 @@ export function mateOwnerView(input: {
       : records.named === false
         ? { kind: "nobody", label: NOBODY_OWNS }
         : { kind: "unnamed" };
-  if (records.signedIn || input.asked || records.runsWithoutSignIn === true) {
+  if (
+    records.signedIn ||
+    input.hqSigners !== "none" ||
+    input.asked ||
+    records.runsWithoutSignIn === true
+  ) {
     return { seat, signInLine: undefined, waitsOnViewer: false };
   }
   const viewer = input.viewer !== undefined && input.viewer.length > 0 ? input.viewer : undefined;
@@ -499,7 +509,7 @@ export function mateRowReading(input: {
   readonly activity: ZeropsAgentActivity | undefined;
   /** Its own change waits on the person's review (`mateNextStep`): it needs them. */
   readonly reviewWaits?: boolean;
-  /** The viewer's own Mate (`mateIsViewers`): only then does what it waits on need them. */
+  /** The viewer's own Mate (HQ's `waitsOnViewer`): only then does what it waits on need them. */
   readonly mine: boolean;
   /** Where it is in its life (`mateFaceFor`): waking while it comes up and arrives. */
   readonly pose?: MatePoseFacts | undefined;

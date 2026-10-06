@@ -14,7 +14,7 @@ import {
 import { makeAccountStore } from "../store.ts";
 import type { StreamFault } from "../streamMachine.ts";
 import { superviseLink } from "../supervisor.ts";
-import { zeropsNavigationLink } from "./zerops.ts";
+import { classifyHttp, zeropsNavigationLink } from "./zerops.ts";
 import { historyScope, runningScope } from "../families/process.ts";
 import { projectsScope } from "../families/project.ts";
 import { activeScope, versionScope } from "../families/version.ts";
@@ -22,8 +22,17 @@ import { factOf, indexOf } from "../reducer.ts";
 import { linkKeys } from "../model.ts";
 import { detailScopeOf } from "../demand.ts";
 import { membersScope } from "../families/organizationMembers.ts";
-import { routingScope } from "../families/publicRouting.ts";
+import { projectRoutingsScope, routingsScope } from "../families/publicRouting.ts";
 import { STREAM_POLICY } from "../streamMachine.ts";
+import { ownRowWanted, listedProject } from "../projections/projects.ts";
+import { readsOfState } from "../store.ts";
+
+import {
+  RECORDED_ROUTING,
+  RECORDED_SERVICE,
+  REMOVED_ROUTING,
+  ROUTING_PROJECT,
+} from "../__fixtures__/publicRouting.ts";
 
 const PROCESS_SEARCH = "/process/search";
 const PROJECT_SEARCH = "/project/search";
@@ -229,7 +238,7 @@ describe("zeropsNavigationLink", () => {
       expect(fixture.opens()).toBe(2);
       expect(
         fixture.requests.filter((request) => request.body?.receiverId === "receiver-2"),
-      ).toHaveLength(8);
+      ).toHaveLength(10);
       // One project was taken from the viewer meanwhile: every scope is registered once more.
       const again = store.state().streams.get(linkKeys.zerops(ORG));
       yield* TestClock.adjust(again?.next.kind === "retry" ? again.next.at : 0);
@@ -549,6 +558,159 @@ describe("a demanded detail", () => {
   );
 
   it.effect(
+    "reads a held detail again, once, after our own write; one nobody holds not at all",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const fixture = fixtureWire((request) =>
+          request.method === "GET"
+            ? Effect.succeed({ status: 200, body: { list: [finished] } })
+            : answers(() => [])(request),
+        );
+        const { fiber, link } = yield* runLink(store, fixture);
+        link.revalidate(DEMAND);
+        yield* settle;
+        expect(historyReads(fixture)).toBe(0);
+
+        link.demandDetail(DEMAND);
+        link.demandDetail(DEMAND);
+        yield* settle;
+        expect(historyReads(fixture)).toBe(1);
+
+        link.revalidate(DEMAND);
+        yield* settle;
+        expect(historyReads(fixture)).toBe(2);
+        expect(store.state().streams.get(history)?.phase).toBe("live");
+        yield* settle;
+        expect(historyReads(fixture)).toBe(2);
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
+
+  it.effect(
+    "renews a held detail it read already, once; one unread, in flight or unheld not at all",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const gate = yield* Deferred.make<void>();
+        const fixture = fixtureWire((request) =>
+          request.method === "GET"
+            ? Deferred.await(gate).pipe(Effect.as({ status: 200, body: { list: [finished] } }))
+            : answers(() => [])(request),
+        );
+        const { fiber, link } = yield* runLink(store, fixture);
+        link.renew(DEMAND);
+        yield* settle;
+        expect(historyReads(fixture)).toBe(0);
+
+        // Held, and its first read still in flight: a renewal asks nothing more of it.
+        link.demandDetail(DEMAND);
+        yield* settle;
+        link.renew(DEMAND);
+        yield* settle;
+        expect(historyReads(fixture)).toBe(1);
+        yield* Deferred.succeed(gate, undefined);
+        yield* settle;
+        expect(historyReads(fixture)).toBe(1);
+
+        link.renew(DEMAND);
+        link.renew(DEMAND);
+        yield* settle;
+        expect(historyReads(fixture)).toBe(2);
+        yield* settle;
+        expect(historyReads(fixture)).toBe(2);
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
+
+  it.effect.each([
+    { name: "a downgrade", grants: [{ clientUserId: "viewer", roleCode: "READ_ONLY" }] },
+    { name: "a removed grant", grants: [] },
+  ])("keeps an own row demanded through renewal: $name", ({ grants }) =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      let userRoles = [{ clientUserId: "viewer", roleCode: "OWNER" }];
+      const fixture = fixtureWire((request) =>
+        request.method === "GET"
+          ? Effect.succeed({
+              status: 200,
+              body: {
+                id: PROBE_PROJECT_ID,
+                name: "Mate",
+                status: "ACTIVE",
+                lastUpdate: "2026-10-06T12:00:00Z",
+                userRoles,
+              },
+            })
+          : answers(() => [])(request),
+      );
+      const { fiber, link } = yield* runLink(store, fixture);
+      const demand = { family: "project", listing: "project", ownerId: PROBE_PROJECT_ID } as const;
+      const row = () =>
+        listedProject.derive(readsOfState(store.state()), {
+          orgId: ORG,
+          projectId: PROBE_PROJECT_ID,
+        });
+      const reads = () =>
+        fixture.requests.filter(({ path }) => path === `/project/${PROBE_PROJECT_ID}`).length;
+      expect(ownRowWanted("NO_ACCESS", row())).toBe(true);
+      const release = link.demandDetail(demand);
+      yield* settle;
+      expect(row()?.userRoles).toEqual(userRoles);
+      expect(ownRowWanted("NO_ACCESS", row())).toBe(true);
+
+      userRoles = grants;
+      link.renew(demand);
+      link.renew(demand);
+      yield* settle;
+      expect(reads()).toBe(2);
+      expect(row()?.userRoles).toEqual(grants);
+      expect(ownRowWanted("NO_ACCESS", row())).toBe(true);
+      release();
+      link.renew(demand);
+      yield* settle;
+      expect(reads()).toBe(2);
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+
+  it.effect.each([403, 404])("never repeats a refused own-row read in a round: HTTP %s", (status) =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const fixture = fixtureWire((request) =>
+        request.method === "GET"
+          ? Effect.succeed({ status, body: {} })
+          : answers(() => [])(request),
+      );
+      const { fiber, link } = yield* runLink(store, fixture);
+      const demand = { family: "project", listing: "project", ownerId: PROBE_PROJECT_ID } as const;
+      const scope = `zerops:${ORG}:project:${PROBE_PROJECT_ID}`;
+      const reads = () =>
+        fixture.requests.filter(({ path }) => path === `/project/${PROBE_PROJECT_ID}`).length;
+      const release = link.demandDetail(demand);
+      yield* settle;
+      expect(reads()).toBe(1);
+      expect(store.state().streams.get(scope)?.phase).toBe("refused");
+
+      // Neither the former five-second confirmation nor drawing the same Mate retries it.
+      yield* TestClock.adjust(5_000);
+      yield* settle;
+      expect(reads()).toBe(1);
+      release();
+      yield* settle;
+      link.demandDetail(demand);
+      yield* settle;
+      expect(reads()).toBe(1);
+      // A subsequent round must also respect the refusal, even though it renews held own rows.
+      link.renew(demand);
+      yield* settle;
+      expect(reads()).toBe(1);
+      expect(store.state().streams.get(scope)?.phase).toBe("refused");
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+
+  it.effect(
     "takes a service read by its id over the listing's row when Zerops updated it since",
     () =>
       Effect.gen(function* () {
@@ -853,19 +1015,10 @@ describe("what a baseline and a read by id may claim", () => {
 describe("a sampled detail", () => {
   const MEMBERS_PATH = `/client/${ORG}/user/list?limit=100`;
   const AGENTS_PATH = "/user-data/search";
-  const ROUTING_PATH = "/project/p1/public-http-routing";
   const MEMBERS = { family: "organizationMembers", ownerId: ORG } as const;
   const AGENTS = { family: "serviceAgents", ownerId: "s1" } as const;
-  const ROUTING = { family: "publicRouting", ownerId: "p1" } as const;
   const members = membersScope(ORG);
-  const routing = routingScope(ORG, "p1");
   const member = (id: string) => ({ id, user: { fullName: id } });
-  const domain = (domainName: string) => ({
-    isSynced: true,
-    sslEnabled: true,
-    domains: [{ domainName }],
-    locations: [{ path: "/", port: 80, serviceStackId: "web" }],
-  });
   const readsOf = (
     fixture: ReturnType<typeof fixtureWire>,
     path: string,
@@ -873,7 +1026,7 @@ describe("a sampled detail", () => {
   ) =>
     fixture.requests.filter((request) => request.method === method && request.path === path).length;
   /**
-   * Answers the member list and a project's routing with whatever `list` holds when it is read,
+   * Answers the member list with whatever `list` holds when it is read,
    * and a service's agent keys.
    */
   const sampledAnswers =
@@ -884,8 +1037,7 @@ describe("a sampled detail", () => {
           items: [{ id: "e1", key: "ZCP_AGENT_OAUTH_CLAUDE_CODE", content: "1" }],
         });
       if (request.method !== "GET") return answers(() => [])(request);
-      const body =
-        request.path === ROUTING_PATH ? { list: list.current } : { clientUserList: list.current };
+      const body = { clientUserList: list.current };
       return held === undefined
         ? Effect.succeed({ status: 200, body })
         : Effect.andThen(Deferred.await(held), Effect.succeed({ status: 200, body }));
@@ -976,60 +1128,6 @@ describe("a sampled detail", () => {
       expect(keys.length).toBeGreaterThan(0);
       expect(keys.every((key) => key.startsWith("ZCP_AGENT_OAUTH_"))).toBe(true);
       expect(fixture.requests.some((request) => request.path.endsWith("/env"))).toBe(false);
-      yield* Fiber.interrupt(fiber);
-    }),
-  );
-
-  it.effect("reads it again on its cadence while demanded, its value shown under the read", () =>
-    Effect.gen(function* () {
-      const store = makeAccountStore(AtomRegistry.make());
-      const list = { current: [domain("a.example")] as ReadonlyArray<unknown> };
-      const fixture = fixtureWire(sampledAnswers(list));
-      const { fiber, link } = yield* runLink(store, fixture);
-      link.demandDetail(ROUTING);
-      yield* settle;
-
-      list.current = [domain("a.example"), domain("b.example")];
-      yield* TestClock.adjust(STREAM_POLICY.sampledIntervalMs - 1);
-      yield* settle;
-      expect(readsOf(fixture, ROUTING_PATH)).toBe(1);
-      yield* TestClock.adjust(1);
-      yield* settle;
-      expect(readsOf(fixture, ROUTING_PATH)).toBe(2);
-      expect(factOf(store.state(), "publicRouting", "p1")?.content).toEqual({
-        kind: "value",
-        value: [domain("a.example"), domain("b.example")],
-      });
-      expect(store.state().streams.get(routing)?.phase).toBe("live");
-      yield* Fiber.interrupt(fiber);
-    }),
-  );
-
-  it.effect("keeps the value while a revalidation is under way", () =>
-    Effect.gen(function* () {
-      const store = makeAccountStore(AtomRegistry.make());
-      const held = yield* Deferred.make<void>();
-      const fixture = fixtureWire((request) =>
-        request.method === "GET" && readsOf(fixture, ROUTING_PATH) > 1
-          ? sampledAnswers({ current: [] }, held)(request)
-          : sampledAnswers({ current: [domain("a.example")] })(request),
-      );
-      const { fiber, link } = yield* runLink(store, fixture);
-      link.demandDetail(ROUTING);
-      yield* settle;
-      yield* TestClock.adjust(STREAM_POLICY.sampledIntervalMs);
-      yield* settle;
-      expect(store.state().streams.get(routing)?.phase).toBe("baselining");
-      expect(factOf(store.state(), "publicRouting", "p1")?.content).toEqual({
-        kind: "value",
-        value: [domain("a.example")],
-      });
-      yield* Deferred.succeed(held, undefined);
-      yield* settle;
-      expect(factOf(store.state(), "publicRouting", "p1")?.content).toEqual({
-        kind: "value",
-        value: [],
-      });
       yield* Fiber.interrupt(fiber);
     }),
   );
@@ -1156,5 +1254,370 @@ describe("a sampled detail", () => {
       expect(store.state().streams.get(linkKeys.zerops(ORG))?.phase).toBe("live");
       yield* Fiber.interrupt(fiber);
     }),
+  );
+});
+
+describe("the organization's routings refused to the viewer", () => {
+  const ROUTING_SEARCH = "/public-http-routing/search";
+  const routingPosts = (fixture: ReturnType<typeof fixtureWire>) =>
+    fixture.requests.filter((request) => request.path === ROUTING_SEARCH).length;
+
+  it.effect.each([
+    { name: "401, a member without organization read", status: 401 },
+    { name: "403, a member without organization read", status: 403 },
+  ])("$name: refuses that scope alone, never the link or its other scopes", ({ status }) =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const base = answers(() => []);
+      const fixture = fixtureWire((request) =>
+        request.path === ROUTING_SEARCH ? Effect.fail(classifyHttp(status)) : base(request),
+      );
+      const fiber = yield* run(store, fixture);
+      expect(store.state().streams.get(linkKeys.zerops(ORG))?.phase).toBe("live");
+      expect(store.state().streams.get(projectsScope(ORG))?.phase).toBe("live");
+      expect(store.state().streams.get(routingsScope(ORG))?.phase).toBe("refused");
+      // Its pair stops at the first refusal: the listing is never asked for.
+      expect(routingPosts(fixture)).toBe(1);
+
+      // The link's next attempt registers the rest again and leaves the refused scope be.
+      yield* fixture.drop({ outcome: "transient", message: "socket closed" });
+      yield* settle;
+      const link = store.state().streams.get(linkKeys.zerops(ORG));
+      yield* TestClock.adjust(link?.next.kind === "retry" ? link.next.at : 0);
+      yield* settle;
+      expect(fixture.opens()).toBe(2);
+      expect(store.state().streams.get(projectsScope(ORG))?.phase).toBe("live");
+      expect(store.state().streams.get(routingsScope(ORG))?.phase).toBe("refused");
+      expect(routingPosts(fixture)).toBe(1);
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+
+  it.effect("a project a surface shows is read through its own listing, once per demand", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const base = answers(() => []);
+      const path = `/project/${PROBE_PROJECT_ID}/public-http-routing`;
+      const fixture = fixtureWire((request) =>
+        request.path === ROUTING_SEARCH
+          ? Effect.fail(classifyHttp(403))
+          : request.path === path
+            ? Effect.succeed({
+                status: 200,
+                body: {
+                  list: [
+                    {
+                      id: "r1",
+                      isSynced: true,
+                      sslEnabled: true,
+                      domains: [{ domainName: "shop.example.com" }],
+                      locations: [{ path: "/", port: 80, serviceStackId: "s1" }],
+                    },
+                  ],
+                },
+              })
+            : base(request),
+      );
+      const { fiber, link } = yield* runLink(store, fixture);
+      const reads = () => fixture.requests.filter((request) => request.path === path).length;
+      expect(reads()).toBe(0);
+      const release = link.demandDetail({
+        family: "publicRouting",
+        listing: "projectRoutings",
+        ownerId: PROBE_PROJECT_ID,
+      });
+      yield* settle;
+      expect(reads()).toBe(1);
+      const scope = projectRoutingsScope(ORG, PROBE_PROJECT_ID);
+      expect(store.state().streams.get(scope)?.phase).toBe("live");
+      expect(store.state().memberships.get(scope)?.members.get("r1")).toBe("member");
+      // Held, it is not read again while the link stays.
+      yield* TestClock.adjust(120_000);
+      yield* settle;
+      expect(reads()).toBe(1);
+      release();
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+});
+
+describe("recorded routing membership frames", () => {
+  it.effect.each([
+    { name: "delete without add", data: { delete: [REMOVED_ROUTING] }, expected: "removed" },
+    {
+      name: "delete with empty add",
+      data: { add: [], delete: [REMOVED_ROUTING] },
+      expected: "removed",
+    },
+  ])("$name", ({ data, expected }) =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const base = answers(() => []);
+      const fixture = fixtureWire((request) =>
+        request.path === "/public-http-routing/search" &&
+        request.body?.wsOutputType === "listStream"
+          ? Effect.succeed({ items: [{ ...RECORDED_ROUTING, id: REMOVED_ROUTING }] })
+          : base(request),
+      );
+      const fiber = yield* run(store, fixture);
+      yield* fixture.push(fixture.subscription("/public-http-routing/search", "listStream"), data);
+      yield* settle;
+      expect(store.state().memberships.get(routingsScope(ORG))?.members.get(REMOVED_ROUTING)).toBe(
+        expected,
+      );
+      expect([...indexOf(store.state(), "routingProject", ROUTING_PROJECT)]).toEqual([]);
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+
+  it.effect.each(["read", "push-first", "push-during-read", "listed-row"] as const)(
+    "id-only add resolved by %s",
+    (source) =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const resolved = yield* Deferred.make<void>();
+        const base = answers(() => []);
+        const fixture = fixtureWire((request) =>
+          request.path === "/public-http-routing/search" && !request.body?.wsOutputType
+            ? Effect.as(Deferred.await(resolved), { items: [RECORDED_ROUTING] })
+            : base(request),
+        );
+        const fiber = yield* run(store, fixture);
+        const push = fixture.push(
+          fixture.subscription("/public-http-routing/search", "updateStream"),
+          { update: [RECORDED_ROUTING] },
+        );
+        if (source === "push-first") {
+          yield* push;
+          yield* settle;
+        }
+        yield* fixture.push(fixture.subscription("/public-http-routing/search", "listStream"), {
+          add: [RECORDED_ROUTING.id],
+          ...(source === "listed-row" ? { update: [RECORDED_ROUTING] } : {}),
+        });
+        yield* settle;
+        expect(
+          store.state().memberships.get(routingsScope(ORG))?.members.get(RECORDED_ROUTING.id),
+        ).toBe("member");
+        if (source !== "push-first" && source !== "listed-row") {
+          expect(factOf(store.state(), "publicRouting", RECORDED_ROUTING.id)).toBeUndefined();
+          expect([...indexOf(store.state(), "routingProject", ROUTING_PROJECT)]).toEqual([]);
+          expect(fixture.requests.at(-1)?.body?.search).toContainEqual({
+            name: "id",
+            operator: "in",
+            value: [RECORDED_ROUTING.id],
+          });
+          if (source === "push-during-read") yield* push;
+          else yield* Deferred.succeed(resolved, undefined);
+          yield* settle;
+        }
+        expect([...indexOf(store.state(), "routingProject", ROUTING_PROJECT)]).toEqual([
+          RECORDED_ROUTING.id,
+        ]);
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
+});
+
+describe("project routing subscriptions after organization refusal", () => {
+  const path = "/public-http-routing/search";
+  const readPath = `/project/${ROUTING_PROJECT}/public-http-routing`;
+  const demand = {
+    family: "publicRouting",
+    listing: "projectRoutings",
+    ownerId: ROUTING_PROJECT,
+  } as const;
+
+  it.effect.each([
+    { name: "project pair allowed", refusal: 0 },
+    { name: "project pair refused with 401", refusal: 401 },
+    { name: "project pair refused with 403", refusal: 403 },
+  ])("$name stays current through the recorded disable/enable", ({ refusal }) =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const base = answers(
+        () => [],
+        () => [{ ...PROBE_PROJECT, id: ROUTING_PROJECT }],
+      );
+      let routings = [RECORDED_ROUTING];
+      const fixture = fixtureWire((request) => {
+        if (request.path === path) {
+          const project = searched(request).some(
+            (term) => term.name === "projectId" && term.value === ROUTING_PROJECT,
+          );
+          if (!project || refusal) return Effect.fail(classifyHttp(project ? refusal : 403));
+          return Effect.succeed(
+            request.body?.wsOutputType === "updateStream" ? {} : { items: routings },
+          );
+        }
+        if (request.path === readPath)
+          return Effect.succeed({ status: 200, body: { list: routings } });
+        if (request.path === "/service-stack/search" && request.body?.wsOutputType === "listStream")
+          return Effect.succeed({ items: [RECORDED_SERVICE] });
+        return base(request);
+      });
+      const { fiber, link } = yield* runLink(store, fixture);
+      const scope = projectRoutingsScope(ORG, ROUTING_PROJECT);
+      const reads = () => fixture.requests.filter((request) => request.path === readPath).length;
+      const registrations = () =>
+        fixture.requests.filter(
+          (request) =>
+            request.path === path && searched(request).some((term) => term.name === "projectId"),
+        );
+      expect(reads()).toBe(0);
+      const release = link.demandDetail(demand);
+      yield* settle;
+      expect(registrations()).toHaveLength(refusal ? 1 : 2);
+      expect(reads()).toBe(refusal ? 1 : 0);
+      expect(store.state().memberships.get(scope)?.members.get(RECORDED_ROUTING.id)).toBe("member");
+      routings = [];
+      if (!refusal)
+        yield* fixture.push(fixture.subscription(path, "listStream"), {
+          delete: [RECORDED_ROUTING.id],
+        });
+      yield* fixture.push(fixture.subscription("/service-stack/search", "updateStream"), {
+        update: [{ ...RECORDED_SERVICE, subdomainAccess: false, _version: 46 }],
+      });
+      yield* settle;
+      expect(store.state().memberships.get(scope)?.members.get(RECORDED_ROUTING.id)).toBe(
+        "removed",
+      );
+      expect(reads()).toBe(refusal ? 2 : 0);
+      routings = [RECORDED_ROUTING];
+      if (!refusal)
+        yield* fixture.push(fixture.subscription(path, "listStream"), {
+          add: [RECORDED_ROUTING.id],
+        });
+      // The routing process ends before the service's on push.
+      const process = {
+        id: "routing-process",
+        projectId: ROUTING_PROJECT,
+        serviceStackId: RECORDED_SERVICE.id,
+        created: "2026-10-06T00:00:00Z",
+        status: "FINISHED",
+        actionName: "stack.enableSubdomainAccess",
+        _version: 2,
+      };
+      yield* fixture.push(fixture.subscription(PROCESS_SEARCH, "updateStream"), {
+        update: [process],
+      });
+      yield* settle;
+      expect(store.state().memberships.get(scope)?.members.get(RECORDED_ROUTING.id)).toBe("member");
+      const readCount = reads();
+      // Duplicates, unrelated work, stale service rows and elapsed time are not invalidations.
+      yield* fixture.push(fixture.subscription(PROCESS_SEARCH, "updateStream"), {
+        update: [process, { ...process, id: "unrelated", actionName: "stack.build" }],
+      });
+      yield* fixture.push(fixture.subscription("/service-stack/search", "updateStream"), {
+        update: [RECORDED_SERVICE],
+      });
+      yield* TestClock.adjust(120_000);
+      yield* settle;
+      expect(reads()).toBe(readCount);
+      expect(registrations()).toHaveLength(refusal ? 1 : 2);
+      release();
+      yield* settle;
+      yield* fixture.push(fixture.subscription("/service-stack/search", "updateStream"), {
+        update: [{ ...RECORDED_SERVICE, _version: 47 }],
+      });
+      yield* settle;
+      expect(reads()).toBe(readCount);
+      link.demandDetail(demand);
+      yield* settle;
+      expect(registrations()).toHaveLength(refusal ? 1 : 4);
+      expect(reads()).toBe(refusal ? readCount + 1 : 0);
+      yield* fixture.drop({ outcome: "transient", message: "socket closed" });
+      yield* settle;
+      const stream = store.state().streams.get(linkKeys.zerops(ORG));
+      yield* TestClock.adjust(
+        stream?.next.kind === "retry" ? Math.max(0, stream.next.at - 120_000) : 0,
+      );
+      yield* settle;
+      expect(fixture.opens()).toBe(2);
+      expect(registrations()).toHaveLength(refusal ? 1 : 6);
+      expect(reads()).toBe(refusal ? readCount + 2 : 0);
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+});
+
+describe("routing fallback refresh races", () => {
+  it.effect.each([403, 404])(
+    "a refused project GET (%s) stays refused after owner pushes",
+    (status) =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const base = answers(() => []);
+        const fixture = fixtureWire((request) =>
+          request.path === "/public-http-routing/search"
+            ? Effect.fail(classifyHttp(403))
+            : request.method === "GET"
+              ? Effect.succeed({ status, body: {} })
+              : base(request),
+        );
+        const { fiber, link } = yield* runLink(store, fixture);
+        link.demandDetail({
+          family: "publicRouting",
+          listing: "projectRoutings",
+          ownerId: ROUTING_PROJECT,
+        });
+        yield* settle;
+        expect(store.state().streams.get(projectRoutingsScope(ORG, ROUTING_PROJECT))?.phase).toBe(
+          "refused",
+        );
+        yield* fixture.push(fixture.subscription("/service-stack/search", "updateStream"), {
+          update: [RECORDED_SERVICE],
+        });
+        yield* TestClock.adjust(120_000);
+        yield* settle;
+        expect(fixture.requests.filter((request) => request.method === "GET")).toHaveLength(1);
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
+
+  it.effect.each([false, true])(
+    "a service push racing the fallback read is not lost (partial=%s)",
+    (partial) =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const first = yield* Deferred.make<void>();
+        const base = answers(() => []);
+        let reads = 0;
+        const fixture = fixtureWire((request) => {
+          if (request.path === "/public-http-routing/search") return Effect.fail(classifyHttp(403));
+          if (request.method === "GET") {
+            reads += 1;
+            return reads === 1
+              ? Effect.as(Deferred.await(first), {
+                  status: 200,
+                  body: { list: partial ? [{ id: RECORDED_ROUTING.id }] : [] },
+                })
+              : Effect.succeed({ status: 200, body: { list: [RECORDED_ROUTING] } });
+          }
+          return base(request);
+        });
+        const { fiber, link } = yield* runLink(store, fixture);
+        link.demandDetail({
+          family: "publicRouting",
+          listing: "projectRoutings",
+          ownerId: ROUTING_PROJECT,
+        });
+        yield* settle;
+        yield* fixture.push(fixture.subscription("/service-stack/search", "updateStream"), {
+          update: [RECORDED_SERVICE],
+        });
+        yield* settle;
+        expect(reads).toBe(1);
+        yield* Deferred.succeed(first, undefined);
+        yield* settle;
+        expect(reads).toBe(2);
+        expect(
+          store
+            .state()
+            .memberships.get(projectRoutingsScope(ORG, ROUTING_PROJECT))
+            ?.members.get(RECORDED_ROUTING.id),
+        ).toBe("member");
+        yield* Fiber.interrupt(fiber);
+      }),
   );
 });

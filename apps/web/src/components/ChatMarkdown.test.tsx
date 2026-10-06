@@ -9,13 +9,15 @@ import * as settingsModule from "../hooks/useSettings";
 import { getSyntaxHighlighterPromise } from "../lib/syntaxHighlighting";
 import { Button } from "./ui/button";
 import { AppLinkContext, ServiceBrowserScope } from "./ServiceBrowserLink";
-import {
-  ZeropsProjectFlowContext,
-  type ZeropsProjectFlowValue,
-} from "../zerops/projectFlowContext";
 import { setMarkdownTaskChecked } from "./files/filePreviewMode";
 
 vi.mock("@effect/atom-react", () => ({ useAtomValue: () => null }));
+/** The organization's official HQ as a change chip reads it; none until a test names one. */
+const official = vi.hoisted(() => ({ hqAddress: undefined as string | undefined }));
+vi.mock("../zerops/projectFlows", () => ({
+  useHqAddress: () => official.hqAddress,
+  useAppsChanges: () => ({ hqAddress: official.hqAddress, changes: new Map() }),
+}));
 vi.mock("../hooks/useTheme", () => ({ useTheme: () => ({ resolvedTheme: "dark" }) }));
 vi.mock("../hooks/useSettings", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../hooks/useSettings")>();
@@ -898,7 +900,6 @@ describe("ChatMarkdown links read as part of the sentence", () => {
 
 describe("ChatMarkdown links to a change of the person's group", () => {
   const HQ = "https://hq-7c1d-8080.prg1.zerops.app";
-  const flow = { hqAddress: HQ, flows: new Map() } as unknown as ZeropsProjectFlowValue;
 
   it.each([
     {
@@ -910,14 +911,13 @@ describe("ChatMarkdown links to a change of the person's group", () => {
   ])("$name opens the change's review in the app, wearing the change's mark", async (link) => {
     const opened: string[] = [];
     const openChange = (href: string) => () => opened.push(href);
+    official.hqAddress = HQ;
     let renderer: ReactTestRenderer | undefined;
     await act(async () => {
       renderer = create(
-        <ZeropsProjectFlowContext.Provider value={flow}>
-          <AppLinkContext value={openChange}>
-            <ChatMarkdown cwd="/tmp/project" text={link.text} />
-          </AppLinkContext>
-        </ZeropsProjectFlowContext.Provider>,
+        <AppLinkContext value={openChange}>
+          <ChatMarkdown cwd="/tmp/project" text={link.text} />
+        </AppLinkContext>,
       );
     });
     const anchor = renderer!.root.find(
@@ -930,5 +930,6 @@ describe("ChatMarkdown links to a change of the person's group", () => {
     expect(preventDefault).toHaveBeenCalled();
     expect(opened).toHaveLength(1);
     await act(async () => renderer!.unmount());
+    official.hqAddress = undefined;
   });
 });

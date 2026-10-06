@@ -10,11 +10,9 @@ import { act, createElement as h, type ReactNode } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { closeAccountLifetime, openAccountLifetime } from "~/zerops/accountLifetime";
 import { awaitMateConversation, takeMateConversation } from "~/zerops/mateOpening";
 import { beginPress, forgetPress } from "~/zerops/matePress";
 import { useNewProjectBirths, type NewProjectBirth } from "~/zerops/newProjectBirth";
-import { rememberWriter } from "~/zerops/writerMemory";
 
 import { ComingBelow, comingSentenceOf, ZeropsMateComingPage } from "./ZeropsMateComingPage";
 import { NOT_SET_UP_LINE } from "./ZeropsProjectRow.logic";
@@ -481,12 +479,10 @@ describe("a Mate's own view while its link is made", () => {
 
 // The owner, 2026-09-30: "sometimes the text area still flashed because old one is gone sooner
 // than new one is in". A switch from a conversation to a Mate whose link is still being made
-// lands here: the footer its conversation will draw stands in its place, never nothing until the
-// conversation opens. Before the page knows the conversation it opens on, that is the composer's
-// room held — not a composer or a strip guessed from the menu's last chat, which in a crew Mate
-// whose chats run on different logins would flip under the person. A Mate coming up for the first
-// time holds its composer back for its stand-up, and one that cannot be opened has nothing to
-// write to.
+// lands here: the composer's room is held in its conversation's place, never nothing until the
+// conversation opens, and never a composer or a strip before who writes there is known. A Mate
+// coming up for the first time holds its composer back for its stand-up, and one that cannot be
+// opened has nothing to write to.
 describe("the footer in a Mate's own view", () => {
   const composer = () =>
     tree?.root.findAll((node) => typeof node.type === "string" && node.type === "textarea") ?? [];
@@ -495,12 +491,6 @@ describe("the footer in a Mate's own view", () => {
       (node) =>
         typeof node.type === "string" && node.props["data-composer-room-held"] !== undefined,
     ) ?? [];
-  const OLDER = { environmentId: ENV_QUINN, threadId: ThreadId.make("thread-older") };
-  beforeEach(() => openAccountLifetime("person-a"));
-  afterEach(() => {
-    closeAccountLifetime();
-    window.localStorage.clear();
-  });
 
   it.each([
     {
@@ -516,25 +506,11 @@ describe("the footer in a Mate's own view", () => {
       footer: "held",
     },
     {
-      case: "an existing Mate whose menu row's chat this browser remembers as the viewer's",
-      link: { key: KEY, environmentId: undefined, reachability: { kind: "reconnecting" } },
-      candidate: QUINN,
-      row: { writer: "you" },
-      footer: "held",
-    },
-    {
-      case: "an existing Mate whose menu row's chat this browser remembers as someone else's",
-      link: { key: KEY, environmentId: undefined, reachability: { kind: "reconnecting" } },
-      candidate: QUINN,
-      row: { writer: "someone" },
-      footer: "held",
-    },
-    {
-      case: "an existing Mate whose own conversation this browser remembers as the viewer's",
+      case: "an existing Mate whose conversation is known",
       link: { key: KEY, environmentId: ENV_QUINN, reachability: { kind: "ready", notice: null } },
       candidate: QUINN,
-      main: { writer: "you" },
-      footer: "composer",
+      threads: true,
+      footer: "held",
     },
     {
       case: "a Mate that cannot be opened",
@@ -556,28 +532,17 @@ describe("the footer in a Mate's own view", () => {
     case: string;
     link: MateLink;
     candidate: ZeropsCandidate;
-    row?: { readonly writer: "you" | "someone" };
-    main?: { readonly writer: "you" };
-    footer: "composer" | "held" | "none";
-  }>)("$case: $footer", ({ link, candidate, footer, ...remembered }) => {
+    threads?: true;
+    footer: "held" | "none";
+  }>)("$case: $footer", ({ link, candidate, footer, ...known }) => {
     app.link = link;
     app.listing = listingOf([candidate]);
-    if ("row" in remembered) {
-      app.told = { subject: "Earlier", threadKey: `${ENV_QUINN}:${OLDER.threadId}` };
-      rememberWriter(OLDER, remembered.row.writer);
-    }
-    if ("main" in remembered) {
-      app.threads = [MAIN];
-      rememberWriter({ environmentId: ENV_QUINN, threadId: MAIN.id }, remembered.main.writer);
-    }
+    if ("threads" in known) app.threads = [MAIN];
     openView();
 
-    expect(composer().length).toBe(footer === "composer" ? 1 : 0);
+    expect(composer().length).toBe(0);
     expect(roomHeld().length).toBe(footer === "held" ? 1 : 0);
     expect(said()).not.toContain("only they can run this agent");
-    if (footer === "composer") {
-      expect(composer()[0]?.props.placeholder).toBe("Describe what you want to build or change…");
-    }
   });
 });
 

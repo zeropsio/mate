@@ -19,17 +19,18 @@ type DeployObservation = Pick<
 
 /** The operation's next actor/action, shared by the answer and its durable service row. */
 export function deployFollowText(
-  job: Pick<HqDeployOutcome, "state" | "reason" | "evidence">,
+  job: Pick<HqDeployOutcome, "state" | "evidence">,
 ): string | undefined {
   const waiting = job.state === "submitting" && job.evidence?.phase === "waiting-for-build";
   if (!waiting && job.state !== "unresolved") return undefined;
-  const action = job.evidence?.nextAction.trim();
   const actor = job.evidence?.nextActor;
-  const next = action
-    ? `${actor === "hq" ? "HQ acts next" : actor === "person" ? "A person acts next" : "No next actor is assigned"}: ${action}`
-    : job.reason?.trim() ||
-      "A person must inspect the original handles in Zerops before asking Run again.";
-  return `${waiting ? "Waiting for Zerops to start the build." : "HQ could not follow this deploy to its end."} ${next}`;
+  const next =
+    actor === "hq"
+      ? "HQ is checking its status."
+      : actor === "none"
+        ? "Check it in Zerops."
+        : "Check it in Zerops, or run it again.";
+  return `${waiting ? "Waiting for Zerops to start the build." : "HQ lost track of this deploy."} ${next}`;
 }
 
 /** One job of the answer, said. */

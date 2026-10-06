@@ -15,7 +15,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useCallback } from "react";
 
 import { useRightPanelStore } from "../rightPanelStore";
-import { useZeropsProjectFlowOptional } from "./projectFlowContext";
+import { useHqAddress } from "./projectFlows";
 
 /**
  * `threadRef` is what decides where the change is drawn. Inside a conversation
@@ -27,7 +27,7 @@ export function useOpenZeropsChange(
   threadRef?: ScopedThreadRef | null,
 ): (href: string) => (() => void) | null {
   const navigate = useNavigate();
-  const hqAddress = useZeropsProjectFlowOptional()?.hqAddress;
+  const hqAddress = useHqAddress();
   return useCallback(
     (href) => {
       if (hqAddress === undefined) return null;

@@ -50,7 +50,13 @@ vi.mock("./accountOperations", async (importOriginal) => {
         store = makeAccountStore(registry);
         stores.set(registry, store);
       }
-      return actual.accountOperations(store, registry, useZeropsSession().client, () => () => {});
+      return actual.accountOperations(
+        store,
+        registry,
+        useZeropsSession().client,
+        () => () => {},
+        () => {},
+      );
     },
   };
 });

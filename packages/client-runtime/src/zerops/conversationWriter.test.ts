@@ -3,7 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   conversationFooter,
-  rememberableWriter,
+  hqConversationWriter,
   resolveConversationWriter,
   signInReadSettled,
   type ConversationWriter,
@@ -70,6 +70,12 @@ describe("resolveConversationWriter", () => {
     {
       name: "the conversation's instance not read yet is unknown",
       input: input({ instanceId: undefined, ownership: "none" }),
+      expected: "unknown",
+    },
+    {
+      // The environment's providers still loading: whose agent it is cannot be told yet.
+      name: "an instance the providers do not name yet is unknown, never yours",
+      input: input({ instanceId: "opencode", providers: [], ownership: "none" }),
       expected: "unknown",
     },
     {
@@ -145,115 +151,158 @@ describe("resolveConversationWriter", () => {
   });
 });
 
+describe("hqConversationWriter", () => {
+  const SIGNERS = { "claude-code": "u-ada", codex: "u-bob" } as const;
+  it.each<{
+    readonly name: string;
+    readonly input: Parameters<typeof hqConversationWriter>[0];
+    readonly expected: ConversationWriter["kind"];
+  }>([
+    {
+      name: "the viewer signed the spent agent in: yours",
+      input: {
+        instanceId: "claudeAgent",
+        providers: PROVIDERS,
+        signers: SIGNERS,
+        viewerSubject: "u-ada",
+      },
+      expected: "you",
+    },
+    {
+      name: "a colleague signed it in: someone's",
+      input: {
+        instanceId: "codex",
+        providers: PROVIDERS,
+        signers: SIGNERS,
+        viewerSubject: "u-ada",
+      },
+      expected: "someone",
+    },
+    {
+      name: "HQ names nobody for the spent agent: nobody's yet",
+      input: {
+        instanceId: "codex",
+        providers: PROVIDERS,
+        signers: { "claude-code": "u-ada" },
+        viewerSubject: "u-ada",
+      },
+      expected: "nobody-yet",
+    },
+    {
+      name: "HQ has not said: unknown",
+      input: {
+        instanceId: "claudeAgent",
+        providers: PROVIDERS,
+        signers: undefined,
+        viewerSubject: "u-ada",
+      },
+      expected: "unknown",
+    },
+    {
+      name: "the instance is not read yet: unknown",
+      input: {
+        instanceId: undefined,
+        providers: PROVIDERS,
+        signers: SIGNERS,
+        viewerSubject: "u-ada",
+      },
+      expected: "unknown",
+    },
+    {
+      name: "the viewer is not known yet: unknown",
+      input: {
+        instanceId: "claudeAgent",
+        providers: PROVIDERS,
+        signers: SIGNERS,
+        viewerSubject: undefined,
+      },
+      expected: "unknown",
+    },
+    {
+      // A second login of an agent has its own signer, which only the Mate knows.
+      name: "a login beyond the agent's own: unknown",
+      input: {
+        instanceId: "claudeAgent_work",
+        providers: [...PROVIDERS, { instanceId: "claudeAgent_work", driver: "claudeAgent" }],
+        signers: SIGNERS,
+        viewerSubject: "u-ada",
+      },
+      expected: "unknown",
+    },
+    {
+      name: "an agent Mate signs nobody in to: yours",
+      input: {
+        instanceId: "opencode",
+        providers: PROVIDERS,
+        signers: undefined,
+        viewerSubject: undefined,
+      },
+      expected: "you",
+    },
+    {
+      // The environment's providers still loading: whose agent it is cannot be told yet.
+      name: "an instance the providers do not name yet: unknown, never yours",
+      input: {
+        instanceId: "opencode",
+        providers: [],
+        signers: SIGNERS,
+        viewerSubject: "u-ada",
+      },
+      expected: "unknown",
+    },
+  ])("$name", ({ input, expected }) => {
+    expect(hqConversationWriter(input).kind).toBe(expected);
+  });
+});
+
 describe("conversationFooter", () => {
   const UNKNOWN: ConversationWriter = { kind: "unknown" };
   it.each<{
     readonly name: string;
-    readonly writer: ConversationWriter;
-    readonly remembered: ReturnType<typeof rememberableWriter>;
+    readonly mate: ConversationWriter;
+    readonly hq: ConversationWriter;
     readonly expected: ReturnType<typeof conversationFooter>;
   }>([
+    { name: "neither has said: the room held", mate: UNKNOWN, hq: UNKNOWN, expected: "held" },
     {
-      name: "unknown, nothing remembered: the room held",
-      writer: UNKNOWN,
-      remembered: undefined,
-      expected: "held",
-    },
-    {
-      name: "unknown, remembered yours: the composer",
-      writer: UNKNOWN,
-      remembered: "you",
+      name: "HQ says yours: the composer at once",
+      mate: UNKNOWN,
+      hq: { kind: "you" },
       expected: "composer",
     },
     {
-      name: "unknown, remembered someone's: the strip",
-      writer: UNKNOWN,
-      remembered: "someone",
+      name: "HQ says someone's: the strip at once",
+      mate: UNKNOWN,
+      hq: { kind: "someone" },
       expected: "read-only",
     },
     {
-      name: "unknown, remembered nobody's: the room held",
-      writer: UNKNOWN,
-      remembered: "nobody-yet",
-      expected: "held",
+      name: "HQ says nobody's yet: the composer, with its sign-in",
+      mate: UNKNOWN,
+      hq: { kind: "nobody-yet" },
+      expected: "composer",
     },
+    // The Mate's own sign-in is the authority: signed out meanwhile, it corrects HQ's word.
     {
-      name: "yours: the composer",
-      writer: { kind: "you" },
-      remembered: "someone",
+      name: "the Mate says yours over HQ's someone",
+      mate: { kind: "you" },
+      hq: { kind: "someone" },
       expected: "composer",
     },
     {
-      name: "someone's: the strip",
-      writer: { kind: "someone" },
-      remembered: "you",
+      name: "the Mate says someone's over HQ's yours",
+      mate: { kind: "someone" },
+      hq: { kind: "you" },
       expected: "read-only",
     },
     {
-      name: "nobody's yet: the composer, with its sign-in",
-      writer: { kind: "nobody-yet" },
-      remembered: undefined,
+      name: "the Mate says nobody's yet",
+      mate: { kind: "nobody-yet" },
+      hq: UNKNOWN,
       expected: "composer",
     },
-  ])("$name", ({ writer, remembered, expected }) => {
-    expect(conversationFooter(writer, remembered)).toBe(expected);
-  });
-
-  it("never offers a composer on an unknown answer it does not remember as the viewer's", () => {
-    for (const remembered of [undefined, "someone", "nobody-yet"] as const) {
-      expect(conversationFooter(UNKNOWN, remembered)).not.toBe("composer");
-    }
-  });
-});
-
-describe("rememberableWriter", () => {
-  const READ = known(snapshot([claude()]));
-  it.each<{
-    readonly name: string;
-    readonly writer: ConversationWriter;
-    readonly feed: ConversationWriterInput["feed"];
-    readonly expected: string | undefined;
-  }>([
-    {
-      name: "unknown leaves nothing",
-      writer: { kind: "unknown" },
-      feed: READ,
-      expected: undefined,
-    },
-    { name: "yours from a read snapshot", writer: { kind: "you" }, feed: READ, expected: "you" },
-    {
-      name: "someone's from a read snapshot",
-      writer: { kind: "someone" },
-      feed: READ,
-      expected: "someone",
-    },
-    {
-      name: "nobody's yet from a read snapshot",
-      writer: { kind: "nobody-yet" },
-      feed: READ,
-      expected: "nobody-yet",
-    },
-    {
-      // A transport failure is no answer: it must not overwrite the one remembered.
-      name: "nothing from a read that failed",
-      writer: { kind: "nobody-yet" },
-      feed: {
-        state: "failed",
-        failure: { kind: "transport", detail: "socket closed" },
-        atMs: 0,
-        attempt: 1,
-        retryAtMs: 1_000,
-      },
-      expected: undefined,
-    },
-    {
-      name: "nothing with no environment",
-      writer: { kind: "you" },
-      feed: undefined,
-      expected: undefined,
-    },
-  ])("$name", ({ writer, feed, expected }) => {
-    expect(rememberableWriter(writer, feed)).toBe(expected);
+  ])("$name", ({ mate, hq, expected }) => {
+    expect(conversationFooter(mate, hq)).toBe(expected);
   });
 });
 

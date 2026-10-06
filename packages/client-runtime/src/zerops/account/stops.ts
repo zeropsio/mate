@@ -1,8 +1,8 @@
 /**
  * What each stop's services run (DESIGN §4.7, D6), as surfaces read it: the stop's service listing
  * from the data runtime (services are not a family of the account's store yet), joined with the
- * store's word on its running work (`stopWork`) and on each version its services run
- * (`versionSource`). Nothing here holds a fact: a name outlives its build because the store keeps
+ * store's word on its running work (`stopWork`), on what each service's own row says it runs
+ * (`serviceRuns`) and on each version's source (`versionSource`). Nothing here holds a fact: a name outlives its build because the store keeps
  * the ended process, and a stop reads again whenever what it reads changes.
  *
  * What it does hold is demand. The services demand of each drawn stop: summary demand while a
@@ -20,11 +20,14 @@ import * as Fiber from "effect/Fiber";
 import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
 
 import { stopWork, type StopWork } from "../../data/projections/stopWork.ts";
+import {
+  serviceRuns,
+  type ZeropsServiceDeployedVersion,
+} from "../../data/projections/serviceRuns.ts";
 import { versionSource, type VersionSource } from "../../data/projections/versionSource.ts";
 import type { DetailDemand } from "../../data/demand.ts";
 import { accountReadsAtom, type AccountReads } from "../../data/reads.ts";
 import type { ManagedZeropsDataRuntime } from "../data/runtime.ts";
-import type { ZeropsServiceDeployedVersion } from "../data/deployedVersion.ts";
 import { projectKeyOf, serviceKeyOf, type ProjectRef, type ServiceRef } from "../data/types.ts";
 import {
   listedVersions,
@@ -41,8 +44,8 @@ export interface Stops {
   /** Shows the stop until the returned release; `detail` adds its project's topology. */
   readonly demand: (project: ProjectRef, scope?: "summary" | "detail") => () => void;
   /**
-   * What the service runs: the version it started, as its own row and variables say, with that
-   * version's source from the organization's active versions where its push left it unstated.
+   * What the service runs: its active version, as its own row says it and names it, with that
+   * version's source from the organization's active versions where the row left it unstated.
    */
   readonly version: (service: ServiceRef) => Atom.Atom<Shown<ZeropsServiceDeployedVersion>>;
   /**
@@ -123,6 +126,38 @@ export function makeStops(
       ? { kind: "unknown" }
       : get(account.data.project(versionSource, { orgId: account.orgId, versionId }));
 
+  /** What the service's own row says it runs, through the mounted account. */
+  const runsOf = (
+    get: Atom.AtomContext,
+    account: AccountReads | null,
+    service: ServiceRef,
+  ): Shown<ZeropsServiceDeployedVersion> => {
+    if (account === null || account.orgId === null) return UNREAD;
+    const runs = get(
+      account.data.project(serviceRuns, { orgId: account.orgId, serviceId: service.serviceId }),
+    );
+    if (runs === "unread") return UNREAD;
+    if (runs === "absent")
+      return {
+        state: "failed",
+        failure: {
+          kind: "refused",
+          code: "serviceStackNotFound",
+          words: "The service is not there.",
+        },
+        atMs: data.access.clock.currentTimeMillisUnsafe(),
+        attempt: 1,
+        retryAtMs: null,
+      };
+    return {
+      state: "known",
+      value: runs,
+      asOf: { ordinal: 0, atMs: 0 },
+      coverage: "complete",
+      freshness: { kind: "live" },
+    };
+  };
+
   const servicesAtom = Atom.family((key: string) =>
     Atom.make((get): Shown<ReadonlyArray<StopService>> => {
       const demanded = get(demandedAtom(key));
@@ -154,7 +189,7 @@ export function makeStops(
           stated: new Map(
             unnamedVersions(listing, work.names).map(({ service, versionId }) => [
               versionId,
-              get(data.reads.deployedVersion(service)),
+              runsOf(get, account, service),
             ]),
           ),
           detail: demanded.detail,
@@ -170,9 +205,9 @@ export function makeStops(
   const noServices: ReadonlyMap<string, { readonly service: ServiceRef; readonly holds: number }> =
     new Map();
   const heldServices = Atom.make({ services: noServices }).pipe(Atom.keepAlive);
-  /** The version a service started whose source its push left unstated; `null` for none. */
+  /** The version a service runs whose source its row left unstated; `null` for none. */
   const unstatedOf = (get: Atom.AtomContext, service: ServiceRef): string | null => {
-    const started = get(data.reads.deployedVersion(service));
+    const started = runsOf(get, get(accountReadsAtom), service);
     return started.state === "known" && started.value.source === null
       ? started.value.activeId
       : null;
@@ -181,10 +216,11 @@ export function makeStops(
     Atom.make((get): Shown<ZeropsServiceDeployedVersion> => {
       const service = asked.get(key);
       if (service === undefined) return UNREAD;
-      const started = get(data.reads.deployedVersion(service));
+      const account = get(accountReadsAtom);
+      const started = runsOf(get, account, service);
       const versionId = unstatedOf(get, service);
       if (started.state !== "known" || versionId === null) return started;
-      const source = sourceOf(get, get(accountReadsAtom), versionId);
+      const source = sourceOf(get, account, versionId);
       switch (source.kind) {
         case "known":
           return { ...started, value: { ...started.value, source: source.source } };

@@ -3,7 +3,7 @@ import type { EnvironmentId } from "@t3tools/contracts";
 
 import type { ContainerMachine } from "./containerMachine.ts";
 import type { EnvironmentMachine } from "./environmentMachine.ts";
-import type { TargetKey } from "./exchangeDriver.ts";
+import type { TargetKey } from "./exchange.ts";
 import { selectReachability, type Reachability } from "./reachability.ts";
 
 export interface DescriptorIndex {

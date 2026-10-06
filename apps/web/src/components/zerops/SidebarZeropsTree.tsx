@@ -75,7 +75,6 @@ import {
   type ListedStop,
   type MissingEnvironmentRow,
   missingEnvironmentRows,
-  type ZeropsOrganization,
   type StopComing,
   type ZeropsEnvironmentRole,
   type ZeropsEnvironmentServices,
@@ -88,7 +87,7 @@ import type { EnvironmentConnectionPresentation } from "@t3tools/client-runtime/
 import { useAtomValue } from "@effect/atom-react";
 import { shownHqPersonFactsAtom } from "@t3tools/client-runtime/data";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import { mateIsViewers, mateOwnerRecords } from "@t3tools/client-runtime/zerops/mateAccess";
+import { mateOwnerRecords } from "@t3tools/client-runtime/zerops/mateAccess";
 import { deployActivatedAt } from "@t3tools/client-runtime/zerops/flow";
 import type { KnownAffordance } from "@t3tools/client-runtime/zerops/knowledge";
 import type { CandidatesNotice } from "@t3tools/client-runtime/zerops/projections";
@@ -138,8 +137,9 @@ import {
   type ZeropsAgentActivity,
 } from "~/zerops/agentActivity";
 import { useBuildsUnderWay } from "~/zerops/ZeropsAccountData";
+import { HQ_LAST_KNOWN, type HqOutage } from "~/zerops/hqNavigation";
 import type { MateComing } from "~/zerops/mateComing";
-import { useZeropsProjectFlowOptional } from "~/zerops/projectFlowContext";
+import { useStopDeploymentsShown } from "~/zerops/projectFlows";
 import { useStopDeploymentDemand } from "~/zerops/accountForge";
 import { findInventoryProjectRef, InventoryContext } from "~/zerops/inventoryContext";
 import { useNowMs, useSecondsNowMs } from "~/zerops/useNowMs";
@@ -147,7 +147,7 @@ import { useMateLinkedInHq } from "~/zerops/useMenuMateReadings";
 import type { FixProblem } from "~/zerops/fixRequest";
 import { useOpenReview } from "~/zerops/review";
 import { useSentAsks } from "~/zerops/sentAsk";
-import { hqMatesAtom, hqPlacementsAtom, hqNavigationAtom } from "~/state/zerops";
+import { hqDown, hqMatesAtom, hqPlacementsAtom, hqNavigationAtom } from "~/state/zerops";
 import { useMateCrew } from "~/zerops/crew/useCrew";
 import { useCrewAccess } from "~/zerops/crew/useCrewAccess";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
@@ -157,7 +157,12 @@ import {
   rememberProjectsOnScreen,
   useProjectOrder,
 } from "~/zerops/projectOrderPreference";
-import type { ZeropsMateOwner } from "~/zerops/useZeropsMateOwners";
+import { useEnvironmentOffers } from "~/zerops/useAddEnvironment";
+import {
+  useHqProjectPeopleOf,
+  useWaitsOnViewer,
+  type ZeropsMateOwner,
+} from "~/zerops/useZeropsMateOwners";
 import { compactSidebarTimeLabel } from "../Sidebar.logic";
 import { SidebarCrewLine, type SidebarCrewRead } from "./crew/SidebarCrewLine";
 import { SidebarSelectedBand } from "./SidebarSelectedBand";
@@ -184,6 +189,7 @@ import {
 import { SidebarProductionChip } from "./SidebarProductionChip";
 import {
   buildingOf,
+  asLastKnown,
   chipDot,
   chipFace,
   drawnChip,
@@ -193,6 +199,7 @@ import {
   stageStopChip,
   STOP_DOT,
   stopServing,
+  type ChipView,
   type ReleasesAnswer,
   type ReleaseFailure,
   type StopServing,
@@ -318,6 +325,7 @@ function groupFlowReadsOf(flow: SidebarProjectFlow): GroupFlowReads {
       suggestion: flow.releaseTag ?? "",
       inFlight: flow.releaseInFlight,
       contents: flow.releaseContents ?? [],
+      summary: flow.releaseSummary,
       untold: flow.releaseUntold ?? [],
     },
   };
@@ -355,6 +363,7 @@ export interface SidebarProjectFlow {
    * What a release would carry, per production service: how many changes wait
    * for production, the count the production chip wears.
    */
+  readonly releaseSummary?: { readonly total: number; readonly atLeast: boolean } | undefined;
   readonly releaseContents?: ReadonlyArray<Moved> | undefined;
   /** Production's services whose commit cannot be told: nothing is said to wait on them. */
   readonly releaseUntold?: ReadonlyArray<string> | undefined;
@@ -451,17 +460,11 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
    */
   readonly getOwner?: ((candidate: T) => ZeropsMateOwner | undefined) | undefined;
   /**
-   * The project's flow, when the account has read it (`projectFlowContext`).
+   * The project's flow, when the menu has read it (`useProjectFlows`).
    * Absent — no HQ open, nothing read yet — the menu keeps its
    * shape and simply carries none of what the flow says: no change row.
    */
   readonly getFlow?: ((groupId: string) => SidebarProjectFlow | undefined) | undefined;
-  /**
-   * The organization the person is signed in to: whether *Add stage* and *Add production* are
-   * offered in a project's menu is `mayAddEnvironment`'s answer over it. Absent, they are never
-   * offered on a guess.
-   */
-  readonly organization?: ZeropsOrganization | null | undefined;
   readonly className?: string;
   /**
    * The listing is known and complete, and every row's presence is read
@@ -544,7 +547,6 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   getConversationsRead,
   getOwner,
   getFlow,
-  organization = null,
   complete,
   notice = null,
   reading = false,
@@ -558,6 +560,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   getCrew,
 }: SidebarZeropsTreeProps<T>) {
   const structureView = useAtomValue(hqNavigationAtom);
+  const hqStale = structureView.structure !== null && hqDown(structureView);
   // Whose each Mate is, as HQ says it (invariant 11).
   const personFacts = useAtomValue(shownHqPersonFactsAtom);
   const placements = useAtomValue(hqPlacementsAtom);
@@ -600,8 +603,10 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   // in step without either one owning the other. In *Custom* the headings
   // take a grip, and every heading's menu moves its project up or down.
   const projectOrder = useProjectOrder();
-  // Who is looking: only their own Mates wait on them (`mateIsViewers`).
-  const viewer = useZeropsSessionOptional()?.user?.id;
+  // Only the Mates HQ says wait on the viewer wait on them (`waitsOnViewer`).
+  const waitsOnViewer = useWaitsOnViewer();
+  // Whether *Add stage* and *Add production* stand in a project's menu: HQ's offer of each.
+  const environmentOffers = useEnvironmentOffers();
   const treeRef = useRef<HTMLElement>(null);
   const reorder = useProjectReorder(treeRef);
   // A Mate opened from elsewhere — Add landing on the new Mate, a link, a
@@ -789,8 +794,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   }, [activeProjectId]);
   // What each stop runs, read once per render and handed to `groupFlow`, so
   // the chip and the page never read two different answers for one project.
-  const projectFlows = useZeropsProjectFlowOptional();
-  const deployments = projectFlows?.deployments;
+  const deployments = useStopDeploymentsShown();
 
   // Until the rows below are drawn, the jump box finds nothing here.
   jumpIndex.current = EMPTY_JUMP_INDEX;
@@ -911,7 +915,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
           connected: mateAwake(item, hqMates),
           activity: getActivity?.(item),
           reviewWaits: mateReviewWaits(input.flow, item.project.id),
-          mine: mateIsViewers(item.project, viewer),
+          mine: waitsOnViewer(item.project.id),
           pose: matePoseOf(item, minuteMs, mateLifeOf(getComing?.(item))),
         }),
       );
@@ -1003,7 +1007,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
           entries,
           (item) => getActivity?.(item),
           () => false,
-          viewer,
+          waitsOnViewer,
         ),
         flow: flow === undefined ? undefined : groupFlowReadsOf(flow),
         deployments,
@@ -1057,12 +1061,17 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       stagesBeingCreated: projectFlow.creatingStages.length > 0,
       releases,
     });
-    const prodChip = group === undefined ? undefined : drawnChip(chipsRead.prod);
-    const stageChipDrawn = group === undefined ? undefined : drawnChip(chipsRead.stage);
+    // Where each stop is and how its releases went is HQ's word: while its link is paused, last known.
+    const shownChip = (view: ChipView) => {
+      const chip = drawnChip(view);
+      return chip !== undefined && hqStale ? asLastKnown(chip) : chip;
+    };
+    const prodChip = group === undefined ? undefined : shownChip(chipsRead.prod);
+    const stageChipDrawn = group === undefined ? undefined : shownChip(chipsRead.stage);
     // Each stage as a chip of its own says it: its dot and words in the jump
     // box, its row in the stages' menu.
     const stageChips = stages.map(({ stop, serving }) =>
-      drawnChip(stageStopChip({ stop, serving, releases })),
+      shownChip(stageStopChip({ stop, serving, releases })),
     );
     const stopDeployedAt = (projectId: string) => {
       const activated = deployActivatedAt(deployments?.get(projectId));
@@ -1191,7 +1200,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
               connected: mateAwake(item, hqMates),
               activity: live,
               reviewWaits: reviewWaits(item),
-              mine: mateIsViewers(item.project, viewer),
+              mine: waitsOnViewer(item.project.id),
               pose: matePoseOf(item, minuteMs, mateLifeOf(coming)),
             });
             const view = coming === undefined ? read : mateComingRowView(read, coming);
@@ -1405,7 +1414,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
                 {/* Its crew, one line right under it, before its changes — as HQ
                     holds it, at rest while HQ's answer is not now. */}
                 <SidebarCrewLine
-                  mine={mateIsViewers(item.project, viewer)}
+                  mine={waitsOnViewer(item.project.id)}
                   projectId={item.project.id}
                   read={getCrew?.(item)}
                 />
@@ -1531,7 +1540,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
             group={group}
             missing={missingEnvironmentRows({
               tiersOnMain: tiersAddable({
-                organization,
+                offered: environmentOffers(group.groupId),
                 group,
                 hq: [...(getFlow?.(group.groupId)?.environments.values() ?? [])].map((row) => ({
                   id: row.projectId,
@@ -1759,35 +1768,37 @@ function scrollingAncestor(element: HTMLElement | null): HTMLElement | null {
  * alert — the Mates' conversations go on without HQ.
  */
 /**
- * How current the menu is while HQ is not answering it (`hqOutageLine`, SPEC §6.2.3), in the
- * header row: a spinner while HQ is read again or its stream reconnects, "HQ unavailable" once it
- * does not answer — the whole line in its tooltip, and *Try again* on a press where it is offered.
- * Never a line above the list: the owner, 2026-10-05, of one that pushed the menu down and back on
- * every reconnect.
+ * How current the menu is while HQ is not answering it (`hqOutage`, SPEC §6.2.3), in the header
+ * row: a spinner while HQ's first read catches up; in words once what HQ said is no longer current
+ * ("HQ is not reachable — showing what it last said") or it never answered ("HQ unavailable") —
+ * the whole line in its tooltip, and *Try again* on a press where it is offered. Never a line above
+ * the list: the owner, 2026-10-05, of one that pushed the menu down and back on every reconnect.
  */
 export function SidebarHqStatus({
   kind,
   line,
   onAgain,
 }: {
-  readonly kind: "syncing" | "unavailable";
+  readonly kind: HqOutage["kind"];
   readonly line: string;
   readonly onAgain?: (() => void) | undefined;
 }) {
-  const again = kind === "unavailable" ? onAgain : undefined;
+  const again = kind === "syncing" ? undefined : onAgain;
+  // Words give way to the header's other members and wrap; the spinner keeps its size.
+  const fit = kind === "syncing" ? "shrink-0" : "min-w-0";
   return (
     <Tooltip>
       <TooltipTrigger
         render={
           again === undefined ? (
             <span
-              className="inline-flex shrink-0 items-center"
+              className={cn("inline-flex items-center", fit)}
               data-zerops-surface="sidebar-hq-outage"
               role="status"
             />
           ) : (
             <button
-              className="inline-flex shrink-0 cursor-pointer items-center"
+              className={cn("inline-flex cursor-pointer items-center", fit)}
               data-zerops-surface="sidebar-hq-outage"
               onClick={again}
               type="button"
@@ -1798,8 +1809,11 @@ export function SidebarHqStatus({
         {kind === "syncing" ? (
           <span aria-hidden="true" className="zerops-envdot" data-dot="spinner" />
         ) : (
-          <span aria-hidden="true" className="text-xs text-sidebar-muted-foreground">
-            HQ unavailable
+          <span
+            aria-hidden="true"
+            className="line-clamp-2 text-left text-xs leading-tight text-sidebar-muted-foreground"
+          >
+            {kind === "last-known" ? HQ_LAST_KNOWN : "HQ unavailable"}
           </span>
         )}
         <span className="sr-only">{again === undefined ? line : `${line} Try again.`}</span>
@@ -2525,12 +2539,14 @@ function MateRowView<T extends RosterCandidate>({
   // remembers the row saying. A Mate still coming up says only that
   // (`mateComingRowView`).
   const viewer = useZeropsSessionOptional()?.user?.id;
+  const waitsOnViewer = useWaitsOnViewer();
+  const hqPeopleOf = useHqProjectPeopleOf();
   const nowMs = useNowMs();
   const read = mateRowReading({
     connected: up,
     activity,
     reviewWaits,
-    mine: mateIsViewers(candidate.project, viewer),
+    mine: waitsOnViewer(candidate.project.id),
     // Waking while it comes up and arrives (`mateFaceFor`).
     pose: matePoseOf(candidate, nowMs, deleting ? "deleting" : mateLifeOf(coming)),
   });
@@ -2549,11 +2565,15 @@ function MateRowView<T extends RosterCandidate>({
   useEffect(() => drawn?.(), [drawn]);
   // Whose seat it is, and whether anybody has signed its agent in — read off
   // its own records, so from the first paint (`mateOwnerView`).
-  const records = mateOwnerRecords(candidate.project);
+  const hqPeople = hqPeopleOf(candidate.project.id);
+  const records = mateOwnerRecords(candidate.project, hqPeople?.owned);
+  const signers = hqPeople?.everSignedIn;
   const seated = mateOwnerView({
     owner,
     records,
     asked: view.ask !== undefined,
+    hqSigners:
+      signers === undefined ? undefined : Object.keys(signers).length > 0 ? "some" : "none",
     standUpBy: tags.standUp?.by,
     madeBy: tags.madeBy,
     viewer,
@@ -3485,6 +3505,7 @@ const COMING_SEAT: BadgeSeat | null = ownerBadge(
     owner: undefined,
     records: { named: false, signedIn: false },
     asked: true,
+    hqSigners: "none",
   }).seat,
   false,
 );

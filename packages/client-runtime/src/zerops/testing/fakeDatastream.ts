@@ -44,15 +44,8 @@ const failure = (kind: "forbidden" | "not-found", message: string): AdapterError
 
 const forbidden = failure("forbidden", "Zerops rejected the request (forbidden).");
 
-/** What the platform's searches of the entity table's kinds answer, by organization. */
-export interface FakeTableRows {
-  /** `POST /user-data/search` rows: `{ id, serviceStackId, key, content }`. */
-  readonly variables?: (clientId: string) => ReadonlyArray<unknown>;
-}
-
 export function makeFakeDatastream(
   platform: Pick<FakeZeropsRest, "project" | "projectsOf" | "memberOf">,
-  tables: FakeTableRows = {},
 ): FakeDatastream {
   const registrations: RegistrationRequest[] = [];
   let held: Promise<void> | null = null;
@@ -72,13 +65,11 @@ export function makeFakeDatastream(
       register: (receiver, request) => {
         const descriptor = request.descriptor;
         const organization =
-          descriptor.kind === "entity-updates" || descriptor.kind === "table-updates"
+          descriptor.kind === "entity-updates"
             ? descriptor.organization
-            : descriptor.kind === "table-list"
+            : descriptor.query.kind === "projects-of-organization"
               ? descriptor.query.organization
-              : descriptor.query.kind === "projects-of-organization"
-                ? descriptor.query.organization
-                : receiver.organization;
+              : receiver.organization;
         if (!admits(receiver.organization, organization.organizationId))
           return Effect.fail(forbidden);
         return Effect.promise(() => {
@@ -86,18 +77,12 @@ export function makeFakeDatastream(
           return held ?? Promise.resolve();
         }).pipe(
           Effect.map(() => {
-            if (
-              request.descriptor.kind === "entity-updates" ||
-              request.descriptor.kind === "table-updates"
-            )
-              return { responseObservations: [] };
+            if (request.descriptor.kind === "entity-updates") return { responseObservations: [] };
             const query = request.descriptor.query;
             const modelled =
               query.kind === "projects-of-organization"
                 ? platform.projectsOf(query.organization.organizationId)
-                : query.kind === "service-variables-of-services"
-                  ? (tables.variables?.(query.organization.organizationId) ?? [])
-                  : null;
+                : null;
             // A search this platform models answers with its total, so its list is complete; one
             // it does not (services, processes) answers no total, and says nothing of absence.
             return {

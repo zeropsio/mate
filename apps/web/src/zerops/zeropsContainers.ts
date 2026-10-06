@@ -10,13 +10,13 @@ import {
   containerVerdict,
   environmentTarget,
   targetProject,
-  type ContainerMachine,
   type ContainerSnapshot,
   type ContainerVerdict,
   type IntentRequest,
   type ProbeReading,
   type TargetKey,
 } from "@t3tools/client-runtime/zerops/environments";
+import type { MateLinkValue } from "@t3tools/client-runtime/data";
 import type { HqMates } from "@t3tools/client-runtime/zerops/hq";
 import type { EnvironmentId } from "@t3tools/contracts";
 import type { MateLiveView } from "@t3tools/shared/hqMates";
@@ -26,8 +26,8 @@ import { hqMatesAtom } from "~/state/zerops";
 import {
   accountEnvironmentsReady,
   currentAccountEnvironments,
-  useContainerMachines,
   useEnvironmentMachines,
+  useMateLinkValues,
 } from "./accountEnvironments";
 
 /**
@@ -55,59 +55,57 @@ export async function nextContainerReading(origin: string): Promise<ProbeReading
 export interface TargetContainer {
   readonly key: TargetKey | null;
   readonly verdict: ContainerVerdict;
-  /** The server version its Mate runs (`serverVersionOf`); undefined while nothing says. */
+  /** The server version its Mate runs (`mateServerVersion`); undefined while nothing says. */
   readonly serverVersion: string | undefined;
 }
 
 const UNKNOWN: ContainerVerdict = { level: "unknown" };
 
+/** A Mate as the account's store holds it: its container, and whether it is read itself now. */
+export type MateReading = Pick<MateLinkValue, "container" | "watched">;
+
 /**
- * The server version a target's Mate runs, by the newer of two facts: HQ's overview identity, true
- * from when its presence last moved, and the last read that found it answering, true when it was
- * sent. A Mate HQ holds online is never read, so HQ's word stands for it; a read sent since — the
- * route's Mate, a restart of ours coming back before HQ hears it — outranks a word not updated yet.
+ * The server version a target's Mate runs: its own answer while something reads it — the route's
+ * Mate, a restart of ours coming back before HQ hears it — else HQ's overview identity, else the
+ * last answer it gave here. No clock decides between them.
  */
-export function serverVersionOf(
-  machine: ContainerMachine | undefined,
+export function mateServerVersion(
+  link: MateReading | undefined,
   mate: MateLiveView | undefined,
 ): string | undefined {
-  const probed = machine?.reading;
-  const read =
-    probed?.reading.kind === "ready"
-      ? { version: probed.reading.descriptor.serverVersion, sentAt: probed.sentAt.wall }
-      : null;
-  if (mate?.identity === undefined) return read?.version;
-  return read !== null && read.sentAt > Date.parse(mate.presence.since)
-    ? read.version
-    : mate.identity.serverVersion;
+  const probed = link?.container.reading?.reading;
+  const own = probed?.kind === "ready" ? probed.descriptor.serverVersion : undefined;
+  if (link?.watched === true && own !== undefined) return own;
+  return mate?.identity?.serverVersion ?? own;
 }
 
-/** Every Mate container in the rows' words, each server version as `serverVersionOf` reads it. */
+/** Every Mate container in the rows' words, each server version as `mateServerVersion` reads it. */
 export function containerSnapshotWithHq(
-  machines: ReadonlyMap<TargetKey, ContainerMachine>,
+  links: ReadonlyMap<TargetKey, MateReading>,
   mates: HqMates | null | undefined,
 ): ContainerSnapshot {
   const serverVersions = new Map<TargetKey, string>();
-  for (const [key, machine] of machines) {
-    const version = serverVersionOf(machine, mates?.get(targetProject(key)));
+  for (const [key, link] of links) {
+    const version = mateServerVersion(link, mates?.get(targetProject(key)));
     if (version !== undefined) serverVersions.set(key, version);
   }
+  const machines = new Map([...links].map(([key, link]) => [key, link.container] as const));
   return { ...containerSnapshotOf(machines), serverVersions };
 }
 
-/** One target's container as the container store holds it now. */
+/** One target's container as the account's store holds it now. */
 export function useTargetContainer(key: TargetKey | null): TargetContainer {
-  const machines = useContainerMachines();
+  const links = useMateLinkValues();
   const mates = useAtomValue(hqMatesAtom)?.mates;
-  const machine = key === null ? undefined : machines.get(key);
+  const link = key === null ? undefined : links.get(key);
   const mate = key === null ? undefined : mates?.get(targetProject(key));
   return useMemo(
     () => ({
       key,
-      verdict: machine === undefined ? UNKNOWN : containerVerdict(machine),
-      serverVersion: serverVersionOf(machine, mate),
+      verdict: link === undefined ? UNKNOWN : containerVerdict(link.container),
+      serverVersion: mateServerVersion(link, mate),
     }),
-    [key, machine, mate],
+    [key, link, mate],
   );
 }
 
@@ -117,9 +115,9 @@ export function useEnvironmentContainer(environmentId: EnvironmentId): TargetCon
   return useTargetContainer(environmentTarget(environments, environmentId)?.key ?? null);
 }
 
-/** Every Mate container of the account, as the container store holds it now. */
+/** Every Mate container of the account, as the account's store holds it now. */
 export function useZeropsContainers(): ContainerSnapshot {
-  const machines = useContainerMachines();
+  const links = useMateLinkValues();
   const mates = useAtomValue(hqMatesAtom)?.mates;
-  return useMemo(() => containerSnapshotWithHq(machines, mates), [machines, mates]);
+  return useMemo(() => containerSnapshotWithHq(links, mates), [links, mates]);
 }

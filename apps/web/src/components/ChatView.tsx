@@ -193,7 +193,7 @@ import { ZeropsPanel } from "./zerops/ZeropsPanel";
 import { ZeropsLifecycleStrip } from "./zerops/ZeropsLifecycleStrip";
 import { ZeropsReadOnlyConversationFooter } from "./zerops/ZeropsReadOnlyConversationFooter";
 import { ComposerRoomHeld } from "./chat/ComposerStandIn";
-import { rememberedWriter, rememberWriter } from "../zerops/writerMemory";
+import { useHqSigners } from "../zerops/useHqSigners";
 import { CrewLeadPlan } from "./zerops/crew/CrewLeadPlan";
 import { type CrewTimeline } from "./zerops/crew/CrewTaskCard";
 import { crewCardOrigin } from "./zerops/crew/CrewTaskCard.logic";
@@ -228,7 +228,7 @@ import {
 import { resolveSpentLogin, spentLoginStatusStale } from "@t3tools/client-runtime/zerops/logins";
 import {
   conversationFooter,
-  rememberableWriter,
+  hqConversationWriter,
   resolveConversationWriter,
 } from "@t3tools/client-runtime/zerops/conversationWriter";
 import {
@@ -366,7 +366,6 @@ import { resolveAgentAuthorizer } from "~/zerops/agentSigner";
 import { mateArrivalHoldsComposer } from "~/zerops/mateStandUp";
 import { useMateStandUp } from "~/zerops/useMateStandUp";
 import { useSentAsks } from "~/zerops/sentAsk";
-import { takeHandedOverCaret } from "~/zerops/mateHandOver";
 import { useZeropsAgentSignInDialog } from "~/zerops/useZeropsAgentSignInDialog";
 import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
@@ -3925,9 +3924,9 @@ export default function ChatView(props: ChatViewProps) {
       }),
     [zeropsAgentOwnership, zeropsOwnedAgent],
   );
-  // Who writes here, unknown until the sign-in, the conversation's instance and the viewer are
-  // read: meanwhile the footer paints what this browser last knew of this Mate, else holds the
-  // composer's room — never a composer it may take back (`conversationFooter`).
+  // Who writes here: the Mate's own sign-in once read; before it, HQ's word of who signed the
+  // spent agent in paints at once; while neither has said, the composer's room is held — never a
+  // composer it may take back (`conversationFooter`).
   const zeropsWriter = resolveConversationWriter({
     feed: zeropsAgentAuthRead,
     instanceId: activeProviderInstanceId ?? activeThread?.modelSelection.instanceId,
@@ -3935,9 +3934,16 @@ export default function ChatView(props: ChatViewProps) {
     viewerSubject: zeropsViewerSubject,
     ownership: zeropsAgentOwnership,
   });
-  // Remembered by the conversation: another chat of the same Mate runs on its own login.
-  const zeropsFooter = conversationFooter(zeropsWriter, rememberedWriter(routeThreadRef));
-  // Someone else's strip; painted from memory it offers no sign-in and names no owner until read.
+  const zeropsHqSigners = useHqSigners(activeThreadEnvironmentId ?? null);
+  const zeropsHqWriter = hqConversationWriter({
+    instanceId: activeProviderInstanceId ?? activeThread?.modelSelection.instanceId,
+    providers: providerStatuses,
+    signers: zeropsHqSigners,
+    viewerSubject: zeropsViewerSubject,
+  });
+  const zeropsFooter = conversationFooter(zeropsWriter, zeropsHqWriter);
+  // Someone else's strip; painted from HQ's word it offers no sign-in and names no owner until
+  // the Mate's own sign-in is read.
   const zeropsReadOnlyStrip = zeropsReadOnlyFooter({
     footer: zeropsFooter,
     readOnly: zeropsReadOnly,
@@ -3948,10 +3954,6 @@ export default function ChatView(props: ChatViewProps) {
     zeropsFooter === "held" ? (store.getComposerDraft(composerDraftTarget)?.prompt ?? "") : "",
   );
   const zeropsWriterKind = zeropsWriter.kind;
-  const zeropsKnownWriter = rememberableWriter(zeropsWriter, zeropsAgentAuthRead);
-  useEffect(() => {
-    if (zeropsKnownWriter !== undefined) rememberWriter(routeThreadRef, zeropsKnownWriter);
-  }, [routeThreadRef, zeropsKnownWriter]);
   // On a started thread the selection stays locked to the agent the session
   // began with even when it is not runnable (the picker offers sign-in
   // there); Send is disabled with that agent's own reason instead — see
@@ -4729,18 +4731,13 @@ export default function ChatView(props: ChatViewProps) {
       const active = document.activeElement;
       const focusElsewhere = active !== null && active !== document.body;
       if (!composerOpenFocus({ composerShown, late, focusElsewhere })) return;
-      // Handed over from its Mate's own view, what was typed there is the
-      // draft: the caret stays where the person left it.
-      const caret = takeHandedOverCaret(routeThreadKey, Date.now());
-      if (caret === null) focusComposer();
-      else composerRef.current?.focusAt(caret);
+      focusComposer();
     });
     return () => {
       window.cancelAnimationFrame(frame);
     };
   }, [
     activeThread?.id,
-    composerRef,
     composerShown,
     focusComposer,
     routeThreadKey,

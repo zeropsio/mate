@@ -15,6 +15,7 @@ import {
   repairZeropsSession,
   accountReadsAtom,
   type AccountObservation,
+  type AccountStore,
   type ProjectServices,
   type AccountReads,
   type BuildLogRegistry,
@@ -57,6 +58,12 @@ export interface AccountData extends AccountReads {
 /** The mounted account's data; a test mounts its own account's here. */
 export const AccountDataContext = createContext<AccountData | null>(null);
 
+/**
+ * The account's store, for the hosts that run its adapters (`ZeropsDataProvider`'s Mate adapter):
+ * never a screen's — screens read projections.
+ */
+export const AccountStoreContext = createContext<AccountStore | null>(null);
+
 export function ZeropsAccountData({ children }: { readonly children: ReactNode }) {
   const { client, status, activeOrganization } = useZeropsSession();
   const registry = useContext(RegistryContext);
@@ -85,6 +92,7 @@ export function ZeropsAccountData({ children }: { readonly children: ReactNode }
       data: store.data,
       orgId,
       demandDetail: observation.demandDetail,
+      renewHeld: observation.renewHeld,
       readDetail: observation.readDetail,
       revalidate: observation.revalidate,
       retryDetail: observation.retryDetail,
@@ -102,7 +110,8 @@ export function ZeropsAccountData({ children }: { readonly children: ReactNode }
   useMateResultsSeen(orgId, observation.seen);
   // The operations are built here, over the store this mount owns: no screen reaches its writer.
   const operations = useMemo(
-    () => accountOperations(store, registry, client, observation.demandDetail),
+    () =>
+      accountOperations(store, registry, client, observation.demandDetail, observation.revalidate),
     [client, observation, registry, store],
   );
   // The account's reads move to each new value as it comes, never unset between: a moment without
@@ -117,9 +126,11 @@ export function ZeropsAccountData({ children }: { readonly children: ReactNode }
     [observation, registry],
   );
   return (
-    <AccountDataContext value={value}>
-      <AccountOperationsContext value={operations}>{children}</AccountOperationsContext>
-    </AccountDataContext>
+    <AccountStoreContext value={store}>
+      <AccountDataContext value={value}>
+        <AccountOperationsContext value={operations}>{children}</AccountOperationsContext>
+      </AccountDataContext>
+    </AccountStoreContext>
   );
 }
 
@@ -127,6 +138,11 @@ export function useAccountData(): AccountData {
   const value = useContext(AccountDataContext);
   if (value === null) throw new Error("useAccountData must be used inside ZeropsAccountData.");
   return value;
+}
+
+/** The account's store for an adapter's host; `null` outside an account. */
+export function useAccountStoreForAdapters(): AccountStore | null {
+  return useContext(AccountStoreContext);
 }
 
 /** The account's data layer; `null` outside an account (a test, the hand-over page). */

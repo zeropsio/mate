@@ -30,6 +30,7 @@ const app = (id: string, name: string, projectIds: ReadonlyArray<string> = []) =
   births: [],
   environments: [],
   changes: [],
+  releaseOffer: null,
 });
 const project = (projectId: string, appId: string | null, mate = true) => ({
   projectId,

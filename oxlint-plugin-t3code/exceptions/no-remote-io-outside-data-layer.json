@@ -10,14 +10,6 @@
   {
     "path": "apps/mobile/src/features/zerops/ZeropsConnectRouteScreen.tsx",
     "kind": "CallExpression",
-    "fingerprint": "client.listServiceVariableNames",
-    "owner": "data-layer rewrite: Zerops platform",
-    "reason": "only the data layer's adapters reach a remote: a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/mobile/src/features/zerops/ZeropsConnectRouteScreen.tsx",
-    "kind": "CallExpression",
     "fingerprint": "client.readProjectEnv",
     "owner": "data-layer rewrite: Zerops platform",
     "reason": "only the data layer's adapters reach a remote: a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
@@ -27,22 +19,6 @@
     "path": "apps/mobile/src/features/zerops/ZeropsDataProvider.tsx",
     "kind": "NewExpression",
     "fingerprint": "new WebSocket",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "only the data layer's adapters reach a remote: the app opens a Mate or Zerops stream or reads a Mate itself; the adapter owns it and the app reads the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/mobile/src/features/zerops/environment-ports.ts",
-    "kind": "CallExpression",
-    "fingerprint": "globalThis.fetch",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "only the data layer's adapters reach a remote: the app opens a Mate or Zerops stream or reads a Mate itself; the adapter owns it and the app reads the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/mobile/src/features/zerops/environment-ports.ts",
-    "kind": "CallExpression",
-    "fingerprint": "globalThis.fetch",
     "owner": "data-layer rewrite: Mate identity/connection",
     "reason": "only the data layer's adapters reach a remote: the app opens a Mate or Zerops stream or reads a Mate itself; the adapter owns it and the app reads the projection",
     "expires": "never"
@@ -77,14 +53,6 @@
     "fingerprint": "effect/unstable/http",
     "owner": "data-layer rewrite: Mate transport",
     "reason": "only the data layer's adapters reach a remote: wires the Mate HTTP transport in the app; moves into the client runtime's transport adapters",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsHqGate.tsx",
-    "kind": "CallExpression",
-    "fingerprint": "client.listOrganizationMembers",
-    "owner": "data-layer rewrite: Zerops platform",
-    "reason": "only the data layer's adapters reach a remote: a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -213,54 +181,6 @@
     "fingerprint": "new WebSocket",
     "owner": "data-layer rewrite: Mate identity/connection",
     "reason": "only the data layer's adapters reach a remote: the app opens a Mate or Zerops stream or reads a Mate itself; the adapter owns it and the app reads the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
-    "kind": "CallExpression",
-    "fingerprint": "api.closeChange",
-    "owner": "data-layer rewrite: HQ",
-    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
-    "kind": "CallExpression",
-    "fingerprint": "api.mergeChange",
-    "owner": "data-layer rewrite: HQ",
-    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
-    "kind": "CallExpression",
-    "fingerprint": "hqApi.addService",
-    "owner": "data-layer rewrite: HQ",
-    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
-    "kind": "CallExpression",
-    "fingerprint": "hqApi.redeploy",
-    "owner": "data-layer rewrite: HQ",
-    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
-    "kind": "CallExpression",
-    "fingerprint": "hqApi.release",
-    "owner": "data-layer rewrite: HQ",
-    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
-    "kind": "CallExpression",
-    "fingerprint": "hqApi.rollback",
-    "owner": "data-layer rewrite: HQ",
-    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -517,22 +437,6 @@
     "fingerprint": "input.hq.keepDeployToken",
     "owner": "data-layer rewrite: HQ",
     "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/environmentPorts.ts",
-    "kind": "CallExpression",
-    "fingerprint": "globalThis.fetch",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "only the data layer's adapters reach a remote: the app opens a Mate or Zerops stream or reads a Mate itself; the adapter owns it and the app reads the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/environmentPorts.ts",
-    "kind": "CallExpression",
-    "fingerprint": "globalThis.fetch",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "only the data layer's adapters reach a remote: the app opens a Mate or Zerops stream or reads a Mate itself; the adapter owns it and the app reads the projection",
     "expires": "never"
   },
   {

@@ -39,6 +39,7 @@ import { MateOverviews, type MateOverviewEntry } from "./mateOverviews.ts";
 import { Official } from "./official.ts";
 import { navigationRemoval } from "./navigationRemoval.ts";
 import { Recomputes } from "./recomputes.ts";
+import { releaseNavigationOffer, type ReleaseNavigationSource } from "./releaseNavigation.ts";
 import { Releases } from "./releases.ts";
 import { Roles, type OrgView } from "./roles.ts";
 import { makeSourceFence } from "./sourceFence.ts";
@@ -129,6 +130,7 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
   Layer.effect(
     HqScopes,
     Effect.gen(function* () {
+      const hubScope = yield* Effect.scope;
       const structure = yield* Structure;
       const changes = yield* Changes;
       const releases = yield* Releases;
@@ -191,6 +193,9 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
       let source: StructureSource | undefined;
       let environmentSource: EnvironmentSource | undefined;
       let changeSource: ChangeNavigationSource | undefined;
+      let releaseSource: ReleaseNavigationSource | undefined;
+      const releaseFence = makeSourceFence();
+      const releaseOne = yield* Semaphore.make(1);
       let publishedChanges: ChangeNavigationSource | undefined;
       let changeVersion = 0;
       const changeFence = makeSourceFence();
@@ -250,6 +255,27 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
         const { projects, ...navigation } = app;
         return decodeApp({
           ...navigation,
+          releaseOffer: app.can.read_change.allow
+            ? releaseNavigationOffer(releaseSource?.forApp(app.id) ?? null, {
+                permission: app.can.release,
+                hasProduction: projects.some((project) => project.kind === "production"),
+                inFlight: (() => {
+                  const environments = (environmentSource ?? current.environmentSource).forApp(
+                    userId,
+                    app.id,
+                    current.facts,
+                    app.can.read_change,
+                  );
+                  if (!Array.isArray(environments)) return null;
+                  return (
+                    environments.find(
+                      (environment) =>
+                        environment.tier === "production" && environment.release?.ended === false,
+                    )?.release?.tag ?? null
+                  );
+                })(),
+              })
+            : { refused: app.can.read_change.reason },
           changes: app.can.read_change.allow
             ? (changeSource?.forApp(app.id) ?? [])
             : { refused: app.can.read_change.reason },
@@ -304,22 +330,40 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
         [...view.ungrouped, ...view.apps.flatMap((app) => app.projects)].filter(
           (project) => project.can?.observe_mate?.allow === true,
         );
-      const loadSeen = (userId: string, projectId: string) =>
+      // One read for the visible projects this delivery needs, never the person's whole history.
+      const loadSeenFor = (userId: string, projectIds: ReadonlyArray<string>) =>
         Effect.gen(function* () {
-          const key = json([userId, projectId]);
           for (;;) {
             const epoch = yield* overviews.seenEpoch;
-            const prior = seen.get(key);
-            if (prior !== undefined && prior.epoch === epoch) return prior.ids;
-            const rows = yield* sql<{
-              readonly result_id: string;
-            }>`SELECT result_id FROM hq_attention_seen WHERE user_id = ${userId} AND project_id = ${projectId}`;
+            const keys = new Map(
+              projectIds.map((projectId) => [projectId, json([userId, projectId])]),
+            );
+            const missing = [...keys]
+              .filter(([, key]) => seen.get(key)?.epoch !== epoch)
+              .map(([projectId]) => projectId);
+            const rows =
+              missing.length === 0
+                ? []
+                : yield* sql<{
+                    readonly project_id: string;
+                    readonly result_id: string;
+                  }>`SELECT project_id, result_id FROM hq_attention_seen
+               WHERE user_id = ${userId} AND ${sql.in("project_id", missing)}`;
             if (epoch !== (yield* overviews.seenEpoch)) continue;
-            const ids = new Set(rows.map((row) => row.result_id));
-            seen.set(key, { userId, projectId, epoch, ids });
-            return ids;
+            const result = new Map<string, Set<string>>();
+            for (const [projectId, key] of keys) {
+              const prior = seen.get(key);
+              // Another socket may have acknowledged a result while the SELECT was in flight.
+              const ids = prior?.epoch === epoch ? prior.ids : new Set<string>();
+              seen.set(key, { userId, projectId, epoch, ids });
+              result.set(projectId, ids);
+            }
+            for (const row of rows) result.get(row.project_id)?.add(row.result_id);
+            return result;
           }
         });
+      const loadSeen = (userId: string, projectId: string) =>
+        Effect.map(loadSeenFor(userId, [projectId]), (result) => result.get(projectId)!);
       const statusValue = Effect.gen(function* () {
         const parts = yield* readHealth;
         return {
@@ -330,9 +374,8 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
           },
         };
       });
-      const load = (entry: Entry, projects?: ReadonlySet<string>) =>
+      const load = (entry: Entry, current: StructureSource, projects?: ReadonlySet<string>) =>
         Effect.gen(function* () {
-          const current = projects === undefined ? yield* sourceNow : source!;
           const view = viewFor(current, entry.userId);
           const scope = entry.scope;
           const all = yield* overviewsNow;
@@ -352,18 +395,15 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
             const member = current.facts.members.find(
               (member) => member.kind === "person" && member.userId === entry.userId,
             );
-            const acknowledgements = new Map<string, Set<string>>();
-            yield* Effect.forEach(
-              observable.filter(
-                (project) =>
-                  (projects === undefined || projects.has(project.projectId)) &&
-                  (all.get(project.projectId)?.attention?.results.length ?? 0) > 0,
-              ),
-              (project) =>
-                Effect.map(loadSeen(entry.userId, project.projectId), (ids) =>
-                  acknowledgements.set(project.projectId, ids),
-                ),
-              { discard: true, concurrency: "unbounded" },
+            const acknowledgements = yield* loadSeenFor(
+              entry.userId,
+              observable
+                .filter(
+                  (project) =>
+                    (projects === undefined || projects.has(project.projectId)) &&
+                    (all.get(project.projectId)?.attention?.results.length ?? 0) > 0,
+                )
+                .map((project) => project.projectId),
             );
             const listed = [...view.ungrouped, ...view.apps.flatMap((app) => app.projects)];
             const signersFor = (projectId: string) => {
@@ -408,17 +448,29 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
                 ? all.get(projectId)?.attention
                 : null;
               const { signedInNow, everSignedIn } = signersFor(projectId);
+              const runsWithoutSignIn =
+                observable.some((project) => project.projectId === projectId) &&
+                all.get(projectId)?.overview?.identity.runsWithoutSignIn === true;
+              const mate = listed.find((project) => project.projectId === projectId)?.mate;
               const ownerUserId =
                 owner !== undefined
                   ? (current.facts.members.find(
                       (member) =>
                         member.kind === "person" && member.clientUserId === owner.clientUserId,
                     )?.userId ?? null)
-                  : (everSignedIn["claude-code"] ?? everSignedIn.codex ?? null);
+                  : (everSignedIn["claude-code"] ??
+                    everSignedIn.codex ??
+                    (runsWithoutSignIn
+                      ? (mate?.madeBy ?? mate?.standupRequestedBy ?? null)
+                      : null));
+              const waitsOn =
+                signedInNow["claude-code"] ??
+                signedInNow.codex ??
+                (runsWithoutSignIn ? ownerUserId : null);
               return {
                 role,
                 ownerUserId,
-                waitsOnViewer: (signedInNow["claude-code"] ?? signedInNow.codex) === entry.userId,
+                waitsOnViewer: waitsOn === entry.userId,
                 mayWrite: observable.some((project) => project.projectId === projectId),
                 mine: ownerUserId === entry.userId,
                 unseen:
@@ -611,16 +663,18 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
         Effect.gen(function* () {
           while (true) {
             if (entry.failure?.disposition === "refused") return;
-            yield* sourceNow;
+            const current = yield* sourceNow;
             if (entry.sourceVersion !== sourceVersion) entry.dirty = true;
             if (!entry.dirty) return;
             const generation = entry.generation;
             const version = sourceVersion;
             if (entry.scope.kind === "navigation") yield* changeSourceNow;
             const menuVersion = changeVersion;
-            const data = yield* load(entry);
+            // Reuse the validated source; the check after the read still fences revocations.
+            const data = yield* load(entry, current);
             yield* sourceNow;
-            if (generation !== entry.generation || version !== sourceVersion) continue;
+            if (current !== source || generation !== entry.generation || version !== sourceVersion)
+              continue;
             if (
               entry.scope.kind === "navigation" &&
               (changeFence.dirty() || menuVersion !== changeVersion)
@@ -643,6 +697,11 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
             entry.dirty = generation !== entry.generation;
             delete entry.failure;
             if (message !== undefined) yield* send(entry, [message]);
+            if (
+              entry.scope.kind === "navigation" &&
+              (releaseSource === undefined || releaseFence.dirty())
+            )
+              yield* Effect.forkIn(refreshReleases, hubScope);
             return;
           }
         }).pipe(
@@ -709,7 +768,10 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
       const invalidate = (kind: "structure" | "detail" | "roles") =>
         Effect.gen(function* () {
           if (kind === "structure" || kind === "roles") sourceFence.invalidate();
-          if (kind === "structure") changeFence.invalidate();
+          if (kind === "structure") {
+            changeFence.invalidate();
+            releaseFence.invalidate();
+          }
           if (kind === "detail" || kind === "structure") contents.clear();
           for (const entry of journals.values()) {
             const affected =
@@ -753,7 +815,7 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
                   if (sourceFence.dirty() || entry.sourceVersion !== sourceVersion)
                     return yield* scheduleRefresh(entry);
                   const generation = entry.generation;
-                  const data = yield* load(entry, new Set([projectId]));
+                  const data = yield* load(entry, source!, new Set([projectId]));
                   if (generation !== entry.generation || sourceFence.dirty()) return;
                   const message = entry.journal.commit(data.values);
                   if (message !== undefined) yield* send(entry, [message]);
@@ -849,6 +911,35 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
         if (changed.size === 0) return;
         yield* refreshAppValues(changed, version);
       }).pipe(Effect.catch(navigationUnavailable("Environment navigation read unavailable")));
+      const refreshReleases: Effect.Effect<void> = releaseOne
+        .withPermits(1)(
+          Effect.gen(function* () {
+            if (source === undefined || sourceFence.dirty()) return;
+            if (releaseSource !== undefined && !releaseFence.dirty()) return;
+            const version = sourceVersion;
+            let fresh: ReleaseNavigationSource;
+            for (;;) {
+              const started = releaseFence.capture();
+              fresh = yield* releases.navigation;
+              if (releaseFence.accept(started)) break;
+            }
+            if (sourceFence.dirty() || version !== sourceVersion) {
+              releaseFence.invalidate();
+              return;
+            }
+            const changed = new Set(
+              [...source.appIds].filter(
+                (appId) => fresh.fingerprints.get(appId) !== releaseSource?.fingerprints.get(appId),
+              ),
+            );
+            releaseSource = fresh;
+            if (changed.size > 0) yield* refreshAppValues(changed, version);
+          }),
+        )
+        .pipe(
+          Effect.catch(navigationUnavailable("Release navigation read unavailable")),
+          Effect.provideService(Scope.Scope, hubScope),
+        );
       type Signal =
         | { kind: "structure" | "detail" | "roles" | "environment" }
         | { kind: "attention" | "forget"; projectId: string };
@@ -862,11 +953,22 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
           changes.changes.pipe(
             Stream.map((): Signal => {
               changeFence.invalidate();
+              releaseFence.invalidate();
               return { kind: "detail" };
             }),
           ),
-          releases.changes.pipe(Stream.map((): Signal => ({ kind: "environment" }))),
-          deploys.changes.pipe(Stream.map((): Signal => ({ kind: "environment" }))),
+          releases.changes.pipe(
+            Stream.map((): Signal => {
+              releaseFence.invalidate();
+              return { kind: "environment" };
+            }),
+          ),
+          deploys.changes.pipe(
+            Stream.map((): Signal => {
+              releaseFence.invalidate();
+              return { kind: "environment" };
+            }),
+          ),
           overviews.changes.pipe(
             Stream.map((projectId): Signal => ({ kind: "attention", projectId })),
           ),
@@ -903,9 +1005,15 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
             return signal.kind === "attention" || signal.kind === "forget"
               ? refreshAttention(signal.projectId, signal.kind === "forget")
               : signal.kind === "environment"
-                ? Effect.andThen(invalidate("detail"), refreshEnvironments)
+                ? Effect.andThen(
+                    invalidate("detail"),
+                    Effect.andThen(refreshEnvironments, refreshReleases),
+                  )
                 : signal.kind === "detail"
-                  ? Effect.andThen(invalidate("detail"), refreshChanges)
+                  ? Effect.andThen(
+                      invalidate("detail"),
+                      Effect.andThen(refreshChanges, refreshReleases),
+                    )
                   : invalidate(signal.kind);
           }),
         ),

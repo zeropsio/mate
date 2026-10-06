@@ -258,7 +258,7 @@ import { openCrewTab } from "../zerops/crew/crewTab";
 import { useOpenMate } from "../zerops/useOpenMate";
 import { SidebarWaitingStack } from "./zerops/SidebarWaitingStack";
 
-import { useZeropsProjectFlowOptional } from "../zerops/projectFlowContext";
+import { useProjectFlows } from "../zerops/projectFlows";
 import { placedPressesIn, useForgetConnectedPresses, useMatePresses } from "../zerops/matePress";
 import type { EnvironmentRow } from "@t3tools/client-runtime/zerops";
 import {
@@ -1800,7 +1800,9 @@ export default function Sidebar() {
   const zeropsSignedIn = zeropsSession.status === "signed-in";
   const { listing: zeropsListing, refresh: refreshZeropsCandidates } = useZeropsCandidates();
   const zeropsHeld = useMemo(() => heldCandidates(zeropsListing), [zeropsListing]);
-  const zeropsCandidates = useMenuRows(zeropsHeld.rows);
+  // Until every source the rows come from answered, none is drawn and the menu is loading.
+  const { rows: zeropsCandidates, settled: zeropsMenuSettled } = useMenuRows(zeropsHeld.rows);
+  const zeropsMenuComplete = zeropsHeld.complete && zeropsMenuSettled;
   // The creations under way in the organization in view, drawn in their
   // groups before the listing holds them — the projects page's own placing —
   // and the New projects this tab is making, from the press.
@@ -1840,13 +1842,13 @@ export default function Sidebar() {
   // A Mate's conversation, from its row — the jump box opens it the same way.
   const openMate = useOpenMate();
   // Each project's flow — what its Mates have waiting, what its environments
-  // run, whether there is something to release — read once for the account
-  // (`ZeropsProjectFlowProvider`) and drawn under the project as a timeline.
-  const zeropsProjectFlow = useZeropsProjectFlowOptional();
+  // run — drawn under the project as a timeline. What a release would put live
+  // is no part of the menu: it is compared where a release is shown.
+  const zeropsProjectFlows = useProjectFlows("every").flows;
   const zeropsSidebarFlow = useCallback(
     (groupId: string): SidebarProjectFlow | undefined => {
-      const flow = zeropsProjectFlow?.flows.get(groupId);
-      if (zeropsProjectFlow === null || flow === undefined) return undefined;
+      const flow = zeropsProjectFlows.get(groupId);
+      if (flow === undefined) return undefined;
       return {
         pullRequests: flow.pullRequests,
         // Until HQ tells them, the tree draws the change rows it remembers.
@@ -1859,6 +1861,7 @@ export default function Sidebar() {
         // What a release would put in front of people: the count the
         // chips' menus say waits for production.
         releaseContents: flow.release.contents,
+        releaseSummary: flow.release.summary,
         releaseUntold: flow.release.untold,
         // Until HQ answers the releases, production's chip says only what the platform says.
         releasesKnown: flow.releasesKnown,
@@ -1876,7 +1879,7 @@ export default function Sidebar() {
         releaseInFlight: flow.release.inFlight,
       };
     },
-    [zeropsProjectFlow],
+    [zeropsProjectFlows],
   );
   const router = useRouter();
   const { isMobile, setOpenMobile } = useSidebar();
@@ -4172,11 +4175,10 @@ export default function Sidebar() {
               activeProjectId={activeZeropsProjectId}
               births={zeropsPlacedBirths}
               candidates={zeropsCandidates}
-              organization={zeropsSession.activeOrganization}
               className="mb-2"
-              complete={zeropsHeld.complete}
+              complete={zeropsMenuComplete}
               notice={zeropsNotice}
-              reading={zeropsSession.organizationStatus === "selected" && !zeropsHeld.complete}
+              reading={zeropsSession.organizationStatus === "selected" && !zeropsMenuComplete}
               onNoticeAct={onZeropsNoticeAct}
               onAddMate={addMate}
               onSetUp={onZeropsSetUp}
@@ -4711,7 +4713,7 @@ export default function Sidebar() {
       newProjectOffered({
         candidates: zeropsCandidates,
         births: zeropsPlacedBirths,
-        complete: zeropsHeld.complete,
+        complete: zeropsMenuComplete,
       }) ? (
         <SidebarNewProject onNewProject={openNewZeropsProject} />
       ) : null}

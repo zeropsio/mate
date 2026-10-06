@@ -206,6 +206,13 @@ export interface ProductionChip {
   readonly untold?: ReadonlyArray<string>;
   /** The stage chip over several stages: each by its name, in the state it is in. */
   readonly stages?: ReadonlyArray<{ readonly name: string; readonly state: ChipState }>;
+  /** What HQ last said of it, while HQ is not reachable: never said as current (`asLastKnown`). */
+  readonly lastKnown?: true;
+}
+
+/** A chip as what HQ last said, while HQ's link is paused. */
+export function asLastKnown(chip: ProductionChip): ProductionChip {
+  return { ...chip, lastKnown: true };
 }
 
 export type ChipView =
@@ -615,7 +622,8 @@ function chipWords(chip: ProductionChip): string {
  */
 export function chipFace(chip: ProductionChip): ChipFace {
   const tone = chip.label === "prod" && chip.state === "failed" ? "neutral" : TONE[chip.state];
-  return { tone, label: chip.label, words: chipWords(chip) };
+  const words = chipWords(chip);
+  return { tone, label: chip.label, words: chip.lastKnown ? `Last known: ${words}` : words };
 }
 
 /** "40 min ago", "3 h ago": how long ago, as the chip's menu says a deploy's age. */
@@ -675,8 +683,12 @@ const MAIN_DOT: Record<ChipState, ChipDot> = {
 
 /** A stop's dot, by the state its chip says: in its menu's row and in the jump box. */
 export function chipDot(chip: ProductionChip): ChipDot {
-  // Serving what cannot be told is not known to be healthy.
-  if (chip.untold !== undefined && (chip.state === "ok" || chip.state === "waiting")) return "off";
+  // Serving what cannot be told, or what HQ last said, is not known to be healthy.
+  if (
+    (chip.untold !== undefined || chip.lastKnown === true) &&
+    (chip.state === "ok" || chip.state === "waiting")
+  )
+    return "off";
   return MAIN_DOT[chip.state];
 }
 
@@ -691,6 +703,10 @@ const MENU_TONE: Record<ChipState, ChipMenuStop["tone"]> = {
   failed: "amber",
   down: "red",
 };
+
+/** A menu row's word as its chip stands: what HQ last said is said as last known. */
+const asItStands = (chip: ProductionChip, word: string): string =>
+  chip.lastKnown === true ? `Last known: ${word}` : word;
 
 function mainWord(chip: ProductionChip): string {
   switch (chip.state) {
@@ -806,7 +822,7 @@ export function productionMenu(input: {
         name: "production",
         version: chip.version,
         dot: chipDot(chip),
-        word: mainWord(chip),
+        word: asItStands(chip, mainWord(chip)),
         tone: MENU_TONE[chip.state],
         note: troubleNote({ ...input, serving: chip.version }),
         fix: fixProblemOf(input),
@@ -871,10 +887,12 @@ export function stageMenu(input: {
     return {
       ...base,
       dot: chipDot(chip),
-      word:
+      word: asItStands(
+        chip,
         chip.state === "ok" || (chip.state === "empty" && stop.state === "empty")
           ? stopWord(stop, stage.deployedAt, input.nowMs)
           : mainWord(chip),
+      ),
       tone: MENU_TONE[chip.state],
       note: troubleNote({ ...problem, nowMs: input.nowMs }),
       fix: fixProblemOf({ ...problem, name: stage.name }),

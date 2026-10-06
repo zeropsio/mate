@@ -24,10 +24,12 @@ import type { ZeropsCandidatePresentation } from "./useZeropsCandidates";
 import { mountHqNavigation } from "~/zerops/__fixtures__/hqNavigation";
 
 interface AssignDialogProps {
+  readonly candidates: ReadonlyArray<{ readonly clientUserId: string; readonly name: string }>;
   readonly readingOrganization?: string | undefined;
   readonly readFailed?:
     | { readonly organization: string; readonly onReadAgain: () => void }
     | undefined;
+  readonly readRefused?: { readonly organization: string } | undefined;
   readonly pending: boolean;
   readonly error: string | null;
   readonly onSubmit: (clientUserId: string) => void;
@@ -123,10 +125,16 @@ const mock = vi.hoisted(() => ({
       readonly cleanup?: boolean;
     } | null,
   },
-  /** Whether the member list was to be read, at each render that asked. */
-  membersEnabled: [] as Array<boolean>,
-  /** The member list's read, as it stands. */
-  membersStatus: "ready" as "idle" | "loading" | "ready" | "failed",
+  /** The kinds of the account's cells the hook asked for. */
+  asked: [] as Array<string>,
+  /** The organization's token list, as the platform would answer it were it read. */
+  tokens: [] as Array<unknown>,
+  /** The Mates HQ was asked whom to hand over to, in order. */
+  handoverAsked: [] as Array<string>,
+  /** HQ's answer of whom a Mate may be handed over to. */
+  handoverAnswer: (): Promise<ReadonlyArray<unknown>> => Promise.resolve([]),
+  /** No account data is mounted: there is no HQ to ask. */
+  noAccountData: false,
   /** The account HQ's read of the member list again. */
   reread: vi.fn(),
   /** The Move dialog as the hook mounts it: where it offers the Mate to go. */
@@ -151,7 +159,16 @@ vi.mock("./useHqOffers", () => ({
       : { kind: "refused", reason: "not_structure_writer" },
 }));
 vi.mock("./ZeropsAccountData", () => ({
-  useAccountDataOptional: () => ({ moveOffers: () => Promise.resolve(mock.moveTo) }),
+  useAccountDataOptional: () =>
+    mock.noAccountData
+      ? null
+      : {
+          moveOffers: () => Promise.resolve(mock.moveTo),
+          handoverCandidates: (projectId: string) => {
+            mock.handoverAsked.push(projectId);
+            return mock.handoverAnswer();
+          },
+        },
 }));
 vi.mock("./deleteProject", () => ({
   useDeleteProject: () => mock.deleteProject,
@@ -225,13 +242,16 @@ vi.mock("./zeropsDataContext", () => ({
   useZeropsData: () => ({
     organizationRef: (organizationId: string) => ({ organizationId }),
     projectRef: (organizationId: string, projectId: string) => ({ organizationId, projectId }),
-    runtime: {
-      reads: { setupMarker: () => null },
-    },
+    runtime: {},
   }),
-  // The press's marker on each container, as the case states it: absent unless it says.
+  // Each container's Mate variables: its press's marker as the case states it, absent unless it says.
   useZeropsAtomSelections: (selections: ReadonlyArray<readonly [string, unknown]>) =>
-    new Map(selections.map(([serviceId]) => [serviceId, mock.markers.get(serviceId) ?? false])),
+    new Map(
+      selections.map(([serviceId]) => [
+        serviceId,
+        { flag: true, marker: mock.markers.get(serviceId) ?? false },
+      ]),
+    ),
 }));
 vi.mock("./useZeropsCandidates", () => ({
   useZeropsCandidates: () => ({ listing: mock.listing.current, refresh: () => {} }),
@@ -251,13 +271,6 @@ vi.mock("./inventoryContext", async () => {
   const { useState } = await import("react");
   return { useProjectDialog: () => useState(null) };
 });
-vi.mock("./useZeropsMateOwners", () => ({
-  useZeropsOrganizationMembersRead: (input: { readonly enabled: boolean }) => {
-    mock.membersEnabled.push(input.enabled);
-    return { members: [], status: input.enabled ? mock.membersStatus : "idle", settled: false };
-  },
-  zeropsMateOwner: () => undefined,
-}));
 // The organization's official HQ, where a Mate's face is written.
 vi.mock("./accountHq", async (original) => ({
   officialHq: (await original<typeof import("./accountHq")>()).officialHq,
@@ -383,8 +396,9 @@ beforeEach(() => {
   mock.completeProjectDeletion.mockReset().mockResolvedValue(undefined);
   mock.deleteProject.mockReset().mockResolvedValue({ value: undefined });
   mock.setDeleting.mockReset();
-  mock.membersEnabled = [];
-  mock.membersStatus = "ready";
+  mock.handoverAsked = [];
+  mock.handoverAnswer = () => Promise.resolve([]);
+  mock.noAccountData = false;
   mock.reread.mockReset();
   mock.mateKey = null;
   mock.deleteDialog.current = null;
@@ -596,29 +610,69 @@ describe("useMateActions — Hand this Mate over", () => {
     });
   };
 
-  it("reads the organization's members once its picker opens, never on load", () => {
+  // Whom a Mate may be handed over to is HQ's answer, asked as the picker opens.
+  it("asks HQ whom to hand it to once its picker opens, never on load", () => {
     mount();
-    expect(mock.membersEnabled).not.toContain(true);
+    expect(mock.handoverAsked).toEqual([]);
     openAssign();
-    expect(mock.membersEnabled.at(-1)).toBe(true);
+    expect(mock.handoverAsked).toEqual([FEN.project.id]);
+  });
+
+  it("lists the people HQ answers", async () => {
+    const ADA = { userId: "u-ada", clientUserId: "cu-ada", name: "Ada", avatarUrl: null };
+    mock.handoverAnswer = () => Promise.resolve([ADA]);
+    mount();
+    await act(async () => {
+      verbs(FEN)
+        .find((verb) => verb.id === "assign")!
+        .onSelect();
+    });
+    expect(mock.assignDialog.current?.candidates).toEqual([ADA]);
+    expect(mock.assignDialog.current?.readingOrganization).toBeUndefined();
   });
 
   it("says it reads the organization until its people are there to pick", () => {
-    mock.membersStatus = "loading";
+    mock.handoverAnswer = () => new Promise(() => {});
     mount();
     openAssign();
     expect(mock.assignDialog.current?.readingOrganization).toBe("Acme");
   });
 
-  it("says it could not read the organization's people, and reads them again on Try again", () => {
-    mock.membersStatus = "failed";
+  it("says it could not read the organization's people, and asks again on Try again", async () => {
+    mock.handoverAnswer = () => Promise.reject(new Error("refused"));
     mount();
-    openAssign();
+    await act(async () => {
+      verbs(FEN)
+        .find((verb) => verb.id === "assign")!
+        .onSelect();
+    });
     expect(mock.assignDialog.current?.readFailed?.organization).toBe("Acme");
-    act(() => {
+    await act(async () => {
       mock.assignDialog.current!.readFailed!.onReadAgain();
     });
-    expect(mock.reread).toHaveBeenCalledTimes(1);
+    expect(mock.handoverAsked).toEqual([FEN.project.id, FEN.project.id]);
+  });
+
+  it("says HQ refused to list them, and asks nothing again", async () => {
+    mock.handoverAnswer = () =>
+      Promise.reject({ outcome: "definitive-refusal", message: "HQ refused." });
+    mount();
+    await act(async () => {
+      verbs(FEN)
+        .find((verb) => verb.id === "assign")!
+        .onSelect();
+    });
+    expect(mock.assignDialog.current?.readRefused?.organization).toBe("Acme");
+    expect(mock.assignDialog.current?.readFailed).toBeUndefined();
+    expect(mock.assignDialog.current?.readingOrganization).toBeUndefined();
+  });
+
+  it("says it could not read them where there is no HQ to ask, never reading forever", () => {
+    mock.noAccountData = true;
+    mount();
+    openAssign();
+    expect(mock.assignDialog.current?.readingOrganization).toBeUndefined();
+    expect(mock.assignDialog.current?.readFailed?.organization).toBe("Acme");
   });
 
   const answered = (progress: unknown, evidence: string | null = null) => ({
@@ -1522,8 +1576,16 @@ describe("mateAddedBy — whether the viewer added this Mate", () => {
     },
     { case: "somebody else made it", hq: placed({ madeBy: "user-fen" }), added: false },
     { case: "nothing names anybody", hq: placed({}), added: false },
-  ])("$case: $added", ({ hq, added }) => {
-    expect(mateAddedBy({ hq }, "user-ada")).toBe(added);
+    {
+      case: "HQ says it waits on them (they signed it in)",
+      hq: placed({}),
+      waitsOnViewer: true,
+      added: true,
+    },
+  ])("$case: $added", ({ hq, added, ...rest }) => {
+    expect(mateAddedBy({ hq }, "user-ada", "waitsOnViewer" in rest && rest.waitsOnViewer)).toBe(
+      added,
+    );
   });
 });
 

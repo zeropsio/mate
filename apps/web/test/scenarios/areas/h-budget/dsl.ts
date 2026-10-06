@@ -20,6 +20,11 @@ export function budgets(s: Scenario) {
           if (row.name === "zcp")
             s.drivers.zerops.put("service-stack", { ...row, subdomainAccess: false });
       }),
+      /** The app's stage and production, each a project of its own, as the menu's chips stand for. */
+      stops: Effect.fn("budgets.given.stops")(function* (app: string) {
+        yield* s.given.project("Staging", { kind: "stage", app });
+        yield* s.given.project("Production", { kind: "production", app });
+      }),
       plainProjects: Effect.fn("budgets.given.plainProjects")(function* (names: string[]) {
         for (const name of names) yield* s.given.project(name);
       }),
@@ -52,6 +57,17 @@ export function budgets(s: Scenario) {
           );
           await observation.mateReady(name);
         }),
+      /** Opens the production chip's menu, which draws each stop's public addresses. */
+      opensProductionChip: Effect.promise(async () => {
+        await s.page
+          .locator('[data-zerops-surface="sidebar-production-chip"][data-zerops-chip="prod"]')
+          .setTimeout(15_000)
+          .click();
+        await s.page
+          .locator('[data-zerops-surface="sidebar-production-main"]')
+          .setTimeout(15_000)
+          .wait();
+      }),
       hqFirstData: (count: number) => Effect.promise(() => observation.hq.firstData(count)),
       browserSettled: Effect.promise(() => observation.browser.settled()),
       hqStateSettled: Effect.promise(() => observation.hq.stateSettled()),
@@ -71,10 +87,23 @@ export function budgets(s: Scenario) {
       /** One project's process history read, `GET /project/{id}/process`, and its preflight. */
       projectHistoryReads: () =>
         observation.browser.matching(/^(GET|OPTIONS) \/project\/[^/]+\/process(\?|$)/u),
+      /** One project's own routings read, `GET /project/{id}/public-http-routing`, and its preflight. */
+      projectRoutingReads: () =>
+        observation.browser.matching(/^(GET|OPTIONS) \/project\/[^/]+\/public-http-routing(\?|$)/u),
       /** One project's own services read, `GET /project/{id}/service-stack`, and its preflight. */
       projectServiceReads: () =>
         observation.browser.matching(/^(GET|OPTIONS) \/project\/[^/]+\/service-stack(\?|$)/u),
+      /** Projects' own rows, `GET /project/{id}`, and their preflights; never the search's. */
+      projectReads: (ids?: ReadonlyArray<string>) =>
+        observation.browser.matching(
+          ids === undefined
+            ? /^(GET|OPTIONS) \/project\/(?!search(\?|$))[^/?]+(\?|$)/u
+            : new RegExp(`^(GET|OPTIONS) /project/(${ids.join("|")})(\\?|$)`, "u"),
+        ),
+      /** The organization's Mate variables read by key, `POST /user-data/search`. */
+      variableReads: () => observation.browser.matching(/^POST \/user-data\/search(\?|$)/u),
       hqSegments: () => observation.hq.segments,
+      hqRequests: observation.hq.requests,
       firstData: (after = 0) => {
         const samples = observation.hq.segments.slice(after).map((segment) => {
           if (segment.firstDataMs === null) throw new Error("HQ segment has not served data");

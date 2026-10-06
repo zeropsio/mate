@@ -41,7 +41,6 @@ import {
   useEnvironmentMachines,
 } from "../zerops/accountEnvironments";
 import { conversationAccess, InventoryContext } from "../zerops/inventoryContext";
-import { useRegistrationRecords } from "../zerops/registrationRecords";
 import { useZeropsSession, type ZeropsOrganizationStatus } from "../zerops/ZeropsSessionProvider";
 
 const NO_SHELL = Atom.make<EnvironmentShellState>({
@@ -230,7 +229,6 @@ export interface EnvironmentLinks {
 export function useEnvironmentLinks(): EnvironmentLinks {
   const machines = useEnvironmentMachines();
   const index = useDescriptorIndex();
-  const records = useRegistrationRecords();
   const { environments } = useEnvironments();
   const linkable = useCallback(
     (environmentId: EnvironmentId) => {
@@ -250,10 +248,9 @@ export function useEnvironmentLinks(): EnvironmentLinks {
         projectId: row.project.id,
         machines,
         index,
-        records,
         registered,
       }),
-    [index, machines, records, registered],
+    [index, machines, registered],
   );
   const linkTarget = useCallback((row: MateRow) => linkOf(row).environmentId, [linkOf]);
   return useMemo(

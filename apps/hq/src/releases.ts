@@ -50,6 +50,7 @@ import { appendEvent } from "./gitEvents.ts";
 import { GitHost, mainOf } from "./gitHost.ts";
 import { Leader, type NotLeader } from "./leader.ts";
 import { appTarget, releaseTarget } from "./offers.ts";
+import { makeReleaseNavigationReader, type ReleaseNavigationSource } from "./releaseNavigation.ts";
 import { RecipeTiers, type RecipeTierUnreadable } from "./recipeTiers.ts";
 import { Rollouts, addRollout } from "./rollouts.ts";
 import { Roles, decidedFresh } from "./roles.ts";
@@ -93,6 +94,10 @@ export class Releases extends Context.Service<
       appId: string,
       projectId: string,
     ) => Effect.Effect<Release | undefined, SqlError>;
+    readonly navigation: Effect.Effect<
+      ReleaseNavigationSource,
+      SqlError | NotLeader | GitError | RecipeTierUnreadable
+    >;
     /** Ticks after every release made, starting with the current tick. */
     readonly changes: Stream.Stream<number>;
   }
@@ -295,6 +300,11 @@ export const releasesLayer: Layer.Layer<
       });
 
     return Releases.of({
+      navigation: makeReleaseNavigationReader<NotLeader | RecipeTierUnreadable>(
+        sql,
+        gitHost.git,
+        (appId) => recipes.read(appId, "production"),
+      ),
       newest: (appId, projectId) =>
         Effect.map(
           sql<ReleaseRow>`

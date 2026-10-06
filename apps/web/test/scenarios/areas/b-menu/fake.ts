@@ -254,7 +254,6 @@ export const holdDetails = (drivers: ScenarioDrivers, app: string) =>
   Effect.sync(() => {
     const gate = gates.get(drivers)!;
     gate.hold(drivers.appIds.get(app)!);
-    return Effect.promise(() => gate.waitForHeld());
   });
 export const releaseDetails = (drivers: ScenarioDrivers) =>
   Effect.sync(() => gates.get(drivers)!.release());

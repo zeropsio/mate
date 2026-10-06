@@ -61,7 +61,7 @@ const cases: ReadonlyArray<{ readonly name: string; readonly render: () => strin
       renderInDialog(
         <ZeropsAssignMateForm
           error={null}
-          members={[{ id: "u1", status: "ACTIVE", user: { fullName: "Ada" } }]}
+          candidates={[{ userId: "u1", clientUserId: "cu1", name: "Ada", avatarUrl: null }]}
           onCancel={noop}
           onSubmit={noop}
           pending={false}

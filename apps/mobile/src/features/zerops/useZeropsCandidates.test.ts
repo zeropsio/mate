@@ -11,6 +11,7 @@ import {
   NOT_READ_SERVICES,
   projectProcessesAtom,
   projectServicesAtom,
+  shownMateLinksAtom,
   shownProjectsAtom,
   type ProjectProcesses,
   type ProjectServices,
@@ -31,7 +32,7 @@ const reads = vi.hoisted(() => ({
   services: null as unknown,
   processes: null as unknown,
 }));
-/** The account runtime's Mate environments, as the provider binds them after the first grant. */
+/** The Mates as the account's store holds them. */
 const stage = vi.hoisted(() => ({
   machines: new Map() as ReadonlyMap<string, unknown>,
 }));
@@ -59,10 +60,6 @@ vi.mock("./ZeropsSessionProvider", () => ({
 vi.mock("./ZeropsDataProvider", () => ({
   useZeropsData: () => ({
     binding: runtime.binding,
-    environments: {
-      machines: () => stage.machines,
-      subscribe: () => () => undefined,
-    },
     error: null,
   }),
 }));
@@ -133,7 +130,9 @@ describe("the project picker's candidates", () => {
           ? reads.processes
           : atom === servicesAtom
             ? reads.services
-            : undefined,
+            : atom === shownMateLinksAtom
+              ? { machines: stage.machines }
+              : undefined,
     );
     runtime.registry.subscribe.mockImplementation(() => () => undefined);
     runtime.binding = {

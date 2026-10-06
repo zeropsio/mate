@@ -52,6 +52,7 @@ const processReceipt = (
 
 export function enableZeropsMateExecutor(platform: {
   readonly writeMateFlag: (serviceId: string) => Promise<void>;
+  readonly variablesWritten: (intent: IntentOf<"enable-zerops-mate">) => void;
   readonly restartService: (
     serviceId: string,
   ) => Promise<{ readonly processId: string | undefined }>;
@@ -59,6 +60,7 @@ export function enableZeropsMateExecutor(platform: {
   return (requestId: string, intent: IntentOf<"enable-zerops-mate">) =>
     Effect.gen(function* () {
       yield* verb(() => platform.writeMateFlag(intent.serviceId));
+      yield* Effect.sync(() => platform.variablesWritten(intent));
       // The flag landed: a restart not taken leaves it on, and the restart the person's to do.
       // Only a restart whose answer was lost stays uncertain.
       const restarted = yield* Effect.result(verb(() => platform.restartService(intent.serviceId)));

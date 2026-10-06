@@ -205,24 +205,22 @@ export function heldTiers(environments: ReadonlyArray<HeldEnvironment>): {
 /**
  * The one rule for whether a stage or a production may be added to an application — every door
  * (the projects page's menu, the sidebar's, the Environments section, the question after a first
- * merge) asks it. The recipe on `main` holds the tier; this person may add (`mayAddEnvironment`);
- * and the tier is empty — a production is one, and HQ's `attach` takes a person who is not a
- * writer only into an empty place (`slot_taken`), while a writer, an organization owner or admin,
- * may add another stage.
+ * merge) asks it. HQ offers the tier to this person (`add_stage` / `add_production`: its `attach`
+ * rule, its empty place among the application's live projects); the recipe on `main` holds it;
+ * and nothing of the tier stands here that HQ does not hold yet — a creation under way, a
+ * half-made project, a Mate that is also the stage.
  */
 export function environmentAddable(input: {
   readonly tier: GroupEnvironmentTier;
   readonly recipeRead: boolean;
   /** The tiers the recipe on `main` holds. */
   readonly recipeTiers: ReadonlyArray<GroupEnvironmentTier>;
-  readonly mayAdd: boolean;
-  /** An organization owner or admin: HQ's writer of the structure. */
-  readonly writer: boolean;
+  /** HQ offers this person the tier (`add_stage` / `add_production`). */
+  readonly offered: boolean;
   readonly held: ReturnType<typeof heldTiers>;
 }): boolean {
-  if (!input.mayAdd || !input.recipeRead || !input.recipeTiers.includes(input.tier)) return false;
-  if (input.tier === "production") return !input.held.production;
-  return input.held.stages === 0 || input.writer;
+  if (!input.offered || !input.recipeRead || !input.recipeTiers.includes(input.tier)) return false;
+  return input.tier === "production" ? !input.held.production : input.held.stages === 0;
 }
 
 /**
@@ -290,16 +288,17 @@ export function environmentSlots(input: {
   readonly devstages: ReadonlyArray<{ readonly id: string; readonly name: string }>;
   /** Creations the platform accepted and HQ does not hold yet (the group tree's `pending`). */
   readonly pending: ReadonlyArray<HeldEnvironment>;
-  /** Projects made as a tier that HQ does not hold in full (`halfMadeGroupEnvironments`). */
-  readonly halfMade: ReadonlyArray<HeldEnvironment>;
+  /**
+   * Projects made as a tier that HQ does not hold in full (`halfMadeGroupEnvironments`), each with
+   * whether HQ offers this person finishing it (`can.finish` of its project).
+   */
+  readonly halfMade: ReadonlyArray<HeldEnvironment & { readonly finish: boolean }>;
   /** The tiers the recipe on `main` holds; meaningful once `recipeRead`. */
   readonly recipeTiers: ReadonlyArray<GroupEnvironmentTier>;
   /** Whether the recipe is read: until it is, no slot is offered or said to wait for it. */
   readonly recipeRead: boolean;
-  /** Whether this person may add an environment (`mayAddEnvironment`). */
-  readonly mayAdd: boolean;
-  /** An organization owner or admin (`environmentAddable`). */
-  readonly writer: boolean;
+  /** The tiers HQ offers this person to add (`add_stage` / `add_production`). */
+  readonly offered: { readonly stage: boolean; readonly production: boolean };
   /** What production runs: nothing (`empty`), a deploy under way, a release, or not known. */
   readonly productionRuns: ProductionRuns;
   /** The changes merged and waiting for production, as the release counts them. */
@@ -335,8 +334,7 @@ export function environmentSlots(input: {
       tier,
       recipeRead: input.recipeRead,
       recipeTiers: input.recipeTiers,
-      mayAdd: input.mayAdd,
-      writer: input.writer,
+      offered: input.offered[tier],
       held,
     }),
   });
@@ -356,7 +354,7 @@ export function environmentSlots(input: {
         tier,
         id: entry.id,
         line: ENVIRONMENT_UNFINISHED,
-        finish: input.mayAdd,
+        finish: entry.finish,
       })),
   ];
   const production = input.environments.find((entry) => entry.tier === "production");

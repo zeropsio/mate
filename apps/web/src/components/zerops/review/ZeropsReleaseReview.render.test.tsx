@@ -8,7 +8,8 @@ import { act, type ComponentProps, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
-import type { ZeropsProjectFlow, FlowVerbOutcome } from "~/zerops/projectFlowContext";
+import type { FlowVerbOutcome } from "~/zerops/flowVerbs";
+import type { ZeropsProjectFlow } from "~/zerops/projectFlows";
 
 import { ZeropsReleaseReview } from "./ZeropsReleaseReview";
 
@@ -20,7 +21,20 @@ const state = vi.hoisted(() => ({
     rollBack: (group: string, tag: string) => Promise<FlowVerbOutcome>;
   },
 }));
-vi.mock("~/zerops/projectFlowContext", () => ({ useZeropsProjectFlowOptional: () => state.value }));
+vi.mock("~/zerops/projectFlows", () => ({
+  useProjectFlows: () => ({ flows: state.value.flows }),
+  useMateNames: () => state.value.mateNames,
+  useEveryAppId: () => [],
+  useAppsEnvironments: () => ({}),
+}));
+vi.mock("~/zerops/flowVerbs", () => ({
+  useFlowVerbs: () => ({
+    pending: new Set(),
+    trouble: null,
+    release: (flow: ZeropsProjectFlow, tag?: string) => state.value.release(flow.groupId, tag),
+    rollBack: (flow: ZeropsProjectFlow, tag: string) => state.value.rollBack(flow.groupId, tag),
+  }),
+}));
 vi.mock("~/zerops/useZeropsCandidates", () => ({ useZeropsCandidates: () => ({ listing: null }) }));
 vi.mock("@t3tools/client-runtime/zerops/projections", () => ({
   heldCandidates: () => ({ rows: [] }),
@@ -30,8 +44,8 @@ vi.mock("~/zerops/fixMates", () => ({ useFixMates: () => [] }));
 vi.mock("~/zerops/fixRequest", () => ({ useAskMateToFix: () => vi.fn() }));
 vi.mock("~/zerops/useNowMs", () => ({ useNowMs: () => NOW, useSecondsNowMs: () => NOW }));
 const compared = vi.hoisted(() => ({ asks: [] as Array<unknown> }));
-vi.mock("~/zerops/useZeropsCompares", () => ({
-  useZeropsCompares: (asks: unknown) => {
+vi.mock("~/zerops/useReleaseComparisons", () => ({
+  useReleaseComparisons: (asks: unknown) => {
     compared.asks.push(asks);
     return new Map();
   },

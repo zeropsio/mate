@@ -44,6 +44,8 @@ describe("zeropsRegistrations", () => {
       "zerops:org:active",
       "zerops:org:services",
       "zerops:org:services",
+      "zerops:org:routings",
+      "zerops:org:routings",
     ]);
   });
 
@@ -80,6 +82,21 @@ describe("zeropsRegistrations", () => {
 });
 
 describe("makeDetailDemands", () => {
+  it("marks a held scope to be renewed once, and nothing no screen holds or let go", () => {
+    const demands = makeDetailDemands({ demanded: () => {} });
+    demands.renew("zerops:org:project:p1");
+    expect(demands.takeRenewal("zerops:org:project:p1")).toBe(false);
+
+    const release = demands.hold("zerops:org:project:p1");
+    demands.renew("zerops:org:project:p1");
+    expect(demands.takeRenewal("zerops:org:project:p1")).toBe(true);
+    expect(demands.takeRenewal("zerops:org:project:p1")).toBe(false);
+
+    demands.renew("zerops:org:project:p1");
+    release();
+    expect(demands.takeRenewal("zerops:org:project:p1")).toBe(false);
+  });
+
   it("demands a scope at its first hold and lets it go at its last release, once", () => {
     const said: Array<readonly [string, boolean]> = [];
     let heard = 0;

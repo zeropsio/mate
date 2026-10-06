@@ -82,6 +82,16 @@ The existing per-person `read_change` filter applies: environments are `{ refuse
 that person cannot read application changes. Navigation carries no application release catalog,
 recipes, repositories or move destinations; those remain app detail.
 
+Each navigation app carries `releaseOffer`: the recorded recipe head, suggested version, a bounded
+summary of changes production has not received, the recipient's release decision and any release
+in flight. `null` means not read yet; `{ refused: reason }` withholds it from a person without
+`read_change`. HQ reuses the release writer's production recipe interpretation, recorded repository
+heads and retained live deploy evidence. It shares candidates across people, filters at delivery,
+and revises only affected app values after head, release or deploy changes. Reading candidates runs
+outside the navigation baseline lock; menu and project pages demand no app-detail scope for an
+offer. Service entries and comparisons load when review opens, and the write still checks current
+permission and heads.
+
 Each navigation app also carries `changes`, its compact open menu rows (`HqNavigationChange`):
 repo, number, title, mateProjectId, state `open`, updatedAt, mergeability, ready and hasHead.
 Repository supplies the code/recipe label and link, Mate identity groups the row and supplies its
@@ -115,8 +125,10 @@ re-reading structure, roles, recipes or environments. Unseen is null
 until source attention proves result identities and the person may observe the Mate. `seen` takes
 `projectId` and result IDs (attention result `turnId`); HQ accepts only currently published IDs,
 stores acknowledgement by person/project/result, and updates only that person's navigation.
-Acknowledgements survive Core restart. They load only for observed projects in the scope, and are
-deleted on forgetting a Mate. A synchronous epoch
+Acknowledgements survive Core restart. Each delivery batches uncached coverage for its observed
+projects into one person-filtered SQL read; a targeted update reads only its affected project.
+Coverage is cached by person/project and guarded against forget epochs and concurrent acknowledgements.
+Acknowledgements are deleted on forgetting a Mate. A synchronous epoch
 fences the per-person cache so a recreated Mate cannot inherit an old result acknowledgement. A missing source attention report does not mean zero unseen.
 
 Send `move-offers` with `requestId` and `projectId` when the move dialog opens. The correlated reply
@@ -168,6 +180,11 @@ recipes or role views. An unchanged environment event produces no navigation rev
 Status ticks commit only `status`, sharing that value between people
 and leaving navigation and role reads untouched. Dropping old removal proof rotates only that scope's incarnation; delivery
 still contains every newly removed key, and reconnect retained keys reconstruct missing proof.
+
+Cold navigation reuses the source validated before its load and revalidates before publication;
+it does not fetch roles again inside the load. The five-person, 30-Mate cold benchmark enforces
+p50 ≤ 60 ms, p95 ≤ 300 ms and at most one coverage query per person. The coverage query budget is
+independent of host scheduling, so a per-project query loop cannot hide behind a fast test run.
 
 Today's overview frames continue to ingest. New Mate frames use
 `MateLinkUp` attention frames, with the canonical `MateAttention` from

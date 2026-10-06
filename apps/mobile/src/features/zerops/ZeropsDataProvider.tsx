@@ -86,7 +86,7 @@ type RuntimeFactory = (input: {
 type AccountPortsFactory = (input: {
   readonly account: AccountScope;
   readonly client: ZeropsApiClient;
-  readonly readProject: ManagedZeropsDataRuntime["readProjectForAccess"];
+  readonly registry: AtomRegistry.AtomRegistry;
   readonly onUser: (user: ZeropsUser) => void;
 }) => Promise<MobileAccountPorts>;
 
@@ -267,12 +267,12 @@ export function ZeropsDataProvider({
         const ports = await accountPorts({
           account: scope,
           client: account.client,
-          readProject: runtime.readProjectForAccess,
+          registry,
           onUser: account.onUser,
         });
         if (!active) return disposeOnce();
         opened = await Effect.runPromise(
-          makeAccountRuntime({ ...ports, data: runtime, atomRegistry: registry }),
+          makeAccountRuntime({ ...ports, data: runtime, atomRegistry: registry, store: store! }),
         );
         if (!active) return disposeOnce();
         owner.current = opened;

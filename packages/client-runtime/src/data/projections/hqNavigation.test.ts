@@ -1,3 +1,4 @@
+import { hqProjectPeople } from "./hqProjectPeople.ts";
 import { describe, expect, it } from "vite-plus/test";
 
 import { hqMateScope } from "../families/hqMate.ts";
@@ -14,7 +15,13 @@ import { reduceAccount, type AccountInput, type Row } from "../reducer.ts";
 import { readsOfState } from "../store.ts";
 import type { StreamEvent } from "../streamMachine.ts";
 import { hqMates } from "./hqMates.ts";
-import { hqAppChanges, hqNavigation, hqPersonFacts, hqStatus } from "./hqNavigation.ts";
+import {
+  hqAppReleaseOffers,
+  hqAppChanges,
+  hqNavigation,
+  hqPersonFacts,
+  hqStatus,
+} from "./hqNavigation.ts";
 
 const ORG = "org";
 const NAV: ReadonlyArray<ScopeKey> = [
@@ -85,6 +92,7 @@ const rows: ReadonlyArray<Row> = [
       births: [],
       environments: [],
       changes: [CHANGE],
+      releaseOffer: null,
     },
   },
   {
@@ -344,5 +352,131 @@ describe("hqAppChanges", () => {
   it("is each application's open changes as HQ's navigation says them", () => {
     expect(hqAppChanges.derive(readsOfState(read), ORG)).toEqual({ shop: [CHANGE] });
     expect(hqAppChanges.derive(readsOfState(emptyAccount), ORG)).toEqual({});
+  });
+});
+
+describe("HQ-computed Mate owners", () => {
+  const owners = (read: ReturnType<typeof readsOfState>, orgId: string) =>
+    Object.fromEntries(
+      Object.entries(hqProjectPeople.derive(read, orgId)).flatMap(([id, entry]) =>
+        entry.owner === null ? [] : [[id, { userId: entry.owner.userId, name: entry.owner.name }]],
+      ),
+    );
+  const owned = (state: AccountState, ownerUserId: string | null) =>
+    apply(state, [
+      {
+        kind: "hq-delivery",
+        scopes: generations,
+        reset: false,
+        removals: [],
+        rows: [
+          {
+            family: "placement",
+            id: "ada",
+            revision: { ...revision, revision: 2 },
+            value: {
+              projectId: "ada",
+              appId: "shop",
+              name: "Ada",
+              kind: "mate",
+              mate,
+              person: { ...person, ownerUserId },
+              signedInNow: {},
+              everSignedIn: { codex: "other" },
+            },
+          },
+        ],
+      },
+    ]);
+  it.each([
+    { name: "live", state: read, owner: "u1", expected: { ada: { userId: "u1", name: "Jan" } } },
+    {
+      name: "outage keeps the owner",
+      state: down,
+      owner: "u1",
+      expected: { ada: { userId: "u1", name: "Jan" } },
+    },
+    {
+      name: "a scope refusal keeps known evidence",
+      state: refused,
+      owner: "u1",
+      expected: { ada: { userId: "u1", name: "Jan" } },
+    },
+    { name: "partial person coverage", state: read, owner: "unknown", expected: {} },
+    { name: "HQ names no owner despite a saved signer", state: read, owner: null, expected: {} },
+  ])("$name", ({ state, owner, expected }) => {
+    expect(owners(readsOfState(owned(state, owner)), ORG)).toEqual(expected);
+  });
+  it("withholds an owner when HQ denies their person fact", () => {
+    const state = apply(owned(read, "u1"), [
+      { kind: "access", family: "hqPerson", id: "u1", access: "denied" },
+    ]);
+    expect(owners(readsOfState(state), ORG)).toEqual({});
+  });
+  it("moves the owner on newer HQ evidence without reading project grants", () => {
+    const before = owned(read, "u1");
+    const after = apply(before, [
+      {
+        kind: "hq-delivery",
+        scopes: generations,
+        reset: false,
+        removals: [],
+        rows: [
+          {
+            family: "placement",
+            id: "ada",
+            revision: { ...revision, revision: 3 },
+            value: {
+              projectId: "ada",
+              appId: "shop",
+              name: "Ada",
+              kind: "mate",
+              mate,
+              person: { ...person, ownerUserId: null },
+              signedInNow: {},
+              everSignedIn: { codex: "u1" },
+            },
+          },
+        ],
+      },
+    ]);
+    expect(owners(readsOfState(before), ORG)).toEqual({
+      ada: { userId: "u1", name: "Jan" },
+    });
+    expect(owners(readsOfState(after), ORG)).toEqual({});
+  });
+});
+
+describe("release offers from navigation", () => {
+  const offer = {
+    head: "a".repeat(40),
+    suggestion: "v0.1.1",
+    gate: { allow: true },
+    inFlight: null,
+    summary: { subjects: ["Dynamic bakery greeting"], total: 1, more: 0, atLeast: false },
+  } as const;
+  it.each([
+    ["live", read],
+    ["outage", down],
+    ["refused scope retains facts", refused],
+  ] as const)("%s needs no app detail and preserves the owner's offer", (_label, state) => {
+    const next = reduceAccount(state, {
+      kind: "hq-delivery",
+      scopes: generations,
+      reset: false,
+      removals: [],
+      rows: [
+        {
+          family: "hqApp",
+          id: "shop",
+          revision: { ...revision, revision: 2 },
+          value: {
+            ...(rows[2]!.value as import("../families/hqNavigation.ts").HqAppValue),
+            releaseOffer: offer,
+          },
+        },
+      ],
+    }).state;
+    expect(hqAppReleaseOffers.derive(readsOfState(next), ORG).shop).toEqual(offer);
   });
 });

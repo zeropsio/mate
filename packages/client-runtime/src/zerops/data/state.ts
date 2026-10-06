@@ -1,6 +1,5 @@
 import type { ZeropsDataPolicy } from "./policy.ts";
 import { commandTarget } from "./commands.ts";
-import { observeServiceDeploys, type ServiceDeployObserved } from "./deployedVersion.ts";
 import {
   denyInventoryScope,
   makeInitialInventoryState,
@@ -10,15 +9,6 @@ import {
   type InventoryQueryState,
   type InventoryState,
 } from "./inventory.ts";
-import {
-  deferFailedTableRowRead,
-  makeInitialEntityTableState,
-  reduceTableObservation,
-  releaseTableLists,
-  retryAbsentTableRows,
-  tableRowsWanted,
-  type EntityTableState,
-} from "./entityTable.ts";
 import type {
   AccessState,
   AccountRef,
@@ -40,10 +30,8 @@ import type {
   ReadTicket,
   ReceiptOrdinal,
   RegistrationRequest,
-  OrganizationRef,
   ServiceRecord,
   SharedReadOwnership,
-  TableEntity,
   ZeropsCommandAttemptId,
   ZeropsRequestId,
 } from "./types.ts";
@@ -85,8 +73,6 @@ export interface ZeropsDataState {
   readonly closed: boolean;
   readonly access: AccessState;
   readonly inventory: InventoryState;
-  /** The entities held as the platform sends them (`entityTable.ts`). */
-  readonly table: EntityTableState;
   readonly reads: ReadonlyMap<ZeropsRequestId, ReadState>;
   readonly readAccumulators: ReadonlyMap<ZeropsRequestId, ReadAccumulator>;
   readonly sharedReads: ReadonlyMap<ZeropsRequestId, SharedReadOwnership>;
@@ -112,34 +98,14 @@ export type RuntimeControlInput =
       readonly ownership: SharedReadOwnership;
     }
   | { readonly kind: "shared-read-released"; readonly requestId: ZeropsRequestId }
-  | {
-      readonly kind: "metadata-retry-requested";
-      readonly organization: OrganizationRef;
-      readonly serviceIds: ReadonlyArray<string>;
-      readonly atMs: number;
-    }
-  | { readonly kind: "inactive-queries-released"; readonly queryKeys: ReadonlyArray<QueryKey> }
-  /** What the services whose variables are held run now, as the account's store holds them. */
-  | {
-      readonly kind: "service-deploys-observed";
-      readonly deploys: ReadonlyArray<ServiceDeployObserved>;
-      readonly atMs: number;
-    };
+  | { readonly kind: "inactive-queries-released"; readonly queryKeys: ReadonlyArray<QueryKey> };
 
 export type ZeropsDataModelInput = IngestionInput | RuntimeControlInput;
 
-export type ZeropsDataFollowUp =
-  | {
-      readonly kind: "hydrate-unresolved-query-members";
-      readonly query: QueryKey;
-    }
-  | {
-      /** Rows the entity table is owed, read by id after a short grace (`entityTable.ts`). */
-      readonly kind: "read-table-rows";
-      readonly entity: TableEntity;
-      readonly organization: OrganizationRef;
-      readonly ids: ReadonlyArray<string>;
-    };
+export interface ZeropsDataFollowUp {
+  readonly kind: "hydrate-unresolved-query-members";
+  readonly query: QueryKey;
+}
 
 export interface ZeropsDataReduction {
   readonly state: ZeropsDataState;
@@ -155,7 +121,6 @@ export function makeInitialZeropsDataState(
     closed: false,
     access,
     inventory: makeInitialInventoryState(),
-    table: makeInitialEntityTableState(),
     reads: new Map(),
     readAccumulators: new Map(),
     sharedReads: new Map(),
@@ -227,10 +192,6 @@ const observationTicket = (observation: PlatformObservation): ReadTicket | null 
   if (observation.kind === "query-baseline-observed" || observation.kind === "entity-unavailable") {
     return observation.ticket;
   }
-  if (observation.kind === "table-rows-observed") {
-    return observation.source === "direct-read" ? observation.ticket : null;
-  }
-  if (observation.kind === "table-membership-observed") return null;
   if ("observation" in observation) {
     const source = observation.observation;
     if (source.source === "direct-read" || source.source === "indexed-search") return source.ticket;
@@ -240,14 +201,7 @@ const observationTicket = (observation: PlatformObservation): ReadTicket | null 
 };
 
 const observationRegistration = (observation: PlatformObservation): RegistrationRequest | null => {
-  if (
-    observation.kind === "query-membership-observed" ||
-    observation.kind === "table-membership-observed"
-  )
-    return observation.registration;
-  if (observation.kind === "table-rows-observed") {
-    return observation.source === "native-push" ? observation.registration : null;
-  }
+  if (observation.kind === "query-membership-observed") return observation.registration;
   if ("observation" in observation) {
     const source = observation.observation;
     if (source.source === "native-push") return source.registration;
@@ -325,17 +279,10 @@ function accumulateRead(
 function reduceObservation(state: ZeropsDataState, admitted: AdmittedObservation): ZeropsDataState {
   if (!observationIsCurrent(state, admitted)) return state;
   const inventory = reduceInventoryObservation(state.inventory, state.scope, admitted);
-  const table = reduceTableObservation(state.table, admitted);
-  const changed = inventory.state !== state.inventory || table.state !== state.table;
-  const outcome: DomainObservationOutcome = {
-    readRequestId: inventory.outcome.readRequestId ?? table.outcome.readRequestId,
-    applied: mergeUnique(inventory.outcome.applied, table.outcome.applied),
-    suppressed: mergeUnique(inventory.outcome.suppressed, table.outcome.suppressed),
-    unresolvedRequiredFields: inventory.outcome.unresolvedRequiredFields,
-  };
-  let next = changed ? { ...state, inventory: inventory.state, table: table.state } : state;
-  next = accumulateRead(next, outcome, observationTicket(admitted.input));
-  return next;
+  const changed = inventory.state !== state.inventory;
+  const outcome: DomainObservationOutcome = inventory.outcome;
+  const next = changed ? { ...state, inventory: inventory.state } : state;
+  return accumulateRead(next, outcome, observationTicket(admitted.input));
 }
 
 const interestProgress = (state: DesiredInterestState): InterestProgress => {
@@ -443,29 +390,8 @@ function completeRead(
     unresolvedRequiredFields: [],
   };
   const target = ticket.target;
-  let table = state.table;
   let incomplete = false;
-  if (
-    target.kind === "query" &&
-    target.descriptor.kind === "service-variables-of-services" &&
-    target.descriptor.ids !== undefined
-  ) {
-    const entity = "user-data";
-    // A failed read asks again after its wait; a read that answered settled each id itself.
-    if (input.completion.kind === "read-failed")
-      table = deferFailedTableRowRead(
-        state.table,
-        entity,
-        target.descriptor.organization,
-        target.descriptor.ids,
-        ticket.receiptOrdinalAtStart,
-        input.stamp.observedAtMs,
-      );
-    incomplete = target.descriptor.ids.some((id) => {
-      const owed = table.wanted.get(`${entity}:${id}`);
-      return owed !== undefined && owed.since <= ticket.receiptOrdinalAtStart;
-    });
-  } else if (ticket.kind === "hydration" && target.kind !== "query") {
+  if (ticket.kind === "hydration" && target.kind !== "query") {
     const key = entityKeyOf(target.ref);
     incomplete = [...state.inventory.queries.values()].some((query) =>
       query.unresolvedMemberKeys.some((memberKey) => memberKey === key),
@@ -497,7 +423,7 @@ function completeRead(
     retained.delete(ticket.requestId);
     readAccumulators = retained;
   }
-  let next: ZeropsDataState = { ...state, table, reads, readAccumulators };
+  let next: ZeropsDataState = { ...state, reads, readAccumulators };
   if (ticket.owner.kind === "interest") {
     next = advanceInterest(
       next,
@@ -768,8 +694,6 @@ function releaseInactiveQueries(
     }
   }
 
-  const table = releaseTableLists(next.table, released);
-  if (table !== next.table) next = { ...next, table };
   if (inventoryQueries === null) return next;
 
   const inventoryMemberKeys = new Set<string>();
@@ -869,20 +793,8 @@ function applyControl(state: ZeropsDataState, input: RuntimeControlInput): Zerop
       ? next
       : cancelPendingReads(next, (ticket) => ticket.requestId === input.requestId);
   }
-  if (input.kind === "metadata-retry-requested") {
-    const table = retryAbsentTableRows(
-      state.table,
-      input.organization,
-      input.serviceIds,
-      input.atMs,
-    );
-    return table === state.table ? state : { ...state, table };
-  }
   if (input.kind === "inactive-queries-released") {
     return releaseInactiveQueries(state, input.queryKeys);
-  }
-  if (input.kind === "service-deploys-observed") {
-    return observeServiceDeploys(state, input.deploys, input.atMs);
   }
   const sharedReads = new Map(state.sharedReads);
   if (!sharedReads.delete(input.requestId)) return state;
@@ -1191,9 +1103,7 @@ export function reduceZeropsDataState(
     input.kind === "read-started" ||
     input.kind === "shared-read-upserted" ||
     input.kind === "shared-read-released" ||
-    input.kind === "inactive-queries-released" ||
-    input.kind === "metadata-retry-requested" ||
-    input.kind === "service-deploys-observed"
+    input.kind === "inactive-queries-released"
   ) {
     const state = trimDiagnostics(applyControl(applyPendingRetention(initial), input), policy);
     return { state, followUps: [] };
@@ -1222,7 +1132,5 @@ export function reduceZeropsDataState(
       followUps.push({ kind: "hydrate-unresolved-query-members", query: query.key });
     }
   }
-  for (const wanted of tableRowsWanted(state.table))
-    followUps.push({ kind: "read-table-rows", ...wanted });
   return { state, followUps };
 }

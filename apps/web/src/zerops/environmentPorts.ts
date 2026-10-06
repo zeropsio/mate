@@ -1,8 +1,10 @@
 /**
  * The web's ports for the account runtime's Mate environments (DESIGN §7.3): the door through the
- * connection runtime, the connection catalog and its links, the probe over `fetch`, and this
- * account's storage. Adapters only: every decision is the runtime's.
+ * connection runtime, the connection catalog and its links, the probe through the data layer's
+ * reads (`mateContainerReads`), the Mate sessions this account keeps, and this tab's intents.
+ * Adapters only: every decision is the runtime's.
  */
+import { shownHqVerdictAtom } from "@t3tools/client-runtime/data";
 import { accountThrowawayDebt } from "./throwawayDebt";
 import { fetchRemoteSessionState } from "@t3tools/client-runtime/authorization";
 import {
@@ -22,17 +24,14 @@ import type {
   RegisteredEnvironment,
 } from "@t3tools/client-runtime/zerops/account/runtime";
 import { normalizeOrigin, zeropsMateBaseUrl } from "@t3tools/client-runtime/zerops/candidates";
-import {
-  readZeropsContainer,
-  readZeropsInitAt,
-} from "@t3tools/client-runtime/zerops/containerHealth";
+import { mateContainerReads } from "@t3tools/client-runtime/data";
 import { zeropsThrowawayPlatform } from "@t3tools/client-runtime/zerops/doorThrowaway";
 import {
   closeOffWordOf,
-  REGISTRATION_RECORDS_KEY,
   systemExchangeClock,
   type CloseOffWord,
   type LinkPhase,
+  type RememberedTarget,
 } from "@t3tools/client-runtime/zerops/environments";
 import {
   descriptorFacts,
@@ -58,9 +57,9 @@ import { environmentCatalog } from "~/connection/catalog";
 import { connectionAtomRuntime } from "~/connection/runtime";
 import { randomUUID } from "~/lib/utils";
 import { environmentIdFromAddress } from "~/routes/-environmentRoute";
-import { hqMatesAtom, hqNavigationAtom, hqOfficialAtom, hqProjectOf } from "~/state/zerops";
+import { hqMatesAtom, hqNavigationAtom, hqProjectOf } from "~/state/zerops";
 
-import { accountLocalStorage, accountStorageKey, captureAccountLifetime } from "./accountLifetime";
+import { accountStorageKey, captureAccountLifetime } from "./accountLifetime";
 import {
   endKeptSession,
   forgetKeptMateSession,
@@ -267,66 +266,6 @@ export function linkPhaseOf(state: SupervisorConnectionState): LinkPhase | null 
   }
 }
 
-const NO_PROJECTS: ReadonlySet<string> = new Set();
-
-/**
- * The projects whose Mate HQ holds online, as HQ tells this tab now — in whatever organization
- * it streams, as a Mate it holds online is up wherever the person looks. Null while what this
- * tab holds is not HQ's answer now — nothing yet, or only what was last known of them — of an
- * HQ that is there or not decided yet; none where the organization has no official HQ, as no
- * answer is coming.
- */
-export function onlinePort(
-  registry: AtomRegistry.AtomRegistry,
-): NonNullable<AccountEnvironmentPorts["online"]> {
-  return {
-    read: () => {
-      const view = registry.get(hqMatesAtom);
-      if (view === null || !view.current) {
-        return registry.get(hqOfficialAtom) === false ? NO_PROJECTS : null;
-      }
-      return new Set(
-        [...view.mates].flatMap(([projectId, mate]) => (mate.presence.online ? [projectId] : [])),
-      );
-    },
-    subscribe: (listener) => {
-      const stopView = registry.subscribe(hqMatesAtom, listener);
-      const stopOfficial = registry.subscribe(hqOfficialAtom, listener);
-      return () => {
-        stopView();
-        stopOfficial();
-      };
-    },
-  };
-}
-
-/**
- * The organization an official HQ's current word on its Mates speaks for: a project it lists that
- * HQ does not hold online is read only once a lease waits on it. None while the organization's HQ
- * is not official or not decided yet, while what this tab holds is not HQ's answer now, or where
- * HQ names no Mates at all — one from before the overviews, whose word says nothing of them.
- */
-export function hqOrganizationPort(
-  registry: AtomRegistry.AtomRegistry,
-): NonNullable<AccountEnvironmentPorts["hqOrganization"]> {
-  return {
-    read: () => {
-      const view = registry.get(hqMatesAtom);
-      return registry.get(hqOfficialAtom) === true && view?.current === true
-        ? view.organizationId
-        : null;
-    },
-    subscribe: (listener) => {
-      const stopView = registry.subscribe(hqMatesAtom, listener);
-      const stopOfficial = registry.subscribe(hqOfficialAtom, listener);
-      return () => {
-        stopView();
-        stopOfficial();
-      };
-    },
-  };
-}
-
 /**
  * HQ's word on which Mates' projects are closed off, from its structure as this tab holds it —
  * HQ's answer now, or what was last known of it (`closeOffWordOf`). None while nothing is known.
@@ -422,34 +361,24 @@ const intentStorage: AccountEnvironmentPorts["intents"] = {
 };
 
 /**
- * The account's records over its scoped `localStorage`, and another tab's write of them (§6.7).
- * A cleared storage names no key.
+ * The Mates whose session this account keeps (`keptSessions.ts`): each target, the environment its
+ * session serves and the address it was opened at — a route to one is found with no read.
  */
-export const recordsStorage: AccountEnvironmentPorts["records"] = {
-  getItem: (key) => {
-    try {
-      return accountLocalStorage.getItem(key);
-    } catch {
-      return null;
-    }
-  },
-  setItem: (key, value) => {
-    try {
-      accountLocalStorage.setItem(key, value);
-    } catch {
-      // Records are personal context: a Mate this tab could not remember reconnects on demand.
-    }
-  },
-  listen: (changed) => {
-    const onStorage = (event: StorageEvent) => {
-      if (event.key === null || event.key === accountStorageKey(REGISTRATION_RECORDS_KEY)) {
-        changed();
-      }
-    };
-    window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
-  },
-};
+export function rememberedMates(): ReadonlyArray<RememberedTarget> {
+  return keptSessions.keys().flatMap((targetKey) => {
+    const registration = keptSessions.read(targetKey);
+    return registration === null
+      ? []
+      : [
+          {
+            targetKey,
+            environmentId: registration.target.environmentId,
+            origin: normalizeOrigin(registration.profile.httpBaseUrl),
+            orgId: null,
+          },
+        ];
+  });
+}
 
 // ── The ports ────────────────────────────────────────────────────────────────────────────────
 
@@ -547,17 +476,9 @@ export function webEnvironmentPorts(input: {
         void runAtomCommand(registry, unparkCommand, environmentId, quiet);
       },
     },
-    probe: (origin, signal, ask) =>
-      readZeropsContainer(
-        origin,
-        { descriptor: mateDescriptors.read, fetch: (url, init) => globalThis.fetch(url, init) },
-        signal,
-        ask,
-      ),
-    readInitAt: (origin, signal) =>
-      readZeropsInitAt(origin, (url, init) => globalThis.fetch(url, init), signal),
+    ...mateContainerReads(mateDescriptors.read),
     intents: intentStorage,
-    records: recordsStorage,
+    remembered: rememberedMates,
     catalog: catalogPort(registry),
     route: () => {
       const environmentId = environmentIdFromAddress(window.location.pathname, appBasePath());
@@ -567,9 +488,6 @@ export function webEnvironmentPorts(input: {
     // Any press in flight: the background mints no throwaway meanwhile.
     pressInFlight: pressesInFlight,
     hqIndex: hqIndexPort(registry),
-    // A Mate HQ holds online is up: its container is never probed.
-    online: onlinePort(registry),
-    hqOrganization: hqOrganizationPort(registry),
     // Nobody is let into a Mate before its project is closed off: HQ's word, and where HQ says
     // nothing, what this browser's own presses know.
     closeOff: closeOffPort(registry),
