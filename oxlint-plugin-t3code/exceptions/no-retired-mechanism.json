@@ -762,14 +762,6 @@
   {
     "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
     "kind": "retired-token",
-    "fingerprint": "useZeropsAppRecipes",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "registry, recipes and releases are read by app hooks; the HQ adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
-    "kind": "retired-token",
     "fingerprint": "useZeropsHistory",
     "owner": "data-layer rewrite: releases/environments",
     "reason": "history is read by a hook up front; read it when the view opens",
@@ -2114,54 +2106,6 @@
   {
     "path": "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
     "kind": "retired-token",
-    "fingerprint": "useZeropsAppRecipes",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "registry, recipes and releases are read by app hooks; the HQ adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsAppRecipes",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "registry, recipes and releases are read by app hooks; the HQ adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsAppRecipes",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "registry, recipes and releases are read by app hooks; the HQ adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsAppReleases",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "registry, recipes and releases are read by app hooks; the HQ adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsAppReleases",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "registry, recipes and releases are read by app hooks; the HQ adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsAppReleases",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "registry, recipes and releases are read by app hooks; the HQ adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
-    "kind": "retired-token",
     "fingerprint": "useZeropsCompares(compareAsks)",
     "owner": "data-layer rewrite: releases/environments",
     "reason": "release comparisons are prepared up front; compare when a release is opened",
@@ -3301,22 +3245,6 @@
     "fingerprint": "zeropsAgentActivityOf(",
     "owner": "data-layer rewrite: Mate attention/overview",
     "reason": "Mate activity is picked by send time; the source decides, never the clock",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsAppRecipes.ts",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsAppRecipes",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "registry, recipes and releases are read by app hooks; the HQ adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsAppReleases.ts",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsAppReleases",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "registry, recipes and releases are read by app hooks; the HQ adapter feeds the store",
     "expires": "never"
   },
   {
