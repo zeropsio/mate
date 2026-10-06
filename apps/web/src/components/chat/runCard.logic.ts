@@ -213,14 +213,25 @@ export function movedByClamp({
   top,
   stoodMax,
   max,
+  linesResized = false,
 }: {
   readonly stood: number;
   readonly top: number;
   readonly stoodMax: number;
   readonly max: number;
+  /**
+   * What it holds re-measured since: the browser may move it a frame's speed
+   * past what its clamp explains (run 12: lines 6 px taller, the top 14 px
+   * up), never further.
+   */
+  readonly linesResized?: boolean;
 }): boolean {
-  return stood - top <= Math.max(0, stoodMax - max) + MOVED_PX;
+  const slack = linesResized ? LINES_RESIZE_SLACK_PX : 0;
+  return stood - top <= Math.max(0, stoodMax - max) + MOVED_PX + slack;
 }
+
+/** A frame's speed of a run's card's eases (`MAX_SPEED_PX_PER_MS` over a frame and a fifth). */
+const LINES_RESIZE_SLACK_PX = 32;
 
 /**
  * The scroll as its lines are laid out: a row travelling into its place (a

@@ -4192,6 +4192,22 @@ function RunScroll({
   const heardPerson = () => {
     personAtRef.current = performance.now();
   };
+  // A pointer or a finger held on it is their input until it lifts: a
+  // drag-select scrolling at its edge, a finger resting on the lines.
+  const holdsRef = useRef({ pointer: false, touch: false });
+  const heardHold = (kind: "pointer" | "touch") => {
+    heardPerson();
+    const holds = holdsRef.current;
+    if (holds[kind]) return;
+    holds[kind] = true;
+    const ends = kind === "pointer" ? ["pointerup", "pointercancel"] : ["touchend", "touchcancel"];
+    const lifted = () => {
+      holds[kind] = false;
+      heardPerson();
+      for (const type of ends) window.removeEventListener(type, lifted, true);
+    };
+    for (const type of ends) window.addEventListener(type, lifted, true);
+  };
   useLayoutEffect(() => {
     const element = scrollRef.current;
     if (element === null) return;
@@ -4321,11 +4337,11 @@ function RunScroll({
       sized.lines = position.scrollHeight;
       const element = scrollRef.current;
       // A motion of the card's own — its glide, its boxes easing, the card
-      // around it or the slot beside it — or its box resizing moves it only
-      // as far as the clamp explains: further up is the person's, whatever
-      // took it there with no input on it (find in page, Tab, a drag-select,
-      // a screen reader). Its lines resizing are the browser's move whatever
-      // it was (run 12: 6 px taller, the top set 14 px up).
+      // around it or the slot beside it — or a resize moves it only as far as
+      // the clamp explains, its lines resizing a frame's speed past it (run
+      // 12: 6 px taller, the top set 14 px up): further up is the person's,
+      // whatever took it there with no input on it (find in page, Tab, a
+      // drag-select, a screen reader).
       const explained =
         element !== null &&
         movedByClamp({
@@ -4333,6 +4349,7 @@ function RunScroll({
           top: position.scrollTop,
           stoodMax: stoodAt.max,
           max: element.scrollHeight - element.clientHeight,
+          linesResized,
         });
       const person = movesAsPerson({
         moving:
@@ -4341,8 +4358,11 @@ function RunScroll({
             (roomRef.current?.easing() ?? false) ||
             heldAbove() ||
             slotEases()),
-        resized: linesResized || (boxResized && explained),
-        msSinceInput: performance.now() - personAtRef.current,
+        resized: (linesResized || boxResized) && explained,
+        msSinceInput:
+          holdsRef.current.pointer || holdsRef.current.touch
+            ? 0
+            : performance.now() - personAtRef.current,
         atFoot: standsAtFoot(position),
         follows: followRef.current.follows,
       });
@@ -4560,7 +4580,8 @@ function RunScroll({
           }}
           onScrollEnd={() => follow.heard({ kind: "ended" })}
           onKeyDown={heardPerson}
-          onPointerDown={heardPerson}
+          onPointerDown={() => heardHold("pointer")}
+          onTouchStart={() => heardHold("touch")}
           onTouchMove={heardPerson}
           onWheel={heardPerson}
           role="region"
