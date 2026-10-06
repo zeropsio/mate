@@ -359,7 +359,7 @@ interface Entry {
   /** Whether the last probe found its Mate answering; undefined before one. */
   answering: boolean | undefined;
   /** Edges of the environment machine that read the container once as they rise. */
-  readonly edges: { exchanging: boolean; failing: boolean; backingOff: boolean };
+  readonly edges: { failing: boolean; backingOff: boolean };
   /** The value last written to the store; null before the first. */
   written: MateLinkValue | null;
 }
@@ -445,7 +445,7 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
       readingFlag: false,
       socket: false,
       answering: undefined,
-      edges: { exchanging: false, failing: false, backingOff: false },
+      edges: { failing: false, backingOff: false },
       written: null,
     };
     entries.set(key, created);
@@ -478,9 +478,6 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
   };
   const asked = (key: TargetKey): boolean => rank(key) <= ASKED_RANK;
   const kept = (key: TargetKey): boolean => ports.kept?.(key) ?? false;
-  const routed = (key: TargetKey): boolean =>
-    !suppressed(projectOf(key)) && demands.get("route")?.has(key) === true;
-
   /** Something waits on the target's container: a demand, a lease, or our verb's intent. */
   const watched = (entry: Entry): boolean =>
     wantedBy(entry.key).length > 0 || entry.container.intent !== null;
@@ -532,7 +529,8 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
       case "exchange": {
         const controller = new AbortController();
         entry.inFlight.set(attempt, controller);
-        if (!kept(key)) pace.spend(clock.now().mono);
+        const sentAt = clock.now();
+        if (!kept(key)) pace.spend(sentAt.mono);
         ports
           .exchange({
             key,
@@ -543,10 +541,10 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
             signal: controller.signal,
           })
           .then(
-            (answer) => enqueue(() => answered(entry, attempt, answer)),
+            (answer) => enqueue(() => answered(entry, attempt, sentAt, answer)),
             () =>
               enqueue(() =>
-                answered(entry, attempt, {
+                answered(entry, attempt, sentAt, {
                   ok: false,
                   failure: { class: "retryable", cause: { kind: "network" } },
                   descriptor: null,
@@ -602,8 +600,15 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
     for (const effect of effects) runEnvironment(entry, effect);
   };
 
-  const answered = (entry: Entry, attempt: number, answer: ExchangeAnswer<C>): void => {
+  const answered = (
+    entry: Entry,
+    attempt: number,
+    sentAt: Instant,
+    answer: ExchangeAnswer<C>,
+  ): void => {
     if (!startedBy(entry, attempt)) return;
+    // An exchange its attempt let go of read nothing of the container.
+    if (entry.inFlight.has(attempt)) readAtDoor(entry, sentAt, answer);
     if (!answer.ok) {
       const cause = answer.failure.class === "retryable" ? answer.failure.cause : null;
       if (cause?.kind === "mint" && cause.status === 429) pace.throttled(clock.now().mono);
@@ -646,6 +651,32 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
         credential: answer.credential,
       })
       .then(installed, () => installed({ ok: false }));
+  };
+
+  /**
+   * The door read the Mate's descriptor as its exchange began: that read is its container's
+   * reading too — one read of a Mate per connection attempt. A door whose descriptor did not
+   * answer found the container unreachable.
+   */
+  const readAtDoor = (entry: Entry, sentAt: Instant, answer: ExchangeAnswer<C>) => {
+    const reading: ProbeReading | null =
+      answer.descriptor !== null
+        ? {
+            kind: "ready",
+            descriptor: answer.descriptor,
+            projectId: projectOf(entry.key),
+            initAt: null,
+          }
+        : !answer.ok &&
+            answer.failure.class === "retryable" &&
+            (answer.failure.cause.kind === "descriptor-unreachable" ||
+              answer.failure.cause.kind === "network" ||
+              answer.failure.cause.kind === "timeout")
+          ? { kind: "unreachable" }
+          : null;
+    if (reading === null) return;
+    transition(entry, { type: "PROBED", reading, sentAt });
+    entry.answering = reading.kind === "ready";
   };
 
   const guardsFor = (key: TargetKey, budget: boolean): EnvironmentGuards => {
@@ -818,12 +849,8 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
     const byOrigin = new Map<string, ProbeCadence>();
     for (const entry of entries.values()) {
       if (entry.origin === null || !watched(entry)) continue;
-      const own = probeCadence(entry.container, true);
-      // The route's Mate is never read on the overdue ladder: the person is looking at it.
-      const cadence: ProbeCadence =
-        own.kind === "poll" && own.overdue && routed(entry.key)
-          ? { kind: "poll", overdue: false }
-          : own;
+      // A container that does not answer is read on the overdue ladder, the route's too.
+      const cadence = probeCadence(entry.container, true);
       const held = byOrigin.get(entry.origin);
       if (held === undefined || order(cadence) > order(held)) byOrigin.set(entry.origin, cadence);
     }
@@ -971,7 +998,6 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
         if (now && !entry.edges[name]) requestFor(entry, ask);
         entry.edges[name] = now;
       };
-      edge("exchanging", entry.environment.credential.kind === "exchanging", { fresh: false });
       edge("failing", entry.environment.link.phase === "backoff", { fresh: true });
       edge("backingOff", entry.environment.credential.kind === "backoff", { fresh: true });
     }
@@ -1240,7 +1266,6 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
               restored.delete(target.key);
               transition(entry, { type: "INTENT", intent: restore(record) });
             }
-            requestFor(entry, { fresh: false });
           } else if (pushed || moved) {
             // A status that moved, or a new address, reads a watched container again: ready is
             // never terminal.
@@ -1279,22 +1304,15 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
     setDemand: (reason, keys) => {
       const next = new Set(keys);
       enqueue(() => {
-        const before = demands.get(reason) ?? new Set<TargetKey>();
+        // A target that starts to be waited on is read by the door its exchange goes through,
+        // or proven up by its socket: nothing reads it besides.
         demands.set(reason, next);
-        // A target that starts to be waited on is read as one starts to.
-        for (const key of next) {
-          const entry = entries.get(key);
-          if (entry !== undefined && !before.has(key)) requestFor(entry, { fresh: false });
-        }
       });
     },
     hold: (key, kind) => {
       const held = holds.get(kind)!;
       enqueue(() => {
-        const count = held.get(key) ?? 0;
-        held.set(key, count + 1);
-        const entry = entries.get(key);
-        if (count === 0 && entry !== undefined) requestFor(entry, { fresh: false });
+        held.set(key, (held.get(key) ?? 0) + 1);
       });
       let released = false;
       return () => {

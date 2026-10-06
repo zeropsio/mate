@@ -926,16 +926,13 @@ const answering = (environmentId: EnvironmentId, projectId: string): ProbeReadin
 
 /**
  * A real Mate adapter over the account's store for present candidates, remembered by `records` or
- * not at all: every probe waits for the test to answer it, and no exchange ever answers.
+ * not at all: every exchange waits for the test to answer what its door read of the Mate.
  */
 function descriptorRig(
   mates: ReadonlyArray<ReturnType<typeof mate>>,
   records: ReadonlyMap<string, EnvironmentId> = new Map(),
 ) {
-  const pending = new Map<
-    string,
-    { readonly resolve: (reading: ProbeReading) => void; readonly reject: (cause: Error) => void }
-  >();
+  const pending = new Map<string, (reading: ProbeReading) => void>();
   const retired: Array<string> = [];
   const clock = {
     now: () => ({ wall: nowMs, mono: nowMs }),
@@ -945,19 +942,24 @@ function descriptorRig(
   const adapter = makeMateAdapter<unknown>({
     store,
     clock,
-    exchange: () => new Promise(() => undefined),
+    exchange: (request) =>
+      new Promise((resolve) => {
+        // The door read the Mate's descriptor; its exchange goes no further here.
+        pending.set(request.origin, (reading) =>
+          resolve({
+            ok: false,
+            failure: { class: "retryable", cause: { kind: "server", status: 503 } },
+            descriptor: reading.kind === "ready" ? reading.descriptor : null,
+          }),
+        );
+      }),
     install: async () => ({ ok: true }),
     readDescriptor: () => new Promise(() => undefined),
     retryLink: () => undefined,
     retire: (key) => {
       retired.push(key);
     },
-    probe: (origin) => {
-      const sentAt = clock.now();
-      return new Promise((resolve, reject) => {
-        pending.set(origin, { resolve: (reading) => resolve({ reading, sentAt }), reject });
-      });
-    },
+    probe: () => new Promise(() => undefined),
     readInitAt: async () => null,
     readMateFlag: async () => "unknown",
     intents: { read: () => null, write: () => undefined },
@@ -982,12 +984,12 @@ function descriptorRig(
   return {
     adapter,
     retired,
-    /** Answers the probe in flight for this origin. */
+    /** Answers the exchange in flight at this origin with what its door read. */
     answer: async (origin: string, reading: ProbeReading) => {
-      const probe = pending.get(origin);
-      if (probe === undefined) throw new Error(`No probe of ${origin} is in flight.`);
+      const answer = pending.get(origin);
+      if (answer === undefined) throw new Error(`No exchange at ${origin} is in flight.`);
       pending.delete(origin);
-      probe.resolve(reading);
+      answer(reading);
       await settle();
     },
   };

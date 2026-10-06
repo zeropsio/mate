@@ -245,12 +245,11 @@ export type DescriptorRead = (
 ) => Promise<{ readonly reading: MatePathReading; readonly sentAt: Instant }>;
 
 /**
- * One probe of the probe store (C6): the descriptor, shared with every other reader of this Mate
- * unless the probe asks `fresh` (`descriptorShare.ts`). `/healthz` is read only when the
- * descriptor does not answer as Mate's, to tell a container coming up from one that is away — or
- * beside it when the probe asks `initAt` (a container coming up, a caller waiting on a probe
- * started now), so a container that re-initialized shows a new `initAt` while its descriptor
- * answers.
+ * One probe of a Mate's container (C6): the descriptor, shared with every other reader of this
+ * Mate unless the probe asks `fresh` (`descriptorShare.ts`), and its word alone says whether the
+ * Mate is up. `/healthz` is read beside it only when the probe asks `initAt` (a container coming
+ * up, a caller waiting on a probe started now): a container that re-initialized shows a new
+ * `initAt`, and one whose descriptor does not answer is told coming up from not answering.
  */
 export async function readZeropsContainer(
   origin: string,
@@ -259,9 +258,8 @@ export async function readZeropsContainer(
   ask: ProbeRead,
 ): Promise<ProbeAnswer> {
   const base = zeropsMateBaseUrl(origin.replace(/\/+$/, ""));
-  const readHealth = () => readMatePath(`${base}/healthz`, ports.fetch, signal);
   const descriptorRead = ports.descriptor(base, { fresh: ask.fresh, signal });
-  const healthRead = ask.initAt ? readHealth() : null;
+  const healthRead = ask.initAt ? readMatePath(`${base}/healthz`, ports.fetch, signal) : null;
   // The reading is as old as the descriptor read it rests on, which another reader may have sent.
   const { reading: descriptor, sentAt } = await descriptorRead;
   if (descriptor.kind === "json" && isZeropsMateDescriptor(descriptor.body)) {
@@ -278,7 +276,20 @@ export async function readZeropsContainer(
       };
     }
   }
-  const health = await (healthRead ?? readHealth());
+  // Readiness is the descriptor's word: `/healthz` is read only beside it, for a container coming
+  // up. One that does not answer is away, or serves no Mate.
+  if (healthRead === null) {
+    return {
+      reading: {
+        kind:
+          descriptor.kind === "blocked" || descriptor.kind === "server-error"
+            ? "unreachable"
+            : "predates-mate",
+      },
+      sentAt,
+    };
+  }
+  const health = await healthRead;
   // zcp's init is complete — nginx serves its marker whether Mate runs or not — and the descriptor
   // did not answer, however it failed (a 502 without CORS reads as no answer at all): the
   // container is up and its Mate is not answering, never a container still coming up.

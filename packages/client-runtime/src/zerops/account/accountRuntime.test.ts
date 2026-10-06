@@ -2811,25 +2811,30 @@ describe("the post-grant stage's Mate environments", () => {
 
   // A Mate is read only while something waits on it (HANDOFF §6): the platform's statuses say
   // the rest, and no listing, HQ word or load probes a Mate nobody opened.
-  it.effect("a listed Mate nobody waits on is never probed, and is once a lease holds it", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const { clock, rig, environments } = yield* granted(
-          [],
-          [A_MATE],
-          platformAdapter([A_MATE]),
-          [A_MATE],
-        );
-        yield* clock.advance(MINUTE);
-        yield* settle;
-        expect([...environments.machines().keys()]).toContain(MATE);
-        expect(rig.probes.map(({ input }) => input)).not.toContain(MATE_ORIGIN);
+  it.effect(
+    "a listed Mate nobody waits on is never read, and is through its door once a lease holds it",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { clock, rig, environments } = yield* granted(
+            [],
+            [A_MATE],
+            platformAdapter([A_MATE]),
+            [A_MATE],
+          );
+          yield* clock.advance(MINUTE);
+          yield* settle;
+          expect([...environments.machines().keys()]).toContain(MATE);
+          expect(rig.probes.map(({ input }) => input)).not.toContain(MATE_ORIGIN);
+          expect(rig.exchanges).toEqual([]);
 
-        environments.setOnScreen(A_MATE.projectId);
-        yield* settle;
-        expect(rig.probes.map(({ input }) => input)).toContain(MATE_ORIGIN);
-      }),
-    ),
+          environments.setOnScreen(A_MATE.projectId);
+          yield* settle;
+          // Its door's descriptor read is its container's reading: no probe besides.
+          expect(rig.exchanges.map(({ input }) => input.key)).toEqual([MATE]);
+          expect(rig.probes.map(({ input }) => input)).not.toContain(MATE_ORIGIN);
+        }),
+      ),
   );
 
   it.effect(

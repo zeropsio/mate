@@ -175,11 +175,10 @@ describe("makeMateAdapter", () => {
   });
 
   it("reads the route's Mate, exchanges at its door and goes live once installed", async () => {
-    const { adapter, store, probes, exchanges, installs } = rig();
+    const { adapter, store, exchanges, installs } = rig();
     adapter.setTargets([target("p1"), target("p2")]);
     adapter.setDemand("route", ["p1:zcp"]);
     await flush();
-    expect(probes.map((probe) => probe.origin)).toEqual(["https://p1.example"]);
     expect(exchanges.map((exchange) => exchange.key)).toEqual(["p1:zcp"]);
     expect(installs).toEqual(["p1:zcp"]);
     const link = mateLink.derive(read(store), "p1:zcp");
@@ -305,5 +304,45 @@ describe("makeMateAdapter", () => {
     adapter.setCloseOffHeld([]);
     await flush();
     expect(exchanges.map((exchange) => exchange.key)).toEqual(["p1:zcp"]);
+  });
+
+  // The owner's load in KRLS, 2026-10-06: every listed Mate's descriptor and healthz were read,
+  // the stopped and unready ones failing with CORS errors in the console.
+  it("reads a Mate once per connection attempt: the door's descriptor read stands for its container", async () => {
+    const { adapter, store, probes, exchanges } = rig();
+    adapter.setTargets([target("p1")]);
+    adapter.setDemand("route", ["p1:zcp"]);
+    await flush();
+    expect(exchanges.map((exchange) => exchange.key)).toEqual(["p1:zcp"]);
+    expect(probes).toEqual([]);
+    expect(mateLink.derive(read(store), "p1:zcp")?.container.state.level).toBe("ready");
+  });
+
+  it.each(["STOPPED", "RESTARTING", "ACTION_FAILED"])(
+    "never reads a Mate whose service Zerops reports %s, even on the route",
+    async (status) => {
+      const { adapter, probes, exchanges, clock } = rig();
+      adapter.setTargets([target("p1", { platform: { project: "ACTIVE", service: status } })]);
+      adapter.setDemand("route", ["p1:zcp"]);
+      await flush();
+      await clock.advance(10 * 60_000);
+      expect(probes).toEqual([]);
+      expect(exchanges).toEqual([]);
+    },
+  );
+
+  it("backs off reading a Mate whose container stopped answering", async () => {
+    const { adapter, probes, clock } = rig({ reading: () => ({ kind: "unreachable" }) });
+    adapter.setTargets([target("p1")]);
+    adapter.setDemand("route", ["p1:zcp"]);
+    await flush();
+    adapter.link(EnvironmentId.make("env-p1"), { phase: "connected" });
+    await flush();
+    adapter.link(EnvironmentId.make("env-p1"), { phase: "backoff", retryAtMs: null });
+    await flush();
+    await clock.advance(2 * 60_000);
+    // A read on the drop, then the overdue ladder (10, 20, 40, 60 s): never every two seconds.
+    expect(probes.length).toBeGreaterThan(0);
+    expect(probes.length).toBeLessThanOrEqual(6);
   });
 });
