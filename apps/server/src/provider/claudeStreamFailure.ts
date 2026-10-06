@@ -75,6 +75,18 @@ function cutBeforeKeys(line: string): string {
 }
 
 const HEAP = /heap out of memory|Reached heap limit|Allocation failed/u;
+/**
+ * Claude Code is a Bun-built binary: a crash in it — out of memory, a fault —
+ * ends in Bun's crash handler, which writes a report to stderr and aborts
+ * (SIGABRT). Its panic, its version, its run time and its memory say why; its
+ * arguments and its link never reach the log.
+ */
+const BUN_PANIC = /^panic(?:\([a-z ]{1,40}\))?: |Bun has crashed/u;
+const BUN_VERSION =
+  /^Bun v\d{1,3}\.\d{1,3}\.\d{1,4}(?: \([0-9a-f]{1,16}\))?(?: [A-Za-z][A-Za-z0-9_]{0,15}){0,3}(?: \([a-z]{1,16}\))?/u;
+/** Its run time and memory, figures only: "RSS: 1.95GB | Peak: 2.10GB | … | Machine: 2.15GB". */
+const BUN_FIGURES =
+  /^(?:Elapsed|RSS): [\d.]{1,12}(?:ms|[KMGT]?B)(?: \| [A-Za-z]{1,8}: [\d.]{1,12}(?:ms|[KMGT]?B)?){0,6}/u;
 const ERROR_HEADLINE = /^(?:[A-Z][A-Za-z]{0,40})?Error:/u;
 const EXIT_OR_SIGNAL = /exited with code \d{1,5}|terminated by signal SIG[A-Z0-9]{1,12}/u;
 const NETWORK = /\bENOMEM\b|\bECONNRESET\b|\bETIMEDOUT\b|socket hang up/u;
@@ -82,8 +94,8 @@ const API_STATUS = /^API Error: \d{3}\b/u;
 
 /**
  * The lines of a stderr that say what crashed, and nothing else: Node's fatal
- * and heap lines, error headlines cut before anything key-like, an exit or
- * signal, a network failure, the API's status line.
+ * and heap lines, Bun's crash report, error headlines cut before anything
+ * key-like, an exit or signal, a network failure, the API's status line.
  */
 export function crashLines(stderr: string): string[] {
   const kept: string[] = [];
@@ -91,8 +103,11 @@ export function crashLines(stderr: string): string[] {
     const line = raw.trim().slice(0, LINE_CHARS);
     if (line.length === 0) continue;
     let crash: string | null = null;
-    if (line.startsWith("FATAL ERROR") || HEAP.test(line)) {
+    const figures = BUN_VERSION.exec(line) ?? BUN_FIGURES.exec(line);
+    if (line.startsWith("FATAL ERROR") || HEAP.test(line) || BUN_PANIC.test(line)) {
       crash = cutBeforeKeys(line);
+    } else if (figures !== null) {
+      crash = figures[0];
     } else if (API_STATUS.test(line) || ERROR_HEADLINE.test(line)) {
       crash = cutBeforeKeys(line);
     } else {
@@ -128,7 +143,8 @@ const NEXT = "Send a message to pick up where it left off.";
 const SIGN_IN_NEXT = "Sign Claude in again, then send a message to pick up where it left off.";
 
 const SIGNED_OUT = /OAuth token has expired|Invalid API key|API Error: 401\b|Please run \/login/u;
-const OUT_OF_MEMORY = /heap out of memory|Reached heap limit|Allocation failed|\bENOMEM\b/u;
+const OUT_OF_MEMORY =
+  /heap out of memory|Reached heap limit|Allocation failed|\bENOMEM\b|Bun (?:has run|ran) out of memory/u;
 const API_DOWN_HEAD = /^API Error: (?:5\d\d|529)\b|\boverloaded\b/iu;
 const API_DOWN_LINE = /^API Error: (?:5\d\d|529)\b/u;
 const DROPPED = /ECONNRESET|ETIMEDOUT|socket hang up|fetch failed/u;
@@ -171,20 +187,19 @@ export function describeClaudeStreamFailure(input: {
   const reason = input.defect
     ? "Mate failed to read Claude's output."
     : signal === "SIGKILL"
-      ? "Claude Code was stopped by the system (SIGKILL), most often for lack of memory."
+      ? "Claude Code was stopped by the system, most often for lack of memory."
       : SIGNED_OUT.test(said)
         ? "Claude's sign-in has expired."
         : OUT_OF_MEMORY.test(said)
           ? "Claude Code ran out of memory."
-          : signal !== null
-            ? `Claude Code was stopped (${signal}).`
-            : exitCode !== null
-              ? `Claude Code exited (code ${exitCode}).`
-              : API_DOWN_HEAD.test(head ?? "") ||
-                  DROPPED.test(head ?? "") ||
-                  apiDownIn(input.stderr)
-                ? "The Claude API stopped answering."
-                : "Claude Code stopped unexpectedly.";
+          : // A signal or an exit code is the log's: the person reads that it stopped.
+            signal === null &&
+              exitCode === null &&
+              (API_DOWN_HEAD.test(head ?? "") ||
+                DROPPED.test(head ?? "") ||
+                apiDownIn(input.stderr))
+            ? "The Claude API stopped answering."
+            : "Claude Code stopped unexpectedly.";
   const named =
     head === null
       ? null
