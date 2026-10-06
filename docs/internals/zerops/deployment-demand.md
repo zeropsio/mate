@@ -13,8 +13,12 @@ account's store (`data/projections/stopWork.ts`): the organization's running wor
 versions are navigation families, observed whether or not any stop is opened, so a summary settles
 a running version, a build and nothing deployed alike.
 
-Opening stop detail upgrades the shared entry to `project-topology`. Its opened services demand
-runtime variables, which name a version no build named; detail waits for them. Closing the last
+Opening stop detail upgrades the shared entry to `project-topology` and reads the project's
+newest processes, whose builds name the versions a roll back activates by id alone. Its opened
+services demand runtime variables, which name a version no build named; detail waits for them. A
+version a stop runs that the organization's active versions do not hold is read by id
+(`GET /app-version/{id}`); one the platform does not have fails the stop, "Its active version is
+not listed". Closing the last
 detail releases those facts while any summary keeps its service demand. Navigation needs only the
 enabled/setup flags of zcp containers, so its variable demand names only their service ids. The account's access demand admits each demanded project. A
 confirmed gone project leaves the inventory. HQ flow reads cannot hide a stop's runtime answer.
