@@ -92,6 +92,7 @@ describe("a job's state", () => {
     { state: "live", inFlight: false, failed: false },
     { state: "failed", inFlight: false, failed: true },
     { state: "refused", inFlight: false, failed: true },
+    { state: "unresolved", inFlight: false, failed: false },
     { state: "superseded", inFlight: false, failed: false },
   ] as const)("$state: in flight $inFlight, failed $failed", ({ state, inFlight, failed }) => {
     expect([jobInFlight({ state }), jobFailed({ state })]).toEqual([inFlight, failed]);
@@ -102,6 +103,22 @@ describe("environmentsOf", () => {
   it("reads an environment with its jobs", () => {
     const environment = { ...STAGE, jobs: [job("1", "app", "live")] };
     expect(environmentsOf([environment])).toEqual([environment]);
+  });
+
+  it("retains every environment when one accepted operation is unresolved", () => {
+    const stage = {
+      ...STAGE,
+      jobs: [
+        {
+          ...job("2", "app", "live"),
+          state: "unresolved",
+          reason: "A person must inspect the process in Zerops",
+        },
+        job("1", "app", "live"),
+      ],
+    };
+    const production = { ...STAGE, projectId: "p-prod", tier: "production" };
+    expect(environmentsOf([stage, production])).toEqual([stage, production]);
   });
 
   it("reads a production with where its newest release stands", () => {

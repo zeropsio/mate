@@ -168,6 +168,7 @@ export interface JobView {
     | "live"
     | "failed"
     | "refused"
+    | "unresolved"
     | "skipped"
     | "superseded";
   /** The event that asked for it (`rollouts.ts`). */

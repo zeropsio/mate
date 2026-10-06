@@ -29,7 +29,7 @@ export const HqJob = Schema.Struct({
   /**
    * queued → submitting → building → live, failed (the build's own, final until a person asks
    * again), refused (what did not go through at its one try), skipped (what HQ chose not to
-   * submit, and why), or superseded (a newer one came while it waited).
+   * submit, and why), unresolved (a person must inspect the original handle), or superseded (a newer one came while it waited).
    */
   state: Schema.Literals([
     "queued",
@@ -38,6 +38,7 @@ export const HqJob = Schema.Struct({
     "live",
     "failed",
     "refused",
+    "unresolved",
     "skipped",
     "superseded",
   ]),

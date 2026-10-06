@@ -33,6 +33,7 @@ export const HqDeployOutcome = Schema.Struct({
     "live",
     "failed",
     "refused",
+    "unresolved",
     "skipped",
     "superseded",
   ]),

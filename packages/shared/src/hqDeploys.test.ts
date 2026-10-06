@@ -28,6 +28,16 @@ describe("HqDeployAnswer — where each job an event asked for stands once HQ su
   it.each([
     { name: "building", deploys: [outcome] },
     {
+      name: "unresolved with the next actor",
+      deploys: [
+        {
+          ...outcome,
+          state: "unresolved",
+          reason: "A person must inspect the original process in Zerops",
+        },
+      ],
+    },
+    {
       name: "queued behind the job its environment builds",
       deploys: [{ ...outcome, state: "queued", processId: null, behind: "6" }],
     },
