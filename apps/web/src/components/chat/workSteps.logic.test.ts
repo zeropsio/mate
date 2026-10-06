@@ -174,6 +174,74 @@ describe("trackCommands", () => {
     expect(stepOf(run, tracked).words).toBeNull();
   });
 
+  // A long conversation holds many tasks and many commands: each task is read
+  // against the commands' ends in order, never against every command.
+  const ended = (second: number, extra: Partial<WorkLogEntry> = {}) => ({
+    startedAt: "2026-09-27T08:00:00.000Z",
+    updatedAt: new Date(Date.parse("2026-09-27T08:00:00.000Z") + second * 1000).toISOString(),
+    ...extra,
+  });
+  const at = (second: number) =>
+    new Date(Date.parse("2026-09-27T08:00:00.000Z") + second * 1000).toISOString();
+  it.each([
+    {
+      name: "the first in the log wins, though a later one ended nearer",
+      commands: [command("a", "one", ended(10)), command("b", "two", ended(12))],
+      tasks: [task("t1", "Run", { createdAt: at(12) })],
+      linked: [["a", "t1"]],
+    },
+    {
+      name: "one already taken leaves the next",
+      commands: [command("a", "one", ended(10)), command("b", "two", ended(11))],
+      tasks: [
+        task("t1", "Run", { createdAt: at(11) }),
+        task("t2", "Run again", { createdAt: at(11) }),
+      ],
+      linked: [
+        ["a", "t1"],
+        ["b", "t2"],
+      ],
+    },
+    {
+      name: "one taken by name first is not taken again",
+      commands: [command("a", "one", ended(10)), command("b", "two", ended(10))],
+      tasks: [
+        task("t1", "Named", { createdAt: at(10), taskToolUseId: "toolu_a" }),
+        task("t2", "Unnamed", { createdAt: at(10) }),
+      ],
+      linked: [
+        ["a", "t1"],
+        ["b", "t2"],
+      ],
+    },
+    {
+      name: "the tolerance's edges, either side",
+      commands: [command("a", "one", ended(7)), command("b", "two", ended(13))],
+      tasks: [
+        task("t1", "Early", { createdAt: at(10) }),
+        task("t2", "Late", { createdAt: at(10) }),
+      ],
+      linked: [
+        ["a", "t1"],
+        ["b", "t2"],
+      ],
+    },
+    {
+      name: "past the tolerance, or started after the task, or with no time",
+      commands: [
+        command("a", "one", ended(6.999)),
+        command("b", "two", ended(13.001)),
+        command("c", "three", ended(10, { startedAt: at(10.5) })),
+        command("d", "four", { startedAt: "never", updatedAt: "never" }),
+      ],
+      tasks: [task("t1", "Run", { createdAt: at(10) })],
+      linked: [],
+    },
+  ])("links a task that names no call: $name", ({ commands, tasks, linked }) => {
+    const tracked = trackCommands([...commands, ...tasks]);
+    expect([...tracked.byCommand].map(([id, track]) => [id, track.task.id])).toEqual(linked);
+  });
+
   it.each([
     {
       name: "a helper",
