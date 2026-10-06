@@ -23,6 +23,7 @@ import {
   ServerProviderUpdatedPayload,
   ProjectReadFileResult,
   ORCHESTRATION_WS_METHODS,
+  MateAttention,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import type { WebSocket } from "ws";
@@ -87,6 +88,8 @@ const encodeServerConfig = Schema.encodeSync(ServerConfig);
 const decodeOrchestrationEvent = Schema.decodeUnknownSync(OrchestrationEvent);
 const encodeOrchestrationThreadStreamItem = Schema.encodeSync(OrchestrationThreadStreamItem);
 const encodeOrchestrationShellStreamItem = Schema.encodeSync(OrchestrationShellStreamItem);
+const decodeMateAttention = Schema.decodeUnknownSync(MateAttention);
+const encodeMateAttention = Schema.encodeSync(MateAttention);
 
 const AT = "2026-10-05T12:00:00.000Z";
 export interface RpcRequest {
@@ -117,7 +120,17 @@ export class MateFake {
   private readonly receipts = new NodeEvents.EventEmitter();
   readonly projectId: string;
   readonly name: string;
+  /** Its attention's incarnation and revision, and what it says beyond its one chat. */
+  readonly attentionIncarnation: string;
+  attentionRevision = 0;
+  private attentionSays: Partial<
+    Pick<
+      MateAttention,
+      "mainThreadId" | "lastThreadId" | "working" | "waiting" | "results" | "questions"
+    >
+  > = {};
   constructor(projectId: string, name: string) {
+    this.attentionIncarnation = `fake-${projectId}`;
     this.projectId = projectId;
     this.name = name;
     this.descriptor = decodeExecutionEnvironmentDescriptor({
@@ -225,6 +238,38 @@ export class MateFake {
       threads: [this.shellThread()],
     });
   }
+  /** Its attention now (`subscribeZeropsAttention`): its one chat main and last, unless it said another. */
+  attention(): MateAttention {
+    return decodeMateAttention({
+      source: {
+        environmentId: this.descriptor.environmentId,
+        incarnation: this.attentionIncarnation,
+        revision: this.attentionRevision,
+      },
+      mainThreadId: this.thread.id,
+      lastThreadId: this.thread.id,
+      working: 0,
+      waiting: 0,
+      results: [],
+      questions: [],
+      truncated: false,
+      ...this.attentionSays,
+    });
+  }
+  /**
+   * A new revision of its attention, sent to every page subscribed to it straight; its link to HQ
+   * is the area driver's to send it on.
+   */
+  publishAttention(says: MateFake["attentionSays"] = this.attentionSays): MateAttention {
+    this.attentionSays = says;
+    this.attentionRevision += 1;
+    const value = this.attention();
+    for (const [socket, subscriptions] of this.subscriptions)
+      for (const [id, request] of subscriptions)
+        if (request.tag === WS_METHODS.subscribeZeropsAttention)
+          this.chunk(socket, id, [encodeMateAttention(value)]);
+    return value;
+  }
   snapshot() {
     return decodeOrchestrationThreadDetailSnapshot({
       snapshotSequence: this.sequence,
@@ -319,6 +364,9 @@ export class MateFake {
             this.message(command.message.messageId, command.message.text, command.commandId);
           }
           this.reply(socket, id, encodeDispatchResult({ sequence: this.sequence }));
+        } else if (tag === WS_METHODS.subscribeZeropsAttention) {
+          this.subscriptions.get(socket)!.set(id, request);
+          this.chunk(socket, id, [encodeMateAttention(this.attention())]);
         } else if (tag === WS_METHODS.subscribeZeropsAgentAuth) {
           this.chunk(socket, id, [
             encodeUnknownZeropsAgentAuthSnapshot({
@@ -429,6 +477,7 @@ export class MateFake {
       ],
     });
     this.receipts.emit("message");
+    this.publishAttention();
     const shellEvent = {
       kind: "thread-upserted" as const,
       sequence: this.sequence,

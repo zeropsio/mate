@@ -182,6 +182,23 @@ describe("B: menu liveness", () => {
       }),
     );
 
+    // Catches a row that keeps saying its Mate works after the Mate said it stopped: its
+    // attention, ordered by its own revision, is the word (HANDOFF §2.2 / §8: within ~2 s).
+    it.effect("a Mate's attention that it stopped clears its working row within two seconds", () =>
+      Effect.gen(function* () {
+        const s = yield* menuScenario();
+        yield* s.given.project("Ada", { mate: true });
+        yield* s.given.signedIn;
+        yield* s.then.menu.row("Ada").appears();
+        yield* s.colleague.reports("Ada", working, "working");
+        yield* s.menu.text("Ada", "Thinking", "sidebar-mate-live-step");
+        // Its overview still says it works; only its attention moved.
+        yield* s.colleague.attends("Ada", {});
+        yield* s.menu.lacks("Ada", "sidebar-mate-live-step", 2_000);
+        yield* s.then.noReload;
+      }),
+    );
+
     // Catches a pending agent question hidden until its conversation is opened.
     it.effect("an agent waiting for input shows its question in the row", () =>
       Effect.gen(function* () {

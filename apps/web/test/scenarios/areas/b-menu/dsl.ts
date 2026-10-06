@@ -1,3 +1,4 @@
+import type { MateFake } from "../../fakes/mate.ts";
 import * as Effect from "effect/Effect";
 import { clickText } from "../../harness/browser.ts";
 import type { ScenarioExtension } from "../../harness/scenario.ts";
@@ -5,6 +6,7 @@ import type { OverviewMain, MateThreadKind } from "@t3tools/shared/mateLink";
 import { createScenario } from "../../harness/scenario.ts";
 import {
   installMenu,
+  reportAttention,
   reportConversation,
   moveMate,
   removeProject,
@@ -21,7 +23,7 @@ export const menuScenario = Effect.fn("menu.scenario")(function* (
 ) {
   const s = yield* createScenario([installMenu, ...extensions]);
   const menu = {
-    text: (name: string, words: string, surface = "sidebar-mate") =>
+    text: (name: string, words: string, surface = "sidebar-mate", within = 15_000) =>
       Effect.promise(async () => {
         try {
           await s.page.waitForFunction(
@@ -39,7 +41,7 @@ export const menuScenario = Effect.fn("menu.scenario")(function* (
                     : row.querySelector<HTMLElement>(`[data-zerops-surface="${surface}"]`)
                   )?.innerText.includes(words),
               ),
-            { timeout: 15_000, polling: "raf" },
+            { timeout: within, polling: "raf" },
             name,
             words,
             surface,
@@ -51,6 +53,26 @@ export const menuScenario = Effect.fn("menu.scenario")(function* (
           );
         }
       }),
+    /** The row of Mate `name` shows no `surface` line within `within` ms. */
+    lacks: (name: string, surface: string, within: number) =>
+      Effect.promise(() =>
+        s.page.waitForFunction(
+          (name, surface) =>
+            [
+              ...document.querySelectorAll<HTMLElement>('[data-zerops-surface="sidebar-mate"]'),
+            ].some(
+              (row) =>
+                row
+                  .querySelector<HTMLElement>('[data-zerops-surface="sidebar-mate-name"]')
+                  ?.innerText.trim() === name &&
+                row.getBoundingClientRect().height > 0 &&
+                row.querySelector(`[data-zerops-surface="${surface}"]`) === null,
+            ),
+          { timeout: within, polling: "raf" },
+          name,
+          surface,
+        ),
+      ),
     absent: (name: string) =>
       Effect.promise(async () => {
         await s.page.waitForFunction(
@@ -131,6 +153,8 @@ export const menuScenario = Effect.fn("menu.scenario")(function* (
     colleague: {
       reports: (name: string, patch: Partial<OverviewMain> = {}, kind: MateThreadKind = "idle") =>
         reportConversation(s.drivers, name, patch, kind),
+      attends: (name: string, says: Parameters<MateFake["publishAttention"]>[0]) =>
+        reportAttention(s.drivers, name, says),
       holdsDetails: (app: string) => holdDetails(s.drivers, app),
       releasesDetails: releaseDetails(s.drivers),
       moves: (name: string, app: string | null) => moveMate(s.drivers, name, app),
