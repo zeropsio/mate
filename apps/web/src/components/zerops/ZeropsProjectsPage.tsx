@@ -197,7 +197,6 @@ import {
   groupMemberFactsOf,
   lastMergedCode,
   parseProjectsSearch,
-  matesKnownOf,
   rowMateActivitiesOf,
   withoutOfficialHq,
   shownUngrouped,
@@ -2537,11 +2536,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
             return name === undefined ? [] : [{ item, name }];
           }),
           activityOf,
-        ),
-        matesKnown: matesKnownOf(
-          environments.filter(({ item }) => hasMate(item)).map(({ item }) => item),
-          activityOf,
-          conversationsRead,
         ),
         awaiting: awaiting.steps,
         changesAwaiting: awaiting.changes,

@@ -1392,38 +1392,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/components/zerops/projects/ProjectList.tsx",
-    "kind": "retired-token",
-    "fingerprint": "lastRowRisen",
-    "owner": "data-layer rewrite: Mate attention/overview",
-    "reason": "risen project rows are remembered in browser storage; the attention projection decides on load",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/projects/ProjectList.tsx",
-    "kind": "retired-token",
-    "fingerprint": "lastRowRisen",
-    "owner": "data-layer rewrite: Mate attention/overview",
-    "reason": "risen project rows are remembered in browser storage; the attention projection decides on load",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/projects/ProjectList.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useRememberRisenRows",
-    "owner": "data-layer rewrite: Mate attention/overview",
-    "reason": "risen project rows are remembered in browser storage; the attention projection decides on load",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/projects/ProjectList.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useRememberRisenRows",
-    "owner": "data-layer rewrite: Mate attention/overview",
-    "reason": "risen project rows are remembered in browser storage; the attention projection decides on load",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/components/zerops/projects/projectsView.logic.ts",
     "kind": "retired-token",
     "fingerprint": "const writer = roleAtLeast(organization.roleCode, \"ADMIN\")",
@@ -1461,30 +1429,6 @@
     "fingerprint": "tiersAddable(",
     "owner": "data-layer rewrite: permissions/members",
     "reason": "tiers addable are computed from the organization role in the client; HQ sends it",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/projects/rowRiseMemory.ts",
-    "kind": "retired-token",
-    "fingerprint": "lastRowRisen",
-    "owner": "data-layer rewrite: Mate attention/overview",
-    "reason": "risen project rows are remembered in browser storage; the attention projection decides on load",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/projects/rowRiseMemory.ts",
-    "kind": "retired-token",
-    "fingerprint": "mate:zerops:projects-risen",
-    "owner": "data-layer rewrite: Mate attention/overview",
-    "reason": "risen project rows are remembered in browser storage; the attention projection decides on load",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/projects/rowRiseMemory.ts",
-    "kind": "retired-token",
-    "fingerprint": "useRememberRisenRows",
-    "owner": "data-layer rewrite: Mate attention/overview",
-    "reason": "risen project rows are remembered in browser storage; the attention projection decides on load",
     "expires": "never"
   },
   {
