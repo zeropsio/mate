@@ -20,7 +20,7 @@ describe("@t3tools/client-runtime/zerops/environments", () => {
     expect(typeof environments.mateLink).toBe("function");
     expect(typeof environments.makeRegistrationRecords).toBe("function");
     expect(typeof environments.listTargets).toBe("function");
-    expect(typeof environments.candidateListingsAtom).toBe("function");
+    expect(typeof environments.mateListingsAtom).toBe("function");
     expect(typeof environments.containerSnapshotOf).toBe("function");
   });
 });

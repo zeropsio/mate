@@ -1,3 +1,4 @@
+import { mountRoster } from "@t3tools/client-runtime/zerops/testing";
 import type { EnvironmentPresentation } from "@t3tools/client-runtime/connection";
 import type { ZeropsProject, ZeropsService } from "@t3tools/client-runtime/zerops";
 import {
@@ -78,8 +79,8 @@ function registered(input: {
 }
 
 /**
- * A runtime that has read the organization's one project and its zcp container, under a grant
- * that names the organization.
+ * A runtime that has read the project's zcp container, under a grant that names the
+ * organization.
  */
 function readRuntime(): ManagedZeropsDataRuntime {
   const id = identity();
@@ -101,20 +102,6 @@ function readRuntime(): ManagedZeropsDataRuntime {
       ).state;
     }
   };
-  const projects = {
-    kind: "projects-of-organization" as const,
-    organization,
-    statuses: [],
-    schemaVersion: 1 as const,
-  };
-  ingest(
-    decodeEntityQueryResponse(
-      projects,
-      directTicket({ kind: "query", descriptor: projects }, id, 2, 2),
-      { list: [PROJECT], totalCount: 1 },
-      "direct-read",
-    ),
-  );
   const services = {
     kind: "services-of-project" as const,
     project: owner,
@@ -148,13 +135,15 @@ function readRuntime(): ManagedZeropsDataRuntime {
     },
   };
   return {
+    scope: scope(),
     reads: createZeropsDataAtoms(Atom.make(state)).reads,
     access: { view: Atom.make(granted) },
   } as unknown as ManagedZeropsDataRuntime;
 }
 
-/** What the account's product publishes once its inventory is granted. */
+/** What the account's product publishes once its inventory is granted; its store's roster. */
 function publishAccount(registry: AtomRegistry.AtomRegistry) {
+  mountRoster(registry, organization.organizationId, [PROJECT]);
   registry.set(zeropsDataRuntimeAtom, readRuntime());
   registry.set(zeropsSessionAtom, {
     status: "signed-in",

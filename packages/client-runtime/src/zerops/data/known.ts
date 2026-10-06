@@ -2,9 +2,8 @@
  * The inventory's reads as knowledge (DESIGN §2.B B1–B2, §3.5).
  *
  * A read the runtime has not answered is `unread`, `reading` or `failed` — never an empty list —
- * so "no projects" and "no services" exist only inside `known` with complete coverage (M5). How
- * current a value is comes from the interests that feed the read, not from every interest the
- * account holds: one project's failing topology says nothing about the organization's list.
+ * so "no services" exists only inside `known` with complete coverage (M5). How current a value is
+ * comes from the interests that feed the read, not from every interest the account holds.
  *
  * No I/O, but not in the pure zone: it value-imports `interestKeyOf` from the runtime, so a
  * projection takes these `Known` values as inputs and never imports this module. A stale value is
@@ -18,8 +17,6 @@ import type {
   IngestionStamp,
   InterestKey,
   InterestState,
-  OrganizationRef,
-  ProjectRecord,
   ProjectRef,
   QueryState,
   ServiceRecord,
@@ -145,7 +142,7 @@ function freshnessOf(source: InterestState | null, asOf: Stamp): Freshness {
   }
 }
 
-function knownCollection<Record extends ProjectRecord | ServiceRecord>(
+function knownCollection<Record extends ServiceRecord>(
   read: CollectionRead<Record>,
   source: InterestState | null,
   nowMs: number,
@@ -175,29 +172,6 @@ function knownCollection<Record extends ProjectRecord | ServiceRecord>(
     coverage: query.coverage.kind === "exhausted-traversal" && !pending ? "complete" : "partial",
     freshness: freshnessOf(source, asOf),
   };
-}
-
-/**
- * The interest an organization's projects read is as current as: its inventory interest. A reader
- * that holds a read until it changes compares this too, because that interest failing or
- * pausing changes the read's knowledge while its query stays as it was.
- */
-export function projectsSourceOf(read: CollectionRead<ProjectRecord>): InterestState | null {
-  return sourceOf(read.observation, organizationFeeders(read.query.descriptor.organization));
-}
-
-/** The interest that reads an organization's projects. */
-const organizationFeeders = feedersOnce(
-  (organization: OrganizationRef): ReadonlySet<InterestKey> =>
-    new Set([interestKeyOf({ kind: "organization-inventory", organization })]),
-);
-
-/** An organization's projects: fed by its inventory interest. */
-export function knownProjectsOf(
-  read: CollectionRead<ProjectRecord>,
-  nowMs: number,
-): Known<ReadonlyArray<ProjectRecord>> {
-  return knownCollection(read, projectsSourceOf(read), nowMs);
 }
 
 /** The interests that read one project and its services directly. */
@@ -232,7 +206,7 @@ export function servicesCheckOrdinalOf(read: CollectionRead<ServiceRecord>): num
   return null;
 }
 
-/** The interest a project's services read is as current as, like `projectsSourceOf`. */
+/** The interest a project's services read is as current as. */
 export function servicesSourceOf(read: CollectionRead<ServiceRecord>): InterestState | null {
   return read.project === undefined
     ? null

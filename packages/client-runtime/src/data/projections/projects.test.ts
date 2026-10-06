@@ -5,7 +5,7 @@ import { projectsScope } from "../families/project.ts";
 import { emptyAccount, linkKeys, type AccountState } from "../model.ts";
 import { reduceAccount, type AccountInput } from "../reducer.ts";
 import { readsOfState } from "../store.ts";
-import { organizationProjects, type OrganizationProjects } from "./projects.ts";
+import { listedProject, organizationProjects, type OrganizationProjects } from "./projects.ts";
 
 const SCOPE = projectsScope(ORG);
 const apply = (state: AccountState, inputs: ReadonlyArray<AccountInput>) =>
@@ -130,5 +130,32 @@ describe("organizationProjects", () => {
     const projects = organizationProjects.derive(readsOfState(state()), ORG);
     expect(projects).toMatchObject(rest);
     if (ids !== undefined) expect(names(projects)).toEqual(ids);
+  });
+});
+
+describe("listedProject", () => {
+  it.each<{
+    readonly name: string;
+    readonly state: () => AccountState;
+    readonly id: string | null;
+  }>([
+    { name: "listed: its row", state: live, id: "a" },
+    { name: "never read: nothing", state: () => emptyAccount, id: null },
+    {
+      name: "proven deleted: nothing",
+      state: () =>
+        apply(live(), [{ kind: "proven-deletion", family: "project", id: "a", evidence: "404" }]),
+      id: null,
+    },
+    {
+      name: "withheld: nothing",
+      state: () =>
+        apply(live(), [{ kind: "access", family: "project", id: "a", access: "denied" }]),
+      id: null,
+    },
+  ])("$name", ({ state, id }) => {
+    expect(
+      listedProject.derive(readsOfState(state()), { orgId: ORG, projectId: "a" })?.id ?? null,
+    ).toBe(id);
   });
 });

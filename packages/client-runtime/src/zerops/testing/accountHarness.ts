@@ -12,6 +12,7 @@ import { makeHarnessBrowser, type HarnessBrowser } from "./browserTabs.ts";
 import { makeFakeDatastream, type FakeDatastream } from "./fakeDatastream.ts";
 import { makeFakeZeropsRest, type FakeZeropsRest } from "./fakeZeropsRest.ts";
 
+export * from "./accountRoster.ts";
 export * from "./browserTabs.ts";
 export * from "./deadlineClock.ts";
 export * from "./fakeDatastream.ts";

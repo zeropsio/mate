@@ -1,150 +1,96 @@
 import { Atom, AtomRegistry } from "effect/unstable/reactivity";
 
 import type { ProjectProcesses } from "../../data/projections/processes.ts";
+import type { OrganizationProjects } from "../../data/projections/projects.ts";
 import { accountReadsAtom, type AccountReads } from "../../data/reads.ts";
 import type { ActivityProcess } from "../activity/dto.ts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import {
-  identity,
-  organization,
-  project,
-  scope,
-  service,
-  stamp,
-} from "../data/__fixtures__/index.ts";
-import { selectProjectsOf } from "../data/projection.ts";
-import { interestKeyOf } from "../data/runtime.ts";
+import { organization, project, service, stamp } from "../data/__fixtures__/index.ts";
 import type { ManagedZeropsDataRuntime } from "../data/runtime.ts";
-import { makeInitialZeropsDataState } from "../data/state.ts";
-import type { CollectionRead, InterestState, ProjectRecord, ServiceRecord } from "../data/types.ts";
-import { ReceiptOrdinal } from "../data/types.ts";
-import { candidateListingsAtom } from "./listings.ts";
+import type { ServiceRecord } from "../data/types.ts";
+import type { Known } from "../knowledge/known.ts";
+import { knownRoster, mateListingsAtom } from "./listings.ts";
 
-const progress = {
-  requiredRegistrations: 1,
-  completedRegistrations: 0,
-  requiredReads: 1,
-  completedReads: 0,
-  crossedReceiptOrdinal: ReceiptOrdinal.make(0),
+const ROSTER: OrganizationProjects = {
+  projects: [],
+  read: "read",
+  complete: true,
+  live: true,
+  reconnecting: false,
 };
 
-/** The organization's inventory interest: the one its projects read is fed by. */
-const FEEDER = interestKeyOf({ kind: "organization-inventory", organization });
-/** An interest that reads a project's topology, not the organization's projects. */
-const OTHER = interestKeyOf({
-  kind: "project-topology",
-  project: project(),
-});
-
-const establishing = (key: InterestState["identity"]["key"]): InterestState => ({
-  status: "establishing",
-  identity: { ...identity(), key },
-  startedAtMs: 0,
-  deadlineMs: 60_000,
-  progress,
-});
-
-const failed = (from: InterestState): InterestState => ({
-  status: "failed",
-  identity: from.identity,
-  reason: "gateway",
-  retryable: true,
-  attempts: 1,
-  retryAtMs: 90_000,
-});
-
-/** The organization's projects, not read yet, as these interests observe them. */
-const projectsRead = (required: ReadonlyArray<InterestState>): CollectionRead<ProjectRecord> => {
-  const read = selectProjectsOf(makeInitialZeropsDataState(scope()), organization);
-  return { ...read, observation: { ...read.observation, required } };
-};
-
-/**
- * The account's listings over a runtime whose grant names the organization and whose projects
- * read is `first` until `read` replaces it.
- */
-const listingsOver = (first: CollectionRead<ProjectRecord>) => {
-  const registry = AtomRegistry.make();
-  const projects = Atom.make(first);
-  const data = {
-    access: {
-      view: Atom.make({
-        machine: {
-          phase: {
-            phase: "granted",
-            evidence: {
-              account: { organizations: [{ organization }] },
-              projects: new Map(),
-              unverified: new Map(),
-              closedProjects: new Map(),
-            },
-          },
+describe("knownRoster", () => {
+  const project = { id: "p1", name: "shop", status: "ACTIVE" };
+  it.each<{
+    readonly name: string;
+    readonly roster: Partial<OrganizationProjects>;
+    readonly known: Known<ReadonlyArray<unknown>>;
+  }>([
+    {
+      name: "not asked for",
+      roster: { read: "unread" },
+      known: { state: "unread", waitingFor: null },
+    },
+    {
+      name: "its first baseline under way",
+      roster: { read: "reading", live: false },
+      known: { state: "reading", sinceMs: 7, attempt: 1 },
+    },
+    {
+      name: "refused before it was ever read",
+      roster: { read: "reading", live: false, unavailableReason: "expired-session" },
+      known: {
+        state: "failed",
+        failure: { kind: "unauthorized" },
+        atMs: 7,
+        attempt: 1,
+        retryAtMs: null,
+      },
+    },
+    {
+      name: "read and live",
+      roster: { projects: [project] },
+      known: {
+        state: "known",
+        value: [project],
+        asOf: { ordinal: 0, atMs: 7 },
+        coverage: "complete",
+        freshness: { kind: "live" },
+      },
+    },
+    {
+      name: "read, something of it still open",
+      roster: { projects: [project], complete: false },
+      known: expect.objectContaining({ coverage: "partial" }),
+    },
+    {
+      name: "read, its source down: kept, catching up",
+      roster: { projects: [project], live: false, reconnecting: true },
+      known: expect.objectContaining({
+        value: [project],
+        freshness: {
+          kind: "stale",
+          reason: { kind: "source-recovering", retryAtMs: null },
+          sinceMs: 7,
         },
       }),
     },
-    reads: {
-      access: Atom.make({ status: "unverified" }),
-      projectsOf: () => projects,
-      servicesOf: () => {
-        throw new Error("no project is listed, so no services are read");
-      },
+    {
+      name: "read, then refused: kept, never claimed gone",
+      roster: { projects: [project], live: false, unavailableReason: "forbidden" },
+      known: expect.objectContaining({
+        state: "known",
+        value: [project],
+        freshness: expect.objectContaining({ kind: "stale" }),
+      }),
     },
-  } as unknown as ManagedZeropsDataRuntime;
-  const listings = candidateListingsAtom(data);
-  registry.mount(listings);
-  return {
-    read: (next: CollectionRead<ProjectRecord>) => registry.set(projects, next),
-    listings: () => registry.get(listings),
-    listing: () => registry.get(listings)[0]!.listing,
-  };
-};
-
-describe("candidateListingsAtom: a read with no value yet", () => {
-  beforeEach(() => {
-    vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(1_000);
-  });
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
-  it("is a new listing when the interest feeding it fails, though its query did not change", () => {
-    const feeder = establishing(FEEDER);
-    const account = listingsOver(projectsRead([feeder]));
-    const before = account.listings();
-    expect(account.listing().state).toBe("reading");
-
-    account.read(projectsRead([failed(feeder)]));
-
-    expect(account.listings()).not.toBe(before);
-    expect(account.listing().state).toBe("failed");
-  });
-
-  it("keeps its listing when only an interest that does not feed it fails", () => {
-    const other = establishing(OTHER);
-    const account = listingsOver(projectsRead([establishing(FEEDER), other]));
-    const before = account.listings();
-
-    account.read(projectsRead([establishing(FEEDER), failed(other)]));
-
-    expect(account.listings()).toBe(before);
-  });
-
-  it("keeps the moment it began waiting when a new read still waits the same way", () => {
-    const account = listingsOver(projectsRead([establishing(FEEDER)]));
-    const before = account.listings();
-    expect(account.listing()).toEqual({ state: "reading", sinceMs: 0, attempt: 1 });
-
-    vi.setSystemTime(5_000);
-    account.read(projectsRead([establishing(FEEDER)]));
-
-    expect(account.listings()).toBe(before);
-    expect(account.listing()).toEqual({ state: "reading", sinceMs: 0, attempt: 1 });
+  ])("$name", ({ roster, known }) => {
+    expect(knownRoster({ ...ROSTER, ...roster }, 7)).toEqual(known);
   });
 });
 
-describe("candidateListingsAtom: a container ACTIVE before its address landed", () => {
+describe("mateListingsAtom: a container ACTIVE before its address landed", () => {
   const CREATED_AT = "2026-10-02T12:00:00.000Z";
   const CREATED = Date.parse(CREATED_AT);
 
@@ -168,17 +114,15 @@ describe("candidateListingsAtom: a container ACTIVE before its address landed", 
     admission,
   };
 
-  const projectRecord: ProjectRecord = {
-    ref: project(),
-    identity: observed({ name: "shop", createdAt: null }),
-    lifecycle: observed({ status: "ACTIVE" }),
-    presentation: observed({ tags: [], description: null }),
-    placement: observed({
-      publicZone: "fte2334ab.prg1-zerops.zone",
-      zeropsSubdomainHost: "24cb",
-      mode: "LIGHT" as const,
-    }),
-  } as unknown as ProjectRecord;
+  const shop = {
+    id: project().projectId,
+    name: "shop",
+    status: "ACTIVE",
+    tagList: [],
+    publicZone: "fte2334ab.prg1-zerops.zone",
+    zeropsSubdomainHost: "24cb",
+    mode: "LIGHT",
+  };
 
   /** The project's zcp service, ACTIVE, its address enabled or not yet. */
   /** The project's zcp service, ACTIVE, its address enabled or not, its record last updated then. */
@@ -213,12 +157,13 @@ describe("candidateListingsAtom: a container ACTIVE before its address landed", 
       ...(slice === undefined ? {} : { project: slice }),
     }) as unknown;
 
-  /** The organization's projects not read (again) yet: the listing holds no rows. */
-  const unreadProjects = {
-    value: [],
-    query: { status: "pending", descriptor: { organization } },
-    observation: { required: [], optional: [] },
-  } as unknown;
+  /** The organization's projects as the account's store holds them. */
+  const roster = (projects: ReadonlyArray<typeof shop>): OrganizationProjects => ({
+    ...ROSTER,
+    projects,
+  });
+  /** The roster not read (again) yet: the listing holds no rows. */
+  const unreadProjects: OrganizationProjects = { ...ROSTER, read: "reading", live: false };
 
   const admitted = (yes: boolean) => ({
     status: "verified",
@@ -251,16 +196,20 @@ describe("candidateListingsAtom: a container ACTIVE before its address landed", 
   const listingOver = () => {
     const registry = AtomRegistry.make();
     const servicesRead = Atom.make<unknown>(read([], project()));
-    const projectsRead = Atom.make<unknown>(read([projectRecord]));
+    const projectsRead = Atom.make<OrganizationProjects>(roster([shop]));
     const access = Atom.make<unknown>(admitted(true));
     const activity = Atom.make<ProjectProcesses>(activityOf(null, false));
-    // The account's store, as far as the listing reads it: this project's processes.
+    // The account's store, as far as the listing reads it: the roster and this project's processes.
     registry.set(accountReadsAtom, {
-      data: { project: () => activity } as unknown as AccountReads["data"],
-      orgId: "org",
+      data: {
+        project: (projection: { readonly name: string }) =>
+          projection.name === "organizationProjects" ? projectsRead : activity,
+      } as unknown as AccountReads["data"],
+      orgId: organization.organizationId,
       demandDetail: () => () => {},
     });
     const data = {
+      scope: { account: organization.account },
       access: {
         view: Atom.make({
           machine: {
@@ -278,11 +227,10 @@ describe("candidateListingsAtom: a container ACTIVE before its address landed", 
       },
       reads: {
         access,
-        projectsOf: () => projectsRead,
         servicesOf: () => servicesRead,
       },
     } as unknown as ManagedZeropsDataRuntime;
-    const listings = candidateListingsAtom(data);
+    const listings = mateListingsAtom(data);
     registry.mount(listings);
     return {
       apply: (event: Event) => {
@@ -319,7 +267,7 @@ describe("candidateListingsAtom: a container ACTIVE before its address landed", 
           case "projects-unread":
             return registry.set(projectsRead, unreadProjects);
           case "projects-back":
-            return registry.set(projectsRead, read([projectRecord]));
+            return registry.set(projectsRead, roster([shop]));
           case "not-admitted":
           case "admitted":
             return registry.set(access, admitted(event === "admitted"));

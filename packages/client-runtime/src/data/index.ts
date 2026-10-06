@@ -34,6 +34,7 @@ export {
   type RunningWork,
 } from "./projections/processes.ts";
 export {
+  listedProject,
   organizationProjects,
   type OrganizationProjects,
   type RosterRead,
@@ -48,6 +49,7 @@ export { operationEnd, type OperationEnd } from "./projections/operationEnd.ts";
 export {
   accountReadsAtom,
   NOT_READ_PROCESSES,
+  listedProjectAtom,
   NOT_READ_PROJECTS,
   projectProcessesAtom,
   shownProjectsAtom,

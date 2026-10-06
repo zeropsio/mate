@@ -3,9 +3,9 @@
  * runtime feeds the stores it built — the registration records, the container store and the
  * exchange driver — and what surfaces read and ask of them.
  *
- * - Every target's presence comes from the account's listings, the data runtime's projects and
- *   services of every organization the grant names (B4, `candidateListingsAtom`), and from the
- *   records (C1). A remembered Mate is looked for where its record kept it until its project's
+ * - Every target's presence comes from the account's listing — the projects of the organization
+ *   the account observes, as its store lists them, and their services as the data runtime reads
+ *   them (B4, `mateListingsAtom`) — and from the records (C1). A remembered Mate is looked for where its record kept it until its project's
  *   services are read (A16); one they were read without has that organization's inventory read
  *   again, and is gone only once that direct read lacks it too (§9 C19). A listing change that
  *   changes no row and settles no absence feeds nothing. No React holds a fact here: the web and
@@ -72,7 +72,7 @@ import {
   type CloseOffHold,
   type CloseOffWord,
 } from "../environments/closeOff.ts";
-import { candidateListingsAtom, type OrganizationListing } from "../environments/listings.ts";
+import { mateListingsAtom, type OrganizationListing } from "../environments/listings.ts";
 import { readServiceMateFlag } from "../environments/mateFlag.ts";
 import type {
   DescriptorFacts,
@@ -1154,7 +1154,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         link: (environmentId, phase) => driver.link(environmentId, phase),
       }),
       atomRegistry.subscribe(
-        candidateListingsAtom(data),
+        mateListingsAtom(data),
         (next) => {
           const before = listings;
           listings = next;

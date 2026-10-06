@@ -1,26 +1,5 @@
 // @vitest-environment happy-dom
-import { ZeropsApiClient } from "@t3tools/client-runtime/zerops";
-import {
-  DEFAULT_ZEROPS_DATA_POLICY,
-  knownProjectsOf,
-  makeInitialZeropsDataState,
-  makeZeropsDataAdapter,
-  reduceZeropsDataState,
-  selectProjectsOf,
-} from "@t3tools/client-runtime/zerops/data";
 import { heldCandidates, selectCandidates } from "@t3tools/client-runtime/zerops/projections";
-import * as Effect from "effect/Effect";
-import { it as effectIt } from "@effect/vitest";
-import {
-  desiredInterest,
-  directTicket,
-  identity,
-  organization,
-  project,
-  scope,
-  stamp,
-} from "~/zerops/__fixtures__/platformData";
-import { listingWholeForPerson } from "~/zerops/listingWhole";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import {
   MATE_VOICE_QUIET_MS,
@@ -445,117 +424,36 @@ describe("a Mate's own view while its link is made", () => {
     },
   );
 
-  effectIt.effect(
-    "ends an ungranted link from the Developer's allowed project search, without reading other containers",
-    () =>
-      Effect.gen(function* () {
-        const allowed = { id: "cyd", name: "Cyd", status: "ACTIVE" };
-        const requests: string[] = [];
-        const client = new ZeropsApiClient({
-          baseUrl: organization.account.apiOrigin,
-          fetch: async (url, init) => {
-            const path = new URL(url).pathname;
-            requests.push(`${init?.method ?? "GET"} ${path}`);
-            const forbidden =
-              path.endsWith(`/client/${organization.organizationId}/project`) ||
-              path.endsWith(`/project/${PROJECT}`);
-            return new Response(
-              JSON.stringify(
-                forbidden
-                  ? { message: "forbidden" }
-                  : path.endsWith("/project/search")
-                    ? { items: [allowed], totalHits: 1 }
-                    : allowed,
-              ),
-              { status: forbidden ? 403 : 200 },
-            );
-          },
-        });
-        client.restoreSession({ accessToken: "test-token" });
-        const adapter = makeZeropsDataAdapter({
-          client,
-          makeSocket: () => {
-            throw new Error("No socket needed for these reads.");
-          },
-          timers: { setTimer: () => ({}), clearTimer: () => undefined },
-        });
-        const id = identity();
-        let state = reduceZeropsDataState(
-          makeInitialZeropsDataState(scope()),
-          {
-            kind: "interest-upserted",
-            interest: desiredInterest(id),
-          },
-          DEFAULT_ZEROPS_DATA_POLICY,
-        ).state;
-        const descriptor = {
-          kind: "projects-of-organization" as const,
-          organization,
-          statuses: [],
-          schemaVersion: 1 as const,
-        };
-        const tickets = [
-          directTicket({ kind: "query", descriptor }, id, 1),
-          directTicket({ kind: "project", ref: project(allowed.id) }, id, 2),
-          directTicket({ kind: "project", ref: project(PROJECT) }, id, 3),
-        ];
-        let ordinal = 0;
-        for (const ticket of tickets) {
-          const result = yield* adapter.read(ticket, {
-            abortSignal: new AbortController().signal,
-            deadlineMs: 4_000_000_000_000,
-          });
-          for (const input of result.observations) {
-            state = reduceZeropsDataState(
-              state,
-              {
-                kind: "observation",
-                observation: { input, stamp: stamp(++ordinal), accessEvidence: null },
-              },
-              DEFAULT_ZEROPS_DATA_POLICY,
-            ).state;
-          }
-        }
-        expect(requests).toEqual([
-          `GET /api/rest/public/client/${organization.organizationId}/project`,
-          "POST /api/rest/public/project/search",
-          "GET /api/rest/public/project/cyd",
-          `GET /api/rest/public/project/${PROJECT}`,
-        ]);
-        const read = selectProjectsOf(state, organization);
-        expect(read.query).toMatchObject({
-          status: "observed",
-          source: "indexed-search",
-          coverage: { kind: "exhausted-traversal" },
-        });
-        // No service read is required to establish which projects this person can see.
-        app.listing = selectCandidates(knownProjectsOf(read, 0), () => ({
-          state: "unread",
-          waitingFor: null,
-        }));
-        const held = heldCandidates(app.listing as ReturnType<typeof selectCandidates>);
-        expect(held.complete).toBe(false);
-        app.wholeForPerson = listingWholeForPerson({
-          read,
-          shown: new Set(held.rows.map((row) => row.project.id)),
-          neverSeen: () => false,
-        });
-        expect(app.wholeForPerson).toBe(true);
-        app.link = { key: undefined, environmentId: undefined, reachability: null };
-        openView();
-        expect(said()).toContain("This conversation isn't in your Zerops projects.");
-        expect(buttons()).toEqual(["Go to projects"]);
-        expect(app.connect).not.toHaveBeenCalled();
-        expect(app.navigate).not.toHaveBeenCalled();
-        // A project that is listed still waits for its own container, despite the whole scope.
-        act(() => tree?.update(h(ZeropsMateComingPage, { projectId: allowed.id })));
-        expect(said()).not.toContain("This conversation isn't in your Zerops projects.");
-        // Losing scope knowledge must remove the absent-project verdict.
-        app.wholeForPerson = false;
-        act(() => tree?.update(h(ZeropsMateComingPage, { projectId: PROJECT })));
-        expect(said()).not.toContain("This conversation isn't in your Zerops projects.");
-      }),
-  );
+  it("ends an ungranted link once the Developer's whole roster lacks it, without reading other containers", () => {
+    const allowed = { id: "cyd", name: "Cyd", status: "ACTIVE" };
+    // The roster lists only what the person may see; no service read is required to know it.
+    app.listing = selectCandidates(
+      {
+        state: "known",
+        value: [allowed],
+        asOf: { ordinal: 0, atMs: 0 },
+        coverage: "complete",
+        freshness: { kind: "live" },
+      },
+      () => ({ state: "unread", waitingFor: null }),
+    );
+    const held = heldCandidates(app.listing as ReturnType<typeof selectCandidates>);
+    expect(held.complete).toBe(false);
+    app.wholeForPerson = true;
+    app.link = { key: undefined, environmentId: undefined, reachability: null };
+    openView();
+    expect(said()).toContain("This conversation isn't in your Zerops projects.");
+    expect(buttons()).toEqual(["Go to projects"]);
+    expect(app.connect).not.toHaveBeenCalled();
+    expect(app.navigate).not.toHaveBeenCalled();
+    // A project that is listed still waits for its own container, despite the whole scope.
+    act(() => tree?.update(h(ZeropsMateComingPage, { projectId: allowed.id })));
+    expect(said()).not.toContain("This conversation isn't in your Zerops projects.");
+    // Losing scope knowledge must remove the absent-project verdict.
+    app.wholeForPerson = false;
+    act(() => tree?.update(h(ZeropsMateComingPage, { projectId: PROJECT })));
+    expect(said()).not.toContain("This conversation isn't in your Zerops projects.");
+  });
 
   it("hands over at once once its conversation can be opened, telling what its door asked", () => {
     app.link = {

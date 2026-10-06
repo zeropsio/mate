@@ -1,16 +1,16 @@
 /**
- * The account's Mate candidate listings (DESIGN §2.B B4): one per organization the grant names,
- * read off the data runtime's projects and services through `selectCandidates`' rules. The
- * account's environments and every surface read the same listing, one per data runtime.
+ * The account's Mate listing (DESIGN §2.B B4): the organization the account observes, its projects
+ * as the account's store lists them (`organizationProjects`), each joined with its services as the
+ * data runtime reads them, through `selectCandidates`' rules. The account's environments and every
+ * surface read the same listing, one per data runtime.
  *
- * - A recompute costs what changed: a project's rows are derived again only when its record or
- *   its services read is a new object, and rows that come out the same keep their objects.
- * - An organization whose rows, direct reads and knowledge are unchanged keeps its listing, and a
- *   recompute that changed no listing returns the listings it returned before, so nothing reading
- *   them hears of it.
- * - A read with no value yet is dated by the moment this listing first saw it wait that way
- *   (`known.ts`): a new read that still waits the same way keeps the date, so no clock derives
- *   the listing again.
+ * - The projects are the store's: a project created anywhere is listed as soon as the roster says
+ *   it, an outage keeps what was read and says it is catching up, and a project leaves only on its
+ *   owner's word (`data/projections/projects.ts`).
+ * - A recompute costs what changed: a project's rows are derived again only when its value or its
+ *   services read is a new object, and rows that come out the same keep their objects. A recompute
+ *   that changed no listing returns the listings it returned before, so nothing reading them hears
+ *   of it.
  * - A container ACTIVE before its address landed is on its way to it while the platform turns its
  *   address on (`addressAwaited`): its project's processes are read for as long as it lacks one
  *   (`account/environments.ts` holds that read), and their word ends the wait — never a clock.
@@ -20,8 +20,10 @@
  */
 import { Atom } from "effect/unstable/reactivity";
 
+import type { ProjectValue } from "../../data/families/project.ts";
 import type { ProjectProcesses } from "../../data/projections/processes.ts";
-import { projectProcessesAtom } from "../../data/reads.ts";
+import type { OrganizationProjects } from "../../data/projections/projects.ts";
+import { projectProcessesAtom, shownProjectsAtom } from "../../data/reads.ts";
 
 import {
   evidenceProjectRefs,
@@ -29,16 +31,18 @@ import {
   pendingDenials,
 } from "../data/access/grantProjects.ts";
 import type { Evidence, GrantMachine } from "../data/access/grant.ts";
-import { knownProjectsOf, knownServicesOf, servicesCheckOrdinalOf } from "../data/known.ts";
+import { knownServicesOf, servicesCheckOrdinalOf } from "../data/known.ts";
 import type { ManagedZeropsDataRuntime } from "../data/runtime.ts";
 import {
   projectKeyOf,
+  ZeropsOrganizationId,
+  ZeropsProjectId,
   type CollectionRead,
   type OrganizationRef,
-  type ProjectRecord,
+  type ProjectRef,
   type ServiceRecord,
 } from "../data/types.ts";
-import type { Known } from "../knowledge/known.ts";
+import type { Freshness, Known } from "../knowledge/known.ts";
 import {
   addressFactsOf,
   arrivalEnd,
@@ -71,41 +75,88 @@ const heldEvidence = (machine: GrantMachine): Evidence | null =>
       ? machine.phase.last
       : null;
 
+/**
+ * The roster as knowledge: unread until asked for, reading until its first baseline, failed where
+ * it was refused before; once read, known with what it holds — partial while anything of it is
+ * still open, and stale while its source is down. `since` is when this reader first saw it wait
+ * or fall behind the way it does now.
+ */
+export function knownRoster(
+  roster: OrganizationProjects,
+  since: number,
+): Known<ReadonlyArray<ProjectValue>> {
+  const failure =
+    roster.unavailableReason === undefined
+      ? null
+      : roster.unavailableReason === "refused"
+        ? ({ kind: "refused", code: "refused", words: "Zerops refused the project list." } as const)
+        : ({ kind: "unauthorized" } as const);
+  if (roster.read === "unread") return { state: "unread", waitingFor: null };
+  if (roster.read === "reading")
+    return failure === null
+      ? { state: "reading", sinceMs: since, attempt: 1 }
+      : { state: "failed", failure, atMs: since, attempt: 1, retryAtMs: null };
+  const freshness: Freshness =
+    failure !== null
+      ? {
+          kind: "stale",
+          reason: { kind: "revalidation-failed", failure, attempt: 1, retryAtMs: null },
+          sinceMs: since,
+        }
+      : roster.live
+        ? { kind: "live" }
+        : roster.reconnecting
+          ? {
+              kind: "stale",
+              reason: { kind: "source-recovering", retryAtMs: null },
+              sinceMs: since,
+            }
+          : { kind: "revalidating", sinceMs: since };
+  return {
+    state: "known",
+    value: roster.projects,
+    asOf: { ordinal: 0, atMs: since },
+    coverage: roster.complete ? "complete" : "partial",
+    freshness,
+  };
+}
+
+/** Which way the roster waits or falls behind: a new way starts a new `since`. */
+const wayOf = (roster: OrganizationProjects) =>
+  `${roster.read}/${roster.live}/${roster.reconnecting}/${roster.unavailableReason ?? ""}`;
+
 /** One project as last derived: what it was derived from, and what came out. */
 interface ProjectEntry {
-  readonly record: ProjectRecord;
+  readonly project: ProjectValue;
   /** Whether the grant admits the project: only then are its services its Mates'. */
   readonly admitted: boolean;
   /** Its services read; null for a project whose status reads no services. */
   readonly services: CollectionRead<ServiceRecord> | null;
   /** Its processes as read for a container lacking its address; null where none was asked. */
   readonly activity: ProjectProcesses | null;
-  /** Null while its record does not name it yet. */
-  readonly rows: ReadonlyArray<CandidateRow> | null;
+  readonly rows: ReadonlyArray<CandidateRow>;
   /** When the first of its rows' arrival poses ends, wall ms; null when none is shown. */
   readonly arrivalEnds: number | null;
   readonly directRead: number | null;
 }
 
-/** One organization as last derived. */
+/** The organization as last derived. */
 interface OrganizationEntry {
-  readonly projectsRead: CollectionRead<ProjectRecord>;
-  readonly projects: Known<ReadonlyArray<ProjectRecord>>;
+  readonly roster: OrganizationProjects;
+  readonly way: string;
+  readonly since: number;
   readonly entries: ReadonlyMap<string, ProjectEntry>;
   readonly listed: OrganizationListing;
 }
 
 const NO_DIRECT_READS: ReadonlyMap<string, number> = new Map();
+const NO_LISTINGS: ReadonlyArray<OrganizationListing> = [];
 
 /** A project the grant does not admit: its services say nothing of a Mate of this person's. */
 const UNREAD_SERVICES: Known<ReadonlyArray<ServiceRecord>> = { state: "unread", waitingFor: null };
 
 const sameJson = (left: unknown, right: unknown): boolean =>
   JSON.stringify(left) === JSON.stringify(right);
-
-/** A read with no value yet, apart from when it began to wait. */
-const undated = <T>(known: Known<T>): string =>
-  JSON.stringify(known.state === "known" ? known : { ...known, sinceMs: null, atMs: null });
 
 /** The same knowledge apart from the value: state, stamp, coverage and freshness. */
 const sameShell = <T>(left: Known<T>, right: Known<T>): boolean =>
@@ -121,35 +172,53 @@ const sameReads = (left: ReadonlyMap<string, number>, right: ReadonlyMap<string,
 const directReadOf = (
   read: CollectionRead<ServiceRecord>,
   services: Known<ReadonlyArray<ServiceRecord>>,
-): number | null => {
-  return services.state === "known" && services.coverage === "complete"
+): number | null =>
+  services.state === "known" && services.coverage === "complete"
     ? servicesCheckOrdinalOf(read)
     : null;
-};
 
 const listings = new WeakMap<
   ManagedZeropsDataRuntime,
   Atom.Atom<ReadonlyArray<OrganizationListing>>
 >();
 
-/** The account's listings over this data runtime; the same atom for every reader. */
-export function candidateListingsAtom(
+/**
+ * The account's listing over this data runtime: the organization the account observes, the one
+ * entry; none while it observes none. The same atom for every reader.
+ */
+export function mateListingsAtom(
   data: ManagedZeropsDataRuntime,
 ): Atom.Atom<ReadonlyArray<OrganizationListing>> {
   const held = listings.get(data);
   if (held !== undefined) return held;
-  let organizations = new Map<string, OrganizationEntry>();
+  let organization: OrganizationEntry | null = null;
   // Outlives every entry: a read that blinks drops its project's entry, never what it knew of an
   // address (`AddressMemory`).
   let addresses: AddressMemory = NO_ADDRESS_MEMORY;
-  let published: ReadonlyArray<OrganizationListing> = [];
+  let published: ReadonlyArray<OrganizationListing> = NO_LISTINGS;
 
   const atom = Atom.make((get): ReadonlyArray<OrganizationListing> => {
     const nowMs = systemExchangeClock.now().wall;
+    const { orgId, ...roster } = get(shownProjectsAtom);
+    if (orgId === null) {
+      organization = null;
+      published = NO_LISTINGS;
+      return published;
+    }
+    const organizationRef: OrganizationRef = {
+      kind: "organization",
+      account: data.scope.account,
+      organizationId: ZeropsOrganizationId.make(orgId),
+    };
+    const refOf = (projectId: string): ProjectRef => ({
+      kind: "project",
+      organization: organizationRef,
+      projectId: ZeropsProjectId.make(projectId),
+    });
     const evidence = heldEvidence(get(data.access.view).machine);
-    // The projects the grant admits (what the inventory demands): the organization's services are
-    // read for every project, but only an admitted project's are its Mates'. Another's Mate gets no
-    // address, no probe and no connection, as when its services were never read at all.
+    // The projects the grant admits (what the inventory demands): only an admitted project's
+    // services are its Mates'. Another's Mate gets no address, no probe and no connection, as when
+    // its services were never read at all.
     const withheld = pendingDenials(evidence);
     const admitted = new Set(
       inventoryProjectRefs(evidenceProjectRefs(evidence), get(data.reads.access))
@@ -157,37 +226,19 @@ export function candidateListingsAtom(
         .filter((key) => !withheld.has(key)),
     );
 
-    /** One project, derived again only from a new record, a new services read or admission. */
-    const projectEntry = (
-      record: ProjectRecord,
-      before: ProjectEntry | undefined,
-    ): ProjectEntry => {
-      const isAdmitted = admitted.has(projectKeyOf(record.ref));
-      const arrivalOver = before?.arrivalEnds != null && before.arrivalEnds <= nowMs;
-      if (before?.record === record && before.admitted === isAdmitted && !arrivalOver) {
-        if (before.services === null) return before;
-        const read = get(data.reads.servicesOf(record.ref));
-        const activityMoved =
-          before.activity !== null &&
-          get(projectProcessesAtom(record.ref.projectId)) !== before.activity;
-        if (read === before.services && !activityMoved) return before;
-        return derive(record, before, read, isAdmitted);
-      }
-      return derive(record, before, null, isAdmitted);
-    };
-
     const derive = (
-      record: ProjectRecord,
+      project: ProjectValue,
       before: ProjectEntry | undefined,
       known: CollectionRead<ServiceRecord> | null,
       isAdmitted: boolean,
     ): ProjectEntry => {
+      const ref = refOf(project.id);
       let services: CollectionRead<ServiceRecord> | null = null;
       let directRead: number | null = null;
       let activity: ProjectProcesses | null = null;
       const rows = projectCandidates(
-        record,
-        (ref) => {
+        project,
+        () => {
           if (!isAdmitted) return UNREAD_SERVICES;
           const read = known ?? get(data.reads.servicesOf(ref));
           const value = knownServicesOf(read, nowMs);
@@ -196,49 +247,57 @@ export function candidateListingsAtom(
           return value;
         },
         addressFactsOf(addresses, nowMs, (_projectId, serviceId) => {
-          activity = get(projectProcessesAtom(record.ref.projectId));
+          activity = get(projectProcessesAtom(project.id));
           // Its record, last updated after its enable ended on Zerops' clock, says it caught up.
           return subdomainEnableIn(activity, serviceId, serviceUpdatedAtIn(services, serviceId));
         }),
       );
-      addresses = rememberAddresses(addresses, rows ?? []);
-      const same = before?.rows != null && rows !== null && sameJson(before.rows, rows);
+      addresses = rememberAddresses(addresses, rows);
+      const same = before !== undefined && sameJson(before.rows, rows);
       return {
-        record,
+        project,
         admitted: isAdmitted,
         services,
         activity,
         rows: same ? before.rows : rows,
         directRead,
-        arrivalEnds: arrivalEnd(rows ?? []),
+        arrivalEnds: arrivalEnd(rows),
       };
     };
 
-    const organizationEntry = (organization: OrganizationRef): OrganizationEntry => {
-      const organizationId = organization.organizationId;
-      const before = organizations.get(organizationId);
-      const projectsRead = get(data.reads.projectsOf(organization));
-      const read =
-        before?.projectsRead === projectsRead
-          ? before.projects
-          : knownProjectsOf(projectsRead, nowMs);
-      const projects =
-        before !== undefined && read.state !== "known" && undated(before.projects) === undated(read)
-          ? before.projects
-          : read;
-      if (projects.state !== "known") {
-        const listed =
-          before !== undefined && sameJson(before.listed.listing, projects)
-            ? before.listed
-            : { organizationId, listing: projects, directReads: NO_DIRECT_READS };
-        return { projectsRead, projects, entries: new Map(), listed };
+    /** One project, derived again only from a new value, a new services read or admission. */
+    const projectEntry = (project: ProjectValue, before: ProjectEntry | undefined) => {
+      const isAdmitted = admitted.has(projectKeyOf(refOf(project.id)));
+      const arrivalOver = before?.arrivalEnds != null && before.arrivalEnds <= nowMs;
+      if (before?.project === project && before.admitted === isAdmitted && !arrivalOver) {
+        if (before.services === null) return before;
+        const read = get(data.reads.servicesOf(refOf(project.id)));
+        const activityMoved =
+          before.activity !== null && get(projectProcessesAtom(project.id)) !== before.activity;
+        if (read === before.services && !activityMoved) return before;
+        return derive(project, before, read, isAdmitted);
       }
+      return derive(project, before, null, isAdmitted);
+    };
+
+    const before = organization?.listed.organizationId === orgId ? organization : null;
+    const way = wayOf(roster);
+    const since = before !== null && before.way === way ? before.since : nowMs;
+    const projects = knownRoster(roster, since);
+    let next: OrganizationEntry;
+    if (projects.state !== "known") {
+      const listed =
+        before !== null && sameJson(before.listed.listing, projects)
+          ? before.listed
+          : { organizationId: orgId, listing: projects, directReads: NO_DIRECT_READS };
+      next = { roster, way, since, entries: new Map(), listed };
+    } else {
       const entries = new Map<string, ProjectEntry>();
       const directReads = new Map<string, number>();
-      for (const record of projects.value) {
-        const entry = projectEntry(record, before?.entries.get(record.ref.projectId));
-        entries.set(record.ref.projectId, entry);
-        if (entry.directRead !== null) directReads.set(record.ref.projectId, entry.directRead);
+      for (const project of projects.value) {
+        const entry = projectEntry(project, before?.entries.get(project.id));
+        entries.set(project.id, entry);
+        if (entry.directRead !== null) directReads.set(project.id, entry.directRead);
       }
       const listing = candidateListing(
         projects,
@@ -251,27 +310,19 @@ export function candidateListingsAtom(
         sameShell(previous.listing, listing) &&
         sameItems(previous.listing.value, listing.value) &&
         sameReads(previous.directReads, directReads);
-      return {
-        projectsRead,
-        projects,
+      next = {
+        roster,
+        way,
+        since,
         entries,
-        listed: unchanged ? previous : { organizationId, listing, directReads },
+        listed: unchanged ? previous : { organizationId: orgId, listing, directReads },
       };
-    };
-
-    const next = new Map(
-      (evidence?.account.organizations ?? []).map(({ organization }) => [
-        organization.organizationId,
-        organizationEntry(organization),
-      ]),
-    );
-    organizations = next;
+    }
+    organization = next;
     // An arrival pose ends on a clock, a face's, not a verdict's: the listing is derived again
     // then, so a Mate that never answered stops being shown on its way.
-    const arrivalEnds = [...next.values()].flatMap((organization) =>
-      [...organization.entries.values()].flatMap((entry) =>
-        entry.arrivalEnds === null ? [] : [entry.arrivalEnds],
-      ),
+    const arrivalEnds = [...next.entries.values()].flatMap((entry) =>
+      entry.arrivalEnds === null ? [] : [entry.arrivalEnds],
     );
     if (arrivalEnds.length > 0) {
       get.addFinalizer(
@@ -280,8 +331,7 @@ export function candidateListingsAtom(
         ),
       );
     }
-    const listed = [...next.values()].map((entry) => entry.listed);
-    if (!sameItems(published, listed)) published = listed;
+    if (published[0] !== next.listed) published = [next.listed];
     return published;
   });
   listings.set(data, atom);

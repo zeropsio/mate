@@ -1,7 +1,6 @@
 import {
   DEFAULT_ZEROPS_DATA_POLICY,
   createZeropsDataAtoms,
-  decodeEntityDirectResponse,
   decodeEntityQueryResponse,
   makeInitialZeropsDataState,
   projectKeyOf,
@@ -27,6 +26,7 @@ import {
   type ProjectTopologySnapshot,
   PROJECT_HISTORY_WINDOW,
 } from "../state/zerops";
+import { mountRoster } from "@t3tools/client-runtime/zerops/testing";
 import type { InventoryProjection } from "./inventoryContext";
 import {
   desiredInterest,
@@ -84,15 +84,16 @@ function pushedRuntime(overrides: Partial<ZeropsDataReads> = {}) {
     reads: { ...reads, ...overrides },
   } as unknown as ManagedZeropsDataRuntime);
   registry.set(zeropsInventoryAtom, inventoryWith({ kind: "authorized" }));
+  // The project is the account store's: its roster lists it.
   const pushProject = () =>
-    push(
-      decodeEntityDirectResponse(directTicket({ kind: "project", ref: owner }, id), {
+    void mountRoster(registry, owner.organization.organizationId, [
+      {
         id: owner.projectId,
         clientId: owner.organization.organizationId,
         name: "acme-docs-dev",
         status: "ACTIVE",
-      }),
-    );
+      },
+    ]);
   const pushServices = (list: ReadonlyArray<object>) => {
     const query = {
       kind: "services-of-project" as const,

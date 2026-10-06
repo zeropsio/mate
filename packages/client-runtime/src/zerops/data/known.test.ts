@@ -1,14 +1,8 @@
 import { describe, expect, it } from "@effect/vitest";
 
 import { EMPTY_ADMISSION, makeUnresolvedService } from "./inventory.ts";
-import {
-  knownProjectsOf,
-  knownServicesOf,
-  projectsSourceOf,
-  servicesCheckOrdinalOf,
-  servicesSourceOf,
-} from "./known.ts";
-import { selectProjectsOf, selectServicesOf } from "./projection.ts";
+import { knownServicesOf, servicesCheckOrdinalOf, servicesSourceOf } from "./known.ts";
+import { selectServicesOf } from "./projection.ts";
 import { interestKeyOf } from "./runtime.ts";
 import { makeInitialZeropsDataState } from "./state.ts";
 import type {
@@ -40,12 +34,6 @@ const organizationObserving = (): InterestState => ({
 });
 
 describe("inventory knowledge", () => {
-  it("an unread organization's projects are unread, never []", () => {
-    const read = selectProjectsOf(makeInitialZeropsDataState(scope()), organization);
-
-    expect(knownProjectsOf(read, NOW)).toEqual({ state: "unread", waitingFor: null });
-  });
-
   it("a failed services query is failed with retryAt, never []", () => {
     const owner = project();
     const failed: InterestState = {
@@ -453,20 +441,6 @@ describe("inventory knowledge", () => {
       sinceReceiptOrdinal: stamp(1).receiptOrdinal,
     };
     const observing = organizationObserving();
-
-    it("is the organization's inventory interest for its projects, never another interest", () => {
-      const read = selectProjectsOf(makeInitialZeropsDataState(scope()), organization);
-
-      expect(
-        projectsSourceOf({
-          ...read,
-          observation: { ...read.observation, required: [topology, observing] },
-        }),
-      ).toBe(observing);
-      expect(
-        projectsSourceOf({ ...read, observation: { ...read.observation, required: [topology] } }),
-      ).toBeNull();
-    });
 
     it("is the best-placed of a project's own feeders for its services", () => {
       const read = selectServicesOf(makeInitialZeropsDataState(scope()), owner);

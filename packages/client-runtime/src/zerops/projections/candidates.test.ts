@@ -3,7 +3,8 @@ import type { ActivityProcess } from "../activity/dto.ts";
 import { describe, expect, it } from "@effect/vitest";
 
 import type { Known, Shown } from "../knowledge/known.ts";
-import type { FacetAdmission, ProjectRecord, ProjectRef, ServiceRecord } from "../data/types.ts";
+import type { ZeropsProject } from "../api.ts";
+import type { FacetAdmission, ProjectRef, ServiceRecord } from "../data/types.ts";
 import { project, service, stamp } from "../data/__fixtures__/index.ts";
 import type { ZeropsCandidate } from "../candidates.ts";
 import {
@@ -37,17 +38,15 @@ const observed = <Fields>(fields: Fields) => ({
   admission,
 });
 
-function projectRecord(id = "project-1", status = "ACTIVE"): ProjectRecord {
+function projectRecord(id = "project-1", status = "ACTIVE"): ZeropsProject {
   return {
-    ref: project(id),
-    identity: observed({ name: id, createdAt: null }),
-    lifecycle: observed({ status }),
-    presentation: observed({ tags: [], description: null }),
-    placement: observed({
-      publicZone: "fte2334ab.prg1-zerops.zone",
-      zeropsSubdomainHost: "24cb",
-      mode: "LIGHT" as const,
-    }),
+    id,
+    name: id,
+    status,
+    tagList: [],
+    publicZone: "fte2334ab.prg1-zerops.zone",
+    zeropsSubdomainHost: "24cb",
+    mode: "LIGHT",
   };
 }
 
@@ -164,7 +163,7 @@ describe("selectCandidates", () => {
     });
   });
 
-  it.each<{ readonly name: string; readonly projects: Known<ReadonlyArray<ProjectRecord>> }>([
+  it.each<{ readonly name: string; readonly projects: Known<ReadonlyArray<ZeropsProject>> }>([
     { name: "unread", projects: { state: "unread", waitingFor: "access-grant" } },
     { name: "reading", projects: { state: "reading", sinceMs: 10, attempt: 1 } },
     {
@@ -182,7 +181,7 @@ describe("selectCandidates", () => {
   });
 
   it("keeps the projects' stamp, freshness and coverage", () => {
-    const projects: Known<ReadonlyArray<ProjectRecord>> = {
+    const projects: Known<ReadonlyArray<ZeropsProject>> = {
       state: "known",
       value: [],
       asOf: { ordinal: 7, atMs: 70 },
@@ -193,22 +192,9 @@ describe("selectCandidates", () => {
     expect(selectCandidates(projects, unread)).toEqual(projects);
   });
 
-  it("leaves out a project whose status is not read, and is then partial", () => {
-    const pending: ProjectRecord = {
-      ...projectRecord("project-2"),
-      lifecycle: { knowledge: "unresolved", fields: {}, unresolvedRequiredFields: [], admission },
-    };
-
-    expect(selectCandidates(known([pending, projectRecord()]), unread)).toMatchObject({
-      state: "known",
-      value: [{ key: "project-1" }],
-      coverage: "partial",
-    });
-  });
-
   it.each<{
     readonly name: string;
-    readonly listing: Known<ReadonlyArray<ProjectRecord>>;
+    readonly listing: Known<ReadonlyArray<ZeropsProject>>;
     readonly services: Known<ReadonlyArray<ServiceRecord>>;
     readonly complete: boolean;
   }>([

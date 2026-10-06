@@ -7,9 +7,6 @@ import {
   makeInitialZeropsDataState,
   reduceZeropsDataState,
   selectHistory,
-  knownProjectsOf,
-  knownServicesOf,
-  selectProjectsOf,
   selectServicesOf,
   selectTopology,
   selectUsage,
@@ -24,7 +21,6 @@ import type {
   ZeropsStatHistoryItem,
 } from "@t3tools/client-runtime/zerops";
 import { projectTopology } from "@t3tools/client-runtime/zerops/topology";
-import { selectCandidates } from "@t3tools/client-runtime/zerops/projections";
 import {
   derivePublicRoutes,
   derivePublicRouteOffers,
@@ -38,7 +34,6 @@ import {
   entityRegistration,
   identity,
   project,
-  process,
   scope,
   service,
   stamp,
@@ -227,6 +222,7 @@ function fixture() {
     );
   const snapshot = () =>
     projectTopologySnapshotFromRead(
+      projectDto,
       selectTopology(state, owner),
       [],
       new Map(services.map(({ id }) => [id, selectUsage(state, service(id))])),
@@ -281,33 +277,6 @@ describe("original topology behavior through the central data pipeline", () => {
       { service: "weatherapp", serviceId: "app", port: 3000 },
     ]);
   });
-  it("retains the owning organization on candidates used for connecting and creating environments", () => {
-    const f = fixture();
-    const query = {
-      kind: "projects-of-organization" as const,
-      organization: owner.organization,
-      statuses: [],
-      schemaVersion: 1 as const,
-    };
-    f.ingest(
-      decodeEntityQueryResponse(
-        query,
-        directTicket({ kind: "query", descriptor: query }, f.id, 50, 50),
-        { list: [projectDto], totalCount: 1 },
-        "direct-read",
-      ),
-    );
-    const listing = selectCandidates(
-      knownProjectsOf(selectProjectsOf(f.state(), owner.organization), 0),
-      (ref) => knownServicesOf(selectServicesOf(f.state(), ref), 0),
-    );
-    expect(listing.state).toBe("known");
-    const candidates = listing.state === "known" ? listing.value : [];
-    expect(candidates).toHaveLength(1);
-    expect(candidates[0]?.project.clientId).toBe(projectDto.clientId);
-    expect(candidates[0]?.project).toEqual(projectDto);
-  });
-
   it("hides system services even after a partial native update, without hiding zcp", () => {
     const f = fixture();
     const registration = entityRegistration("service", f.id);

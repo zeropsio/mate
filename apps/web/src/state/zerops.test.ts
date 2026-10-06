@@ -9,7 +9,7 @@ import {
   type ManagedZeropsDataRuntime,
   type ProtocolDecodeResult,
 } from "@t3tools/client-runtime/zerops/data";
-import { candidateListingsAtom } from "@t3tools/client-runtime/zerops/environments";
+import { mateListingsAtom } from "@t3tools/client-runtime/zerops/environments";
 import type { HqStructure } from "@t3tools/client-runtime/zerops/hq";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { MateLiveView } from "@t3tools/shared/hqMates";
@@ -26,9 +26,10 @@ import {
   scope,
   stamp,
 } from "../zerops/__fixtures__/platformData";
+import { mountRoster } from "@t3tools/client-runtime/zerops/testing";
 import type { InventoryProjection } from "../zerops/inventoryContext";
 import {
-  candidateRowsAtom,
+  mateRowsAtom,
   hqMatesViewAtom,
   hqStructureAtom,
   takenBotNamesAtom,
@@ -58,13 +59,10 @@ const ZCP: ZeropsService = {
 };
 
 /**
- * A runtime that has read the organization's one project and its zcp container, under a grant
- * that names the organization.
+ * A runtime that has read the project's zcp container, under a grant that names the organization;
+ * the organization's projects are the account store's (`mountRoster`).
  */
-function readRuntime(
-  listed: ReadonlyArray<ZeropsProject> = [PROJECT],
-  totalCount: number = listed.length,
-): ManagedZeropsDataRuntime {
+function readRuntime(): ManagedZeropsDataRuntime {
   const id = identity();
   let state = reduceZeropsDataState(
     makeInitialZeropsDataState(scope()),
@@ -84,20 +82,6 @@ function readRuntime(
       ).state;
     }
   };
-  const projects = {
-    kind: "projects-of-organization" as const,
-    organization,
-    statuses: [],
-    schemaVersion: 1 as const,
-  };
-  ingest(
-    decodeEntityQueryResponse(
-      projects,
-      directTicket({ kind: "query", descriptor: projects }, id, 2, 2),
-      { list: [...listed], totalCount },
-      "direct-read",
-    ),
-  );
   const services = {
     kind: "services-of-project" as const,
     project: owner,
@@ -131,6 +115,7 @@ function readRuntime(
     },
   };
   return {
+    scope: scope(),
     reads: createZeropsDataAtoms(Atom.make(state)).reads,
     access: { view: Atom.make(granted) },
   } as unknown as ManagedZeropsDataRuntime;
@@ -140,6 +125,7 @@ describe("the candidate rows", () => {
   it("the web candidate rows are the account listing's rows", () => {
     const registry = AtomRegistry.make();
     const runtime = readRuntime();
+    mountRoster(registry, organization.organizationId, [PROJECT]);
     registry.set(zeropsDataRuntimeAtom, runtime);
     registry.set(zeropsSessionAtom, {
       status: "signed-in",
@@ -154,9 +140,9 @@ describe("the candidate rows", () => {
       account: { kind: "authorized" },
     });
 
-    const rows = registry.get(candidateRowsAtom);
+    const rows = registry.get(mateRowsAtom);
     const listed = registry
-      .get(candidateListingsAtom(runtime))
+      .get(mateListingsAtom(runtime))
       .find(({ organizationId }) => organizationId === organization.organizationId);
 
     expect(heldCandidates(rows).rows.map(({ key }) => key)).toEqual([`${PROJECT.id}:${ZCP.id}`]);
@@ -167,6 +153,7 @@ describe("the candidate rows", () => {
 
   it("each row carries where the organization's HQ places its project", () => {
     const registry = AtomRegistry.make();
+    mountRoster(registry, organization.organizationId, [PROJECT]);
     registry.set(zeropsDataRuntimeAtom, readRuntime());
     registry.set(zeropsSessionAtom, {
       status: "signed-in",
@@ -206,7 +193,7 @@ describe("the candidate rows", () => {
       unavailableSince: null,
     });
 
-    expect(heldCandidates(registry.get(candidateRowsAtom)).rows[0]?.project.hq).toEqual({
+    expect(heldCandidates(registry.get(mateRowsAtom)).rows[0]?.project.hq).toEqual({
       appId: "app-kanban",
       appName: "Kanban",
       kind: "mate",
@@ -223,20 +210,20 @@ describe("the candidate rows", () => {
         ...(moved ? { crew: { status: "none" } } : {}),
       });
     // Read as the menu reads it: kept, not built afresh for each look.
-    const unsubscribe = registry.subscribe(candidateRowsAtom, () => undefined);
+    const unsubscribe = registry.subscribe(mateRowsAtom, () => undefined);
     registry.set(hqMatesViewAtom, {
       organizationId: organization.organizationId,
       mates: new Map([[PROJECT.id, told(false)]]),
       current: true,
     });
-    const row = heldCandidates(registry.get(candidateRowsAtom)).rows[0];
+    const row = heldCandidates(registry.get(mateRowsAtom)).rows[0];
     expect(row?.project.hq?.mate).toEqual({ face: "", logins });
     registry.set(hqMatesViewAtom, {
       organizationId: organization.organizationId,
       mates: new Map([[PROJECT.id, told(true)]]),
       current: true,
     });
-    expect(heldCandidates(registry.get(candidateRowsAtom)).rows[0]).toBe(row);
+    expect(heldCandidates(registry.get(mateRowsAtom)).rows[0]).toBe(row);
     unsubscribe();
   });
 });
@@ -306,7 +293,10 @@ describe("the names the organization's Mates go by", () => {
     readonly expected: { readonly names: ReadonlyArray<string>; readonly complete: boolean };
   }>)("$label", ({ listed, totalCount, account, current = true, expected }) => {
     const registry = AtomRegistry.make();
-    registry.set(zeropsDataRuntimeAtom, readRuntime(listed, totalCount));
+    mountRoster(registry, organization.organizationId, listed, {
+      unreadMembers: totalCount > listed.length ? [UMA.id] : [],
+    });
+    registry.set(zeropsDataRuntimeAtom, readRuntime());
     registry.set(zeropsSessionAtom, {
       status: "signed-in",
       organizationStatus: "selected",

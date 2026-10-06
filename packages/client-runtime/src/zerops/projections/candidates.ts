@@ -12,7 +12,7 @@
  */
 import type { EnvironmentId } from "@t3tools/contracts";
 
-import type { ZeropsService } from "../api.ts";
+import type { ZeropsProject, ZeropsService } from "../api.ts";
 import {
   addressSeenAfter,
   deriveZeropsCandidates,
@@ -27,8 +27,8 @@ import {
 } from "../candidates.ts";
 import { projectNameInApp, readZeropsMembership } from "../groups.ts";
 import type { ProjectProcesses } from "../../data/projections/processes.ts";
-import { projectRecordToZeropsProject, serviceRecordToZeropsService } from "../data/dto.ts";
-import type { CollectionRead, ProjectRecord, ProjectRef, ServiceRecord } from "../data/types.ts";
+import { serviceRecordToZeropsService } from "../data/dto.ts";
+import type { CollectionRead, ServiceRecord } from "../data/types.ts";
 import type { Known, Shown } from "../knowledge/known.ts";
 import {
   knownPresentation,
@@ -68,20 +68,18 @@ const known = (candidates: ReadonlyArray<ZeropsCandidate>): ReadonlyArray<Candid
   candidates.map((candidate) => ({ ...candidate, presence: "known" }));
 
 /**
- * One project's candidates; null while its name or status is not read yet. Only an active
- * project's services are read (`servicesOf`): any other status decides its one row alone. A reader
- * that holds what it knows of its containers' addresses judges them by it (`AddressFacts`).
+ * One project's candidates. Only an active project's services are read (`servicesOf`): any other
+ * status decides its one row alone. A reader that holds what it knows of its containers' addresses
+ * judges them by it (`AddressFacts`).
  */
 export function projectCandidates(
-  record: ProjectRecord,
-  servicesOf: (project: ProjectRef) => Known<ReadonlyArray<ServiceRecord>>,
+  project: ZeropsProject,
+  servicesOf: () => Known<ReadonlyArray<ServiceRecord>>,
   facts?: AddressFacts,
-): ReadonlyArray<CandidateRow> | null {
-  const project = projectRecordToZeropsProject(record);
-  if (project === null) return null;
+): ReadonlyArray<CandidateRow> {
   if (project.status !== "ACTIVE")
     return known(deriveZeropsCandidates(project, [], NO_CONNECTIONS));
-  const services = readServices(servicesOf(record.ref));
+  const services = readServices(servicesOf());
   if (services === null) {
     return [{ key: project.id, project, group: "unavailable", presence: "unknown" }];
   }
@@ -90,18 +88,17 @@ export function projectCandidates(
 
 /**
  * Every candidate the organization's projects hold. The listing is as known as the projects are:
- * unread, reading or failed projects give no rows at all, never an empty list. A project whose
- * name or status is not read yet is left out, and the listing is then partial.
+ * unread, reading or failed projects give no rows at all, never an empty list.
  */
 export function selectCandidates(
-  projects: Known<ReadonlyArray<ProjectRecord>>,
-  servicesOf: (project: ProjectRef) => Known<ReadonlyArray<ServiceRecord>>,
+  projects: Known<ReadonlyArray<ZeropsProject>>,
+  servicesOf: (project: ZeropsProject) => Known<ReadonlyArray<ServiceRecord>>,
   facts?: AddressFacts,
 ): Known<ReadonlyArray<CandidateRow>> {
   if (projects.state !== "known") return projects;
   return candidateListing(
     projects,
-    projects.value.map((record) => projectCandidates(record, servicesOf, facts)),
+    projects.value.map((project) => projectCandidates(project, () => servicesOf(project), facts)),
   );
 }
 
@@ -229,20 +226,12 @@ export function learnAddresses(
   return { memory: learned, arrivalEnd: soonest };
 }
 
-/**
- * The listing of known projects out of each project's rows, in the projects' order; a project
- * with no rows yet (`null`) leaves it partial.
- */
-export function candidateListing(
-  projects: Extract<Known<ReadonlyArray<ProjectRecord>>, { readonly state: "known" }>,
-  rowsOfEach: ReadonlyArray<ReadonlyArray<CandidateRow> | null>,
+/** The listing of known projects out of each project's rows, in the projects' order. */
+export function candidateListing<Project>(
+  projects: Extract<Known<ReadonlyArray<Project>>, { readonly state: "known" }>,
+  rowsOfEach: ReadonlyArray<ReadonlyArray<CandidateRow>>,
 ): Extract<Known<ReadonlyArray<CandidateRow>>, { readonly state: "known" }> {
-  const complete = projects.coverage === "complete" && rowsOfEach.every((rows) => rows !== null);
-  return {
-    ...projects,
-    value: rowsOfEach.flatMap((rows) => rows ?? []),
-    coverage: complete ? "complete" : "partial",
-  };
+  return { ...projects, value: rowsOfEach.flat() };
 }
 
 /**

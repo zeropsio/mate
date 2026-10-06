@@ -25,7 +25,7 @@ import {
 import { Atom } from "effect/unstable/reactivity";
 
 import {
-  candidateRowsAtom,
+  mateRowsAtom,
   candidateListingWholeAtom,
   takenBotNamesAtom,
   zeropsEnvironmentsAtom,
@@ -112,14 +112,14 @@ const NO_SERVICES: ZeropsEnvironmentServices = {
 
 /**
  * The active organization's candidates as knowledge (DESIGN §3): the rows
- * (`candidateRowsAtom`), each ready one joined with the environment connected
+ * (`mateRowsAtom`), each ready one joined with the environment connected
  * at its origin, and presented with its routes and services off the account's
  * inventory; withheld as the rows are. Derived, with no writer: it reads the
  * account's registry, which starts over when the account closes.
  */
 export const candidateListingAtom = Atom.make(
   (get): Shown<ReadonlyArray<ZeropsCandidatePresentation>> => {
-    const rows = get(candidateRowsAtom);
+    const rows = get(mateRowsAtom);
     const inventory = get(zeropsInventoryAtom);
     const environments = get(zeropsEnvironmentsAtom);
     const connectedOrigins = authenticatedZeropsOrigins(environments);

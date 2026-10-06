@@ -37,7 +37,7 @@ import {
 } from "../data/types.ts";
 import type { DescriptorFacts } from "../environments/environmentMachine.ts";
 import type { CloseOffWord } from "../environments/closeOff.ts";
-import { candidateListingsAtom } from "../environments/listings.ts";
+import { mateListingsAtom } from "../environments/listings.ts";
 import { readServiceMateFlag } from "../environments/mateFlag.ts";
 import { rowTarget } from "../environments/mateLink.ts";
 import type { ProbeReading } from "../environments/probeStore.ts";
@@ -56,6 +56,7 @@ import {
   type DoorCredential,
   type DoorRequest,
 } from "./accountRuntime.ts";
+import { liveProjects } from "../../data/__fixtures__/account.ts";
 import { accountReadsAtom } from "../../data/reads.ts";
 import { makeAccountStore } from "../../data/store.ts";
 
@@ -1126,11 +1127,6 @@ describe("the account runtime", () => {
             const phase = registry.get(data.access.view).machine.phase;
             return phase.phase === "granted" ? [...phase.evidence.projects.keys()].toSorted() : [];
           };
-          const listing = () =>
-            registry
-              .get(candidateListingsAtom(data))
-              .find(({ organizationId }) => organizationId === organization.organizationId)
-              ?.listing;
           const observing = () =>
             Effect.map(
               data.state,
@@ -1139,7 +1135,7 @@ describe("the account runtime", () => {
                   ({ interest }) => interest.status === "observing",
                 ).length,
             );
-          const unsubscribe = registry.subscribe(candidateListingsAtom(data), () => undefined);
+          const unsubscribe = registry.subscribe(mateListingsAtom(data), () => undefined);
           yield* Effect.addFinalizer(() => Effect.sync(unsubscribe));
           yield* clock.advance(SECOND);
           yield* settle;
@@ -1179,14 +1175,6 @@ describe("the account runtime", () => {
           expect(yield* observing()).toBe(1);
           expect(yield* streamed()).toEqual([]);
           expect(rounds()).toHaveLength(roundsBefore);
-          // Both projects' rows are read the same way: the new one is no less known than the old.
-          const listed = listing();
-          expect(listed?.state).toBe("known");
-          if (listed?.state === "known") {
-            const [first, second] = listed.value;
-            expect([first?.project.id, second?.project.id]).toEqual(["project-1", "project-2"]);
-            expect(second?.presence).toBe(first?.presence);
-          }
 
           // The organization's last Mate stops being one: nothing reads the streams, so they go.
           rest.addProject({ ...mate, tagList: [] });
@@ -1413,6 +1401,8 @@ describe("the post-grant stage's Mate environments", () => {
     extra: Partial<AccountEnvironmentPorts> = {},
     /** The data runtime's budgets the case narrows. */
     policy = makeZeropsDataPolicy(),
+    /** The roster is not read until the case releases it. */
+    rosterHeld = false,
   ) {
     const clock = yield* makeDeadlineClock({ startWallMs: START_WALL_MS });
     const registry = AtomRegistry.make();
@@ -1449,7 +1439,20 @@ describe("the post-grant stage's Mate environments", () => {
       );
     }).pipe(Effect.provideService(Clock.Clock, clock));
     yield* Effect.addFinalizer(() => built.close("application-close"));
-    return { clock, page, grant, rig, built, registry };
+    // The account's store, its organization's roster read: the Mates' projects.
+    const store = makeAccountStore(registry);
+    const releaseRoster = () =>
+      liveProjects(
+        organization.organizationId,
+        mates.map(({ project }) => project),
+      ).forEach(store.dispatch);
+    if (!rosterHeld) releaseRoster();
+    registry.set(accountReadsAtom, {
+      data: store.data,
+      orgId: organization.organizationId,
+      demandDetail: () => () => undefined,
+    });
+    return { clock, page, grant, rig, built, registry, store, releaseRoster };
   });
 
   /** `openAccount` past the epoch's first grant, with its post-grant stage. */
@@ -1459,8 +1462,17 @@ describe("the post-grant stage's Mate environments", () => {
     adapter: ZeropsDataAdapter = platformAdapter(mates),
     admitted: ReadonlyArray<Mate> = mates,
     extra: Partial<AccountEnvironmentPorts> = {},
+    rosterHeld = false,
   ) {
-    const opened = yield* openAccount(remembered, mates, adapter, admitted, extra);
+    const opened = yield* openAccount(
+      remembered,
+      mates,
+      adapter,
+      admitted,
+      extra,
+      undefined,
+      rosterHeld,
+    );
     yield* opened.grant.answer();
     yield* opened.clock.advance(SECOND);
     yield* settle;
@@ -1877,8 +1889,8 @@ describe("the post-grant stage's Mate environments", () => {
         // The account's store, as far as the wiring holds it: whose newest history it holds.
         const held = new Set<string>();
         opened.registry.set(accountReadsAtom, {
-          data: makeAccountStore(opened.registry).data,
-          orgId: "org",
+          data: opened.store.data,
+          orgId: organization.organizationId,
           demandDetail: ({ ownerId }) => {
             held.add(ownerId);
             return () => void held.delete(ownerId);
@@ -2488,7 +2500,7 @@ describe("the post-grant stage's Mate environments", () => {
           yield* settle;
 
           const rows = registry
-            .get(candidateListingsAtom(built.data))
+            .get(mateListingsAtom(built.data))
             .flatMap(({ listing }) => heldCandidates(listing).rows);
           const listed = rows.find(({ project }) => project.id === A_MATE.projectId);
           expect(listed).toMatchObject({ key: A_MATE.projectId, presence: "unknown" });
@@ -3265,11 +3277,13 @@ describe("the post-grant stage's Mate environments", () => {
       Effect.gen(function* () {
         const { mates, route, environment, records } = routeScene();
         const services = heldQueries(platformAdapter(mates), ["services-of-project"]);
-        const projects = heldQueries(services.adapter, ["projects-of-organization"]);
-        const { rig, environments } = yield* granted(
+        const { rig, environments, releaseRoster } = yield* granted(
           records.filter(({ environmentId }) => environmentId !== environment),
           mates,
-          projects.adapter,
+          services.adapter,
+          undefined,
+          undefined,
+          true,
         );
         environments.setRoute(environment);
         yield* settle;
@@ -3279,7 +3293,7 @@ describe("the post-grant stage's Mate environments", () => {
         rig.storeElsewhere(records, false);
         // The organization's projects are read: every remembered Mate's container is read at
         // once, the route's first.
-        projects.release();
+        releaseRoster();
         yield* settle;
         expect(rig.probes.map(({ input }) => input)[0]).toBe(route.origin);
         expect(rig.probes.map(({ input }) => input).toSorted()).toEqual(

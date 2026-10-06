@@ -54,3 +54,17 @@ export const organizationProjects: Projection<string, OrganizationProjects> = {
   },
   equals: sameValue,
 };
+
+/** One project as the account's store holds it; `null` while it holds no value of it. */
+export const listedProject: Projection<
+  { readonly orgId: string; readonly projectId: string },
+  ProjectValue | null
+> = {
+  name: "listedProject",
+  keyOf: ({ orgId, projectId }) => `${orgId}/${projectId}`,
+  derive: (read, { projectId }) => {
+    const fact = read.fact("project", projectId);
+    return fact.kind === "known" ? fact.value : null;
+  },
+  equals: sameValue,
+};

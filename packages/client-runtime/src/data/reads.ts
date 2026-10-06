@@ -9,7 +9,12 @@ import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
 
 import type { DetailDemand } from "./demand.ts";
 import { projectProcesses, type ProjectProcesses } from "./projections/processes.ts";
-import { organizationProjects, type OrganizationProjects } from "./projections/projects.ts";
+import type { ProjectValue } from "./families/project.ts";
+import {
+  listedProject,
+  organizationProjects,
+  type OrganizationProjects,
+} from "./projections/projects.ts";
 import type { AccountStore } from "./store.ts";
 
 export interface AccountReads {
@@ -65,6 +70,15 @@ export const shownProjectsAtom = Atom.make(
     };
   },
 ).pipe(Atom.withLabel("data:shown-projects"));
+
+/** One project as the mounted account holds it; `null` without one, or while it holds none. */
+export const listedProjectAtom = Atom.family((projectId: string) =>
+  Atom.make((get): ProjectValue | null => {
+    const account = get(accountReadsAtom);
+    if (account === null || account.orgId === null) return null;
+    return get(account.data.project(listedProject, { orgId: account.orgId, projectId }));
+  }).pipe(Atom.withLabel(`data:listed-project:${projectId}`)),
+);
 
 /**
  * Holds a project's newest process history from outside React, through whichever account is

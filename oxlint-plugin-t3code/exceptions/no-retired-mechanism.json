@@ -2514,46 +2514,6 @@
   {
     "path": "apps/web/src/state/zerops.ts",
     "kind": "retired-token",
-    "fingerprint": "candidateListingsAtom",
-    "owner": "data-layer rewrite: projects",
-    "reason": "candidate listings as atoms duplicate the projects family; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/state/zerops.ts",
-    "kind": "retired-token",
-    "fingerprint": "candidateListingsAtom",
-    "owner": "data-layer rewrite: projects",
-    "reason": "candidate listings as atoms duplicate the projects family; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/state/zerops.ts",
-    "kind": "retired-token",
-    "fingerprint": "candidateRowsAtom",
-    "owner": "data-layer rewrite: projects",
-    "reason": "listing, candidate-row and topology atoms in the app duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/state/zerops.ts",
-    "kind": "retired-token",
-    "fingerprint": "candidateRowsAtom",
-    "owner": "data-layer rewrite: projects",
-    "reason": "listing, candidate-row and topology atoms in the app duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/state/zerops.ts",
-    "kind": "retired-token",
-    "fingerprint": "candidateRowsAtom",
-    "owner": "data-layer rewrite: projects",
-    "reason": "listing, candidate-row and topology atoms in the app duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/state/zerops.ts",
-    "kind": "retired-token",
     "fingerprint": "createZeropsFeedAtoms",
     "owner": "data-layer rewrite: Mate identity/connection",
     "reason": "feed atoms built in the app duplicate the Mate adapter; read the projection",
@@ -2661,46 +2621,6 @@
     "fingerprint": "hqStructureAtom",
     "owner": "data-layer rewrite: HQ structure/apps",
     "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/state/zerops.ts",
-    "kind": "retired-token",
-    "fingerprint": "organizationListingAtom",
-    "owner": "data-layer rewrite: projects",
-    "reason": "listing, candidate-row and topology atoms in the app duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/state/zerops.ts",
-    "kind": "retired-token",
-    "fingerprint": "organizationListingAtom",
-    "owner": "data-layer rewrite: projects",
-    "reason": "listing, candidate-row and topology atoms in the app duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/state/zerops.ts",
-    "kind": "retired-token",
-    "fingerprint": "organizationListingAtom",
-    "owner": "data-layer rewrite: projects",
-    "reason": "listing, candidate-row and topology atoms in the app duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/state/zerops.ts",
-    "kind": "retired-token",
-    "fingerprint": "projectTopologyFamily",
-    "owner": "data-layer rewrite: projects",
-    "reason": "listing, candidate-row and topology atoms in the app duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/state/zerops.ts",
-    "kind": "retired-token",
-    "fingerprint": "projectTopologyFamily",
-    "owner": "data-layer rewrite: projects",
-    "reason": "listing, candidate-row and topology atoms in the app duplicate the store; read the projection",
     "expires": "never"
   },
   {
@@ -4666,22 +4586,6 @@
   {
     "path": "apps/web/src/zerops/useZeropsCandidates.ts",
     "kind": "retired-token",
-    "fingerprint": "candidateRowsAtom",
-    "owner": "data-layer rewrite: projects",
-    "reason": "listing, candidate-row and topology atoms in the app duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsCandidates.ts",
-    "kind": "retired-token",
-    "fingerprint": "candidateRowsAtom",
-    "owner": "data-layer rewrite: projects",
-    "reason": "listing, candidate-row and topology atoms in the app duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsCandidates.ts",
-    "kind": "retired-token",
     "fingerprint": "zeropsInventoryAtom",
     "owner": "data-layer rewrite: services",
     "reason": "inventory atoms and trouble refs remember a verdict; the services projection reads the store",
@@ -5488,22 +5392,6 @@
     "expires": "never"
   },
   {
-    "path": "packages/client-runtime/src/zerops/account/environments.ts",
-    "kind": "retired-token",
-    "fingerprint": "candidateListingsAtom",
-    "owner": "data-layer rewrite: projects",
-    "reason": "candidate listings as atoms duplicate the projects family; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/account/environments.ts",
-    "kind": "retired-token",
-    "fingerprint": "candidateListingsAtom",
-    "owner": "data-layer rewrite: projects",
-    "reason": "candidate listings as atoms duplicate the projects family; read the projection",
-    "expires": "never"
-  },
-  {
     "path": "packages/client-runtime/src/zerops/account/flow.ts",
     "kind": "retired-token",
     "fingerprint": "atomRegistry.subscribe(table, changed)",
@@ -5877,14 +5765,6 @@
     "fingerprint": "CONVERSATION_UNVERIFIED_BOUND_MS",
     "owner": "data-layer rewrite: Mate identity/connection",
     "reason": "an unverified conversation is shown until a timer bound; the source verifies it",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/environments/listings.ts",
-    "kind": "retired-token",
-    "fingerprint": "candidateListingsAtom",
-    "owner": "data-layer rewrite: projects",
-    "reason": "candidate listings as atoms duplicate the projects family; read the projection",
     "expires": "never"
   },
   {

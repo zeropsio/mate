@@ -60,6 +60,26 @@ export const projectValue = (
   patch: Pick<ProjectValue, "id"> & Partial<ProjectValue>,
 ): ProjectValue => ({ name: patch.id, status: "ACTIVE", clientId: ORG, ...patch });
 
+/** An organization's roster read and live: these projects, as their rows read. */
+export function liveProjects(
+  orgId: string,
+  projects: ReadonlyArray<Readonly<Record<string, unknown>> & { readonly id: string }>,
+): ReadonlyArray<AccountInput> {
+  return liveScopes(linkKeys.zerops(orgId), [
+    {
+      scope: projectsScope(orgId),
+      via: "zerops-realtime",
+      members: projects.map((project) => project.id),
+      rows: projects.map((project) => ({
+        family: "project",
+        id: project.id,
+        value: projectValue(project),
+        revision: zeropsVersion(1),
+      })),
+    },
+  ]);
+}
+
 export function liveZerops(input: {
   readonly running: ReadonlyArray<Parameters<typeof processValue>[0]>;
   readonly projects?: ReadonlyArray<Parameters<typeof projectValue>[0]>;

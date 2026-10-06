@@ -20,13 +20,13 @@ describe("mobile Zerops integration", () => {
     expect(app).not.toContain('from "./Stack"');
   });
 
-  it("reads the shared candidate selector over the runtime's knowledge", () => {
+  it("reads the shared candidate selector over the store's roster and the runtime's services", () => {
     const candidates = readSource("src/features/zerops/useZeropsCandidates.ts");
 
     expect(candidates).toContain("selectCandidates");
-    expect(candidates).toContain("knownProjectsOf");
+    expect(candidates).toContain("shownProjectsAtom");
     expect(candidates).toContain("knownServicesOf");
-    expect(candidates).toContain("organization-inventory");
+    expect(candidates).not.toContain("organization-inventory");
     expect(candidates).not.toContain("runtime.stateAtom");
   });
 

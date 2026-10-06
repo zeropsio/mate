@@ -9,6 +9,14 @@
  * the tab's own.
  */
 import { RegistryContext } from "@effect/atom-react";
+import {
+  accountReadsAtom,
+  makeAccountStore,
+  makeZeropsWire,
+  observeAccount,
+  repairZeropsSession,
+} from "@t3tools/client-runtime/data";
+import type { PlatformWatchSocket } from "@t3tools/client-runtime/zerops/data";
 import type { Instant } from "@t3tools/client-runtime/zerops/data";
 import type { Link } from "@t3tools/client-runtime/zerops/environments";
 import { selectLocationChoice, type ZeropsCellAdapter } from "@t3tools/client-runtime/zerops/data";
@@ -52,22 +60,80 @@ export function AccountProduct({
   );
   return createElement(RegistryContext, {
     value: registry,
-    children: createElement(ZeropsDataProvider, {
-      makeRuntime,
-      // The product and the account's one line at the menu's foot, as the sidebar places it.
-      children: createElement(ZeropsInventoryProvider, {
-        children: createElement(
-          Fragment,
-          null,
-          demandedProjects.map((projectId) =>
-            createElement(ProjectNotice, { key: projectId, projectId }),
+    children: createElement(
+      HarnessAccountData,
+      { registry },
+      createElement(ZeropsDataProvider, {
+        makeRuntime,
+        // The product and the account's one line at the menu's foot, as the sidebar places it.
+        children: createElement(ZeropsInventoryProvider, {
+          children: createElement(
+            Fragment,
+            null,
+            demandedProjects.map((projectId) =>
+              createElement(ProjectNotice, { key: projectId, projectId }),
+            ),
+            children,
+            createElement(AccountVoiceLine),
           ),
-          children,
-          createElement(AccountVoiceLine),
-        ),
+        }),
       }),
-    }),
+    ),
   });
+}
+
+/** A receiver that greets, answers every ping and says nothing else: the harness pushes nothing. */
+function quietSocket(): PlatformWatchSocket {
+  const socket: PlatformWatchSocket = {
+    onopen: null,
+    onmessage: null,
+    onclose: null,
+    onerror: null,
+    send: (data) => {
+      if (data.includes('"ping"'))
+        setTimeout(() => socket.onmessage?.({ data: '{"type":"pong"}' }));
+    },
+    close: () => undefined,
+  };
+  setTimeout(() => socket.onmessage?.({ data: '{"type":"SocketSuccess"}' }));
+  return socket;
+}
+
+/**
+ * The account's store as `ZeropsAccountData` mounts it, over the harness platform's REST and a
+ * quiet receiver: the active organization's roster read once, live after.
+ */
+function HarnessAccountData({
+  registry,
+  children,
+}: {
+  readonly registry: AtomRegistry.AtomRegistry;
+  readonly children?: ReactNode;
+}) {
+  const { client, status, activeOrganization } = useZeropsSession();
+  const store = useMemo(() => makeAccountStore(registry), [registry]);
+  const observation = useMemo(
+    () =>
+      observeAccount({
+        store,
+        wire: makeZeropsWire({ client, makeSocket: quietSocket }),
+        repairSession: repairZeropsSession(client),
+      }),
+    [client, store],
+  );
+  const orgId = status === "signed-in" ? (activeOrganization?.id ?? null) : null;
+  useEffect(() => {
+    observation.show(orgId);
+  }, [observation, orgId]);
+  useEffect(() => () => observation.close(), [observation]);
+  useEffect(() => {
+    registry.set(accountReadsAtom, {
+      data: store.data,
+      orgId,
+      demandDetail: observation.demandDetail,
+    });
+  }, [observation, orgId, registry, store]);
+  return children;
 }
 
 /**

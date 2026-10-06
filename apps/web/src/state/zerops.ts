@@ -11,7 +11,6 @@ import {
 import { projectsNeverSeen, heldEvidence } from "@t3tools/client-runtime/zerops/account/runtime";
 import {
   projectKeyOf,
-  projectRecordToZeropsProject,
   serviceRecordToZeropsService,
   ZeropsProjectId,
   type HistoryReadView,
@@ -24,7 +23,7 @@ import {
   type UsageRead,
 } from "@t3tools/client-runtime/zerops/data";
 import {
-  candidateListingsAtom,
+  mateListingsAtom,
   type RegistrationRecord,
 } from "@t3tools/client-runtime/zerops/environments";
 import {
@@ -51,7 +50,12 @@ import type { EnvironmentId } from "@t3tools/contracts";
 import type { HqPeople } from "@t3tools/shared/hqMates";
 import type { OverviewLogins } from "@t3tools/shared/mateLink";
 import { Atom } from "effect/unstable/reactivity";
-import { projectProcessesAtom } from "@t3tools/client-runtime/data";
+import {
+  listedProjectAtom,
+  projectProcessesAtom,
+  shownProjectsAtom,
+  type ProjectValue,
+} from "@t3tools/client-runtime/data";
 import type { ActivityProcess } from "@t3tools/client-runtime/zerops/activity/dto";
 
 import { connectionAtomRuntime } from "../connection/runtime";
@@ -59,7 +63,6 @@ import type { HqStanding } from "../zerops/accountHq";
 import { registeredZeropsOrigins, rowEnvironment } from "../zerops/environmentOrigins";
 import { createZeropsFeedAtoms } from "../zerops/feeds";
 import { findInventoryProjectRef, type InventoryProjection } from "../zerops/inventoryContext";
-import { evidenceOfGrant, listingWholeForPerson } from "../zerops/listingWhole";
 import type {
   ZeropsOrganizationStatus,
   ZeropsSessionStatus,
@@ -354,20 +357,19 @@ export const zeropsEnvironmentsAtom = Atom.make((get): ReadonlyArray<ZeropsEnvir
 const UNREAD: Known<never> = { state: "unread", waitingFor: null };
 
 /**
- * The active organization's listing as the account runtime reads it (`candidateListingsAtom`),
- * before any project's admission, with the test a row's project must pass to be shown: unread
- * until the account's product has published a signed-in session with an organization chosen, its
- * runtime and its inventory, and withheld whole while the account's access lapses (§3.1). The
- * rows and the names each read it their own way.
+ * The active organization's listing as the account reads it (`mateListingsAtom`: its projects as
+ * the account's store lists them, their services as the runtime reads them), each project where HQ
+ * places it, with the test a row's project must pass to be shown: unread until the account's
+ * product has published a signed-in session with an organization chosen, its runtime and its
+ * inventory, and withheld whole while the account's access lapses (§3.1). The rows and the names
+ * each read it their own way.
  */
-const organizationListingAtom = Atom.make(
+const shownListingAtom = Atom.make(
   (
     get,
   ): {
     readonly listing: Shown<ReadonlyArray<CandidateRow>>;
     readonly admits: (row: CandidateRow) => boolean;
-    /** Its project list held a member this account may not read: a name on it, unread. */
-    readonly withheldMembers: boolean;
   } => {
     const session = get(zeropsSessionAtom);
     const runtime = get(zeropsDataRuntimeAtom);
@@ -380,31 +382,23 @@ const organizationListingAtom = Atom.make(
       session.organizationStatus !== "selected" ||
       session.activeOrganization === null
     ) {
-      return { listing: UNREAD, admits: NONE, withheldMembers: false };
+      return { listing: UNREAD, admits: NONE };
     }
     if (inventory.account.kind === "withheld") {
       const { reason, cause } = inventory.account;
-      return {
-        listing: { state: "withheld", reason, cause },
-        admits: NONE,
-        withheldMembers: false,
-      };
+      return { listing: { state: "withheld", reason, cause }, admits: NONE };
     }
     const organization = session.activeOrganization;
-    const listed = get(candidateListingsAtom(runtime)).find(
+    const listed = get(mateListingsAtom(runtime)).find(
       ({ organizationId }) => organizationId === organization.organizationId,
     );
     const placements = get(hqPlacementsAtom) ?? NO_PLACEMENTS;
-    const listing = listed?.listing ?? UNREAD;
-    // Each project's own grants, as the access grant's last round read them: the records carry
-    // none, and a Mate's owner is its `OWNER` grant (F11).
+    // Each project's own grants, as the access grant's last round read them: a Mate's owner is its
+    // `OWNER` grant (F11).
     const grants = projectGrantsOf(heldEvidence(get(runtime.access.view).machine));
     return {
       // Each project where HQ places it (ADR 0002): its group, its kind, its Mate's face.
-      listing: grantListing(placeListing(listing, placements), grants),
-      withheldMembers: get(runtime.reads.projectsOf(organization)).value.some(
-        (member) => member.knowledge === "unavailable" && member.reason === "forbidden",
-      ),
+      listing: grantListing(placeListing(listed?.listing ?? UNREAD, placements), grants),
       admits: (row) => {
         const key = projectKeyOf({
           kind: "project",
@@ -415,63 +409,60 @@ const organizationListingAtom = Atom.make(
       },
     };
   },
-).pipe(Atom.withLabel("zerops:organization-listing"));
+).pipe(Atom.withLabel("zerops:shown-listing"));
 
 const NONE = (): boolean => false;
 
 /**
- * The active organization's candidate rows (DESIGN §2.B B4): the account runtime's listing of it
- * (`candidateListingsAtom`), unread until the account's product has published a signed-in
- * session with an organization chosen, its runtime and its inventory. Only the rows of projects
- * the inventory admits are shown, and withholding is applied here, at the read (§3.1, §4.2 G12):
- * withheld whole while the account's access lapses, and without the rows of a project the grant
- * withholds alone, which leaves the listing partial. A listing nothing is left out of is the
- * account's own. Derived, so nothing it held outlives the account.
+ * The active organization's Mate rows (DESIGN §2.B B4): its listing with only the rows of projects
+ * the inventory admits, and withholding applied here, at the read (§3.1, §4.2 G12): without the
+ * rows of a project the grant withholds alone, which leaves the listing partial. Derived, so
+ * nothing it held outlives the account.
  */
-export const candidateRowsAtom = Atom.make((get): Shown<ReadonlyArray<CandidateRow>> => {
-  const { listing, admits } = get(organizationListingAtom);
+export const mateRowsAtom = Atom.make((get): Shown<ReadonlyArray<CandidateRow>> => {
+  const { listing, admits } = get(shownListingAtom);
   return listing.state === "known" ? admittedOnly(listing, admits) : listing;
-}).pipe(Atom.withLabel("zerops:candidate-rows"));
+}).pipe(Atom.withLabel("zerops:mate-rows"));
 
-/** Whether the listing lacks anything still on its way for this person. */
+/**
+ * Whether the rows lack anything still on its way for this person: the roster is whole, and every
+ * project it lists that has no row is one this person can never see (`projectsNeverSeen`: the
+ * grant withholds it, NO_ACCESS, a denial confirmed).
+ */
 export const candidateListingWholeAtom = Atom.make((get): boolean => {
   const session = get(zeropsSessionAtom);
   const runtime = get(zeropsDataRuntimeAtom);
   const inventory = get(zeropsInventoryAtom);
   const organization = session?.activeOrganization ?? null;
   if (runtime === null || inventory === null || organization === null) return false;
-  const rows = get(candidateRowsAtom);
-  if (rows.state !== "known") return false;
-  const withheld = (projectId: string) =>
-    inventory.authority.get(
-      projectKeyOf({ kind: "project", organization, projectId: ZeropsProjectId.make(projectId) }),
-    )?.kind === "withheld";
-  return listingWholeForPerson({
-    read: get(runtime.reads.projectsOf(organization)),
-    shown: new Set(heldCandidates(rows).rows.map((row) => row.project.id)),
-    neverSeen: projectsNeverSeen({
-      evidence: evidenceOfGrant(get(runtime.access.view).machine),
-      access: get(runtime.reads.access),
-      withheld,
-    }),
+  const rows = get(mateRowsAtom);
+  const roster = get(shownProjectsAtom);
+  if (rows.state !== "known" || roster.orgId !== organization.organizationId || !roster.complete)
+    return false;
+  const shown = new Set(heldCandidates(rows).rows.map((row) => row.project.id));
+  const neverSeen = projectsNeverSeen({
+    evidence: heldEvidence(get(runtime.access.view).machine),
+    access: get(runtime.reads.access),
+    withheld: (projectId) =>
+      inventory.authority.get(
+        projectKeyOf({ kind: "project", organization, projectId: ZeropsProjectId.make(projectId) }),
+      )?.kind === "withheld",
   });
+  return roster.projects.every((project) => shown.has(project.id) || neverSeen(project.id));
 }).pipe(Atom.withLabel("zerops:candidate-listing-whole"));
 
 /**
  * The names the active organization's Mates go by (`takenBotNames`), read off its project list
  * where HQ places each: a project the grant has not verified yet, or that this account may not
  * open, still holds its name, and no project's services need reading. Complete only as the list
- * is, with HQ's structure answered and no
- * member withheld (`takenBotNames`), so a name missing from it is never called free while it may
- * still be there; nothing while the account's access lapses.
+ * is, with HQ's structure answered (`takenBotNames`), so a name missing from it is never called
+ * free while it may still be there; nothing while the account's access lapses.
  */
-export const takenBotNamesAtom = Atom.make((get): TakenBotNames => {
-  const { listing, withheldMembers } = get(organizationListingAtom);
-  return takenBotNames(listing, {
-    withheldMembers,
+export const takenBotNamesAtom = Atom.make((get): TakenBotNames =>
+  takenBotNames(get(shownListingAtom).listing, {
     structureKnown: get(hqPlacementsAtom) !== null && get(hqStructureAtom)?.current === true,
-  });
-}).pipe(Atom.withLabel("zerops:taken-bot-names"));
+  }),
+).pipe(Atom.withLabel("zerops:taken-bot-names"));
 
 /**
  * The derived half of the environment → project index (DESIGN §2.C C3): the project each
@@ -492,7 +483,7 @@ export const environmentProjectsAtom = Atom.make((get): EnvironmentProjects => {
   }
   const registered = registeredZeropsOrigins(environments);
   const listed = new Map<EnvironmentId, string>();
-  for (const row of heldCandidates(get(candidateRowsAtom)).rows) {
+  for (const row of heldCandidates(get(mateRowsAtom)).rows) {
     const environmentId = rowEnvironment(row, registered);
     if (environmentId !== undefined && !listed.has(environmentId))
       listed.set(environmentId, row.project.id);
@@ -548,11 +539,6 @@ export const PROJECT_HISTORY_WINDOW: MetricWindow = {
 
 function latestObservedAt(topology: ProjectTopologyRead): number | undefined {
   const stamps: number[] = [];
-  if (topology.project.value.knowledge === "observed") {
-    const record = topology.project.value.record;
-    if (record.identity.knowledge === "observed") stamps.push(record.identity.stamp.observedAtMs);
-    if (record.lifecycle.knowledge === "observed") stamps.push(record.lifecycle.stamp.observedAtMs);
-  }
   for (const knowledge of topology.services.value) {
     if (knowledge.knowledge !== "observed") continue;
     if (knowledge.record.identity.knowledge === "observed")
@@ -567,6 +553,8 @@ const EMPTY_USAGE_READS: ReadonlyMap<string, UsageRead> = new Map();
 const EMPTY_HISTORY_READS: ReadonlyMap<string, HistoryReadView> = new Map();
 
 export function projectTopologySnapshotFromRead(
+  /** The project as the account's store lists it; `null` while it does not. */
+  project: ProjectValue | null,
   topology: ProjectTopologyRead,
   /** What runs in the project now, as the account's store holds it (`projectProcesses`). */
   running: ReadonlyArray<ActivityProcess>,
@@ -581,7 +569,7 @@ export function projectTopologySnapshotFromRead(
     required.length > 0 && required.every((interest) => interest.status === "observing")
       ? "live"
       : "recovering";
-  if (topology.project.value.knowledge !== "observed") {
+  if (project === null) {
     return {
       view: undefined,
       liveness,
@@ -589,9 +577,6 @@ export function projectTopologySnapshotFromRead(
       error: failed?.reason,
     };
   }
-  const projectDto = projectRecordToZeropsProject(topology.project.value.record);
-  if (projectDto === null)
-    return { view: undefined, liveness, lastReadAt: undefined, error: failed?.reason };
   const services: ZeropsService[] = [];
   for (const knowledge of topology.services.value) {
     if (knowledge.knowledge !== "observed") continue;
@@ -617,7 +602,7 @@ export function projectTopologySnapshotFromRead(
   );
   // Native corrections can arrive out of order; chart points must remain chronological.
   history.sort((a, b) => Date.parse(a.from) - Date.parse(b.from));
-  const base = projectTopology(projectDto, services, processes, undefined, history);
+  const base = projectTopology(project, services, processes, undefined, history);
   let usageRead = false;
   const rows = base.services.map((row) => {
     const usage = usageByService.get(row.serviceId);
@@ -645,7 +630,7 @@ export function projectTopologySnapshotFromRead(
 
 const topologyProjects = new Map<string, ProjectRef>();
 
-const projectTopologyFamily = Atom.family((key: string) =>
+const projectTopologies = Atom.family((key: string) =>
   Atom.make((get): ProjectTopologySnapshot => {
     const runtime = get(zeropsDataRuntimeAtom);
     const inventory = get(zeropsInventoryAtom);
@@ -684,17 +669,24 @@ const projectTopologyFamily = Atom.family((key: string) =>
     );
     // What runs in it is the account store's: the organization's running work, never the runtime's.
     const running = get(projectProcessesAtom(project.projectId)).running;
-    return projectTopologySnapshotFromRead(topology, running, usage, history);
+    return projectTopologySnapshotFromRead(
+      get(listedProjectAtom(project.projectId)),
+      topology,
+      running,
+      usage,
+      history,
+    );
   }).pipe(Atom.withLabel(`zerops:project-topology:${key}`)),
 );
 
 /**
- * A project's topology (DESIGN §2.C C11): derived from the runtime's topology, usage and history
- * reads, so a pushed facet reaches every reader with nobody copying it. Protected roots read it
+ * A project's topology (DESIGN §2.C C11): the project as the account's store lists it, its
+ * services, usage and history as the runtime reads them, so a pushed facet reaches every reader
+ * with nobody copying it. Protected roots read it
  * through `useZeropsTopology`; `useProjectTopology` is where a host demands it.
  */
 export function projectTopologyAtom(project: ProjectRef): Atom.Atom<ProjectTopologySnapshot> {
   const key = projectKeyOf(project);
   if (!topologyProjects.has(key)) topologyProjects.set(key, project);
-  return projectTopologyFamily(key);
+  return projectTopologies(key);
 }

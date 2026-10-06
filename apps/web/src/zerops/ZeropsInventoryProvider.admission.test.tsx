@@ -127,9 +127,9 @@ describe("ZeropsInventoryProvider publication", () => {
         const { AccountProduct } = await import("./__fixtures__/accountProduct");
         const { useAtomValue } = await import("@effect/atom-react");
         const { heldCandidates } = await import("@t3tools/client-runtime/zerops/projections");
-        const { candidateRowsAtom } = await import("../state/zerops");
+        const { mateRowsAtom } = await import("../state/zerops");
         function Rows() {
-          const rows = useAtomValue(candidateRowsAtom);
+          const rows = useAtomValue(mateRowsAtom);
           const names = heldCandidates(rows).rows.map((row) => row.project.name);
           return `rows ${rows.state}: ${names.join(", ")}`;
         }
@@ -208,11 +208,11 @@ describe("ZeropsInventoryProvider grants", () => {
         const { useContext } = await import("react");
         const { useAtomValue } = await import("@effect/atom-react");
         const { heldCandidates } = await import("@t3tools/client-runtime/zerops/projections");
-        const { candidateRowsAtom } = await import("../state/zerops");
+        const { mateRowsAtom } = await import("../state/zerops");
         const { InventoryContext } = await import("./inventoryContext");
         function Developer() {
           const inventory = useContext(InventoryContext);
-          const rows = heldCandidates(useAtomValue(candidateRowsAtom)).rows;
+          const rows = heldCandidates(useAtomValue(mateRowsAtom)).rows;
           if (inventory === null || inventory.isLoading) return "reading";
           const owner = rows[0]?.project.userRoles?.find(({ roleCode }) => roleCode === "OWNER");
           return `owner ${owner?.clientUserId ?? "none"}`;
@@ -253,9 +253,9 @@ describe("ZeropsInventoryProvider grants", () => {
         const { AccountProduct } = await import("./__fixtures__/accountProduct");
         const { useAtomValue } = await import("@effect/atom-react");
         const { heldCandidates } = await import("@t3tools/client-runtime/zerops/projections");
-        const { candidateRowsAtom } = await import("../state/zerops");
+        const { mateRowsAtom } = await import("../state/zerops");
         function Rows() {
-          const rows = heldCandidates(useAtomValue(candidateRowsAtom)).rows;
+          const rows = heldCandidates(useAtomValue(mateRowsAtom)).rows;
           return `rows ${JSON.stringify(rows.map(({ project }) => [project.id, project.userRoles ?? null]))}`;
         }
         return (
@@ -285,9 +285,9 @@ describe("ZeropsInventoryProvider grants", () => {
         const { AccountProduct } = await import("./__fixtures__/accountProduct");
         const { useAtomValue } = await import("@effect/atom-react");
         const { heldCandidates } = await import("@t3tools/client-runtime/zerops/projections");
-        const { candidateRowsAtom } = await import("../state/zerops");
+        const { mateRowsAtom } = await import("../state/zerops");
         function Owner() {
-          const rows = heldCandidates(useAtomValue(candidateRowsAtom)).rows;
+          const rows = heldCandidates(useAtomValue(mateRowsAtom)).rows;
           const owner = rows[0]?.project.userRoles?.find(({ roleCode }) => roleCode === "OWNER");
           return `owner ${owner?.clientUserId ?? "none"}`;
         }

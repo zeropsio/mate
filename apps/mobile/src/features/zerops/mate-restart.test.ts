@@ -18,7 +18,6 @@ import {
   decodeEntityDirectResponse,
   decodeEntityQueryPages,
   decodeRegistrationResponse,
-  knownProjectsOf,
   knownServicesOf,
   makeZeropsApiOrigin,
   makeZeropsDataRuntime,
@@ -38,7 +37,11 @@ import {
 } from "@t3tools/client-runtime/zerops/environments";
 import { makePlatformSignals } from "@t3tools/client-runtime/zerops/knowledge";
 import { selectCandidates } from "@t3tools/client-runtime/zerops/projections";
-import { makeDeadlineClock, type DeadlineClock } from "@t3tools/client-runtime/zerops/testing";
+import {
+  makeDeadlineClock,
+  mountRoster,
+  type DeadlineClock,
+} from "@t3tools/client-runtime/zerops/testing";
 import * as Clock from "effect/Clock";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -138,7 +141,7 @@ const platform = () => {
     execute: () => Effect.succeed({ observations: [] }),
     closeReceiver: () => Effect.void,
   };
-  return { adapter, setService: (status: string) => void (state.service = status) };
+  return { adapter, projectRow, setService: (status: string) => void (state.service = status) };
 };
 
 /** A grant whose first round waits for the test, then verifies the one project as its owner. */
@@ -288,10 +291,8 @@ const openMobileAccount = Effect.fnUntraced(function* (clock: DeadlineClock) {
     });
   }).pipe(Effect.provideService(Clock.Clock, clock));
   yield* Effect.addFinalizer(() => built.close("application-close"));
-  // The picker's demand on the inventory, as `useZeropsCandidates` holds it.
-  yield* built.data
-    .acquire({ kind: "organization-inventory", organization })
-    .pipe(Effect.provideService(Clock.Clock, clock));
+  // The organization's roster, as the account's store reads it; the opened project's services.
+  mountRoster(registry, ORGANIZATION_ID, [place.projectRow]);
   yield* built.data
     .acquire({ kind: "project-inventory", project })
     .pipe(Effect.provideService(Clock.Clock, clock));
@@ -302,8 +303,14 @@ const openMobileAccount = Effect.fnUntraced(function* (clock: DeadlineClock) {
     const listing = mobileCandidates({
       organizations: [
         selectCandidates(
-          knownProjectsOf(registry.get(built.data.reads.projectsOf(organization)), nowMs),
-          (ref) => knownServicesOf(registry.get(built.data.reads.servicesOf(ref)), nowMs),
+          {
+            state: "known",
+            value: [place.projectRow],
+            asOf: { ordinal: 0, atMs: nowMs },
+            coverage: "complete",
+            freshness: { kind: "live" },
+          },
+          () => knownServicesOf(registry.get(built.data.reads.servicesOf(project)), nowMs),
         ),
       ],
       machines: environments.machines(),

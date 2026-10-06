@@ -9,6 +9,7 @@ import { reactHookHarness as hooks } from "../../../../web/src/test/reactHookHar
 import {
   NOT_READ_PROCESSES,
   projectProcessesAtom,
+  shownProjectsAtom,
   type ProjectProcesses,
 } from "@t3tools/client-runtime/data";
 import type { ActivityProcess } from "@t3tools/client-runtime/zerops/activity/dto";
@@ -23,7 +24,7 @@ interface TestBinding {
 const runtime = vi.hoisted(() => ({
   binding: null as TestBinding | null,
   acquire: vi.fn(),
-  refresh: vi.fn(),
+  retry: vi.fn(),
   registry: {
     get: vi.fn(),
     subscribe: vi.fn(),
@@ -157,15 +158,20 @@ const listenerOf = (atom: unknown): (() => void) | undefined =>
     | undefined;
 
 describe("candidate inventory demand", () => {
-  it.each([null, "org-b"])("reads only the selected organization %s", async (id) => {
-    session.activeId = id;
-    render();
-    await settle();
-    const organizations = runtime.acquire.mock.calls.flatMap(([request]) =>
-      request.kind === "organization-inventory" ? [request.organization.organizationId] : [],
-    );
-    expect(organizations).toEqual(id === null ? [] : [id]);
-  });
+  it.each([null, "org-b"])(
+    "reads the organization %s off the account's store, demanding no inventory of it",
+    async (id) => {
+      session.activeId = id;
+      render();
+      await settle();
+      expect(
+        runtime.acquire.mock.calls.filter(([request]) => request.kind === "organization-inventory"),
+      ).toEqual([]);
+      expect(runtime.registry.subscribe.mock.calls.map(([atom]) => atom)).toContain(
+        shownProjectsAtom,
+      );
+    },
+  );
 
   it("keeps the project picker free of service detail until a project opens", async () => {
     render(null);
@@ -178,7 +184,7 @@ describe("candidate inventory demand", () => {
   beforeEach(() => {
     hooks.reset();
     runtime.acquire.mockReset();
-    runtime.refresh.mockReset().mockReturnValue(Effect.void);
+    runtime.retry.mockReset();
     runtime.registry.get.mockReset();
     runtime.registry.subscribe.mockReset();
     scopes.reset();
@@ -200,31 +206,18 @@ describe("candidate inventory demand", () => {
       organization,
       projectId: ZeropsProjectId.make("project-a"),
     };
-    const projectsAtom = {};
+    const projectsAtom = shownProjectsAtom;
     const servicesAtom = {};
     const activityAtom = projectProcessesAtom("project-a");
     const stateAtom = {};
+    // The organization's roster, as the account's store lists it.
     const projects = {
-      value: [
-        {
-          knowledge: "observed" as const,
-          record: {
-            ref: project,
-            identity: { knowledge: "observed" as const, fields: { name: "Demo" } },
-            lifecycle: { knowledge: "observed" as const, fields: { status: "ACTIVE" } },
-            presentation: { knowledge: "unresolved" as const },
-            placement: { knowledge: "unresolved" as const },
-          },
-        },
-      ],
-      query: {
-        status: "observed" as const,
-        descriptor: { organization },
-        unresolvedMemberKeys: [],
-        stamp: { receiptOrdinal: 1, observedAtMs: 10 },
-        coverage: { kind: "exhausted-traversal" as const },
-      },
-      observation: { required: [], optional: [], access: { status: "unverified" as const } },
+      orgId: "org-a",
+      projects: [{ id: "project-a", name: "Demo", status: "ACTIVE" }],
+      read: "read" as const,
+      complete: true,
+      live: true,
+      reconnecting: false,
     };
     reads.services = {
       value: [],
@@ -247,14 +240,11 @@ describe("candidate inventory demand", () => {
     runtime.registry.subscribe.mockImplementation(() => () => undefined);
     runtime.binding = {
       account: { account, epoch: 0 },
+      accountData: { observation: { retry: runtime.retry } },
       runtime: {
         stateAtom,
-        reads: {
-          projectsOf: () => projectsAtom,
-          servicesOf: () => servicesAtom,
-        },
+        reads: { servicesOf: () => servicesAtom },
         acquire: runtime.acquire,
-        refresh: runtime.refresh,
       },
       registry: runtime.registry,
       released,
@@ -301,7 +291,6 @@ describe("candidate inventory demand", () => {
     await settle();
 
     expect(runtime.acquire.mock.calls.map(([descriptor]) => descriptor.kind)).toEqual([
-      "organization-inventory",
       "project-inventory",
     ]);
     const subscribed = runtime.registry.subscribe.mock.calls.map(([atom]) => atom);
@@ -359,14 +348,14 @@ describe("candidate inventory demand", () => {
     expect(render().error).toBeNull();
   });
 
-  it("reads the organizations again on refresh, keeping every lease", async () => {
+  it("asks the account's observation again on refresh, keeping every lease", async () => {
     render();
     await settle();
 
     render().refresh();
     await settle();
 
-    expect(runtime.refresh).toHaveBeenCalledTimes(1);
+    expect(runtime.retry).toHaveBeenCalledTimes(1);
     expect(runtime.binding?.released).toEqual([]);
   });
 
