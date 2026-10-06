@@ -3848,38 +3848,6 @@
     "expires": "never"
   },
   {
-    "path": "packages/client-runtime/src/zerops/data/runtime.ts",
-    "kind": "retired-token",
-    "fingerprint": "retryRefusedHydrations",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "refused reads are retried on every grant round; a definitive refusal is not retried",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/data/runtime.ts",
-    "kind": "retired-token",
-    "fingerprint": "retryRefusedHydrations",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "refused reads are retried on every grant round; a definitive refusal is not retried",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/data/runtime.ts",
-    "kind": "retired-token",
-    "fingerprint": "retryRefusedInterests",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "refused reads are retried on every grant round; a definitive refusal is not retried",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/data/runtime.ts",
-    "kind": "retired-token",
-    "fingerprint": "retryRefusedInterests",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "refused reads are retried on every grant round; a definitive refusal is not retried",
-    "expires": "never"
-  },
-  {
     "path": "packages/client-runtime/src/zerops/data/state.ts",
     "kind": "retired-token",
     "fingerprint": "\"runtime-closed\"",

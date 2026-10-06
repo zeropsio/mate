@@ -696,7 +696,7 @@ const canReconnect = (error: AdapterError): boolean =>
 
 /**
  * How a failed hydration is retried: an entity the platform says is not there for this account
- * (403, 404, 410) is `gone` until a grant change or a person's again; a 429 is `throttled` and
+ * (403, 404, 410) is `gone` until a person's again; a 429 is `throttled` and
  * waits its Retry-After; anything else (a 5xx, the network, an answer without it) backs off.
  */
 export type HydrationRefusal =
@@ -720,7 +720,7 @@ export function hydrationRefusal(error: AdapterError | null): HydrationRefusal {
 
 /**
  * A failure no timer repairs: the platform refused (400/401/403/404/410, or said so outright).
- * Only a person's again, or a grant that changed, sends it again.
+ * Only a person's again sends it again.
  */
 const permanentFailure = (error: AdapterError | null): boolean =>
   error !== null &&
@@ -1763,7 +1763,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         }
         heldReads.delete(key);
         const attempted = hydrationAttempts.get(key);
-        // A failed entity waits out its own retry; one the platform refused waits for a grant.
+        // A failed entity waits out its own retry; one the platform refused waits for a person.
         if (
           hydrations.size >= policy.activeSharedReadsPerAccount ||
           (attempted !== undefined &&
@@ -1883,7 +1883,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
    * moment (a service the platform lists before it serves it) would spend the budget in a few
    * milliseconds. A spent budget stays at the backoff's cap, so an entity is never left
    * unresolved for good while an interest holds it, and never read faster than the cap again. A 429 waits at least its
-   * Retry-After; a refusal waits for a grant change. Nothing reads while the tab is hidden: the
+   * Retry-After; a refusal waits for a person's again. Nothing reads while the tab is hidden: the
    * visible wake reads it at once (`resumeFromBackground`).
    */
   const scheduleHydrationRetry = (
@@ -3634,8 +3634,6 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
               },
               interest: null,
             });
-            // The project this account just made is granted: a refusal of it is asked again.
-            yield* retryRefusedInterestsSoon;
           }
           yield* enqueueObservations(outcome.success.observations, null);
           yield* enqueue({
@@ -3743,79 +3741,9 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
   };
 
   const observeAccess = (observation: AccessObservation): Effect.Effect<void> =>
-    Effect.gen(function* () {
-      yield* enqueue({ kind: "access-observation", observation, interest: null });
-      yield* awaitIngress;
-      if (
-        observation.kind === "access-verified" ||
-        observation.kind === "project-access-established"
-      ) {
-        // Both outside the grant's lock: a full read queue fails a receiver under the lifecycle's.
-        yield* retryRefusedHydrations.pipe(forkOwned);
-        yield* retryRefusedInterestsSoon;
-      }
-    });
-
-  /**
-   * A grant round answered: each refusal is sent once more, outside the grant's own lock (the
-   * grant reports from inside it, and a shutdown holding the lifecycle waits for that lock).
-   */
-  const refusedOnItsOwn = (state: ZeropsDataState, runtimeInterest: RuntimeInterest): boolean => {
-    const failed = state.interests.get(runtimeInterest.key)?.interest;
-    return (
-      runtimeInterest.leases.size > 0 &&
-      failed?.status === "failed" &&
-      !failed.retryable &&
-      // A read's refusal is the read's to retry: registering again would hide its next answer.
-      !readFailures.has(runtimeInterest.key)
+    enqueue({ kind: "access-observation", observation, interest: null }).pipe(
+      Effect.andThen(awaitIngress),
     );
-  };
-  const retryRefusedInterestsSoon = Effect.suspend(() => {
-    const state = Ref.getUnsafe(model);
-    const anyRefused = [...interests.values()].some((runtimeInterest) =>
-      refusedOnItsOwn(state, runtimeInterest),
-    );
-    return anyRefused ? retryRefusedInterests.pipe(forkOwned, Effect.asVoid) : Effect.void;
-  });
-
-  /**
-   * Each held interest a refusal failed for good registers once more, as a person's again would —
-   * at most once a grant round; a refusal that stands fails it the same way.
-   */
-  const retryRefusedInterests: Effect.Effect<void> = lifecycleLock.withPermit(
-    Effect.gen(function* () {
-      if (yield* Ref.get(closed)) return;
-      const state = yield* Ref.get(model);
-      const refused = [...interests.values()].filter((runtimeInterest) =>
-        refusedOnItsOwn(state, runtimeInterest),
-      );
-      const retried: RuntimeInterest[] = [];
-      for (const runtimeInterest of refused) {
-        const receiver = receivers.get(receiverKeyOf(runtimeInterest.descriptor));
-        if (receiver === undefined || receiver.failed || receiver.openFailure !== null) continue;
-        yield* releaseFailedRegistrations(receiver, runtimeInterest.key);
-        const desired = yield* updateInterestIdentity(runtimeInterest, receiver);
-        yield* applyControl({ kind: "interest-upserted", interest: desired });
-        retried.push(runtimeInterest);
-      }
-      yield* Effect.forEach(
-        retried,
-        (runtimeInterest) => establishInterest(runtimeInterest).pipe(forkOwned),
-        { discard: true },
-      );
-    }),
-  );
-
-  /** A grant changed: every entity the platform refused is read once more under it. */
-  const retryRefusedHydrations = Effect.suspend(() => {
-    const queries = new Set<QueryKey>();
-    for (const [key, record] of hydrationAttempts) {
-      if (record.refusal.kind !== "gone") continue;
-      hydrationAttempts.delete(key);
-      queries.add(record.query);
-    }
-    return Effect.forEach(queries, (query) => scheduleHydration(query), { discard: true });
-  });
 
   const grant = yield* makeGrantDriver({
     scope: options.scope,
