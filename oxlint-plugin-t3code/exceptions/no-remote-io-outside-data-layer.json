@@ -368,14 +368,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/zerops/addGroupEnvironment.ts",
-    "kind": "CallExpression",
-    "fingerprint": "input.hq.structure",
-    "owner": "data-layer rewrite: HQ",
-    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/zerops/commands.ts",
     "kind": "CallExpression",
     "fingerprint": "createEnvironmentRpcCommand",
@@ -501,38 +493,6 @@
     "fingerprint": "createEnvironmentRpcCommand",
     "owner": "data-layer rewrite: Mate identity/connection",
     "reason": "only the data layer's adapters reach a remote: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/deployToken.ts",
-    "kind": "CallExpression",
-    "fingerprint": "hq.structure",
-    "owner": "data-layer rewrite: HQ",
-    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/deployToken.ts",
-    "kind": "CallExpression",
-    "fingerprint": "input.client.deleteIntegrationToken",
-    "owner": "data-layer rewrite: Zerops platform",
-    "reason": "only the data layer's adapters reach a remote: a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/deployToken.ts",
-    "kind": "CallExpression",
-    "fingerprint": "input.client.mintIntegrationToken",
-    "owner": "data-layer rewrite: Zerops platform",
-    "reason": "only the data layer's adapters reach a remote: a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/deployToken.ts",
-    "kind": "CallExpression",
-    "fingerprint": "input.hq.keepDeployToken",
-    "owner": "data-layer rewrite: HQ",
-    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -565,22 +525,6 @@
     "fingerprint": "createEnvironmentRpcSubscriptionAtomFamily",
     "owner": "data-layer rewrite: Mate identity/connection",
     "reason": "only the data layer's adapters reach a remote: the app opens a Mate or Zerops stream or reads a Mate itself; the adapter owns it and the app reads the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/hqMateBirth.ts",
-    "kind": "CallExpression",
-    "fingerprint": "api.createMate",
-    "owner": "data-layer rewrite: HQ",
-    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/hqMateBirth.ts",
-    "kind": "CallExpression",
-    "fingerprint": "api.recordClosedOff",
-    "owner": "data-layer rewrite: HQ",
-    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -626,14 +570,6 @@
   {
     "path": "apps/web/src/zerops/matePress.ts",
     "kind": "CallExpression",
-    "fingerprint": "hq.bindBirth",
-    "owner": "data-layer rewrite: HQ",
-    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/matePress.ts",
-    "kind": "CallExpression",
     "fingerprint": "input.inputs.client.listProjectServices",
     "owner": "data-layer rewrite: Zerops platform",
     "reason": "only the data layer's adapters reach a remote: a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
@@ -651,14 +587,6 @@
     "path": "apps/web/src/zerops/useDeleteGroup.ts",
     "kind": "CallExpression",
     "fingerprint": "accountHqApi(client, activeOrganization.id, officialHq(accountHq)).deleteApp",
-    "owner": "data-layer rewrite: HQ",
-    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useEnvironmentCreation.ts",
-    "kind": "CallExpression",
-    "fingerprint": "accountHqApi(client, organization.id, hq).bindBirth",
     "owner": "data-layer rewrite: HQ",
     "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
     "expires": "never"
@@ -755,22 +683,6 @@
     "path": "apps/web/src/zerops/useMateActions.tsx",
     "kind": "CallExpression",
     "fingerprint": "hqApi().updateMate",
-    "owner": "data-layer rewrite: HQ",
-    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useNewProjectBirthPorts.ts",
-    "kind": "CallExpression",
-    "fingerprint": "accountHqApi(client, organizationId, hq).createApp",
-    "owner": "data-layer rewrite: HQ",
-    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useNewProjectBirthPorts.ts",
-    "kind": "CallExpression",
-    "fingerprint": "accountHqApi(client, organizationId, hq).recordBirth",
     "owner": "data-layer rewrite: HQ",
     "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
     "expires": "never"

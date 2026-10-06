@@ -9,7 +9,7 @@
  * HQ, which decides who may write it. An organization with no HQ takes no environment (ADR 0001).
  * The container does the rest whether this tab stays or not.
  */
-import { useAccountOperations } from "./accountOperations";
+import { HQ_UNFOLLOWED, useAccountOperations } from "./accountOperations";
 import {
   appProjectName,
   formatMateFace,
@@ -29,7 +29,6 @@ import {
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { ZeropsServiceId, type AgentsCellRequest } from "@t3tools/client-runtime/zerops/data";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
-import type { HqApi } from "@t3tools/client-runtime/zerops/hq";
 import { RegistryContext } from "@effect/atom-react";
 import { projectServicesAtom, type ProjectServices } from "@t3tools/client-runtime/data";
 import type { Atom, AtomRegistry } from "effect/unstable/reactivity";
@@ -112,7 +111,12 @@ function addedMateStandUp(
  * Mate is born.
  */
 export async function addedMateBirth(
-  hq: Pick<HqApi, "recordBirth">,
+  /** Records the birth intent at HQ (the `record-birth` operation): its id. */
+  record: (birth: {
+    readonly appId: string;
+    readonly face: string;
+    readonly standUp: boolean;
+  }) => Promise<string>,
   input: {
     readonly groupId: string;
     readonly role: ZeropsEnvironmentRole;
@@ -121,13 +125,12 @@ export async function addedMateBirth(
 ): Promise<string | undefined> {
   const { choice } = input;
   if ((input.role !== "dev" && input.role !== "devstage") || !choice.withAgent) return undefined;
-  const { id } = await hq.recordBirth({
+  return record({
     appId: input.groupId,
     // Empty where none was picked, as its attach records it: the Mate wears its name's tint.
     face: choice.face === undefined ? "" : formatMateFace(choice.face),
     standUp: addedMateStandUp(input.role, choice),
   });
-  return id;
 }
 
 /**
@@ -198,7 +201,7 @@ export function useEnvironmentCreation(): (
 ) => Promise<EnvironmentCreationRun> {
   const { activeOrganization, client } = useZeropsSession();
   const { organizationRef, projectRef, runtime } = useZeropsData();
-  const { run: runOperation } = useAccountOperations();
+  const operations = useAccountOperations();
   const registry = useContext(RegistryContext);
   const accountHq = useAccountHq(activeOrganization?.id);
 
@@ -249,7 +252,14 @@ export function useEnvironmentCreation(): (
       // A Mate's birth intent before its project: an HQ that cannot record it takes no project.
       let intent: string | undefined;
       try {
-        intent = await addedMateBirth(accountHqApi(client, organization.id, hq), {
+        const record = async (birth: Parameters<Parameters<typeof addedMateBirth>[0]>[0]) =>
+          (
+            await operations.run(
+              { kind: "record-birth", orgId: organization.id, hq, ...birth },
+              { orgId: organization.id, unobserved: HQ_UNFOLLOWED },
+            )
+          ).birthId;
+        intent = await addedMateBirth(record, {
           groupId: group.groupId,
           role,
           choice,
@@ -270,7 +280,7 @@ export function useEnvironmentCreation(): (
       if (!plan.ok) return { kind: "refused", reason: plan.reason };
 
       const withAgent = plan.steps.some((step) => step.kind === "import-container");
-      const inputs = { client, run: runOperation, organizationId: organization.id };
+      const inputs = { client, operations, organizationId: organization.id };
       // Every press is held at HQ while it runs, so another browser never takes it for one that
       // stopped, and one cut short is read as what it was making, in its application (B5).
       const pressKind = withAgent ? "mate" : tier;
@@ -330,7 +340,17 @@ export function useEnvironmentCreation(): (
           invalidateZerops({ topic: "inventory", organization: organizationRef(organization.id) });
           request.onAccepted?.(projectId);
           if (intent !== undefined)
-            await accountHqApi(client, organization.id, hq).bindBirth(intent, projectId);
+            await operations.run(
+              {
+                kind: "bind-birth",
+                orgId: organization.id,
+                hq,
+                appId: group.groupId,
+                birthId: intent,
+                projectId,
+              },
+              { orgId: organization.id, unobserved: HQ_UNFOLLOWED },
+            );
         },
         onProgress: (progress) => {
           if (isCurrent()) request.onProgress?.(progress);
@@ -339,14 +359,6 @@ export function useEnvironmentCreation(): (
       });
       return { kind: "ran", outcome, withAgent };
     },
-    [
-      accountHq,
-      activeOrganization,
-      client,
-      organizationRef,
-      readGroupAgents,
-      registry,
-      runOperation,
-    ],
+    [accountHq, activeOrganization, client, organizationRef, readGroupAgents, registry, operations],
   );
 }

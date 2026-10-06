@@ -44,6 +44,7 @@ import {
   type MatePressState,
   type PressInputs,
 } from "./matePress";
+import { accountHqApi } from "./accountHq";
 import type { LockManagerLike } from "./mateLocks";
 
 /** What an old command fake answered, as the write's own answer. */
@@ -89,11 +90,29 @@ function fakeRun(
         };
         return { keyNotLowered: hardened.keyNotLowered };
       }
+      // HQ's writes go to the HQ this file stands in (`accountHq` below).
+      case "attach-project":
+        return hqApi().attachProject(intent.appId, intent.attach);
+      case "create-mate-record":
+        return hqApi().createMate(intent.mate);
+      case "mark-closed-off":
+        return hqApi().recordClosedOff(intent.projectId);
+      case "bind-birth":
+        return hqApi().bindBirth(intent.birthId, intent.projectId);
       default:
         throw new Error(`No ${intent.kind} in this press.`);
     }
   }) as RunToEnd;
 }
+
+/** The HQ `accountHq` stands in for here, as the account's HQ writes reach it. */
+const hqApi = () => accountHqApi({} as never, "org-acme", { projectId: "hq", address: "" });
+
+/** A press's operations over a fake run; HQ's navigation records no environment here. */
+const operationsOf = (run: RunToEnd): PressInputs["operations"] => ({
+  run,
+  untilEnvironment: () => Promise.reject(new Error("No environment in this press.")),
+});
 
 /** A press's platform over fake writes, with its HQ steps as the test names them. */
 function platformOf(
@@ -125,16 +144,18 @@ function asPressInputs(raw: unknown): PressInputs {
   return {
     client: old.client as never,
     organizationId: old.organizationId,
-    run: fakeRun(
-      {
-        importDevelopmentContainer: commands.importDevelopmentContainer,
-        importServices: commands.importServices,
-        isolateProjectEnv: commands.isolateProjectEnv,
-        closeOff: commands.isolateProjectEnv,
-      },
-      async () =>
-        (await old.client.readProjectEnv?.())?.find((entry) => entry.key === "envIsolation")
-          ?.content,
+    operations: operationsOf(
+      fakeRun(
+        {
+          importDevelopmentContainer: commands.importDevelopmentContainer,
+          importServices: commands.importServices,
+          isolateProjectEnv: commands.isolateProjectEnv,
+          closeOff: commands.isolateProjectEnv,
+        },
+        async () =>
+          (await old.client.readProjectEnv?.())?.find((entry) => entry.key === "envIsolation")
+            ?.content,
+      ),
     ),
   };
 }

@@ -8,8 +8,10 @@
  *    the project's name — its sources and its place in the order. HQ keeps one production per
  *    application, and lets a production deleted in Zerops go.
  * 2. **The deploy key** — the environment's own token, `BASIC_USER` on the new project and nothing
- *    else, minted by the person's client and handed to HQ (`deployToken.ts`), which deploys with
- *    it. Minted only where HQ holds none that works, so asking again mints nothing twice.
+ *    else, minted by the person's client and handed to HQ (the `keep-deploy-key` operation), which
+ *    deploys with it. Minted only where HQ's navigation records none that works, so asking again
+ *    mints nothing twice. The environment's name is read there too, never from HQ's whole
+ *    structure read again.
  *
  * There is no pull request and no broker: HQ holds the environment, and deploys it.
  *
@@ -18,10 +20,10 @@
  * and runs. The caller shows what is outstanding, and the next attempt picks it up.
  */
 
-import { environmentKeyed, type GroupEnvironmentTier } from "@t3tools/client-runtime/zerops";
-import { attachToApp, environmentsOf, type HqApi } from "@t3tools/client-runtime/zerops/hq";
+import type { GroupEnvironmentTier } from "@t3tools/client-runtime/zerops";
+import type { HqEndpoint } from "@t3tools/client-runtime/zerops/hq";
 
-import { keepDeployToken, type DeployTokenClient } from "./deployToken";
+import { HQ_UNFOLLOWED, type AccountOperations } from "./accountOperations";
 
 export type AddGroupEnvironmentStep = "registry" | "deploy-token";
 
@@ -32,61 +34,62 @@ export interface AddGroupEnvironmentOutcome {
   readonly failed: { readonly step: AddGroupEnvironmentStep; readonly reason: string } | undefined;
 }
 
-/** What the deploy key step says where HQ holds the attached project as no environment. */
-const NOT_RECORDED = "HQ holds this project as no environment yet.";
-
 export async function addGroupEnvironment(input: {
-  readonly client: DeployTokenClient;
+  /** The account's operations, and HQ's navigation as the account observes it. */
+  readonly operations: Pick<AccountOperations, "run" | "untilEnvironment">;
+  readonly orgId: string;
   /** The organization's HQ, where the registry and the key live. */
-  readonly hq: Pick<HqApi, "attachProject" | "structure" | "keepDeployToken">;
-  readonly clientId: string;
+  readonly hq: HqEndpoint;
   readonly groupId: string;
   readonly environment: {
     readonly tier: GroupEnvironmentTier;
     /** The Zerops project just created. */
     readonly project: string;
   };
-  readonly signal?: AbortSignal | undefined;
 }): Promise<AddGroupEnvironmentOutcome> {
+  const { operations, orgId, hq, groupId } = input;
+  const projectId = input.environment.project;
   const done: Array<AddGroupEnvironmentStep> = [];
   const stop = (step: AddGroupEnvironmentStep, reason: string): AddGroupEnvironmentOutcome => ({
     done,
     failed: { step, reason },
   });
+  const unobserved = { orgId, unobserved: HQ_UNFOLLOWED };
 
   try {
     // Created for HQ to deploy: HQ turns its services' subdomains on at their first deploy.
-    await attachToApp(input.hq, input.groupId, {
-      projectId: input.environment.project,
-      kind: input.environment.tier,
-      created: true,
-    });
+    await operations.run(
+      {
+        kind: "attach-project",
+        orgId,
+        hq,
+        appId: groupId,
+        attach: { projectId, kind: input.environment.tier, created: true },
+      },
+      unobserved,
+    );
     done.push("registry");
   } catch (cause) {
     return stop("registry", messageOf(cause));
   }
 
-  // The environment as HQ recorded it with the attach: its name is HQ's to give.
-  let recorded;
   try {
-    const { apps } = await input.hq.structure(input.signal);
-    recorded = environmentsOf(apps.find((app) => app.id === input.groupId)?.environments)?.find(
-      (environment) => environment.projectId === input.environment.project,
-    );
+    // The environment as HQ's navigation records it with the attach: its name is HQ's to give.
+    const recorded = await operations.untilEnvironment(orgId, groupId, projectId);
+    if (!recorded.keyed)
+      await operations.run(
+        {
+          kind: "keep-deploy-key",
+          orgId,
+          hq,
+          appId: groupId,
+          projectId,
+          environmentName: recorded.name,
+        },
+        unobserved,
+      );
   } catch (cause) {
     return stop("deploy-token", messageOf(cause));
-  }
-  if (recorded === undefined) return stop("deploy-token", NOT_RECORDED);
-  if (!environmentKeyed(recorded)) {
-    const key = await keepDeployToken({
-      client: input.client,
-      hq: input.hq,
-      clientId: input.clientId,
-      appId: input.groupId,
-      environment: { projectId: recorded.projectId, name: recorded.name },
-      ...(input.signal === undefined ? {} : { signal: input.signal }),
-    });
-    if (key.kind !== "held") return stop("deploy-token", key.reason);
   }
   done.push("deploy-token");
   return { done, failed: undefined };

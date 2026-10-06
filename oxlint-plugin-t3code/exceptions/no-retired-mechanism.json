@@ -2288,14 +2288,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/zerops/addGroupEnvironment.ts",
-    "kind": "retired-token",
-    "fingerprint": "input.hq.structure(",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "the whole structure is read back after an action; the action's result updates the store",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/zerops/composerTopMemory.ts",
     "kind": "retired-token",
     "fingerprint": "mate:zerops:composer-top-memory",
@@ -2341,14 +2333,6 @@
     "fingerprint": "useZeropsDataCatalogStore",
     "owner": "data-layer rewrite: services",
     "reason": "a component runs its own data-catalog requests; the adapter owns them",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/deployToken.ts",
-    "kind": "retired-token",
-    "fingerprint": "hq.structure(signal)",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "the whole structure is read back after an action; the action's result updates the store",
     "expires": "never"
   },
   {

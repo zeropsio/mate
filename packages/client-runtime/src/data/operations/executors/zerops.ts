@@ -5,6 +5,7 @@
  *
  * @module data/operations/executors/zerops
  */
+import * as Effect from "effect/Effect";
 import type { AtomRegistry } from "effect/unstable/reactivity";
 
 import type { ZeropsApiClient } from "../../../zerops/api.ts";
@@ -169,6 +170,9 @@ export function makeZeropsExecutor(input: {
         case "import-container":
         case "harden-project":
           return creationWrite(requestId, intent);
+        default:
+          // HQ's own writes go to HQ's executor; the coordinator never routes one here.
+          return Effect.die(new Error(`Zerops executes no ${intent.kind}.`));
       }
     },
   };

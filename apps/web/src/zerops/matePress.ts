@@ -35,12 +35,10 @@ import {
   readZeropsMembership,
   severalMatesLine,
 } from "@t3tools/client-runtime/zerops";
-import type { RunToEnd } from "@t3tools/client-runtime/data";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { ZeropsServiceId } from "@t3tools/client-runtime/zerops/data";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import {
-  attachToApp,
   birthIntentOf,
   heldOf,
   HqError,
@@ -62,8 +60,8 @@ import {
 } from "./mateLocks";
 import { randomUUID } from "~/lib/utils";
 import { accountHqApi } from "./accountHq";
+import { HQ_UNFOLLOWED, type AccountOperations } from "./accountOperations";
 import { addGroupEnvironment } from "./addGroupEnvironment";
-import { createMateRecord, markClosedOffAtHq } from "./hqMateBirth";
 import {
   pressSteps,
   pressThrough,
@@ -709,8 +707,11 @@ export function placedPressesIn(
 /** What a press acts through: the account's command layer and its API client. */
 export interface PressInputs {
   readonly client: ZeropsApiClient;
-  /** The account's operations: each Zerops write a press makes, run to its end. */
-  readonly run: RunToEnd;
+  /**
+   * The account's operations: each write a press makes, at Zerops or at HQ, run to its end, and
+   * HQ's navigation read for what an attach recorded.
+   */
+  readonly operations: Pick<AccountOperations, "run" | "untilEnvironment">;
   readonly organizationId: string;
 }
 
@@ -765,37 +766,57 @@ export function pressRegistration(
   registration: PressRegistration,
   serviceId?: string,
 ): (projectId: string) => Promise<void> {
-  const hq = accountHqApi(inputs.client, inputs.organizationId, registration.hq);
+  const orgId = inputs.organizationId;
+  const { hq } = registration;
   const service = serviceId === undefined ? {} : { serviceId };
+  const run: <Intent extends Parameters<PressInputs["operations"]["run"]>[0]>(
+    intent: Intent,
+  ) => ReturnType<PressInputs["operations"]["run"]> = (intent) =>
+    inputs.operations.run(intent, { orgId, unobserved: HQ_UNFOLLOWED });
   return async (projectId) => {
     if (registration.kind === "mate-record") {
-      await createMateRecord(hq, {
-        projectId,
-        ...registration.record,
-        standUp: registration.standUp,
-        ...service,
+      await run({
+        kind: "create-mate-record",
+        orgId,
+        hq,
+        mate: { projectId, ...registration.record, standUp: registration.standUp, ...service },
       });
       return;
     }
     if (registration.kind === "mate") {
-      if (registration.intent !== undefined) await hq.bindBirth(registration.intent, projectId);
-      await attachToApp(hq, registration.groupId, {
-        projectId,
-        kind: "mate",
-        mate: {
-          // Empty where none was picked: the Mate wears its name's tint.
-          face: registration.mate.face === undefined ? "" : formatMateFace(registration.mate.face),
-          standUp: registration.standUp,
-          ...service,
+      if (registration.intent !== undefined)
+        await run({
+          kind: "bind-birth",
+          orgId,
+          hq,
+          appId: registration.groupId,
+          birthId: registration.intent,
+          projectId,
+        });
+      await run({
+        kind: "attach-project",
+        orgId,
+        hq,
+        appId: registration.groupId,
+        attach: {
+          projectId,
+          kind: "mate",
+          mate: {
+            // Empty where none was picked: the Mate wears its name's tint.
+            face:
+              registration.mate.face === undefined ? "" : formatMateFace(registration.mate.face),
+            standUp: registration.standUp,
+            ...service,
+          },
+          ...(registration.intent === undefined ? {} : { birth: registration.intent }),
         },
-        ...(registration.intent === undefined ? {} : { birth: registration.intent }),
       });
       return;
     }
     const added = await addGroupEnvironment({
-      client: inputs.client,
+      operations: inputs.operations,
+      orgId,
       hq,
-      clientId: inputs.organizationId,
       groupId: registration.groupId,
       environment: { tier: registration.kind, project: projectId },
     });
@@ -827,12 +848,15 @@ export function pressPlatform(
     readonly untilServicesSettled: EnvironmentCreationPlatform["untilServicesSettled"];
   },
 ): EnvironmentCreationPlatform {
-  const { client, organizationId } = inputs;
+  const { organizationId } = inputs;
   return {
-    run: inputs.run,
+    run: inputs.operations.run,
     markClosedOff: async (projectId) => {
       if (options.hq === null) return;
-      await markClosedOffAtHq(accountHqApi(client, organizationId, options.hq), projectId);
+      await inputs.operations.run(
+        { kind: "mark-closed-off", orgId: organizationId, hq: options.hq, projectId },
+        { orgId: organizationId, unobserved: HQ_UNFOLLOWED },
+      );
     },
     register: async (projectId) => {
       await options.register?.(projectId);
@@ -1320,7 +1344,7 @@ async function finishLocked(
     const keyTokenId = await mateKeyAtHq(input);
     try {
       const organizationId = input.inputs.organizationId;
-      ({ keyNotLowered } = await input.inputs.run(
+      ({ keyNotLowered } = await input.inputs.operations.run(
         {
           kind: "harden-project",
           orgId: organizationId,

@@ -57,9 +57,14 @@ export {
 export type { UnavailableReason } from "./projections/freshness.ts";
 export { projectCreations } from "./projections/creation.ts";
 export { makeOperations, type Operations } from "./operations/coordinator.ts";
+export { makeHqExecutor } from "./operations/executors/hq.ts";
 export { makeZeropsExecutor } from "./operations/executors/zerops.ts";
 export { restartWay } from "./operations/mateRestart.ts";
 export { runToEnd, type RunToEnd } from "./operations/runToEnd.ts";
+export {
+  recordedEnvironment,
+  type RecordedEnvironment,
+} from "./projections/recordedEnvironment.ts";
 export { operationProgress, type OperationProgress } from "./projections/operation.ts";
 export { SWEEP_FAILED_REASON } from "./operations/executors/throwawaySweep.ts";
 export { operationEnd, type OperationEnd } from "./projections/operationEnd.ts";

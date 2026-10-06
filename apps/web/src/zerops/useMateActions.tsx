@@ -262,7 +262,6 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   const { activeOrganization, client, user } = useZeropsSession();
   const { organizationRef, projectRef, runtime } = useZeropsData();
   const operations = useAccountOperations();
-  const runOperation = operations.run;
   const { listing, refresh } = useZeropsCandidates();
   const candidates = useMemo(() => heldCandidates(listing).rows, [listing]);
   const router = useRouter();
@@ -768,7 +767,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
         candidate.key,
         async () => {
           const finished = await finishMateSetup({
-            inputs: { client, run: runOperation, organizationId },
+            inputs: { client, operations, organizationId },
             projectId,
             projectName: candidate.project.name,
             container,
@@ -795,11 +794,11 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       interrupted,
       mayCreateRecord,
       mayEditRecord,
+      operations,
       orgOffer,
       pressedElsewhere,
       recordMissing,
       refresh,
-      runOperation,
       write,
     ],
   );

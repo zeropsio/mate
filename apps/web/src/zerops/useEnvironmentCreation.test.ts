@@ -11,7 +11,7 @@ import {
 } from "./useEnvironmentCreation";
 
 describe("addedMateBirth — the birth intent an added Mate is pressed under", () => {
-  const hq = () => ({ recordBirth: vi.fn(async () => ({ id: "b-gus", face: "" })) });
+  const record = () => vi.fn(async () => "b-gus");
 
   // F6c (2026-10-03): recorded at HQ before its project exists, so a press cut off between the
   // project and its attach is finished where and as it was asked for, in any browser. Audit B3:
@@ -36,16 +36,16 @@ describe("addedMateBirth — the birth intent an added Mate is pressed under", (
       standUp: false,
     },
   ])("records $case, in its application under its face", async ({ role, recipe, standUp }) => {
-    const api = hq();
+    const recorded = record();
     expect(
-      await addedMateBirth(api, {
+      await addedMateBirth(recorded, {
         groupId: "app-g",
         role,
         choice: { withAgent: true, recipe, face: { tint: "rose", shape: "seal" } },
       }),
     ).toBe("b-gus");
     // D3: its name is its project's, never HQ's.
-    expect(api.recordBirth).toHaveBeenCalledWith({ appId: "app-g", face: "rose:seal", standUp });
+    expect(recorded).toHaveBeenCalledWith({ appId: "app-g", face: "rose:seal", standUp });
   });
 
   it.each([
@@ -53,15 +53,15 @@ describe("addedMateBirth — the birth intent an added Mate is pressed under", (
     { case: "a production", role: "prod" as const, withAgent: false },
     { case: "a dev environment with no agent", role: "dev" as const, withAgent: false },
   ])("records none for $case: no Mate is born", async ({ role, withAgent }) => {
-    const api = hq();
+    const recorded = record();
     expect(
-      await addedMateBirth(api, {
+      await addedMateBirth(recorded, {
         groupId: "app-g",
         role,
         choice: { withAgent, recipe: { kind: "none" } },
       }),
     ).toBeUndefined();
-    expect(api.recordBirth).not.toHaveBeenCalled();
+    expect(recorded).not.toHaveBeenCalled();
   });
 });
 

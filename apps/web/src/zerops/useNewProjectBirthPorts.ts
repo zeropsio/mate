@@ -1,7 +1,6 @@
 /** Rebuilds callable ports from the current account for a person's explicit retry. */
-import { useAccountOperations } from "./accountOperations";
+import { HQ_UNFOLLOWED, useAccountOperations } from "./accountOperations";
 import { appProjectName, withZeropsMateTag } from "@t3tools/client-runtime/zerops";
-import { accountHqApi } from "./accountHq";
 import { invalidateZerops } from "./accountInvalidations";
 import { captureAccountLifetime } from "./accountLifetime";
 import { beginPress, finishMateSetup, PRESS_MAY_HAVE_LANDED, whilePressing } from "./matePress";
@@ -18,18 +17,26 @@ import { useZeropsSession } from "./ZeropsSessionProvider";
 export function useNewProjectBirthPorts(): (ask: NewProjectAsk) => NewProjectPorts {
   const { client } = useZeropsSession();
   const { organizationRef } = useZeropsData();
-  const { run: runOperation } = useAccountOperations();
+  const operations = useAccountOperations();
   const created = useNewMate((state) => state.created);
   return (ask) => {
     const { organizationId, birthId, name, botName, face } = ask;
     const organization = organizationRef(organizationId);
     const isCurrent = captureAccountLifetime();
     return {
-      registerGroup: async ({ hq, name: groupName }) => ({
-        appId: (await accountHqApi(client, organizationId, hq).createApp(groupName)).id,
+      registerGroup: ({ hq, name: groupName }) =>
+        operations.run(
+          { kind: "create-app", orgId: organizationId, hq, name: groupName },
+          { orgId: organizationId, unobserved: HQ_UNFOLLOWED },
+        ),
+      recordBirth: async ({ hq, ...birth }) => ({
+        id: (
+          await operations.run(
+            { kind: "record-birth", orgId: organizationId, hq, ...birth },
+            { orgId: organizationId, unobserved: HQ_UNFOLLOWED },
+          )
+        ).birthId,
       }),
-      recordBirth: ({ hq, ...birth }) =>
-        accountHqApi(client, organizationId, hq).recordBirth(birth),
       // The project alone, born a Mate under its birth intent (its marker on before anything
       // else): its press attaches it to its application, then imports its container (F6b). In
       // flight as a press: the background mints no throwaway while it reads the token list.
@@ -38,20 +45,22 @@ export function useNewProjectBirthPorts(): (ask: NewProjectAsk) => NewProjectPor
           () =>
             new Promise<{ readonly project: { readonly id: string } }>((resolve, reject) => {
               // Taken the moment Zerops takes its project; the project's own end is its press's.
-              runOperation(
-                {
-                  kind: "create-project",
-                  orgId: organizationId,
-                  name: projectName,
-                  tagList: withZeropsMateTag([]),
-                  ...(location === undefined ? {} : { location }),
-                },
-                {
-                  orgId: organizationId,
-                  unobserved: PRESS_MAY_HAVE_LANDED,
-                  accepted: ({ projectId }) => resolve({ project: { id: projectId } }),
-                },
-              ).catch(reject);
+              operations
+                .run(
+                  {
+                    kind: "create-project",
+                    orgId: organizationId,
+                    name: projectName,
+                    tagList: withZeropsMateTag([]),
+                    ...(location === undefined ? {} : { location }),
+                  },
+                  {
+                    orgId: organizationId,
+                    unobserved: PRESS_MAY_HAVE_LANDED,
+                    accepted: ({ projectId }) => resolve({ project: { id: projectId } }),
+                  },
+                )
+                .catch(reject);
             }),
         ),
       accepted: (projectId, registration, startedAt) => {
@@ -70,7 +79,7 @@ export function useNewProjectBirthPorts(): (ask: NewProjectAsk) => NewProjectPor
         });
         invalidateZerops({ topic: "inventory", organization });
         void finishMateSetup({
-          inputs: { client, run: runOperation, organizationId },
+          inputs: { client, operations, organizationId },
           projectId,
           projectName: appProjectName(name, botName),
           // After its attach: a press that stops before it leaves a Mate HQ holds in its

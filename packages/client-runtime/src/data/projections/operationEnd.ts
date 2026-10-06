@@ -41,18 +41,18 @@ export const operationEnd: Projection<
         return progress.next === "asking-owner" ? null : progress;
       case "accepted":
       case "reflected": {
-        if (UNOBSERVED_PHASES.has(read.stream(linkKeys.zerops(orgId)).phase))
-          return { stage: "unobserved" };
+        const record = read.operation(requestId);
+        const kind =
+          record === undefined ? undefined : operationKind(OPERATION_KINDS, record.intent);
+        // Its end is read from its owner's link: HQ's for a write HQ executes, else Zerops's.
+        const link = kind?.executor === "hq" ? linkKeys.hq(orgId) : linkKeys.zerops(orgId);
+        if (UNOBSERVED_PHASES.has(read.stream(link).phase)) return { stage: "unobserved" };
         // The detail its handle is observed in, refused alone (its project gone) while the link
         // lives: no end will be read there either.
-        const record = read.operation(requestId);
         const demand =
-          record === undefined || record.receipt === null
+          record === undefined || record.receipt === null || kind === undefined
             ? null
-            : (operationKind(OPERATION_KINDS, record.intent).observedIn?.(
-                record.intent,
-                record.receipt,
-              ) ?? null);
+            : (kind.observedIn?.(record.intent, record.receipt) ?? null);
         return demand !== null &&
           UNOBSERVED_PHASES.has(read.stream(detailScopeOf(orgId, demand)).phase)
           ? { stage: "unobserved" }

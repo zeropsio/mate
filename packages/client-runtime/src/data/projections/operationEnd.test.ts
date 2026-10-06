@@ -8,13 +8,28 @@ import { operationEnd } from "./operationEnd.ts";
 import { detailScopeOf } from "../demand.ts";
 
 const INTENT = { kind: "delete-project", orgId: ORG, projectId: "p1" } as const;
+/** A write HQ executes, its answer lost and adopted: its end is read in HQ's navigation. */
+const BIND = {
+  kind: "bind-birth",
+  orgId: ORG,
+  hq: { projectId: "hq", address: "https://hq.test" },
+  appId: "app-1",
+  birthId: "b1",
+  projectId: "p1",
+} as const;
 
 function stateWith(
   record: Partial<OperationRecord> | null,
-  linkEvent?: "pause" | "history-refused",
+  linkEvent?: "pause" | "history-refused" | "pause-hq",
 ): AccountState {
   const store = makeAccountStore(AtomRegistry.make());
   liveZerops({ running: [] }).forEach(store.dispatch);
+  for (const event of [
+    { kind: "demand", demanded: true },
+    { kind: "handshake" },
+    ...(linkEvent === "pause-hq" ? [{ kind: "demand", demanded: false }] : []),
+  ] as const)
+    store.dispatch({ kind: "stream", key: linkKeys.hq(ORG), event, now: 0 });
   if (linkEvent === "pause")
     store.dispatch({
       kind: "stream",
@@ -78,6 +93,18 @@ describe("operationEnd", () => {
       { receipt: { ...accepted, acceptance: { kind: "refused", reason: "No." } } },
       undefined,
       { stage: "refused", reason: "No." },
+    ],
+    [
+      "accepted by HQ, Zerops's link no longer observed: HQ's link still says its end",
+      { intent: BIND, receipt: { ...accepted, executor: "hq" } },
+      "pause" as const,
+      null,
+    ],
+    [
+      "accepted by HQ, HQ's link no longer observed",
+      { intent: BIND, receipt: { ...accepted, executor: "hq" } },
+      "pause-hq" as const,
+      { stage: "unobserved" },
     ],
     ["not taken", { submission: "unsent" }, undefined, { stage: "unsent", next: "send-again" }],
     [

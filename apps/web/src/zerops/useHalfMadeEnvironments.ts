@@ -8,6 +8,7 @@
  * Only an application whose environments HQ has said says what it holds: one still unsaid would
  * read as holding nothing, and every environment in it as half-made.
  */
+import { useAccountOperations } from "./accountOperations";
 import { halfMadeGroupEnvironments } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { useAtomValue } from "@effect/atom-react";
@@ -23,7 +24,8 @@ import { useZeropsRegistry } from "./useZeropsRegistry";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
 export function useHalfMadeEnvironments(candidates: ReadonlyArray<ZeropsCandidate>) {
-  const { activeOrganization, client } = useZeropsSession();
+  const { activeOrganization } = useZeropsSession();
+  const operations = useAccountOperations();
   const accountHq = useAccountHq(activeOrganization?.id);
   const hq = accountHq.hq.kind === "official" ? accountHq.hq : undefined;
   const registryState = useZeropsRegistry();
@@ -45,6 +47,10 @@ export function useHalfMadeEnvironments(candidates: ReadonlyArray<ZeropsCandidat
           }),
     [candidates, heldEnvironments, mayKeepKey, pressOf, registryState.registry],
   );
-  const finishing = useFinishGroupEnvironment({ client, clientId: activeOrganization?.id, hq });
+  const finishing = useFinishGroupEnvironment({
+    operations,
+    clientId: activeOrganization?.id,
+    hq,
+  });
   return { halfMade, finishing };
 }

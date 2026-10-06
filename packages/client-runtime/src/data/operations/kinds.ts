@@ -12,6 +12,7 @@ import { enableSubdomainAccess } from "./enableSubdomainAccess.ts";
 import { enableZeropsMate } from "./enableZeropsMate.ts";
 import { hardenProject } from "./hardenProject.ts";
 import { hqUpdate } from "./hqUpdate.ts";
+import { HQ_WRITE_KINDS } from "./hqWrites.ts";
 import { importContainer } from "./importContainer.ts";
 import { importProject } from "./importProject.ts";
 import { importServices } from "./importServices.ts";
@@ -52,6 +53,7 @@ export const OPERATION_KINDS = defineOperationKinds([
   importContainer,
   hardenProject,
   hqUpdate,
+  ...HQ_WRITE_KINDS,
 ]);
 
 /** The kind an intent belongs to, in a registry: the account's, or a test's own. */

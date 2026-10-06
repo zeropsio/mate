@@ -811,7 +811,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   } = useZeropsSession();
   const { organizationRef, projectRef, runtime } = useZeropsData();
   const operations = useAccountOperations();
-  const runOperation = operations.run;
   const inventory = useZeropsInventory();
   const { listing, error, refresh: refreshCandidates } = useZeropsCandidates();
   // The rows read so far; `listing` says whether they are all there are, and
@@ -1129,7 +1128,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         });
         // Its container with its own key, and its project closed off before anyone is let in.
         const pressed = await finishMateSetup({
-          inputs: { client, run: runOperation, organizationId: activeOrganization.id },
+          inputs: { client, operations, organizationId: activeOrganization.id },
           projectId,
           projectName: candidate.project.name,
           container: { agents },
@@ -1168,7 +1167,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       operations,
       orgOffer,
       readGroupAgents,
-      runOperation,
       setConnectError,
       settingUpKey,
     ],
@@ -2026,7 +2024,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       placement: null,
     });
     void finishMateSetup({
-      inputs: { client, run: runOperation, organizationId: claimIn },
+      inputs: { client, operations, organizationId: claimIn },
       projectId: claimed.id,
       projectName: claimed.name,
       // The pool made its container.
@@ -2037,14 +2035,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       // A container the pool made: its key at ADMIN, lowered.
       harden: true,
     });
-  }, [
-    accountHq,
-    clearLastRegistration,
-    client,
-    inventory.projects,
-    lastRegistration,
-    runOperation,
-  ]);
+  }, [accountHq, clearLastRegistration, client, inventory.projects, lastRegistration, operations]);
 
   // The session is checked before this page can draw (`ZeropsHostedLanding`): nothing to say here.
   if (status === "loading") return null;

@@ -5,7 +5,9 @@
  */
 import {
   makeOperations,
+  makeHqExecutor,
   makeZeropsExecutor,
+  recordedEnvironment,
   runToEnd,
   type RunToEnd,
   operationEnd,
@@ -22,7 +24,7 @@ import { createContext, useContext } from "react";
 
 import { randomUUID } from "~/lib/utils";
 
-import { readCarriedCore } from "./accountHq";
+import { accountHqApi, readCarriedCore } from "./accountHq";
 import { accountThrowawayDebt } from "./throwawayDebt";
 import type { ZeropsSessionValue } from "./ZeropsSessionProvider";
 
@@ -40,7 +42,22 @@ export interface AccountOperations {
   readonly untilEnd: (requestId: string, orgId: string) => Promise<NonNullable<OperationEnd>>;
   /** Runs one intent to its end: its owner's result, or what stopped it (`runToEnd`). */
   readonly run: RunToEnd;
+  /**
+   * The environment HQ's navigation records for a project attached to `appId`, once it does:
+   * its name, and whether HQ holds a key that works. Rejects with what stops the wait.
+   */
+  readonly untilEnvironment: (
+    orgId: string,
+    appId: string,
+    projectId: string,
+  ) => Promise<{ readonly name: string; readonly keyed: boolean }>;
 }
+
+/** What an HQ write says where its effect can no longer be followed in HQ's navigation. */
+export const HQ_UNFOLLOWED = "HQ isn't answering. HQ may have taken it anyway.";
+
+/** What a wait on HQ's navigation says once HQ's link observes nothing more. */
+const HQ_UNOBSERVED = "HQ isn't answering.";
 
 const coordinators = new WeakMap<AccountStore, WeakMap<SessionClient, AccountOperations>>();
 
@@ -62,6 +79,10 @@ export function accountOperations(
   const operations = makeOperations({
     store,
     executors: {
+      hq: makeHqExecutor({
+        hqOf: (orgId, hq) => accountHqApi(client, orgId, hq),
+        zerops: client,
+      }),
       zerops: makeZeropsExecutor({
         client,
         store,
@@ -90,8 +111,26 @@ export function accountOperations(
         { immediate: true },
       );
     });
+  const untilEnvironment: AccountOperations["untilEnvironment"] = (orgId, appId, projectId) =>
+    new Promise((resolve, reject) => {
+      let ended = false;
+      let cancel: (() => void) | undefined;
+      cancel = registry.subscribe(
+        store.data.project(recordedEnvironment, { orgId, appId, projectId }),
+        (recorded) => {
+          if (ended || recorded.kind === "waiting") return;
+          ended = true;
+          if (recorded.kind === "recorded") resolve({ name: recorded.name, keyed: recorded.keyed });
+          else reject(new Error(recorded.kind === "refused" ? recorded.reason : HQ_UNOBSERVED));
+          cancel?.();
+        },
+        { immediate: true },
+      );
+      if (ended) cancel();
+    });
   const made: AccountOperations = {
     untilEnd,
+    untilEnvironment,
     run: runToEnd({ operations, store, registry }),
     submit: async (intent) => {
       const requestId = await Effect.runPromise(operations.submit(intent));
