@@ -8,7 +8,10 @@
  *
  * @module data/families/mateAttention
  */
-import { MateAttention } from "@t3tools/contracts";
+import type { MateAttention } from "@t3tools/contracts";
+import { HqAttentionScopeValue } from "@t3tools/shared/hqStream";
+import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
 
 import type { ScopeKey } from "../model.ts";
 import { scopeOf, type FamilySpec } from "./spec.ts";
@@ -25,7 +28,25 @@ export const mateAttentionFamily: FamilySpec<"mateAttention"> = {
   family: "mateAttention",
   authority: "mate",
   scope: { source: "mate", suffix: "mate-attention", leaving: "removed", demand: "detail" },
+  // HQ's relay rides the attention scope `hqMate` demands for each Mate it places.
+  hq: {
+    scope: "attention",
+    idOf: (key) => key,
+    keyOf: (id) => id,
+    decode: (raw) => Option.getOrNull(decodeRelayed(raw))?.attention ?? null,
+    revisionOf: ({ source }) => ({
+      kind: "mate-attention",
+      incarnation: source.incarnation,
+      revision: source.revision,
+    }),
+  },
 };
+
+const decodeRelayed = Schema.decodeUnknownOption(HqAttentionScopeValue);
+
+/** The attention HQ relays of one Mate, under the organization's HQ link. */
+export const hqMateAttentionScope = (orgId: string, projectId: string): ScopeKey =>
+  `hq:${orgId}:${mateAttentionFamily.scope.suffix}:${projectId}`;
 
 /** The attention an open Mate sends on its own link (`linkKeys.mate(projectId)`). */
 export const mateAttentionScope = (projectId: string): ScopeKey =>

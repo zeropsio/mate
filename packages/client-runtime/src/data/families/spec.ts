@@ -9,7 +9,15 @@
  */
 import type { HqScope } from "@t3tools/shared/hqStream";
 
-import type { Authority, Family, FamilyValues, MemberState, ScopeKey, Source } from "../model.ts";
+import type {
+  Authority,
+  Family,
+  FamilyValues,
+  MemberState,
+  Revision,
+  ScopeKey,
+  Source,
+} from "../model.ts";
 
 export type SearchTerms = ReadonlyArray<Readonly<Record<string, unknown>>>;
 
@@ -63,8 +71,17 @@ export interface HqFamilySource<Value> {
    * `recipe:stage`); `null` for one this build cannot read, which then changes nothing.
    */
   readonly decode: (raw: unknown, key: string) => Value | null;
-  /** A detail family's scope for one owner (`DetailDemand.ownerId`). */
+  /**
+   * A detail family's scope for one owner (`DetailDemand.ownerId`). A family without one rides
+   * the scope another family demands, from the records of the same kind of scope.
+   */
   readonly wireScope?: (ownerId: string) => HqScope;
+  /**
+   * The value's own revision, for a family HQ only relays (a Mate's attention): its author's
+   * ordering, which the reducer compares with the same value arriving on another path. Without
+   * it a record carries its scope's HQ revision.
+   */
+  readonly revisionOf?: (value: Value) => Revision;
 }
 
 /**

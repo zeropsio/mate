@@ -1,5 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
-import { EnvironmentAuthorizationError, type MateAttention } from "@t3tools/contracts";
+import { EnvironmentAuthorizationError } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Queue from "effect/Queue";
@@ -7,6 +7,7 @@ import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 import { AtomRegistry } from "effect/unstable/reactivity";
 
+import { attention } from "../__fixtures__/mateAttention.ts";
 import { settle } from "../__fixtures__/zeropsWire.ts";
 import { mateAttentionScope } from "../families/mateAttention.ts";
 import { linkKeys, type StreamKey } from "../model.ts";
@@ -16,18 +17,6 @@ import { superviseLink } from "../supervisor.ts";
 import { mateAttentionLink, type MateAttentionEvent } from "./mateAttention.ts";
 
 const PROJECT = "ada";
-
-export const attention = (incarnation: string, revision: number, working = 0): MateAttention =>
-  ({
-    source: { environmentId: "env-ada", incarnation, revision },
-    mainThreadId: "t-main",
-    lastThreadId: "t-main",
-    working,
-    waiting: 0,
-    results: [],
-    questions: [],
-    truncated: false,
-  }) as unknown as MateAttention;
 
 type Said = MateAttentionEvent | { readonly kind: "die"; readonly defect: string };
 

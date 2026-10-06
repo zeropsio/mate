@@ -44,7 +44,7 @@ import { FAMILIES, scopeSpec } from "../families/index.ts";
 import { hqMateFamily } from "../families/hqMate.ts";
 import { placementsScope, type PlacementValue } from "../families/hqNavigation.ts";
 import { scopeOf, type AnyFamilySpec, type ScopeOwner } from "../families/spec.ts";
-import { factKey, linkKeys, type LinkKey, type ScopeKey } from "../model.ts";
+import { factKey, linkKeys, type LinkKey, type Revision, type ScopeKey } from "../model.ts";
 import { streamOf, type HqDeliveryScope, type HqRemovalInput, type Row } from "../reducer.ts";
 import { readsOfState, type AccountStore } from "../store.ts";
 import type { StreamEvent, StreamFault } from "../streamMachine.ts";
@@ -133,25 +133,43 @@ export function hqNavigationLink(options: {
   };
   const scopes = nav.families.map(({ scope }) => scope);
   const demands = makeDetailDemands({
+    // A demanded scope's riders are demanded with it: their records come on its wire.
     demanded: (scope, demanded) =>
       Effect.runSync(
-        Effect.map(Clock.currentTimeMillis, (now) =>
-          store.dispatch({ kind: "stream", key: scope, now, event: { kind: "demand", demanded } }),
-        ),
+        Effect.map(Clock.currentTimeMillis, (now) => {
+          for (const fed of fedBy(scope))
+            store.dispatch({ kind: "stream", key: fed, now, event: { kind: "demand", demanded } });
+        }),
       ),
   });
 
-  /** A detail store scope as HQ names it: its family's scope for the owner it is demanded for. */
+  /**
+   * A detail store scope as HQ names it: its family's scope for the owner it is demanded for, and
+   * beside it the scope of each family riding the same kind of HQ scope without demanding one (a
+   * Mate's attention, relayed in HQ's record of that Mate).
+   */
   const detailOf = (scope: ScopeKey): Registered | null => {
     const spec = scopeSpec(scope);
     const ownerId = scope.split(":").slice(3).join(":");
     if (spec.hq?.wireScope === undefined || ownerId === "") return null;
+    const riders = familiesOf(spec.hq.scope).filter(
+      (rider) => rider !== spec && rider.hq?.wireScope === undefined,
+    );
     return {
       wire: spec.hq.wireScope(ownerId),
       owner: { orgId, ownerId },
-      families: [{ spec, scope }],
+      families: [
+        { spec, scope },
+        ...riders.map((rider) => ({
+          spec: rider,
+          scope: `${linkKeys.hq(orgId)}:${rider.scope.suffix}:${ownerId}` as ScopeKey,
+        })),
+      ],
     };
   };
+  /** The store scopes a demanded scope feeds: its own, and its riders'. */
+  const fedBy = (scope: ScopeKey): ReadonlyArray<ScopeKey> =>
+    detailOf(scope)?.families.map((family) => family.scope) ?? [scope];
 
   /**
    * Each Mate HQ places is observed while it is placed: navigation demand, held by the link
@@ -230,11 +248,14 @@ export function hqNavigationLink(options: {
       let said = false;
 
       /** The keys this renderer holds of an HQ scope: what proves a removal on resume. */
-      const knownKeys = (registered: Registered): ReadonlyArray<string> =>
-        registered.families.flatMap(({ spec, scope }) => {
-          const { ids, unverified } = readsOfState(store.state()).members(scope);
-          return [...ids, ...unverified].map((id) => spec.hq!.keyOf(id, registered.owner));
-        });
+      const knownKeys = (registered: Registered): ReadonlyArray<string> => [
+        ...new Set(
+          registered.families.flatMap(({ spec, scope }) => {
+            const { ids, unverified } = readsOfState(store.state()).members(scope);
+            return [...ids, ...unverified].map((id) => spec.hq!.keyOf(id, registered.owner));
+          }),
+        ),
+      ];
 
       const subscription = (registered: Registered) => {
         const cursor = cursors.get(hqScopeKey(registered.wire));
@@ -287,7 +308,16 @@ export function hqNavigationLink(options: {
               const decoded = spec.hq!.decode(value, recordKey);
               // A record this build cannot read changes nothing: its last value stays.
               if (decoded !== null)
-                rows.push({ family: spec.family, id, value: decoded, revision } as Row);
+                rows.push({
+                  family: spec.family,
+                  id,
+                  value: decoded,
+                  // A relayed value keeps its author's revision; HQ's own records, the scope's.
+                  revision:
+                    (spec.hq!.revisionOf as ((value: unknown) => Revision) | undefined)?.(
+                      decoded,
+                    ) ?? revision,
+                } as Row);
             }
           const removals: HqRemovalInput[] = message.removals.flatMap(
             ({ key: recordKey, reason }) =>
@@ -531,7 +561,7 @@ export function hqNavigationLink(options: {
   return {
     key,
     scopes,
-    details: demands.scopes,
+    details: () => demands.scopes().flatMap(fedBy),
     attempt,
     childMoved: () => wakeAttempt?.(),
     demandDetail: (demand) => demands.hold(detailScopeOf(orgId, demand)),
