@@ -93,6 +93,8 @@ function operationsOf(
       calls.push(input);
       return answer();
     },
+    // The test's listings stand for Zerops's own reads; the store's are not consulted.
+    listed: () => null,
     listClientProjects: async () => {
       calls.push("list");
       const listing = reads.shift();
@@ -150,6 +152,23 @@ describe("create-project", () => {
         creationRow(store, status, patch);
         expect(progress(store)).toEqual(outcome);
       }
+    }),
+  );
+
+  it.effect("reads no listing at the send where the account holds the projects wholly read", () =>
+    Effect.gen(function* () {
+      const store = account();
+      const calls: unknown[] = [];
+      const submit = createProjectExecutor({
+        createProject: async () => ({ id: "p9" }),
+        listClientProjects: async () => {
+          calls.push("list");
+          return [];
+        },
+        listed: () => [],
+      });
+      yield* submit("r1", CREATE);
+      expect(calls).toEqual([]);
     }),
   );
 

@@ -13,7 +13,8 @@ import type { ThrowawayDebt } from "../../../zerops/doorThrowaway.ts";
 import type { HqCoreArtifact } from "../../../zerops/hq/birth.ts";
 import { makeProjectTagWriter, type ProjectTagLocks } from "../../../zerops/data/tagWriter.ts";
 import type { DetailDemand } from "../../demand.ts";
-import type { AccountStore } from "../../store.ts";
+import { readsOfState, type AccountStore } from "../../store.ts";
+import { projectsScope } from "../../families/project.ts";
 import type { OperationExecutor } from "../coordinator.ts";
 import { createProjectExecutor } from "./createProject.ts";
 import { deleteProjectExecutor } from "./deleteProject.ts";
@@ -90,6 +91,15 @@ export function makeZeropsExecutor(input: {
   const create = createProjectExecutor({
     createProject: (input) => client.createProject(input),
     listClientProjects: (clientId) => client.listClientProjects(clientId),
+    listed: (orgId, name) => {
+      const read = readsOfState(input.store.state());
+      const projects = read.members(projectsScope(orgId));
+      if (projects.coverage !== "complete") return null;
+      return projects.ids.filter((id) => {
+        const project = read.fact("project", id);
+        return project.kind === "known" && project.value.name === name;
+      });
+    },
   });
   const creationWrite = creationWritesExecutor({
     importProject: (clientId, yaml) => client.importProject(clientId, yaml),

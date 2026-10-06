@@ -2,9 +2,9 @@
  * A project's creation, at Zerops: `POST /client/{id}/project`, answered with the project — the
  * operation's handle and its result.
  *
- * Zerops keeps no request ids, so its lost answer is settled by Zerops's own listing, read as the
- * write is sent and again once its answer is lost: the one project of its name listed then that
- * was not before is its own. None, or more than one — somebody else's of the same name may have
+ * Zerops keeps no request ids, so its lost answer is settled by Zerops's own listing: the one
+ * project of its name it lists once the answer is lost that it did not list at the send — as the
+ * account's wholly read projects held them, else read then — is its own. None, or more than one — somebody else's of the same name may have
  * appeared too — and it stays uncertain, for the person to look at the projects; nothing is sent
  * again. A listing that could not be read at the send adopts nothing.
  *
@@ -27,6 +27,8 @@ export function createProjectExecutor(platform: {
   readonly listClientProjects: (
     clientId: string,
   ) => Promise<ReadonlyArray<{ readonly id: string; readonly name: string }>>;
+  /** The organization's projects of `name` as the account holds them wholly read; else `null`. */
+  readonly listed: (orgId: string, name: string) => ReadonlyArray<string> | null;
 }) {
   /** The ids of the organization's projects of `name`, as Zerops lists them now; `null` unread. */
   const named = (intent: IntentOf<"create-project">) =>
@@ -53,7 +55,7 @@ export function createProjectExecutor(platform: {
   });
   return (requestId: string, intent: IntentOf<"create-project">) =>
     Effect.gen(function* () {
-      const before = yield* named(intent);
+      const before = platform.listed(intent.orgId, intent.name) ?? (yield* named(intent));
       const sent = yield* Effect.result(
         verb(() =>
           platform.createProject({
