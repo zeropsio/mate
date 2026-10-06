@@ -1,23 +1,29 @@
-import type { HqMatesView, HqStructureView } from "../state/zerops";
+import type { HqNavigationView } from "../state/zerops";
+import { hqDown } from "../state/zerops";
 import type { AccountHq } from "./accountHq";
 
-/** HQ's list can contradict an empty answer until its snapshot, absence, or failure is known. */
-export function hqMatesSettled(input: {
+/**
+ * Whether HQ's navigation of the organization has said what it will (unknown is not empty, but it
+ * ends): its catchup ended, or HQ stopped answering, or the organization has no HQ to ask. Until
+ * then, HQ's list can contradict an empty answer.
+ */
+export function hqNavigationSettled(input: {
   readonly organizationId: string | null;
   readonly accountHq: {
     readonly status: AccountHq["status"];
     readonly hq: Pick<AccountHq["hq"], "kind">;
   };
-  readonly mates: Pick<HqMatesView, "organizationId" | "current"> | null;
-  readonly structure: Pick<HqStructureView, "organizationId" | "unavailableSince"> | null;
+  readonly navigation: Pick<
+    HqNavigationView,
+    "orgId" | "read" | "live" | "reconnecting" | "capped" | "refusal"
+  >;
 }): boolean {
   if (input.organizationId === null) return true;
   if (input.accountHq.status === "failed") return true;
   if (input.accountHq.status === "ready" && input.accountHq.hq.kind !== "official") return true;
   return (
-    (input.mates?.organizationId === input.organizationId && input.mates.current) ||
-    (input.structure?.organizationId === input.organizationId &&
-      input.structure.unavailableSince !== null)
+    input.navigation.orgId === input.organizationId &&
+    (input.navigation.read === "read" || hqDown(input.navigation))
   );
 }
 

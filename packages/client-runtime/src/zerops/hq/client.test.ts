@@ -758,17 +758,17 @@ describe("makeHqApi — the structure socket", () => {
     );
   };
 
-  const streaming = (api: HqApi, signal = new AbortController().signal) => {
-    const events: Array<unknown> = [];
-    let alive = 0;
-    const done = api.streamStructure(
-      { onEvent: (event) => events.push(event), onAlive: () => (alive += 1) },
+  const opening = (api: HqApi, signal = new AbortController().signal) => {
+    const messages: Array<string> = [];
+    const closes: Array<number> = [];
+    const socket = api.openScopeSocket(
+      { message: (data) => messages.push(data), close: (code) => closes.push(code) },
       signal,
     );
-    return { done, events, alive: () => alive };
+    return { socket, messages, closes };
   };
 
-  it("opens the socket with a ticket minted through the door, reads the snapshot and each change, and answers every ping", async () => {
+  it("opens the socket with a ticket minted through the door, and tells of each message and the close", async () => {
     const hq = ticketing();
     const sockets = fakeSockets();
     const api = makeHqApi({
@@ -777,128 +777,17 @@ describe("makeHqApi — the structure socket", () => {
       throughDoor: doors().throughDoor,
       openSocket: sockets.openSocket,
     });
-    const stream = streaming(api);
+    const opened = opening(api);
     const socket = await sockets.next();
-    socket.on.message(JSON.stringify({ type: "snapshot", ungrouped: [], apps: [] }));
-    socket.on.message(JSON.stringify({ type: "ping" }));
-    socket.on.message(
-      JSON.stringify({
-        type: "change",
-        key: "app-1",
-        value: { id: "app-1", name: "Acme", projects: [] },
-      }),
-    );
-    socket.on.close(1001);
-    await expect(stream.done).rejects.toMatchObject({ code: "socket_1001" });
-
-    expect(socket.url).toBe("wss://hq-30db-8080.prg1.zerops.app/api/structure/ws?ticket=t-1");
-    expect(stream.events).toEqual([
-      {
-        kind: "snapshot",
-        appReads: null,
-        structure: { ungrouped: [], apps: [] },
-        changes: null,
-        mates: null,
-        people: null,
-        presses: {},
-      },
-      { kind: "change", appId: "app-1", app: { id: "app-1", name: "Acme", projects: [] } },
-    ]);
-    expect(socket.sent).toEqual([JSON.stringify({ type: "pong" })]);
-    expect(stream.alive()).toBe(3);
-    expect(hq.seen.map((entry) => `${entry.method} ${entry.path} ${entry.authorization}`)).toEqual([
-      "POST /api/door null",
-      "POST /api/stream-ticket Bearer session-1",
-    ]);
-  });
-
-  it("continues a planned segment with a fresh ticket and the same session", async () => {
-    const hq = ticketing();
-    const door = doors();
-    const sockets = fakeSockets();
-    const api = makeHqApi({
-      address: ADDRESS,
-      fetch: hq.fetch,
-      throughDoor: door.throughDoor,
-      openSocket: sockets.openSocket,
+    expect(socket.url).toBe(`${ADDRESS.replace(/^http/u, "ws")}/api/structure/ws?ticket=t-1`);
+    expect(hq.seen.at(-1)).toMatchObject({
+      path: "/api/stream-ticket",
+      authorization: "Bearer session-1",
     });
-    const stream = streaming(api);
-    (await sockets.next()).on.close(4410);
-    const next = await Promise.race([
-      sockets.next(),
-      stream.done.then(() => {
-        throw new Error("stream ended");
-      }),
-    ]);
-    expect(next.url).toContain("ticket=t-2");
-    expect(door.minted).toEqual(["door-1"]);
-    next.on.close(1006);
-    await expect(stream.done).rejects.toMatchObject({ kind: "unavailable", code: "socket_1006" });
-    expect(hq.seen.filter((call) => call.path === "/api/stream-ticket")).toHaveLength(2);
-  });
-
-  it("surfaces a failed next-segment ticket once", async () => {
-    let tickets = 0;
-    const hq = fakeHq((seen) =>
-      seen.path === "/api/stream-ticket"
-        ? ++tickets === 1
-          ? json(200, { ticket: "t-1" })
-          : json(503, { code: "not_active" })
-        : undefined,
-    );
-    const sockets = fakeSockets();
-    const api = makeHqApi({
-      address: ADDRESS,
-      fetch: hq.fetch,
-      throughDoor: doors().throughDoor,
-      openSocket: sockets.openSocket,
-    });
-    const stream = streaming(api);
-    (await sockets.next()).on.close(4410);
-    await expect(stream.done).rejects.toMatchObject({ kind: "unavailable", code: "not_active" });
-    expect(tickets).toBe(2);
-  });
-
-  it("sends the pong before the liveness callback can block or fail", async () => {
-    const sockets = fakeSockets();
-    const api = makeHqApi({
-      address: ADDRESS,
-      fetch: ticketing().fetch,
-      throughDoor: doors().throughDoor,
-      openSocket: sockets.openSocket,
-    });
-    let checkPong = () => undefined;
-    const done = api.streamStructure(
-      { onEvent: () => undefined, onAlive: () => checkPong() },
-      new AbortController().signal,
-    );
-    const socket = await sockets.next();
-    checkPong = () => {
-      expect(socket.sent).toEqual([JSON.stringify({ type: "pong" })]);
-    };
-    socket.on.message(JSON.stringify({ type: "ping" }));
-    socket.on.close(1001);
-    await expect(done).rejects.toMatchObject({ code: "socket_1001" });
-  });
-
-  it.each<[string, number, "resolves" | "rejects"]>([
-    ["signals another Core leads now, to be read again at once", 1001, "rejects"],
-    ["breaks when HQ could not read the view", 1011, "rejects"],
-    ["breaks when the connection dropped", 1006, "rejects"],
-    ["breaks when HQ heard no pong", 4408, "rejects"],
-    ["breaks on an ordinary clean close", 1000, "rejects"],
-  ])("%s (%i)", async (_name, code, ends) => {
-    const sockets = fakeSockets();
-    const api = makeHqApi({
-      address: ADDRESS,
-      fetch: ticketing().fetch,
-      throughDoor: doors().throughDoor,
-      openSocket: sockets.openSocket,
-    });
-    const stream = streaming(api);
-    (await sockets.next()).on.close(code);
-    if (ends === "resolves") await expect(stream.done).resolves.toBeUndefined();
-    else await expect(stream.done).rejects.toBeInstanceOf(HqError);
+    socket.on.message('{"type":"ping"}');
+    socket.on.close(4410);
+    expect(opened.messages).toEqual(['{"type":"ping"}']);
+    expect(opened.closes).toEqual([4410]);
   });
 
   it("renews the session HQ ended over the socket (4401) and opens the next socket with it", async () => {
@@ -911,41 +800,15 @@ describe("makeHqApi — the structure socket", () => {
       throughDoor: door.throughDoor,
       openSocket: sockets.openSocket,
     });
-    const stream = streaming(api);
-    const first = await sockets.next();
-    first.on.message(JSON.stringify({ type: "snapshot", ungrouped: [], apps: [] }));
-    hq.expire();
-    first.on.close(4401);
-    const renewed = await sockets.next();
-    expect(renewed.url).toContain("ticket=t-2");
+    opening(api);
+    (await sockets.next()).on.close(4401);
+    opening(api);
+    await sockets.next();
     expect(door.minted).toEqual(["door-1", "door-2"]);
     expect(hq.seen.at(-1)).toMatchObject({
       path: "/api/stream-ticket",
       authorization: "Bearer session-2",
     });
-    renewed.on.close(1006);
-    await expect(stream.done).rejects.toMatchObject({ kind: "unavailable", code: "socket_1006" });
-  });
-
-  it("ends the stream refused when the renewed session's socket is ended (4401) before it said anything", async () => {
-    const hq = ticketing();
-    const door = doors();
-    const sockets = fakeSockets();
-    const api = makeHqApi({
-      address: ADDRESS,
-      fetch: hq.fetch,
-      throughDoor: door.throughDoor,
-      openSocket: sockets.openSocket,
-    });
-    const stream = streaming(api);
-    (await sockets.next()).on.close(4401);
-    (await sockets.next()).on.close(4401);
-    await expect(stream.done).rejects.toMatchObject({
-      kind: "refused",
-      code: "session_required",
-      status: 401,
-    });
-    expect(door.minted).toEqual(["door-1", "door-2"]);
   });
 
   // Audit K7: the session HQ ended over the socket is not presented again by the next load.
@@ -968,27 +831,14 @@ describe("makeHqApi — the structure socket", () => {
         },
       },
     });
-    streaming(api);
+    opening(api);
     (await sockets.next()).on.close(4401);
+    expect(kept).toBeNull();
+
+    opening(api);
     await sockets.next();
     expect(door.minted).toEqual(["door-1", "door-2"]);
     expect(kept).toBe("session-2");
-  });
-
-  it("closes its socket when the reader stops", async () => {
-    const sockets = fakeSockets();
-    const api = makeHqApi({
-      address: ADDRESS,
-      fetch: ticketing().fetch,
-      throughDoor: doors().throughDoor,
-      openSocket: sockets.openSocket,
-    });
-    const stop = new AbortController();
-    const stream = streaming(api, stop.signal);
-    const socket = await sockets.next();
-    stop.abort();
-    await stream.done.catch(() => undefined);
-    expect(socket.closed).toBe(true);
   });
 
   it("writes a Mate's name and face to HQ", async () => {

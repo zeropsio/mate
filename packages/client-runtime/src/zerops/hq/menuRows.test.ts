@@ -1,5 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
-import { menuRowsFromHq } from "./placement.ts";
+import { placedMenuRows, placedNames, placementsOf } from "./placement.ts";
 import type { HqStructure } from "./client.ts";
 import type { CandidateRow } from "../projections/candidates.ts";
 
@@ -26,17 +26,16 @@ const candidate: CandidateRow = {
 };
 const input = {
   organizationId: "org",
-  structure,
+  placements: placementsOf(structure),
+  names: placedNames(structure),
   projects: [],
   candidates: [],
   gone: new Set<string>(),
-  logins: new Map(),
-  readyAgents: new Map(),
 };
 
 describe("HQ menu rows", () => {
   it("paints HQ placements without platform inventory", () => {
-    const rows = menuRowsFromHq(input);
+    const rows = placedMenuRows(input);
     expect(rows.map((row) => row.project.id)).toEqual(["mate", "stage", "loose"]);
     expect(rows.every((row) => row.presence === "unknown")).toBe(true);
     expect(rows[0]?.project.name).toBe("Last name");
@@ -44,7 +43,7 @@ describe("HQ menu rows", () => {
   });
   it("enriches by id and never promotes an unplaced zcp container", () => {
     const extra = { ...candidate, key: "extra", project: { ...candidate.project, id: "extra" } };
-    const rows = menuRowsFromHq({
+    const rows = placedMenuRows({
       ...input,
       candidates: [extra, candidate],
       projects: [candidate.project],
@@ -55,11 +54,11 @@ describe("HQ menu rows", () => {
   });
   it("keeps omitted placements until Zerops gives definite gone evidence", () => {
     expect(
-      menuRowsFromHq({ ...input, gone: new Set(["mate"]) }).map((row) => row.project.id),
+      placedMenuRows({ ...input, gone: new Set(["mate"]) }).map((row) => row.project.id),
     ).toEqual(["stage", "loose"]);
   });
   it("takes platform names and state without requiring services or project admission", () => {
-    const rows = menuRowsFromHq({
+    const rows = placedMenuRows({
       ...input,
       projects: [{ id: "mate", name: "Renamed", status: "STOPPED" }],
     });
@@ -84,11 +83,10 @@ describe("HQ menu rows", () => {
       expected: { runsWithoutSignIn: true },
     },
   ])("places each row's Mate with what HQ's overview of it says: $case", (row) => {
-    const rows = menuRowsFromHq({
+    const rows = placedMenuRows({
       ...input,
+      placements: placementsOf(structure, row.logins, row.readyAgents),
       candidates: [candidate],
-      logins: row.logins,
-      readyAgents: row.readyAgents,
     });
     expect(rows[0]?.project.hq?.mate).toMatchObject(row.expected);
   });

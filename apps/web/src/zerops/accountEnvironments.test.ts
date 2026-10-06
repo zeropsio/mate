@@ -21,7 +21,8 @@ import { act, createElement as h } from "react";
 import { create } from "react-test-renderer";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { hqMatesViewAtom, zeropsSessionAtom } from "../state/zerops";
+import { zeropsSessionAtom } from "../state/zerops";
+import { mountHqNavigation } from "~/zerops/__fixtures__/hqNavigation";
 import { bindTestInvalidationBus } from "./__fixtures__/invalidationBus";
 import {
   bindAccountEnvironments,
@@ -356,12 +357,17 @@ describe("useMateCommand: a Mate's command, sent with its action lease", () => {
       organizationStatus: "selected",
       activeOrganization: { organizationId: "org-acme" },
     } as never);
-    atoms.set(hqMatesViewAtom, {
-      organizationId: "org-acme",
-      mates: new Map([
-        ["project-1", { identity: { environmentId: ENV } } as unknown as MateLiveView],
-      ]),
-      current: true,
+    mountHqNavigation(atoms, "org-acme", {
+      structure: {
+        apps: [],
+        ungrouped: [{ projectId: "project-1", name: "Mate", mate: { face: "" } }],
+      },
+      mates: {
+        ["project-1"]: {
+          presence: { online: true, since: "2026-10-06T00:00:00Z", overview: "live" },
+          identity: { environmentId: ENV },
+        } as unknown as MateLiveView,
+      },
     });
     type Stop = { readonly environmentId: EnvironmentId; readonly input: string };
     const command = {} as AtomCommand<Stop, string, never>;

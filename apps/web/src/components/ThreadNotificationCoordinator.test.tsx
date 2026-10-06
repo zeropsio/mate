@@ -116,7 +116,7 @@ vi.mock("../hooks/useSettings", () => ({
   ) => select({ notificationMode: state.mode, inAppNotificationsEnabled: state.inApp }),
   getClientSettings: () => ({ notificationMode: state.mode }),
 }));
-vi.mock("../state/zerops", () => ({ hqMatesViewAtom: "hq-mates" }));
+vi.mock("../state/zerops", () => ({ hqMatesAtom: "hq-mates" }));
 vi.mock("../threadNotifications", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../threadNotifications")>()),
   playNotificationSound: state.sound,

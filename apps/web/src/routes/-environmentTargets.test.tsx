@@ -37,7 +37,8 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { useComposerDraftStore } from "../composerDraftStore";
-import { hqMatesViewAtom, zeropsSessionAtom } from "../state/zerops";
+import { zeropsSessionAtom } from "../state/zerops";
+import { mountHqNavigation } from "~/zerops/__fixtures__/hqNavigation";
 import { TestNode } from "../zerops/__fixtures__/testDom";
 import {
   useEnvironmentLinks,
@@ -1047,12 +1048,17 @@ describe("the descriptor index", () => {
       organizationStatus: "selected",
       activeOrganization: { organizationId: "org-acme" },
     } as never);
-    atoms.set(hqMatesViewAtom, {
-      organizationId: "org-acme",
-      mates: new Map([
-        [one.projectId, { identity: { environmentId: ENV_A } } as unknown as MateLiveView],
-      ]),
-      current: true,
+    mountHqNavigation(atoms, "org-acme", {
+      structure: {
+        apps: [],
+        ungrouped: [{ projectId: one.projectId, name: "Mate", mate: { face: "" } }],
+      },
+      mates: {
+        [one.projectId]: {
+          presence: { online: true, since: "2026-10-06T00:00:00Z", overview: "live" },
+          identity: { environmentId: ENV_A },
+        } as unknown as MateLiveView,
+      },
     });
     await settle();
 

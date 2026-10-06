@@ -2,8 +2,10 @@ import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { AtomRegistry } from "effect/unstable/reactivity";
 
+import { hqFixtureWire } from "./__fixtures__/hqWire.ts";
 import { fixtureWire } from "./__fixtures__/zeropsWire.ts";
 import { observeAccount, startZeropsNavigation } from "./account.ts";
+import { hqAppsScope } from "./families/hqNavigation.ts";
 import { historyScope, runningScope } from "./families/process.ts";
 import { linkKeys, type OperationIntent } from "./model.ts";
 import type { RegisteredOperationKind } from "./operations/kind.ts";
@@ -218,6 +220,40 @@ describe("observeAccount — closed with its account", () => {
         }),
       ).not.toThrow();
       yield* turns;
+    }),
+  );
+});
+
+describe("an account's HQ", () => {
+  const emptyZerops = () =>
+    fixtureWire((request) =>
+      Effect.succeed(request.body?.wsOutputType === "listStream" ? { items: [] } : {}),
+    );
+
+  it.live("is observed once its organization is shown and its HQ named, until either goes", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const account = observeAccount({
+        store,
+        wire: emptyZerops().wire,
+        repairSession: Effect.void,
+      });
+      const hq = hqFixtureWire();
+      // Named before its organization is shown: nothing opens until it is.
+      account.showHq({ orgId: "org-a", wire: hq.wire });
+      yield* turns;
+      expect(hq.opens()).toBe(0);
+
+      account.show("org-a");
+      yield* turns;
+      expect(hq.opens()).toBe(1);
+      expect(streamOf(store.state(), hqAppsScope("org-a")).phase).toBe("baselining");
+
+      account.show("org-b");
+      yield* turns;
+      expect(streamOf(store.state(), linkKeys.hq("org-a")).demanded).toBe(false);
+      expect(streamOf(store.state(), hqAppsScope("org-a")).demanded).toBe(false);
+      account.stop();
     }),
   );
 });

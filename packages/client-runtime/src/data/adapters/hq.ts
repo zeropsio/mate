@@ -1,0 +1,505 @@
+/**
+ * HQ, our own source (`@t3tools/shared/hqStream`, `docs/internals/zerops/hq-scopes.md`): one socket
+ * per account, organization and renderer, carrying the scopes this renderer demands. The
+ * organization's `navigation` scope is always demanded; it feeds every family whose records it
+ * holds, one delivery committed together. Each Mate HQ places is observed through its own
+ * `attention` scope, as part of the navigation; any other scope (an application's detail, a
+ * change) is a detail a screen demands by its owner's id.
+ *
+ * HQ ends each socket as planned after its segment (`4410`): the next segment opens with a fresh
+ * ticket and resumes each scope from the cursor last committed, naming the keys this renderer
+ * holds, so an unchanged scope sends nothing but its `scope-ready`. A delta that does not follow
+ * the cursor is not committed: the scope is asked again whole.
+ *
+ * The adapter only translates and classifies: a scope HQ refuses is that scope's definitive
+ * refusal; a socket the session no longer holds (`4401`) is the session to repair once; HQ
+ * refusing the source outright (`4403`) is the link's refusal; any other ending is transient.
+ * Retrying belongs to the supervisor and the stream machine.
+ *
+ * @module data/adapters/hq
+ */
+import {
+  hqScopeKey,
+  hqStreamCloseFailure,
+  HqStreamMessage,
+  type HqCursor,
+  type HqScope,
+  type HqScopeDelivery,
+  type HqStreamRequest,
+} from "@t3tools/shared/hqStream";
+import * as Clock from "effect/Clock";
+import * as Deferred from "effect/Deferred";
+import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
+import * as Option from "effect/Option";
+import * as Queue from "effect/Queue";
+import * as Random from "effect/Random";
+import * as Schema from "effect/Schema";
+import type * as Scope from "effect/Scope";
+import * as Stream from "effect/Stream";
+
+import { detailScopeOf, makeDetailDemands, type DetailDemand } from "../demand.ts";
+import { FAMILIES, scopeSpec } from "../families/index.ts";
+import { hqMateFamily } from "../families/hqMate.ts";
+import { placementsScope, type PlacementValue } from "../families/hqNavigation.ts";
+import { scopeOf, type AnyFamilySpec, type ScopeOwner } from "../families/spec.ts";
+import { factKey, linkKeys, type LinkKey, type ScopeKey } from "../model.ts";
+import { streamOf, type HqDeliveryScope, type HqRemovalInput, type Row } from "../reducer.ts";
+import { readsOfState, type AccountStore } from "../store.ts";
+import type { StreamEvent, StreamFault } from "../streamMachine.ts";
+import type { LinkOptions } from "../supervisor.ts";
+
+/** One open segment: HQ's messages, and the requests sent on it. */
+export interface HqSegment {
+  /**
+   * Every message from open on, as sent. It ends when HQ ends the segment as planned; it fails
+   * with the classified fault on any other ending.
+   */
+  readonly messages: Stream.Stream<string, StreamFault>;
+  readonly send: (request: HqStreamRequest) => Effect.Effect<void>;
+}
+
+/** Today's HQ transport behind the adapter — a ticket, then the socket — or a fixture. */
+export interface HqWire {
+  readonly open: Effect.Effect<HqSegment, StreamFault, Scope.Scope>;
+}
+
+/** How an HQ socket's ending classifies, its planned segment end aside. */
+export function classifyHqClose(code: number): StreamFault {
+  const failure = hqStreamCloseFailure(code);
+  const message = `HQ's stream closed (${failure.code}).`;
+  switch (failure.disposition) {
+    case "refused":
+      return { outcome: "definitive-refusal", message };
+    case "session-ended":
+      return { outcome: "recoverable-session", message };
+    case "transient":
+      return { outcome: "transient", message };
+  }
+}
+
+/** What HQ says a Mate may be moved into, per application, as asked when the move opens. */
+export type HqMoveOffers = Readonly<Record<string, ReadonlyArray<string>>>;
+
+const decodeMessage = Schema.decodeUnknownOption(Schema.fromJsonString(HqStreamMessage));
+
+/** The families each scope kind feeds. */
+const familiesOf = (kind: HqScope["kind"]): ReadonlyArray<AnyFamilySpec> =>
+  FAMILIES.filter((spec) => spec.hq?.scope === kind);
+
+const NAVIGATION: HqScope = { kind: "navigation" };
+
+/**
+ * What one HQ scope is to the store: the store scopes it feeds (one per family it holds), the
+ * owner they observe, and the families themselves.
+ */
+interface Registered {
+  readonly wire: HqScope;
+  readonly owner: ScopeOwner;
+  readonly families: ReadonlyArray<{ readonly spec: AnyFamilySpec; readonly scope: ScopeKey }>;
+}
+
+export function hqNavigationLink(options: {
+  readonly orgId: string;
+  readonly wire: HqWire;
+  readonly store: AccountStore;
+}): Pick<LinkOptions, "key" | "scopes" | "details" | "attempt" | "childMoved"> & {
+  /** A screen's hold on a detail scope; the release lets it go once nothing holds it. */
+  readonly demandDetail: (demand: DetailDemand) => () => void;
+  /** Asks HQ where a Mate may move, on the open socket. */
+  readonly moveOffers: (projectId: string) => Effect.Effect<HqMoveOffers, StreamFault>;
+  /** Tells HQ the reader saw these results of a Mate. */
+  readonly seen: (projectId: string, resultIds: ReadonlyArray<string>) => Effect.Effect<void>;
+  /** Ends the link's own holds (each Mate's attention). */
+  readonly stop: () => void;
+} {
+  const { orgId, store } = options;
+  const key: LinkKey = linkKeys.hq(orgId);
+  const nav: Registered = {
+    wire: NAVIGATION,
+    owner: { orgId, ownerId: null },
+    families: familiesOf("navigation").map((spec) => ({ spec, scope: scopeOf(spec, orgId) })),
+  };
+  const scopes = nav.families.map(({ scope }) => scope);
+  const demands = makeDetailDemands({
+    demanded: (scope, demanded) =>
+      Effect.runSync(
+        Effect.map(Clock.currentTimeMillis, (now) =>
+          store.dispatch({ kind: "stream", key: scope, now, event: { kind: "demand", demanded } }),
+        ),
+      ),
+  });
+
+  /** A detail store scope as HQ names it: its family's scope for the owner it is demanded for. */
+  const detailOf = (scope: ScopeKey): Registered | null => {
+    const spec = scopeSpec(scope);
+    const ownerId = scope.split(":").slice(3).join(":");
+    if (spec.hq?.wireScope === undefined || ownerId === "") return null;
+    return {
+      wire: spec.hq.wireScope(ownerId),
+      owner: { orgId, ownerId },
+      families: [{ spec, scope }],
+    };
+  };
+
+  /**
+   * Each Mate HQ places is observed while it is placed: navigation demand, held by the link
+   * itself, never by a screen.
+   */
+  const mateHolds = new Map<string, () => void>();
+  /** A hold's own demand moves the store, which asks again: that inner ask has nothing to add. */
+  let holding = false;
+  const holdPlacedMates = () => {
+    if (holding) return;
+    holding = true;
+    try {
+      followPlacedMates();
+    } finally {
+      holding = false;
+    }
+  };
+  const followPlacedMates = () => {
+    const placed = new Set(
+      readsOfState(store.state())
+        .members(placementsScope(orgId))
+        .ids.filter((id) => {
+          const fact = store.state().facts.get(factKey("placement", id));
+          return (
+            fact?.content.kind === "value" && (fact.content.value as PlacementValue).mate !== null
+          );
+        }),
+    );
+    for (const [projectId, release] of mateHolds)
+      if (!placed.has(projectId)) {
+        mateHolds.delete(projectId);
+        release();
+      }
+    for (const projectId of placed)
+      if (!mateHolds.has(projectId))
+        mateHolds.set(
+          projectId,
+          demands.hold(detailScopeOf(orgId, { family: hqMateFamily.family, ownerId: projectId })),
+        );
+  };
+  let stopHolding: (() => void) | null = null;
+
+  /** The cursor last committed of each HQ scope, by `hqScopeKey`, across segments and attempts. */
+  const cursors = new Map<string, HqCursor>();
+  /** The segment open now, if any: what a request is sent on. */
+  let open: HqSegment | null = null;
+  const pendingOffers = new Map<string, Deferred.Deferred<HqMoveOffers, StreamFault>>();
+  let requests = 0;
+  /** Looks at the demanded details again in the attempt under way, if one is. */
+  let wakeAttempt: (() => void) | null = null;
+
+  const attempt = (): Effect.Effect<never, StreamFault, Scope.Scope> =>
+    Effect.gen(function* () {
+      stopHolding ??= (() => {
+        holdPlacedMates();
+        return store.subscribe(holdPlacedMates);
+      })();
+      const signal = (target: LinkKey | ScopeKey, event: StreamEvent) =>
+        Effect.map(Clock.currentTimeMillis, (now) =>
+          store.dispatch({ kind: "stream", key: target, now, event }),
+        );
+      /** Each subscribed HQ scope this attempt, by its key, with the generations it was given. */
+      const subscribed = new Map<
+        string,
+        { readonly registered: Registered; generations: ReadonlyArray<HqDeliveryScope> }
+      >();
+
+      /** The scopes the open segment was asked for: what HQ may be sending. */
+      const asked = new Set<string>();
+
+      /** The keys this renderer holds of an HQ scope: what proves a removal on resume. */
+      const knownKeys = (registered: Registered): ReadonlyArray<string> =>
+        registered.families.flatMap(({ spec, scope }) => {
+          const { ids, unverified } = readsOfState(store.state()).members(scope);
+          return [...ids, ...unverified].map((id) => spec.hq!.keyOf(id, registered.owner));
+        });
+
+      const subscription = (registered: Registered) => {
+        const cursor = cursors.get(hqScopeKey(registered.wire));
+        return {
+          scope: registered.wire,
+          ...(cursor === undefined ? {} : { cursor }),
+          knownKeys: knownKeys(registered),
+        };
+      };
+
+      /** Starts a registration of each store scope: a new generation, its handshake made. */
+      const register = (registered: Registered) =>
+        Effect.gen(function* () {
+          const generations: HqDeliveryScope[] = [];
+          for (const { scope } of registered.families) {
+            yield* signal(scope, { kind: "attempt" });
+            yield* signal(scope, { kind: "handshake" });
+            generations.push({ scope, generation: streamOf(store.state(), scope).generation });
+          }
+          subscribed.set(hqScopeKey(registered.wire), { registered, generations });
+        });
+
+      const deliver = (message: HqScopeDelivery) =>
+        Effect.gen(function* () {
+          const scopeKey = hqScopeKey(message.scope);
+          const entry = subscribed.get(scopeKey);
+          if (entry === undefined) return;
+          const cursor = cursors.get(scopeKey);
+          const follows =
+            message.type === "scope-reset" ||
+            (cursor !== undefined &&
+              cursor.incarnation === message.incarnation &&
+              message.revision === cursor.revision + 1);
+          if (!follows) {
+            // A delta that does not follow what was committed: ask for the scope whole.
+            cursors.delete(scopeKey);
+            yield* resubscribe(entry.registered);
+            return;
+          }
+          const revision = {
+            kind: "hq",
+            incarnation: message.incarnation,
+            revision: message.revision,
+          } as const;
+          const rows: Row[] = [];
+          for (const { key: recordKey, value } of message.values)
+            for (const { spec } of entry.registered.families) {
+              const id = spec.hq!.idOf(recordKey, entry.registered.owner);
+              if (id === null) continue;
+              const decoded = spec.hq!.decode(value);
+              // A record this build cannot read changes nothing: its last value stays.
+              if (decoded !== null)
+                rows.push({ family: spec.family, id, value: decoded, revision } as Row);
+            }
+          const removals: HqRemovalInput[] = message.removals.flatMap(
+            ({ key: recordKey, reason }) =>
+              entry.registered.families.flatMap(({ spec }) => {
+                const id = spec.hq!.idOf(recordKey, entry.registered.owner);
+                return id === null ? [] : [{ family: spec.family, id, reason }];
+              }),
+          );
+          store.dispatch({
+            kind: "hq-delivery",
+            scopes: entry.generations,
+            reset: message.type === "scope-reset",
+            rows,
+            removals,
+          });
+          cursors.set(scopeKey, { incarnation: message.incarnation, revision: message.revision });
+        });
+
+      /**
+       * Asks HQ for registrations again, each on a new registration: a scope the person tried
+       * again, one whose retry came due, or one whose delta did not follow — whatever HQ still
+       * sends of the old one is fenced out.
+       */
+      const again = (registrations: ReadonlyArray<Registered>) =>
+        Effect.gen(function* () {
+          if (open === null || registrations.length === 0) return;
+          // HQ knows only what this segment asked.
+          const known = registrations.filter((registered) =>
+            asked.has(hqScopeKey(registered.wire)),
+          );
+          for (const registered of registrations) yield* register(registered);
+          if (known.length > 0)
+            yield* open.send({ type: "unsubscribe", scopes: known.map(({ wire }) => wire) });
+          yield* open.send({ type: "subscribe", scopes: registrations.map(subscription) });
+          for (const { wire } of registrations) asked.add(hqScopeKey(wire));
+        });
+      const resubscribe = (registered: Registered) => again([registered]);
+
+      const onMessage = (encoded: string): Effect.Effect<void> =>
+        Effect.gen(function* () {
+          const message = Option.getOrUndefined(decodeMessage(encoded));
+          if (message === undefined) return;
+          switch (message.type) {
+            case "ping":
+              if (open !== null) yield* open.send({ type: "pong" });
+              return;
+            case "scope-reset":
+            case "scope-values":
+              return yield* deliver(message);
+            case "scope-ready": {
+              const scopeKey = hqScopeKey(message.scope);
+              const entry = subscribed.get(scopeKey);
+              if (entry === undefined) return;
+              cursors.set(scopeKey, {
+                incarnation: message.incarnation,
+                revision: message.revision,
+              });
+              store.dispatch({ kind: "hq-ready", scopes: entry.generations });
+              for (const { scope } of entry.generations)
+                yield* signal(scope, { kind: "baseline-committed" });
+              return;
+            }
+            case "scope-error": {
+              const entry = subscribed.get(hqScopeKey(message.scope));
+              if (entry === undefined) return;
+              const fault: StreamFault = {
+                outcome: message.disposition === "refused" ? "definitive-refusal" : "transient",
+                message: message.reason ?? `HQ could not read this (${message.code}).`,
+              };
+              const jitter = yield* Random.next;
+              for (const { scope } of entry.generations)
+                yield* signal(scope, { kind: "fault", fault, jitter });
+              return;
+            }
+            case "move-offers":
+            case "move-offers-error": {
+              const waiting = pendingOffers.get(message.requestId);
+              if (waiting === undefined) return;
+              pendingOffers.delete(message.requestId);
+              yield* message.type === "move-offers"
+                ? Deferred.succeed(waiting, message.moveTo)
+                : Deferred.fail(waiting, {
+                    outcome: message.disposition === "refused" ? "definitive-refusal" : "transient",
+                    message:
+                      message.reason ?? `HQ could not say where it may move (${message.code}).`,
+                  });
+              return;
+            }
+          }
+        });
+
+      /**
+       * Every scope as this attempt must observe it — the navigation, and each detail demanded
+       * now: one not asked yet, or moved to a new registration (the person's try again, its retry
+       * come due), asked; a detail let go, unsubscribed. A refused one is never asked again by
+       * itself.
+       */
+      const observe = Effect.gen(function* () {
+        if (open === null) return Number.POSITIVE_INFINITY;
+        const now = yield* Clock.currentTimeMillis;
+        const wanted = [
+          nav,
+          ...demands.scopes().flatMap((scope) => {
+            const registered = detailOf(scope);
+            return registered === null ? [] : [registered];
+          }),
+        ];
+        const keys = new Set(wanted.map(({ wire }) => hqScopeKey(wire)));
+        for (const [scopeKey, entry] of subscribed) {
+          if (keys.has(scopeKey)) continue;
+          subscribed.delete(scopeKey);
+          if (!asked.delete(scopeKey)) continue;
+          yield* open.send({ type: "unsubscribe", scopes: [entry.registered.wire] });
+        }
+        const fresh: Registered[] = [];
+        let wakeAt = Number.POSITIVE_INFINITY;
+        for (const registered of wanted) {
+          const stream = streamOf(store.state(), registered.families[0]!.scope);
+          if (stream.phase === "refused") continue;
+          if (stream.phase === "recovering" && stream.next.kind === "retry") {
+            if (stream.next.at > now) wakeAt = Math.min(wakeAt, stream.next.at);
+            else fresh.push(registered);
+            continue;
+          }
+          const entry = subscribed.get(hqScopeKey(registered.wire));
+          if (
+            entry === undefined ||
+            stream.phase === "stale" ||
+            stream.generation !== entry.generations[0]?.generation
+          )
+            fresh.push(registered);
+        }
+        yield* again(fresh);
+        return wakeAt;
+      });
+
+      const wakes = yield* Queue.sliding<void>(1);
+      const wake = () => Queue.offerUnsafe(wakes, undefined);
+      const stopListening = demands.onChange(wake);
+      wakeAttempt = wake;
+      yield* Effect.addFinalizer(() =>
+        Effect.sync(() => {
+          stopListening();
+          if (wakeAttempt === wake) wakeAttempt = null;
+          open = null;
+          for (const waiting of pendingOffers.values())
+            Deferred.doneUnsafe(
+              waiting,
+              Effect.fail({ outcome: "transient", message: "HQ's stream closed." }),
+            );
+          pendingOffers.clear();
+        }),
+      );
+
+      /** One segment: open, subscribe every scope from its cursor, read until it ends. */
+      const segment = (first: boolean) =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const opened = yield* options.wire.open;
+            open = opened;
+            if (first) {
+              yield* signal(key, { kind: "handshake" });
+              yield* signal(key, { kind: "baseline-committed" });
+            }
+            const reading = yield* Effect.forkScoped(Stream.runForEach(opened.messages, onMessage));
+            // A new segment resumes every scope still observed from its cursor, in one ask.
+            const resumed = [...subscribed.values()]
+              .map(({ registered }) => registered)
+              .filter((registered) => {
+                const { phase } = streamOf(store.state(), registered.families[0]!.scope);
+                return phase !== "refused" && phase !== "recovering";
+              });
+            asked.clear();
+            if (resumed.length > 0) {
+              yield* opened.send({ type: "subscribe", scopes: resumed.map(subscription) });
+              for (const { wire } of resumed) asked.add(hqScopeKey(wire));
+            }
+            wake();
+            const watching = Effect.forever(
+              Effect.gen(function* () {
+                const wakeAt = yield* observe;
+                const now = yield* Clock.currentTimeMillis;
+                yield* Number.isFinite(wakeAt)
+                  ? Effect.raceFirst(Queue.take(wakes), Effect.sleep(Math.max(0, wakeAt - now)))
+                  : Queue.take(wakes);
+              }),
+            );
+            // The segment's end, as planned or by its fault, ends the look at the details too.
+            yield* Effect.raceFirst(Fiber.join(reading), watching);
+            open = null;
+          }),
+        );
+
+      yield* segment(true);
+      // HQ ended the segment as planned: the next resumes from the committed cursors.
+      while (true) yield* segment(false);
+    });
+
+  return {
+    key,
+    scopes,
+    details: demands.scopes,
+    attempt,
+    childMoved: () => wakeAttempt?.(),
+    demandDetail: (demand) => demands.hold(detailScopeOf(orgId, demand)),
+    moveOffers: (projectId) =>
+      Effect.suspend(() => {
+        const segment = open;
+        if (segment === null)
+          return Effect.fail<StreamFault>({
+            outcome: "transient",
+            message: "HQ's stream is not open.",
+          });
+        const requestId = `move-${(requests += 1)}`;
+        const answer = Deferred.makeUnsafe<HqMoveOffers, StreamFault>();
+        pendingOffers.set(requestId, answer);
+        return Effect.andThen(
+          segment.send({ type: "move-offers", requestId, projectId }),
+          Deferred.await(answer),
+        );
+      }),
+    seen: (projectId, resultIds) =>
+      Effect.suspend(() =>
+        open === null ? Effect.void : open.send({ type: "seen", projectId, resultIds }),
+      ),
+    stop: () => {
+      stopHolding?.();
+      stopHolding = null;
+      for (const release of mateHolds.values()) release();
+      mateHolds.clear();
+    },
+  };
+}

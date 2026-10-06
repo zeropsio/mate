@@ -30,13 +30,21 @@ import { mountRoster } from "@t3tools/client-runtime/zerops/testing";
 import type { InventoryProjection } from "../zerops/inventoryContext";
 import {
   mateRowsAtom,
-  hqMatesViewAtom,
-  hqStructureAtom,
   takenBotNamesAtom,
   zeropsDataRuntimeAtom,
   zeropsInventoryAtom,
   zeropsSessionAtom,
 } from "./zerops";
+import { mountHqNavigation } from "../zerops/__fixtures__/hqNavigation";
+
+/** A Mate's record as HQ's navigation says it, nothing said beyond its face. */
+const HQ_MATE = {
+  face: "",
+  madeBy: null,
+  standupRequestedBy: null,
+  closedOff: false,
+  keyWider: false,
+};
 
 const mateLiveView = Schema.decodeUnknownSync(MateLiveView);
 
@@ -153,7 +161,7 @@ describe("the candidate rows", () => {
 
   it("each row carries where the organization's HQ places its project", () => {
     const registry = AtomRegistry.make();
-    mountRoster(registry, organization.organizationId, [PROJECT]);
+    const roster = mountRoster(registry, organization.organizationId, [PROJECT]);
     registry.set(zeropsDataRuntimeAtom, readRuntime());
     registry.set(zeropsSessionAtom, {
       status: "signed-in",
@@ -167,37 +175,36 @@ describe("the candidate rows", () => {
       authority: new Map(),
       account: { kind: "authorized" },
     });
-    registry.set(hqStructureAtom, {
-      organizationId: organization.organizationId,
-      changes: null,
-      appReads: null,
-      structure: {
-        ungrouped: [],
-        apps: [
-          {
-            id: "app-kanban",
-            name: "Kanban",
-            projects: [
-              {
-                projectId: PROJECT.id,
-                name: PROJECT.name,
-                kind: "mate",
-                mate: { face: "" },
-              },
-            ],
-          },
-        ],
+    const hq = mountHqNavigation(
+      registry,
+      organization.organizationId,
+      {
+        structure: {
+          ungrouped: [],
+          apps: [
+            {
+              id: "app-kanban",
+              name: "Kanban",
+              projects: [
+                {
+                  projectId: PROJECT.id,
+                  name: PROJECT.name,
+                  kind: "mate",
+                  mate: { face: "" },
+                },
+              ],
+            },
+          ],
+        },
       },
-      readAt: 1_000,
-      current: true,
-      unavailableSince: null,
-    });
+      roster,
+    );
 
     expect(heldCandidates(registry.get(mateRowsAtom)).rows[0]?.project.hq).toEqual({
       appId: "app-kanban",
       appName: "Kanban",
       kind: "mate",
-      mate: { face: "" },
+      mate: HQ_MATE,
     });
 
     // Who signed Ada's agent in, as HQ's overview of her says it: on her row, which stays the
@@ -211,18 +218,10 @@ describe("the candidate rows", () => {
       });
     // Read as the menu reads it: kept, not built afresh for each look.
     const unsubscribe = registry.subscribe(mateRowsAtom, () => undefined);
-    registry.set(hqMatesViewAtom, {
-      organizationId: organization.organizationId,
-      mates: new Map([[PROJECT.id, told(false)]]),
-      current: true,
-    });
+    hq.seed({ mates: { [PROJECT.id]: told(false) } });
     const row = heldCandidates(registry.get(mateRowsAtom)).rows[0];
-    expect(row?.project.hq?.mate).toEqual({ face: "", logins });
-    registry.set(hqMatesViewAtom, {
-      organizationId: organization.organizationId,
-      mates: new Map([[PROJECT.id, told(true)]]),
-      current: true,
-    });
+    expect(row?.project.hq?.mate).toEqual({ ...HQ_MATE, logins });
+    hq.seed({ mates: { [PROJECT.id]: told(true) } });
     expect(heldCandidates(registry.get(mateRowsAtom)).rows[0]).toBe(row);
     unsubscribe();
   });
@@ -293,7 +292,7 @@ describe("the names the organization's Mates go by", () => {
     readonly expected: { readonly names: ReadonlyArray<string>; readonly complete: boolean };
   }>)("$label", ({ listed, totalCount, account, current = true, expected }) => {
     const registry = AtomRegistry.make();
-    mountRoster(registry, organization.organizationId, listed, {
+    const roster = mountRoster(registry, organization.organizationId, listed, {
       unreadMembers: totalCount > listed.length ? [UMA.id] : [],
     });
     registry.set(zeropsDataRuntimeAtom, readRuntime());
@@ -310,15 +309,12 @@ describe("the names the organization's Mates go by", () => {
       authority: new Map(),
       account,
     });
-    registry.set(hqStructureAtom, {
-      organizationId: organization.organizationId,
-      changes: null,
-      appReads: null,
-      structure: STRUCTURE,
-      readAt: 1_000,
-      current,
-      unavailableSince: current ? null : 2_000,
-    });
+    mountHqNavigation(
+      registry,
+      organization.organizationId,
+      { structure: STRUCTURE, live: current },
+      roster,
+    );
 
     const taken = registry.get(takenBotNamesAtom);
     expect({ names: [...taken.names].toSorted(), complete: taken.complete }).toEqual(expected);

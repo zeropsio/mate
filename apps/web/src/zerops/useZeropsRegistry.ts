@@ -17,7 +17,7 @@ import {
 } from "@t3tools/client-runtime/zerops/hq";
 import { useMemo } from "react";
 
-import { hqStructureAtom } from "../state/zerops";
+import { hqNavigationAtom } from "../state/zerops";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
 export interface ZeropsRegistryState {
@@ -28,9 +28,8 @@ export interface ZeropsRegistryState {
 
 export function useZeropsRegistry(): ZeropsRegistryState {
   const { activeOrganization } = useZeropsSession();
-  const view = useAtomValue(hqStructureAtom);
-  const structure =
-    view !== null && view.organizationId === activeOrganization?.id ? view.structure : null;
+  const view = useAtomValue(hqNavigationAtom);
+  const structure = view.orgId === activeOrganization?.id ? view.structure : null;
   return useMemo(
     () =>
       structure === null

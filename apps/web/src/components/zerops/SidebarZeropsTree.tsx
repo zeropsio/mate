@@ -85,6 +85,7 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import type { EnvironmentConnectionPresentation } from "@t3tools/client-runtime/connection";
 import { useAtomValue } from "@effect/atom-react";
+import { shownHqPersonFactsAtom } from "@t3tools/client-runtime/data";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { mateIsViewers, mateOwnerRecords } from "@t3tools/client-runtime/zerops/mateAccess";
 import { deployActivatedAt } from "@t3tools/client-runtime/zerops/flow";
@@ -143,7 +144,7 @@ import { useNowMs } from "~/zerops/useNowMs";
 import type { FixProblem } from "~/zerops/fixRequest";
 import { useOpenReview } from "~/zerops/review";
 import { useSentAsks } from "~/zerops/sentAsk";
-import { hqMatesAtom, hqPlacementsAtom, hqStructureAtom } from "~/state/zerops";
+import { hqMatesAtom, hqPlacementsAtom, hqNavigationAtom } from "~/state/zerops";
 import { useMateCrew } from "~/zerops/crew/useCrew";
 import { useCrewAccess } from "~/zerops/crew/useCrewAccess";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
@@ -546,10 +547,12 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   shown,
   getCrew,
 }: SidebarZeropsTreeProps<T>) {
-  const structureView = useAtomValue(hqStructureAtom);
+  const structureView = useAtomValue(hqNavigationAtom);
+  // Whose each Mate is, as HQ says it (invariant 11).
+  const personFacts = useAtomValue(shownHqPersonFactsAtom);
   const placements = useAtomValue(hqPlacementsAtom);
   const appsWithWork =
-    placements === null || structureView === null || structureView.structure === null
+    placements === null || structureView.structure === null
       ? []
       : structureView.structure.apps.filter(
           (app) => (getFlow?.(app.id)?.pullRequests.length ?? 0) > 0,
@@ -1065,7 +1068,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     const chipMates = mateEntries.map(({ item }) => ({
       candidate: item,
       ...faceOf(item.project),
-      mine: getOwner?.(item)?.isViewer,
+      mine: personFacts[item.project.id]?.mine,
       threadKey: getActivity?.(item)?.threadKey,
     }));
     const projectName = groupName ?? group?.name ?? "";
@@ -2493,12 +2496,12 @@ function MateRow<T extends RosterCandidate>({
   const hqWord = useAtomValue(hqMatesAtom);
   const linkedNow =
     candidate.group === "connected" ||
-    (hqWord?.current === true && hqWord.mates?.get(candidate.project.id)?.presence.online === true);
-  const structure = useAtomValue(hqStructureAtom);
+    (hqWord?.current === true && hqWord.mates.get(candidate.project.id)?.presence.online === true);
+  const navigation = useAtomValue(hqNavigationAtom);
   const placements = useAtomValue(hqPlacementsAtom);
   const outsideHq = mateOutsideHq(
     candidate.project,
-    placements !== null && structure?.current === true,
+    placements !== null && navigation.live,
     coming !== undefined || press !== undefined,
   );
   const finishing =

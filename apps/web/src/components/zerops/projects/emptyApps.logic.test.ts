@@ -1,7 +1,9 @@
 import { buildZeropsGroupTree } from "@t3tools/client-runtime/zerops";
 import { describe, expect, it } from "vite-plus/test";
 
-import type { HqStructureView } from "~/state/zerops";
+import { NOT_READ_HQ } from "@t3tools/client-runtime/data";
+
+import type { HqNavigationView } from "~/state/zerops";
 
 import {
   applicationContents,
@@ -12,20 +14,18 @@ import {
   heldLine,
 } from "./emptyApps.logic";
 
-const view = (organizationId: string): HqStructureView => ({
-  organizationId,
+const view = (organizationId: string): HqNavigationView => ({
+  ...NOT_READ_HQ,
+  orgId: organizationId,
+  read: "read",
+  live: true,
   structure: {
     ungrouped: [],
     apps: [
       { id: "app-crm", name: "Beviro CRM", projects: [{ projectId: "p-1" }] },
       { id: "app-e2e", name: "mate-rig-e2e-a", projects: [] },
     ],
-  } as unknown as NonNullable<HqStructureView["structure"]>,
-  changes: null,
-  appReads: null,
-  readAt: 0,
-  current: true,
-  unavailableSince: null,
+  } as unknown as NonNullable<HqNavigationView["structure"]>,
 });
 
 // `mate-rig-e2e-a`, 2026-10-02: a New project that stopped before its Mate left an application
@@ -33,7 +33,7 @@ const view = (organizationId: string): HqStructureView => ({
 describe("the applications HQ holds with no project", () => {
   it.each<{
     readonly name: string;
-    readonly view: HqStructureView | null;
+    readonly view: HqNavigationView;
     readonly organizationId: string | undefined;
     readonly apps: ReadonlyArray<{ readonly id: string; readonly name: string }>;
   }>([
@@ -51,7 +51,7 @@ describe("the applications HQ holds with no project", () => {
     },
     {
       name: "are none before HQ's structure is read",
-      view: null,
+      view: { ...NOT_READ_HQ, orgId: "org-a" },
       organizationId: "org-a",
       apps: [],
     },
@@ -73,7 +73,7 @@ describe("the applications a stopped press left, on the projects page", () => {
         { id: "app-a3", name: "mate-rig-e2e-a3", projects: [] },
         { id: "app-a4", name: "mate-rig-e2e-a4", projects: [{ projectId: "p-a4" }] },
       ],
-    } as unknown as NonNullable<HqStructureView["structure"]>;
+    } as unknown as NonNullable<HqNavigationView["structure"]>;
     const given = { ...view("org-a"), structure };
     const bare = {
       project: { id: "p-a", name: "mate-rig-e2e-a - Ada", status: "ACTIVE", tagList: ["mate"] },
@@ -165,9 +165,9 @@ describe("HQ's word on an application's contents", () => {
     expect(applicationContents(given, "org-a", "app-e2e")).toEqual(contents);
     expect(applicationContents(given, "org-b", "app-e2e")).toBeUndefined();
     expect(applicationContents(given, "org-a", "other-id")).toBeUndefined();
-    expect(applicationContents({ ...given, current: false }, "org-a", "app-e2e")).toBeUndefined();
+    expect(applicationContents({ ...given, live: false }, "org-a", "app-e2e")).toBeUndefined();
     expect(
-      applicationContents({ ...given, unavailableSince: 1 }, "org-a", "app-e2e"),
+      applicationContents({ ...given, live: false, reconnecting: true }, "org-a", "app-e2e"),
     ).toBeUndefined();
   });
 });

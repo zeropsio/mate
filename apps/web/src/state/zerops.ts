@@ -29,14 +29,12 @@ import {
 import {
   placeListing,
   placementsOf,
-  type HqChanges,
   type HqEnvironment,
   type HqMates,
   type HqPlacement,
-  type HqAppReads,
-  type HqPresses,
-  type HqStructure,
 } from "@t3tools/client-runtime/zerops/hq";
+import type { AppRead } from "@t3tools/shared/hqAppReads";
+import type { HqChange } from "@t3tools/shared/hqChanges";
 import type { Known, Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import {
   admittedOnly,
@@ -49,11 +47,15 @@ import { projectTopology, type ZeropsTopologyView } from "@t3tools/client-runtim
 import type { EnvironmentId } from "@t3tools/contracts";
 import type { HqPeople } from "@t3tools/shared/hqMates";
 import type { OverviewLogins } from "@t3tools/shared/mateLink";
+import * as Option from "effect/Option";
 import { Atom } from "effect/unstable/reactivity";
 import {
   listedProjectAtom,
   projectProcessesAtom,
+  shownHqMatesAtom,
+  shownHqNavigationAtom,
   shownProjectsAtom,
+  type HqNavigationRead,
   type ProjectValue,
 } from "@t3tools/client-runtime/data";
 import type { ActivityProcess } from "@t3tools/client-runtime/zerops/activity/dto";
@@ -109,63 +111,51 @@ export const zeropsSessionAtom = Atom.make<ZeropsSessionView | null>(null).pipe(
 );
 
 /**
- * The organization's structure as HQ last told this tab (`ZeropsHqStructure`, ADR 0002): its
- * applications and the projects HQ places in them.
+ * HQ's navigation of the organization in view (`@t3tools/client-runtime/data` `hqNavigation`): its
+ * applications and where HQ places each project, as the account's store holds them.
  */
-export interface HqStructureView {
-  /** A definitive refusal, or an outage whose reconnect backoff has reached its cap. */
-  readonly failure?: string | null;
-  /** Connection recovery, kept visible while the last known data stands. */
-  readonly reconnecting?: { readonly delayMs: number; readonly capped: boolean } | null;
-  readonly organizationId: string;
-  /** Null while nothing is known: never read here, nothing remembered from before. */
-  readonly structure: HqStructure | null;
-  /**
-   * Each application's changes, as this stream last told them; null until its snapshot carried
-   * them. Never remembered across loads: a change's state is HQ's to say again.
-   */
-  readonly changes: HqChanges | null;
-  /**
-   * HQ-owned releases, repository heads and recipe tiers (Mate, stage, production) by app.
-   * Null until the stream's first snapshot; never remembered across loads.
-   */
-  readonly appReads: HqAppReads | null;
-  /**
-   * Each Mate's press a browser holds at HQ, by project, its hold measured on this browser's clock
-   * from when HQ said it (`applyPressesEvent`); none — unknown — until this stream's snapshot said
-   * them. Never remembered across loads: a press is live or it is nothing.
-   */
-  readonly presses?: HqPresses | null;
-  /** When `structure` was HQ's answer, wall ms. */
-  readonly readAt: number | null;
-  /** `structure` is HQ's answer now. */
-  readonly current: boolean;
-  /** When HQ stopped answering, wall ms, while it does not; the last known structure stands. */
-  readonly unavailableSince: number | null;
-  /**
-   * Where HQ stands, as its stream says it — healthy while it serves — and, after the stream
-   * failed, as HQ's health then said it (`driveHqStructure`). Absent: nothing known of it.
-   */
-  readonly standing?: HqStanding;
-}
+export const hqNavigationAtom = shownHqNavigationAtom;
+export type HqNavigationView = HqNavigationRead & { readonly orgId: string | null };
 
-export const hqStructureAtom = Atom.make<HqStructureView | null>(null).pipe(
-  Atom.keepAlive,
-  Atom.withLabel("zerops:hq-structure"),
-);
+/** HQ stopped answering what it answered: catching up, refused, or its retries capped. */
+export const hqDown = (
+  view: Pick<HqNavigationRead, "live" | "reconnecting" | "capped" | "refusal">,
+): boolean => !view.live && (view.reconnecting || view.capped || view.refusal !== null);
+
+/**
+ * When HQ stopped answering the organization in view, as this tab first saw it (wall ms): said, never
+ * decided over. Null while HQ answers, or before it ever did.
+ */
+export const hqDownSinceAtom = Atom.make((get): number | null => {
+  const navigation = get(shownHqNavigationAtom);
+  const down = navigation.read === "read" && !navigation.live;
+  return down ? (Option.getOrNull(get.self<number | null>()) ?? Date.now()) : null;
+}).pipe(Atom.keepAlive, Atom.withLabel("zerops:hq-down-since"));
+
+/** Each application's changes, by its id: the open ones and the latest settled, newest first. */
+export type HqChanges = ReadonlyMap<string, ReadonlyArray<HqChange>>;
+/** HQ-owned load data for each readable application, by id. */
+export type HqAppReads = ReadonlyMap<string, AppRead>;
 
 const HQ_STANDING_UNKNOWN: HqStanding = { kind: "unknown" };
 
 /**
- * Where the organization in view's HQ stands, as its structure stream last said it (SPEC §4): no
- * read of its own, nothing on a timer.
+ * Where the organization in view's HQ stands, as its navigation says it (SPEC §4): serving — with
+ * the Core it runs and its parts — while it answers, unavailable while it does not; no read of its
+ * own, nothing on a timer.
  */
 export const hqStandingAtom = Atom.make((get): HqStanding => {
-  const view = get(hqStructureAtom);
-  const organizationId = get(zeropsSessionAtom)?.activeOrganization?.organizationId;
-  return view === null || view.organizationId !== organizationId
-    ? HQ_STANDING_UNKNOWN
-    : (view.standing ?? HQ_STANDING_UNKNOWN);
+  const navigation = get(shownHqNavigationAtom);
+  const since = get(hqDownSinceAtom);
+  if (since !== null || navigation.refusal !== null)
+    return { kind: "unavailable", since: since ?? Date.now() };
+  const organization = navigation.organization;
+  if (!navigation.live || organization === null) return HQ_STANDING_UNKNOWN;
+  return {
+    kind: organization.official === "unknown" ? "unchecked" : "healthy",
+    build: organization.build,
+    parts: organization.parts,
+  };
 }).pipe(Atom.withLabel("zerops:hq-standing"));
 
 /**
@@ -174,93 +164,54 @@ export const hqStandingAtom = Atom.make((get): HqStanding => {
  * project HQ holds nowhere is placed by its press's record, unregistered (`placementsOf`).
  */
 export const hqPlacementsAtom = Atom.make((get): ReadonlyMap<string, HqPlacement> | null => {
-  const view = get(hqStructureAtom);
-  const organizationId = get(zeropsSessionAtom)?.activeOrganization?.organizationId;
-  return view === null || view.organizationId !== organizationId || view.structure === null
+  const navigation = get(shownHqNavigationAtom);
+  return navigation.structure === null
     ? null
-    : placementsOf(view.structure, get(hqLoginsAtom), get(hqReadyAgentsAtom), view.presses ?? null);
+    : placementsOf(
+        navigation.structure,
+        get(hqLoginsAtom),
+        get(hqReadyAgentsAtom),
+        navigation.presses,
+      );
 }).pipe(Atom.withLabel("zerops:hq-placements"));
 
 /**
- * Each application's stage and production as HQ last said them, with their deploys, by its id
- * (SPEC §3.2b); an application HQ sent none this build can read for is missing. Null while nothing
- * is known of the organization's structure.
+ * Each application's stage and production with their deploys (SPEC §3.2b), by its id. HQ's scope
+ * protocol carries none of them yet — neither its navigation nor an application's detail — so none
+ * is known: every surface reads them as not known until HQ sends them again.
  */
 export const hqEnvironmentsAtom = Atom.make(
-  (get): ReadonlyMap<string, ReadonlyArray<HqEnvironment>> | null => {
-    const view = get(hqStructureAtom);
-    const organizationId = get(zeropsSessionAtom)?.activeOrganization?.organizationId;
-    return view === null || view.organizationId !== organizationId || view.structure === null
-      ? null
-      : new Map(
-          view.structure.apps.flatMap((app) =>
-            // Refused the reader, they are not theirs to finish: as missing as unreadable ones.
-            app.environments === undefined || "refused" in app.environments
-              ? []
-              : [[app.id, app.environments] as const],
-          ),
-        );
-  },
+  (): ReadonlyMap<string, ReadonlyArray<HqEnvironment>> | null => null,
 ).pipe(Atom.withLabel("zerops:hq-environments"));
 
 /**
- * Each application's changes in the organization in view, as HQ last said them (SPEC §3.2a); null
- * while nothing is known of them.
+ * Each application's changes (SPEC §3.2a) and its releases, repository heads and recipe tiers come
+ * with its `app-detail` scope, whose family is not observed yet: none is known meanwhile.
  */
-export const hqChangesAtom = Atom.make((get): HqChanges | null => {
-  const view = get(hqStructureAtom);
-  const organizationId = get(zeropsSessionAtom)?.activeOrganization?.organizationId;
-  return view === null || view.organizationId !== organizationId ? null : view.changes;
-}).pipe(Atom.withLabel("zerops:hq-changes"));
+export const hqChangesAtom = Atom.make((): HqChanges | null => null).pipe(
+  Atom.withLabel("zerops:hq-changes"),
+);
+export const hqAppReadsAtom = Atom.make((): HqAppReads | null => null).pipe(
+  Atom.withLabel("zerops:hq-app-reads"),
+);
 
 /**
- * The Mates the reader may observe, as HQ last told this tab beside the structure (`hq/mates.ts`):
- * each by its project, its presence and its overview's sections.
+ * The Mates the reader may observe, as HQ relays them (`hqMates`): each by its project, its
+ * presence and its overview's sections.
  */
 export interface HqMatesView {
   readonly organizationId: string;
-  /** Null while nothing is known: HQ sent none — one from before the overviews — or not yet. */
-  readonly mates: HqMates | null;
-  /** `mates` is HQ's answer now; else what was last known of them, and none of them is live. */
+  readonly mates: HqMates;
+  /** HQ relays them now; else what was last known of them, and none of them is live. */
   readonly current: boolean;
 }
 
-export const hqMatesViewAtom = Atom.make<HqMatesView | null>(null).pipe(
-  Atom.keepAlive,
-  Atom.withLabel("zerops:hq-mates-view"),
-);
-
-/**
- * Whether the organization in view has an official HQ, as `useAccountHq` decided it — from the
- * verdict this browser keeps, or its member list. Null while neither has said.
- */
-export const hqOfficialAtom = Atom.make<boolean | null>(null).pipe(
-  Atom.keepAlive,
-  Atom.withLabel("zerops:hq-official"),
-);
-
-/** The people HQ last named for the reader's view, by their Zerops user id. */
-export interface HqPeopleView {
-  readonly organizationId: string;
-  /** Null while nothing is known: HQ named none — one from before the overviews — or not yet. */
-  readonly people: HqPeople | null;
-}
-
-export const hqPeopleViewAtom = Atom.make<HqPeopleView | null>(null).pipe(
-  Atom.keepAlive,
-  Atom.withLabel("zerops:hq-people-view"),
-);
-
-/** The Mates of the organization in view, as HQ last told them; null while none is known. */
+/** The Mates of the organization in view, as HQ last told them; null without one in view. */
 export const hqMatesAtom = Atom.make((get): HqMatesView | null => {
-  const view = get(hqMatesViewAtom);
-  const session = get(zeropsSessionAtom);
-  const organizationId =
-    get(hqStructureAtom)?.organizationId ??
-    (session?.status === "signed-in" && session.organizationStatus === "selected"
-      ? (session.activeOrganization?.organizationId ?? null)
-      : null);
-  return view === null || view.organizationId !== organizationId ? null : view;
+  const orgId = get(shownHqNavigationAtom).orgId;
+  if (orgId === null) return null;
+  const { mates, live } = get(shownHqMatesAtom);
+  return { organizationId: orgId, mates: new Map(Object.entries(mates)), current: live };
 }).pipe(Atom.withLabel("zerops:hq-mates"));
 
 /** The project whose Mate HQ says serves `environmentId`, in `view`; null where HQ names none. */
@@ -280,10 +231,18 @@ export const hqProjectAtom = Atom.family((environmentId: EnvironmentId) =>
 
 /** The people HQ named for the organization in view, by Zerops user id; null while none are. */
 export const hqPeopleAtom = Atom.make((get): HqPeople | null => {
-  const view = get(hqPeopleViewAtom);
-  const organizationId = get(zeropsSessionAtom)?.activeOrganization?.organizationId;
-  return view === null || view.organizationId !== organizationId ? null : view.people;
+  const navigation = get(shownHqNavigationAtom);
+  return navigation.read === "unread" ? null : navigation.people;
 }).pipe(Atom.withLabel("zerops:hq-people"));
+
+/**
+ * Whether the organization in view has an official HQ, as `useAccountHq` decided it from the
+ * member list (`ZeropsHqNavigation`). Null while it has not said.
+ */
+export const hqOfficialAtom = Atom.make<boolean | null>(null).pipe(
+  Atom.keepAlive,
+  Atom.withLabel("zerops:hq-official"),
+);
 
 const sameLogins = (
   left: ReadonlyMap<string, OverviewLogins>,
@@ -460,7 +419,7 @@ export const candidateListingWholeAtom = Atom.make((get): boolean => {
  */
 export const takenBotNamesAtom = Atom.make((get): TakenBotNames =>
   takenBotNames(get(shownListingAtom).listing, {
-    structureKnown: get(hqPlacementsAtom) !== null && get(hqStructureAtom)?.current === true,
+    structureKnown: get(hqPlacementsAtom) !== null && get(shownHqNavigationAtom).live,
   }),
 ).pipe(Atom.withLabel("zerops:taken-bot-names"));
 

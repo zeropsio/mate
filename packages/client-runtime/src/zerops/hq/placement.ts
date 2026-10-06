@@ -10,7 +10,7 @@
  *
  * @module hq/placement
  */
-import { type HqMoveTo, type HqOfferState, hqOffer } from "@t3tools/shared/hqOffers";
+import { type HqOfferState, hqOffer } from "@t3tools/shared/hqOffers";
 import type { OverviewLogins } from "@t3tools/shared/mateLink";
 import { type RoleProjectKind, isMateKind } from "@t3tools/shared/zeropsRoles";
 
@@ -19,7 +19,7 @@ import type { ZeropsProject } from "../api.ts";
 
 import type { Known } from "../knowledge/known.ts";
 import type { HqMate, HqStructure } from "./client.ts";
-import type { HqPresses } from "./stream.ts";
+import type { HqPresses } from "./pressElsewhere.ts";
 
 export type HqPlacement =
   | {
@@ -109,7 +109,7 @@ export function placementsOf(
       mate: withLogins(projectId, mate),
     });
   }
-  for (const [projectId, press] of presses ?? []) {
+  for (const [projectId, press] of Object.entries(presses ?? {})) {
     if (placements.has(projectId) || press.kind === "mate" || press.appId === undefined) continue;
     const app = structure.apps.find((entry) => entry.id === press.appId);
     if (app === undefined) continue;
@@ -199,38 +199,36 @@ export function birthIntentOf(
   return undefined;
 }
 
-/** HQ's row membership, enriched with platform facts by project id. */
-export function menuRowsFromHq(input: {
+/**
+ * The menu's rows HQ places, each enriched with the platform's facts by project id: a project HQ
+ * places that no inventory row or store fact names yet is drawn by HQ's name for it, its presence
+ * unknown.
+ */
+export function placedMenuRows(input: {
   readonly organizationId: string;
-  readonly structure: HqStructure;
+  /** Where HQ places each project (`placementsOf`). */
+  readonly placements: HqPlacements;
+  /** HQ's name for each project it places. */
+  readonly names: ReadonlyMap<string, string>;
   readonly projects: ReadonlyArray<ZeropsProject>;
   readonly candidates: ReadonlyArray<CandidateRow>;
   readonly gone: ReadonlySet<string>;
-  /** Each Mate's logins, as HQ's overview of it says them (`placementsOf`). */
-  readonly logins: ReadonlyMap<string, OverviewLogins>;
-  /** Whether each Mate runs on an agent that needs no sign-in, as its overview says. */
-  readonly readyAgents: ReadonlyMap<string, boolean>;
 }): ReadonlyArray<CandidateRow> {
-  const placements = placementsOf(input.structure, input.logins, input.readyAgents);
   const projects = new Map(input.projects.map((project) => [project.id, project]));
   const candidates = new Map<string, CandidateRow>();
   for (const row of input.candidates) {
     if (!candidates.has(row.project.id) || row.group === "connected")
       candidates.set(row.project.id, row);
   }
-  const names = new Map([
-    ...input.structure.apps.flatMap((app) =>
-      app.projects.map((project) => [project.projectId, project.name] as const),
-    ),
-    ...input.structure.ungrouped.map((project) => [project.projectId, project.name] as const),
-  ]);
-  return [...placements].flatMap(([id, placement]): ReadonlyArray<CandidateRow> => {
-    if (input.gone.has(id)) return [];
+  return [...input.placements].flatMap(([id, placement]): ReadonlyArray<CandidateRow> => {
+    // A press's record alone places no row: HQ holds the project nowhere yet.
+    if (input.gone.has(id) || ("unregistered" in placement && placement.unregistered === true))
+      return [];
     const row = candidates.get(id);
     const project = projects.get(id) ??
       row?.project ?? {
         id,
-        name: names.get(id) ?? id,
+        name: input.names.get(id) ?? id,
         status: "UNKNOWN",
         clientId: input.organizationId,
       };
@@ -243,10 +241,20 @@ export function menuRowsFromHq(input: {
   });
 }
 
+/** HQ's name for each project its structure places. */
+export function placedNames(structure: HqStructure): ReadonlyMap<string, string> {
+  return new Map([
+    ...structure.apps.flatMap((app) =>
+      app.projects.map((project) => [project.projectId, project.name] as const),
+    ),
+    ...structure.ungrouped.map((project) => [project.projectId, project.name] as const),
+  ]);
+}
+
 /**
  * What HQ offers the reader of a project (`can`, `@t3tools/shared/hqOffers`): of a Mate it holds,
- * following it, its record, leaving its application, and where it may go — none while HQ does not
- * answer; of a project it holds nowhere, writing its Mate's record. HQ decides each, and decides the
+ * following it, its record and leaving its application — none while HQ does not answer; of a
+ * project it holds nowhere, writing its Mate's record. HQ decides each, and decides the
  * write again at the press.
  */
 export type HqMateOfferStates =
@@ -255,7 +263,6 @@ export type HqMateOfferStates =
       readonly observe: HqOfferState;
       readonly edit: HqOfferState;
       readonly detach: HqOfferState;
-      readonly moveTo: HqMoveTo | undefined;
     }
   | { readonly held: false; readonly createRecord: HqOfferState };
 
@@ -280,7 +287,5 @@ export function hqMateOffers(
     observe: hqOffer(mate.can, "observe_mate", hq),
     edit: hqOffer(mate.can, "edit_mate_record", hq),
     detach: hqOffer(mate.can, "detach", hq),
-    // Its moves are HQ's last word while it is only being read again; none once it stopped answering.
-    moveTo: hq.current || hq.unavailableSince === null ? mate.moveTo : undefined,
   };
 }

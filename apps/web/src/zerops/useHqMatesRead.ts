@@ -1,8 +1,8 @@
 import { useAtomValue } from "@effect/atom-react";
 
-import { hqMatesAtom, hqStructureAtom } from "../state/zerops";
+import { hqNavigationAtom } from "../state/zerops";
 import { useAccountHq } from "./accountHq";
-import { hqMatesSettled } from "./hqRead.logic";
+import { hqNavigationSettled } from "./hqRead.logic";
 import { useZeropsSessionOptional } from "./ZeropsSessionProvider";
 
 /** The active organization's HQ list, apart from this tab's registered socket shells. */
@@ -14,10 +14,9 @@ export function useHqMatesRead(): {
   const organizationId =
     session?.status === "signed-in" ? (session.activeOrganization?.id ?? null) : null;
   const accountHq = useAccountHq(organizationId ?? undefined);
-  const mates = useAtomValue(hqMatesAtom);
-  const structure = useAtomValue(hqStructureAtom);
+  const navigation = useAtomValue(hqNavigationAtom);
   return {
     organizationId,
-    settled: hqMatesSettled({ organizationId, accountHq, mates, structure }),
+    settled: hqNavigationSettled({ organizationId, accountHq, navigation }),
   };
 }

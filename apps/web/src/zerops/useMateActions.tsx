@@ -64,7 +64,9 @@ import { useRouter } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { RestartMateConfirmation } from "./RestartMateConfirmation";
+import type { HqMoveTo } from "@t3tools/shared/hqOffers";
 import { useMateOffers, useOrgOffers } from "./useHqOffers";
+import { useAccountDataOptional } from "./ZeropsAccountData";
 import { useComposerDraftStore } from "../composerDraftStore";
 import {
   deriveZeropsRestartAction,
@@ -94,13 +96,12 @@ import { ZeropsRenameDialog } from "../components/zerops/ZeropsRenameDialog";
 import { validateBotName } from "../components/zerops/ZeropsEnvironmentCreationDialog.logic";
 import {
   moveChoices,
-  movesAnywhere,
   type MoveMembership,
 } from "../components/zerops/ZeropsMoveToGroupDialog.logic";
 import { currentAccountEnvironments } from "./accountEnvironments";
 import { useEnvironmentLinks } from "../routes/-environmentTargets";
 import { resolveThreadRouteTarget } from "../threadRoutes";
-import { hqPeopleAtom, hqPlacementsAtom, hqStructureAtom } from "../state/zerops";
+import { hqPeopleAtom, hqPlacementsAtom, hqNavigationAtom } from "../state/zerops";
 import { invalidateZerops } from "./accountInvalidations";
 import {
   deletingMates,
@@ -163,7 +164,12 @@ type MateDialog =
       readonly closing?: true;
     }
   | { readonly kind: "assign"; readonly candidate: ZeropsCandidatePresentation }
-  | { readonly kind: "move"; readonly candidate: ZeropsCandidatePresentation }
+  /** Where it may go is HQ's answer as the move opened (`move-offers`), never listed ahead. */
+  | {
+      readonly kind: "move";
+      readonly candidate: ZeropsCandidatePresentation;
+      readonly moveTo: HqMoveTo;
+    }
   | {
       readonly kind: "delete";
       readonly candidate: ZeropsCandidatePresentation;
@@ -279,9 +285,9 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   const accountHq = useAccountHq(activeOrganization?.id);
   // Whether HQ's structure is known: only then does a Mate it places nowhere have no record.
   const hqPlacements = useAtomValue(hqPlacementsAtom);
-  const hqStructure = useAtomValue(hqStructureAtom);
+  const hqStructure = useAtomValue(hqNavigationAtom);
   const people = useAtomValue(hqPeopleAtom);
-  const hqKnown = hqPlacements !== null && hqStructure?.current === true;
+  const hqKnown = hqPlacements !== null && hqStructure.live;
   const presses = useMatePresses();
   // What this tab made: a registration it saw refused is finished at once (`registrationUnfinished`).
   const births = useNewProjectBirths((state) => state.births);
@@ -324,20 +330,21 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   const mateOffersOf = useMateOffers();
   const orgOffer = useOrgOffers();
   /**
-   * Where a Mate may be moved, as HQ offers it (`moveTo`, `detach`): each application listed, a
-   * new one, or none.
+   * Where a Mate may be moved, as HQ answered when the move opened (`moveTo`) and as it offers its
+   * leaving (`detach`): each application listed, a new one, or none.
    */
   const moveChoicesFor = useCallback(
-    (candidate: ZeropsCandidatePresentation) => {
+    (candidate: ZeropsCandidatePresentation, moveTo: HqMoveTo) => {
       const offers = mateOffersOf(candidate.project.id);
       return moveChoices({
-        moveTo: offers?.held === true ? offers.moveTo : undefined,
+        moveTo,
         detach: offers?.held === true && offers.detach.kind === "allowed",
         apps: groupTree.groups.map(({ group }) => ({ id: group.groupId, name: group.name })),
       });
     },
     [groupTree.groups, mateOffersOf],
   );
+  const askMoveOffers = useAccountDataOptional()?.moveOffers;
   /**
    * HQ's verbs on a Mate, as HQ offers them: its record, and its place among projects — each
    * offered; held while HQ has not said or does not answer (drawn, and not pressable); not drawn
@@ -353,18 +360,13 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
         state.kind === "allowed" ? "offered" : state.kind === "refused" ? "no" : "held";
       return {
         edit: verb(offers.edit),
-        // Where to, and as what, is the dialog's to choose among what HQ offers; with no list of
-        // its moves, HQ has not said.
-        move:
-          offers.moveTo === undefined
-            ? "held"
-            : movesAnywhere(moveChoicesFor(candidate))
-              ? "offered"
-              : "no",
+        // Where to, and as what, HQ answers as the move opens: offered to whoever may write its
+        // record, HQ deciding the move again at the write.
+        move: verb(offers.edit),
         leave: verb(offers.detach),
       };
     },
-    [mateOffersOf, moveChoicesFor],
+    [mateOffersOf],
   );
   // The member list is read only once a hand-over's picker opens: a load reads none, and a Mate
   // about to be deleted says whose it is from HQ's people.
@@ -1105,7 +1107,15 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
                 id: "move",
                 label: tags.groupId === undefined ? "Move to a project" : "Change project or role",
                 disabled: hqVerbs.move === "held",
-                onSelect: () => setDialog({ kind: "move", candidate }),
+                onSelect: () => {
+                  setPress(UNPRESSED);
+                  if (askMoveOffers === undefined) return;
+                  // Where it may go is asked as the move opens; HQ not answering opens nothing.
+                  askMoveOffers(candidate.project.id).then(
+                    (moveTo) => setDialog({ kind: "move", candidate, moveTo }),
+                    () => undefined,
+                  );
+                },
               },
             ]
           : []),
@@ -1298,7 +1308,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
         <ZeropsMoveToGroupDialog
           currentGroupId={readZeropsMembership(dialog.candidate.project).groupId}
           currentRole={readZeropsMembership(dialog.candidate.project).role}
-          choices={moveChoicesFor(dialog.candidate)}
+          choices={moveChoicesFor(dialog.candidate, dialog.moveTo)}
           key={`move:${dialog.candidate.key}`}
           onCancel={close}
           onOpenChange={(open) => {

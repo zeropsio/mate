@@ -16,6 +16,9 @@ import {
   projectGone,
   type OrganizationProjects,
 } from "./projections/projects.ts";
+import { hqMates, type HqMatesRead } from "./projections/hqMates.ts";
+import { hqNavigation, hqPersonFacts, type HqNavigationRead } from "./projections/hqNavigation.ts";
+import type { HqPersonFacts } from "./families/hqNavigation.ts";
 import type { AccountStore } from "./store.ts";
 
 export interface AccountReads {
@@ -111,3 +114,42 @@ export function holdProjectHistory(
     release = null;
   };
 }
+
+export const NOT_READ_HQ: HqNavigationRead = {
+  structure: null,
+  organization: null,
+  presses: {},
+  people: {},
+  read: "unread",
+  refusal: null,
+  capped: false,
+  live: false,
+  reconnecting: false,
+};
+
+/** HQ's navigation of the organization the mounted account shows; not read without one. */
+export const shownHqNavigationAtom = Atom.make(
+  (get): HqNavigationRead & { readonly orgId: string | null } => {
+    const account = get(accountReadsAtom);
+    if (account === null || account.orgId === null) return { ...NOT_READ_HQ, orgId: null };
+    return { ...get(account.data.project(hqNavigation, account.orgId)), orgId: account.orgId };
+  },
+).pipe(Atom.withLabel("data:shown-hq-navigation"));
+
+const NO_MATES: HqMatesRead = { mates: {}, live: false };
+
+/** The Mates HQ relays for the organization the mounted account shows; none without one. */
+export const shownHqMatesAtom = Atom.make((get): HqMatesRead => {
+  const account = get(accountReadsAtom);
+  if (account === null || account.orgId === null) return NO_MATES;
+  return get(account.data.project(hqMates, account.orgId));
+}).pipe(Atom.withLabel("data:shown-hq-mates"));
+
+const NO_PERSON_FACTS: Readonly<Record<string, HqPersonFacts>> = {};
+
+/** What HQ computed of the reader for each project it places, in the organization shown. */
+export const shownHqPersonFactsAtom = Atom.make((get): Readonly<Record<string, HqPersonFacts>> => {
+  const account = get(accountReadsAtom);
+  if (account === null || account.orgId === null) return NO_PERSON_FACTS;
+  return get(account.data.project(hqPersonFacts, account.orgId));
+}).pipe(Atom.withLabel("data:shown-hq-person-facts"));

@@ -42,7 +42,7 @@ import {
   zeropsInitials,
 } from "~/components/zerops/landing/ZeropsAccountControl.logic";
 
-import { hqPeopleAtom, hqPeopleViewAtom, hqStructureAtom } from "../state/zerops";
+import { hqDown, hqNavigationAtom, hqPeopleAtom } from "../state/zerops";
 import { noHq, useHqVerdict, type HqVerdictOwner } from "./hqVerdict";
 import { useKnown, ZeropsDataContext } from "./zeropsDataContext";
 import { useZeropsSession } from "./ZeropsSessionProvider";
@@ -149,15 +149,10 @@ export function useZeropsMemberNames(input: {
     [clientId, data],
   );
   const kept = useHqVerdict(owner);
-  const structure = useAtomValue(hqStructureAtom);
-  const peopleView = useAtomValue(hqPeopleViewAtom);
-  const down =
-    structure !== null &&
-    structure.organizationId === clientId &&
-    structure.unavailableSince !== null;
-  const hqWord = kept !== undefined && !noHq(kept) && !down;
-  const people =
-    peopleView !== null && peopleView.organizationId === clientId ? peopleView.people : null;
+  const navigation = useAtomValue(hqNavigationAtom);
+  const shown = navigation.orgId === clientId;
+  const hqWord = kept !== undefined && !noHq(kept) && !(shown && hqDown(navigation));
+  const people = shown && navigation.read !== "unread" ? navigation.people : null;
   const members = useZeropsOrganizationMembers({ clientId, enabled: enabled && !hqWord });
   return useCallback(
     (userId: string) =>

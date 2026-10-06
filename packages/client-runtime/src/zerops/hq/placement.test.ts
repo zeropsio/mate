@@ -85,12 +85,12 @@ describe("placementsOf", () => {
 // project HQ holds nowhere. Its press's record places it in its application as its tier — never a
 // project nobody made — and HQ still holds it as nothing.
 describe("placementsOf — a press's record of a project HQ holds nowhere", () => {
-  const presses = new Map([
-    ["p-new-stage", { kind: "stage", appId: "app-1", expiresAtMs: 0 }],
-    ["p-stage", { kind: "production", appId: "app-1", expiresAtMs: 0 }],
-    ["p-elsewhere", { kind: "stage", appId: "app-gone", expiresAtMs: 0 }],
-    ["p-new-mate", { kind: "mate", appId: "app-1", expiresAtMs: 0 }],
-  ] as const);
+  const presses = {
+    "p-new-stage": { kind: "stage", appId: "app-1" },
+    "p-stage": { kind: "production", appId: "app-1" },
+    "p-elsewhere": { kind: "stage", appId: "app-gone" },
+    "p-new-mate": { kind: "mate", appId: "app-1" },
+  } as const;
 
   it("places a stage's or a production's there as its tier, unregistered; HQ's own word first", () => {
     const placed = placementsOf(STRUCTURE, new Map(), new Map(), presses);

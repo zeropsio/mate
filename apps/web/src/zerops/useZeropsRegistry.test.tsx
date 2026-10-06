@@ -3,7 +3,7 @@ import type { HqStructure } from "@t3tools/client-runtime/zerops/hq";
 import { AtomRegistry } from "effect/unstable/reactivity";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { hqStructureAtom, type HqStructureView } from "../state/zerops";
+import { mountHqNavigation } from "./__fixtures__/hqNavigation";
 import { TestNode } from "./__fixtures__/testDom";
 
 /** The organization in view. */
@@ -41,17 +41,15 @@ const KNOWN_REGISTRY = {
   ],
 };
 
-function view(over: Partial<HqStructureView>): HqStructureView {
-  return {
-    organizationId: "org-1",
-    structure: KNOWN,
-    changes: null,
-    appReads: null,
-    readAt: 1_000,
-    current: true,
-    unavailableSince: null,
-    ...over,
-  };
+/** What HQ's navigation said of an organization: its structure, and whether HQ answers now. */
+interface View {
+  readonly organizationId: string;
+  readonly structure: HqStructure;
+  readonly live: boolean;
+}
+
+function view(over: Partial<View>): View {
+  return { organizationId: "org-1", structure: KNOWN, live: true, ...over };
 }
 
 function installTestDom(): TestNode {
@@ -74,15 +72,20 @@ afterEach(() => {
 });
 
 /** Draws the hook over the first view, then applies each later one in turn; every state it drew. */
-async function renderRegistry(
-  views: ReadonlyArray<HqStructureView | null>,
-): Promise<ReadonlyArray<unknown>> {
+async function renderRegistry(views: ReadonlyArray<View | null>): Promise<ReadonlyArray<unknown>> {
   const document = installTestDom();
   const { act } = await import("react");
   const { createRoot } = await import("react-dom/client");
   const { useZeropsRegistry } = await import("./useZeropsRegistry");
   const atoms = AtomRegistry.make();
-  atoms.set(hqStructureAtom, views[0] ?? null);
+  let mounted: ReturnType<typeof mountHqNavigation> | null = null;
+  const show = (next: View | null) => {
+    if (next === null) return;
+    const seed = { structure: next.structure, live: next.live };
+    if (mounted === null) mounted = mountHqNavigation(atoms, next.organizationId, seed);
+    else mounted.seed(seed);
+  };
+  show(views[0] ?? null);
   const rendered: Array<ReturnType<typeof useZeropsRegistry>> = [];
   function Probe() {
     rendered.push(useZeropsRegistry());
@@ -98,7 +101,7 @@ async function renderRegistry(
       ),
     );
     for (const next of views.slice(1)) {
-      await act(async () => atoms.set(hqStructureAtom, next));
+      await act(async () => show(next));
     }
     return rendered;
   } finally {
@@ -109,7 +112,7 @@ async function renderRegistry(
 describe("useZeropsRegistry", () => {
   it.each<{
     readonly name: string;
-    readonly views: ReadonlyArray<HqStructureView | null>;
+    readonly views: ReadonlyArray<View | null>;
     readonly expected: object;
   }>([
     {
@@ -124,7 +127,7 @@ describe("useZeropsRegistry", () => {
     },
     {
       name: "HQ down leaves the registry last known standing",
-      views: [view({}), view({ current: false, unavailableSince: 2_000 })],
+      views: [view({}), view({ live: false })],
       expected: { registry: KNOWN_REGISTRY, loading: false },
     },
     {

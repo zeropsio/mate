@@ -3,8 +3,8 @@ import { ZeropsProjectFlowProvider } from "./zerops/ZeropsProjectFlowProvider";
 import { ZeropsAccountData } from "./zerops/ZeropsAccountData";
 import { ZeropsDataProvider } from "./zerops/ZeropsDataProvider";
 import { ZeropsInventoryProvider } from "./zerops/ZeropsInventoryProvider";
-import { ZeropsMenuPreview } from "./zerops/useZeropsMenu";
-import { ZeropsHqStructure } from "./zerops/hqStructure";
+import { ZeropsMenuPreview } from "./zerops/useMenuRows";
+import { ZeropsHqNavigation } from "./zerops/hqNavigation";
 import { ZEROPS_HANDOVER_CALLBACK_PATH } from "@t3tools/client-runtime/zerops/handover";
 import { ZeropsHostedLanding } from "./components/zerops/landing/ZeropsHostedLanding";
 import { appBasePath } from "./basePath";
@@ -34,7 +34,7 @@ export function ZeropsProductHosts({ status }: { readonly status: ZeropsSessionS
 export function ZeropsAccountDataBoundary({ children }: { readonly children: ReactNode }) {
   return (
     <ZeropsDataProvider pending={<ZeropsMenuPreview />}>
-      <ZeropsHqStructure />
+      <ZeropsHqNavigation />
       <ZeropsInventoryProvider pending={<ZeropsMenuPreview />}>{children}</ZeropsInventoryProvider>
     </ZeropsDataProvider>
   );

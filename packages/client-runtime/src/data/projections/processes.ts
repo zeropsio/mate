@@ -22,7 +22,7 @@ const keyOf = ({ orgId, projectId }: ProjectKey) => `${orgId}/${projectId}`;
 
 /** How the organization's running work is observed now: live, catching up, or refused. */
 const freshness = (read: ProjectionReads, orgId: string) =>
-  scopeFreshness(read, orgId, runningScope(orgId));
+  scopeFreshness(read, runningScope(orgId));
 
 export type RunningWork =
   | { readonly kind: "unknown"; readonly live: boolean }

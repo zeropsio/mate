@@ -94,7 +94,7 @@ import {
   waitForProject,
 } from "../state/entities";
 import { useThreadSearch } from "../state/queries";
-import { hqMatesAtom, hqStructureAtom } from "../state/zerops";
+import { hqMatesAtom, hqNavigationAtom } from "../state/zerops";
 import { useEnvironmentLinks } from "../routes/-environmentTargets";
 import { resolveThreadActionProjectRef, startNewThreadFromContext } from "../lib/chatThreadActions";
 import {
@@ -1217,7 +1217,7 @@ function OpenCommandPaletteDialog(props: {
 
   const hqMates = useAtomValue(hqMatesAtom);
   const candidateListing = useAtomValue(candidateListingAtom);
-  const hqStructure = useAtomValue(hqStructureAtom);
+  const hqStructure = useAtomValue(hqNavigationAtom);
   const mateNames = useMemo(
     () => hqChatMateNames(heldCandidates(candidateListing).rows, hqStructure?.structure ?? null),
     [candidateListing, hqStructure],

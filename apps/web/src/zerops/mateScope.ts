@@ -26,15 +26,15 @@ export function useMateScope(): readonly [MateScope, (next: MateScope) => void] 
 }
 
 /**
- * Whether the menu lists a Mate: *Everyone* lists them all; *Mine* the
- * viewer's own, and any nobody can say is somebody else's — and never hides
- * the one whose conversation is open.
+ * Whether the menu lists a Mate: *Everyone* lists them all; *Mine* those HQ says are the
+ * viewer's (`mine`, HQ's person facts), and any HQ says nothing of — and never hides the one whose
+ * conversation is open.
  */
 export function shownInScope(
   scope: MateScope,
-  owner: { readonly isViewer: boolean } | undefined,
+  mine: boolean | undefined,
   active: boolean,
 ): boolean {
   if (scope === "everyone" || active) return true;
-  return owner === undefined || owner.isViewer;
+  return mine !== false;
 }

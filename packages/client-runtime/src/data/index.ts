@@ -6,6 +6,17 @@
  * @module data
  */
 export { observeAccount, type AccountObservation } from "./account.ts";
+export { makeHqWire } from "./adapters/hqWire.ts";
+export type { HqMoveOffers, HqWire } from "./adapters/hq.ts";
+export type {
+  HqAppValue,
+  HqOrganizationValue,
+  HqPersonFacts,
+  HqPressValue,
+  PlacementValue,
+} from "./families/hqNavigation.ts";
+export { hqNavigation, hqPersonFacts, type HqNavigationRead } from "./projections/hqNavigation.ts";
+export { hqMates, type HqMatesRead } from "./projections/hqMates.ts";
 export type { DetailDemand } from "./demand.ts";
 export { makeAccountStore, type AccountStore, type Projection } from "./store.ts";
 export {
@@ -56,5 +67,9 @@ export {
   projectGoneAtom,
   projectProcessesAtom,
   shownProjectsAtom,
+  NOT_READ_HQ,
+  shownHqMatesAtom,
+  shownHqNavigationAtom,
+  shownHqPersonFactsAtom,
   type AccountReads,
 } from "./reads.ts";

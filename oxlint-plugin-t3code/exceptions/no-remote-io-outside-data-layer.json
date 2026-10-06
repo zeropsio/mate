@@ -600,22 +600,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/zerops/hqStructure.ts",
-    "kind": "CallExpression",
-    "fingerprint": "fetch",
-    "owner": "data-layer rewrite: HQ",
-    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/hqStructure.ts",
-    "kind": "CallExpression",
-    "fingerprint": "input.api.streamStructure",
-    "owner": "data-layer rewrite: HQ",
-    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/zerops/mateDescriptors.ts",
     "kind": "CallExpression",
     "fingerprint": "globalThis.fetch",

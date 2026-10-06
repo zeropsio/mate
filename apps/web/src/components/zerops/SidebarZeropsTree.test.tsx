@@ -21,7 +21,6 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { EnvironmentId, ProjectId, ThreadId, type CrewSnapshot } from "@t3tools/contracts";
-import type { MateLiveView } from "@t3tools/shared/hqMates";
 import type { CrewDigest } from "@t3tools/shared/mateLink";
 
 import { DraftId, useComposerDraftStore } from "~/composerDraftStore";
@@ -117,7 +116,7 @@ import {
 } from "./projects/projectsView.logic";
 import { useSidebarJump } from "~/zerops/sidebarJump";
 import { useSidebarReveal } from "~/zerops/sidebarReveal";
-import { hqMatesViewAtom, hqStructureAtom, zeropsSessionAtom } from "~/state/zerops";
+import { zeropsSessionAtom } from "~/state/zerops";
 import { organization } from "~/zerops/__fixtures__/platformData";
 import type { SidebarCrewRead } from "./crew/SidebarCrewLine";
 import { MateMenu, type MateRowActions } from "./SidebarMateMenu";
@@ -128,6 +127,7 @@ import {
   SidebarZeropsTree,
   type SidebarProjectFlow,
 } from "./SidebarZeropsTree";
+import { mountHqNavigation } from "~/zerops/__fixtures__/hqNavigation";
 
 /** One comparison HQ answered for `appdev`: what a release would put live. */
 const compared = (commits: ReadonlyArray<{ readonly sha: string; readonly subject: string }>) => ({
@@ -1208,14 +1208,8 @@ describe("a Mate's face follows its work in the menu", () => {
       organizationStatus: "selected",
       activeOrganization: organization,
     });
-    registry.set(hqStructureAtom, {
-      organizationId: organization.organizationId,
+    mountHqNavigation(registry, organization.organizationId, {
       structure: { apps: [{ id: "aaa", name: "Beviro CRM", projects: [] }], ungrouped: [] },
-      changes: null,
-      appReads: null,
-      readAt: Date.now(),
-      current: true,
-      unavailableSince: null,
     });
     const html = renderToStaticMarkup(
       <RegistryContext.Provider value={registry}>
@@ -1245,14 +1239,8 @@ describe("a Mate's face follows its work in the menu", () => {
       organizationStatus: "selected",
       activeOrganization: organization,
     });
-    registry.set(hqStructureAtom, {
-      organizationId: organization.organizationId,
+    mountHqNavigation(registry, organization.organizationId, {
       structure: { apps: [], ungrouped: [] },
-      changes: null,
-      appReads: null,
-      readAt: Date.now(),
-      current: true,
-      unavailableSince: null,
     });
     const foreign = candidate("foreign", { tags: ["mate"] });
     const html = renderToStaticMarkup(
@@ -1278,10 +1266,14 @@ describe("a Mate's face follows its work in the menu", () => {
       organizationStatus: "selected",
       activeOrganization: organization,
     });
-    const held = (online: boolean, organizationId: string = organization.organizationId) =>
-      registry.set(hqMatesViewAtom, {
-        organizationId,
-        mates: new Map<string, MateLiveView>([
+    const held = (online: boolean) =>
+      mountHqNavigation(registry, organization.organizationId, {
+        // HQ relays a Mate it places.
+        structure: {
+          apps: [],
+          ungrouped: [{ projectId: "crm-dev", name: "crm-dev", mate: { face: "" } }],
+        },
+        mates: Object.fromEntries([
           [
             "crm-dev",
             {
@@ -1293,7 +1285,6 @@ describe("a Mate's face follows its work in the menu", () => {
             },
           ],
         ]),
-        current: true,
       });
     const drawn = () =>
       renderToStaticMarkup(
@@ -1311,9 +1302,6 @@ describe("a Mate's face follows its work in the menu", () => {
     // Gone from HQ, and no socket either: asleep.
     held(false);
     expect(faceOf(drawn())).toBe("sleep");
-    // What another organization's HQ told this tab says nothing of this one's Mates.
-    held(true, "org-elsewhere");
-    expect(faceOf(drawn())).toBe("sleep");
   });
 
   it.each([
@@ -1328,9 +1316,8 @@ describe("a Mate's face follows its work in the menu", () => {
         organizationStatus: "selected",
         activeOrganization: organization,
       });
-      registry.set(hqMatesViewAtom, {
-        organizationId: organization.organizationId,
-        mates: new Map<string, MateLiveView>([
+      mountHqNavigation(registry, organization.organizationId, {
+        mates: Object.fromEntries([
           [
             "crm-dev",
             {
@@ -1338,7 +1325,7 @@ describe("a Mate's face follows its work in the menu", () => {
             },
           ],
         ]),
-        current: false,
+        live: false,
       });
       const html = renderToStaticMarkup(
         <RegistryContext.Provider value={registry}>

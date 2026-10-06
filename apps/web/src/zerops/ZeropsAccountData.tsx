@@ -11,6 +11,7 @@ import {
   observeAccount,
   repairZeropsSession,
   accountReadsAtom,
+  type AccountObservation,
   type AccountReads,
   type DetailDemand,
   type Projection,
@@ -28,6 +29,10 @@ import { useZeropsSession } from "./ZeropsSessionProvider";
  */
 export interface AccountData extends AccountReads {
   readonly retry: () => void;
+  /** The organization's official HQ, once known (`ZeropsHqNavigation`); `null` while none is. */
+  readonly showHq: AccountObservation["showHq"];
+  /** Asks HQ where a Mate may move, as the move opens. */
+  readonly moveOffers: AccountObservation["moveOffers"];
 }
 
 const AccountDataContext = createContext<AccountData | null>(null);
@@ -60,6 +65,8 @@ export function ZeropsAccountData({ children }: { readonly children: ReactNode }
       orgId,
       demandDetail: observation.demandDetail,
       retry: observation.retry,
+      showHq: observation.showHq,
+      moveOffers: observation.moveOffers,
     }),
     [observation, orgId, store],
   );

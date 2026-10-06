@@ -31,7 +31,7 @@ import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../
 import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { environmentsWithSnapshotAtom } from "~/state/shell";
-import { hqPeopleAtom, hqPlacementsAtom, hqStructureAtom } from "~/state/zerops";
+import { hqPeopleAtom, hqPlacementsAtom, hqNavigationAtom } from "~/state/zerops";
 import {
   PROJECT_ORDER_CHOICES,
   readProjectsOnScreen,
@@ -928,9 +928,9 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   // listing holds its project, and a New project this tab is making from the
   // press — the same placing the left menu reads.
   // An application HQ holds with no project is drawn too, empty, for a Mate to be added to it.
-  const hqStructure = useAtomValue(hqStructureAtom);
+  const hqStructure = useAtomValue(hqNavigationAtom);
   // Whether HQ's structure is known: only then does a Mate it places nowhere have no record.
-  const hqKnown = useAtomValue(hqPlacementsAtom) !== null && hqStructure?.current === true;
+  const hqKnown = useAtomValue(hqPlacementsAtom) !== null && hqStructure.live;
   const groupTree = buildZeropsGroupTree(candidates, {
     rank: rankZeropsCandidateForListing,
     ...projectOrder,
@@ -989,8 +989,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   // What says a project is its person's own, for Set up Mate on it (`plainEvidenceOf`): HQ's
   // records of every kind, its presses, its anchor, and what this tab is making. None while HQ's
   // structure is not known, so nothing is plain then.
-  const knownStructure = hqStructure?.structure ?? null;
-  const hqPresses = hqStructure?.presses ?? null;
+  const knownStructure = hqStructure.structure;
+  const hqPresses = hqStructure.read === "unread" ? null : hqStructure.presses;
   const plainEvidence = useMemo(
     () =>
       plainEvidenceOf({
@@ -1105,7 +1105,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         const registration = mateFinishRegistration({
           hq,
           hqKnown,
-          structure: hqStructure?.structure ?? null,
+          structure: hqStructure.structure,
           project: candidate.project,
           press: held,
           writer: orgOffer("create_app").kind === "allowed",

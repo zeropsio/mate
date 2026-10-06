@@ -34,7 +34,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { useThreadDetail, useThreadStatus } from "~/state/entities";
 import { officialHq, useAccountHq } from "~/zerops/accountHq";
-import { hqStructureAtom } from "~/state/zerops";
+import { hqNavigationAtom } from "~/state/zerops";
 import { useNewMate, type NewMateAgain } from "~/zerops/newMate";
 import { useZeropsProjectFlowOptional } from "~/zerops/projectFlowContext";
 import {
@@ -122,7 +122,7 @@ function NewMateDialog({
   // calls the row, and two Adas is two of nothing.
   const taken = useTakenBotNames();
   const presses = useMatePresses();
-  const hqStructure = useAtomValue(hqStructureAtom);
+  const hqStructure = useAtomValue(hqNavigationAtom);
   // The project as the menu draws it: a project being created counts, members listed or not, and
   // one HQ holds with nothing in it is the one its first Mate is added to.
   const entry = useMemo(

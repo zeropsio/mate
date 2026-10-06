@@ -58,14 +58,7 @@ import { environmentCatalog } from "~/connection/catalog";
 import { connectionAtomRuntime } from "~/connection/runtime";
 import { randomUUID } from "~/lib/utils";
 import { environmentIdFromAddress } from "~/routes/-environmentRoute";
-import {
-  hqMatesAtom,
-  hqMatesViewAtom,
-  hqOfficialAtom,
-  hqProjectOf,
-  hqStructureAtom,
-  type HqStructureView,
-} from "~/state/zerops";
+import { hqMatesAtom, hqNavigationAtom, hqOfficialAtom, hqProjectOf } from "~/state/zerops";
 
 import { accountLocalStorage, accountStorageKey, captureAccountLifetime } from "./accountLifetime";
 import {
@@ -288,17 +281,16 @@ export function onlinePort(
 ): NonNullable<AccountEnvironmentPorts["online"]> {
   return {
     read: () => {
-      const view = registry.get(hqMatesViewAtom);
+      const view = registry.get(hqMatesAtom);
       if (view === null || !view.current) {
         return registry.get(hqOfficialAtom) === false ? NO_PROJECTS : null;
       }
-      if (view.mates === null) return NO_PROJECTS;
       return new Set(
         [...view.mates].flatMap(([projectId, mate]) => (mate.presence.online ? [projectId] : [])),
       );
     },
     subscribe: (listener) => {
-      const stopView = registry.subscribe(hqMatesViewAtom, listener);
+      const stopView = registry.subscribe(hqMatesAtom, listener);
       const stopOfficial = registry.subscribe(hqOfficialAtom, listener);
       return () => {
         stopView();
@@ -319,13 +311,13 @@ export function hqOrganizationPort(
 ): NonNullable<AccountEnvironmentPorts["hqOrganization"]> {
   return {
     read: () => {
-      const view = registry.get(hqMatesViewAtom);
-      return registry.get(hqOfficialAtom) === true && view?.current === true && view.mates !== null
+      const view = registry.get(hqMatesAtom);
+      return registry.get(hqOfficialAtom) === true && view?.current === true
         ? view.organizationId
         : null;
     },
     subscribe: (listener) => {
-      const stopView = registry.subscribe(hqMatesViewAtom, listener);
+      const stopView = registry.subscribe(hqMatesAtom, listener);
       const stopOfficial = registry.subscribe(hqOfficialAtom, listener);
       return () => {
         stopView();
@@ -342,17 +334,17 @@ export function hqOrganizationPort(
 export function closeOffPort(
   registry: AtomRegistry.AtomRegistry,
 ): AccountEnvironmentPorts["closeOff"] {
-  let last: { readonly view: HqStructureView; readonly word: CloseOffWord } | null = null;
+  let last: { readonly view: unknown; readonly word: CloseOffWord } | null = null;
   return {
     read: () => {
-      const view = registry.get(hqStructureAtom);
-      if (view === null || view.structure === null) return null;
+      const view = registry.get(hqNavigationAtom);
+      if (view.orgId === null || view.structure === null) return null;
       if (last?.view !== view) {
-        last = { view, word: closeOffWordOf(view.organizationId, view.structure, view.current) };
+        last = { view, word: closeOffWordOf(view.orgId, view.structure, view.live) };
       }
       return last.word;
     },
-    subscribe: (listener) => registry.subscribe(hqStructureAtom, listener),
+    subscribe: (listener) => registry.subscribe(hqNavigationAtom, listener),
   };
 }
 

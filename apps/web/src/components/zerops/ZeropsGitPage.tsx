@@ -22,7 +22,7 @@ import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useContext, useMemo } from "react";
 import { Button } from "../ui/button";
 import { InventoryContext, useAccountTrouble } from "~/zerops/inventoryContext";
-import { requestHqSnapshot } from "~/zerops/hqStructure";
+import { useAccountDataOptional } from "~/zerops/ZeropsAccountData";
 
 import { appBasePath } from "~/basePath";
 import { ZeropsRepositoryBrowser } from "./ZeropsRepositoryBrowser";
@@ -204,6 +204,7 @@ export function ZeropsGitOverview({
 export function ZeropsGitPage() {
   const { activeOrganization, organizations, organizationStatus, selectOrganization, status } =
     useZeropsSession();
+  const retryAccount = useAccountDataOptional()?.retry;
   const flow = useZeropsProjectFlow();
   const registry = useZeropsRegistry();
   const offersOf = useChangeOffers();
@@ -288,7 +289,7 @@ export function ZeropsGitPage() {
       ) : (
         <ZeropsGitOverview
           onAgain={() => {
-            if (activeOrganization !== null) requestHqSnapshot(activeOrganization.id);
+            retryAccount?.();
             if (inventory?.error || accountTrouble?.trouble || accountTrouble?.lapse)
               accountTrouble?.retry();
           }}

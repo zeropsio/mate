@@ -40,7 +40,7 @@ vi.mock("@tanstack/react-router", () => ({
   useParams: () => ({}),
 }));
 vi.mock("./ui/toast", () => ({ toastManager: { add: state.toast } }));
-vi.mock("../state/zerops", () => ({ hqMatesViewAtom: "hq-mates" }));
+vi.mock("../state/zerops", () => ({ hqMatesAtom: "hq-mates" }));
 vi.mock("../hooks/useSettings", () => ({
   useClientSettings: (
     select: (settings: { notificationMode: string; inAppNotificationsEnabled: boolean }) => unknown,

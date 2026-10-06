@@ -69,7 +69,6 @@ const delivery = (input: {
   kind: "hq-delivery",
   scopes: scopes(input.generation),
   reset: input.reset ?? false,
-  revision: { kind: "hq", incarnation: input.incarnation ?? "a", revision: input.revision },
   rows: (input.rows ?? []).map((row) => ({
     ...row,
     revision: { kind: "hq", incarnation: input.incarnation ?? "a", revision: input.revision },

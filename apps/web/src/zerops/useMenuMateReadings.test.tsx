@@ -9,9 +9,10 @@ import { afterEach, describe, expect, it } from "vite-plus/test";
 
 import { mateRowReading } from "~/components/zerops/SidebarMateRow.logic";
 
-import { hqMatesViewAtom, zeropsSessionAtom } from "../state/zerops";
+import { zeropsSessionAtom } from "../state/zerops";
 import { useMateConversationsRead, useMateRowActivity } from "./useMenuMateReadings";
 import { zeropsAgentActivityOf } from "./useZeropsAgentActivity";
+import { mountHqNavigation } from "~/zerops/__fixtures__/hqNavigation";
 
 const AT = "2026-10-03T09:00:00.000Z";
 
@@ -93,11 +94,7 @@ function told(view: MateLiveView): AtomRegistry.AtomRegistry {
     organizationStatus: "selected",
     activeOrganization: { organizationId: "org-acme" },
   } as never);
-  registry.set(hqMatesViewAtom, {
-    organizationId: "org-acme",
-    mates: new Map([["p-vera", view]]),
-    current: true,
-  });
+  mountHqNavigation(registry, "org-acme", { mates: Object.fromEntries([["p-vera", view]]) });
   return registry;
 }
 

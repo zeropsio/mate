@@ -9,7 +9,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { useMemo } from "react";
 
-import { hqPeopleAtom, hqStructureAtom, zeropsEnvironmentsAtom } from "../state/zerops";
+import { hqPeopleAtom, hqNavigationAtom, zeropsEnvironmentsAtom } from "../state/zerops";
 import { registeredZeropsOrigins } from "./environmentOrigins";
 import {
   usageEnvironmentIdentities,
@@ -36,7 +36,7 @@ export function useUsageEnvironmentIdentities(): {
   const { listing } = useZeropsCandidates();
   const environments = useAtomValue(zeropsEnvironmentsAtom);
   const people = useAtomValue(hqPeopleAtom);
-  const hqAnswered = useAtomValue(hqStructureAtom)?.current === true;
+  const hqAnswered = useAtomValue(hqNavigationAtom).live;
   const peopleStatus: UsagePeopleStatus =
     !signedIn || session.activeOrganization === null
       ? "idle"

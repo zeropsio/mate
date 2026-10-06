@@ -1,10 +1,10 @@
 /**
- * How one of the organization's Zerops scopes is observed now, as a surface says it: complete,
+ * How one of the organization's scopes is observed now, as a surface says it: complete,
  * live, catching up, or refused and why. The streams' own word, never the presence of data.
  *
  * @module data/projections/freshness
  */
-import { linkKeys, type ScopeKey } from "../model.ts";
+import type { LinkKey, ScopeKey } from "../model.ts";
 import type { ProjectionReads } from "../store.ts";
 import type { StreamState } from "../streamMachine.ts";
 
@@ -22,12 +22,11 @@ export interface ScopeFreshness {
   readonly unavailableReason?: UnavailableReason;
 }
 
-export function scopeFreshness(
-  read: ProjectionReads,
-  orgId: string,
-  scope: ScopeKey,
-): ScopeFreshness {
-  const link = read.stream(linkKeys.zerops(orgId));
+/** The connection a scope is a child of: `zerops:org` of `zerops:org:projects`. */
+const linkOf = (scope: ScopeKey): LinkKey => scope.split(":").slice(0, 2).join(":") as LinkKey;
+
+export function scopeFreshness(read: ProjectionReads, scope: ScopeKey): ScopeFreshness {
+  const link = read.stream(linkOf(scope));
   const stream = read.stream(scope);
   const refusal = [link, stream].find((candidate) => candidate.phase === "refused");
   // Catching up is the streams' own word — a link retrying or repairing its session, a scope an

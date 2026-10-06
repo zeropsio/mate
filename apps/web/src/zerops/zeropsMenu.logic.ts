@@ -6,7 +6,7 @@
 import type { CandidateRow } from "@t3tools/client-runtime/zerops/projections";
 
 export function menuRows<Row extends CandidateRow>(input: {
-  /** HQ's rows, each with where HQ places its project (`menuRowsFromHq`). */
+  /** HQ's rows, each with where HQ places its project (`placedMenuRows`). */
   readonly placed: ReadonlyArray<Row | CandidateRow>;
   /** The organization's listing, where nothing places a project yet. */
   readonly candidates: ReadonlyArray<Row>;

@@ -33,8 +33,8 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import { useCallback, useState } from "react";
 
-import { hqStructureAtom } from "../state/zerops";
-import { requestHqSnapshot } from "./hqStructure";
+import { hqAppReadsAtom, hqDown, hqNavigationAtom } from "../state/zerops";
+import { useAccountDataOptional } from "./ZeropsAccountData";
 
 export type GroupRecipeTier = Extract<EnvironmentRecipeChoice, { kind: "tier" }>;
 
@@ -78,15 +78,17 @@ export function useZeropsGroupRecipe(input: {
   readonly enabled: boolean;
 }): GroupRecipe {
   const { appId, enabled, tier } = input;
-  const streamed = useAtomValue(hqStructureAtom);
-  const appRead = appId === undefined ? undefined : streamed?.appReads?.get(appId);
+  const navigation = useAtomValue(hqNavigationAtom);
+  const reads = useAtomValue(hqAppReadsAtom);
+  const appRead = appId === undefined ? undefined : reads?.get(appId);
   const [retrying, setRetrying] = useState<AppRead | undefined>(undefined);
+  const retry = useAccountDataOptional()?.retry;
 
   const reread = useCallback(() => {
-    if (streamed === null || streamed === undefined) return;
+    if (retry === undefined) return;
     setRetrying(appRead);
-    requestHqSnapshot(streamed.organizationId);
-  }, [appRead, streamed]);
+    retry();
+  }, [appRead, retry]);
 
   const answer =
     !enabled || appRead === undefined
@@ -94,7 +96,7 @@ export function useZeropsGroupRecipe(input: {
       : appRead.failure !== null || appRead.value === null
         ? UNREADABLE
         : answerOf(appRead.value.recipes[tier], tier);
-  const down = streamed !== null && streamed !== undefined && streamed.unavailableSince !== null;
+  const down = hqDown(navigation);
   return {
     ...answer,
     tier: down ? undefined : answer.tier,

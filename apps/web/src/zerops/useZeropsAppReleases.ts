@@ -5,7 +5,7 @@ import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 import type { Release } from "@t3tools/shared/hqRelease";
 import { useMemo } from "react";
 
-import { hqStructureAtom } from "../state/zerops";
+import { hqAppReadsAtom } from "../state/zerops";
 
 export interface ZeropsAppReleases {
   readonly releases: ReadonlyMap<string, ReadonlyArray<Release>>;
@@ -14,13 +14,13 @@ export interface ZeropsAppReleases {
 }
 
 export function useZeropsAppReleases(): ZeropsAppReleases {
-  const reads = useAtomValue(hqStructureAtom)?.appReads;
+  const reads = useAtomValue(hqAppReadsAtom);
   return useMemo(() => {
     const releases = new Map<string, ReadonlyArray<Release>>();
     const repos = new Map<string, ReadonlyArray<RepoListEntry>>();
     const failures = new Map<string, string>();
     // Missing keys mean unread, never an earned "no releases" for an app.
-    if (reads === null || reads === undefined) return { releases, repos, failures };
+    if (reads === null) return { releases, repos, failures };
     for (const [appId, read] of reads) {
       if (read.value !== null) {
         releases.set(appId, read.value.releases);

@@ -1,4 +1,3 @@
-import { HQ_STREAM_SEGMENT_CLOSE } from "@t3tools/shared/hqStream";
 import { RASTER_CONTENT_TYPES } from "@t3tools/shared/hqAttachments";
 /**
  * HQ's API as the client calls it (`apps/hq/src/api.ts`), through HQ's door.
@@ -43,7 +42,7 @@ import {
   type CreateReleaseRequest,
   type RollbackRequest,
 } from "@t3tools/shared/hqRelease";
-import type { HqMoveTo, HqOffers } from "@t3tools/shared/hqOffers";
+import type { HqOffers } from "@t3tools/shared/hqOffers";
 import type { OverviewLogins } from "@t3tools/shared/mateLink";
 import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
 import * as Option from "effect/Option";
@@ -52,7 +51,7 @@ import * as Schema from "effect/Schema";
 import { type FetchImplementation } from "../api.ts";
 import type { HqEnvironment } from "./environments.ts";
 import { hqRefusalWords, ZEROPS_UNANSWERED } from "./refusals.ts";
-import { hqStructureOf, structureEventOf, type HqStructureEvent } from "./stream.ts";
+import { hqStructureOf } from "./structure.ts";
 
 /** An organization's HQ: its project, and the address its anchor names. */
 export interface HqEndpoint {
@@ -113,12 +112,11 @@ export interface HqMate extends HqMateRecord {
 }
 
 /**
- * What the reader may do with a Mate (`observe_mate`, `edit_mate_record`, `detach`) and where it
- * may go; absent where HQ sent none, or none this build can read.
+ * What the reader may do with a Mate (`observe_mate`, `edit_mate_record`, `detach`); absent where
+ * HQ sent none, or none this build can read. Where it may go HQ answers as the move opens.
  */
 export interface HqMateOffers {
   readonly can?: HqOffers;
-  readonly moveTo?: HqMoveTo;
 }
 
 /** HQ's held records, including projects whose removal has not finished at HQ. */
@@ -249,21 +247,15 @@ export interface Asked<T> {
 export interface HqApi {
   readonly structure: (signal?: AbortSignal) => Promise<HqStructure>;
   /**
-   * The structure as it changes (`stream.ts`), with the Mates the reader observes and the people
-   * its view names (`mates.ts`), over a socket opened with a ticket for the session: every event
-   * to `onEvent`, every message — events and pings alike — to `onAlive`. Fails when the socket
-   * breaks or Core goes away (1001); session expiry is a definitive refusal, and the next
-   * explicit call enters the door again. Runs until `signal` aborts. The planned segment close
-   * (4410) opens a fresh ticket and socket within this call, preserving its live view. Other
-   * failures reach the stream owner, which decides backoff and publishes connection state.
+   * One segment of HQ's scope stream (`@t3tools/shared/hqStream`): a socket opened with a fresh
+   * ticket for the session, telling `on` of every text message and of its close code. A socket HQ
+   * closed for its session (`4401`) forgets that session first, so the next segment's ticket
+   * enters the door again.
    */
-  readonly streamStructure: (
-    handlers: {
-      readonly onEvent: (event: HqStructureEvent) => void;
-      readonly onAlive: () => void;
-    },
+  readonly openScopeSocket: (
+    on: { readonly message: (data: string) => void; readonly close: (code: number) => void },
     signal: AbortSignal,
-  ) => Promise<void>;
+  ) => Promise<HqSocket>;
   /**
    * The id of the key a Mate's container holds, as the Mate named it to HQ (`GET
    * /api/mates/{projectId}/key`); none where it named none. Told to the project's admin alone.
@@ -427,15 +419,8 @@ export type OpenHqSocket = (
   on: { readonly message: (data: string) => void; readonly close: (code: number) => void },
 ) => HqSocket;
 
-/** How HQ closes a structure socket (`apps/hq/src/stream.ts`). */
-const SOCKET_CLOSE = {
-  /** Another Core leads now, or this one is stopping: the owner reconnects immediately. */
-  goingAway: 1001,
-  /** The session ended: an explicit next call enters the door again. */
-  sessionEnded: 4401,
-} as const;
-
-const PONG = JSON.stringify({ type: "pong" });
+/** HQ closed a scope socket because its session ended (`hqStreamCloseFailure`). */
+const HQ_SESSION_ENDED_CLOSE = 4401;
 
 /** How long a read waits for HQ's answer. */
 const CALL_TIMEOUT_MS = 20_000;
@@ -981,86 +966,22 @@ export function makeHqApi(input: {
 
   return {
     structure: structureOf,
-    streamStructure: async (handlers, signal) => {
-      /** HQ ended the last socket's session (4401), and the renewed one has said nothing yet. */
-      let renewing = false;
-      while (!signal.aborted) {
-        const { ticket } = await json<{ readonly ticket: string }>(
-          await authorized("/api/stream-ticket", { method: "POST", signal }),
-        );
-        /** The session the ticket was minted for. */
-        const held = session;
-        const token = held === null ? null : await held;
-        if (signal.aborted) return;
-        const url = `${origin.replace(/^http/u, "ws")}/api/structure/ws?ticket=${encodeURIComponent(ticket)}`;
-        await new Promise<void>((resolve, reject) => {
-          const socket = input.openSocket(url, {
-            message: (data) => {
-              renewing = false;
-              let message: unknown;
-              try {
-                message = JSON.parse(data);
-              } catch {
-                handlers.onAlive();
-                return;
-              }
-              if ((message as { readonly type?: unknown } | null)?.type === "ping") {
-                socket.send(PONG);
-                handlers.onAlive();
-                return;
-              }
-              handlers.onAlive();
-              const event = structureEventOf(message);
-              if (event !== undefined) handlers.onEvent(event);
-            },
-            close: (code) => {
-              signal.removeEventListener("abort", stop);
-              if (signal.aborted) {
-                reject(signal.reason);
-              } else if (code === HQ_STREAM_SEGMENT_CLOSE.code) {
-                resolve();
-              } else if (code === SOCKET_CLOSE.sessionEnded) {
-                if (token !== null) drop(held, token);
-                // Renewed once: the next ticket enters the door again, the next socket with it.
-                if (!renewing) {
-                  renewing = true;
-                  resolve();
-                  return;
-                }
-                reject(
-                  new HqError({
-                    kind: "refused",
-                    code: "session_required",
-                    status: 401,
-                    message: "HQ's session ended. Try again to enter its door.",
-                  }),
-                );
-              } else if (code === SOCKET_CLOSE.goingAway) {
-                reject(
-                  new HqError({
-                    kind: "unavailable",
-                    code: "socket_1001",
-                    message: "HQ is restarting or handing over its stream.",
-                  }),
-                );
-              } else {
-                reject(
-                  new HqError({
-                    kind: "unavailable",
-                    code: `socket_${code}`,
-                    message: "HQ's stream broke.",
-                  }),
-                );
-              }
-            },
-          });
-          const stop = () => {
-            socket.close();
-            reject(signal.reason);
-          };
-          signal.addEventListener("abort", stop, { once: true });
-        });
-      }
+    openScopeSocket: async (on, signal) => {
+      const { ticket } = await json<{ readonly ticket: string }>(
+        await authorized("/api/stream-ticket", { method: "POST", signal }),
+      );
+      /** The session the ticket was minted for. */
+      const held = session;
+      const token = held === null ? null : await held;
+      signal.throwIfAborted();
+      const url = `${origin.replace(/^http/u, "ws")}/api/structure/ws?ticket=${encodeURIComponent(ticket)}`;
+      return input.openSocket(url, {
+        message: on.message,
+        close: (code) => {
+          if (code === HQ_SESSION_ENDED_CLOSE && held !== null && token !== null) drop(held, token);
+          on.close(code);
+        },
+      });
     },
     // An application has no name of HQ's to ask for before it is made: the one by this name is
     // taken for it.

@@ -13,7 +13,7 @@ import {
 import { useCallback, useEffect, useRef } from "react";
 
 import { getClientSettings, useClientSettings } from "../hooks/useSettings";
-import { hqMatesViewAtom } from "../state/zerops";
+import { hqMatesAtom } from "../state/zerops";
 import { useMutedMates } from "../zerops/mutedMates";
 import {
   hasDesktopNotifications,
@@ -38,7 +38,7 @@ import { cn } from "~/lib/utils";
  * baseline again, so nothing that happened meanwhile is replayed.
  */
 export function ThreadNotificationCoordinator() {
-  const view = useAtomValue(hqMatesViewAtom);
+  const view = useAtomValue(hqMatesAtom);
   const mode = useClientSettings((settings) => settings.notificationMode);
   const inAppNotificationsEnabled = useClientSettings(
     (settings) => settings.inAppNotificationsEnabled,

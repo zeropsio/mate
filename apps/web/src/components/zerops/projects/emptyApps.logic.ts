@@ -7,14 +7,14 @@
 import type { ZeropsGroup } from "@t3tools/client-runtime/zerops";
 import type { HqAppContents } from "@t3tools/client-runtime/zerops/hq";
 
-import type { HqStructureView } from "~/state/zerops";
+import type { HqNavigationView } from "~/state/zerops";
 
 /** HQ's applications needing a row without a listed project, including unfinished deletion. */
 export function emptyApplications(
-  view: HqStructureView | null,
+  view: HqNavigationView,
   organizationId: string | undefined,
 ): ReadonlyArray<{ readonly id: string; readonly name: string }> {
-  if (view === null || view.structure === null || view.organizationId !== organizationId) return [];
+  if (view.structure === null || view.orgId !== organizationId) return [];
   return view.structure.apps
     .filter(
       (app) => app.projects.length === 0 || (app.contents?.deletingProjectIds.length ?? 0) > 0,
@@ -29,16 +29,11 @@ export function groupIsEmpty(group: Pick<ZeropsGroup, "environments" | "pending"
 
 /** Only HQ's current answer for this organization and application can establish emptiness. */
 export function applicationContents(
-  view: HqStructureView | null,
+  view: HqNavigationView,
   organizationId: string | undefined,
   appId: string,
 ): HqAppContents | undefined {
-  if (
-    view?.organizationId !== organizationId ||
-    view?.current !== true ||
-    view.unavailableSince !== null
-  )
-    return undefined;
+  if (view.orgId !== organizationId || !view.live) return undefined;
   return view.structure?.apps.find((app) => app.id === appId)?.contents;
 }
 

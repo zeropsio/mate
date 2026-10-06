@@ -5,18 +5,18 @@ import type { AppReadValue } from "@t3tools/shared/hqAppReads";
 import { hqRefusalWords } from "@t3tools/client-runtime/zerops/hq";
 import { useMemo } from "react";
 
-import { hqStructureAtom } from "../state/zerops";
-import { requestHqSnapshot } from "./hqStructure";
+import { hqAppReadsAtom } from "../state/zerops";
+import { useAccountDataOptional } from "./ZeropsAccountData";
 
 /** Cache only the pure projection: an unrelated app's move preserves this recipe's identity. */
 const projections = new WeakMap<AppReadValue, AppRecipe>();
 
 export function useZeropsAppRecipes(): ReadonlyMap<string, AppRecipe> {
-  const reads = useAtomValue(hqStructureAtom)?.appReads;
+  const reads = useAtomValue(hqAppReadsAtom);
   return useMemo(() => {
     const recipes = new Map<string, AppRecipe>();
     // Missing keys mean unread; only HQ's explicit absent tiers earn a negative.
-    if (reads === null || reads === undefined) return recipes;
+    if (reads === null) return recipes;
     for (const [appId, { value }] of reads) {
       if (value === null) continue;
       let recipe = projections.get(value);
@@ -38,11 +38,11 @@ export function useZeropsAppRecipes(): ReadonlyMap<string, AppRecipe> {
 export function useZeropsRecipeFailure(
   appId: string,
 ): { readonly reason: string; readonly again: () => void } | undefined {
-  const snapshot = useAtomValue(hqStructureAtom);
-  const read = snapshot?.appReads?.get(appId);
-  if (snapshot === null || read === undefined || read.failure === null) return undefined;
+  const read = useAtomValue(hqAppReadsAtom)?.get(appId);
+  const retry = useAccountDataOptional()?.retry;
+  if (read === undefined || read.failure === null || retry === undefined) return undefined;
   return {
     reason: hqRefusalWords({ code: read.failure.code, reason: read.failure.reason ?? undefined }),
-    again: () => requestHqSnapshot(snapshot.organizationId),
+    again: retry,
   };
 }

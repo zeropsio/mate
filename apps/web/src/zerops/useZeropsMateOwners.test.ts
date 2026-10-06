@@ -15,7 +15,7 @@ import { AtomRegistry } from "effect/unstable/reactivity";
 
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 
-import { hqPeopleViewAtom, hqStructureAtom, zeropsSessionAtom } from "../state/zerops";
+import { zeropsSessionAtom } from "../state/zerops";
 import { makeMemberCells } from "./__fixtures__/memberCells";
 import { keepHqVerdict, keepNoHqVerdict } from "./hqVerdict";
 import { ZeropsDataContext, type ZeropsDataContextValue } from "./zeropsDataContext";
@@ -26,6 +26,7 @@ import {
   zeropsMateOwnerOf,
   zeropsMemberNameByUserId,
 } from "./useZeropsMateOwners";
+import { mountHqNavigation } from "~/zerops/__fixtures__/hqNavigation";
 
 vi.mock("./ZeropsSessionProvider", () => ({
   useZeropsSession: () => ({ activeOrganization: { id: "org-1" }, user: { id: "u-eva" } }),
@@ -202,10 +203,7 @@ describe("useZeropsMateOwners", () => {
       activeOrganization: organizationRef("org-1"),
     });
     // HQ names the people the view names: Eva, who signed Vera's agent in.
-    registry.set(hqPeopleViewAtom, {
-      organizationId: "org-1",
-      people: { "u-eva": { name: "Eva Dvořák" } },
-    });
+    mountHqNavigation(registry, "org-1", { people: { "u-eva": { name: "Eva Dvořák" } } });
     const vera = {
       key: "p-vera:zcp",
       project: {
@@ -296,18 +294,9 @@ describe("useZeropsMemberNames", () => {
       organizationRef,
     } as unknown as ZeropsDataContextValue;
     const registry = AtomRegistry.make();
-    registry.set(hqStructureAtom, {
-      organizationId: clientId,
-      structure: null,
-      changes: null,
-      appReads: null,
-      readAt: null,
-      current: unavailableSince === null,
-      unavailableSince,
-    });
-    registry.set(hqPeopleViewAtom, {
-      organizationId: clientId,
+    mountHqNavigation(registry, clientId, {
       people: { "u-cleo": { name: "Cleo as HQ names her" } },
+      live: unavailableSince === null,
     });
     const named: Array<string | undefined> = [];
     function Probe() {

@@ -303,6 +303,10 @@
       "types": "./src/zerops/candidates.ts",
       "default": "./src/zerops/candidates.ts"
     },
+    "./data/fixtures": {
+      "types": "./src/data/__fixtures__/index.ts",
+      "default": "./src/data/__fixtures__/index.ts"
+    },
     "./data": {
       "types": "./src/data/index.ts",
       "default": "./src/data/index.ts"

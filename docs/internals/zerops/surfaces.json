@@ -898,7 +898,8 @@
         "packages/client-runtime/src/zerops/tools.ts",
         "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
         "packages/client-runtime/src/zerops/projectFlow.ts",
-        "apps/web/src/zerops/useZeropsMenu.tsx",
+        "apps/web/src/zerops/useMenuRows.tsx",
+        "apps/web/src/zerops/hqNavigation.tsx",
         "apps/web/src/components/zerops/ZeropsReadFailure.tsx"
       ],
       "entryPoints": [
@@ -1160,7 +1161,6 @@
         "apps/web/src/components/zerops/ZeropsRepositoryBrowser.test.tsx",
         "packages/client-runtime/src/zerops/hq/gitCredentialStore.test.ts",
         "packages/client-runtime/src/zerops/hq/repositoryStore.test.ts",
-        "apps/web/src/zerops/hqAppLoad.test.tsx",
         "packages/client-runtime/src/zerops/gitOverview.test.ts"
       ],
       "captures": []

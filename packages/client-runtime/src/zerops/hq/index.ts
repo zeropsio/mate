@@ -53,7 +53,6 @@ export {
   type DeployAnswerSaid,
 } from "./deployAnswer.ts";
 export { deployLogTarget, inspectDeployLog, type DeployLogTarget } from "./deployLog.ts";
-export { applyMatesEvent, applyPeopleEvent } from "./mates.ts";
 export {
   hqUpdateOffered,
   hqUpdateState,
@@ -67,7 +66,8 @@ export {
   birthIntentOf,
   heldOf,
   hqMateOffers,
-  menuRowsFromHq,
+  placedMenuRows,
+  placedNames,
   placeListing,
   placeProject,
   placeProjects,
@@ -75,21 +75,8 @@ export {
   type HqMateOfferStates,
   type HqPlacement,
 } from "./placement.ts";
-export { nextPressExpiry, pressElsewhere, type PressElsewhere } from "./pressElsewhere.ts";
-export {
-  applyChangesEvent,
-  applyAppReadsEvent,
-  applyPressesEvent,
-  applyStructureEvent,
-  structureEventOf,
-  type HqPressHold,
-  type HqPresses,
-  type HqPressesSent,
-  type HqChanges,
-  type HqMates,
-  type HqAppReads,
-  type HqStructureEvent,
-} from "./stream.ts";
+export { pressElsewhere, type HqPresses, type PressElsewhere } from "./pressElsewhere.ts";
+export { hqStructureOf, type HqMates } from "./structure.ts";
 export {
   environmentsOf,
   jobFailed,

@@ -395,7 +395,10 @@ export function plainEvidenceOf(input: {
 }): PlainProjectEvidence | undefined {
   if (!input.hqKnown || input.structure === null || input.hq.kind !== "official") return undefined;
   return {
-    hqRecords: new Set([...hqRecordedProjects(input.structure), ...(input.presses?.keys() ?? [])]),
+    hqRecords: new Set([
+      ...hqRecordedProjects(input.structure),
+      ...Object.keys(input.presses ?? {}),
+    ]),
     hqAnchors: new Set([input.hq.projectId]),
     local: new Set(input.local),
   };

@@ -16,9 +16,10 @@ vi.mock("./useZeropsCandidates", () => ({
   candidateListingAtom: Atom.make({ state: "known", value: [] }),
 }));
 
-import { hqMatesViewAtom, zeropsSessionAtom } from "../state/zerops";
+import { zeropsSessionAtom } from "../state/zerops";
 import { bindAccountEnvironments } from "./accountEnvironments";
 import { usageMates, useUsageMates, type UsageMate } from "./useUsageMates";
+import { mountHqNavigation } from "~/zerops/__fixtures__/hqNavigation";
 
 const ENV_JUNO = EnvironmentId.make("env-juno");
 const ENV_LENA = EnvironmentId.make("env-lena");
@@ -64,7 +65,7 @@ describe("useUsageMates", () => {
       organizationStatus: "selected",
       activeOrganization: { organizationId: "org-mate" },
     } as never);
-    registry.set(hqMatesViewAtom, { organizationId: "org-mate", current: true, mates: ORG_MATES });
+    mountHqNavigation(registry, "org-mate", { mates: Object.fromEntries(ORG_MATES) });
     function Probe() {
       useUsageMates(new Set(), true);
       return null;
@@ -81,11 +82,7 @@ describe("useUsageMates", () => {
 
     // HQ's next word on a Mate it already named changes no demand.
     act(() => {
-      registry.set(hqMatesViewAtom, {
-        organizationId: "org-mate",
-        current: true,
-        mates: new Map(ORG_MATES),
-      });
+      mountHqNavigation(registry, "org-mate", { mates: Object.fromEntries(ORG_MATES) });
     });
     expect(drawn).toHaveLength(1);
 

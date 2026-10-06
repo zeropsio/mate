@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { hqMatesSettled, unreadFlowWords } from "./hqRead.logic";
+import { hqNavigationSettled, unreadFlowWords } from "./hqRead.logic";
 
 describe("an unread HQ project's words", () => {
   it.each([
@@ -18,12 +18,18 @@ describe("an unread HQ project's words", () => {
   });
 });
 
-describe("the active organization's HQ Mate list settlement", () => {
+describe("the active organization's HQ navigation settlement", () => {
   const base = {
     organizationId: "org-a",
     accountHq: { status: "ready", hq: { kind: "official" } },
-    mates: null,
-    structure: null,
+    navigation: {
+      orgId: "org-a",
+      read: "reading",
+      live: false,
+      reconnecting: false,
+      capped: false,
+      refusal: null,
+    },
   } as const;
   it.each([
     ["HQ has not answered", {}, false],
@@ -35,30 +41,25 @@ describe("the active organization's HQ Mate list settlement", () => {
     ["member list not started", { accountHq: { status: "idle", hq: { kind: "none" } } }, false],
     ["definitely no HQ", { accountHq: { status: "ready", hq: { kind: "none" } } }, true],
     ["member read failed", { accountHq: { status: "failed", hq: { kind: "none" } } }, true],
-    ["HQ snapshot lists no Mates", { mates: { organizationId: "org-a", current: true } }, true],
+    ["HQ's catchup ended", { navigation: { ...base.navigation, read: "read", live: true } }, true],
     [
-      "remembered list while HQ reads",
-      { mates: { organizationId: "org-a", current: false } },
-      false,
-    ],
-    [
-      "HQ stream failed before its snapshot",
-      { structure: { organizationId: "org-a", unavailableSince: 1 } },
+      "HQ stream failed before its catchup",
+      { navigation: { ...base.navigation, reconnecting: true } },
       true,
     ],
     [
-      "HQ stream still opening",
-      { structure: { organizationId: "org-a", unavailableSince: null } },
-      false,
+      "HQ refused its stream",
+      { navigation: { ...base.navigation, refusal: "Zerops refused HQ." } },
+      true,
     ],
-    ["another org's snapshot", { mates: { organizationId: "org-b", current: true } }, false],
+    ["HQ's retries capped", { navigation: { ...base.navigation, capped: true } }, true],
     [
-      "another org's failure",
-      { structure: { organizationId: "org-b", unavailableSince: 1 } },
+      "another org's navigation",
+      { navigation: { ...base.navigation, orgId: "org-b", read: "read", live: true } },
       false,
     ],
     ["local mode has no HQ source", { organizationId: null }, true],
   ] as const)("%s", (_case, over, settled) => {
-    expect(hqMatesSettled({ ...base, ...over })).toBe(settled);
+    expect(hqNavigationSettled({ ...base, ...over })).toBe(settled);
   });
 });

@@ -7,6 +7,8 @@
  * Mate the app is connected to is offered: the words go into its
  * conversation's composer, and one not connected has none to take them.
  */
+import { useAtomValue } from "@effect/atom-react";
+import { shownHqPersonFactsAtom } from "@t3tools/client-runtime/data";
 import { scopeThreadRef, scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { projectNameInApp, readZeropsMembership } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
@@ -17,7 +19,6 @@ import { useThreadShells } from "../state/entities";
 import { useUiStateStore } from "../uiStateStore";
 import { fixMateChoice, type FixMate } from "./fixRequest";
 import { useZeropsCandidates } from "./useZeropsCandidates";
-import { useZeropsMateOwners } from "./useZeropsMateOwners";
 
 export interface FixMateOption extends FixMate {
   /** What the person calls it: "Ask Nova to fix it". */
@@ -84,7 +85,7 @@ export function useFixMates(
 ): ReadonlyArray<FixMateOption> {
   const { listing } = useZeropsCandidates();
   const candidates = heldCandidates(listing).rows;
-  const ownerOf = useZeropsMateOwners();
+  const personFacts = useAtomValue(shownHqPersonFactsAtom);
   const shells = useThreadShells();
   const visits = useUiStateStore((state) => state.threadLastVisitedAtById);
   const projectId = mate?.projectId;
@@ -102,8 +103,8 @@ export function useFixMates(
       projectId,
       groupId,
       candidates,
-      isMine: (candidate) => ownerOf(candidate)?.isViewer,
+      isMine: (candidate) => personFacts[candidate.project.id]?.mine,
       visitedAt,
     });
-  }, [candidates, groupId, ownerOf, projectId, shells, visits]);
+  }, [candidates, groupId, personFacts, projectId, shells, visits]);
 }

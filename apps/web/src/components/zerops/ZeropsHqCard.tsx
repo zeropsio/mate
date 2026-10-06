@@ -24,7 +24,7 @@ import { useCallback, useRef, useState, type ReactNode } from "react";
 
 import { useClientSettings } from "~/hooks/useSettings";
 import { cn } from "~/lib/utils";
-import { hqMatesViewAtom, hqStandingAtom, hqStructureAtom } from "~/state/zerops";
+import { hqMatesAtom, hqStandingAtom, hqNavigationAtom } from "~/state/zerops";
 import { formatDayAwareTimestamp } from "~/timestampFormat";
 import { useAccountHq, useCarriedCoreBuild } from "~/zerops/accountHq";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
@@ -41,7 +41,7 @@ import { hqUpdateMount, type HqUpdateMount } from "./ZeropsHqUpdate.logic";
  */
 const hqOnlineMatesAtom = Atom.family((organizationId: string) =>
   Atom.make((get): number | undefined => {
-    const view = get(hqMatesViewAtom);
+    const view = get(hqMatesAtom);
     if (view?.organizationId !== organizationId || !view.current || view.mates === null) {
       return undefined;
     }
@@ -70,11 +70,8 @@ export function ZeropsHqCard() {
   const carried = useCarriedCoreBuild();
   // Who looks after HQ — its Core, its backups, its updates — is who bears it (`mayBearHq`).
   const admin = user !== null && mayBearHq(activeOrganization ?? undefined);
-  const structureView = useAtomValue(hqStructureAtom);
-  const structure =
-    structureView !== null && structureView.organizationId === organizationId
-      ? structureView.structure
-      : null;
+  const navigation = useAtomValue(hqNavigationAtom);
+  const structure = navigation.orgId === organizationId ? navigation.structure : null;
   const online = useAtomValue(hqOnlineMatesAtom(organizationId ?? ""));
   const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
   const [open, setOpen] = useState(false);

@@ -403,10 +403,10 @@ describe("deriveZeropsRowAction", () => {
       // A press HQ holds a record of — at work in another browser, or stopped — is that Mate
       // being made, never a project nobody made: Finish setup is its way on, not Set up Mate.
       it("counts every project HQ holds a press record of as recorded", () => {
-        const presses = new Map([
-          ["p-pressing", { kind: "mate" as const, expiresAtMs: 2_000 }],
-          ["p-stopped", { kind: "mate" as const, expiresAtMs: 0 }],
-        ]);
+        const presses = {
+          "p-pressing": { kind: "mate" as const },
+          "p-stopped": { kind: "mate" as const },
+        };
         expect(
           plainEvidenceOf({
             hqKnown: true,
@@ -1145,7 +1145,7 @@ describe("mateRowCan — a row's verbs, unless HQ refuses following its Mate", (
         : kind === "unavailable"
           ? { kind, since: 1 }
           : { kind };
-    return { held: true, observe, edit: observe, detach: observe, moveTo: undefined };
+    return { held: true, observe, edit: observe, detach: observe };
   };
   it.each<[string, HqMateOfferStates | undefined, boolean]>([
     ["offered", held("allowed"), true],

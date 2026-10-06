@@ -10,8 +10,9 @@ import { act } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
-import { hqStructureAtom, zeropsSessionAtom } from "../state/zerops";
-import { useChangeOffers, useKeepDeployKeyOffer, useReleasePermission } from "./useChangeOffers";
+import { zeropsSessionAtom } from "../state/zerops";
+import { useChangeOffers, useReleasePermission } from "./useChangeOffers";
+import { mountHqNavigation } from "~/zerops/__fixtures__/hqNavigation";
 
 const mounted: ReactTestRenderer[] = [];
 /** What the hook handed back, render by render. */
@@ -108,14 +109,9 @@ function answerOf<T>(hq: Hq, use: () => T): T {
     organizationStatus: "selected",
     activeOrganization: { organizationId: "org-acme" },
   } as never);
-  registry.set(hqStructureAtom, {
-    organizationId: hq.organizationId ?? "org-acme",
-    structure: hq.structure,
-    changes: null,
-    appReads: null,
-    readAt: 1_000,
-    current: hq.current ?? true,
-    unavailableSince: hq.unavailableSince ?? null,
+  mountHqNavigation(registry, hq.organizationId ?? "org-acme", {
+    ...(hq.structure === null ? {} : { structure: hq.structure }),
+    live: hq.current ?? true,
   });
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   act(() => {
@@ -134,14 +130,13 @@ function answerOf<T>(hq: Hq, use: () => T): T {
 const STREAMED: Hq = {
   structure: {
     can: { create_app: refused("not_structure_writer") },
-    rolesAnsweredAt: "2026-10-04T10:00:00.000Z",
     ungrouped: [],
     apps: [SHOP, GALLERY, SEED],
   },
 };
 
 describe("useChangeOffers", () => {
-  it("draws what HQ offers, and says HQ's refusal as of the roles it was decided over", () => {
+  it("draws what HQ offers, and says HQ's refusal", () => {
     const offers = answerOf(STREAMED, useChangeOffers);
     expect(offers("app-shop")).toEqual({
       read: true,
@@ -155,7 +150,7 @@ describe("useChangeOffers", () => {
     const gallery = offers("app-gallery");
     expect([gallery?.read, gallery?.merge, gallery?.readRefused]).toEqual([false, false, true]);
     expect(gallery?.why.read).toMatch(
-      /^You need at least Basic user access to one of this project's Zerops projects to see its changes\. Zerops roles as of .+\.$/u,
+      /^You need at least Basic user access to one of this project's Zerops projects to see its changes\.$/u,
     );
   });
 
@@ -181,13 +176,6 @@ describe("useChangeOffers", () => {
       false,
       "HQ has not said yet.",
     ]);
-  });
-
-  it("keeps what HQ said last while it is read again, before any outage", () => {
-    expect(
-      answerOf({ ...STREAMED, current: false, unavailableSince: null }, useChangeOffers)("app-shop")
-        ?.merge,
-    ).toBe(true);
   });
 
   it("offers nothing while HQ does not answer, and says since when", () => {
@@ -225,22 +213,5 @@ describe("useReleasePermission", () => {
         useReleasePermission,
       )("app-shop"),
     ).toMatchObject({ allowed: false, reason: expect.stringMatching(/^HQ unavailable since /u) });
-  });
-});
-
-describe("useKeepDeployKeyOffer", () => {
-  it("says per environment whether HQ offers keeping its key; nothing where it has not said", () => {
-    const mayKeep = answerOf(STREAMED, useKeepDeployKeyOffer);
-    expect([mayKeep("p-stage"), mayKeep("p-prod"), mayKeep("p-elsewhere")]).toEqual([
-      true,
-      false,
-      undefined,
-    ]);
-    expect(
-      answerOf(
-        { ...STREAMED, current: false, unavailableSince: 5_000 },
-        useKeepDeployKeyOffer,
-      )("p-stage"),
-    ).toBeUndefined();
   });
 });

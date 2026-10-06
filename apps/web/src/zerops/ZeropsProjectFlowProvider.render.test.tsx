@@ -18,27 +18,19 @@ import type { Stops } from "@t3tools/client-runtime/zerops/account/runtime";
 import type { StopService } from "@t3tools/client-runtime/zerops/flow";
 import type { HqEnvironment } from "@t3tools/client-runtime/zerops/hq";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
-import { changeUrl, type HqChange, type RepoListEntry } from "@t3tools/shared/hqChanges";
+import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 import type { Release } from "@t3tools/shared/hqRelease";
 import { RegistryContext } from "@effect/atom-react";
 import { Atom, AtomRegistry } from "effect/unstable/reactivity";
 import { act, createElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
-import {
-  hqStructureAtom,
-  zeropsSessionAtom,
-  type HqStructureView,
-  type ZeropsSessionView,
-} from "../state/zerops";
+import { zeropsSessionAtom, type ZeropsSessionView } from "../state/zerops";
+import { mountHqNavigation } from "./__fixtures__/hqNavigation";
 import { bindAccountFlow } from "./accountForge";
 import { type InventoryServiceOutcome, HeldInventoryContext } from "./inventoryContext";
 import { useZeropsProjectFlow, type ZeropsProjectFlowValue } from "./projectFlowContext";
-import {
-  HQ_CHANGES_UNANSWERED,
-  VERB_ALREADY_RUNNING,
-  ZeropsProjectFlowProvider,
-} from "./ZeropsProjectFlowProvider";
+import { ZeropsProjectFlowProvider } from "./ZeropsProjectFlowProvider";
 
 /** The account's authority as its inventory publishes it. */
 const access = vi.hoisted(() => ({
@@ -342,18 +334,12 @@ function environment(projectId: string, tier: HqEnvironment["tier"]): HqEnvironm
 }
 
 /** HQ's stream for org-1 telling `g1`'s environments. */
-function structureWith(environments: ReadonlyArray<HqEnvironment>): HqStructureView {
+function structureWith(environments: ReadonlyArray<HqEnvironment>) {
   return {
-    organizationId: "org-1",
     structure: {
       ungrouped: [],
       apps: [{ id: "g1", name: "Harbor", projects: [], environments }],
     },
-    changes: null,
-    appReads: null,
-    readAt: 1,
-    current: true,
-    unavailableSince: null,
   };
 }
 
@@ -672,7 +658,7 @@ describe("ZeropsProjectFlowProvider", () => {
       ],
     ]);
     const atoms = signedInAtoms();
-    atoms.set(hqStructureAtom, structureWith([environment("prod-1", "production")]));
+    mountHqNavigation(atoms, "org-1", structureWith([environment("prod-1", "production")]));
     const seen: Array<ZeropsProjectFlowValue> = [];
     function Probe() {
       seen.push(useZeropsProjectFlow());
@@ -820,7 +806,7 @@ describe("ZeropsProjectFlowProvider", () => {
         services: new Map([["prod-1", { status: "resolved", services }]]),
       };
       const atoms = signedInAtoms();
-      atoms.set(hqStructureAtom, structureWith([environment("prod-1", "production")]));
+      mountHqNavigation(atoms, "org-1", structureWith([environment("prod-1", "production")]));
       const root = createRoot(document.createElement("div") as unknown as Element);
       const render = () =>
         act(async () => {
@@ -1140,441 +1126,5 @@ describe("ZeropsProjectFlowProvider", () => {
         root.unmount();
       });
     });
-  });
-});
-
-describe("a Mate's changes in a project's flow", () => {
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
-  /** `app#n` of `g1` as HQ's stream says it. */
-  const change = (over: Partial<HqChange> = {}): HqChange => ({
-    appId: "g1",
-    repo: "app",
-    number: 7,
-    mateProjectId: "mate-1",
-    title: "Add a /status page",
-    body: "",
-    state: "open",
-    head: "c0ffee",
-    mergedSha: null,
-    landedHead: null,
-    openedAt: "2026-10-02T09:00:00.000Z",
-    mergedAt: null,
-    closedAt: null,
-    updatedAt: "2026-10-02T09:00:00.000Z",
-    mergeability: "clean",
-    behind: false,
-    ready: true,
-    comments: 0,
-    ...over,
-  });
-
-  /** The flow of `g1` while HQ's stream for org-1 says `view`. */
-  async function flowOf(view: HqStructureView) {
-    const atoms = AtomRegistry.make();
-    atoms.set(zeropsSessionAtom, {
-      status: "signed-in",
-      organizationStatus: "selected",
-      activeOrganization: { organizationId: "org-1" },
-    } as ZeropsSessionView);
-    atoms.set(hqStructureAtom, view);
-    installTestDom();
-    const { createRoot } = await import("react-dom/client");
-    const seen: Array<ZeropsProjectFlowValue> = [];
-    function Probe() {
-      seen.push(useZeropsProjectFlow());
-      return null;
-    }
-    const root = createRoot(document.createElement("div") as unknown as Element);
-    await act(async () => {
-      root.render(
-        createElement(
-          RegistryContext.Provider,
-          { value: atoms },
-          createElement(ZeropsProjectFlowProvider, null, createElement(Probe)),
-        ),
-      );
-    });
-    await act(async () => {
-      root.unmount();
-    });
-    return seen.at(-1)?.flows.get("g1");
-  }
-
-  const view = (over: Partial<HqStructureView>): HqStructureView => ({
-    organizationId: "org-1",
-    structure: null,
-    changes: null,
-    appReads: null,
-    readAt: null,
-    current: true,
-    unavailableSince: null,
-    ...over,
-  });
-
-  it("come down HQ's stream: the open ones a push reached, and the merged, linked at HQ", async () => {
-    const flow = await flowOf(
-      view({
-        changes: new Map([
-          [
-            "g1",
-            [
-              change(),
-              change({ number: 8, head: null }),
-              change({
-                number: 6,
-                state: "merged",
-                mergedSha: "d00d",
-                mergedAt: "2026-10-02T08:00:00.000Z",
-              }),
-            ],
-          ],
-        ]),
-      }),
-    );
-    expect(flow?.changesKnown).toBe(true);
-    expect(flow?.pullRequests.map((pull) => pull.url)).toEqual([
-      changeUrl("https://hq.example.test", "g1", "app", 7),
-    ]);
-    expect(flow?.merged.map((pull) => pull.number)).toEqual([6]);
-  });
-
-  it("are not known, and say why, while HQ has never told them and does not answer", async () => {
-    const flow = await flowOf(view({ current: false, unavailableSince: 1 }));
-    expect(flow?.changesKnown).toBe(false);
-    expect(flow?.changesFailure).toBe(HQ_CHANGES_UNANSWERED);
-  });
-});
-
-describe("merging and closing a change in HQ", () => {
-  const HEAD = "c0ffee";
-  const open = (number: number): HqChange => ({
-    appId: "g1",
-    repo: "app",
-    number,
-    mateProjectId: "mate-1",
-    title: "Add a /status page",
-    body: "",
-    state: "open",
-    head: HEAD,
-    mergedSha: null,
-    landedHead: null,
-    openedAt: "2026-10-02T09:00:00.000Z",
-    mergedAt: null,
-    closedAt: null,
-    updatedAt: "2026-10-02T09:00:00.000Z",
-    mergeability: "clean",
-    behind: false,
-    ready: true,
-    comments: 0,
-  });
-  const streamed = (changes: ReadonlyArray<HqChange>): HqStructureView => ({
-    organizationId: "org-1",
-    structure: null,
-    changes: new Map([["g1", changes]]),
-    appReads: null,
-    readAt: 1,
-    current: true,
-    unavailableSince: null,
-  });
-  const MERGE = flowVerbKey({ kind: "merge", groupId: "g1", repository: "app", number: 7 });
-  const CLOSE = flowVerbKey({ kind: "close", groupId: "g1", repository: "app", number: 7 });
-  const CHANGE = { repository: "app", number: 7 } as const;
-
-  afterEach(() => {
-    hq.asked = [];
-    hq.answer = () => Promise.resolve({});
-    vi.unstubAllGlobals();
-  });
-
-  /** The provider over HQ's stream saying `#7` is open; `say` moves what the stream says. */
-  async function mount() {
-    const atoms = AtomRegistry.make();
-    atoms.set(zeropsSessionAtom, {
-      status: "signed-in",
-      organizationStatus: "selected",
-      activeOrganization: { organizationId: "org-1" },
-    } as ZeropsSessionView);
-    atoms.set(hqStructureAtom, streamed([open(7)]));
-    installTestDom();
-    const { createRoot } = await import("react-dom/client");
-    const seen: Array<ZeropsProjectFlowValue> = [];
-    function Probe() {
-      seen.push(useZeropsProjectFlow());
-      return null;
-    }
-    const root = createRoot(document.createElement("div") as unknown as Element);
-    await act(async () => {
-      root.render(
-        createElement(
-          RegistryContext.Provider,
-          { value: atoms },
-          createElement(ZeropsProjectFlowProvider, null, createElement(Probe)),
-        ),
-      );
-    });
-    const say = (changes: ReadonlyArray<HqChange>) =>
-      act(async () => {
-        atoms.set(hqStructureAtom, streamed(changes));
-      });
-    const stall = (refused: boolean) =>
-      act(async () => {
-        atoms.set(hqStructureAtom, {
-          ...streamed([open(7)]),
-          current: false,
-          unavailableSince: 2,
-          failure: refused ? "HQ refused the stream." : null,
-          reconnecting: refused ? null : { delayMs: 1_000, capped: false },
-        });
-      });
-    const unmount = () =>
-      act(async () => {
-        root.unmount();
-      });
-    return { seen, say, stall, unmount };
-  }
-
-  it("merges with the head its review showed, held until HQ's stream brings it merged", async () => {
-    hq.answer = () => Promise.resolve({ made: {}, deploys: DEPLOYS });
-    const { seen, say, unmount } = await mount();
-    let outcome: unknown;
-    await act(async () => {
-      outcome = await seen.at(-1)!.merge("g1", CHANGE, HEAD);
-    });
-    // Where HQ answered the merge's deploys stand, for the review to say.
-    expect(outcome).toEqual({ ok: true, deploys: DEPLOYS });
-    expect(hq.asked).toEqual([["merge", { appId: "g1", repo: "app", number: 7 }, HEAD]]);
-    // Nothing is read again: the change comes back down the stream.
-    expect(seen.at(-1)?.pending.has(MERGE)).toBe(true);
-    await say([
-      { ...open(7), state: "merged", mergedSha: "d00d", mergedAt: "2026-10-02T10:00:00Z" },
-    ]);
-    expect(seen.at(-1)?.pending.has(MERGE)).toBe(false);
-    await unmount();
-  });
-
-  it("closes a change, held until HQ's stream brings it closed", async () => {
-    const { seen, say, unmount } = await mount();
-    await act(async () => {
-      await seen.at(-1)!.close("g1", CHANGE);
-    });
-    expect(hq.asked).toEqual([["close", { appId: "g1", repo: "app", number: 7 }]]);
-    expect(seen.at(-1)?.pending.has(CLOSE)).toBe(true);
-    await say([{ ...open(7), state: "closed", closedAt: "2026-10-02T10:00:00Z" }]);
-    expect(seen.at(-1)?.pending.has(CLOSE)).toBe(false);
-    await unmount();
-  });
-
-  // A stream that blinks reconnects and brings the change back: a second merge meanwhile would be
-  // a second ask. Only HQ refusing its stream leaves nothing to hold it.
-  it.each([
-    { case: "holds a merge while HQ's stream reconnects", refused: false, pending: true },
-    { case: "lets a merge go once HQ refuses its stream", refused: true, pending: false },
-  ])("$case", async ({ refused, pending }) => {
-    hq.answer = () => Promise.resolve({ made: {}, deploys: DEPLOYS });
-    const { seen, stall, unmount } = await mount();
-    await act(async () => {
-      await seen.at(-1)!.merge("g1", CHANGE, HEAD);
-    });
-    expect(seen.at(-1)?.pending.has(MERGE)).toBe(true);
-    await stall(refused);
-    expect(seen.at(-1)?.pending.has(MERGE)).toBe(pending);
-    await unmount();
-  });
-
-  it("hands HQ's refusal back in its words, and holds nothing", async () => {
-    hq.answer = () =>
-      Promise.reject(new Error("Its Mate pushed to it since you opened it. Review it again."));
-    const { seen, unmount } = await mount();
-    let outcome: unknown;
-    await act(async () => {
-      outcome = await seen.at(-1)!.merge("g1", CHANGE, HEAD);
-    });
-    expect(outcome).toEqual({
-      ok: false,
-      reason: "Its Mate pushed to it since you opened it. Review it again.",
-    });
-    expect(seen.at(-1)?.pending.has(MERGE)).toBe(false);
-    await unmount();
-  });
-
-  // Main A04: a head nobody was shown is never merged; HQ is not asked.
-  it("asks HQ nothing for a change whose head was never shown", async () => {
-    const { seen, unmount } = await mount();
-    let outcome: unknown;
-    await act(async () => {
-      outcome = await seen.at(-1)!.merge("g1", CHANGE, undefined);
-    });
-    expect(outcome).toEqual({
-      ok: false,
-      reason: "Its Mate pushed to it since you opened it. Review it again.",
-    });
-    expect(hq.asked).toEqual([]);
-    await unmount();
-  });
-
-  it("takes one press of a merge while it runs", async () => {
-    let finish = () => {};
-    hq.answer = () =>
-      new Promise((resolve) => {
-        finish = () => resolve({});
-      });
-    const { seen, unmount } = await mount();
-    let second: unknown;
-    await act(async () => {
-      const first = seen.at(-1)!.merge("g1", CHANGE, HEAD);
-      second = await seen.at(-1)!.merge("g1", CHANGE, HEAD);
-      finish();
-      await first;
-    });
-    expect(hq.asked).toHaveLength(1);
-    expect(second).toEqual({ ok: false, reason: VERB_ALREADY_RUNNING });
-    await unmount();
-  });
-});
-
-describe("asking HQ to run a failed deploy again", () => {
-  const FAILED_SHA = "f".repeat(40);
-  const REDEPLOY = flowVerbKey({
-    kind: "redeploy",
-    groupId: "g1",
-    projectId: "p-stage",
-    service: "app",
-  });
-  /** HQ's job `id` of `app` at the failed commit, in `state`. */
-  const job = (id: string, state: "failed" | "queued"): HqEnvironment["jobs"][number] => ({
-    id,
-    kind: "deploy",
-    service: "app",
-    sha: FAILED_SHA,
-    state,
-    cause: id === "1" ? "merge" : "run_again",
-    ref: null,
-    reason: null,
-    appVersionId: null,
-    processId: null,
-    requestedBy: id === "1" ? null : "u-ada",
-    at: "2026-10-02T10:00:00.000Z",
-    endedAt: state === "failed" ? "2026-10-02T10:04:00.000Z" : null,
-    supersededBy: null,
-  });
-  const FAILED = job("1", "failed");
-  const stageWith = (...jobs: ReadonlyArray<HqEnvironment["jobs"][number]>): HqEnvironment => ({
-    ...environment("p-stage", "stage"),
-    jobs,
-  });
-
-  afterEach(() => {
-    hq.asked = [];
-    hq.answer = () => Promise.resolve({});
-    vi.unstubAllGlobals();
-  });
-
-  /** The provider over HQ's stream recording the stage's newest deploy of `app` as failed. */
-  async function mount() {
-    const atoms = signedInAtoms();
-    atoms.set(hqStructureAtom, structureWith([stageWith(FAILED)]));
-    installTestDom();
-    const { createRoot } = await import("react-dom/client");
-    const seen: Array<ZeropsProjectFlowValue> = [];
-    function Probe() {
-      seen.push(useZeropsProjectFlow());
-      return null;
-    }
-    const root = createRoot(document.createElement("div") as unknown as Element);
-    await act(async () => {
-      root.render(
-        createElement(
-          RegistryContext.Provider,
-          { value: atoms },
-          createElement(ZeropsProjectFlowProvider, null, createElement(Probe)),
-        ),
-      );
-    });
-    const say = (...jobs: ReadonlyArray<HqEnvironment["jobs"][number]>) =>
-      act(async () => {
-        atoms.set(hqStructureAtom, structureWith([stageWith(...jobs)]));
-      });
-    const unmount = () =>
-      act(async () => {
-        root.unmount();
-      });
-    return { seen, say, unmount };
-  }
-
-  it("asks it by the environment's name, held until HQ's stream brings the job it asked for", async () => {
-    hq.answer = () => Promise.resolve(DEPLOYS);
-    const { seen, say, unmount } = await mount();
-    let outcome: unknown;
-    await act(async () => {
-      outcome = await seen
-        .at(-1)!
-        .redeploy("g1", "p-stage", { service: "app", sha: FAILED_SHA, after: "1" });
-    });
-    expect(outcome).toEqual({ ok: true, deploys: DEPLOYS });
-    expect(hq.asked).toEqual([
-      [
-        "redeploy",
-        { appId: "g1", environment: "stage", deploy: { service: "app", sha: FAILED_SHA } },
-      ],
-    ]);
-    expect(seen.at(-1)?.pending.has(REDEPLOY)).toBe(true);
-    // The stream again, its newest job still the one asked after: still under way.
-    await say(FAILED);
-    expect(seen.at(-1)?.pending.has(REDEPLOY)).toBe(true);
-    await say(job("2", "queued"), FAILED);
-    expect(seen.at(-1)?.pending.has(REDEPLOY)).toBe(false);
-    await unmount();
-  });
-
-  // The deploy-jobs design: a service running what HQ did not deploy is asked HQ's live commit
-  // again; its newest job went live, so only a newer one answers the ask.
-  it("holds a deploy asked over a live job until a newer job is there", async () => {
-    const live: HqEnvironment["jobs"][number] = {
-      ...job("5", "queued"),
-      state: "live",
-      appVersionId: "av-hq",
-      endedAt: "2026-10-02T10:04:00.000Z",
-    };
-    const { seen, say, unmount } = await mount();
-    await say(live);
-    await act(async () => {
-      await seen.at(-1)!.redeploy("g1", "p-stage", { service: "app", sha: FAILED_SHA, after: "5" });
-    });
-    expect(seen.at(-1)?.pending.has(REDEPLOY)).toBe(true);
-    await say(job("6", "queued"), live);
-    expect(seen.at(-1)?.pending.has(REDEPLOY)).toBe(false);
-    await unmount();
-  });
-
-  // Audit D2: a service the recipe declares and the project lacks, added by a person's ask.
-  it("adds a service by the environment's name, answering its deploys", async () => {
-    hq.answer = () => Promise.resolve(DEPLOYS);
-    const { seen, unmount } = await mount();
-    let outcome: unknown;
-    await act(async () => {
-      outcome = await seen.at(-1)!.addService("g1", "p-stage", "cache");
-    });
-    expect(outcome).toEqual({ ok: true, deploys: DEPLOYS });
-    expect(hq.asked).toEqual([
-      ["add-service", { appId: "g1", environment: "stage", service: "cache" }],
-    ]);
-    await unmount();
-  });
-
-  it("hands HQ's refusal back in its words, and holds nothing", async () => {
-    hq.answer = () => Promise.reject(new Error("A newer deploy took its place."));
-    const { seen, unmount } = await mount();
-    let outcome: unknown;
-    await act(async () => {
-      outcome = await seen
-        .at(-1)!
-        .redeploy("g1", "p-stage", { service: "app", sha: FAILED_SHA, after: "1" });
-    });
-    expect(outcome).toEqual({ ok: false, reason: "A newer deploy took its place." });
-    expect(seen.at(-1)?.pending.has(REDEPLOY)).toBe(false);
-    await unmount();
   });
 });

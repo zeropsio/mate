@@ -15,8 +15,6 @@ import {
 import { hqAnchorName } from "@t3tools/client-runtime/zerops/hq";
 import { AtomRegistry } from "effect/unstable/reactivity";
 
-import { hqStructureAtom } from "~/state/zerops";
-
 import { makeMemberCells } from "./__fixtures__/memberCells";
 import {
   accountHqApi,
@@ -34,6 +32,7 @@ import { keptHqSessions } from "./keptSessions";
 import { ZeropsDataContext, type ZeropsDataContextValue } from "./zeropsDataContext";
 import { ZeropsSessionContext } from "./sessionContext";
 import type { ZeropsSessionValue } from "./ZeropsSessionProvider";
+import { mountHqNavigation } from "~/zerops/__fixtures__/hqNavigation";
 
 describe("nextHqStanding", () => {
   const parts = { quarantined: [] };
@@ -248,15 +247,7 @@ describe("useAccountHq — the official HQ this page holds", () => {
     unavailableSince: number | null = null,
   ) {
     const registry = AtomRegistry.make();
-    registry.set(hqStructureAtom, {
-      organizationId: clientId,
-      structure: null,
-      changes: null,
-      appReads: null,
-      readAt: null,
-      current: unavailableSince === null,
-      unavailableSince,
-    });
+    mountHqNavigation(registry, clientId, { live: unavailableSince === null });
     let reads = 0;
     const cells = await makeMemberCells({
       scope,

@@ -13,7 +13,7 @@ import { type HqOfferState, type HqOffers, hqOffer } from "@t3tools/shared/hqOff
 import { useCallback, useMemo } from "react";
 
 import { useClientSettings } from "../hooks/useSettings";
-import { hqStructureAtom, zeropsSessionAtom } from "../state/zerops";
+import { hqDown, hqDownSinceAtom, hqNavigationAtom, zeropsSessionAtom } from "../state/zerops";
 import { formatShortTimestamp } from "../timestampFormat";
 
 /**
@@ -21,26 +21,22 @@ import { formatShortTimestamp } from "../timestampFormat";
  * state reads in words.
  */
 export function useHqOffers() {
-  const view = useAtomValue(hqStructureAtom);
+  const view = useAtomValue(hqNavigationAtom);
+  const downSince = useAtomValue(hqDownSinceAtom);
   const organizationId = useAtomValue(zeropsSessionAtom)?.activeOrganization?.organizationId;
   const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
   return useMemo(() => {
-    const structure =
-      view === null || view.organizationId !== organizationId ? null : view.structure;
-    const hq = {
-      current: view?.current === true,
-      unavailableSince: view?.unavailableSince ?? null,
-    };
+    const structure = view.orgId !== organizationId ? null : view.structure;
+    const hq = { current: view.live, unavailableSince: hqDown(view) ? downSince : null };
     const at = (ms: number) => formatShortTimestamp(new Date(ms).toISOString(), timestampFormat);
     return {
       structure,
       hq,
       at,
       state: (can: HqOffers | undefined, verb: string) => hqOffer(can, verb, hq),
-      words: (state: HqOfferState) =>
-        hqOfferWords(state, { at, rolesAnsweredAt: structure?.rolesAnsweredAt ?? null }),
+      words: (state: HqOfferState) => hqOfferWords(state, { at, rolesAnsweredAt: null }),
     };
-  }, [organizationId, timestampFormat, view]);
+  }, [downSince, organizationId, timestampFormat, view]);
 }
 
 /**

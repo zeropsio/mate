@@ -1,6 +1,7 @@
 import { autoAnimate } from "@formkit/auto-animate";
 import { requestCustomSnooze } from "./CustomSnoozeDialog";
 import { useAtomValue } from "@effect/atom-react";
+import { shownHqPersonFactsAtom } from "@t3tools/client-runtime/data";
 import * as Schema from "effect/Schema";
 import {
   DndContext,
@@ -126,7 +127,7 @@ import {
   useThreadShells,
 } from "../state/entities";
 import { environmentServerConfigsAtom, primaryServerKeybindingsAtom } from "../state/server";
-import { hqStructureAtom } from "../state/zerops";
+import { hqDownSinceAtom, hqNavigationAtom } from "../state/zerops";
 import { vcsEnvironment } from "../state/vcs";
 import { threadEnvironment } from "../state/threads";
 import { useEnvironmentQuery } from "../state/query";
@@ -228,12 +229,13 @@ import {
 } from "../zerops/useMenuMateReadings";
 import { useAskMateToFix } from "../zerops/fixRequest";
 import { useZeropsCandidates } from "../zerops/useZeropsCandidates";
-import { useZeropsMenu } from "../zerops/useZeropsMenu";
+import { useMenuRows } from "../zerops/useMenuRows";
 import { useZeropsMateOwners } from "../zerops/useZeropsMateOwners";
 import { useZeropsSession } from "../zerops/ZeropsSessionProvider";
 import { AccountVoiceLine } from "./zerops/AccountVoiceLine";
 import { useListingPatience } from "../zerops/useListingPatience";
-import { hqOutageKind, hqOutageLine, requestHqSnapshot } from "../zerops/hqStructure";
+import { hqOutage } from "../zerops/hqNavigation";
+import { useAccountDataOptional } from "../zerops/ZeropsAccountData";
 import { useNowMs } from "../zerops/useNowMs";
 import { SidebarProjectTree } from "./sidebar/SidebarProjectTree";
 import {
@@ -1781,7 +1783,7 @@ export default function Sidebar() {
   const zeropsSignedIn = zeropsSession.status === "signed-in";
   const { listing: zeropsListing, refresh: refreshZeropsCandidates } = useZeropsCandidates();
   const zeropsHeld = useMemo(() => heldCandidates(zeropsListing), [zeropsListing]);
-  const zeropsCandidates = useZeropsMenu(zeropsHeld.rows);
+  const zeropsCandidates = useMenuRows(zeropsHeld.rows);
   // The creations under way in the organization in view, drawn in their
   // groups before the listing holds them — the projects page's own placing —
   // and the New projects this tab is making, from the press.
@@ -1917,15 +1919,13 @@ export default function Sidebar() {
   const timestampFormat = useClientSettings((s) => s.timestampFormat);
   // HQ not answering: the menu draws the structure it last read, says since when and how old that
   // is (SPEC §6.2.3); the Mates' conversations go on without HQ.
-  const zeropsHqView = useAtomValue(hqStructureAtom);
-  const zeropsHqOutage =
-    zeropsHqView?.organizationId === zeropsSession.activeOrganization?.id
-      ? hqOutageLine(zeropsHqView, timestampFormat, zeropsNowMs)
-      : null;
-  const zeropsHqKind =
-    zeropsHqView?.organizationId === zeropsSession.activeOrganization?.id
-      ? hqOutageKind(zeropsHqView)
-      : null;
+  const zeropsHqOutage = hqOutage(
+    useAtomValue(hqNavigationAtom),
+    useAtomValue(hqDownSinceAtom),
+    timestampFormat,
+    zeropsNowMs,
+  );
+  const zeropsRetry = useAccountDataOptional()?.retry;
   const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
   const {
     settleThread,
@@ -2346,14 +2346,15 @@ export default function Sidebar() {
   // Whose Mates the menu lists (the account menu's Mine / Everyone): the
   // tree and the waiting faces read the same answer.
   const [zeropsMateScope] = useMateScope();
+  const zeropsPersonFacts = useAtomValue(shownHqPersonFactsAtom);
   const zeropsShown = useCallback(
     (candidate: (typeof zeropsCandidates)[number]) =>
       shownInScope(
         zeropsMateScope,
-        zeropsMateOwner(candidate),
+        zeropsPersonFacts[candidate.project.id]?.mine,
         candidate.project.id === activeZeropsProjectId,
       ),
-    [activeZeropsProjectId, zeropsMateOwner, zeropsMateScope],
+    [activeZeropsProjectId, zeropsPersonFacts, zeropsMateScope],
   );
   // The Mates waiting on the viewer, for the header's faces and ⌥↓: each read as its row reads it.
   const zeropsWaiting = useSidebarWaiting({
@@ -3854,18 +3855,11 @@ export default function Sidebar() {
       <SidebarChromeHeader
         isElectron={isElectron}
         status={
-          zeropsHqOutage === null || zeropsHqKind === null ? undefined : (
+          zeropsHqOutage === null ? undefined : (
             <SidebarHqStatus
-              kind={zeropsHqKind}
-              line={zeropsHqOutage}
-              onAgain={
-                !zeropsHqView?.failure
-                  ? undefined
-                  : () => {
-                      if (zeropsSession.activeOrganization)
-                        requestHqSnapshot(zeropsSession.activeOrganization.id);
-                    }
-              }
+              kind={zeropsHqOutage.kind}
+              line={zeropsHqOutage.line}
+              onAgain={zeropsHqOutage.again ? zeropsRetry : undefined}
             />
           )
         }

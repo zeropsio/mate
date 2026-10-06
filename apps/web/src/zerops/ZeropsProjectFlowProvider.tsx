@@ -80,7 +80,7 @@ import {
   type ReactNode,
 } from "react";
 
-import { hqChangesAtom, hqEnvironmentsAtom, hqStructureAtom } from "../state/zerops";
+import { hqChangesAtom, hqDown, hqEnvironmentsAtom, hqNavigationAtom } from "../state/zerops";
 import { useDetailProjects } from "./accountEnvironments";
 import { useStatedVersions, useStopDeployments } from "./accountForge";
 import { accountHqApi, useAccountHq } from "./accountHq";
@@ -555,7 +555,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
     [registry.registry.groups],
   );
 
-  const hqStructure = useAtomValue(hqStructureAtom);
+  const hqStructure = useAtomValue(hqNavigationAtom);
   const hqChanges = useAtomValue(hqChangesAtom);
   const recipes = useZeropsAppRecipes();
 
@@ -666,10 +666,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       hqChanges === null || hqAddress === undefined ? null : groupChangesOf(hqChanges, hqAddress),
     [hqAddress, hqChanges],
   );
-  const changesFailure =
-    hqStructure?.unavailableSince === null || hqStructure === null
-      ? undefined
-      : HQ_CHANGES_UNANSWERED;
+  const changesFailure = hqDown(hqStructure) ? HQ_CHANGES_UNANSWERED : undefined;
   // HQ's rule for this person releasing each group, in its words.
   const releasePermissionOf = useReleasePermission();
   const permissions = useMemo(
@@ -1030,11 +1027,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
   const lapsed = inventory.account.kind === "withheld";
   // A held verb waits for its effect in the group's flow, or for its streamed release read to
   // fail or HQ to refuse its stream — not reconnecting it: the wait then has nothing left to hold.
-  const streamRefused =
-    hqStructure !== null &&
-    !hqStructure.current &&
-    hqStructure.unavailableSince !== null &&
-    hqStructure.reconnecting === null;
+  const streamRefused = hqStructure.refusal !== null;
   const settled = useMemo(
     () =>
       [...awaiting].filter(([, entry]) =>
@@ -1070,7 +1063,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
             : lapsed
               ? "Project access is being checked."
               : undefined),
-      groupsRead: hqStructure?.current === true && !registry.loading,
+      groupsRead: hqStructure.live && !registry.loading,
       knownGroups: new Set(registry.registry.groups.map(({ groupId }) => groupId)),
       flows: lapsed ? EMPTY_FLOWS : flows,
       releaseFailures: lapsed ? NO_FAILURES : releaseFailures,

@@ -46,7 +46,9 @@ import { createRoot } from "react-dom/client";
 
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import {
-  menuRowsFromHq,
+  placedMenuRows,
+  placedNames,
+  placementsOf,
   type HqPlacement,
   type HqStructure,
 } from "@t3tools/client-runtime/zerops/hq";
@@ -941,7 +943,7 @@ const ORGANIZATION = { id: "org-acme", name: "Acme", membershipId: "m-acme" };
 const CONTROLS = new URLSearchParams(location.search).get("inset");
 
 /**
- * `?reload=1500`: a reload, as the app's menu goes through it (`useZeropsMenu.tsx`) — HQ's
+ * `?reload=1500`: a reload, as the app's menu goes through it (`useMenuRows.tsx`) — HQ's
  * structure and the listing being read for that many ms, then answered; until then no row. Each
  * row's top at the first frame and once HQ answered are on `window.__menuReload`, for the audit
  * browser.
@@ -1013,20 +1015,23 @@ function useReloadedRows(candidates: ReadonlyArray<ZeropsCandidate>) {
   const menu = useMemo(
     () => ({
       rows: landed
-        ? menuRowsFromHq({
+        ? placedMenuRows({
             organizationId: ORGANIZATION.id,
-            structure: answered,
+            // Each Mate's logins as its fixture's overview names them, as HQ's would.
+            placements: placementsOf(
+              answered,
+              new Map(
+                listed.flatMap((row) => {
+                  const logins = row.project.hq?.mate?.logins;
+                  return logins === undefined ? [] : [[row.project.id, logins] as const];
+                }),
+              ),
+              NO_READY_AGENTS,
+            ),
+            names: placedNames(answered),
             projects: [],
             candidates: listed,
             gone: NOTHING_GONE,
-            // Each Mate's logins as its fixture's overview names them, as HQ's would.
-            logins: new Map(
-              listed.flatMap((row) => {
-                const logins = row.project.hq?.mate?.logins;
-                return logins === undefined ? [] : [[row.project.id, logins] as const];
-              }),
-            ),
-            readyAgents: NO_READY_AGENTS,
           })
         : [],
       complete: landed,
@@ -1080,7 +1085,7 @@ function SidebarFrame({
   const reloaded = useReloadedRows(candidates);
   const shown = useCallback(
     (item: ZeropsCandidate) =>
-      shownInScope(scope, FIXTURES.owners.get(item.project.id), item.project.id === open),
+      shownInScope(scope, FIXTURES.owners.get(item.project.id)?.isViewer, item.project.id === open),
     [open, scope],
   );
   const waiting = useSidebarWaiting({

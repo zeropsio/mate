@@ -26,13 +26,7 @@ import type { MateLiveView } from "@t3tools/shared/hqMates";
 import { AtomRegistry } from "effect/unstable/reactivity";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
-import {
-  hqMatesViewAtom,
-  hqOfficialAtom,
-  hqStructureAtom,
-  zeropsSessionAtom,
-  type HqMatesView,
-} from "../state/zerops";
+import { hqOfficialAtom, zeropsSessionAtom } from "../state/zerops";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
 import {
   closeOffPort,
@@ -43,6 +37,7 @@ import {
   onlinePort,
   recordsStorage,
 } from "./environmentPorts";
+import { mountHqNavigation } from "~/zerops/__fixtures__/hqNavigation";
 
 const ENVIRONMENT_ID = EnvironmentId.make("environment-1");
 const ORIGIN = "https://zcp-1-8080.prg1.zerops.app";
@@ -263,13 +258,30 @@ describe("the records port: the account's own storage", () => {
 const presence = (online: boolean) => ({
   presence: { online, since: "2026-10-03T10:00:00.000Z", overview: online ? "live" : "stored" },
 });
-const mates = new Map([
-  ["p-up", presence(true)],
-  ["p-down", presence(false)],
-]) as never;
-const registryWith = (view: HqMatesView | null, official: boolean | null = true) => {
+const mates = { "p-up": presence(true), "p-down": presence(false) } as never;
+/** What HQ relays of the Mates it places in `organizationId`, live or as last known. */
+const registryWith = (
+  view: {
+    readonly organizationId: string;
+    readonly mates: Readonly<Record<string, MateLiveView>>;
+    readonly current: boolean;
+  } | null,
+  official: boolean | null = true,
+) => {
   const registry = AtomRegistry.make();
-  registry.set(hqMatesViewAtom, view);
+  if (view !== null)
+    mountHqNavigation(registry, view.organizationId, {
+      structure: {
+        apps: [],
+        ungrouped: Object.keys(view.mates).map((projectId) => ({
+          projectId,
+          name: projectId,
+          mate: { face: "" },
+        })),
+      },
+      mates: view.mates,
+      live: view.current,
+    });
   registry.set(hqOfficialAtom, official);
   return registry;
 };
@@ -287,15 +299,7 @@ describe("closeOffPort: HQ's word on which Mates' projects are closed off", () =
   const word = (current: boolean | null) => {
     const registry = AtomRegistry.make();
     if (current !== null) {
-      registry.set(hqStructureAtom, {
-        organizationId: "org-1",
-        structure,
-        changes: null,
-        appReads: null,
-        readAt: 0,
-        current,
-        unavailableSince: null,
-      });
+      mountHqNavigation(registry, "org-1", { structure: structure, live: current });
     }
     return closeOffPort(registry).read();
   };
@@ -313,7 +317,7 @@ describe("closeOffPort: HQ's word on which Mates' projects are closed off", () =
 describe("onlinePort: the projects whose Mate HQ holds online", () => {
   it.each([
     ["HQ's answer now, whatever organization is in view", { mates, current: true }, ["p-up"]],
-    ["HQ naming no Mates", { mates: null, current: true }, []],
+    ["HQ naming no Mates", { mates: {}, current: true }, []],
   ] as const)("reads %s", (_name, view, expected) => {
     const read = onlinePort(registryWith({ organizationId: "org-2", ...view })).read();
     expect(read === null ? null : [...read]).toEqual(expected);
@@ -412,12 +416,17 @@ describe("hqIndexPort: HQ's index of the Mates the reader observes", () => {
     });
     expect(index.projectOf(ENVIRONMENT_ID)).toBeNull();
 
-    registry.set(hqMatesViewAtom, {
-      organizationId: "org-acme",
-      mates: new Map([
-        ["p-vera", { identity: { environmentId: ENVIRONMENT_ID } } as unknown as MateLiveView],
-      ]),
-      current: true,
+    mountHqNavigation(registry, "org-acme", {
+      structure: {
+        apps: [],
+        ungrouped: [{ projectId: "p-vera", name: "Vera", mate: { face: "" } }],
+      },
+      mates: {
+        "p-vera": {
+          ...presence(true),
+          identity: { environmentId: ENVIRONMENT_ID },
+        } as unknown as MateLiveView,
+      },
     });
 
     expect(index.projectOf(ENVIRONMENT_ID)).toBe("p-vera");
@@ -432,12 +441,6 @@ describe("hqOrganizationPort: the organization an official HQ's current word spe
     ["an HQ not decided yet", { mates, current: true }, null, null],
     ["no official HQ", { mates, current: true }, false, null],
     ["what was last known of them", { mates, current: false }, true, null],
-    [
-      "an HQ naming no Mates, from before the overviews",
-      { mates: null, current: true },
-      true,
-      null,
-    ],
   ] as const)("reads what it holds of %s", (_name, view, official, expected) => {
     const registry = registryWith({ organizationId: "org-2", ...view }, official);
     expect(hqOrganizationPort(registry).read()).toBe(expected);

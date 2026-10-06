@@ -17,10 +17,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { useUnrenamedProjects } from "./unrenamedProjects";
 
 import type { ZeropsMenuAction } from "../components/zerops/ZeropsProjectMenu";
-import { hqMatesViewAtom, hqStructureAtom, zeropsSessionAtom } from "../state/zerops";
+import { zeropsSessionAtom } from "../state/zerops";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
 import { KEY_WIDER_WHY, mateAddedBy, useMateActions, type MateActions } from "./useMateActions";
 import type { ZeropsCandidatePresentation } from "./useZeropsCandidates";
+import { mountHqNavigation } from "~/zerops/__fixtures__/hqNavigation";
 
 interface AssignDialogProps {
   readonly readingOrganization?: string | undefined;
@@ -51,10 +52,11 @@ const OWNER_OFFERS: HqMateOfferStates = {
   observe: { kind: "allowed" },
   edit: { kind: "allowed" },
   detach: { kind: "allowed" },
-  moveTo: { acme: KINDS, new: KINDS },
 };
 
 const mock = vi.hoisted(() => ({
+  /** Where HQ answers a Mate may go, as its move opens (`move-offers`). */
+  moveTo: {} as Readonly<Record<string, ReadonlyArray<string>>>,
   /** HQ's registry as the page hands it to the hook; empty by default. */
   registry: { groups: [] } as {
     groups: ReadonlyArray<{
@@ -151,6 +153,9 @@ vi.mock("./useHqOffers", () => ({
     mock.roleCode === "OWNER" || mock.roleCode === "ADMIN"
       ? { kind: "allowed" }
       : { kind: "refused", reason: "not_structure_writer" },
+}));
+vi.mock("./ZeropsAccountData", () => ({
+  useAccountDataOptional: () => ({ moveOffers: () => Promise.resolve(mock.moveTo) }),
 }));
 vi.mock("./deleteProject", () => ({
   useDeleteProject: () => mock.deleteProject,
@@ -365,6 +370,7 @@ beforeEach(() => {
   mock.restartDialog.current = null;
   mock.roleCode = "OWNER";
   mock.mateOffers = () => OWNER_OFFERS;
+  mock.moveTo = { acme: KINDS, new: KINDS };
   mock.user = { id: "user-ada" };
   mock.markers.clear();
   mock.pressElsewhere = () => "stopped";
@@ -486,7 +492,6 @@ describe("useMateActions — Change face…", () => {
       observe: unsaid,
       edit: unsaid,
       detach: unsaid,
-      moveTo: undefined,
     });
     mount();
     expect(
@@ -889,15 +894,7 @@ describe("useMateActions — Finish setup on a Mate HQ holds no record of", () =
       activeOrganization: { organizationId: "org-acme" },
     } as never);
     if (known) {
-      registry.set(hqStructureAtom, {
-        organizationId: "org-acme",
-        structure: { ungrouped: [], apps: [] },
-        changes: null,
-        appReads: null,
-        readAt: 1_000,
-        current: true,
-        unavailableSince: null,
-      });
+      mountHqNavigation(registry, "org-acme", { structure: { ungrouped: [], apps: [] } });
     }
     return registry;
   };
@@ -994,15 +991,7 @@ describe("useMateActions — Finish setup on a Mate whose press here stopped bef
       organizationStatus: "selected",
       activeOrganization: { organizationId: "org-acme" },
     } as never);
-    registry.set(hqStructureAtom, {
-      organizationId: "org-acme",
-      structure: { ungrouped: [], apps: [] },
-      changes: null,
-      appReads: null,
-      readAt: 1_000,
-      current: true,
-      unavailableSince: null,
-    });
+    mountHqNavigation(registry, "org-acme", { structure: { ungrouped: [], apps: [] } });
     return registry;
   };
   // His membership as HQ places him: nowhere.
@@ -1087,8 +1076,7 @@ describe("useMateActions — Finish setup on a Mate HQ holds in its application,
       organizationStatus: "selected",
       activeOrganization: { organizationId: "org-acme" },
     } as never);
-    registry.set(hqStructureAtom, {
-      organizationId: "org-acme",
+    mountHqNavigation(registry, "org-acme", {
       structure: {
         ungrouped: [],
         apps: [
@@ -1104,13 +1092,8 @@ describe("useMateActions — Finish setup on a Mate HQ holds in its application,
             ],
           },
         ],
-      },
-      changes: null,
-      appReads: null,
-      readAt: 1_000,
-      current: true,
-      unavailableSince: null,
-    } as never);
+      } as never,
+    });
     return registry;
   };
 
@@ -1375,7 +1358,7 @@ describe("useMateActions — Move renames the Mate's project in Zerops", () => {
     mock.moveProject.mockResolvedValue(undefined);
     mock.createApp.mockResolvedValue({ id: "app-shop" });
     mount();
-    act(() => {
+    await act(async () => {
       verbs(named)
         .find((verb) => verb.id === "move")!
         .onSelect();
@@ -1450,11 +1433,8 @@ describe("useMateActions — Move, for the person who made the Mate", () => {
   it("offers Change project or role to a member with no org access who owns the Mate's project", () => {
     mock.roleCode = "NO_ACCESS";
     // HQ lets its maker keep it a Mate in its application, and nothing more.
-    mock.mateOffers = () => ({
-      ...OWNER_OFFERS,
-      edit: { kind: "allowed" },
-      moveTo: { acme: ["mate", "devstage"] },
-    });
+    mock.mateOffers = () => ({ ...OWNER_OFFERS, edit: { kind: "allowed" } });
+    mock.moveTo = { acme: ["mate", "devstage"] };
     const made = {
       ...FEN,
       project: { ...FEN.project, userRoles: [{ clientUserId: "member-ada", roleCode: "OWNER" }] },
@@ -1471,16 +1451,15 @@ describe("useMateActions — Move, for the person who made the Mate", () => {
   });
 
   // e2e-krls F29: a birth cut before its Mate was attached leaves its application empty in HQ.
-  it("offers every application HQ offers it, one with no project in it too", () => {
-    mock.mateOffers = () => ({ ...OWNER_OFFERS, moveTo: { acme: KINDS, "app-g": KINDS } });
+  it("offers every application HQ offers it, one with no project in it too", async () => {
+    mock.moveTo = { acme: KINDS, "app-g": KINDS };
     const registry = AtomRegistry.make();
     registry.set(zeropsSessionAtom, {
       status: "signed-in",
       organizationStatus: "selected",
       activeOrganization: { organizationId: "org-acme", id: "org-acme" },
     } as never);
-    registry.set(hqStructureAtom, {
-      organizationId: "org-acme",
+    mountHqNavigation(registry, "org-acme", {
       structure: {
         ungrouped: [],
         apps: [
@@ -1493,12 +1472,8 @@ describe("useMateActions — Move, for the person who made the Mate", () => {
           },
           { id: "app-g", name: "mate-rig-e2e-g", projects: [] },
         ],
-      },
-      changes: null,
-      readAt: 1_000,
-      current: true,
-      unavailableSince: null,
-    } as never);
+      } as never,
+    });
     mock.listing.current = {
       state: "known",
       value: [FEN],
@@ -1507,7 +1482,7 @@ describe("useMateActions — Move, for the person who made the Mate", () => {
       freshness: { kind: "live" },
     };
     mount(registry);
-    act(() => {
+    await act(async () => {
       verbs(FEN)
         .find((verb) => verb.id === "move")!
         .onSelect();
@@ -1518,9 +1493,9 @@ describe("useMateActions — Move, for the person who made the Mate", () => {
     );
   });
 
-  it("names the Mate as its row in the left menu does", () => {
+  it("names the Mate as its row in the left menu does", async () => {
     mount();
-    act(() => {
+    await act(async () => {
       verbs(FEN)
         .find((verb) => verb.id === "move")!
         .onSelect();
@@ -1657,10 +1632,8 @@ it("uses only live HQ readings for an unopened Mate's confirmation", () => {
       organizationStatus: "selected",
       activeOrganization: { organizationId: "org-acme" },
     } as never);
-    registry.set(hqMatesViewAtom, {
-      organizationId: "org-acme",
-      current,
-      mates: new Map([
+    mountHqNavigation(registry, "org-acme", {
+      mates: Object.fromEntries([
         [
           FEN.project.id,
           {
@@ -1685,6 +1658,7 @@ it("uses only live HQ readings for an unopened Mate's confirmation", () => {
           } satisfies MateLiveView,
         ],
       ]),
+      live: current,
     });
     mount(registry);
     act(() => {
