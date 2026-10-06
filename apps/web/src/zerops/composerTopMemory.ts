@@ -7,8 +7,7 @@
  * (the owner: "a reload paints nothing it takes back"). HQ's answer
  * confirms what is remembered, updates its words, or takes it away.
  *
- * Kept per account and per conversation, like the menu's memory
- * (`menuMemory.ts`), and forgotten when the account closes: it quotes a
+ * Kept per account and per conversation, and forgotten when the account closes: it quotes a
  * change's title.
  */
 import { MATE_SHAPE_IDS, MATE_TINT_IDS } from "@t3tools/shared/brand";

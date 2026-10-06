@@ -19,7 +19,6 @@ import {
   productionChip,
   productionMenu,
   projectChips,
-  rememberedChipAfter,
   releaseFailureOf,
   stageChip,
   stageStopChip,
@@ -321,11 +320,7 @@ describe("productionChip — production's chip: the word, its tone, its state in
     ({ given, partial }) => {
       const view = productionChip(given);
       expect(view).toEqual({ kind: "unknown", partial });
-      expect(drawnChip(view, undefined)).toEqual(partial);
-      expect(
-        drawnChip(view, { label: "prod", state: "waiting", version: "v0.1.44", waiting: 2 }),
-      ).toEqual(partial);
-      expect(rememberedChipAfter(view)).toBeUndefined();
+      expect(drawnChip(view)).toEqual(partial);
     },
   );
 
@@ -633,7 +628,6 @@ describe("stageChip — one chip for the project's stage or stages", () => {
       kind: "unknown",
       partial: { label: "stage", state: "ok", version: "main" },
     });
-    expect(rememberedChipAfter(view)).toBeUndefined();
   });
 });
 
@@ -645,24 +639,15 @@ function checking(): GroupFlowProduction {
   };
 }
 
-describe("drawnChip and rememberedChipAfter — a reload paints what it last drew", () => {
-  const REMEMBERED: ProductionChip = { label: "prod", state: "ok", version: "v0.1.43" };
+describe("drawnChip — what the menu draws of a chip", () => {
   const NOW: ProductionChip = { label: "prod", state: "waiting", version: "v0.1.44", waiting: 1 };
   it.each([
-    { view: { kind: "chip", chip: NOW } as const, drawn: NOW, remember: NOW },
-    {
-      view: { kind: "unknown" } as const,
-      drawn: REMEMBERED,
-      remember: undefined,
-    },
-    { view: { kind: "none" } as const, drawn: undefined, remember: null },
-  ])("$view.kind: draws and remembers", ({ view, drawn, remember }) => {
-    expect(drawnChip(view, REMEMBERED)).toEqual(drawn);
-    expect(rememberedChipAfter(view)).toEqual(remember);
-  });
-
-  it("draws nothing while unknown and nothing is remembered", () => {
-    expect(drawnChip({ kind: "unknown" }, undefined)).toBeUndefined();
+    { view: { kind: "chip", chip: NOW } as const, drawn: NOW },
+    { view: { kind: "unknown", partial: NOW } as const, drawn: NOW },
+    { view: { kind: "unknown" } as const, drawn: undefined },
+    { view: { kind: "none" } as const, drawn: undefined },
+  ])("$view.kind", ({ view, drawn }) => {
+    expect(drawnChip(view)).toEqual(drawn);
   });
 });
 
@@ -1493,10 +1478,9 @@ describe("buildingOf — a deploy running on a stop: what served before it, what
   });
 });
 
-it("an unread production overrides a remembered healthy chip with the shared read line", () => {
+it("an unread production says the shared read line", () => {
   const view = productionChip(input({ production: checking() }));
-  const remembered = { label: "prod", state: "ok", version: "v0.1.0" } as const;
-  const drawn = drawnChip(view, remembered)!;
+  const drawn = drawnChip(view)!;
   expect(chipFace(drawn).words).toBe("Production, Checking what runs here…");
   expect(chipDot(drawn)).toBe("off");
 });
@@ -1511,16 +1495,6 @@ it("keeps unread stops unknown while their serving status is also unread", () =>
       releases: { kind: "waiting" },
     }),
   ).toEqual({ kind: "unknown" });
-});
-
-it.each<ProductionChip>([
-  { label: "prod", state: "ok", version: "v1.0.0" },
-  { label: "prod", state: "ok", version: "v1.0.0", untold: ["api"] },
-  { label: "prod", state: "stopped", version: "v1.0.0" },
-])("keeps remembered facts while serving status is unread: $state $untold", (remembered) => {
-  const view = productionChip(input({ production: checking(), serving: { kind: "unknown" } }));
-  expect(drawnChip(view, remembered)).toEqual(remembered);
-  expect(rememberedChipAfter(view)).toBeUndefined();
 });
 
 it("shows a failed runtime attempt even while serving metadata is unread", () => {

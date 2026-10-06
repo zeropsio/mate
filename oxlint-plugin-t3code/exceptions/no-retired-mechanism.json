@@ -506,78 +506,6 @@
   {
     "path": "apps/web/src/components/Sidebar.tsx",
     "kind": "retired-token",
-    "fingerprint": "menuMemory()",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "the remembered menu copies HQ structure, Mates, members and chips to storage; the store holds them in memory",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/Sidebar.tsx",
-    "kind": "retired-token",
-    "fingerprint": "menuSkeletonSnapshot",
-    "owner": "data-layer rewrite: projects",
-    "reason": "the remembered menu skeleton copies the listing to browser storage; the store holds it in memory",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/Sidebar.tsx",
-    "kind": "retired-token",
-    "fingerprint": "menuSkeletonSnapshot",
-    "owner": "data-layer rewrite: projects",
-    "reason": "the remembered menu skeleton copies the listing to browser storage; the store holds it in memory",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/Sidebar.tsx",
-    "kind": "retired-token",
-    "fingerprint": "projectOpenedIn",
-    "owner": "data-layer rewrite: projects",
-    "reason": "the remembered menu skeleton copies the listing to browser storage; the store holds it in memory",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/Sidebar.tsx",
-    "kind": "retired-token",
-    "fingerprint": "projectOpenedIn",
-    "owner": "data-layer rewrite: projects",
-    "reason": "the remembered menu skeleton copies the listing to browser storage; the store holds it in memory",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/Sidebar.tsx",
-    "kind": "retired-token",
-    "fingerprint": "rememberMenu(",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "the remembered menu copies HQ structure, Mates, members and chips to storage; the store holds them in memory",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/Sidebar.tsx",
-    "kind": "retired-token",
-    "fingerprint": "rememberMenu(",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "the remembered menu copies HQ structure, Mates, members and chips to storage; the store holds them in memory",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/Sidebar.tsx",
-    "kind": "retired-token",
-    "fingerprint": "rememberMenuCandidates",
-    "owner": "data-layer rewrite: projects",
-    "reason": "the remembered menu skeleton copies the listing to browser storage; the store holds it in memory",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/Sidebar.tsx",
-    "kind": "retired-token",
-    "fingerprint": "rememberMenuCandidates",
-    "owner": "data-layer rewrite: projects",
-    "reason": "the remembered menu skeleton copies the listing to browser storage; the store holds it in memory",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/Sidebar.tsx",
-    "kind": "retired-token",
     "fingerprint": "shownInScope(",
     "owner": "data-layer rewrite: permissions/members",
     "reason": "the Mine filter and owner records are computed in the client; HQ sends them finished",
@@ -629,30 +557,6 @@
     "fingerprint": "useZeropsMenu",
     "owner": "data-layer rewrite: HQ structure/apps",
     "reason": "the menu is assembled from HQ rows in a hook; the menu projection reads the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/Sidebar.tsx",
-    "kind": "retired-token",
-    "fingerprint": "withChips",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "the remembered menu copies HQ structure, Mates, members and chips to storage; the store holds them in memory",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/Sidebar.tsx",
-    "kind": "retired-token",
-    "fingerprint": "withChips",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "the remembered menu copies HQ structure, Mates, members and chips to storage; the store holds them in memory",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/Sidebar.tsx",
-    "kind": "retired-token",
-    "fingerprint": "withChips",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "the remembered menu copies HQ structure, Mates, members and chips to storage; the store holds them in memory",
     "expires": "never"
   },
   {
@@ -2218,22 +2122,6 @@
   {
     "path": "apps/web/src/design/sidebarHarness.tsx",
     "kind": "retired-token",
-    "fingerprint": "menuMemory()",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "the remembered menu copies HQ structure, Mates, members and chips to storage; the store holds them in memory",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/design/sidebarHarness.tsx",
-    "kind": "retired-token",
-    "fingerprint": "menuMemory()",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "the remembered menu copies HQ structure, Mates, members and chips to storage; the store holds them in memory",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/design/sidebarHarness.tsx",
-    "kind": "retired-token",
     "fingerprint": "menuRowsFromHq",
     "owner": "data-layer rewrite: HQ structure/apps",
     "reason": "the menu is assembled from HQ rows in a hook; the menu projection reads the store",
@@ -2245,22 +2133,6 @@
     "fingerprint": "menuRowsFromHq",
     "owner": "data-layer rewrite: HQ structure/apps",
     "reason": "the menu is assembled from HQ rows in a hook; the menu projection reads the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/design/sidebarHarness.tsx",
-    "kind": "retired-token",
-    "fingerprint": "rememberMenu(",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "the remembered menu copies HQ structure, Mates, members and chips to storage; the store holds them in memory",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/design/sidebarHarness.tsx",
-    "kind": "retired-token",
-    "fingerprint": "rememberMenu(",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "the remembered menu copies HQ structure, Mates, members and chips to storage; the store holds them in memory",
     "expires": "never"
   },
   {
@@ -2269,22 +2141,6 @@
     "fingerprint": "shownInScope(",
     "owner": "data-layer rewrite: permissions/members",
     "reason": "the Mine filter and owner records are computed in the client; HQ sends them finished",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/design/sidebarHarness.tsx",
-    "kind": "retired-token",
-    "fingerprint": "withChips",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "the remembered menu copies HQ structure, Mates, members and chips to storage; the store holds them in memory",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/design/sidebarHarness.tsx",
-    "kind": "retired-token",
-    "fingerprint": "withChips",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "the remembered menu copies HQ structure, Mates, members and chips to storage; the store holds them in memory",
     "expires": "never"
   },
   {
@@ -3416,30 +3272,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/zerops/hqStructure.ts",
-    "kind": "retired-token",
-    "fingerprint": "menuMemory()",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "the remembered menu copies HQ structure, Mates, members and chips to storage; the store holds them in memory",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/hqStructure.ts",
-    "kind": "retired-token",
-    "fingerprint": "rememberMenu(",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "the remembered menu copies HQ structure, Mates, members and chips to storage; the store holds them in memory",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/hqStructure.ts",
-    "kind": "retired-token",
-    "fingerprint": "rememberMenu(",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "the remembered menu copies HQ structure, Mates, members and chips to storage; the store holds them in memory",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/zerops/hqVerdict.ts",
     "kind": "retired-token",
     "fingerprint": "NO_HQ_RECHECK_MS",
@@ -3621,110 +3453,6 @@
     "fingerprint": "shownInScope(",
     "owner": "data-layer rewrite: permissions/members",
     "reason": "the Mine filter and owner records are computed in the client; HQ sends them finished",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/menuMemory.ts",
-    "kind": "retired-token",
-    "fingerprint": "mate:zerops:menu-memory",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "the remembered menu copies HQ structure, Mates, members and chips to storage; the store holds them in memory",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/menuMemory.ts",
-    "kind": "retired-token",
-    "fingerprint": "menuMemory()",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "the remembered menu copies HQ structure, Mates, members and chips to storage; the store holds them in memory",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/menuMemory.ts",
-    "kind": "retired-token",
-    "fingerprint": "menuMemory()",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "the remembered menu copies HQ structure, Mates, members and chips to storage; the store holds them in memory",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/menuMemory.ts",
-    "kind": "retired-token",
-    "fingerprint": "menuMemory()",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "the remembered menu copies HQ structure, Mates, members and chips to storage; the store holds them in memory",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/menuMemory.ts",
-    "kind": "retired-token",
-    "fingerprint": "menuMemory()",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "the remembered menu copies HQ structure, Mates, members and chips to storage; the store holds them in memory",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/menuMemory.ts",
-    "kind": "retired-token",
-    "fingerprint": "rememberMenu(",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "the remembered menu copies HQ structure, Mates, members and chips to storage; the store holds them in memory",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/menuMemory.ts",
-    "kind": "retired-token",
-    "fingerprint": "withChips",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "the remembered menu copies HQ structure, Mates, members and chips to storage; the store holds them in memory",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/menuMemory.ts",
-    "kind": "retired-token",
-    "fingerprint": "withMembers",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "the remembered menu copies HQ structure, Mates, members and chips to storage; the store holds them in memory",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/menuSkeleton.ts",
-    "kind": "retired-token",
-    "fingerprint": "mate:zerops:menu-skeleton",
-    "owner": "data-layer rewrite: projects",
-    "reason": "the remembered menu skeleton copies the listing to browser storage; the store holds it in memory",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/menuSkeleton.ts",
-    "kind": "retired-token",
-    "fingerprint": "menuSkeletonSnapshot",
-    "owner": "data-layer rewrite: projects",
-    "reason": "the remembered menu skeleton copies the listing to browser storage; the store holds it in memory",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/menuSkeleton.ts",
-    "kind": "retired-token",
-    "fingerprint": "menuSkeletonSnapshot",
-    "owner": "data-layer rewrite: projects",
-    "reason": "the remembered menu skeleton copies the listing to browser storage; the store holds it in memory",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/menuSkeleton.ts",
-    "kind": "retired-token",
-    "fingerprint": "projectOpenedIn",
-    "owner": "data-layer rewrite: projects",
-    "reason": "the remembered menu skeleton copies the listing to browser storage; the store holds it in memory",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/menuSkeleton.ts",
-    "kind": "retired-token",
-    "fingerprint": "rememberMenuCandidates",
-    "owner": "data-layer rewrite: projects",
-    "reason": "the remembered menu skeleton copies the listing to browser storage; the store holds it in memory",
     "expires": "never"
   },
   {
@@ -4181,14 +3909,6 @@
     "fingerprint": "mateIsViewers(",
     "owner": "data-layer rewrite: permissions/members",
     "reason": "the Mine filter and owner records are computed in the client; HQ sends them finished",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useMateActions.tsx",
-    "kind": "retired-token",
-    "fingerprint": "rememberMenu(",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "the remembered menu copies HQ structure, Mates, members and chips to storage; the store holds them in memory",
     "expires": "never"
   },
   {
@@ -4786,22 +4506,6 @@
   {
     "path": "apps/web/src/zerops/useZeropsMateOwners.ts",
     "kind": "retired-token",
-    "fingerprint": "menuMemory()",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "the remembered menu copies HQ structure, Mates, members and chips to storage; the store holds them in memory",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsMateOwners.ts",
-    "kind": "retired-token",
-    "fingerprint": "rememberMenu(",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "the remembered menu copies HQ structure, Mates, members and chips to storage; the store holds them in memory",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsMateOwners.ts",
-    "kind": "retired-token",
     "fingerprint": "useKeptHqVerdict",
     "owner": "data-layer rewrite: HQ structure/apps",
     "reason": "the official-HQ verdict is remembered in browser storage for a day; HQ says which is official",
@@ -4869,22 +4573,6 @@
     "fingerprint": "useZeropsOrganizationMembersRead",
     "owner": "data-layer rewrite: permissions/members",
     "reason": "the client reads organization members for owners and admins; HQ sends them finished",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsMateOwners.ts",
-    "kind": "retired-token",
-    "fingerprint": "withMembers",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "the remembered menu copies HQ structure, Mates, members and chips to storage; the store holds them in memory",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsMateOwners.ts",
-    "kind": "retired-token",
-    "fingerprint": "withMembers",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "the remembered menu copies HQ structure, Mates, members and chips to storage; the store holds them in memory",
     "expires": "never"
   },
   {

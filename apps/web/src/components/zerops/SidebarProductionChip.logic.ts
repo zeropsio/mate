@@ -17,10 +17,8 @@
  *
  * Every fact comes from what the menu already reads — `groupFlow`'s stops, the
  * platform's services, HQ's releases — and a chip is drawn only once what
- * decides it is read: until then it is unknown, and the menu draws the chip it
- * remembers (`menuMemory.ts`) — else, where only HQ's releases answer is missing,
- * what the platform alone says; else nothing. A reload never paints a chip it
- * then takes back.
+ * decides it is read: until then it is unknown, and the menu draws — where only
+ * HQ's releases answer is missing — what the platform alone says; else nothing.
  *
  * Pure: no React, no clock, no store.
  */
@@ -213,9 +211,8 @@ export interface ProductionChip {
 export type ChipView =
   | { readonly kind: "none" }
   /**
-   * Not all of it read. `partial` is what the platform alone says while
-   * HQ has not answered the releases — drawn where nothing is remembered, and
-   * never remembered itself.
+   * Not all of it read. `partial` is what the platform alone says while HQ has not answered the
+   * releases.
    */
   | { readonly kind: "unknown"; readonly partial?: ProductionChip }
   | { readonly kind: "chip"; readonly chip: ProductionChip };
@@ -497,26 +494,10 @@ export function projectChips(input: {
   };
 }
 
-/**
- * The chip a menu draws: the one read, or — while unknown — the one it
- * remembers, else what the platform alone says.
- */
-export function drawnChip(
-  view: ChipView,
-  remembered: ProductionChip | undefined,
-): ProductionChip | undefined {
+/** The chip a menu draws: the one read, or — while unknown — what the platform alone says. */
+export function drawnChip(view: ChipView): ProductionChip | undefined {
   if (view.kind === "chip") return view.chip;
-  if (view.kind !== "unknown") return undefined;
-  return view.partial ?? remembered;
-}
-
-/**
- * What the menu's memory keeps after a draw: the chip read, `null` to forget
- * one that no longer is, and `undefined` — nothing learned — while unknown.
- */
-export function rememberedChipAfter(view: ChipView): ProductionChip | null | undefined {
-  if (view.kind === "chip") return view.chip.state === "unverified" ? undefined : view.chip;
-  return view.kind === "none" ? null : undefined;
+  return view.kind === "unknown" ? view.partial : undefined;
 }
 
 /** A stop's dot in the chip's menu and the jump box: a colour for a state, hollow for a stop on purpose, a spinner while moving. */

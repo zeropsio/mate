@@ -356,11 +356,7 @@ describe("changeMarkTone — the one colour a change row's mark may wear", () =>
     { case: "behind main", pull: change({ mergeability: "conflicting" }), tone: "attention" },
     { case: "HQ still checking", pull: change({ mergeability: "checking" }), tone: undefined },
   ] as const)("$case: $tone", ({ pull, tone }) => {
-    expect(changeMarkTone(pull, false)).toBe(tone);
-  });
-
-  it("says nothing for a change drawn from memory: its verdict is HQ's to say again", () => {
-    expect(changeMarkTone(change({ mergeability: "conflicting" }), true)).toBeUndefined();
+    expect(changeMarkTone(pull)).toBe(tone);
   });
 });
 
@@ -814,7 +810,7 @@ describe("mateRowReading — the face follows the work, and the words never outr
     task: "Stand up development of the project.",
     ...overrides,
   });
-  // What `menuMemory.ts` hands back for the same row: at rest, its line held.
+  // HQ's last word of the same row: at rest, its line held.
   const remembered = reading({
     kind: "idle",
     face: "idle",

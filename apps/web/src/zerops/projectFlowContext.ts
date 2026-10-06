@@ -86,8 +86,8 @@ export interface ZeropsProjectFlow {
   /**
    * Whether HQ's stream has told the project's changes: until then
    * `pullRequests` is empty for want of an answer, not of a change, and the
-   * left menu draws the change rows it remembers (`menuMemory.ts`). Once told,
-   * they stand through a stream that goes quiet.
+   * left menu draws no change row. Once told, they stand through a stream
+   * that goes quiet.
    */
   readonly changesKnown: boolean;
   /**

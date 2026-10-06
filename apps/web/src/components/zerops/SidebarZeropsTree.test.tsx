@@ -10,8 +10,6 @@ import {
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { HqMate, HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 import { crewSnapshotFixture } from "@t3tools/client-runtime/zerops/crew/testing/fixtures";
-import type { Deployment } from "@t3tools/client-runtime/zerops/flow";
-import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import type { CandidatesNotice } from "@t3tools/client-runtime/zerops/projections";
 import * as NodeFS from "node:fs";
 import { act, act as act_, type ReactElement } from "react";
@@ -128,7 +126,6 @@ import {
   SidebarHqStatus,
   SidebarNewProject,
   SidebarZeropsTree,
-  type SidebarDrawn,
   type SidebarProjectFlow,
 } from "./SidebarZeropsTree";
 
@@ -485,6 +482,21 @@ describe("SidebarZeropsTree", () => {
     // Read and Mate-less: the empty state, as before.
     expect(render([candidate("unplaced", {}, "ready", false)], { complete: true })).toContain(
       "sidebar-environments-empty",
+    );
+  });
+
+  it.each([
+    { name: "while its first read is under way, the rows' room held", reading: true, drawn: true },
+    { name: "with nothing being read, nothing", reading: false, drawn: false },
+  ])("a cold menu with no row and no notice: $name", ({ reading, drawn }) => {
+    const html = render([], { complete: false, notice: null, reading });
+    expect(html.includes('data-zerops-surface="sidebar-environments-skeleton"')).toBe(drawn);
+    expect(html).not.toContain("No environment has Mate yet");
+  });
+
+  it("draws no skeleton once a row is there", () => {
+    expect(render([CRM_DEV], { complete: false, notice: null, reading: true })).not.toContain(
+      "sidebar-environments-skeleton",
     );
   });
 
@@ -1924,23 +1936,8 @@ describe("production and the stages are two chips on the project's heading (M2, 
     );
   });
 
-  it("draws the chips it remembers while what decides them is unread, and else nothing", () => {
-    const remembering = {
-      changes: () => undefined,
-      chips: () => ({
-        prod: { label: "prod", state: "stopped", version: "v2.3.0" },
-        stage: { label: "stage", state: "ok", version: "main" },
-      }),
-    };
+  it("draws no chip while what decides it is unread", () => {
     // The platform has not said how the stops' services stand.
-    const unread = render([CRM_DEV, CRM_STAGE, CRM_PROD], {
-      getFlow: () => flow(),
-      remembered: remembering,
-    });
-    expect(chipsOf(unread).map((chip) => [chip.word, chip.tone])).toEqual([
-      ["stage", "neutral"],
-      ["prod", "off"],
-    ]);
     expect(render([CRM_DEV, CRM_STAGE, CRM_PROD], { getFlow: () => flow() })).not.toContain(
       "sidebar-production-chip",
     );
@@ -1981,15 +1978,13 @@ describe("production and the stages are two chips on the project's heading (M2, 
     expect(chips(mounted)).toEqual(["Stage main, healthy", "Production v2.4.0, healthy"]);
   });
 
-  it("draws what the platform alone says while HQ has not answered the releases, and never keeps it", () => {
-    const drawn: SidebarDrawn[] = [];
+  it("draws what the platform alone says while HQ has not answered the releases", () => {
     const tree = mount(
       <ZeropsProjectFlowContext.Provider value={HQ_OPEN}>
         <SidebarZeropsTree
           candidates={[CRM_DEV, up(CRM_PROD)]}
           complete
           onBrowseProjects={() => {}}
-          onDrawn={(next: SidebarDrawn) => drawn.push(next)}
           onSelect={() => {}}
         />
       </ZeropsProjectFlowContext.Provider>,
@@ -1999,8 +1994,6 @@ describe("production and the stages are two chips on the project's heading (M2, 
         node.type === "button" && node.props["data-zerops-surface"] === "sidebar-production-chip",
     );
     expect(chips.map((chip) => chip.props["aria-label"])).toEqual(["Production v2.4.0, healthy"]);
-    // Production is unknown, not learned; there is no stage, which is.
-    expect(drawn.at(-1)?.chips).toEqual({ aaa: { stage: null } });
   });
 
   it("lets the jump box find production and each stage, each with its own dot and words", () => {
@@ -4025,40 +4018,13 @@ describe("what the jump box finds in the menu", () => {
   });
 });
 
-describe("a reload paints what the menu last drew (menuMemory)", () => {
-  const known = (label: string): Shown<Deployment> => ({
-    state: "known",
-    value: {
-      kind: "running",
-      activatedAt: null,
-      version: {
-        name: label,
-        commit: "3f9c1b2",
-        sha: "3f9c1b2000000000000000000000000000000000",
-        taggedBy: undefined,
-        label,
-      },
-    },
-    asOf: { ordinal: 1, atMs: 0 },
-    coverage: "complete",
-    freshness: { kind: "live" },
-  });
+describe("before HQ and the forge answer", () => {
   const flowOf = (overrides: Partial<SidebarProjectFlow>): SidebarProjectFlow => ({
     pullRequests: [],
     environments: new Map(),
     releaseOffered: false,
     ...overrides,
   });
-  const remembering = (changes: ReadonlyArray<FlowPullRequest> | undefined) => ({
-    changes: () => changes,
-    chips: () => undefined,
-  });
-  const running = (label: string) =>
-    ({
-      deployments: new Map([["crm-prod", known(label)]]),
-      flows: new Map(),
-    }) as unknown as ZeropsProjectFlowValue;
-  const RUNS_V250 = running("v2.5.0");
 
   it("draws a Mate whose socket is not open with HQ's last words of it — asleep, offering nothing", () => {
     const html = render([CRM_DEV, CRM_PROD], {
@@ -4084,49 +4050,17 @@ describe("a reload paints what the menu last drew (menuMemory)", () => {
     expect(html).not.toContain('data-zerops-surface="sidebar-mate-stop"');
   });
 
-  it("draws the change rows it remembers until HQ answers: their titles, and no verb", () => {
-    const html = render([CRM_DEV, CRM_PROD], {
-      getFlow: () => flowOf({ changesKnown: false }),
-      remembered: remembering([pull(14, { title: "Add a /status page" })]),
-    });
-    expect(html).toContain("#14 Add a /status page");
-    // No verdict it may no longer have: the mark is untinted, and the title
-    // opens nothing until HQ answers. *Review* stands, so nothing appears
-    // on the row when the answer comes.
-    expect(html).not.toContain("data-zerops-change-tone");
-    expect(html).not.toContain("sidebar-pull-request-open");
-    expect(html).toContain('data-zerops-surface="sidebar-pull-request-review"');
+  it("draws no change row until HQ answers", () => {
+    const html = render([CRM_DEV, CRM_PROD], { getFlow: () => flowOf({ changesKnown: false }) });
+    expect(html).not.toContain('data-zerops-surface="sidebar-pull-request"');
   });
 
-  it("draws HQ's change rows once it answered, and never the remembered ones", () => {
+  it("draws HQ's change rows once it answered", () => {
     const html = render([CRM_DEV, CRM_PROD], {
       getFlow: () => flowOf({ changesKnown: true, pullRequests: [pull(15, { title: "Live" })] }),
-      remembered: remembering([pull(14, { title: "Remembered" })]),
     });
     expect(html).toContain("#15 Live");
-    expect(html).not.toContain("Remembered");
     expect(html).toContain('data-zerops-surface="sidebar-pull-request-review"');
-  });
-
-  it("reports what it drew of what it read, for the memory to keep", () => {
-    const drawn: SidebarDrawn[] = [];
-    const change = pull(4);
-    mount(
-      <ZeropsProjectFlowContext.Provider value={RUNS_V250}>
-        <SidebarZeropsTree
-          candidates={[CRM_DEV, up(CRM_PROD)]}
-          complete
-          getFlow={() => flowOf({ changesKnown: true, pullRequests: [change] })}
-          onBrowseProjects={() => {}}
-          onDrawn={(next: SidebarDrawn) => drawn.push(next)}
-          onSelect={() => {}}
-        />
-      </ZeropsProjectFlowContext.Provider>,
-    );
-    expect(drawn.at(-1)).toEqual({
-      changes: { aaa: [change] },
-      chips: { aaa: { prod: { label: "prod", state: "ok", version: "v2.5.0" }, stage: null } },
-    });
   });
 });
 

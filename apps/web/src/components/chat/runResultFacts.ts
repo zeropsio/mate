@@ -5,9 +5,7 @@
  * Zerops project, the group that project belongs to.
  *
  * Every fact is undefined while unread, so a row stays as the run left it
- * until its fact is known. Until the forge answers, the changes the left
- * menu remembers drawing stand in (`menuMemory.ts`): a reload paints the
- * change it will keep rather than growing it in a second later.
+ * until its fact is known. Until the forge answers, no change is known.
  */
 import {
   changeAsksForReview,
@@ -21,7 +19,6 @@ import { useContext, useMemo } from "react";
 
 import { useCrew } from "../../zerops/crew/useCrew";
 import { InventoryContext, type InventoryServiceOutcome } from "../../zerops/inventoryContext";
-import { rememberedChanges } from "../../zerops/menuMemory";
 import { useZeropsProjectFlowOptional } from "../../zerops/projectFlowContext";
 import { useRegistrationRecord } from "../../zerops/registrationRecords";
 import type { OutcomeModel } from "./conversation.logic";
@@ -56,8 +53,6 @@ export function readRunResultFacts(input: {
         }
       >
     | undefined;
-  /** The open changes the menu remembers drawing for a group. */
-  readonly remembered: (groupId: string) => ReadonlyArray<FlowPullRequest> | undefined;
   readonly crew: {
     readonly environmentId: EnvironmentId;
     readonly tasks: ReadonlyArray<{
@@ -86,7 +81,7 @@ export function readRunResultFacts(input: {
           }
         : {
             groupId,
-            open: (input.remembered(groupId) ?? []).map(resultChange),
+            open: [],
             merged: [],
             known: false,
           };
@@ -144,7 +139,6 @@ export function useRunResultFacts(outcome: OutcomeModel | null | undefined): Res
         projectId,
         inventory,
         flows,
-        remembered: rememberedChanges,
         crew: environmentId === null || tasks === undefined ? null : { environmentId, tasks },
       }),
     [environmentId, flows, inventory, projectId, tasks],

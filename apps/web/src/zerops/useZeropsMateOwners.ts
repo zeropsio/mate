@@ -35,7 +35,7 @@ import {
   settledValue,
   type MembersCellRequest,
 } from "@t3tools/client-runtime/zerops/data";
-import { useCallback, useContext, useEffect, useMemo } from "react";
+import { useCallback, useContext, useMemo } from "react";
 
 import {
   zeropsAccountDisplay,
@@ -44,7 +44,6 @@ import {
 
 import { hqPeopleAtom, hqPeopleViewAtom, hqStructureAtom } from "../state/zerops";
 import { keptNoHq, useKeptHqVerdict, type HqVerdictOwner } from "./hqVerdict";
-import { menuMemory, rememberMenu, withMembers } from "./menuMemory";
 import { useKnown, ZeropsDataContext } from "./zeropsDataContext";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
@@ -65,6 +64,8 @@ export function zeropsMemberNameByUserId(
   const member = members.find((entry) => entry.user?.id === userId);
   return member === undefined ? undefined : mateMemberName(member);
 }
+
+const NO_MEMBERS: ReadonlyArray<ZeropsOrganizationMember> = [];
 
 /**
  * Where the member read stands: `idle` until a surface would use it, `failed`
@@ -104,17 +105,9 @@ export function useZeropsOrganizationMembersRead(input: {
   );
   const read = selectMembers(shown);
   const answered = read.status === "ready" ? read.members : undefined;
-  // The members this browser read last, until they are read again: whose each Mate is — its
-  // face's badge, *Mine* — from the first paint (`menuMemory.ts`). What waits for the read
-  // itself waits on `status`.
-  useEffect(() => {
-    if (clientId !== undefined && answered !== undefined)
-      rememberMenu((memory) => withMembers(memory, clientId, answered));
-  }, [answered, clientId]);
-  const members = useMemo(
-    () => answered ?? (clientId === undefined ? [] : (menuMemory().members[clientId] ?? [])),
-    [answered, clientId],
-  );
+  // Whose each Mate is — its face's badge, *Mine* — once the members are read; what waits for
+  // the read itself waits on `status`.
+  const members = answered ?? NO_MEMBERS;
   const status: ZeropsOrganizationMembersStatus =
     !enabled || clientId === undefined ? "idle" : request === null ? "loading" : read.status;
   return { members, status, settled: settledValue(shown) !== null };

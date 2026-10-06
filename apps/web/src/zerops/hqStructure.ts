@@ -7,8 +7,7 @@
  * Mates the reader may observe with the people its view names (`hqMatesAtom`, `hqPeopleAtom`) —
  * in atoms of their own, since a Mate at work moves them twice a second and the structure never.
  *
- * - **First paint:** the structure this browser last read (`menuMemory`), with when, and the
- *   Mates as HQ last told them, at rest, until HQ answers.
+ * - **First paint:** nothing of HQ until it answers: no structure this browser kept.
  * - **HQ down:** the last known structure stands, and the view says since when HQ does not answer
  *   (SPEC §4); chat and terminal to the Mates do not go through HQ and keep working.
  * - Planned 100 s segments continue inside `streamStructure`; the live atoms remain current
@@ -56,14 +55,11 @@ import {
   type AccountHq,
   type HqStanding,
 } from "./accountHq";
-import { menuMemory, rememberedMates, rememberMenu, withMates, withStructure } from "./menuMemory";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 import { whenShown } from "./whenShown";
 
 /** A stream nothing came down for this long — three pings — is given up. */
 export const HQ_STREAM_SILENCE_MS = 60_000;
-/** How often at most the Mates are remembered while they move: a reload's first paint needs no more. */
-const HQ_MATES_REMEMBER_MS = 10_000;
 const HQ_RECONNECT_FIRST_MS = 1_000;
 const HQ_RECONNECT_CAP_MS = 30_000;
 
@@ -75,22 +71,15 @@ export function requestHqSnapshot(organizationId: string): void {
 
 /**
  * Reads the organization's structure from its HQ until `signal` aborts, telling `publish` of every
- * state it reaches and `remember` of every structure HQ answered.
+ * state it reaches.
  */
 export async function driveHqStructure(input: {
   readonly api: Pick<HqApi, "streamStructure">;
   readonly organizationId: string;
-  readonly remembered: { readonly structure: HqStructure; readonly readAt: number } | undefined;
   readonly publish: (view: HqStructureView) => void;
   /** Told of the Mates and of the people apart from the structure: theirs change far more often. */
   readonly publishMates: (view: HqMatesView) => void;
   readonly publishPeople: (view: HqPeopleView) => void;
-  readonly remember: (structure: HqStructure, readAt: number) => void;
-  /**
-   * Told of the Mates and the people to remember: at their snapshot, at most every
-   * {@link HQ_MATES_REMEMBER_MS} while they move — a ping says it late — and as the stream ends.
-   */
-  readonly rememberMates: (mates: HqMates, people: HqPeople | null) => void;
   readonly now: () => number;
   /** Told how each stream ended — the close code a break carried — and how long it lived (F26). */
   readonly log: (line: string) => void;
@@ -112,10 +101,10 @@ export async function driveHqStructure(input: {
   const silenceMs = input.silenceMs ?? HQ_STREAM_SILENCE_MS;
   let view: HqStructureView = {
     organizationId: input.organizationId,
-    structure: input.remembered?.structure ?? null,
+    structure: null,
     changes: null,
     appReads: null,
-    readAt: input.remembered?.readAt ?? null,
+    readAt: null,
     current: false,
     unavailableSince: null,
     failure: null,
@@ -242,16 +231,6 @@ export async function driveHqStructure(input: {
           ...(parts === undefined ? {} : { parts }),
         };
       };
-      let rememberedAt: number | null = null;
-      let dirty = false;
-      const rememberMates = (force: boolean) => {
-        if (mates === null || !dirty) return;
-        const now = input.now();
-        if (!force && rememberedAt !== null && now - rememberedAt < HQ_MATES_REMEMBER_MS) return;
-        input.rememberMates(mates, people);
-        rememberedAt = now;
-        dirty = false;
-      };
       if (view.current) publish({ ...view, current: false });
       let cause: unknown;
       let failure = "HQ's stream ended.";
@@ -262,11 +241,7 @@ export async function driveHqStructure(input: {
               if (controller.signal.aborted) return;
               clearTimeout(silence);
               silence = setTimeout(() => controller.abort(), silenceMs);
-              rememberMates(false);
-              if (streamed !== null) {
-                view = { ...view, readAt: input.now() };
-                input.remember(streamed, view.readAt!);
-              }
+              if (streamed !== null) view = { ...view, readAt: input.now() };
             },
             onEvent: (event) => {
               if (controller.signal.aborted) return;
@@ -278,14 +253,6 @@ export async function driveHqStructure(input: {
                 publishMates({ organizationId: input.organizationId, mates, current: true });
               if (event.kind === "snapshot" || people !== previousPeople)
                 input.publishPeople({ organizationId: input.organizationId, people });
-              if (
-                event.kind === "snapshot" ||
-                mates !== previousMates ||
-                people !== previousPeople
-              ) {
-                dirty = true;
-                rememberMates(event.kind === "snapshot");
-              }
               if (event.kind === "parts") {
                 parts = event.parts;
                 if (streamed !== null) publish({ ...view, standing: servingStanding() });
@@ -316,7 +283,6 @@ export async function driveHqStructure(input: {
               backoffMs = HQ_RECONNECT_FIRST_MS;
               firstReconnect = true;
               served += 1;
-              input.remember(streamed, readAt);
               publish({
                 ...view,
                 structure: streamed,
@@ -344,7 +310,6 @@ export async function driveHqStructure(input: {
       } finally {
         clearTimeout(silence);
         controller.abort();
-        rememberMates(true);
       }
       if (input.signal.aborted) return;
       if (!requested) {
@@ -477,26 +442,17 @@ export function ZeropsHqStructure(): null {
       registry.set(hqPeopleViewAtom, null);
       return;
     }
-    const remembered = menuMemory().structures[organizationId];
-    const kept =
-      remembered === undefined
-        ? undefined
-        : {
-            structure: { ungrouped: remembered.ungrouped, apps: remembered.apps },
-            readAt: remembered.readAt,
-          };
-    // First paint: the Mates and the people as HQ last told this browser, none of them live.
-    const told = rememberedMates(organizationId);
-    registry.set(hqMatesViewAtom, { organizationId, mates: told?.mates ?? null, current: false });
-    registry.set(hqPeopleViewAtom, { organizationId, people: told?.people ?? null });
-    // Until the member list names the organization's HQ: what this browser read of it last.
+    // First paint: nothing of HQ until it answers.
+    registry.set(hqMatesViewAtom, { organizationId, mates: null, current: false });
+    registry.set(hqPeopleViewAtom, { organizationId, people: null });
+    // Until the member list names the organization's HQ: nothing of its structure.
     if (hqProjectId === undefined || hqAddress === undefined) {
       registry.set(hqStructureAtom, {
         organizationId,
-        structure: kept?.structure ?? null,
+        structure: null,
         changes: null,
         appReads: null,
-        readAt: kept?.readAt ?? null,
+        readAt: null,
         current: false,
         unavailableSince: null,
       });
@@ -506,7 +462,6 @@ export function ZeropsHqStructure(): null {
     void driveHqStructure({
       api: accountHqApi(client, organizationId, { projectId: hqProjectId, address: hqAddress }),
       organizationId,
-      remembered: kept,
       publish: (view) => {
         if (!stop.signal.aborted) registry.set(hqStructureAtom, view);
       },
@@ -516,10 +471,6 @@ export function ZeropsHqStructure(): null {
       publishPeople: (view) => {
         if (!stop.signal.aborted) registry.set(hqPeopleViewAtom, view);
       },
-      remember: (structure, readAt) =>
-        rememberMenu((memory) => withStructure(memory, organizationId, structure, readAt)),
-      rememberMates: (mates, people) =>
-        rememberMenu((memory) => withMates(memory, organizationId, mates, people)),
       now: () => Date.now(),
       log: (line) => console.info(line),
       readHealth: () => readHqHealth((input, init) => fetch(input, init), hqAddress),

@@ -152,62 +152,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/zerops/menuMemory.ts",
-    "kind": "CallExpression",
-    "fingerprint": "accountLocalStorage.getItem(MENU_MEMORY_STORAGE_KEY)",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "source data stays out of browser storage: copies HQ's structure, Mates, members, change rows and chips to draw the menu before HQ answers; the store holds them in memory",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/menuMemory.ts",
-    "kind": "CallExpression",
-    "fingerprint": "accountLocalStorage.removeItem(MENU_MEMORY_STORAGE_KEY)",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "source data stays out of browser storage: copies HQ's structure, Mates, members, change rows and chips to draw the menu before HQ answers; the store holds them in memory",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/menuMemory.ts",
-    "kind": "CallExpression",
-    "fingerprint": "accountLocalStorage.setItem(MENU_MEMORY_STORAGE_KEY)",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "source data stays out of browser storage: copies HQ's structure, Mates, members, change rows and chips to draw the menu before HQ answers; the store holds them in memory",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/menuSkeleton.ts",
-    "kind": "CallExpression",
-    "fingerprint": "accountLocalStorage.getItem(MENU_SKELETON_STORAGE_KEY)",
-    "owner": "data-layer rewrite: projects",
-    "reason": "source data stays out of browser storage: copies the project listing (names, status, roles) to draw the menu tree before it is listed; the store holds it in memory",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/menuSkeleton.ts",
-    "kind": "CallExpression",
-    "fingerprint": "accountLocalStorage.removeItem(MENU_SKELETON_STORAGE_KEY)",
-    "owner": "data-layer rewrite: projects",
-    "reason": "source data stays out of browser storage: copies the project listing (names, status, roles) to draw the menu tree before it is listed; the store holds it in memory",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/menuSkeleton.ts",
-    "kind": "CallExpression",
-    "fingerprint": "accountLocalStorage.removeItem(MENU_SKELETON_STORAGE_KEY)",
-    "owner": "data-layer rewrite: projects",
-    "reason": "source data stays out of browser storage: copies the project listing (names, status, roles) to draw the menu tree before it is listed; the store holds it in memory",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/menuSkeleton.ts",
-    "kind": "CallExpression",
-    "fingerprint": "accountLocalStorage.setItem(MENU_SKELETON_STORAGE_KEY)",
-    "owner": "data-layer rewrite: projects",
-    "reason": "source data stays out of browser storage: copies the project listing (names, status, roles) to draw the menu tree before it is listed; the store holds it in memory",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/zerops/writerMemory.ts",
     "kind": "CallExpression",
     "fingerprint": "accountLocalStorage.getItem(WRITER_MEMORY_KEY)",

@@ -255,14 +255,11 @@ export function mateCrewItem(input: {
  * The one colour a change row's pull-request mark may wear (S3): amber where
  * it has fallen behind `main` and no longer merges — it didn't go through.
  * Everything else is the mark's own grey: still working the answer out, or
- * nothing wrong. The verdict itself lives in the review, not on the row; a
- * change drawn from memory says nothing until it is read again.
+ * nothing wrong. The verdict itself lives in the review, not on the row.
  */
 export function changeMarkTone(
   pull: Pick<FlowPullRequest, "number" | "mergeability">,
-  remembered: boolean,
 ): "attention" | undefined {
-  if (remembered) return undefined;
   return pullRequestBlocked(pull)?.kind === "behind" ? "attention" : undefined;
 }
 

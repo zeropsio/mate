@@ -112,7 +112,6 @@ import {
 import { accountHqApi, officialHq, useAccountHq } from "./accountHq";
 import { useProjectDialog } from "./inventoryContext";
 import { captureAccountLifetime } from "./accountLifetime";
-import { rememberMenu, withoutMate } from "./menuMemory";
 import { useOpenMate } from "./useOpenMate";
 import { useProjectOrderOptions } from "./projectOrderPreference";
 import {
@@ -924,7 +923,6 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
           }
           if (!isCurrent()) return;
           markMateDeleting(projectId);
-          rememberMenu((memory) => withoutMate(memory, projectId));
           forgetPress(projectId);
           invalidateZerops({ topic: "inventory", organization });
           setDialog({

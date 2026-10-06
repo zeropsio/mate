@@ -28,8 +28,7 @@
  *
  * A project collapses to its heading, the usual sidebar gesture, and the menu
  * remembers it; opening one of its Mates' conversations opens it again. A
- * reload paints what the menu last drew (`menuMemory.ts`) — its rows, changes,
- * chips and crews — so nothing it paints is taken back when the reads answer.
+ * reload paints what the sources say as they answer: nothing of them is kept.
  *
  * Membership is `hasMate` — the project declares a Mate or a container backs
  * one, and never stage or production — not the live connection, so a
@@ -186,14 +185,11 @@ import {
   drawnChip,
   productionMenu,
   projectChips,
-  rememberedChipAfter,
   stageMenu,
   stageStopChip,
   STOP_DOT,
   stopServing,
-  type ChipView,
   type ReleasesAnswer,
-  type ProductionChip,
   type ReleaseFailure,
   type StopServing,
 } from "./SidebarProductionChip.logic";
@@ -336,8 +332,8 @@ export interface SidebarProjectFlow {
   readonly pullRequests: ReadonlyArray<FlowPullRequest>;
   /**
    * Whether HQ told the project's changes; absent reads as told. Until it
-   * does, `pullRequests` is empty for want of an answer, and the menu
-   * draws the change rows it remembers (`remembered`).
+   * does, `pullRequests` is empty for want of an answer, and the menu draws
+   * no change row.
    */
   readonly changesKnown?: boolean | undefined;
   readonly environments: ReadonlyMap<string, EnvironmentRow>;
@@ -456,15 +452,6 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
    */
   readonly getFlow?: ((groupId: string) => SidebarProjectFlow | undefined) | undefined;
   /**
-   * What this browser remembers the menu drawing (`menuMemory.ts`), for what
-   * is not read yet: a project's change rows until HQ tells them, untinted,
-   * and its production chip as it last stood.
-   * Absent, the menu draws only what it has read.
-   */
-  readonly remembered?: SidebarRemembered | undefined;
-  /** What the menu drew of what it has read, after each draw, for the memory to keep. */
-  readonly onDrawn?: ((drawn: SidebarDrawn) => void) | undefined;
-  /**
    * The organization the person is signed in to: whether *Add stage* and *Add production* are
    * offered in a project's menu is `mayAddEnvironment`'s answer over it. Absent, they are never
    * offered on a guess.
@@ -485,6 +472,11 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
    * project's presence is unread. Absent or `null`, it says nothing.
    */
   readonly notice?: CandidatesNotice | null;
+  /**
+   * The listing's first read is under way: with no row and no notice yet, the tree holds the rows'
+   * room with a skeleton rather than drawing nothing (HANDOFF §4.7: the menu's skeleton at once).
+   */
+  readonly reading?: boolean;
   /** The notice's one affordance, pressed. */
   readonly onNoticeAct?: ((affordance: KnownAffordance) => void) | undefined;
   /** Opens the group's own page, in place of the thread. */
@@ -523,54 +515,8 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
   readonly getCrew?: ((candidate: T) => SidebarCrewRead | undefined) | undefined;
 }
 
-/** A project's chips as the menu last drew them: production's and the stages'. */
-export interface SidebarChips<Chip> {
-  readonly prod?: Chip;
-  readonly stage?: Chip;
-}
-
-/** What the menu remembers drawing (`menuMemory.ts`). */
-export interface SidebarRemembered {
-  readonly changes: (groupId: string) => ReadonlyArray<FlowPullRequest> | undefined;
-  /** A project's chips as last drawn, for while what decides each is unread. */
-  readonly chips: (groupId: string) => SidebarChips<ProductionChip> | undefined;
-}
-
-/**
- * What the menu drew of what it has read: the change rows HQ told, and
- * each project's chips — `null` where it no longer has one, absent while
- * what decides it is unread.
- */
-export interface SidebarDrawn {
-  readonly changes: Readonly<Record<string, ReadonlyArray<FlowPullRequest>>>;
-  readonly chips: Readonly<Record<string, SidebarChips<ProductionChip | null>>>;
-}
-
-/** What a draw learned of a project's chips, for the memory: each one read, or gone. */
-function chipsLearned(read: {
-  readonly prod: ChipView;
-  readonly stage: ChipView;
-}): SidebarChips<ProductionChip | null> {
-  const prod = rememberedChipAfter(read.prod);
-  const stage = rememberedChipAfter(read.stage);
-  return {
-    ...(prod === undefined ? {} : { prod }),
-    ...(stage === undefined ? {} : { stage }),
-  };
-}
-
-const NOTHING_DRAWN: SidebarDrawn = { changes: {}, chips: {} };
-
-/** What a change row acts with: the project's flow, or nothing while it is remembered. */
-type ChangeRows = Pick<SidebarProjectFlow, "onOpenChange"> & {
-  readonly remembered?: true;
-};
-
-/** Change rows drawn from memory: their titles, untinted, until HQ tells them. */
-const REMEMBERED_CHANGE_ROWS: ChangeRows = {
-  onOpenChange: undefined,
-  remembered: true,
-};
+/** What a change row acts with: the project's flow. */
+type ChangeRows = Pick<SidebarProjectFlow, "onOpenChange">;
 
 export function SidebarZeropsTree<T extends RosterCandidate>({
   candidates,
@@ -587,11 +533,10 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   getConversationsRead,
   getOwner,
   getFlow,
-  remembered,
-  onDrawn,
   organization = null,
   complete,
   notice = null,
+  reading = false,
   onNoticeAct,
   className,
   births = NO_BIRTHS,
@@ -607,9 +552,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     placements === null || structureView === null || structureView.structure === null
       ? []
       : structureView.structure.apps.filter(
-          (app) =>
-            (getFlow?.(app.id)?.pullRequests.length ?? remembered?.changes(app.id)?.length ?? 0) >
-            0,
+          (app) => (getFlow?.(app.id)?.pullRequests.length ?? 0) > 0,
         );
   const emptyReason = candidates.some((candidate) => candidate.project.hq !== undefined)
     ? undefined
@@ -722,11 +665,9 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   // written after each render, not during it.
   const mateOrder = useRef<ReadonlyArray<string>>([]);
   const jumpIndex = useRef<SidebarJumpIndex>(EMPTY_JUMP_INDEX);
-  const drawnForMemory = useRef<SidebarDrawn>(NOTHING_DRAWN);
   useEffect(() => {
     useSidebarReveal.getState().setMateOrder(mateOrder.current);
     useSidebarJump.getState().publish(jumpIndex.current);
-    onDrawn?.(drawnForMemory.current);
   });
   const [, setRevealDraw] = useState(0);
   useEffect(() => {
@@ -828,10 +769,8 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   const projectFlows = useZeropsProjectFlowOptional();
   const deployments = projectFlows?.deployments;
 
-  // Until the rows below are drawn, the jump box finds nothing here, and the
-  // memory learns nothing new.
+  // Until the rows below are drawn, the jump box finds nothing here.
   jumpIndex.current = EMPTY_JUMP_INDEX;
-  drawnForMemory.current = NOTHING_DRAWN;
 
   // A Mate being created is one to draw, whatever the listing holds yet.
   const nothing =
@@ -842,8 +781,9 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   // Nothing to draw, and the listing may not say "none" yet: its notice, at
   // the menu's own left edge, never an empty state it has not earned.
   if (nothing !== undefined && !complete) {
-    if (notice === null) return null;
-    return <ListingNotice className={className} notice={notice} onAct={onNoticeAct} />;
+    if (notice !== null)
+      return <ListingNotice className={className} notice={notice} onAct={onNoticeAct} />;
+    return reading ? <MenuSkeleton className={className} /> : null;
   }
 
   // No project at all: nothing to list, and nothing to say — the one thing to
@@ -925,9 +865,6 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   const jumpProjects: JumpProject[] = [];
   const jumpChanges: JumpChange[] = [];
   const jumpStops: JumpStop[] = [];
-  // What the memory keeps of this draw (`onDrawn`), gathered alike.
-  const drawnChanges: Record<string, ReadonlyArray<FlowPullRequest>> = {};
-  const drawnChips: Record<string, SidebarChips<ProductionChip | null>> = {};
   const indexSection = (input: {
     readonly id: string;
     readonly group: ZeropsGroup | undefined;
@@ -936,7 +873,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     /** Its Mates as the menu draws them: the ones at work or lately, then the quiet ones. */
     readonly mateEntries: ReadonlyArray<Entry<T>>;
     readonly grouped: ReturnType<typeof pullRequestsByMate>;
-    /** Whether change rows are drawn: HQ's, or the ones remembered until it tells them. */
+    /** Whether change rows are drawn: HQ told them. */
     readonly changesDrawn: boolean;
     /** Its production and stages, each as the chip and its menu say it. */
     readonly stops: ReadonlyArray<JumpStop>;
@@ -1106,16 +1043,12 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
       stagesBeingCreated: projectFlow.creatingStages.length > 0,
       releases,
     });
-    const rememberedChips = group === undefined ? undefined : remembered?.chips(id);
-    const prodChip =
-      group === undefined ? undefined : drawnChip(chipsRead.prod, rememberedChips?.prod);
-    const stageChipDrawn =
-      group === undefined ? undefined : drawnChip(chipsRead.stage, rememberedChips?.stage);
-    if (group !== undefined) drawnChips[id] = chipsLearned(chipsRead);
+    const prodChip = group === undefined ? undefined : drawnChip(chipsRead.prod);
+    const stageChipDrawn = group === undefined ? undefined : drawnChip(chipsRead.stage);
     // Each stage as a chip of its own says it: its dot and words in the jump
     // box, its row in the stages' menu.
     const stageChips = stages.map(({ stop, serving }) =>
-      drawnChip(stageStopChip({ stop, serving, releases }), undefined),
+      drawnChip(stageStopChip({ stop, serving, releases })),
     );
     const stopDeployedAt = (projectId: string) => {
       const activated = deployActivatedAt(deployments?.get(projectId));
@@ -1335,21 +1268,10 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
             ].map((projectId) => <StopDemand key={projectId} projectId={projectId} />)}
       </>
     );
-    // The change rows: HQ's once it told them, and until then the ones this
-    // browser remembers drawing, untinted — so a reload grows no row when the
-    // answer comes (`menuMemory.ts`).
+    // The change rows: HQ's once it told them.
     const changesKnown = flow !== undefined && flow.changesKnown !== false;
-    const rememberedPulls = changesKnown ? undefined : remembered?.changes(id);
-    const changeRows: ChangeRows | undefined =
-      flow !== undefined && changesKnown
-        ? flow
-        : rememberedPulls === undefined
-          ? undefined
-          : REMEMBERED_CHANGE_ROWS;
-    const flowPulls = changesKnown
-      ? projectFlow.pullRequests.map((entry) => entry.pull)
-      : (rememberedPulls ?? []);
-    if (changesKnown) drawnChanges[id] = flowPulls;
+    const changeRows: ChangeRows | undefined = changesKnown ? flow : undefined;
+    const flowPulls = changesKnown ? projectFlow.pullRequests.map((entry) => entry.pull) : [];
     // By every Mate, shown or not: a hidden Mate's change is still its own.
     const grouped = pullRequestsByMate(
       flowPulls,
@@ -1483,7 +1405,6 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                   open={openLists.has(listKey)}
                   onOpenChange={changeRows.onOpenChange}
                   pulls={pulls}
-                  remembered={changeRows.remembered === true}
                   run={mateRunOf(activityOfNow(getActivity?.(item)))}
                 />
               )}
@@ -1503,7 +1424,6 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
               key={changeRowKey(pull)}
               onOpenChange={changeRows.onOpenChange}
               pull={pull}
-              remembered={changeRows.remembered === true}
               whose={pull.mateProjectId}
             />
           ))}
@@ -1696,7 +1616,6 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     changes: jumpChanges,
     stops: jumpStops,
   };
-  drawnForMemory.current = { changes: drawnChanges, chips: drawnChips };
 
   return (
     <nav
@@ -1875,6 +1794,24 @@ export function SidebarHqStatus({
         {again === undefined ? line : `${line} Press to try again.`}
       </TooltipPopup>
     </Tooltip>
+  );
+}
+
+/** Rows the menu does not know yet, standing in their room: a face and its line, three times. */
+function MenuSkeleton({ className }: { readonly className?: string | undefined }) {
+  return (
+    <div
+      aria-hidden="true"
+      className={cn("flex flex-col gap-2 px-2.5 py-2", className)}
+      data-zerops-surface="sidebar-environments-skeleton"
+    >
+      {["first", "second", "third"].map((row) => (
+        <div className="flex h-7 items-center gap-3" key={row}>
+          <span className="size-5 shrink-0 rounded-full bg-sidebar-row-hover" />
+          <span className="h-2 w-2/3 rounded-full bg-sidebar-row-hover" />
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -3563,7 +3500,6 @@ function PullRequestList({
   open,
   onToggle,
   onOpenChange,
-  remembered = false,
   run,
 }: {
   /** The project whose repository they are open against, for *Review*. */
@@ -3574,8 +3510,6 @@ function PullRequestList({
   readonly open: boolean;
   readonly onToggle: () => void;
   readonly onOpenChange?: ((pull: FlowPullRequest) => void) | undefined;
-  /** Drawn from memory until HQ tells it: no tint, and the title opens nothing yet. */
-  readonly remembered?: boolean;
 }) {
   const folded = pullRequestsFolded(pulls.length);
   return (
@@ -3606,7 +3540,6 @@ function PullRequestList({
               key={`${pull.repository}#${pull.number}`}
               onOpenChange={onOpenChange}
               pull={pull}
-              remembered={remembered}
             />
           ))}
         </ul>
@@ -3634,7 +3567,6 @@ function PullRequestRow({
   asks,
   groupId,
   onOpenChange,
-  remembered = false,
   whose,
 }: {
   readonly whose?: string;
@@ -3646,13 +3578,11 @@ function PullRequestRow({
   /** The project whose repository it is open against, for *Review*. */
   readonly groupId: string;
   readonly onOpenChange?: ((pull: FlowPullRequest) => void) | undefined;
-  /** Drawn from memory until HQ tells it: its title, and no verdict it may no longer have. */
-  readonly remembered?: boolean;
 }) {
   const openReview = useOpenReview();
   const name = sidebarChangeLabel(pull, among);
   const label = whose === undefined ? name : `${name} · ${whose}`;
-  const tone = changeMarkTone(pull, remembered);
+  const tone = changeMarkTone(pull);
   return (
     <li
       className="menu-line grid h-7 min-w-0 grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-x-3 ps-1.75 pe-1 text-line leading-4.5 transition-colors hover:bg-sidebar-row-hover"

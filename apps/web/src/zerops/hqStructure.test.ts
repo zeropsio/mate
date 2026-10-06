@@ -3,7 +3,6 @@ import {
   makeHqApi,
   type HqApi,
   type HqHealth,
-  type HqMates,
   type HqParts,
   type HqStructure,
   type HqStructureEvent,
@@ -11,7 +10,7 @@ import {
 } from "@t3tools/client-runtime/zerops/hq";
 import type { AppRead } from "@t3tools/shared/hqAppReads";
 import type { HqChange } from "@t3tools/shared/hqChanges";
-import { MateLiveView, type HqPeople } from "@t3tools/shared/hqMates";
+import { MateLiveView } from "@t3tools/shared/hqMates";
 import * as Schema from "effect/Schema";
 import { describe, expect, it, vi } from "vite-plus/test";
 
@@ -97,10 +96,7 @@ function streamingApi(attempts: ReadonlyArray<Attempt>) {
   return { streamStructure, attempts: () => at };
 }
 
-function harness(
-  remembered?: { readonly structure: HqStructure; readonly readAt: number },
-  health: HqHealth = { kind: "unreachable" },
-) {
+function harness(health: HqHealth = { kind: "unreachable" }) {
   const views: Array<HqStructureView> = [];
   const healthReads: Array<number> = [];
   /** The tab: whether it is shown, and what waits for it to be. */
@@ -112,16 +108,12 @@ function harness(
   };
   const mates: Array<HqMatesView> = [];
   const people: Array<HqPeopleView> = [];
-  const kept: Array<[HqStructure, number]> = [];
-  const keptMates: Array<[HqMates, HqPeople | null]> = [];
   const logged: Array<string> = [];
   let now = 10_000;
   return {
     views,
     mates,
     people,
-    kept,
-    keptMates,
     logged,
     healthReads,
     page,
@@ -129,12 +121,9 @@ function harness(
     tick: (ms: number) => (now += ms),
     deps: {
       organizationId: "org-1",
-      remembered,
       publish: (view: HqStructureView) => views.push(view),
       publishMates: (view: HqMatesView) => mates.push(view),
       publishPeople: (view: HqPeopleView) => people.push(view),
-      remember: (structure: HqStructure, readAt: number) => kept.push([structure, readAt]),
-      rememberMates: (mates: HqMates, told: HqPeople | null) => keptMates.push([mates, told]),
       now: () => now,
       log: (line: string) => logged.push(line),
       readHealth: async () => {
@@ -181,7 +170,7 @@ describe("HQ's standing, from its stream", () => {
     ],
   ])("after its stream breaks, says %s as HQ's health does", async (_case, health, standing) => {
     vi.useFakeTimers();
-    const h = harness(undefined, health);
+    const h = harness(health);
     const api = streamingApi([
       { events: [snapshot], end: "cut" },
       { events: [], end: "hang" },
@@ -204,7 +193,7 @@ describe("HQ's standing, from its stream", () => {
 
   it("says nothing before HQ first answers, healthy once its stream does, and reads no health while it serves", async () => {
     vi.useFakeTimers();
-    const h = harness({ structure: ACME, readAt: 1 });
+    const h = harness();
     // A stream that serves: its snapshot, then HQ's ping every 20 s.
     const api = {
       streamStructure: async (on: Parameters<HqApi["streamStructure"]>[0], signal: AbortSignal) => {
@@ -294,7 +283,7 @@ describe("HQ's standing, from its stream", () => {
   // A refusal waits for a manual again: no next attempt would ever read HQ's health.
   it("reads HQ's health on the tab's return after a refusal it was hidden for", async () => {
     vi.useFakeTimers();
-    const h = harness(undefined, { kind: "unchecked", build: "b1", parts: QUIET });
+    const h = harness({ kind: "unchecked", build: "b1", parts: QUIET });
     h.page.visible = false;
     const api = {
       streamStructure: async () => {
@@ -412,7 +401,7 @@ describe("HQ's standing, from its stream", () => {
     ["silent on its check", legacy],
   ])("reads no health for a serving Core %s", async (_case, event) => {
     vi.useFakeTimers();
-    const h = harness(undefined, { kind: "unchecked", build: "b1", parts: QUIET });
+    const h = harness({ kind: "unchecked", build: "b1", parts: QUIET });
     const stop = new AbortController();
     const driving = driveHqStructure({
       ...h.deps,
@@ -432,9 +421,9 @@ describe("HQ's standing, from its stream", () => {
 });
 
 describe("automatic HQ recovery", () => {
-  it("backs off to 30 s, keeps its outage and as-of time, and keeps trying at the cap", async () => {
+  it("backs off to 30 s, keeps its outage, and keeps trying at the cap", async () => {
     vi.useFakeTimers();
-    const h = harness({ structure: ACME, readAt: 1 });
+    const h = harness();
     const api = streamingApi([{ events: [], end: "cut" }]);
     const stop = new AbortController();
     const driving = driveHqStructure({ ...h.deps, api, signal: stop.signal });
@@ -443,8 +432,8 @@ describe("automatic HQ recovery", () => {
       for (const [index, delayMs] of [1000, 2000, 4000, 8000, 16000, 30000, 30000].entries()) {
         expect(api.attempts()).toBe(index + 1);
         expect(h.views.at(-1)).toMatchObject({
-          structure: ACME,
-          readAt: 1,
+          structure: null,
+          readAt: null,
           current: false,
           unavailableSince: 10000,
           reconnecting: { delayMs, capped: delayMs === 30000 },
@@ -475,7 +464,7 @@ describe("automatic HQ recovery", () => {
 
   it("replaces the cap notice with quiet recovery while a manual reconnect awaits its snapshot", async () => {
     vi.useFakeTimers();
-    const h = harness({ structure: ACME, readAt: 1 });
+    const h = harness();
     let attempts = 0;
     const api = {
       streamStructure: async (
@@ -512,7 +501,7 @@ describe("automatic HQ recovery", () => {
     "does not reconnect a definitive %s refusal",
     async (code) => {
       vi.useFakeTimers();
-      const h = harness({ structure: ACME, readAt: 1 });
+      const h = harness();
       const refusal = new HqError({
         kind: "refused",
         code,
@@ -530,8 +519,7 @@ describe("automatic HQ recovery", () => {
         await vi.advanceTimersByTimeAsync(120000);
         expect(api.streamStructure).toHaveBeenCalledTimes(1);
         expect(h.views.at(-1)).toMatchObject({
-          structure: ACME,
-          readAt: 1,
+          structure: null,
           failure: "Access ended.",
           reconnecting: null,
         });
@@ -548,7 +536,7 @@ describe("automatic HQ recovery", () => {
 
   it("reconnects a silent stream and resets backoff only when a fresh snapshot arrives", async () => {
     vi.useFakeTimers();
-    const h = harness({ structure: ACME, readAt: 1 });
+    const h = harness();
     const handlers: Array<Parameters<HqApi["streamStructure"]>[0]> = [];
     const api = {
       streamStructure: async (on: Parameters<HqApi["streamStructure"]>[0], signal: AbortSignal) => {
@@ -569,7 +557,7 @@ describe("automatic HQ recovery", () => {
       await vi.advanceTimersByTimeAsync(60000);
       expect(h.views.at(-1)).toMatchObject({ reconnecting: { delayMs: 1000 } });
       await vi.advanceTimersByTimeAsync(1000);
-      expect(h.views.at(-1)).toMatchObject({ readAt: 1, reconnecting: { delayMs: 2000 } });
+      expect(h.views.at(-1)).toMatchObject({ reconnecting: { delayMs: 2000 } });
       await vi.advanceTimersByTimeAsync(2000);
       handlers[2]!.onEvent({
         kind: "snapshot",
@@ -596,7 +584,7 @@ describe("automatic HQ recovery", () => {
 
   it("ignores late callbacks from a failed attempt during backoff", async () => {
     vi.useFakeTimers();
-    const h = harness({ structure: ACME, readAt: 1 });
+    const h = harness();
     let callbacks: Parameters<HqApi["streamStructure"]>[0] | undefined;
     const api = {
       streamStructure: async (on: Parameters<HqApi["streamStructure"]>[0]) => {
@@ -617,8 +605,7 @@ describe("automatic HQ recovery", () => {
         people: null,
       });
       expect(h.views.at(-1)).toMatchObject({
-        structure: ACME,
-        readAt: 1,
+        structure: null,
         current: false,
         reconnecting: { delayMs: 1000 },
       });
@@ -631,7 +618,7 @@ describe("automatic HQ recovery", () => {
 
   it("immediately reconnects 1001 once, then backs off repeated going-away without a snapshot", async () => {
     vi.useFakeTimers();
-    const h = harness({ structure: ACME, readAt: 1 });
+    const h = harness();
     const api = {
       streamStructure: vi.fn(async () => {
         throw new HqError({
@@ -791,12 +778,22 @@ describe("HQ menu currency", () => {
   it.each(["fail", "close", "cut"] as const)(
     "holds rows during backoff after %s and allows manual reconnect",
     async (end) => {
-      const h = harness({ structure: ACME, readAt: 1 });
+      const h = harness();
       const controller = new AbortController();
       let calls = 0;
       const api: Pick<HqApi, "streamStructure"> = {
-        streamStructure: async () => {
+        streamStructure: async (on) => {
           calls++;
+          // The rows it holds: HQ's answer before the stream ended.
+          if (calls === 1)
+            on.onEvent({
+              kind: "snapshot",
+              structure: ACME,
+              changes: null,
+              appReads: null,
+              mates: null,
+              people: null,
+            });
           if (calls > 1) controller.abort();
           if (end !== "close") throw new Error("Unavailable");
         },
@@ -1158,7 +1155,7 @@ describe("driveHqStructure", () => {
     ]);
   });
 
-  it("draws what is remembered at once, then HQ's snapshot and its changes, each remembered", async () => {
+  it("draws nothing of HQ until it answers, then its snapshot and its changes", async () => {
     const api = streamingApi([
       {
         events: [
@@ -1175,7 +1172,7 @@ describe("driveHqStructure", () => {
         end: "hang",
       },
     ]);
-    const h = harness({ structure: { ungrouped: [], apps: [] }, readAt: 1_000 });
+    const h = harness();
     const stop = new AbortController();
     const driving = driveHqStructure({ ...h.deps, api, signal: stop.signal });
     await vi.waitFor(() => expect(h.views).toHaveLength(3));
@@ -1185,10 +1182,10 @@ describe("driveHqStructure", () => {
     expect(h.views[0]).toEqual({
       failure: null,
       organizationId: "org-1",
-      structure: { ungrouped: [], apps: [] },
+      structure: null,
       changes: null,
       appReads: null,
-      readAt: 1_000,
+      readAt: null,
       current: false,
       unavailableSince: null,
     });
@@ -1197,9 +1194,6 @@ describe("driveHqStructure", () => {
       structure: { ungrouped: [], apps: [...ACME.apps, BETA] },
       current: true,
     });
-    // Every structure HQ sent is remembered, the last one last.
-    expect(new Set(h.kept.map(([structure]) => structure.apps.length))).toEqual(new Set([1, 2]));
-    expect(h.kept.at(-1)?.[0].apps).toHaveLength(2);
   });
 
   it("keeps the Mates and the people to their own views, and republishes no structure for them", async () => {
@@ -1230,7 +1224,7 @@ describe("driveHqStructure", () => {
     stop.abort();
     await driving;
 
-    // The structure as remembered, then HQ's snapshot of it: nothing for a Mate's message.
+    // Nothing yet, then HQ's snapshot of it: nothing for a Mate's message.
     expect(h.views).toHaveLength(2);
     expect(h.mates.at(-1)).toEqual({
       organizationId: "org-1",
@@ -1241,36 +1235,6 @@ describe("driveHqStructure", () => {
       current: true,
     });
     expect(h.people.at(-1)).toEqual({ organizationId: "org-1", people: renamed });
-  });
-
-  it("remembers the Mates at their snapshot, then at most every ten seconds while they move", async () => {
-    const h = harness();
-    const api = streamingApi([
-      {
-        events: [
-          {
-            kind: "snapshot",
-            appReads: null,
-            structure: ACME,
-            changes: null,
-            mates: new Map([["p1", VERA]]),
-            people: null,
-          },
-          { kind: "mate", projectId: "p2", value: VERA },
-          { pingAfterMs: 5_000, tick: h.tick },
-          { kind: "mate", projectId: "p3", value: VERA },
-          { pingAfterMs: 6_000, tick: h.tick },
-        ],
-        end: "hang",
-      },
-    ]);
-    const stop = new AbortController();
-    const driving = driveHqStructure({ ...h.deps, api, signal: stop.signal });
-    await vi.waitFor(() => expect(h.keptMates).toHaveLength(2));
-    stop.abort();
-    await driving;
-
-    expect(h.keptMates.map(([mates]) => [...mates.keys()])).toEqual([["p1"], ["p1", "p2", "p3"]]);
   });
 
   it("waits for a door HQ answers in 30 s, it and every other reader on its one throwaway", async () => {

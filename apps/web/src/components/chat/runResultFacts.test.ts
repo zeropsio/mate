@@ -71,7 +71,6 @@ describe("readRunResultFacts", () => {
           },
         ],
       ]),
-      remembered: () => undefined,
       crew: {
         environmentId: HOME,
         tasks: [{ id: "task-12", number: 12, state: "ready", owner: "rules" }],
@@ -94,38 +93,24 @@ describe("readRunResultFacts", () => {
     expect(facts.mate).toEqual({ projectId: PROJECT, groupId: GROUP });
   });
 
-  // Until the forge answers, the menu's memory of the project's open changes
-  // stands in, so a reload paints the change it will keep (never a guess).
+  // Until the forge answers, no change is known: never a guess.
   it.each([
     {
-      name: "the forge has not answered: the changes the menu remembers, not yet known",
+      name: "the forge has not answered: no change, not yet known",
       flows: new Map([[GROUP, { pullRequests: [], merged: [], changesKnown: false }]]),
-      remembered: [pull(2, "Add a /status page")],
-      changes: {
-        groupId: GROUP,
-        open: [{ repository: "app", number: 2, title: "Add a /status page", ready: true }],
-        merged: [],
-        known: false,
-      },
+      changes: { groupId: GROUP, open: [], merged: [], known: false },
     },
     {
       name: "the flow has not read the project yet: the same",
       flows: new Map(),
-      remembered: [pull(2, "Add a /status page")],
-      changes: {
-        groupId: GROUP,
-        open: [{ repository: "app", number: 2, title: "Add a /status page", ready: true }],
-        merged: [],
-        known: false,
-      },
+      changes: { groupId: GROUP, open: [], merged: [], known: false },
     },
-    { name: "no flow at all: nothing known", flows: undefined, remembered: [], changes: undefined },
-  ])("$name", ({ flows, remembered, changes }) => {
+    { name: "no flow at all: nothing known", flows: undefined, changes: undefined },
+  ])("$name", ({ flows, changes }) => {
     const facts = readRunResultFacts({
       projectId: PROJECT,
       inventory: inventory(null),
       flows,
-      remembered: () => remembered,
       crew: null,
     });
     expect(facts.changes).toEqual(changes);
@@ -141,7 +126,6 @@ describe("readRunResultFacts", () => {
       projectId: PROJECT,
       inventory: inventory(services),
       flows: undefined,
-      remembered: () => undefined,
       crew: null,
     });
     expect(facts.services).toBeUndefined();
@@ -153,7 +137,6 @@ describe("readRunResultFacts", () => {
         projectId: undefined,
         inventory: null,
         flows: undefined,
-        remembered: () => undefined,
         crew: null,
       }),
     ).toEqual({});
