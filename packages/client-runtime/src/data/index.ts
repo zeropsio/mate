@@ -24,6 +24,12 @@ export {
   type HqNavigationRead,
 } from "./projections/hqNavigation.ts";
 export { hqMates, type HqMatesRead } from "./projections/hqMates.ts";
+export {
+  hqAppDetail,
+  hqAppDetails,
+  type HqAppDetailRead,
+  type HqAppRecipes,
+} from "./projections/hqAppDetail.ts";
 export type { DetailDemand } from "./demand.ts";
 export { makeAccountStore, type AccountStore, type Projection } from "./store.ts";
 export {
