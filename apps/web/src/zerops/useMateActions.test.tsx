@@ -157,6 +157,9 @@ vi.mock("./useHqOffers", () => ({
 vi.mock("./ZeropsAccountData", () => ({
   useAccountDataOptional: () => ({ moveOffers: () => Promise.resolve(mock.moveTo) }),
 }));
+vi.mock("./accountOperations", () => ({
+  useAccountOperations: () => ({ run: async () => undefined }),
+}));
 vi.mock("./deleteProject", () => ({
   useDeleteProject: () => mock.deleteProject,
 }));

@@ -101,9 +101,9 @@ describe("same-origin Zerops identity bootstrap", () => {
     }
     // The creation itself is the account's (`useEnvironmentCreation`), shared with the New Mate
     // dialog over any view.
-    expect(pressSource).toContain("data.runtime.commands.createProject(");
-    expect(pressSource).toContain("data.runtime.commands.importServices(");
-    expect(creationSource).toContain("readObservedServices:");
+    // Its writes are the account's operations, its services' wait the account's listing.
+    expect(pressSource).not.toContain("runtime.commands");
+    expect(creationSource).toContain("untilServicesSettled:");
     expect(projectsPageSource).not.toContain("listProjectServices(");
     expect(creationSource).not.toContain("listProjectServices(");
   });

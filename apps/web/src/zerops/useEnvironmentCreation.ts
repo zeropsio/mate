@@ -9,12 +9,14 @@
  * HQ, which decides who may write it. An organization with no HQ takes no environment (ADR 0001).
  * The container does the rest whether this tab stays or not.
  */
+import { useAccountOperations } from "./accountOperations";
 import {
   appProjectName,
   formatMateFace,
   nameUnderApp,
   planEnvironmentCreation,
   recipeTierServices,
+  servicesSettled,
   unionAgents,
   type EnvironmentCreationOutcome,
   type EnvironmentCreationStep,
@@ -30,6 +32,7 @@ import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import type { HqApi } from "@t3tools/client-runtime/zerops/hq";
 import { RegistryContext } from "@effect/atom-react";
 import { projectServicesAtom } from "@t3tools/client-runtime/data";
+import type { AtomRegistry } from "effect/unstable/reactivity";
 import { useCallback, useContext } from "react";
 
 import type { EnvironmentCreationChoice } from "../components/zerops/ZeropsEnvironmentCreationDialog";
@@ -143,11 +146,43 @@ export function environmentProjectName(
   return { name, shown: nameUnderApp(name, groupName) };
 }
 
+/** What an environment's services' wait says where Zerops refused to say how they stand. */
+const SERVICES_REFUSED = "Zerops refused to say how the environment's services stand.";
+
+/**
+ * Resolves with a project's services once every one has settled (`servicesSettled`), as the
+ * account's services listing holds them — read as they change, never on a clock; rejects where
+ * that listing is refused.
+ */
+function untilServicesSettled(
+  registry: AtomRegistry.AtomRegistry,
+  projectId: string,
+): Promise<ReadonlyArray<{ readonly name: string; readonly status: string }>> {
+  return new Promise((resolve, reject) => {
+    let cancel: () => void = () => {};
+    cancel = registry.subscribe(
+      projectServicesAtom(projectId),
+      ({ services, unavailableReason }) => {
+        if (unavailableReason !== undefined) {
+          reject(new Error(SERVICES_REFUSED));
+          cancel();
+          return;
+        }
+        if (!servicesSettled(services)) return;
+        resolve(services!.map((service) => ({ name: service.name, status: service.status })));
+        cancel();
+      },
+      { immediate: true },
+    );
+  });
+}
+
 export function useEnvironmentCreation(): (
   request: EnvironmentCreationRequest,
 ) => Promise<EnvironmentCreationRun> {
   const { activeOrganization, client } = useZeropsSession();
   const { organizationRef, projectRef, runtime } = useZeropsData();
+  const { run: runOperation } = useAccountOperations();
   const registry = useContext(RegistryContext);
   const accountHq = useAccountHq(activeOrganization?.id);
 
@@ -219,11 +254,7 @@ export function useEnvironmentCreation(): (
       if (!plan.ok) return { kind: "refused", reason: plan.reason };
 
       const withAgent = plan.steps.some((step) => step.kind === "import-container");
-      const inputs = {
-        client,
-        data: { runtime, organizationRef, projectRef },
-        organizationId: organization.id,
-      };
+      const inputs = { client, run: runOperation, organizationId: organization.id };
       // Every press is held at HQ while it runs, so another browser never takes it for one that
       // stopped, and one cut short is read as what it was making, in its application (B5).
       const pressKind = withAgent ? "mate" : tier;
@@ -252,15 +283,7 @@ export function useEnvironmentCreation(): (
             : { hq, groupId: group.groupId, kind: tier },
         ),
         hq,
-        hold,
-        // Reads the organization's services listing as the account's store holds it.
-        // Not listed yet: none observed.
-        readObservedServices: async (projectId) => {
-          const listed = registry.get(projectServicesAtom(projectId)).services;
-          return listed === undefined
-            ? []
-            : listed.map((service) => ({ name: service.name, status: service.status }));
-        },
+        untilServicesSettled: (projectId) => untilServicesSettled(registry, projectId),
       });
 
       request.onPlanned?.(plan.steps);
@@ -304,10 +327,9 @@ export function useEnvironmentCreation(): (
       activeOrganization,
       client,
       organizationRef,
-      projectRef,
       readGroupAgents,
       registry,
-      runtime,
+      runOperation,
     ],
   );
 }

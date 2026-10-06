@@ -1,4 +1,5 @@
 /** Rebuilds callable ports from the current account for a person's explicit retry. */
+import { useAccountOperations } from "./accountOperations";
 import { appProjectName, withZeropsMateTag } from "@t3tools/client-runtime/zerops";
 import { accountHqApi } from "./accountHq";
 import { invalidateZerops } from "./accountInvalidations";
@@ -16,7 +17,8 @@ import { useZeropsSession } from "./ZeropsSessionProvider";
 
 export function useNewProjectBirthPorts(): (ask: NewProjectAsk) => NewProjectPorts {
   const { client } = useZeropsSession();
-  const { organizationRef, projectRef, runtime } = useZeropsData();
+  const { organizationRef, runtime } = useZeropsData();
+  const { run: runOperation } = useAccountOperations();
   const created = useNewMate((state) => state.created);
   return (ask) => {
     const { organizationId, birthId, name, botName, face } = ask;
@@ -58,7 +60,7 @@ export function useNewProjectBirthPorts(): (ask: NewProjectAsk) => NewProjectPor
         });
         invalidateZerops({ topic: "inventory", organization });
         void finishMateSetup({
-          inputs: { client, data: { runtime, organizationRef, projectRef }, organizationId },
+          inputs: { client, run: runOperation, organizationId },
           projectId,
           projectName: appProjectName(name, botName),
           // After its attach: a press that stops before it leaves a Mate HQ holds in its

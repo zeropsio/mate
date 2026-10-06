@@ -2474,14 +2474,6 @@
   {
     "path": "apps/web/src/zerops/matePress.ts",
     "kind": "retired-token",
-    "fingerprint": "client.readProjectCreation(",
-    "owner": "data-layer rewrite: projects",
-    "reason": "a hook polls creation verdicts itself; the operations adapter owns the read",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/matePress.ts",
-    "kind": "retired-token",
     "fingerprint": "pressHold(",
     "owner": "data-layer rewrite: operations",
     "reason": "a press is held and renewed on a timer in the app; the operation's stream settles it",

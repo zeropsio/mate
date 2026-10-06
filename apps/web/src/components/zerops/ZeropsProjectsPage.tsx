@@ -811,6 +811,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   } = useZeropsSession();
   const { organizationRef, projectRef, runtime } = useZeropsData();
   const operations = useAccountOperations();
+  const runOperation = operations.run;
   const inventory = useZeropsInventory();
   const { listing, error, refresh: refreshCandidates } = useZeropsCandidates();
   // The rows read so far; `listing` says whether they are all there are, and
@@ -1128,11 +1129,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         });
         // Its container with its own key, and its project closed off before anyone is let in.
         const pressed = await finishMateSetup({
-          inputs: {
-            client,
-            data: { runtime, organizationRef, projectRef },
-            organizationId: activeOrganization.id,
-          },
+          inputs: { client, run: runOperation, organizationId: activeOrganization.id },
           projectId,
           projectName: candidate.project.name,
           container: { agents },
@@ -1169,13 +1166,11 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       hqKnown,
       hqStructure,
       operations,
-      organizationRef,
-      projectRef,
       orgOffer,
       readGroupAgents,
+      runOperation,
       setConnectError,
       settingUpKey,
-      runtime,
     ],
   );
 
@@ -2031,7 +2026,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       placement: null,
     });
     void finishMateSetup({
-      inputs: { client, data: { runtime, organizationRef, projectRef }, organizationId: claimIn },
+      inputs: { client, run: runOperation, organizationId: claimIn },
       projectId: claimed.id,
       projectName: claimed.name,
       // The pool made its container.
@@ -2048,9 +2043,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     client,
     inventory.projects,
     lastRegistration,
-    organizationRef,
-    projectRef,
-    runtime,
+    runOperation,
   ]);
 
   // The session is checked before this page can draw (`ZeropsHostedLanding`): nothing to say here.

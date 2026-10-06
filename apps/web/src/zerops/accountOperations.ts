@@ -6,6 +6,8 @@
 import {
   makeOperations,
   makeZeropsExecutor,
+  runToEnd,
+  type RunToEnd,
   operationEnd,
   operationProgress,
   type AccountStore,
@@ -35,6 +37,8 @@ export interface AccountOperations {
   }>;
   /** Resolves once the operation is final for now, or can no longer be followed (`operationEnd`). */
   readonly untilEnd: (requestId: string, orgId: string) => Promise<NonNullable<OperationEnd>>;
+  /** Runs one intent to its end: its owner's result, or what stopped it (`runToEnd`). */
+  readonly run: RunToEnd;
 }
 
 const coordinators = new WeakMap<AccountStore, WeakMap<SessionClient, AccountOperations>>();
@@ -85,6 +89,7 @@ export function accountOperations(
     });
   const made: AccountOperations = {
     untilEnd,
+    run: runToEnd({ operations, store, registry }),
     submit: async (intent) => {
       const requestId = await Effect.runPromise(operations.submit(intent));
       const outcome = store.state().operations.get(requestId)?.receipt?.outcome;

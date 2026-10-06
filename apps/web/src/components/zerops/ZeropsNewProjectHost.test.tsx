@@ -36,6 +36,9 @@ vi.mock("~/zerops/ZeropsSessionProvider", () => ({
     client: {},
   }),
 }));
+vi.mock("~/zerops/accountOperations", () => ({
+  useAccountOperations: () => ({ run: async () => undefined }),
+}));
 vi.mock("~/zerops/zeropsDataContext", () => ({
   useZeropsData: () => ({
     organizationRef: (id: string) => ({ id }),

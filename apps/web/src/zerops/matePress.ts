@@ -17,7 +17,6 @@
  * group at birth — draws the rest.
  */
 import {
-  PROJECT_ENV_ISOLATION_KEY,
   resumableEnvironmentCreationStep,
   runEnvironmentCreation,
   type BirthPlacement,
@@ -36,6 +35,7 @@ import {
   readZeropsMembership,
   severalMatesLine,
 } from "@t3tools/client-runtime/zerops";
+import type { RunToEnd } from "@t3tools/client-runtime/data";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { ZeropsServiceId } from "@t3tools/client-runtime/zerops/data";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
@@ -72,11 +72,7 @@ import {
 import { setUpMateRecord } from "../components/zerops/ZeropsProjectRow.logic";
 import { useNewMate } from "./newMate";
 import { placedNewProjects, type NewProjectBirth } from "./newProjectBirth";
-import {
-  runZeropsCommand,
-  useZeropsAtomSelections,
-  type ZeropsDataContextValue,
-} from "./zeropsDataContext";
+import { useZeropsAtomSelections, type ZeropsDataContextValue } from "./zeropsDataContext";
 
 /** Where a press stands. */
 export type MatePressState =
@@ -713,7 +709,8 @@ export function placedPressesIn(
 /** What a press acts through: the account's command layer and its API client. */
 export interface PressInputs {
   readonly client: ZeropsApiClient;
-  readonly data: Pick<ZeropsDataContextValue, "runtime" | "organizationRef" | "projectRef">;
+  /** The account's operations: each Zerops write a press makes, run to its end. */
+  readonly run: RunToEnd;
   readonly organizationId: string;
 }
 
@@ -814,8 +811,8 @@ export const PRESS_MAY_HAVE_LANDED =
   "Zerops may have done it anyway: Try again reads what is there before it writes.";
 
 /**
- * The press's platform calls, through the account's command layer, each bounded by its own
- * deadline there: one past it may have landed, and says so (`uncertain`).
+ * The press's platform: its Zerops writes as the account's operations, its close-off marked at HQ,
+ * its registration, and the wait for its services on the account's services listing.
  */
 export function pressPlatform(
   inputs: PressInputs,
@@ -827,45 +824,12 @@ export function pressPlatform(
      * close-off is then not marked, the press's marker holds the Mate, and *Finish setup* marks it.
      */
     readonly hq: HqEndpoint | null;
-    readonly readObservedServices: EnvironmentCreationPlatform["readObservedServices"];
-    /** Its hold at HQ (`pressHold`), told of its container import's process once Zerops answers. */
-    readonly hold?: PressHold | undefined;
+    readonly untilServicesSettled: EnvironmentCreationPlatform["untilServicesSettled"];
   },
 ): EnvironmentCreationPlatform {
-  const { client, data, organizationId } = inputs;
-  const organization = data.organizationRef(organizationId);
-  const projectOf = (projectId: string) => data.projectRef(organizationId, projectId);
+  const { client, organizationId } = inputs;
   return {
-    createProject: ({ clientId: _clientId, ...input }) =>
-      runZeropsCommand(data.runtime.commands.createProject({ organization, ...input })),
-    // Reads, not writes: the platform's verdict on what the press made, waited on by the runner.
-    readProjectCreation: (input) => client.readProjectCreation(input),
-    importDevelopmentContainer: async ({ projectId, projectName, agents, setupRuntimesYaml }) => {
-      const imported = await runZeropsCommand(
-        data.runtime.commands.importDevelopmentContainer({
-          project: projectOf(projectId),
-          projectName,
-          agents,
-          ...(setupRuntimesYaml === undefined ? {} : { setupRuntimesYaml }),
-        }),
-      );
-      // Followed by its import's own process from now on, in any browser.
-      if (imported.processId !== undefined) await options.hold?.imported(imported.processId);
-      return imported;
-    },
-    importServices: (projectId, yaml) =>
-      runZeropsCommand(data.runtime.commands.importServices(projectOf(projectId), yaml)),
-    importProject: ({ clientId: _clientId, yaml }) =>
-      runZeropsCommand(data.runtime.commands.importProject(organization, yaml)),
-    // The same hardening a Mate made before this pass is finished with: for a key the press
-    // minted it writes nothing to the key, and closes the project off.
-    closeOff: async (projectId) => {
-      await runZeropsCommand(data.runtime.commands.isolateProjectEnv(projectOf(projectId)));
-    },
-    readIsolation: async (projectId) =>
-      (await client.readProjectEnv(organizationId, projectId)).find(
-        (entry) => entry.key === PROJECT_ENV_ISOLATION_KEY,
-      )?.content,
+    run: inputs.run,
     markClosedOff: async (projectId) => {
       if (options.hq === null) return;
       await markClosedOffAtHq(accountHqApi(client, organizationId, options.hq), projectId);
@@ -873,14 +837,9 @@ export function pressPlatform(
     register: async (projectId) => {
       await options.register?.(projectId);
     },
-    readObservedServices: options.readObservedServices,
+    untilServicesSettled: options.untilServicesSettled,
   };
 }
-
-const sleep = (ms: number) =>
-  new Promise<void>((resolve) => {
-    setTimeout(resolve, ms);
-  });
 
 /**
  * Runs a press's steps and settles its record: through, or stopped at a step with the reason and
@@ -903,8 +862,6 @@ export async function runPress(input: {
   readonly locks?: LockManagerLike | undefined;
   /** The caller holds the project's press lock already (`finishMateSetup`). */
   readonly heldLock?: boolean;
-  /** Between accepted creation observations; the clock's own where omitted. */
-  readonly sleep?: (ms: number) => Promise<void>;
   /**
    * Its hold at HQ, where its organization's HQ is open here (`pressHold`): taken once its project
    * is known, let go at its end; another browser's press holding it stops this one.
@@ -1095,7 +1052,6 @@ async function pressRun(
       platform: input.platform,
       isCurrent: input.isCurrent,
       describeError: zeropsErrorMessage,
-      sleep: input.sleep ?? sleep,
       ...(input.resume === undefined ? {} : { resume: input.resume }),
       onProjectAccepted: async (projectId) => {
         accepted = projectId;
@@ -1105,6 +1061,10 @@ async function pressRun(
         // Its new project is held at HQ from the moment Zerops takes it: nobody else's yet.
         await input.hold?.take(projectId);
         await input.onProjectAccepted?.(projectId, projectName);
+      },
+      // Followed by its import's own process from now on, in any browser.
+      onContainerImported: async ({ processId }) => {
+        if (processId !== undefined) await input.hold?.imported(processId);
       },
       onProgress: (progress) => {
         // Each step that moves renews the press's hold, whatever its timers are let do.
@@ -1207,8 +1167,6 @@ export async function finishMateSetup(input: {
   readonly onProgress?: (progress: ReadonlyArray<EnvironmentCreationStepProgress>) => void;
   /** This browser's locks; the page's own where omitted. */
   readonly locks?: LockManagerLike | undefined;
-  /** Between accepted creation observations; the clock's own where omitted. */
-  readonly sleep?: (ms: number) => Promise<void>;
 }): Promise<EnvironmentCreationOutcome> {
   const locks = "locks" in input ? input.locks : browserLocks();
   // The whole of it holds the project's press lock: no other tab presses it meanwhile.
@@ -1350,8 +1308,8 @@ async function finishLocked(
         ? null
         : pressRegistration(input.inputs, input.registration, service.serviceId),
     hq: input.hq,
-    readObservedServices: async () => [],
-    hold,
+    // A Mate's press hands over at the wait for its agent: no services' wait of its own.
+    untilServicesSettled: async () => [],
   });
   // The harden first, whatever plan this tab keeps: a kept plan never skips the key's lowering.
   if (input.harden === true) {
@@ -1361,13 +1319,16 @@ async function finishLocked(
     // named none, or HQ does not say.
     const keyTokenId = await mateKeyAtHq(input);
     try {
-      const hardened = await runZeropsCommand(
-        input.inputs.data.runtime.commands.isolateProjectEnv(
-          input.inputs.data.projectRef(input.inputs.organizationId, input.projectId),
-          keyTokenId ?? undefined,
-        ),
-      );
-      keyNotLowered = hardened.keyNotLowered;
+      const organizationId = input.inputs.organizationId;
+      ({ keyNotLowered } = await input.inputs.run(
+        {
+          kind: "harden-project",
+          orgId: organizationId,
+          projectId: input.projectId,
+          ...(keyTokenId === null ? {} : { keyTokenId }),
+        },
+        { orgId: organizationId, unobserved: PRESS_MAY_HAVE_LANDED },
+      ));
     } catch (cause) {
       return finishStopped(input, { kind: "close-off" }, zeropsErrorMessage(cause));
     }
@@ -1388,7 +1349,6 @@ async function finishLocked(
     ...(input.onProgress === undefined ? {} : { onProgress: input.onProgress }),
     locks: input.locks,
     heldLock: true,
-    ...(input.sleep === undefined ? {} : { sleep: input.sleep }),
     hold,
   });
 }

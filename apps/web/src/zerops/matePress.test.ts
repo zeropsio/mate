@@ -5,7 +5,8 @@ import {
   type EnvironmentCreationStepProgress,
 } from "@t3tools/client-runtime/zerops";
 import { HqError } from "@t3tools/client-runtime/zerops/hq";
-import * as Effect from "effect/Effect";
+import type { RunToEnd } from "@t3tools/client-runtime/data";
+import { ZeropsApiError } from "@t3tools/client-runtime/zerops";
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import {
@@ -38,12 +39,105 @@ import {
   PRESS_STEP_RENEW_MS,
   PRESSED_IN_ANOTHER_BROWSER,
   pressHold,
-  pressPlatform,
   whilePressing,
   type MatePress,
   type MatePressState,
+  type PressInputs,
 } from "./matePress";
 import type { LockManagerLike } from "./mateLocks";
+
+/** What an old command fake answered, as the write's own answer. */
+const answered = <A>(answer: { readonly value: A }) => Promise.resolve(answer.value);
+/** What an old command fake refused with, as the write's own failure. */
+const refused = (error: { readonly _tag?: string; readonly message: string }) =>
+  Promise.reject(new Error(error.message));
+
+/**
+ * The account's operations as a press's tests stand them in: each Zerops write a step runs goes
+ * to the fake that test names — a platform method, or the old command of the same write — and a
+ * lost answer is the client's own uncertain failure, as `runToEnd` makes it.
+ */
+type FakeWrite = (...args: ReadonlyArray<never>) => unknown;
+function fakeRun(
+  writes: Readonly<Record<string, FakeWrite | undefined>>,
+  readIsolation?: () => Promise<string | undefined>,
+): RunToEnd {
+  const call = async (name: string, ...args: ReadonlyArray<unknown>) => {
+    const write = writes[name];
+    if (write === undefined) throw new Error(`No ${name} in this press.`);
+    return (write as (...a: ReadonlyArray<unknown>) => unknown)(...args);
+  };
+  const closed = async () => {
+    const isolation = await readIsolation?.();
+    return isolation?.trim().split(/\s+/u)[0] === "service";
+  };
+  return (async (intent: Parameters<RunToEnd>[0]) => {
+    switch (intent.kind) {
+      case "import-container":
+        return call("importDevelopmentContainer", intent);
+      case "import-services":
+        return call("importServices", intent.projectId, intent.yaml);
+      case "harden-project": {
+        if (intent.confirm === true) {
+          if (await closed()) return { keyNotLowered: null };
+          await call("closeOff", intent.projectId);
+          if (!(await closed())) throw new Error("The project does not read as closed off yet.");
+          return { keyNotLowered: null };
+        }
+        const hardened = (await call("isolateProjectEnv", intent.projectId, intent.keyTokenId)) as {
+          readonly keyNotLowered: string | null;
+        };
+        return { keyNotLowered: hardened.keyNotLowered };
+      }
+      default:
+        throw new Error(`No ${intent.kind} in this press.`);
+    }
+  }) as RunToEnd;
+}
+
+/** A press's platform over fake writes, with its HQ steps as the test names them. */
+function platformOf(
+  fakes: Readonly<Record<string, FakeWrite | undefined>> & {
+    readonly readIsolation?: () => Promise<string | undefined>;
+  },
+): EnvironmentCreationPlatform {
+  return {
+    run: fakeRun(fakes, fakes.readIsolation),
+    markClosedOff: (fakes.markClosedOff ?? (async () => undefined)) as never,
+    register: (fakes.register ?? (async () => undefined)) as never,
+    untilServicesSettled: async () => [],
+  };
+}
+
+/**
+ * A press's inputs as the tests built them for the old command layer — `data.runtime.commands`
+ * and the client's isolation read — run as the account's operations.
+ */
+function asPressInputs(raw: unknown): PressInputs {
+  const old = raw as {
+    readonly client: {
+      readonly readProjectEnv?: () => Promise<ReadonlyArray<{ key: string; content?: string }>>;
+    };
+    readonly organizationId: string;
+    readonly data?: { readonly runtime: { readonly commands: Record<string, FakeWrite> } };
+  };
+  const commands = old.data?.runtime.commands ?? {};
+  return {
+    client: old.client as never,
+    organizationId: old.organizationId,
+    run: fakeRun(
+      {
+        importDevelopmentContainer: commands.importDevelopmentContainer,
+        importServices: commands.importServices,
+        isolateProjectEnv: commands.isolateProjectEnv,
+        closeOff: commands.isolateProjectEnv,
+      },
+      async () =>
+        (await old.client.readProjectEnv?.())?.find((entry) => entry.key === "envIsolation")
+          ?.content,
+    ),
+  };
+}
 
 /** What HQ heard of the press: each close-off it was asked to mark. */
 const hq = vi.hoisted(() => ({
@@ -283,11 +377,11 @@ describe("finishSetupView — Finish setup on a Mate's own view", () => {
 describe("runPress — a press settled, tried again, and one at a time", () => {
   const STEPS: ReadonlyArray<EnvironmentCreationStep> = [{ kind: "close-off", isolated: true }];
   const platform = (marks: Array<"ok" | "refused">): EnvironmentCreationPlatform =>
-    ({
+    platformOf({
       markClosedOff: async () => {
         if (marks.shift() === "refused") throw new Error("The tag was refused.");
       },
-    }) as unknown as EnvironmentCreationPlatform;
+    });
   const begin = (finishing = false) =>
     beginPress({
       projectId: "p-1",
@@ -305,7 +399,6 @@ describe("runPress — a press settled, tried again, and one at a time", () => {
       isCurrent: () => true,
       resume: { from: 0, projectId: "p-1", projectName: "Acme - Ada" },
       locks,
-      sleep: async () => undefined,
     });
 
   it("settles a Finish setup that ran through, for its view to say so", async () => {
@@ -547,12 +640,12 @@ describe("a press's hold at HQ", () => {
     const hq = api();
     await pressHold(hq.api, { kind: "mate" }, "press-a").take("p-1");
     const written: Array<string> = [];
-    const platform = {
+    const platform = platformOf({
       importDevelopmentContainer: async () => {
         written.push("import");
         return { serviceName: "zcp", imported: true };
       },
-    } as unknown as EnvironmentCreationPlatform;
+    });
     try {
       const outcome = await runPress({
         organizationId: "org-acme",
@@ -574,47 +667,36 @@ describe("a press's hold at HQ", () => {
     const hq = api();
     const hold = pressHold(hq.api, { kind: "mate" }, "press-a");
     await hold.take("p-1");
-    const platform = pressPlatform(
-      {
-        client: {} as never,
-        organizationId: "org-acme",
-        data: {
-          organizationRef: (organizationId: string) => ({ organizationId }),
-          projectRef: (organizationId: string, projectId: string) => ({
-            organizationId,
-            projectId,
-          }),
-          runtime: {
-            commands: {
-              importDevelopmentContainer: () =>
-                Effect.succeed({
-                  value: { serviceName: "zcp", imported: true, processId: "imp-9" },
-                }),
-            },
-          },
-        } as never,
-      },
-      { register: null, hq: null, readObservedServices: async () => [], hold },
-    );
-    await platform.importDevelopmentContainer({
-      projectId: "p-1",
-      projectName: "Acme - Una",
-      agents: [],
+    await runPress({
+      organizationId: "org-acme",
+      steps: [{ kind: "import-container", agents: [] }],
+      platform: platformOf({
+        importDevelopmentContainer: async () => ({
+          serviceName: "zcp",
+          imported: true,
+          processId: "imp-9",
+        }),
+      }),
+      isCurrent: () => true,
+      resume: { from: 0, projectId: "p-1", projectName: "Acme - Una" },
+      locks: undefined,
+      heldLock: true,
+      hold,
     });
-    expect(hq.calls.at(-1)).toBe("renew p-1 mate press-a imp-9");
-    await hold.end(true);
+    expect(hq.calls).toContain("renew p-1 mate press-a imp-9");
+    forgetPress("p-1");
   });
 
   // B5: a stage's press imports first and registers last; cut short between them, its record stays
   // with its hold ended, for its setup to be finished as a stage of its application.
   it("ends a stage's press that stopped, keeping its record; one that went through leaves none", async () => {
     const hq = api();
-    const platform = {
+    const platform = platformOf({
       importServices: async () => undefined,
       register: async () => {
         throw new Error("HQ could not be reached.");
       },
-    } as unknown as EnvironmentCreationPlatform;
+    });
     const stopped = await runPress({
       organizationId: "org-acme",
       steps: [{ kind: "import-recipe", role: "stage", yaml: "services: []" }, { kind: "register" }],
@@ -631,56 +713,29 @@ describe("a press's hold at HQ", () => {
   });
 });
 
-describe("a press whose platform does not answer in time", () => {
-  /** The account's command layer, whose container import reaches its deadline after `ms`. */
-  const lateImport = (ms: number) => ({
-    client: {} as never,
-    organizationId: "org-acme",
-    data: {
-      organizationRef: (organizationId: string) => ({ organizationId }),
-      projectRef: (organizationId: string, projectId: string) => ({ organizationId, projectId }),
-      runtime: {
-        commands: {
-          importDevelopmentContainer: () =>
-            Effect.sleep(ms).pipe(
-              Effect.andThen(
-                Effect.fail({
-                  _tag: "ZeropsDataAdapterError",
-                  kind: "uncertain",
-                  message: "Zerops command exceeded its deadline.",
-                  retryable: false,
-                }),
-              ),
-            ),
-        },
-      },
-    } as never,
-  });
-
-  it("says a command past its deadline may have landed, and Try again reads before it writes", async () => {
-    vi.useFakeTimers();
+describe("a press whose write's answer was lost", () => {
+  it("says the write may have landed, and Try again reads before it writes", async () => {
+    beginPress({
+      projectId: "p-1",
+      organizationId: "org-acme",
+      startedAt: 0,
+      placement: null,
+      container: true,
+    });
     try {
-      beginPress({
-        projectId: "p-1",
-        organizationId: "org-acme",
-        startedAt: 0,
-        placement: null,
-        container: true,
-      });
-      const outcome = runPress({
+      const outcome = await runPress({
         organizationId: "org-acme",
         steps: [{ kind: "import-container", agents: [] }, { kind: "close-off" }],
-        platform: pressPlatform(lateImport(90_000), {
-          register: null,
-          hq: null,
-          readObservedServices: async () => [],
+        platform: platformOf({
+          importDevelopmentContainer: async () => {
+            throw new ZeropsApiError("Zerops command exceeded its deadline.", "uncertain");
+          },
         }),
         isCurrent: () => true,
         resume: { from: 0, projectId: "p-1", projectName: "Acme - Dan" },
         locks: undefined,
       });
-      await vi.advanceTimersByTimeAsync(90_000);
-      expect(await outcome).toMatchObject({
+      expect(outcome).toMatchObject({
         ok: false,
         failedStep: { kind: "import-container" },
         uncertain: true,
@@ -694,7 +749,6 @@ describe("a press whose platform does not answer in time", () => {
       expect(state?.kind === "failed" ? state.retry : null).not.toBeNull();
     } finally {
       forgetPress("p-1");
-      vi.useRealTimers();
     }
   });
 });
@@ -1113,7 +1167,7 @@ describe("finishMateSetup — the harden path", () => {
             isolateProjectEnv: () => {
               calls.push("harden");
               return harden()
-                ? Effect.succeed({
+                ? answered({
                     value: {
                       tokenLowered: true,
                       keyNotLowered: null,
@@ -1122,7 +1176,7 @@ describe("finishMateSetup — the harden path", () => {
                       restarted: false,
                     },
                   })
-                : Effect.fail({
+                : refused({
                     _tag: "IsolationRefused" as const,
                     message: "The isolation was refused.",
                   });
@@ -1138,7 +1192,7 @@ describe("finishMateSetup — the harden path", () => {
   ) => {
     hq.calls = calls;
     return finishMateSetup({
-      inputs: inputs(harden, calls),
+      inputs: asPressInputs(inputs(harden, calls)),
       projectId: "p-old",
       projectName: "Acme - Ada",
       container: null,
@@ -1147,7 +1201,6 @@ describe("finishMateSetup — the harden path", () => {
       isCurrent: () => true,
       harden: made.harden ?? true,
       locks: undefined,
-      sleep: async () => undefined,
     });
   };
   const begin = () =>
@@ -1179,7 +1232,7 @@ describe("finishMateSetup — the harden path", () => {
             ...base.data.runtime.commands,
             importDevelopmentContainer: () => {
               calls.push("container");
-              return Effect.succeed({ value: { serviceName: "zcp", imported: true } });
+              return answered({ value: { serviceName: "zcp", imported: true } });
             },
           },
         },
@@ -1188,7 +1241,7 @@ describe("finishMateSetup — the harden path", () => {
     hq.calls = calls;
     expect(
       await finishMateSetup({
-        inputs: withContainer as never,
+        inputs: asPressInputs(withContainer as never),
         projectId: "p-old",
         projectName: "mate-rig-e2e-d - Dan",
         container: { agents: [] },
@@ -1202,7 +1255,6 @@ describe("finishMateSetup — the harden path", () => {
         hq: { projectId: "hq-project", address: "https://hq.test" },
         isCurrent: () => true,
         locks: undefined,
-        sleep: async () => undefined,
       }),
     ).toMatchObject({ ok: true });
     expect(calls).toEqual(["attach app-d", "container", "read isolation", "mark"]);
@@ -1228,7 +1280,7 @@ describe("finishMateSetup — the harden path", () => {
             ...base.data.runtime.commands,
             importDevelopmentContainer: () => {
               calls.push("container");
-              return Effect.succeed({ value: { serviceName: "zcp", imported: true } });
+              return answered({ value: { serviceName: "zcp", imported: true } });
             },
           },
         },
@@ -1250,7 +1302,7 @@ describe("finishMateSetup — the harden path", () => {
     hq.calls = calls;
     expect(
       await finishMateSetup({
-        inputs: withContainer as never,
+        inputs: asPressInputs(withContainer as never),
         projectId: "p-old",
         projectName: "shop",
         container: { agents: [] },
@@ -1258,7 +1310,6 @@ describe("finishMateSetup — the harden path", () => {
         hq: endpoint,
         isCurrent: () => true,
         locks: undefined,
-        sleep: async () => undefined,
       }),
     ).toMatchObject({ ok: true });
     expect(calls).toEqual([
@@ -1288,7 +1339,7 @@ describe("finishMateSetup — the harden path", () => {
             ...base.data.runtime.commands,
             importDevelopmentContainer: () => {
               calls.push("container");
-              return Effect.succeed({ value: { serviceName: "zcp", imported: true } });
+              return answered({ value: { serviceName: "zcp", imported: true } });
             },
           },
         },
@@ -1304,7 +1355,7 @@ describe("finishMateSetup — the harden path", () => {
     });
     // The first browser's press stops at the one attach HQ answers with 503.
     const pressed = await finishMateSetup({
-      inputs: withContainer as never,
+      inputs: asPressInputs(withContainer as never),
       projectId: "gus-project",
       projectName: "mate-rig-e2e-g - Gus",
       container: { agents: [] },
@@ -1320,7 +1371,6 @@ describe("finishMateSetup — the harden path", () => {
       isCurrent: () => true,
       harden: false,
       locks: undefined,
-      sleep: async () => undefined,
     });
     expect(pressed).toMatchObject({ ok: false, failedStep: { kind: "register" } });
     expect(calls).toEqual(["attach failed"]);
@@ -1381,7 +1431,7 @@ describe("finishMateSetup — the harden path", () => {
     });
     expect(
       await finishMateSetup({
-        inputs: withContainer as never,
+        inputs: asPressInputs(withContainer as never),
         projectId: "gus-project",
         projectName: "mate-rig-e2e-g - Gus",
         container: { agents: [] },
@@ -1390,7 +1440,6 @@ describe("finishMateSetup — the harden path", () => {
         isCurrent: () => true,
         harden: true,
         locks: undefined,
-        sleep: async () => undefined,
       }),
     ).toMatchObject({ ok: true });
     expect(calls).toContain("attach app-g closing b-gus");
@@ -1404,7 +1453,7 @@ describe("finishMateSetup — the harden path", () => {
     hq.calls = calls;
     expect(
       await finishMateSetup({
-        inputs: inputs(() => true, calls),
+        inputs: asPressInputs(inputs(() => true, calls)),
         projectId: "p-old",
         projectName: "mate-rig-e2e-g - Gus",
         container: null,
@@ -1420,7 +1469,6 @@ describe("finishMateSetup — the harden path", () => {
         isCurrent: () => true,
         harden: true,
         locks: undefined,
-        sleep: async () => undefined,
       }),
     ).toMatchObject({ ok: true });
     expect(calls).toContain("attach app-g closing b-gus");
@@ -1457,7 +1505,7 @@ describe("finishMateSetup — the harden path", () => {
     hq.calls = calls;
     expect(
       await finishMateSetup({
-        inputs: inputs(() => true, calls),
+        inputs: asPressInputs(inputs(() => true, calls)),
         projectId: "p-old",
         projectName: "mate-rig-e2e-d - Dan",
         container: null,
@@ -1466,7 +1514,6 @@ describe("finishMateSetup — the harden path", () => {
         isCurrent: () => true,
         harden: true,
         locks: undefined,
-        sleep: async () => undefined,
       }),
     ).toMatchObject({ ok: true });
     expect(calls).toEqual(["harden", write, "mark"]);
@@ -1520,7 +1567,7 @@ describe("finishMateSetup — the harden path", () => {
     hq.calls = calls;
     expect(
       await finishMateSetup({
-        inputs: { ...(base as object), client } as never,
+        inputs: asPressInputs({ ...(base as object), client } as never),
         projectId: "p-old",
         projectName: "Acme - Ada",
         container: null,
@@ -1529,7 +1576,6 @@ describe("finishMateSetup — the harden path", () => {
         isCurrent: () => true,
         harden: true,
         locks: undefined,
-        sleep: async () => undefined,
       }),
     ).toMatchObject({ ok: true });
     expect(calls.filter((call) => call.startsWith("put") || call === "list keys")).toEqual([]);
@@ -1553,7 +1599,7 @@ describe("finishMateSetup — the harden path", () => {
           commands: {
             ...base.data.runtime.commands,
             isolateProjectEnv: () =>
-              Effect.succeed({
+              answered({
                 value: {
                   tokenLowered: false,
                   keyNotLowered: "This Zerops account is not allowed to do that.",
@@ -1569,7 +1615,7 @@ describe("finishMateSetup — the harden path", () => {
     hq.calls = calls;
     expect(
       await finishMateSetup({
-        inputs: refusedKey as never,
+        inputs: asPressInputs(refusedKey as never),
         projectId: "p-old",
         projectName: "Acme - Ada",
         container: null,
@@ -1578,7 +1624,6 @@ describe("finishMateSetup — the harden path", () => {
         isCurrent: () => true,
         harden: true,
         locks: undefined,
-        sleep: async () => undefined,
       }),
     ).toMatchObject({ ok: true });
     const said =
@@ -1629,7 +1674,7 @@ describe("finishMateSetup — the harden path", () => {
             ...base.data.runtime.commands,
             isolateProjectEnv: (_project: unknown, keyTokenId?: string) => {
               asked.push(keyTokenId);
-              return Effect.succeed({
+              return answered({
                 value: {
                   tokenLowered: true,
                   keyNotLowered: null,
@@ -1646,7 +1691,7 @@ describe("finishMateSetup — the harden path", () => {
     hq.calls = calls;
     const finishOld = () =>
       finishMateSetup({
-        inputs: byId as never,
+        inputs: asPressInputs(byId as never),
         projectId: "p-old",
         projectName: "Acme - Ada",
         container: null,
@@ -1655,7 +1700,6 @@ describe("finishMateSetup — the harden path", () => {
         isCurrent: () => true,
         harden: true,
         locks: undefined,
-        sleep: async () => undefined,
       });
     hq.key = "token-7";
     expect(await finishOld()).toMatchObject({ ok: true });
@@ -1686,7 +1730,7 @@ describe("finishMateSetup — the harden path", () => {
             isolateProjectEnv: (_project: unknown, keyTokenId?: string) => {
               asked.push(keyTokenId);
               calls.push("harden");
-              return Effect.succeed({
+              return answered({
                 value: {
                   tokenLowered: true,
                   keyNotLowered: null,
@@ -1704,7 +1748,7 @@ describe("finishMateSetup — the harden path", () => {
     hq.key = "token-wide";
     expect(
       await finishMateSetup({
-        inputs: matched as never,
+        inputs: asPressInputs(matched as never),
         projectId: "p-old",
         projectName: "Acme - Ada",
         container: null,
@@ -1714,7 +1758,6 @@ describe("finishMateSetup — the harden path", () => {
         harden: true,
         keyWider: true,
         locks: undefined,
-        sleep: async () => undefined,
       }),
     ).toMatchObject({ ok: true });
     hq.key = null;
@@ -1731,7 +1774,7 @@ describe("finishMateSetup — the harden path", () => {
     const services = [zcp("svc-1", "zcp"), zcp("svc-2", "zcp1")];
     hq.calls = calls;
     const finishing = {
-      inputs: inputs(() => true, calls, services),
+      inputs: asPressInputs(inputs(() => true, calls, services)),
       projectId: "p-old",
       projectName: "Acme - Ada",
       container: null,
@@ -1745,7 +1788,6 @@ describe("finishMateSetup — the harden path", () => {
       isCurrent: () => true,
       harden: true,
       locks: undefined,
-      sleep: async () => undefined,
     };
     const error =
       "This project has more than one Zerops Control Plane (zcp, zcp1). A project holds one Mate: delete the others in Zerops, then try again.";
@@ -1792,7 +1834,7 @@ describe("finishMateSetup — the harden path", () => {
     hq.calls = calls;
     expect(
       await finishMateSetup({
-        inputs: inputs(() => true, calls, [zcp("svc-1", "zcp")]),
+        inputs: asPressInputs(inputs(() => true, calls, [zcp("svc-1", "zcp")])),
         projectId: "p-old",
         projectName: "mate-rig-e2e-d - Dan",
         container: null,
@@ -1801,7 +1843,6 @@ describe("finishMateSetup — the harden path", () => {
         isCurrent: () => true,
         harden: true,
         locks: undefined,
-        sleep: async () => undefined,
       }),
     ).toMatchObject({ ok: true });
     expect(calls).toEqual(["harden", write, "mark"]);
@@ -1816,7 +1857,7 @@ describe("finishMateSetup — the harden path", () => {
       { kind: "import-container", agents: [] },
       { kind: "close-off", isolated: true },
     ];
-    const platform = {
+    const platform = platformOf({
       register: async () => {
         calls.push("register");
       },
@@ -1829,7 +1870,7 @@ describe("finishMateSetup — the harden path", () => {
         calls.push("failed mark");
         throw new Error("HQ isn't answering.");
       },
-    } as unknown as EnvironmentCreationPlatform;
+    });
     expect(
       await runPress({
         organizationId: "org-acme",
@@ -1838,7 +1879,6 @@ describe("finishMateSetup — the harden path", () => {
         isCurrent: () => true,
         resume: { from: 0, projectId: "p-old", projectName: "Acme - Ada" },
         locks: undefined,
-        sleep: async () => undefined,
       }),
     ).toMatchObject({ ok: false, serviceName: "zcp", failedStep: { kind: "close-off" } });
     expect(calls).toEqual(["register", "container", "failed mark"]);
@@ -1847,7 +1887,7 @@ describe("finishMateSetup — the harden path", () => {
     hq.calls = calls;
     expect(
       await finishMateSetup({
-        inputs: inputs(() => true, calls, [zcp("svc-1", "zcp")]),
+        inputs: asPressInputs(inputs(() => true, calls, [zcp("svc-1", "zcp")])),
         projectId: "p-old",
         projectName: "Acme - Ada",
         container: { agents: [] },
@@ -1861,7 +1901,6 @@ describe("finishMateSetup — the harden path", () => {
         harden: true,
         isCurrent: () => true,
         locks: undefined,
-        sleep: async () => undefined,
       }),
     ).toMatchObject({ ok: true, serviceName: "zcp" });
     // Its harden runs first: a kept plan never skips the key's lowering (security review 8).
@@ -1875,7 +1914,7 @@ describe("finishMateSetup — the harden path", () => {
     let reads = 0;
     const base = inputs(() => true, calls) as unknown as { client: Record<string, unknown> };
     const finishing = {
-      inputs: {
+      inputs: asPressInputs({
         ...base,
         client: {
           ...base.client,
@@ -1885,7 +1924,7 @@ describe("finishMateSetup — the harden path", () => {
             return [];
           },
         },
-      } as never,
+      }),
       projectId: "p-old",
       projectName: "Acme - Ada",
       container: null,
@@ -1893,9 +1932,6 @@ describe("finishMateSetup — the harden path", () => {
       hq: null,
       isCurrent: () => true,
       locks: undefined,
-      sleep: async () => {
-        throw new Error("A failed read must not wait and repeat.");
-      },
     };
     expect(await finishMateSetup(finishing)).toMatchObject({
       ok: false,
@@ -2090,7 +2126,6 @@ describe("pressesInFlight", () => {
       isCurrent: () => true,
       resume: { from: 0, projectId: "p-flight", projectName: "Acme - Ada" },
       locks: undefined,
-      sleep: async () => undefined,
     });
     forgetPress("p-flight");
     expect({ during, after: pressesInFlight.read(), seen }).toEqual({

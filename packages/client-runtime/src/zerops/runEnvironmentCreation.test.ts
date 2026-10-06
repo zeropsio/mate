@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vite-plus/test";
 
+import type { OperationIntent } from "../data/model.ts";
+import type { RunToEnd } from "../data/operations/runToEnd.ts";
 import { ZeropsApiError } from "./api.ts";
 import { planEnvironmentCreation, type EnvironmentCreationStep } from "./createEnvironment.ts";
 import type { ZeropsEnvironmentRole } from "./groups.ts";
 import {
   resumableEnvironmentCreationStep,
   runEnvironmentCreation,
+  servicesSettled,
   type EnvironmentCreationPlatform,
   type EnvironmentCreationStepProgress,
 } from "./runEnvironmentCreation.ts";
@@ -32,19 +35,44 @@ function plan(role: ZeropsEnvironmentRole): ReadonlyArray<EnvironmentCreationSte
   return result.steps;
 }
 
+/**
+ * The Zerops writes a creation runs, each as its operation would end: the project's id once
+ * Zerops took it, then its end (a failed `project.create` is a rejection here).
+ */
+interface FakeWrites {
+  readonly createProject: (input: {
+    readonly name: string;
+    readonly tagList: ReadonlyArray<string>;
+  }) => Promise<{ readonly id: string }>;
+  /** The created project's own end, after Zerops took it. */
+  readonly projectCreated: (projectId: string) => Promise<void>;
+  readonly importDevelopmentContainer: (input: {
+    readonly projectId: string;
+    readonly projectName: string;
+    readonly agents: ReadonlyArray<string>;
+    readonly setupRuntimesYaml?: string;
+  }) => Promise<{
+    readonly serviceName: string;
+    readonly imported: boolean;
+    readonly processId?: string;
+  }>;
+  readonly importServices: (projectId: string, yaml: string) => Promise<unknown>;
+  readonly importProject: (yaml: string) => Promise<{ readonly projectId: string }>;
+  /** The project read, closed off where it is not, and read back closed off. */
+  readonly harden: (projectId: string) => Promise<void>;
+}
+
+type FakeOverrides = Partial<FakeWrites> & Partial<Omit<EnvironmentCreationPlatform, "run">>;
+
 /** A platform that records what it was asked and answers as the live one does. */
-function fakePlatform(overrides: Partial<EnvironmentCreationPlatform> = {}) {
+function fakePlatform(overrides: FakeOverrides = {}) {
   const calls: Array<string> = [];
-  let serviceReads = 0;
-  const platform: EnvironmentCreationPlatform = {
+  const writes: FakeWrites = {
     createProject: (input) => {
       calls.push(`create:${input.name}:${input.tagList.join(",")}`);
       return Promise.resolve({ id: "proj-1" });
     },
-    readProjectCreation: ({ projectId }) => {
-      calls.push(`creation:${projectId}`);
-      return Promise.resolve({ processId: "proc-create", status: "FINISHED", error: null });
-    },
+    projectCreated: () => Promise.resolve(),
     importDevelopmentContainer: (input) => {
       calls.push(
         `container:${input.projectId}:${input.projectName}:${input.agents.join("|")}:${input.setupRuntimesYaml?.length ?? "none"}`,
@@ -55,18 +83,42 @@ function fakePlatform(overrides: Partial<EnvironmentCreationPlatform> = {}) {
       calls.push(`import:${projectId}:${yaml.length}`);
       return Promise.resolve({});
     },
-    importProject: (input) => {
-      calls.push(`importProject:${input.yaml.length}`);
+    importProject: (yaml) => {
+      calls.push(`importProject:${yaml.length}`);
       return Promise.resolve({ projectId: "proj-1" });
     },
-    closeOff: (projectId) => {
-      calls.push(`closeOff:${projectId}`);
+    harden: (projectId) => {
+      calls.push(`harden:${projectId}`);
       return Promise.resolve();
     },
-    readIsolation: (projectId) => {
-      calls.push(`isolation:${projectId}`);
-      return Promise.resolve("service");
-    },
+    ...overrides,
+  };
+  const runWrite = (async (intent: OperationIntent, options: Parameters<RunToEnd>[1]) => {
+    switch (intent.kind) {
+      case "create-project": {
+        const { id } = await writes.createProject(intent);
+        (options.accepted as ((result: { projectId: string }) => void) | undefined)?.({
+          projectId: id,
+        });
+        await writes.projectCreated(id);
+        return { projectId: id };
+      }
+      case "import-project":
+        return writes.importProject(intent.yaml);
+      case "import-services":
+        await writes.importServices(intent.projectId, intent.yaml);
+        return undefined;
+      case "import-container":
+        return writes.importDevelopmentContainer(intent);
+      case "harden-project":
+        await writes.harden(intent.projectId);
+        return { keyNotLowered: null };
+      default:
+        throw new Error(`No ${intent.kind} in a creation.`);
+    }
+  }) as RunToEnd;
+  const platform: EnvironmentCreationPlatform = {
+    run: runWrite,
     markClosedOff: (projectId) => {
       calls.push(`closedOff:${projectId}`);
       return Promise.resolve();
@@ -75,18 +127,18 @@ function fakePlatform(overrides: Partial<EnvironmentCreationPlatform> = {}) {
       calls.push(`register:${projectId}`);
       return Promise.resolve();
     },
-    readObservedServices: (projectId) => {
-      serviceReads += 1;
-      calls.push(`services:${projectId}:${serviceReads}`);
-      // The services appear on the second read and come up on the third.
-      if (serviceReads === 1) return Promise.resolve([]);
-      const status = serviceReads >= 3 ? "ACTIVE" : "CREATING";
+    untilServicesSettled: (projectId) => {
+      calls.push(`services:${projectId}`);
       return Promise.resolve([
-        { name: "app", status },
+        { name: "app", status: "ACTIVE" },
         { name: "db", status: "ACTIVE" },
       ]);
     },
-    ...overrides,
+    ...(overrides.markClosedOff === undefined ? {} : { markClosedOff: overrides.markClosedOff }),
+    ...(overrides.register === undefined ? {} : { register: overrides.register }),
+    ...(overrides.untilServicesSettled === undefined
+      ? {}
+      : { untilServicesSettled: overrides.untilServicesSettled }),
   };
   return { platform, calls };
 }
@@ -94,29 +146,18 @@ function fakePlatform(overrides: Partial<EnvironmentCreationPlatform> = {}) {
 function run(
   steps: ReadonlyArray<EnvironmentCreationStep>,
   platform: EnvironmentCreationPlatform,
-  extra: { readonly clockMs?: Array<number>; readonly isCurrent?: () => boolean } = {},
+  extra: { readonly isCurrent?: () => boolean } = {},
 ) {
   const reports: Array<ReadonlyArray<EnvironmentCreationStepProgress>> = [];
-  const slept: Array<number> = [];
   let tick = 0;
-  // Time passes as the run sleeps, where the case gives no clock of its own.
-  let asleep = 0;
   return runEnvironmentCreation({
     clientId: "client-1",
     steps,
     platform,
     ...(extra.isCurrent === undefined ? {} : { isCurrent: extra.isCurrent }),
     onProgress: (progress) => reports.push(progress),
-    now: () => (extra.clockMs === undefined ? asleep : (extra.clockMs[tick++] ?? tick * 1000)),
-    sleep: (ms) => {
-      slept.push(ms);
-      asleep += ms;
-      return Promise.resolve();
-    },
-    pollIntervalMs: 7,
-    serviceWaitCapMs: 100_000,
-    projectCreatePollIntervalMs: 2,
-  }).then((outcome) => ({ outcome, reports, slept }));
+    now: () => (tick += 1000),
+  }).then((outcome) => ({ outcome, reports }));
 }
 
 describe("runEnvironmentCreation", () => {
@@ -166,20 +207,16 @@ describe("runEnvironmentCreation", () => {
     expect(calls).toEqual([]);
   });
 
-  it("stops service checks when the account closes during a read", async () => {
+  it("stops at the services' wait when the account closes during it", async () => {
     let current = true;
-    let reads = 0;
     const { platform } = fakePlatform({
-      readObservedServices: async () => {
-        reads += 1;
+      untilServicesSettled: async () => {
         current = false;
-        return [];
+        return [{ name: "app", status: "ACTIVE" }];
       },
     });
-    const { outcome, slept } = await run(plan("prod"), platform, { isCurrent: () => current });
+    const { outcome } = await run(plan("prod"), platform, { isCurrent: () => current });
     expect(outcome).toMatchObject({ ok: false, error: "This account session has ended." });
-    expect(reads).toBe(1);
-    expect(slept).toEqual([]);
   });
 
   it("runs the platform calls in the plan's order, feeding each the project it made", async () => {
@@ -193,10 +230,8 @@ describe("runEnvironmentCreation", () => {
       awaitingAgent: true,
     });
     expect(calls).toEqual([
+      // The project's operation ends with its `project.create` process: the step waits for it.
       "create:Go Hello World - dev:mate",
-      // The 200 is an acceptance; the platform's `project.create` process is
-      // the creation, and the step is not done until it has finished.
-      "creation:proj-1",
       // The managed services, with the project: nothing in them runs code.
       `import:proj-1:${MANAGED_YAML.length}`,
       // Its record in its application before its container: a press that stops after leaves a
@@ -205,9 +240,9 @@ describe("runEnvironmentCreation", () => {
       // The group's agents reach the container import, not just the plan, and the runtimes ride
       // with it for zcp to import on boot: no runtime import of the press's own.
       `container:proj-1:Go Hello World - dev:claude-code:${"services:\n  - hostname: api\n    startWithoutCode: true\n".length}`,
-      // Read back closed — the recipe already left it so, nothing written — and marked: zcp
-      // imports the runtimes on the mark alone, and the Mate needs no browser any more.
-      "isolation:proj-1",
+      // Hardened — read closed, closed off where it was not, read back — and marked: zcp imports
+      // the runtimes on the mark alone, and the Mate needs no browser any more.
+      "harden:proj-1",
       "closedOff:proj-1",
     ]);
   });
@@ -260,7 +295,7 @@ describe("runEnvironmentCreation", () => {
 
   it("waits for every service of an environment without an agent", async () => {
     const { platform, calls } = fakePlatform();
-    const { outcome, reports, slept } = await run(plan("prod"), platform);
+    const { outcome, reports } = await run(plan("prod"), platform);
 
     expect(outcome).toMatchObject({
       ok: true,
@@ -272,8 +307,7 @@ describe("runEnvironmentCreation", () => {
         { service: "db", deployment: { state: "known", value: { kind: "running" } } },
       ],
     });
-    expect(calls.filter((call) => call.startsWith("services:"))).toHaveLength(3);
-    expect(slept).toEqual([7, 7]);
+    expect(calls.filter((call) => call.startsWith("services:"))).toEqual(["services:proj-1"]);
     expect(reports.at(-1)!.map((entry) => entry.state)).toEqual(["done", "done", "done", "done"]);
   });
 
@@ -281,7 +315,7 @@ describe("runEnvironmentCreation", () => {
     // A cloned buildFromGit service whose build failed sits at
     // READY_TO_DEPLOY for good; waiting on it would only time out.
     const { platform } = fakePlatform({
-      readObservedServices: () =>
+      untilServicesSettled: () =>
         Promise.resolve([
           { name: "app", status: "READY_TO_DEPLOY" },
           { name: "db", status: "ACTIVE" },
@@ -307,29 +341,28 @@ describe("runEnvironmentCreation", () => {
     });
   });
 
-  it("does not call zero services ready", async () => {
-    // An import's services appear a beat after it is accepted; an empty read
-    // is "not yet", never "done".
-    const { platform } = fakePlatform({ readObservedServices: () => Promise.resolve([]) });
-    const { outcome } = await run(plan("prod"), platform, {
-      clockMs: [0, 0, 0, 0, 0, 0, 0, 200_000, 200_000, 200_000],
-    });
-    expect(outcome.ok).toBe(false);
-    if (!outcome.ok) expect(outcome.error).toContain("never appeared");
+  it.each<[string, ReadonlyArray<{ readonly status: string }> | undefined, boolean]>([
+    ["not read yet", undefined, false],
+    // An import's services appear a beat after it is accepted: none is "not yet", never "done".
+    ["none yet", [], false],
+    ["one still creating", [{ status: "ACTIVE" }, { status: "CREATING" }], false],
+    ["every one active", [{ status: "ACTIVE" }, { status: "ACTIVE" }], true],
+    ["one with nothing deployed", [{ status: "READY_TO_DEPLOY" }], true],
+  ])("calls services settled only when every one is: %s", (_name, services, settled) => {
+    expect(servicesSettled(services)).toBe(settled);
   });
 
-  it("gives up on a service wait past its cap, naming what is still pending", async () => {
+  it("stops at the services' wait where they can no longer be followed", async () => {
     const { platform } = fakePlatform({
-      readObservedServices: () => Promise.resolve([{ name: "app", status: "CREATING" }]),
+      untilServicesSettled: () =>
+        Promise.reject(new Error("Zerops' services could not be followed.")),
     });
-    const { outcome } = await run(plan("prod"), platform, {
-      clockMs: [0, 0, 0, 0, 0, 0, 0, 200_000, 200_000, 200_000],
+    const { outcome } = await run(plan("prod"), platform);
+    expect(outcome).toMatchObject({
+      ok: false,
+      failedStep: { kind: "await-ready" },
+      error: "Zerops' services could not be followed.",
     });
-    expect(outcome.ok).toBe(false);
-    if (!outcome.ok) {
-      expect(outcome.failedStep.kind).toBe("await-ready");
-      expect(outcome.error).toContain("app");
-    }
   });
 
   it("stops at the first failure and says which half was built", async () => {
@@ -390,53 +423,11 @@ describe("runEnvironmentCreation", () => {
 });
 
 describe("runEnvironmentCreation — the platform's verdict on the project", () => {
-  // `POST /client/{id}/project` answers 200 before anything is built; the
-  // `project.create` process that follows is the creation, and it can fail
-  // (measured 2026-09-16). The step waits for it.
-  it("waits until project.create has finished, a missing process counting as running", async () => {
-    const answers = [
-      undefined,
-      { processId: "proc-create", status: "RUNNING", error: null },
-      { processId: "proc-create", status: "FINISHED", error: null },
-    ];
-    let reads = 0;
+  // `POST /client/{id}/project` answers before anything is built; the project's operation ends
+  // with its `project.create` process (`data/operations/createProject.ts`), and the step with it.
+  it("fails the step with what ended its project, keeping its id", async () => {
     const { platform, calls } = fakePlatform({
-      readProjectCreation: () => Promise.resolve(answers[reads++]),
-    });
-    const { outcome, slept } = await run(plan("dev"), platform);
-
-    expect(outcome.ok).toBe(true);
-    expect(reads).toBe(3);
-    expect(slept.slice(0, 2)).toEqual([2, 2]);
-    expect(calls.some((call) => call.startsWith("container:proj-1:"))).toBe(true);
-  });
-
-  const failures: ReadonlyArray<{
-    readonly name: string;
-    readonly creation: {
-      readonly status: string;
-      readonly error: { code: string; message: string } | null;
-    };
-    readonly error: string;
-  }> = [
-    {
-      name: "fails the step with the platform's message when project.create FAILED",
-      creation: {
-        status: "FAILED",
-        error: { code: "internalServerError", message: "unexpected internal server error" },
-      },
-      error: "unexpected internal server error",
-    },
-    {
-      name: "fails the step with the status when a CANCELED project.create said nothing",
-      creation: { status: "CANCELED", error: null },
-      error: "Zerops reported the project's creation as CANCELED.",
-    },
-  ];
-
-  it.each(failures.map((row) => [row.name, row] as const))("%s", async (_name, row) => {
-    const { platform, calls } = fakePlatform({
-      readProjectCreation: () => Promise.resolve({ processId: "proc-create", ...row.creation }),
+      projectCreated: () => Promise.reject(new Error("unexpected internal server error")),
     });
     const { outcome, reports } = await run(plan("dev"), platform);
 
@@ -445,56 +436,30 @@ describe("runEnvironmentCreation — the platform's verdict on the project", () 
       // The half that was made: a project the platform left NEW.
       projectId: "proj-1",
       failedStep: expect.objectContaining({ kind: "create-project" }),
-      error: row.error,
+      error: "unexpected internal server error",
     });
-    // Nothing after it runs: no container, no token, no import. (The verdict
-    // read is this test's own and records nothing.)
+    // Nothing after it runs: no container, no token, no import.
     expect(calls).toEqual(["create:Go Hello World - dev:mate"]);
     const last = reports.at(-1)!;
-    expect(last[0]).toMatchObject({ state: "failed", error: row.error });
+    expect(last[0]).toMatchObject({ state: "failed", error: "unexpected internal server error" });
     expect(last.slice(1).every((entry) => entry.state === "queued")).toBe(true);
-  });
-
-  it("gives up when the platform never confirms the project, keeping its id", async () => {
-    const { platform } = fakePlatform({
-      readProjectCreation: () =>
-        Promise.resolve({ processId: "proc-create", status: "RUNNING", error: null }),
-    });
-    // The step's start, one in-bound check, then one past the minute.
-    const { outcome, slept } = await run(plan("dev"), platform, { clockMs: [0, 0, 200_000] });
-
-    expect(outcome).toEqual({
-      ok: false,
-      projectId: "proj-1",
-      failedStep: expect.objectContaining({ kind: "create-project" }),
-      error: "Zerops did not confirm the project was created.",
-    });
-    expect(slept).toEqual([2]);
   });
 });
 
 describe("runEnvironmentCreation — one attempt per step", () => {
-  it.each([
-    "importDevelopmentContainer",
-    "markClosedOff",
-    "register",
-    "readIsolation",
-    "closeOff",
-  ] as const)(
+  it.each(["importDevelopmentContainer", "markClosedOff", "register", "harden"] as const)(
     "stops on the first failed %s, retaining the project and completed steps",
     async (operation) => {
       let attempts = 0;
       const { platform, calls } = fakePlatform({
-        ...(operation === "closeOff" ? { readIsolation: async () => "none" } : {}),
         [operation]: async () => {
           attempts += 1;
           throw new Error("Refused.");
         },
       });
-      const { outcome, reports, slept } = await run(plan("dev"), platform);
+      const { outcome, reports } = await run(plan("dev"), platform);
       expect(outcome).toMatchObject({ ok: false, projectId: "proj-1", error: "Refused." });
       expect(attempts).toBe(1);
-      expect(slept).toEqual([]);
       const progress = reports.at(-1)!;
       const failed = progress.findIndex((entry) => entry.state === "failed");
       expect(progress.slice(0, failed).every((entry) => entry.state === "done")).toBe(true);
@@ -532,84 +497,22 @@ describe("runEnvironmentCreation — one attempt per step", () => {
         projectName: "Go Hello World - dev",
         serviceName: "zcp",
       },
-      sleep: async () => undefined,
     });
     expect(resumed).toMatchObject({ ok: true, serviceName: "zcp", awaitingAgent: true });
     expect(marks).toBe(2);
-    expect(calls.slice(before)).toEqual(["isolation:proj-1"]);
+    expect(calls.slice(before)).toEqual(["harden:proj-1"]);
   });
 });
 
 describe("runEnvironmentCreation — closing the project off", () => {
-  // The container recipe leaves the project `service service@zcp`, and a new project starts
-  // `service`; but the read trails the platform, so the mark — which zcp imports the runtimes on —
-  // is written only after isolation reads closed. An open project gets one write and read-back;
-  // unavailable or failed reads stop for the creator to continue explicitly.
-  const table: ReadonlyArray<{
-    readonly name: string;
-    /** What each read of `envIsolation` answers, in turn; the last one stands. */
-    readonly reads: ReadonlyArray<string | undefined>;
-    readonly writes: number;
-    readonly marked: boolean;
-  }> = [
-    {
-      name: "a project the recipe already reads as closed: marked, nothing written",
-      reads: ["service service@zcp"],
-      writes: 0,
-      marked: true,
-    },
-    {
-      name: "an unavailable isolation read stops for manual continuation",
-      reads: [undefined, undefined, "service"],
-      writes: 0,
-      marked: false,
-    },
-    {
-      name: "an open project gets one isolation write and one read-back before the mark",
-      reads: ["none", "service"],
-      writes: 1,
-      marked: true,
-    },
-    {
-      name: "a closed isolation read ends the check",
-      reads: ["service", "none", "service"],
-      writes: 0,
-      marked: true,
-    },
-    {
-      name: "a project that never reads at all is never marked",
-      reads: [undefined],
-      writes: 0,
-      marked: false,
-    },
-    {
-      name: "a project that stays open after it was closed is never marked",
-      reads: ["none"],
-      writes: 1,
-      marked: false,
-    },
-    {
-      name: "a closed isolation is marked from its one read",
-      reads: ["service", "none"],
-      writes: 0,
-      marked: true,
-    },
-  ];
-
-  it.each(table.map((row) => [row.name, row] as const))("%s", async (_name, row) => {
-    const reads = [...row.reads];
-    const { platform, calls } = fakePlatform({
-      readIsolation: async (projectId) => {
-        calls.push(`isolation:${projectId}`);
-        return reads.length > 1 ? reads.shift() : reads[0];
-      },
-    });
-    const { outcome, slept } = await run(plan("dev"), platform);
-    expect(outcome.ok).toBe(row.marked);
-    if (!row.marked) expect(outcome).toMatchObject({ failedStep: { kind: "close-off" } });
-    expect(calls.filter((call) => call.startsWith("closeOff:"))).toHaveLength(row.writes);
-    expect(calls.includes("closedOff:proj-1")).toBe(row.marked);
-    expect(slept).toEqual([]);
+  // The mark — which zcp imports the runtimes on — is written only after the project reads closed
+  // off: its hardening reads it, closes it off where it is not, and reads it back
+  // (`data/operations/hardenProject.ts`). One that does not confirm stops for the creator.
+  it("marks the project once its hardening confirms it closed off", async () => {
+    const { platform, calls } = fakePlatform();
+    const { outcome } = await run(plan("dev"), platform);
+    expect(outcome.ok).toBe(true);
+    expect(calls.slice(-2)).toEqual(["harden:proj-1", "closedOff:proj-1"]);
   });
 
   // Finish setup on an older Mate isolates it first (`hardenMate`): its close-off trusts that and
@@ -621,33 +524,31 @@ describe("runEnvironmentCreation — closing the project off", () => {
       steps: [{ kind: "close-off", isolated: true }],
       platform,
       resume: { from: 0, projectId: "proj-1", projectName: "Go Hello World - dev" },
-      sleep: async () => undefined,
     });
     expect(outcome).toMatchObject({ ok: true });
     expect(calls).toEqual(["closedOff:proj-1"]);
   });
 
-  // Nothing waits on a process: the platform stalled a project's recipe write for minutes while
-  // its isolation read closed throughout (a live press, 2026-10-01).
-  it("reads isolation once and marks the project without a timed compare loop", async () => {
-    const { platform, calls } = fakePlatform();
-    const { outcome, slept } = await run(plan("dev"), platform);
-    expect(outcome.ok).toBe(true);
-    expect(calls.filter((call) => call === "isolation:proj-1")).toHaveLength(1);
-    expect(slept).toEqual([]);
-  });
-
-  it("stops, to be tried again, where the isolation never answers", async () => {
-    const { platform } = fakePlatform({ readIsolation: async () => undefined });
+  it("stops unmarked, to be tried again, where the hardening does not confirm it", async () => {
+    const { platform, calls } = fakePlatform({
+      harden: async () => {
+        throw new Error("The project does not read as closed off yet.");
+      },
+    });
     const { outcome } = await run(plan("dev"), platform);
-    expect(outcome).toMatchObject({ ok: false, failedStep: { kind: "close-off" } });
+    expect(outcome).toMatchObject({
+      ok: false,
+      failedStep: { kind: "close-off" },
+      error: "The project does not read as closed off yet.",
+    });
     if (outcome.ok) throw new Error("expected a stop");
     expect(resumableEnvironmentCreationStep(outcome.failedStep)).toBe(true);
+    expect(calls).not.toContain("closedOff:proj-1");
   });
 
   // A harden's isolation is trusted only where no container came after it: a container imported
   // in the same press brings the recipe's write, which may open the project again.
-  it("reads back a project the harden isolated once a container was imported after it", async () => {
+  it("hardens again a project the harden isolated once a container was imported after it", async () => {
     const { platform, calls } = fakePlatform();
     await runEnvironmentCreation({
       clientId: "client-1",
@@ -657,9 +558,8 @@ describe("runEnvironmentCreation — closing the project off", () => {
       ],
       platform,
       resume: { from: 0, projectId: "proj-1", projectName: "Go Hello World - dev" },
-      sleep: async () => undefined,
     });
-    expect(calls.filter((call) => call === "isolation:proj-1").length).toBe(1);
+    expect(calls.filter((call) => call === "harden:proj-1").length).toBe(1);
     expect(calls.at(-1)).toBe("closedOff:proj-1");
   });
 
@@ -717,19 +617,18 @@ describe("runEnvironmentCreation — a press tried again", () => {
       steps,
       platform,
       resume: { from, projectId: "proj-1", projectName: "Go Hello World - dev" },
-      sleep: async () => undefined,
     });
     expect(outcome).toMatchObject({ ok: true, projectId: "proj-1" });
     // From its registration on: its container and its close-off after it, on the same project.
     expect(calls).toEqual([
       "register:proj-1",
       `container:proj-1:Go Hello World - dev:claude-code:${"services:\n  - hostname: api\n    startWithoutCode: true\n".length}`,
-      "isolation:proj-1",
+      "harden:proj-1",
       "closedOff:proj-1",
     ]);
   });
 
-  it("resumed at its close-off, reads it once, then marks it", async () => {
+  it("resumed at its close-off, hardens it once, then marks it", async () => {
     const { platform, calls } = fakePlatform();
     const steps = plan("dev");
     const from = steps.findIndex((step) => step.kind === "close-off");
@@ -738,10 +637,9 @@ describe("runEnvironmentCreation — a press tried again", () => {
       steps,
       platform,
       resume: { from, projectId: "proj-1", projectName: "Go Hello World - dev" },
-      sleep: async () => undefined,
     });
     expect(outcome).toMatchObject({ ok: true, projectId: "proj-1" });
-    expect(calls).toEqual(["isolation:proj-1", "closedOff:proj-1"]);
+    expect(calls).toEqual(["harden:proj-1", "closedOff:proj-1"]);
   });
 
   it("says the project the press made the moment the platform takes it", async () => {
@@ -754,7 +652,6 @@ describe("runEnvironmentCreation — a press tried again", () => {
       onProjectAccepted: (projectId) => {
         accepted.push(projectId);
       },
-      sleep: async () => undefined,
     });
     expect(accepted).toEqual(["proj-1"]);
   });
@@ -778,7 +675,6 @@ it("waits for HQ to bind the accepted project and retains its handle when bindin
     clientId: "client-1",
     steps: plan("dev"),
     platform,
-    sleep: async () => undefined,
     onProjectAccepted: () => binding,
   });
   expect(outcome).toMatchObject({

@@ -20,8 +20,8 @@
  *   duplicating it here would be a second opinion about when a container is
  *   ready.
  * - An environment **without one** has nothing to hand off to: no container,
- *   no health probe. So this waits for its services itself, by reading the
- *   platform's own service status until every one of them is `ACTIVE`.
+ *   no health probe. So this waits for its services itself, on the account's
+ *   services listing, until every one of them has settled.
  *
  * The platform is a parameter (R1): this package may not reach for a client,
  * a clock or a timer, and the tests must not either.
@@ -29,66 +29,19 @@
  * @module runEnvironmentCreation
  */
 
+import type { RunToEnd } from "../data/operations/runToEnd.ts";
 import type { EnvironmentCreationStep } from "./createEnvironment.ts";
 import type { Deployment } from "./flow/deployment.ts";
 import { deployedVersion } from "./groupRows.ts";
 import type { Known } from "./knowledge/known.ts";
 import { isUncertainZeropsFailure } from "./errors.ts";
-import { readsClosed } from "./projectIsolation.ts";
-import type { ZeropsAgentType } from "./newProject.ts";
-import {
-  projectCreationFailureSentence,
-  projectCreationOutcome,
-  type ZeropsProjectCreation,
-} from "./projectCreation.ts";
 
-/** The platform calls a creation makes, in the shape `api.ts` offers them. */
+/**
+ * What a creation acts through: each Zerops write as the account's operation, waited to its end
+ * (`runToEnd`), and the steps HQ and the account's store take.
+ */
 export interface EnvironmentCreationPlatform {
-  readonly createProject: (input: {
-    readonly clientId: string;
-    readonly name: string;
-    readonly tagList: ReadonlyArray<string>;
-    readonly location?: string;
-  }) => Promise<{ readonly id: string }>;
-  /**
-   * `POST /process/search` — the project's newest `project.create` process,
-   * or nothing while none has appeared (`projectCreation.ts`). One read; the
-   * waiting is this module's.
-   */
-  readonly readProjectCreation: (input: {
-    readonly clientId: string;
-    readonly projectId: string;
-  }) => Promise<ZeropsProjectCreation | undefined>;
-  /**
-   * The container, holding the Mate's own key (`api.ts`): safe to ask again, a project that has
-   * its container already making no write.
-   */
-  readonly importDevelopmentContainer: (input: {
-    readonly projectId: string;
-    /** What the project is called: its key is named after it. */
-    readonly projectName: string;
-    readonly agents: ReadonlyArray<ZeropsAgentType>;
-    /** The tier's runtimes, for zcp to import on its first boot. */
-    readonly setupRuntimesYaml?: string;
-  }) => Promise<{
-    readonly serviceName: string;
-    readonly imported: boolean;
-    /** The container's creation process Zerops answered the import with, where it named one. */
-    readonly processId?: string;
-  }>;
-  readonly importServices: (projectId: string, yaml: string) => Promise<unknown>;
-  /**
-   * `POST /client/{id}/project/import` — a project and its services from one
-   * whole-project document (`createEnvironment.ts`, `import-project`).
-   */
-  readonly importProject: (input: {
-    readonly clientId: string;
-    readonly yaml: string;
-  }) => Promise<{ readonly projectId: string }>;
-  /** The project closed off (`projectIsolation.ts`); safe to ask again. */
-  readonly closeOff: (projectId: string) => Promise<void>;
-  /** The project's `envIsolation`, read back; undefined while the read has not caught up. */
-  readonly readIsolation: (projectId: string) => Promise<string | undefined>;
+  readonly run: RunToEnd;
   /**
    * The close-off recorded in the Mate's birth at HQ, as the person: zcp's boot import of the
    * runtimes waits for it (pass 28). Idempotent.
@@ -100,7 +53,12 @@ export interface EnvironmentCreationPlatform {
    */
   readonly register: (projectId: string) => Promise<void>;
   /** Reads the latest shared-model projection; this callback performs no platform request. */
-  readonly readObservedServices: (
+  /**
+   * Resolves with the project's services once every one of them has settled
+   * (`servicesSettled`), as the account's services listing holds them: read as they change, never
+   * on a clock. Rejects where that listing can no longer be followed.
+   */
+  readonly untilServicesSettled: (
     projectId: string,
   ) => Promise<ReadonlyArray<{ readonly name: string; readonly status: string }>>;
 }
@@ -172,19 +130,6 @@ export interface RunEnvironmentCreationInput {
   readonly describeError?: (cause: unknown) => string;
   readonly now?: () => number;
   /**
-   * Between service reads while waiting without an agent. The caller's, not
-   * this package's: a timer is platform (R1), and the web hands in the one
-   * its own polling loops already use.
-   */
-  readonly sleep: (ms: number) => Promise<void>;
-  readonly pollIntervalMs?: number;
-  /** How long a service wait is given before it is called a failure. */
-  readonly serviceWaitCapMs?: number;
-  /** Between `project.create` reads after the project POST. */
-  readonly projectCreatePollIntervalMs?: number;
-  /** How long the platform is given to confirm the project before the step fails. */
-  readonly projectCreateWaitCapMs?: number;
-  /**
    * A press tried again: the step it resumes at, and the project the first press made. Only
    * steps that are safe to ask again resume (`resumableEnvironmentCreationStep`).
    */
@@ -196,6 +141,10 @@ export interface RunEnvironmentCreationInput {
   };
   /** The platform took the project: everything after this step acts on it. */
   readonly onProjectAccepted?: (projectId: string) => void | Promise<void>;
+  /** Zerops took the container's import: its creation process, where it named one. */
+  readonly onContainerImported?: (imported: {
+    readonly processId?: string;
+  }) => void | Promise<void>;
 }
 
 /**
@@ -207,16 +156,11 @@ export function resumableEnvironmentCreationStep(step: EnvironmentCreationStep):
   return step.kind === "import-container" || step.kind === "close-off" || step.kind === "register";
 }
 
-/** Measured at ~2 minutes for a two-service recipe; a build can take longer. */
-export const ENVIRONMENT_SERVICE_WAIT_CAP_MS = 600_000;
-export const ENVIRONMENT_SERVICE_POLL_INTERVAL_MS = 5_000;
-/**
- * `project.create` settles within about a second of the POST, finished or
- * failed (measured 2026-09-16); a minute is the bound past which the platform
- * has said nothing and the step stops pretending it will.
- */
-export const PROJECT_CREATE_WAIT_CAP_MS = 60_000;
-export const PROJECT_CREATE_POLL_INTERVAL_MS = 2_000;
+/** Where the project's `project.create` can no longer be followed to its end. */
+const UNCONFIRMED_PROJECT = "Zerops did not confirm the project was created.";
+/** Where a write's end can no longer be followed. */
+const UNCONFIRMED_WRITE =
+  "Zerops may have accepted this operation, but its response was lost. Check the project and its services before starting another operation.";
 
 function defaultDescribeError(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
@@ -227,15 +171,9 @@ export async function runEnvironmentCreation(
 ): Promise<EnvironmentCreationOutcome> {
   const now = input.now ?? Date.now;
   const describeError = input.describeError ?? defaultDescribeError;
-  const { sleep } = input;
   const assertCurrent = () => {
     if (input.isCurrent?.() === false) throw new Error("This account session has ended.");
   };
-  const pollIntervalMs = input.pollIntervalMs ?? ENVIRONMENT_SERVICE_POLL_INTERVAL_MS;
-  const serviceWaitCapMs = input.serviceWaitCapMs ?? ENVIRONMENT_SERVICE_WAIT_CAP_MS;
-  const projectCreatePollIntervalMs =
-    input.projectCreatePollIntervalMs ?? PROJECT_CREATE_POLL_INTERVAL_MS;
-  const projectCreateWaitCapMs = input.projectCreateWaitCapMs ?? PROJECT_CREATE_WAIT_CAP_MS;
 
   const progress: Array<EnvironmentCreationStepProgress> = input.steps.map((step) => ({
     step,
@@ -255,19 +193,10 @@ export async function runEnvironmentCreation(
   let deployments: ReadonlyArray<ServiceDeployment> = [];
   /** This press imported a container: a harden before it is no longer the last word. */
   let containerImported = false;
-  /** One isolation check, one write if needed, and one read-back before the HQ mark. */
-  const confirmClosed = async (target: string): Promise<void> => {
-    const isolation = await input.platform.readIsolation(target);
-    assertCurrent();
-    if (isolation === undefined) throw new Error("The project's isolation could not be read.");
-    if (readsClosed(isolation)) return;
-    await input.platform.closeOff(target);
-    assertCurrent();
-    const confirmed = await input.platform.readIsolation(target);
-    assertCurrent();
-    if (confirmed === undefined) throw new Error("The project's isolation could not be read.");
-    if (!readsClosed(confirmed)) throw new Error("The project does not read as closed off yet.");
-  };
+  const run = input.platform.run;
+  const orgId = input.clientId;
+  /** The project's acceptance told on, while the create waits for its end. */
+  let accepting: Promise<void> = Promise.resolve();
   const accept = async (id: string) => {
     projectId = id;
     await input.onProjectAccepted?.(id);
@@ -288,56 +217,65 @@ export async function runEnvironmentCreation(
       assertCurrent();
       switch (step.kind) {
         case "create-project": {
-          const project = await input.platform.createProject({
-            clientId: input.clientId,
-            name: step.name,
-            tagList: step.tagList,
-            ...(step.location === undefined ? {} : { location: step.location }),
-          });
-          // Named before the wait: a creation the platform then fails has
+          // Named as Zerops takes it, before its end: a creation the platform then fails has
           // still made a project, and the outcome must say which one.
           projectName = step.name;
-          await accept(project.id);
-          await awaitProjectCreated({
-            clientId: input.clientId,
-            projectId: project.id,
-            platform: input.platform,
-            startedAtMs,
-            now,
-            sleep,
-            pollIntervalMs: projectCreatePollIntervalMs,
-            capMs: projectCreateWaitCapMs,
-            assertCurrent,
-          });
+          await run(
+            {
+              kind: "create-project",
+              orgId,
+              name: step.name,
+              tagList: step.tagList,
+              ...(step.location === undefined ? {} : { location: step.location }),
+            },
+            {
+              orgId,
+              unobserved: UNCONFIRMED_PROJECT,
+              accepted: ({ projectId: id }) => {
+                accepting = accept(id);
+              },
+            },
+          ).finally(() => accepting);
           break;
         }
         case "import-project": {
           // One call for the project and its services, so an environment is
           // never briefly a project with nothing in it.
-          const imported = await input.platform.importProject({
-            clientId: input.clientId,
-            yaml: step.yaml,
-          });
+          const imported = await run(
+            { kind: "import-project", orgId, name: step.name, yaml: step.yaml },
+            { orgId, unobserved: UNCONFIRMED_WRITE },
+          );
           projectName = step.name;
           await accept(imported.projectId);
           break;
         }
         case "import-container": {
-          const imported = await input.platform.importDevelopmentContainer({
-            projectId: requireProject(projectId),
-            projectName: projectName ?? "",
-            agents: step.agents,
-            ...(step.runtimes === undefined ? {} : { setupRuntimesYaml: step.runtimes.yaml }),
-          });
+          const imported = await run(
+            {
+              kind: "import-container",
+              orgId,
+              projectId: requireProject(projectId),
+              projectName: projectName ?? "",
+              agents: step.agents,
+              ...(step.runtimes === undefined ? {} : { setupRuntimesYaml: step.runtimes.yaml }),
+            },
+            { orgId, unobserved: UNCONFIRMED_WRITE },
+          );
           serviceName = imported.serviceName;
           if (imported.imported) containerImported = true;
+          await input.onContainerImported?.(imported);
           break;
         }
         case "close-off": {
           const target = requireProject(projectId);
-          // A container imported after hardening may have changed isolation. A trailing or
-          // failed read stops here; the creator's next action owns another check.
-          if (step.isolated !== true || containerImported) await confirmClosed(target);
+          // A container imported after hardening may have changed isolation: the project is read,
+          // closed off where it is not, and read back. One that does not read closed off stops
+          // here; the creator's next action owns another check.
+          if (step.isolated !== true || containerImported)
+            await run(
+              { kind: "harden-project", orgId, projectId: target, confirm: true },
+              { orgId, unobserved: UNCONFIRMED_WRITE },
+            );
           await input.platform.markClosedOff(target);
           break;
         }
@@ -350,7 +288,15 @@ export async function runEnvironmentCreation(
         }
         case "import-recipe":
         case "import-managed": {
-          await input.platform.importServices(requireProject(projectId), step.yaml);
+          await run(
+            {
+              kind: "import-services",
+              orgId,
+              projectId: requireProject(projectId),
+              yaml: step.yaml,
+            },
+            { orgId, unobserved: UNCONFIRMED_WRITE },
+          );
           break;
         }
         case "await-ready": {
@@ -364,15 +310,21 @@ export async function runEnvironmentCreation(
               awaitingAgent: true,
             };
           }
-          deployments = await awaitServices({
-            projectId: requireProject(projectId),
-            platform: input.platform,
-            now,
-            sleep,
-            pollIntervalMs,
-            capMs: serviceWaitCapMs,
-            assertCurrent,
-          });
+          const services = await input.platform.untilServicesSettled(requireProject(projectId));
+          assertCurrent();
+          deployments = services.map((service) => ({
+            service: service.name,
+            deployment: {
+              state: "known",
+              value:
+                service.status === UNDEPLOYED_STATUS
+                  ? { kind: "none" }
+                  : { kind: "running", activatedAt: null, version: deployedVersion(undefined) },
+              asOf: { ordinal: 1, atMs: now() },
+              coverage: "complete",
+              freshness: { kind: "settled" },
+            },
+          }));
           break;
         }
       }
@@ -412,45 +364,6 @@ function requireProject(projectId: string | undefined): string {
 }
 
 /**
- * The project POST answered; this waits for the platform to have actually
- * made the project. `project.create` is read until it is terminal: finished
- * returns, failed or canceled throws the platform's own sentence, and past
- * the cap with nothing terminal the step stops and says so. No process yet
- * is "not yet", never "fine" — the search can answer before the platform has
- * written the process it is about to run.
- *
- * The step's own start is the wait's start, so a verdict that is already in
- * on the first read costs the clock nothing.
- */
-async function awaitProjectCreated(input: {
-  readonly clientId: string;
-  readonly projectId: string;
-  readonly platform: EnvironmentCreationPlatform;
-  readonly startedAtMs: number;
-  readonly now: () => number;
-  readonly sleep: (ms: number) => Promise<void>;
-  readonly pollIntervalMs: number;
-  readonly capMs: number;
-  readonly assertCurrent: () => void;
-}): Promise<void> {
-  for (;;) {
-    input.assertCurrent();
-    const creation = await input.platform.readProjectCreation({
-      clientId: input.clientId,
-      projectId: input.projectId,
-    });
-    input.assertCurrent();
-    const outcome = projectCreationOutcome(creation);
-    if (outcome.kind === "finished") return;
-    if (outcome.kind === "failed") throw new Error(projectCreationFailureSentence(outcome));
-    if (input.now() - input.startedAtMs > input.capMs) {
-      throw new Error("Zerops did not confirm the project was created.");
-    }
-    await input.sleep(input.pollIntervalMs);
-  }
-}
-
-/**
  * A service the platform has finished creating but that runs nothing yet.
  * A `buildFromGit` service lands here when its build fails — the export a
  * clone comes from cannot carry the build setup (`recipeExport.ts`) — and so
@@ -459,57 +372,17 @@ async function awaitProjectCreated(input: {
 const UNDEPLOYED_STATUS = "READY_TO_DEPLOY";
 
 /**
- * Every service settled — `ACTIVE`, or created with nothing deployed — with
- * what each runs, or a failure naming what is still on its way. The read that
- * saw them all settled is the evidence: an `ACTIVE` service runs something it
- * does not name, a `READY_TO_DEPLOY` one runs nothing.
- *
- * An import's services appear a moment after the import is accepted, so an
- * empty list is "not yet", never "done": waiting on zero services would
- * declare a production environment ready before it had one.
+ * Whether every service of a created environment has settled — `ACTIVE`, or created with nothing
+ * deployed. An import's services appear a moment after the import is accepted, so an empty list
+ * is "not yet", never "done": waiting on zero services would declare a production environment
+ * ready before it had one.
  */
-async function awaitServices(input: {
-  readonly projectId: string;
-  readonly platform: EnvironmentCreationPlatform;
-  readonly now: () => number;
-  readonly sleep: (ms: number) => Promise<void>;
-  readonly pollIntervalMs: number;
-  readonly capMs: number;
-  readonly assertCurrent: () => void;
-}): Promise<ReadonlyArray<ServiceDeployment>> {
-  const startedAt = input.now();
-  for (let reads = 1; ; reads += 1) {
-    input.assertCurrent();
-    const services = await input.platform.readObservedServices(input.projectId);
-    input.assertCurrent();
-    const pending = services.filter(
-      (service) => service.status !== "ACTIVE" && service.status !== UNDEPLOYED_STATUS,
-    );
-    if (services.length > 0 && pending.length === 0) {
-      const asOf = { ordinal: reads, atMs: input.now() };
-      return services.map((service) => ({
-        service: service.name,
-        deployment: {
-          state: "known",
-          value:
-            service.status === UNDEPLOYED_STATUS
-              ? { kind: "none" }
-              : { kind: "running", activatedAt: null, version: deployedVersion(undefined) },
-          asOf,
-          coverage: "complete",
-          freshness: { kind: "settled" },
-        },
-      }));
-    }
-
-    if (input.now() - startedAt > input.capMs) {
-      const names = pending.map((service) => service.name).join(", ");
-      throw new Error(
-        services.length === 0
-          ? "The services never appeared."
-          : `Still waiting for ${names} after ${Math.round(input.capMs / 60_000)} minutes.`,
-      );
-    }
-    await input.sleep(input.pollIntervalMs);
-  }
+export function servicesSettled(
+  services: ReadonlyArray<{ readonly status: string }> | undefined,
+): boolean {
+  return (
+    services !== undefined &&
+    services.length > 0 &&
+    services.every((service) => service.status === "ACTIVE" || service.status === UNDEPLOYED_STATUS)
+  );
 }
