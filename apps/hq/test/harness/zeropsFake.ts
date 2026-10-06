@@ -66,6 +66,8 @@ export interface FakeWorld {
   /** Members by org id. */
   members: Map<string, Array<ZeropsMember>>;
   projects: Array<ZeropsProject>;
+  /** Setup marker presence by zcp service id. */
+  setupMarkers: Set<string>;
   /** Project env by project id. */
   env: Map<
     string,
@@ -108,6 +110,7 @@ export const emptyWorld = (): FakeWorld => ({
   members: new Map(),
   projects: [],
   env: new Map(),
+  setupMarkers: new Set(),
   tokens: new Map(),
   down: false,
   membersTake: 0,
@@ -185,6 +188,16 @@ export const fakeZeropsApi = (world: FakeWorld): ZeropsApi["Service"] => {
                 variable.sensitive && token.roleCode !== "ADMIN" ? "REDACTED" : variable.value,
               ]),
             ),
+        ),
+      ),
+    mateSetupMarker: (orgId, projectId, serviceId) => (credential) =>
+      inOrg("mateSetupMarker", credential, orgId).pipe(
+        Effect.map(() =>
+          serviceId === null
+            ? world.services.some(
+                (service) => service.projectId === projectId && world.setupMarkers.has(service.id),
+              )
+            : world.setupMarkers.has(serviceId),
         ),
       ),
     tokenProjects: (orgId, tokenId) => (credential) =>

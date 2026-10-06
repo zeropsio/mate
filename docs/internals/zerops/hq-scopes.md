@@ -107,6 +107,21 @@ Navigation never subscribes to or hydrates application detail to obtain these ro
 `until`, kind, optional appId and importProcessId. The client can present elapsed time from the
 received duration; a clock or transport silence never decides whether the press succeeded or ended.
 
+Each project’s `mate` includes `closedOff` and nullable `setupMarker`, the setup press marker’s
+presence. HQ reads only `MATE_SETUP_RUNTIMES`, once for a Mate record/service/import input, sharing
+the evidence across recipients and filtering with the other Mate records. Reads run outside the
+navigation baseline. Until a read answers, the marker remains unknown (`null`); partial, corrupt,
+unavailable or refused reads prove no absence. A complete search with no marker is `false`,
+including legacy records with no service binding. Record replacement fences old replies; an
+import or service binding change allows another read and retains prior usable evidence if the
+new read cannot answer. Unchanged
+input, reconnect and elapsed time repeat no read, including a definitive refusal. Unknown evidence
+can be resolved by the existing Finish setup action or a changed record/import input. Setup facts
+travel only in navigation; clients never demand variables for menu rows, Finish setup or the
+web connection gate. Container flag/variable surfaces keep their own declared detail demand.
+The unreleased native client has no HQ navigation link yet; its explicit on-open close-off check
+retains the existing sampled marker read until that client observes HQ. It performs no menu demand.
+
 Project `person` facts are already computed for the recipient: role, mayWrite, mine, ownerUserId,
 waitsOnViewer and unseen. `ownerUserId` resolves the project's OWNER to a person; when there is no OWNER grant, it uses the
 current or last Claude signer, then Codex; null when none can be resolved. `mine` compares that

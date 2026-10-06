@@ -70,6 +70,7 @@ function mateOf(
     madeBy: mate.madeBy,
     standupRequestedBy: mate.standupRequestedBy,
     closedOff: mate.closedOff,
+    setupMarker: mate.setupMarker,
     keyWider: mate.keyWider,
     ...(mate.birthId === undefined ? {} : { birthId: mate.birthId }),
     // Who last signed each of its agents in, as HQ's record keeps it (`Mine` without an owner).

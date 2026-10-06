@@ -10,6 +10,7 @@ import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
 import type { DetailDemand } from "./demand.ts";
 import { linkKeys } from "./model.ts";
 import { mateVariablesScope } from "./families/mateVariables.ts";
+import { hqMateSetup, UNKNOWN_MATE_SETUP, type HqMateSetup } from "./projections/hqMateSetup.ts";
 import { mateVariables, type MateVariables } from "./projections/mateVariables.ts";
 import { projectProcesses, type ProjectProcesses } from "./projections/processes.ts";
 import type { ProjectValue } from "./families/project.ts";
@@ -402,3 +403,12 @@ export const readMateFlag = (registry: AtomRegistry.AtomRegistry, serviceId: str
 /** Whether one Mate's container carries the press's marker (`MATE_SETUP_RUNTIMES`). */
 export const readMateMarker = (registry: AtomRegistry.AtomRegistry, serviceId: string) =>
   readMateVariable(registry, serviceId, "marker");
+
+/** A Mate’s setup evidence, already delivered by the organization’s navigation. No detail demand. */
+export const hqMateSetupAtom = Atom.family((projectId: string) =>
+  Atom.make((get): HqMateSetup => {
+    const account = get(accountReadsAtom);
+    if (account === null || account.orgId === null) return UNKNOWN_MATE_SETUP;
+    return get(account.data.project(hqMateSetup, { orgId: account.orgId, projectId }));
+  }),
+);

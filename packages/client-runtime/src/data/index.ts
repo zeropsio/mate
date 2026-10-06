@@ -155,6 +155,7 @@ export {
   NOT_READ_PROCESSES,
   listedProjectAtom,
   mateVariablesAtom,
+  hqMateSetupAtom,
   readMateMarker,
   NOT_READ_PROJECTS,
   NOT_READ_SERVICES,
@@ -198,3 +199,5 @@ export {
 export type { HqVerdict } from "./families/hqVerdict.ts";
 
 export { environmentSetup } from "./projections/environmentSetup.ts";
+
+export { hqMateSetup, type HqMateSetup } from "./projections/hqMateSetup.ts";

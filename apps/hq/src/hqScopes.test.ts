@@ -253,6 +253,7 @@ const fixture = Effect.gen(function* () {
                       madeBy: "owner",
                       standupRequestedBy: null,
                       closedOff: false,
+                      setupMarker: null,
                       keyWider: false,
                     },
                     can,

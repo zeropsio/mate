@@ -96,6 +96,8 @@ export interface HqMate extends HqMateRecord {
   readonly standupRequestedBy?: string | null;
   /** Whether its project is closed off (`recordClosedOff`); an older HQ says nothing. */
   readonly closedOff?: boolean;
+  /** HQ’s read of the setup press marker; null while unknown. */
+  readonly setupMarker?: boolean | null;
   /**
    * The key it last named reads other projects too — READ_ONLY grants on siblings an earlier client
    * gave it (ADR 0003's fallout): it needs *Finish setup*, whose harden takes them off. Absent where

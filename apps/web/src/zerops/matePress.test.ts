@@ -212,6 +212,7 @@ vi.mock("./accountHq", () => ({
 const mate = (serviceId: string | undefined, closedOff: boolean | undefined) => ({
   ...(serviceId === undefined ? {} : { service: { id: serviceId } }),
   project: {
+    id: "p-a",
     hq: {
       appId: null,
       appName: null,
@@ -266,7 +267,7 @@ describe("interruptedPresses", () => {
     },
     {
       case: "a marker whose stream failed, HQ holding no record",
-      mate: { service: { id: "zcp-a" }, project: {} },
+      mate: { service: { id: "zcp-a" }, project: { id: "p-a" } },
       marker: "unknown" as const,
       interrupted: false,
     },
@@ -284,13 +285,24 @@ describe("interruptedPresses", () => {
     },
     {
       case: "a marked container HQ holds no record of",
-      mate: { service: { id: "zcp-a" }, project: {} },
+      mate: { service: { id: "zcp-a" }, project: { id: "p-a" } },
       marker: true,
       interrupted: true,
     },
   ])("$case", ({ mate: candidate, marker, interrupted }) => {
-    const markers = new Map([["zcp-a", marker]]);
-    expect(interruptedPresses([candidate], markers).has("zcp-a")).toBe(interrupted);
+    const setups = new Map([
+      [
+        "p-a",
+        {
+          marker: typeof marker === "boolean" ? marker : ("unknown" as const),
+          closedOff:
+            "hq" in candidate.project
+              ? (candidate.project.hq.mate.closedOff ?? ("unknown" as const))
+              : ("unknown" as const),
+        },
+      ],
+    ]);
+    expect(interruptedPresses([candidate], setups).has("zcp-a")).toBe(interrupted);
   });
 });
 
