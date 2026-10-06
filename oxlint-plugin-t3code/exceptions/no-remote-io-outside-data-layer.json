@@ -800,14 +800,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/zerops/useZeropsCompares.ts",
-    "kind": "CallExpression",
-    "fingerprint": "hq.api.compare",
-    "owner": "data-layer rewrite: HQ",
-    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/zerops/useZeropsLandedChange.ts",
     "kind": "CallExpression",
     "fingerprint": "hq.api.change",

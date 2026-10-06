@@ -3136,14 +3136,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/zerops/useZeropsCompares.ts",
-    "kind": "retired-token",
-    "fingerprint": "hq.api.compare(",
-    "owner": "data-layer rewrite: releases/environments",
-    "reason": "compare stores per HQ are kept in the app; the HQ adapter answers on open",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/zerops/useZeropsDataMentions.ts",
     "kind": "retired-token",
     "fingerprint": "useZeropsDataCatalogStore",
