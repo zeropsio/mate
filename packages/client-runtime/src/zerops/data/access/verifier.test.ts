@@ -224,36 +224,74 @@ describe("the access verifier's round", () => {
     }),
   );
 
-  // The viewer's own grant a listing named is a NO_ACCESS member's: once the account says the
-  // viewer is an organization member, a held one says nothing of them.
   it.effect.each([
-    { name: "a NO_ACCESS member is judged on it", membership: "NO_ACCESS", role: "READ_ONLY" },
     {
-      name: "an organization member is judged on their membership",
-      membership: "ADMIN",
-      role: "ADMIN",
+      name: "a NO_ACCESS member's listing grant",
+      membership: "NO_ACCESS",
+      own: "READ_ONLY",
+      role: "READ_ONLY",
+      mutationsAllowed: false,
     },
-  ])("a held own grant of the viewer: $name", ({ membership, role }) =>
-    Effect.gen(function* () {
-      const viewer: ZeropsUser = {
-        ...user,
-        clientUserList: [{ id: "membership", clientId: orgId, roleCode: membership }],
-      };
-      const verifier = makeRestAccessVerifier({
-        client: { fetchUser: async () => viewer },
-        standing: (ref) => ({
-          kind: "listed",
-          project: { ...project(ref.projectId), viewerRoleCode: "READ_ONLY" },
-        }),
-        account,
-        onUser: () => {},
-      });
-      yield* verifier.verifyRound({ round: 1, carried: [], report: () => Effect.void });
-      expect(yield* verifier.verifyProject(projectRef("a"))).toMatchObject({
-        kind: "verified",
-        access: { role },
-      });
-    }),
+    {
+      name: "an org admin keeps their stronger role",
+      membership: "ADMIN",
+      own: "READ_ONLY",
+      role: "ADMIN",
+      mutationsAllowed: true,
+    },
+    {
+      name: "a READ_ONLY org member's project OWNER override",
+      membership: "READ_ONLY",
+      own: "OWNER",
+      role: "OWNER",
+      mutationsAllowed: true,
+    },
+    {
+      name: "a READ_ONLY org member without an override",
+      membership: "READ_ONLY",
+      own: undefined,
+      role: "READ_ONLY",
+      mutationsAllowed: false,
+    },
+    {
+      name: "an org owner keeps their stronger role",
+      membership: "OWNER",
+      own: "ADMIN",
+      role: "OWNER",
+      mutationsAllowed: true,
+    },
+  ])(
+    "takes the stronger membership or listing grant: $name",
+    ({ membership, own, role, mutationsAllowed }) =>
+      Effect.gen(function* () {
+        const viewer: ZeropsUser = {
+          ...user,
+          clientUserList: [{ id: "membership", clientId: orgId, roleCode: membership }],
+        };
+        const verifier = makeRestAccessVerifier({
+          client: { fetchUser: async () => viewer },
+          standing: (ref) => ({
+            kind: "listed",
+            project: {
+              ...project(ref.projectId),
+              ...(own === undefined ? {} : { viewerRoleCode: own }),
+            },
+          }),
+          account,
+          onUser: () => {},
+        });
+        const events: GrantEvent[] = [];
+        yield* verifier.verifyRound({
+          round: 1,
+          carried: [projectRef("a")],
+          report: (event) => Effect.sync(() => events.push(event)),
+        });
+        const expected = { kind: "verified", access: { role, mutationsAllowed } };
+        expect(events.find((event) => event.type === "ROUND_PROJECT")).toMatchObject({
+          outcome: expected,
+        });
+        expect(yield* verifier.verifyProject(projectRef("a"))).toMatchObject(expected);
+      }),
   );
 
   // A NO_ACCESS member's listing row names their own grant; a push may carry the row without it

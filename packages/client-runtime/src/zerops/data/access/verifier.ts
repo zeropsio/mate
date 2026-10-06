@@ -3,6 +3,7 @@
  * store holds: Zerops filters the organization's project listing by the viewer's token, so the
  * store already knows which projects are the viewer's, and nothing is read per project.
  */
+import { asOrgRole, roleAtLeast } from "@t3tools/shared/zeropsRoles";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 
@@ -178,9 +179,14 @@ const judgeProject = (
       // A listing row names the viewer's own grant without whose it is: theirs, as a grant. Held
       // beside everybody's, it is the newer word on the viewer: a row's own read retires it.
       const { viewerRoleCode: held, ...row } = standing.project;
-      // The viewer's own grant a listing named is a NO_ACCESS member's: the membership the round
-      // read says whether the viewer still is one.
-      const viewerRoleCode = membership.roleCode === "NO_ACCESS" ? held : undefined;
+      // A listing's viewer grant can raise any member's access. A weaker listing grant does
+      // not lower the organization's role; whole own-row overrides keep their existing rule.
+      const viewerRoleCode =
+        held === undefined
+          ? undefined
+          : roleAtLeast(held, asOrgRole(membership.roleCode))
+            ? held
+            : membership.roleCode;
       // A NO_ACCESS member's access is only what a row names (their own grant, or everybody's):
       // a row naming none (a push of a project they just created) is no judgement yet.
       if (

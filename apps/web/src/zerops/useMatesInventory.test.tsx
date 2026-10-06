@@ -179,14 +179,21 @@ describe("a drawn Mate's own project row", () => {
   // It is read only where it decides the viewer's access: a NO_ACCESS member's project whose
   // listing row names no grant of theirs. Whose a Mate is comes from HQ's person facts.
   it.each([
-    { name: "an organization member's: none", role: "OWNER", held: [] },
-    { name: "a READ_ONLY member's: none", role: "READ_ONLY", held: [] },
+    { name: "an organization member's: none", role: "OWNER", own: undefined, held: [] },
+    { name: "a READ_ONLY member's: none", role: "READ_ONLY", own: undefined, held: [] },
+    {
+      name: "a READ_ONLY member with a project OWNER override: none",
+      role: "READ_ONLY",
+      own: "OWNER",
+      held: [],
+    },
     {
       name: "a NO_ACCESS member's: only the Mate whose listing names no grant of theirs",
       role: "NO_ACCESS",
+      own: undefined,
       held: ["project/project/p-cy"],
     },
-  ])("is held while the Mate is drawn — $name", async ({ role, held }) => {
+  ])("is held while the Mate is drawn — $name", async ({ role, own, held }) => {
     runtime.viewerRole = role;
     const registry = AtomRegistry.make();
     const rowsHeld: string[] = [];
@@ -194,7 +201,12 @@ describe("a drawn Mate's own project row", () => {
       projects: [
         { id: "p-ada", name: "Ada", status: "ACTIVE", viewerRoleCode: "BASIC_USER" },
         { id: "p-bo", name: "Bo", status: "ACTIVE", viewerRoleCode: "BASIC_USER" },
-        { id: "p-cy", name: "Cy", status: "ACTIVE" },
+        {
+          id: "p-cy",
+          name: "Cy",
+          status: "ACTIVE",
+          ...(own === undefined ? {} : { viewerRoleCode: own }),
+        },
       ],
       read: "read",
       complete: true,
