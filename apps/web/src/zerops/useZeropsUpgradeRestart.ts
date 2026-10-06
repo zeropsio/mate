@@ -5,26 +5,20 @@
  * reconnects, a healthy old one is not success. The container store does the reading; this hook
  * only says where the verb stands.
  *
+ * The restart is the account's `mate-restart` operation, restarting the container as it is.
+ *
  * This door uses the verified platform inventory, so it also works before a Mate connection.
  */
 import { mateServerCompatibility } from "@t3tools/client-runtime/zerops/serverCompatibility";
-import {
-  CAPABILITY_WAIT_MS,
-  grantCapabilities,
-  ZeropsServiceId,
-} from "@t3tools/client-runtime/zerops/data";
-import * as Effect from "effect/Effect";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { normalizeOrigin } from "@t3tools/client-runtime/zerops/candidates";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { captureAccountLifetime, onAccountLifetimeClose } from "./accountLifetime";
-import {
-  findInventoryProjectRef,
-  useInventoryCandidates,
-  useZeropsInventory,
-} from "./inventoryContext";
+import { useAccountOperations } from "./accountOperations";
+import { useInventoryCandidates, useZeropsInventory } from "./inventoryContext";
+import { restartRefusal } from "./mateRestartRefusal";
+import { useAccountData } from "./ZeropsAccountData";
 import { intendContainer, readContainerInitAt, useTargetContainer } from "./zeropsContainers";
-import { runZeropsCommand, useZeropsData } from "./zeropsDataContext";
 
 export interface UpgradeRecovery {
   readonly serverVersion?: string;
@@ -42,8 +36,8 @@ export function useZeropsUpgradeRestart(
   origin: string | null,
   reconnect: () => void,
 ): UpgradeRecovery | null {
-  const { runtime } = useZeropsData();
-  const capabilities = useMemo(() => grantCapabilities(runtime.access), [runtime]);
+  const operations = useAccountOperations();
+  const { orgId } = useAccountData();
   const inventory = useZeropsInventory();
   const candidates = useInventoryCandidates();
   const [state, setState] = useState<UpgradeRecovery["state"]>("idle");
@@ -115,13 +109,7 @@ export function useZeropsUpgradeRestart(
     },
     confirm: () => {
       if (state !== "confirm") return;
-      if (!candidate?.service?.id || inventory.error) {
-        setError(NOT_VERIFIED);
-        setState("failed");
-        return;
-      }
-      const project = findInventoryProjectRef(inventory, candidate.project.id);
-      if (project === null) {
+      if (!candidate?.service?.id || inventory.error || orgId === null) {
         setError(NOT_VERIFIED);
         setState("failed");
         return;
@@ -131,21 +119,21 @@ export function useZeropsUpgradeRestart(
       const key = candidate.key;
       setState("waiting");
       setError(null);
-      const service = {
-        kind: "service" as const,
-        project,
-        serviceId: ZeropsServiceId.make(candidate.service.id),
-      };
-      void Effect.runPromise(
-        capabilities.await(
-          { kind: "platformWrite", project: project.projectId },
-          { withinMs: CAPABILITY_WAIT_MS },
-        ),
-      )
-        // The container's initAt is read before the verb: the restart is over once it moves.
-        .then(() => readContainerInitAt(key))
+      const restart = {
+        kind: "mate-restart",
+        orgId,
+        projectId: candidate.project.id,
+        serviceId: candidate.service.id,
+        way: "restart",
+      } as const;
+      // The container's initAt is read before the verb: the restart is over once it moves.
+      void readContainerInitAt(key)
         .then((initAt) =>
-          runZeropsCommand(runtime.commands.restartService(service)).then(() => initAt),
+          operations.submit(restart).then(({ progress }) => {
+            const refusal = restartRefusal(progress);
+            if (refusal !== null) throw new Error(refusal);
+            return initAt;
+          }),
         )
         .then((initAt) => {
           if (alive.current !== isCurrent || !isCurrent()) return;

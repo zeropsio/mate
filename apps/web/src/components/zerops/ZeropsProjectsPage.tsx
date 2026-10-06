@@ -100,7 +100,9 @@ import { drawnMateProjects, useMatesInventory } from "~/zerops/useMatesInventory
 import { useNowMs } from "~/zerops/useNowMs";
 import { mateUpdateStatus } from "~/zerops/mateUpdate";
 import { useZeropsMateUpdateStates } from "~/zerops/useZeropsMateUpdate";
-import { runZeropsCommand, useZeropsData } from "~/zerops/zeropsDataContext";
+import { useAccountOperations } from "~/zerops/accountOperations";
+import { useZeropsData } from "~/zerops/zeropsDataContext";
+import { submitZeropsWrite } from "~/zerops/zeropsWrite";
 import type { AuthGateState } from "~/environments/primary/auth";
 import {
   activityOfNow,
@@ -808,6 +810,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     user,
   } = useZeropsSession();
   const { organizationRef, projectRef, runtime } = useZeropsData();
+  const operations = useAccountOperations();
   const inventory = useZeropsInventory();
   const { listing, error, refresh: refreshCandidates } = useZeropsCandidates();
   // The rows read so far; `listing` says whether they are all there are, and
@@ -1096,7 +1099,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         );
         const agents = group === undefined ? [] : await readGroupAgents(group.environments);
         if (!isCurrent()) return;
-        const project = projectRef(activeOrganization.id, projectId);
         const hq = officialHq(accountHq);
         // What it registers, by the rule Finish setup registers by, before its container: in the
         // application HQ or the press this tab holds places it in, under that face (F6b);
@@ -1141,7 +1143,11 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         if (!pressed.ok) throw new Error(pressed.error);
         if (!isCurrent()) return;
         // Declared a Mate.
-        await runZeropsCommand(runtime.commands.updateProjectTags(project, { kind: "mate" }));
+        await submitZeropsWrite(operations, activeOrganization.id, {
+          kind: "update-project-tags",
+          projectId,
+          patch: { kind: "mate" },
+        });
       } catch (cause) {
         if (isCurrent()) setConnectError(zeropsErrorMessage(cause));
       } finally {
@@ -1162,6 +1168,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       groupTree.groups,
       hqKnown,
       hqStructure,
+      operations,
       organizationRef,
       projectRef,
       orgOffer,
@@ -1463,14 +1470,11 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         // comes back with the current zcp, which only installs Zerops Mate
         // when it finds ZCP_MATE_ENABLED set. A restart on its own returns the
         // container to the identical state.
-        const project = projectRef(activeOrganization.id, candidate.project.id);
-        void runZeropsCommand(
-          runtime.commands.enableZeropsMate({
-            kind: "service",
-            project,
-            serviceId: ZeropsServiceId.make(serviceId),
-          }),
-        )
+        void submitZeropsWrite(operations, activeOrganization.id, {
+          kind: "enable-zerops-mate",
+          projectId: candidate.project.id,
+          serviceId,
+        })
           .then(() => {
             intendContainer(candidate.key, { kind: "enable" });
             // A Mate this tab pressed is connected once it answers; one that exists is opened.
@@ -1488,21 +1492,22 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         if (activeOrganization === null) return;
         setConnectError(null);
         setStartingCandidateKey(candidate.key);
-        const project = projectRef(activeOrganization.id, candidate.project.id);
+        const projectId = candidate.project.id;
         // A STOPPED project starts every service in it; a STOPPED zcp
         // service while the project is ACTIVE starts only that service.
         const serviceId = candidate.service?.id;
         const write =
           candidate.project.status === "STOPPED"
-            ? runZeropsCommand(runtime.commands.startProject(project))
+            ? submitZeropsWrite(operations, activeOrganization.id, {
+                kind: "start-project",
+                projectId,
+              })
             : serviceId
-              ? runZeropsCommand(
-                  runtime.commands.startService({
-                    kind: "service",
-                    project,
-                    serviceId: ZeropsServiceId.make(serviceId),
-                  }),
-                )
+              ? submitZeropsWrite(operations, activeOrganization.id, {
+                  kind: "start-service",
+                  projectId,
+                  serviceId,
+                })
               : null;
         if (write === null) {
           setStartingCandidateKey(null);

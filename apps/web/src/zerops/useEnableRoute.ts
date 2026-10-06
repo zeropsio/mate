@@ -7,18 +7,20 @@
  * answers* section on it — could list the addresses it already had and could
  * not add one.
  *
- * It needs nothing that screen has and other surfaces do not: the active
- * organization and the runtime's command factory, both from context. The
- * trouble it reports is the caller's to show, because where a failed write
- * belongs depends on the surface.
+ * It needs nothing that screen has and other surfaces do not: the account's
+ * `enable-subdomain-access` operation, from context. The trouble it reports is
+ * the caller's to show, because where a failed write belongs depends on the
+ * surface.
  */
-import { ZeropsServiceId } from "@t3tools/client-runtime/zerops/data";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
+import * as Effect from "effect/Effect";
 import { useCallback, useState } from "react";
 
 import { captureAccountLifetime } from "./accountLifetime";
-import { runZeropsCommand, useZeropsData } from "./zeropsDataContext";
-import { useZeropsSession } from "./ZeropsSessionProvider";
+import { useAccountOperations } from "./accountOperations";
+import { useAccountData } from "./ZeropsAccountData";
+import { useZeropsData } from "./zeropsDataContext";
+import { submitZeropsWrite } from "./zeropsWrite";
 
 export interface EnableRoute {
   /** Asks Zerops for the service's subdomain. */
@@ -30,24 +32,31 @@ export interface EnableRoute {
 }
 
 export function useEnableRoute(): EnableRoute {
-  const { activeOrganization } = useZeropsSession();
+  const operations = useAccountOperations();
+  const { orgId } = useAccountData();
   const { projectRef, runtime } = useZeropsData();
   const [enablingServiceId, setEnablingServiceId] = useState<string | null>(null);
   const [trouble, setTrouble] = useState<string | null>(null);
 
   const enable = useCallback(
     async (projectId: string, serviceId: string) => {
-      if (enablingServiceId !== null || activeOrganization === null) return;
+      if (enablingServiceId !== null || orgId === null) return;
       // A sign-out mid-flight must not write state back onto the next account.
       const isCurrent = captureAccountLifetime();
       setEnablingServiceId(serviceId);
       setTrouble(null);
       try {
-        await runZeropsCommand(
-          runtime.commands.enableSubdomainAccess({
-            kind: "service",
-            project: projectRef(activeOrganization.id, projectId),
-            serviceId: ZeropsServiceId.make(serviceId),
+        await submitZeropsWrite(operations, orgId, {
+          kind: "enable-subdomain-access",
+          projectId,
+          serviceId,
+        });
+        // The project's public access is read again: it has a subdomain now.
+        void Effect.runPromise(
+          runtime.cells.invalidate({
+            kind: "public-access",
+            account: runtime.scope,
+            project: projectRef(orgId, projectId),
           }),
         );
       } catch (cause) {
@@ -56,7 +65,7 @@ export function useEnableRoute(): EnableRoute {
         if (isCurrent()) setEnablingServiceId(null);
       }
     },
-    [activeOrganization, enablingServiceId, projectRef, runtime.commands],
+    [enablingServiceId, operations, orgId, projectRef, runtime],
   );
 
   return { enable, enablingServiceId, trouble };

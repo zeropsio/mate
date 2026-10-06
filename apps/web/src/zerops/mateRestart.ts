@@ -4,7 +4,7 @@
  * has ended, and the restart's process says how it ended. Its container is then intended to come
  * up as a restart's is (`intendContainer`), and shows restarting until it is back.
  */
-import { restartWay, type OperationProgress } from "@t3tools/client-runtime/data";
+import { restartWay } from "@t3tools/client-runtime/data";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import type { TargetKey } from "@t3tools/client-runtime/zerops/environments";
 import { useCallback } from "react";
@@ -12,25 +12,10 @@ import { useCallback } from "react";
 import { toastManager } from "~/components/ui/toast";
 
 import { useAccountOperations } from "./accountOperations";
+import { restartRefusal } from "./mateRestartRefusal";
 import { useAccountData } from "./ZeropsAccountData";
 import { useZeropsCandidates } from "./useZeropsCandidates";
 import { intendContainer, readContainerInitAt } from "./zeropsContainers";
-
-/** What the person is told of a restart its owner did not take; `null` once Zerops took it. */
-function restartRefusal(progress: OperationProgress): string | null {
-  switch (progress.stage) {
-    case "refused":
-      return progress.reason;
-    case "unsent":
-      return "Zerops did not take the restart. Try again.";
-    case "uncertain":
-      return "Zerops did not answer whether it took the restart. Check the Mate before trying again.";
-    case "unresolved":
-      return `The Mate was stopped, but its stop could not be followed here. ${progress.nextAction ?? "Start the Mate"}.`;
-    default:
-      return null;
-  }
-}
 
 export interface RestartTarget {
   /** The Mate's container. */

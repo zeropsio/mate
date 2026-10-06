@@ -52,6 +52,8 @@ export function accountOperations(
   }
   const held = byClient.get(client);
   if (held !== undefined) return held;
+  // A browser without Web Locks has its project record writes serialized within the page only.
+  const locks: LockManager | undefined = globalThis.navigator?.locks;
   const operations = makeOperations({
     store,
     executors: {
@@ -62,6 +64,7 @@ export function accountOperations(
         demandDetail,
         debtOf: () => accountThrowawayDebt(client),
         nowMs: () => Date.now(),
+        ...(locks === undefined ? {} : { locks }),
       }),
     },
     makeId: randomUUID,
