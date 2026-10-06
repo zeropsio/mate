@@ -1,3 +1,4 @@
+import { scopeReset } from "../test/harness/scopes.ts";
 import * as PgClient from "@effect/sql-pg/PgClient";
 import * as PgConnection from "@effect/sql-pg/PgConnection";
 import { assert, describe, it } from "@effect/vitest";
@@ -339,7 +340,7 @@ describe("GET /health", () => {
         yield* untilHealth(call, "active");
         const owner = yield* sessionFor(call, "door-owner");
         const watching = yield* socket(`/api/structure/ws?ticket=${yield* ticketFor(call, owner)}`);
-        yield* watching.next("snapshot");
+        yield* scopeReset(watching, { kind: "navigation" });
         const health = (yield* call("GET", "/health")).body as {
           readonly loop: LoopStatus;
           readonly recomputes: number;

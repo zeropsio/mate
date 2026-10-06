@@ -1,3 +1,4 @@
+import { scopeReset, scopeValue } from "../test/harness/scopes.ts";
 // @effect-diagnostics nodeBuiltinImport:off -- the tests read the restored repositories with the host's git.
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
@@ -574,12 +575,9 @@ describe("a backup set, restored", () => {
               const socket = yield* core.socket(
                 `/api/structure/ws?ticket=${yield* ticketFor(core.call, session)}`,
               );
-              const snapshot = (yield* socket.next("snapshot")) as {
-                readonly changes: Readonly<
-                  Record<string, ReadonlyArray<{ readonly repo: string }>>
-                >;
-              };
-              return { socket, changes: repos(snapshot.changes[appId] ?? []) };
+              const values = yield* scopeReset(socket, { kind: "app-detail", appId });
+              const changes = scopeValue<ReadonlyArray<{ repo: string }>>(values, "changes");
+              return { socket, changes: repos(changes) };
             });
           const openLink = (core: typeof a) =>
             Effect.gen(function* () {

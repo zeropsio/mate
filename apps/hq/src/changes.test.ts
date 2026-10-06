@@ -1,3 +1,4 @@
+import { scopeReset, scopeValue, nextScopeValue } from "../test/harness/scopes.ts";
 // @effect-diagnostics nodeBuiltinImport:off -- the tests reach Core as zcp does: over HTTP and git.
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
@@ -1179,17 +1180,14 @@ describe("a Mate's changes in HQ", () => {
           const link = yield* socket(`/api/mate/link?ticket=${ticket.ticket}`);
 
           type Change = Record<string, unknown>;
-          const snapshot = (yield* ownerSocket.next("snapshot")) as {
-            readonly changes: Record<string, ReadonlyArray<Change>>;
-          };
-          assert.deepStrictEqual(
-            Object.keys(snapshot.changes).map((key) => [key, snapshot.changes[key]?.length]),
-            [[appId, 1]],
+          const detail = { kind: "app-detail", appId } as const;
+          const initial = scopeValue<ReadonlyArray<Change>>(
+            yield* scopeReset(ownerSocket, detail),
+            "changes",
           );
-          assert.deepStrictEqual(
-            ((yield* devSocket.next("snapshot")) as { readonly changes: object }).changes,
-            {},
-          );
+          assert.lengthOf(initial, 1);
+          yield* devSocket.send({ type: "subscribe", scopes: [{ scope: detail }] });
+          assert.strictEqual((yield* devSocket.take("scope-error")).code, "forbidden");
           const own = (head: string | null, title = "Mate: appdev") => ({
             repo: "appdev",
             number: 1,
@@ -1211,13 +1209,15 @@ describe("a Mate's changes in HQ", () => {
           yield* git.checked(["commit", "--allow-empty", "-m", "Add a login page"], work);
           yield* git.checked(["push", "origin", "HEAD:refs/heads/mate/P_MATE/1"], work);
           const head = yield* git.checked(["rev-parse", "HEAD"], work);
-          const pushed = (yield* ownerSocket.next("changes")) as {
-            readonly appId: string;
-            readonly changes: ReadonlyArray<Change>;
-          };
+          const pushed = yield* nextScopeValue<ReadonlyArray<Change>>(
+            ownerSocket,
+            detail,
+            "changes",
+            (value) => value.some((change) => change["head"] === head),
+          );
           assert.deepStrictEqual(
-            [pushed.appId, pushed.changes.map((change) => change["head"])],
-            [appId, [head]],
+            pushed.map((change) => change["head"]),
+            [head],
           );
           assert.deepStrictEqual(
             ((yield* link.next("state")) as { readonly mate: { readonly changes: unknown } }).mate
@@ -1230,18 +1230,23 @@ describe("a Mate's changes in HQ", () => {
             headers: auth,
             body: { title: "Add a login page" },
           });
-          const retitled = (yield* ownerSocket.next("changes")) as {
-            readonly changes: ReadonlyArray<Change>;
-          };
-          assert.strictEqual(retitled.changes[0]?.["title"], "Add a login page");
+          const retitled = yield* nextScopeValue<ReadonlyArray<Change>>(
+            ownerSocket,
+            detail,
+            "changes",
+            (value) => value[0]?.["title"] === "Add a login page",
+          );
+          assert.strictEqual(retitled[0]?.["title"], "Add a login page");
           assert.deepStrictEqual(
             ((yield* link.next("state")) as { readonly mate: { readonly changes: unknown } }).mate
               .changes,
             [own(head, "Add a login page")],
           );
-          // Nothing of the owner's changes; when Zerops answered each view moves on its own.
+          // Changed inputs may repeat the refusal; no protected value reaches the developer.
           assert.deepStrictEqual(
-            (yield* devSocket.quiet("1 millis")).filter((message) => message.type !== "roles"),
+            (yield* devSocket.quiet("1 millis")).filter(
+              (message) => message.type === "scope-reset" || message.type === "scope-values",
+            ),
             [],
           );
         }),

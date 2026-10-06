@@ -1,3 +1,4 @@
+import { scopeReset, nextScopeValue } from "../test/harness/scopes.ts";
 // @effect-diagnostics nodeBuiltinImport:off -- the tests reach Core as zcp and a person do: over HTTP and git.
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
@@ -110,7 +111,7 @@ describe("a change merged into main, or closed", () => {
           const watching = yield* socket(
             `/api/structure/ws?ticket=${yield* ticketFor(call, owner)}`,
           );
-          yield* watching.next("snapshot");
+          yield* scopeReset(watching, { kind: "app-detail", appId });
           yield* call("PATCH", "/api/mate/changes/appdev/1", {
             headers: auth,
             body: { title: "Add a login page", body: "It adds a login page." },
@@ -153,14 +154,13 @@ describe("a change merged into main, or closed", () => {
           );
           assert.isString(change["mergedAt"]);
           // The person's socket carries it merged.
-          let carried = false;
-          for (let read = 0; read < 10 && !carried; read++) {
-            const message = (yield* watching.next("changes")) as {
-              readonly changes: ReadonlyArray<{ readonly state: string }>;
-            };
-            carried = message.changes.some((entry) => entry.state === "merged");
-          }
-          assert.isTrue(carried);
+          const carried = yield* nextScopeValue<ReadonlyArray<{ state: string }>>(
+            watching,
+            { kind: "app-detail", appId },
+            "changes",
+            (value) => value.some((change) => change.state === "merged"),
+          );
+          assert.isTrue(carried.some((change) => change.state === "merged"));
           // One commit on main, its parent the main the change was based on.
           assert.strictEqual(
             yield* git.checked(["log", "-1", "--format=%B", "origin/main"], ada.work),
