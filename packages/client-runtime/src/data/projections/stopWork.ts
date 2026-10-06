@@ -1,9 +1,9 @@
 /**
- * What a stop's chips read of its running work and its versions: the builds under way and the
- * version each builds, the name every build of the project gave its version, how the newest build
- * seen of each service ended, and what the organization's active versions state of the versions
- * its services run. The services themselves are not a family of this store yet; a stop names them
- * with the version each runs, as its listing says it.
+ * What a stop's chips read of its running work: the builds under way and the version each builds,
+ * the name every build of the project gave its version, how the newest build seen of each service
+ * ended, and the version the organization's active versions hold each service runs. The services
+ * themselves are not a family of this store yet; a stop names them by id, one key per stop. What
+ * a version a service's own row names is, it reads per version (`versionSource`).
  *
  * Every answer comes from the account's store: a name outlives its build because the store keeps
  * the ended process, not because anything remembers it.
@@ -20,11 +20,8 @@ import { sameValue } from "./equal.ts";
 export interface StopWorkKey {
   readonly orgId: string;
   readonly projectId: string;
-  /** The stop's services, each with the active version its listing names (`null` for none). */
-  readonly services: ReadonlyArray<{
-    readonly serviceId: string;
-    readonly versionId: string | null;
-  }>;
+  /** The stop's services: one key per stop however often what they run changes. */
+  readonly serviceIds: ReadonlyArray<string>;
 }
 
 /** A `stack.build` running now, and the app version it builds (A11). */
@@ -59,8 +56,6 @@ export interface StopWork {
   readonly names: Readonly<Record<string, string>>;
   /** By service id: the newest build of it seen running, once it ended. */
   readonly lastBuilds: Readonly<Record<string, EndedBuild>>;
-  /** The versions the stop's services run that the store holds, by version id. */
-  readonly versions: Readonly<Record<string, VersionValue>>;
   /** By service id: the version the organization's active versions hold it runs. */
   readonly active: Readonly<Record<string, VersionValue>>;
 }
@@ -98,9 +93,8 @@ function sourceOf(read: ProjectionReads, orgId: string): WorkSource {
 
 export const stopWork: Projection<StopWorkKey, StopWork> = {
   name: "stopWork",
-  keyOf: ({ orgId, projectId, services }) =>
-    `${orgId}/${projectId}/${services.map((entry) => `${entry.serviceId}=${entry.versionId ?? ""}`).join(",")}`,
-  derive: (read, { orgId, projectId, services }) => {
+  keyOf: ({ orgId, projectId, serviceIds }) => `${orgId}/${projectId}/${serviceIds.join(",")}`,
+  derive: (read, { orgId, projectId, serviceIds }) => {
     const running = runningScope(orgId);
     const seen = read.index("seenRunning", projectId);
     const held: Array<{ readonly process: ProcessValue; readonly seenRunning: boolean }> = [];
@@ -143,13 +137,8 @@ export const stopWork: Projection<StopWorkKey, StopWork> = {
       if (!runsStill(process.status))
         lastBuilds[serviceId] = { processId: process.id, status: process.status };
     }
-    const versions: Record<string, VersionValue> = {};
     const active: Record<string, VersionValue> = {};
-    for (const { serviceId, versionId } of services) {
-      if (versionId !== null) {
-        const fact = read.fact("version", versionId);
-        if (fact.kind === "known") versions[versionId] = fact.value;
-      }
+    for (const serviceId of serviceIds) {
       for (const id of read.index("active", serviceId)) {
         const fact = read.fact("version", id);
         if (fact.kind === "known") active[serviceId] = fact.value;
@@ -161,7 +150,6 @@ export const stopWork: Projection<StopWorkKey, StopWork> = {
       builds,
       names,
       lastBuilds,
-      versions,
       active,
     };
   },

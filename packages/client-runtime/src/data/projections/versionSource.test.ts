@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import { liveZerops, ORG } from "../__fixtures__/account.ts";
-import { activeScope } from "../families/version.ts";
+import { activeScope, versionScope } from "../families/version.ts";
 import { emptyAccount, linkKeys, type AccountState } from "../model.ts";
 import { reduceAccount, type AccountInput } from "../reducer.ts";
 import { readsOfState } from "../store.ts";
@@ -24,7 +24,11 @@ describe("versionSource", () => {
       versionId: "v1",
       expected: { kind: "known", source: "GIT" },
     },
-    { name: "a version they do not hold yet", versionId: "v2", expected: { kind: "unknown" } },
+    {
+      name: "a version their answered list does not hold: to be read by id",
+      versionId: "v2",
+      expected: { kind: "awaited" },
+    },
   ])("$name", ({ versionId, expected }) => {
     expect(derive(live(), versionId)).toEqual(expected);
   });
@@ -39,7 +43,29 @@ describe("versionSource", () => {
       }),
     ]);
     expect(derive(down, "v1")).toEqual({ kind: "known", source: "GIT" });
-    expect(derive(down, "v2")).toEqual({ kind: "unknown" });
+    expect(derive(down, "v2")).toEqual({ kind: "awaited" });
+  });
+
+  it("waits for the active versions' first answer before anything is read by id", () => {
+    const connecting = apply(emptyAccount, [
+      event(linkKeys.zerops(ORG), { kind: "demand", demanded: true }),
+      event(activeScope(ORG), { kind: "demand", demanded: true }),
+    ]);
+    expect(derive(connecting, "v2")).toEqual({ kind: "unknown" });
+  });
+
+  it("says a version the platform does not have is not listed, once its read by id is refused", () => {
+    const scope = versionScope(ORG, "v2");
+    const gone = apply(live(), [
+      event(scope, { kind: "demand", demanded: true }),
+      event(scope, { kind: "attempt" }),
+      event(scope, {
+        kind: "fault",
+        jitter: 0,
+        fault: { outcome: "definitive-refusal", message: "HTTP 400" },
+      }),
+    ]);
+    expect(derive(gone, "v2")).toEqual({ kind: "not-listed" });
   });
 
   it("says a version it does not hold will not arrive once the active versions were refused", () => {

@@ -22,10 +22,7 @@ const event = (key: string, streamEvent: object): AccountInput =>
 const KEY: StopWorkKey = {
   orgId: ORG,
   projectId: "p1",
-  services: [
-    { serviceId: "app", versionId: "v-new" },
-    { serviceId: "api", versionId: null },
-  ],
+  serviceIds: ["app", "api"],
 };
 const derive = (state: AccountState, key: StopWorkKey = KEY) =>
   stopWork.derive(readsOfState(state), key);
@@ -199,9 +196,8 @@ describe("stopWork", () => {
     expect(derive(read).lastBuilds["app"]).toBeUndefined();
   });
 
-  it("states each asked version the store holds, and the version it holds active per service", () => {
+  it("states the version the store holds active per service", () => {
     const before = derive(live());
-    expect(before.versions["v-new"]).toBeUndefined();
     expect(before.active["app"]).toMatchObject({ id: "v-old", source: "NONE" });
     expect(before.active["api"]).toBeUndefined();
 
@@ -213,16 +209,26 @@ describe("stopWork", () => {
         ),
       ]),
     );
-    expect(replaced.versions["v-new"]).toMatchObject({ source: "GIT" });
     expect(replaced.active["app"]).toMatchObject({ id: "v-new" });
   });
 
-  it("publishes again when only a version the stop runs changes", () => {
+  it("publishes again when only the version a service runs changes", () => {
     const before = derive(live());
     const after = derive(
-      apply(live(), [pushedVersions({ id: "v-new", serviceId: "app", source: "GIT" })]),
+      apply(live(), [
+        pushedVersions(
+          { id: "v-old", serviceId: "app", status: "BACKUP", source: "NONE" },
+          { id: "v-new", serviceId: "app", source: "GIT" },
+        ),
+      ]),
     );
     expect(stopWork.equals(before, after)).toBe(false);
+  });
+
+  it("is one key per stop whatever version its services run", () => {
+    expect(stopWork.keyOf({ orgId: ORG, projectId: "p1", serviceIds: ["app", "api"] })).toBe(
+      `${ORG}/p1/app,api`,
+    );
   });
 
   it("is reading, and not complete, before the running work's first baseline", () => {

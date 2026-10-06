@@ -18,7 +18,6 @@ import {
   stopView,
   type Deployment,
   type StopReads,
-  type StopService,
 } from "./deployment.ts";
 import { runningBuild, work } from "./__fixtures__/work.ts";
 import type { ZeropsServiceDeployedVersion } from "../data/deployedVersion.ts";
@@ -387,6 +386,7 @@ function serviceDeployment(read: CollectionRead<ServiceRecord>): Shown<Deploymen
     {
       services: read,
       work: work(),
+      versions: new Map(),
       refused: null,
       stated: new Map([[UNSTATED.id!, ASKED]]),
       detail: false,
@@ -530,6 +530,9 @@ describe("stopServices", () => {
     status: "ACTIVE",
     source,
   });
+  /** What the organization's active versions state of the service's version. */
+  const sourced = (source: string | null): StopReads["versions"] =>
+    new Map([[UNSTATED.id!, { kind: "known", source }]]);
   const NAMED: Shown<ZeropsServiceDeployedVersion> = {
     state: "known",
     value: { activeId: UNSTATED.id!, source: "GIT", name: SHA },
@@ -545,6 +548,7 @@ describe("stopServices", () => {
     readonly refused?: StopReads["refused"];
     readonly stated?: StopReads["stated"];
     readonly detail?: boolean;
+    readonly versions?: StopReads["versions"];
     /** The list's state, else each listed service's hostname and deployment. */
     readonly expected: string | ReadonlyArray<readonly [string, string]>;
   }> = [
@@ -654,21 +658,21 @@ describe("stopServices", () => {
     {
       name: "a version the active versions source runs, named by the service's variables",
       read: listed([record("s1", "app", deployed(UNSTATED))]),
-      work: work({ versions: { [UNSTATED.id!]: version("GIT") } }),
+      versions: sourced("GIT"),
       stated: new Map([[UNSTATED.id!, NAMED]]),
       expected: [["app", "running"]],
     },
     {
       name: "a version the active versions source runs, unnamed while nothing reads its variables",
       read: listed([record("s1", "app", deployed(UNSTATED))]),
-      work: work({ versions: { [UNSTATED.id!]: version("GIT") } }),
+      versions: sourced("GIT"),
       stated: new Map([[UNSTATED.id!, ASKED]]),
       expected: [["app", "running"]],
     },
     {
       name: "in detail, a version the active versions source waits for its variables to name it",
       read: listed([record("s1", "app", deployed(UNSTATED))]),
-      work: work({ versions: { [UNSTATED.id!]: version("GIT") } }),
+      versions: sourced("GIT"),
       stated: new Map([[UNSTATED.id!, ASKED]]),
       detail: true,
       expected: [["app", "unread"]],
@@ -676,7 +680,7 @@ describe("stopServices", () => {
     {
       name: "a version the active versions say came with no code runs nothing",
       read: listed([record("s1", "app", deployed(UNSTATED))]),
-      work: work({ versions: { [UNSTATED.id!]: version("NONE") } }),
+      versions: sourced("NONE"),
       expected: [["app", "none"]],
     },
     {
@@ -688,13 +692,30 @@ describe("stopServices", () => {
     {
       name: "in detail, a sourced version waiting for its name never reads as the none before it",
       read: listed([record("s1", "app", deployed(UNSTATED))]),
-      work: work({
-        versions: { [UNSTATED.id!]: version("GIT") },
-        active: { s1: { ...version("NONE"), id: "before" } },
-      }),
+      versions: sourced("GIT"),
+      work: work({ active: { s1: { ...version("NONE"), id: "before" } } }),
       stated: new Map([[UNSTATED.id!, ASKED]]),
       detail: true,
       expected: [["app", "unread"]],
+    },
+    {
+      name: "a version whose row states no source still runs code: only NONE runs nothing",
+      read: listed([record("s1", "app", deployed(UNSTATED))]),
+      versions: sourced(null),
+      expected: [["app", "running"]],
+    },
+    {
+      name: "a version the platform does not have fails visibly, never Checking",
+      read: listed([record("s1", "app", deployed(UNSTATED))]),
+      versions: new Map([[UNSTATED.id!, { kind: "not-listed" }]]),
+      work: work({ active: { s1: { ...version("NONE"), id: "before" } } }),
+      expected: [["app", "failed"]],
+    },
+    {
+      name: "a version the refused active versions will never state fails",
+      read: listed([record("s1", "app", deployed(UNSTATED))]),
+      versions: new Map([[UNSTATED.id!, { kind: "refused" }]]),
+      expected: [["app", "failed"]],
     },
     {
       name: "a variables read that failed fails the version nothing else states",
@@ -715,11 +736,12 @@ describe("stopServices", () => {
     },
   ];
 
-  it.each(cases)("$name", ({ read, work: held, refused, stated, detail, expected }) => {
+  it.each(cases)("$name", ({ read, work: held, refused, stated, detail, versions, expected }) => {
     const stops = stopServices(
       {
         services: read,
         work: held ?? work(),
+        versions: versions ?? new Map(),
         refused: refused ?? null,
         stated: stated ?? new Map(),
         detail: detail ?? false,
@@ -741,7 +763,14 @@ describe("stopServices", () => {
 
   const deploymentOf = (reads: Partial<StopReads> & Pick<StopReads, "services">) => {
     const stops = stopServices(
-      { work: work(), refused: null, stated: new Map(), detail: false, ...reads },
+      {
+        work: work(),
+        versions: new Map(),
+        refused: null,
+        stated: new Map(),
+        detail: false,
+        ...reads,
+      },
       NOW,
     );
     return stops.state === "known" ? stops.value[0]?.deployment : undefined;
@@ -834,6 +863,7 @@ describe("stopServices", () => {
       {
         services: listed([record("s1", "app", deployed(PUSHED), { project: PROJECT })]),
         work: work(),
+        versions: new Map(),
         refused: null,
         stated: new Map(),
         detail: false,
@@ -1121,6 +1151,7 @@ it.each([
     {
       services: servicesRead([record("app", "app", deployed(deploy))]),
       work: work(),
+      versions: new Map(),
       refused: null,
       stated: new Map(),
       detail: false,
@@ -1146,6 +1177,7 @@ it("a version with no id, which nothing can ever state, ends visibly instead of 
     {
       services: servicesRead([record("app", "app", deployed({ ...UNSTATED, id: null }))]),
       work: work(),
+      versions: new Map(),
       refused: null,
       stated: new Map(),
       detail: false,
@@ -1163,6 +1195,7 @@ it("the embedded name of the active version settles a stop even when source is o
     {
       services: servicesRead([record("app", "app", deployed({ ...UNSTATED, name: "v1.0.0" }))]),
       work: work(),
+      versions: new Map(),
       refused: null,
       stated: new Map(),
       detail: false,
@@ -1182,6 +1215,7 @@ it("a deployment facet not stated yet is unknown until the service says, never a
     {
       services: servicesRead([record("app", "app", UNRESOLVED_DEPLOYMENT)]),
       work: work(),
+      versions: new Map(),
       refused: null,
       stated: new Map(),
       detail: false,

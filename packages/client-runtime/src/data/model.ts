@@ -85,9 +85,15 @@ export interface MembershipDelta {
   readonly remove: ReadonlyArray<string>;
 }
 
+export type Coverage = "unknown" | "complete" | "partial";
+
 export interface Membership {
-  /** `complete` only once a baseline committed; deltas alone never complete a scope. */
-  readonly coverage: "unknown" | "complete";
+  /**
+   * `complete` only once a baseline committed whole; deltas alone never complete a scope.
+   * `partial`: a baseline committed that was cut at its page limit or held a row it could not
+   * read — its absences say nothing.
+   */
+  readonly coverage: Coverage;
   readonly members: ReadonlyMap<string, MemberState>;
   /** While a baseline is under way: the ids known when it began, and the deltas since. */
   readonly baseline: {

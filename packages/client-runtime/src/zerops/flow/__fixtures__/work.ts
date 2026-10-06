@@ -10,7 +10,6 @@ export const work = (patch: Partial<StopWork> = {}): StopWork => ({
   builds: [],
   names: {},
   lastBuilds: {},
-  versions: {},
   active: {},
   ...patch,
 });

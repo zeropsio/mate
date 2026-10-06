@@ -7,6 +7,7 @@
  *
  * @module data/families/version
  */
+import type { ScopeKey } from "../model.ts";
 import { scopeOf, type FamilySpec } from "./spec.ts";
 
 /** An app version as the platform's row says it. The API never returns its name. */
@@ -45,6 +46,9 @@ function readVersion(raw: unknown): VersionValue | null {
 
 const organization = (orgId: string) => ({ name: "clientId", operator: "eq", value: orgId });
 
+/** The listing of one version read by id (`GET /app-version/{id}`), held while a stop needs it. */
+const BY_ID = "version";
+
 export const versionFamily: FamilySpec<"version"> = {
   family: "version",
   authority: "zerops",
@@ -75,6 +79,26 @@ export const versionFamily: FamilySpec<"version"> = {
         : { id: value.id, value, version: versionOf(raw as Record<string, unknown>) };
     },
   },
+  details: [
+    {
+      /**
+       * One version the active versions do not hold — not listed yet, past their page limit, or
+       * no longer active — read by id: its source, whatever its status. The platform answers one
+       * it does not have with `400 appVersionNotFound` (`m0/vers-probe`), which refuses the read.
+       */
+      suffix: BY_ID,
+      leaving: "removed",
+      zerops: {
+        path: ({ ownerId }) => `/app-version/${encodeURIComponent(ownerId ?? "")}`,
+        items: (answer) =>
+          typeof answer === "object" && answer !== null && "id" in answer ? [answer] : undefined,
+      },
+    },
+  ],
 };
 
 export const activeScope = (orgId: string) => scopeOf(versionFamily, orgId);
+
+/** One version read by id, observed while a stop needs it. */
+export const versionScope = (orgId: string, versionId: string): ScopeKey =>
+  `zerops:${orgId}:${BY_ID}:${versionId}`;

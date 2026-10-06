@@ -49,6 +49,7 @@ import { knownPresentation, type KnownSurface } from "../knowledge/presentation.
 import { shortCommit } from "../release.ts";
 import { sameCommit } from "../versionName.ts";
 import type { StopBuild, StopWork } from "../../data/projections/stopWork.ts";
+import type { VersionSource } from "../../data/projections/versionSource.ts";
 
 /** A build of a service that Zerops ended failed or canceled, by its process (`noneAfter`). */
 export interface FailedBuild {
@@ -288,8 +289,10 @@ export interface StopService {
 /** What a stop is read from: its services' listing, and the account's store's word on its work. */
 export interface StopReads {
   readonly services: CollectionRead<ServiceRecord>;
-  /** The stop's running builds, what its builds named, its services' versions (`stopWork`). */
+  /** The stop's running builds, what its builds named, its services' active versions. */
   readonly work: StopWork;
+  /** What the organization's active versions state of each version a service runs, by its id. */
+  readonly versions: ReadonlyMap<string, VersionSource>;
   /** Why the platform took no demand for the stop's services; nothing is read then. */
   readonly refused: DemandRefusal | null;
   /**
@@ -376,6 +379,7 @@ function activeVersionId(answer: ServiceAnswer): string | null {
 /** What a stop's services are measured against: the store's word on its work, what was read. */
 interface StopContext {
   readonly work: StopWork;
+  readonly versions: StopReads["versions"];
   readonly stated: StopReads["stated"];
   readonly detail: boolean;
   readonly source: SourceState;
@@ -401,10 +405,11 @@ function activeDeployment(answer: ServiceAnswer, context: StopContext): SettledD
       // It proves a deployed build just as a process's name does.
       if (answer.kind === "running" || answer.deploy.name !== null)
         return { kind: "running", activatedAt, version: pushedVersion(answer.deploy) };
-      const version = id === null ? undefined : context.work.versions[id];
-      if (version === undefined || version.source === null) return null;
+      const version = id === null ? undefined : context.versions.get(id);
+      if (version?.kind !== "known" || id === null) return null;
+      // Only `NONE` runs nothing: a row that states no source runs what it was built from.
       if (version.source === "NONE") return { kind: "none" };
-      const read = context.stated.get(version.id);
+      const read = context.stated.get(id);
       // An answer for another version says nothing of this one.
       const name = read?.state === "known" && read.value.activeId === id ? read.value.name : null;
       // Detail reads the service's variables: a version they will name waits for its name.
@@ -419,9 +424,10 @@ function activeDeployment(answer: ServiceAnswer, context: StopContext): SettledD
 /**
  * An active version nothing states yet. One with no id no read can ever state: a stop read whole —
  * its services and its running work both observed — ends it with a manual failure, never an idle
- * placeholder. One with an id waits for the organization's active versions, which deliver it.
- * Meanwhile a service that ran nothing still runs nothing, revalidating: the import's own no-code
- * version, which a push names only by its id (A14), never reads Checking (F5).
+ * placeholder. One with an id waits for the organization's active versions, which deliver it or
+ * have it read by id (`versionSource`); one the platform does not have, or whose versions were
+ * refused, fails. Meanwhile a service that ran nothing still runs nothing, revalidating: the
+ * import's own no-code version, which a push names only by its id (A14), never reads Checking (F5).
  */
 function unstatedDeployment(
   answer: Extract<ServiceAnswer, { readonly kind: "running" | "unstated" }>,
@@ -437,11 +443,22 @@ function unstatedDeployment(
       attempt: 1,
       retryAtMs: null,
     };
+  const version = answer.deploy.id === null ? undefined : context.versions.get(answer.deploy.id);
+  if (version?.kind === "not-listed" || version?.kind === "refused")
+    return {
+      state: "failed",
+      failure:
+        version.kind === "not-listed"
+          ? { kind: "malformed", detail: "Its active version is not listed." }
+          : { kind: "transport", detail: "Zerops refused its active versions." },
+      atMs: nowMs,
+      attempt: 1,
+      retryAtMs: null,
+    };
   // Only while the version is not held yet: one held and waiting for its name runs code.
-  const held = answer.deploy.id === null ? undefined : work.versions[answer.deploy.id];
   const before = work.active[serviceId];
   if (
-    held === undefined &&
+    version?.kind !== "known" &&
     before !== undefined &&
     before.source === "NONE" &&
     source.kind !== "paused"
@@ -572,6 +589,7 @@ export function stopServices(reads: StopReads, nowMs: number): Known<ReadonlyArr
   const listing = worstSource(read.observation.required.map(sourceOf));
   const context: StopContext = {
     work: reads.work,
+    versions: reads.versions,
     stated: reads.stated,
     detail: reads.detail,
     // A service's deployment stands on both: its builds and versions are the store's.

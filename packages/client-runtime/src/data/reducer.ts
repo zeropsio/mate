@@ -67,6 +67,8 @@ export type AccountInput =
       readonly via: Delivery;
       readonly members: ReadonlyArray<string>;
       readonly rows: ReadonlyArray<Row>;
+      /** Cut at its page limit, or holding a row it could not read: its absences say nothing. */
+      readonly partial?: boolean;
     }
   /** The owner proved the entity gone: the one input that deletes a fact. */
   | {
@@ -294,9 +296,10 @@ function commitBaseline(
   const staged = membership.baseline?.staged ?? [];
   const knownAtBegin = membership.baseline?.knownAtBegin ?? new Set<string>();
   let next = reduceRows(state, { ...input, method: "baseline" }, changed);
-  if (membership.coverage !== "complete") changed.add(`coverage:${scope}`);
+  const coverage = input.partial === true ? "partial" : "complete";
+  if (membership.coverage !== coverage) changed.add(`coverage:${scope}`);
   next = withMembership(next, scope, {
-    coverage: "complete",
+    coverage,
     members: new Map(membership.members),
     baseline: null,
   });
@@ -304,7 +307,11 @@ function commitBaseline(
   next = reduceMembership(
     next,
     scope,
-    { add: input.members, remove: [...knownAtBegin].filter((id) => !admitted.has(id)) },
+    {
+      add: input.members,
+      // A partial answer's absences say nothing: what it lacks has not left the scope.
+      remove: coverage === "partial" ? [] : [...knownAtBegin].filter((id) => !admitted.has(id)),
+    },
     changed,
     directives,
   );

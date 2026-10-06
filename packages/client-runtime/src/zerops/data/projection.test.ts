@@ -110,6 +110,7 @@ describe("Zerops data projections", () => {
               query: servicesRead([pushed]).query,
             },
             work: work(),
+            versions: new Map(),
             stated: new Map(),
             refused: null,
             detail: false,

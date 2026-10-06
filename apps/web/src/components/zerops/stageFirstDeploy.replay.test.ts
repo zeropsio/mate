@@ -14,6 +14,7 @@ import {
   stopView,
   unnamedVersions,
   type Deployment,
+  type StopReads,
 } from "@t3tools/client-runtime/zerops/flow";
 import {
   deployed,
@@ -84,6 +85,7 @@ function firstBuild() {
   };
   let services = listed(IMPORTED);
   let held = work({ active: { "app-id": imported } });
+  let versions: StopReads["versions"] = new Map();
   let stated: Shown<ZeropsServiceDeployedVersion> = { state: "unread", waitingFor: null };
   const step = (t: number, change: () => void) => {
     change();
@@ -92,6 +94,7 @@ function firstBuild() {
         {
           services,
           work: held,
+          versions,
           refused: null,
           stated: new Map(
             unnamedVersions(services, held.names).map(({ versionId }) => [versionId, stated]),
@@ -123,7 +126,8 @@ function firstBuild() {
   });
   const running = step(1097.6, () => {
     const version = { ...imported, id: "version-9", source: "GIT" };
-    held = { ...held, versions: { "version-9": version }, active: { "app-id": version } };
+    held = { ...held, active: { "app-id": version } };
+    versions = new Map([["version-9", { kind: "known", source: "GIT" }]]);
     stated = {
       state: "known",
       value: { activeId: "version-9", source: "GIT", name: named },

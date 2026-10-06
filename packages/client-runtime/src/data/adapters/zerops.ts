@@ -86,7 +86,10 @@ const MembershipData = Schema.Struct({
   delete: Schema.Array(Schema.String),
 });
 const UpdateData = Schema.Struct({ update: Schema.Array(Schema.Unknown) });
-const ListAnswer = Schema.Struct({ items: Schema.Array(Schema.Unknown) });
+const ListAnswer = Schema.Struct({
+  items: Schema.Array(Schema.Unknown),
+  totalHits: Schema.optionalKey(Schema.Number),
+});
 /** A member's identity alone: a row too damaged to read still names its id. */
 const Identified = Schema.Struct({ id: Schema.String });
 
@@ -116,6 +119,22 @@ function rowsOf(family: Family, raw: ReadonlyArray<unknown>): ReadonlyArray<Row>
 }
 
 const corrupt = (message: string): StreamFault => ({ outcome: "transient", message });
+
+/** Each item's id: a row too damaged to read still names its member. */
+const membersOf = (items: ReadonlyArray<unknown>): ReadonlyArray<string> =>
+  items.flatMap((item) =>
+    Option.match(decodeIdentified(item), { onNone: () => [], onSome: ({ id }) => [id] }),
+  );
+
+/**
+ * Whether an answer lists less than the whole: cut at its page limit, or holding a row its family
+ * could not read. Its absences then say nothing, and it never completes its scope.
+ */
+const partialAnswer = (
+  items: ReadonlyArray<unknown>,
+  rows: ReadonlyArray<Row>,
+  totalHits: number | undefined,
+): boolean => rows.length < items.length || (totalHits !== undefined && totalHits > items.length);
 
 export function zeropsNavigationLink(options: {
   readonly orgId: string;
@@ -179,7 +198,9 @@ export function zeropsNavigationLink(options: {
           return Effect.void;
         }).pipe(
           Effect.catch((fault) =>
-            fault.outcome === "recoverable-session" || fault.outcome === "authoritative-denial"
+            fault.outcome === "transient" ||
+            fault.outcome === "recoverable-session" ||
+            fault.outcome === "authoritative-denial"
               ? Deferred.fail(ended, fault)
               : Effect.void,
           ),
@@ -310,13 +331,9 @@ export function zeropsNavigationLink(options: {
               generation: generationOf(scope),
               via: "zerops-realtime",
               // Membership is every item's id: a damaged row keeps its member and its last value.
-              members: list.items.flatMap((item) =>
-                Option.match(decodeIdentified(item), {
-                  onNone: () => [],
-                  onSome: ({ id }) => [id],
-                }),
-              ),
+              members: membersOf(list.items),
               rows,
+              partial: partialAnswer(list.items, rows, list.totalHits),
             }),
           );
           yield* signal(scope, { kind: "baseline-committed" });
@@ -355,19 +372,16 @@ export function zeropsNavigationLink(options: {
           const items = detail.zerops.items(answer.body);
           if (items === undefined)
             return yield* Effect.fail(corrupt("A detail baseline answer is malformed."));
+          const rows = rowsOf(spec.family, items);
           yield* carryOut(
             store.dispatch({
               kind: "baseline-commit",
               scope,
               generation: generationOf(scope),
               via: "zerops-read",
-              members: items.flatMap((item) =>
-                Option.match(decodeIdentified(item), {
-                  onNone: () => [],
-                  onSome: ({ id }) => [id],
-                }),
-              ),
-              rows: rowsOf(spec.family, items),
+              members: membersOf(items),
+              rows,
+              partial: partialAnswer(items, rows, undefined),
             }),
           );
           yield* signal(scope, { kind: "baseline-committed" });

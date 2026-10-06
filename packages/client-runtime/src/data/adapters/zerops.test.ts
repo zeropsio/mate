@@ -17,6 +17,7 @@ import { superviseLink } from "../supervisor.ts";
 import { zeropsNavigationLink } from "./zerops.ts";
 import { historyScope, runningScope } from "../families/process.ts";
 import { projectsScope } from "../families/project.ts";
+import { activeScope, versionScope } from "../families/version.ts";
 import { factOf, indexOf } from "../reducer.ts";
 import { linkKeys } from "../model.ts";
 
@@ -619,6 +620,97 @@ describe("a demanded detail", () => {
       yield* settle;
       expect(historyReads(fixture)).toBe(2);
       expect(store.state().streams.get(history)?.phase).toBe("live");
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+});
+
+describe("what a baseline and a read by id may claim", () => {
+  const VERSION_SEARCH = "/app-version/search";
+  const activeVersions =
+    (items: ReadonlyArray<unknown>, totalHits = items.length) =>
+    (request: WireRequest): Effect.Effect<unknown, StreamFault> =>
+      request.path === VERSION_SEARCH && request.body?.wsOutputType === "listStream"
+        ? Effect.succeed({ items, totalHits })
+        : answers(() => [])(request);
+  const version = (id: string) => ({
+    id,
+    projectId: "p1",
+    serviceStackId: "s1",
+    status: "ACTIVE",
+    source: "GIT",
+    _version: 1,
+  });
+
+  it.effect("a baseline cut at the page limit is no complete list, and leaves no member out", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const fiber = yield* run(store, fixtureWire(activeVersions([version("v1")], 2_001)));
+      expect(store.state().memberships.get(activeScope(ORG))?.coverage).toBe("partial");
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+
+  it.effect("a baseline with a row it cannot read keeps the member and says it is partial", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const damaged = { id: "v2", status: "ACTIVE" };
+      const fiber = yield* run(store, fixtureWire(activeVersions([version("v1"), damaged])));
+      const membership = store.state().memberships.get(activeScope(ORG));
+      expect(membership?.coverage).toBe("partial");
+      expect(membership?.members.get("v2")).toBe("member");
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+
+  it.effect("a read by id that fails ends the attempt: the link tries again and reads anew", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      let failing = true;
+      const fixture = fixtureWire((request) =>
+        request.body?.wsOutputType === undefined && request.path === PROCESS_SEARCH && failing
+          ? Effect.fail<StreamFault>({ outcome: "transient", message: "HTTP 503" })
+          : answers(() => [])(request),
+      );
+      const fiber = yield* run(store, fixture);
+      yield* fixture.push(fixture.subscription(PROCESS_SEARCH, "listStream"), {
+        add: ["J3TU3gE0SvCFrPDutSacqw"],
+        delete: [],
+      });
+      yield* settle;
+      const link = store.state().streams.get(linkKeys.zerops(ORG));
+      expect(link?.phase).toBe("recovering");
+      failing = false;
+      yield* TestClock.adjust(link?.next.kind === "retry" ? link.next.at : 0);
+      yield* settle;
+      expect(fixture.opens()).toBe(2);
+      expect(store.state().streams.get(linkKeys.zerops(ORG))?.phase).toBe("live");
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+
+  it.effect("a version read by id is held; one the platform does not have refuses its read", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const fixture = fixtureWire((request) =>
+        request.method === "GET" && request.path === "/app-version/v9"
+          ? Effect.succeed({
+              status: 200,
+              body: { ...version("v9"), status: "BACKUP", source: "NONE" },
+            })
+          : request.method === "GET" && request.path === "/app-version/gone"
+            ? Effect.fail<StreamFault>({ outcome: "definitive-refusal", message: "HTTP 400" })
+            : answers(() => [])(request),
+      );
+      const { fiber, link } = yield* runLink(store, fixture);
+      link.demandDetail({ family: "version", listing: "version", ownerId: "v9" });
+      link.demandDetail({ family: "version", listing: "version", ownerId: "gone" });
+      yield* settle;
+      expect(factOf(store.state(), "version", "v9")?.content).toMatchObject({
+        value: { source: "NONE", status: "BACKUP" },
+      });
+      expect(store.state().streams.get(versionScope(ORG, "gone"))?.phase).toBe("refused");
+      expect(store.state().streams.get(linkKeys.zerops(ORG))?.phase).toBe("live");
       yield* Fiber.interrupt(fiber);
     }),
   );

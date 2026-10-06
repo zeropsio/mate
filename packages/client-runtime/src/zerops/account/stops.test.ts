@@ -17,7 +17,7 @@ import { deployed, record, servicesRead } from "../flow/__fixtures__/services.ts
 import type { StopService } from "../flow/deployment.ts";
 import { liveZerops, processValue, zeropsVersion } from "../../data/__fixtures__/account.ts";
 import { runningScope } from "../../data/families/process.ts";
-import { activeScope } from "../../data/families/version.ts";
+import { activeScope, versionScope } from "../../data/families/version.ts";
 import { accountReadsAtom } from "../../data/reads.ts";
 import { makeAccountStore, type AccountStore } from "../../data/store.ts";
 import { makeStops } from "./stops.ts";
@@ -64,10 +64,16 @@ function rig(options: { readonly refuse?: LeaseAdmissionError["reason"] } = {}) 
     },
   } as unknown as ManagedZeropsDataRuntime;
   const store: AccountStore = makeAccountStore(registry);
+  /** The versions held to be read by id now. */
+  const readById = new Set<string>();
   registry.set(accountReadsAtom, {
     data: store.data,
     orgId: ORG_ID,
-    demandDetail: () => () => undefined,
+    demandDetail: (demand) => {
+      if (demand.family !== "version") return () => undefined;
+      readById.add(demand.ownerId);
+      return () => readById.delete(demand.ownerId);
+    },
   });
   const stops = makeStops(data, registry, Context.empty());
   const services = () => registry.get(stops.services(STAGE));
@@ -80,6 +86,7 @@ function rig(options: { readonly refuse?: LeaseAdmissionError["reason"] } = {}) 
     stops,
     store,
     acquired,
+    readById: () => [...readById],
     services,
     app,
     list: (deploy: ServiceDeployInfo | null) =>
@@ -153,6 +160,45 @@ describe("a stop's services as the account's store and listing say them", () => 
 
     dispatch([versionRows({ id: "v-new", status: "ACTIVE", source: "GIT" })]);
     expect(app()).toMatchObject({ state: "known", value: { kind: "running" } });
+  });
+
+  it("reads a version the active versions lack by id, and fails it once the platform has none", () => {
+    const { stops, dispatch, list, app, readById } = rig();
+    stops.demand(STAGE);
+    dispatch(liveZerops({ running: [], active: [] }));
+    list(PUSHED_BY_ID);
+    expect(readById()).toEqual(["v-new"]);
+    expect(app()).toMatchObject({ state: "unread" });
+
+    const scope = versionScope(ORG_ID, "v-new");
+    dispatch([
+      { kind: "stream", key: scope, now: 0, event: { kind: "demand", demanded: true } },
+      { kind: "stream", key: scope, now: 0, event: { kind: "attempt" } },
+      {
+        kind: "stream",
+        key: scope,
+        now: 0,
+        event: {
+          kind: "fault",
+          jitter: 0,
+          fault: { outcome: "definitive-refusal", message: "HTTP 400" },
+        },
+      },
+    ]);
+    expect(app()).toMatchObject({
+      state: "failed",
+      failure: { kind: "malformed", detail: "Its active version is not listed." },
+    });
+  });
+
+  it("lets a version's read by id go once the active versions bring it", () => {
+    const { stops, dispatch, list, readById } = rig();
+    stops.demand(STAGE);
+    dispatch(liveZerops({ running: [], active: [] }));
+    list(PUSHED_BY_ID);
+    expect(readById()).toEqual(["v-new"]);
+    dispatch([versionRows({ id: "v-new", status: "ACTIVE", source: "GIT" })]);
+    expect(readById()).toEqual([]);
   });
 
   it("keeps a runtime that ran nothing as none while its next no-code version is on its way", () => {
@@ -260,6 +306,33 @@ describe("a stop's services as the account's store and listing say them", () => 
       expect(registry.get(stops.version(APP))).toMatchObject({
         state: "known",
         value: { activeId: "v-new", source: "NONE", name: "v0.2.0" },
+      });
+    });
+
+    it("reads the version by id and fails it when the platform has none", () => {
+      const { stops, registry, state, dispatch, readById } = rig();
+      dispatch(liveZerops({ running: [], active: [] }));
+      state(statedAs(null));
+      expect(registry.get(stops.version(APP))).toEqual({ state: "unread", waitingFor: null });
+      expect(readById()).toEqual(["v-new"]);
+      const scope = versionScope(ORG_ID, "v-new");
+      dispatch([
+        { kind: "stream", key: scope, now: 0, event: { kind: "demand", demanded: true } },
+        { kind: "stream", key: scope, now: 0, event: { kind: "attempt" } },
+        {
+          kind: "stream",
+          key: scope,
+          now: 0,
+          event: {
+            kind: "fault",
+            jitter: 0,
+            fault: { outcome: "definitive-refusal", message: "HTTP 400" },
+          },
+        },
+      ]);
+      expect(registry.get(stops.version(APP))).toMatchObject({
+        state: "failed",
+        failure: { detail: "Its active version is not listed." },
       });
     });
 

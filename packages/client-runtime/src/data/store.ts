@@ -14,6 +14,7 @@ import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
 import {
   emptyAccount,
   type AccountState,
+  type Coverage,
   type Fact,
   type FactKey,
   type Family,
@@ -29,7 +30,7 @@ import type { StreamState } from "./streamMachine.ts";
 
 /** A scope's membership as a reader sees it: listed ids, and those whose leaving is unproven. */
 export interface MembershipRead {
-  readonly coverage: "unknown" | "complete";
+  readonly coverage: Coverage;
   readonly ids: ReadonlyArray<string>;
   readonly unverified: ReadonlyArray<string>;
 }
@@ -39,7 +40,7 @@ export interface ProjectionReads {
   readonly fact: <F extends Family>(family: F, id: string) => PublicRead<FamilyValues[F]>;
   readonly members: (scope: ScopeKey) => MembershipRead;
   /** Whether a scope ever committed a baseline: what earns an empty answer. */
-  readonly coverage: (scope: ScopeKey) => "unknown" | "complete";
+  readonly coverage: (scope: ScopeKey) => Coverage;
   /** The ids a family index counts under a key: `index("running", projectId)`. */
   readonly index: (name: string, key: string) => ReadonlySet<string>;
   readonly stream: (key: StreamKey) => StreamState;

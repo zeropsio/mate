@@ -1,13 +1,15 @@
 /**
  * What each stop's services run (DESIGN §4.7, D6), as surfaces read it: the stop's service listing
  * from the data runtime (services are not a family of the account's store yet), joined with the
- * store's word on its running work and its services' versions (`stopWork`). Nothing here holds a
- * fact: a name outlives its build because the store keeps the ended process, and a stop reads again
- * whenever what it reads changes.
+ * store's word on its running work (`stopWork`) and on each version its services run
+ * (`versionSource`). Nothing here holds a fact: a name outlives its build because the store keeps
+ * the ended process, and a stop reads again whenever what it reads changes.
  *
- * What it does hold is the services demand of each drawn stop: summary demand while a surface draws
- * it, the project's topology while one opens it, and the platform's refusal to take that demand,
- * which fails the stop until a manual Again. A stop nobody demands reads `unread`.
+ * What it does hold is demand. The services demand of each drawn stop: summary demand while a
+ * surface draws it, the project's topology while one opens it, and the platform's refusal to take
+ * that demand, which fails the stop until a manual Again. A stop nobody demands reads `unread`.
+ * And a read by id of each version a stop or an asked service runs that the active versions do not
+ * hold, until they hold it or the platform says it has none.
  *
  * @module zerops/account/stops
  */
@@ -17,8 +19,8 @@ import * as Fiber from "effect/Fiber";
 import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
 
 import { stopWork, type StopWork } from "../../data/projections/stopWork.ts";
-import { versionSource } from "../../data/projections/versionSource.ts";
-import { accountReadsAtom } from "../../data/reads.ts";
+import { versionSource, type VersionSource } from "../../data/projections/versionSource.ts";
+import { accountReadsAtom, type AccountReads } from "../../data/reads.ts";
 import type { ManagedZeropsDataRuntime } from "../data/runtime.ts";
 import type { ZeropsServiceDeployedVersion } from "../data/deployedVersion.ts";
 import { projectKeyOf, serviceKeyOf, type ProjectRef, type ServiceRef } from "../data/types.ts";
@@ -73,7 +75,6 @@ const NOT_READ: StopWork = {
   builds: [],
   names: {},
   lastBuilds: {},
-  versions: {},
   active: {},
 };
 
@@ -90,13 +91,30 @@ export function makeStops(
   const demandedAtom = Atom.family((_key: string) =>
     Atom.make<Demanded | null>(null).pipe(Atom.keepAlive),
   );
-  const publish = (key: string, entry: Entry | undefined): void =>
+  /** The stops demanded now, by key. */
+  const noKeys: ReadonlySet<string> = new Set();
+  const demandedKeys = Atom.make({ keys: noKeys }).pipe(Atom.keepAlive);
+  const publish = (key: string, entry: Entry | undefined): void => {
     atomRegistry.set(
       demandedAtom(key),
       entry === undefined
         ? null
         : { project: entry.project, detail: entry.detailLeases > 0, refused: entry.refused },
     );
+    const keys = new Set(atomRegistry.get(demandedKeys).keys);
+    if (entry === undefined ? keys.delete(key) : !keys.has(key) && keys.add(key))
+      atomRegistry.set(demandedKeys, { keys });
+  };
+
+  /** What the active versions state of one version, through the mounted account. */
+  const sourceOf = (
+    get: Atom.AtomContext,
+    account: AccountReads | null,
+    versionId: string,
+  ): VersionSource =>
+    account === null || account.orgId === null
+      ? { kind: "unknown" }
+      : get(account.data.project(versionSource, { orgId: account.orgId, versionId }));
 
   const servicesAtom = Atom.family((key: string) =>
     Atom.make((get): Shown<ReadonlyArray<StopService>> => {
@@ -105,6 +123,7 @@ export function makeStops(
       const project = demanded.project;
       const listing = get(data.reads.servicesOf(project));
       const account = get(accountReadsAtom);
+      const listed = listedVersions(listing);
       const work =
         account === null || account.orgId === null
           ? NOT_READ
@@ -112,13 +131,18 @@ export function makeStops(
               account.data.project(stopWork, {
                 orgId: account.orgId,
                 projectId: project.projectId,
-                services: listedVersions(listing),
+                serviceIds: listed.map(({ serviceId }) => serviceId),
               }),
             );
       return stopServices(
         {
           services: listing,
           work,
+          versions: new Map(
+            listed.flatMap(({ versionId }) =>
+              versionId === null ? [] : [[versionId, sourceOf(get, account, versionId)] as const],
+            ),
+          ),
           refused: demanded.refused,
           stated: new Map(
             unnamedVersions(listing, work.names).map(({ service, versionId }) => [
@@ -134,43 +158,98 @@ export function makeStops(
   );
 
   /** Each service a version was asked of, by its key. */
-  const serviceRefs = new Map<string, ServiceRef>();
+  const noServices: ReadonlyMap<string, ServiceRef> = new Map();
+  const askedServices = Atom.make({ services: noServices }).pipe(Atom.keepAlive);
+  /** The version a service started whose source its push left unstated; `null` for none. */
+  const unstatedOf = (get: Atom.AtomContext, service: ServiceRef): string | null => {
+    const started = get(data.reads.deployedVersion(service));
+    return started.state === "known" && started.value.source === null
+      ? started.value.activeId
+      : null;
+  };
   const versionAtom = Atom.family((key: string) =>
     Atom.make((get): Shown<ZeropsServiceDeployedVersion> => {
-      const service = serviceRefs.get(key);
+      const service = get(askedServices).services.get(key);
       if (service === undefined) return UNREAD;
       const started = get(data.reads.deployedVersion(service));
-      if (
-        started.state !== "known" ||
-        started.value.activeId === null ||
-        started.value.source !== null
-      )
-        return started;
-      const account = get(accountReadsAtom);
-      const source =
-        account === null || account.orgId === null
-          ? { kind: "unknown" as const }
-          : get(
-              account.data.project(versionSource, {
-                orgId: account.orgId,
-                versionId: started.value.activeId,
-              }),
-            );
+      const versionId = unstatedOf(get, service);
+      if (started.state !== "known" || versionId === null) return started;
+      const source = sourceOf(get, get(accountReadsAtom), versionId);
       switch (source.kind) {
         case "known":
           return { ...started, value: { ...started.value, source: source.source } };
         case "unknown":
+        case "awaited":
           return UNREAD;
+        case "not-listed":
         case "refused":
           return {
             state: "failed",
-            failure: { kind: "transport", detail: "Zerops refused its active versions." },
+            failure:
+              source.kind === "not-listed"
+                ? { kind: "malformed", detail: "Its active version is not listed." }
+                : { kind: "transport", detail: "Zerops refused its active versions." },
             atMs: data.access.clock.currentTimeMillisUnsafe(),
             attempt: 1,
             retryAtMs: null,
           };
       }
     }),
+  );
+
+  /**
+   * The versions to read by id now: each a demanded stop's service or an asked service runs that
+   * the active versions, though answered, do not hold — and, once read, one the platform does not
+   * have, so its refusal stays to be said.
+   */
+  const wantedVersions = Atom.make((get) => {
+    const account = get(accountReadsAtom);
+    const ids = new Set<string>();
+    const want = (versionId: string | null) => {
+      if (versionId === null) return;
+      const source = sourceOf(get, account, versionId);
+      if (source.kind === "awaited" || source.kind === "not-listed") ids.add(versionId);
+    };
+    for (const key of get(demandedKeys).keys) {
+      const demanded = get(demandedAtom(key));
+      if (demanded === null) continue;
+      for (const { versionId } of listedVersions(get(data.reads.servicesOf(demanded.project))))
+        want(versionId);
+    }
+    for (const service of get(askedServices).services.values()) want(unstatedOf(get, service));
+    return { account, ids: [...ids].sort() };
+  });
+  /** Each version held to be read by id, with its release, and the account that holds it. */
+  const reading = new Map<string, () => void>();
+  let readingFrom: AccountReads | null = null;
+  const releaseReads = () => {
+    for (const release of reading.values()) release();
+    reading.clear();
+  };
+  const stopWanting = atomRegistry.subscribe(
+    wantedVersions,
+    ({ account, ids }) => {
+      if (disposed) return;
+      if (account !== readingFrom) {
+        releaseReads();
+        readingFrom = account;
+      }
+      if (account === null) return;
+      const wanted = new Set(ids);
+      for (const [id, release] of reading) {
+        if (wanted.has(id)) continue;
+        release();
+        reading.delete(id);
+      }
+      for (const id of wanted) {
+        if (!reading.has(id))
+          reading.set(
+            id,
+            account.demandDetail({ family: "version", listing: "version", ownerId: id }),
+          );
+      }
+    },
+    { immediate: true },
   );
 
   /** Asks for the stop's demand; a refusal fails the stop until it is asked for again. */
@@ -207,7 +286,9 @@ export function makeStops(
     services: (project) => servicesAtom(projectKeyOf(project)),
     version: (service) => {
       const key = serviceKeyOf(service);
-      serviceRefs.set(key, service);
+      const { services: asked } = atomRegistry.get(askedServices);
+      if (!asked.has(key))
+        atomRegistry.set(askedServices, { services: new Map(asked).set(key, service) });
       return versionAtom(key);
     },
     demand: (project, scope = "summary") => {
@@ -265,6 +346,8 @@ export function makeStops(
     dispose: () => {
       if (disposed) return;
       disposed = true;
+      stopWanting();
+      releaseReads();
       for (const [key, entry] of entries) {
         entry.unfollow();
         publish(key, undefined);
