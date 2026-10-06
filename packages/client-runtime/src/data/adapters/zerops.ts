@@ -7,12 +7,19 @@
  * nothing is replayed by Zerops: the next attempt registers again and its answers are the truth;
  * what went missing meanwhile is not invented.
  *
+ * The credential is proven by answers, never by the socket: a socket outlives a revoked token and
+ * its pongs go on (`zivost/probe-scoped`). A read the attempt makes that answers 401 ends the
+ * attempt, and the supervisor repairs the session; a project taken from the viewer ends it too,
+ * for the other scopes never say what it took away: the next attempt registers every scope again
+ * and its answers are the truth.
+ *
  * The adapter only translates and classifies. It never retries: an attempt ends by failing, and the
  * supervisor decides what follows.
  *
  * @module data/adapters/zerops
  */
 import * as Clock from "effect/Clock";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Option from "effect/Option";
@@ -146,8 +153,14 @@ export function zeropsNavigationLink(options: {
       // has since replaced carries the old one, and the reducer fences it out.
       const generations = new Map<ScopeKey, number>();
       const generationOf = (scope: ScopeKey) => generations.get(scope) ?? -1;
+      /** What ends this attempt from its side work: the credential refused, or access changed. */
+      const ended = yield* Deferred.make<never, StreamFault>();
 
-      /** The runtime work a reduction asks for, run beside the frames, never blocking them. */
+      /**
+       * The runtime work a reduction asks for, run beside the frames, never blocking them. A read
+       * the credential no longer passes ends the attempt; any other failure leaves it to the next
+       * baseline.
+       */
       const carryOut = (directives: ReadonlyArray<RuntimeDirective>): Effect.Effect<void> =>
         Effect.forEach(directives, (directive) => {
           if (directive.kind === "resolve-rows") return resolveRows(directive.key, directive.ids);
@@ -158,7 +171,15 @@ export function zeropsNavigationLink(options: {
               { discard: true },
             );
           return Effect.void;
-        }).pipe(Effect.ignore, Effect.forkIn(attemptScope), Effect.asVoid);
+        }).pipe(
+          Effect.catch((fault) =>
+            fault.outcome === "recoverable-session" || fault.outcome === "authoritative-denial"
+              ? Deferred.fail(ended, fault)
+              : Effect.void,
+          ),
+          Effect.forkIn(attemptScope),
+          Effect.asVoid,
+        );
 
       const resolveRows = (
         scope: ScopeKey,
@@ -202,7 +223,14 @@ export function zeropsNavigationLink(options: {
               id,
               evidence: `GET ${path} answered 404`,
             });
-          else if (status === 403) store.dispatch({ kind: "access", family, id, access: "denied" });
+          else if (status === 403) {
+            store.dispatch({ kind: "access", family, id, access: "denied" });
+            // The viewer's access changed; what else it took, only a fresh baseline says.
+            yield* Deferred.fail(ended, {
+              outcome: "transient",
+              message: "The viewer's access changed: every scope is registered again.",
+            });
+          }
         });
 
       const subscriptions = new Map<string, Registration>();
@@ -350,10 +378,11 @@ export function zeropsNavigationLink(options: {
         for (const scope of fresh) observed.add(scope);
         return Effect.forEach(fresh, observeDetail, { concurrency: "unbounded", discard: true });
       });
-      yield* Effect.raceFirst(
+      yield* Effect.raceAllFirst([
         Fiber.join(reading),
         Effect.forever(Effect.andThen(observeDemanded, Queue.take(changes))),
-      );
+        Deferred.await(ended),
+      ]);
       return yield* Effect.fail(corrupt("The receiver's socket closed."));
     });
 

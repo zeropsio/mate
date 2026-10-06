@@ -229,6 +229,27 @@ describe("reduceAccount", () => {
       );
       expect(missing.directives).toEqual([{ kind: "verify-absence", key: projects, ids: ["p1"] }]);
     });
+
+    it.each(["deleted", "denied"] as const)(
+      "asks nothing again of a project its owner %s, when a later baseline lacks it",
+      (word) => {
+        const settled = apply(live(), [
+          word === "deleted"
+            ? { kind: "proven-deletion", family: "project", id: "p1", evidence: "404" }
+            : { kind: "access", family: "project", id: "p1", access: "denied" },
+          { kind: "baseline-begin", scope: projects, generation: 1 },
+        ]);
+        const again = reduceAccount(settled, {
+          kind: "baseline-commit",
+          scope: projects,
+          generation: 1,
+          via: "zerops-realtime",
+          members: ["p2"],
+          rows: [project("p2", 1)],
+        });
+        expect(again.directives).toEqual([]);
+      },
+    );
   });
 
   describe("running work", () => {

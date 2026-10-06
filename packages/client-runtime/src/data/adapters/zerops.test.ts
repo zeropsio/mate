@@ -218,6 +218,11 @@ describe("zeropsNavigationLink", () => {
       expect(
         fixture.requests.filter((request) => request.body?.receiverId === "receiver-2"),
       ).toHaveLength(4);
+      // One project was taken from the viewer meanwhile: every scope is registered once more.
+      const again = store.state().streams.get(linkKeys.zerops(ORG));
+      yield* TestClock.adjust(again?.next.kind === "retry" ? again.next.at : 0);
+      yield* settle;
+      expect(fixture.opens()).toBe(3);
       expect(store.state().streams.get(runningScope(ORG))?.phase).toBe("live");
       expect(indexOf(store.state(), "running", PROBE_PROJECT_ID)?.size).toBe(0);
       expect(factOf(store.state(), "process", "K1bQIB8AQBeQGHaAe8mneg")?.content).toMatchObject({
@@ -287,6 +292,63 @@ describe("zeropsNavigationLink", () => {
       yield* Fiber.interrupt(fiber);
     }),
   );
+  it.effect(
+    "registers every scope again once the viewer's access changed, taking its answer as truth",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        let listed = ["kept", "taken"];
+        const fixture = fixtureWire((request) =>
+          request.method === "GET"
+            ? Effect.succeed({ status: 403, body: null })
+            : answers(
+                () => [],
+                () => listed.map((id) => ({ id, name: id, status: "ACTIVE", _version: 1 })),
+              )(request),
+        );
+        const fiber = yield* run(store, fixture);
+        // A project taken from the viewer leaves only its own roster; the other scopes say nothing.
+        listed = ["kept"];
+        yield* fixture.push(fixture.subscription(PROJECT_SEARCH, "listStream"), {
+          add: [],
+          delete: ["taken"],
+        });
+        yield* settle;
+        expect(factOf(store.state(), "project", "taken")?.content.kind).toBe("purged");
+        const link = store.state().streams.get(linkKeys.zerops(ORG));
+        expect(link?.phase).toBe("recovering");
+        yield* TestClock.adjust(link?.next.kind === "retry" ? link.next.at : 0);
+        yield* settle;
+        expect(fixture.opens()).toBe(2);
+        expect(store.state().streams.get(projectsScope(ORG))?.phase).toBe("live");
+        expect(store.state().streams.get(runningScope(ORG))?.phase).toBe("live");
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
+
+  it.effect("ends the attempt when a read of a member answers 401: the session is repaired", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      let revoked = false;
+      const fixture = fixtureWire((request) => {
+        if (!revoked || request.body?.wsOutputType !== undefined) return answers(() => [])(request);
+        // The session is renewed by the repair: the next read passes.
+        revoked = false;
+        return Effect.fail({ outcome: "recoverable-session", message: "HTTP 401" } as const);
+      });
+      const fiber = yield* run(store, fixture);
+      revoked = true;
+      // A new member: its row is read by id, and that read is refused for the credential.
+      yield* fixture.push(fixture.subscription(PROJECT_SEARCH, "listStream"), {
+        add: ["fresh"],
+        delete: [],
+      });
+      yield* settle;
+      expect(fixture.opens()).toBe(2);
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+
   it.effect(
     "restores a denied project from a later baseline that lists it, never from a push",
     () =>

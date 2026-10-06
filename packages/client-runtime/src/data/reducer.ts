@@ -261,8 +261,10 @@ function beginBaseline(state: AccountState, scope: ScopeKey, changed: Set<ReadKe
   const membership = state.memberships.get(scope) ?? EMPTY_MEMBERSHIP;
   const knownAtBegin = new Set<string>();
   for (const [id, member] of membership.members) if (member === "member") knownAtBegin.add(id);
+  // A fact the owner proved gone or withheld is no longer listed: its absence asks nothing again.
   for (const [key, fact] of state.facts)
-    if (fact.scope === scope && key.startsWith(prefix)) knownAtBegin.add(key.slice(prefix.length));
+    if (fact.scope === scope && fact.content.kind === "value" && key.startsWith(prefix))
+      knownAtBegin.add(key.slice(prefix.length));
   changed.add(`members:${scope}`);
   return withMembership(state, scope, { ...membership, baseline: { knownAtBegin, staged: [] } });
 }
