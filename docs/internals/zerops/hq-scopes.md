@@ -188,3 +188,15 @@ replaces that application's complete open-row list. An unchanged event transfers
 The production Core composition is shared by the running-Core harness. The retired
 `test/harness/coreWithDeployTimings.ts` remains deleted. Both distinct `0046_*.sql` migrations
 coexist, and guard exceptions are reconciled against the combined source.
+
+## Connection shutdown
+
+Renderer sockets and Mate links authorize before upgrading. At the lazy reader acquisition,
+Core rechecks that the Node TCP stream is still readable and writable. A peer can send FIN
+while those authorization reads are in flight; `ws.handleUpgrade` then skips its callback,
+leaving the platform's masked acquisition uninterruptible and preventing the served-routes
+scope from closing. Core cancels that abandoned request before entering the acquisition.
+The check and synchronous Node handshake run in one scheduler turn; subsequent reads use
+normal scheduling. No detached production fibers or shutdown timeout hide unfinished work.
+The HQ shutdown test keeps a Mate overview link live, closes a subscribed renderer, abandons
+the next renderer/Mate upgrade, waits for the server's FIN receipt, and bounds Core stop.

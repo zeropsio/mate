@@ -86,6 +86,7 @@ import { RASTER_CONTENT_TYPES, rasterContentType } from "@t3tools/shared/hqAttac
  * @module api
  */
 import { GitError } from "@t3tools/hq-git";
+import { upgradeSocket } from "./socketUpgrade.ts";
 import * as ByteSize from "effect/ByteSize";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -974,7 +975,7 @@ const routes = (
               ? undefined
               : Option.getOrUndefined(yield* (yield* MateLinkTickets).take(ticket));
           const { projectId, credential } = yield* mateHolding(presented);
-          const socket = yield* request.upgrade;
+          const socket = yield* upgradeSocket(request);
           const ended = yield* serveMateLink(socket, projectId, credential, options.link ?? {});
           yield* Effect.logInfo(
             `mate link of ${projectId} closed by ${ended.by} (${String(ended.code)})`,
@@ -1172,7 +1173,7 @@ const routes = (
               Effect.orElseSucceed(() => undefined),
             );
           });
-          const socket = yield* request.upgrade;
+          const socket = yield* upgradeSocket(request);
           const ended = yield* serveHqSocket(socket, userId, ending, {
             ...options,
             ...(token === undefined ? {} : { sessionId: token }),
