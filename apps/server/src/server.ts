@@ -107,6 +107,7 @@ import * as ZeropsGitSpawner from "./zerops/ZeropsGitSpawner.ts";
 import * as ZeropsRepositorySource from "./zerops/ZeropsRepositorySource.ts";
 import { zeropsHttpApiLayer, zeropsSetupRouteLayer } from "./zerops/http.ts";
 import * as ServerSecretStore from "./auth/ServerSecretStore.ts";
+import * as AssetSigningKey from "./assets/AssetSigningKey.ts";
 import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
 import {
   connectHttpApiLayer,
@@ -521,6 +522,7 @@ const RuntimeCoreDependenciesLive = ReactorLayerLive.pipe(
   // writer's worth of readers.
   Layer.provideMerge(ZeropsIdentityStatusModule.layer),
   Layer.provideMerge(AuthLayerLive),
+  Layer.provideMerge(AssetSigningKey.layer),
   Layer.provideMerge(ServerSecretStore.layer),
   Layer.provideMerge(
     Layer.mergeAll(
