@@ -8,6 +8,7 @@ import * as Schema from "effect/Schema";
 import { shallow } from "zustand/vanilla/shallow";
 import { isBackgroundTaskActivity } from "@t3tools/client-runtime/state/subagentRuntime";
 import { spilledResultIdIn } from "./components/chat/spilledOutput.logic";
+import { sameValue } from "./lib/sameValue";
 import {
   commandDetailRepeatsCommand,
   extractCommandOutputText,
@@ -679,7 +680,7 @@ export interface TurnPlanEntry {
 export function deriveTurnPlans(
   activities: ReadonlyArray<OrchestrationThreadActivity>,
 ): TurnPlanEntry[] {
-  const ordered = [...activities].toSorted(compareActivitiesByOrder);
+  const ordered = inActivityOrder(activities);
   const byTurn = new Map<
     string,
     { activities: OrchestrationThreadActivity[]; entry: TurnPlanEntry }
@@ -712,10 +713,45 @@ export function deriveTurnPlans(
       });
     }
   }
-  return [...byTurn.values()].map(({ activities: planActivities, entry }) => ({
-    ...entry,
-    plan: addPlanStepDurations(entry.plan, planActivities),
-  }));
+  return [...byTurn.values()].map(({ activities: planActivities, entry }) => {
+    // The same snapshots give the same chip, the same object.
+    const first = planActivities[0]!;
+    const known = turnPlanByFirstActivity.get(first);
+    if (
+      known !== undefined &&
+      known.entry.id === entry.id &&
+      known.activities.length === planActivities.length &&
+      known.activities.every((activity, index) => activity === planActivities[index])
+    ) {
+      return known.entry;
+    }
+    const derived = { ...entry, plan: addPlanStepDurations(entry.plan, planActivities) };
+    turnPlanByFirstActivity.set(first, { activities: planActivities, entry: derived });
+    return derived;
+  });
+}
+
+const turnPlanByFirstActivity = new WeakMap<
+  OrchestrationThreadActivity,
+  {
+    readonly activities: ReadonlyArray<OrchestrationThreadActivity>;
+    readonly entry: TurnPlanEntry;
+  }
+>();
+
+/**
+ * The activities in thread order: as they nearly always arrive, read once
+ * to tell, else sorted. A stable sort leaves an ordered list as it is.
+ */
+function inActivityOrder(
+  activities: ReadonlyArray<OrchestrationThreadActivity>,
+): ReadonlyArray<OrchestrationThreadActivity> {
+  for (let index = 1; index < activities.length; index += 1) {
+    if (compareActivitiesByOrder(activities[index - 1]!, activities[index]!) > 0) {
+      return activities.toSorted(compareActivitiesByOrder);
+    }
+  }
+  return activities;
 }
 
 export function findLatestProposedPlan(
@@ -821,7 +857,7 @@ export function deriveWorkLogEntries(
   options?: { readonly exclude?: ReadonlySet<string> },
 ): WorkLogEntry[] {
   const exclude = options?.exclude;
-  const ordered = [...activities].toSorted(compareActivitiesByOrder);
+  const ordered = inActivityOrder(activities);
   // A launch tool and its task lifecycle describe the same run. Only hide
   // launch rows once their tool-use id has an agent row to replace them.
   const agentLaunchToolIds = new Set<string>();
@@ -843,7 +879,7 @@ export function deriveWorkLogEntries(
   // place the row differently live and after a reload.
   const startedAnchorByKey = new Map<
     string,
-    { id: string; createdAt: string; responseId?: string | undefined }
+    { activity: OrchestrationThreadActivity; responseId?: string | undefined }
   >();
   for (const activity of ordered) {
     if (exclude?.has(activity.id)) continue;
@@ -857,16 +893,12 @@ export function deriveWorkLogEntries(
       // start and silent until it ends — is drawn from its start, and its
       // end merges into it: it is the Mate's step the whole time it runs.
       if (startCarriesCommand(activity)) {
-        entries.push({ ...started, toolLifecycleStatus: "inProgress" });
+        entries.push(runningFromItsStart(started));
         continue;
       }
       const startedKey = toolLifecycleCollapseMapKey(started);
       if (startedKey !== undefined) {
-        startedAnchorByKey.set(startedKey, {
-          id: activity.id,
-          createdAt: activity.createdAt,
-          responseId: started.responseId,
-        });
+        startedAnchorByKey.set(startedKey, { activity, responseId: started.responseId });
       }
       continue;
     }
@@ -912,17 +944,78 @@ export function deriveWorkLogEntries(
     entries.push(
       anchor === undefined
         ? entry
-        : {
+        : rememberedPair(anchoredWorkLogEntries, entry, anchor.activity, () => ({
             ...entry,
-            id: anchor.id,
-            createdAt: anchor.createdAt,
-            startedAt: anchor.createdAt,
+            id: anchor.activity.id,
+            createdAt: anchor.activity.createdAt,
+            startedAt: anchor.activity.createdAt,
             updatedAt: entry.createdAt,
             ...(anchor.responseId !== undefined ? { responseId: anchor.responseId } : {}),
-          },
+          })),
     );
   }
   return collapseDerivedWorkLogEntries(entries);
+}
+
+// Every row the work log builds from others — a start drawn running, a row
+// anchored at its start, two rows merged — is kept by what it was built
+// from, all of which never change: the same activities give the same rows,
+// the same objects, so the timeline's entries and everything read off them
+// stay the same from one update to the next, the new or changed rows aside.
+const runningFromStart = new WeakMap<DerivedWorkLogEntry, DerivedWorkLogEntry>();
+const anchoredWorkLogEntries = new WeakMap<
+  DerivedWorkLogEntry,
+  WeakMap<OrchestrationThreadActivity, DerivedWorkLogEntry>
+>();
+const mergedWorkLogEntries = new WeakMap<
+  DerivedWorkLogEntry,
+  WeakMap<DerivedWorkLogEntry, DerivedWorkLogEntry>
+>();
+const spawnRows = new WeakMap<
+  DerivedWorkLogEntry,
+  { readonly workflowId: string | null; readonly row: DerivedWorkLogEntry }
+>();
+const mergedSpawnRows = new WeakMap<
+  DerivedWorkLogEntry,
+  WeakMap<
+    DerivedWorkLogEntry,
+    { readonly workflowId: string | null; readonly row: DerivedWorkLogEntry }
+  >
+>();
+
+function rememberedPair<A extends object, B extends object, R>(
+  store: WeakMap<A, WeakMap<B, R>>,
+  first: A,
+  second: B,
+  make: () => R,
+): R {
+  let bySecond = store.get(first);
+  if (bySecond === undefined) {
+    bySecond = new WeakMap();
+    store.set(first, bySecond);
+  }
+  const known = bySecond.get(second);
+  if (known !== undefined) return known;
+  const made = make();
+  bySecond.set(second, made);
+  return made;
+}
+
+function runningFromItsStart(started: DerivedWorkLogEntry): DerivedWorkLogEntry {
+  const known = runningFromStart.get(started);
+  if (known !== undefined) return known;
+  const running: DerivedWorkLogEntry = { ...started, toolLifecycleStatus: "inProgress" };
+  runningFromStart.set(started, running);
+  return running;
+}
+
+function mergedWorkLogEntry(
+  previous: DerivedWorkLogEntry,
+  next: DerivedWorkLogEntry,
+): DerivedWorkLogEntry {
+  return rememberedPair(mergedWorkLogEntries, previous, next, () =>
+    mergeDerivedWorkLogEntries(previous, next),
+  );
 }
 
 /**
@@ -1293,10 +1386,23 @@ function collapseDerivedWorkLogEntries(
       const existingIndex = spawnRowIndex.get(groupKey);
       if (existingIndex !== undefined) {
         const existing = collapsed[existingIndex]!;
-        const agentTaskIds = existing.agentSpawn?.agentTaskIds.includes(entry.taskId)
+        const taskId = entry.taskId;
+        const bySecond =
+          mergedSpawnRows.get(existing) ??
+          new WeakMap<
+            DerivedWorkLogEntry,
+            { readonly workflowId: string | null; readonly row: DerivedWorkLogEntry }
+          >();
+        mergedSpawnRows.set(existing, bySecond);
+        const known = bySecond.get(entry);
+        if (known !== undefined && known.workflowId === workflowId) {
+          collapsed[existingIndex] = known.row;
+          continue;
+        }
+        const agentTaskIds = existing.agentSpawn?.agentTaskIds.includes(taskId)
           ? existing.agentSpawn.agentTaskIds
-          : [...(existing.agentSpawn?.agentTaskIds ?? []), entry.taskId];
-        collapsed[existingIndex] = {
+          : [...(existing.agentSpawn?.agentTaskIds ?? []), taskId];
+        const row: DerivedWorkLogEntry = {
           ...mergeDerivedWorkLogEntries(existing, entry),
           // The CTA row keeps the group's ANCHOR identity, not the last
           // agent's: beyond the id/createdAt every merge pins, turnId stays
@@ -1307,13 +1413,22 @@ function collapseDerivedWorkLogEntries(
           label: existing.label,
           agentSpawn: { workflowId, agentTaskIds },
         };
+        bySecond.set(entry, { workflowId, row });
+        collapsed[existingIndex] = row;
         continue;
       }
       spawnRowIndex.set(groupKey, collapsed.length);
-      collapsed.push({
+      const known = spawnRows.get(entry);
+      if (known !== undefined && known.workflowId === workflowId) {
+        collapsed.push(known.row);
+        continue;
+      }
+      const row: DerivedWorkLogEntry = {
         ...entry,
         agentSpawn: { workflowId, agentTaskIds: [entry.taskId] },
-      });
+      };
+      spawnRows.set(entry, { workflowId, row });
+      collapsed.push(row);
       continue;
     }
     const lifecycleKey = toolLifecycleCollapseMapKey(entry);
@@ -1326,7 +1441,7 @@ function collapseDerivedWorkLogEntries(
         matchingEntry &&
         shouldCollapseToolLifecycleEntries(matchingEntry, entry)
       ) {
-        collapsed[matchingLifecycleIndex] = mergeDerivedWorkLogEntries(matchingEntry, entry);
+        collapsed[matchingLifecycleIndex] = mergedWorkLogEntry(matchingEntry, entry);
         continue;
       }
       toolLifecycleRowIndex.delete(lifecycleKey);
@@ -1336,7 +1451,7 @@ function collapseDerivedWorkLogEntries(
       const previousIndex = collapsed.length - 1;
       const previousKey = toolLifecycleCollapseMapKey(previous);
       if (previousKey !== undefined) toolLifecycleRowIndex.delete(previousKey);
-      const merged = mergeDerivedWorkLogEntries(previous, entry);
+      const merged = mergedWorkLogEntry(previous, entry);
       collapsed[previousIndex] = merged;
       const mergedKey = toolLifecycleCollapseMapKey(merged);
       if (mergedKey !== undefined) toolLifecycleRowIndex.set(mergedKey, previousIndex);
@@ -2042,60 +2157,137 @@ export function zeropsCallToWorkLogEntry(call: ZeropsCall): WorkLogEntry {
   };
 }
 
+// Each timeline entry is kept by what it wraps, which never changes: the same
+// message, call or operation is the same entry on every derive, and what the
+// conversation reads off it (`deriveMessagesTimelineRows`) is read once.
+const timelineEntryBySource = new WeakMap<object, TimelineEntry>();
+
+function rememberedTimelineEntry<S extends object>(
+  source: S,
+  make: (source: S) => TimelineEntry,
+): TimelineEntry {
+  const known = timelineEntryBySource.get(source);
+  if (known !== undefined) return known;
+  const entry = make(source);
+  timelineEntryBySource.set(source, entry);
+  return entry;
+}
+
 function timelineEntryFromMessage(message: ChatMessage): TimelineEntry {
-  return {
+  return rememberedTimelineEntry(message, () => ({
     id: message.id,
     kind: "message",
     createdAt: message.createdAt,
     message,
-  };
+  }));
 }
 
 function timelineEntryFromProposedPlan(proposedPlan: ProposedPlan): TimelineEntry {
-  return {
+  return rememberedTimelineEntry(proposedPlan, () => ({
     id: proposedPlan.id,
     kind: "proposed-plan",
     createdAt: proposedPlan.createdAt,
     proposedPlan,
-  };
+  }));
 }
 
 function timelineEntryFromTurnPlan(turnPlan: TurnPlanEntry): TimelineEntry {
-  return {
+  return rememberedTimelineEntry(turnPlan, () => ({
     id: turnPlan.id,
     kind: "turn-plan",
     createdAt: turnPlan.createdAt,
     turnPlan,
-  };
+  }));
 }
 
 function timelineEntryFromWork(workEntry: WorkLogEntry): TimelineEntry {
-  return {
+  return rememberedTimelineEntry(workEntry, () => ({
     id: workEntry.id,
     kind: "work",
     createdAt: workEntry.createdAt,
     entry: workEntry,
-  };
+  }));
 }
 
-function timelineEntryFromZerops(entry: ZeropsTimelineEntry): TimelineEntry {
-  return entry.kind === "operation"
-    ? {
-        id: `zerops:${entry.key}`,
-        kind: "operation",
-        createdAt: entry.anchorAt,
-        operation: entry.operation,
-      }
-    : {
-        id: `zerops:${entry.key}`,
-        kind: "generic-call",
-        createdAt: entry.anchorAt,
-        entry: zeropsCallToWorkLogEntry(entry.call),
-      };
+function timelineEntryFromZerops(zeropsEntry: ZeropsTimelineEntry): TimelineEntry {
+  return rememberedTimelineEntry(zeropsEntry, (entry) =>
+    entry.kind === "operation"
+      ? {
+          id: `zerops:${entry.key}`,
+          kind: "operation",
+          createdAt: entry.anchorAt,
+          operation: entry.operation,
+        }
+      : {
+          id: `zerops:${entry.key}`,
+          kind: "generic-call",
+          createdAt: entry.anchorAt,
+          entry: zeropsCallToWorkLogEntry(entry.call),
+        },
+  );
 }
 
 function timelineEntryFromChangeLanded(event: ChangeLandedEvent): TimelineEntry {
-  return { id: `zerops:${event.key}`, kind: "change-landed", createdAt: event.landedAt, event };
+  return rememberedTimelineEntry(event, () => ({
+    id: `zerops:${event.key}`,
+    kind: "change-landed",
+    createdAt: event.landedAt,
+    event,
+  }));
+}
+
+/**
+ * The Zerops entries, each one that holds what it held last time the one
+ * from last time: the Zerops model builds them all afresh from the thread's
+ * activities on every update, and a fresh entry for an operation nothing
+ * happened to read as a change to the whole conversation.
+ */
+function sameZeropsEntriesAsBefore(
+  next: ReadonlyArray<ZeropsTimelineEntry>,
+  previous: ReadonlyArray<ZeropsTimelineEntry> | undefined,
+): ReadonlyArray<ZeropsTimelineEntry> {
+  if (previous === undefined || previous.length === 0 || next === previous) return next;
+  const previousByKey = new Map(previous.map((entry) => [entry.key, entry] as const));
+  let changed = next.length !== previous.length;
+  const kept = next.map((entry, index) => {
+    const before = previousByKey.get(entry.key);
+    const same = before !== undefined && sameValue(before, entry) ? before : entry;
+    if (same !== previous[index]) changed = true;
+    return same;
+  });
+  return changed ? kept : previous;
+}
+
+/**
+ * The entries sorted, from those of the last projection: the ones it held,
+ * in its order, merged with the ones it did not, sorted — what sorting them
+ * all gives, without comparing what has not moved. Null where two entries
+ * order alike (`compareTimelineEntries` is 0), which only a full sort places
+ * as it always has.
+ */
+function sortedFromPrevious(
+  previous: ReadonlyArray<TimelineEntry>,
+  next: ReadonlyArray<TimelineEntry>,
+): TimelineEntry[] | null {
+  const nextSet = new Set(next);
+  if (nextSet.size !== next.length) return null;
+  const previousSet = new Set(previous);
+  const kept = previous.filter((entry) => nextSet.has(entry));
+  const added = next.filter((entry) => !previousSet.has(entry)).toSorted(compareTimelineEntries);
+  for (let index = 1; index < kept.length; index += 1) {
+    if (compareTimelineEntries(kept[index - 1]!, kept[index]!) === 0) return null;
+  }
+  const merged: TimelineEntry[] = [];
+  let keptIndex = 0;
+  let addedIndex = 0;
+  while (keptIndex < kept.length && addedIndex < added.length) {
+    const order = compareTimelineEntries(kept[keptIndex]!, added[addedIndex]!);
+    if (order === 0) return null;
+    merged.push(order < 0 ? kept[keptIndex++]! : added[addedIndex++]!);
+  }
+  while (keptIndex < kept.length) merged.push(kept[keptIndex++]!);
+  while (addedIndex < added.length) merged.push(added[addedIndex++]!);
+  return merged;
 }
 
 /** A total order, so merging two sorted runs equals sorting their union. */
@@ -2120,7 +2312,7 @@ function mergeTimelineEntrySuffix(
   previous: ReadonlyArray<TimelineEntry>,
   suffix: ReadonlyArray<TimelineEntry>,
 ): TimelineEntry[] {
-  if (suffix.length === 0) return [...previous];
+  if (suffix.length === 0) return previous as TimelineEntry[];
   const previousLast = previous.at(-1);
   if (previousLast === undefined || compareTimelineEntries(previousLast, suffix[0]!) <= 0) {
     return [...previous, ...suffix];
@@ -2274,16 +2466,21 @@ function replaceStreamingTimelineMessages(
   });
 }
 
-/** Reuse ordered entries across immutable stream updates. Other changes keep the full sort. */
+/**
+ * Reuse ordered entries across updates: a streamed message replaces its own,
+ * appended entries merge in, and any other change keeps the last order for
+ * what it held (`sortedFromPrevious`); nothing changed, the same entries.
+ */
 export function deriveTimelineEntriesWithState(
   messages: ReadonlyArray<ChatMessage>,
   proposedPlans: ReadonlyArray<ProposedPlan>,
   workEntries: ReadonlyArray<WorkLogEntry>,
   previous: TimelineEntriesProjection | null = null,
   turnPlans: ReadonlyArray<TurnPlanEntry> = [],
-  zeropsEntries: ReadonlyArray<ZeropsTimelineEntry> = [],
+  givenZeropsEntries: ReadonlyArray<ZeropsTimelineEntry> = [],
   changeEvents: ReadonlyArray<ChangeLandedEvent> = [],
 ): TimelineEntriesProjection {
+  const zeropsEntries = sameZeropsEntriesAsBefore(givenZeropsEntries, previous?.zeropsEntries);
   const sources = { messages, proposedPlans, turnPlans, workEntries, zeropsEntries, changeEvents };
   if (
     previous !== null &&
@@ -2315,17 +2512,23 @@ export function deriveTimelineEntriesWithState(
     ].toSorted(compareTimelineEntries);
     return { ...sources, entries: mergeTimelineEntrySuffix(previous.entries, suffix) };
   }
-  return {
-    ...sources,
-    entries: [
-      ...messages.map(timelineEntryFromMessage),
-      ...proposedPlans.map(timelineEntryFromProposedPlan),
-      ...turnPlans.map(timelineEntryFromTurnPlan),
-      ...workEntries.map(timelineEntryFromWork),
-      ...zeropsEntries.map(timelineEntryFromZerops),
-      ...changeEvents.map(timelineEntryFromChangeLanded),
-    ].toSorted(compareTimelineEntries),
-  };
+  const entries = [
+    ...messages.map(timelineEntryFromMessage),
+    ...proposedPlans.map(timelineEntryFromProposedPlan),
+    ...turnPlans.map(timelineEntryFromTurnPlan),
+    ...workEntries.map(timelineEntryFromWork),
+    ...zeropsEntries.map(timelineEntryFromZerops),
+    ...changeEvents.map(timelineEntryFromChangeLanded),
+  ];
+  // A call that changed mid-run (its row merged its next update) is a new
+  // entry where the old one stood: the rest keep their order.
+  const sorted = previous === null ? null : sortedFromPrevious(previous.entries, entries);
+  if (sorted !== null && sorted.length === previous!.entries.length) {
+    if (sorted.every((entry, index) => entry === previous!.entries[index])) {
+      return { ...sources, entries: previous!.entries };
+    }
+  }
+  return { ...sources, entries: sorted ?? entries.toSorted(compareTimelineEntries) };
 }
 
 export function deriveTimelineEntries(
