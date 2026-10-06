@@ -21,7 +21,7 @@
  * **A person's side**, `Authorization: Bearer <session>`, wherever they may read the application:
  *
  * - `GET /api/apps/:appId/repos` → {@link RepoListResponse};
- * - `GET /api/apps/:appId/repos/:repo/compare` {@link CompareQuery} → {@link CompareResponse}: the
+ * - HQ socket `compare` (`appId`, `repo`, {@link CompareQuery}) → {@link CompareResponse}: the
  *   commits between two of a repository's commits, each with the change that landed it;
  * - `GET /api/apps/:appId/changes` → {@link ChangeListResponse};
  * - `GET /api/apps/:appId/changes/:repo/:n` → {@link ChangeDetailResponse};
@@ -327,12 +327,11 @@ export const COMPARE_COMMITS_MAX = 100;
 export const COMPARE_COUNT_MAX = 10000;
 
 /**
- * `GET /api/apps/:appId/repos/:repo/compare?base=<sha>&head=<sha>`, by the repository's name: the
+ * HQ socket `compare` with `base?` and `head`, by the repository's name: the
  * commits git's `base..head` names — reachable from `head`, not from `base` — and with no
  * `base`, every commit up to `head`. Both are commits anywhere in the repository's history, and
  * `base` need not come before `head`: a rollback asks both ways, what leaves (`target..running`)
- * and what comes back (`running..target`). Either one not a commit of the repository is `404
- * commit_not_found`.
+ * and what comes back (`running..target`). Either one not a commit of the repository is `compare-error` with `commit_not_found`.
  */
 export const CompareQuery = Schema.Struct({ base: Schema.optionalKey(Sha), head: Sha });
 export type CompareQuery = typeof CompareQuery.Type;

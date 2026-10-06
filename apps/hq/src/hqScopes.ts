@@ -1180,6 +1180,37 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
                       }
                       prune();
                       return;
+                    case "compare": {
+                      yield* changes
+                        .compare(userId, request.appId, request.repo, {
+                          ...(request.base === undefined ? {} : { base: request.base }),
+                          head: request.head,
+                        })
+                        .pipe(
+                          Effect.flatMap((result) =>
+                            Queue.offer(queue, {
+                              type: "compare",
+                              requestId: request.requestId,
+                              appId: request.appId,
+                              repo: request.repo,
+                              result,
+                            }),
+                          ),
+                          Effect.catch((error) => {
+                            const facts = metadata(error);
+                            return Queue.offer(queue, {
+                              type: "compare-error",
+                              requestId: request.requestId,
+                              appId: request.appId,
+                              repo: request.repo,
+                              code: facts.code ?? "unavailable",
+                              reason: facts.reason ?? null,
+                              disposition: refusalDisposition(facts.code ?? "unavailable"),
+                            });
+                          }),
+                        );
+                      return;
+                    }
                     case "move-offers": {
                       yield* structure.moveDestinations(userId, request.projectId).pipe(
                         Effect.flatMap((moveTo) =>
