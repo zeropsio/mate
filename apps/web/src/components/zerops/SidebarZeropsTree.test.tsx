@@ -34,6 +34,7 @@ import {
   ProjectCustomOrderSchema,
   ProjectOrderSchema,
 } from "~/zerops/projectOrderPreference";
+import { HQ_LAST_KNOWN } from "~/zerops/hqNavigation";
 import { ZeropsProjectFlowContext, type ZeropsProjectFlowValue } from "~/zerops/projectFlowContext";
 import { InventoryContext, type Inventory } from "~/zerops/inventoryContext";
 import type { ProjectRef } from "@t3tools/client-runtime/zerops/data";
@@ -568,19 +569,23 @@ describe("SidebarZeropsTree", () => {
   });
 
   // The menu's header says it instead (the owner, 2026-10-05: a notice pushed the menu down and
-  // back on every reconnect): a spinner while HQ is read again, words once it does not answer.
+  // back on every reconnect): a spinner while HQ's first read catches up, and words — in view,
+  // not only in a tooltip — once what HQ said is no longer current, or it never answered.
   it.each([
-    ["syncing", false, false, false],
-    ["syncing", true, false, false],
-    ["unavailable", false, true, false],
-    ["unavailable", true, true, true],
+    ["syncing", false, null, false],
+    ["syncing", true, null, false],
+    ["last-known", false, HQ_LAST_KNOWN, false],
+    ["last-known", true, HQ_LAST_KNOWN, true],
+    ["unavailable", false, "HQ unavailable", false],
+    ["unavailable", true, "HQ unavailable", true],
   ] as const)("the header's HQ standing: %s, a retry offered %s", (kind, offered, words, again) => {
-    const line = "HQ unavailable since 14:05. Projects as of 13:58.";
+    const line = "HQ is not reachable since 14:05 — showing what it last said.";
     const html = renderToStaticMarkup(
       <SidebarHqStatus kind={kind} line={line} onAgain={offered ? () => {} : undefined} />,
     );
     expect(html).toContain(line);
-    expect(html.includes(">HQ unavailable<")).toBe(words);
+    const shown = /<span aria-hidden="true"[^>]*>([^<]+)<\/span>/u.exec(html)?.[1] ?? null;
+    expect(shown).toBe(words);
     expect(html.includes("<button")).toBe(again);
   });
 
@@ -1767,6 +1772,39 @@ describe("production and the stages are two chips on the project's heading (M2, 
     // No stop is a row under the heading, and no chip draws a dot.
     expect(html).not.toContain('sidebar-environment"');
     expect(heading(html)).not.toContain("zerops-envdot");
+  });
+
+  // HQ declares which project is the stage and which production, and their releases: while its
+  // link is paused, what the chips say of them is what it last said, never current.
+  it.each([
+    [true, ""],
+    [false, "Last known: "],
+  ])("with HQ answering %s, the chips say %j before their state", (live, prefix) => {
+    const registry = AtomRegistry.make();
+    registry.set(zeropsSessionAtom, {
+      status: "signed-in",
+      organizationStatus: "selected",
+      activeOrganization: organization,
+    });
+    mountHqNavigation(registry, organization.organizationId, {
+      structure: { apps: [], ungrouped: [] },
+      live,
+    });
+    const html = renderToStaticMarkup(
+      <RegistryContext.Provider value={registry}>
+        <SidebarZeropsTree
+          candidates={[CRM_DEV, up(CRM_STAGE), up(CRM_PROD)]}
+          complete
+          onBrowseProjects={() => {}}
+          onSelect={() => {}}
+          getFlow={() => flow()}
+        />
+      </RegistryContext.Provider>,
+    );
+    expect(chipsOf(html).map(({ words }) => words)).toEqual([
+      `${prefix}Stage main, healthy`,
+      `${prefix}Production v2.4.0, healthy`,
+    ]);
   });
 
   it("says what waits for production nowhere on the pill: it is healthy, and neutral", () => {

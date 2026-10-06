@@ -10,6 +10,7 @@ export {
   startMateAttention,
   type AccountObservation,
   type CompareAsk,
+  type ShownHq,
 } from "./account.ts";
 export { makeMateAttentionWire, type MateAttentionWire } from "./adapters/mateAttention.ts";
 export { makeHqWire } from "./adapters/hqWire.ts";
@@ -131,5 +132,7 @@ export {
   shownHqAppChangesAtom,
   shownHqPersonFactsAtom,
   shownHqStatusAtom,
+  shownHqVerdictAtom,
   type AccountReads,
 } from "./reads.ts";
+export type { HqVerdict } from "./families/hqVerdict.ts";

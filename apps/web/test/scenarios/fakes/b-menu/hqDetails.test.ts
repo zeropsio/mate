@@ -6,10 +6,15 @@ import { deadline, serve } from "../../harness/http.ts";
 // Catches a latency driver that invents HQ data, blocks summaries, or loses the held frame.
 it("passes summaries unchanged and releases actual detail frames unchanged", async () => {
   const raw = "not JSON";
-  const summary = JSON.stringify({ type: "summary", apps: [{ id: "shop", name: "Shop" }] });
+  const summary = JSON.stringify({
+    type: "scope-reset",
+    scope: { kind: "navigation" },
+    values: [{ id: "shop", name: "Shop" }],
+  });
   const detail = JSON.stringify({
-    type: "snapshot",
-    appReads: { shop: { value: { recipes: {} } } },
+    type: "scope-reset",
+    scope: { kind: "app-detail", appId: "shop" },
+    values: [{ key: "recipes", value: {} }],
   });
   const core = await serve(
     () => undefined,

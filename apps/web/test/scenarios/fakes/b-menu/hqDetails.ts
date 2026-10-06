@@ -53,10 +53,7 @@ export async function applicationDetailsGate(origin: string) {
           if (client.readyState === WebSocket.OPEN) client.send(data, { binary });
         };
         let frame: {
-          appReads?: Record<string, unknown>;
-          type?: string;
-          appId?: string;
-          read?: unknown;
+          scope?: { kind?: string; appId?: string };
         };
         try {
           const parsed: unknown = JSON.parse(String(data));
@@ -70,11 +67,7 @@ export async function applicationDetailsGate(origin: string) {
           return;
         }
         const detail =
-          appId !== undefined &&
-          (frame.appReads?.[appId] !== undefined ||
-            (frame.type === "release-revision" &&
-              frame.appId === appId &&
-              frame.read !== undefined));
+          appId !== undefined && frame.scope?.kind === "app-detail" && frame.scope.appId === appId;
         if (detail) {
           held = true;
           pending.push(send);

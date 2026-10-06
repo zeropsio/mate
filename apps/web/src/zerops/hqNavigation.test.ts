@@ -20,7 +20,11 @@ describe("hqOutage: what the menu says while HQ does not answer", () => {
       "catching up on what it read",
       read({ reconnecting: true }),
       at(14, 5),
-      { kind: "syncing", line: "Last known · Reconnecting…", again: false },
+      {
+        kind: "last-known",
+        line: "HQ is not reachable since 14:05 — showing what it last said. Reconnecting…",
+        again: false,
+      },
     ],
     [
       "catching up before it ever read",
@@ -33,14 +37,24 @@ describe("hqOutage: what the menu says while HQ does not answer", () => {
       read({ reconnecting: true, capped: true }),
       at(14, 5),
       {
-        kind: "unavailable",
-        line: "HQ unavailable since 14:05. Retrying every minute.",
+        kind: "last-known",
+        line: "HQ is not reachable since 14:05 — showing what it last said. Retrying every minute.",
         again: true,
       },
     ],
     [
       "refused, in its own words",
       read({ refusal: "Zerops refused HQ." }),
+      at(14, 5),
+      {
+        kind: "last-known",
+        line: "Zerops refused HQ. HQ is not reachable since 14:05 — showing what it last said.",
+        again: true,
+      },
+    ],
+    [
+      "refused before it ever read",
+      { ...NOT_READ_HQ, read: "reading", refusal: "Zerops refused HQ." },
       at(14, 5),
       { kind: "unavailable", line: "Zerops refused HQ. HQ unavailable since 14:05.", again: true },
     ],

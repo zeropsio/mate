@@ -1783,7 +1783,9 @@ export default function Sidebar() {
   const zeropsSignedIn = zeropsSession.status === "signed-in";
   const { listing: zeropsListing, refresh: refreshZeropsCandidates } = useZeropsCandidates();
   const zeropsHeld = useMemo(() => heldCandidates(zeropsListing), [zeropsListing]);
-  const zeropsCandidates = useMenuRows(zeropsHeld.rows);
+  // Until every source the rows come from answered, none is drawn and the menu is loading.
+  const { rows: zeropsCandidates, settled: zeropsMenuSettled } = useMenuRows(zeropsHeld.rows);
+  const zeropsMenuComplete = zeropsHeld.complete && zeropsMenuSettled;
   // The creations under way in the organization in view, drawn in their
   // groups before the listing holds them — the projects page's own placing —
   // and the New projects this tab is making, from the press.
@@ -4106,9 +4108,9 @@ export default function Sidebar() {
               candidates={zeropsCandidates}
               organization={zeropsSession.activeOrganization}
               className="mb-2"
-              complete={zeropsHeld.complete}
+              complete={zeropsMenuComplete}
               notice={zeropsNotice}
-              reading={zeropsSession.organizationStatus === "selected" && !zeropsHeld.complete}
+              reading={zeropsSession.organizationStatus === "selected" && !zeropsMenuComplete}
               onNoticeAct={(affordance) => {
                 if (affordance.kind === "go-to-projects") navigateToZeropsProjects();
                 else refreshZeropsCandidates();
@@ -4662,7 +4664,7 @@ export default function Sidebar() {
       newProjectOffered({
         candidates: zeropsCandidates,
         births: zeropsPlacedBirths,
-        complete: zeropsHeld.complete,
+        complete: zeropsMenuComplete,
       }) ? (
         <SidebarNewProject onNewProject={openNewZeropsProject} />
       ) : null}

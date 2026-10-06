@@ -19,6 +19,8 @@ import {
   type OrganizationProjects,
 } from "./projections/projects.ts";
 import { hqMates, type HqMatesRead } from "./projections/hqMates.ts";
+import { hqVerdict } from "./projections/hqVerdict.ts";
+import type { HqVerdict } from "./families/hqVerdict.ts";
 import {
   hqAppChanges,
   hqNavigation,
@@ -215,6 +217,16 @@ export const shownHqPersonFactsAtom = Atom.make((get): Readonly<Record<string, H
   if (account === null || account.orgId === null) return NO_PERSON_FACTS;
   return get(account.data.project(hqPersonFacts, account.orgId));
 }).pipe(Atom.withLabel("data:shown-hq-person-facts"));
+
+/**
+ * Whether the organization shown has an official HQ, as the account decided it; pending without
+ * one shown, or before it decided.
+ */
+export const shownHqVerdictAtom = Atom.make((get): HqVerdict => {
+  const account = get(accountReadsAtom);
+  if (account === null || account.orgId === null) return "pending";
+  return get(account.data.project(hqVerdict, account.orgId));
+}).pipe(Atom.withLabel("data:shown-hq-verdict"));
 
 /** How the organization shown's HQ stands, as its navigation says it; `null` before it said. */
 export const shownHqStatusAtom = Atom.make((get): HqStatusValue | null => {

@@ -228,15 +228,6 @@ export const hqPeopleAtom = Atom.make((get): HqPeople | null => {
   return navigation.read === "unread" ? null : navigation.people;
 }).pipe(Atom.withLabel("zerops:hq-people"));
 
-/**
- * Whether the organization in view has an official HQ, as `useAccountHq` decided it from the
- * member list (`ZeropsHqNavigation`). Null while it has not said.
- */
-export const hqOfficialAtom = Atom.make<boolean | null>(null).pipe(
-  Atom.keepAlive,
-  Atom.withLabel("zerops:hq-official"),
-);
-
 const sameLogins = (
   left: ReadonlyMap<string, OverviewLogins>,
   right: ReadonlyMap<string, OverviewLogins>,

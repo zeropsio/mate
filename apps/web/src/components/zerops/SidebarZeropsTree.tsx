@@ -136,6 +136,7 @@ import {
   type ZeropsAgentActivity,
 } from "~/zerops/agentActivity";
 import { useBuildsUnderWay } from "~/zerops/ZeropsAccountData";
+import { HQ_LAST_KNOWN, type HqOutage } from "~/zerops/hqNavigation";
 import type { MateComing } from "~/zerops/mateComing";
 import { useZeropsProjectFlowOptional } from "~/zerops/projectFlowContext";
 import { useStopDeploymentDemand } from "~/zerops/accountForge";
@@ -144,7 +145,7 @@ import { useNowMs } from "~/zerops/useNowMs";
 import type { FixProblem } from "~/zerops/fixRequest";
 import { useOpenReview } from "~/zerops/review";
 import { useSentAsks } from "~/zerops/sentAsk";
-import { hqMatesAtom, hqPlacementsAtom, hqNavigationAtom } from "~/state/zerops";
+import { hqDown, hqMatesAtom, hqPlacementsAtom, hqNavigationAtom } from "~/state/zerops";
 import { useMateCrew } from "~/zerops/crew/useCrew";
 import { useCrewAccess } from "~/zerops/crew/useCrewAccess";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
@@ -181,6 +182,7 @@ import {
 import { SidebarProductionChip } from "./SidebarProductionChip";
 import {
   buildingOf,
+  asLastKnown,
   chipDot,
   chipFace,
   drawnChip,
@@ -190,6 +192,7 @@ import {
   stageStopChip,
   STOP_DOT,
   stopServing,
+  type ChipView,
   type ReleasesAnswer,
   type ReleaseFailure,
   type StopServing,
@@ -548,6 +551,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   getCrew,
 }: SidebarZeropsTreeProps<T>) {
   const structureView = useAtomValue(hqNavigationAtom);
+  const hqStale = structureView.structure !== null && hqDown(structureView);
   // Whose each Mate is, as HQ says it (invariant 11).
   const personFacts = useAtomValue(shownHqPersonFactsAtom);
   const placements = useAtomValue(hqPlacementsAtom);
@@ -1046,12 +1050,17 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
       stagesBeingCreated: projectFlow.creatingStages.length > 0,
       releases,
     });
-    const prodChip = group === undefined ? undefined : drawnChip(chipsRead.prod);
-    const stageChipDrawn = group === undefined ? undefined : drawnChip(chipsRead.stage);
+    // Where each stop is and how its releases went is HQ's word: while its link is paused, last known.
+    const shownChip = (view: ChipView) => {
+      const chip = drawnChip(view);
+      return chip !== undefined && hqStale ? asLastKnown(chip) : chip;
+    };
+    const prodChip = group === undefined ? undefined : shownChip(chipsRead.prod);
+    const stageChipDrawn = group === undefined ? undefined : shownChip(chipsRead.stage);
     // Each stage as a chip of its own says it: its dot and words in the jump
     // box, its row in the stages' menu.
     const stageChips = stages.map(({ stop, serving }) =>
-      drawnChip(stageStopChip({ stop, serving, releases })),
+      shownChip(stageStopChip({ stop, serving, releases })),
     );
     const stopDeployedAt = (projectId: string) => {
       const activated = deployActivatedAt(deployments?.get(projectId));
@@ -1748,35 +1757,37 @@ function scrollingAncestor(element: HTMLElement | null): HTMLElement | null {
  * alert — the Mates' conversations go on without HQ.
  */
 /**
- * How current the menu is while HQ is not answering it (`hqOutageLine`, SPEC §6.2.3), in the
- * header row: a spinner while HQ is read again or its stream reconnects, "HQ unavailable" once it
- * does not answer — the whole line in its tooltip, and *Try again* on a press where it is offered.
- * Never a line above the list: the owner, 2026-10-05, of one that pushed the menu down and back on
- * every reconnect.
+ * How current the menu is while HQ is not answering it (`hqOutage`, SPEC §6.2.3), in the header
+ * row: a spinner while HQ's first read catches up; in words once what HQ said is no longer current
+ * ("HQ is not reachable — showing what it last said") or it never answered ("HQ unavailable") —
+ * the whole line in its tooltip, and *Try again* on a press where it is offered. Never a line above
+ * the list: the owner, 2026-10-05, of one that pushed the menu down and back on every reconnect.
  */
 export function SidebarHqStatus({
   kind,
   line,
   onAgain,
 }: {
-  readonly kind: "syncing" | "unavailable";
+  readonly kind: HqOutage["kind"];
   readonly line: string;
   readonly onAgain?: (() => void) | undefined;
 }) {
-  const again = kind === "unavailable" ? onAgain : undefined;
+  const again = kind === "syncing" ? undefined : onAgain;
+  // Words give way to the header's other members and wrap; the spinner keeps its size.
+  const fit = kind === "syncing" ? "shrink-0" : "min-w-0";
   return (
     <Tooltip>
       <TooltipTrigger
         render={
           again === undefined ? (
             <span
-              className="inline-flex shrink-0 items-center"
+              className={cn("inline-flex items-center", fit)}
               data-zerops-surface="sidebar-hq-outage"
               role="status"
             />
           ) : (
             <button
-              className="inline-flex shrink-0 cursor-pointer items-center"
+              className={cn("inline-flex cursor-pointer items-center", fit)}
               data-zerops-surface="sidebar-hq-outage"
               onClick={again}
               type="button"
@@ -1787,8 +1798,11 @@ export function SidebarHqStatus({
         {kind === "syncing" ? (
           <span aria-hidden="true" className="zerops-envdot" data-dot="spinner" />
         ) : (
-          <span aria-hidden="true" className="text-xs text-sidebar-muted-foreground">
-            HQ unavailable
+          <span
+            aria-hidden="true"
+            className="line-clamp-2 text-left text-xs leading-tight text-sidebar-muted-foreground"
+          >
+            {kind === "last-known" ? HQ_LAST_KNOWN : "HQ unavailable"}
           </span>
         )}
         <span className="sr-only">{again === undefined ? line : `${line} Try again.`}</span>

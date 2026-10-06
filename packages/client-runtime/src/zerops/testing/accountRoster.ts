@@ -1,7 +1,8 @@
 /**
  * The account's store as a test mounts it: an organization's roster read and live, these projects
  * as their rows read, and members named whose rows are not read yet; and, where a test names them,
- * the organization's services read and live.
+ * the organization's services read and live. `into` delivers them to a store a test mounted already,
+ * as their baselines landing after whatever it holds.
  */
 import type { AtomRegistry } from "effect/unstable/reactivity";
 
@@ -20,9 +21,10 @@ export function mountRoster(
   options: {
     readonly unreadMembers?: ReadonlyArray<string>;
     readonly services?: ReadonlyArray<ServiceValue>;
+    readonly into?: AccountStore;
   } = {},
 ): AccountStore {
-  const store = makeAccountStore(registry);
+  const store = options.into ?? makeAccountStore(registry);
   const link = `zerops:${orgId}` as const;
   store.dispatch({ kind: "stream", key: link, now: 0, event: { kind: "demand", demanded: true } });
   store.dispatch({ kind: "stream", key: link, now: 0, event: { kind: "handshake" } });
@@ -66,6 +68,11 @@ export function mountRoster(
         revision: { kind: "zerops", version: 1 },
       })),
     );
-  registry.set(accountReadsAtom, { data: store.data, orgId, demandDetail: () => () => undefined });
+  if (options.into === undefined)
+    registry.set(accountReadsAtom, {
+      data: store.data,
+      orgId,
+      demandDetail: () => () => undefined,
+    });
   return store;
 }
