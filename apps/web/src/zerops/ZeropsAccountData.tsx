@@ -149,15 +149,18 @@ export function useProjectsServices(
   return useAtomValue(projectsServicesAtom(projectIds.join(",")));
 }
 
-/** Holds one of a family's detail listings for an owner while the caller is drawn with one. */
+/**
+ * Holds a detail for an owner while the caller is drawn with one: one of a family's detail
+ * listings, or with no `listing` a detail family's own scope.
+ */
 export function useDetailDemand(
   family: DetailDemand["family"],
-  listing: string,
+  listing: string | undefined,
   ownerId: string | null,
 ): void {
   const demandDetail = useAtomValue(accountReadsAtom)?.demandDetail;
   useEffect(() => {
     if (demandDetail === undefined || ownerId === null) return;
-    return demandDetail({ family, listing, ownerId });
+    return demandDetail({ family, ...(listing === undefined ? {} : { listing }), ownerId });
   }, [demandDetail, family, listing, ownerId]);
 }

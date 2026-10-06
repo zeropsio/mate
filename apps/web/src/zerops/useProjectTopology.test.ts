@@ -3,13 +3,10 @@ import {
   createZeropsDataAtoms,
   makeInitialZeropsDataState,
   projectKeyOf,
-  interestKeyOf,
   reduceZeropsDataState,
-  type HistoryReadView,
   type ManagedZeropsDataRuntime,
-  type UsageRead,
-  type ZeropsDataReads,
 } from "@t3tools/client-runtime/zerops/data";
+import type { AccountStore } from "@t3tools/client-runtime/data";
 import type { RegistrationRecord } from "@t3tools/client-runtime/zerops/environments";
 import { EnvironmentId } from "@t3tools/contracts";
 import { Atom, AtomRegistry } from "effect/unstable/reactivity";
@@ -22,7 +19,6 @@ import {
   zeropsInventoryAtom,
   type EnvironmentProjects,
   type ProjectTopologySnapshot,
-  PROJECT_HISTORY_WINDOW,
 } from "../state/zerops";
 import { mountRoster } from "@t3tools/client-runtime/zerops/testing";
 import type { InventoryProjection } from "./inventoryContext";
@@ -48,7 +44,7 @@ const inventoryWith = (
 });
 
 /** A data runtime whose state the test pushes facets into, and the registry it lives in. */
-function pushedRuntime(overrides: Partial<ZeropsDataReads> = {}) {
+function pushedRuntime() {
   const id = identity();
   const stateAtom = Atom.make(
     reduceZeropsDataState(
@@ -60,7 +56,7 @@ function pushedRuntime(overrides: Partial<ZeropsDataReads> = {}) {
   const registry = AtomRegistry.make();
   const { reads } = createZeropsDataAtoms(stateAtom);
   registry.set(zeropsDataRuntimeAtom, {
-    reads: { ...reads, ...overrides },
+    reads,
   } as unknown as ManagedZeropsDataRuntime);
   registry.set(zeropsInventoryAtom, inventoryWith({ kind: "authorized" }));
   // The project and its services are the account store's: its roster and the organization's
@@ -71,14 +67,62 @@ function pushedRuntime(overrides: Partial<ZeropsDataReads> = {}) {
     name: "acme-docs-dev",
     status: "ACTIVE",
   };
-  const pushProject = () =>
-    void mountRoster(registry, owner.organization.organizationId, [projectRow]);
+  let store: AccountStore | null = null;
+  const pushProject = () => {
+    store = mountRoster(registry, owner.organization.organizationId, [projectRow]);
+  };
   const pushServices = (
     list: ReadonlyArray<{ readonly id: string; readonly name: string; readonly status: string }>,
-  ) =>
-    void mountRoster(registry, owner.organization.organizationId, [projectRow], {
+  ) => {
+    store = mountRoster(registry, owner.organization.organizationId, [projectRow], {
       services: list.map((row) => ({ ...row, projectId: owner.projectId })),
     });
+  };
+  /** The project's resources, as the account's store observes them while the panel shows them. */
+  const scopeOf = (suffix: "usage" | "usage-history") =>
+    `zerops:${owner.organization.organizationId}:${suffix}:${owner.projectId}` as const;
+  const begin = (suffix: "usage" | "usage-history") => {
+    for (const event of [
+      { kind: "demand", demanded: true },
+      { kind: "attempt" },
+      { kind: "handshake" },
+    ] as const)
+      store!.dispatch({ kind: "stream", key: scopeOf(suffix), now: 0, event });
+  };
+  const pushUsage = (
+    suffix: "usage" | "usage-history",
+    rows: ReadonlyArray<{ readonly id: string; readonly value: object }>,
+  ) => {
+    begin(suffix);
+    const scope = scopeOf(suffix);
+    store!.dispatch({ kind: "baseline-begin", scope, generation: 1 });
+    store!.dispatch({
+      kind: "baseline-commit",
+      scope,
+      generation: 1,
+      via: "zerops-realtime",
+      members: rows.map((row) => row.id),
+      rows: rows.map((row) => ({
+        family: suffix === "usage" ? "usage" : "usageHistory",
+        id: row.id,
+        value: row.value as never,
+        revision: { kind: "zerops", version: null },
+      })),
+    });
+  };
+  const failUsage = (suffix: "usage" | "usage-history") => {
+    begin(suffix);
+    store!.dispatch({
+      kind: "stream",
+      key: scopeOf(suffix),
+      now: 0,
+      event: {
+        kind: "fault",
+        jitter: 0,
+        fault: { outcome: "definitive-refusal", message: "Metrics unavailable. Try again." },
+      },
+    });
+  };
   const snapshots: Array<ProjectTopologySnapshot> = [];
   const release = registry.subscribe(
     projectTopologyAtom(owner),
@@ -89,36 +133,7 @@ function pushedRuntime(overrides: Partial<ZeropsDataReads> = {}) {
     release();
     registry.dispose();
   };
-  const failMetrics = (kind: "project-current-metrics" | "project-metric-history") => {
-    const descriptor =
-      kind === "project-current-metrics"
-        ? { kind, project: owner }
-        : { kind, project: owner, window: PROJECT_HISTORY_WINDOW };
-    const id = { ...identity(), key: interestKeyOf(descriptor) };
-    registry.set(
-      stateAtom,
-      reduceZeropsDataState(
-        registry.get(stateAtom),
-        {
-          kind: "interest-upserted",
-          interest: {
-            ...desiredInterest(id, 0, false),
-            descriptor,
-            interest: {
-              status: "failed",
-              identity: id,
-              reason: "Metrics unavailable. Try again.",
-              attempts: 1,
-              retryable: true,
-              retryAtMs: null,
-            },
-          },
-        },
-        DEFAULT_ZEROPS_DATA_POLICY,
-      ).state,
-    );
-  };
-  return { registry, pushProject, pushServices, failMetrics, snapshots, close };
+  return { registry, pushProject, pushServices, pushUsage, failUsage, snapshots, close };
 }
 
 const APP = {
@@ -132,13 +147,13 @@ const APP = {
 };
 
 describe("the derived topology", () => {
-  it.each(["project-current-metrics", "project-metric-history"] as const)(
-    "shows %s failure while keeping the topology",
+  it.each(["usage", "usage-history"] as const)(
+    "shows the %s read's failure while keeping the topology",
     (kind) => {
       const runtime = pushedRuntime();
       runtime.pushProject();
       runtime.pushServices([]);
-      runtime.failMetrics(kind);
+      runtime.failUsage(kind);
       expect(runtime.snapshots.at(-1)?.error).toBe("Metrics unavailable. Try again.");
       expect(runtime.snapshots.at(-1)?.view?.project.name).toBe("acme-docs-dev");
       runtime.close();
@@ -157,36 +172,56 @@ describe("the derived topology", () => {
   });
 
   it("a service's usage reaches the view when its read changes", () => {
-    const usage = Atom.make({ value: null, coverage: { kind: "none" } } as unknown as UsageRead);
-    const runtime = pushedRuntime({ usage: () => usage });
+    const runtime = pushedRuntime();
     runtime.pushProject();
     runtime.pushServices([APP]);
+    expect(runtime.snapshots.at(-1)?.view?.usageRead).toBe(false);
 
-    runtime.registry.set(usage, {
-      ...runtime.registry.get(usage),
-      value: {
-        containers: 1,
-        cpu: { used: 2, limit: 4 },
-        memoryGb: { used: 1, limit: 2 },
-        diskGb: { used: 1, limit: 10 },
+    runtime.pushUsage("usage", [
+      {
+        id: "c1",
+        value: {
+          serviceId: "app",
+          containerId: "c1",
+          cpu: { used: 0, limit: 0 },
+          vCpu: { used: 2, limit: 4 },
+          ramGBytes: { used: 1, limit: 2 },
+          diskGBytes: { used: 1, limit: 10 },
+        },
       },
-    });
+    ]);
 
-    expect(runtime.snapshots.at(-1)?.view?.services[0]?.usage?.containers).toBe(1);
+    expect(runtime.snapshots.at(-1)?.view?.usageRead).toBe(true);
+    expect(runtime.snapshots.at(-1)?.view?.services[0]?.usage).toEqual({
+      containers: 1,
+      cores: { used: 2, limit: 4 },
+      memoryGb: { used: 1, limit: 2 },
+      diskGb: { used: 1, limit: 10 },
+    });
     runtime.close();
   });
 
   it("a service's history reaches the view when its read changes", () => {
-    const empty = { series: { status: "unresolved", buckets: new Map() } };
-    const history = Atom.make(empty as unknown as HistoryReadView);
-    const runtime = pushedRuntime({ history: () => history });
+    const runtime = pushedRuntime();
     runtime.pushProject();
     runtime.pushServices([APP]);
-    const before = runtime.snapshots.length;
 
-    runtime.registry.set(history, { ...empty } as unknown as HistoryReadView);
+    runtime.pushUsage("usage-history", [
+      {
+        id: "app|10|11",
+        value: { serviceStackId: "app", from: "2026-10-06T10:00:00Z", till: "11", vCpuUsed: 1 },
+      },
+    ]);
 
-    expect(runtime.snapshots.length).toBe(before + 1);
+    expect(runtime.snapshots.at(-1)?.view?.services[0]?.history).toEqual([
+      {
+        at: "2026-10-06T10:00:00Z",
+        containers: 0,
+        cores: { used: 1, limit: 0 },
+        memoryGb: { used: 0, limit: 0 },
+        diskGb: { used: 0, limit: 0 },
+      },
+    ]);
     runtime.close();
   });
 
