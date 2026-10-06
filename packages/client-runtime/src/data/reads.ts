@@ -13,6 +13,7 @@ import type { ProjectValue } from "./families/project.ts";
 import {
   listedProject,
   organizationProjects,
+  projectGone,
   type OrganizationProjects,
 } from "./projections/projects.ts";
 import type { AccountStore } from "./store.ts";
@@ -78,6 +79,15 @@ export const listedProjectAtom = Atom.family((projectId: string) =>
     if (account === null || account.orgId === null) return null;
     return get(account.data.project(listedProject, { orgId: account.orgId, projectId }));
   }).pipe(Atom.withLabel(`data:listed-project:${projectId}`)),
+);
+
+/** Whether the mounted account's owner proved a project deleted; `false` without an account. */
+export const projectGoneAtom = Atom.family((projectId: string) =>
+  Atom.make((get): boolean => {
+    const account = get(accountReadsAtom);
+    if (account === null || account.orgId === null) return false;
+    return get(account.data.project(projectGone, { orgId: account.orgId, projectId }));
+  }).pipe(Atom.withLabel(`data:project-gone:${projectId}`)),
 );
 
 /**

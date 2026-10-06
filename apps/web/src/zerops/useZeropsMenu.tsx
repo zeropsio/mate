@@ -1,68 +1,51 @@
 import { useAtomValue } from "@effect/atom-react";
+import { listedProjectAtom, projectGoneAtom } from "@t3tools/client-runtime/data";
 import { menuRowsFromHq } from "@t3tools/client-runtime/zerops/hq";
-import {
-  projectRecordToZeropsProject,
-  ZeropsOrganizationId,
-  ZeropsProjectId,
-} from "@t3tools/client-runtime/zerops/data";
 import { Atom } from "effect/unstable/reactivity";
 import type { CandidateRow } from "@t3tools/client-runtime/zerops/projections";
 import { useMemo } from "react";
 import { createPortal } from "react-dom";
 import { SidebarZeropsTree } from "../components/zerops/SidebarZeropsTree";
-import {
-  hqLoginsAtom,
-  hqReadyAgentsAtom,
-  hqStructureAtom,
-  zeropsDataRuntimeAtom,
-} from "../state/zerops";
-import { menuMemory } from "./menuMemory";
+import { hqLoginsAtom, hqReadyAgentsAtom, hqStructureAtom } from "../state/zerops";
+import { menuRows } from "./zeropsMenu.logic";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
 const NO_ROWS: ReadonlyArray<CandidateRow> = [];
 const NO_ACTION = () => {};
 
-/** Menu membership is HQ's; inventory and admission enrich rows, never enumerate them. */
+/**
+ * The menu's rows: HQ's, where it places them, and the organization's projects only Zerops lists
+ * so far, ungrouped (`menuRows`). Each project is the account store's; inventory and admission
+ * enrich rows, never enumerate them.
+ */
 export function useZeropsMenu<Row extends CandidateRow>(
   candidates: ReadonlyArray<Row>,
 ): ReadonlyArray<Row | CandidateRow> {
   const { activeOrganization } = useZeropsSession();
   const view = useAtomValue(hqStructureAtom);
-  const runtime = useAtomValue(zeropsDataRuntimeAtom);
   const organizationId = activeOrganization?.id;
-  const held = organizationId === undefined ? undefined : menuMemory().structures[organizationId];
-  const structure = view !== null && view.organizationId === organizationId ? view.structure : held;
+  const structure = view !== null && view.organizationId === organizationId ? view.structure : null;
   const rows = useMemo(
     () =>
       Atom.make((get) => {
-        if (organizationId === undefined || structure == null) return NO_ROWS;
-        const projects = [];
-        const gone = new Set<string>();
-        if (runtime !== null) {
-          const ids = [
-            ...structure.ungrouped.map((row) => row.projectId),
-            ...structure.apps.flatMap((app) => app.projects.map((row) => row.projectId)),
-          ];
-          for (const id of ids) {
-            const ref = {
-              kind: "project" as const,
-              organization: {
-                kind: "organization" as const,
-                account: runtime.scope.account,
-                organizationId: ZeropsOrganizationId.make(organizationId),
-              },
-              projectId: ZeropsProjectId.make(id),
-            };
-            const { value } = get(runtime.reads.project(ref));
-            if (value.knowledge === "unavailable" && value.reason === "not-found") gone.add(id);
-            if (value.knowledge === "observed") {
-              const project = projectRecordToZeropsProject(value.record);
-              if (project !== null) projects.push(project);
-            }
-          }
-        }
+        if (organizationId === undefined) return NO_ROWS;
+        const gone = new Set(
+          candidates.flatMap(({ project }) =>
+            get(projectGoneAtom(project.id)) ? [project.id] : [],
+          ),
+        );
+        if (structure === null) return menuRows({ placed: NO_ROWS, candidates, gone });
+        const ids = [
+          ...structure.ungrouped.map((row) => row.projectId),
+          ...structure.apps.flatMap((app) => app.projects.map((row) => row.projectId)),
+        ];
+        const projects = ids.flatMap((id) => {
+          if (get(projectGoneAtom(id))) gone.add(id);
+          const project = get(listedProjectAtom(id));
+          return project === null ? [] : [project];
+        });
         // Each Mate as HQ's overview of it says it: who signed its agent in, whether it needs nobody.
-        return menuRowsFromHq({
+        const placed = menuRowsFromHq({
           organizationId,
           structure,
           projects,
@@ -71,8 +54,9 @@ export function useZeropsMenu<Row extends CandidateRow>(
           logins: get(hqLoginsAtom),
           readyAgents: get(hqReadyAgentsAtom),
         });
+        return menuRows({ placed, candidates, gone });
       }),
-    [organizationId, structure, runtime, candidates],
+    [organizationId, structure, candidates],
   );
   return useAtomValue(rows);
 }

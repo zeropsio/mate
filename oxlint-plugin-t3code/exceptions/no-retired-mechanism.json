@@ -4938,14 +4938,6 @@
   {
     "path": "apps/web/src/zerops/useZeropsMenu.tsx",
     "kind": "retired-token",
-    "fingerprint": "menuMemory()",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "the remembered menu copies HQ structure, Mates, members and chips to storage; the store holds them in memory",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsMenu.tsx",
-    "kind": "retired-token",
     "fingerprint": "menuRowsFromHq",
     "owner": "data-layer rewrite: HQ structure/apps",
     "reason": "the menu is assembled from HQ rows in a hook; the menu projection reads the store",

@@ -36,6 +36,7 @@ export {
 export {
   listedProject,
   organizationProjects,
+  projectGone,
   type OrganizationProjects,
   type RosterRead,
 } from "./projections/projects.ts";
@@ -51,6 +52,7 @@ export {
   NOT_READ_PROCESSES,
   listedProjectAtom,
   NOT_READ_PROJECTS,
+  projectGoneAtom,
   projectProcessesAtom,
   shownProjectsAtom,
   type AccountReads,

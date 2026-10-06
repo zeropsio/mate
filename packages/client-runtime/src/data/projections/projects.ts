@@ -68,3 +68,14 @@ export const listedProject: Projection<
   },
   equals: sameValue,
 };
+
+/** Whether the owner proved a project deleted: what HQ still places of it is drawn no more. */
+export const projectGone: Projection<
+  { readonly orgId: string; readonly projectId: string },
+  boolean
+> = {
+  name: "projectGone",
+  keyOf: ({ orgId, projectId }) => `${orgId}/${projectId}`,
+  derive: (read, { projectId }) => read.fact("project", projectId).kind === "deleted",
+  equals: sameValue,
+};

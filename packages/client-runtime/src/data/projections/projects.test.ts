@@ -5,7 +5,12 @@ import { projectsScope } from "../families/project.ts";
 import { emptyAccount, linkKeys, type AccountState } from "../model.ts";
 import { reduceAccount, type AccountInput } from "../reducer.ts";
 import { readsOfState } from "../store.ts";
-import { listedProject, organizationProjects, type OrganizationProjects } from "./projects.ts";
+import {
+  listedProject,
+  organizationProjects,
+  projectGone,
+  type OrganizationProjects,
+} from "./projects.ts";
 
 const SCOPE = projectsScope(ORG);
 const apply = (state: AccountState, inputs: ReadonlyArray<AccountInput>) =>
@@ -157,5 +162,31 @@ describe("listedProject", () => {
     expect(
       listedProject.derive(readsOfState(state()), { orgId: ORG, projectId: "a" })?.id ?? null,
     ).toBe(id);
+  });
+});
+
+describe("projectGone", () => {
+  it.each<{ readonly name: string; readonly state: () => AccountState; readonly gone: boolean }>([
+    { name: "listed", state: live, gone: false },
+    { name: "never read: not known gone", state: () => emptyAccount, gone: false },
+    {
+      name: "left the roster, unproven",
+      state: () => apply(live(), [delta([], ["a"])]),
+      gone: false,
+    },
+    {
+      name: "proven deleted",
+      state: () =>
+        apply(live(), [{ kind: "proven-deletion", family: "project", id: "a", evidence: "404" }]),
+      gone: true,
+    },
+    {
+      name: "withheld: never claimed gone",
+      state: () =>
+        apply(live(), [{ kind: "access", family: "project", id: "a", access: "denied" }]),
+      gone: false,
+    },
+  ])("$name", ({ state, gone }) => {
+    expect(projectGone.derive(readsOfState(state()), { orgId: ORG, projectId: "a" })).toBe(gone);
   });
 });
