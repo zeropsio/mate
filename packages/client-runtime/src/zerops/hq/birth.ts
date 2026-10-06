@@ -493,6 +493,7 @@ export async function runHqBirth(input: {
         const tokenValue = content;
         await effect("org_secret", { serviceId, tokenId }, async () => {
           await platform.writeServiceSecret({
+            clientId,
             serviceId,
             key: HQ_ORG_TOKEN_ENV,
             content: tokenValue,
@@ -504,6 +505,7 @@ export async function runHqBirth(input: {
         await effect("key_secret", { serviceId }, async () => {
           const key = deps.randomBytes(new Uint8Array(HQ_KEY_SECRET_BYTES));
           await platform.writeServiceSecret({
+            clientId,
             serviceId,
             key: HQ_KEY_SECRET_ENV,
             content: btoa(String.fromCharCode(...key)),

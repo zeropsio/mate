@@ -2658,6 +2658,44 @@ describe("ZeropsApiClient.deleteProject", () => {
   });
 });
 
+describe("ZeropsApiClient.writeServiceSecret", () => {
+  const refused = () => jsonResponse(500, { error: { code: "internalServerError" } });
+  it.each([
+    {
+      name: "the key there, its sensitive value unreadable: written",
+      items: [{ id: "u1", key: "HQ_ORG_TOKEN", content: "REDACTED" }],
+      written: true,
+    },
+    { name: "the key absent: the refusal stands", items: [], written: false },
+  ])(
+    "reads a refused write back by key, never every variable: $name",
+    async ({ items, written }) => {
+      const http = recordingFetch((request) =>
+        request.method === "POST" && request.url.endsWith("/user-data/search")
+          ? jsonResponse(200, { items })
+          : refused(),
+      );
+      const client = new ZeropsApiClient({ fetch: http.fetch });
+      client.restoreSession(SESSION);
+      const write = client.writeServiceSecret({
+        clientId: "client-1",
+        serviceId: "svc-1",
+        key: "HQ_ORG_TOKEN",
+        content: "secret",
+      });
+      if (written) await expect(write).resolves.toBeUndefined();
+      else await expect(write).rejects.toBeDefined();
+      expect(http.requests.some((request) => request.url.endsWith("/env"))).toBe(false);
+      const search = http.requests.find((request) => request.url.endsWith("/user-data/search"));
+      expect(JSON.parse(search?.body ?? "{}").search).toEqual([
+        { name: "clientId", operator: "eq", value: "client-1" },
+        { name: "serviceStackId", operator: "eq", value: "svc-1" },
+        { name: "key", operator: "eq", value: "HQ_ORG_TOKEN" },
+      ]);
+    },
+  );
+});
+
 describe("HQ birth project env", () => {
   it("reads plain journal values directly without the trailing search index", async () => {
     const http = recordingFetch(() =>

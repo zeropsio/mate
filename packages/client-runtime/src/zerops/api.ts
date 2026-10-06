@@ -2260,7 +2260,7 @@ export class ZeropsApiClient {
           }
           const content = valueOf(step.fromEntryId);
           await this.#writeServiceEnvOnce(
-            { serviceId, key: step.key, content, sensitive: true },
+            { clientId, serviceId, key: step.key, content, sensitive: true },
             signal,
             beforeWrite,
           );
@@ -2464,7 +2464,12 @@ export class ZeropsApiClient {
 
   /** `POST /service-stack/{id}/user-data` — one sensitive variable on a service, written once. */
   async writeServiceSecret(
-    input: { readonly serviceId: string; readonly key: string; readonly content: string },
+    input: {
+      readonly clientId: string;
+      readonly serviceId: string;
+      readonly key: string;
+      readonly content: string;
+    },
     signal?: AbortSignal,
     beforeWrite?: () => Promise<void>,
   ): Promise<void> {
@@ -2478,10 +2483,14 @@ export class ZeropsApiClient {
    * way the key is already there is a run of this that moved it and then
    * failed before deleting the project entry, and in that case the move is
    * done. Anything else still throws, because losing the key silently would
-   * leave a Mate that cannot reach the platform at all.
+   * leave a Mate that cannot reach the platform at all. The check reads that
+   * one key (`POST /user-data/search`), never the service's every variable;
+   * its value, sensitive, answers `REDACTED`, so the key's presence is the
+   * answer.
    */
   async #writeServiceEnvOnce(
     input: {
+      readonly clientId: string;
       readonly serviceId: string;
       readonly key: string;
       readonly content: string;
@@ -2508,10 +2517,23 @@ export class ZeropsApiClient {
         },
       );
     } catch (cause) {
-      const present = (await this.#serviceEnv(input.serviceId, signal)).find(
-        (entry) => entry.key === input.key && entry.content === input.content,
+      const found = await this.#request<{ readonly items?: ReadonlyArray<unknown> }>(
+        "/user-data/search",
+        {
+          method: "POST",
+          signal: signal ?? null,
+          body: JSON.stringify({
+            search: [
+              { name: "clientId", operator: "eq", value: input.clientId },
+              { name: "serviceStackId", operator: "eq", value: input.serviceId },
+              { name: "key", operator: "eq", value: input.key },
+            ],
+            sort: [],
+            limit: 1,
+          }),
+        },
       );
-      if (present === undefined) throw cause;
+      if ((found.items ?? []).length === 0) throw cause;
     }
   }
 
