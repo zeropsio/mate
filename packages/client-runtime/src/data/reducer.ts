@@ -199,6 +199,8 @@ export function supersedes(
       return current.incarnation === incoming.incarnation
         ? incoming.revision > current.revision
         : incoming.live;
+    case "mate-link":
+      return current.kind === "mate-link" && incoming.sequence > current.sequence;
   }
 }
 
