@@ -104,6 +104,7 @@ function addressesOf(
         const url = `${routing.sslEnabled ? "https" : "http"}://${domainName}${location.path === "/" ? "" : location.path}`;
         const route = {
           service: service.name,
+          serviceId: location.serviceStackId,
           port: location.port,
           url,
           host: url.replace(/^https?:\/\//u, ""),
@@ -119,8 +120,10 @@ function addressesOf(
     }
   // A service switch only corroborates publication. Without its routing, the expected address
   // is still pending (including the gap between a routing delete and the service's off push).
-  for (const route of derivePublicRoutes(project, services))
-    if (!live.has(route.url) && !pending.has(route.url)) pending.set(route.url, route);
+  for (const service of services)
+    for (const route of derivePublicRoutes(project, [service]))
+      if (!live.has(route.url) && !pending.has(route.url))
+        pending.set(route.url, { ...route, serviceId: service.id });
   return {
     routes: [...live.values()].sort(byServiceThenPort),
     pending: [...pending.values()].sort(byServiceThenPort),

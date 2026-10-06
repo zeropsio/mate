@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
 import type { PublicAccessView } from "~/zerops/usePublicAccess";
-import { StopPublicAccessLinks } from "./StopPublicAccess";
+import { StopPublicAccessLinks, StopPublicAccessStatus } from "./StopPublicAccess";
 
 const WEB: ZeropsPublicRoute = {
   service: "web",
@@ -64,5 +64,58 @@ describe("a stop's public addresses", () => {
     const html = renderToStaticMarkup(<StopPublicAccessLinks access={view} />);
     for (const words of says) expect(html).toContain(words);
     for (const words of never) expect(html).not.toContain(words);
+  });
+});
+
+describe("a service's pending addresses", () => {
+  // A pending routing targets this service on port 80.
+  // Hold its sync pending, and add a neighbour to prove the serviceStackId boundary.
+  const recorded = {
+    service: "appstage",
+    serviceId: "routing-service",
+    port: 80,
+    host: "appstage-demo.prg1.zerops.app",
+    url: "https://appstage-demo.prg1.zerops.app",
+  };
+  const neighbour = {
+    ...recorded,
+    serviceId: "other-service",
+    host: "other.example.test",
+    url: "https://other.example.test",
+  };
+  it.each([
+    {
+      name: "recorded service",
+      serviceId: recorded.serviceId,
+      shown: [recorded.host],
+      hidden: [neighbour.host],
+    },
+    {
+      name: "different service with the same hostname",
+      serviceId: neighbour.serviceId,
+      shown: [neighbour.host],
+      hidden: [recorded.host],
+    },
+    {
+      name: "service not resolved",
+      serviceId: null,
+      shown: [],
+      hidden: [recorded.host, neighbour.host, "Publishing"],
+    },
+    {
+      name: "project summary",
+      serviceId: undefined,
+      shown: [recorded.host, neighbour.host],
+      hidden: [],
+    },
+  ])("$name", ({ serviceId, shown, hidden }) => {
+    const html = renderToStaticMarkup(
+      <StopPublicAccessStatus
+        access={access({ pending: [recorded, neighbour] })}
+        serviceId={serviceId}
+      />,
+    );
+    for (const host of shown) expect(html).toContain(host);
+    for (const host of hidden) expect(html).not.toContain(host);
   });
 });

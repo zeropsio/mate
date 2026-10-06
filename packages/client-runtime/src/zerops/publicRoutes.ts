@@ -18,6 +18,8 @@ import { isZcpService } from "./candidates.ts";
 export interface ZeropsPublicRoute {
   /** The service the route reaches, by hostname — what a person calls it. */
   readonly service: string;
+  /** The routing location's service identity, when resolved by the data layer. */
+  readonly serviceId?: string;
   readonly port: number;
   readonly url: string;
   /** The URL without its scheme: what a row shows and what a person copies. */

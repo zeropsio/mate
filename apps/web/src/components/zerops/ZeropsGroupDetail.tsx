@@ -1944,7 +1944,7 @@ function StopServiceLine({
           offers.length === 0 ? (
             <span className="truncate text-[13px] text-muted-foreground">{NOT_PUBLIC_YET}</span>
           ) : null}
-          <StopPublicAccessStatus access={publicAccess} />
+          <StopPublicAccessStatus access={publicAccess} serviceId={row.serviceId ?? null} />
           {row.routes.map((route) => (
             <a
               className="flex min-w-0 items-center gap-1.5 text-[13px] text-foreground underline-offset-2 hover:underline"

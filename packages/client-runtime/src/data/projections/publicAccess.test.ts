@@ -85,7 +85,7 @@ const refused = (scope: ScopeKey): ReadonlyArray<AccountInput> => [
   }),
 ];
 
-const APP = { service: "app", port: 80 } as const;
+const APP = { service: "app", serviceId: "s1", port: 80 } as const;
 const SUBDOMAIN = {
   ...APP,
   url: "https://app-24cb.prg1.zerops.app",
@@ -309,5 +309,7 @@ describe("recorded subdomain changes", () => {
     });
     expect(access.routes).toHaveLength(live);
     expect(access.pending).toHaveLength(pending);
+    for (const route of [...access.routes, ...access.pending])
+      expect(route).toMatchObject({ serviceId: RECORDED_ROUTING.locations[0]!.serviceStackId });
   });
 });

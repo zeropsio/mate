@@ -5,8 +5,19 @@ import { Button } from "../ui/button";
  * Address failures are independent of whether the deployed version is healthy. An address put in
  * place that does not serve yet is said as such, never offered as a link.
  */
-export function StopPublicAccessStatus({ access }: { readonly access: PublicAccessView }) {
-  if (!access.bound || (access.state === "ready" && access.pending.length === 0)) return null;
+export function StopPublicAccessStatus({
+  access,
+  serviceId,
+}: {
+  readonly access: PublicAccessView;
+  /** Omitted for a project summary; null while a service's identity is not known. */
+  readonly serviceId?: string | null | undefined;
+}) {
+  const pending =
+    serviceId === undefined
+      ? access.pending
+      : access.pending.filter((route) => route.serviceId === serviceId);
+  if (!access.bound || (access.state === "ready" && pending.length === 0)) return null;
   const failed = access.state === "failed";
   return (
     <div
@@ -18,7 +29,7 @@ export function StopPublicAccessStatus({ access }: { readonly access: PublicAcce
           ? "Could not read public addresses."
           : access.state === "reading"
             ? "Reading public addresses…"
-            : `Publishing ${access.pending.map((route) => route.host).join(", ")}…`}
+            : `Publishing ${pending.map((route) => route.host).join(", ")}…`}
       </span>
       {failed ? (
         <Button size="sm" variant="outline" onClick={access.again}>
