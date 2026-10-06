@@ -175,19 +175,19 @@ const judgeProject = (
 ): ProjectOutcome => {
   switch (standing.kind) {
     case "listed": {
-      // A listing row names the viewer's own grant without whose it is: theirs, as a grant.
+      // A listing row names the viewer's own grant without whose it is: theirs, as a grant. Held
+      // beside everybody's, it is the newer word on the viewer: a row's own read retires it.
       const { viewerRoleCode, ...row } = standing.project;
-      const named = row.userRoles?.some(
-        ({ clientUserId }) => clientUserId === membership.membershipId,
-      );
       return projectOutcome(
         project,
-        viewerRoleCode === undefined || named === true
+        viewerRoleCode === undefined
           ? row
           : {
               ...row,
               userRoles: [
-                ...(row.userRoles ?? []),
+                ...(row.userRoles ?? []).filter(
+                  ({ clientUserId }) => clientUserId !== membership.membershipId,
+                ),
                 { clientUserId: membership.membershipId, roleCode: viewerRoleCode },
               ],
             },

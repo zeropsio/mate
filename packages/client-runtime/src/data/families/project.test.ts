@@ -218,6 +218,11 @@ describe("a project's own row", () => {
       after: rebaseline({ ...row, viewerRoleCode: "READ_ONLY" }),
       grants: { name: "Renamed", userRoles: grants, viewerRoleCode: "READ_ONLY" },
     },
+    {
+      name: "an own read after a listing's own grant retires it: everybody's is the newer word",
+      after: [listingRead({ ...row, viewerRoleCode: "READ_ONLY" }), ownRead(row.lastUpdate)],
+      grants: { name: "p1", userRoles: grants, viewerRoleCode: undefined },
+    },
   ])("$name", ({ after, grants: expected }) => {
     expect(grantsOf([...held(), ownRead("2026-10-06T10:00:00Z"), ...after])).toEqual(expected);
   });

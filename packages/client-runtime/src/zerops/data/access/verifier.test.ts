@@ -180,6 +180,50 @@ describe("the access verifier's round", () => {
     }),
   );
 
+  // A row holds the viewer's own grant a later listing named beside everybody's an earlier own
+  // read brought (`keepUnsaid`): the own grant is the newer word on the viewer.
+  it.effect.each([
+    {
+      name: "a grant lowered since the own read: the listing's lower one",
+      everybody: "BASIC_USER",
+      own: "READ_ONLY",
+      expected: { role: "READ_ONLY", mutationsAllowed: false },
+    },
+    {
+      name: "a project handed over by another admin: the listing's own one",
+      everybody: "OWNER",
+      own: "BASIC_USER",
+      expected: { role: "BASIC_USER", mutationsAllowed: true },
+    },
+    {
+      name: "an override granted since the own read: the listing's higher one",
+      everybody: "READ_ONLY",
+      own: "ADMIN",
+      expected: { role: "ADMIN", mutationsAllowed: true },
+    },
+  ])("judges a Developer on the newer of both grants — $name", ({ everybody, own, expected }) =>
+    Effect.gen(function* () {
+      const developer: ZeropsUser = {
+        ...user,
+        clientUserList: [{ id: "membership", clientId: orgId, roleCode: "NO_ACCESS" }],
+      };
+      const verifier = makeRestAccessVerifier({
+        client: { fetchUser: async () => developer },
+        standing: (ref) => ({
+          kind: "listed",
+          project: { ...project(ref.projectId, everybody), viewerRoleCode: own },
+        }),
+        account,
+        onUser: () => {},
+      });
+      yield* verifier.verifyRound({ round: 1, carried: [], report: () => Effect.void });
+      expect(yield* verifier.verifyProject(projectRef("a"))).toMatchObject({
+        kind: "verified",
+        access: { ...expected, userRoles: [{ clientUserId: "membership", roleCode: own }] },
+      });
+    }),
+  );
+
   it.effect.each([
     ["denied", "direct-forbidden"],
     ["deleted", "direct-not-found"],
