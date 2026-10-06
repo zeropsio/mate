@@ -743,7 +743,6 @@ export const RETIRED_MECHANISMS: ReadonlyArray<RetiredMechanism> = [
       "apps/web/src/zerops/newMate.ts",
       "apps/web/src/zerops/newProjectBirth.ts",
       "apps/web/src/zerops/useMenuMateReadings.ts",
-      "apps/web/src/zerops/useNewProjectBirthPorts.ts",
       "apps/web/src/zerops/useOpenMate.ts",
     ],
   },
