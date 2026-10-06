@@ -8,7 +8,7 @@
  * grants — whose `OWNER` makes a Mate somebody's — come only with the project's own row, read
  * while a screen shows it, and that row is Zerops' whole word on them (none named is none). A
  * listing's empty list is unsaid, so a push, a listing or the roster read again never takes the
- * grants an own read brought; it says the viewer is an organization member.
+ * grants an own read brought, nor the viewer's own grant a listing named.
  *
  * @module data/families/project
  */
@@ -111,11 +111,12 @@ export const projectFamily: FamilySpec<"project"> = {
         ...(userRoles === undefined ? {} : { userRoles }),
         ...(viewerRoleCode === undefined ? {} : { viewerRoleCode }),
       };
-    // A listing's empty list is unsaid: the list held stays, and the viewer is an organization
-    // member, whose access is no grant of their own. One naming no grant at all keeps both held.
+    // A listing's empty list is unsaid: the list held stays, and so does the viewer's own grant —
+    // only the account's membership says the viewer is an organization member (the grant's
+    // judgement), never a row.
     const everybody =
       userRoles === undefined || userRoles.length === 0 ? held?.userRoles : userRoles;
-    const kept = viewerRoleCode ?? (userRoles === undefined ? held?.viewerRoleCode : undefined);
+    const kept = viewerRoleCode ?? held?.viewerRoleCode;
     return {
       ...fields,
       ...(everybody === undefined ? {} : { userRoles: everybody }),

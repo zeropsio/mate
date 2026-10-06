@@ -266,12 +266,12 @@ describe("a project's own row", () => {
       grants: { name: "Renamed", userRoles: grants, viewerRoleCode: "READ_ONLY" },
     },
     {
-      name: "a listing's empty list says the viewer is an organization member: their own grant goes",
+      name: "a listing's empty list keeps the viewer's own grant: only the membership drops it",
       after: [
         listingRead({ ...row, viewerRoleCode: "READ_ONLY" }),
         listingPush({ ...row, userRoles: [] }),
       ],
-      grants: { name: "Renamed", userRoles: grants, viewerRoleCode: undefined },
+      grants: { name: "Renamed", userRoles: grants, viewerRoleCode: "READ_ONLY" },
     },
   ])("$name", ({ after, grants: expected }) => {
     expect(grantsOf([...held(), ownRead("2026-10-06T10:00:00Z"), ...after])).toEqual(expected);
