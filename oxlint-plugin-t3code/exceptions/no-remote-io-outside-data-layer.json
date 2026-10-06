@@ -1152,54 +1152,6 @@
     "expires": "never"
   },
   {
-    "path": "packages/client-runtime/src/zerops/hq/update.ts",
-    "kind": "CallExpression",
-    "fingerprint": "platform.buildAndDeployAppVersion",
-    "owner": "data-layer rewrite: operations",
-    "reason": "only the data layer's adapters reach a remote: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/hq/update.ts",
-    "kind": "CallExpression",
-    "fingerprint": "platform.createAppVersion",
-    "owner": "data-layer rewrite: operations",
-    "reason": "only the data layer's adapters reach a remote: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/hq/update.ts",
-    "kind": "CallExpression",
-    "fingerprint": "platform.listProjectProcesses",
-    "owner": "data-layer rewrite: operations",
-    "reason": "only the data layer's adapters reach a remote: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/hq/update.ts",
-    "kind": "CallExpression",
-    "fingerprint": "platform.listProjectServices",
-    "owner": "data-layer rewrite: operations",
-    "reason": "only the data layer's adapters reach a remote: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/hq/update.ts",
-    "kind": "CallExpression",
-    "fingerprint": "platform.readProcessStatus",
-    "owner": "data-layer rewrite: operations",
-    "reason": "only the data layer's adapters reach a remote: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/hq/update.ts",
-    "kind": "CallExpression",
-    "fingerprint": "platform.uploadAppVersionArchive",
-    "owner": "data-layer rewrite: operations",
-    "reason": "only the data layer's adapters reach a remote: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
-    "expires": "never"
-  },
-  {
     "path": "packages/client-runtime/src/zerops/mateSetup.ts",
     "kind": "MemberExpression",
     "fingerprint": "globalThis.fetch",

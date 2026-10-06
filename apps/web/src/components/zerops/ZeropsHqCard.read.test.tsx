@@ -36,6 +36,9 @@ vi.mock("~/zerops/ZeropsSessionProvider", () => ({
     user: { id: "u1" },
   }),
 }));
+vi.mock("~/zerops/accountOperations", () => ({
+  useAccountOperations: () => ({ run: async () => undefined }),
+}));
 vi.mock("~/zerops/accountHq", () => ({
   useAccountHq: () => ({
     hq: { kind: "official", projectId: "hq1", address: "https://hq.example.test" },

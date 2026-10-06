@@ -872,14 +872,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/components/zerops/ZeropsHqUpdate.tsx",
-    "kind": "retired-token",
-    "fingerprint": "sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms))",
-    "owner": "data-layer rewrite: operations",
-    "reason": "the HQ update panel sleeps between its own polls; the operation's stream drives it",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/components/zerops/ZeropsMateComingPage.tsx",
     "kind": "retired-token",
     "fingerprint": "LIVE_GRACE_MS",

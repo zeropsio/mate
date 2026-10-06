@@ -1,14 +1,14 @@
 /**
- * HQ's update, opened by an admin: it reads Zerops once shown, offers what it read, runs the one
- * update pressed and reads Zerops again after it — never on its own.
+ * HQ's update, opened by an admin: it says where HQ stands as Zerops's facts say it now, offers
+ * what they show, runs the one update pressed, and follows the facts after it.
  */
-import type { HqUpdateOutcome, HqUpdateState } from "@t3tools/client-runtime/zerops/hq";
+import type { HqUpdateState } from "@t3tools/client-runtime/zerops/hq";
 import { act, type ReactElement } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { Dialog } from "../ui/dialog";
-import { ZeropsHqUpdatePanel } from "./ZeropsHqUpdate";
+import { ZeropsHqUpdatePanel, type HqUpdateOutcome, type HqUpdateRead } from "./ZeropsHqUpdate";
 
 const CARRIED = "20261004T100000Z.0123456789ab";
 const OLDER = "20261003T080500Z.ba9876543210";
@@ -48,18 +48,28 @@ const action = (tree: ReactTestRenderer) =>
     (node) => node.type === "button" && node.props["data-hq-update-action"] === true,
   )[0];
 
+const shown = (state: HqUpdateState): HqUpdateRead => ({ kind: "read", state });
+
 describe("ZeropsHqUpdatePanel", () => {
-  it("reads Zerops once shown and offers the update it read", async () => {
-    const read = vi.fn(async () => AVAILABLE);
-    const tree = await mount(<ZeropsHqUpdatePanel answering={OLDER} read={read} run={vi.fn()} />);
-    expect(read).toHaveBeenCalledTimes(1);
+  it("offers the update Zerops's facts show", async () => {
+    const tree = await mount(
+      <ZeropsHqUpdatePanel answering={OLDER} read={shown(AVAILABLE)} run={vi.fn()} />,
+    );
     expect(text(tree)).toContain(
       "HQ runs Core 2026-10-03 08:05 UTC · ba9876543210. This app carries Core 2026-10-04 10:00 UTC · 0123456789ab.",
     );
     expect(action(tree)?.props.disabled).toBe(false);
   });
 
-  it("runs one update, says HQ serves meanwhile, and reads Zerops again once it ends", async () => {
+  it("says it reads HQ from Zerops until the facts are there", async () => {
+    const tree = await mount(
+      <ZeropsHqUpdatePanel answering={OLDER} read={{ kind: "reading" }} run={vi.fn()} />,
+    );
+    expect(text(tree)).toContain("Reading HQ from Zerops…");
+    expect(action(tree)).toBeUndefined();
+  });
+
+  it("runs one update, says HQ serves meanwhile, and says how it ended beside the facts", async () => {
     let end: (outcome: HqUpdateOutcome) => void = () => {};
     const run = vi.fn(
       () =>
@@ -67,16 +77,14 @@ describe("ZeropsHqUpdatePanel", () => {
           end = resolve;
         }),
     );
-    const read = vi
-      .fn<() => Promise<HqUpdateState>>()
-      .mockResolvedValueOnce(AVAILABLE)
-      .mockResolvedValueOnce({
-        kind: "failed",
-        running: OLDER,
-        carried: CARRIED,
-        reason: "readiness check failed",
-      });
-    const tree = await mount(<ZeropsHqUpdatePanel answering={OLDER} read={read} run={run} />);
+    const panel = (read: HqUpdateRead) => (
+      <Dialog open onOpenChange={() => {}}>
+        <ZeropsHqUpdatePanel answering={OLDER} read={read} run={run} />
+      </Dialog>
+    );
+    const tree = await mount(
+      <ZeropsHqUpdatePanel answering={OLDER} read={shown(AVAILABLE)} run={run} />,
+    );
     await act(async () => {
       action(tree)!.props.onClick();
     });
@@ -84,9 +92,18 @@ describe("ZeropsHqUpdatePanel", () => {
     expect(text(tree)).toContain("Updating HQ… It keeps serving until the new Core answers.");
     expect(action(tree)?.props.disabled).toBe(true);
     await act(async () => {
+      tree.update(
+        panel(
+          shown({
+            kind: "failed",
+            running: OLDER,
+            carried: CARRIED,
+            reason: "readiness check failed",
+          }),
+        ),
+      );
       end({ ok: false, reason: "HQ's update failed. HQ still runs its Core." });
     });
-    expect(read).toHaveBeenCalledTimes(2);
     expect(text(tree)).toContain("HQ's update failed. HQ still runs its Core.");
     expect(text(tree)).toContain("HQ's last update failed: readiness check failed.");
     expect(action(tree)?.props.disabled).toBe(false);
@@ -96,7 +113,7 @@ describe("ZeropsHqUpdatePanel", () => {
     const tree = await mount(
       <ZeropsHqUpdatePanel
         answering={OLDER}
-        read={async () => ({ kind: "updating", target: CARRIED })}
+        read={shown({ kind: "updating", target: CARRIED })}
         run={vi.fn()}
       />,
     );
@@ -110,13 +127,11 @@ describe("ZeropsHqUpdatePanel", () => {
     const tree = await mount(
       <ZeropsHqUpdatePanel
         answering={OLDER}
-        read={async () => {
-          throw new Error("Zerops could not be reached.");
-        }}
+        read={{ kind: "unread", reason: "Zerops refused to say." }}
         run={vi.fn()}
       />,
     );
-    expect(text(tree)).toContain("Couldn't read HQ from Zerops: Zerops could not be reached.");
+    expect(text(tree)).toContain("Couldn't read HQ from Zerops: Zerops refused to say.");
     expect(action(tree)).toBeUndefined();
   });
 
@@ -124,7 +139,7 @@ describe("ZeropsHqUpdatePanel", () => {
     const tree = await mount(
       <ZeropsHqUpdatePanel
         answering={CARRIED}
-        read={async () => ({ kind: "current", running: CARRIED })}
+        read={shown({ kind: "current", running: CARRIED })}
         run={vi.fn()}
       />,
     );
@@ -136,14 +151,16 @@ describe("ZeropsHqUpdatePanel", () => {
 
   it("never offers again the update it just ran, while Zerops and HQ catch up", async () => {
     // Measured on KRLS, 2026-10-04: for 9 s after the build finished, the panel offered it again.
-    const read = vi.fn(async (): Promise<HqUpdateState> => AVAILABLE);
     const tree = await mount(
-      <ZeropsHqUpdatePanel answering={OLDER} read={read} run={async () => ({ ok: true })} />,
+      <ZeropsHqUpdatePanel
+        answering={OLDER}
+        read={shown(AVAILABLE)}
+        run={async () => ({ ok: true })}
+      />,
     );
     await act(async () => {
       action(tree)!.props.onClick();
     });
-    expect(read).toHaveBeenCalledTimes(2);
     expect(text(tree)).toContain(
       "HQ's update to Core 2026-10-04 10:00 UTC · 0123456789ab finished. Waiting for HQ to answer with it.",
     );

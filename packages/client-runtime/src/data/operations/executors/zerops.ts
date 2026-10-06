@@ -9,12 +9,14 @@ import type { AtomRegistry } from "effect/unstable/reactivity";
 
 import type { ZeropsApiClient } from "../../../zerops/api.ts";
 import type { ThrowawayDebt } from "../../../zerops/doorThrowaway.ts";
+import type { HqCoreArtifact } from "../../../zerops/hq/birth.ts";
 import { makeProjectTagWriter, type ProjectTagLocks } from "../../../zerops/data/tagWriter.ts";
 import type { DetailDemand } from "../../demand.ts";
 import type { AccountStore } from "../../store.ts";
 import type { OperationExecutor } from "../coordinator.ts";
 import { createProjectExecutor } from "./createProject.ts";
 import { deleteProjectExecutor } from "./deleteProject.ts";
+import { hqUpdateExecutor } from "./hqUpdate.ts";
 import { creationWritesExecutor } from "./creationWrites.ts";
 import { mateRestartOwner } from "./mateRestart.ts";
 import {
@@ -50,6 +52,9 @@ type ZeropsOperationsClient = Pick<
   | "importDevelopmentContainer"
   | "hardenMate"
   | "readProjectEnv"
+  | "createAppVersion"
+  | "uploadAppVersionArchive"
+  | "buildAndDeployAppVersion"
 >;
 
 export function makeZeropsExecutor(input: {
@@ -60,6 +65,8 @@ export function makeZeropsExecutor(input: {
   readonly demandDetail: (demand: DetailDemand) => () => void;
   readonly debtOf: (clientId: string) => ThrowawayDebt;
   readonly nowMs: () => number;
+  /** The HQ Core this app carries, which HQ's update deploys. */
+  readonly hqCore: () => Promise<HqCoreArtifact>;
   /** The page's locks, which serialize a project's record writes across tabs; absent, this page's. */
   readonly locks?: ProjectTagLocks;
 }): OperationExecutor {
@@ -89,6 +96,12 @@ export function makeZeropsExecutor(input: {
     hardenMate: (clientId, projectId, keyTokenId) =>
       client.hardenMate(clientId, projectId, undefined, undefined, keyTokenId),
     readProjectEnv: (clientId, projectId) => client.readProjectEnv(clientId, projectId),
+  });
+  const updateHq = hqUpdateExecutor({
+    core: input.hqCore,
+    createAppVersion: (serviceId, name) => client.createAppVersion(serviceId, name),
+    uploadAppVersionArchive: (id, archive) => client.uploadAppVersionArchive(id, archive),
+    buildAndDeployAppVersion: (id, deploy) => client.buildAndDeployAppVersion(id, deploy),
   });
   const sweep = throwawaySweepExecutor({
     platform: {
@@ -147,6 +160,8 @@ export function makeZeropsExecutor(input: {
           return retag(requestId, intent);
         case "assign-mate-owner":
           return assign(requestId, intent);
+        case "hq-update":
+          return updateHq(requestId, intent);
         case "create-project":
           return create(requestId, intent);
         case "import-project":

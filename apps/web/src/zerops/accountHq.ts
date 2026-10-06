@@ -507,11 +507,15 @@ export async function readBundledCore(
   };
 }
 
+/** The Core this build carries, read from its own bundle: what a birth and HQ's update deploy. */
+export const readCarriedCore = (): Promise<HqCoreArtifact> =>
+  readBundledCore((input, init) => fetch(input, init), `${appBasePath()}/hq-core`);
+
 /** What an HQ birth acts through, from this tab. */
 export function hqBirthDeps(client: ZeropsApiClient): HqBirthDeps {
   return {
     platform: client,
-    core: () => readBundledCore((input, init) => fetch(input, init), `${appBasePath()}/hq-core`),
+    core: readCarriedCore,
     health: (address) => readHqHealth((input, init) => fetch(input, init), address),
     sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     now: () => Date.now(),

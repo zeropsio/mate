@@ -22,6 +22,7 @@ import { createContext, useContext } from "react";
 
 import { randomUUID } from "~/lib/utils";
 
+import { readCarriedCore } from "./accountHq";
 import { accountThrowawayDebt } from "./throwawayDebt";
 import type { ZeropsSessionValue } from "./ZeropsSessionProvider";
 
@@ -68,6 +69,8 @@ export function accountOperations(
         demandDetail,
         debtOf: () => accountThrowawayDebt(client),
         nowMs: () => Date.now(),
+        // The Core this build carries, read from its own bundle once HQ's update runs.
+        hqCore: readCarriedCore,
         ...(locks === undefined ? {} : { locks }),
       }),
     },
