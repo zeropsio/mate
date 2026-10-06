@@ -3,8 +3,7 @@
  * and its organizations' HQs' — under the account's scoped `localStorage`. The door's exchange
  * presents a Mate's again (`environmentPorts.ts`), HQ's API its own (`accountHq.ts`), and no kept
  * session outlives the login it was opened under: the account's close ends every one where it was
- * issued however the account closes, and a stored login the platform refused ends every one this
- * origin holds (`ZeropsSessionProvider.tsx`).
+ * issued however the account closes.
  */
 import type { BearerConnectionRegistration } from "@t3tools/client-runtime/connection";
 import {
@@ -12,7 +11,6 @@ import {
   makeKeptSessions,
   MATE_SESSIONS,
   type KeptHqSession,
-  type KeptSessionKind,
 } from "@t3tools/client-runtime/zerops/keptSessions";
 import { AuthZeropsClientScopes, type AuthSessionState } from "@t3tools/contracts";
 
@@ -77,41 +75,6 @@ export function keptSessionHeld(state: AuthSessionState): boolean {
     state.authenticated &&
     AuthZeropsClientScopes.every((scope) => state.scopes?.includes(scope) === true)
   );
-}
-
-/**
- * A stored login the platform refused: nobody is signed in on this origin any more, so every
- * session kept under any account here — a Mate's, an HQ's — is ended and forgotten.
- */
-export function endEveryKeptSession(): void {
-  endEveryKept(MATE_SESSIONS, endKeptSession);
-  endEveryKept(HQ_SESSIONS, endHqSession);
-}
-
-/** Ends and forgets every session of this kind kept under any account on this origin. */
-function endEveryKept<T, E>(kind: KeptSessionKind<T, E>, end: (session: T) => void): void {
-  const keys: Array<string> = [];
-  try {
-    const storage = window.localStorage;
-    for (let index = 0; index < storage.length; index += 1) {
-      const key = storage.key(index);
-      if (key?.startsWith("mate:account:") && key.endsWith(`:${kind.storageKey}`)) keys.push(key);
-    }
-  } catch {
-    return;
-  }
-  for (const key of keys) {
-    const sessions = makeKeptSessions(
-      {
-        getItem: () => window.localStorage.getItem(key),
-        setItem: (_name, value) => window.localStorage.setItem(key, value),
-        removeItem: () => window.localStorage.removeItem(key),
-      },
-      nowEpochMs,
-      kind,
-    );
-    for (const session of sessions.drain()) end(session);
-  }
 }
 
 // However the account closes — signed out, replaced, its login refused while open — it ends every

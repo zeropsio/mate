@@ -4,13 +4,7 @@ import {
   BearerConnectionRegistration,
   BearerConnectionTarget,
 } from "@t3tools/client-runtime/connection";
-import {
-  HQ_SESSIONS,
-  KEPT_HQ_SESSIONS_KEY,
-  KEPT_SESSIONS_KEY,
-  makeKeptSessions,
-  MATE_SESSIONS,
-} from "@t3tools/client-runtime/zerops/keptSessions";
+import { KEPT_SESSIONS_KEY } from "@t3tools/client-runtime/zerops/keptSessions";
 import { AuthZeropsClientScopes, EnvironmentId, type AuthSessionState } from "@t3tools/contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -136,66 +130,5 @@ describe("no kept session outlives the login it was opened under", () => {
       },
     ]);
     expect([...values.keys()].some((key) => key.endsWith(KEPT_SESSIONS_KEY))).toBe(false);
-  });
-
-  it("a refused login ends every session kept under any account on this origin", () => {
-    lifetime.openAccountLifetime("person-1");
-    kept.keptSessions.keep("p1:zcp", session("shop"));
-    // Another login's sessions, kept before it was replaced here.
-    const other = `mate:account:person-2:${KEPT_SESSIONS_KEY}`;
-    makeKeptSessions(
-      {
-        getItem: () => values.get(other) ?? null,
-        setItem: (_name, value) => {
-          values.set(other, value);
-        },
-        removeItem: () => {
-          values.delete(other);
-        },
-      },
-      Date.now,
-      MATE_SESSIONS,
-    ).keep("p9:zcp", session("docs"));
-
-    kept.endEveryKeptSession();
-
-    expect(fetched.map((call) => call.url).toSorted()).toEqual([
-      "https://docs.example.test/mate/api/auth/logout",
-      "https://shop.example.test/mate/api/auth/logout",
-    ]);
-    expect([...values.keys()].some((key) => key.endsWith(KEPT_SESSIONS_KEY))).toBe(false);
-  });
-
-  // Audit K7: HQ's sessions are kept by the same rules, so a refused login revokes them too.
-  it("a refused login revokes every HQ session kept under any account on this origin", () => {
-    const hqSession = (name: string) => ({
-      address: `https://${name}.example.test`,
-      token: `session-${name}`,
-      expiresAtEpochMs: Date.now() + 12 * 3_600_000,
-    });
-    lifetime.openAccountLifetime("person-1");
-    kept.keptHqSessions.keep("org-1:P_HQ:https://hq.example.test", hqSession("hq"));
-    const other = `mate:account:person-2:${KEPT_HQ_SESSIONS_KEY}`;
-    makeKeptSessions(
-      {
-        getItem: () => values.get(other) ?? null,
-        setItem: (_name, value) => {
-          values.set(other, value);
-        },
-        removeItem: () => {
-          values.delete(other);
-        },
-      },
-      Date.now,
-      HQ_SESSIONS,
-    ).keep("org-9:P_HQ9:https://hq9.example.test", hqSession("hq9"));
-
-    kept.endEveryKeptSession();
-
-    expect(fetched.map(({ url, authorization }) => [url, authorization]).toSorted()).toEqual([
-      ["https://hq.example.test/api/session", "Bearer session-hq"],
-      ["https://hq9.example.test/api/session", "Bearer session-hq9"],
-    ]);
-    expect([...values.keys()].some((key) => key.endsWith(KEPT_HQ_SESSIONS_KEY))).toBe(false);
   });
 });
