@@ -6,8 +6,9 @@
  * A listing row names at most the viewer's own grant on the project (`{mine, roleCode}`, a
  * NO_ACCESS member's) or none at all (`[]`, an organization member's; read 2026-10-06): everybody's
  * grants — whose `OWNER` makes a Mate somebody's — come only with the project's own row, read
- * while a screen shows it. A list a row does not carry is unsaid, so a push or a listing never
- * takes the grants an own read brought — nor does the roster read again from its start.
+ * while a screen shows it, and that row is Zerops' whole word on them (none named is none). A
+ * listing's empty list is unsaid, so a push, a listing or the roster read again never takes the
+ * grants an own read brought; it says the viewer is an organization member.
  *
  * @module data/families/project
  */
@@ -75,7 +76,11 @@ function valueOf(row: typeof Row.Type): ProjectValue {
   const own = (userRoles ?? []).find(({ mine }) => mine === true);
   return {
     ...Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== null)),
-    ...(everybody.length > 0 ? { userRoles: everybody } : {}),
+    ...(userRoles === undefined ||
+    userRoles === null ||
+    (own !== undefined && everybody.length === 0)
+      ? {}
+      : { userRoles: everybody }),
     ...(own === undefined || everybody.length > 0 ? {} : { viewerRoleCode: own.roleCode }),
   } as unknown as ProjectValue;
 }
@@ -91,17 +96,30 @@ export const projectFamily: FamilySpec<"project"> = {
     leaving: "absent-unverified",
     demand: "navigation",
   },
-  merge: (held, pushed) => ({ ...held, ...pushed }),
-  // A row naming no list of grants keeps the one held, and one naming no grant at all keeps the
-  // viewer's own one held beside it: whichever a row names is the newest word on it.
-  keepUnsaid: (held, row) => {
-    const { userRoles, viewerRoleCode } = held;
-    if (row.userRoles !== undefined) return row;
-    const named = row.viewerRoleCode !== undefined;
+  // A push names the fields it changed; the grants it names are `keepUnsaid`'s to settle.
+  merge: (held, pushed) => {
+    const { userRoles: _everybody, viewerRoleCode: _own, ...rest } = held;
+    return { ...rest, ...pushed };
+  },
+  keepUnsaid: (held, row, own) => {
+    const { userRoles, viewerRoleCode, ...fields } = row;
+    // The own row is Zerops' whole word on everybody's grants: none named takes them away, and the
+    // viewer's own grant a listing named is retired by it.
+    if (own)
+      return {
+        ...fields,
+        ...(userRoles === undefined ? {} : { userRoles }),
+        ...(viewerRoleCode === undefined ? {} : { viewerRoleCode }),
+      };
+    // A listing's empty list is unsaid: the list held stays, and the viewer is an organization
+    // member, whose access is no grant of their own. One naming no grant at all keeps both held.
+    const everybody =
+      userRoles === undefined || userRoles.length === 0 ? held?.userRoles : userRoles;
+    const kept = viewerRoleCode ?? (userRoles === undefined ? held?.viewerRoleCode : undefined);
     return {
-      ...row,
-      ...(userRoles === undefined ? {} : { userRoles }),
-      ...(named || viewerRoleCode === undefined ? {} : { viewerRoleCode }),
+      ...fields,
+      ...(everybody === undefined ? {} : { userRoles: everybody }),
+      ...(kept === undefined ? {} : { viewerRoleCode: kept }),
     };
   },
   // A row read by its id carries no `_version`: Zerops' own `lastUpdate` orders it. One as current

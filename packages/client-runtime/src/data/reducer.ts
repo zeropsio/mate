@@ -263,14 +263,18 @@ function reduceRows(
     if (current !== undefined && !admits(state, input, current, row)) continue;
     const spec = familySpec(row.family);
     const merge = spec.merge as ((held: unknown, pushed: unknown) => unknown) | undefined;
-    const keepUnsaid = spec.keepUnsaid as ((held: unknown, row: unknown) => unknown) | undefined;
+    const keepUnsaid = spec.keepUnsaid as
+      | ((held: unknown, row: unknown, own: boolean) => unknown)
+      | undefined;
     const held = current?.content.kind === "value" ? current.content : null;
     const merged =
       merge !== undefined && input.method === "push" && held !== null
         ? merge(held.value, row.value)
         : row.value;
     const value =
-      keepUnsaid !== undefined && held !== null ? keepUnsaid(held.value, merged) : merged;
+      keepUnsaid === undefined
+        ? merged
+        : keepUnsaid(held?.value, merged, scopeListing(input.scope).detail?.member === true);
     const fact: Fact<unknown> = {
       content: { kind: "value", value },
       revision: row.revision,

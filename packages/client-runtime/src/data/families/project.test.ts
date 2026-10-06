@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import { liveZerops, ORG, zeropsVersion } from "../__fixtures__/account.ts";
+import { detailScopeOf } from "../demand.ts";
 import { emptyAccount } from "../model.ts";
-import { reduceAccount, type AccountInput } from "../reducer.ts";
+import { reduceAccount, streamOf, type AccountInput } from "../reducer.ts";
 import { readsOfState } from "../store.ts";
 import { projectFamily, projectsScope, type ProjectValue } from "./project.ts";
 
@@ -66,7 +67,7 @@ describe("projectFamily.decode", () => {
       },
     },
     {
-      name: "an empty list of grants is unsaid, never everybody's grants taken away",
+      name: "keeps an empty list of grants: what it says is its source's (`keepUnsaid`)",
       raw: {
         id: "p1",
         name: "Shop",
@@ -77,7 +78,13 @@ describe("projectFamily.decode", () => {
       row: {
         id: "p1",
         version: null,
-        value: { id: "p1", name: "Shop", status: "ACTIVE", lastUpdate: "2026-10-06T10:00:00Z" },
+        value: {
+          id: "p1",
+          name: "Shop",
+          status: "ACTIVE",
+          lastUpdate: "2026-10-06T10:00:00Z",
+          userRoles: [],
+        },
       },
     },
     { name: "refuses a row without its name", raw: { id: "p1", status: "ACTIVE" }, row: null },
@@ -99,17 +106,24 @@ describe("a project's own row", () => {
     { clientUserId: "cu-1", roleCode: "BASIC_USER" },
     { clientUserId: "cu-dev", roleCode: "OWNER" },
   ];
-  const ownRead = (lastUpdate: string): AccountInput => ({
+  /** The project's own row, read by its id: its grants are Zerops' whole word on them. */
+  const ownRead = (
+    lastUpdate: string,
+    userRoles: ProjectValue["userRoles"] = grants,
+  ): AccountInput => ({
     kind: "rows",
-    scope: projectsScope(ORG),
-    generation: 1,
+    scope: detailScopeOf(ORG, { family: "project", listing: "project", ownerId: "p1" }),
+    generation: streamOf(
+      emptyAccount,
+      detailScopeOf(ORG, { family: "project", listing: "project", ownerId: "p1" }),
+    ).generation,
     method: "read",
     via: "zerops-read",
     rows: [
       {
         family: "project",
         id: "p1",
-        value: { id: "p1", name: "p1", status: "ACTIVE", lastUpdate, userRoles: grants },
+        value: { id: "p1", name: "p1", status: "ACTIVE", lastUpdate, userRoles },
         revision: { kind: "zerops", version: null },
       },
     ],
@@ -155,6 +169,11 @@ describe("a project's own row", () => {
     expect(fact.kind === "known" ? fact.value.userRoles : null).toEqual(roles);
   });
 
+  it("a listing's empty list, with nothing held, names nobody's grants", () => {
+    const fact = reduce([...held(), listingRead({ ...row, userRoles: [] })]);
+    expect(fact.kind === "known" ? fact.value.userRoles : null).toBeUndefined();
+  });
+
   it("keeps everybody's grants under a later push, which names none", () => {
     const fact = reduce([...held(), ownRead("2026-10-06T10:00:00Z"), push]);
     expect(fact).toMatchObject({ kind: "known", value: { name: "Renamed", userRoles: grants } });
@@ -182,6 +201,14 @@ describe("a project's own row", () => {
       rows: [{ family: "project", id: "p1", value, revision: zeropsVersion(3) }],
     },
   ];
+  const listingPush = (value: ProjectValue): AccountInput => ({
+    kind: "rows",
+    scope,
+    generation: 1,
+    method: "push",
+    via: "zerops-realtime",
+    rows: [{ family: "project", id: "p1", value, revision: zeropsVersion(4) }],
+  });
   const listingRead = (value: ProjectValue): AccountInput => ({
     kind: "rows",
     scope,
@@ -222,6 +249,29 @@ describe("a project's own row", () => {
       name: "an own read after a listing's own grant retires it: everybody's is the newer word",
       after: [listingRead({ ...row, viewerRoleCode: "READ_ONLY" }), ownRead(row.lastUpdate)],
       grants: { name: "p1", userRoles: grants, viewerRoleCode: undefined },
+    },
+    {
+      name: "a listing's empty list (an organization member's) keeps everybody's",
+      after: [listingRead({ ...row, userRoles: [] })],
+      grants: { name: "Renamed", userRoles: grants, viewerRoleCode: undefined },
+    },
+    {
+      name: "an own read naming no grants takes everybody's away: the own row is the whole word",
+      after: [ownRead(row.lastUpdate, [])],
+      grants: { name: "p1", userRoles: [], viewerRoleCode: undefined },
+    },
+    {
+      name: "a push naming no grant at all keeps the viewer's own grant held",
+      after: [listingRead({ ...row, viewerRoleCode: "READ_ONLY" }), listingPush(row)],
+      grants: { name: "Renamed", userRoles: grants, viewerRoleCode: "READ_ONLY" },
+    },
+    {
+      name: "a listing's empty list says the viewer is an organization member: their own grant goes",
+      after: [
+        listingRead({ ...row, viewerRoleCode: "READ_ONLY" }),
+        listingPush({ ...row, userRoles: [] }),
+      ],
+      grants: { name: "Renamed", userRoles: grants, viewerRoleCode: undefined },
     },
   ])("$name", ({ after, grants: expected }) => {
     expect(grantsOf([...held(), ownRead("2026-10-06T10:00:00Z"), ...after])).toEqual(expected);
