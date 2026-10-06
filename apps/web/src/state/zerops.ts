@@ -54,6 +54,7 @@ import {
   projectProcessesAtom,
   shownHqMatesAtom,
   shownHqNavigationAtom,
+  shownHqStatusAtom,
   shownProjectsAtom,
   type HqNavigationRead,
   type ProjectValue,
@@ -150,11 +151,15 @@ export const hqStandingAtom = Atom.make((get): HqStanding => {
   if (since !== null || navigation.refusal !== null)
     return { kind: "unavailable", since: since ?? Date.now() };
   const organization = navigation.organization;
-  if (!navigation.live || organization === null) return HQ_STANDING_UNKNOWN;
+  const status = get(shownHqStatusAtom);
+  if (!navigation.live || organization === null || status === null) return HQ_STANDING_UNKNOWN;
+  // HQ that is not the official one, as its own check of Zerops says, stands as unavailable.
+  if (status.official !== null && status.official !== "ok" && status.official !== "unknown")
+    return { kind: "unavailable", since: since ?? Date.now() };
   return {
-    kind: organization.official === "unknown" ? "unchecked" : "healthy",
+    kind: status.official === "unknown" ? "unchecked" : "healthy",
     build: organization.build,
-    parts: organization.parts,
+    parts: status.parts,
   };
 }).pipe(Atom.withLabel("zerops:hq-standing"));
 

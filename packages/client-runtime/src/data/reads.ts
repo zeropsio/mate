@@ -17,8 +17,13 @@ import {
   type OrganizationProjects,
 } from "./projections/projects.ts";
 import { hqMates, type HqMatesRead } from "./projections/hqMates.ts";
-import { hqNavigation, hqPersonFacts, type HqNavigationRead } from "./projections/hqNavigation.ts";
-import type { HqPersonFacts } from "./families/hqNavigation.ts";
+import {
+  hqNavigation,
+  hqPersonFacts,
+  hqStatus,
+  type HqNavigationRead,
+} from "./projections/hqNavigation.ts";
+import type { HqPersonFacts, HqStatusValue } from "./families/hqNavigation.ts";
 import type { AccountStore } from "./store.ts";
 
 export interface AccountReads {
@@ -153,3 +158,10 @@ export const shownHqPersonFactsAtom = Atom.make((get): Readonly<Record<string, H
   if (account === null || account.orgId === null) return NO_PERSON_FACTS;
   return get(account.data.project(hqPersonFacts, account.orgId));
 }).pipe(Atom.withLabel("data:shown-hq-person-facts"));
+
+/** How the organization shown's HQ stands, as its navigation says it; `null` before it said. */
+export const shownHqStatusAtom = Atom.make((get): HqStatusValue | null => {
+  const account = get(accountReadsAtom);
+  if (account === null || account.orgId === null) return null;
+  return get(account.data.project(hqStatus, account.orgId));
+}).pipe(Atom.withLabel("data:shown-hq-status"));

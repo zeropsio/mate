@@ -216,6 +216,9 @@ describe("hqNavigationLink", () => {
           ],
         },
       ]);
+      expect(fixture.sent.filter(({ request }) => request.type === "retry")).toEqual([
+        { segment: 2, request: { type: "retry", scopes: [NAVIGATION] } },
+      ]);
       expect(phase(store, hqAppsScope(ORG))).toBe("baselining");
       yield* Fiber.interrupt(fiber);
     }),
@@ -318,6 +321,49 @@ describe("an HQ outage", () => {
       yield* fixture.send(ready(3));
       yield* settle;
       expect(phase(store, hqAppsScope(ORG))).toBe("live");
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+});
+
+describe("an HQ session", () => {
+  it.effect(
+    "is renewed once; a renewed socket ended for its session before it said anything refuses",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const fixture = hqFixtureWire();
+        const { fiber } = yield* run(store, fixture);
+        const sessionEnded = { outcome: "recoverable-session", message: "4401" } as const;
+        yield* fixture.drop(sessionEnded);
+        yield* settle;
+        expect(fixture.opens()).toBe(2);
+        yield* fixture.drop(sessionEnded);
+        yield* settle;
+        expect(phase(store, linkKeys.hq(ORG))).toBe("refused");
+        expect(fixture.opens()).toBe(2);
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
+
+  it.effect("HQ refusing the whole socket (4403) is asked again only with the person's retry", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const fixture = hqFixtureWire();
+      const { fiber, supervisor } = yield* live(store, fixture);
+      yield* fixture.drop({ outcome: "definitive-refusal", message: "4403" });
+      yield* settle;
+      yield* TestClock.adjust(120_000);
+      yield* settle;
+      expect(phase(store, linkKeys.hq(ORG))).toBe("refused");
+      expect(fixture.opens()).toBe(1);
+      expect(appName(store, "shop")).toBe("Shop");
+      yield* supervisor.signal("manual-retry");
+      yield* settle;
+      expect(fixture.opens()).toBe(2);
+      expect(fixture.sent.filter(({ segment }) => segment === 2)[0]?.request).toEqual({
+        type: "retry",
+      });
       yield* Fiber.interrupt(fiber);
     }),
   );

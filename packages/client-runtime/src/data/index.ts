@@ -13,6 +13,7 @@ export type {
   HqOrganizationValue,
   HqPersonFacts,
   HqPressValue,
+  HqStatusValue,
   PlacementValue,
 } from "./families/hqNavigation.ts";
 export { hqNavigation, hqPersonFacts, type HqNavigationRead } from "./projections/hqNavigation.ts";
@@ -71,5 +72,6 @@ export {
   shownHqMatesAtom,
   shownHqNavigationAtom,
   shownHqPersonFactsAtom,
+  shownHqStatusAtom,
   type AccountReads,
 } from "./reads.ts";

@@ -15,10 +15,12 @@ import {
   hqAppsScope,
   hqPeopleScope,
   hqPressesScope,
+  hqStatusScope,
   placementsScope,
   type HqOrganizationValue,
   type HqPersonFacts,
   type HqPressValue,
+  type HqStatusValue,
   type PlacementValue,
 } from "../families/hqNavigation.ts";
 import { linkKeys } from "../model.ts";
@@ -166,5 +168,18 @@ export const hqPersonFacts: Projection<string, Readonly<Record<string, HqPersonF
     Object.fromEntries(
       listed(read, "placement", placementsScope(orgId)).map(({ id, value }) => [id, value.person]),
     ),
+  equals: sameValue,
+};
+
+/** How the organization's HQ stands, as its navigation says it; `null` before it said. */
+export const hqStatus: Projection<string, HqStatusValue | null> = {
+  name: "hqStatus",
+  keyOf: (orgId) => orgId,
+  derive: (read, orgId) => {
+    const fact = read.fact("hqStatus", orgId);
+    return fact.kind === "known" && read.members(hqStatusScope(orgId)).ids.includes(orgId)
+      ? fact.value
+      : null;
+  },
   equals: sameValue,
 };

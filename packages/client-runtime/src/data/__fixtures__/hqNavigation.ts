@@ -4,6 +4,7 @@
  * Mates, people and presses they describe.
  */
 import type { MateLiveView } from "@t3tools/shared/hqMates";
+import type { HqOfficialVerdict } from "@t3tools/shared/hqStream";
 
 import type { HqStructure } from "../../zerops/hq/client.ts";
 import type { HqPresses } from "../../zerops/hq/pressElsewhere.ts";
@@ -13,6 +14,7 @@ import {
   hqOrganizationScope,
   hqPeopleScope,
   hqPressesScope,
+  hqStatusScope,
   placementsScope,
   type HqAppValue,
   type HqPersonFacts,
@@ -30,7 +32,7 @@ export interface SeededHq {
     Record<string, { readonly name: string; readonly clientUserId?: string }>
   >;
   readonly presses?: HqPresses;
-  readonly official?: string | null;
+  readonly official?: HqOfficialVerdict | null;
   /** HQ answers now; `false` leaves it as it was read, its link down. */
   readonly live?: boolean;
   readonly person?: HqPersonFacts;
@@ -45,6 +47,7 @@ export function seedHqNavigation(store: AccountStore, orgId: string, seed: Seede
     store.dispatch({ kind: "stream", key, now: 0, event: streamEvent });
   const navigation = [
     hqOrganizationScope(orgId),
+    hqStatusScope(orgId),
     hqAppsScope(orgId),
     placementsScope(orgId),
     hqPeopleScope(orgId),
@@ -101,8 +104,15 @@ export function seedHqNavigation(store: AccountStore, orgId: string, seed: Seede
         can: structure?.can ?? {},
         unheld: structure?.unheld ?? {},
         tools: structure?.tools ?? [],
-        official: seed.official === undefined ? "ok" : seed.official,
         build: "",
+      },
+    },
+    {
+      family: "hqStatus",
+      id: orgId,
+      revision,
+      value: {
+        official: seed.official === undefined ? "ok" : seed.official,
         parts: { quarantined: [] },
       },
     },

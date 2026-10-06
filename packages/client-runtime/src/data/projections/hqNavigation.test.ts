@@ -6,6 +6,7 @@ import {
   hqOrganizationScope,
   hqPeopleScope,
   hqPressesScope,
+  hqStatusScope,
   placementsScope,
 } from "../families/hqNavigation.ts";
 import { emptyAccount, linkKeys, type AccountState, type ScopeKey } from "../model.ts";
@@ -13,11 +14,12 @@ import { reduceAccount, type AccountInput, type Row } from "../reducer.ts";
 import { readsOfState } from "../store.ts";
 import type { StreamEvent } from "../streamMachine.ts";
 import { hqMates } from "./hqMates.ts";
-import { hqNavigation, hqPersonFacts } from "./hqNavigation.ts";
+import { hqNavigation, hqPersonFacts, hqStatus } from "./hqNavigation.ts";
 
 const ORG = "org";
 const NAV: ReadonlyArray<ScopeKey> = [
   hqOrganizationScope(ORG),
+  hqStatusScope(ORG),
   hqAppsScope(ORG),
   placementsScope(ORG),
   hqPeopleScope(ORG),
@@ -38,14 +40,13 @@ const rows: ReadonlyArray<Row> = [
     family: "hqOrganization",
     id: ORG,
     revision,
-    value: {
-      can: {},
-      unheld: {},
-      tools: [],
-      official: "ok",
-      build: "b1",
-      parts: { quarantined: [] },
-    },
+    value: { can: {}, unheld: {}, tools: [], build: "b1" },
+  },
+  {
+    family: "hqStatus",
+    id: ORG,
+    revision,
+    value: { official: "ok", parts: { quarantined: [] } },
   },
   {
     family: "hqApp",
@@ -257,5 +258,15 @@ describe("hqPersonFacts", () => {
     });
     expect(hqPersonFacts.derive(readsOfState(removed), ORG)).toEqual({ ada: person });
     expect(hqPersonFacts.derive(readsOfState(emptyAccount), ORG)).toEqual({});
+  });
+});
+
+describe("hqStatus", () => {
+  it("is how HQ stands as its navigation says it, apart from the organization's record", () => {
+    expect(hqStatus.derive(readsOfState(read), ORG)).toEqual({
+      official: "ok",
+      parts: { quarantined: [] },
+    });
+    expect(hqStatus.derive(readsOfState(emptyAccount), ORG)).toBeNull();
   });
 });

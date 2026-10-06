@@ -224,14 +224,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/AppRoot.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsMenu",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "the menu is assembled from HQ rows in a hook; the menu projection reads the store",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/components/ChatView.tsx",
     "kind": "retired-token",
     "fingerprint": "rememberWriter(",
@@ -280,38 +272,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/components/CommandPalette.tsx",
-    "kind": "retired-token",
-    "fingerprint": "hqStructureAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/CommandPalette.tsx",
-    "kind": "retired-token",
-    "fingerprint": "hqStructureAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/Sidebar.tsx",
-    "kind": "retired-token",
-    "fingerprint": "hqStructureAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/Sidebar.tsx",
-    "kind": "retired-token",
-    "fingerprint": "hqStructureAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/components/Sidebar.tsx",
     "kind": "retired-token",
     "fingerprint": "shownInScope(",
@@ -341,46 +301,6 @@
     "fingerprint": "useZeropsMateOwners()",
     "owner": "data-layer rewrite: permissions/members",
     "reason": "member names and Mate owners come from the member list; HQ sends them finished",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/Sidebar.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsMenu",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "the menu is assembled from HQ rows in a hook; the menu projection reads the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/Sidebar.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsMenu",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "the menu is assembled from HQ rows in a hook; the menu projection reads the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/Sidebar.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsMenu",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "the menu is assembled from HQ rows in a hook; the menu projection reads the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/ThreadNotificationCoordinator.tsx",
-    "kind": "retired-token",
-    "fingerprint": "hqMatesViewAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/ThreadNotificationCoordinator.tsx",
-    "kind": "retired-token",
-    "fingerprint": "hqMatesViewAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
     "expires": "never"
   },
   {
@@ -581,30 +501,6 @@
     "fingerprint": "useMateActivityByProject(",
     "owner": "data-layer rewrite: Mate attention/overview",
     "reason": "Mate activity is picked by send time; the source decides, never the clock",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
-    "kind": "retired-token",
-    "fingerprint": "hqStructureAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
-    "kind": "retired-token",
-    "fingerprint": "hqStructureAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
-    "kind": "retired-token",
-    "fingerprint": "hqStructureAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
     "expires": "never"
   },
   {
@@ -960,38 +856,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/components/zerops/ZeropsHqCard.tsx",
-    "kind": "retired-token",
-    "fingerprint": "hqMatesViewAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsHqCard.tsx",
-    "kind": "retired-token",
-    "fingerprint": "hqMatesViewAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsHqCard.tsx",
-    "kind": "retired-token",
-    "fingerprint": "hqStructureAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsHqCard.tsx",
-    "kind": "retired-token",
-    "fingerprint": "hqStructureAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/components/zerops/ZeropsHqGate.tsx",
     "kind": "retired-token",
     "fingerprint": "bear(false)",
@@ -1178,22 +1042,6 @@
   {
     "path": "apps/web/src/components/zerops/ZeropsNewMateHost.tsx",
     "kind": "retired-token",
-    "fingerprint": "hqStructureAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsNewMateHost.tsx",
-    "kind": "retired-token",
-    "fingerprint": "hqStructureAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsNewMateHost.tsx",
-    "kind": "retired-token",
     "fingerprint": "useNewMate",
     "owner": "data-layer rewrite: operations",
     "reason": "births are tracked by app hooks; the operations adapter feeds the store",
@@ -1357,22 +1205,6 @@
     "fingerprint": "firstReleaseHandoff(",
     "owner": "data-layer rewrite: releases/environments",
     "reason": "the review hand-off is decided in the app; the operation's result says where to go",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
-    "kind": "retired-token",
-    "fingerprint": "hqStructureAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
-    "kind": "retired-token",
-    "fingerprint": "hqStructureAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
     "expires": "never"
   },
   {
@@ -1882,22 +1714,6 @@
   {
     "path": "apps/web/src/design/sidebarHarness.tsx",
     "kind": "retired-token",
-    "fingerprint": "menuRowsFromHq",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "the menu is assembled from HQ rows in a hook; the menu projection reads the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/design/sidebarHarness.tsx",
-    "kind": "retired-token",
-    "fingerprint": "menuRowsFromHq",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "the menu is assembled from HQ rows in a hook; the menu projection reads the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/design/sidebarHarness.tsx",
-    "kind": "retired-token",
     "fingerprint": "shownInScope(",
     "owner": "data-layer rewrite: permissions/members",
     "reason": "the Mine filter and owner records are computed in the client; HQ sends them finished",
@@ -2146,95 +1962,7 @@
   {
     "path": "apps/web/src/state/zerops.ts",
     "kind": "retired-token",
-    "fingerprint": "hqMatesViewAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/state/zerops.ts",
-    "kind": "retired-token",
-    "fingerprint": "hqMatesViewAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/state/zerops.ts",
-    "kind": "retired-token",
     "fingerprint": "hqOfficialAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/state/zerops.ts",
-    "kind": "retired-token",
-    "fingerprint": "hqPeopleViewAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/state/zerops.ts",
-    "kind": "retired-token",
-    "fingerprint": "hqPeopleViewAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/state/zerops.ts",
-    "kind": "retired-token",
-    "fingerprint": "hqStructureAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/state/zerops.ts",
-    "kind": "retired-token",
-    "fingerprint": "hqStructureAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/state/zerops.ts",
-    "kind": "retired-token",
-    "fingerprint": "hqStructureAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/state/zerops.ts",
-    "kind": "retired-token",
-    "fingerprint": "hqStructureAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/state/zerops.ts",
-    "kind": "retired-token",
-    "fingerprint": "hqStructureAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/state/zerops.ts",
-    "kind": "retired-token",
-    "fingerprint": "hqStructureAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/state/zerops.ts",
-    "kind": "retired-token",
-    "fingerprint": "hqStructureAtom",
     "owner": "data-layer rewrite: HQ structure/apps",
     "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
     "expires": "never"
@@ -2389,22 +2117,6 @@
     "fingerprint": "effectRead(",
     "owner": "data-layer rewrite: releases/environments",
     "reason": "a lost grant empties every flow and hooks read on their own; hide the project when it is read",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
-    "kind": "retired-token",
-    "fingerprint": "hqStructureAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
-    "kind": "retired-token",
-    "fingerprint": "hqStructureAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
     "expires": "never"
   },
   {
@@ -2690,46 +2402,6 @@
   {
     "path": "apps/web/src/zerops/environmentPorts.ts",
     "kind": "retired-token",
-    "fingerprint": "hqMatesViewAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/environmentPorts.ts",
-    "kind": "retired-token",
-    "fingerprint": "hqMatesViewAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/environmentPorts.ts",
-    "kind": "retired-token",
-    "fingerprint": "hqMatesViewAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/environmentPorts.ts",
-    "kind": "retired-token",
-    "fingerprint": "hqMatesViewAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/environmentPorts.ts",
-    "kind": "retired-token",
-    "fingerprint": "hqMatesViewAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/environmentPorts.ts",
-    "kind": "retired-token",
     "fingerprint": "hqOfficialAtom",
     "owner": "data-layer rewrite: HQ structure/apps",
     "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
@@ -2763,30 +2435,6 @@
     "path": "apps/web/src/zerops/environmentPorts.ts",
     "kind": "retired-token",
     "fingerprint": "hqOfficialAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/environmentPorts.ts",
-    "kind": "retired-token",
-    "fingerprint": "hqStructureAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/environmentPorts.ts",
-    "kind": "retired-token",
-    "fingerprint": "hqStructureAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/environmentPorts.ts",
-    "kind": "retired-token",
-    "fingerprint": "hqStructureAtom",
     "owner": "data-layer rewrite: HQ structure/apps",
     "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
     "expires": "never"
@@ -2816,14 +2464,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/zerops/fixMates.ts",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsMateOwners()",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "member names and Mate owners come from the member list; HQ sends them finished",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/zerops/hqBirth.ts",
     "kind": "retired-token",
     "fingerprint": "useHqBirths",
@@ -2856,131 +2496,19 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/zerops/hqRead.logic.ts",
-    "kind": "retired-token",
-    "fingerprint": "hqMatesSettled(",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "a settled flag for HQ Mates stands in for the stream's state; read the stream state",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/hqStructure.ts",
-    "kind": "retired-token",
-    "fingerprint": "hqMatesViewAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/hqStructure.ts",
-    "kind": "retired-token",
-    "fingerprint": "hqMatesViewAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/hqStructure.ts",
-    "kind": "retired-token",
-    "fingerprint": "hqMatesViewAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/hqStructure.ts",
-    "kind": "retired-token",
-    "fingerprint": "hqMatesViewAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/hqStructure.ts",
+    "path": "apps/web/src/zerops/hqNavigation.tsx",
     "kind": "retired-token",
     "fingerprint": "hqOfficialAtom",
     "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
+    "reason": "the official-HQ verdict from the member list (PA/PERM discovery) is not the HQ stream; it moves with that discovery",
     "expires": "never"
   },
   {
-    "path": "apps/web/src/zerops/hqStructure.ts",
+    "path": "apps/web/src/zerops/hqNavigation.tsx",
     "kind": "retired-token",
     "fingerprint": "hqOfficialAtom",
     "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/hqStructure.ts",
-    "kind": "retired-token",
-    "fingerprint": "hqPeopleViewAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/hqStructure.ts",
-    "kind": "retired-token",
-    "fingerprint": "hqPeopleViewAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/hqStructure.ts",
-    "kind": "retired-token",
-    "fingerprint": "hqPeopleViewAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/hqStructure.ts",
-    "kind": "retired-token",
-    "fingerprint": "hqPeopleViewAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/hqStructure.ts",
-    "kind": "retired-token",
-    "fingerprint": "hqStructureAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/hqStructure.ts",
-    "kind": "retired-token",
-    "fingerprint": "hqStructureAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/hqStructure.ts",
-    "kind": "retired-token",
-    "fingerprint": "hqStructureAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/hqStructure.ts",
-    "kind": "retired-token",
-    "fingerprint": "hqStructureAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/hqStructure.ts",
-    "kind": "retired-token",
-    "fingerprint": "let view: HqStructureView",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "a module-level HQ structure view duplicates the store; HQ's stream feeds one reducer",
+    "reason": "the official-HQ verdict from the member list (PA/PERM discovery) is not the HQ stream; it moves with that discovery",
     "expires": "never"
   },
   {
@@ -3496,46 +3024,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/zerops/useHqMatesRead.ts",
-    "kind": "retired-token",
-    "fingerprint": "hqMatesSettled(",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "a settled flag for HQ Mates stands in for the stream's state; read the stream state",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useHqMatesRead.ts",
-    "kind": "retired-token",
-    "fingerprint": "hqStructureAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useHqMatesRead.ts",
-    "kind": "retired-token",
-    "fingerprint": "hqStructureAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useHqOffers.ts",
-    "kind": "retired-token",
-    "fingerprint": "hqStructureAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useHqOffers.ts",
-    "kind": "retired-token",
-    "fingerprint": "hqStructureAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/zerops/useHqOffers.ts",
     "kind": "retired-token",
     "fingerprint": "useHqOffers",
@@ -3565,22 +3053,6 @@
     "fingerprint": "useInterestLeases",
     "owner": "data-layer rewrite: projects",
     "reason": "interest leases duplicate the store's subscriptions; the store reads what a view projects",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useMateActions.tsx",
-    "kind": "retired-token",
-    "fingerprint": "hqStructureAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useMateActions.tsx",
-    "kind": "retired-token",
-    "fingerprint": "hqStructureAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
     "expires": "never"
   },
   {
@@ -3776,22 +3248,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/zerops/usePressesElsewhere.ts",
-    "kind": "retired-token",
-    "fingerprint": "hqStructureAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/usePressesElsewhere.ts",
-    "kind": "retired-token",
-    "fingerprint": "hqStructureAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/zerops/useRepositorySource.ts",
     "kind": "retired-token",
     "fingerprint": "ReturnType<typeof makeRepositoryStore>",
@@ -3858,22 +3314,6 @@
   {
     "path": "apps/web/src/zerops/useUsageEnvironmentIdentities.ts",
     "kind": "retired-token",
-    "fingerprint": "hqStructureAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useUsageEnvironmentIdentities.ts",
-    "kind": "retired-token",
-    "fingerprint": "hqStructureAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useUsageEnvironmentIdentities.ts",
-    "kind": "retired-token",
     "fingerprint": "useMatesSettled()",
     "owner": "data-layer rewrite: HQ structure/apps",
     "reason": "a settled flag for HQ Mates stands in for the stream's state; read the stream state",
@@ -3906,49 +3346,9 @@
   {
     "path": "apps/web/src/zerops/useZeropsAppRecipes.ts",
     "kind": "retired-token",
-    "fingerprint": "hqStructureAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsAppRecipes.ts",
-    "kind": "retired-token",
-    "fingerprint": "hqStructureAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsAppRecipes.ts",
-    "kind": "retired-token",
-    "fingerprint": "hqStructureAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsAppRecipes.ts",
-    "kind": "retired-token",
     "fingerprint": "useZeropsAppRecipes",
     "owner": "data-layer rewrite: HQ structure/apps",
     "reason": "registry, recipes and releases are read by app hooks; the HQ adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsAppReleases.ts",
-    "kind": "retired-token",
-    "fingerprint": "hqStructureAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsAppReleases.ts",
-    "kind": "retired-token",
-    "fingerprint": "hqStructureAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
     "expires": "never"
   },
   {
@@ -4072,22 +3472,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/zerops/useZeropsGroupRecipe.ts",
-    "kind": "retired-token",
-    "fingerprint": "hqStructureAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsGroupRecipe.ts",
-    "kind": "retired-token",
-    "fingerprint": "hqStructureAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/zerops/useZeropsHistory.ts",
     "kind": "retired-token",
     "fingerprint": "useZeropsHistory",
@@ -4109,38 +3493,6 @@
     "fingerprint": "useZeropsLandedChange",
     "owner": "data-layer rewrite: changes/review",
     "reason": "a hook reads a landed change itself; the changes adapter owns the read",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsMateOwners.ts",
-    "kind": "retired-token",
-    "fingerprint": "hqPeopleViewAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsMateOwners.ts",
-    "kind": "retired-token",
-    "fingerprint": "hqPeopleViewAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsMateOwners.ts",
-    "kind": "retired-token",
-    "fingerprint": "hqStructureAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsMateOwners.ts",
-    "kind": "retired-token",
-    "fingerprint": "hqStructureAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
     "expires": "never"
   },
   {
@@ -4229,70 +3581,6 @@
     "fingerprint": "useZeropsMateUpdate",
     "owner": "data-layer rewrite: operations",
     "reason": "a Mate update settles to idle after a timer; only the source settles an operation",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsMenu.tsx",
-    "kind": "retired-token",
-    "fingerprint": "hqStructureAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsMenu.tsx",
-    "kind": "retired-token",
-    "fingerprint": "hqStructureAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsMenu.tsx",
-    "kind": "retired-token",
-    "fingerprint": "menuRowsFromHq",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "the menu is assembled from HQ rows in a hook; the menu projection reads the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsMenu.tsx",
-    "kind": "retired-token",
-    "fingerprint": "menuRowsFromHq",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "the menu is assembled from HQ rows in a hook; the menu projection reads the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsMenu.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsMenu",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "the menu is assembled from HQ rows in a hook; the menu projection reads the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsMenu.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsMenu",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "the menu is assembled from HQ rows in a hook; the menu projection reads the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsRegistry.ts",
-    "kind": "retired-token",
-    "fingerprint": "hqStructureAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsRegistry.ts",
-    "kind": "retired-token",
-    "fingerprint": "hqStructureAtom",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "HQ structure, Mates, official and people atoms duplicate the store; read the projection",
     "expires": "never"
   },
   {
@@ -5053,38 +4341,6 @@
     "fingerprint": "ownersAndAdmins(",
     "owner": "data-layer rewrite: permissions/members",
     "reason": "the client reads organization members for owners and admins; HQ sends them finished",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/hq/index.ts",
-    "kind": "retired-token",
-    "fingerprint": "menuRowsFromHq",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "the menu is assembled from HQ rows in a hook; the menu projection reads the store",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/hq/placement.ts",
-    "kind": "retired-token",
-    "fingerprint": "menuRowsFromHq",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "the menu is assembled from HQ rows in a hook; the menu projection reads the store",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/hq/stream.ts",
-    "kind": "retired-token",
-    "fingerprint": "event.appReads === null",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "null-means-delete in HQ data overwrites whole apps; events carry what changed",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/hq/stream.ts",
-    "kind": "retired-token",
-    "fingerprint": "reads === null || event.kind",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "null-means-delete in HQ data overwrites whole apps; events carry what changed",
     "expires": "never"
   },
   {

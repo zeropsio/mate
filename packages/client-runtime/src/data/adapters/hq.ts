@@ -191,6 +191,10 @@ export function hqNavigationLink(options: {
   let requests = 0;
   /** Looks at the demanded details again in the attempt under way, if one is. */
   let wakeAttempt: (() => void) | null = null;
+  /** The scopes HQ refused, by key: asked again only with the person's explicit `retry`. */
+  const refused = new Set<string>();
+  /** HQ refused the whole socket (`4403`): the next one opens with the person's `retry`. */
+  let refusedWhole = false;
 
   const attempt = (): Effect.Effect<never, StreamFault, Scope.Scope> =>
     Effect.gen(function* () {
@@ -210,6 +214,8 @@ export function hqNavigationLink(options: {
 
       /** The scopes the open segment was asked for: what HQ may be sending. */
       const asked = new Set<string>();
+      /** Whether a socket of this attempt said anything yet. */
+      let said = false;
 
       /** The keys this renderer holds of an HQ scope: what proves a removal on resume. */
       const knownKeys = (registered: Registered): ReadonlyArray<string> =>
@@ -301,6 +307,10 @@ export function hqNavigationLink(options: {
             asked.has(hqScopeKey(registered.wire)),
           );
           for (const registered of registrations) yield* register(registered);
+          // A refused scope comes back only by the person's explicit retry, sent before asking.
+          const retried = registrations.filter(({ wire }) => refused.delete(hqScopeKey(wire)));
+          if (retried.length > 0)
+            yield* open.send({ type: "retry", scopes: retried.map(({ wire }) => wire) });
           if (known.length > 0)
             yield* open.send({ type: "unsubscribe", scopes: known.map(({ wire }) => wire) });
           yield* open.send({ type: "subscribe", scopes: registrations.map(subscription) });
@@ -310,6 +320,11 @@ export function hqNavigationLink(options: {
 
       const onMessage = (encoded: string): Effect.Effect<void> =>
         Effect.gen(function* () {
+          // The socket said something: its session holds, and the link is live.
+          if (!said) {
+            said = true;
+            yield* signal(key, { kind: "baseline-committed" });
+          }
           const message = Option.getOrUndefined(decodeMessage(encoded));
           if (message === undefined) return;
           switch (message.type) {
@@ -339,6 +354,7 @@ export function hqNavigationLink(options: {
                 outcome: message.disposition === "refused" ? "definitive-refusal" : "transient",
                 message: message.reason ?? `HQ could not read this (${message.code}).`,
               };
+              if (message.disposition === "refused") refused.add(hqScopeKey(message.scope));
               const jitter = yield* Random.next;
               for (const { scope } of entry.generations)
                 yield* signal(scope, { kind: "fault", fault, jitter });
@@ -430,9 +446,10 @@ export function hqNavigationLink(options: {
           Effect.gen(function* () {
             const opened = yield* options.wire.open;
             open = opened;
-            if (first) {
-              yield* signal(key, { kind: "handshake" });
-              yield* signal(key, { kind: "baseline-committed" });
+            if (first) yield* signal(key, { kind: "handshake" });
+            if (refusedWhole) {
+              refusedWhole = false;
+              yield* opened.send({ type: "retry" });
             }
             const reading = yield* Effect.forkScoped(Stream.runForEach(opened.messages, onMessage));
             // A new segment resumes every scope still observed from its cursor, in one ask.
@@ -463,9 +480,15 @@ export function hqNavigationLink(options: {
           }),
         );
 
-      yield* segment(true);
-      // HQ ended the segment as planned: the next resumes from the committed cursors.
-      while (true) yield* segment(false);
+      return yield* segment(true).pipe(
+        // HQ ended the segment as planned: the next resumes from the committed cursors.
+        Effect.andThen(Effect.forever(segment(false))),
+        Effect.tapError((fault) =>
+          Effect.sync(() => {
+            if (fault.outcome === "definitive-refusal") refusedWhole = true;
+          }),
+        ),
+      );
     });
 
   return {
