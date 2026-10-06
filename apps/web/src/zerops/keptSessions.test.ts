@@ -135,11 +135,70 @@ function fakeLocks() {
       if (hold.count === 0) holders.delete(name);
     }
   };
-  return { request };
+  /** Every hold now, one entry per holder, as `navigator.locks.query()` lists them. */
+  const query = async () => ({
+    held: [...holders].flatMap(([name, hold]) =>
+      Array.from({ length: hold.count }, () => ({ name, mode: hold.mode })),
+    ),
+  });
+  return { request, query };
 }
 
 /** Lets the close's lock requests and the ends they decide run. */
 const settleLocks = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+// L08: a Mate session one tab minted displaced the one a neighbouring tab of the account still used.
+describe("a Mate session this tab mints in place of a kept one", () => {
+  const logouts = () => fetched.map(({ authorization }) => authorization);
+  const holdAccount = (locks: ReturnType<typeof fakeLocks>) => {
+    let lets!: () => void;
+    void locks.request(
+      "mate:account-open:person-1",
+      { mode: "shared" },
+      () =>
+        new Promise<void>((resolve) => {
+          lets = resolve;
+        }),
+    );
+    return () => lets();
+  };
+
+  it.each([
+    ["another tab kept, while that tab holds the account", "other", true, []],
+    ["another tab kept, after that tab let the account go", "other", false, []],
+    ["this tab minted, while another tab holds the account", "mine", true, []],
+    ["this tab minted, alone on the account", "mine", false, ["Bearer session-old"]],
+  ] as const)("ends the one it displaced only where %s", async (_name, by, held, ended) => {
+    const locks = fakeLocks();
+    vi.stubGlobal("navigator", { locks });
+    if (held) holdAccount(locks);
+    lifetime.openAccountLifetime("person-1");
+    if (by === "mine") kept.keepMintedMateSession("p1:zcp", session("old"));
+    else kept.keptSessions.keep("p1:zcp", session("old"));
+
+    kept.keepMintedMateSession("p1:zcp", session("new"));
+    await settleLocks();
+
+    expect(logouts()).toEqual(ended);
+    expect(kept.keptSessions.read("p1:zcp")?.credential.token).toBe("session-new");
+  });
+
+  it("ends a session set aside with the account's other kept sessions", async () => {
+    const locks = fakeLocks();
+    vi.stubGlobal("navigator", { locks });
+    const otherTabLets = holdAccount(locks);
+    lifetime.openAccountLifetime("person-1");
+    kept.keptSessions.keep("p1:zcp", session("old"));
+    kept.keepMintedMateSession("p1:zcp", session("new"));
+    await settleLocks();
+
+    otherTabLets();
+    lifetime.closeAccountLifetime();
+    await settleLocks();
+
+    expect(logouts().toSorted()).toEqual(["Bearer session-new", "Bearer session-old"]);
+  });
+});
 
 describe("no kept session outlives the login it was opened under", () => {
   // L08: one tab's sign-out revoked the sessions a neighbouring tab of the same account still used.

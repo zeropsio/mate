@@ -148,6 +148,37 @@ function keptUnder<T, E>(key: string, kind: KeptSessionKind<T, E>) {
   );
 }
 
+/** Tokens of the Mate sessions this page minted: only those can be this tab's alone. */
+const mintedHere = new Set<string>();
+
+/**
+ * Keeps a Mate session this tab minted for `key`. The one it displaces is ended at its Mate only
+ * where this tab minted it and no other tab of this origin holds the account open; otherwise
+ * another tab may still use it, so it is set aside beside the new one and ends with the account.
+ */
+export function keepMintedMateSession(
+  key: string,
+  registration: BearerConnectionRegistration,
+): void {
+  mintedHere.add(registration.credential.token);
+  const displaced = keptSessions.keep(key, registration);
+  const accountId = currentAccountId();
+  const storageKey = accountStorageKey(MATE_SESSIONS.storageKey);
+  if (displaced === null || accountId === null || storageKey === null) return;
+  const token = displaced.credential.token;
+  const setAside = () => {
+    keptUnder(storageKey, MATE_SESSIONS).keep(`${key}:displaced:${token}`, displaced);
+  };
+  if (!mintedHere.has(token)) return setAside();
+  const locks = webLocks();
+  if (locks === undefined) return endKeptSession(displaced);
+  void locks.query().then(({ held = [] }) => {
+    const holders = held.filter((lock) => lock.name === accountOpenLock(accountId)).length;
+    if (holders > 1) setAside();
+    else endKeptSession(displaced);
+  }, setAside);
+}
+
 // However the account closes — signed out, replaced, its login refused while open — it ends every
 // session it kept, whether or not this tab ever built a connection runtime or reached HQ; where
 // another tab still holds the account open, that tab's close does.

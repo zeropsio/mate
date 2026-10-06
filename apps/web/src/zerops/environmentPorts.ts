@@ -71,6 +71,7 @@ import { accountLocalStorage, accountStorageKey, captureAccountLifetime } from "
 import {
   endKeptSession,
   forgetKeptMateSession,
+  keepMintedMateSession,
   keptSessionHeld,
   keptSessions,
 } from "./keptSessions";
@@ -137,7 +138,8 @@ const servedApp = () => ({ origin: window.location.origin, basePath: appBasePath
 /**
  * An accepted registration, installed through `registry.rotateCredential` or `register`, and kept
  * for the target once installed, so the next load presents it again (`keptSessions.ts`) — only
- * for the account whose exchange opened it, and ending at its Mate whatever session it displaced.
+ * for the account whose exchange opened it; the session it displaced ends at its Mate only where no
+ * other tab may still use it (`keepMintedMateSession`).
  */
 function doorCredential(
   registry: AtomRegistry.AtomRegistry,
@@ -149,10 +151,7 @@ function doorCredential(
     install: async () => {
       const result = await runAtomCommand(registry, installCommand, registration, quiet);
       if (result._tag === "Failure") return { ok: false };
-      if (sameAccount()) {
-        const displaced = keptSessions.keep(key, registration);
-        if (displaced !== null) endKeptSession(displaced);
-      }
+      if (sameAccount()) keepMintedMateSession(key, registration);
       return { ok: true };
     },
   };
