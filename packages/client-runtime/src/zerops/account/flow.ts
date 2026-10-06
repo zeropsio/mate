@@ -32,17 +32,15 @@ export function deploymentStorePorts(
   const run = Effect.runForkWith(services);
   /** The account's entity table: what services run changes with it (`deployedVersion.ts`). */
   const table = Atom.make((get) => get(data.stateAtom).table);
-  /** The stops opened in detail, by project: only detail reads their running processes (R7). */
-  const detail = new Map<string, number>();
   return {
     services: (project: ProjectRef) => atomRegistry.get(data.reads.servicesOf(project)),
-    // Running processes are the account store's, through the in-transit bridge (`processBridge`).
+    // Running processes are the account store's organization-wide running work, through the
+    // in-transit bridge (`processBridge`): every drawn stop reads them, detail or not, at no cost —
+    // a build a colleague started shows on the menu's chip before anybody opens the stop.
     processes: (project: ProjectRef) =>
-      (detail.get(project.projectId) ?? 0) === 0
-        ? null
-        : runningProcessesRead(project, atomRegistry.get(projectProcessesAtom(project.projectId))),
+      runningProcessesRead(project, atomRegistry.get(projectProcessesAtom(project.projectId))),
     follow: (project, changed, refused, scope) => {
-      // The drawn stop owns service demand; only opened detail adds process demand (R7).
+      // The drawn stop owns service demand; opened detail adds its topology (R7).
       // An HQ-linked stop may not have appeared in the organization's search yet.
       const lease = run(
         Effect.scoped(
@@ -54,8 +52,6 @@ export function deploymentStorePorts(
             .pipe(Effect.andThen(Effect.never)),
         ).pipe(Effect.catch((error) => Effect.sync(() => refused(error.reason)))),
       );
-      if (scope === "detail")
-        detail.set(project.projectId, (detail.get(project.projectId) ?? 0) + 1);
       // Facts another surface reads enrich this same entry, without summary acquiring them.
       // Read once, so the table's next change is one its subscription hears.
       atomRegistry.get(table);
@@ -65,8 +61,6 @@ export function deploymentStorePorts(
         atomRegistry.subscribe(table, changed),
       ];
       return () => {
-        if (scope === "detail")
-          detail.set(project.projectId, (detail.get(project.projectId) ?? 1) - 1);
         for (const unsubscribe of unsubscribes) unsubscribe();
         run(Fiber.interrupt(lease));
       };

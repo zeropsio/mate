@@ -120,4 +120,19 @@ describe("the deployment store's ports (DESIGN §2.D D6)", () => {
     );
     expect(ports.buildStatus(process("build-1", project("project-stage")))).toBeUndefined();
   });
+
+  it("reads a drawn stop's running work from the account's store, its detail opened or not", () => {
+    const registry = AtomRegistry.make();
+    const store = makeAccountStore(registry);
+    liveZerops({
+      running: [{ id: "build-1", projectId: "project-stage", actionName: "stack.build" }],
+    }).forEach(store.dispatch);
+    registry.set(accountReadsAtom, { data: store.data, orgId: ORG, demandDetail: () => () => {} });
+    const ports = deploymentStorePorts(
+      {} as unknown as ManagedZeropsDataRuntime,
+      registry,
+      Context.empty(),
+    );
+    expect(ports.processes(project("project-stage"))?.value).toHaveLength(1);
+  });
 });

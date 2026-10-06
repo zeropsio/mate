@@ -229,7 +229,7 @@ describe("B: menu liveness", () => {
     );
 
     // Targets stage builds running without a menu indicator while the detail remains unopened.
-    it.effect.fails("a colleague's stage build appears in the menu", () =>
+    it.effect("a colleague's stage build appears in the menu", () =>
       Effect.gen(function* () {
         const s = yield* menuScenario();
         yield* s.given.project("Ada", { mate: true, app: "Shop" });
