@@ -149,17 +149,6 @@ const ServiceRow = Schema.Struct({
   ...SourceMetadataRow,
 });
 
-/** The Process a start or restart answers with: only what its acceptance checks. */
-const ProcessRow = Schema.Struct({
-  id: Schema.String,
-  projectId: OptionalString,
-  actionName: OptionalString,
-  created: OptionalString,
-  status: OptionalString,
-  serviceStackId: OptionalNullableString,
-  ...SourceMetadataRow,
-});
-
 const SearchEnvelope = Schema.Struct({
   items: Schema.Array(Schema.Unknown),
   limit: Schema.optionalKey(Schema.Finite),
@@ -199,7 +188,6 @@ const HistoryMetricRow = Schema.Struct({
 
 const decodeProjectRow = Schema.decodeUnknownOption(ProjectRow);
 const decodeServiceRow = Schema.decodeUnknownOption(ServiceRow);
-const decodeProcessRow = Schema.decodeUnknownOption(ProcessRow);
 
 const decodeSearchEnvelope = Schema.decodeUnknownOption(SearchEnvelope);
 const decodeDirectListEnvelope = Schema.decodeUnknownOption(DirectListEnvelope);
@@ -235,12 +223,6 @@ const hasValidProjectIds = (row: typeof ProjectRow.Type): boolean =>
 const hasValidServiceIds = (row: typeof ServiceRow.Type): boolean =>
   isServiceId(row.id) &&
   (row.projectId === undefined || isProjectId(row.projectId)) &&
-  hasValidMetadataIds(row);
-
-const hasValidProcessIds = (row: typeof ProcessRow.Type): boolean =>
-  isProcessId(row.id) &&
-  (row.projectId === undefined || isProjectId(row.projectId)) &&
-  (row.serviceStackId == null || isServiceId(row.serviceStackId)) &&
   hasValidMetadataIds(row);
 
 export interface ProtocolDecodeIssue {
@@ -838,16 +820,7 @@ export function decodeEntityDirectResponse(
   };
 }
 
-type ProjectResponseCommand = Extract<
-  PlatformCommand,
-  {
-    readonly kind:
-      | "update-project-tags"
-      | "rename-project"
-      | "set-project-member-role"
-      | "create-project";
-  }
->;
+type ProjectResponseCommand = Extract<PlatformCommand, { readonly kind: "create-project" }>;
 
 /** Decodes a Project returned by a mutation before it can enter the shared model. */
 export function decodeProjectCommandResponse(
@@ -855,14 +828,7 @@ export function decodeProjectCommandResponse(
   input: unknown,
 ): ProtocolDecodeResult {
   const row = Option.getOrUndefined(decodeProjectRow(input));
-  const expectedProject = command.kind === "create-project" ? null : command.project;
-  if (
-    !row ||
-    !hasValidProjectIds(row) ||
-    row.name === undefined ||
-    row.status === undefined ||
-    (expectedProject !== null && row.id !== expectedProject.projectId)
-  )
+  if (!row || !hasValidProjectIds(row) || row.name === undefined || row.status === undefined)
     return {
       observations: [],
       issues: [
@@ -872,125 +838,15 @@ export function decodeProjectCommandResponse(
         },
       ],
     };
-  const organization: ProjectRef["organization"] = (() => {
-    switch (command.kind) {
-      case "update-project-tags":
-      case "rename-project":
-      case "set-project-member-role":
-        return command.project.organization;
-      case "create-project":
-        return command.organization;
-    }
-  })();
   const ref: ProjectRef = {
     kind: "project",
-    organization,
+    organization: command.organization,
     projectId: ZeropsProjectId.make(row.id),
   };
   return {
     observations: projectObservations(ref, row, { source: "command-response", command }),
     issues: [],
   };
-}
-
-/**
- * The measured PUT /service-stack/{id}/restart response is a direct Process body.
- * Its repeated project and service ids must match the command scope.
- */
-export function decodeRestartServiceResponse(
-  command: Extract<PlatformCommand, { readonly kind: "restart-service" }>,
-  input: unknown,
-): ProtocolDecodeResult {
-  const row = Option.getOrUndefined(decodeProcessRow(input));
-  if (
-    !row ||
-    !hasValidProcessIds(row) ||
-    row.actionName !== "stack.restart" ||
-    row.created === undefined ||
-    row.status === undefined ||
-    row.projectId !== command.service.project.projectId ||
-    row.serviceStackId !== command.service.serviceId
-  )
-    return {
-      observations: [],
-      issues: [
-        {
-          kind: "malformed-row",
-          message: "Restart response is not the expected Process for the requested service.",
-        },
-      ],
-    };
-  return { observations: [], issues: [] };
-}
-
-export interface StartResponseDecodeResult extends ProtocolDecodeResult {
-  /**
-   * True when the Process came back with an actionName other than the
-   * expected start action. Never a decode failure by itself — the platform's
-   * exact actionName for `stack.start` / a project start was not measured,
-   * so a mismatch here is recorded, not treated as a malformed response.
-   */
-  readonly actionNameMismatch: boolean;
-}
-
-/**
- * Shared body for the measured PUT /service-stack/{id}/start and
- * PUT /project/{id}/start responses — both are a direct Process body, like
- * restart. Unlike restart, the exact actionName was not measured, so a
- * command is accepted whenever its ids match the command scope; a wrong
- * actionName only sets `actionNameMismatch`, it never fails the decode.
- */
-function decodeStartResponse(
-  command: Extract<PlatformCommand, { readonly kind: "start-service" | "start-project" }>,
-  input: unknown,
-  expectedActionName: (actionName: string | undefined) => boolean,
-): StartResponseDecodeResult {
-  const row = Option.getOrUndefined(decodeProcessRow(input));
-  const project = command.kind === "start-service" ? command.service.project : command.project;
-  const scopeMatches =
-    row !== undefined &&
-    hasValidProcessIds(row) &&
-    row.created !== undefined &&
-    row.status !== undefined &&
-    row.projectId === project.projectId &&
-    (command.kind === "start-project" || row.serviceStackId === command.service.serviceId);
-
-  if (!row || !scopeMatches)
-    return {
-      observations: [],
-      actionNameMismatch: false,
-      issues: [
-        {
-          kind: "malformed-row",
-          message: "Start response is not the expected Process for the requested scope.",
-        },
-      ],
-    };
-  return {
-    observations: [],
-    actionNameMismatch: !expectedActionName(row.actionName),
-    issues: [],
-  };
-}
-
-/** The measured PUT /service-stack/{id}/start response — see decodeStartResponse. */
-export function decodeStartServiceResponse(
-  command: Extract<PlatformCommand, { readonly kind: "start-service" }>,
-  input: unknown,
-): StartResponseDecodeResult {
-  return decodeStartResponse(command, input, (actionName) => actionName === "stack.start");
-}
-
-/** The measured PUT /project/{id}/start response — see decodeStartResponse. */
-export function decodeStartProjectResponse(
-  command: Extract<PlatformCommand, { readonly kind: "start-project" }>,
-  input: unknown,
-): StartResponseDecodeResult {
-  return decodeStartResponse(
-    command,
-    input,
-    (actionName) => actionName !== undefined && /start/i.test(actionName),
-  );
 }
 
 function pair(used: number | undefined, limit: number | undefined) {

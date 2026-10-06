@@ -14,7 +14,12 @@ import { sameValue } from "./equal.ts";
 export type OperationProgress =
   | { readonly stage: "unknown" }
   | { readonly stage: "submitting" }
-  | { readonly stage: "unsent"; readonly next: "send-again" }
+  | {
+      readonly stage: "unsent";
+      readonly next: "send-again";
+      /** What its owner, or the door before it, said of why it was not taken. */
+      readonly reason?: string;
+    }
   | { readonly stage: "uncertain"; readonly next: "asking-owner" | "ask-owner-again" }
   | { readonly stage: "refused"; readonly reason: string }
   | { readonly stage: "accepted" | "reflected"; readonly operationId: string }
@@ -31,6 +36,8 @@ export type OperationProgress =
       readonly nextActor: string;
       /** What the owner named as the next step, where it named one. */
       readonly nextAction?: string;
+      /** Why the owner stopped there, where it said. */
+      readonly reason?: string;
     };
 
 /** Progress over a registry of operation kinds: the account's, or a test's own. */
@@ -51,7 +58,11 @@ export const operationProgressOf = (
     if (receipt === null)
       switch (record.submission) {
         case "unsent":
-          return { stage: "unsent", next: "send-again" };
+          return {
+            stage: "unsent",
+            next: "send-again",
+            ...(record.unsentBecause === undefined ? {} : { reason: record.unsentBecause }),
+          };
         case "uncertain":
           return { stage: "uncertain", next: "asking-owner" };
         case "uncertain-unasked":

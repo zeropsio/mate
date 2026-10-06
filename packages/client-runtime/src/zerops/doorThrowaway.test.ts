@@ -5,6 +5,7 @@ import type { ZeropsThrowawayPlatform } from "../authorization/zeropsThrowaway.t
 import {
   ZeropsApiClient,
   ZeropsApiError,
+  ZeropsWriteNotSent,
   type FetchImplementation,
   type WriteAdmission,
   type ZeropsUser,
@@ -566,9 +567,9 @@ describe("throwaway hygiene", () => {
           expect(outcome).toBe("minted");
           expect(tab.mints()).toHaveLength(1);
         } else {
+          expect(outcome).toBeInstanceOf(ZeropsWriteNotSent);
           expect(outcome).toMatchObject({
-            _tag: "ZeropsCommandAdmissionError",
-            reason: "access-expired",
+            refusal: { _tag: "ZeropsCommandAdmissionError", reason: "access-expired" },
           });
           expect(tab.mints()).toEqual([]);
         }

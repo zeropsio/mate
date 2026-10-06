@@ -88,7 +88,7 @@ const mock = vi.hoisted(() => ({
       readonly onCancel: () => void;
     } | null,
   },
-  /** The platform's rename of a project, through the account's commands. */
+  /** The platform's rename of a project, as the account's operation: resolves once Zerops took it. */
   renameProject: vi.fn(),
   /** *Finish setup*'s steps, as the hook hands them over. */
   finishMateSetup: vi.fn(),
@@ -99,8 +99,8 @@ const mock = vi.hoisted(() => ({
   /** The press's marker on each container, by service id, as the store states it. */
   markers: new Map<string, boolean | "unknown" | "unread">(),
   dialog: { current: null as FaceDialogProps | null },
-  /** The platform's per-project role write a hand-over makes, a promise the test answers. */
-  setProjectMemberRole: vi.fn(),
+  /** The account's hand-over operation, answered with where it stands: a promise the test answers. */
+  assignMateOwner: vi.fn(),
   assignDialog: { current: null as AssignDialogProps | null },
   /** What the hook asked the account's bus to read again. */
   invalidated: [] as Array<unknown>,
@@ -202,16 +202,34 @@ vi.mock("./ZeropsSessionProvider", () => ({
     user: mock.user,
   }),
 }));
+// The account's operations: a rename Zerops refuses is said with its reason.
+vi.mock("./accountOperations", () => ({
+  useAccountOperations: () => ({
+    submit: async (intent: { readonly kind: string }) => {
+      if (intent.kind === "assign-mate-owner") return mock.assignMateOwner(intent);
+      try {
+        await mock.renameProject(intent);
+        return {
+          requestId: "r1",
+          evidence: null,
+          progress: { stage: "done", operationId: "p", outcome: "succeeded" },
+        };
+      } catch (cause) {
+        return {
+          requestId: "r1",
+          evidence: null,
+          progress: { stage: "refused", reason: (cause as Error).message },
+        };
+      }
+    },
+  }),
+}));
 // The account's runtime: no platform command is answered here.
 vi.mock("./zeropsDataContext", () => ({
   useZeropsData: () => ({
     organizationRef: (organizationId: string) => ({ organizationId }),
     projectRef: (organizationId: string, projectId: string) => ({ organizationId, projectId }),
     runtime: {
-      commands: {
-        setProjectMemberRole: mock.setProjectMemberRole,
-        renameProject: mock.renameProject,
-      },
       reads: { setupMarker: () => null },
       cells: {
         known: (request: { readonly kind: string }) => {
@@ -221,7 +239,6 @@ vi.mock("./zeropsDataContext", () => ({
       },
     },
   }),
-  runZeropsCommand: (command: Promise<unknown>) => command,
   // The organization's token list as the platform answers it, where it is read; nothing else is.
   useKnown: (cell: { readonly kind: string } | null) =>
     cell?.kind === "tokens"
@@ -377,7 +394,7 @@ beforeEach(() => {
   mock.registry = { groups: [] };
   mock.dialog.current = null;
   mock.assignDialog.current = null;
-  mock.setProjectMemberRole.mockReset();
+  mock.assignMateOwner.mockReset();
   mock.invalidated = [];
   mock.asked = [];
   mock.tokens = [];
@@ -627,18 +644,28 @@ describe("useMateActions — Hand this Mate over", () => {
     expect(mock.reread).toHaveBeenCalledTimes(1);
   });
 
+  const answered = (progress: unknown, evidence: string | null = null) => ({
+    requestId: "r1",
+    progress,
+    evidence,
+  });
+
   it("says a refused hand-over's reason in the dialog, which stays open", async () => {
-    mock.setProjectMemberRole.mockRejectedValue(new Error("Zerops refused the hand-over."));
+    mock.assignMateOwner.mockResolvedValue(
+      answered({ stage: "refused", reason: "Zerops refused the hand-over." }),
+    );
     mount();
     openAssign();
     expect(mock.assignDialog.current).toMatchObject({ pending: false, error: null });
     await act(async () => {
       mock.assignDialog.current!.onSubmit("cu-eva");
     });
-    expect(mock.setProjectMemberRole).toHaveBeenCalledWith(
-      { organizationId: "org-acme", projectId: FEN.project.id },
-      { clientUserId: "cu-eva", roleCode: "OWNER" },
-    );
+    expect(mock.assignMateOwner).toHaveBeenCalledWith({
+      kind: "assign-mate-owner",
+      orgId: "org-acme",
+      projectId: FEN.project.id,
+      clientUserId: "cu-eva",
+    });
     expect(mock.assignDialog.current).toMatchObject({
       pending: false,
       error: "Zerops refused the hand-over.",
@@ -650,7 +677,9 @@ describe("useMateActions — Hand this Mate over", () => {
   // F11: the person who handed a Mate over sees its new owner at once — the grant's round reads
   // the project's grants again — never only after the next round.
   it("asks the access grant to read the projects again once the platform takes it", async () => {
-    mock.setProjectMemberRole.mockResolvedValue(undefined);
+    mock.assignMateOwner.mockResolvedValue(
+      answered({ stage: "done", operationId: FEN.project.id, outcome: "succeeded" }),
+    );
     mount();
     openAssign();
     await act(async () => {
@@ -659,56 +688,51 @@ describe("useMateActions — Hand this Mate over", () => {
     expect(mock.invalidated).toEqual([{ topic: "access", change: "grants-written" }]);
   });
 
-  // F23 (e2e, 2026-10-03): Fin handed back to Karlos read OWNER twice, and the menu named the one
-  // who had handed it over. A Mate has one OWNER: the hand over gives it to the person picked, then
-  // takes it from whoever held it — the key's grant, not an OWNER, untouched.
-  describe("one OWNER per Mate", () => {
-    const KEY = { clientUserId: "cu-key", roleCode: "BASIC_USER" };
-    const handed = {
-      ...FEN.project,
-      userRoles: [
-        KEY,
-        { clientUserId: "cu-eva", roleCode: "OWNER" },
-        { clientUserId: "cu-ada", roleCode: "OWNER" },
-      ],
-    };
-
-    it("gives it to the person picked, then takes it from its previous owner", async () => {
-      mock.setProjectMemberRole.mockResolvedValueOnce(handed).mockResolvedValueOnce(undefined);
-      mount();
-      openAssign();
-      await act(async () => {
-        mock.assignDialog.current!.onSubmit("cu-eva");
-      });
-      expect(mock.setProjectMemberRole.mock.calls.map(([, input]) => input)).toEqual([
-        { clientUserId: "cu-eva", roleCode: "OWNER" },
-        { clientUserId: "cu-ada", roleCode: null },
-      ]);
-      expect(mock.invalidated).toEqual([{ topic: "access", change: "grants-written" }]);
+  // F23 (e2e, 2026-10-03): a Mate has one OWNER. A hand over its previous owner still holds is
+  // not complete, and says so; the first write landed, so the grant is read again.
+  it("says the hand over is not complete where its previous owner keeps it, and reads the grants again", async () => {
+    mock.assignMateOwner.mockResolvedValue(
+      answered(
+        { stage: "done", operationId: FEN.project.id, outcome: "failed" },
+        "It was handed over, but its previous owner still owns it too: Zerops refused it.",
+      ),
+    );
+    mount();
+    openAssign();
+    await act(async () => {
+      mock.assignDialog.current!.onSubmit("cu-eva");
     });
-
-    it("says the hand over is not complete where its previous owner keeps it, and reads the grants again", async () => {
-      mock.setProjectMemberRole
-        .mockResolvedValueOnce(handed)
-        .mockRejectedValueOnce(new Error("Zerops refused it."));
-      mount();
-      openAssign();
-      await act(async () => {
-        mock.assignDialog.current!.onSubmit("cu-eva");
-      });
-      // Open, saying what stands: the person picked has it, the previous owner still does.
-      expect(mock.assignDialog.current).toMatchObject({
-        pending: false,
-        error: "It was handed over, but its previous owner still owns it too: Zerops refused it.",
-      });
-      // The first write landed: the grant is asked again, so the menu reads what the platform holds.
-      expect(mock.invalidated).toEqual([{ topic: "access", change: "grants-written" }]);
+    expect(mock.assignDialog.current).toMatchObject({
+      pending: false,
+      error: "It was handed over, but its previous owner still owns it too: Zerops refused it.",
     });
+    expect(mock.invalidated).toEqual([{ topic: "access", change: "grants-written" }]);
+  });
+
+  it("says a hand-over it could not tell landed, and reads the grants again", async () => {
+    mock.assignMateOwner.mockResolvedValue(
+      answered({
+        stage: "unresolved",
+        operationId: null,
+        nextActor: "person",
+        nextAction: "Check who owns the Mate, then hand it over again",
+      }),
+    );
+    mount();
+    openAssign();
+    await act(async () => {
+      mock.assignDialog.current!.onSubmit("cu-eva");
+    });
+    expect(mock.assignDialog.current).toMatchObject({
+      pending: false,
+      error: "Check who owns the Mate, then hand it over again.",
+    });
+    expect(mock.invalidated).toEqual([{ topic: "access", change: "grants-written" }]);
   });
 
   it("closes once the platform takes it", async () => {
     let answer: (value: unknown) => void = () => {};
-    mock.setProjectMemberRole.mockReturnValue(
+    mock.assignMateOwner.mockReturnValue(
       new Promise((resolve) => {
         answer = resolve;
       }),
@@ -721,7 +745,7 @@ describe("useMateActions — Hand this Mate over", () => {
     expect(mock.assignDialog.current).toMatchObject({ pending: true, error: null });
     mock.assignDialog.current = null;
     await act(async () => {
-      answer(undefined);
+      answer(answered({ stage: "done", operationId: FEN.project.id, outcome: "succeeded" }));
     });
     act(() => {
       mounted[0]!.update(<Probe />);
@@ -1316,11 +1340,13 @@ describe("useMateActions — Rename Mate", () => {
     act(() => {
       rename!.commit("Nova");
     });
-    expect(mock.renameProject).toHaveBeenCalledWith(
-      { organizationId: "org-acme", projectId: named.project.id },
-      "Acme Docs - Nova",
-      "Acme Docs - Fen",
-    );
+    expect(mock.renameProject).toHaveBeenCalledWith({
+      kind: "rename-project",
+      orgId: "org-acme",
+      projectId: named.project.id,
+      name: "Acme Docs - Nova",
+      from: "Acme Docs - Fen",
+    });
     expect(mock.updateMate).not.toHaveBeenCalled();
   });
 
@@ -1373,22 +1399,26 @@ describe("useMateActions — Move renames the Mate's project in Zerops", () => {
     mock.renameProject.mockReturnValue(Promise.resolve(written));
     await pressMove(SHOP);
     expect(mock.moveProject).toHaveBeenCalledTimes(1);
-    expect(mock.renameProject).toHaveBeenCalledWith(
-      { organizationId: "org-acme", projectId: named.project.id },
-      "Shop - Fen",
-      "Acme Docs - Fen",
-    );
+    expect(mock.renameProject).toHaveBeenCalledWith({
+      kind: "rename-project",
+      orgId: "org-acme",
+      projectId: named.project.id,
+      name: "Shop - Fen",
+      from: "Acme Docs - Fen",
+    });
   });
 
   it("renames it to its own name alone where it goes out of every application", async () => {
     mock.renameProject.mockReturnValue(Promise.resolve(written));
     await pressMove({ kind: "none" });
     expect(mock.moveProject).toHaveBeenCalledTimes(1);
-    expect(mock.renameProject).toHaveBeenCalledWith(
-      { organizationId: "org-acme", projectId: named.project.id },
-      "Fen",
-      "Acme Docs - Fen",
-    );
+    expect(mock.renameProject).toHaveBeenCalledWith({
+      kind: "rename-project",
+      orgId: "org-acme",
+      projectId: named.project.id,
+      name: "Fen",
+      from: "Acme Docs - Fen",
+    });
   });
 
   it("says the Mate is moved and its name is not, and offers to finish it with the same target", async () => {
@@ -1401,11 +1431,13 @@ describe("useMateActions — Move renames the Mate's project in Zerops", () => {
     await act(async () => {
       finish!.onSelect();
     });
-    expect(mock.renameProject).toHaveBeenLastCalledWith(
-      { organizationId: "org-acme", projectId: named.project.id },
-      "Shop - Fen",
-      "Acme Docs - Fen",
-    );
+    expect(mock.renameProject).toHaveBeenLastCalledWith({
+      kind: "rename-project",
+      orgId: "org-acme",
+      projectId: named.project.id,
+      name: "Shop - Fen",
+      from: "Acme Docs - Fen",
+    });
     expect(verbs(named).find((verb) => verb.id === "finish-rename")).toBeUndefined();
   });
   it("offers nothing to finish once the project was renamed since", async () => {

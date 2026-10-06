@@ -56,7 +56,7 @@ describe("central Zerops data bindings", () => {
       "restartService",
       "writeProject",
       "importDevelopmentContainer",
-      "enableZeropsMate",
+      "writeMateFlag",
       "enableSubdomainAccess",
       "createProject",
       "importProject",

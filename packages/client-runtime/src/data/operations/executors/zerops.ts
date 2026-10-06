@@ -9,11 +9,23 @@ import type { AtomRegistry } from "effect/unstable/reactivity";
 
 import type { ZeropsApiClient } from "../../../zerops/api.ts";
 import type { ThrowawayDebt } from "../../../zerops/doorThrowaway.ts";
+import { makeProjectTagWriter, type ProjectTagLocks } from "../../../zerops/data/tagWriter.ts";
 import type { DetailDemand } from "../../demand.ts";
 import type { AccountStore } from "../../store.ts";
 import type { OperationExecutor } from "../coordinator.ts";
 import { deleteProjectExecutor } from "./deleteProject.ts";
 import { mateRestartOwner } from "./mateRestart.ts";
+import {
+  assignMateOwnerExecutor,
+  renameProjectExecutor,
+  startProjectExecutor,
+  updateProjectTagsExecutor,
+} from "./projectWrites.ts";
+import {
+  enableSubdomainAccessExecutor,
+  enableZeropsMateExecutor,
+  startServiceExecutor,
+} from "./serviceWrites.ts";
 import { throwawaySweepExecutor } from "./throwawaySweep.ts";
 
 type ZeropsOperationsClient = Pick<
@@ -24,6 +36,12 @@ type ZeropsOperationsClient = Pick<
   | "deleteProject"
   | "listIntegrationTokens"
   | "deleteIntegrationToken"
+  | "enableSubdomainAccess"
+  | "writeMateFlag"
+  | "startProject"
+  | "fetchProject"
+  | "writeProject"
+  | "setProjectMemberRole"
 >;
 
 export function makeZeropsExecutor(input: {
@@ -34,6 +52,8 @@ export function makeZeropsExecutor(input: {
   readonly demandDetail: (demand: DetailDemand) => () => void;
   readonly debtOf: (clientId: string) => ThrowawayDebt;
   readonly nowMs: () => number;
+  /** The page's locks, which serialize a project's record writes across tabs; absent, this page's. */
+  readonly locks?: ProjectTagLocks;
 }): OperationExecutor {
   const { client } = input;
   const restart = mateRestartOwner({
@@ -64,6 +84,26 @@ export function makeZeropsExecutor(input: {
     debtOf: input.debtOf,
     nowMs: input.nowMs,
   });
+  const publish = enableSubdomainAccessExecutor({
+    enableSubdomainAccess: (serviceId) => client.enableSubdomainAccess(serviceId),
+  });
+  const startOne = startServiceExecutor({
+    startService: (serviceId) => client.startService(serviceId),
+  });
+  const startAll = startProjectExecutor({
+    startProject: (projectId) => client.startProject(projectId),
+  });
+  const enableMate = enableZeropsMateExecutor({
+    writeMateFlag: (serviceId) => client.writeMateFlag(serviceId),
+    restartService: (serviceId) => client.restartService(serviceId),
+  });
+  const tags = makeProjectTagWriter({ source: client, locks: input.locks });
+  const rename = renameProjectExecutor(tags);
+  const retag = updateProjectTagsExecutor(tags);
+  const assign = assignMateOwnerExecutor({
+    setProjectMemberRole: (input) => client.setProjectMemberRole(input),
+    fetchProject: (projectId) => client.fetchProject(projectId),
+  });
   return {
     submit: (requestId, intent) => {
       switch (intent.kind) {
@@ -73,6 +113,20 @@ export function makeZeropsExecutor(input: {
           return remove(requestId, intent);
         case "throwaway-sweep":
           return sweep(requestId, intent);
+        case "enable-subdomain-access":
+          return publish(requestId, intent);
+        case "start-service":
+          return startOne(requestId, intent);
+        case "start-project":
+          return startAll(requestId, intent);
+        case "enable-zerops-mate":
+          return enableMate(requestId, intent);
+        case "rename-project":
+          return rename(requestId, intent);
+        case "update-project-tags":
+          return retag(requestId, intent);
+        case "assign-mate-owner":
+          return assign(requestId, intent);
       }
     },
   };

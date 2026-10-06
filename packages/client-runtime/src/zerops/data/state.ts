@@ -736,8 +736,7 @@ const commandAdmissionReason = (
   if (input.stamp.observedAtMs > state.access.deadlineMs) return "access expired";
   if (!state.access.mutationsAllowed) return "account mutations are denied";
   const target = commandTarget(command);
-  const project =
-    target.kind === "organization" ? null : target.kind === "project" ? target : target.project;
+  const project = target.kind === "organization" ? null : target;
   if (project !== null) {
     const role = state.access.projects.find(
       (candidate) => projectKeyOf(candidate.project) === projectKeyOf(project),

@@ -8,10 +8,8 @@ import {
   ZeropsAccountId,
   ZeropsOrganizationId,
   ZeropsProjectId,
-  ZeropsServiceId,
   type AccessState,
   type AccountScope,
-  type ServiceRef,
 } from "./types.ts";
 
 const account = {
@@ -27,11 +25,6 @@ const project = {
     organizationId: ZeropsOrganizationId.make("org-a"),
   },
   projectId: ZeropsProjectId.make("project-a"),
-};
-const service: ServiceRef = {
-  kind: "service",
-  project,
-  serviceId: ZeropsServiceId.make("service-a"),
 };
 
 const verified = (overrides: Partial<Extract<AccessState, { status: "verified" }>> = {}) =>
@@ -51,11 +44,11 @@ const ALLOWED: GrantCapability = { allowed: true };
 
 describe("commandAdmissionError", () => {
   it("admits a current project-scoped grant", () => {
-    expect(commandAdmissionError(scope, verified(), service, 999, ALLOWED)).toBeNull();
+    expect(commandAdmissionError(scope, verified(), project, 999, ALLOWED)).toBeNull();
   });
 
   it("rejects an expired grant at the execution clock", () => {
-    expect(commandAdmissionError(scope, verified(), service, 1_000, ALLOWED)?.reason).toBe(
+    expect(commandAdmissionError(scope, verified(), project, 1_000, ALLOWED)?.reason).toBe(
       "access-expired",
     );
   });
@@ -67,7 +60,7 @@ describe("commandAdmissionError", () => {
     "refuses a verified access its grant's own clocks say is %s, as %s",
     (grantReason, reason) => {
       expect(
-        commandAdmissionError(scope, verified(), service, 500, {
+        commandAdmissionError(scope, verified(), project, 500, {
           allowed: false,
           reason: grantReason,
           waitable: grantReason === "access-lapsed",
@@ -85,7 +78,7 @@ describe("commandAdmissionError", () => {
 
   it("leaves an account its grant has not verified to the runtime's access", () => {
     expect(
-      commandAdmissionError(scope, verified(), service, 500, {
+      commandAdmissionError(scope, verified(), project, 500, {
         allowed: false,
         reason: "access-unverified",
         waitable: true,
@@ -98,7 +91,7 @@ describe("commandAdmissionError", () => {
       commandAdmissionError(
         scope,
         verified({ accountEpoch: AccountEpoch.make(2), deadlineMs: 10_000 }),
-        service,
+        project,
         500,
         ALLOWED,
       )?.reason,
@@ -107,7 +100,7 @@ describe("commandAdmissionError", () => {
 
   it("requires an effective project mutation grant", () => {
     expect(
-      commandAdmissionError(scope, verified({ projects: [] }), service, 500, ALLOWED)?.reason,
+      commandAdmissionError(scope, verified({ projects: [] }), project, 500, ALLOWED)?.reason,
     ).toBe("access-denied");
   });
 
@@ -125,7 +118,7 @@ describe("commandAdmissionError", () => {
         verified({
           projects: [{ project: foreignProject, role: "ADMIN", mutationsAllowed: true }],
         }),
-        service,
+        project,
         500,
         ALLOWED,
       )?.reason,
@@ -134,7 +127,7 @@ describe("commandAdmissionError", () => {
 
   it("rejects when mutations are disallowed at the account level despite an admitted project", () => {
     expect(
-      commandAdmissionError(scope, verified({ mutationsAllowed: false }), service, 500, ALLOWED)
+      commandAdmissionError(scope, verified({ mutationsAllowed: false }), project, 500, ALLOWED)
         ?.reason,
     ).toBe("access-denied");
   });
@@ -145,7 +138,7 @@ describe("commandAdmissionError", () => {
       commandAdmissionError(
         scope,
         { status: "verifying", accountEpoch: scope.epoch, previous },
-        service,
+        project,
         500,
         ALLOWED,
       )?.reason,
@@ -166,7 +159,7 @@ describe("commandAdmissionError", () => {
           previous,
           mutationsAllowed: false,
         },
-        service,
+        project,
         500,
         ALLOWED,
       )?.reason,

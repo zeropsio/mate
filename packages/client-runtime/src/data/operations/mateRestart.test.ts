@@ -6,7 +6,7 @@ import { AtomRegistry } from "effect/unstable/reactivity";
 
 import { liveZerops, ORG } from "../__fixtures__/account.ts";
 import { linkKeys, type OperationReceipt } from "../model.ts";
-import { ZeropsApiError } from "../../zerops/api.ts";
+import { ZeropsApiError, ZeropsWriteNotSent } from "../../zerops/api.ts";
 import { runningScope } from "../families/process.ts";
 import { operationProgress } from "../projections/operation.ts";
 import { makeAccountStore, readsOfState, type AccountStore } from "../store.ts";
@@ -65,6 +65,7 @@ function platformOf(
   options: {
     readonly restart?: () => Promise<{ processId: string }>;
     readonly stop?: () => Promise<{ processId: string }>;
+    readonly start?: () => Promise<{ processId: string }>;
   } = {},
 ) {
   const calls: string[] = [];
@@ -79,7 +80,7 @@ function platformOf(
     },
     startService: async (serviceId) => {
       calls.push(`start ${serviceId}`);
-      return { processId: "proc-start" };
+      return options.start === undefined ? { processId: "proc-start" } : options.start();
     },
   };
   return { platform, calls };
@@ -225,7 +226,10 @@ describe("mate-restart", () => {
   );
 
   it("holds its project's process history until it ends, so an end during an outage is read", () => {
-    const receipt = { handles: ["proc-restart"] } as unknown as OperationReceipt;
+    const receipt = {
+      handles: ["proc-restart"],
+      outcome: { kind: "pending" },
+    } as unknown as OperationReceipt;
     expect(mateRestart.observedIn!(RESTART, receipt)).toEqual({
       family: "process",
       listing: "history",
@@ -251,6 +255,24 @@ describe("mate-restart", () => {
     }),
   );
 
+  it.effect("a restart its admission refused before sending is unsent, never maybe-landed", () =>
+    Effect.gen(function* () {
+      const { store, registry } = account();
+      const { platform } = platformOf({
+        restart: () =>
+          Promise.reject(
+            new ZeropsWriteNotSent({ message: "Project access could not be verified." }),
+          ),
+      });
+      yield* operationsOf(store, registry, platform).submit(RESTART);
+      expect(progress(store)).toEqual({
+        stage: "unsent",
+        next: "send-again",
+        reason: "Project access could not be verified.",
+      });
+    }),
+  );
+
   it.effect("a refusal says what Zerops said, not its status", () =>
     Effect.gen(function* () {
       const { store, registry } = account();
@@ -268,6 +290,43 @@ describe("mate-restart", () => {
       yield* operationsOf(store, registry, platform).submit(RESTART);
       expect(progress(store)).toEqual({ stage: "refused", reason: "Service stack is failed." });
     }),
+  );
+
+  it.effect.each([
+    [
+      "Zerops refused it",
+      () => Promise.reject(new ZeropsApiError("Service is busy.", "invalid-input", 400)),
+      "Service is busy.",
+    ],
+    [
+      "its admission refused it before sending",
+      () =>
+        Promise.reject(
+          new ZeropsWriteNotSent({ message: "Project access could not be verified." }),
+        ),
+      "Project access could not be verified.",
+    ],
+  ] as const)(
+    "a start not taken after the stop landed ends unresolved, starting the Mate next: %s",
+    ([, start, reason]) =>
+      Effect.gen(function* () {
+        const { store, registry } = account();
+        const { platform, calls } = platformOf({ start });
+        const fiber = yield* Effect.forkChild(
+          operationsOf(store, registry, platform).submit(REVIVE),
+        );
+        yield* Effect.yieldNow;
+        processRow(store, "proc-stop", "FINISHED", 1, "stack.stop");
+        yield* Fiber.join(fiber);
+        expect(calls).toEqual(["stop s1", "start s1"]);
+        expect(progress(store)).toEqual({
+          stage: "unresolved",
+          operationId: null,
+          nextActor: "person",
+          nextAction: "Start the Mate",
+          reason,
+        });
+      }),
   );
 
   it.effect("holds its project's process history from the moment the stop is sent", () =>

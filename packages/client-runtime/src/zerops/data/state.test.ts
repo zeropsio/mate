@@ -924,8 +924,9 @@ describe("Zerops data model coordination", () => {
     const ref = service();
     const attemptId = ZeropsCommandAttemptId.make("attempt-1");
     const command = {
-      kind: "restart-service" as const,
-      service: ref,
+      kind: "import-services" as const,
+      project: ref.project,
+      yaml: "services: []",
       attemptId,
       accountEpoch: AccountEpoch.make(1),
       startedAtReceiptOrdinal: ReceiptOrdinal.make(1),
@@ -975,8 +976,9 @@ describe("Zerops data model coordination", () => {
     const completedAttemptIds = [];
     for (let index = 0; index < 4; index++) {
       const command = {
-        kind: "restart-service" as const,
-        service: service(`command-service-${index}`),
+        kind: "import-services" as const,
+        project: service(`command-service-${index}`).project,
+        yaml: "services: []",
         attemptId: ZeropsCommandAttemptId.make(`retained-command-${index}`),
         accountEpoch: AccountEpoch.make(1),
         startedAtReceiptOrdinal: ReceiptOrdinal.make(index * 2 + 1),
@@ -1008,8 +1010,9 @@ describe("Zerops data model coordination", () => {
     expect(state.commands.size).toBeLessThan(tiny.retainedCommandAttemptsPerAccount);
 
     const pending = {
-      kind: "restart-service" as const,
-      service: service("pending-command-service"),
+      kind: "import-services" as const,
+      project: service("pending-command-service").project,
+      yaml: "services: []",
       attemptId: ZeropsCommandAttemptId.make("pending-command"),
       accountEpoch: AccountEpoch.make(1),
       startedAtReceiptOrdinal: ReceiptOrdinal.make(9),

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "@effect/vitest";
 import {
   DEFAULT_ZEROPS_API_BASE,
   ZeropsApiClient,
+  ZeropsWriteNotSent,
   ZeropsApiError,
   parseRetryAfterMs,
   servicePortOrigin,
@@ -1535,10 +1536,9 @@ describe("ZeropsApiClient project reads", () => {
     expect(stub.requests[0]?.authorization).toBe("Bearer access-1");
   });
 
-  it("writes the Zerops Mate flag before restarting a container that lacks it", async () => {
-    // The restart alone was the whole of "enable" and could not work: zcp
-    // registers no mate step at all without this key, so the container came back
-    // in the identical state it was restarted out of.
+  it("writes the Zerops Mate flag on a container that lacks it", async () => {
+    // A restart alone could not enable it: zcp registers no mate step at all
+    // without this key, so the container came back in the identical state.
     let envCalls = 0;
     const stub = recordingFetch((request) => {
       if (!request.url.endsWith("/env")) {
@@ -1553,13 +1553,12 @@ describe("ZeropsApiClient project reads", () => {
     const client = new ZeropsApiClient({ fetch: stub.fetch });
     client.restoreSession(SESSION);
 
-    await client.enableZeropsMate("service-1");
+    await client.writeMateFlag("service-1");
 
     expect(stub.requests.map((request) => `${request.method} ${request.url}`)).toEqual([
       `GET ${DEFAULT_ZEROPS_API_BASE}/api/rest/public/service-stack/service-1/env`,
       `POST ${DEFAULT_ZEROPS_API_BASE}/api/rest/public/service-stack/service-1/user-data`,
       `GET ${DEFAULT_ZEROPS_API_BASE}/api/rest/public/service-stack/service-1/env`,
-      `PUT ${DEFAULT_ZEROPS_API_BASE}/api/rest/public/service-stack/service-1/restart`,
     ]);
     // `sensitive` is required on every service userData write — the platform
     // rejects the POST outright with "field is required" when it is absent.
@@ -1587,21 +1586,20 @@ describe("ZeropsApiClient project reads", () => {
     const client = new ZeropsApiClient({ fetch: stub.fetch });
     client.restoreSession(SESSION);
 
-    await client.enableZeropsMate("service-1");
+    await client.writeMateFlag("service-1");
 
     expect(stub.requests.map((request) => `${request.method} ${request.url}`)).toEqual([
       `GET ${DEFAULT_ZEROPS_API_BASE}/api/rest/public/service-stack/service-1/env`,
       `DELETE ${DEFAULT_ZEROPS_API_BASE}/api/rest/public/user-data/e9`,
       `POST ${DEFAULT_ZEROPS_API_BASE}/api/rest/public/service-stack/service-1/user-data`,
       `GET ${DEFAULT_ZEROPS_API_BASE}/api/rest/public/service-stack/service-1/env`,
-      `PUT ${DEFAULT_ZEROPS_API_BASE}/api/rest/public/service-stack/service-1/restart`,
     ]);
   });
 
   it("retries the create when the read-back misses the flag", async () => {
     // The create can race the platform's own read path. A read-back that
     // still misses the flag gets exactly one more create attempt, not an
-    // unbounded retry loop, before the container restarts either way.
+    // unbounded retry loop.
     const stub = recordingFetch((request) =>
       request.url.endsWith("/env")
         ? jsonResponse(200, { items: [{ id: "e1", key: "VSCODE_PASSWORD", content: "x" }] })
@@ -1610,18 +1608,17 @@ describe("ZeropsApiClient project reads", () => {
     const client = new ZeropsApiClient({ fetch: stub.fetch });
     client.restoreSession(SESSION);
 
-    await client.enableZeropsMate("service-1");
+    await client.writeMateFlag("service-1");
 
     expect(stub.requests.map((request) => `${request.method} ${request.url}`)).toEqual([
       `GET ${DEFAULT_ZEROPS_API_BASE}/api/rest/public/service-stack/service-1/env`,
       `POST ${DEFAULT_ZEROPS_API_BASE}/api/rest/public/service-stack/service-1/user-data`,
       `GET ${DEFAULT_ZEROPS_API_BASE}/api/rest/public/service-stack/service-1/env`,
       `POST ${DEFAULT_ZEROPS_API_BASE}/api/rest/public/service-stack/service-1/user-data`,
-      `PUT ${DEFAULT_ZEROPS_API_BASE}/api/rest/public/service-stack/service-1/restart`,
     ]);
   });
 
-  it("writes nothing when the flag already reads as on, and still restarts", async () => {
+  it("writes nothing when the flag already reads as on", async () => {
     // zcp's own reading of the flag: 1 or true, case-insensitive, surrounding
     // space tolerated. A container that is merely away must not have its env
     // rewritten — and a yaml-baked key cannot be deleted at all, so a needless
@@ -1635,11 +1632,10 @@ describe("ZeropsApiClient project reads", () => {
       const client = new ZeropsApiClient({ fetch: stub.fetch });
       client.restoreSession(SESSION);
 
-      await client.enableZeropsMate("service-1");
+      await client.writeMateFlag("service-1");
 
       expect(stub.requests.map((request) => `${request.method} ${request.url}`)).toEqual([
         `GET ${DEFAULT_ZEROPS_API_BASE}/api/rest/public/service-stack/service-1/env`,
-        `PUT ${DEFAULT_ZEROPS_API_BASE}/api/rest/public/service-stack/service-1/restart`,
       ]);
     }
   });
@@ -1974,7 +1970,7 @@ describe("ZeropsApiClient.exchangeWebSocketToken", () => {
         signal: new AbortController().signal,
         background: false,
       }),
-    ).rejects.toBe(refusal);
+    ).rejects.toBeInstanceOf(ZeropsWriteNotSent);
     expect(stub.requests).toHaveLength(1);
   });
 
@@ -1994,7 +1990,7 @@ describe("ZeropsApiClient.exchangeWebSocketToken", () => {
     expect(stub.requests).toHaveLength(1);
   });
 
-  it("hands a refused write's refusal to its caller as it came, with nothing sent", async () => {
+  it("says a write its admission refused was never sent, in the admission's words", async () => {
     const stub = recordingFetch(() => jsonResponse(204, {}));
     const client = new ZeropsApiClient({ fetch: stub.fetch });
     client.restoreSession(SESSION);
@@ -2005,7 +2001,9 @@ describe("ZeropsApiClient.exchangeWebSocketToken", () => {
     await vi.waitFor(() => expect(held.asked()).toBe(1));
     held.refuse(refusal);
 
-    await expect(restart).rejects.toBe(refusal);
+    const refused = await restart.catch((cause: unknown) => cause);
+    expect(refused).toBeInstanceOf(ZeropsWriteNotSent);
+    expect(refused).toMatchObject({ message: refusal.message, refusal });
     expect(stub.requests).toHaveLength(0);
   });
 
@@ -2042,7 +2040,7 @@ describe("ZeropsApiClient.exchangeWebSocketToken", () => {
       beforeProjectWrite: () => (writes === 0 ? Promise.resolve() : Promise.reject(refusal)),
     });
 
-    await expect(client.restartService("service-1")).rejects.toBe(refusal);
+    await expect(client.restartService("service-1")).rejects.toBeInstanceOf(ZeropsWriteNotSent);
 
     expect(stub.requests.filter((request) => request.url.includes("/restart"))).toHaveLength(1);
     expect(stub.requests.filter((request) => request.url.endsWith("/auth/refresh"))).toHaveLength(

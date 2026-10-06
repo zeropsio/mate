@@ -8,7 +8,7 @@
  * project's own page listed its Mates and could do nothing to any of them.
  *
  * None of them needs that page. They need the active organization, the
- * runtime's commands, the account's registry and the org's member list — all
+ * account's operations, the account's registry and the org's member list — all
  * context, all reachable from any surface. So they live here, once, in the
  * same shape as `useEnableRoute`: the writes, the busy
  * key, the trouble, the menu entries, and the dialogs the caller mounts.
@@ -48,7 +48,6 @@ import {
   type ZeropsMembership,
   type ZeropsMateFace,
 } from "@t3tools/client-runtime/zerops";
-import { ZeropsServiceId } from "@t3tools/client-runtime/zerops/data";
 import { candidatesComplete, heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { heldOf, type HqPlacement } from "@t3tools/client-runtime/zerops/hq";
@@ -150,7 +149,9 @@ import {
 } from "./projectRenames.logic";
 import { useUnrenamedProjects } from "./unrenamedProjects";
 import { useRenameProjects } from "./useRenameProjects";
-import { runZeropsCommand, useZeropsData } from "./zeropsDataContext";
+import { useAccountOperations } from "./accountOperations";
+import { useZeropsData } from "./zeropsDataContext";
+import { submitZeropsWrite, writeTrouble, type ZeropsWrite } from "./zeropsWrite";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
 /** Which Mate a dialog is about, and which dialog it is. */
@@ -260,6 +261,7 @@ const writes = (createApp: HqOfferState): boolean | undefined =>
 export function useMateActions({ registry, serverVersions }: MateActionsInput): MateActions {
   const { activeOrganization, client, user } = useZeropsSession();
   const { organizationRef, projectRef, runtime } = useZeropsData();
+  const operations = useAccountOperations();
   const { listing, refresh } = useZeropsCandidates();
   const candidates = useMemo(() => heldCandidates(listing).rows, [listing]);
   const router = useRouter();
@@ -417,27 +419,24 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   const start = useCallback(
     (candidate: ZeropsCandidatePresentation) => {
       if (activeOrganization === null) return;
-      const project = projectRef(activeOrganization.id, candidate.project.id);
+      const projectId = candidate.project.id;
       const serviceId = candidate.service?.id;
       // A STOPPED project starts every service in it; a STOPPED service while
       // the project is ACTIVE starts only that service.
-      const run =
+      const started: ZeropsWrite | null =
         candidate.project.status === "STOPPED"
-          ? () => runZeropsCommand(runtime.commands.startProject(project))
+          ? { kind: "start-project", projectId }
           : serviceId === undefined
             ? null
-            : () =>
-                runZeropsCommand(
-                  runtime.commands.startService({
-                    kind: "service",
-                    project,
-                    serviceId: ZeropsServiceId.make(serviceId),
-                  }),
-                );
-      if (run === null) return;
-      void write(candidate.key, run, refresh);
+            : { kind: "start-service", projectId, serviceId };
+      if (started === null) return;
+      void write(
+        candidate.key,
+        () => submitZeropsWrite(operations, activeOrganization.id, started),
+        refresh,
+      );
     },
-    [activeOrganization, projectRef, refresh, runtime.commands, write],
+    [activeOrganization, operations, refresh, write],
   );
 
   const restartMate = useRestartMate();
@@ -490,15 +489,19 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       const full = renamedProjectName(candidate.project, name);
       if (full === undefined) return;
       useUnrenamedProjects.getState().drop(candidate.project.id);
-      const project = projectRef(activeOrganization.id, candidate.project.id);
       void write(
         candidate.key,
         () =>
-          runZeropsCommand(runtime.commands.renameProject(project, full, candidate.project.name)),
+          submitZeropsWrite(operations, activeOrganization.id, {
+            kind: "rename-project",
+            projectId: candidate.project.id,
+            name: full,
+            from: candidate.project.name,
+          }),
         refresh,
       );
     },
-    [activeOrganization, projectRef, refresh, runtime.commands, write],
+    [activeOrganization, operations, refresh, write],
   );
 
   /** The platform's verbs on a Mate, by the role function it enforces: none for nobody. */
@@ -511,55 +514,38 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   );
 
   /**
-   * Hands a Mate over (guide 0.8, D11): a transfer — a Mate has one OWNER (F23, 2026-10-03). The
-   * person picked gets a per-project override to OWNER on their own role list
-   * (`ZeropsApiClient.setProjectMemberRole`); then whoever else the project names OWNER, as the
-   * platform answers that write, has the project taken off theirs. The key's grant, not an OWNER,
-   * stays. The dialog stays open until the platform answers: a refusal of the first write is said
-   * there and nothing changes; one of the second says the hand over is not complete — the person
-   * picked has it, the previous owner still does too. Once anything was written, the access grant
-   * reads every project's grants again at once (`grants-written`), so the person who handed the
-   * Mate over sees what the platform holds now (F11).
+   * Hands a Mate over (guide 0.8, D11), as the account's `assign-mate-owner` operation: a transfer
+   * — a Mate has one OWNER (F23, 2026-10-03). The person picked is made its OWNER, then whoever
+   * else the project names OWNER has it taken off theirs. The key's grant, not an OWNER, stays. The
+   * dialog stays open until the platform answers: a refusal of the first write is said there and
+   * nothing changes; one of a later write says the hand over is not complete — the person picked
+   * has it, the previous owner still does too. Once anything was written, the access grant reads
+   * every project's grants again at once (`grants-written`), so the person who handed the Mate
+   * over sees what the platform holds now (F11).
    */
   const assign = useCallback(
     (candidate: ZeropsCandidatePresentation, clientUserId: string) => {
       if (activeOrganization === null) return;
       const isCurrent = captureAccountLifetime();
-      const project = projectRef(activeOrganization.id, candidate.project.id);
-      const writeRole = (input: {
-        readonly clientUserId: string;
-        readonly roleCode: "OWNER" | null;
-      }) => runZeropsCommand(runtime.commands.setProjectMemberRole(project, input));
-      const refused = (error: string) => {
-        if (isCurrent()) setPress({ pending: false, error });
-      };
       setPress({ pending: true, error: null });
-      writeRole({ clientUserId, roleCode: "OWNER" }).then(
-        async (handed) => {
-          const previous = (handed?.userRoles ?? []).filter(
-            (entry) => entry.roleCode === "OWNER" && entry.clientUserId !== clientUserId,
-          );
-          try {
-            for (const owner of previous) {
-              await writeRole({ clientUserId: owner.clientUserId, roleCode: null });
-            }
-          } catch (cause) {
-            if (isCurrent()) invalidateZerops({ topic: "access", change: "grants-written" });
-            refused(
-              `It was handed over, but its previous owner still owns it too: ${zeropsErrorMessage(cause)}`,
-            );
-            return;
-          }
+      void operations
+        .submit({
+          kind: "assign-mate-owner",
+          orgId: activeOrganization.id,
+          projectId: candidate.project.id,
+          clientUserId,
+        })
+        .then(({ progress, evidence }) => {
           if (!isCurrent()) return;
-          invalidateZerops({ topic: "access", change: "grants-written" });
-          setDialog(null);
-        },
-        (cause: unknown) => {
-          refused(zeropsErrorMessage(cause));
-        },
-      );
+          const trouble = writeTrouble(progress, evidence);
+          // Something may have been written: the grants are read again.
+          if (progress.stage === "done" || progress.stage === "unresolved")
+            invalidateZerops({ topic: "access", change: "grants-written" });
+          if (trouble !== null) setPress({ pending: false, error: trouble });
+          else setDialog(null);
+        });
     },
-    [activeOrganization, projectRef, runtime.commands, setDialog],
+    [activeOrganization, operations, setDialog],
   );
 
   /**

@@ -16,31 +16,17 @@ function sameAccount(left: AccountRef, right: AccountRef): boolean {
 }
 
 function projectOf(target: CommandTarget): ProjectRef | null {
-  return target.kind === "organization"
-    ? null
-    : target.kind === "project"
-      ? target
-      : target.project;
+  return target.kind === "organization" ? null : target;
 }
 
 export function commandTarget(intent: PlatformCommandIntent): CommandTarget {
   switch (intent.kind) {
-    case "restart-service":
-    case "start-service":
-    case "enable-zerops-mate":
-    case "enable-subdomain-access":
-      return intent.service;
-    case "update-project-tags":
-    case "rename-project":
-    case "set-project-member-role":
     case "import-development-container":
     case "import-services":
-    case "start-project":
     case "harden-mate":
       return intent.project;
     case "create-project":
     case "import-project":
-    case "delete-project":
       return intent.organization;
   }
 }

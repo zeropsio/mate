@@ -11,25 +11,19 @@ import { useRenameProjects, type RenameProjects } from "./useRenameProjects";
 
 const mock = vi.hoisted(() => ({
   organization: { id: "org-1" } as { id: string } | null,
-  renameProject: vi.fn(),
+  submit: vi.fn(),
 }));
 
 vi.mock("./ZeropsSessionProvider", () => ({
   useZeropsSession: () => ({ activeOrganization: mock.organization }),
 }));
-vi.mock("./zeropsDataContext", () => ({
-  useZeropsData: () => ({
-    projectRef: (organizationId: string, projectId: string) => ({ organizationId, projectId }),
-    runtime: { commands: { renameProject: mock.renameProject } },
-  }),
-  runZeropsCommand: (command: Promise<unknown>) => command,
-}));
+vi.mock("./accountOperations", () => ({ useAccountOperations: () => ({ submit: mock.submit }) }));
 
 const mounted: ReactTestRenderer[] = [];
 afterEach(() => {
   for (const tree of mounted.splice(0)) act(() => tree.unmount());
   mock.organization = { id: "org-1" };
-  mock.renameProject.mockReset();
+  mock.submit.mockReset();
 });
 
 function hook(): RenameProjects {
@@ -48,13 +42,19 @@ const RENAME = { projectId: "p1", from: "SPN - Rune", to: "Shop - Rune" };
 
 describe("useRenameProjects", () => {
   it("sends each rename with the name it was planned from", async () => {
-    mock.renameProject.mockResolvedValue({ kind: "written" });
+    mock.submit.mockResolvedValue({
+      requestId: "r1",
+      evidence: null,
+      progress: { stage: "done", operationId: "p1", outcome: "succeeded" },
+    });
     expect(await hook()([RENAME])).toEqual([]);
-    expect(mock.renameProject).toHaveBeenCalledWith(
-      { organizationId: "org-1", projectId: "p1" },
-      "Shop - Rune",
-      "SPN - Rune",
-    );
+    expect(mock.submit).toHaveBeenCalledWith({
+      kind: "rename-project",
+      orgId: "org-1",
+      projectId: "p1",
+      name: "Shop - Rune",
+      from: "SPN - Rune",
+    });
   });
 
   it("rejects, never throws, where no organization is open", async () => {

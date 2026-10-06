@@ -458,6 +458,27 @@ export type ZeropsApiErrorKind =
   | "server"
   | "unexpected";
 
+/**
+ * A project write its admission refused before anything was sent: nothing reached Zerops, so it
+ * cannot have landed. Says the admission's own words; `refusal` is what the admission threw.
+ */
+export class ZeropsWriteNotSent extends Error {
+  readonly refusal: unknown;
+
+  constructor(refusal: unknown) {
+    super(
+      typeof refusal === "object" &&
+        refusal !== null &&
+        "message" in refusal &&
+        typeof refusal.message === "string"
+        ? refusal.message
+        : "The write was not sent.",
+    );
+    this.name = "ZeropsWriteNotSent";
+    this.refusal = refusal;
+  }
+}
+
 export class ZeropsApiError extends Error {
   readonly kind: ZeropsApiErrorKind;
   readonly status: number | null;
@@ -1279,14 +1300,11 @@ export class ZeropsApiClient {
   async writeProject(
     project: ZeropsProject,
     record: { readonly name: string; readonly tagList: ReadonlyArray<string> },
-    signal?: AbortSignal,
-    beforeWrite?: () => Promise<void>,
   ): Promise<ZeropsProject> {
     return this.#request<ZeropsProject>(
       `/project/${project.id}`,
       {
         method: "PUT",
-        signal: signal ?? null,
         body: JSON.stringify(
           projectWriteBody({
             name: record.name,
@@ -1297,10 +1315,7 @@ export class ZeropsApiClient {
           }),
         ),
       },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
+      { operationKind: "project-write" },
     );
   }
 
@@ -1323,16 +1338,12 @@ export class ZeropsApiClient {
    * theirs. What it answers is the project as the platform holds it after the
    * write.
    */
-  async setProjectMemberRole(
-    input: {
-      readonly projectId: string;
-      /** The `clientUser` id — what a project's `userRoles` names. */
-      readonly clientUserId: string;
-      readonly roleCode: ZeropsProjectRole | null;
-    },
-    signal?: AbortSignal,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<ZeropsProject> {
+  async setProjectMemberRole(input: {
+    readonly projectId: string;
+    /** The `clientUser` id — what a project's `userRoles` names. */
+    readonly clientUserId: string;
+    readonly roleCode: ZeropsProjectRole | null;
+  }): Promise<ZeropsProject> {
     const generation = this.#generation;
     this.#assertGeneration(generation);
     const roles = `/client-user/${input.clientUserId}/roles`;
@@ -1341,13 +1352,12 @@ export class ZeropsApiClient {
         readonly projectId: string;
         readonly roleCode: string;
       }>;
-    }>(roles, { signal: signal ?? null }, { operationKind: "read" });
+    }>(roles, {}, { operationKind: "read" });
     this.#assertGeneration(generation);
     await this.#request(
       roles,
       {
         method: "PUT",
-        signal: signal ?? null,
         body: JSON.stringify({
           projectRoleList: withMateProjectRole(
             held.projectRoleList,
@@ -1356,13 +1366,10 @@ export class ZeropsApiClient {
           ),
         }),
       },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
+      { operationKind: "project-write" },
     );
     this.#assertGeneration(generation);
-    return this.fetchProject(input.projectId, signal);
+    return this.fetchProject(input.projectId);
   }
 
   /**
@@ -2630,18 +2637,11 @@ export class ZeropsApiClient {
    * three Mates after a platform outage, 2026-10-01). Answers the stop's
    * process id, which the caller waits on before the start.
    */
-  async stopService(
-    serviceId: string,
-    signal?: AbortSignal,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<{ readonly processId: string | undefined }> {
+  async stopService(serviceId: string): Promise<{ readonly processId: string | undefined }> {
     const process = await this.#request<{ readonly id?: unknown }>(
       `/service-stack/${serviceId}/stop`,
-      { method: "PUT", signal: signal ?? null },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
+      { method: "PUT" },
+      { operationKind: "project-write" },
     );
     return { processId: typeof process?.id === "string" ? process.id : undefined };
   }
@@ -2744,18 +2744,11 @@ export class ZeropsApiClient {
    * `PUT /service-stack/{id}/start` with the user's own token — starts a
    * STOPPED service (a zcp container included). Answers the start's process id.
    */
-  async startService(
-    serviceId: string,
-    signal?: AbortSignal,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<{ readonly processId: string | undefined }> {
+  async startService(serviceId: string): Promise<{ readonly processId: string | undefined }> {
     const process = await this.#request<{ readonly id?: unknown }>(
       `/service-stack/${serviceId}/start`,
-      { method: "PUT", signal: signal ?? null },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
+      { method: "PUT" },
+      { operationKind: "project-write" },
     );
     return { processId: typeof process?.id === "string" ? process.id : undefined };
   }
@@ -2764,18 +2757,11 @@ export class ZeropsApiClient {
    * `PUT /project/{id}/start` with the user's own token — starts every
    * STOPPED service in a STOPPED project.
    */
-  async startProject(
-    projectId: string,
-    signal?: AbortSignal,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<void> {
+  async startProject(projectId: string): Promise<void> {
     await this.#request(
       `/project/${projectId}/start`,
-      { method: "PUT", signal: signal ?? null },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
+      { method: "PUT" },
+      { operationKind: "project-write" },
     );
   }
 
@@ -2898,54 +2884,36 @@ export class ZeropsApiClient {
    * cloned from dev comes up unpublished whatever its recipe said, and answers
    * 502 after its first deploy until this runs (`verified.md`, 2026-09-07).
    */
-  async enableSubdomainAccess(
-    serviceId: string,
-    signal?: AbortSignal,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<void> {
+  async enableSubdomainAccess(serviceId: string): Promise<void> {
     await this.#request(
       `/service-stack/${serviceId}/enable-subdomain-access`,
-      { method: "PUT", signal: signal ?? null },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
+      { method: "PUT" },
+      { operationKind: "project-write" },
     );
   }
 
   /** `POST /service-stack/{id}/user-data` — writes the Zerops Mate flag as on. */
-  async #createMateFlag(
-    serviceId: string,
-    signal?: AbortSignal,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<void> {
+  async #createMateFlag(serviceId: string): Promise<void> {
     await this.#request(
       `/service-stack/${serviceId}/user-data`,
       {
         method: "POST",
-        signal: signal ?? null,
         // `sensitive` is required on every service userData write — the
         // platform rejects a body without it as "field is required".
         body: JSON.stringify({ key: ZEROPS_MATE_ENV_KEY, content: "1", sensitive: true }),
       },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
+      { operationKind: "project-write" },
     );
   }
 
   /**
-   * Turns Zerops Mate on for a container that is not serving it: write the
-   * flag, then restart.
+   * Writes the Zerops Mate flag on for a container that is not serving it. Its restart is the
+   * caller's next write: a service env change reaches a container's process environment only at
+   * boot, which is the same boot `zcp init` reads it on.
    *
-   * Both halves are needed and neither is enough. `ZCP_MATE_ENABLED` is the one
-   * input zcp keys every mate-shaped effect off — without it `zcp init` does not
-   * register the mate step at all, so no bundle is installed, no `zerops@mate` unit
-   * is created and nginx publishes no `/mate/` location. And a service env change
-   * reaches a container's process environment only at boot, which is the same
-   * boot `zcp init` reads it on. So a restart without the write comes back in
-   * the identical state, and a write without the restart changes nothing yet.
+   * `ZCP_MATE_ENABLED` is the one input zcp keys every mate-shaped effect off — without it `zcp
+   * init` does not register the mate step at all, so no bundle is installed, no `zerops@mate`
+   * unit is created and nginx publishes no `/mate/` location.
    *
    * The write is an upsert done as delete-then-create, because the platform
    * exposes create and delete for a single key and no update. The bulk
@@ -2960,44 +2928,32 @@ export class ZeropsApiClient {
    *
    * The create can race the platform's own read path, so it is followed by
    * one read-back; a miss there gets exactly one more create attempt, never
-   * an unbounded retry loop, before the container restarts either way.
+   * an unbounded retry loop.
    */
-  async enableZeropsMate(
-    serviceId: string,
-    signal?: AbortSignal,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<void> {
+  async writeMateFlag(serviceId: string): Promise<void> {
     const generation = this.#generation;
-    const current = (await this.#serviceEnv(serviceId, signal)).find(
+    const current = (await this.#serviceEnv(serviceId)).find(
       (entry) => entry.key === ZEROPS_MATE_ENV_KEY,
     );
-
-    if (!current || !readsAsEnabled(current.content)) {
-      if (current) {
-        this.#assertGeneration(generation);
-        await this.#request(
-          `/user-data/${current.id}`,
-          { method: "DELETE", signal: signal ?? null },
-          {
-            operationKind: "project-write",
-            ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-          },
-        );
-      }
+    if (current !== undefined && readsAsEnabled(current.content)) return;
+    if (current) {
       this.#assertGeneration(generation);
-      await this.#createMateFlag(serviceId, signal, beforeWrite);
-
-      const after = (await this.#serviceEnv(serviceId, signal)).find(
-        (entry) => entry.key === ZEROPS_MATE_ENV_KEY,
+      await this.#request(
+        `/user-data/${current.id}`,
+        { method: "DELETE" },
+        { operationKind: "project-write" },
       );
-      if (!after || !readsAsEnabled(after.content)) {
-        this.#assertGeneration(generation);
-        await this.#createMateFlag(serviceId, signal, beforeWrite);
-      }
     }
-
     this.#assertGeneration(generation);
-    await this.restartService(serviceId, signal, beforeWrite);
+    await this.#createMateFlag(serviceId);
+
+    const after = (await this.#serviceEnv(serviceId)).find(
+      (entry) => entry.key === ZEROPS_MATE_ENV_KEY,
+    );
+    if (!after || !readsAsEnabled(after.content)) {
+      this.#assertGeneration(generation);
+      await this.#createMateFlag(serviceId);
+    }
   }
 
   async #setSession(session: ZeropsSession | null): Promise<void> {
@@ -3097,7 +3053,7 @@ export class ZeropsApiClient {
     const retryAfterRefresh = options.retryAfterRefresh ?? true;
     const clearSessionOnUnauthorized = options.clearSessionOnUnauthorized ?? true;
 
-    /** A refusal before anything was sent reaches the caller as it came. */
+    /** A refusal before anything was sent reaches the caller as one: never as maybe written. */
     let refusedBeforeSending = false;
     const run = async () => {
       if (mutatesProject) {
@@ -3108,7 +3064,9 @@ export class ZeropsApiClient {
           await options.beforeProjectWrite?.();
         } catch (cause) {
           refusedBeforeSending = true;
-          throw cause;
+          // The caller's own giving up stays an abort; anything else is the admission's refusal.
+          if (cause instanceof DOMException && cause.name === "AbortError") throw cause;
+          throw new ZeropsWriteNotSent(cause);
         }
         // An admission can wait, and whoever holds the session once it
         // resolves is not necessarily who asked for the write.

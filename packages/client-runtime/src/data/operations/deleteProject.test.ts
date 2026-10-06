@@ -8,7 +8,7 @@ import { runningScope } from "../families/process.ts";
 import type { OperationReceipt } from "../model.ts";
 import { operationProgress } from "../projections/operation.ts";
 import { makeAccountStore, readsOfState, type AccountStore } from "../store.ts";
-import { ZeropsApiError } from "../../zerops/api.ts";
+import { ZeropsApiError, ZeropsWriteNotSent } from "../../zerops/api.ts";
 import { makeOperations } from "./coordinator.ts";
 import { deleteProject } from "./deleteProject.ts";
 import { deleteProjectExecutor } from "./executors/deleteProject.ts";
@@ -153,6 +153,23 @@ describe("delete-project", () => {
     }),
   );
 
+  it.effect("a deletion its admission refused before sending is unsent, never maybe-landed", () =>
+    Effect.gen(function* () {
+      const store = account();
+      const { operations } = operationsOf(store, () =>
+        Promise.reject(
+          new ZeropsWriteNotSent({ message: "Project access could not be verified." }),
+        ),
+      );
+      yield* operations.submit(DELETE);
+      expect(progress(store)).toEqual({
+        stage: "unsent",
+        next: "send-again",
+        reason: "Project access could not be verified.",
+      });
+    }),
+  );
+
   it.effect("a refusal says what Zerops said", () =>
     Effect.gen(function* () {
       const store = account();
@@ -165,7 +182,10 @@ describe("delete-project", () => {
   );
 
   it("holds its project's process history until it ends", () => {
-    const receipt = { handles: ["proc-del"] } as unknown as OperationReceipt;
+    const receipt = {
+      handles: ["proc-del"],
+      outcome: { kind: "pending" },
+    } as unknown as OperationReceipt;
     expect(deleteProject.observedIn!(DELETE, receipt)).toEqual({
       family: "process",
       listing: "history",
