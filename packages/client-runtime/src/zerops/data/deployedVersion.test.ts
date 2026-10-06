@@ -222,7 +222,8 @@ describe("what a service runs, as the account's store states it (A14)", () => {
     },
     {
       name: "leaves a source the push did not state to the organization's active versions",
-      state: withService(answered(empty, variables, []), deploy({})),
+      // The store's row moved the service to v-2 at receipt 3 (`observeServiceDeploys`).
+      state: moveTo(withService(answered(empty, variables, []), deploy({})), "v-2", 3, 0),
       expected: { state: "known", value: { activeId: "v-2", source: null, name: null } },
     },
     {
@@ -242,7 +243,7 @@ describe("what a service runs, as the account's store states it (A14)", () => {
     {
       name: "names nothing while the deploy the service last started is not yet active (A11)",
       state: pushed(
-        withService(answered(empty, variables, []), deploy({ source: "CLI" })),
+        moveTo(withService(answered(empty, variables, []), deploy({ source: "CLI" })), "v-2", 3, 0),
         [variable("appVersionId", "v-3"), variable("appVersionName", "def456 v1.2.0")],
         5,
       ),
@@ -452,6 +453,16 @@ describe("a service's variables heard before it moved to another version", () =>
   ]);
   /** The service's push once HQ's deploy went live: the new version, its source known. */
   const deployed = withService(loaded, deploy({ id: "v-2", source: "CLI" }));
+
+  it("say it is still checking until the store's move of the service is recorded", () => {
+    // The bridge's record carries no receipt of its own (`serviceBridge.ts`): before the move is
+    // recorded, variables naming another deploy prove nothing, and no unnamed version flashes.
+    const bridged = withService(loaded, deploy({ id: "v-2", source: "CLI" }), stamp(0));
+    expect(selectDeployedVersion(bridged, ref, held(bridged))).toEqual({
+      state: "unread",
+      waitingFor: null,
+    });
+  });
 
   it("are read again by id, and then name the version the service runs", () => {
     // Checked, not nameless, while they are read again: "none" was the stage's word for it.

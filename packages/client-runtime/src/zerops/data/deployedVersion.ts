@@ -104,13 +104,12 @@ export function selectDeployedVersion(
     return streamFailure(state, service) ?? UNREAD;
   }
   if (trimmed(started.content) !== deploy.id) {
-    // Variables that may trail the service are being read again: what it runs is checked, not
-    // nameless (`wantStaleVariables`).
-    const trailing = trailingVariables(
-      state.table,
-      service.serviceId,
-      movedAt(state.table, service.serviceId, deploy.id, facet.stamp),
-    );
+    // Until the store's move of the service to this version is recorded (`observeServiceDeploys`),
+    // variables naming another deploy prove nothing: what it runs is still checked, not nameless.
+    const move = state.table.moves.get(service.serviceId);
+    if (move?.deployId !== deploy.id) return streamFailure(state, service) ?? UNREAD;
+    // Variables that may trail the service are being read again: checked, not nameless.
+    const trailing = trailingVariables(state.table, service.serviceId, move.asOf);
     if (trailing !== null) return streamFailure(state, service) ?? UNREAD;
     return known({ activeId: deploy.id, source, name: null }, facet.stamp);
   }
@@ -138,17 +137,6 @@ function trailingVariables(
   const name = serviceVariableHeard(table, serviceId, "appVersionName");
   return name === null ? [started.id] : [started.id, name.id];
 }
-
-/** The receipt the service moved to `deployId` at; its push's own where no move was recorded. */
-const movedAt = (
-  table: EntityTableState,
-  serviceId: string,
-  deployId: string,
-  stamp: IngestionStamp,
-): number => {
-  const move = table.moves.get(serviceId);
-  return move?.deployId === deployId ? move.asOf : stamp.receiptOrdinal;
-};
 
 /** What a service's row says it runs now, as the account's store holds it. */
 export interface ServiceDeployObserved {

@@ -87,3 +87,10 @@ describe("runtimeServicesRead", () => {
     expect(bridged.observation.required[0]).toMatchObject(interest);
   });
 });
+
+describe("runtimeServicesRead, read again", () => {
+  it("is the same read for the same listing value: a reader comparing by reference hears nothing new", () => {
+    const listed: ProjectServices = { services: [zcp], live: true, reconnecting: false };
+    expect(runtimeServicesRead(project(), listed)).toBe(runtimeServicesRead(project(), listed));
+  });
+});

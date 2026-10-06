@@ -17,6 +17,7 @@ import {
   addressSeenAfter,
   deriveZeropsCandidates,
   isZcpService,
+  newestSubdomainProcess,
   subdomainEnableOf,
   type AddressFacts,
   type AddressSeen,
@@ -113,6 +114,21 @@ export function subdomainEnableIn(
   const said = subdomainEnableOf(subdomainProcessesOf(activity), serviceId, serviceUpdatedAt);
   const read = activity.processes !== undefined && activity.history === "read";
   return read || said === "on" ? said : undefined;
+}
+
+/**
+ * When a service's enable ended on Zerops' clock, where its newest enable/disable is a finished
+ * enable: a read of its own row after it brings a record that may have caught up. Null otherwise.
+ */
+export function finishedEnableAt(
+  activity: ProjectProcesses | null,
+  serviceId: string,
+): string | null {
+  if (activity === null) return null;
+  const newest = newestSubdomainProcess(subdomainProcessesOf(activity), serviceId);
+  return newest?.actionName === "stack.enableSubdomainAccess" && newest.status === "FINISHED"
+    ? (newest.finished ?? null)
+    : null;
 }
 
 /** When a project's service's record was last updated, on Zerops' clock; null where not said. */

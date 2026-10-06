@@ -57,7 +57,8 @@ import {
 } from "./accountRuntime.ts";
 import { liveProjects, liveServices } from "../../data/__fixtures__/account.ts";
 import { accountReadsAtom } from "../../data/reads.ts";
-import { makeAccountStore } from "../../data/store.ts";
+import { makeAccountStore, type AccountStore } from "../../data/store.ts";
+import { historyScope } from "../../data/families/process.ts";
 
 const SECOND = 1_000;
 const MINUTE = 60 * SECOND;
@@ -1754,31 +1755,110 @@ describe("the post-grant stage's Mate environments", () => {
   // A coming page left open on a Mate whose door fails minted a throwaway a minute as the route
   // (review, 2026-10-03): the Mate on screen is one the person asked for, capped as no route is.
   // B6: whether a Mate's address is being turned on is its project's processes' word, so its
-  // history is held for as long as its container is ACTIVE without one — not for one that has one.
+  // history is held for as long as its container is ACTIVE without one and a surface shows it —
+  // never for every such Mate the organization lists (navigation starts no detail read).
+  const holding = (opened: {
+    readonly registry: AtomRegistry.AtomRegistry;
+    readonly store: AccountStore;
+  }) => {
+    const held = new Set<string>();
+    opened.registry.set(accountReadsAtom, {
+      data: opened.store.data,
+      orgId: organization.organizationId,
+      demandDetail: ({ listing, ownerId }) => {
+        held.add(`${listing} ${ownerId}`);
+        return () => void held.delete(`${listing} ${ownerId}`);
+      },
+    });
+    return held;
+  };
   it.effect.each([
-    { case: "its address off: its project's history is held", address: false, read: true },
-    { case: "its address on: nothing more is read", address: true, read: false },
-  ])("a Mate ACTIVE, $case", ({ address, read }) =>
+    {
+      case: "its address off, drawn: its project's history is held",
+      address: false,
+      drawn: true,
+      read: true,
+    },
+    {
+      case: "its address off, not drawn: nothing is read",
+      address: false,
+      drawn: false,
+      read: false,
+    },
+    {
+      case: "its address on, drawn: nothing more is read",
+      address: true,
+      drawn: true,
+      read: false,
+    },
+  ])("a Mate ACTIVE, $case", ({ address, drawn, read }) =>
     Effect.scoped(
       Effect.gen(function* () {
         const lacking = { ...A_MATE, service: { ...A_MATE.service, subdomainAccess: address } };
-        const opened = yield* granted([], [lacking]);
-        // The account's store, as far as the wiring holds it: whose newest history it holds.
-        const held = new Set<string>();
-        opened.registry.set(accountReadsAtom, {
-          data: opened.store.data,
-          orgId: organization.organizationId,
-          demandDetail: ({ ownerId }) => {
-            held.add(ownerId);
-            return () => void held.delete(ownerId);
-          },
-        });
+        const opened = yield* granted([REMEMBERED_A], [lacking]);
+        const held = holding(opened);
+        if (drawn) opened.environments.setDrawn([ENV_A]);
         yield* settle;
-        expect(held.has(A_MATE.projectId)).toBe(read);
+        expect(held.has(`history ${A_MATE.projectId}`)).toBe(read);
         // Only the organization in view is read for.
         opened.environments.setActiveOrganization("org-other");
         yield* settle;
-        expect(held.has(A_MATE.projectId)).toBe(false);
+        expect(held.has(`history ${A_MATE.projectId}`)).toBe(false);
+      }),
+    ),
+  );
+
+  // 8c076ec029: the record after its address was turned on is not promised to arrive by a push;
+  // once its enable is read as finished, its service is read once on its own.
+  it.effect("a drawn Mate whose enable finished has its service read once on its own", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const lacking = { ...A_MATE, service: { ...A_MATE.service, subdomainAccess: false } };
+        const opened = yield* granted([REMEMBERED_A], [lacking]);
+        const held = holding(opened);
+        opened.environments.setDrawn([ENV_A]);
+        yield* settle;
+        expect(held.has(`service ${A_MATE.service.id}`)).toBe(false);
+        // Its project's newest history, read: the enable finished.
+        const history = historyScope(organization.organizationId, A_MATE.projectId);
+        for (const event of [
+          { kind: "demand", demanded: true },
+          { kind: "attempt" },
+          { kind: "handshake" },
+        ] as const)
+          opened.store.dispatch({ kind: "stream", key: history, now: 0, event });
+        opened.store.dispatch({ kind: "baseline-begin", scope: history, generation: 1 });
+        opened.store.dispatch({
+          kind: "baseline-commit",
+          scope: history,
+          generation: 1,
+          via: "zerops-read",
+          members: ["enable-1"],
+          rows: [
+            {
+              family: "process",
+              id: "enable-1",
+              value: {
+                id: "enable-1",
+                projectId: A_MATE.projectId,
+                serviceStackIds: [A_MATE.service.id],
+                status: "FINISHED",
+                actionName: "stack.enableSubdomainAccess",
+                created: "2026-10-02T12:01:40.000Z",
+                finished: "2026-10-02T12:01:45.000Z",
+              },
+              revision: { kind: "zerops", version: 2 },
+            },
+          ],
+        });
+        opened.store.dispatch({
+          kind: "stream",
+          key: history,
+          now: 0,
+          event: { kind: "baseline-committed" },
+        });
+        yield* settle;
+        expect(held.has(`service ${A_MATE.service.id}`)).toBe(true);
       }),
     ),
   );

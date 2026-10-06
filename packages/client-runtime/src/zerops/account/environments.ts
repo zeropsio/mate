@@ -34,7 +34,7 @@ import * as Fiber from "effect/Fiber";
 import type { AtomRegistry } from "effect/unstable/reactivity";
 
 import type { ProjectProcesses } from "../../data/projections/processes.ts";
-import { holdProjectHistory, projectProcessesAtom } from "../../data/reads.ts";
+import { holdProjectHistory, holdServiceRead, projectProcessesAtom } from "../../data/reads.ts";
 
 import { normalizeOrigin } from "../candidates.ts";
 import { identityMint } from "../data/access/capabilities.ts";
@@ -98,7 +98,7 @@ import { containerTargetsOf, listTargets, targetProject } from "../environments/
 import type { ExchangeAnswer } from "../identityExchange.ts";
 import type { InvalidationBus } from "../knowledge/invalidation.ts";
 import type { PlatformSignal } from "../knowledge/signals.ts";
-import { heldCandidates, type CandidateRow } from "../projections/candidates.ts";
+import { finishedEnableAt, heldCandidates, type CandidateRow } from "../projections/candidates.ts";
 
 // ── Ports ────────────────────────────────────────────────────────────────────────────────────
 
@@ -615,6 +615,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     if (keys.length === drawnKeys.length && keys.every((key, at) => key === drawnKeys[at])) return;
     drawnKeys = keys;
     stores.driver.setDemand("drawn", keys);
+    updateAddressWatch();
   };
 
   /** The records, or the installs that write them, changed. */
@@ -736,6 +737,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     viewed = held;
     stores!.driver.setDemand("route", onRoute);
     stores!.driver.setDemand("screen", shown);
+    updateAddressWatch();
     if (left !== undefined) keepRecent(left);
   };
 
@@ -760,7 +762,10 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     );
     const detailMoved =
       wanted.size !== detailProjects.size || [...wanted].some((id) => !detailProjects.has(id));
-    if (detailMoved) detailProjects = wanted;
+    if (detailMoved) {
+      detailProjects = wanted;
+      updateAddressWatch();
+    }
     for (const [id, fiber] of detailLeases) {
       if (wanted.has(id)) continue;
       detailLeases.delete(id);
@@ -909,18 +914,23 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
   };
 
   /**
-   * Reads the processes — running, and the newest history — of every listed project of the active
-   * organization with a container ACTIVE without its address, for as long as it lacks one: its
-   * address landing, the project leaving the listing or the organization leaving view lets the
-   * read go. The container's record catching up arrives by itself, in the organization's live
-   * services listing.
+   * Reads the processes — running, and the newest history — of every project a surface shows (the
+   * route's, the drawn, the viewed, the detailed) of the active organization with a container
+   * ACTIVE without its address, for as long as it lacks one: its address landing, the project
+   * leaving view or the organization leaving view lets the read go. Navigation alone reads no
+   * history. Each time an enable of such a container is read as finished, its service's own row is
+   * read once after it: no push is promised to bring the record that caught up (8c076ec029).
    */
   const updateAddressWatch = () => {
     if (closed) return;
+    const shown = new Set([
+      ...[...drawnKeys, ...viewed, ...(routeKey === null ? [] : [routeKey])].map(targetProject),
+      ...detailProjects,
+    ]);
     const lacking = new Set<string>();
     for (const row of rows) {
       if (row.presence !== "known" || row.service?.status !== "ACTIVE") continue;
-      if (row.containerOrigin !== undefined || lacking.has(row.project.id)) continue;
+      if (row.containerOrigin !== undefined || !shown.has(row.project.id)) continue;
       const ref = projectRefOf(row.project.id);
       if (ref !== undefined && ref.organization.organizationId === activeOrganization)
         lacking.add(row.project.id);
@@ -932,7 +942,30 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     }
     for (const projectId of lacking) {
       if (addressWatch.has(projectId)) continue;
-      addressWatch.set(projectId, holdProjectHistory(atomRegistry, projectId));
+      const releaseHistory = holdProjectHistory(atomRegistry, projectId);
+      // One read of its service's own row after each enable read as finished.
+      let readAfter: string | null = null;
+      let releaseRead: (() => void) | null = null;
+      const recheck = (read: ProjectProcesses) => {
+        if (closed) return;
+        for (const row of rows) {
+          if (row.project.id !== projectId || row.service === undefined) continue;
+          if (row.containerOrigin !== undefined) continue;
+          const at = finishedEnableAt(read, row.service.id);
+          if (at === null || (readAfter !== null && at <= readAfter)) continue;
+          readAfter = at;
+          releaseRead?.();
+          releaseRead = holdServiceRead(atomRegistry, row.service.id);
+        }
+      };
+      const unsubscribe = atomRegistry.subscribe(projectProcessesAtom(projectId), recheck, {
+        immediate: true,
+      });
+      addressWatch.set(projectId, () => {
+        unsubscribe();
+        releaseHistory();
+        releaseRead?.();
+      });
     }
   };
 

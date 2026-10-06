@@ -22,6 +22,7 @@ import {
   ReceiverEpoch,
   ZeropsReceiverId,
   ZeropsServiceId,
+  projectKeyOf,
   queryKeyOf,
   serviceKeyOf,
   type CollectionRead,
@@ -236,11 +237,28 @@ function interestOf(project: ProjectRef, read: ProjectServices): InterestState {
   };
 }
 
-/** One project's services as the runtime's readers take them, from the account's store. */
+/** Each listing value's reads, by project key: the same value is the same read to every reader. */
+const reads = new WeakMap<ProjectServices, Map<string, CollectionRead<ServiceRecord>>>();
+
+/**
+ * One project's services as the runtime's readers take them, from the account's store: one read
+ * per listing value, so a reader comparing reads by reference hears only a change.
+ */
 export function runtimeServicesRead(
   project: ProjectRef,
   read: ProjectServices,
 ): CollectionRead<ServiceRecord> {
+  const byProject = reads.get(read) ?? new Map<string, CollectionRead<ServiceRecord>>();
+  reads.set(read, byProject);
+  const key = projectKeyOf(project);
+  const held = byProject.get(key);
+  if (held !== undefined) return held;
+  const derived = deriveRead(project, read);
+  byProject.set(key, derived);
+  return derived;
+}
+
+function deriveRead(project: ProjectRef, read: ProjectServices): CollectionRead<ServiceRecord> {
   const descriptor = { kind: "services-of-project" as const, project, schemaVersion: 1 as const };
   const common = {
     descriptor,
