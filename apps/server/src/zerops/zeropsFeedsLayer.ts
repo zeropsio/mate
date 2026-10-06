@@ -33,6 +33,7 @@ import * as ZeropsGitRemoteProbeModule from "./ZeropsGitRemoteProbe.ts";
 import { loadFixtureScene, makeFixtureZeropsLayer } from "./ZeropsFixtureFeeds.ts";
 import * as ZeropsLifecycle from "./ZeropsLifecycle.ts";
 import * as ZeropsLoginsModule from "./ZeropsLogins.ts";
+import * as ZeropsMateAttentionModule from "./ZeropsMateAttention.ts";
 import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
 import * as ZeropsMateUpdateModule from "./ZeropsMateUpdate.ts";
 import * as ZeropsMembershipWatchModule from "./ZeropsMembershipWatch.ts";
@@ -108,7 +109,7 @@ const ZeropsMateUpdateLive = ZeropsMateUpdateModule.layer.pipe(
 /**
  * The Mate's one link to its HQ (SPEC §3.4): its overview up — its chats, its logins as the
  * agent-auth feed reads them, its crew and its update line, each the same instance the merge below
- * runs, memoized by reference — and its state down. The setup reads the state it brings. The crew
+ * runs, memoized by reference — beside it its attention, and its state down. The setup reads the state it brings. The crew
  * engine is handed to it here, so only this wiring reaches into `zerops/crew`.
  */
 const ZeropsHqLinkLive = Layer.unwrap(
@@ -123,6 +124,7 @@ const ZeropsHqLinkLive = Layer.unwrap(
   Layer.provide(ZeropsLoginsLive),
   Layer.provide(ZeropsProjectSignersModule.layer),
   Layer.provide(ZeropsMateUpdateLive),
+  Layer.provide(ZeropsMateAttentionModule.layer),
 );
 
 const liveLayer = Layer.mergeAll(

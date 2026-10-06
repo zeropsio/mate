@@ -5,6 +5,7 @@ import {
   type ServerProvider,
   type CrewSnapshot,
   type ExecutionEnvironmentUpdate,
+  type MateAttention,
   type ZeropsAgentAuthSnapshot,
 } from "@t3tools/contracts";
 import { MateLinkUp, type MateOverview, type MateState } from "@t3tools/shared/mateLink";
@@ -94,6 +95,22 @@ const overview = (title: string): MateOverview => ({
   crew: { status: "off" },
 });
 
+/** A Mate's attention at `revision`: one chat at work. */
+const attentionAt = (revision: number): MateAttention => ({
+  source: {
+    environmentId: "env-1" as MateAttention["source"]["environmentId"],
+    incarnation: "boot-1",
+    revision,
+  },
+  mainThreadId: "t1" as MateAttention["mainThreadId"],
+  lastThreadId: "t1" as MateAttention["lastThreadId"],
+  working: 1,
+  waiting: 0,
+  results: [],
+  questions: [],
+  truncated: false,
+});
+
 /** A Mate in no application, with no changes yet. */
 const STATE: MateState = {
   projectId: "P_MATE",
@@ -110,7 +127,14 @@ const STATE: MateState = {
  * A link over a fake HQ: tickets for `cred` while `refusing` is off, a socket per connect. It sends
  * at most every `everyMs` (10 ms unless said: the link's own pace is for the clock's tests).
  */
-const rig = (options: { readonly enrolled?: boolean; readonly everyMs?: number } = {}) =>
+const rig = (
+  options: {
+    readonly enrolled?: boolean;
+    readonly everyMs?: number;
+    /** The attention the link sends up; nothing unless a test says. */
+    readonly attention?: Stream.Stream<MateAttention>;
+  } = {},
+) =>
   Effect.gen(function* () {
     const enrollment = yield* Ref.make<Option.Option<HqEnrollment>>(
       options.enrolled === true
@@ -155,6 +179,7 @@ const rig = (options: { readonly enrolled?: boolean; readonly everyMs?: number }
         reads.count += 1;
       }).pipe(Effect.andThen(Ref.get(current)), Effect.map(Option.some)),
       changes: Stream.fromPubSub(changes),
+      attention: options.attention ?? Stream.never,
       relayAccess: (access) =>
         Effect.sync(() => {
           relayed.push(access);
@@ -366,6 +391,35 @@ describe("ZeropsHqLink", () => {
     ),
   );
 
+  it.effect("sends the attention whole on every link it opens, then each new revision", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const attention = yield* SubscriptionRef.make(attentionAt(0));
+        const { sockets } = yield* rig({
+          enrolled: true,
+          attention: SubscriptionRef.changes(attention),
+        });
+        const attentionSent = (socket: FakeSocket) =>
+          socket.sent.filter((frame) => frame.type === "attention");
+        const first = yield* opened(sockets, 0);
+        yield* SubscriptionRef.set(attention, attentionAt(1));
+        yield* TestClock.adjust(Duration.zero);
+        assert.deepStrictEqual(attentionSent(first), [
+          { type: "attention", attention: attentionAt(0) },
+          { type: "attention", attention: attentionAt(1) },
+        ]);
+        // Beside the overview, never in its place.
+        assert.isTrue(first.sent.some((frame) => frame.type === "overview"));
+        first.emit("close");
+        yield* TestClock.adjust(Duration.millis(30));
+        const second = yield* opened(sockets, 1);
+        assert.deepStrictEqual(attentionSent(second), [
+          { type: "attention", attention: attentionAt(1) },
+        ]);
+      }),
+    ),
+  );
+
   it.effect("sends only the sections that changed, at most once per 500 ms", () =>
     Effect.scoped(
       Effect.gen(function* () {
@@ -566,6 +620,7 @@ describe("ZeropsHqLink's overview, from the Mate's own feeds", () => {
         return socket;
       },
       relayAccess: () => Effect.void,
+      attention: Stream.never,
       ...feed,
     }).pipe(Effect.provideService(HttpClient.HttpClient, http));
     yield* TestClock.adjust(Duration.zero);

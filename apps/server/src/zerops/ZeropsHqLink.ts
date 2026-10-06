@@ -14,7 +14,8 @@
  * - **Up:** the Mate's overview (`zeropsHqOverview.ts`): the whole of it first on every link, then
  *   only the sections that changed, at most once per `MATE_OVERVIEW_EVERY_MS`, looked at again when
  *   something it is made of moves — a domain event, the crew's snapshot, a login, the update line —
- *   and never on a timer; `pong` to each of HQ's pings.
+ *   and never on a timer; beside it the Mate's attention (`ZeropsMateAttention`), whole on every
+ *   link and again at each new revision; `pong` to each of HQ's pings.
  * - **Down:** the Mate's state as HQ holds it (its record, its birth), kept here for whoever asks;
  *   and who its project lets in (`access`), handed on to `ZeropsProjectAccess` with its age.
  *
@@ -32,7 +33,12 @@ import * as NodeDns from "node:dns";
 import type * as NodeNet from "node:net";
 
 import { NodeWS } from "@effect/platform-node/NodeSocket";
-import type { CrewSnapshot, OrchestrationThreadShell, ServerProvider } from "@t3tools/contracts";
+import type {
+  CrewSnapshot,
+  MateAttention,
+  OrchestrationThreadShell,
+  ServerProvider,
+} from "@t3tools/contracts";
 import {
   MATE_OVERVIEW_EVERY_MS,
   MateLinkDown,
@@ -73,6 +79,7 @@ import { combineAgentAuth, ZeropsAgentLogin } from "./ZeropsAgentLogin.ts";
 import { ZeropsSignIns } from "./zeropsSignIns.ts";
 import { mateOverviewOf } from "./zeropsHqOverview.ts";
 import { ZeropsLogins } from "./ZeropsLogins.ts";
+import { ZeropsMateAttention } from "./ZeropsMateAttention.ts";
 import { ZeropsMateUpdate } from "./ZeropsMateUpdate.ts";
 import { ZeropsProjectAccess } from "./ZeropsProjectAccess.ts";
 
@@ -126,6 +133,8 @@ export interface ZeropsHqLinkOptions {
   readonly overview: Effect.Effect<Option.Option<MateOverview>>;
   /** Fires whenever the overview may have changed. */
   readonly changes: Stream.Stream<unknown>;
+  /** The Mate's attention now, then each new revision (`ZeropsMateAttention.changes`). */
+  readonly attention: Stream.Stream<MateAttention>;
   /** Hands on who HQ says the project lets in, and how old HQ's read of Zerops is. */
   readonly relayAccess: ZeropsProjectAccess["Service"]["relayed"];
   /** The waits before each next attempt; the last one repeats. */
@@ -302,6 +311,9 @@ export const makeZeropsHqLink = (
           }),
         );
         const heard = Stream.runForEach(options.changes, () => Ref.set(dirty, true));
+        const attention = Stream.runForEach(options.attention, (value) =>
+          send({ type: "attention", attention: value }),
+        );
         const relay = Stream.fromQueue(events).pipe(
           Stream.takeWhile((event) => event._tag === "message"),
           Stream.runForEach((event) => {
@@ -324,9 +336,10 @@ export const makeZeropsHqLink = (
           }),
         );
         const relayed = yield* Effect.forkScoped(
-          Effect.raceFirst(relay, Effect.all([overviews, heard], { concurrency: 2 })).pipe(
-            Effect.ensuring(quit),
-          ),
+          Effect.raceFirst(
+            relay,
+            Effect.all([overviews, heard, attention], { concurrency: 3 }),
+          ).pipe(Effect.ensuring(quit)),
         );
         return Option.some({
           openedAt,
@@ -555,6 +568,7 @@ export const layer = (crew: OverviewSources["crew"]) =>
           .pipe(Effect.flatMap(Schema.decodeUnknownEffect(OutcomeFile)), Effect.option),
         connect: connectLinkSocket,
         relayAccess: (yield* ZeropsProjectAccess).relayed,
+        attention: (yield* ZeropsMateAttention).changes,
         ...feed,
       });
     }),

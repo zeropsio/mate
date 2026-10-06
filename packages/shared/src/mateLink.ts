@@ -9,6 +9,9 @@
  *   frame per {@link MATE_OVERVIEW_EVERY_MS}. Bounded: texts to {@link MATE_LINK_TEXT_MAX}
  *   characters, titles to {@link MATE_TITLE_MAX}, a frame to {@link MATE_LINK_FRAME_MAX} bytes.
  *   An older Mate's `summary` is a type this build does not know.
+ * - **Up**, beside the overview, the Mate's attention (`attention`, `MateAttention` in
+ *   `@t3tools/contracts`): one value with its own revision, whole on every link and again at each
+ *   new revision. An older HQ passes it by as a type it does not know.
  * - **Down**, the Mate's own state in HQ: its record, its birth (who asked for its stand-up,
  *   whether its project is closed off), and its changes with their outcome (`hqChanges.ts`); and
  *   its access (`access`): who its project opens for and whom it lists, by the door's own rule over
@@ -27,6 +30,7 @@ import {
   ExecutionEnvironmentDescriptor,
   ExecutionEnvironmentUpdate,
   IsoDateTime,
+  MateAttention,
   OrchestrationLatestTurn,
   OrchestrationSessionStatus,
   ProviderInteractionMode,
@@ -281,6 +285,7 @@ export const MateLinkUp = Schema.Union([
     full: Schema.Literal(false),
     sections: MateOverviewSections,
   }),
+  Schema.Struct({ type: Schema.Literal("attention"), attention: MateAttention }),
 ]);
 export type MateLinkUp = typeof MateLinkUp.Type;
 

@@ -1,3 +1,4 @@
+import { MATE_ATTENTION_IDS_MAX } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -228,6 +229,37 @@ describe("mateLink", () => {
     };
     expect(readLinkUp(JSON.stringify(largest)).kind).toBe("message");
     expect(linkFrameBytes(JSON.stringify(largest))).toBeLessThan(MATE_LINK_FRAME_MAX);
+  });
+
+  it("reads a Mate's attention at its bound within a frame, and refuses one past it", () => {
+    const id = (n: number) => `${"0".repeat(32)}-${String(n).padStart(3, "0")}`;
+    const attention = (results: number) => ({
+      type: "attention",
+      attention: {
+        source: { environmentId: "env-1", incarnation: id(0), revision: 7 },
+        mainThreadId: id(0),
+        lastThreadId: id(1),
+        working: 3,
+        waiting: MATE_ATTENTION_IDS_MAX + 9,
+        results: Array.from({ length: results }, (_, n) => ({
+          threadId: id(n),
+          turnId: id(n),
+          completedAt: "2026-10-06T10:00:00.000Z",
+        })),
+        questions: Array.from({ length: MATE_ATTENTION_IDS_MAX }, (_, n) => ({
+          threadId: id(n),
+          kind: "input",
+          turnId: id(n),
+        })),
+        truncated: true,
+      },
+    });
+    const largest = JSON.stringify(attention(MATE_ATTENTION_IDS_MAX));
+    expect(readLinkUp(largest).kind).toBe("message");
+    expect(linkFrameBytes(largest)).toBeLessThan(MATE_LINK_FRAME_MAX);
+    expect(readLinkUp(JSON.stringify(attention(MATE_ATTENTION_IDS_MAX + 1)))).toEqual({
+      kind: "invalid",
+    });
   });
 
   it("brings the Mate's own changes down with its state, and reads a newer HQ's state too", () => {
