@@ -4,7 +4,7 @@ import { afterAll } from "vite-plus/test";
 import * as Effect from "effect/Effect";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
-import { installSignIn } from "./fake.ts";
+import { installSignIn, slowMemberList } from "./fake.ts";
 import {
   account,
   organizations,
@@ -13,6 +13,7 @@ import {
   signInOrganization,
   unchangedHandovers,
   allowHqRetries,
+  firstHqAnswer,
 } from "./dsl.ts";
 
 const accountScenario = Effect.fn("signin.scenario")(function* (sessionFault = false) {
@@ -147,6 +148,38 @@ describe("A: sign-in, session and organizations", () => {
         yield* account(s.page).showsPerson("owner");
         yield* retainedAuthorization();
         yield* s.then.noReload;
+        yield* s.then.noExternalNetwork;
+      }),
+    );
+
+    // Catches a reload or a new tab waiting on the organization's member list (KRLS: tens of
+    // seconds) before it reaches the HQ whose session the account kept.
+    it.effect("reload and a new tab reach the kept HQ without waiting for the member list", () =>
+      Effect.gen(function* () {
+        const MEMBERS_MS = 5_000;
+        const s = yield* accountScenario();
+        slowMemberList(s.drivers, MEMBERS_MS);
+        yield* s.given.project("Ada", { mate: true, app: "Shop" });
+        yield* s.given.signedIn;
+        yield* s.then.menu.row("Shop").appears({ within: 15_000 });
+        const reloaded = firstHqAnswer(s.page);
+        reloaded.from();
+        yield* account(s.page).reload;
+        const reload = yield* reloaded.ms;
+        yield* s.then.menu.row("Shop").appears();
+        const b = yield* s.given.browserActor({ context: s.page.browserContext() });
+        const opened = firstHqAnswer(b.page);
+        opened.from();
+        yield* Effect.promise(() => b.page.goto(s.web.origin));
+        const tab = yield* opened.ms;
+        yield* b.then.menu.row("Shop").appears();
+        process.stdout.write(
+          `A first HQ answer with the member list ${MEMBERS_MS} ms late: reload=${reload.toFixed(0)}ms new tab=${tab.toFixed(0)}ms\n`,
+        );
+        expect(
+          [reload, tab].every((ms) => ms < MEMBERS_MS / 2),
+          `reload ${reload} ms, tab ${tab} ms`,
+        ).toBe(true);
         yield* s.then.noExternalNetwork;
       }),
     );

@@ -51,6 +51,8 @@ export interface KeptSessionStorage {
 export interface KeptSessions<T> {
   /** The session kept for this key, unless it would end within the lead. */
   readonly read: (key: string) => T | null;
+  /** The keys whose sessions `read` would answer. */
+  readonly keys: () => ReadonlyArray<string>;
   /**
    * Keeps the session just opened for a key, in place of any before it; answers the session it
    * displaced, or null when there was none or it was this one.
@@ -165,6 +167,10 @@ export function makeKeptSessions<T, E>(
       const session = load().get(key);
       return session === undefined || ended(session, KEPT_SESSION_LEAD_MS) ? null : session;
     },
+    keys: () =>
+      [...load()]
+        .filter(([, session]) => !ended(session, KEPT_SESSION_LEAD_MS))
+        .map(([key]) => key),
     keep: (key, session) => {
       const kept = load();
       const before = kept.get(key) ?? null;

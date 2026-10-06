@@ -53,6 +53,7 @@ import {
   keepNoHqVerdict,
   noHq,
   useHqVerdict,
+  verdictNames,
   type HqVerdictOwner,
 } from "./hqVerdict";
 import { keptHqSessions } from "./keptSessions";
@@ -93,21 +94,39 @@ export function useAccountHq(clientId: string | undefined): AccountHq {
     enabled: clientId !== undefined && kept === undefined,
   });
   const named = useMemo(() => findOfficialHq(members), [members]);
+  // The HQ whose session the account kept: verified official when the session was minted, so
+  // the page goes to it while the member list verifies it behind.
+  const trusted = useMemo(
+    () => (clientId === undefined ? undefined : keptHqOf(clientId)),
+    [clientId],
+  );
   // What a read of the member list settles is this page's verdict from then on: the official
-  // HQ it names, or that it names none — never a list being read again.
+  // HQ it names, or that it names none — never a list being read again. A kept HQ it does not
+  // name is dropped with its session.
   useEffect(() => {
     if (owner === undefined || !settled) return;
     if (named.kind === "official") keepHqVerdict(owner, named);
     if (named.kind === "none") keepNoHqVerdict(owner);
-  }, [named, owner, settled]);
+    if (
+      trusted !== undefined &&
+      !(
+        named.kind === "official" &&
+        named.projectId === trusted.projectId &&
+        named.address === trusted.address
+      )
+    )
+      forgetKeptHq(owner.clientId, trusted);
+  }, [named, owner, settled, trusted]);
   const hq = useMemo<OfficialHq>(
     () =>
-      kept === undefined
-        ? named
-        : noHq(kept)
+      kept !== undefined
+        ? noHq(kept)
           ? { kind: "none" }
-          : { kind: "official", projectId: kept.projectId, address: kept.address },
-    [kept, named],
+          : { kind: "official", projectId: kept.projectId, address: kept.address }
+        : !settled && trusted !== undefined
+          ? { kind: "official", ...trusted }
+          : named,
+    [kept, named, settled, trusted],
   );
   const admins = useMemo(() => ownersAndAdmins(members), [members]);
   const reread = useCallback(() => {
@@ -120,7 +139,39 @@ export function useAccountHq(clientId: string | undefined): AccountHq {
     Effect.runFork(data.runtime.cells.invalidate(request));
     forgetNoHqVerdict(owner);
   }, [data, owner]);
-  return { status: kept === undefined ? status : "ready", hq, admins, reread };
+  return {
+    status: kept !== undefined || (!settled && trusted !== undefined) ? "ready" : status,
+    hq,
+    admins,
+    reread,
+  };
+}
+
+/** Where the account keeps HQ's session for the organization `clientId` and `hq`. */
+const keptHqKey = (clientId: string, hq: HqEndpoint) => `${clientId}:${hq.projectId}:${hq.address}`;
+
+/**
+ * The one HQ the account keeps a live session for in the organization `clientId`; none where it
+ * keeps none, or sessions of more than one HQ.
+ */
+function keptHqOf(clientId: string): HqEndpoint | undefined {
+  const prefix = `${clientId}:`;
+  const found = new Map<string, HqEndpoint>();
+  for (const key of keptHqSessions.keys()) {
+    if (!key.startsWith(prefix) || key.includes(":displaced:")) continue;
+    const rest = key.slice(prefix.length);
+    const split = rest.indexOf(":");
+    if (split <= 0) continue;
+    found.set(rest, { projectId: rest.slice(0, split), address: rest.slice(split + 1) });
+  }
+  return found.size === 1 ? [...found.values()][0] : undefined;
+}
+
+/** Forgets the session the account kept for `hq`, which the member list does not name. */
+function forgetKeptHq(clientId: string, hq: HqEndpoint): void {
+  const key = keptHqKey(clientId, hq);
+  const session = keptHqSessions.read(key);
+  if (session !== null) keptHqSessions.forget(key, session.token);
 }
 
 const apis = new Map<string, HqApi>();
@@ -166,6 +217,26 @@ export function saysNotOfficial(health: HqHealth): boolean {
 }
 
 /**
+ * A door is entered only into an HQ the member list named: a kept HQ not yet verified behind is
+ * still being checked (try again shortly), and one it named not is refused.
+ */
+async function doorChecked(clientId: string, hq: HqEndpoint): Promise<void> {
+  const named = verdictNames(clientId, hq);
+  if (named === true) return;
+  throw named === undefined
+    ? new HqError({
+        kind: "unavailable",
+        code: "hq_unverified",
+        message: "Mate is still checking this organization's HQ.",
+      })
+    : new HqError({
+        kind: "refused",
+        code: "hq_not_official",
+        message: "This HQ is no longer the organization's official HQ.",
+      });
+}
+
+/**
  * HQ's API for this account and org, with the session the account kept for this HQ, else entered
  * through its door on the first call. A door that answers not serving, from an HQ whose health says
  * it is not the official one, makes this page forget its verdict, so the member list is read
@@ -179,7 +250,7 @@ export function accountHqApi(client: ZeropsApiClient, clientId: string, hq: HqEn
     asked: true,
     debt: accountThrowawayDebt(client),
   });
-  const keptKey = `${clientId}:${hq.projectId}:${hq.address}`;
+  const keptKey = keptHqKey(clientId, hq);
   const api = makeHqApi({
     address: hq.address,
     kept: {
@@ -201,24 +272,26 @@ export function accountHqApi(client: ZeropsApiClient, clientId: string, hq: HqEn
     },
     fetch: (input, init) => fetch(input, init),
     throughDoor: (use) =>
-      connectThroughThrowaway({
-        platform,
-        clientId,
-        projectId: hq.projectId,
-        nonce: randomUUID(),
-        // A door HQ did not answer as serving — unreached, past its deadline, or not serving — did
-        // not take the throwaway: its next try presents it again, while young, and mints nothing
-        // (KRLS, 2026-10-03: eight throwaways in 21 s while the organization's reads stalled).
-        keep: (outcome) =>
-          !outcome.ok && outcome.cause instanceof HqError && outcome.cause.kind === "unavailable",
-        connect: use,
-      }).catch(async (cause: unknown) => {
-        if (cause instanceof HqError && cause.code === "not_active") {
-          const health = await readHqHealth((input, init) => fetch(input, init), hq.address);
-          if (saysNotOfficial(health)) forgetHqVerdict(clientId, hq);
-        }
-        throw cause;
-      }),
+      doorChecked(clientId, hq).then(() =>
+        connectThroughThrowaway({
+          platform,
+          clientId,
+          projectId: hq.projectId,
+          nonce: randomUUID(),
+          // A door HQ did not answer as serving — unreached, past its deadline, or not serving — did
+          // not take the throwaway: its next try presents it again, while young, and mints nothing
+          // (KRLS, 2026-10-03: eight throwaways in 21 s while the organization's reads stalled).
+          keep: (outcome) =>
+            !outcome.ok && outcome.cause instanceof HqError && outcome.cause.kind === "unavailable",
+          connect: use,
+        }).catch(async (cause: unknown) => {
+          if (cause instanceof HqError && cause.code === "not_active") {
+            const health = await readHqHealth((input, init) => fetch(input, init), hq.address);
+            if (saysNotOfficial(health)) forgetHqVerdict(clientId, hq);
+          }
+          throw cause;
+        }),
+      ),
     openSocket: openBrowserSocket,
   });
   apis.set(key, api);

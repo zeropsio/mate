@@ -102,6 +102,14 @@ describe("kept sessions", () => {
     });
   });
 
+  it("names the keys whose sessions it would present, and none it would not", () => {
+    const sessions = kept();
+    sessions.keep("p1:zcp", session("shop"));
+    sessions.keep("p2:zcp", session("blog", { expiresAtEpochMs: NOW + KEPT_SESSION_LEAD_MS - 1 }));
+
+    expect(sessions.keys()).toEqual(["p1:zcp"]);
+  });
+
   it("forgets a session only while it is still the one refused, and answers it", () => {
     const sessions = kept();
     sessions.keep("p1:zcp", session("shop"));

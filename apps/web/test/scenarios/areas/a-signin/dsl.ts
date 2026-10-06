@@ -3,6 +3,7 @@ import { expect } from "@effect/vitest";
 import type { Page } from "puppeteer-core";
 import type { createScenario } from "../../harness/scenario.ts";
 import { visibleText } from "../../harness/browser.ts";
+import { deadline } from "../../harness/http.ts";
 import { secondOrganization, endSessionCheck, handoverCount } from "./fake.ts";
 
 type Scenario = Effect.Success<ReturnType<typeof createScenario>>;
@@ -206,3 +207,29 @@ export const allowHqRetries = Effect.fn("signin.allowHqRetries")(function* (
     }
   });
 });
+
+/** How long after `from()` the page first has an answer from HQ's API (its door or a ticket). */
+export function firstHqAnswer(page: Page) {
+  let start: number | undefined;
+  let answered: (ms: number) => void = () => undefined;
+  let answer = new Promise<number>(() => undefined);
+  page.on("response", (response) => {
+    const path = new URL(response.url()).pathname;
+    if (
+      start !== undefined &&
+      (path.endsWith("/api/door") || path.endsWith("/api/stream-ticket"))
+    ) {
+      answered(performance.now() - start);
+      start = undefined;
+    }
+  });
+  return {
+    from: () => {
+      start = performance.now();
+      answer = new Promise<number>((resolve) => {
+        answered = resolve;
+      });
+    },
+    ms: Effect.promise(() => deadline(answer, "HQ's first answer to the page")),
+  };
+}

@@ -30,6 +30,7 @@ import {
 } from "./accountHq";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
 import { keepHqVerdict } from "./hqVerdict";
+import { keptHqSessions } from "./keptSessions";
 import { ZeropsDataContext, type ZeropsDataContextValue } from "./zeropsDataContext";
 import { ZeropsSessionContext } from "./sessionContext";
 import type { ZeropsSessionValue } from "./ZeropsSessionProvider";
@@ -426,6 +427,131 @@ describe("useAccountHq — the official HQ this page holds", () => {
   });
 });
 
+// Trust on verify (coordinator, 2026-10-06): a session the account kept for an HQ was minted only
+// after that HQ was verified official, so a reload or a new tab goes to it at once; the member list
+// verifies it behind, and a verdict that names another HQ drops it and its session.
+describe("useAccountHq — the HQ whose session the account kept, verified behind", () => {
+  const scope: AccountScope = {
+    account: {
+      apiOrigin: makeZeropsApiOrigin("https://api.example.test"),
+      accountId: ZeropsAccountId.make("account-k"),
+    },
+    epoch: AccountEpoch.make(1),
+  };
+  const organizationRef = (organizationId: string): OrganizationRef => ({
+    kind: "organization",
+    account: scope.account,
+    organizationId: ZeropsOrganizationId.make(organizationId),
+  });
+  const KEPT = { projectId: "P_KEPT", address: "https://kept.example.test" };
+
+  beforeEach(() => {
+    const stored = new Map<string, string>();
+    vi.stubGlobal("window", {
+      localStorage: {
+        getItem: (key: string) => stored.get(key) ?? null,
+        setItem: (key: string, value: string) => stored.set(key, value),
+        removeItem: (key: string) => stored.delete(key),
+      },
+    });
+    openAccountLifetime("person-k");
+  });
+  afterEach(() => {
+    closeAccountLifetime();
+    vi.unstubAllGlobals();
+  });
+
+  /** `useAccountHq` for `clientId` whose member list answers only once `answer` is called. */
+  async function pending(clientId: string) {
+    let answer: (members: ReadonlyArray<ZeropsOrganizationMember>) => void = () => undefined;
+    const cells = await makeMemberCells({
+      scope,
+      organization: organizationRef(clientId),
+      members: () =>
+        new Promise((resolve) => {
+          answer = resolve;
+        }),
+    });
+    const data = {
+      runtime: { scope, cells },
+      organizationRef,
+    } as unknown as ZeropsDataContextValue;
+    const seen: Array<AccountHq> = [];
+    function Probe() {
+      seen.push(useAccountHq(clientId));
+      return null;
+    }
+    await act(async () => {
+      create(
+        createElement(
+          RegistryContext.Provider,
+          { value: AtomRegistry.make() },
+          createElement(ZeropsDataContext.Provider, { value: data }, createElement(Probe)),
+        ),
+      );
+    });
+    return {
+      last: () => seen.at(-1)!,
+      answer: async (members: ReadonlyArray<ZeropsOrganizationMember>) => {
+        await act(async () => {
+          answer(members);
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        });
+      },
+    };
+  }
+
+  const keepSession = (clientId: string, hq: typeof KEPT) =>
+    keptHqSessions.keep(`${clientId}:${hq.projectId}:${hq.address}`, {
+      address: hq.address,
+      token: `session-${clientId}`,
+      expiresAtEpochMs: Date.now() + 12 * 3_600_000,
+    });
+
+  it("goes to the kept HQ before the member list answers, and stays once it names it", async () => {
+    keepSession("org-kept-a", KEPT);
+    const hq = await pending("org-kept-a");
+    expect([hq.last().status, hq.last().hq]).toEqual(["ready", { kind: "official", ...KEPT }]);
+    await hq.answer([anchor(KEPT.projectId, KEPT.address)]);
+    expect(hq.last().hq).toEqual({ kind: "official", ...KEPT });
+    expect(keptHqSessions.read(`org-kept-a:${KEPT.projectId}:${KEPT.address}`)).not.toBeNull();
+  });
+
+  it("drops the kept HQ and its session once the member list names another", async () => {
+    keepSession("org-kept-b", KEPT);
+    const hq = await pending("org-kept-b");
+    await hq.answer([anchor("P_NEW", "https://new.example.test")]);
+    expect(hq.last().hq).toEqual({
+      kind: "official",
+      projectId: "P_NEW",
+      address: "https://new.example.test",
+    });
+    expect(keptHqSessions.read(`org-kept-b:${KEPT.projectId}:${KEPT.address}`)).toBeNull();
+  });
+
+  it("without a kept session waits for the member list, as before", async () => {
+    const hq = await pending("org-cold");
+    expect(hq.last().status).toBe("loading");
+  });
+
+  it("enters no door of a kept HQ the member list has not yet named", async () => {
+    let mints = 0;
+    const client = {
+      accountEpoch: 900,
+      mintThrowaway: async () => {
+        mints += 1;
+        return { id: "t-1", token: "door-1", mintingToken: "minting" };
+      },
+      deleteThrowaway: async () => {},
+    } as unknown as ZeropsApiClient;
+    await expect(accountHqApi(client, "org-unverified", KEPT).structure()).rejects.toMatchObject({
+      kind: "unavailable",
+      code: "hq_unverified",
+    });
+    expect(mints).toBe(0);
+  });
+});
+
 // Audit K7: HQ's session lived in a tab's memory only, so every load paid a throwaway's mint and
 // delete through HQ's door, and a sign-out left the session HQ issued valid for its 12 hours.
 describe("accountHqApi — HQ's session, kept as the Mates' sessions are", () => {
@@ -488,7 +614,17 @@ describe("accountHqApi — HQ's session, kept as the Mates' sessions are", () =>
       return new Response(null, { status: 204 });
     });
     openAccountLifetime("person-1");
+    named();
   });
+  /** The member list named this HQ: its door may be entered. */
+  const named = () =>
+    keepHqVerdict(
+      {
+        account: { apiOrigin: "https://api.example.test", accountId: "person-1" },
+        clientId: "org-1",
+      },
+      HQ,
+    );
   afterEach(() => {
     // The close ends what the account kept: HQ is still there to hear it.
     closeAccountLifetime();
@@ -578,6 +714,7 @@ describe("accountHqApi — HQ's session, kept as the Mates' sessions are", () =>
     expect([...stored.keys()].filter((key) => key.endsWith(":hq-sessions.v1"))).toEqual([]);
     // Signed in again, nothing is kept: the next load comes through the door.
     openAccountLifetime("person-1");
+    named();
     const next = load();
     await accountHqApi(next.client, "org-1", HQ).structure();
     expect(next.doors()).toBe(1);

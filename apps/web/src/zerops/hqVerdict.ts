@@ -91,6 +91,12 @@ export function forgetHqVerdict(clientId: string, hq: HqEndpoint): void {
   if (kept.length !== verdicts.length) write(kept);
 }
 
+/** Whether this page holds a verdict for the organization `clientId`, and it names `hq`. */
+export function verdictNames(clientId: string, hq: HqEndpoint): boolean | undefined {
+  const held = verdicts.find((entry) => entry.clientId === clientId);
+  return held === undefined ? undefined : names(held, hq);
+}
+
 /** The verdict this page holds for `owner`, as it changes; `undefined` while it holds none. */
 export function useHqVerdict(owner: HqVerdictOwner | undefined): HqVerdict | undefined {
   const current = () =>
