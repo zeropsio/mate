@@ -3138,7 +3138,7 @@ const EASED_BOXES = "[data-chat-bubble],[data-chat-calls],[data-zerops-pipeline-
 /** What the motions of a run's card share: the live slot's rooms, read by the history beside it. */
 interface RunMotion {
   slot: Rooms | null;
-  /** The speed a frame gives the slot's and the history's eases together. */
+  /** The speed a frame gives the slot's and the history's eases, each way. */
   readonly budget: EaseBudget;
 }
 
@@ -3599,7 +3599,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   // How its boxes ease (`easeRooms`), for a line landing in it.
   const historyRoomsRef = useRef<Rooms | null>(null);
   // What its parts' motions share (`RunMotion`).
-  const motionRef = useRef<RunMotion>({ slot: null, budget: { at: -1, left: 0 } });
+  const motionRef = useRef<RunMotion>({ slot: null, budget: { at: -1, grow: 0, shrink: 0 } });
   const { fold, foldNow, settling } = useRunFold({
     conversation: ctx.routeThreadKey,
     run: row.turnKey,

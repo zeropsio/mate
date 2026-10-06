@@ -47,30 +47,40 @@ export function approach(current: number, target: number, dtMs: number, tauMs: n
 }
 
 /**
- * The speed a frame gives every ease of one card together: a landed line's
+ * The speed a frame gives the eases of one card, each way: a landed line's
  * room and the slot squeezing the history each took their own 32 px, and
- * the history moved up to 53 px in one frame (the p43 review). `at` is the
- * frame it was given for, `left` what is left of it.
+ * the history moved up to 53 px in one frame (the p43 review), so eases the
+ * same way share it. Growing and shrinking each have their own: a landing's
+ * history grows by what its slot gives, on one curve each, and the card's
+ * height stays (one budget for both grew it 50 px and back, the p43
+ * verification). `at` is the frame it was given for.
  */
 export interface EaseBudget {
   at: number;
-  left: number;
+  grow: number;
+  shrink: number;
 }
 
 /**
  * What of `step` an ease takes in the frame at `now`, `dtMs` after its last:
- * the first ease heard in a frame gives the budget that frame's speed, and
- * each takes from what is left. A frame long gone stands at its target.
+ * the first ease heard in a frame gives the budget that frame's speed each
+ * way, and each takes from what is left its way. A frame long gone stands
+ * at its target.
  */
 export function spendStep(budget: EaseBudget, now: number, dtMs: number, step: number): number {
   if (dtMs >= LONG_GONE_MS) return step;
   if (budget.at !== now) {
     budget.at = now;
-    budget.left = MAX_SPEED_PX_PER_MS * Math.min(dtMs, ON_TIME_FRAME_MS);
+    budget.grow = budget.shrink = MAX_SPEED_PX_PER_MS * Math.min(dtMs, ON_TIME_FRAME_MS);
   }
-  const taken = Math.sign(step) * Math.min(Math.abs(step), budget.left);
-  budget.left -= Math.abs(taken);
-  return taken;
+  if (step >= 0) {
+    const taken = Math.min(step, budget.grow);
+    budget.grow -= taken;
+    return taken;
+  }
+  const taken = Math.min(-step, budget.shrink);
+  budget.shrink -= taken;
+  return -taken;
 }
 
 /** How long after the person's input a move of a run's scroll is still theirs. */
