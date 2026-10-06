@@ -2992,22 +2992,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/zerops/accountChannel.ts",
-    "kind": "retired-token",
-    "fingerprint": "\"mate:account\"",
-    "owner": "data-layer rewrite: sign-in/session",
-    "reason": "the account broadcast channel has no caller; delete it",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/accountChannel.ts",
-    "kind": "retired-token",
-    "fingerprint": "openAccountChannel",
-    "owner": "data-layer rewrite: sign-in/session",
-    "reason": "the account broadcast channel has no caller; delete it",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/zerops/accountForge.ts",
     "kind": "retired-token",
     "fingerprint": "flow.deployments.subscribe",
