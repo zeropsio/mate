@@ -258,11 +258,16 @@ describe("readDetail", () => {
   const AGENTS = { family: "serviceAgents", ownerId: "s1" } as const;
   const observe = (status: number | "lost") => {
     const store = makeAccountStore(AtomRegistry.make());
+    // A service's agents are read by a search of their keys.
     const fixture = fixtureWire((request) =>
-      request.method === "GET"
-        ? status === "lost"
-          ? Effect.fail({ outcome: "transient", message: "HTTP 503" } as const)
-          : Effect.succeed({ status, body: status === 200 ? { items: [] } : null })
+      request.path === "/user-data/search"
+        ? status === 200
+          ? Effect.succeed({ items: [] })
+          : Effect.fail(
+              status === "lost"
+                ? ({ outcome: "transient", message: "HTTP 503" } as const)
+                : ({ outcome: "authoritative-denial", message: "HTTP 403" } as const),
+            )
         : Effect.succeed(request.body?.wsOutputType === "listStream" ? { items: [] } : {}),
     );
     return {
@@ -289,6 +294,29 @@ describe("readDetail", () => {
           () => streamOf(store.state(), "zerops:org:agents:s1").phase === phase,
           `the read let go, ${phase}`,
         );
+        account.stop();
+      }),
+  );
+
+  it.live.each([
+    { link: "down", outcome: "transient" },
+    { link: "refused", outcome: "definitive-refusal" },
+  ] as const)(
+    "answers no read at once while the link is $link, never waits for it",
+    ({ outcome }) =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const account = observeAccount({
+          store,
+          wire: { open: Effect.fail({ outcome, message: outcome }) },
+          repairSession: Effect.void,
+        });
+        account.show("org");
+        yield* until(
+          () => streamOf(store.state(), linkKeys.zerops("org")).phase !== "connecting",
+          "the link's first attempt to fail",
+        );
+        expect(yield* Effect.promise(() => account.readDetail(AGENTS))).toBe(false);
         account.stop();
       }),
   );

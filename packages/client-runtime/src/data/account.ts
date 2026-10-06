@@ -12,6 +12,7 @@ import { zeropsNavigationLink, type ZeropsWire } from "./adapters/zerops.ts";
 import { detailScopeOf, type DetailDemand } from "./demand.ts";
 import type { RegisteredOperationKind } from "./operations/kind.ts";
 import { holdStandingDemands } from "./operations/standing.ts";
+import { linkKeys } from "./model.ts";
 import { streamOf } from "./reducer.ts";
 import type { AccountStore } from "./store.ts";
 import type { StreamFault } from "./streamMachine.ts";
@@ -70,7 +71,8 @@ export interface AccountObservation {
   /**
    * Holds a detail of the organization shown until its read settles, then lets it go: `true` once
    * it is read (or held read by another screen already), `false` once it failed, was refused or
-   * let go — and at once with no organization shown.
+   * let go — and at once with no organization shown, or with its link down or refused: a flow
+   * that awaits it never waits for a link.
    */
   readonly readDetail: (demand: DetailDemand) => Promise<boolean>;
   /** Our own write changed a sampled detail of the organization shown: read it again. */
@@ -137,11 +139,14 @@ export function observeAccount(options: {
       new Promise((resolve) => {
         if (shown === null) return resolve(false);
         const scope = detailScopeOf(shown.orgId, demand);
+        const link = linkKeys.zerops(shown.orgId);
         const release = observation.demandDetail(demand);
+        // Waits only for a read the live link will make; a link down or refused is no answer.
         const settled = () => {
           const { phase } = streamOf(options.store.state(), scope);
           if (phase === "live") return true;
-          return phase === "stale" || phase === "connecting" || phase === "baselining"
+          if (phase === "connecting" || phase === "baselining") return null;
+          return phase === "stale" && streamOf(options.store.state(), link).phase === "live"
             ? null
             : false;
         };

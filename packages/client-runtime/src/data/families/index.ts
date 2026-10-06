@@ -80,9 +80,14 @@ export function scopeListing(scope: ScopeKey): ScopeListing {
   return listing;
 }
 
-/** How a stream is observed: a sampled family's scope is read, never pushed to; the rest realtime. */
-export function streamMode(key: string): "realtime" | "sampled" {
-  return bySuffix.get(key.split(":")[2] ?? "")?.spec.sampled === undefined ? "realtime" : "sampled";
+/**
+ * How a stream is observed: a sampled family's scope is read, never pushed to — on a cadence, or
+ * once where time never ages it; the rest realtime.
+ */
+export function streamMode(key: string): "realtime" | "sampled" | "once" {
+  const sampled = bySuffix.get(key.split(":")[2] ?? "")?.spec.sampled;
+  if (sampled === undefined) return "realtime";
+  return sampled.freshMs === null ? "once" : "sampled";
 }
 
 /** The family whose members a scope lists. */

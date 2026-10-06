@@ -22,6 +22,7 @@ import { factOf, indexOf } from "../reducer.ts";
 import { linkKeys } from "../model.ts";
 import { detailScopeOf } from "../demand.ts";
 import { membersScope } from "../families/organizationMembers.ts";
+import { routingScope } from "../families/publicRouting.ts";
 import { STREAM_POLICY } from "../streamMachine.ts";
 
 const PROCESS_SEARCH = "/process/search";
@@ -851,29 +852,40 @@ describe("what a baseline and a read by id may claim", () => {
 
 describe("a sampled detail", () => {
   const MEMBERS_PATH = `/client/${ORG}/user/list?limit=100`;
-  const AGENTS_PATH = "/service-stack/s1/env";
+  const AGENTS_PATH = "/user-data/search";
+  const ROUTING_PATH = "/project/p1/public-http-routing";
   const MEMBERS = { family: "organizationMembers", ownerId: ORG } as const;
   const AGENTS = { family: "serviceAgents", ownerId: "s1" } as const;
+  const ROUTING = { family: "publicRouting", ownerId: "p1" } as const;
   const members = membersScope(ORG);
+  const routing = routingScope(ORG, "p1");
   const member = (id: string) => ({ id, user: { fullName: id } });
-  const readsOf = (fixture: ReturnType<typeof fixtureWire>, path: string) =>
-    fixture.requests.filter((request) => request.method === "GET" && request.path === path).length;
-  /** Answers the member list with whatever `list` holds when it is read, and agents' env. */
+  const domain = (domainName: string) => ({
+    isSynced: true,
+    sslEnabled: true,
+    domains: [{ domainName }],
+    locations: [{ path: "/", port: 80, serviceStackId: "web" }],
+  });
+  const readsOf = (
+    fixture: ReturnType<typeof fixtureWire>,
+    path: string,
+    method: "GET" | "POST" = "GET",
+  ) =>
+    fixture.requests.filter((request) => request.method === method && request.path === path).length;
+  /**
+   * Answers the member list and a project's routing with whatever `list` holds when it is read,
+   * and a service's agent keys.
+   */
   const sampledAnswers =
     (list: { current: ReadonlyArray<unknown> }, held?: Deferred.Deferred<void>) =>
     (request: WireRequest): Effect.Effect<unknown, StreamFault> => {
-      if (request.method !== "GET") return answers(() => [])(request);
       if (request.path === AGENTS_PATH)
         return Effect.succeed({
-          status: 200,
-          body: {
-            items: [
-              { id: "e1", key: "ZCP_AGENT_OAUTH_CLAUDE_CODE", content: "1" },
-              { id: "e2", key: "SECRET_TOKEN", content: "hunter2" },
-            ],
-          },
+          items: [{ id: "e1", key: "ZCP_AGENT_OAUTH_CLAUDE_CODE", content: "1" }],
         });
-      const body = { clientUserList: list.current };
+      if (request.method !== "GET") return answers(() => [])(request);
+      const body =
+        request.path === ROUTING_PATH ? { list: list.current } : { clientUserList: list.current };
       return held === undefined
         ? Effect.succeed({ status: 200, body })
         : Effect.andThen(Deferred.await(held), Effect.succeed({ status: 200, body }));
@@ -889,8 +901,8 @@ describe("a sampled detail", () => {
       expect(readsOf(fixture, MEMBERS_PATH)).toBe(1);
       expect(store.state().streams.get(members)).toMatchObject({
         phase: "live",
-        mode: "sampled",
-        next: { kind: "revalidate" },
+        mode: "once",
+        next: { kind: "await-input-change" },
       });
       expect(factOf(store.state(), "organizationMembers", ORG)?.content).toEqual({
         kind: "value",
@@ -900,7 +912,26 @@ describe("a sampled detail", () => {
     }),
   );
 
-  it.effect("keeps only the agents of a service's variables, never a variable itself", () =>
+  it.effect("reads a member list once: no cadence, and a new demand reads nothing", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const fixture = fixtureWire(sampledAnswers({ current: [member("m1")] }));
+      const { fiber, link } = yield* runLink(store, fixture);
+      const release = link.demandDetail(MEMBERS);
+      yield* settle;
+      yield* TestClock.adjust(STREAM_POLICY.sampledIntervalMs * 10);
+      yield* settle;
+      release();
+      yield* settle;
+      link.demandDetail(MEMBERS);
+      yield* settle;
+      expect(readsOf(fixture, MEMBERS_PATH)).toBe(1);
+      expect(store.state().streams.get(members)?.phase).toBe("live");
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+
+  it.effect("reads a service's agents by a search of their own keys, never its variables", () =>
     Effect.gen(function* () {
       const store = makeAccountStore(AtomRegistry.make());
       const fixture = fixtureWire(sampledAnswers({ current: [] }));
@@ -911,6 +942,13 @@ describe("a sampled detail", () => {
         kind: "value",
         value: ["claude-code"],
       });
+      const search = fixture.requests.find((request) => request.path === AGENTS_PATH)?.body
+        ?.search as ReadonlyArray<{ readonly name: string; readonly value: unknown }>;
+      expect(search).toContainEqual({ name: "serviceStackId", operator: "eq", value: "s1" });
+      const keys = search.find((term) => term.name === "key")?.value as ReadonlyArray<string>;
+      expect(keys.length).toBeGreaterThan(0);
+      expect(keys.every((key) => key.startsWith("ZCP_AGENT_OAUTH_"))).toBe(true);
+      expect(fixture.requests.some((request) => request.path.endsWith("/env"))).toBe(false);
       yield* Fiber.interrupt(fiber);
     }),
   );
@@ -918,24 +956,24 @@ describe("a sampled detail", () => {
   it.effect("reads it again on its cadence while demanded, its value shown under the read", () =>
     Effect.gen(function* () {
       const store = makeAccountStore(AtomRegistry.make());
-      const list = { current: [member("m1")] as ReadonlyArray<unknown> };
+      const list = { current: [domain("a.example")] as ReadonlyArray<unknown> };
       const fixture = fixtureWire(sampledAnswers(list));
       const { fiber, link } = yield* runLink(store, fixture);
-      link.demandDetail(MEMBERS);
+      link.demandDetail(ROUTING);
       yield* settle;
 
-      list.current = [member("m1"), member("m2")];
+      list.current = [domain("a.example"), domain("b.example")];
       yield* TestClock.adjust(STREAM_POLICY.sampledIntervalMs - 1);
       yield* settle;
-      expect(readsOf(fixture, MEMBERS_PATH)).toBe(1);
+      expect(readsOf(fixture, ROUTING_PATH)).toBe(1);
       yield* TestClock.adjust(1);
       yield* settle;
-      expect(readsOf(fixture, MEMBERS_PATH)).toBe(2);
-      expect(factOf(store.state(), "organizationMembers", ORG)?.content).toEqual({
+      expect(readsOf(fixture, ROUTING_PATH)).toBe(2);
+      expect(factOf(store.state(), "publicRouting", "p1")?.content).toEqual({
         kind: "value",
-        value: [member("m1"), member("m2")],
+        value: [domain("a.example"), domain("b.example")],
       });
-      expect(store.state().streams.get(members)?.phase).toBe("live");
+      expect(store.state().streams.get(routing)?.phase).toBe("live");
       yield* Fiber.interrupt(fiber);
     }),
   );
@@ -945,23 +983,23 @@ describe("a sampled detail", () => {
       const store = makeAccountStore(AtomRegistry.make());
       const held = yield* Deferred.make<void>();
       const fixture = fixtureWire((request) =>
-        request.method === "GET" && readsOf(fixture, MEMBERS_PATH) > 1
+        request.method === "GET" && readsOf(fixture, ROUTING_PATH) > 1
           ? sampledAnswers({ current: [] }, held)(request)
-          : sampledAnswers({ current: [member("m1")] })(request),
+          : sampledAnswers({ current: [domain("a.example")] })(request),
       );
       const { fiber, link } = yield* runLink(store, fixture);
-      link.demandDetail(MEMBERS);
+      link.demandDetail(ROUTING);
       yield* settle;
       yield* TestClock.adjust(STREAM_POLICY.sampledIntervalMs);
       yield* settle;
-      expect(store.state().streams.get(members)?.phase).toBe("baselining");
-      expect(factOf(store.state(), "organizationMembers", ORG)?.content).toEqual({
+      expect(store.state().streams.get(routing)?.phase).toBe("baselining");
+      expect(factOf(store.state(), "publicRouting", "p1")?.content).toEqual({
         kind: "value",
-        value: [member("m1")],
+        value: [domain("a.example")],
       });
       yield* Deferred.succeed(held, undefined);
       yield* settle;
-      expect(factOf(store.state(), "organizationMembers", ORG)?.content).toEqual({
+      expect(factOf(store.state(), "publicRouting", "p1")?.content).toEqual({
         kind: "value",
         value: [],
       });
@@ -970,22 +1008,22 @@ describe("a sampled detail", () => {
   );
 
   it.effect.each([
-    { name: "members within their freshness", demand: MEMBERS, path: MEMBERS_PATH, reads: 1 },
-    { name: "agents, fresh for no time", demand: AGENTS, path: AGENTS_PATH, reads: 2 },
-  ])("a new demand of $name reads $reads time(s) in all", ({ demand, path, reads }) =>
+    { name: "agents within their freshness", passed: 1_000, reads: 1 },
+    { name: "agents past their freshness", passed: STREAM_POLICY.sampledIntervalMs, reads: 2 },
+  ])("a new demand of $name reads $reads time(s) in all", ({ passed, reads }) =>
     Effect.gen(function* () {
       const store = makeAccountStore(AtomRegistry.make());
-      const fixture = fixtureWire(sampledAnswers({ current: [member("m1")] }));
+      const fixture = fixtureWire(sampledAnswers({ current: [] }));
       const { fiber, link } = yield* runLink(store, fixture);
-      const release = link.demandDetail(demand);
+      const release = link.demandDetail(AGENTS);
       yield* settle;
       release();
       yield* settle;
-      yield* TestClock.adjust(1_000);
-      link.demandDetail(demand);
+      yield* TestClock.adjust(passed);
+      link.demandDetail(AGENTS);
       yield* settle;
-      expect(readsOf(fixture, path)).toBe(reads);
-      expect(store.state().streams.get(detailScopeOf(ORG, demand))?.phase).toBe("live");
+      expect(readsOf(fixture, AGENTS_PATH, "POST")).toBe(reads);
+      expect(store.state().streams.get(detailScopeOf(ORG, AGENTS))?.phase).toBe("live");
       yield* Fiber.interrupt(fiber);
     }),
   );

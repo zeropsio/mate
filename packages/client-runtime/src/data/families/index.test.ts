@@ -58,7 +58,8 @@ describe("the registries", () => {
   it.each([
     { key: "zerops:org", mode: "realtime" },
     { key: "zerops:org:running", mode: "realtime" },
-    { key: "zerops:org:members:org", mode: "sampled" },
+    { key: "zerops:org:members:org", mode: "once" },
+    { key: "zerops:org:routing:p1", mode: "sampled" },
     { key: "hq:org:unregistered", mode: "realtime" },
   ])("observe $key as $mode", ({ key, mode }) => {
     expect(streamMode(key)).toBe(mode);

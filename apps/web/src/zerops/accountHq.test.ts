@@ -923,6 +923,27 @@ describe("useAccountHq — no official HQ, kept too", () => {
     expect([next.reads(), next.last().status, next.last().hq.kind]).toEqual([0, "ready", "none"]);
   });
 
+  it("reads it again on the person's Try again after the member list was refused", async () => {
+    let refused = true;
+    const hq = await loaded("org-refused", () => {
+      if (refused) throw new Error("insufficientPermissions");
+      return [anchor("P_HQ", "https://hq.example.test")];
+    });
+    expect([hq.reads(), hq.last().status]).toEqual([1, "failed"]);
+
+    refused = false;
+    await act(async () => {
+      hq.last().reread();
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, LAYER_TURNS_MS));
+    });
+    expect([hq.reads(), hq.last().hq]).toEqual([
+      2,
+      { kind: "official", projectId: "P_HQ", address: "https://hq.example.test" },
+    ]);
+  });
+
   it("reads it again at once for this browser's own birth or a press, and keeps what it names", async () => {
     let members: ReadonlyArray<ZeropsOrganizationMember> = [];
     const hq = await loaded("org-born", () => members);

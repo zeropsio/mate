@@ -36,8 +36,10 @@ async function usual(
   const account = makeSampledAccount({
     registry,
     orgId: "org-1",
-    answer: (path) => {
-      const items = envs[/\/service-stack\/s-([^/]+)\/env/u.exec(path)?.[1] ?? ""];
+    answer: (_path, search) => {
+      const terms = (search?.search ?? []) as ReadonlyArray<{ name: string; value: unknown }>;
+      const serviceId = String(terms.find((term) => term.name === "serviceStackId")?.value);
+      const items = envs[serviceId.replace(/^s-/u, "")];
       if (items === "pending") return new Promise(() => undefined);
       return Promise.resolve(
         items === undefined ? { status: 403, body: null } : { status: 200, body: { items } },

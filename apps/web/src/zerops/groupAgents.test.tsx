@@ -28,9 +28,10 @@ async function reader(): Promise<{ read: ReadGroupAgents; asked: () => ReadonlyA
   const account = makeSampledAccount({
     registry,
     orgId: "org-1",
-    answer: (path) => {
-      asked.push(path);
-      const serviceId = /\/service-stack\/([^/]+)\/env/u.exec(path)?.[1] ?? "";
+    answer: (path, search) => {
+      const terms = (search?.search ?? []) as ReadonlyArray<{ name: string; value: unknown }>;
+      const serviceId = String(terms.find((term) => term.name === "serviceStackId")?.value);
+      asked.push(`${path} ${serviceId}`);
       const items = ENVS[serviceId];
       return Promise.resolve(
         items === undefined ? { status: 403, body: null } : { status: 200, body: { items } },
@@ -70,12 +71,12 @@ it.each([
   const { read, asked } = await reader();
   const answer = await read(services.map(environment));
   expect(answer).toEqual(agents);
-  expect(asked().every((path) => path.endsWith("/env"))).toBe(true);
+  expect(asked().every((read) => read.startsWith("/user-data/search "))).toBe(true);
 });
 
-it("reads a group's agents anew at each creation", async () => {
+it("reads a group's agents once within their freshness, however many creations ask", async () => {
   const { read, asked } = await reader();
   await read([environment("dev")]);
   await read([environment("dev")]);
-  expect(asked()).toEqual(["/service-stack/dev/env", "/service-stack/dev/env"]);
+  expect(asked()).toEqual(["/user-data/search dev"]);
 });

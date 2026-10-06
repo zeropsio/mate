@@ -20,10 +20,13 @@ duplicate family, scope name, index name or operation kind when the layer loads.
   Zerops family, `zerops` (`entity`, the `membership` and `updates` searches, `decode`, and
   `verifyPath` where leaving must ask "deleted or not yours?");
 - for a source without realtime, `sampled` instead of `zerops` (its scope's `demand` is `detail`):
-  the `path` read whole for one owner, a `decode` that keeps only what a screen needs, and
-  `freshMs`. Its one fact is keyed by the owner; its stream runs in sampled mode — read again every
+  the `path` read whole for one owner — a `GET`, or with a `search` a `POST` of it, so only the
+  rows asked travel — a `decode` that keeps only what a screen needs, and `freshMs`. Its one fact
+  is keyed by the owner; its stream runs in sampled mode — read again every
   `STREAM_POLICY.sampledIntervalMs` while demanded, on a new demand once older than `freshMs`, and
-  at once after our own write (`revalidate`) — and is never claimed live;
+  at once after our own write (`revalidate`) — or, with `freshMs: null`, in `once` mode: read once,
+  again only on our write or the person's again. Never claimed live. A flow awaiting one
+  (`readDetail`) gets "no answer" at once while the link is down or refused, never a wait;
 - export its scope helper (`scopeOf(spec, orgId)`);
 - add one line to `FAMILIES`.
 

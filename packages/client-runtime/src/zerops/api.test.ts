@@ -1460,26 +1460,6 @@ describe("ZeropsApiClient project reads", () => {
     expect(stub.requests).toHaveLength(1);
   });
 
-  it("loads the locations available to the selected organization", async () => {
-    const stub = recordingFetch(() =>
-      jsonResponse(200, {
-        locationList: [
-          { id: "prg1", name: "Prague", pingUrl: "https://ping.prg1.example" },
-          { id: "ny1", name: "New York", pingUrl: "https://ping.ny1.example" },
-        ],
-      }),
-    );
-    const client = new ZeropsApiClient({ fetch: stub.fetch });
-    client.restoreSession(SESSION);
-
-    const locations = await client.listClientLocations("org-1");
-
-    expect(locations.map((location) => location.id)).toEqual(["prg1", "ny1"]);
-    expect(stub.requests[0]?.url).toBe(
-      `${DEFAULT_ZEROPS_API_BASE}/api/rest/public/client/org-1/settings`,
-    );
-  });
-
   it("restarts a service with PUT and the caller's own token", async () => {
     const stub = recordingFetch(() => jsonResponse(200, { id: "process-1" }));
     const client = new ZeropsApiClient({ fetch: stub.fetch });

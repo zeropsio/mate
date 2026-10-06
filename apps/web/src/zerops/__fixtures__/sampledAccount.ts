@@ -15,19 +15,37 @@ import type { AccountData } from "../ZeropsAccountData";
 /** Real time enough for the layer, on its own runtime, to carry a read through. */
 export const LAYER_TURNS_MS = 20;
 
-/** The account observing `orgId`, whose `GET`s `answer` answers — `null` for a path it has not. */
+/**
+ * The account observing `orgId`, whose reads `answer` answers — a `GET`, or a `POST` search with
+ * its body; `null` for a path it has not. A search answered 403 is refused, any other non-200 lost.
+ */
 export function makeSampledAccount(input: {
   readonly registry: AtomRegistry.AtomRegistry;
   readonly orgId: string;
   readonly answer: (
     path: string,
+    search?: Readonly<Record<string, unknown>>,
   ) => Promise<{ readonly status: number; readonly body: unknown }> | null;
 }): AccountData {
   const wire: ZeropsWire = {
     open: Effect.succeed({
       receiverId: "receiver",
       frames: Stream.never,
-      post: () => Effect.succeed({ items: [] }),
+      post: (path, body) => {
+        // The navigation's own registrations answer empty.
+        const answered = "wsOutputType" in body ? null : input.answer(path, body);
+        if (answered === null) return Effect.succeed({ items: [] });
+        return Effect.flatMap(
+          Effect.promise(() => answered),
+          ({ status, body: answer }) =>
+            status === 200
+              ? Effect.succeed(answer)
+              : Effect.fail({
+                  outcome: status === 403 ? "authoritative-denial" : "transient",
+                  message: `HTTP ${status}`,
+                } as const),
+        );
+      },
       get: (path) => {
         const answered = input.answer(path);
         return answered === null

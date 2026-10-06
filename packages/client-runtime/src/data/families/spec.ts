@@ -77,17 +77,25 @@ export interface DetailListing {
 }
 
 /**
- * A source without realtime (§10.5): the owner's whole value, one `GET` read while a screen demands
- * it for one owner, and read again while it stays demanded, on the stream machine's sampled
- * cadence, and at once after our own write. Its scope is never claimed live. Its one fact is keyed
- * by the owner it is read for.
+ * A source without realtime (§10.5): the owner's whole value, one read while a screen demands it
+ * for one owner, read again while it stays demanded on the stream machine's sampled cadence (unless
+ * time never ages it), and at once after our own write. Its scope is never claimed live. Its one
+ * fact is keyed by the owner it is read for.
  */
 export interface SampledSource<Value> {
   readonly path: (owner: { readonly orgId: string; readonly ownerId: string }) => string;
+  /** With a search, the read is a `POST` of it to the path, never a `GET`: only the rows asked. */
+  readonly search?: (owner: {
+    readonly orgId: string;
+    readonly ownerId: string;
+  }) => Readonly<Record<string, unknown>>;
   /** The value the answer says, stripped to what a screen needs; `null` for one it cannot read. */
   readonly decode: (answer: unknown) => Value | null;
-  /** A new demand reads it again once its last read is this old; `0`, on every new demand. */
-  readonly freshMs: number;
+  /**
+   * A new demand reads it again once its last read is this old; `0`, on every new demand. `null`:
+   * time never ages it — read once, and again only on our write or the person's again; no cadence.
+   */
+  readonly freshMs: number | null;
 }
 
 /** An index the reducer keeps for the family: under which key a fact counts now, if any. */

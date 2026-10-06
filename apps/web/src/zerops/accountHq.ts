@@ -133,12 +133,17 @@ export function useAccountHq(clientId: string | undefined): AccountHq {
     [kept, named, settled, trusted],
   );
   const admins = useMemo(() => ownersAndAdmins(members), [members]);
-  const revalidate = useAccountDataOptional()?.revalidate;
+  const account = useAccountDataOptional();
+  const revalidate = account?.revalidate;
+  const retryDetail = account?.retryDetail;
   const reread = useCallback(() => {
     if (owner === undefined) return;
-    revalidate?.({ family: "organizationMembers", ownerId: owner.clientId });
+    const members = { family: "organizationMembers", ownerId: owner.clientId } as const;
+    // Our own write made the list old; the person's again also lifts a refusal.
+    revalidate?.(members);
+    retryDetail?.(members);
     forgetNoHqVerdict(owner);
-  }, [owner, revalidate]);
+  }, [owner, retryDetail, revalidate]);
   return {
     status: kept !== undefined || (!settled && trusted !== undefined) ? "ready" : status,
     hq,

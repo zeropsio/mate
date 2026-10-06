@@ -570,16 +570,21 @@ export function zeropsNavigationLink(options: {
           if (
             sampled !== undefined &&
             readAt !== undefined &&
-            now - readAt < sampled.freshMs &&
+            (sampled.freshMs === null || now - readAt < sampled.freshMs) &&
             store.state().facts.has(factKey(spec.family, ownerId))
           )
             return yield* signal(scope, { kind: "baseline-committed" });
           store.dispatch({ kind: "baseline-begin", scope, generation: generationOf(scope) });
+          const owner = { orgId, ownerId };
           const path =
-            sampled !== undefined
-              ? sampled.path({ orgId, ownerId })
-              : (detail?.zerops.path({ orgId, ownerId }) ?? "");
-          const answer = yield* link.get(path).pipe(
+            sampled !== undefined ? sampled.path(owner) : (detail?.zerops.path(owner) ?? "");
+          const search = sampled?.search?.(owner);
+          // A search is a POST of it: its answer is the rows asked for, never a whole set.
+          const read =
+            search === undefined
+              ? link.get(path)
+              : link.post(path, search).pipe(Effect.map((body) => ({ status: 200, body })));
+          const answer = yield* read.pipe(
             Effect.map((read) =>
               read.status === 403
                 ? classifyHttp(403)

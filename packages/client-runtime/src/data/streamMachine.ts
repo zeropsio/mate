@@ -77,7 +77,7 @@ export const NEXT_ACTIONS: Readonly<Record<Phase, ReadonlyArray<NextAction["kind
   idle: ["await-demand"],
   connecting: ["await-handshake"],
   baselining: ["await-baseline"],
-  live: ["await-changes", "revalidate"],
+  live: ["await-changes", "revalidate", "await-input-change"],
   stale: ["await-parent"],
   recovering: ["retry"],
   reauthenticating: ["repair-session"],
@@ -89,7 +89,11 @@ export const NEXT_ACTIONS: Readonly<Record<Phase, ReadonlyArray<NextAction["kind
 
 export interface StreamState {
   readonly phase: Phase;
-  readonly mode: "realtime" | "sampled";
+  /**
+   * `sampled`: no realtime, read again on a cadence while demanded. `once`: no realtime and nothing
+   * that ages it by time — read again only when our write or the person's again asks.
+   */
+  readonly mode: "realtime" | "sampled" | "once";
   /** A root owns recovery; a child waits for its parent's attempts. */
   readonly parent: string | null;
   readonly demanded: boolean;
@@ -116,8 +120,8 @@ export type StreamEvent =
   /** The person asked to try again. */
   | { readonly kind: "manual-retry" }
   /**
-   * A sampled scope's value is old: its revalidation came due, or our own write changed it. It is
-   * read again, under its value; a refusal stays refused.
+   * A sampled or read-once scope's value is old: its revalidation came due, or our own write
+   * changed it. It is read again, under its value; a refusal stays refused.
    */
   | { readonly kind: "revalidate" }
   /** An input the refusal was decided over changed (credential, grant, filter). */
@@ -297,7 +301,9 @@ export function transition(state: StreamState, event: StreamEvent, now: number):
             next:
               state.mode === "sampled"
                 ? { kind: "revalidate", at: now + STREAM_POLICY.sampledIntervalMs }
-                : { kind: "await-changes" },
+                : state.mode === "once"
+                  ? { kind: "await-input-change" }
+                  : { kind: "await-changes" },
           })
         : settle(state);
     case "fault":
@@ -319,7 +325,7 @@ export function transition(state: StreamState, event: StreamEvent, now: number):
         ? attempt({ ...state, repaired: true }, now)
         : settle(state);
     case "revalidate":
-      return state.mode === "sampled" && (state.phase === "live" || state.phase === "recovering")
+      return state.mode !== "realtime" && (state.phase === "live" || state.phase === "recovering")
         ? attempt(state, now)
         : settle(state);
     case "manual-retry":

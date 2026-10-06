@@ -45,7 +45,6 @@ import type {
   ZeropsTokenDelegation,
 } from "./groupReach.ts";
 import type { HqPlacement } from "./hq/placement.ts";
-import { agentsFromOAuthFlags } from "./agentSelection.ts";
 import {
   buildCreateProjectBody,
   buildDevelopmentContainerImportBody,
@@ -1593,17 +1592,6 @@ export class ZeropsApiClient {
     return response.token;
   }
 
-  /** Locations the selected organization may place a new project in. */
-  async listClientLocations(
-    clientId: string,
-    signal?: AbortSignal,
-  ): Promise<ReadonlyArray<ZeropsLocation>> {
-    const response = await this.#request<{
-      readonly locationList?: ReadonlyArray<ZeropsLocation>;
-    }>(`/client/${clientId}/settings`, { signal: signal ?? null });
-    return response.locationList ?? [];
-  }
-
   /** `GET /project/{id}` — also the membership check: 200 member, 403 not. */
   fetchProject(projectId: string, signal?: AbortSignal): Promise<ZeropsProject> {
     return this.#request<ZeropsProject>(`/project/${projectId}`, { signal: signal ?? null });
@@ -2739,21 +2727,6 @@ export class ZeropsApiClient {
       { signal: signal ?? null },
     );
     return body.items ?? [];
-  }
-
-  /**
-   * The coding agents a zcp container has signed in with
-   * (`agentSelection.ts`).
-   *
-   * The env records stop here: they carry every secret the service holds, and
-   * although the platform redacts their values there is no reason for the
-   * shape to travel. Only the derived agent list leaves.
-   */
-  async readAuthorizedAgents(
-    serviceId: string,
-    signal?: AbortSignal,
-  ): Promise<ReadonlyArray<ZeropsAgentType>> {
-    return agentsFromOAuthFlags(await this.#serviceEnv(serviceId, signal));
   }
 
   /**
