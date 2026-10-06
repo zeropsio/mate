@@ -42,6 +42,7 @@ import { TextGenerationError } from "@t3tools/contracts";
 import {
   ProviderAdapterProcessError,
   ProviderAdapterRequestError,
+  ProviderAdapterTurnEndedError,
   ProviderAdapterSessionClosedError,
   ProviderAdapterSessionNotFoundError,
   ProviderWorkspaceMissingError,
@@ -169,8 +170,6 @@ describe("ProviderCommandReactor", () => {
     readonly closedSendUndelivered?: boolean;
     /** A send's failure, by its 1-based call number; none succeeds. */
     readonly sendTurnFailure?: (call: number) => ProviderServiceError | undefined;
-    /** What happens elsewhere while a send fails, before its failure returns. */
-    readonly whileSendFails?: () => Effect.Effect<void>;
     readonly requiresNewThreadForModelChange?: boolean;
     readonly unreadableHistory?: boolean;
     readonly titleRegenerationCompletionDispatchFailures?: number;
@@ -271,9 +270,7 @@ describe("ProviderCommandReactor", () => {
     const sendTurn = vi.fn((_: unknown) =>
       Effect.suspend(() => {
         const failure = input?.sendTurnFailure?.(++sendTurnCalls);
-        return failure === undefined
-          ? Effect.void
-          : (input?.whileSendFails?.() ?? Effect.void).pipe(Effect.andThen(Effect.fail(failure)));
+        return failure === undefined ? Effect.void : Effect.fail(failure);
       }).pipe(
         Effect.as({
           threadId: ThreadId.make("thread-1"),
@@ -3589,101 +3586,55 @@ describe("ProviderCommandReactor", () => {
     }
   });
 
-  // Cursor's, Grok's and Antigravity's send holds the whole turn: a failure
-  // of it under the turn the message opened is that turn's, which the adapter
-  // ends itself and ingestion records once. Any failure before the turn
-  // opened, or of a message sent into a turn already running, is the
-  // message's failure to start, and the person hears it.
+  // A send that opened its turn and failed under it fails typed as that turn's
+  // (`ProviderAdapterTurnEndedError`), the turn ended by its adapter and
+  // recorded once by ingestion: the reactor says nothing. Any other failure is
+  // the message's failure to start, said at once.
   describe("a send that fails", () => {
     const WORDS = "Cursor stopped unexpectedly. Send a message to pick up where it left off.";
-    const ATTACHMENT = "The attachment could not be read.";
+    const ATTACHMENT = "A picture you attached could not be read. Attach it again and send.";
     const cases: ReadonlyArray<{
       readonly name: string;
-      readonly driver: "cursor" | "grok" | "antigravity";
-      /** Its process died, else an ordinary failure. */
-      readonly died: boolean;
-      /** The message's own turn had opened when the send failed. */
-      readonly turnOpened: boolean;
-      /** The message went into a turn already running, which it did not start. */
-      readonly intoRunningTurn?: boolean;
-      /** What the reactor says: nothing (the turn's own end says it), or the message's failure to start. */
+      readonly failure: (threadId: ThreadId) => ProviderServiceError;
       readonly says: "nothing" | "start-failure";
+      readonly words?: string;
     }> = [
-      ...(["cursor", "grok", "antigravity"] as const).flatMap((driver) => [
-        {
-          name: `${driver}: its process dies under the turn the message opened`,
-          driver,
-          died: true,
-          turnOpened: true,
-          says: "nothing" as const,
-        },
-        {
-          name: `${driver}: an ordinary failure under the turn the message opened`,
-          driver,
-          died: false,
-          turnOpened: true,
-          says: "nothing" as const,
-        },
-      ]),
+      ...(["cursor", "grok", "antigravity", "opencode"] as const).map((driver) => ({
+        name: `${driver}: the turn it opened ended with it`,
+        failure: (threadId: ThreadId) =>
+          new ProviderAdapterTurnEndedError({
+            provider: driver,
+            threadId,
+            turnId: "turn-opened",
+            detail: WORDS,
+          }),
+        says: "nothing" as const,
+      })),
       {
-        name: "a bad attachment, read before the turn opened",
-        driver: "cursor",
-        died: false,
-        turnOpened: false,
+        name: "its process died before any turn opened",
+        failure: (threadId) =>
+          new ProviderAdapterProcessError({ provider: "cursor", threadId, detail: WORDS }),
         says: "start-failure",
+        words: WORDS,
       },
       {
-        name: "a message sent into a turn it did not start",
-        driver: "cursor",
-        died: true,
-        turnOpened: false,
-        intoRunningTurn: true,
+        name: "a picture it could not read, before any turn opened",
+        failure: () =>
+          new ProviderAdapterRequestError({
+            provider: "codex",
+            method: "turn/start",
+            detail: ATTACHMENT,
+          }),
         says: "start-failure",
+        words: ATTACHMENT,
       },
     ];
     for (const testCase of cases) {
       it(testCase.name, async () => {
         const threadId = ThreadId.make("thread-1");
-        const turnId = asTurnId("turn-opened");
-        const setSession = (status: "running" | "error", at: string) =>
-          harness.engine.dispatch({
-            type: "thread.session.set",
-            commandId: CommandId.make(`cmd-send-fails-session-${status}-${at}`),
-            threadId,
-            session: {
-              threadId,
-              status,
-              providerName: testCase.driver,
-              providerInstanceId: ProviderInstanceId.make("codex"),
-              runtimeMode: "approval-required",
-              activeTurnId: status === "running" ? turnId : null,
-              lastError: null,
-              updatedAt: at,
-            },
-            createdAt: at,
-          });
-        const harness: Awaited<ReturnType<typeof createHarness>> = await createHarness({
-          sendTurnFailure: () =>
-            testCase.died
-              ? new ProviderAdapterProcessError({
-                  provider: testCase.driver,
-                  threadId,
-                  detail: WORDS,
-                })
-              : new ProviderAdapterRequestError({
-                  provider: testCase.driver,
-                  method: "session/prompt",
-                  detail: ATTACHMENT,
-                }),
-          whileSendFails: () =>
-            (testCase.turnOpened
-              ? setSession("running", "2026-01-01T00:00:01.000Z")
-              : Effect.void
-            ).pipe(Effect.asVoid, Effect.orDie),
+        const harness = await createHarness({
+          sendTurnFailure: () => testCase.failure(threadId),
         });
-        if (testCase.intoRunningTurn) {
-          await harness.runEffect(setSession("running", "2026-01-01T00:00:01.000Z"));
-        }
         await harness.runEffect(
           harness.engine.dispatch({
             type: "thread.turn.start",
@@ -3709,7 +3660,7 @@ describe("ProviderCommandReactor", () => {
         if (testCase.says === "start-failure") {
           await waitFor(async () => (await startFailures()).length === 1);
         } else {
-          await harness.runEffect(Effect.sleep("300 millis"));
+          await harness.drain();
         }
         const thread = (await harness.readModel()).threads.find((entry) => entry.id === threadId)!;
         expect((await startFailures()).length).toBe(testCase.says === "start-failure" ? 1 : 0);
@@ -3717,11 +3668,10 @@ describe("ProviderCommandReactor", () => {
         expect(thread.activities.filter((activity) => activity.kind === "runtime.error")).toEqual(
           [],
         );
-        if (testCase.says === "start-failure") {
+        if (testCase.words !== undefined) {
           expect(thread.session?.status).toBe("error");
-          expect(thread.session?.lastError).toContain(testCase.died ? WORDS : ATTACHMENT);
+          expect(thread.session?.lastError).toContain(testCase.words);
         } else {
-          // The turn stays the adapter's to end: running here until its end arrives.
           expect(thread.session?.lastError ?? null).toBeNull();
         }
       });

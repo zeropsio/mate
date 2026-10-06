@@ -48,6 +48,7 @@ import {
   ProviderAdapterSessionClosedError,
   ProviderAdapterSessionNotFoundError,
   ProviderAdapterValidationError,
+  ProviderAdapterTurnEndedError,
 } from "../Errors.ts";
 import { agentStoppedUnexpectedly } from "@t3tools/shared/threadStatus";
 import { buildRuntimeInstructions } from "../RuntimeInstructions.ts";
@@ -3228,6 +3229,9 @@ export function makeOpenCodeAdapter(
           }
 
           let promptTimedOut = false;
+          // A failed submission ends the turn it opened, failed — now, or by its
+          // recovery: the send's failure is that turn's.
+          let submissionEndsTurn = false;
           const submissionMethod = nativeCommand ? "session.command" : "session.promptAsync";
           // Native commands expand provider-owned templates. Their API does not
           // accept the per-turn system addendum supported by ordinary prompts.
@@ -3355,9 +3359,10 @@ export function makeOpenCodeAdapter(
                       );
                       yield* emit({
                         ...(yield* buildEventBase({ threadId: input.threadId, turnId })),
-                        type: "turn.aborted",
-                        payload: { reason: requestError.detail },
+                        type: "turn.completed",
+                        payload: { state: "failed", errorMessage: requestError.detail },
                       });
+                      submissionEndsTurn = true;
                       return;
                     }
                     const cleanupExit = yield* Effect.exit(
@@ -3382,6 +3387,7 @@ export function makeOpenCodeAdapter(
                         requestError,
                         cleanupError: Cause.squash(cleanupExit.cause),
                       });
+                      submissionEndsTurn = true;
                       return;
                     }
                     context.promptAdmission = undefined;
@@ -3404,11 +3410,10 @@ export function makeOpenCodeAdapter(
                         threadId: input.threadId,
                         turnId,
                       })),
-                      type: "turn.aborted",
-                      payload: {
-                        reason: requestError.detail,
-                      },
+                      type: "turn.completed",
+                      payload: { state: "failed", errorMessage: requestError.detail },
                     });
+                    submissionEndsTurn = true;
                   });
             }),
             Effect.onExit((exit) =>
@@ -3447,6 +3452,22 @@ export function makeOpenCodeAdapter(
             (yield* Ref.get(context.stopped)) ||
             sessions.get(input.threadId) !== context;
           if (Exit.isFailure(promptExit) && !intentionallyCancelled) {
+            if (submissionEndsTurn && steeringTurnId === undefined) {
+              const failure = Cause.squash(promptExit.cause);
+              return yield* new ProviderAdapterTurnEndedError({
+                provider: PROVIDER,
+                threadId: input.threadId,
+                turnId,
+                detail:
+                  typeof failure === "object" &&
+                  failure !== null &&
+                  "detail" in failure &&
+                  typeof failure.detail === "string"
+                    ? failure.detail
+                    : openCodeRuntimeErrorDetail(failure),
+                cause: failure,
+              });
+            }
             return yield* Effect.failCause(promptExit.cause);
           }
           const cancelled =

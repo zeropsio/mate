@@ -48,6 +48,8 @@ import {
   ProviderAdapterRequestError,
   ProviderAdapterSessionNotFoundError,
   ProviderAdapterValidationError,
+  ProviderAdapterTurnEndedError,
+  type ProviderAdapterError,
 } from "../Errors.ts";
 import { acpPermissionOutcome, mapAcpToAdapterError } from "../acp/AcpAdapterSupport.ts";
 import type * as AcpSessionRuntime from "../acp/AcpSessionRuntime.ts";
@@ -1171,9 +1173,12 @@ export function makeCursorAdapter(
             resumeCursor: ctx.session.resumeCursor,
           };
         }).pipe(
-          Effect.tapError((error) =>
+          // Once its turn is open, a failure ends that turn failed, in the
+          // failure's own words, and the send fails typed as that turn's.
+          Effect.catch((error): Effect.Effect<never, ProviderAdapterError> =>
             turnOpened && ctx.promptsInFlight === 1
               ? Effect.gen(function* () {
+                  const detail = "detail" in error ? error.detail : error.message;
                   yield* offerRuntimeEvent({
                     type: "turn.completed",
                     ...(yield* makeEventStamp()),
@@ -1182,14 +1187,21 @@ export function makeCursorAdapter(
                     turnId,
                     payload: {
                       state: "failed",
-                      errorMessage: "detail" in error ? error.detail : error.message,
+                      errorMessage: detail,
                       ...(error._tag === "ProviderAdapterProcessError"
                         ? { terminalReason: "process_exit" }
                         : {}),
                     },
                   });
+                  return yield* new ProviderAdapterTurnEndedError({
+                    provider: PROVIDER,
+                    threadId: input.threadId,
+                    turnId,
+                    detail,
+                    cause: error,
+                  });
                 })
-              : Effect.void,
+              : Effect.fail(error),
           ),
           Effect.ensuring(
             Effect.sync(() => {

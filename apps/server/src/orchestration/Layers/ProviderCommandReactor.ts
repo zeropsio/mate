@@ -1318,61 +1318,44 @@ const make = Effect.gen(function* () {
       );
     }
 
-    // What stood as this message's send went out, read in its lane just
-    // before the send: the turn running then, and the thread's latest turn.
-    // A failure before the send — the session's setup, a restart that dies —
-    // has none, and is the message's failure to start.
-    let sendBaseline:
-      | { readonly runningTurn: TurnId | undefined; readonly latestTurnId: TurnId | null }
-      | undefined;
-    /**
-     * The turn this message's send opened, once the projection shows it: a
-     * turn newer than the latest as the send went out, with none running
-     * then. Ingestion may still be on its way to the turn's start; a short
-     * wait lets it.
-     */
-    const turnOpenedBySend = Effect.gen(function* () {
-      const baseline = sendBaseline;
-      if (baseline === undefined || baseline.runningTurn !== undefined) return null;
-      for (let attempt = 0; attempt < 20; attempt += 1) {
-        const latest = (yield* resolveThreadShell(event.payload.threadId))?.latestTurn ?? null;
-        if (latest !== null && latest.turnId !== baseline.latestTurnId) return latest.turnId;
-        yield* Effect.sleep("50 millis");
-      }
-      return null;
-    });
     const handleTurnStartFailure = (cause: Cause.Cause<unknown>) => {
       if (Cause.hasInterruptsOnly(cause)) {
         return Effect.void;
       }
-      const detail = formatFailureDetail(cause);
-      return Effect.gen(function* () {
-        yield* Effect.logError("provider turn start failed", {
+      // The send opened its turn and failed under it, and its adapter ended
+      // that turn itself (`ProviderAdapterTurnEndedError`): the failure is
+      // the turn's, which ingestion records once. Nothing more is said here.
+      const turnEnded = cause.reasons.find(
+        (reason) =>
+          Cause.isFailReason(reason) &&
+          (reason.error as { readonly _tag?: unknown } | null)?._tag ===
+            "ProviderAdapterTurnEndedError",
+      );
+      if (turnEnded !== undefined) {
+        return Effect.logInfo("provider turn ended with its send's failure", {
           threadId: event.payload.threadId,
           messageId: event.payload.messageId,
-          code: describeProviderFailure(cause).code,
           cause: Cause.pretty(cause),
         });
-        // A send that holds the whole turn (Cursor's, Grok's, Antigravity's
-        // prompt) fails with its turn: whatever the error, a turn this very
-        // message opened ended badly, never failed to start. Its adapter ends
-        // that turn itself — a failed turn.completed, or its session's exit —
-        // and ingestion keeps its one record: nothing more is said here.
-        const openedTurn = yield* turnOpenedBySend;
-        if (openedTurn !== null) {
-          yield* Effect.logInfo("provider turn ended with its send's failure", {
+      }
+      // Every other failure is the message's failure to start, said at once.
+      const detail = formatFailureDetail(cause);
+      return Effect.logError("provider turn start failed", {
+        threadId: event.payload.threadId,
+        messageId: event.payload.messageId,
+        code: describeProviderFailure(cause).code,
+        cause: Cause.pretty(cause),
+      }).pipe(
+        Effect.andThen(
+          setThreadSessionErrorOnTurnStartFailure({
             threadId: event.payload.threadId,
-            turnId: openedTurn,
-          });
-          return;
-        }
-        yield* setThreadSessionErrorOnTurnStartFailure({
-          threadId: event.payload.threadId,
-          detail,
-          createdAt: event.payload.createdAt,
-        });
-        yield* appendTurnStartFailure("Provider turn start failed", detail);
-      });
+            detail,
+            createdAt: event.payload.createdAt,
+          }),
+        ),
+        Effect.andThen(appendTurnStartFailure("Provider turn start failed", detail)),
+        Effect.asVoid,
+      );
     };
 
     const recoverTurnStartFailure = (cause: Cause.Cause<unknown>) =>
@@ -1645,11 +1628,6 @@ const make = Effect.gen(function* () {
           });
           return yield* providerService.sendTurn(request);
         });
-      const threadAtSend = yield* resolveThreadShell(thread.id);
-      sendBaseline = {
-        runningTurn: yield* runningTurnFor(thread.id),
-        latestTurnId: threadAtSend?.latestTurn?.turnId ?? null,
-      };
       yield* providerService.sendTurn(request).pipe(
         Effect.catchIf(isSessionGoneError, resendOnNewSession),
         // The turn it went into tells a steer from a turn of its own.

@@ -1939,7 +1939,8 @@ it.layer(grokAdapterTestLayer)("GrokAdapterLive", (it) => {
         (event) => event.type === "turn.completed" && event.threadId === threadId,
       );
 
-      assert.equal(error._tag, "ProviderAdapterRequestError");
+      // Its turn had opened: the send fails as that turn's, ended by the adapter.
+      assert.equal(error._tag, "ProviderAdapterTurnEndedError");
       assert.equal(readySession?.status, "ready");
       assert.isUndefined(readySession?.activeTurnId);
       assert.equal(failedTurnCompleted?.type, "turn.completed");
@@ -1990,7 +1991,8 @@ it.layer(grokAdapterTestLayer)("GrokAdapterLive", (it) => {
         (event) => event.type === "turn.completed" && event.threadId === threadId,
       );
 
-      assert.equal(error._tag, "ProviderAdapterRequestError");
+      // Its turn had opened: the send fails as that turn's, ended by the adapter.
+      assert.equal(error._tag, "ProviderAdapterTurnEndedError");
       assert.include(error.message, "Grok usage limit reached. Try again later.");
       assert.equal(readySession?.status, "ready");
       // "grok-build" resolves to the session's current model instead of going over the wire.

@@ -216,8 +216,8 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
       const error = yield* adapter
         .sendTurn({ threadId, input: "work on it", attachments: [] })
         .pipe(Effect.flip);
-      assert.equal(error._tag, "ProviderAdapterProcessError");
-      if (error._tag === "ProviderAdapterProcessError") {
+      assert.equal(error._tag, "ProviderAdapterTurnEndedError");
+      if (error._tag === "ProviderAdapterTurnEndedError") {
         assert.equal(
           error.detail,
           "Cursor stopped unexpectedly. Send a message to pick up where it left off.",
@@ -268,10 +268,10 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
       const error = yield* adapter
         .sendTurn({ threadId, input: "continue", attachments: [] })
         .pipe(Effect.flip);
-      assert.equal(error._tag, "ProviderAdapterRequestError");
-      if (error._tag === "ProviderAdapterRequestError") {
+      // Its turn had opened: the send fails as that turn's, ended by the adapter.
+      assert.equal(error._tag, "ProviderAdapterTurnEndedError");
+      if (error._tag === "ProviderAdapterTurnEndedError") {
         assert.equal(error.detail, "Cursor reported a transport failure.");
-        assert.equal(error.cause, "Error: RetriableError: WritableIterable is closed");
       }
       yield* adapter.stopSession(threadId);
       const runtimeEvents = yield* Fiber.join(runtimeEventsFiber);

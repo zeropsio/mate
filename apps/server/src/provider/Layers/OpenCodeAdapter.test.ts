@@ -1688,10 +1688,14 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
           modelSelection: createModelSelection(ProviderInstanceId.make("opencode"), "openai/gpt-5"),
         })
         .pipe(Effect.flip);
-      NodeAssert.equal(error._tag, "ProviderAdapterRequestError");
-      if (error._tag !== "ProviderAdapterRequestError") throw new Error("Unexpected error type");
-      NodeAssert.equal(error.method, "session.command");
+      // Its turn had opened: the send fails as that turn's, ended in its words.
+      NodeAssert.equal(error._tag, "ProviderAdapterTurnEndedError");
+      if (error._tag !== "ProviderAdapterTurnEndedError") throw new Error("Unexpected error type");
       NodeAssert.equal(error.detail, "command unavailable");
+      NodeAssert.equal(
+        (error.cause as { readonly method?: unknown } | undefined)?.method,
+        "session.command",
+      );
       NodeAssert.equal((yield* adapter.listSessions())[0]?.status, "ready");
       yield* adapter.stopSession(threadId);
     }),
@@ -1775,6 +1779,15 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
       });
 
       runtimeMock.state.promptAsyncError = new Error("prompt failed");
+      const endedFiber = yield* adapter.streamEvents.pipe(
+        Stream.filter(
+          (event) =>
+            event.threadId === "thread-send-turn-failure" &&
+            (event.type === "turn.completed" || event.type === "turn.aborted"),
+        ),
+        Stream.runHead,
+        Effect.forkChild,
+      );
       const error = yield* adapter
         .sendTurn({
           threadId: asThreadId("thread-send-turn-failure"),
@@ -1787,15 +1800,18 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
         .pipe(Effect.flip);
       const sessions = yield* adapter.listSessions();
 
-      NodeAssert.equal(error._tag, "ProviderAdapterRequestError");
-      if (error._tag !== "ProviderAdapterRequestError") {
+      // Its turn had opened: the send fails as that turn's, ended in its words.
+      NodeAssert.equal(error._tag, "ProviderAdapterTurnEndedError");
+      if (error._tag !== "ProviderAdapterTurnEndedError") {
         throw new Error("Unexpected error type");
       }
       NodeAssert.equal(error.detail, "prompt failed");
-      NodeAssert.equal(
-        error.message,
-        "Provider adapter request failed (opencode) for session.promptAsync: prompt failed",
-      );
+      // Its turn ends failed in the failure's words, never as a Stop.
+      const ended = Option.getOrThrow(yield* Fiber.join(endedFiber));
+      NodeAssert.deepEqual(ended.type === "turn.completed" ? ended.payload : ended.type, {
+        state: "failed",
+        errorMessage: "prompt failed",
+      });
       NodeAssert.equal(sessions.length, 1);
       NodeAssert.equal(sessions[0]?.status, "ready");
       NodeAssert.equal(sessions[0]?.activeTurnId, undefined);

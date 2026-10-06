@@ -46,6 +46,8 @@ import {
   ProviderAdapterRequestError,
   ProviderAdapterSessionNotFoundError,
   ProviderAdapterValidationError,
+  ProviderAdapterTurnEndedError,
+  type ProviderAdapterError,
 } from "../Errors.ts";
 import { mapAcpToAdapterError } from "../acp/AcpAdapterSupport.ts";
 import type * as AcpSessionRuntime from "../acp/AcpSessionRuntime.ts";
@@ -2053,6 +2055,19 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
                 }),
               );
             }).pipe(Effect.ignore),
+          ),
+          // The send opened its turn, which the prompt's settling above ended
+          // failed: its failure is that turn's.
+          Effect.mapError((error): ProviderAdapterError =>
+            prepared.steeringTurnId === undefined
+              ? new ProviderAdapterTurnEndedError({
+                  provider: PROVIDER,
+                  threadId: input.threadId,
+                  turnId: prepared.turnId,
+                  detail: "detail" in error ? error.detail : error.message,
+                  cause: error,
+                })
+              : error,
           ),
         );
       });

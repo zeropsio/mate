@@ -44,6 +44,7 @@ import {
   ProviderAdapterSessionNotFoundError,
   ProviderAdapterValidationError,
   type ProviderAdapterError,
+  ProviderAdapterTurnEndedError,
 } from "../Errors.ts";
 import {
   ANTIGRAVITY_SIGN_IN_REQUIRED_MESSAGE,
@@ -1002,6 +1003,8 @@ export const makeAntigravityAdapter = Effect.fn("makeAntigravityAdapter")(functi
       Effect.mapError((cause) => mapAntigravityError(input.threadId, "session/prompt", cause)),
     );
     let intent: TurnIntent | undefined;
+    // This send opened its turn: a failure from here is that turn's.
+    let opened = false;
     // The caller holds promptLock while it changes or settles the active turn.
     const finishTurn = (turn: TurnIntent, payload: TurnCompletedPayload) =>
       Effect.gen(function* () {
@@ -1075,6 +1078,7 @@ export const makeAntigravityAdapter = Effect.fn("makeAntigravityAdapter")(functi
               turnId,
               payload: model ? { model } : {},
             });
+            opened = true;
           }
           if (context.promptFiber) {
             yield* cancelRequests(context);
@@ -1177,6 +1181,22 @@ export const makeAntigravityAdapter = Effect.fn("makeAntigravityAdapter")(functi
               )
             : Effect.void,
         ),
+      ),
+      // The turn it opened ended failed above, or with its session's exit:
+      // its failure is that turn's.
+      Effect.mapError((cause) =>
+        opened && intent
+          ? new ProviderAdapterTurnEndedError({
+              provider: PROVIDER,
+              threadId: input.threadId,
+              turnId: intent.turnId,
+              detail:
+                "detail" in cause && typeof cause.detail === "string"
+                  ? cause.detail
+                  : cause.message,
+              cause,
+            })
+          : cause,
       ),
       Effect.onInterrupt(() =>
         context.promptLock.withPermit(
