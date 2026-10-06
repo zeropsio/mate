@@ -126,6 +126,21 @@ describe("afterLayout", () => {
     expect(ran).toEqual(["before", "after", "next"]);
   });
 
+  // A test runner can keep this module across pages: each page brings its own
+  // ResizeObserver and frames, and an ask whose frame never came stays queued.
+  it("observes through the page's ResizeObserver of the moment, never one kept from before", async () => {
+    const before = stubPage();
+    const { afterLayout } = await import("./afterLayout");
+    const ran: string[] = [];
+    afterLayout(() => ran.push("seen before"));
+    before.frame();
+    afterLayout(() => ran.push("asked, its frame never came"));
+    const now = stubPage();
+    afterLayout(() => ran.push("now"));
+    now.frame();
+    expect(ran).toEqual(["seen before", "asked, its frame never came", "now"]);
+  });
+
   it("runs at once on a page without a ResizeObserver", async () => {
     vi.stubGlobal("ResizeObserver", undefined);
     const { afterLayout } = await import("./afterLayout");

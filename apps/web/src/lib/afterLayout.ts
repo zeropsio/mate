@@ -20,6 +20,9 @@
  */
 let waiting: Array<() => void> = [];
 let watch: ResizeObserver | undefined;
+/** The page's ResizeObserver that `watch` was made from, and the one a frame was asked under. */
+let watchFrom: typeof ResizeObserver | undefined;
+let askedFrom: typeof ResizeObserver | undefined;
 let running = false;
 
 export function afterLayout(callback: () => void): void {
@@ -33,12 +36,19 @@ export function afterLayout(callback: () => void): void {
     return;
   }
   waiting.push(callback);
-  if (waiting.length > 1) return;
+  // One frame asked serves every callback that waits — unless it was asked
+  // under another page's observer, whose frame may never come.
+  if (askedFrom === ResizeObserver) return;
+  askedFrom = ResizeObserver;
   requestAnimationFrame(observeRoot);
 }
 
 function observeRoot(): void {
-  watch ??= new ResizeObserver(runWaiting);
+  if (watch === undefined || watchFrom !== ResizeObserver) {
+    watch?.disconnect();
+    watch = new ResizeObserver(runWaiting);
+    watchFrom = ResizeObserver;
+  }
   const root = document.documentElement;
   watch.unobserve(root);
   watch.observe(root);
@@ -47,6 +57,7 @@ function observeRoot(): void {
 function runWaiting(): void {
   const due = waiting;
   waiting = [];
+  askedFrom = undefined;
   running = true;
   try {
     for (const run of due) {
