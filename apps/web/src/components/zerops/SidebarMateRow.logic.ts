@@ -134,6 +134,11 @@ export function mateOwnerView(input: {
   };
   /** The row already says what was asked under the name. */
   readonly asked: boolean;
+  /**
+   * Whether HQ names anybody who signed its agents in (its project's `signers`): `some`, `none`,
+   * or `undefined` while HQ has not said — then the row says nothing of a sign-in.
+   */
+  readonly hqSigners: "some" | "none" | undefined;
   /** Who added it, as HQ's stand-up record names them (`readZeropsMembership(…).standUp`). */
   readonly standUpBy?: string | undefined;
   /** Who made it, as HQ's record names them (`readZeropsMembership(…).madeBy`). */
@@ -154,7 +159,12 @@ export function mateOwnerView(input: {
       : records.named === false
         ? { kind: "nobody", label: NOBODY_OWNS }
         : { kind: "unnamed" };
-  if (records.signedIn || input.asked || records.runsWithoutSignIn === true) {
+  if (
+    records.signedIn ||
+    input.hqSigners !== "none" ||
+    input.asked ||
+    records.runsWithoutSignIn === true
+  ) {
     return { seat, signInLine: undefined, waitsOnViewer: false };
   }
   const viewer = input.viewer !== undefined && input.viewer.length > 0 ? input.viewer : undefined;

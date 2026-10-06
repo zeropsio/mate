@@ -154,7 +154,11 @@ import {
   useProjectOrder,
 } from "~/zerops/projectOrderPreference";
 import { useEnvironmentOffers } from "~/zerops/useAddEnvironment";
-import { useWaitsOnViewer, type ZeropsMateOwner } from "~/zerops/useZeropsMateOwners";
+import {
+  useHqSignersOf,
+  useWaitsOnViewer,
+  type ZeropsMateOwner,
+} from "~/zerops/useZeropsMateOwners";
 import { compactSidebarTimeLabel } from "../Sidebar.logic";
 import { SidebarCrewLine, type SidebarCrewRead } from "./crew/SidebarCrewLine";
 import { SidebarSelectedBand } from "./SidebarSelectedBand";
@@ -2509,6 +2513,7 @@ function MateRow<T extends RosterCandidate>({
   // (`mateComingRowView`).
   const viewer = useZeropsSessionOptional()?.user?.id;
   const waitsOnViewer = useWaitsOnViewer();
+  const hqSignersOf = useHqSignersOf();
   const nowMs = useNowMs();
   const read = mateRowReading({
     connected: up,
@@ -2534,10 +2539,13 @@ function MateRow<T extends RosterCandidate>({
   // Whose seat it is, and whether anybody has signed its agent in — read off
   // its own records, so from the first paint (`mateOwnerView`).
   const records = mateOwnerRecords(candidate.project);
+  const signers = hqSignersOf(candidate.project.id);
   const seated = mateOwnerView({
     owner,
     records,
     asked: view.ask !== undefined,
+    hqSigners:
+      signers === undefined ? undefined : Object.keys(signers).length > 0 ? "some" : "none",
     standUpBy: tags.standUp?.by,
     madeBy: tags.madeBy,
     viewer,
@@ -3485,6 +3493,7 @@ const COMING_SEAT: BadgeSeat | null = ownerBadge(
     owner: undefined,
     records: { named: false, signedIn: false },
     asked: true,
+    hqSigners: "none",
   }).seat,
   false,
 );

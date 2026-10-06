@@ -13,7 +13,11 @@
 import { useAtomValue } from "@effect/atom-react";
 import type { ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import { shownHqProjectPeopleAtom, type HqMateOwner } from "@t3tools/client-runtime/data";
+import {
+  shownHqProjectPeopleAtom,
+  type HqMateOwner,
+  type HqProjectPeople,
+} from "@t3tools/client-runtime/data";
 import {
   selectMembers,
   settledValue,
@@ -146,4 +150,13 @@ export function useZeropsMateOwners(): (candidate: ZeropsCandidate) => ZeropsMat
 export function useWaitsOnViewer(): (projectId: string) => boolean {
   const people = useAtomValue(shownHqProjectPeopleAtom);
   return useCallback((projectId: string) => people[projectId]?.waitsOnViewer === true, [people]);
+}
+
+/**
+ * Who HQ says signed each agent's own login in, by project id (its `signers`); `undefined` while
+ * HQ has not said of the project.
+ */
+export function useHqSignersOf(): (projectId: string) => HqProjectPeople["signers"] | undefined {
+  const people = useAtomValue(shownHqProjectPeopleAtom);
+  return useCallback((projectId: string) => people[projectId]?.signers, [people]);
 }

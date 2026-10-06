@@ -97,10 +97,18 @@ vi.mock("~/zerops/ZeropsSessionProvider", async (original) => ({
 }));
 // Whom each Mate waits on, as HQ says it (`waitsOnViewer`): the viewer who signed its agent in.
 const signerOf = vi.hoisted(() => new Map<string, string>());
+// Who HQ says signed each Mate's agent in (`signers`): nobody, unless a test says whom or that HQ
+// has not said.
+const hqSigners = vi.hoisted(() => ({ said: true }));
 vi.mock("~/zerops/useZeropsMateOwners", async (original) => ({
   ...(await original<typeof import("~/zerops/useZeropsMateOwners")>()),
   useWaitsOnViewer: () => (projectId: string) =>
     session.viewer !== undefined && signerOf.get(projectId) === session.viewer,
+  useHqSignersOf: () => (projectId: string) => {
+    if (!hqSigners.said) return undefined;
+    const signer = signerOf.get(projectId);
+    return signer === undefined ? {} : { "claude-code": signer };
+  },
 }));
 afterEach(() => {
   // A tree left mounted would answer the next test's asks of the one menu.
@@ -113,6 +121,7 @@ afterEach(() => {
   stored.written = undefined;
   session.viewer = undefined;
   signerOf.clear();
+  hqSigners.said = true;
   hqCrews.clear();
   demandedStops.clear();
   vi.unstubAllGlobals();
@@ -827,6 +836,20 @@ describe("a Mate with no owner, or nobody signed in", () => {
       expect(html).not.toContain("sidebar-mate-sign-in-verb");
     },
   );
+
+  // The owner, 2026-10-06: every row said "Nobody has signed in yet" of Mates in use. The line
+  // reads HQ's signers of the project: it stands only where HQ names nobody.
+  it.each([
+    { case: "HQ names a signer", said: true, signer: "u-eva", shown: false },
+    { case: "HQ names nobody", said: true, signer: undefined, shown: true },
+    { case: "HQ has not said", said: false, signer: undefined, shown: false },
+  ])("says nobody has signed in only where HQ names nobody: $case", ({ said, signer, shown }) => {
+    hqSigners.said = said;
+    const item = mate(null, { group: "connected" });
+    if (signer !== undefined) signerOf.set(item.project.id, signer);
+    const html = render([item], { getOwner: () => undefined });
+    expect(html.includes("Nobody has signed in yet")).toBe(shown);
+  });
 
   // E2E 2026-10-03 (F6): a `mate` project whose press stopped before its container read "Nobody
   // has signed in yet" after a reload — a Mate nobody can sign in, its container never made, or
