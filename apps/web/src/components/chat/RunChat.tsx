@@ -4388,8 +4388,9 @@ function RunScroll({
       const element = scrollRef.current;
       if (element === null) return;
       // A draw laid out before its boxes held their heights (a row leaving
-      // the slot) clamped it, and the rooms put that back only once every
-      // set has heard the draw: a landing keeps it before then.
+      // the slot) clamped it, and the rooms put that clamp back only once
+      // every set has heard the draw: keeping it, a landing puts it back
+      // first — that clamp alone, never a move the page made with no input.
       unclamp(element);
       const position = positionOf(element);
       read(position);

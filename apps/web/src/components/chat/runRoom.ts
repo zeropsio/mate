@@ -56,11 +56,11 @@ export interface Rooms {
 const EASING = "data-room-easing";
 
 /**
- * Where each run's scroll that follows its foot last stood, as its own code
- * put it or read it (`noteScrollTop`). A change laid out before a box takes
- * its old height — a row leaving the slot frees room the card gives the
- * history at once — makes the browser clamp the scroll down, and it keeps
- * that clamp: once the boxes hold their heights, it is put back.
+ * Where each run's scroll last stood, as its own code put it or read it
+ * (`noteScrollTop`). A change laid out before a box takes its old height —
+ * a row leaving the slot frees room the card gives the history at once —
+ * makes the browser clamp the scroll down, and it keeps that clamp: once the
+ * boxes hold their heights, it is put back (`clamps`).
  */
 const scrollTops = new Map<HTMLElement, number>();
 
@@ -72,23 +72,63 @@ export function noteScrollTop(scroll: HTMLElement): void {
 /** A run's scroll leaves the page: nothing keeps it. */
 export function forgetScrollTop(scroll: HTMLElement): void {
   scrollTops.delete(scroll);
+  clamps.delete(scroll);
 }
 
 /**
- * Puts back the following scrolls of the card around `element` the browser
- * clamped down: read from the few scrolls noted, never by walking the card,
- * which a long run fills with thousands of rows.
+ * The scrolls a draw clamped, by the top it clamped each to: heard as the
+ * draw's change is, before any box takes its old height back. Only those are
+ * put back (`unclamp`): a move of the page's with no input — a find in page,
+ * Tab into the card, a screen reader — leaves its scroll above its furthest
+ * top, never at it, and stands (the p43 final check: a word arriving in the
+ * same task as a find undid it).
+ */
+const clamps = new Map<HTMLElement, number>();
+
+/**
+ * Notes the scrolls in `card` that a draw clamped — standing at their
+ * furthest top, below where they last stood — and returns where each stands,
+ * so what the boxes clamp as they take their old heights back is noted too
+ * (`clampedSince`).
+ */
+function markClamps(card: Element): ReadonlyArray<readonly [HTMLElement, number]> {
+  return scrollsIn(card).map((scroll) => {
+    const top = scroll.scrollTop;
+    const furthest = scroll.scrollHeight - scroll.clientHeight;
+    if (top < scrollTops.get(scroll)! - 0.5 && Math.abs(top - furthest) <= 1)
+      clamps.set(scroll, top);
+    return [scroll, top] as const;
+  });
+}
+
+/** Notes the scrolls the boxes' own holding moved down since `stood`: their own clamp, in this one turn. */
+function clampedSince(stood: ReadonlyArray<readonly [HTMLElement, number]>): void {
+  for (const [scroll, top] of stood) {
+    const now = scroll.scrollTop;
+    if (now < top - 0.5 && now < scrollTops.get(scroll)! - 0.5) clamps.set(scroll, now);
+  }
+}
+
+/**
+ * Puts back the following scrolls of the card around `element` that a draw
+ * clamped down, still where the clamp left them: read from the few scrolls
+ * noted, never by walking the card, which a long run fills with thousands of
+ * rows.
  */
 export function unclamp(element: HTMLElement): void {
   // Drawn outside a page (a test's stand-in), nothing laid it out.
   if (typeof element.closest !== "function") return;
   const card = cardOf(element);
-  // A move the person just made in the card is theirs to keep; typing in
-  // the composer is no move of it.
-  if (personActedWithin(PERSON_INPUT_MS, card)) return;
   for (const scroll of scrollsIn(card)) {
-    const top = scrollTops.get(scroll)!;
-    if (scroll.hasAttribute("data-follows") && scroll.scrollTop < top - 0.5) scroll.scrollTop = top;
+    const clamped = clamps.get(scroll);
+    if (clamped === undefined) continue;
+    clamps.delete(scroll);
+    // A move the person just made in the card is theirs to keep; typing in
+    // the composer is no move of it.
+    if (personActedWithin(PERSON_INPUT_MS, card)) continue;
+    if (!scroll.hasAttribute("data-follows") || Math.abs(scroll.scrollTop - clamped) > 0.5)
+      continue;
+    scroll.scrollTop = scrollTops.get(scroll)!;
   }
 }
 
@@ -101,8 +141,10 @@ function cardOf(element: HTMLElement): Element {
 function scrollsIn(card: Element): HTMLElement[] {
   const scrolls: HTMLElement[] = [];
   for (const scroll of scrollTops.keys()) {
-    if (!scroll.isConnected) scrollTops.delete(scroll);
-    else if (card.contains(scroll)) scrolls.push(scroll);
+    if (!scroll.isConnected) {
+      scrollTops.delete(scroll);
+      clamps.delete(scroll);
+    } else if (card.contains(scroll)) scrolls.push(scroll);
   }
   return scrolls;
 }
@@ -301,7 +343,12 @@ export function easeRooms({
     }
     // The innermost first: one holding it then hears it at the height it shows.
     const order = [...touched].sort((a, b) => depthOf(b.element) - depthOf(a.element));
+    // What the draw clamped, read before any box takes its old height back,
+    // and what the boxes clamp taking it back while another set's do not yet
+    // hold theirs (the history's lines held before the slot's room).
+    const stood = order.length > 0 ? markClamps(cardOf(root)) : [];
     for (const box of order) heard(box);
+    clampedSince(stood);
     // Once every set has heard it (the observers' turn ends first).
     if (order.length > 0) queueMicrotask(() => unclamp(root));
   };
