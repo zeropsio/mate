@@ -712,6 +712,12 @@ describe("stopServices", () => {
       expected: [["app", "failed"]],
     },
     {
+      name: "a version whose read answered a row Zerops sent unreadable fails visibly",
+      read: listed([record("s1", "app", deployed(UNSTATED))]),
+      versions: new Map([[UNSTATED.id!, { kind: "unreadable" }]]),
+      expected: [["app", "failed"]],
+    },
+    {
       name: "a version the refused active versions will never state fails",
       read: listed([record("s1", "app", deployed(UNSTATED))]),
       versions: new Map([[UNSTATED.id!, { kind: "refused" }]]),

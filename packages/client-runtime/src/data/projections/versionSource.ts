@@ -20,6 +20,8 @@ export type VersionSource =
   | { readonly kind: "awaited" }
   /** The read by id found none: the platform does not have it. */
   | { readonly kind: "not-listed" }
+  /** The read by id answered a row its family cannot read: refused alone, said so. */
+  | { readonly kind: "unreadable" }
   /** The organization's active versions were refused: nothing will state it. */
   | { readonly kind: "refused" };
 
@@ -32,8 +34,10 @@ export const versionSource: Projection<
   derive: (read, { orgId, versionId }) => {
     const fact = read.fact("version", versionId);
     if (fact.kind === "known") return { kind: "known", source: fact.value.source };
-    if (read.stream(versionScope(orgId, versionId)).phase === "refused")
-      return { kind: "not-listed" };
+    const byId = versionScope(orgId, versionId);
+    if (read.stream(byId).phase === "refused") return { kind: "not-listed" };
+    // Its one row answered, and the family could not read it: the answer's own word.
+    if (read.coverage(byId) === "partial") return { kind: "unreadable" };
     const refused = [read.stream(linkKeys.zerops(orgId)), read.stream(activeScope(orgId))].some(
       (stream) => stream.phase === "refused",
     );

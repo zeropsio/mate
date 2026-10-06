@@ -184,13 +184,16 @@ export function makeStops(
         case "awaited":
           return UNREAD;
         case "not-listed":
+        case "unreadable":
         case "refused":
           return {
             state: "failed",
             failure:
               source.kind === "not-listed"
                 ? { kind: "malformed", detail: "Its active version is not listed." }
-                : { kind: "transport", detail: "Zerops refused its active versions." },
+                : source.kind === "unreadable"
+                  ? { kind: "malformed", detail: "Zerops sent an answer that couldn't be read." }
+                  : { kind: "transport", detail: "Zerops refused its active versions." },
             atMs: data.access.clock.currentTimeMillisUnsafe(),
             attempt: 1,
             retryAtMs: null,

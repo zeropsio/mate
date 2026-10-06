@@ -79,4 +79,24 @@ describe("versionSource", () => {
     expect(derive(refused, "v2")).toEqual({ kind: "refused" });
     expect(derive(refused, "v1")).toEqual({ kind: "known", source: "GIT" });
   });
+
+  it("says a version whose read by id answered a row it cannot read was unreadable", () => {
+    const scope = versionScope(ORG, "v2");
+    const damaged = apply(live(), [
+      event(scope, { kind: "demand", demanded: true }),
+      event(scope, { kind: "attempt" }),
+      { kind: "baseline-begin", scope, generation: 1 },
+      {
+        kind: "baseline-commit",
+        scope,
+        generation: 1,
+        via: "zerops-read",
+        members: ["v2"],
+        rows: [],
+        partial: true,
+      },
+      event(scope, { kind: "baseline-committed" }),
+    ]);
+    expect(derive(damaged, "v2")).toEqual({ kind: "unreadable" });
+  });
 });
