@@ -793,8 +793,9 @@ function Pane() {
 function Harness() {
   return (
     <div className="flex h-dvh overflow-hidden bg-background text-foreground">
+      {/* A phone's width shows the conversation alone, as the app does. */}
       <aside
-        className="flex shrink-0 flex-col gap-1 border-border border-r p-4"
+        className="flex shrink-0 flex-col gap-1 border-border border-r p-4 max-md:hidden"
         style={{ width: 435 }}
       >
         <p className="pb-2 text-muted-foreground text-xs">The live card · {SCRIPT}</p>

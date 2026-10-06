@@ -6,7 +6,11 @@ import {
   ROOM_TAU_MS,
   SETTLED_PX,
   approach,
+  glideStep,
+  keepsFoot,
+  LONG_GONE_MS,
   movesAsPerson,
+  spendStep,
 } from "./runMotion.logic";
 
 const FRAME_MS = 1000 / 60;
@@ -171,5 +175,134 @@ describe("movesAsPerson", () => {
     expect(movesAsPerson({ moving, resized, msSinceInput: sinceInput, atFoot, follows })).toBe(
       person,
     );
+  });
+});
+
+// How a run's scroll that follows its foot keeps to it as what it holds
+// changes (R12-17: a line landing left it 10–28 px short of its foot for
+// 200 ms, the newest line cut, as it glided after a height that already eased).
+describe("keepsFoot", () => {
+  const at = {
+    follows: true,
+    heldAbove: false,
+    grew: false,
+    below: true,
+    eases: true,
+    roomEases: false,
+    gliding: false,
+  };
+  it.each([
+    { what: "scrolled up by the person", given: { follows: false }, keeps: "stays" },
+    { what: "the card around it easing taller", given: { heldAbove: true }, keeps: "waits" },
+    {
+      what: "a line landing whose room eases in",
+      given: { grew: true, roomEases: true },
+      keeps: "puts",
+    },
+    {
+      what: "a bubble easing taller as its words stream",
+      given: { roomEases: true },
+      keeps: "puts",
+    },
+    { what: "its box squeezed by the slot growing", given: {}, keeps: "puts" },
+    {
+      what: "lines that grew at once, nothing easing them",
+      given: { grew: true },
+      keeps: "glides",
+    },
+    {
+      what: "lines that grew at once in a run not watched live",
+      given: { grew: true, eases: false },
+      keeps: "puts",
+    },
+    { what: "a glide to the foot in flight", given: { gliding: true }, keeps: "stays" },
+    {
+      // It re-aims at the foot every frame: a put mid-way jumped it there.
+      what: "a glide in flight as a room eases",
+      given: { gliding: true, roomEases: true, grew: true },
+      keeps: "stays",
+    },
+  ] as const)("$what: it $keeps", ({ given, keeps }) => {
+    expect(keepsFoot({ ...at, ...given })).toBe(keeps);
+  });
+});
+
+// Two eases in one card — a landed line's room and the slot squeezing the
+// history — each took their own 32 px a frame, and moved the history up to
+// 53 px in one (the p43 review): eases the same way share one speed a frame.
+// A landing's two halves — the history growing by what the slot gives —
+// move on one curve each, so the card's height stays (the p43 verification:
+// one budget for both grew the card 50 px and shrank it back).
+describe("spendStep", () => {
+  it.each([
+    { what: "one ease alone", steps: [[1000, 20]], taken: [20] },
+    { what: "one ease past the frame's speed", steps: [[1000, 45]], taken: [32] },
+    {
+      what: "two eases growing in one frame",
+      steps: [
+        [1000, 30],
+        [1000, 30],
+      ],
+      taken: [30, 2],
+    },
+    {
+      what: "two eases shrinking in one frame",
+      steps: [
+        [1000, -30],
+        [1000, -30],
+      ],
+      taken: [-30, -2],
+    },
+    {
+      what: "a landing: one grows by what the other gives",
+      steps: [
+        [1000, 30],
+        [1000, -30],
+      ],
+      taken: [30, -30],
+    },
+    {
+      what: "a new frame has its speed again",
+      steps: [
+        [1000, 30],
+        [1020, 30],
+      ],
+      taken: [30, 30],
+    },
+  ])("$what", ({ steps, taken }) => {
+    const budget = { at: -1, grow: 0, shrink: 0 };
+    expect(steps.map(([now, step]) => spendStep(budget, now!, 20, step!))).toEqual(taken);
+  });
+
+  it("lets a frame long gone stand at its target", () => {
+    const budget = { at: -1, grow: 0, shrink: 0 };
+    expect(spendStep(budget, 1000, LONG_GONE_MS, 400)).toBe(400);
+  });
+});
+
+// A glide to the foot chased a foot the history's ease kept moving, and hid
+// up to 0.37 of the growth, about 22 px, for 200 ms (the p43 verification):
+// the foot's own move is taken at once, and only the glide's way eases.
+describe("glideStep", () => {
+  it.each([
+    { what: "the foot stands still", at: 100, lastFoot: 300, foot: 300 },
+    { what: "the foot moves on 20 px as a height eases", at: 100, lastFoot: 300, foot: 320 },
+    { what: "the foot moves on 60 px", at: 250, lastFoot: 300, foot: 360 },
+    { what: "the foot comes back 10 px", at: 100, lastFoot: 300, foot: 290 },
+  ])("$what: what is left is the glide's own way, eased", ({ at, lastFoot, foot }) => {
+    const next = glideStep({ at, lastFoot, foot, dtMs: FRAME_MS });
+    // As if the foot had stood still: its move never widens the gap.
+    expect(foot - next).toBeCloseTo(lastFoot - approach(at, lastFoot, FRAME_MS, FOLLOW_TAU_MS), 6);
+  });
+
+  it("lands on the foot", () => {
+    let at = 0;
+    let foot = 200;
+    for (let frame = 0; frame < 40; frame += 1) {
+      const lastFoot = foot;
+      foot += frame < 10 ? 6 : 0;
+      at = glideStep({ at, lastFoot, foot, dtMs: FRAME_MS });
+    }
+    expect(at).toBe(foot);
   });
 });

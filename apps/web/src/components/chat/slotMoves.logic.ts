@@ -32,3 +32,40 @@ export function landingHosts(
   const stood = new Set(from.entries.map((entry) => entry.key));
   return new Set(leaving.filter((key) => stood.has(key) || drawn.has(key)));
 }
+
+/**
+ * A row of a run's history as it was drawn: its key, and its top in what
+ * holds it — null where it was not read since the view moved far from it.
+ */
+export interface DrawnRow {
+  readonly key: string;
+  readonly top: number | null;
+}
+
+/**
+ * How far each row that stays moved as the rows around it changed (F3, run
+ * 9: a line joining between two pushed the lines under it down in one frame;
+ * a call that returned moved past the ones still running): where it stands
+ * now less where it stood, in one pass. Rows only joining at the foot move
+ * nothing: what stood keeps its place, and a height easing above is its ease.
+ */
+export function rowShifts(
+  before: ReadonlyArray<DrawnRow>,
+  after: ReadonlyArray<DrawnRow>,
+): ReadonlyMap<string, number> {
+  const shifts = new Map<string, number>();
+  if (
+    before.length <= after.length &&
+    before.every((row, index) => after[index]!.key === row.key)
+  ) {
+    return shifts;
+  }
+  const stood = new Map(before.map((row) => [row.key, row.top] as const));
+  for (const row of after) {
+    const top = stood.get(row.key);
+    // A row with no place read is left as it is.
+    if (top === undefined || top === null || row.top === null) continue;
+    if (Math.abs(row.top - top) >= 0.5) shifts.set(row.key, row.top - top);
+  }
+  return shifts;
+}

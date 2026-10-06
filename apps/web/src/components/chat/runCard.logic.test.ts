@@ -18,6 +18,7 @@ import {
   footTop,
   forgetRunFolds,
   laidOutPosition,
+  movedByClamp,
   formatClock,
   nowLineFace,
   nowLineOf,
@@ -824,6 +825,86 @@ describe("followAfter", () => {
       state = followAfter(state, read(560, 1300));
       expect(state.follows).toBe(false);
     });
+  });
+});
+
+// While the live slot eases, the browser clamps the history's top as its box
+// grows; only a move that clamp explains is the card's — any further move
+// with no input on the scroll (find in page, Tab, a drag-select scrolling,
+// a screen reader) is the person's, and it stays where they took it.
+describe("movedByClamp", () => {
+  it.each([
+    {
+      what: "the box grew 3 px, the top went 3 px up",
+      stood: 400,
+      top: 397,
+      stoodMax: 400,
+      max: 397,
+      clamp: true,
+    },
+    {
+      what: "the box grew 2 px, the top went 2.5 px up (rounding)",
+      stood: 400,
+      top: 397.5,
+      stoodMax: 400,
+      max: 398,
+      clamp: true,
+    },
+    {
+      what: "a find in page took the top 300 px up",
+      stood: 400,
+      top: 100,
+      stoodMax: 400,
+      max: 398,
+      clamp: false,
+    },
+    {
+      what: "a drag-select scrolled it 40 px up, nothing resized",
+      stood: 400,
+      top: 360,
+      stoodMax: 400,
+      max: 400,
+      clamp: false,
+    },
+    {
+      what: "the box shrank, the top went up",
+      stood: 400,
+      top: 390,
+      stoodMax: 400,
+      max: 420,
+      clamp: false,
+    },
+    { what: "a move down", stood: 400, top: 420, stoodMax: 400, max: 420, clamp: true },
+    {
+      // Run 12, 18:58:18: no measure of the clamp explains it, and it was no person's.
+      what: "its lines re-measured 6 px taller, the top set 14 px up",
+      stood: 400,
+      top: 386,
+      stoodMax: 400,
+      max: 406,
+      linesResized: true,
+      clamp: true,
+    },
+    {
+      what: "a find in page as its lines resize (a streaming answer, reduced motion)",
+      stood: 400,
+      top: 100,
+      stoodMax: 400,
+      max: 410,
+      linesResized: true,
+      clamp: false,
+    },
+    {
+      what: "a move a frame's speed past the clamp, nothing resized",
+      stood: 400,
+      top: 380,
+      stoodMax: 400,
+      max: 400,
+      clamp: false,
+    },
+  ])("$what: the clamp's $clamp", ({ stood, top, stoodMax, max, clamp, ...row }) => {
+    const linesResized = "linesResized" in row ? row.linesResized : false;
+    expect(movedByClamp({ stood, top, stoodMax, max, linesResized })).toBe(clamp);
   });
 });
 

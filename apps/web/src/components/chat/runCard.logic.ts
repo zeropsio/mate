@@ -201,6 +201,39 @@ export function followAfter(state: RunScrollFollow, event: RunScrollEvent): RunS
 }
 
 /**
+ * Whether a move of the scroll's top, from where it last stood (`stood`, its
+ * furthest top then `stoodMax`) to `top` (its furthest now `max`), is no more
+ * than the browser clamping it as its box grew: such a move, while the live
+ * slot beside it eases, is the card's. A move up past that — find in page,
+ * Tab, a drag-select or a screen reader taking it, none an input on the
+ * scroll — is the person's (the review of p43, 2026-10-06).
+ */
+export function movedByClamp({
+  stood,
+  top,
+  stoodMax,
+  max,
+  linesResized = false,
+}: {
+  readonly stood: number;
+  readonly top: number;
+  readonly stoodMax: number;
+  readonly max: number;
+  /**
+   * What it holds re-measured since: the browser may move it a frame's speed
+   * past what its clamp explains (run 12: lines 6 px taller, the top 14 px
+   * up), never further.
+   */
+  readonly linesResized?: boolean;
+}): boolean {
+  const slack = linesResized ? LINES_RESIZE_SLACK_PX : 0;
+  return stood - top <= Math.max(0, stoodMax - max) + MOVED_PX + slack;
+}
+
+/** A frame's speed of a run's card's eases (`MAX_SPEED_PX_PER_MS` over a frame and a fifth). */
+const LINES_RESIZE_SLACK_PX = 32;
+
+/**
  * The scroll as its lines are laid out: a row travelling into its place (a
  * plop from the live slot, a rise) paints past their foot for a moment, and
  * the browser counts that as more to scroll to. It is not: the foot is where
