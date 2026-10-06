@@ -1,3 +1,4 @@
+import { AssetImage } from "~/assets/AssetImage";
 import {
   useCallback,
   useEffect,
@@ -222,7 +223,9 @@ export function ZoomableImage({
           setDragging(false);
         }}
       >
-        <img
+        <AssetImage
+          loading="lazy"
+          decoding="async"
           src={src}
           alt={name}
           draggable={false}

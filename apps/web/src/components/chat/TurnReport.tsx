@@ -15,6 +15,7 @@
  * 40 ms apart, when the run finished while the person watched (T5); read
  * later, they are simply there.
  */
+import { AssetImage } from "~/assets/AssetImage";
 import type { EnvironmentId, ThreadId, TurnId } from "@t3tools/contracts";
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { ArrowUpRightIcon, GitPullRequestIcon, TriangleAlertIcon, UsersIcon } from "lucide-react";
@@ -275,7 +276,9 @@ function PictureTile({
           )
         }
       >
-        {state._tag === "Success" ? <img alt="" onLoad={learn} src={state.url} /> : null}
+        {state._tag === "Success" ? (
+          <AssetImage loading="lazy" decoding="async" alt="" onLoad={learn} src={state.url} />
+        ) : null}
         {more > 0 ? <span className="run-result-more">+{more}</span> : null}
       </TooltipTrigger>
       <TooltipPopup side="bottom">{said}</TooltipPopup>

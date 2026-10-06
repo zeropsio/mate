@@ -96,6 +96,7 @@ export function useHqPictureSource(): ChangePictureSource | undefined {
 export function useChangePicture(
   source: ChangePictureSource | undefined,
   url: string,
+  visible = true,
 ): ChangePictureState {
   const [held, setHeld] = useState<{ readonly url: string; readonly state: ChangePictureState }>(
     () => ({ url, state: known(url) }),
@@ -107,7 +108,7 @@ export function useChangePicture(
   }
   const reading = state.kind === "reading";
   useEffect(() => {
-    if (source === undefined || !reading) return;
+    if (!visible || source === undefined || !reading) return;
     let live = true;
     void readPicture(source, url).then((answer) => {
       if (live) setHeld((current) => (current.url === url ? { url, state: answer } : current));
@@ -115,6 +116,6 @@ export function useChangePicture(
     return () => {
       live = false;
     };
-  }, [reading, source, url]);
+  }, [reading, source, url, visible]);
   return state;
 }

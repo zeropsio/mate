@@ -1,3 +1,4 @@
+import { AssetImage } from "~/assets/AssetImage";
 import { ServiceBrowserLink, useLinkDestination } from "./ServiceBrowserLink";
 import { ZeropsChangeLinkChip } from "./zerops/ZeropsChangeLinkChip";
 import { useAtomValue } from "@effect/atom-react";
@@ -1048,6 +1049,7 @@ const MarkdownLinkFavicon = memo(function MarkdownLinkFavicon({
           src={faviconUrl}
           alt=""
           loading="lazy"
+          decoding="async"
           draggable={false}
           className={cn(MARKDOWN_LINK_FAVICON_CLASS_NAME, "rounded-sm")}
           onError={() => {
@@ -1185,8 +1187,11 @@ function openMarkdownImage(button: HTMLElement, open: (preview: ExpandedImagePre
   if (index < 0) return;
   open({
     images: images.map((image) => ({
-      src: image.currentSrc || image.src,
-      name: image.alt || (image.currentSrc || image.src).split("/").pop()?.split("?")[0] || "Image",
+      src: image.currentSrc || image.dataset.imageSrc || image.src,
+      name:
+        image.alt ||
+        (image.currentSrc || image.dataset.imageSrc || image.src).split("/").pop()?.split("?")[0] ||
+        "Image",
     })),
     index,
   });
@@ -1290,12 +1295,13 @@ const ChatMarkdownWorkspaceImage = memo(function ChatMarkdownWorkspaceImage(prop
   }
   return (
     <OpenableMarkdownImage alt={props.alt} block className={room.openerClassName}>
-      <img
+      <AssetImage
         // Asked for again, it is a new picture: the page fetches it anew.
         key={asking}
         src={assetUrl.url}
         alt={props.alt}
         loading="lazy"
+        decoding="async"
         draggable={false}
         className={cn(CHAT_MARKDOWN_WORKSPACE_IMAGE_CLASS_NAME, room.className)}
         data-markdown-image
@@ -1320,15 +1326,23 @@ function DirectMarkdownImage({
   readonly alt: string;
 }) {
   // A picture from an address of its own is as often a badge as a
-  // screenshot: it holds no 16:9 place, only its own shape once seen.
-  const room = useImageRoom(uri, false);
+  // screenshot. Mate assets reserve a box; external badges keep their own size.
+  const mateAsset = uri.includes("/api/assets/");
+  const width = Number(props.width);
+  const height = Number(props.height);
+  const room = useImageRoom(
+    uri,
+    mateAsset,
+    width > 0 && height > 0 ? { width, height } : undefined,
+  );
   return (
-    <OpenableMarkdownImage alt={alt}>
-      <img
+    <OpenableMarkdownImage alt={alt} block={mateAsset} className={room.openerClassName}>
+      <AssetImage
         {...props}
         src={uri}
         alt={alt}
         loading="lazy"
+        decoding="async"
         className={cn(className, CHAT_MARKDOWN_IMAGE_SIZE_CLASS_NAME, room.className)}
         data-markdown-image
         height={room.height ?? props.height}

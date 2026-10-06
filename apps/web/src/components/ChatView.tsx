@@ -1619,7 +1619,6 @@ export default function ChatView(props: ChatViewProps) {
   }, [composerOverlayHeight, composerOverlaySettledFor, routeThreadKey]);
   const isAtEndRef = useRef(true);
   const attachmentPreviewHandoffByMessageIdRef = useRef<Record<string, string[]>>({});
-  const attachmentPreviewPromotionInFlightByMessageIdRef = useRef<Record<string, true>>({});
   const sendInFlightRef = useRef(false);
   const feedbackUploadsInFlightRef = useRef(new Set<string>());
   const terminalUiOpenByThreadRef = useRef<Record<string, boolean>>({});
@@ -2787,7 +2786,6 @@ export default function ChatView(props: ChatViewProps) {
   }, [attachmentPreviewHandoffByMessageId]);
   const clearAttachmentPreviewHandoff = useCallback(
     (messageId: MessageId, previewUrls?: ReadonlyArray<string>) => {
-      delete attachmentPreviewPromotionInFlightByMessageIdRef.current[messageId];
       const currentPreviewUrls =
         previewUrls ?? attachmentPreviewHandoffByMessageIdRef.current[messageId] ?? [];
       setAttachmentPreviewHandoffByMessageId((existing) => {
@@ -2806,7 +2804,6 @@ export default function ChatView(props: ChatViewProps) {
     [],
   );
   const clearAttachmentPreviewHandoffs = useCallback(() => {
-    attachmentPreviewPromotionInFlightByMessageIdRef.current = {};
     for (const previewUrls of Object.values(attachmentPreviewHandoffByMessageIdRef.current)) {
       for (const previewUrl of previewUrls) {
         revokeBlobPreviewUrl(previewUrl);
@@ -2869,88 +2866,28 @@ export default function ChatView(props: ChatViewProps) {
     );
   }, [projectServerMessagePreviews, serverAttachmentUrlById, serverMessages]);
   useEffect(() => {
-    if (typeof Image === "undefined" || displayServerMessages.length === 0) {
-      return;
-    }
-
-    const cleanups: Array<() => void> = [];
-    const userMessagesById = new Map<string, ChatMessage>(
+    // Once signed URLs exist, the rendered lazy images own the fetch. Preloading here would
+    // download pictures even when their messages are outside the viewport.
+    const userMessagesById = new Map(
       displayServerMessages
         .filter((message) => message.role === "user")
         .map((message) => [String(message.id), message] as const),
     );
-
     for (const [messageId, handoffPreviewUrls] of Object.entries(
       attachmentPreviewHandoffByMessageId,
     )) {
-      if (attachmentPreviewPromotionInFlightByMessageIdRef.current[messageId]) {
-        continue;
-      }
-
-      const serverMessage = userMessagesById.get(messageId);
-      if (!serverMessage?.attachments || serverMessage.attachments.length === 0) {
-        continue;
-      }
-
-      const serverPreviewUrls = serverMessage.attachments.flatMap((attachment) =>
+      const attachments = userMessagesById.get(messageId)?.attachments ?? [];
+      const urls = attachments.flatMap((attachment) =>
         isImageAttachment(attachment) && attachment.previewUrl ? [attachment.previewUrl] : [],
       );
       if (
-        serverPreviewUrls.length === 0 ||
-        serverPreviewUrls.length !== handoffPreviewUrls.length ||
-        serverPreviewUrls.some((previewUrl) => previewUrl.startsWith("blob:"))
+        urls.length > 0 &&
+        urls.length === handoffPreviewUrls.length &&
+        urls.every((url) => !url.startsWith("blob:"))
       ) {
-        continue;
+        clearAttachmentPreviewHandoff(messageId as MessageId, handoffPreviewUrls);
       }
-
-      attachmentPreviewPromotionInFlightByMessageIdRef.current[messageId] = true;
-
-      let cancelled = false;
-      const imageInstances: HTMLImageElement[] = [];
-
-      const preloadServerPreviews = Promise.all(
-        serverPreviewUrls.map(
-          (previewUrl) =>
-            new Promise<void>((resolve, reject) => {
-              const image = new Image();
-              imageInstances.push(image);
-              const handleLoad = () => resolve();
-              const handleError = () =>
-                reject(new Error(`Failed to load server preview for ${messageId}.`));
-              image.addEventListener("load", handleLoad, { once: true });
-              image.addEventListener("error", handleError, { once: true });
-              image.src = previewUrl;
-            }),
-        ),
-      );
-
-      void preloadServerPreviews
-        .then(() => {
-          if (cancelled) {
-            return;
-          }
-          clearAttachmentPreviewHandoff(messageId as MessageId, handoffPreviewUrls);
-        })
-        .catch(() => {
-          if (!cancelled) {
-            delete attachmentPreviewPromotionInFlightByMessageIdRef.current[messageId];
-          }
-        });
-
-      cleanups.push(() => {
-        cancelled = true;
-        delete attachmentPreviewPromotionInFlightByMessageIdRef.current[messageId];
-        for (const image of imageInstances) {
-          image.src = "";
-        }
-      });
     }
-
-    return () => {
-      for (const cleanup of cleanups) {
-        cleanup();
-      }
-    };
   }, [attachmentPreviewHandoffByMessageId, clearAttachmentPreviewHandoff, displayServerMessages]);
   const timelineMessages = useMemo(() => {
     const messages = displayServerMessages;

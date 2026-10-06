@@ -35,6 +35,7 @@
  * opening in place, under the line the person clicked, which stays where it
  * is. Nothing opens a dialog.
  */
+import { AssetImage } from "~/assets/AssetImage";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
@@ -1378,13 +1379,15 @@ function StepPicture({
   return (
     <button
       aria-label={`Open ${name}`}
-      className="block h-20 cursor-zoom-in overflow-hidden rounded-lg border border-border/60 bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
+      className="block h-20 w-32 cursor-zoom-in overflow-hidden rounded-lg border border-border/60 bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
       onClick={() => onOpen({ images: [{ src: asset.url, name }], index: 0 })}
       type="button"
     >
-      <img
+      <AssetImage
+        loading="lazy"
+        decoding="async"
         alt={name}
-        className="block h-full w-auto max-w-40 object-cover object-top"
+        className="block size-full object-contain object-top"
         src={asset.url}
       />
     </button>
@@ -2629,7 +2632,7 @@ function PersonPictures({ pictures }: { readonly pictures: ReadonlyArray<ChatIma
           <button
             key={picture.id}
             aria-label={`Open ${picture.name}`}
-            className="block h-16 cursor-zoom-in overflow-hidden rounded-lg border border-border/60 bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
+            className="block h-16 w-32 cursor-zoom-in overflow-hidden rounded-lg border border-border/60 bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
             onClick={() =>
               onImageExpand({
                 images: viewable,
@@ -2641,9 +2644,11 @@ function PersonPictures({ pictures }: { readonly pictures: ReadonlyArray<ChatIma
             }
             type="button"
           >
-            <img
+            <AssetImage
+              loading="lazy"
+              decoding="async"
               alt={picture.name}
-              className="block h-full w-auto max-w-32 object-cover"
+              className="block size-full object-contain"
               src={src}
             />
           </button>

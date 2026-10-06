@@ -5,6 +5,7 @@
  * decorator's content, so it reads what it shows from the composer, by the
  * picture's id.
  */
+import { AssetImage } from "~/assets/AssetImage";
 import { CircleAlertIcon, RotateCcwIcon, XIcon } from "lucide-react";
 import { createContext, use, type KeyboardEvent } from "react";
 
@@ -78,7 +79,9 @@ export function ComposerPicture({ id }: { readonly id: string }) {
         onKeyDown={onKeyDown}
       >
         {picture.src ? (
-          <img
+          <AssetImage
+            loading="lazy"
+            decoding="async"
             className="composer-picture-img"
             src={picture.src}
             alt=""
