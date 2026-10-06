@@ -387,6 +387,24 @@ export function threadAgentActivity(
   thread: AgentActivityThread,
   lastVisitedAt: string | undefined,
 ): ZeropsAgentActivity {
+  // A shell is immutable, and kept while nothing in it changes: every Mate read again on each
+  // event of one streaming chat reads its own unchanged shell.
+  const known = activityByThread.get(thread);
+  if (known !== undefined && known.lastVisitedAt === lastVisitedAt) return known.activity;
+  const activity = readThreadAgentActivity(thread, lastVisitedAt);
+  activityByThread.set(thread, { lastVisitedAt, activity });
+  return activity;
+}
+
+const activityByThread = new WeakMap<
+  AgentActivityThread,
+  { readonly lastVisitedAt: string | undefined; readonly activity: ZeropsAgentActivity }
+>();
+
+function readThreadAgentActivity(
+  thread: AgentActivityThread,
+  lastVisitedAt: string | undefined,
+): ZeropsAgentActivity {
   const visited = lastVisitedAt === undefined ? {} : { lastVisitedAt };
   const resolved = resolveThreadStatus({ ...thread, ...visited });
   const pause = thread.usagePause ?? undefined;

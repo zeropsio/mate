@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { ProjectId, ProviderInstanceId, ThreadId } from "@t3tools/contracts";
-import type { OrchestrationShellSnapshot, OrchestrationShellStreamEvent } from "@t3tools/contracts";
+import { ProjectId, ProviderInstanceId, ThreadId, TurnId } from "@t3tools/contracts";
+import type {
+  OrchestrationShellSnapshot,
+  OrchestrationShellStreamEvent,
+  OrchestrationThreadShell,
+} from "@t3tools/contracts";
 
 import { applyShellStreamEvent } from "./shellReducer.ts";
 
@@ -174,6 +178,94 @@ describe("applyShellStreamEvent", () => {
 
       expect(next.threads).toHaveLength(0);
       expect(next.snapshotSequence).toBe(6);
+    });
+  });
+
+  describe("thread-upserted identity", () => {
+    const runningThread: OrchestrationThreadShell = {
+      ...stubThread,
+      latestTurn: {
+        turnId: TurnId.make("turn-1"),
+        state: "running",
+        requestedAt: "2026-04-01T00:00:01.000Z",
+        startedAt: "2026-04-01T00:00:02.000Z",
+        completedAt: null,
+        assistantMessageId: null,
+      },
+      session: {
+        threadId: ThreadId.make("thread-1"),
+        status: "running",
+        providerName: "codex",
+        runtimeMode: "full-access",
+        activeTurnId: TurnId.make("turn-1"),
+        lastError: null,
+        updatedAt: "2026-04-01T00:00:02.000Z",
+      },
+      latestMessagePreview: {
+        role: "assistant",
+        text: "On it",
+        createdAt: "2026-04-01T00:00:03.000Z",
+      },
+      liveStep: {
+        kind: "calls",
+        since: "2026-04-01T00:00:04.000Z",
+        calls: [
+          {
+            id: "call-1",
+            activityKind: "tool.updated",
+            itemType: "command_execution",
+            title: "Command run",
+            input: { description: "Build" },
+            startedAt: "2026-04-01T00:00:04.000Z",
+          },
+        ],
+      },
+    };
+    const otherThread: OrchestrationThreadShell = {
+      ...stubThread,
+      id: ThreadId.make("thread-2"),
+    };
+    const snapshot: OrchestrationShellSnapshot = {
+      ...baseSnapshot,
+      snapshotSequence: 1,
+      threads: [runningThread, otherThread],
+    };
+    const upsert = (thread: OrchestrationThreadShell) =>
+      applyShellStreamEvent(snapshot, { kind: "thread-upserted", sequence: 2, thread });
+
+    it("keeps the shell, its parts and the list when an upsert changes nothing", () => {
+      const next = upsert(structuredClone(runningThread));
+      expect(next.snapshotSequence).toBe(2);
+      expect(next.threads).toBe(snapshot.threads);
+      expect(next.threads[0]).toBe(runningThread);
+    });
+
+    it.each<[string, Partial<OrchestrationThreadShell>]>([
+      ["title", { title: "Renamed" }],
+      ["updatedAt", { updatedAt: "2026-04-01T00:00:09.000Z" }],
+      ["branch", { branch: "feature" }],
+      ["latestTurn.state", { latestTurn: { ...runningThread.latestTurn!, state: "completed" } }],
+      ["latestTurn", { latestTurn: null }],
+      ["session.status", { session: { ...runningThread.session!, status: "ready" } }],
+      ["hasPendingApprovals", { hasPendingApprovals: true }],
+      [
+        "latestMessagePreview.text",
+        { latestMessagePreview: { ...runningThread.latestMessagePreview!, text: "Done" } },
+      ],
+      ["liveStep", { liveStep: { kind: "thinking", since: "2026-04-01T00:00:05.000Z" } }],
+      ["pendingQuestion", { pendingQuestion: "Which one?" }],
+      ["modelSelection", { modelSelection: { ...runningThread.modelSelection, model: "o3" } }],
+    ])("gives a new shell when %s changes, keeping the unchanged parts", (_, change) => {
+      const changed = { ...structuredClone(runningThread), ...change };
+      const next = upsert(changed);
+      const shell = next.threads[0]!;
+      expect(next.threads).not.toBe(snapshot.threads);
+      expect(next.threads[1]).toBe(otherThread);
+      expect(shell).not.toBe(runningThread);
+      expect(shell).toEqual(changed);
+      for (const key of ["latestTurn", "session", "latestMessagePreview", "liveStep"] as const) {
+        if (!(key in change)) expect(shell[key]).toBe(runningThread[key]);
+      }
     });
   });
 

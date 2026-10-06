@@ -14,7 +14,7 @@
 import type { WorkLogEntry } from "../../session-logic";
 import { lookedAt, namedToolCall, toolCallWords } from "./conversation.logic";
 import { jobLost, type LiveJobs } from "./liveJobs.logic";
-import { spilledOutputOf, spilledOutputPhrase } from "./spilledOutput.logic";
+import { spilledOutputOf, spilledOutputPhrase, type SpilledOutput } from "./spilledOutput.logic";
 
 export type StepKind = "command" | "look" | "read" | "edit" | "search" | "web" | "tool";
 
@@ -283,6 +283,7 @@ export function trackCommands(entries: ReadonlyArray<WorkLogEntry>): TrackedComm
         : [[call.spilledTo, words] as const];
     }),
   );
+  const endedNear = commandsEndingNear(commands);
   for (const task of entries) {
     if (!isTask(task)) continue;
     const words = (task.toolTitle ?? task.label).trim();
@@ -291,12 +292,7 @@ export function trackCommands(entries: ReadonlyArray<WorkLogEntry>): TrackedComm
       task.taskToolUseId !== undefined
         ? byCallId.get(task.taskToolUseId)
         : task.taskType === undefined || task.taskType === "local_bash"
-          ? commands.find(
-              (candidate) =>
-                !byCommand.has(candidate.id) &&
-                startOf(candidate) <= Date.parse(task.createdAt) &&
-                Math.abs(endOf(candidate) - Date.parse(task.createdAt)) <= TRACK_TOLERANCE_MS,
-            )
+          ? endedNear(Date.parse(task.createdAt), (candidate) => !byCommand.has(candidate.id))
           : undefined;
     if (command === undefined) continue;
     trackers.add(task.id);
@@ -309,6 +305,45 @@ export function trackCommands(entries: ReadonlyArray<WorkLogEntry>): TrackedComm
     );
   }
   return { byCommand, trackers, jobTitles, spillTitles };
+}
+
+/**
+ * The first command, in the log's order, that started by `atMs` and ended
+ * within `TRACK_TOLERANCE_MS` of it, of those `free` lets through. Read
+ * against the commands' ends in order, so a conversation of many tasks and
+ * many commands is not every task against every command.
+ */
+function commandsEndingNear(
+  commands: ReadonlyArray<WorkLogEntry>,
+): (atMs: number, free: (command: WorkLogEntry) => boolean) => WorkLogEntry | undefined {
+  const starts = commands.map(startOf);
+  const ends = commands.map(endOf);
+  const byEnd = commands
+    .map((_, index) => index)
+    .filter((index) => Number.isFinite(ends[index]!))
+    .toSorted((left, right) => ends[left]! - ends[right]!);
+  return (atMs, free) => {
+    if (!Number.isFinite(atMs)) return undefined;
+    let low = 0;
+    let high = byEnd.length;
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      if (ends[byEnd[middle]!]! < atMs - TRACK_TOLERANCE_MS) low = middle + 1;
+      else high = middle;
+    }
+    let first: number | undefined;
+    for (let at = low; at < byEnd.length; at += 1) {
+      const index = byEnd[at]!;
+      if (ends[index]! > atMs + TRACK_TOLERANCE_MS) break;
+      if (
+        (first === undefined || index < first) &&
+        starts[index]! <= atMs &&
+        free(commands[index]!)
+      )
+        first = index;
+    }
+    return first === undefined ? undefined : commands[first];
+  };
 }
 
 /** The words a call whose output was saved to a file goes by: its own, else its command. */
@@ -329,12 +364,51 @@ function spilledReadPhrase(
   tracked: TrackedCommands,
   running: boolean,
 ): StepPhrase | null {
+  const spilled = spilledReadOf(entry);
+  if (spilled === null) return null;
+  const { verb, target } = spilledOutputPhrase(spilled, spilledTitle(spilled, tracked), running);
+  return { verb, targets: target === null ? [] : [target], more: 0, code: false };
+}
+
+const spilledReadByEntry = new WeakMap<WorkLogEntry, SpilledOutput | null>();
+
+/** The saved output a call reads, if it reads one — read once per entry, which never changes. */
+function spilledReadOf(entry: WorkLogEntry): SpilledOutput | null {
+  const known = spilledReadByEntry.get(entry);
+  if (known !== undefined) return known;
   const file = entry.callInput?.filePath ?? detailFile(entry.detail) ?? null;
   const spilled = file === null ? null : spilledOutputOf(file);
-  if (spilled === null) return null;
+  spilledReadByEntry.set(entry, spilled);
+  return spilled;
+}
+
+function spilledTitle(spilled: SpilledOutput, tracked: TrackedCommands): string | undefined {
   const titles = spilled.kind === "job" ? tracked.jobTitles : tracked.spillTitles;
-  const { verb, target } = spilledOutputPhrase(spilled, titles?.get(spilled.id), running);
-  return { verb, targets: target === null ? [] : [target], more: 0, code: false };
+  return titles?.get(spilled.id);
+}
+
+/**
+ * Everything `stepOf` reads of the thread's tracked commands for one call,
+ * beyond the call itself: a step drawn again with the same reads draws the
+ * same (`deriveMessagesTimelineRows` keeps a settled run's lines by them).
+ */
+export function trackedReadsOf(
+  entry: WorkLogEntry,
+  tracked: TrackedCommands,
+): readonly [
+  task: WorkLogEntry | undefined,
+  description: string | undefined,
+  tracker: boolean,
+  spilledTitle: string | undefined,
+] {
+  const track = tracked.byCommand.get(entry.id);
+  const spilled = spilledReadOf(entry);
+  return [
+    track?.task,
+    track?.description,
+    tracked.trackers.has(entry.id),
+    spilled === null ? undefined : spilledTitle(spilled, tracked),
+  ];
 }
 
 /**

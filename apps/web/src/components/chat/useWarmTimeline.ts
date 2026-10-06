@@ -27,6 +27,9 @@ import {
   deriveWorkLogEntries,
   selectHandoffImageResources,
 } from "../../session-logic";
+import type { EnvironmentThread } from "@t3tools/client-runtime/state/models";
+
+import { HELD_READ_EVERY_MS, useHeld } from "./heldRead";
 import { useThread, useThreadDetail, useThreadShell, useThreadStatus } from "../../state/entities";
 import { useEnvironmentThread } from "../../state/threads";
 import { deriveZeropsThreadModel } from "../../state/zerops";
@@ -78,19 +81,54 @@ const NO_ACTIVITIES: [] = [];
 const NO_ATTACHMENT_HANDOFF = {};
 const NO_AGENTS = emptyAgentPanelModel();
 
-/** `openEnvironmentId` stands in for its pictures' environment until its key is read. */
+/**
+ * Where a held read takes its conversation anew (`useHeld`): a turn starting,
+ * ending or failing, the session changing state.
+ */
+export function warmReadBeat(thread: EnvironmentThread | null): string {
+  if (thread === null) return "";
+  const turn = thread.latestTurn;
+  return [
+    turn?.turnId ?? "",
+    turn?.state ?? "",
+    turn?.completedAt ?? "",
+    thread.session?.status ?? "",
+    thread.session?.activeTurnId ?? "",
+  ].join("|");
+}
+
+/**
+ * `openEnvironmentId` stands in for its pictures' environment until its key
+ * is read. `hold`: a list out of sight that nobody is about to open reads its
+ * conversation at once as a turn starts or ends (`warmReadBeat`), and what
+ * streams there about once a second (`HELD_READ_EVERY_MS`), never on every
+ * word; let go, it reads live at once.
+ */
 export function useWarmTimeline(
   threadKey: string | null,
   openEnvironmentId: EnvironmentId,
+  hold = false,
 ): WarmTimelineProps | null {
   const ref = useMemo(
     () => (threadKey === null ? null : parseScopedThreadKey(threadKey)),
     [threadKey],
   );
-  const thread = useThread(ref);
-  const detail = useThreadDetail(ref);
-  const shell = useThreadShell(ref);
-  const status = useThreadStatus(ref);
+  const liveThread = useThread(ref);
+  const liveDetail = useThreadDetail(ref);
+  const liveShell = useThreadShell(ref);
+  const liveStatus = useThreadStatus(ref);
+  const live = useMemo(
+    () => ({ thread: liveThread, detail: liveDetail, shell: liveShell, status: liveStatus }),
+    [liveThread, liveDetail, liveShell, liveStatus],
+  );
+  const read = useHeld(
+    live,
+    // Until its conversation has loaded, it reads every change: it fills.
+    hold && liveThread?.checkpoints !== undefined,
+    warmReadBeat(liveThread),
+    HELD_READ_EVERY_MS,
+  );
+  const { thread, detail, shell, status } = read;
   const environmentId = ref?.environmentId ?? null;
   const threadId = ref?.threadId ?? null;
   const activities = thread?.activities ?? NO_ACTIVITIES;

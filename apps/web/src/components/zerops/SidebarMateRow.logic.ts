@@ -14,6 +14,7 @@ import {
 import { CREW_SET_UP_WORD } from "@t3tools/client-runtime/zerops/crew/phrases";
 import type { CrewStatus } from "@t3tools/contracts";
 import type { MateMarkState } from "@t3tools/shared/brand";
+import { shareEqual } from "@t3tools/shared/structuralSharing";
 
 import {
   mateFaceAwaitingReview,
@@ -26,6 +27,32 @@ import { nowLineWords } from "../chat/runCard.logic";
 import type { SentAsk } from "~/zerops/sentAsk";
 
 import { formatWorkingTime } from "./SidebarZeropsTree.logic";
+
+/**
+ * The props a Mate's row is handed read anew on each draw of the menu — whose it is, whether it
+ * is still coming up — and compared by what they say. Every other prop is the same value or a
+ * change: the activity, the menu and the verbs stand while they say the same (`matesActivityOf`).
+ */
+const READ_ANEW: ReadonlySet<string> = new Set(["owner", "coming", "crew"]);
+
+/**
+ * Whether a memoised Mate's row may skip its redraw: every prop the same, the ones read anew
+ * (`READ_ANEW`) the same in what they say. A streaming Mate redraws the menu on every event of
+ * its chat; only the rows whose own props changed redraw with it, and switching Mates redraws the
+ * two whose `active` changed.
+ */
+export function mateRowPropsEqual<P extends object>(previous: P, next: P): boolean {
+  const before = previous as Record<string, unknown>;
+  const after = next as Record<string, unknown>;
+  const keys = Object.keys(after);
+  if (keys.length !== Object.keys(before).length) return false;
+  return keys.every(
+    (key) =>
+      Object.hasOwn(before, key) &&
+      (Object.is(before[key], after[key]) ||
+        (READ_ANEW.has(key) && shareEqual(before[key], after[key]) === before[key])),
+  );
+}
 
 /** Whose Mate it is, as the mark before its name draws it. */
 export interface OwnerMark {

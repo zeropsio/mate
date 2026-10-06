@@ -161,6 +161,30 @@ const secretLike = (value: string) =>
  * stays, so the words still say what was there.
  */
 export function maskSecrets(text: string): string {
+  const known = maskedTexts.get(text);
+  if (known !== undefined) {
+    // Most recently used last: the oldest is what a full cache lets go.
+    maskedTexts.delete(text);
+    maskedTexts.set(text, known);
+    return known;
+  }
+  const masked = maskSecretsOnce(text);
+  if (maskedTexts.size >= MASKED_TEXTS_HELD) {
+    maskedTexts.delete(maskedTexts.keys().next().value!);
+  }
+  maskedTexts.set(text, masked);
+  return masked;
+}
+
+/**
+ * The texts lately masked: the menu, the projects page and a conversation's
+ * panel each mask every Mate's previews on every render, and those previews
+ * change only when a message completes.
+ */
+const MASKED_TEXTS_HELD = 512;
+const maskedTexts = new Map<string, string>();
+
+function maskSecretsOnce(text: string): string {
   let masked = text;
   for (const shape of SHAPED_SECRETS) masked = masked.replace(shape, SECRET_MASK);
   masked = masked.replace(BEARER, `$1 ${SECRET_MASK}`).replace(URL_PASSWORD, `$1${SECRET_MASK}$3`);

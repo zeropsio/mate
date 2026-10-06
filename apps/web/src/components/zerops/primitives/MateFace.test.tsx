@@ -43,7 +43,7 @@ describe("MateFace", () => {
     // It turns about its own centre, a notch of its own symmetry.
     expect(html).toContain(`--mate-face-step:${MATE_SHAPES[shape].step}deg`);
     expect(html).toContain(
-      `--mate-face-origin:${MATE_SHAPES[shape].origin[0]}px ${MATE_SHAPES[shape].origin[1]}px`,
+      `--mate-face-origin:${MATE_SHAPES[shape].origin[0]}% ${MATE_SHAPES[shape].origin[1]}%`,
     );
     // The eyes are ink from the palette, never a literal.
     expect(html).toContain("fill-[var(--zerops-mate-face-ink)]");
@@ -64,7 +64,7 @@ describe("MateFace", () => {
     expect(html).toContain(`d="${MATE_SHAPES[shape].d}"`);
     expect(html).toContain(`--mate-face-step:${MATE_SHAPES[shape].step}deg`);
     expect(html).toContain(
-      `--mate-face-origin:${MATE_SHAPES[shape].origin[0]}px ${MATE_SHAPES[shape].origin[1]}px`,
+      `--mate-face-origin:${MATE_SHAPES[shape].origin[0]}% ${MATE_SHAPES[shape].origin[1]}%`,
     );
   });
 
@@ -75,6 +75,26 @@ describe("MateFace", () => {
       ),
     );
   });
+
+  // Chrome hands a running animation to the compositor only on an HTML box, never on an SVG
+  // element: every part that moves on its own (the hop, the turn, the look, the glance) is a box
+  // of its own over the whole face, each holding its drawing in the same 100-box, so a menu of
+  // faces at work costs the page no frames.
+  it.each<MateMarkState>(["idle", "working", "needs", "done", "sleep", "waking"])(
+    "moves %s as HTML boxes over one 100-box",
+    (state) => {
+      const html = renderToStaticMarkup(<MateFace state={state} tint="sky" />);
+      const tagsOf = (part: string) =>
+        [...html.matchAll(new RegExp(`<(\\w+) [^>]*data-mate-face-${part}=""`, "gu"))].map(
+          (match) => match[1],
+        );
+      for (const part of ["hop", "body", "look", "glance"]) expect(tagsOf(part)).toEqual(["span"]);
+      expect(html).toMatch(/^<span [^>]*data-zerops-primitive="mate-face"/u);
+      const boxes = [...html.matchAll(/<svg [^>]*>/gu)].map((match) => match[0]);
+      expect(boxes.length).toBeGreaterThan(1);
+      for (const box of boxes) expect(box).toContain(`viewBox="${MATE_FACE.viewBox}"`);
+    },
+  );
 
   it("is decorative: the name and the word beside it carry the meaning", () => {
     const html = renderToStaticMarkup(<MateFace state="idle" tint="coral" />);
@@ -173,7 +193,9 @@ describe("MateFace", () => {
   it("greets no arrival from a pose that only stood in until the state was read", () => {
     (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
     const arrivedOf = (renderer: ReturnType<typeof create>) =>
-      renderer.root.findByType("svg").props["data-mate-face-arrived"];
+      renderer.root.findByProps({ "data-zerops-primitive": "mate-face" }).props[
+        "data-mate-face-arrived"
+      ];
     let renderer: ReturnType<typeof create> | undefined;
     // A menu row after a reload: idle until its socket answers that the Mate waits.
     act(() => {
@@ -198,7 +220,11 @@ describe("MateFace", () => {
       renderer = create(<MateFace state="working" tint="rose" />);
     });
     act(() => renderer!.update(<MateFace state="needs" tint="rose" />));
-    expect(renderer!.root.findByType("svg").props["data-mate-face-arrived"]).toBeUndefined();
+    expect(
+      renderer!.root.findByProps({ "data-zerops-primitive": "mate-face" }).props[
+        "data-mate-face-arrived"
+      ],
+    ).toBeUndefined();
     act(() => renderer!.unmount());
   });
 

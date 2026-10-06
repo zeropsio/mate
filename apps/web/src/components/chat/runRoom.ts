@@ -172,6 +172,11 @@ interface Box {
   target: number;
   /** Its height as last laid out at rest: where an ease starts. */
   rested: number;
+  /**
+   * Changed while nobody could see it (`away`), unread: what it showed then
+   * is unknown, so the next change heard in sight takes its height at once.
+   */
+  stale: boolean;
 }
 
 export function easeRooms({
@@ -256,8 +261,24 @@ export function easeRooms({
     show(box, null);
     box.rested = heightOf(box.element);
   };
+  /**
+   * Nobody sees the card: a tab out of sight, or a conversation's list kept
+   * out of sight (`KeptTimelines`), which may not even be laid out. Its boxes
+   * read nothing — a reading there lays out a list nobody shows — and let go
+   * of any height they held.
+   */
+  const away = () => outOfSight() || root.closest("[data-kept-timeline]") !== null;
+  const letGo = (box: Box) => {
+    if (box.shown !== null) show(box, null);
+    box.stale = true;
+  };
   const step = (now: number) => {
     frame = 0;
+    if (away()) {
+      for (const box of boxes.values()) if (box.shown !== null) letGo(box);
+      last = 0;
+      return;
+    }
     const dt = last === 0 ? 1000 / 60 : now - last;
     last = now;
     let easing = false;
@@ -283,6 +304,13 @@ export function easeRooms({
   };
   /** What `box` holds changed: it eases from what it showed to its new height. */
   const heard = (box: Box) => {
+    if (box.stale) {
+      // What it showed while nobody saw it is not known: it is simply there.
+      box.stale = false;
+      if (box.shown !== null) release(box);
+      else box.rested = natural(box);
+      return;
+    }
     const height = natural(box);
     if (!eases() || prefersReducedMotion() || outOfSight()) {
       if (box.shown !== null) release(box);
@@ -309,7 +337,14 @@ export function easeRooms({
   });
   const add = (element: HTMLElement, clips: boolean) => {
     if (boxes.has(element)) return;
-    boxes.set(element, { element, clips, shown: null, target: 0, rested: heightOf(element) });
+    boxes.set(element, {
+      element,
+      clips,
+      shown: null,
+      target: 0,
+      rested: heightOf(element),
+      stale: false,
+    });
     sizes.observe(element);
   };
   add(root, rootClips);
@@ -339,6 +374,10 @@ export function easeRooms({
       sizes.unobserve(box.element);
       boxes.delete(element);
       touched.delete(box);
+    }
+    if (touched.size > 0 && away()) {
+      for (const box of touched) letGo(box);
+      return;
     }
     // The innermost first: one holding it then hears it at the height it shows.
     const order = [...touched].sort((a, b) => depthOf(b.element) - depthOf(a.element));

@@ -1,5 +1,27 @@
 import * as Arr from "effect/Array";
 import type { OrchestrationShellSnapshot, OrchestrationShellStreamEvent } from "@t3tools/contracts";
+import { shareEqual } from "@t3tools/shared/structuralSharing";
+
+/**
+ * `items` with `next` upserted by id. An upsert equal to what the list holds
+ * keeps the list itself, and a changed one keeps its unchanged parts
+ * (`shareEqual`): a streaming thread's server re-sends its whole shell up to
+ * every 50 ms, mostly to move `updatedAt`, and every reader compares by
+ * reference — the open conversation's turn and session, the menu's rows.
+ */
+function upsertShared<T extends { readonly id: string }>(
+  items: ReadonlyArray<T>,
+  next: T,
+): ReadonlyArray<T> {
+  const index = items.findIndex((item) => item.id === next.id);
+  if (index === -1) return Arr.append(items, next);
+  const previous = items[index]!;
+  const shared = shareEqual(previous, next);
+  if (shared === previous) return items;
+  const out = items.slice();
+  out[index] = shared;
+  return out;
+}
 
 /**
  * Reduce a single shell stream event into an existing snapshot, returning a new
@@ -17,9 +39,7 @@ export function applyShellStreamEvent(
 
   switch (event.kind) {
     case "project-upserted": {
-      const projects = snapshot.projects.some((p) => p.id === event.project.id)
-        ? Arr.map(snapshot.projects, (p) => (p.id === event.project.id ? event.project : p))
-        : Arr.append(snapshot.projects, event.project);
+      const projects = upsertShared(snapshot.projects, event.project);
       return { ...snapshot, projects, snapshotSequence: event.sequence };
     }
     case "project-removed":
@@ -29,9 +49,7 @@ export function applyShellStreamEvent(
         snapshotSequence: event.sequence,
       };
     case "thread-upserted": {
-      const threads = snapshot.threads.some((t) => t.id === event.thread.id)
-        ? Arr.map(snapshot.threads, (t) => (t.id === event.thread.id ? event.thread : t))
-        : Arr.append(snapshot.threads, event.thread);
+      const threads = upsertShared(snapshot.threads, event.thread);
       return { ...snapshot, threads, snapshotSequence: event.sequence };
     }
     case "thread-removed":

@@ -1230,7 +1230,7 @@ describe("a Mate's face follows its work in the menu", () => {
     task: "Add a size guide to the product page",
   };
   const faceOf = (html: string) =>
-    /<svg[^>]*data-mate-face-state="([a-z]+)"/u.exec(
+    /data-mate-face-state="([a-z]+)"/u.exec(
       html.slice(html.indexOf('data-zerops-surface="sidebar-mate"')),
     )?.[1];
 

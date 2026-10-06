@@ -26,7 +26,13 @@ describe("markBandTarget", () => {
 function fakePage({
   reduced: reducedAtFirst = false,
   height = 33,
-}: { readonly reduced?: boolean; readonly height?: number } = {}) {
+  laysOut = false,
+}: {
+  readonly reduced?: boolean;
+  readonly height?: number;
+  /** Whether the page offers the loop a turn once it is laid out (`afterLayout`), as a browser's does. */
+  readonly laysOut?: boolean;
+} = {}) {
   let clock = 0;
   let reduced = reducedAtFirst;
   /** Where the mark's box stands; a test moves it to stand for a layout change. */
@@ -34,7 +40,10 @@ function fakePage({
   let nextHandle = 1;
   const frames = new Map<number, (now: number) => void>();
   const timers = new Map<number, { readonly at: number; readonly run: () => void }>();
-  const log = { frames: 0, writes: 0, writesTo: new Map<string, number>() };
+  const log = { frames: 0, writes: 0, writesTo: new Map<string, number>(), readsInFrame: 0 };
+  /** What waits for the page to be laid out: run after each frame's callbacks. */
+  let laidOut: Array<() => void> = [];
+  let inFrame = false;
 
   const host: MarkLoopHost = {
     now: () => clock,
@@ -53,6 +62,13 @@ function fakePage({
     reducedMotion: () => reduced,
     random: () => 0.5,
     viewport: () => ({ width: 1786, height: 1000 }),
+    ...(laysOut
+      ? {
+          afterLayout: (callback: () => void) => {
+            laidOut.push(callback);
+          },
+        }
+      : {}),
   };
 
   const node = (name: string) => {
@@ -97,7 +113,10 @@ function fakePage({
       },
       addEventListener: (type: string, listener: () => void) => listeners.set(type, listener),
       removeEventListener: (type: string) => listeners.delete(type),
-      getBoundingClientRect: () => ({ left: box.left, top: box.top, width: height * 0.85, height }),
+      getBoundingClientRect: () => {
+        if (inFrame) log.readsInFrame += 1;
+        return { left: box.left, top: box.top, width: height * 0.85, height };
+      },
     };
   };
 
@@ -143,10 +162,15 @@ function fakePage({
       }
       const due = [...frames.values()];
       frames.clear();
+      inFrame = true;
       for (const run of due) {
         log.frames += 1;
         run(clock);
       }
+      inFrame = false;
+      const waiting = laidOut;
+      laidOut = [];
+      for (const run of waiting) run();
     }
     return { frames: log.frames - before.frames, writes: log.writes - before.writes };
   };
@@ -281,18 +305,40 @@ describe("the live mark's loop", () => {
     expect(svg.attributes.get("data-mate-mark-bob")).toBe("on");
   });
 
-  it("keeps measuring for a moment after a press, so a layout it shifts is caught", () => {
-    const page = fakePage();
+  it.each([
+    { name: "read in the frame", laysOut: false },
+    { name: "read once laid out", laysOut: true },
+  ])(
+    "keeps measuring for a moment after a press, so a layout it shifts is caught ($name)",
+    ({ laysOut }) => {
+      const page = fakePage({ laysOut });
+      const { parts } = page.mount(undefined, { awake: true });
+      page.loop.pointerMove(900, 140);
+      page.advance(2_000);
+      const aimed = parts.eyeLeft.attributes.get("x");
+      // The press toggles a panel: the mark's box moves a frame or two later, the pointer stays.
+      page.loop.pointerDown(900, 140);
+      page.advance(32);
+      page.box.left = 700;
+      page.advance(2_000);
+      expect(parts.eyeLeft.attributes.get("x")).not.toBe(aimed);
+      expect(page.pending().frames).toBe(0);
+    },
+  );
+
+  // A frame comes before the page's last draw is laid out: a box read there forces that layout.
+  it("reads a mark's box only once the page is laid out, and poses it from there", () => {
+    const page = fakePage({ laysOut: true });
     const { parts } = page.mount(undefined, { awake: true });
     page.loop.pointerMove(900, 140);
     page.advance(2_000);
     const aimed = parts.eyeLeft.attributes.get("x");
-    // The press toggles a panel: the mark's box moves a frame or two later, the pointer stays.
+    expect(aimed).toBeDefined();
     page.loop.pointerDown(900, 140);
-    page.advance(32);
     page.box.left = 700;
     page.advance(2_000);
     expect(parts.eyeLeft.attributes.get("x")).not.toBe(aimed);
+    expect(page.log.readsInFrame).toBe(0);
     expect(page.pending().frames).toBe(0);
   });
 
