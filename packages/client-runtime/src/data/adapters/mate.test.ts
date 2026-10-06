@@ -306,7 +306,7 @@ describe("makeMateAdapter", () => {
     expect(exchanges.map((exchange) => exchange.key)).toEqual(["p1:zcp"]);
   });
 
-  // The owner's load in KRLS, 2026-10-06: every listed Mate's descriptor and healthz were read,
+  // Reading every listed Mate's descriptor and health check repeats remote work,
   // the stopped and unready ones failing with CORS errors in the console.
   it("reads a Mate once per connection attempt: the door's descriptor read stands for its container", async () => {
     const { adapter, store, probes, exchanges } = rig();

@@ -68,11 +68,15 @@ function apply(state: AccountState, inputs: ReadonlyArray<AccountInput>): Accoun
 }
 
 describe("reduceAccount", () => {
-  it("runs a Mate's link sampled, and every organization's link in realtime", () => {
-    expect(streamOf(emptyAccount, linkKeys.mate("p1")).mode).toBe("sampled");
-    expect(streamOf(emptyAccount, "mate:p1:link").mode).toBe("sampled");
-    expect(streamOf(emptyAccount, linkKeys.zerops(ORG)).mode).toBe("realtime");
-    expect(streamOf(emptyAccount, linkKeys.hq(ORG)).mode).toBe("realtime");
+  it.each([
+    { key: linkKeys.mate("p1"), mode: "sampled" },
+    { key: "mate:p1:link", mode: "sampled" },
+    { key: linkKeys.zerops(ORG), mode: "realtime" },
+    { key: linkKeys.hq(ORG), mode: "realtime" },
+    { key: `zerops:${ORG}:routing`, mode: "sampled" },
+    { key: `zerops:${ORG}:members`, mode: "once" },
+  ] as const)("runs $key in its declared $mode mode", ({ key, mode }) => {
+    expect(streamOf(emptyAccount, key).mode).toBe(mode);
   });
 
   it("keeps the newer Zerops version of a row whichever order the rows arrive in", () => {

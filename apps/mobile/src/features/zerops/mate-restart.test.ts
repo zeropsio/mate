@@ -8,7 +8,6 @@ import { EnvironmentId } from "@t3tools/contracts";
 import {
   makeAccountRuntime,
   type AccountEnvironmentPorts,
-  type AccountEnvironments,
   type CatalogListener,
   type DoorRequest,
 } from "@t3tools/client-runtime/zerops/account/runtime";
@@ -281,7 +280,7 @@ const openMobileAccount = Effect.fnUntraced(function* (clock: DeadlineClock) {
   let serviceVersion = 1;
 
   /** The Mate's row in the picker, as it reads the runtime's machines now. */
-  const row = (environments: AccountEnvironments) => {
+  const row = () => {
     const nowMs = clock.wallMs();
     const listing = mobileCandidates({
       organizations: [
@@ -405,7 +404,7 @@ describe("a Mate on mobile", () => {
         yield* clock.advance(SECOND);
         yield* settle;
 
-        const { environments } = yield* account.built.postGrant;
+        yield* account.built.postGrant;
         expect(account.exchanges.map(({ key, reason }) => ({ key, reason }))).toEqual([
           { key: KEY, reason: "restore" },
         ]);
@@ -428,10 +427,10 @@ describe("a Mate on mobile", () => {
           yield* settle;
           yield* clock.advance(SECOND);
           yield* settle;
-          const { environments } = yield* account.built.postGrant;
+          yield* account.built.postGrant;
           account.catalog().link(ENVIRONMENT_ID, { phase: "connected" });
           yield* settle;
-          expect(account.row(environments)).toMatchObject({ label: "Connected", action: "Open" });
+          expect(account.row()).toMatchObject({ label: "Connected", action: "Open" });
 
           // Zerops restarts the container: the socket drops and the Mate stops answering.
           yield* clock.advance(10 * SECOND);
@@ -440,7 +439,7 @@ describe("a Mate on mobile", () => {
           account.catalog().link(ENVIRONMENT_ID, { phase: "backoff", retryAtMs: null });
           yield* settle;
 
-          expect(account.row(environments)).toMatchObject({
+          expect(account.row()).toMatchObject({
             label: "Restarting",
             notice: "Zerops is restarting this Mate.",
             action: null,
@@ -454,7 +453,7 @@ describe("a Mate on mobile", () => {
           account.catalog().link(ENVIRONMENT_ID, { phase: "connected" });
           yield* settle;
 
-          expect(account.row(environments)).toMatchObject({ label: "Connected", action: "Open" });
+          expect(account.row()).toMatchObject({ label: "Connected", action: "Open" });
           // The credential it held reconnected: no exchange beyond the restore, no Connect.
           expect(account.exchanges.map(({ reason }) => reason)).toEqual(["restore"]);
         }),
