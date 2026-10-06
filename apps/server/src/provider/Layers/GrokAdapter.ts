@@ -2071,12 +2071,13 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
               yield* Ref.set(promptEndedTurnRef, endedTurn);
             }).pipe(Effect.ignore),
           ),
-          // The prompt's settling above ended the turn failed — the turn this
-          // send opened or the one it steered: its failure is that turn's.
+          // A turn this send opened is always its own failure's, even when a
+          // crash's own stop settled it first; a steered turn is, once the
+          // prompt's settling above ended it failed.
           Effect.catch((error) =>
             Ref.get(promptEndedTurnRef).pipe(
               Effect.flatMap((endedTurn): Effect.Effect<never, ProviderAdapterError> =>
-                endedTurn
+                endedTurn || prepared.steeringTurnId === undefined
                   ? Effect.fail(
                       new ProviderAdapterTurnEndedError({
                         provider: PROVIDER,
