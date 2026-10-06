@@ -3,7 +3,8 @@
  * and its organizations' HQs' — under the account's scoped `localStorage`. The door's exchange
  * presents a Mate's again (`environmentPorts.ts`), HQ's API its own (`accountHq.ts`), and no kept
  * session outlives the login it was opened under: the account's close ends every one where it was
- * issued however the account closes.
+ * issued however the account closes — once no other tab of this origin holds the account open, for
+ * a tab's sign-out is its own and the sessions are its neighbours' too.
  */
 import type { BearerConnectionRegistration } from "@t3tools/client-runtime/connection";
 import {
@@ -11,10 +12,17 @@ import {
   makeKeptSessions,
   MATE_SESSIONS,
   type KeptHqSession,
+  type KeptSessionKind,
 } from "@t3tools/client-runtime/zerops/keptSessions";
 import { AuthZeropsClientScopes, type AuthSessionState } from "@t3tools/contracts";
 
-import { accountLocalStorage, onAccountLifetimeClose } from "./accountLifetime";
+import {
+  accountLocalStorage,
+  accountStorageKey,
+  currentAccountId,
+  onAccountLifetimeClose,
+  onAccountLifetimeOpen,
+} from "./accountLifetime";
 
 const nowEpochMs = () => Date.now();
 
@@ -77,9 +85,68 @@ export function keptSessionHeld(state: AuthSessionState): boolean {
   );
 }
 
+/** The shared Web Lock every tab holds on the account it has open. */
+const accountOpenLock = (accountId: string) => `mate:account-open:${accountId}`;
+
+/** The origin's Web Locks; absent outside a secure context, where a tab's close decides alone. */
+function webLocks(): LockManager | undefined {
+  return typeof navigator === "undefined" ? undefined : navigator.locks;
+}
+
+/** This tab's hold on the account it has open, let go as the account closes. */
+let openHold: { readonly release: () => void; readonly released: Promise<void> } | null = null;
+
+onAccountLifetimeOpen(() => {
+  const locks = webLocks();
+  const accountId = currentAccountId();
+  if (locks === undefined || accountId === null) return;
+  let release!: () => void;
+  const holding = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const released = locks
+    .request(accountOpenLock(accountId), { mode: "shared" }, () => holding)
+    .then(
+      () => undefined,
+      () => undefined,
+    );
+  openHold = { release, released };
+});
+
+/** The sessions of one kind kept under `key`, still readable once their account has closed. */
+function keptUnder<T, E>(key: string, kind: KeptSessionKind<T, E>) {
+  return makeKeptSessions(
+    {
+      getItem: () => window.localStorage.getItem(key),
+      setItem: (_name, value) => window.localStorage.setItem(key, value),
+      removeItem: () => window.localStorage.removeItem(key),
+    },
+    nowEpochMs,
+    kind,
+  );
+}
+
 // However the account closes — signed out, replaced, its login refused while open — it ends every
-// session it kept, whether or not this tab ever built a connection runtime or reached HQ.
+// session it kept, whether or not this tab ever built a connection runtime or reached HQ; where
+// another tab still holds the account open, that tab's close does.
 onAccountLifetimeClose(() => {
-  for (const registration of keptSessions.drain()) endKeptSession(registration);
-  for (const session of keptHqSessions.drain()) endHqSession(session);
+  const accountId = currentAccountId();
+  const mateKey = accountStorageKey(MATE_SESSIONS.storageKey);
+  const hqKey = accountStorageKey(HQ_SESSIONS.storageKey);
+  if (accountId === null || mateKey === null || hqKey === null) return;
+  const endKept = () => {
+    for (const registration of keptUnder(mateKey, MATE_SESSIONS).drain())
+      endKeptSession(registration);
+    for (const session of keptUnder(hqKey, HQ_SESSIONS).drain()) endHqSession(session);
+  };
+  const hold = openHold;
+  openHold = null;
+  hold?.release();
+  const locks = webLocks();
+  if (locks === undefined) return endKept();
+  void (hold?.released ?? Promise.resolve()).then(() =>
+    locks.request(accountOpenLock(accountId), { ifAvailable: true }, (lock) => {
+      if (lock !== null) endKept();
+    }),
+  );
 });

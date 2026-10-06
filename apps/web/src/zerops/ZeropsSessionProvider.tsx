@@ -41,6 +41,8 @@ import {
 } from "@t3tools/client-runtime/zerops/account";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
 import { rememberBootFrame } from "./bootFrame";
+// Its account hooks hold the account open and end its kept sessions: loaded before any account opens.
+import "./keptSessions";
 import {
   useCallback,
   useEffect,

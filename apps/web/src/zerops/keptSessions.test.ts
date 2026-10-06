@@ -108,8 +108,77 @@ describe("a Mate gone from the platform's listing", () => {
   });
 });
 
+/**
+ * An origin's Web Locks as the account's close uses them: shared holds, and an exclusive request
+ * that answers at once whether anyone else holds the name.
+ */
+function fakeLocks() {
+  const holders = new Map<string, { readonly mode: LockMode; count: number }>();
+  const request = async <T>(
+    name: string,
+    options: { readonly mode?: LockMode; readonly ifAvailable?: boolean },
+    callback: (lock: { readonly name: string } | null) => Promise<T> | T,
+  ): Promise<T> => {
+    const mode = options.mode ?? "exclusive";
+    const held = holders.get(name);
+    if (held !== undefined && (mode === "exclusive" || held.mode === "exclusive")) {
+      if (options.ifAvailable === true) return callback(null);
+      throw new Error(`The fake does not queue: ${name} is held.`);
+    }
+    const hold = held ?? { mode, count: 0 };
+    hold.count += 1;
+    holders.set(name, hold);
+    try {
+      return await callback({ name });
+    } finally {
+      hold.count -= 1;
+      if (hold.count === 0) holders.delete(name);
+    }
+  };
+  return { request };
+}
+
+/** Lets the close's lock requests and the ends they decide run. */
+const settleLocks = () => new Promise((resolve) => setTimeout(resolve, 0));
+
 describe("no kept session outlives the login it was opened under", () => {
-  it("the account's close ends every live kept session at its Mate, each once", () => {
+  // L08: one tab's sign-out revoked the sessions a neighbouring tab of the same account still used.
+  it("the account's close leaves its kept sessions to another tab that holds it open", async () => {
+    const locks = fakeLocks();
+    vi.stubGlobal("navigator", { locks });
+    let otherTabCloses!: () => void;
+    void locks.request(
+      "mate:account-open:person-1",
+      { mode: "shared" },
+      () =>
+        new Promise<void>((resolve) => {
+          otherTabCloses = resolve;
+        }),
+    );
+    lifetime.openAccountLifetime("person-1");
+    kept.keptSessions.keep("p1:zcp", session("shop"));
+
+    lifetime.closeAccountLifetime();
+    await settleLocks();
+
+    expect(fetched).toEqual([]);
+    lifetime.openAccountLifetime("person-1");
+    expect(kept.keptSessions.read("p1:zcp")).not.toBeNull();
+
+    otherTabCloses();
+    lifetime.closeAccountLifetime();
+    await settleLocks();
+
+    expect(fetched).toEqual([
+      {
+        url: "https://shop.example.test/mate/api/auth/logout",
+        authorization: "Bearer session-shop",
+      },
+    ]);
+    expect([...values.keys()].some((key) => key.endsWith(KEPT_SESSIONS_KEY))).toBe(false);
+  });
+
+  it("the account's close ends every live kept session at its Mate, each once", async () => {
     lifetime.openAccountLifetime("person-1");
     kept.keptSessions.keep("p1:zcp", session("shop"));
     kept.keptSessions.keep("p2:zcp", session("blog"));
@@ -118,6 +187,7 @@ describe("no kept session outlives the login it was opened under", () => {
     kept.endKeptSession(session("shop"));
 
     lifetime.closeAccountLifetime();
+    await settleLocks();
 
     expect(fetched).toEqual([
       {

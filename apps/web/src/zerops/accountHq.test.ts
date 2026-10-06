@@ -559,6 +559,8 @@ describe("accountHqApi — HQ's session, kept as the Mates' sessions are", () =>
     await accountHqApi(load().client, "org-1", HQ).structure();
 
     closeAccountLifetime();
+    // The close ends the account's sessions once no other tab holds it open.
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(calls.at(-1)).toEqual({
       method: "DELETE",
