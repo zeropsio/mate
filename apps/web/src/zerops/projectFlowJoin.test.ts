@@ -10,6 +10,7 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import { jobInFlight, type HqJob } from "@t3tools/client-runtime/zerops/hq";
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
+import type { HqNavigationApp } from "@t3tools/shared/hqStream";
 import type { Release, ReleaseRollout } from "@t3tools/shared/hqRelease";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -64,6 +65,8 @@ const record = (sha: string, state: HqJob["state"], at: string): HqJob => ({
 });
 
 function join(input: {
+  readonly navigationOffers?: Readonly<Record<string, HqNavigationApp["releaseOffer"]>> | undefined;
+  readonly review?: boolean;
   readonly stops?: ReadonlyMap<string, GroupStops>;
   readonly releases?: ReadonlyMap<string, ReadonlyArray<Release>>;
   readonly repos?: ReadonlyMap<string, ReadonlyArray<RepoListEntry>>;
@@ -81,6 +84,16 @@ function join(input: {
 }) {
   return joinProjectFlows({
     groups: GROUPS,
+    navigationOffers: input.navigationOffers ?? {
+      g1: {
+        head: null,
+        suggestion: "v0.1.0",
+        gate: { allow: false, reason: RELEASE_NO_PRODUCTION },
+        inFlight: null,
+        summary: { total: 0, more: 0, subjects: [], atLeast: false },
+      },
+    },
+    review: input.review,
     stops: input.stops ?? new Map(),
     releases: input.releases ?? new Map(),
     repos: input.repos ?? new Map(),
@@ -200,6 +213,21 @@ describe("joinProjectFlows", () => {
       readonly withheld?: ReadonlyMap<string, string>;
     }) =>
       join({
+        review: true,
+        navigationOffers: {
+          g1:
+            over.permission === undefined
+              ? null
+              : {
+                  head: GROUP_MAIN,
+                  suggestion: "v0.1.1",
+                  inFlight: null,
+                  gate: over.permission.allowed
+                    ? { allow: true }
+                    : { allow: false, reason: "production_not_writable" },
+                  summary: { total: 1, more: 0, subjects: ["Quicker gallery"], atLeast: false },
+                },
+        },
         stops: new Map([["g1", stopsOf([production])]]),
         releases: new Map([["g1", [FIRST]]]),
         repos: over.repos === undefined ? new Map() : new Map([["g1", over.repos]]),
@@ -500,6 +528,7 @@ describe("an application with no production", () => {
   const older = approved("v0.1.1", { app: "2".repeat(40) }, "2026-09-24T10:00:00Z");
   const flow = (stops: GroupStops | undefined) =>
     join({
+      navigationOffers: stops === undefined ? { g1: null } : undefined,
       stops: stops === undefined ? new Map() : new Map([["g1", stops]]),
       releases: new Map([["g1", [older, FIRST]]]),
       permissions: new Map([["g1", { allowed: true }]]),

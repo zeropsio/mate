@@ -36,6 +36,7 @@ const app = (environments: unknown): Row =>
       projectIds: ["stage"],
       births: [],
       changes: [],
+      releaseOffer: null,
       environments,
     },
   }) as Row;

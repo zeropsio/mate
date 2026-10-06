@@ -23,6 +23,7 @@ const app = (id: string, name: string): HqAppValue => ({
   births: [],
   environments: [],
   changes: [],
+  releaseOffer: null,
 });
 const project = (projectId: string, appId: string | null): PlacementValue => ({
   projectId,

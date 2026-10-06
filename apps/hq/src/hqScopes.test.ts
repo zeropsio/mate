@@ -379,6 +379,7 @@ const fixture = Effect.gen(function* () {
       listComments: () => Effect.succeed([]),
     } as unknown as Changes["Service"]),
     Layer.succeed(Releases, {
+      navigation: Effect.succeed({ fingerprints: new Map(), forApp: () => null }),
       changes: Stream.empty,
       list: () =>
         Effect.sync(() => {

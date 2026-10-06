@@ -18,7 +18,8 @@ import {
   releaseInFlight,
   releaseStalled,
   releaseCandidate,
-  releaseOffer,
+  compareForRelease,
+  releaseEntries,
   releaseRow,
   type AppRecipe,
   type CompareReads,
@@ -33,7 +34,7 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import { hqRefusalWords } from "@t3tools/client-runtime/zerops/hq";
 import type { HqChange, RepoListEntry } from "@t3tools/shared/hqChanges";
-import type { HqNavigationChange } from "@t3tools/shared/hqStream";
+import type { HqNavigationApp, HqNavigationChange } from "@t3tools/shared/hqStream";
 import type { Release } from "@t3tools/shared/hqRelease";
 
 import type { ZeropsProjectFlow } from "./projectFlows";
@@ -178,6 +179,8 @@ const joinedFlows = new WeakMap<
  */
 export function joinProjectFlows(input: {
   readonly groups: ReadonlyArray<{ readonly groupId: string }>;
+  readonly review?: boolean | undefined;
+  readonly navigationOffers?: Readonly<Record<string, HqNavigationApp["releaseOffer"]>> | undefined;
   /** Each group's stops, by its id, while HQ has told its environments. */
   readonly stops: ReadonlyMap<string, GroupStops>;
   /** Each group's releases as HQ records them, newest first, by its id, once HQ answered. */
@@ -207,7 +210,14 @@ export function joinProjectFlows(input: {
     const stops = input.stops.get(group.groupId);
     const records = input.releases.get(group.groupId);
     const changes = input.changes?.get(group.groupId);
-    if (stops === undefined && records === undefined && changes === undefined) continue;
+    const navigationOffer = input.navigationOffers?.[group.groupId];
+    if (
+      stops === undefined &&
+      records === undefined &&
+      changes === undefined &&
+      navigationOffer == null
+    )
+      continue;
     let byReleases = joinedFlows.get(stops ?? UNREAD_HALF);
     if (byReleases === undefined) {
       byReleases = new WeakMap();
@@ -241,6 +251,8 @@ export function joinProjectFlows(input: {
     const live = input.live.get(group.groupId) ?? NOT_ASKED;
     const changesFailure = input.changesRefused.get(group.groupId) ?? input.changesFailure;
     const key = JSON.stringify([
+      navigationOffer,
+      input.review,
       group.groupId,
       deploy.inFlight ?? null,
       deploy.stalled ?? null,
@@ -258,7 +270,7 @@ export function joinProjectFlows(input: {
       flow = projectFlow(
         group,
         { stops, records, changes, changesFailure },
-        { repos, recipe, permission, live },
+        { repos, recipe, permission, live, navigationOffer, review: input.review },
         deploy,
         withheld,
       );
@@ -303,6 +315,8 @@ function projectFlow(
     readonly recipe: AppRecipe | undefined;
     readonly permission: ReleaseGate | undefined;
     readonly live: ReleaseLive;
+    readonly review?: boolean | undefined;
+    readonly navigationOffer?: HqNavigationApp["releaseOffer"] | undefined;
   },
   /** The newest release on its way to production, or stalled there (`releaseInFlight`, `releaseStalled`). */
   deploy: { readonly inFlight: string | undefined; readonly stalled: string | undefined },
@@ -342,15 +356,35 @@ function projectFlow(
     records === undefined || repos === undefined || recipe === undefined
       ? undefined
       : releaseCandidate({ productionRepositories: recipe.productionRepositories, repos });
-  const offer = releaseOffer({
-    permission: read === undefined ? undefined : permission,
-    candidate: read === undefined ? NOTHING_TO_LIST : read.candidate,
-    production: sides.production,
-    inFlight: deploy.inFlight,
-    tags: releaseList.map(({ tag }) => tag),
-    live: live.moved,
-    hasProduction,
-  });
+  const candidate = read?.candidate ?? NOTHING_TO_LIST;
+  const offer = {
+    entries: releaseEntries(candidate),
+    comparison: compareForRelease({ candidate, production: sides.production }),
+    contents: live.moved.state === "known" ? live.moved.moved : [],
+    suggestion: "",
+  };
+  const navigation = offered.navigationOffer;
+  const gate: ReleaseGate =
+    offered.review && (read === undefined || live.moved.state === "reading")
+      ? { allowed: false, reason: "Checking what can be released…" }
+      : offered.review && live.moved.state === "failed"
+        ? {
+            allowed: false,
+            reason: `Can't check what can be released: ${live.moved.reason.replace(/\.$/u, "")}.`,
+          }
+        : navigation == null
+          ? { allowed: false, reason: "Checking what can be released…" }
+          : "refused" in navigation
+            ? {
+                allowed: false,
+                reason: hqRefusalWords({ code: navigation.refused, reason: navigation.refused }),
+                refusedBy: "hq",
+              }
+            : navigation.gate.allow
+              ? { allowed: true }
+              : permission?.allowed === false
+                ? permission
+                : { allowed: false, reason: navigation.gate.reason };
   return {
     groupId: group.groupId,
     declarations: stops?.declarations ?? [],
@@ -371,10 +405,21 @@ function projectFlow(
       productionWithheld === undefined
         ? {
             ...offer,
+            gate,
+            suggestion:
+              navigation != null && !("refused" in navigation)
+                ? navigation.suggestion
+                : offer.suggestion,
+            summary:
+              navigation != null && !("refused" in navigation) ? navigation.summary : undefined,
             comparisonFailure: live.moved.state === "failed" ? live.moved : undefined,
             permission,
             groupHead: read?.groupHead,
             ...deploy,
+            inFlight:
+              navigation != null && !("refused" in navigation)
+                ? (navigation.inFlight ?? deploy.inFlight)
+                : deploy.inFlight,
             untold: live.untold,
             runs: live.runs,
             repositories: recipe?.productionRepositories,

@@ -39,6 +39,7 @@ import { MateOverviews, type MateOverviewEntry } from "./mateOverviews.ts";
 import { Official } from "./official.ts";
 import { navigationRemoval } from "./navigationRemoval.ts";
 import { Recomputes } from "./recomputes.ts";
+import { releaseNavigationOffer, type ReleaseNavigationSource } from "./releaseNavigation.ts";
 import { Releases } from "./releases.ts";
 import { Roles, type OrgView } from "./roles.ts";
 import { makeSourceFence } from "./sourceFence.ts";
@@ -129,6 +130,7 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
   Layer.effect(
     HqScopes,
     Effect.gen(function* () {
+      const hubScope = yield* Effect.scope;
       const structure = yield* Structure;
       const changes = yield* Changes;
       const releases = yield* Releases;
@@ -191,6 +193,9 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
       let source: StructureSource | undefined;
       let environmentSource: EnvironmentSource | undefined;
       let changeSource: ChangeNavigationSource | undefined;
+      let releaseSource: ReleaseNavigationSource | undefined;
+      const releaseFence = makeSourceFence();
+      const releaseOne = yield* Semaphore.make(1);
       let publishedChanges: ChangeNavigationSource | undefined;
       let changeVersion = 0;
       const changeFence = makeSourceFence();
@@ -250,6 +255,27 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
         const { projects, ...navigation } = app;
         return decodeApp({
           ...navigation,
+          releaseOffer: app.can.read_change.allow
+            ? releaseNavigationOffer(releaseSource?.forApp(app.id) ?? null, {
+                permission: app.can.release,
+                hasProduction: projects.some((project) => project.kind === "production"),
+                inFlight: (() => {
+                  const environments = (environmentSource ?? current.environmentSource).forApp(
+                    userId,
+                    app.id,
+                    current.facts,
+                    app.can.read_change,
+                  );
+                  if (!Array.isArray(environments)) return null;
+                  return (
+                    environments.find(
+                      (environment) =>
+                        environment.tier === "production" && environment.release?.ended === false,
+                    )?.release?.tag ?? null
+                  );
+                })(),
+              })
+            : { refused: app.can.read_change.reason },
           changes: app.can.read_change.allow
             ? (changeSource?.forApp(app.id) ?? [])
             : { refused: app.can.read_change.reason },
@@ -671,6 +697,11 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
             entry.dirty = generation !== entry.generation;
             delete entry.failure;
             if (message !== undefined) yield* send(entry, [message]);
+            if (
+              entry.scope.kind === "navigation" &&
+              (releaseSource === undefined || releaseFence.dirty())
+            )
+              yield* Effect.forkIn(refreshReleases, hubScope);
             return;
           }
         }).pipe(
@@ -737,7 +768,10 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
       const invalidate = (kind: "structure" | "detail" | "roles") =>
         Effect.gen(function* () {
           if (kind === "structure" || kind === "roles") sourceFence.invalidate();
-          if (kind === "structure") changeFence.invalidate();
+          if (kind === "structure") {
+            changeFence.invalidate();
+            releaseFence.invalidate();
+          }
           if (kind === "detail" || kind === "structure") contents.clear();
           for (const entry of journals.values()) {
             const affected =
@@ -877,6 +911,35 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
         if (changed.size === 0) return;
         yield* refreshAppValues(changed, version);
       }).pipe(Effect.catch(navigationUnavailable("Environment navigation read unavailable")));
+      const refreshReleases: Effect.Effect<void> = releaseOne
+        .withPermits(1)(
+          Effect.gen(function* () {
+            if (source === undefined || sourceFence.dirty()) return;
+            if (releaseSource !== undefined && !releaseFence.dirty()) return;
+            const version = sourceVersion;
+            let fresh: ReleaseNavigationSource;
+            for (;;) {
+              const started = releaseFence.capture();
+              fresh = yield* releases.navigation;
+              if (releaseFence.accept(started)) break;
+            }
+            if (sourceFence.dirty() || version !== sourceVersion) {
+              releaseFence.invalidate();
+              return;
+            }
+            const changed = new Set(
+              [...source.appIds].filter(
+                (appId) => fresh.fingerprints.get(appId) !== releaseSource?.fingerprints.get(appId),
+              ),
+            );
+            releaseSource = fresh;
+            if (changed.size > 0) yield* refreshAppValues(changed, version);
+          }),
+        )
+        .pipe(
+          Effect.catch(navigationUnavailable("Release navigation read unavailable")),
+          Effect.provideService(Scope.Scope, hubScope),
+        );
       type Signal =
         | { kind: "structure" | "detail" | "roles" | "environment" }
         | { kind: "attention" | "forget"; projectId: string };
@@ -890,11 +953,22 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
           changes.changes.pipe(
             Stream.map((): Signal => {
               changeFence.invalidate();
+              releaseFence.invalidate();
               return { kind: "detail" };
             }),
           ),
-          releases.changes.pipe(Stream.map((): Signal => ({ kind: "environment" }))),
-          deploys.changes.pipe(Stream.map((): Signal => ({ kind: "environment" }))),
+          releases.changes.pipe(
+            Stream.map((): Signal => {
+              releaseFence.invalidate();
+              return { kind: "environment" };
+            }),
+          ),
+          deploys.changes.pipe(
+            Stream.map((): Signal => {
+              releaseFence.invalidate();
+              return { kind: "environment" };
+            }),
+          ),
           overviews.changes.pipe(
             Stream.map((projectId): Signal => ({ kind: "attention", projectId })),
           ),
@@ -931,9 +1005,15 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
             return signal.kind === "attention" || signal.kind === "forget"
               ? refreshAttention(signal.projectId, signal.kind === "forget")
               : signal.kind === "environment"
-                ? Effect.andThen(invalidate("detail"), refreshEnvironments)
+                ? Effect.andThen(
+                    invalidate("detail"),
+                    Effect.andThen(refreshEnvironments, refreshReleases),
+                  )
                 : signal.kind === "detail"
-                  ? Effect.andThen(invalidate("detail"), refreshChanges)
+                  ? Effect.andThen(
+                      invalidate("detail"),
+                      Effect.andThen(refreshChanges, refreshReleases),
+                    )
                   : invalidate(signal.kind);
           }),
         ),
