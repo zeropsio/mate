@@ -1,8 +1,7 @@
-import type { ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
+import type { HqMateOwner } from "@t3tools/client-runtime/data";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 import { EnvironmentId } from "@t3tools/contracts";
-import type { HqPeople } from "@t3tools/shared/hqMates";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -15,29 +14,19 @@ const LENA = EnvironmentId.make("env-lena");
 const OTTO = EnvironmentId.make("env-otto");
 const FEN = EnvironmentId.make("env-fen");
 
-/** The people HQ names for the view: each by user id, with the member id an OWNER entry names. */
-const PEOPLE: HqPeople = {
-  "user-jan": { name: "Jan Novak", clientUserId: "member-jan" },
-  "user-eva": { name: "Eva Dvorak", clientUserId: "member-eva" },
-};
-// HQ keeps no picture: an owner the member list has none for wears their initials.
+/** Each Mate's owner as HQ names them, by project. */
+const JAN: HqMateOwner = { userId: "user-jan", name: "Jan Novak", avatarUrl: null };
+const EVA: HqMateOwner = { userId: "user-eva", name: "Eva Dvorak", avatarUrl: null };
 const JAN_OWNER = { id: "user-jan", name: "Jan Novak", initials: "JN", avatarUrl: null };
 const EVA_OWNER = { id: "user-eva", name: "Eva Dvorak", initials: "ED", avatarUrl: null };
 
-/**
- * A Mate HQ places in application `appId`, named `appName`; its logins name who signed Claude in
- * where `signer` is given. Its name is its project's (D3).
- */
-function placedMate(appId: string, appName: string, signer?: string): HqPlacement {
-  const logins =
-    signer === undefined
-      ? {}
-      : { logins: { "claude-code": { signedInBy: signer, present: true, token: false } } };
-  return { appId, appName, kind: "mate", mate: { face: "", ...logins } };
+/** A Mate HQ places in application `appId`, named `appName`. Its name is its project's (D3). */
+function placedMate(appId: string, appName: string): HqPlacement {
+  return { appId, appName, kind: "mate", mate: { face: "" } };
 }
 
 const titan = () => placedMate("titan", "Imperial Titan");
-const docs = (signer?: string) => placedMate("docs", "Acme Docs", signer);
+const docs = () => placedMate("docs", "Acme Docs");
 
 function candidate(input: {
   readonly id: string;
@@ -46,7 +35,6 @@ function candidate(input: {
   readonly tags: ReadonlyArray<string>;
   readonly hq?: HqPlacement;
   readonly environmentId?: EnvironmentId;
-  readonly ownerMemberId?: string;
 }): ZeropsCandidate {
   return {
     key: `${input.id}:zcp`,
@@ -56,9 +44,6 @@ function candidate(input: {
       status: "ACTIVE",
       tagList: input.tags,
       ...(input.hq === undefined ? {} : { hq: input.hq }),
-      ...(input.ownerMemberId === undefined
-        ? {}
-        : { userRoles: [{ clientUserId: input.ownerMemberId, roleCode: "OWNER" }] }),
     },
     group: input.environmentId === undefined ? "ready" : "connected",
     service: { id: "zcp", name: "zcp", status: "ACTIVE" },
@@ -72,8 +57,7 @@ describe("usageEnvironmentIdentities", () => {
   const cases: ReadonlyArray<{
     readonly name: string;
     readonly candidates: ReadonlyArray<ZeropsCandidate>;
-    readonly people?: HqPeople;
-    readonly members?: ReadonlyArray<ZeropsOrganizationMember>;
+    readonly owners?: Readonly<Record<string, HqMateOwner | null>>;
     readonly viewerUserId?: string | null;
     readonly registeredOrigins?: ReadonlyMap<string, EnvironmentId>;
     readonly expected: ReadonlyArray<readonly [EnvironmentId, UsageEnvironmentIdentity]>;
@@ -100,7 +84,6 @@ describe("usageEnvironmentIdentities", () => {
           name: "Lena",
           hq: titan(),
           environmentId: LENA,
-          ownerMemberId: "member-jan",
         }),
         candidate({
           id: "titan-otto",
@@ -108,10 +91,9 @@ describe("usageEnvironmentIdentities", () => {
           name: "Otto",
           hq: titan(),
           environmentId: OTTO,
-          ownerMemberId: "member-eva",
         }),
       ],
-      people: PEOPLE,
+      owners: { "titan-dev": JAN, "titan-otto": EVA },
       viewerUserId: "user-eva",
       expected: [
         [
@@ -133,7 +115,7 @@ describe("usageEnvironmentIdentities", () => {
       ],
     },
     {
-      name: "an owner wears their platform picture, one without a picture their initials",
+      name: "an owner wears HQ's picture of them, one without a picture their initials",
       candidates: [
         candidate({
           id: "titan-dev",
@@ -141,7 +123,6 @@ describe("usageEnvironmentIdentities", () => {
           name: "Lena",
           hq: titan(),
           environmentId: LENA,
-          ownerMemberId: "member-jan",
         }),
         candidate({
           id: "titan-otto",
@@ -149,17 +130,12 @@ describe("usageEnvironmentIdentities", () => {
           name: "Otto",
           hq: titan(),
           environmentId: OTTO,
-          ownerMemberId: "member-eva",
         }),
       ],
-      people: PEOPLE,
-      members: [
-        {
-          id: "member-jan",
-          user: { id: "user-jan", avatar: { smallAvatarUrl: "https://img.example.test/jan.jpg" } },
-        },
-        { id: "member-eva", user: { id: "user-eva", avatar: null } },
-      ],
+      owners: {
+        "titan-dev": { ...JAN, avatarUrl: "https://img.example.test/jan.jpg" },
+        "titan-otto": EVA,
+      },
       viewerUserId: "user-eva",
       expected: [
         [
@@ -219,21 +195,20 @@ describe("usageEnvironmentIdentities", () => {
     },
     {
       // In no project, so HQ records no name for it: it goes by its project's.
-      name: "an owner HQ does not name is nobody",
+      name: "a Mate HQ names no owner of is nobody's",
       candidates: [
         candidate({
           id: "gone-dev",
           tags: ["mate"],
           environmentId: LENA,
-          ownerMemberId: "member-left",
         }),
       ],
-      people: PEOPLE,
+      owners: { "gone-dev": null },
       viewerUserId: "user-jan",
       expected: [[LENA, { mateName: "gone-dev", projectName: null, owner: null }]],
     },
     {
-      name: "two people's Mates across two projects, an owner named by the agent's signer",
+      name: "two people's Mates across two projects",
       candidates: [
         candidate({
           id: "titan-dev",
@@ -241,7 +216,6 @@ describe("usageEnvironmentIdentities", () => {
           name: "Lena",
           hq: titan(),
           environmentId: LENA,
-          ownerMemberId: "member-jan",
         }),
         candidate({
           id: "docs-dev",
@@ -249,17 +223,16 @@ describe("usageEnvironmentIdentities", () => {
           name: "Otto",
           hq: docs(),
           environmentId: OTTO,
-          ownerMemberId: "member-jan",
         }),
         candidate({
           id: "docs-fen",
           tags: ["mate"],
           name: "Fen",
-          hq: docs("user-eva"),
+          hq: docs(),
           environmentId: FEN,
         }),
       ],
-      people: PEOPLE,
+      owners: { "titan-dev": JAN, "docs-dev": JAN, "docs-fen": EVA },
       viewerUserId: "user-jan",
       expected: [
         [
@@ -287,8 +260,7 @@ describe("usageEnvironmentIdentities", () => {
       const identities = usageEnvironmentIdentities({
         candidates: entry.candidates,
         registeredOrigins: entry.registeredOrigins ?? NO_ORIGINS,
-        people: entry.people ?? null,
-        members: entry.members ?? [],
+        owners: entry.owners ?? {},
         viewerUserId: entry.viewerUserId ?? null,
       });
       expect([...identities]).toEqual(entry.expected);

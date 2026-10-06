@@ -31,7 +31,8 @@ import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../
 import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { environmentsWithSnapshotAtom } from "~/state/shell";
-import { hqPeopleAtom, hqPlacementsAtom, hqNavigationAtom } from "~/state/zerops";
+import { shownHqProjectPeopleAtom } from "@t3tools/client-runtime/data";
+import { hqPlacementsAtom, hqNavigationAtom } from "~/state/zerops";
 import {
   PROJECT_ORDER_CHOICES,
   readProjectsOnScreen,
@@ -46,8 +47,6 @@ import {
   type ZeropsCandidate,
 } from "@t3tools/client-runtime/zerops/candidates";
 import {
-  mateIsViewers,
-  resolveMateOwnerPerson,
   resolveMateVisibility,
   type RoleMateVisibility,
 } from "@t3tools/client-runtime/zerops/mateAccess";
@@ -961,8 +960,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   // What HQ offers of each row's project (`mateRowCan`), and of the organization.
   const mateOffersOf = useMateOffers();
   const orgOffer = useOrgOffers();
-  // Whose a Mate this person may see and not open is, named from HQ's people: no member list read.
-  const people = useAtomValue(hqPeopleAtom);
+  // Whose a Mate this person may see and not open is, as HQ names its owner: no member list read.
+  const projectPeople = useAtomValue(shownHqProjectPeopleAtom);
 
   /** A press of the organization on show: the page is not empty while one is on its way. */
   const activeBirths = presses.some((press) => press.organizationId === activeOrganization?.id);
@@ -1017,9 +1016,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   ): ZeropsRowInput => {
     const visibility = visibilityOf(candidate);
     const ownerName =
-      visibility === "listed"
-        ? resolveMateOwnerPerson({ project: candidate.project, people })?.name
-        : undefined;
+      visibility === "listed" ? projectPeople[candidate.project.id]?.owner?.name : undefined;
     const waiting = candidate.group !== "connected" && waitedOn(candidate);
     const mateFlag = candidateMateFlags.get(candidate.key);
     return {
@@ -1656,7 +1653,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         groupId === undefined ? undefined : projectFlow.flows.get(groupId),
         candidate.project.id,
       ),
-      mine: mateIsViewers(candidate.project, user?.id),
+      mine: projectPeople[candidate.project.id]?.waitsOnViewer === true,
       // Waking while it comes up and arrives, as its row in the menu.
       pose: matePoseOf(candidate, nowMs),
     });
@@ -2515,7 +2512,12 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       });
       const conversationsRead = (item: ZeropsCandidatePresentation) =>
         item.environmentId !== undefined && withConversations.has(item.environmentId);
-      const members = groupMemberFactsOf(environments, activityOf, conversationsRead, user?.id);
+      const members = groupMemberFactsOf(
+        environments,
+        activityOf,
+        conversationsRead,
+        (projectId) => projectPeople[projectId]?.waitsOnViewer === true,
+      );
       const isStop = (role: ZeropsEnvironmentRole | undefined) =>
         role === "stage" || role === "prod";
       const placeholder = groupNameUnread(group);

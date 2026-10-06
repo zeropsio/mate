@@ -472,7 +472,7 @@ export function mateRowReading(input: {
   readonly activity: ZeropsAgentActivity | undefined;
   /** Its own change waits on the person's review (`mateNextStep`): it needs them. */
   readonly reviewWaits?: boolean;
-  /** The viewer's own Mate (`mateIsViewers`): only then does what it waits on need them. */
+  /** The viewer's own Mate (HQ's `waitsOnViewer`): only then does what it waits on need them. */
   readonly mine: boolean;
   /** Where it is in its life (`mateFaceFor`): waking while it comes up and arrives. */
   readonly pose?: MatePoseFacts | undefined;

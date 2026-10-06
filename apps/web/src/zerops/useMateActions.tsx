@@ -51,12 +51,7 @@ import {
 import { candidatesComplete, heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { heldOf, type HqPlacement } from "@t3tools/client-runtime/zerops/hq";
-import {
-  mateIsViewers,
-  resolveMateOwnerPerson,
-  resolveMateVerbs,
-  resolveMateVisibility,
-} from "@t3tools/client-runtime/zerops/mateAccess";
+import { resolveMateVerbs, resolveMateVisibility } from "@t3tools/client-runtime/zerops/mateAccess";
 import type { HqOfferState } from "@t3tools/shared/hqOffers";
 import { isMateKind } from "@t3tools/shared/zeropsRoles";
 import { useRouter } from "@tanstack/react-router";
@@ -100,7 +95,8 @@ import {
 import { currentAccountEnvironments } from "./accountEnvironments";
 import { useEnvironmentLinks } from "../routes/-environmentTargets";
 import { resolveThreadRouteTarget } from "../threadRoutes";
-import { hqPeopleAtom, hqPlacementsAtom, hqNavigationAtom } from "../state/zerops";
+import { shownHqProjectPeopleAtom } from "@t3tools/client-runtime/data";
+import { hqPlacementsAtom, hqNavigationAtom } from "../state/zerops";
 import { invalidateZerops } from "./accountInvalidations";
 import {
   deletingMates,
@@ -288,7 +284,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   // Whether HQ's structure is known: only then does a Mate it places nowhere have no record.
   const hqPlacements = useAtomValue(hqPlacementsAtom);
   const hqStructure = useAtomValue(hqNavigationAtom);
-  const people = useAtomValue(hqPeopleAtom);
+  const projectPeople = useAtomValue(shownHqProjectPeopleAtom);
   const hqKnown = hqPlacements !== null && hqStructure.live;
   const presses = useMatePresses();
   // What this tab made: a registration it saw refused is finished at once (`registrationUnfinished`).
@@ -371,7 +367,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
     [mateOffersOf],
   );
   // The member list is read only once a hand-over's picker opens: a load reads none, and a Mate
-  // about to be deleted says whose it is from HQ's people.
+  // about to be deleted says whose it is as HQ names its owner.
   const { members, status: membersStatus } = useZeropsOrganizationMembersRead({
     clientId: activeOrganization?.id,
     enabled: dialog?.kind === "assign",
@@ -686,7 +682,11 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
         pressStopped:
           press?.state.kind === "failed" || registrationUnfinished(births, candidate.project.id),
         pressedElsewhere: pressedElsewhere(candidate.project.id),
-        viewerIsAdder: mateAddedBy(candidate.project, user?.id),
+        viewerIsAdder: mateAddedBy(
+          candidate.project,
+          user?.id,
+          projectPeople[candidate.project.id]?.waitsOnViewer === true,
+        ),
         hasContainer: candidate.service !== undefined,
         writer: writes(orgOffer("create_app")),
         recordMissing: recordMissing(candidate),
@@ -704,6 +704,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       orgOffer,
       pressedElsewhere,
       presses,
+      projectPeople,
       recordMissing,
       registry.registry,
       user,
@@ -808,10 +809,10 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   /** Whose Mate it is, where that is a colleague: "Ada's Mate", as its row says it. */
   const colleagueOf = useCallback(
     (candidate: ZeropsCandidatePresentation): string | undefined => {
-      const owner = resolveMateOwnerPerson({ project: candidate.project, people });
-      return owner === undefined || owner.userId === user?.id ? undefined : owner.name;
+      const owner = projectPeople[candidate.project.id]?.owner;
+      return owner == null || owner.userId === user?.id ? undefined : owner.name;
     },
-    [people, user?.id],
+    [projectPeople, user?.id],
   );
 
   /**
@@ -1354,17 +1355,15 @@ export function mateContainerMissing(
 
 /**
  * Whether the viewer added this Mate: HQ's record names them as its maker (New project or Add a
- * Mate), its stand-up was asked for by them, or its seat is theirs — as HQ's record of it says.
+ * Mate), its stand-up was asked for by them, or HQ says it waits on them (`waitsOnViewer`).
  */
 export function mateAddedBy(
   project: { readonly hq?: HqPlacement | undefined },
   viewer: string | undefined,
+  waitsOnViewer: boolean,
 ): boolean {
+  if (waitsOnViewer) return true;
   if (viewer === undefined || viewer.length === 0) return false;
   const membership = readZeropsMembership(project);
-  return (
-    membership.madeBy === viewer ||
-    membership.standUp?.by === viewer ||
-    mateIsViewers(project, viewer)
-  );
+  return membership.madeBy === viewer || membership.standUp?.by === viewer;
 }

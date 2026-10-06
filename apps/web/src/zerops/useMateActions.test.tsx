@@ -1555,8 +1555,16 @@ describe("mateAddedBy — whether the viewer added this Mate", () => {
     },
     { case: "somebody else made it", hq: placed({ madeBy: "user-fen" }), added: false },
     { case: "nothing names anybody", hq: placed({}), added: false },
-  ])("$case: $added", ({ hq, added }) => {
-    expect(mateAddedBy({ hq }, "user-ada")).toBe(added);
+    {
+      case: "HQ says it waits on them (they signed it in)",
+      hq: placed({}),
+      waitsOnViewer: true,
+      added: true,
+    },
+  ])("$case: $added", ({ hq, added, ...rest }) => {
+    expect(mateAddedBy({ hq }, "user-ada", "waitsOnViewer" in rest && rest.waitsOnViewer)).toBe(
+      added,
+    );
   });
 });
 

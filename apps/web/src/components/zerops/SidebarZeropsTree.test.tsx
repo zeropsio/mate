@@ -95,6 +95,13 @@ vi.mock("~/zerops/ZeropsSessionProvider", async (original) => ({
   useZeropsSessionOptional: () =>
     session.viewer === undefined ? null : { user: { id: session.viewer } },
 }));
+// Whom each Mate waits on, as HQ says it (`waitsOnViewer`): the viewer who signed its agent in.
+const signerOf = vi.hoisted(() => new Map<string, string>());
+vi.mock("~/zerops/useZeropsMateOwners", async (original) => ({
+  ...(await original<typeof import("~/zerops/useZeropsMateOwners")>()),
+  useWaitsOnViewer: () => (projectId: string) =>
+    session.viewer !== undefined && signerOf.get(projectId) === session.viewer,
+}));
 afterEach(() => {
   // A tree left mounted would answer the next test's asks of the one menu.
   for (const tree of mountedTrees.splice(0)) {
@@ -105,6 +112,7 @@ afterEach(() => {
   stored.collapsed = new Set();
   stored.written = undefined;
   session.viewer = undefined;
+  signerOf.clear();
   hqCrews.clear();
   demandedStops.clear();
   vi.unstubAllGlobals();
@@ -207,6 +215,7 @@ const signedBy = (signer: string): Partial<HqMate> => ({
 
 /** A Mate signed in by `u-ada` — the viewer's own, where a test makes her the viewer. */
 function mine(item: ZeropsCandidate, signer = SIGNER): ZeropsCandidate {
+  signerOf.set(item.project.id, signer);
   return {
     ...item,
     project: { ...item.project, hq: recorded(item.project.hq!, signedBy(signer)) },
@@ -2823,7 +2832,7 @@ describe("the sidebar and the projects page read one group the same way", () => 
           group.environments,
           () => undefined,
           () => false,
-          undefined,
+          () => false,
         ),
         flow: groupReads,
         deployments: new Map(),
@@ -3167,6 +3176,7 @@ describe("a Mate's row says more without words", () => {
   ])("draws $case", ({ activity, face, dot, third }) => {
     // The viewer's own Mate: what it waits on waits on them.
     session.viewer = "u-ada";
+    signerOf.set(SIGNED_IN.project.id, SIGNER);
     const html = render([SIGNED_IN], { getActivity: () => activity });
     expect(html).toContain(`data-mate-face-state="${face}"`);
     if (dot === undefined) expect(html).not.toContain("sidebar-mate-dot");

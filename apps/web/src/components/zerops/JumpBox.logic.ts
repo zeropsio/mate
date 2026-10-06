@@ -59,7 +59,7 @@ export interface JumpMate {
   readonly pausedUntil: string | undefined;
   /** Its own change waits for the person's review (`mateReviewWaits`): it needs them. */
   readonly reviewWaits?: boolean;
-  /** The viewer's own Mate (`mateIsViewers`): only then does what it waits on need them. */
+  /** The viewer's own Mate (HQ's `waitsOnViewer`): only then does what it waits on need them. */
   readonly mine: boolean;
   /** Where it is in its life, as its row reads it (`mateFaceFor`): settled where absent. */
   readonly pose?: MatePoseFacts | undefined;

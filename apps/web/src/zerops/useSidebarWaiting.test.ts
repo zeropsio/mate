@@ -4,16 +4,7 @@ import { describe, expect, it } from "vite-plus/test";
 import type { ZeropsAgentActivity } from "./agentActivity";
 import { waitingMatesOf } from "./useSidebarWaiting";
 
-/** Who is looking, and who signed each Mate in unless a test says otherwise: the viewer. */
-const VIEWER = "u-petra";
-
-const mate = (
-  id: string,
-  bot: string,
-  group: ZeropsCandidate["group"] = "connected",
-  signer: string | null = VIEWER,
-  face = "",
-) =>
+const mate = (id: string, bot: string, group: ZeropsCandidate["group"] = "connected", face = "") =>
   ({
     key: `${id}:zcp`,
     project: {
@@ -26,15 +17,7 @@ const mate = (
         appId: "aaa",
         appName: "Acme",
         kind: "mate",
-        mate: {
-          face,
-          // Who signed it in, as HQ's overview of its logins names them.
-          ...(signer === null
-            ? {}
-            : {
-                logins: { "claude-code": { signedInBy: signer, present: true, token: false } },
-              }),
-        },
+        mate: { face },
       },
     },
     group,
@@ -64,7 +47,7 @@ describe("waitingMatesOf — the faces the header stacks", () => {
       candidates: [KAI, NOVA, JUNO, ASLEEP],
       activityOf: (candidate) => faces.get(candidate.project.id),
       reviewWaits: (candidate) => reviews.includes(candidate.project.id),
-      viewer: VIEWER,
+      waitsOnViewer: () => true,
       tints: new Map([["kai", "amber"]]),
       order,
       shown,
@@ -98,7 +81,7 @@ describe("waitingMatesOf — the faces the header stacks", () => {
       candidates: [lone],
       activityOf: () => face("needs"),
       reviewWaits: () => false,
-      viewer: VIEWER,
+      waitsOnViewer: () => true,
       tints: new Map(),
       order: [],
       shown: () => true,
@@ -117,12 +100,12 @@ describe("waitingMatesOf — the faces the header stacks", () => {
   });
 
   it("wears the shape a Mate's person picked", () => {
-    const juno = mate("juno", "Juno", "connected", VIEWER, "rose:seal");
+    const juno = mate("juno", "Juno", "connected", "rose:seal");
     const [waiting] = waitingMatesOf({
       candidates: [juno],
       activityOf: () => face("needs"),
       reviewWaits: () => false,
-      viewer: VIEWER,
+      waitsOnViewer: () => true,
       tints: new Map([["juno", "rose"]]),
       order: [],
       shown: () => true,
@@ -130,39 +113,26 @@ describe("waitingMatesOf — the faces the header stacks", () => {
     expect(waiting).toMatchObject({ tint: "rose", shape: "seal" });
   });
 
-  // "sana doesn't wait for me, it waits for karlos" (the owner, 2026-09-30): only the viewer's
-  // own Mates wait on them — the ones they signed in.
+  // "sana doesn't wait for me, it waits for karlos" (the owner, 2026-09-30): only the Mates HQ
+  // says wait on the viewer — the ones they signed in — wait on them.
   it.each([
-    { case: "own Mate asking", signer: VIEWER, asks: true, review: false, stacked: true },
-    {
-      case: "own Mate, its change waiting",
-      signer: VIEWER,
-      asks: false,
-      review: true,
-      stacked: true,
-    },
-    {
-      case: "another's Mate asking",
-      signer: "u-karlos",
-      asks: true,
-      review: false,
-      stacked: false,
-    },
+    { case: "own Mate asking", waits: true, asks: true, review: false, stacked: true },
+    { case: "own Mate, its change waiting", waits: true, asks: false, review: true, stacked: true },
+    { case: "another's Mate asking", waits: false, asks: true, review: false, stacked: false },
     {
       case: "another's Mate, its change waiting",
-      signer: "u-karlos",
+      waits: false,
       asks: false,
       review: true,
       stacked: false,
     },
-    { case: "nobody signed in, asking", signer: null, asks: true, review: true, stacked: false },
-  ])("$case", ({ signer, asks, review, stacked }) => {
-    const sana = mate("sana", "Sana", "connected", signer);
+  ])("$case", ({ waits, asks, review, stacked }) => {
+    const sana = mate("sana", "Sana", "connected");
     const waiting = waitingMatesOf({
       candidates: [sana],
       activityOf: () => face(asks ? "needs" : "idle"),
       reviewWaits: () => review,
-      viewer: VIEWER,
+      waitsOnViewer: (projectId) => projectId === "sana" && waits,
       tints: new Map(),
       order: [],
       shown: () => true,

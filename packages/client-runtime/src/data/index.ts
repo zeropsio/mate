@@ -80,3 +80,9 @@ export {
   shownHqStatusAtom,
   type AccountReads,
 } from "./reads.ts";
+export { shownHqProjectPeopleAtom } from "./personReads.ts";
+export {
+  hqProjectPeople,
+  type HqMateOwner,
+  type HqProjectPeople,
+} from "./projections/hqProjectPeople.ts";

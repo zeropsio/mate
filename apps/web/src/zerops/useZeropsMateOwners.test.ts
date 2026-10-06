@@ -19,42 +19,27 @@ import { zeropsSessionAtom } from "../state/zerops";
 import { makeMemberCells } from "./__fixtures__/memberCells";
 import { ZeropsDataContext, type ZeropsDataContextValue } from "./zeropsDataContext";
 import {
+  useWaitsOnViewer,
   useZeropsMateOwners,
   useHqPersonNames,
   useZeropsOrganizationMembersRead,
   zeropsMateOwnerOf,
 } from "./useZeropsMateOwners";
 import { mountHqNavigation } from "~/zerops/__fixtures__/hqNavigation";
+import { accountReadsAtom, makeAccountStore } from "@t3tools/client-runtime/data";
+import { seedHqProjectPeople } from "@t3tools/client-runtime/data/fixtures";
 
 vi.mock("./ZeropsSessionProvider", () => ({
   useZeropsSession: () => ({ activeOrganization: { id: "org-1" }, user: { id: "u-eva" } }),
 }));
 
 describe("zeropsMateOwnerOf", () => {
-  // HQ names the person; their picture is the platform's, off the member list by user id.
+  // HQ names the person and sends their platform picture.
   it.each([
-    {
-      case: "the member's picture",
-      members: [
-        { id: "cu-jan", user: { id: "u-jan", avatar: { smallAvatarUrl: "https://img/jan.png" } } },
-      ],
-      avatarUrl: "https://img/jan.png",
-    },
-    {
-      case: "initials where the member has no picture",
-      members: [{ id: "cu-jan", user: { id: "u-jan", avatar: null } }],
-      avatarUrl: null,
-    },
-    {
-      case: "initials where the list does not have them",
-      members: [
-        { id: "cu-ada", user: { id: "u-ada", avatar: { smallAvatarUrl: "https://img/ada.png" } } },
-      ],
-      avatarUrl: null,
-    },
-    { case: "initials before the list is read", members: [], avatarUrl: null },
-  ])("is the person's name, initials and $case", ({ members, avatarUrl }) => {
-    expect(zeropsMateOwnerOf({ userId: "u-jan", name: "Jan Novák" }, undefined, members)).toEqual({
+    { case: "their picture", avatarUrl: "https://img/jan.png" },
+    { case: "initials where they have no picture", avatarUrl: null },
+  ])("is the person's name, initials and $case", ({ avatarUrl }) => {
+    expect(zeropsMateOwnerOf({ userId: "u-jan", name: "Jan Novák", avatarUrl })).toEqual({
       name: "Jan Novák",
       initials: "JN",
       avatarUrl,
@@ -67,12 +52,12 @@ describe("zeropsMateOwnerOf", () => {
     { viewer: "u-ada", isViewer: false },
     { viewer: undefined, isViewer: false },
   ])("says whether the owner is the one looking: $viewer", ({ viewer, isViewer }) => {
-    expect(zeropsMateOwnerOf({ userId: "u-jan", name: "Jan Novák" }, viewer)?.isViewer).toBe(
-      isViewer,
-    );
+    const jan = { userId: "u-jan", name: "Jan Novák", avatarUrl: null };
+    expect(zeropsMateOwnerOf(jan, viewer)?.isViewer).toBe(isViewer);
   });
 
   it("is nobody where HQ names nobody", () => {
+    expect(zeropsMateOwnerOf(null, "u-jan")).toBeUndefined();
     expect(zeropsMateOwnerOf(undefined, "u-jan")).toBeUndefined();
   });
 });
@@ -141,93 +126,67 @@ describe("useZeropsOrganizationMembersRead", () => {
 });
 
 describe("useZeropsMateOwners", () => {
-  it("names an owner from HQ and wears their platform picture, off one member read", async () => {
-    const scope: AccountScope = {
-      account: {
-        apiOrigin: makeZeropsApiOrigin("https://api.example.test"),
-        accountId: ZeropsAccountId.make("account-a"),
-      },
-      epoch: AccountEpoch.make(1),
-    };
-    const organizationRef = (organizationId: string): OrganizationRef => ({
-      kind: "organization",
-      account: scope.account,
-      organizationId: ZeropsOrganizationId.make(organizationId),
-    });
-    let reads = 0;
-    const cells = await makeMemberCells({
-      scope,
-      organization: organizationRef("org-1"),
-      members: async () => {
-        reads += 1;
-        // The platform knows Eva by another name; the badge keeps HQ's, and takes her picture.
-        return [
-          {
-            id: "cu-eva",
-            user: {
-              id: "u-eva",
-              fullName: "Eva D.",
-              avatar: { smallAvatarUrl: "https://storage.example.test/eva-small.jpg" },
-            },
-          },
-        ];
-      },
-    });
-    const data = {
-      runtime: { scope, cells },
-      organizationRef,
-    } as unknown as ZeropsDataContextValue;
+  it("draws each Mate's owner as HQ names them, with HQ's picture, reading no member list", async () => {
     const registry = AtomRegistry.make();
-    registry.set(zeropsSessionAtom, {
-      status: "signed-in",
-      organizationStatus: "selected",
-      activeOrganization: organizationRef("org-1"),
+    const store = makeAccountStore(registry);
+    registry.set(accountReadsAtom, {
+      data: store.data,
+      orgId: "org-1",
+      demandDetail: () => () => {},
     });
-    // HQ names the people the view names: Eva, who signed Vera's agent in.
-    mountHqNavigation(registry, "org-1", { people: { "u-eva": { name: "Eva Dvořák" } } });
-    const vera = {
-      key: "p-vera:zcp",
-      project: {
-        id: "p-vera",
-        name: "Acme - Vera",
-        status: "ACTIVE",
-        hq: {
-          appId: null,
-          appName: null,
-          kind: "mate",
-          mate: {
-            name: "Vera",
-            face: "",
-            logins: { "claude-code": { signedInBy: "u-eva", present: true, token: false } },
-          },
-        },
+    seedHqProjectPeople(store, "org-1", {
+      projects: { "p-vera": { ownerUserId: "u-eva" }, "p-lone": { ownerUserId: null } },
+      people: {
+        "u-eva": { name: "Eva Dvořák", avatarUrl: "https://storage.example.test/eva.jpg" },
       },
-      group: "connected",
-    } as unknown as ZeropsCandidate;
-    const owners: Array<ReturnType<ReturnType<typeof useZeropsMateOwners>>> = [];
+    });
+    const candidate = (id: string) => ({ project: { id } }) as unknown as ZeropsCandidate;
+    const owners: Array<ReadonlyArray<ReturnType<ReturnType<typeof useZeropsMateOwners>>>> = [];
     function Probe() {
-      owners.push(useZeropsMateOwners()(vera));
+      const ownerOf = useZeropsMateOwners();
+      owners.push([ownerOf(candidate("p-vera")), ownerOf(candidate("p-lone"))]);
       return null;
     }
     await act(async () => {
-      create(
-        createElement(
-          RegistryContext.Provider,
-          { value: registry },
-          createElement(ZeropsDataContext.Provider, { value: data }, createElement(Probe)),
-        ),
-      );
+      create(createElement(RegistryContext.Provider, { value: registry }, createElement(Probe)));
     });
+    expect(owners.at(-1)).toEqual([
+      {
+        name: "Eva Dvořák",
+        initials: "ED",
+        avatarUrl: "https://storage.example.test/eva.jpg",
+        isViewer: true,
+      },
+      undefined,
+    ]);
+  });
+});
+
+describe("useWaitsOnViewer", () => {
+  it.each([
+    { case: "HQ says it waits on the viewer", projectId: "p-own", waits: true },
+    { case: "HQ says it waits on someone else", projectId: "p-other", waits: false },
+    { case: "HQ says nothing of it", projectId: "p-unknown", waits: false },
+  ])("$case: $waits", async ({ projectId, waits }) => {
+    const registry = AtomRegistry.make();
+    const store = makeAccountStore(registry);
+    registry.set(accountReadsAtom, {
+      data: store.data,
+      orgId: "org-1",
+      demandDetail: () => () => {},
+    });
+    seedHqProjectPeople(store, "org-1", {
+      projects: { "p-own": { waitsOnViewer: true }, "p-other": { waitsOnViewer: false } },
+    });
+    const seen: boolean[] = [];
+    function Probe() {
+      seen.push(useWaitsOnViewer()(projectId));
+      return null;
+    }
     await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      create(createElement(RegistryContext.Provider, { value: registry }, createElement(Probe)));
     });
-    expect(owners.at(-1)).toEqual({
-      name: "Eva Dvořák",
-      initials: "ED",
-      avatarUrl: "https://storage.example.test/eva-small.jpg",
-      isViewer: true,
-    });
-    expect(reads).toBe(1);
+    expect(seen.at(-1)).toBe(waits);
   });
 });
 

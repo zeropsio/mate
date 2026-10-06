@@ -480,37 +480,24 @@ describe("groupMemberFactsOf — whether a Mate was spoken to", () => {
         [{ item: mate(group), role: "dev" }],
         () => found,
         () => conversationsRead,
-        undefined,
+        () => false,
       );
       expect(facts?.mate?.talked).toBe(talked);
     });
   }
 
-  // A Mate asking waits on the viewer only when it is theirs (`mateIsViewers`): the overview's
+  // A Mate asking waits on the viewer only when HQ says it does (`waitsOnViewer`): the overview's
   // "is waiting on an answer" step says what the group's detail and the menu say.
   it.each([
-    { case: "own Mate asking", signer: "u-petra", waiting: true },
-    { case: "a colleague's Mate asking", signer: "u-karlos", waiting: false },
-    { case: "nobody's Mate asking", signer: undefined, waiting: false },
-  ])("$case waits on the viewer: $waiting", ({ signer, waiting }) => {
-    const asking = mate("connected");
-    // Who signed it in, as HQ's overview of its logins names them.
-    const logins =
-      signer === undefined
-        ? {}
-        : { "claude-code": { signedInBy: signer, present: true, token: false } };
-    const item = {
-      ...asking,
-      project: {
-        ...asking.project,
-        hq: { appId: "g", appName: "G", kind: "mate", mate: { name: "Wren", face: "", logins } },
-      },
-    } as ZeropsCandidate;
+    { case: "a Mate HQ says waits on the viewer, asking", waitsOnViewer: true, waiting: true },
+    { case: "a Mate HQ says waits on someone else, asking", waitsOnViewer: false, waiting: false },
+  ])("$case: $waiting", ({ waitsOnViewer, waiting }) => {
+    const item = mate("connected");
     const [facts] = groupMemberFactsOf(
       [{ item, role: "dev" }],
       () => ({ ...activity("Which port?"), kind: "input", face: "needs" }),
       () => true,
-      "u-petra",
+      (projectId) => projectId === item.project.id && waitsOnViewer,
     );
     expect(facts?.mate?.waiting).toBe(waiting);
   });
@@ -531,7 +518,7 @@ describe("groupMemberFactsOf — whether a Mate was spoken to", () => {
       [{ item: mate(group), role: "dev" }],
       () => ({ ...activity("Fix it"), face, ...rest }),
       () => true,
-      undefined,
+      () => false,
     );
     const input = groupFlowInputOf({
       groupId: "g",
@@ -548,7 +535,7 @@ describe("groupMemberFactsOf — whether a Mate was spoken to", () => {
       [{ item: mate("ready"), role: "dev" }],
       () => undefined,
       () => false,
-      undefined,
+      () => false,
     );
     const input = groupFlowInputOf({
       groupId: "g",

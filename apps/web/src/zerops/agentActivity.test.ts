@@ -8,7 +8,6 @@ import {
   TurnId,
   type ThreadLiveStep,
 } from "@t3tools/contracts";
-import { mateIsViewers } from "@t3tools/client-runtime/zerops/mateAccess";
 import { MateLiveView } from "@t3tools/shared/hqMates";
 import { SECRET_MASK } from "@t3tools/shared/messagePreview";
 import * as Schema from "effect/Schema";
@@ -178,101 +177,53 @@ describe("mateFaceOf — the face a Mate wears wherever it is drawn", () => {
     ).toBe(shown);
   });
 
-  // Waiting on you is claimed only by your own Mate — the one you signed in (the owner,
-  // 2026-09-30: "sana doesn't wait for me, it waits for karlos"). Another's Mate waits on its
+  // Waiting on you is claimed only by your own Mate — the one HQ says waits on you, you signed it
+  // in (the owner, 2026-09-30: "sana doesn't wait for me, it waits for karlos"). Another's Mate waits on its
   // owner: it wears no needs face here, though its change can still be reviewed and merged.
   describe("waits on you only when it is yours", () => {
-    const VIEWER = "u-petra";
-    /** The Mate as HQ places it, its logins naming who signed its agents in. */
-    const signed = (...users: ReadonlyArray<string>) => ({
-      appId: null,
-      appName: null,
-      kind: "mate" as const,
-      mate: {
-        name: "Sana",
-        face: "",
-        logins: Object.fromEntries(
-          users.map((user, index) => [
-            index === 0 ? "claude-code" : "codex",
-            { signedInBy: user, present: true, token: false },
-          ]),
-        ),
-      },
-    });
     it.each([
       {
         case: "own Mate, its change waits",
-        tags: signed(VIEWER),
+        mine: true,
         face: "idle",
         review: true,
         shown: "needs",
       },
       {
         case: "another's Mate, its change waits",
-        tags: signed("u-karlos"),
+        mine: false,
         face: "idle",
         review: true,
         shown: "idle",
       },
       {
         case: "own Mate, its question waits",
-        tags: signed(VIEWER),
+        mine: true,
         face: "needs",
         review: false,
         shown: "needs",
       },
       {
         case: "another's Mate, its question waits",
-        tags: signed("u-karlos"),
+        mine: false,
         face: "needs",
         review: false,
         shown: "idle",
-      },
-      {
-        case: "nobody signed in, its change waits",
-        tags: signed(),
-        face: "idle",
-        review: true,
-        shown: "idle",
-      },
-      {
-        case: "nobody signed in, its question waits",
-        tags: signed(),
-        face: "needs",
-        review: false,
-        shown: "idle",
-      },
-      {
-        // One signer per login, as the Mate's server witnessed it: Claude Code's person first.
-        case: "Claude signed in by the viewer, Codex by another",
-        tags: signed(VIEWER, "u-karlos"),
-        face: "needs",
-        review: true,
-        shown: "needs",
-      },
-      {
-        case: "the viewer not known yet",
-        tags: signed(VIEWER),
-        face: "needs",
-        review: true,
-        shown: "idle",
-        viewer: undefined,
       },
       {
         case: "another's Mate at work: the work shows",
-        tags: signed("u-karlos"),
+        mine: false,
         face: "working",
         review: true,
         shown: "working",
       },
-    ] as const)("$case", ({ tags, face, review, shown, ...rest }) => {
-      const viewer = "viewer" in rest ? rest.viewer : VIEWER;
+    ] as const)("$case", ({ mine, face, review, shown }) => {
       expect(
         mateFaceOf({
           connected: true,
           activity: { face },
           reviewWaits: review,
-          mine: mateIsViewers({ hq: tags }, viewer),
+          mine,
           pose: undefined,
         }),
       ).toBe(shown);

@@ -498,38 +498,6 @@
   {
     "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
     "kind": "retired-token",
-    "fingerprint": "mateIsViewers(",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "the Mine filter and owner records are computed in the client; HQ sends them finished",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
-    "kind": "retired-token",
-    "fingerprint": "mateIsViewers(",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "the Mine filter and owner records are computed in the client; HQ sends them finished",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
-    "kind": "retired-token",
-    "fingerprint": "mateIsViewers(",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "the Mine filter and owner records are computed in the client; HQ sends them finished",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
-    "kind": "retired-token",
-    "fingerprint": "mateIsViewers(",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "the Mine filter and owner records are computed in the client; HQ sends them finished",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
-    "kind": "retired-token",
     "fingerprint": "mateOwnerRecords(",
     "owner": "data-layer rewrite: permissions/members",
     "reason": "the Mine filter and owner records are computed in the client; HQ sends them finished",
@@ -661,14 +629,6 @@
     "fingerprint": "useZeropsGitRemoteProbes",
     "owner": "data-layer rewrite: Mate identity/connection",
     "reason": "a component probes git remotes itself; the adapter owns the read",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
-    "kind": "retired-token",
-    "fingerprint": "mateIsViewers(",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "the Mine filter and owner records are computed in the client; HQ sends them finished",
     "expires": "never"
   },
   {
@@ -1154,14 +1114,6 @@
   {
     "path": "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
     "kind": "retired-token",
-    "fingerprint": "mateIsViewers(",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "the Mine filter and owner records are computed in the client; HQ sends them finished",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
-    "kind": "retired-token",
     "fingerprint": "mayAddEnvironment(",
     "owner": "data-layer rewrite: permissions/members",
     "reason": "whether an environment may be added is computed from roles in the client; HQ sends it",
@@ -1397,14 +1349,6 @@
     "fingerprint": "const writer = roleAtLeast(organization.roleCode, \"ADMIN\")",
     "owner": "data-layer rewrite: permissions/members",
     "reason": "tiers addable are computed from the organization role in the client; HQ sends it",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/projects/projectsView.logic.ts",
-    "kind": "retired-token",
-    "fingerprint": "mateIsViewers(",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "the Mine filter and owner records are computed in the client; HQ sends them finished",
     "expires": "never"
   },
   {
@@ -2954,14 +2898,6 @@
   {
     "path": "apps/web/src/zerops/useMateActions.tsx",
     "kind": "retired-token",
-    "fingerprint": "mateIsViewers(",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "the Mine filter and owner records are computed in the client; HQ sends them finished",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useMateActions.tsx",
-    "kind": "retired-token",
     "fingerprint": "useHqOffers",
     "owner": "data-layer rewrite: permissions/members",
     "reason": "offers are read and decided by app hooks; HQ sends what the person may do",
@@ -3200,27 +3136,11 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/zerops/useSidebarWaiting.ts",
-    "kind": "retired-token",
-    "fingerprint": "mateIsViewers(",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "the Mine filter and owner records are computed in the client; HQ sends them finished",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/zerops/useUsageEnvironmentIdentities.ts",
     "kind": "retired-token",
     "fingerprint": "useMatesSettled()",
     "owner": "data-layer rewrite: HQ structure/apps",
     "reason": "a settled flag for HQ Mates stands in for the stream's state; read the stream state",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useUsageEnvironmentIdentities.ts",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsOrganizationMembers(",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "the client reads organization members for owners and admins; HQ sends them finished",
     "expires": "never"
   },
   {
@@ -3381,30 +3301,6 @@
     "fingerprint": "useZeropsMateOwners()",
     "owner": "data-layer rewrite: permissions/members",
     "reason": "member names and Mate owners come from the member list; HQ sends them finished",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsMateOwners.ts",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsOrganizationMembers(",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "the client reads organization members for owners and admins; HQ sends them finished",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsMateOwners.ts",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsOrganizationMembers(",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "the client reads organization members for owners and admins; HQ sends them finished",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsMateOwners.ts",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsOrganizationMembersRead",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "the client reads organization members for owners and admins; HQ sends them finished",
     "expires": "never"
   },
   {
@@ -4205,14 +4101,6 @@
     "fingerprint": "ownersAndAdmins(",
     "owner": "data-layer rewrite: permissions/members",
     "reason": "the client reads organization members for owners and admins; HQ sends them finished",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/mateAccess.ts",
-    "kind": "retired-token",
-    "fingerprint": "mateIsViewers(",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "the Mine filter and owner records are computed in the client; HQ sends them finished",
     "expires": "never"
   },
   {
