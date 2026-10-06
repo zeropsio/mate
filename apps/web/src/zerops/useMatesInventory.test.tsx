@@ -17,7 +17,7 @@ import {
 import { RegistryContext } from "@effect/atom-react";
 import { accountReadsAtom } from "@t3tools/client-runtime/data";
 import * as Effect from "effect/Effect";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { Atom, AtomRegistry } from "effect/unstable/reactivity";
 import { act, createElement, useLayoutEffect } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -45,6 +45,8 @@ const runtime = vi.hoisted(() => ({
   /** Every lease taken, in order. */
   acquired: [] as Array<string>,
   inventory: null as unknown,
+  /** The viewer's role in the organization, as the session's membership says it. */
+  viewerRole: "OWNER" as string,
 }));
 vi.mock("./zeropsDataContext", () => {
   // The account's runtime: one object for the account's life, as the real one is.
@@ -68,6 +70,9 @@ vi.mock("./zeropsDataContext", () => {
   };
   return { useZeropsData: () => data };
 });
+vi.mock("./sessionContext", () => ({
+  useZeropsSessionOptional: () => ({ activeOrganization: { roleCode: runtime.viewerRole } }),
+}));
 vi.mock("./inventoryContext", async (importOriginal) => ({
   ...(await importOriginal<object>()),
   useZeropsInventory: () => runtime.inventory,
@@ -121,6 +126,7 @@ beforeEach(() => {
   runtime.held = [];
   runtime.acquired = [];
   runtime.inventory = inventoryOf();
+  runtime.viewerRole = "OWNER";
 });
 afterEach(async () => {
   await act(async () => tree?.unmount());
@@ -170,20 +176,37 @@ describe("useMatesInventory", () => {
 });
 
 describe("a drawn Mate's own project row", () => {
-  // Whose a Mate is — its project's OWNER grant — comes only with the project's own row: it is
-  // read while the Mate is drawn, and let go with it.
-  it("is held while the Mate is drawn, for Mates only", async () => {
+  // It is read only where it decides the viewer's access: a NO_ACCESS member's project whose
+  // listing row names no grant of theirs. Whose a Mate is comes from HQ's person facts.
+  it.each([
+    { name: "an organization member's: none", role: "OWNER", held: [] },
+    { name: "a READ_ONLY member's: none", role: "READ_ONLY", held: [] },
+    {
+      name: "a NO_ACCESS member's: only the Mate whose listing names no grant of theirs",
+      role: "NO_ACCESS",
+      held: ["project/project/p-cy"],
+    },
+  ])("is held while the Mate is drawn — $name", async ({ role, held }) => {
+    runtime.viewerRole = role;
     const registry = AtomRegistry.make();
     const rowsHeld: string[] = [];
-    /** Every hold taken, in order: a Mate still drawn is never held again. */
-    const holds: string[] = [];
+    const roster = Atom.make({
+      projects: [
+        { id: "p-ada", name: "Ada", status: "ACTIVE", viewerRoleCode: "BASIC_USER" },
+        { id: "p-bo", name: "Bo", status: "ACTIVE", viewerRoleCode: "BASIC_USER" },
+        { id: "p-cy", name: "Cy", status: "ACTIVE" },
+      ],
+      read: "read",
+      complete: true,
+      live: true,
+      reconnecting: false,
+    });
     registry.set(accountReadsAtom, {
-      data: {} as never,
+      data: { project: () => roster } as never,
       orgId: "org-1",
       demandDetail: (demand) => {
         const key = `${demand.family}/${demand.listing}/${demand.ownerId}`;
         rowsHeld.push(key);
-        holds.push(key);
         return () => rowsHeld.splice(rowsHeld.indexOf(key), 1);
       },
       renewHeld: () => {},
@@ -197,11 +220,7 @@ describe("a drawn Mate's own project row", () => {
     await act(async () => {
       tree = create(probe([ADA, BO, CY]));
     });
-    expect(rowsHeld.toSorted()).toEqual(["project/project/p-ada", "project/project/p-cy"]);
-
-    await act(async () => tree?.update(probe([CY])));
-    expect(rowsHeld).toEqual(["project/project/p-cy"]);
-    expect(holds).toHaveLength(2);
+    expect(rowsHeld.toSorted()).toEqual(held);
 
     await act(async () => tree?.unmount());
     tree = undefined;

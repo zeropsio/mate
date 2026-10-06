@@ -195,44 +195,66 @@ describe("H: hosted client budgets", () => {
     );
 
     // Catches a per-project services or access read: at start, or repeated over an idle session
-    // that outlasts the access grant's renewal. Each drawn Mate's own project row is read once
-    // (and its preflight): the menu shows whose each Mate is, which only that row names; each
-    // renewal reads those rows again, once each, and no other project's.
-    it.effect(
-      "an idle session reads no project's services, and each drawn Mate's row once a renewal",
-      () =>
-        Effect.gen(function* () {
-          const s = yield* createScenario([installBudget]);
-          const b = budgets(s);
-          yield* b.given.mates(names);
-          yield* Effect.promise(() => s.clock.install());
-          yield* s.given.signedIn;
-          yield* b.when.menuReady(names);
-          yield* b.when.browserSettled;
-          const servicesAtStart = b.measure.projectServiceReads();
-          const projectsAtStart = b.measure.projectReads();
-          yield* Effect.promise(() => s.clock.advance(15 * 60_000));
-          yield* b.when.browserSettled;
-          const servicesIdle = b.measure.projectServiceReads() - servicesAtStart;
-          const projectsIdle = b.measure.projectReads() - projectsAtStart;
-          report(
-            `H idle: GET service-stack (with preflights) at start=${servicesAtStart}, over 15 min idle=${servicesIdle}; GET project (with preflights) at start=${projectsAtStart}, over 15 min idle (one renewal)=${projectsIdle}; 4 Mates`,
-          );
-          yield* s.then.noExternalNetwork;
-          expect(servicesAtStart, "Per-project services reads at start").toBe(0);
-          expect(servicesIdle, "Per-project services reads while idle").toBe(0);
-          expect(projectsAtStart, "Own project rows at start: one per drawn Mate").toBe(
-            2 * names.length,
-          );
-          expect(projectsIdle, "Own project rows over one renewal: one per drawn Mate").toBe(
-            2 * names.length,
-          );
-        }),
+    // that outlasts the access grant's renewal. The owner is judged on their membership, and whose
+    // a Mate is comes from HQ: no project's own row is read, then or at a renewal.
+    it.effect("an idle owner's session reads no project's services or own row", () =>
+      Effect.gen(function* () {
+        const s = yield* createScenario([installBudget]);
+        const b = budgets(s);
+        yield* b.given.mates(names);
+        yield* Effect.promise(() => s.clock.install());
+        yield* s.given.signedIn;
+        yield* b.when.menuReady(names);
+        yield* b.when.browserSettled;
+        const servicesAtStart = b.measure.projectServiceReads();
+        const projectsAtStart = b.measure.projectReads();
+        yield* Effect.promise(() => s.clock.advance(15 * 60_000));
+        yield* b.when.browserSettled;
+        const servicesIdle = b.measure.projectServiceReads() - servicesAtStart;
+        const projectsIdle = b.measure.projectReads() - projectsAtStart;
+        report(
+          `H idle, owner: GET service-stack (with preflights) at start=${servicesAtStart}, over 15 min idle=${servicesIdle}; GET project (with preflights) at start=${projectsAtStart}, over 15 min idle (one renewal)=${projectsIdle}; 4 Mates`,
+        );
+        yield* s.then.noExternalNetwork;
+        expect(servicesAtStart, "Per-project services reads at start").toBe(0);
+        expect(servicesIdle, "Per-project services reads while idle").toBe(0);
+        expect(projectsAtStart, "Own project rows at start").toBe(0);
+        expect(projectsIdle, "Own project rows over one renewal").toBe(0);
+      }),
+    );
+
+    // A Developer (NO_ACCESS member) is judged on the grant their listing names on each project:
+    // a project's own row is read only where the listing names none, and here it names every one.
+    it.effect("an idle Developer's session reads no own row their listing names a grant on", () =>
+      Effect.gen(function* () {
+        const s = yield* createScenario([installBudget]);
+        const b = budgets(s);
+        yield* b.given.mates(names);
+        s.given.person("dev", {
+          role: "Developer",
+          grants: Object.fromEntries(names.map((name) => [name, "BASIC_USER"])),
+        });
+        s.given.asPerson("dev");
+        yield* Effect.promise(() => s.clock.install());
+        yield* s.given.signedIn;
+        yield* b.when.menuReady(names);
+        yield* b.when.browserSettled;
+        const projectsAtStart = b.measure.projectReads();
+        yield* Effect.promise(() => s.clock.advance(15 * 60_000));
+        yield* b.when.browserSettled;
+        const projectsIdle = b.measure.projectReads() - projectsAtStart;
+        report(
+          `H idle, Developer granted on 4 Mates: GET project (with preflights) at start=${projectsAtStart}, over 15 min idle (one renewal)=${projectsIdle}`,
+        );
+        yield* s.then.noExternalNetwork;
+        expect(projectsAtStart, "Own project rows at start").toBe(0);
+        expect(projectsIdle, "Own project rows over one renewal").toBe(0);
+      }),
     );
 
     // Catches the per-project reads Mate s.r.o.'s start made on 2026-10-06 (229 requests): each
     // project's own row, its services and its public routing, read for no surface that shows them.
-    // Only a drawn Mate's own row is read, once (and its preflight): the menu shows whose it is.
+    // An owner reads no project's own row: whose a Mate is comes from HQ.
     it.effect(
       "a Mate s.r.o.-like menu starts with no per-project row, services or routing read",
       () =>
@@ -253,7 +275,7 @@ describe("H: hosted client budgets", () => {
             `H start, 8 projects (4 Mates, stage, production, 2 plain), with preflights: GET project=${own} (of which not a Mate's ${others}), GET service-stack=${services}, GET public-http-routing=${routing}`,
           );
           yield* s.then.noExternalNetwork;
-          expect(own, "Own project rows at start: one per drawn Mate").toBe(2 * names.length);
+          expect(own, "Own project rows at start").toBe(0);
           expect(others, "Own rows of projects no Mate is drawn for").toBe(0);
           expect(services, "Per-project services reads at start").toBe(0);
           expect(routing, "Per-project public routing reads at start").toBe(0);

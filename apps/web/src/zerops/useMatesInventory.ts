@@ -3,17 +3,19 @@
  * services are the organization's services listing's, read for every project at once; what the
  * held inventory still demands is the Mate's container's variables (its setup marker and Mate
  * flag), read only for the Mates drawn: the projects page's, a project page's own, the left
- * menu's rows as they are mounted. Each drawn Mate's project's own row is held as well: only it
- * names everybody's grants on the project, whose `OWNER` makes the Mate somebody's.
+ * menu's rows as they are mounted. A drawn Mate's project's own row is held as well where it
+ * decides the viewer's access (`ownRowWanted`): a NO_ACCESS member's project whose listing names no
+ * grant of theirs. Whose a Mate is comes from HQ's person facts.
  */
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { useAtomValue } from "@effect/atom-react";
-import { accountReadsAtom } from "@t3tools/client-runtime/data";
+import { accountReadsAtom, ownRowWanted, shownProjectsAtom } from "@t3tools/client-runtime/data";
 import { isMateKind } from "@t3tools/shared/zeropsRoles";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { findInventoryProjectRef, projectAuthority, useZeropsInventory } from "./inventoryContext";
 import { useInterestLeases } from "./useInterestLeases";
+import { useZeropsSessionOptional } from "./sessionContext";
 
 /** The projects HQ places a Mate in, once each. */
 export function drawnMateProjects(
@@ -49,8 +51,20 @@ export function useMatesInventory(projectIds: ReadonlyArray<string>): void {
       [projects],
     ),
   );
-  // Each row held once while its Mate is drawn: one drawn or let go moves no other's hold.
+  // Each row held once while its Mate is drawn and it decides the viewer's access: one drawn or
+  // let go moves no other's hold.
   const demandDetail = useAtomValue(accountReadsAtom)?.demandDetail;
+  const viewerRole = useZeropsSessionOptional()?.activeOrganization?.roleCode;
+  const roster = useAtomValue(shownProjectsAtom).projects;
+  const wanted = useMemo(
+    () =>
+      projects
+        .map(({ projectId }) => projectId)
+        .filter((projectId) =>
+          ownRowWanted(viewerRole, roster.find(({ id }) => id === projectId) ?? null),
+        ),
+    [projects, roster, viewerRole],
+  );
   const rows = useRef(new Map<string, () => void>());
   const heldBy = useRef(demandDetail);
   useEffect(() => {
@@ -61,9 +75,7 @@ export function useMatesInventory(projectIds: ReadonlyArray<string>): void {
       held.clear();
       heldBy.current = demandDetail;
     }
-    const drawn = new Set<string>(
-      demandDetail === undefined ? [] : projects.map((p) => p.projectId),
-    );
+    const drawn = new Set<string>(demandDetail === undefined ? [] : wanted);
     for (const [ownerId, release] of held) {
       if (drawn.has(ownerId)) continue;
       release();
@@ -73,7 +85,7 @@ export function useMatesInventory(projectIds: ReadonlyArray<string>): void {
       if (!held.has(ownerId))
         held.set(ownerId, demandDetail!({ family: "project", listing: "project", ownerId }));
     }
-  }, [demandDetail, projects]);
+  }, [demandDetail, wanted]);
   useEffect(
     () => () => {
       for (const release of rows.current.values()) release();

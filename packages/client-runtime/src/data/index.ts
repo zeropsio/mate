@@ -89,6 +89,7 @@ export {
 export {
   listedProject,
   organizationProjects,
+  ownRowWanted,
   projectGone,
   type OrganizationProjects,
   type RosterRead,

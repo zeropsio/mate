@@ -9,6 +9,7 @@ import {
   listedProject,
   organizationProjects,
   projectGone,
+  ownRowWanted,
   projectStanding,
   type OrganizationProjects,
   type ProjectStanding,
@@ -222,5 +223,49 @@ describe("projectStanding", () => {
     const read = projectStanding.derive(readsOfState(state()), { orgId: ORG, projectId: "a" });
     expect(read.kind).toBe(standing);
     if (read.kind === "listed") expect(read.project.id).toBe("a");
+  });
+});
+
+describe("ownRowWanted", () => {
+  // A project's own row is read only where it decides the viewer's access: a NO_ACCESS member's
+  // project whose listing row names no grant of theirs. Whose a Mate is comes from HQ.
+  it.each([
+    { name: "an organization member's project", role: "OWNER", own: undefined, wanted: false },
+    { name: "a READ_ONLY member's project", role: "READ_ONLY", own: undefined, wanted: false },
+    {
+      name: "a NO_ACCESS member's project its listing names a grant on",
+      role: "NO_ACCESS",
+      own: "BASIC_USER",
+      wanted: false,
+    },
+    {
+      name: "a NO_ACCESS member's project its listing names no grant on",
+      role: "NO_ACCESS",
+      own: undefined,
+      wanted: true,
+    },
+    {
+      name: "a project before the membership is known",
+      role: undefined,
+      own: undefined,
+      wanted: false,
+    },
+  ])("$name: $wanted", ({ role, own, wanted }) => {
+    const listed = {
+      id: "p1",
+      name: "p1",
+      status: "ACTIVE",
+      ...(own === undefined ? {} : { viewerRoleCode: own }),
+    };
+    expect(ownRowWanted(role, listed)).toBe(wanted);
+  });
+
+  it("a NO_ACCESS member's project whose row names grants already: not wanted", () => {
+    const listed = { userRoles: [{ clientUserId: "cu-1", roleCode: "BASIC_USER" }] };
+    expect(ownRowWanted("NO_ACCESS", listed)).toBe(false);
+  });
+
+  it("a NO_ACCESS member's project the roster does not list yet: wanted", () => {
+    expect(ownRowWanted("NO_ACCESS", null)).toBe(true);
   });
 });

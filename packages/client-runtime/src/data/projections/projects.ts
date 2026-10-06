@@ -113,3 +113,17 @@ export const projectStanding: Projection<
   },
   equals: sameValue,
 };
+
+/**
+ * Whether a project's own row is read, by its id, while its Mate is drawn: only where it decides
+ * the viewer's access — a NO_ACCESS member's project whose listing row names no grant of theirs
+ * (or that the roster does not list yet). An organization member is judged on their membership,
+ * and whose a Mate is comes from HQ's person facts; neither asks Zerops per project.
+ */
+export const ownRowWanted = (
+  viewerRole: string | undefined,
+  listed: Pick<ProjectValue, "viewerRoleCode" | "userRoles"> | null,
+): boolean =>
+  viewerRole === "NO_ACCESS" &&
+  listed?.viewerRoleCode === undefined &&
+  listed?.userRoles === undefined;
