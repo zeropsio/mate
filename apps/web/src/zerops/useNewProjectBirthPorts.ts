@@ -4,7 +4,7 @@ import { appProjectName, withZeropsMateTag } from "@t3tools/client-runtime/zerop
 import { accountHqApi } from "./accountHq";
 import { invalidateZerops } from "./accountInvalidations";
 import { captureAccountLifetime } from "./accountLifetime";
-import { beginPress, finishMateSetup, whilePressing } from "./matePress";
+import { beginPress, finishMateSetup, PRESS_MAY_HAVE_LANDED, whilePressing } from "./matePress";
 import { useNewMate } from "./newMate";
 import {
   newProjectPlacement,
@@ -12,12 +12,12 @@ import {
   type NewProjectAsk,
   type NewProjectPorts,
 } from "./newProjectBirth";
-import { runZeropsCommand, useZeropsData } from "./zeropsDataContext";
+import { useZeropsData } from "./zeropsDataContext";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
 export function useNewProjectBirthPorts(): (ask: NewProjectAsk) => NewProjectPorts {
   const { client } = useZeropsSession();
-  const { organizationRef, runtime } = useZeropsData();
+  const { organizationRef } = useZeropsData();
   const { run: runOperation } = useAccountOperations();
   const created = useNewMate((state) => state.created);
   return (ask) => {
@@ -34,16 +34,26 @@ export function useNewProjectBirthPorts(): (ask: NewProjectAsk) => NewProjectPor
       // else): its press attaches it to its application, then imports its container (F6b). In
       // flight as a press: the background mints no throwaway while it reads the token list.
       createProject: ({ name: projectName, location }) =>
-        whilePressing(() =>
-          runZeropsCommand(
-            runtime.commands.createProject({
-              organization,
-              name: projectName,
-              tagList: withZeropsMateTag([]),
-              ...(location === undefined ? {} : { location }),
+        whilePressing(
+          () =>
+            new Promise<{ readonly project: { readonly id: string } }>((resolve, reject) => {
+              // Taken the moment Zerops takes its project; the project's own end is its press's.
+              runOperation(
+                {
+                  kind: "create-project",
+                  orgId: organizationId,
+                  name: projectName,
+                  tagList: withZeropsMateTag([]),
+                  ...(location === undefined ? {} : { location }),
+                },
+                {
+                  orgId: organizationId,
+                  unobserved: PRESS_MAY_HAVE_LANDED,
+                  accepted: ({ projectId }) => resolve({ project: { id: projectId } }),
+                },
+              ).catch(reject);
             }),
-          ),
-        ).then((project) => ({ project })),
+        ),
       accepted: (projectId, registration, startedAt) => {
         if (registration === null) return;
         const { hq, appId, intent } = registration;
