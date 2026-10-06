@@ -194,7 +194,8 @@ describe("H: hosted client budgets", () => {
       }),
     );
 
-    // Catches a per-project services read: at start, or repeated over an idle session.
+    // Catches a per-project services or per-Mate variables read: at start, or repeated over an
+    // idle session.
     it.effect("an idle session reads no project's services on its own", () =>
       Effect.gen(function* () {
         const s = yield* createScenario([installBudget]);
@@ -205,15 +206,22 @@ describe("H: hosted client budgets", () => {
         yield* b.when.menuReady(names);
         yield* b.when.browserSettled;
         const atStart = b.measure.projectServiceReads();
+        const variablesAtStart = b.measure.variableReads();
         yield* Effect.promise(() => s.clock.advance(120_000));
         yield* b.when.browserSettled;
         const idle = b.measure.projectServiceReads() - atStart;
+        const variablesIdle = b.measure.variableReads() - variablesAtStart;
         report(
-          `H idle: GET service-stack (with preflights) at start=${atStart}, over 2 min idle=${idle}; 4 Mates`,
+          `H idle: GET service-stack (with preflights) at start=${atStart}, over 2 min idle=${idle}; variables searches at start=${variablesAtStart}, idle=${variablesIdle}; 4 Mates`,
         );
         yield* s.then.noExternalNetwork;
         expect(atStart, "Per-project services reads at start").toBe(0);
         expect(idle, "Per-project services reads while idle").toBe(0);
+        expect(
+          variablesAtStart,
+          "At most one variables search per Mate at start",
+        ).toBeLessThanOrEqual(names.length);
+        expect(variablesIdle, "No variables search while idle").toBe(0);
       }),
     );
 
@@ -244,8 +252,8 @@ describe("H: hosted client budgets", () => {
         }),
     );
 
-    // Targets menu registrations growing with the number of Mates instead of organization scope.
-    it.effect.fails("target: menu registrations do not grow from one to four Mates", () =>
+    // Catches menu registrations growing with the number of Mates instead of organization scope.
+    it.effect("target: menu registrations do not grow from one to four Mates", () =>
       Effect.gen(function* () {
         const counts: number[] = [];
         for (const inventory of [["Ada"], names]) {

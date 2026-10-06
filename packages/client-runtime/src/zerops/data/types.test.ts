@@ -87,14 +87,3 @@ describe("Zerops platform data identities", () => {
     expect(entityKeyOf(service)).not.toBe(entityKeyOf(process));
   });
 });
-
-it("keeps variables queries separate for different opened services", () => {
-  const first = {
-    kind: "service-variables-of-services" as const,
-    organization: organization(),
-    serviceIds: ["a"],
-    keys: ["ZEROPS_MATE_ENABLED"],
-    schemaVersion: 1 as const,
-  };
-  expect(queryKeyOf(first)).not.toBe(queryKeyOf({ ...first, serviceIds: ["b"] }));
-});

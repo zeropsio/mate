@@ -2730,20 +2730,6 @@ export class ZeropsApiClient {
   }
 
   /**
-   * Whether `ZCP_MATE_ENABLED` reads as on for this service — the one read
-   * fact that tells a container not serving Zerops Mate apart from one that
-   * is merely away, which a browser cannot (spec-mate §4.5, H9): the health
-   * probe answers `predates-mate` either way, so the **Enable Zerops Mate**
-   * verb (a restart) must be offered on this, never on the probe alone.
-   */
-  async isZeropsMateEnabled(serviceId: string, signal?: AbortSignal): Promise<boolean> {
-    const current = (await this.#serviceEnv(serviceId, signal)).find(
-      (entry) => entry.key === ZEROPS_MATE_ENV_KEY,
-    );
-    return current !== undefined && readsAsEnabled(current.content);
-  }
-
-  /**
    * `POST /service-stack/{id}/app-version` — the first of the three calls a deploy through the API
    * is (then {@link uploadAppVersionArchive} and {@link buildAndDeployAppVersion}). A version exists
    * whether or not its answer arrives, so a lost answer is `uncertain`.

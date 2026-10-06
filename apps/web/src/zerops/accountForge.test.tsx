@@ -1,8 +1,5 @@
-import type {
-  ProjectRef,
-  ServiceRef,
-  ZeropsServiceDeployedVersion,
-} from "@t3tools/client-runtime/zerops/data";
+import type { ZeropsServiceDeployedVersion } from "@t3tools/client-runtime/data";
+import type { ProjectRef, ServiceRef } from "@t3tools/client-runtime/zerops/data";
 import { RegistryContext } from "@effect/atom-react";
 import type { Stops } from "@t3tools/client-runtime/zerops/account/runtime";
 import type { Deployment, StopService } from "@t3tools/client-runtime/zerops/flow";

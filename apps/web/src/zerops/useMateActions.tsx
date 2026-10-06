@@ -295,7 +295,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   const births = useNewProjectBirths((state) => state.births);
   // A press interrupted before its close-off, on a Mate made in any browser: the store's markers,
   // at no cost of their own, for anyone who could finish it — its own adder too.
-  const interrupted = useInterruptedPresses(candidates, { runtime, projectRef });
+  const interrupted = useInterruptedPresses(candidates);
   // Whether each Mate's press in another browser is still at it, as HQ holds it (B5).
   const pressOf = usePressesElsewhere(candidates);
   const pressedElsewhere = useCallback(

@@ -1,9 +1,9 @@
 /**
  * The project inventories of the Mates a surface draws, held while it draws them. A Mate's
- * services are the organization's services listing's, read for every project at once; what the
- * held inventory still demands is the Mate's container's variables (its setup marker and Mate
- * flag), read only for the Mates drawn: the projects page's, a project page's own, the left
- * menu's rows as they are mounted.
+ * services are the organization's services listing's and its container's variables the
+ * organization's Mate variables, each read once for every project; what the held inventory still
+ * demands is the grant's verdict on each drawn Mate's project: the projects page's, a project
+ * page's own, the left menu's rows as they are mounted.
  */
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { isMateKind } from "@t3tools/shared/zeropsRoles";

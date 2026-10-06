@@ -74,6 +74,8 @@ export function budgets(s: Scenario) {
       /** One project's own services read, `GET /project/{id}/service-stack`, and its preflight. */
       projectServiceReads: () =>
         observation.browser.matching(/^(GET|OPTIONS) \/project\/[^/]+\/service-stack(\?|$)/u),
+      /** The organization's Mate variables read by key, `POST /user-data/search`. */
+      variableReads: () => observation.browser.matching(/^POST \/user-data\/search(\?|$)/u),
       hqSegments: () => observation.hq.segments,
       firstData: (after = 0) => {
         const samples = observation.hq.segments.slice(after).map((segment) => {

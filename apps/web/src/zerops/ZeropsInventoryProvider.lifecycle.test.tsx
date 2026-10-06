@@ -297,11 +297,7 @@ const mountInventory = Effect.fn(function* (
           registerCalls++;
           if (registrationGate !== null) yield* Deferred.await(registrationGate);
           registrations.set(request.subscriptionName, request);
-          if (
-            request.descriptor.kind === "entity-updates" ||
-            request.descriptor.kind === "table-updates"
-          )
-            return { responseObservations: [] };
+          if (request.descriptor.kind === "entity-updates") return { responseObservations: [] };
           const items =
             request.descriptor.query.kind === "projects-of-organization"
               ? [...projects.values()].filter(({ id }) => indexed.has(id))

@@ -28,8 +28,6 @@ import {
 } from "../data/platformProtocol.ts";
 import {
   ZeropsOrganizationId,
-  ZeropsProjectId,
-  ZeropsServiceId,
   type MembershipQueryDescriptor,
   type ProjectRef,
   type ZeropsDataAdapter,
@@ -37,7 +35,6 @@ import {
 import type { DescriptorFacts } from "../environments/environmentMachine.ts";
 import type { CloseOffWord } from "../environments/closeOff.ts";
 import { mateListingsAtom } from "../environments/listings.ts";
-import { readServiceMateFlag } from "../environments/mateFlag.ts";
 import { rowTarget } from "../environments/mateLink.ts";
 import type { ProbeReading } from "../environments/probeStore.ts";
 import { REGISTRATION_RECORDS_KEY, type RegistrationRecord } from "../environments/records.ts";
@@ -55,7 +52,7 @@ import {
   type DoorCredential,
   type DoorRequest,
 } from "./accountRuntime.ts";
-import { liveProjects, liveServices } from "../../data/__fixtures__/account.ts";
+import { liveMateVariables, liveProjects, liveServices } from "../../data/__fixtures__/account.ts";
 import { accountReadsAtom } from "../../data/reads.ts";
 import { makeAccountStore, type AccountStore } from "../../data/store.ts";
 import { historyScope } from "../../data/families/process.ts";
@@ -110,11 +107,7 @@ const MATE_ORIGIN = A_MATE.origin;
 const ENV_A = EnvironmentId.make("env-a");
 
 /** The datastream over a platform whose one organization holds these Mates' projects. */
-const platformAdapter = (
-  mates: ReadonlyArray<Mate>,
-  /** The services' variables as the stream answers them; `never`: it never answers. */
-  variables: ReadonlyArray<unknown> | "never" = [],
-): ZeropsDataAdapter => {
+const platformAdapter = (mates: ReadonlyArray<Mate>): ZeropsDataAdapter => {
   const rowsOf = (query: MembershipQueryDescriptor): ReadonlyArray<unknown> => {
     switch (query.kind) {
       case "projects-of-organization":
@@ -134,31 +127,16 @@ const platformAdapter = (
         events: Stream.never,
       }),
     register: (_receiver, request) =>
-      request.descriptor.kind === "table-list" && variables === "never"
-        ? Effect.never
-        : Effect.sync(() => {
-            if (request.descriptor.kind === "table-list") {
-              const listed =
-                request.descriptor.query.kind === "service-variables-of-services" &&
-                variables !== "never"
-                  ? variables
-                  : [];
-              return {
-                responseObservations: decodeRegistrationResponse(request, {
-                  items: listed,
-                  totalHits: listed.length,
-                }).observations,
-              };
-            }
-            if (request.descriptor.kind !== "query-membership") return { responseObservations: [] };
-            const items = rowsOf(request.descriptor.query);
-            return {
-              responseObservations: decodeRegistrationResponse(request, {
-                items,
-                totalHits: items.length,
-              }).observations,
-            };
-          }),
+      Effect.sync(() => {
+        if (request.descriptor.kind !== "query-membership") return { responseObservations: [] };
+        const items = rowsOf(request.descriptor.query);
+        return {
+          responseObservations: decodeRegistrationResponse(request, {
+            items,
+            totalHits: items.length,
+          }).observations,
+        };
+      }),
     read: (ticket) =>
       Effect.sync(() => {
         if (ticket.target.kind === "query") {
@@ -842,226 +820,6 @@ describe("the account runtime", () => {
   );
 
   it.effect(
-    "reads a Mate flag from the account's streamed variables however often it is asked, registering nothing",
-    () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const clock = yield* makeDeadlineClock({ startWallMs: START_WALL_MS });
-          const registry = AtomRegistry.make();
-          const page = yield* makePage(clock);
-          const rest = makeFakeZeropsRest();
-          rest.addUser({
-            user: {
-              id: account.accountId,
-              email: "person@example.test",
-              clientUserList: [
-                { id: "cu-1", clientId: organization.organizationId, roleCode: "OWNER" },
-              ],
-            },
-            password: "secret",
-          });
-          rest.addProject({
-            id: "project-1",
-            clientId: organization.organizationId,
-            name: "project-1",
-            status: "ACTIVE",
-            tagList: ["mate"],
-          });
-          const client = new ZeropsApiClient({ fetch: rest.fetch });
-          client.restoreSession(rest.issueSession(account.accountId));
-          const datastream = makeFakeDatastream(rest, {
-            variables: () => [
-              {
-                id: "variable-1",
-                serviceStackId: "service-1",
-                projectId: "project-1",
-                key: "ZCP_MATE_ENABLED",
-                content: "1",
-              },
-            ],
-          });
-          const built = yield* Effect.gen(function* () {
-            const data = yield* makeZeropsDataRuntime({
-              random: () => 0,
-              scope: scope(),
-              adapter: datastream.adapter,
-              atomRegistry: registry,
-              makeOpaqueId: (() => {
-                let next = 0;
-                return () => `opaque-${++next}`;
-              })(),
-            });
-            return yield* makeAccountRuntime({
-              data,
-              verifier: makeRestAccessVerifier({
-                client,
-                account,
-                concurrency: policy.roundProjectConcurrency,
-                onUser: () => undefined,
-              }),
-              signals: page.signals,
-              atomRegistry: registry,
-              environments: inertEnvironments(clock),
-            }).pipe(
-              Effect.tap((runtime) =>
-                Effect.sync(() => runtime.selectOrganization(organization.organizationId)),
-              ),
-            );
-          }).pipe(Effect.provideService(Clock.Clock, clock));
-          yield* Effect.addFinalizer(() => built.close("application-close"));
-          yield* clock.advance(SECOND);
-          yield* settle;
-          yield* settle;
-          const service = {
-            kind: "service" as const,
-            project: {
-              kind: "project" as const,
-              organization,
-              projectId: ZeropsProjectId.make("project-1"),
-            },
-            serviceId: ZeropsServiceId.make("service-1"),
-          };
-
-          yield* built.data.acquire({
-            kind: "project-variables",
-            project: service.project,
-            serviceIds: [service.serviceId],
-          });
-          yield* clock.advance(SECOND);
-          yield* settle;
-          const registered = datastream.registrations().length;
-          for (let asked = 0; asked < 20; asked++) {
-            const flag = yield* Effect.promise(() =>
-              readServiceMateFlag(built.data, registry, service),
-            );
-            expect(flag).toBe(true);
-            yield* settle;
-          }
-
-          expect(datastream.registrations()).toHaveLength(registered);
-          expect(
-            datastream
-              .registrations()
-              .filter(
-                ({ descriptor }) =>
-                  descriptor.kind === "table-list" || descriptor.kind === "table-updates",
-              ),
-          ).toHaveLength(2);
-        }),
-      ),
-  );
-
-  it.effect(
-    "reads a Mate flag the account's variables never stated from the service itself, once",
-    () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const clock = yield* makeDeadlineClock({ startWallMs: START_WALL_MS });
-          const registry = AtomRegistry.make();
-          const page = yield* makePage(clock);
-          const rest = makeFakeZeropsRest();
-          rest.addUser({
-            user: {
-              id: account.accountId,
-              email: "person@example.test",
-              clientUserList: [
-                { id: "cu-1", clientId: organization.organizationId, roleCode: "OWNER" },
-              ],
-            },
-            password: "secret",
-          });
-          rest.addProject({
-            id: "project-1",
-            clientId: organization.organizationId,
-            name: "project-1",
-            status: "ACTIVE",
-            tagList: ["mate"],
-          });
-          const client = new ZeropsApiClient({ fetch: rest.fetch });
-          client.restoreSession(rest.issueSession(account.accountId));
-          let ownReads = 0;
-          const datastream = makeFakeDatastream(rest, {
-            variables: () => [
-              {
-                id: "variable-1",
-                serviceStackId: "service-1",
-                projectId: "project-1",
-                key: "ZCP_MATE_ENABLED",
-                content: "1",
-              },
-            ],
-          });
-          const built = yield* Effect.gen(function* () {
-            const data = yield* makeZeropsDataRuntime({
-              random: () => 0,
-              scope: scope(),
-              adapter: {
-                ...datastream.adapter,
-                cells: {
-                  readServiceMateFlag: () =>
-                    Effect.sync(() => {
-                      ownReads += 1;
-                      return { enabled: true };
-                    }),
-                },
-              },
-              atomRegistry: registry,
-              makeOpaqueId: (() => {
-                let next = 0;
-                return () => `opaque-${++next}`;
-              })(),
-            });
-            return yield* makeAccountRuntime({
-              data,
-              verifier: makeRestAccessVerifier({
-                client,
-                account,
-                concurrency: policy.roundProjectConcurrency,
-                onUser: () => undefined,
-              }),
-              signals: page.signals,
-              atomRegistry: registry,
-              environments: inertEnvironments(clock),
-            }).pipe(
-              Effect.tap((runtime) =>
-                Effect.sync(() => runtime.selectOrganization(organization.organizationId)),
-              ),
-            );
-          }).pipe(Effect.provideService(Clock.Clock, clock));
-          yield* Effect.addFinalizer(() => built.close("application-close"));
-          // The account's variables never answer: the flag cannot be stated from them.
-          datastream.holdRegistrations();
-          yield* clock.advance(SECOND);
-          yield* settle;
-          yield* settle;
-          const service = {
-            kind: "service" as const,
-            project: {
-              kind: "project" as const,
-              organization,
-              projectId: ZeropsProjectId.make("project-1"),
-            },
-            serviceId: ZeropsServiceId.make("service-1"),
-          };
-
-          yield* built.data.acquire({
-            kind: "project-variables",
-            project: service.project,
-            serviceIds: [service.serviceId],
-          });
-          yield* clock.advance(SECOND);
-          yield* settle;
-          const flag = yield* Effect.promise(() =>
-            readServiceMateFlag(built.data, registry, service, undefined, 50),
-          );
-
-          expect(flag).toBe(true);
-          expect(ownReads).toBe(1);
-        }),
-      ),
-  );
-
-  it.effect(
     "navigation discovers a new project without verifying access or reading its services",
     () =>
       Effect.scoped(
@@ -1140,16 +898,6 @@ describe("the account runtime", () => {
           expect(yield* observing()).toBe(1);
           const roundsBefore = rounds().length;
 
-          const streamed = () =>
-            Effect.map(data.state, (state) =>
-              [...state.interests.values()]
-                .filter(({ interest }) => interest.status === "observing")
-                .map(({ descriptor }) => descriptor.kind)
-                .filter((kind) => kind === "project-variables")
-                .toSorted(),
-            );
-          expect(yield* streamed()).toEqual([]);
-
           // Someone else adds the organization's first Mate: its project appears in the list.
           const mate = {
             id: "project-2",
@@ -1169,7 +917,6 @@ describe("the account runtime", () => {
           // Its services are read: the organization's inventory and both projects'; and, with a
           // Mate there now, what its services run and their Mate flags are streamed.
           expect(yield* observing()).toBe(1);
-          expect(yield* streamed()).toEqual([]);
           expect(rounds()).toHaveLength(roundsBefore);
 
           // The organization's last Mate stops being one: nothing reads the streams, so they go.
@@ -1180,7 +927,6 @@ describe("the account runtime", () => {
           yield* clock.advance(SECOND);
           yield* settle;
           yield* settle;
-          expect(yield* streamed()).toEqual([]);
           expect(yield* observing()).toBe(1);
         }),
       ),
@@ -1401,6 +1147,8 @@ describe("the post-grant stage's Mate environments", () => {
     rosterHeld = false,
     /** The services listing does not answer until the case releases it. */
     servicesHeld = false,
+    /** The organization's Mate variables as their search answers them; `never`: it never does. */
+    variables: ReadonlyArray<Readonly<Record<string, unknown>>> | "never" = [],
   ) {
     const clock = yield* makeDeadlineClock({ startWallMs: START_WALL_MS });
     const registry = AtomRegistry.make();
@@ -1460,10 +1208,17 @@ describe("the post-grant stage's Mate environments", () => {
     };
     let answeredOnce = false;
     if (!rosterHeld) releaseRoster();
+    const variablesRead = new Set<string>();
     registry.set(accountReadsAtom, {
       data: store.data,
       orgId: organization.organizationId,
-      demandDetail: () => () => undefined,
+      demandDetail: ({ family, ownerId }) => {
+        if (family !== "mateVariables" || variables === "never" || variablesRead.has(ownerId))
+          return () => undefined;
+        variablesRead.add(ownerId);
+        liveMateVariables(organization.organizationId, ownerId, variables).forEach(store.dispatch);
+        return () => undefined;
+      },
     });
     // As a page loads: the services listing lands once the account's first grant is in.
     const answered = {
@@ -1488,6 +1243,8 @@ describe("the post-grant stage's Mate environments", () => {
       registry,
       store,
       releaseRoster,
+      /** The Mates' containers whose variables were asked for. */
+      variablesRead,
       /** The held services listing answers now. */
       releaseHeldServices: () => {
         servicesHeld = false;
@@ -1506,6 +1263,7 @@ describe("the post-grant stage's Mate environments", () => {
     extra: Partial<AccountEnvironmentPorts> = {},
     rosterHeld = false,
     servicesHeld = false,
+    variables: ReadonlyArray<Readonly<Record<string, unknown>>> | "never" = [],
   ) {
     const opened = yield* openAccount(
       remembered,
@@ -1516,6 +1274,7 @@ describe("the post-grant stage's Mate environments", () => {
       undefined,
       rosterHeld,
       servicesHeld,
+      variables,
     );
     yield* opened.grant.answer();
     yield* opened.clock.advance(SECOND);
@@ -1879,7 +1638,7 @@ describe("the post-grant stage's Mate environments", () => {
   // The close-off gate (restores 0.12.3's closeOffGate inside the lease model): a Mate whose
   // container carries the press's marker is let in only once HQ says its project is closed off.
   describe("the close-off gate", () => {
-    /** The press's marker on Mate A's container, as the account's streamed variables say it. */
+    /** The press's marker on Mate A's container, as the organization's Mate variables say it. */
     const MARKER = [
       {
         id: "variable-marker",
@@ -1936,9 +1695,12 @@ describe("the post-grant stage's Mate environments", () => {
             const { rig, environments } = yield* granted(
               [],
               [A_MATE],
-              platformAdapter([A_MATE], MARKER),
+              platformAdapter([A_MATE]),
               [A_MATE],
               { closeOff: word.port },
+              false,
+              false,
+              MARKER,
             );
             environments.setOnScreen(A_MATE.projectId);
             yield* settle;
@@ -1984,9 +1746,16 @@ describe("the post-grant stage's Mate environments", () => {
         Effect.scoped(
           Effect.gen(function* () {
             const fresh = madeAt("2026-09-23T09:50:00.000Z");
-            const unheld = yield* granted([], [fresh], platformAdapter([fresh], MARKER), [fresh], {
-              closeOff: hqWord(null).port,
-            });
+            const unheld = yield* granted(
+              [],
+              [fresh],
+              platformAdapter([fresh]),
+              [fresh],
+              { closeOff: hqWord(null).port },
+              false,
+              false,
+              MARKER,
+            );
             unheld.environments.setOnScreen(fresh.projectId);
             yield* settle;
             expect(unheld.environments.closeOffHolds().size).toBe(0);
@@ -2003,9 +1772,12 @@ describe("the post-grant stage's Mate environments", () => {
             const { rig, environments } = yield* granted(
               [],
               [A_MATE],
-              platformAdapter([A_MATE], MARKER),
+              platformAdapter([A_MATE]),
               [A_MATE],
               { closeOff: hqWord(null).port, closeOffPending: pendingHere([A_MATE.projectId]) },
+              false,
+              false,
+              MARKER,
             );
             environments.setOnScreen(A_MATE.projectId);
             yield* settle;
@@ -2013,6 +1785,32 @@ describe("the post-grant stage's Mate environments", () => {
             expect(exchangesOf(rig)).toBe(0);
           }),
         ),
+    );
+
+    // The marker decides only where HQ says a project is not closed off: listing Mates HQ says
+    // are closed off, or says nothing of, reads no container's variables.
+    it.effect.each([
+      { name: "closed off", word: () => said([A_MATE.projectId]) },
+      { name: "said nothing of", word: () => null },
+      { name: "not current", word: () => said([], false) },
+    ])("a Mate HQ has $name reads no variables", ({ word }) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { variablesRead, environments } = yield* granted(
+            [],
+            [A_MATE],
+            platformAdapter([A_MATE]),
+            [A_MATE],
+            { closeOff: hqWord(word()).port },
+            false,
+            false,
+            MARKER,
+          );
+          environments.setOnScreen(A_MATE.projectId);
+          yield* settle;
+          expect([...variablesRead]).toEqual([]);
+        }),
+      ),
     );
 
     // Security review 10: HQ's record saying it is not closed off holds the Mate while its marker
@@ -2024,9 +1822,12 @@ describe("the post-grant stage's Mate environments", () => {
           const { rig, environments } = yield* granted(
             [],
             [old],
-            platformAdapter([old], "never"),
+            platformAdapter([old]),
             [old],
             { closeOff: hqWord(said([])).port },
+            false,
+            false,
+            "never",
           );
           environments.setOnScreen(old.projectId);
           yield* settle;
@@ -2047,9 +1848,12 @@ describe("the post-grant stage's Mate environments", () => {
           const { rig, environments } = yield* granted(
             [],
             [tagged],
-            platformAdapter([tagged], MARKER),
+            platformAdapter([tagged]),
             [tagged],
             { closeOff: hqWord(said([])).port },
+            false,
+            false,
+            MARKER,
           );
           environments.setOnScreen(tagged.projectId);
           yield* settle;

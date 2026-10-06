@@ -26,7 +26,7 @@
  */
 import { isZcpService } from "../containerAddress.ts";
 import { serviceRecordToZeropsService } from "../data/dto.ts";
-import type { ZeropsServiceDeployedVersion } from "../data/deployedVersion.ts";
+import type { ZeropsServiceDeployedVersion } from "../../data/projections/serviceRuns.ts";
 import type {
   CollectionRead,
   IngestionStamp,
@@ -541,8 +541,7 @@ function serviceDeployment(
     case "none": {
       if (settled === null) {
         if (answer.kind === "none") return notYetKnown(source, nowMs);
-        // A variables read that failed says why nothing names the version, and when it is tried
-        // again.
+        // What the service runs failing to be stated says why nothing names the version.
         const read = active === null ? undefined : context.stated.get(active);
         if (read?.state === "failed") return read;
         return unstatedDeployment(answer, serviceId, context);

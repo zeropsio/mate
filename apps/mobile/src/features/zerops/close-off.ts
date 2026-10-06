@@ -15,9 +15,6 @@ export const CLOSE_OFF_STOPPED_LINE =
 /** The isolation that closes a project off (`projectIsolation.ts`). */
 const CLOSED_OFF_ISOLATION = "service";
 
-/** The press's marker on a Mate's container. */
-export const SETUP_MARKER = "MATE_SETUP_RUNTIMES";
-
 /** The projects this device knows are not closed off, as the account's environments read them. */
 export interface CloseOffFacts {
   readonly read: () => ReadonlySet<string>;

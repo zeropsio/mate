@@ -34,11 +34,8 @@ import type {
   ZeropsDataAdapter,
   ZeropsWireSubscriptionName,
 } from "./types.ts";
-import type { TableQueryDescriptor } from "./types.ts";
-import { decodeTableSearch } from "./tableProtocol.ts";
 import { ZeropsApiError, ZeropsWriteNotSent, type ZeropsApiClient } from "../api.ts";
 import type { PlatformWatchSocket, PlatformWatchTimers } from "./platformSocket.ts";
-import type { ZeropsCellAdapter, ZeropsCellSourceError } from "./cells.ts";
 
 const PUBLIC_WS_PATH = "/api/rest/public/web-socket";
 
@@ -271,8 +268,7 @@ function queryOrganizationId(query: MembershipQueryDescriptor): string {
 
 function registrationOrganization(request: RegistrationRequest) {
   const descriptor = request.descriptor;
-  if (descriptor.kind === "table-list") return descriptor.query.organization;
-  return descriptor.kind === "entity-updates" || descriptor.kind === "table-updates"
+  return descriptor.kind === "entity-updates"
     ? descriptor.organization
     : "project" in descriptor.query
       ? descriptor.query.project.organization
@@ -311,48 +307,12 @@ function searchTerms(
  */
 const ORGANIZATION_SEARCH_LIMIT = 2000;
 
-/** The search a table list is: its organization's rows its kind holds (`entityTable.ts`). */
-function tableSearch(query: TableQueryDescriptor) {
-  return {
-    path: "/user-data/search",
-    body: {
-      search: [
-        { name: "clientId", operator: "eq", value: query.organization.organizationId },
-        { name: "serviceStackId", operator: "in", value: query.serviceIds },
-        { name: "key", operator: "in", value: query.keys },
-        ...(query.ids === undefined ? [] : [{ name: "id", operator: "in", value: query.ids }]),
-      ],
-      sort: [],
-      limit: query.ids === undefined ? ORGANIZATION_SEARCH_LIMIT : Math.max(1, query.ids.length),
-    },
-  };
-}
-
 function registrationHttp(request: RegistrationRequest, receiver: ReceiverHandle) {
   const common = {
     receiverId: receiver.identity.receiverId,
     subscriptionName: request.subscriptionName,
   };
   const descriptor = request.descriptor;
-  if (descriptor.kind === "table-updates") {
-    return {
-      path: `/${descriptor.entity}/search`,
-      body: {
-        search: [
-          { name: "clientId", operator: "eq", value: descriptor.organization.organizationId },
-          { name: "serviceStackId", operator: "in", value: descriptor.serviceIds },
-        ],
-        sort: [],
-        ...common,
-        wsOutputType: "updateStream",
-        disableOutput: true,
-      },
-    };
-  }
-  if (descriptor.kind === "table-list") {
-    const search = tableSearch(descriptor.query);
-    return { path: search.path, body: { ...search.body, ...common, wsOutputType: "listStream" } };
-  }
   if (descriptor.kind === "entity-updates") {
     const entity = descriptor.entity === "service" ? "service-stack" : descriptor.entity;
     return {
@@ -391,14 +351,6 @@ function readHttp(ticket: PlatformReadRequest, offset = 0) {
   if (target.kind === "service")
     return { path: `/service-stack/${target.ref.serviceId}`, method: "GET" as const };
   const query = target.descriptor;
-  if (query.kind === "service-variables-of-services") {
-    const search = tableSearch(query);
-    return {
-      path: search.path,
-      method: "POST" as const,
-      body: { ...search.body, ...(offset ? { offset } : {}) },
-    };
-  }
   if (query.kind === "projects-of-organization")
     return {
       path: `/client/${query.organization.organizationId}/project?limit=500${offset ? `&offset=${offset}` : ""}`,
@@ -416,8 +368,6 @@ function decodeRead(ticket: PlatformReadRequest, body: unknown) {
     case "projects-of-organization":
     case "services-of-project":
       return decodeEntityQueryResponse(ticket.target.descriptor, ticket, body, "direct-read");
-    case "service-variables-of-services":
-      return decodeTableSearch(ticket, body);
   }
 }
 
@@ -1152,55 +1102,5 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
     read,
     execute,
     closeReceiver,
-    cells: makeZeropsCellReads(options.client),
-  };
-}
-
-const cellReadError = (cause: unknown): ZeropsCellSourceError => {
-  if (cause instanceof ZeropsApiError) {
-    // A 429 is Zerops asking for patience: retried, and not before its Retry-After.
-    if (cause.status === 429)
-      return {
-        _tag: "ZeropsCellSourceError",
-        kind: "transport",
-        retryable: true,
-        ...(cause.retryAfterMs === null ? {} : { retryAfterMs: cause.retryAfterMs }),
-      };
-    switch (cause.kind) {
-      case "forbidden":
-      case "expired-session":
-        return { _tag: "ZeropsCellSourceError", kind: "permission", retryable: false };
-      case "not-found":
-        return { _tag: "ZeropsCellSourceError", kind: "unavailable", retryable: false };
-      case "network":
-      case "server":
-        return { _tag: "ZeropsCellSourceError", kind: "transport", retryable: true };
-      default:
-        return { _tag: "ZeropsCellSourceError", kind: "decode", retryable: false };
-    }
-  }
-  return { _tag: "ZeropsCellSourceError", kind: "transport", retryable: true };
-};
-
-const cellRead = <Value>(run: () => Promise<Value>): Effect.Effect<Value, ZeropsCellSourceError> =>
-  Effect.tryPromise({ try: run, catch: cellReadError });
-
-/** The reads no stream carries, one per cell kind, over the REST API. */
-export function makeZeropsCellReads(client: ZeropsApiClient): ZeropsCellAdapter {
-  return {
-    // A failed read is folded into `"unknown"` here, not left to fail the
-    // resource: this flag exists to replace an inference (H9), and a read
-    // that could not be made is exactly the case a caller must not treat as
-    // a fact either way.
-    readServiceMateFlag: (input, context) =>
-      cellRead(async () => {
-        try {
-          return {
-            enabled: await client.isZeropsMateEnabled(input.service.serviceId, context.abortSignal),
-          };
-        } catch {
-          return { enabled: "unknown" as const };
-        }
-      }),
   };
 }

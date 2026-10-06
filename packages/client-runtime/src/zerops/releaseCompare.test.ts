@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import type { ZeropsServiceDeployedVersion } from "./data/deployedVersion.ts";
+import type { ZeropsServiceDeployedVersion } from "../data/projections/serviceRuns.ts";
 import type { HqJob } from "./hq/environments.ts";
 import type { Shown } from "./knowledge/known.ts";
 

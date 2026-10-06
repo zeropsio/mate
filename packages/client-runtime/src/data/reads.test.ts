@@ -305,7 +305,12 @@ describe("readMateMarker", () => {
             },
           ],
         });
-        store.dispatch({ kind: "stream", key: scope, now: 0, event: { kind: "baseline-committed" } });
+        store.dispatch({
+          kind: "stream",
+          key: scope,
+          now: 0,
+          event: { kind: "baseline-committed" },
+        });
         return () => undefined;
       },
     });
