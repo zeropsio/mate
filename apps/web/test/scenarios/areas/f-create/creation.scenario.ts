@@ -21,6 +21,8 @@ describe("F: creation through the hosted client", () => {
     it.effect("new project creates its named first Mate", () =>
       Effect.gen(function* () {
         const s = yield* createScenario([installCreation]);
+        // An organization with a Mate: New project is the menu's offered path (D11).
+        yield* s.given.project("Ada", { mate: true, app: "Shop" });
         yield* s.given.signedIn;
         const c = creation(s);
         yield* c.newProject;
@@ -124,6 +126,8 @@ describe("F: creation through the hosted client", () => {
       Effect.gen(function* () {
         const s = yield* createScenario([installCreation]);
         yield* Effect.promise(() => s.clock.install());
+        // An organization with a Mate: New project is the menu's offered path (D11).
+        yield* s.given.project("Ada", { mate: true, app: "Shop" });
         yield* s.given.signedIn;
         const c = creation(s);
         c.loseCreationReply();
