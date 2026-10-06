@@ -5711,6 +5711,16 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       ),
     });
 
+    // Its stream may have ended while the message was built: the prompt
+    // queue is shut, and a turn opened now would never end. The message never
+    // reached Claude: the caller resends it on a new session.
+    if (context.stopped) {
+      return yield* new ProviderAdapterSessionClosedError({
+        provider: PROVIDER,
+        threadId: input.threadId,
+      });
+    }
+
     const turnId = steeringTurnState?.turnId ?? TurnId.make(yield* randomUUIDv4);
     if (steeringTurnState === null) {
       const turnState: ClaudeTurnState = {
@@ -5755,13 +5765,20 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     if (steeringTurnState === null) context.turnStartMessageIds.push(turnId);
     rememberTurnPictures(context.turnState, input);
     yield* updateResumeCursor(context);
-    yield* Queue.offer(context.promptQueue, {
+    const offered = yield* Queue.offer(context.promptQueue, {
       type: "message",
       message:
         steeringTurnState === null
           ? { ...message, uuid: turnId as NonNullable<SDKUserMessage["uuid"]> }
           : message,
     }).pipe(Effect.mapError((cause) => toRequestError(input.threadId, "turn/start", cause)));
+    // A shut queue takes nothing: the message never reached Claude.
+    if (!offered) {
+      return yield* new ProviderAdapterSessionClosedError({
+        provider: PROVIDER,
+        threadId: input.threadId,
+      });
+    }
 
     return {
       threadId: context.session.threadId,
