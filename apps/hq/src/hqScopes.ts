@@ -1,10 +1,12 @@
 // @effect-diagnostics nodeBuiltinImport:off -- scope incarnations are unique to this Core process.
 import * as NodeCrypto from "node:crypto";
 import {
+  HQ_ZEROPS_REFUSED,
   HqNavigationApp,
   HqNavigationProject,
   hqScopeKey,
   type HqScope,
+  type HqScopeFailure,
   type HqStreamMessage,
   type HqStreamRequest,
   type HqSubscription,
@@ -24,6 +26,7 @@ import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
+import { ZeropsRefused } from "./zerops/api.ts";
 import { Changes } from "./changes.ts";
 import { Deploys } from "./deploys.ts";
 import { healthParts } from "./health.ts";
@@ -37,6 +40,8 @@ import { Roles, type OrgView } from "./roles.ts";
 import { makeSourceFence } from "./sourceFence.ts";
 import { makeScopeJournal } from "./scopeJournal.ts";
 import { Structure, type StructureSource, type StructureRead } from "./structure.ts";
+
+const isZeropsRefused = Schema.is(ZeropsRefused);
 
 export type ScopeOutput = Exclude<HqStreamMessage, { readonly type: "ping" }>;
 interface ScopeConnection {
@@ -93,7 +98,17 @@ const failureMetadata = Schema.decodeUnknownOption(
   }),
 );
 const metadata = (error: unknown) =>
-  Option.getOrElse(failureMetadata(error), (): { code?: string; reason?: string | null } => ({}));
+  isZeropsRefused(error)
+    ? { code: HQ_ZEROPS_REFUSED.code, reason: error.reason }
+    : Option.getOrElse(
+        failureMetadata(error),
+        (): { code?: string; reason?: string | null } => ({}),
+      );
+const refusalProvesRemoval = (code: string) => code === "forbidden" || code.endsWith("_not_found");
+const refusalDisposition = (code: string) =>
+  code === HQ_ZEROPS_REFUSED.code || code === "unsupported" || refusalProvesRemoval(code)
+    ? ("refused" as const)
+    : ("transient" as const);
 const json = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 
 export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
@@ -455,6 +470,7 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
       const refreshUnlocked = (entry: Entry) =>
         Effect.gen(function* () {
           while (true) {
+            if (entry.failure?.code === HQ_ZEROPS_REFUSED.code) return;
             const current = yield* sourceNow;
             if (entry.sourceVersion !== sourceVersion) entry.dirty = true;
             if (
@@ -480,10 +496,7 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
             Effect.gen(function* () {
               const facts = metadata(error);
               const code = facts.code ?? "unavailable";
-              const refused =
-                code === "forbidden" || code === "unsupported" || code.endsWith("_not_found");
-
-              if (refused && code !== "unsupported") {
+              if (refusalProvesRemoval(code)) {
                 const message = entry.journal.commit(
                   [],
                   entry.journal.keys().map((key) => ({
@@ -498,7 +511,7 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
                 scope: entry.scope,
                 code,
                 reason: facts.reason ?? null,
-                disposition: refused ? "refused" : "transient",
+                disposition: refusalDisposition(code),
               };
               yield* send(entry, [entry.failure]);
             }),
@@ -608,23 +621,29 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
             Effect.sleep(recheck),
             Effect.gen(function* () {
               if (connections.size === 0) return;
+              const active = [...journals.values()].filter(demanded);
+              if (active.every((entry) => entry.failure?.code === HQ_ZEROPS_REFUSED.code)) return;
               yield* roles.recent.pipe(
-                Effect.catch(() =>
-                  Effect.forEach(
-                    [...journals.values()].filter(demanded),
-                    (entry) =>
-                      send(entry, [
-                        {
-                          type: "scope-error",
-                          scope: entry.scope,
-                          code: "permissions_unverified",
-                          reason: null,
-                          disposition: "transient",
-                        },
-                      ]),
+                Effect.catch((error) => {
+                  const facts = metadata(error);
+                  const code =
+                    facts.code === HQ_ZEROPS_REFUSED.code ? facts.code : "permissions_unverified";
+                  return Effect.forEach(
+                    active,
+                    (entry) => {
+                      const failure: HqScopeFailure = {
+                        type: "scope-error",
+                        scope: entry.scope,
+                        code,
+                        reason: facts.reason ?? null,
+                        disposition: refusalDisposition(code),
+                      };
+                      if (failure.disposition === "refused") entry.failure = failure;
+                      return send(entry, [failure]);
+                    },
                     { discard: true },
-                  ),
-                ),
+                  );
+                }),
               );
               // Health and official status are lightweight values, not a structure re-read.
               yield* Effect.forEach(
@@ -714,7 +733,7 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
                         if (target.failure?.disposition === "refused") {
                           if (
                             subscription.knownKeys !== undefined &&
-                            target.failure.code !== "unsupported"
+                            refusalProvesRemoval(target.failure.code)
                           ) {
                             const reason =
                               target.failure.code === "forbidden" ? "no-access" : "deleted";
@@ -837,7 +856,7 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
                             projectId: request.projectId,
                             code: facts.code ?? "unavailable",
                             reason: facts.reason ?? null,
-                            disposition: facts.code === "forbidden" ? "refused" : "transient",
+                            disposition: refusalDisposition(facts.code ?? "unavailable"),
                           });
                         }),
                       );
@@ -871,15 +890,17 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
                   }
                 }).pipe(
                   Effect.ensuring(Effect.sync(prune)),
-                  Effect.catch(() =>
-                    Queue.offer(queue, {
+                  Effect.catch((error) => {
+                    const facts = metadata(error);
+                    const code = facts.code ?? "unavailable";
+                    return Queue.offer(queue, {
                       type: "scope-error",
                       scope: { kind: "navigation" },
-                      code: "unavailable",
-                      reason: null,
-                      disposition: "transient",
-                    }).pipe(Effect.asVoid),
-                  ),
+                      code,
+                      reason: facts.reason ?? null,
+                      disposition: refusalDisposition(code),
+                    }).pipe(Effect.asVoid);
+                  }),
                 ),
             };
           }),

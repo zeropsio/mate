@@ -30,12 +30,19 @@ catchup and carries the resulting cursor; it carries no facts.
 
 A `scope-error` affects only its named scope. `refused` is definitive until new authoritative
 source facts grant access; reconnect alone does not retry the refused read. `transient` preserves
-facts while coverage is unavailable. Before an access refusal HQ explicitly removes retained
-protected keys. Protected historical values are never replayed through an access revocation.
+facts while coverage is unavailable. Before a proven scope access refusal HQ explicitly removes retained
+protected keys. A source `zerops_refused` is definitive but proves no record removal. Protected historical values are never replayed through an access revocation.
 
 The L7 segment still closes with `HQ_STREAM_SEGMENT_CLOSE` after 100 seconds. Mint a new ticket
 and resume the demanded scopes with their cursors and retained keys. Respond to `ping` with `pong`.
 Segment rotation triggers neither a full snapshot nor app detail hydration.
+
+`HQ_STREAM_REFUSED_CLOSE` (`4403`) ends a failed source read definitively. Client adapters use
+`hqStreamCloseFailure` to classify it as `zerops_refused` / `refused`, and must not reconnect it
+automatically. A `1011` read failure remains transient. A `4401` ending enters the session flow:
+PA renews once automatically before exposing an explicit retry. It is not an unconditional request
+to sign in manually. PA's HTTP refusal is `HQ_ZEROPS_REFUSED` (`403 zerops_refused`), whose body is
+`HqZeropsRefusedResponse`; it must not follow the `503 zerops_unavailable` retry path.
 
 ## Record keys
 
@@ -69,13 +76,13 @@ superseded by invalidations or permission changes. Inactive journals, detail cac
 tombstones are bounded. Dropping old removal proof rotates only that scope's incarnation; delivery
 still contains every newly removed key, and reconnect retained keys reconstruct missing proof.
 
-Today's overview frames continue to ingest. New Mate frames have
-`{ type: "attention", attention: HqAttentionValue }`. Ingest fences the current link and source
+Today's overview frames continue to ingest. New Mate frames use
+`MateLinkUp` attention frames, with the canonical `MateAttention` from
+`packages/contracts/src/zeropsAttention.ts` (also re-exported as `HqAttentionValue`). Ingest fences the current link and source
 incarnation/revision; corrupt or older frames preserve prior values. `attentionState` distinguishes
 live, stored and absent evidence. Overview persists as before; source attention must be republished
-after Core restart. PB's structural attention schema matches AREV's
-`packages/contracts/src/zeropsAttention.ts`; integration should use that canonical schema once the
-AREV lane is present in this branch.
+after Core restart. The link reader and scope value share that schema; there is no parallel
+structural attention codec.
 
 PC binds `HqOperationReader` with `read(userId, appId)` returning keyed operation values.
 Until bound, an operation scope answers a refused `unsupported` error with
@@ -84,3 +91,9 @@ PB checks `read_change` access to the app before invoking the reader. PC supplie
 records from `Deploys.operations(appId)`; bind the reader at integration and key records by
 `<appId>:<operationId>`. PC must authorize any narrower operation-specific facts within that read. Future explicit operation
 removals should extend the reader result rather than treating omission as deletion.
+
+At the PC merge, provide the reader to `hqScopesLayer` before assembling `coreApp`, and use
+`Deploys.changes` for invalidation (the hub already subscribes to this stream). Resolve PC's deletion
+of `test/harness/coreWithDeployTimings.ts` by deleting it; retain `hqScopesLayer` in the surviving
+Core composition. Reconcile both lanes' shrinking `no-retired-mechanism.json` entries. The distinct
+`0046_*.sql` migration names coexist. PC reader wiring is deliberately deferred to that merge.

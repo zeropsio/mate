@@ -1,5 +1,7 @@
 // @effect-diagnostics nodeBuiltinImport:off globalFetch:off globalFetchInEffect:off globalTimers:off preferSchemaOverJson:off globalConsoleInEffect:off -- real HQ socket acceptance test.
 import { assert, describe, it } from "@effect/vitest";
+import { HqAttentionValue } from "@t3tools/shared/hqStream";
+import * as Schema from "effect/Schema";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
@@ -13,6 +15,8 @@ import {
   untilHealth,
 } from "../test/harness/runningCore.ts";
 import { tempPostgresLayer } from "../test/harness/tempPostgres.ts";
+
+const readAttention = Schema.decodeEffect(HqAttentionValue);
 
 describe("HQ scoped socket", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
@@ -305,7 +309,7 @@ describe("HQ scoped socket", () => {
           yield* received;
           const entry = (yield* core.overviews.all).get("P_MATE");
           assert.deepStrictEqual(entry?.overview, overview);
-          assert.deepStrictEqual(entry?.attention, attention);
+          assert.deepStrictEqual(entry?.attention, yield* readAttention(attention));
           assert.strictEqual(entry?.attentionState, "live");
         }),
       ),

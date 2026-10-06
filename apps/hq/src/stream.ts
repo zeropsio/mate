@@ -1,7 +1,11 @@
 // @effect-diagnostics nodeBuiltinImport:off -- stream tickets use the system CSPRNG.
 /** One organization socket multiplexes revisioned scopes; segment rotation resumes each scope. */
 import * as NodeCrypto from "node:crypto";
-import { HQ_STREAM_SEGMENT_CLOSE, HqStreamRequest } from "@t3tools/shared/hqStream";
+import {
+  HQ_STREAM_SEGMENT_CLOSE,
+  HQ_STREAM_REFUSED_CLOSE,
+  HqStreamRequest,
+} from "@t3tools/shared/hqStream";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
@@ -16,6 +20,9 @@ import type * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import * as Socket from "effect/unstable/socket/Socket";
 import { HqScopes, type ScopeOutput } from "./hqScopes.ts";
+import { ZeropsRefused } from "./zerops/api.ts";
+
+const isZeropsRefused = Schema.is(ZeropsRefused);
 
 export interface StreamOptions {
   readonly recheck?: Duration.Duration;
@@ -25,6 +32,7 @@ export interface StreamOptions {
 export type Ending = "session" | "lead";
 type Outgoing = ScopeOutput | { readonly type: "end"; readonly ending: Ending };
 const L7_SEGMENT_LIMIT = Duration.seconds(100);
+/** 4401 enters the session flow: renew once automatically, then expose an explicit retry. */
 const CLOSE = {
   session: [4401, "session ended"],
   lead: [1001, "going away"],
@@ -161,7 +169,13 @@ export const serveStructureSocket = <E, R>(
       }).pipe(Effect.ignore);
       const deliver = Stream.runForEach(messages, (message) =>
         message.type === "end" ? close(CLOSE[message.ending]) : writer.write(toJson(message)),
-      ).pipe(Effect.catch(() => close(CLOSE.unreadable)));
+      ).pipe(
+        Effect.catch((error) =>
+          isZeropsRefused(error)
+            ? ends.close(HQ_STREAM_REFUSED_CLOSE.code, HQ_STREAM_REFUSED_CLOSE.reason)
+            : close(CLOSE.unreadable),
+        ),
+      );
       const segment = Effect.andThen(
         Effect.sleep(L7_SEGMENT_LIMIT),
         ends.close(HQ_STREAM_SEGMENT_CLOSE.code, HQ_STREAM_SEGMENT_CLOSE.reason),

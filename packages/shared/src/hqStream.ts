@@ -1,3 +1,4 @@
+import { MateAttention as HqAttentionValue } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import { MatePresence } from "./hqMates.ts";
 import { MateOverview } from "./mateLink.ts";
@@ -6,8 +7,27 @@ import { HqDecision } from "./hqOffers.ts";
 import { AppReadValue } from "./hqAppReads.ts";
 import { HqChange } from "./hqChanges.ts";
 
+export { HqAttentionValue };
+
 /** HQ ended this structure segment as planned; open the next segment with a fresh ticket. */
 export const HQ_STREAM_SEGMENT_CLOSE = { code: 4410, reason: "segment over" } as const;
+
+/** A definitive source refusal ends the attempt; segment rotation cannot retry it. */
+export const HQ_ZEROPS_REFUSED = { status: 403, code: "zerops_refused" } as const;
+export const HqZeropsRefusedResponse = Schema.Struct({
+  code: Schema.Literal(HQ_ZEROPS_REFUSED.code),
+  reason: Schema.optionalKey(Schema.String),
+});
+export type HqZeropsRefusedResponse = typeof HqZeropsRefusedResponse.Type;
+export const HQ_STREAM_REFUSED_CLOSE = { code: 4403, reason: "zerops refused" } as const;
+
+/** Client adapters handle session renewal separately; other transport endings preserve facts. */
+export const hqStreamCloseFailure = (code: number) => {
+  if (code === HQ_STREAM_REFUSED_CLOSE.code)
+    return { code: HQ_ZEROPS_REFUSED.code, disposition: "refused" } as const;
+  if (code === 4401) return { code: "session_ended", disposition: "session-ended" } as const;
+  return { code: `socket_${code}`, disposition: "transient" } as const;
+};
 
 /** Official HQ verdict carried by the navigation scope's `org` value; null before first check. */
 export type HqOfficialVerdict =
@@ -149,41 +169,6 @@ export const hqScopeKey = (scope: HqScope): string => {
   }
 };
 
-const AttentionId = Schema.String.check(Schema.isPattern(/\S/u));
-
-/** Structural ingest seam matching AREV's contracts/zeropsAttention.ts until both lanes integrate. */
-export const HqAttentionValue = Schema.Struct({
-  source: Schema.Struct({
-    environmentId: AttentionId,
-    incarnation: AttentionId,
-    revision: Schema.Int.check(
-      Schema.isGreaterThanOrEqualTo(0),
-      Schema.isLessThanOrEqualTo(Number.MAX_SAFE_INTEGER),
-    ),
-  }),
-  mainThreadId: Schema.NullOr(AttentionId),
-  lastThreadId: Schema.NullOr(AttentionId),
-  working: Schema.Int.check(
-    Schema.isGreaterThanOrEqualTo(0),
-    Schema.isLessThanOrEqualTo(Number.MAX_SAFE_INTEGER),
-  ),
-  waiting: Schema.Int.check(
-    Schema.isGreaterThanOrEqualTo(0),
-    Schema.isLessThanOrEqualTo(Number.MAX_SAFE_INTEGER),
-  ),
-  results: Schema.Array(
-    Schema.Struct({ threadId: AttentionId, turnId: AttentionId, completedAt: Schema.String }),
-  ).check(Schema.isMaxLength(50)),
-  questions: Schema.Array(
-    Schema.Struct({
-      threadId: AttentionId,
-      turnId: Schema.NullOr(AttentionId),
-      kind: Schema.Literals(["approval", "input", "planReady", "failed"]),
-    }),
-  ).check(Schema.isMaxLength(50)),
-  truncated: Schema.Boolean,
-});
-export type HqAttentionValue = typeof HqAttentionValue.Type;
 export const HqPersonFacts = Schema.Struct({
   role: Schema.String,
   mayWrite: Schema.Boolean,

@@ -41,13 +41,9 @@ import { MateOverviews } from "./mateOverviews.ts";
 import { LiveSockets, socketEnding } from "./stream.ts";
 import { Structure } from "./structure.ts";
 
-const readAttentionFrame = Schema.decodeUnknownOption(
-  Schema.fromJsonString(
-    Schema.Struct({
-      type: Schema.Literal("attention"),
-      attention: Schema.Unknown,
-    }),
-  ),
+// Identify a corrupt value frame without inventing a second attention contract.
+const readFrameType = Schema.decodeUnknownOption(
+  Schema.fromJsonString(Schema.Struct({ type: Schema.String })),
 );
 
 export interface LinkOptions {
@@ -121,13 +117,17 @@ export const serveMateLink = (
             if (linkFrameBytes(frame) > MATE_LINK_FRAME_MAX) {
               return yield* close(1009, "frame too big");
             }
-            const attention = readAttentionFrame(frame);
-            if (Option.isSome(attention)) {
-              yield* overviews.reportAttention(projectId, link, attention.value.attention);
+            const read = readLinkUp(frame);
+            if (read.kind === "invalid") {
+              const envelope = readFrameType(frame);
+              // A corrupt attention value preserves prior facts; the next valid revision can arrive.
+              if (Option.isSome(envelope) && envelope.value.type === "attention") continue;
+              return yield* close(1007, "no link message");
+            }
+            if (read.kind === "message" && read.message.type === "attention") {
+              yield* overviews.reportAttention(projectId, link, read.message.attention);
               continue;
             }
-            const read = readLinkUp(frame);
-            if (read.kind === "invalid") return yield* close(1007, "no link message");
             if (read.kind === "message" && read.message.type === "overview") {
               yield* overviews.report(projectId, link, read.message);
               // A write that fails is the next overview's to repeat; it never ends the link.

@@ -1,4 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
+import { HqAttentionValue } from "@t3tools/shared/hqStream";
+import * as Schema from "effect/Schema";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -20,6 +22,8 @@ import { tempPostgresLayer } from "../test/harness/tempPostgres.ts";
 import { makeMateOverviews } from "./mateOverviews.ts";
 
 /** What `saves` holds once the store's worker, which runs beside the link, has had its turns. */
+const readAttention = Schema.decodeEffect(HqAttentionValue);
+
 const settled = (saves: ReadonlyArray<string>) =>
   Effect.map(Effect.repeat(Effect.yieldNow, { times: 100 }), () => [...saves]);
 
@@ -279,7 +283,10 @@ it.effect("attention keeps source order and becomes live again on an unchanged n
         ...value,
         source: { ...value.source, incarnation: "old" },
       });
-      assert.deepStrictEqual((yield* overviews.all).get("P")?.attention, value);
+      assert.deepStrictEqual(
+        (yield* overviews.all).get("P")?.attention,
+        yield* readAttention(value),
+      );
     }),
   ),
 );

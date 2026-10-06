@@ -27,6 +27,7 @@ import { Releases } from "./releases.ts";
 import { Roles, type OrgView } from "./roles.ts";
 import { Structure, type StructureRead, type StructureSource } from "./structure.ts";
 import { memoryStore, overviewOf, mainAt } from "../test/harness/overviews.ts";
+import { ZeropsRefused } from "./zerops/api.ts";
 
 const nav = { kind: "navigation" } as const;
 const attention = { kind: "attention", projectId: "P" } as const;
@@ -57,6 +58,9 @@ const facts: OrgView<"cached"> = {
 const json = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 const fixture = Effect.gen(function* () {
   let org = facts;
+  let sourceRefused = false;
+  let recentRefused = false;
+  let recentReads = 0;
   let deleted = false;
   let corrupt = false;
   let appName = "App";
@@ -72,6 +76,13 @@ const fixture = Effect.gen(function* () {
   let rolesGate: Effect.Effect<void> = Effect.void;
   const roleView = Effect.gen(function* () {
     rolesRead += 1;
+    if (sourceRefused)
+      return yield* new ZeropsRefused({
+        operation: "organization",
+        reason: "forbidden",
+        status: 403,
+        code: "platform_denied",
+      });
     if (rolesRead === pauseRolesAt) {
       yield* Deferred.succeed(rolesPaused, undefined);
       yield* rolesGate;
@@ -158,7 +169,17 @@ const fixture = Effect.gen(function* () {
     } as unknown as Structure["Service"]),
     Layer.succeed(Roles, {
       view: roleView,
-      recent: Effect.sync(() => org),
+      recent: Effect.gen(function* () {
+        recentReads += 1;
+        if (recentRefused)
+          return yield* new ZeropsRefused({
+            operation: "organization",
+            reason: "forbidden",
+            status: 403,
+            code: "platform_denied",
+          });
+        return org;
+      }),
       views: Stream.fromPubSub(rolesChanged),
       answeredAt: Effect.succeed(0),
     } as unknown as Roles["Service"]),
@@ -227,6 +248,14 @@ const fixture = Effect.gen(function* () {
       return { ...client, queue, take, subscribe };
     });
   return {
+    refuseSource: () => {
+      sourceRefused = true;
+    },
+    refuseRecheck: () => {
+      recentRefused = true;
+    },
+    recheckReads: () => recentReads,
+    roleReads: () => rolesRead,
     hub,
     connect,
     reads,
@@ -312,6 +341,59 @@ const resetOf = (message: ScopeOutput) => {
 };
 
 describe("revisioned HQ values", () => {
+  it.effect("a recheck source refusal ends the attempt without automatic rechecks", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const f = yield* fixture;
+        const client = yield* f.connect("owner");
+        yield* client.subscribe([{ scope: nav }]);
+        yield* client.take;
+        yield* client.take;
+        f.refuseRecheck();
+        yield* TestClock.adjust("30 seconds");
+        assert.deepStrictEqual(yield* client.take, {
+          type: "scope-error",
+          scope: nav,
+          code: "zerops_refused",
+          reason: "forbidden",
+          disposition: "refused",
+        });
+        assert.strictEqual(f.recheckReads(), 1);
+        yield* TestClock.adjust("60 seconds");
+        assert.strictEqual(f.recheckReads(), 1);
+      }),
+    ),
+  );
+  it.effect("a Zerops refusal retains facts and reconnect does not retry the source", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const f = yield* fixture;
+        const first = yield* f.connect("owner");
+        yield* first.subscribe([{ scope: nav }]);
+        const before = resetOf(yield* first.take);
+        yield* first.take;
+        f.refuseSource();
+        yield* first.subscribe([
+          { scope: nav, cursor: before, knownKeys: before.values.map((value) => value.key) },
+        ]);
+        const failure = yield* first.take;
+        assert.deepStrictEqual(failure, {
+          type: "scope-error",
+          scope: nav,
+          code: "zerops_refused",
+          reason: "forbidden",
+          disposition: "refused",
+        });
+        const reads = f.roleReads();
+        const next = yield* f.connect("owner");
+        yield* next.subscribe([
+          { scope: nav, cursor: before, knownKeys: before.values.map((value) => value.key) },
+        ]);
+        assert.deepStrictEqual(yield* next.take, failure);
+        assert.strictEqual(f.roleReads(), reads);
+      }),
+    ),
+  );
   it.effect(
     "navigation is shared and never hydrates app detail; demanded detail shares its reads",
     () =>
