@@ -27,12 +27,6 @@ export const RETIRED_MECHANISMS: ReadonlyArray<RetiredMechanism> = [
       "the inventory's in-transit bridge to the project family; the inventory reads the store's projections and the bridge goes with ZeropsInventoryProvider",
   },
   {
-    token: "runningProcessesRead",
-    family: "app versions",
-    reason:
-      "the deployment store's in-transit bridge to the process family; deployments read the store's projections and the bridge goes with deploymentStore",
-  },
-  {
     token: "useInterestLeases",
     family: "projects",
     reason:
@@ -300,12 +294,6 @@ export const RETIRED_MECHANISMS: ReadonlyArray<RetiredMechanism> = [
     token: "useZeropsDataCatalogStore",
     family: "services",
     reason: "a component runs its own data-catalog requests; the adapter owns them",
-  },
-  {
-    token: "atomRegistry.subscribe(table, changed)",
-    family: "app versions",
-    reason: "a registry subscription per table duplicates the store's change feed",
-    paths: ["packages/client-runtime/src/zerops/account/flow.ts"],
   },
   {
     token: "makeDeploymentStore",

@@ -82,8 +82,6 @@ import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import { AsyncResult, Atom } from "effect/unstable/reactivity";
 
-import { lifecycleEnvelopeChanged } from "./accountForge";
-
 export interface ZeropsLifecycleTarget {
   readonly environmentId: EnvironmentId;
   readonly input: { readonly threadId: ThreadId };
@@ -161,21 +159,15 @@ function createKnownFeedFamily<R, E, Input, A>(
     readonly label: string;
     readonly capability: string;
     readonly subscribe: (input: Input) => Stream.Stream<A, unknown, EnvironmentSupervisor>;
-    /** Told every frame beside the one before it on this target, across sessions. */
-    readonly onFrame?: (previous: A | undefined, next: A) => void;
   },
 ) {
   const at = (event: (atMs: number) => MateFeedEvent<A>) =>
     Effect.map(Clock.currentTimeMillis, event);
 
-  const ask = (
-    input: Input,
-    heard: (value: A) => void,
-  ): Stream.Stream<MateFeedEvent<A>, never, EnvironmentSupervisor> =>
+  const ask = (input: Input): Stream.Stream<MateFeedEvent<A>, never, EnvironmentSupervisor> =>
     Stream.concat(
       Stream.fromEffect(at((atMs) => ({ kind: "asked", atMs }))),
       options.subscribe(input).pipe(
-        Stream.tap((value) => Effect.sync(() => heard(value))),
         Stream.mapEffect((value) => at((atMs) => ({ kind: "frame", value, atMs }))),
         Stream.catchCause((cause) =>
           Stream.fromEffect(
@@ -189,13 +181,8 @@ function createKnownFeedFamily<R, E, Input, A>(
       ),
     );
 
-  const events = (environmentId: EnvironmentId, input: Input) => {
-    let previous: A | undefined;
-    const heard = (value: A) => {
-      options.onFrame?.(previous, value);
-      previous = value;
-    };
-    return followStreamInEnvironment(
+  const events = (environmentId: EnvironmentId, input: Input) =>
+    followStreamInEnvironment(
       environmentId,
       Stream.unwrap(
         Effect.map(EnvironmentSupervisor, (supervisor) =>
@@ -203,14 +190,13 @@ function createKnownFeedFamily<R, E, Input, A>(
             Stream.switchMap(
               Option.match({
                 onNone: () => Stream.fromEffect(at((atMs) => ({ kind: "disconnected", atMs }))),
-                onSome: () => ask(input, heard),
+                onSome: () => ask(input),
               }),
             ),
           ),
         ),
       ),
     ).pipe(Stream.scan(mateFeed<A>(), foldMateFeed));
-  };
 
   const folded = Atom.family((key: string) => {
     const [environmentId, input] = JSON.parse(key) as [EnvironmentId, Input];
@@ -237,8 +223,6 @@ export function createZeropsFeedAtoms<R, E>(runtime: Atom.AtomRuntime<Environmen
       input: ZeropsLifecycleTarget["input"],
     ): Stream.Stream<ZeropsLifecycle, unknown, EnvironmentSupervisor> =>
       subscribe(WS_METHODS.subscribeZeropsLifecycle, input),
-    // A Mate's envelope is a push that says what its deploys changed on the platform (§6.1).
-    onFrame: (previous, next) => lifecycleEnvelopeChanged(previous?.envelope, next.envelope),
   });
 
   const agentAuth = createKnownFeedFamily(runtime, {

@@ -2,7 +2,7 @@ import { describe, expect, it } from "@effect/vitest";
 
 import { stopServices } from "../flow/deployment.ts";
 import { deployed, record, servicesRead } from "../flow/__fixtures__/services.ts";
-import { processesRead } from "../flow/__fixtures__/processes.ts";
+import { work } from "../flow/__fixtures__/work.ts";
 import { DEFAULT_ZEROPS_DATA_POLICY } from "./policy.ts";
 import { selectServicesOf } from "./projection.ts";
 import {
@@ -109,10 +109,10 @@ describe("Zerops data projections", () => {
               ...selectServicesOf(state, project()),
               query: servicesRead([pushed]).query,
             },
-            processes: processesRead([]),
-            names: new Map(),
+            work: work(),
             stated: new Map(),
             refused: null,
+            detail: false,
           },
           10_000,
         );

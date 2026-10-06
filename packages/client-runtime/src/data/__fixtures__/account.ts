@@ -7,6 +7,7 @@ import type { AccountInput, Row } from "../reducer.ts";
 import type { StreamEvent } from "../streamMachine.ts";
 import { runningScope, type ProcessValue } from "../families/process.ts";
 import { projectsScope, type ProjectValue } from "../families/project.ts";
+import { activeScope, type VersionValue } from "../families/version.ts";
 
 export const ORG = "org";
 
@@ -80,9 +81,16 @@ export function liveProjects(
   ]);
 }
 
+/** An app version as its whole row reads: what a test does not name is an active Git deploy. */
+export const versionValue = (
+  patch: Pick<VersionValue, "id" | "serviceId"> & Partial<VersionValue>,
+): VersionValue => ({ projectId: "p1", status: "ACTIVE", source: "GIT", ...patch });
+
+/** The organization's link live: its roster, its running work and, where named, its active versions. */
 export function liveZerops(input: {
   readonly running: ReadonlyArray<Parameters<typeof processValue>[0]>;
   readonly projects?: ReadonlyArray<Parameters<typeof projectValue>[0]>;
+  readonly active?: ReadonlyArray<Parameters<typeof versionValue>[0]>;
 }): ReadonlyArray<AccountInput> {
   const projects = input.projects ?? [];
   return liveScopes(linkKeys.zerops(ORG), [
@@ -108,5 +116,20 @@ export function liveZerops(input: {
         revision: zeropsVersion(1),
       })),
     },
+    ...(input.active === undefined
+      ? []
+      : [
+          {
+            scope: activeScope(ORG),
+            via: "zerops-realtime" as const,
+            members: input.active.map((version) => version.id),
+            rows: input.active.map((version) => ({
+              family: "version" as const,
+              id: version.id,
+              value: versionValue(version),
+              revision: zeropsVersion(1),
+            })),
+          },
+        ]),
   ]);
 }

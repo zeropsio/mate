@@ -13,8 +13,8 @@
  *   lapse never tears it down (G11). Nothing in it runs before the platform confirmed the
  *   account's organizations, projects and roles (AL-01, AL-04, MC-10): the Mate environments —
  *   the registration records, the container store with its probe store, and the exchange driver,
- *   joined and fed by `environments.ts` — and the project flow's deployment store, fed by
- *   `flow.ts`.
+ *   joined and fed by `environments.ts` — and the services demand of each drawn stop, whose
+ *   read joins the account's store (`stops.ts`).
  *
  * It hands the tab's signals (§6.4, the PlatformSignals port) to the grant, the bus and the
  * post-grant stage: the page's visibility, its network and the coalesced wake become the grant's
@@ -45,9 +45,7 @@ import type { PlatformSignal, PlatformSignals } from "../knowledge/signals.ts";
 import { makeContainerStore } from "../environments/containerStore.ts";
 import { makeExchangeDriver } from "../environments/exchangeDriver.ts";
 import { makeRegistrationRecords } from "../environments/records.ts";
-import { makeDeploymentStore, type DeploymentStore } from "../flow/deploymentStore.ts";
-import type { EnvelopeServices } from "../flow/envelopeInvalidations.ts";
-import { deploymentStorePorts, envelopeServices } from "./flow.ts";
+import { makeStops, type Stops } from "./stops.ts";
 import { holdInventoryDemand, holdAccessDemand } from "./inventoryDemand.ts";
 export { organizationProjectsRead, projectRead } from "./projectBridge.ts";
 import {
@@ -57,6 +55,7 @@ import {
   type EnvironmentStage,
 } from "./environments.ts";
 
+export type { Stops } from "./stops.ts";
 export type {
   AccountEnvironmentPorts,
   AccountEnvironments,
@@ -90,9 +89,7 @@ export interface AccountRuntimePorts {
 export interface PostGrantStage {
   readonly environments: AccountEnvironments;
   /** What each stop's services run (D6). */
-  readonly deployments: DeploymentStore;
-  /** The services a Mate's envelope names by hostname, as the account holds them (§6.1). */
-  readonly services: EnvelopeServices;
+  readonly stops: Stops;
 }
 
 export interface AccountRuntime {
@@ -137,7 +134,7 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
   const services = yield* Effect.context<never>();
   let stage: {
     readonly environments: EnvironmentStage;
-    readonly deployments: DeploymentStore;
+    readonly stops: Stops;
   } | null = null;
   let closed = false;
   const busSignals = yield* PubSub.unbounded<InvalidationSignal>();
@@ -163,8 +160,6 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
             "project" in descriptor &&
             projectKeyOf(descriptor.project) === projectKeyOf(invalidation.project),
         );
-      case "deployment":
-        return stage?.deployments.shows(invalidation.service) ?? false;
       default:
         // No store of this account shows the other topics yet.
         return false;
@@ -195,12 +190,10 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
       containers: makeContainerStore(wiring.containerPorts),
       driver: makeExchangeDriver(wiring.driverPorts),
     });
-    const deployments = makeDeploymentStore(
-      deploymentStorePorts(data, ports.atomRegistry, services),
-    );
-    // Finalizers run in reverse: the deployment store ends, then the environments.
+    const stops = makeStops(data, ports.atomRegistry, services);
+    // Finalizers run in reverse: the stops' demand ends, then the environments.
     yield* Scope.addFinalizer(postGrantScope, Effect.sync(built.dispose));
-    yield* Scope.addFinalizer(postGrantScope, Effect.sync(deployments.dispose));
+    yield* Scope.addFinalizer(postGrantScope, Effect.sync(stops.dispose));
     // Each owner of pull-based facts reads again what an invalidation names (§6.2).
     const subscription = yield* invalidations.subscribe.pipe(Scope.provide(postGrantScope));
     yield* PubSub.take(subscription).pipe(
@@ -210,9 +203,6 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
             case "container":
               built.request(invalidation.target);
               return;
-            case "deployment":
-              deployments.invalidate(invalidation);
-              return;
             default:
               return;
           }
@@ -221,7 +211,7 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
       Effect.forever,
       Effect.forkIn(postGrantScope),
     );
-    return { environments: built, deployments };
+    return { environments: built, stops };
   });
 
   const follow = (view: AccessGrantView): Effect.Effect<void> =>
@@ -232,8 +222,7 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
         stage = yield* buildPostGrant;
         yield* Deferred.succeed(postGrant, {
           environments: stage.environments.environments,
-          deployments: stage.deployments,
-          services: envelopeServices(data, ports.atomRegistry),
+          stops: stage.stops,
         });
       }
       stage.environments.grant(view);

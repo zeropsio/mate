@@ -337,11 +337,6 @@ export type KnownProcessStatus =
   | "FAILED"
   | "CANCELED";
 
-export type RunningProcessStatus = Extract<
-  KnownProcessStatus,
-  "PENDING" | "RUNNING" | "ROLLBACKING" | "CANCELING"
->;
-
 export type ProcessStatus = KnownProcessStatus | { readonly kind: "unknown"; readonly raw: string };
 
 /** Preserve the original nested build/prepare/activation fields consumed by pipeline and log attribution. */
@@ -524,14 +519,6 @@ export type QueryDescriptor =
       readonly schemaVersion: 1;
     }
   | {
-      /** A project's running processes, as the deployment store reads them (`account/processBridge.ts`). */
-      readonly kind: "running-processes-of-project";
-      readonly project: ProjectRef;
-      /** Wire filters admit only known status strings. Unknown values are observation data. */
-      readonly statuses: ReadonlyArray<RunningProcessStatus>;
-      readonly schemaVersion: 1;
-    }
-  | {
       readonly kind: "current-metrics-of-project";
       readonly project: ProjectRef;
       readonly groupBy: "containerId";
@@ -585,11 +572,7 @@ export const tableEntityOf = (descriptor: TableQueryDescriptor): TableEntity =>
 export type EntityQueryDescriptor = Extract<
   QueryDescriptor,
   {
-    readonly kind:
-      | "projects-of-organization"
-      | "services-of-project"
-      | "services-of-project"
-      | "running-processes-of-project";
+    readonly kind: "projects-of-organization" | "services-of-project";
   }
 >;
 
@@ -625,15 +608,6 @@ export const queryKeyOf = (descriptor: QueryDescriptor): QueryKey => {
         scopedKey([
           descriptor.kind,
           projectKeyOf(descriptor.project),
-          String(descriptor.schemaVersion),
-        ]),
-      );
-    case "running-processes-of-project":
-      return QueryKey.make(
-        scopedKey([
-          descriptor.kind,
-          projectKeyOf(descriptor.project),
-          canonicalStringSet(descriptor.statuses),
           String(descriptor.schemaVersion),
         ]),
       );
@@ -1212,7 +1186,7 @@ export type CollectionQueryForRecord<Record extends ZeropsEntityRecord> =
     ? Extract<EntityQueryDescriptor, { readonly kind: "projects-of-organization" }>
     : Record extends ServiceRecord
       ? Extract<EntityQueryDescriptor, { readonly kind: "services-of-project" }>
-      : Extract<EntityQueryDescriptor, { readonly kind: "running-processes-of-project" }>;
+      : never;
 
 export interface RetainedMembershipOperation<Member extends EntityRef = EntityRef> {
   readonly member: Member;

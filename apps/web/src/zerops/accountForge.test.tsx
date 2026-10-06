@@ -1,17 +1,13 @@
 import type { ProjectRef, ServiceRef } from "@t3tools/client-runtime/zerops/data";
-import type { Deployment, DeploymentStore, StopService } from "@t3tools/client-runtime/zerops/flow";
+import { RegistryContext } from "@effect/atom-react";
+import type { Stops } from "@t3tools/client-runtime/zerops/account/runtime";
+import type { Deployment, StopService } from "@t3tools/client-runtime/zerops/flow";
 import type { Known, Shown } from "@t3tools/client-runtime/zerops/knowledge";
-import type { ZeropsStateEnvelope } from "@t3tools/contracts";
+import { Atom, AtomRegistry } from "effect/unstable/reactivity";
+import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { TestNode } from "./__fixtures__/testDom";
-
-const invalidated = vi.hoisted(() => [] as Array<unknown>);
-vi.mock("./accountInvalidations", () => ({
-  invalidateZerops: (invalidation: unknown) => {
-    invalidated.push(invalidation);
-  },
-}));
 
 const PROJECT: ProjectRef = {
   kind: "project",
@@ -51,94 +47,68 @@ function installTestDom(): TestNode {
 
 const nextMacrotask = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-/** A post-grant stage whose deployment store answers what the test holds, recording every demand. */
+/** A post-grant stage whose stops answer what the test holds, recording every demand. */
 function stage() {
-  const listeners = new Set<() => void>();
-  const publish = () => {
-    for (const listener of listeners) listener();
-  };
-  const subscribe = (listener: () => void) => {
-    listeners.add(listener);
-    return () => {
-      listeners.delete(listener);
-    };
-  };
+  const registry = AtomRegistry.make();
   const stopDemands: Array<string> = [];
   let stopDemandCalls = 0;
-  const stops = new Map<string, Shown<ReadonlyArray<StopService>>>();
-  const deployments = {
-    stop: (project: ProjectRef) =>
-      stops.get(project.projectId) ?? { state: "unread", waitingFor: null },
+  let agains = 0;
+  const atoms = new Map<string, Atom.Writable<Shown<ReadonlyArray<StopService>>>>();
+  const atomOf = (projectId: string) => {
+    let atom = atoms.get(projectId);
+    if (atom === undefined) {
+      atom = Atom.make<Shown<ReadonlyArray<StopService>>>({ state: "unread", waitingFor: null });
+      atoms.set(projectId, atom);
+    }
+    return atom;
+  };
+  const stops = {
+    services: (project: ProjectRef) => atomOf(project.projectId),
     demand: (project: ProjectRef) => {
       stopDemandCalls += 1;
       stopDemands.push(project.projectId);
       return () => stopDemands.splice(stopDemands.indexOf(project.projectId), 1);
     },
-    subscribe,
-  } as unknown as DeploymentStore;
-  return {
-    stage: {
-      deployments,
-      services: {
-        serviceOf: (projectId: string, hostname: string) =>
-          projectId === "p-stage" && hostname === "appstage" ? APPSTAGE : null,
-      },
+    again: () => {
+      agains += 1;
     },
+    dispose: () => undefined,
+  } satisfies Stops;
+  return {
+    stage: { stops },
     stopDemands,
     stopDemandCalls: () => stopDemandCalls,
+    agains: () => agains,
+    /** Renders under the registry the stops publish to. */
+    wrap: (node: ReactNode) => (
+      <RegistryContext.Provider value={registry}>{node}</RegistryContext.Provider>
+    ),
     holdStop: (projectId: string, shown: Shown<ReadonlyArray<StopService>>) => {
-      stops.set(projectId, shown);
-      publish();
+      registry.set(atomOf(projectId), shown);
     },
   };
 }
 
-/** A Mate's envelope, its stage deploy succeeded or not. */
-const envelope = (success: boolean) =>
-  ({
-    phase: "develop-active",
-    environment: "container",
-    project: { id: "p-stage", name: "harbor stage" },
-    services: [],
-    workSession: {
-      intent: "ship",
-      services: ["appstage"],
-      createdAt: "2026-09-23T09:00:00Z",
-      deploys: { appstage: success ? [{ at: "t1", success, iteration: 1 }] : [] },
-    },
-    generated: "2026-09-23T10:00:00Z",
-  }) as ZeropsStateEnvelope;
-
 afterEach(async () => {
   const { closeAccountLifetime } = await import("./accountLifetime");
   closeAccountLifetime();
-  invalidated.length = 0;
   vi.unstubAllGlobals();
 });
 
 describe("the account's project flow in the web", () => {
-  it("a Mate's envelope that moved on asks the bound account to re-read what it made old", async () => {
-    const { bindAccountFlow, lifecycleEnvelopeChanged } = await import("./accountForge");
-    // Nothing is bound before the epoch's first grant: nobody resolves the hostname.
-    lifecycleEnvelopeChanged(envelope(false), envelope(true));
-    expect(invalidated).toEqual([]);
-
-    const unbind = bindAccountFlow(stage().stage);
-    lifecycleEnvelopeChanged(envelope(false), envelope(true));
-    expect(invalidated).toEqual([{ topic: "deployment", service: APPSTAGE }]);
-    unbind();
-  });
-
-  it("closing the account lifetime unbinds the flow at once", async () => {
+  it("closing the account lifetime unbinds the stops at once", async () => {
     const { openAccountLifetime, closeAccountLifetime } = await import("./accountLifetime");
-    const { bindAccountFlow, lifecycleEnvelopeChanged } = await import("./accountForge");
+    const { againStopDeployment, bindAccountFlow } = await import("./accountForge");
     openAccountLifetime("person-a");
-    bindAccountFlow(stage().stage);
+    const rig = stage();
+    bindAccountFlow(rig.stage);
+    againStopDeployment(PROJECT);
+    expect(rig.agains()).toBe(1);
 
     closeAccountLifetime();
 
-    lifecycleEnvelopeChanged(envelope(false), envelope(true));
-    expect(invalidated).toEqual([]);
+    againStopDeployment(PROJECT);
+    expect(rig.agains()).toBe(1);
   });
 
   it("the stop rows read what each stop deploys from the account's store while they are shown", async () => {
@@ -169,12 +139,12 @@ describe("the account's project flow in the web", () => {
 
     const root = createRoot(document.createElement("div") as unknown as Element);
     try {
-      root.render(<Rows stops={[PROJECT]} />);
+      root.render(rig.wrap(<Rows stops={[PROJECT]} />));
       await vi.waitFor(() => expect(rig.stopDemands).toEqual(["p-stage"]));
       expect(latest()?.state).toBe("unread");
       // A surface that draws the same stops again in a new array keeps what it demanded.
       const rendered = answers.length;
-      root.render(<Rows stops={[PROJECT]} />);
+      root.render(rig.wrap(<Rows stops={[PROJECT]} />));
       await vi.waitFor(() => expect(answers.length).toBeGreaterThan(rendered));
       expect(rig.stopDemandCalls()).toBe(1);
 
@@ -208,12 +178,12 @@ describe("the account's project flow in the web", () => {
 
     const root = createRoot(document.createElement("div") as unknown as Element);
     try {
-      root.render(<Rows stops={[PROJECT]} />);
+      root.render(rig.wrap(<Rows stops={[PROJECT]} />));
       await vi.waitFor(() => expect(rig.stopDemands).toEqual(["p-stage"]));
       const before = answers.at(-1);
       const rendered = answers.length;
       // The same stops in a new array, with the store unmoved, are the same snapshot.
-      root.render(<Rows stops={[PROJECT]} />);
+      root.render(rig.wrap(<Rows stops={[PROJECT]} />));
       await vi.waitFor(() => expect(answers.length).toBeGreaterThan(rendered));
       expect(answers.at(-1)).toBe(before);
 
@@ -243,12 +213,12 @@ describe("the account's project flow in the web", () => {
 
     const root = createRoot(document.createElement("div") as unknown as Element);
     try {
-      root.render(<Rows stops={[PROJECT]} />);
+      root.render(rig.wrap(<Rows stops={[PROJECT]} />));
       await vi.waitFor(() => expect(rig.stopDemands).toEqual(["p-stage"]));
-      root.render(<Rows stops={[PROJECT, production]} />);
+      root.render(rig.wrap(<Rows stops={[PROJECT, production]} />));
       await vi.waitFor(() => expect(rig.stopDemands).toEqual(["p-stage", "p-prod"]));
       expect(rig.stopDemandCalls()).toBe(2);
-      root.render(<Rows stops={[production]} />);
+      root.render(rig.wrap(<Rows stops={[production]} />));
       await vi.waitFor(() => expect(rig.stopDemands).toEqual(["p-prod"]));
       expect(rig.stopDemandCalls()).toBe(2);
     } finally {
@@ -281,7 +251,7 @@ describe("the account's project flow in the web", () => {
 
     const root = createRoot(document.createElement("div") as unknown as Element);
     try {
-      root.render(<Page project={PROJECT} />);
+      root.render(rig.wrap(<Page project={PROJECT} />));
       await vi.waitFor(() => expect(rig.stopDemands).toEqual(["p-stage"]));
       rig.holdStop("p-stage", known(services));
       await vi.waitFor(() =>
@@ -309,12 +279,12 @@ describe("the account's project flow in the web", () => {
 
     const root = createRoot(document.createElement("div") as unknown as Element);
     try {
-      root.render(<Page project={PROJECT} />);
+      root.render(rig.wrap(<Page project={PROJECT} />));
       await vi.waitFor(() => expect(rig.stopDemands).toEqual(["p-stage"]));
       const before = answers.at(-1);
       const rendered = answers.length;
       // The same stop as a new object, with the store unmoved, is the same snapshot.
-      root.render(<Page project={{ ...PROJECT }} />);
+      root.render(rig.wrap(<Page project={{ ...PROJECT }} />));
       await vi.waitFor(() => expect(answers.length).toBeGreaterThan(rendered));
       expect(answers.at(-1)).toBe(before);
       expect(rig.stopDemandCalls()).toBe(1);
@@ -344,9 +314,9 @@ describe("the account's project flow in the web", () => {
 
     const root = createRoot(document.createElement("div") as unknown as Element);
     try {
-      root.render(<Page project={PROJECT} />);
+      root.render(rig.wrap(<Page project={PROJECT} />));
       await vi.waitFor(() => expect(rig.stopDemands).toEqual(["p-stage"]));
-      root.render(<Page project={production} />);
+      root.render(rig.wrap(<Page project={production} />));
       await vi.waitFor(() => expect(rig.stopDemands).toEqual(["p-prod"]));
     } finally {
       root.unmount();
@@ -374,7 +344,7 @@ describe("the account's project flow in the web", () => {
 
     const root = createRoot(document.createElement("div") as unknown as Element);
     try {
-      root.render(<Page />);
+      root.render(rig.wrap(<Page />));
       await vi.waitFor(() => expect(answers.length).toBeGreaterThan(0));
       await nextMacrotask();
       expect(answers.at(-1)).toEqual({ state: "unread", waitingFor: "access-grant" });

@@ -2253,60 +2253,48 @@ describe("the post-grant stage's Mate environments", () => {
     ),
   );
 
-  it.effect(
-    "the deployment store follows a stop's listing and hears deployment invalidations",
-    () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const { clock, built } = yield* granted([]);
-          const stage = yield* built.postGrant;
-          const { deployments, services } = stage;
-          /** Whether a lease holds project A's services and running processes: opened detail only. */
-          const followsTopology = built.data.state.pipe(
-            Effect.map((state) =>
-              [...state.interests.values()].some(
-                ({ leases, descriptor }) =>
-                  leases > 0 &&
-                  descriptor.kind === "project-topology" &&
-                  descriptor.project.projectId === A_MATE.projectId,
-              ),
+  it.effect("a stop's services follow its listing, and opened detail adds its topology", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { clock, built, registry } = yield* granted([]);
+        const stage = yield* built.postGrant;
+        const { stops } = stage;
+        /** Whether a lease holds project A's services and running processes: opened detail only. */
+        const followsTopology = built.data.state.pipe(
+          Effect.map((state) =>
+            [...state.interests.values()].some(
+              ({ leases, descriptor }) =>
+                leases > 0 &&
+                descriptor.kind === "project-topology" &&
+                descriptor.project.projectId === A_MATE.projectId,
             ),
-          );
-          // The Mate's own container is the one service there: a stop that runs nothing.
-          const projectA = project(A_MATE.projectId);
-          const release = deployments.demand(projectA);
-          yield* clock.advance(SECOND);
-          yield* settle;
-          expect(deployments.stop(projectA)).toMatchObject({ state: "known", value: [] });
-          // The account builds no Gitea sessions: the stage holds no forge on any host.
-          expect(stage).not.toHaveProperty("forge");
-          // A shown (summary) stop demands services alone; processes wait for opened detail (R7).
-          expect(yield* followsTopology).toBe(false);
-          const releaseDetail = deployments.demand(projectA, "detail");
-          yield* clock.advance(SECOND);
-          yield* settle;
-          expect(yield* followsTopology).toBe(true);
+          ),
+        );
+        // The Mate's own container is the one service there: a stop that runs nothing.
+        const projectA = project(A_MATE.projectId);
+        const release = stops.demand(projectA);
+        yield* clock.advance(SECOND);
+        yield* settle;
+        expect(registry.get(stops.services(projectA))).toMatchObject({
+          state: "known",
+          value: [],
+        });
+        // The account builds no Gitea sessions: the stage holds no forge on any host.
+        expect(stage).not.toHaveProperty("forge");
+        // A shown (summary) stop demands services alone; processes wait for opened detail (R7).
+        expect(yield* followsTopology).toBe(false);
+        const releaseDetail = stops.demand(projectA, "detail");
+        yield* clock.advance(SECOND);
+        yield* settle;
+        expect(yield* followsTopology).toBe(true);
 
-          const zcp = services.serviceOf(A_MATE.projectId, "zcp");
-          if (zcp === null) throw new Error("the account holds project A's zcp service");
-          expect(zcp.serviceId).toBe(A_MATE.service.id);
-          expect(services.serviceOf(A_MATE.projectId, "appdev")).toBeNull();
-          const heard: Array<string> = [];
-          deployments.subscribe((ref) => heard.push(ref.projectId));
-          yield* built.invalidations
-            .invalidate({ topic: "deployment", service: zcp })
-            .pipe(Effect.provideService(Clock.Clock, clock));
-          yield* clock.advance(SECOND);
-          yield* settle;
-          expect(heard).toEqual([A_MATE.projectId]);
-
-          releaseDetail();
-          yield* clock.advance(SECOND);
-          yield* settle;
-          expect(yield* followsTopology).toBe(false);
-          release();
-        }),
-      ),
+        releaseDetail();
+        yield* clock.advance(SECOND);
+        yield* settle;
+        expect(yield* followsTopology).toBe(false);
+        release();
+      }),
+    ),
   );
 
   it.effect("a sign-out disposes every environment machine", () =>

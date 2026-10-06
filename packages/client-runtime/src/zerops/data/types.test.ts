@@ -91,20 +91,6 @@ describe("Zerops platform data identities", () => {
     expect(entityKeyOf(service)).not.toBe(entityKeyOf(process));
   });
 
-  it("shares query identity across equivalent status-set orderings", () => {
-    const base = {
-      kind: "running-processes-of-project" as const,
-      project: project(),
-      schemaVersion: 1 as const,
-    };
-    expect(queryKeyOf({ ...base, statuses: ["PENDING", "RUNNING"] })).toBe(
-      queryKeyOf({ ...base, statuses: ["RUNNING", "PENDING"] }),
-    );
-    expect(queryKeyOf({ ...base, statuses: ["PENDING", "RUNNING", "PENDING"] })).toBe(
-      queryKeyOf({ ...base, statuses: ["RUNNING", "PENDING"] }),
-    );
-  });
-
   it("keeps distinct history windows from sharing registrations", () => {
     const base = {
       kind: "metric-history-of-project" as const,

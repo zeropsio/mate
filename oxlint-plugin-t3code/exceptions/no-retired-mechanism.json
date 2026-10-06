@@ -2712,22 +2712,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/zerops/accountForge.ts",
-    "kind": "retired-token",
-    "fingerprint": "flow.deployments.subscribe",
-    "owner": "data-layer rewrite: app versions",
-    "reason": "flows subscribe to deployments with their own counters; the store feeds the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/accountForge.ts",
-    "kind": "retired-token",
-    "fingerprint": "new WeakMap<AccountFlow, number>()",
-    "owner": "data-layer rewrite: app versions",
-    "reason": "flows subscribe to deployments with their own counters; the store feeds the projection",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/zerops/accountHq.ts",
     "kind": "retired-token",
     "fingerprint": "NO_HQ_RECHECK_MS",
@@ -4946,22 +4930,6 @@
   {
     "path": "packages/client-runtime/src/zerops/account/accountRuntime.ts",
     "kind": "retired-token",
-    "fingerprint": "makeDeploymentStore",
-    "owner": "data-layer rewrite: app versions",
-    "reason": "a separate deployment store duplicates the app-versions family; one reducer per family",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/account/accountRuntime.ts",
-    "kind": "retired-token",
-    "fingerprint": "makeDeploymentStore",
-    "owner": "data-layer rewrite: app versions",
-    "reason": "a separate deployment store duplicates the app-versions family; one reducer per family",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/account/accountRuntime.ts",
-    "kind": "retired-token",
     "fingerprint": "makeExchangeDriver",
     "owner": "data-layer rewrite: Mate identity/connection",
     "reason": "container, probe and exchange stores duplicate the Mate identity family",
@@ -4981,38 +4949,6 @@
     "fingerprint": "makeRegistrationRecords(",
     "owner": "data-layer rewrite: Mate identity/connection",
     "reason": "registration records duplicate the listing; the listing's projection replaces them",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/account/flow.ts",
-    "kind": "retired-token",
-    "fingerprint": "atomRegistry.subscribe(table, changed)",
-    "owner": "data-layer rewrite: app versions",
-    "reason": "a registry subscription per table duplicates the store's change feed",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/account/flow.ts",
-    "kind": "retired-token",
-    "fingerprint": "runningProcessesRead",
-    "owner": "data-layer rewrite: app versions",
-    "reason": "the deployment store reads processes through the in-transit bridge until it reads the store; it goes with deploymentStore",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/account/flow.ts",
-    "kind": "retired-token",
-    "fingerprint": "runningProcessesRead",
-    "owner": "data-layer rewrite: app versions",
-    "reason": "the deployment store reads processes through the in-transit bridge until it reads the store; it goes with deploymentStore",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/account/processBridge.ts",
-    "kind": "retired-token",
-    "fingerprint": "runningProcessesRead",
-    "owner": "data-layer rewrite: app versions",
-    "reason": "the deployment store reads processes through the in-transit bridge until it reads the store; it goes with deploymentStore",
     "expires": "never"
   },
   {
@@ -5381,14 +5317,6 @@
     "fingerprint": "zerops-mate.registration-records.v1",
     "owner": "data-layer rewrite: Mate identity/connection",
     "reason": "registration records are kept in browser storage across loads; the listing's projection replaces them",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/flow/deploymentStore.ts",
-    "kind": "retired-token",
-    "fingerprint": "makeDeploymentStore",
-    "owner": "data-layer rewrite: app versions",
-    "reason": "a separate deployment store duplicates the app-versions family; one reducer per family",
     "expires": "never"
   },
   {

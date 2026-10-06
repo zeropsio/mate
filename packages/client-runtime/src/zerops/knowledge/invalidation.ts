@@ -16,10 +16,8 @@ import {
   ZeropsApiOrigin,
   ZeropsOrganizationId,
   ZeropsProjectId,
-  ZeropsServiceId,
   organizationKeyOf,
   projectKeyOf,
-  serviceKeyOf,
 } from "../data/types.ts";
 
 // ── The union ────────────────────────────────────────────────────────────────────────────────
@@ -34,11 +32,6 @@ const ProjectRef = Schema.Struct({
   kind: Schema.Literal("project"),
   organization: OrganizationRef,
   projectId: ZeropsProjectId,
-});
-const ServiceRef = Schema.Struct({
-  kind: Schema.Literal("service"),
-  project: ProjectRef,
-  serviceId: ZeropsServiceId,
 });
 
 /** A Mate's stable identity, `projectId:serviceId` (§1.1, AL-05). */
@@ -67,7 +60,6 @@ export const Invalidation = Schema.Union([
     why: Schema.Literals(["user-retry", "descriptor", "presence"]),
   }),
   Schema.Struct({ topic: Schema.Literal("container"), target: TargetKey }),
-  Schema.Struct({ topic: Schema.Literal("deployment"), service: ServiceRef }),
 ]);
 /** "Facts under this key may have changed at the source." */
 export type Invalidation = typeof Invalidation.Type;
@@ -117,8 +109,6 @@ function keyOf(invalidation: Invalidation): string {
       return JSON.stringify([invalidation.topic, invalidation.target, invalidation.why]);
     case "container":
       return JSON.stringify([invalidation.topic, invalidation.target]);
-    case "deployment":
-      return JSON.stringify([invalidation.topic, serviceKeyOf(invalidation.service)]);
   }
 }
 

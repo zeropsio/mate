@@ -1,20 +1,14 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import { identity, project, service } from "../data/__fixtures__/index.ts";
-import type {
-  CollectionRead,
-  ProcessRecord,
-  ServiceDeployInfo,
-  ServiceRecord,
-} from "../data/types.ts";
+import type { CollectionRead, ServiceDeployInfo, ServiceRecord } from "../data/types.ts";
 import { serviceRecordToZeropsService } from "../data/dto.ts";
 import { deployWord } from "../groupDeploys.ts";
 import { groupFlow } from "../groupFlow.ts";
 import { deployedVersion, environmentRow, type EnvironmentRow } from "../groupRows.ts";
-import type { Freshness, Known, Shown, WithheldReason } from "../knowledge/known.ts";
+import type { Freshness, Shown, WithheldReason } from "../knowledge/known.ts";
 import { projectTopology } from "../topology.ts";
 import {
-  buildNames,
   CHECKING_WHAT_RUNS,
   deployActivatedAt,
   deployBuilding,
@@ -22,12 +16,13 @@ import {
   stopServices,
   stopTone,
   stopView,
-  heldThroughRecheck,
   type Deployment,
   type StopReads,
   type StopService,
 } from "./deployment.ts";
-import { processesRead, runningProcess } from "./__fixtures__/processes.ts";
+import { runningBuild, work } from "./__fixtures__/work.ts";
+import type { ZeropsServiceDeployedVersion } from "../data/deployedVersion.ts";
+import type { StopWork } from "../../data/projections/stopWork.ts";
 import {
   deployed,
   record,
@@ -384,18 +379,17 @@ const UNSTATED: ServiceDeployInfo = {
   repository: null,
 };
 
-/** The one listed service's deployment, its processes read and none of them a build. */
-/** The direct read the store asks about every version nothing named, before it answers. */
+/** What the service's variables state of a version nothing named, before they answer. */
 const ASKED = { state: "unread", waitingFor: null } as const;
 
 function serviceDeployment(read: CollectionRead<ServiceRecord>): Shown<Deployment> | undefined {
   const stops = stopServices(
     {
       services: read,
-      processes: processesRead([]),
-      names: new Map(),
+      work: work(),
       refused: null,
       stated: new Map([[UNSTATED.id!, ASKED]]),
+      detail: false,
     },
     NOW,
   );
@@ -527,21 +521,30 @@ describe("stopServices", () => {
     records: ReadonlyArray<ServiceRecord | "unresolved">,
     options: Parameters<typeof servicesRead>[1] = {},
   ) => servicesRead(records, { project: PROJECT, ...options });
-  const NO_PROCESSES = processesRead([], { project: PROJECT });
   const build = (appVersion?: { readonly id: string; readonly name?: string }) =>
-    runningProcess("build", {
-      serviceIds: ["build-helper", "s1"],
-      project: PROJECT,
-      ...(appVersion === undefined ? {} : { appVersion }),
-    });
+    runningBuild(["build-helper", "s1"], appVersion);
+  const version = (source: string | null) => ({
+    id: UNSTATED.id!,
+    projectId: "project-stage",
+    serviceId: "s1",
+    status: "ACTIVE",
+    source,
+  });
+  const NAMED: Shown<ZeropsServiceDeployedVersion> = {
+    state: "known",
+    value: { activeId: UNSTATED.id!, source: "GIT", name: SHA },
+    asOf: { ordinal: 5, atMs: 50 },
+    coverage: "complete",
+    freshness: { kind: "live" },
+  };
 
   const cases: ReadonlyArray<{
     readonly name: string;
     readonly read: CollectionRead<ServiceRecord>;
-    readonly processes?: CollectionRead<ProcessRecord>;
-    readonly names?: ReadonlyMap<string, string>;
+    readonly work?: StopWork;
     readonly refused?: StopReads["refused"];
     readonly stated?: StopReads["stated"];
+    readonly detail?: boolean;
     /** The list's state, else each listed service's hostname and deployment. */
     readonly expected: string | ReadonlyArray<readonly [string, string]>;
   }> = [
@@ -597,90 +600,104 @@ describe("stopServices", () => {
       expected: [],
     },
     {
-      name: "nothing active proves none only once the processes are read",
+      name: "nothing active proves none only once the running work is read",
       read: listed([record("s1", "app", deployed(null))]),
-      processes: processesRead([], { coverage: { kind: "none" }, project: PROJECT }),
-      expected: [["app", "unread"]],
+      work: work({ complete: false, source: { kind: "establishing" } }),
+      expected: [["app", "reading"]],
     },
     {
-      name: "a process read that failed fails the none it could not prove",
+      name: "running work catching up fails the none it could not prove",
       read: listed([record("s1", "app", deployed(null))]),
-      processes: processesRead([], {
-        coverage: { kind: "none" },
-        project: PROJECT,
-        interest: {
-          status: "failed",
-          identity: identity(),
-          reason: "read refused",
-          retryable: true,
-          attempts: 2,
-          retryAtMs: NOW + 4_000,
-        },
-      }),
+      work: work({ complete: false, source: { kind: "catching-up" } }),
       expected: [["app", "failed"]],
     },
     {
-      name: "a refused process demand fails the none it could not prove",
+      name: "a refused services demand fails the none it could not prove",
       read: listed([record("s1", "app", deployed(null))]),
-      processes: processesRead([], { coverage: { kind: "none" }, project: PROJECT }),
+      work: work({ complete: false }),
       refused: { reason: "account-capacity", attempt: 1 },
       expected: [["app", "failed"]],
     },
     {
-      name: "a process not yet read may be a build",
-      read: listed([record("s1", "app", deployed(null))]),
-      processes: processesRead(["unresolved"], { project: PROJECT }),
-      expected: [["app", "unread"]],
-    },
-    {
       name: "a running build deploys over what runs",
       read: listed([record("s1", "app", deployed(PUSHED))]),
-      processes: processesRead([build({ id: "next", name: SHA })], { project: PROJECT }),
+      work: work({ builds: [build({ id: "next", name: SHA })] }),
       expected: [["app", "deploying"]],
     },
     {
       name: "a build not yet read far enough to name its version still deploys",
       read: listed([record("s1", "app", deployed(null))]),
-      processes: processesRead([build()], { project: PROJECT }),
+      work: work({ builds: [build()] }),
       expected: [["app", "deploying"]],
     },
     {
       name: "a build whose version is already active has deployed",
       read: listed([record("s1", "app", deployed(UNSTATED))]),
-      processes: processesRead([build({ id: UNSTATED.id!, name: SHA })], { project: PROJECT }),
+      work: work({
+        builds: [build({ id: UNSTATED.id!, name: SHA })],
+        names: { [UNSTATED.id!]: SHA },
+      }),
       expected: [["app", "running"]],
     },
     {
       name: "a version a build named runs by that name after the build ended",
       read: listed([record("s1", "app", deployed(UNSTATED))]),
-      names: new Map([[UNSTATED.id!, SHA]]),
+      work: work({ names: { [UNSTATED.id!]: SHA } }),
       expected: [["app", "running"]],
     },
     {
-      name: "a version nobody named or sourced stays pending while its direct read is asked",
+      name: "a version nobody named stays pending until the active versions state it",
       read: listed([record("s1", "app", deployed(UNSTATED))]),
       stated: new Map([[UNSTATED.id!, ASKED]]),
       expected: [["app", "unread"]],
     },
     {
-      name: "a version the service itself states runs",
+      name: "a version the active versions source runs, named by the service's variables",
       read: listed([record("s1", "app", deployed(UNSTATED))]),
-      stated: new Map([
-        [
-          UNSTATED.id!,
-          {
-            state: "known",
-            value: { activeId: UNSTATED.id!, source: "GIT", name: SHA },
-            asOf: { ordinal: 5, atMs: 50 },
-            coverage: "complete",
-            freshness: { kind: "live" },
-          },
-        ],
-      ]),
+      work: work({ versions: { [UNSTATED.id!]: version("GIT") } }),
+      stated: new Map([[UNSTATED.id!, NAMED]]),
       expected: [["app", "running"]],
     },
     {
-      name: "a direct read that failed fails the version it could not state",
+      name: "a version the active versions source runs, unnamed while nothing reads its variables",
+      read: listed([record("s1", "app", deployed(UNSTATED))]),
+      work: work({ versions: { [UNSTATED.id!]: version("GIT") } }),
+      stated: new Map([[UNSTATED.id!, ASKED]]),
+      expected: [["app", "running"]],
+    },
+    {
+      name: "in detail, a version the active versions source waits for its variables to name it",
+      read: listed([record("s1", "app", deployed(UNSTATED))]),
+      work: work({ versions: { [UNSTATED.id!]: version("GIT") } }),
+      stated: new Map([[UNSTATED.id!, ASKED]]),
+      detail: true,
+      expected: [["app", "unread"]],
+    },
+    {
+      name: "a version the active versions say came with no code runs nothing",
+      read: listed([record("s1", "app", deployed(UNSTATED))]),
+      work: work({ versions: { [UNSTATED.id!]: version("NONE") } }),
+      expected: [["app", "none"]],
+    },
+    {
+      name: "a runtime that ran nothing stays none while its next version is on its way (F5)",
+      read: listed([record("s1", "app", deployed(UNSTATED))]),
+      work: work({ active: { s1: { ...version("NONE"), id: "before" } } }),
+      expected: [["app", "none"]],
+    },
+    {
+      name: "in detail, a sourced version waiting for its name never reads as the none before it",
+      read: listed([record("s1", "app", deployed(UNSTATED))]),
+      work: work({
+        versions: { [UNSTATED.id!]: version("GIT") },
+        active: { s1: { ...version("NONE"), id: "before" } },
+      }),
+      stated: new Map([[UNSTATED.id!, ASKED]]),
+      detail: true,
+      expected: [["app", "unread"]],
+    },
+    {
+      name: "a variables read that failed fails the version nothing else states",
       read: listed([record("s1", "app", deployed(UNSTATED))]),
       stated: new Map([
         [
@@ -698,14 +715,14 @@ describe("stopServices", () => {
     },
   ];
 
-  it.each(cases)("$name", ({ read, processes, names, refused, stated, expected }) => {
+  it.each(cases)("$name", ({ read, work: held, refused, stated, detail, expected }) => {
     const stops = stopServices(
       {
         services: read,
-        processes: processes ?? NO_PROCESSES,
-        names: names ?? new Map(),
+        work: held ?? work(),
         refused: refused ?? null,
         stated: stated ?? new Map(),
+        detail: detail ?? false,
       },
       NOW,
     );
@@ -722,11 +739,19 @@ describe("stopServices", () => {
     ).toEqual(expected);
   });
 
+  const deploymentOf = (reads: Partial<StopReads> & Pick<StopReads, "services">) => {
+    const stops = stopServices(
+      { work: work(), refused: null, stated: new Map(), detail: false, ...reads },
+      NOW,
+    );
+    return stops.state === "known" ? stops.value[0]?.deployment : undefined;
+  };
+
   describe("a running build keeps what ran when it started (DESIGN §4.7)", () => {
     const previousCases: ReadonlyArray<{
       readonly name: string;
       readonly deploy: ServiceDeployInfo;
-      readonly names?: ReadonlyMap<string, string>;
+      readonly names?: StopWork["names"];
       readonly previous: unknown;
     }> = [
       {
@@ -737,7 +762,7 @@ describe("stopServices", () => {
       {
         name: "a version an earlier build named",
         deploy: UNSTATED,
-        names: new Map([[UNSTATED.id!, SHA]]),
+        names: { [UNSTATED.id!]: SHA },
         previous: { kind: "running", version: { sha: SHA, label: "3f9c1b2" } },
       },
       {
@@ -749,17 +774,10 @@ describe("stopServices", () => {
     ];
 
     it.each(previousCases)("$name", ({ deploy, names, previous }) => {
-      const stops = stopServices(
-        {
-          services: listed([record("s1", "app", deployed(deploy))]),
-          processes: processesRead([build({ id: "next", name: SHA })], { project: PROJECT }),
-          names: names ?? new Map(),
-          refused: null,
-          stated: new Map(),
-        },
-        NOW,
-      );
-      const deployment = stops.state === "known" ? stops.value[0]?.deployment : undefined;
+      const deployment = deploymentOf({
+        services: listed([record("s1", "app", deployed(deploy))]),
+        work: work({ builds: [build({ id: "next", name: SHA })], names: names ?? {} }),
+      });
       expect(deployment).toMatchObject({ state: "known", value: { kind: "deploying" } });
       if (previous === null) {
         expect(deployment).toMatchObject({ value: { previous: null } });
@@ -771,33 +789,54 @@ describe("stopServices", () => {
 
   it("a build that ends without activating keeps what ran before it, by its name", () => {
     // The build named `next`, the service still runs `app-version`, and the build is gone.
-    const stops = stopServices(
-      {
+    expect(
+      deploymentOf({
         services: listed([record("s1", "app", deployed(UNSTATED))]),
-        processes: NO_PROCESSES,
-        names: new Map([
-          [UNSTATED.id!, "1a2b3c4000000000000000000000000000000000"],
-          ["next", SHA],
-        ]),
-        refused: null,
-        stated: new Map(),
-      },
-      NOW,
-    );
-    expect(stops.state === "known" ? stops.value[0]?.deployment : undefined).toMatchObject({
+        work: work({
+          names: { [UNSTATED.id!]: "1a2b3c4000000000000000000000000000000000", next: SHA },
+        }),
+      }),
+    ).toMatchObject({
       state: "known",
       value: { kind: "running", version: { commit: "1a2b3c4" } },
     });
+  });
+
+  it.each([
+    { status: "FAILED", reason: "Zerops reports its build failed" },
+    { status: "CANCELED", reason: "Zerops reports its build was canceled" },
+  ])("a service that runs nothing after its build ended $status says the build failed", (end) => {
+    expect(
+      deploymentOf({
+        services: listed([record("s1", "app", deployed(null))]),
+        work: work({ lastBuilds: { s1: { processId: "build-1", status: end.status } } }),
+      }),
+    ).toMatchObject({
+      state: "known",
+      value: { kind: "none", failedBuild: { processId: "build-1", reason: end.reason } },
+    });
+  });
+
+  it.each([
+    { name: "its build finished", deploy: null, status: "FINISHED", kind: "none" },
+    { name: "it runs a version", deploy: PUSHED, status: "FAILED", kind: "running" },
+  ])("a build's end says nothing more when $name", ({ deploy, status, kind }) => {
+    const deployment = deploymentOf({
+      services: listed([record("s1", "app", deployed(deploy))]),
+      work: work({ lastBuilds: { s1: { processId: "build-1", status } } }),
+    });
+    expect(deployment).toMatchObject({ state: "known", value: { kind } });
+    expect(deployment).not.toMatchObject({ value: { failedBuild: expect.anything() } });
   });
 
   it("names each service by its ref", () => {
     const stops = stopServices(
       {
         services: listed([record("s1", "app", deployed(PUSHED), { project: PROJECT })]),
-        processes: NO_PROCESSES,
-        names: new Map(),
+        work: work(),
         refused: null,
         stated: new Map(),
+        detail: false,
       },
       NOW,
     );
@@ -807,45 +846,15 @@ describe("stopServices", () => {
   });
 
   it("names a running version by its build over the name the platform pushed", () => {
-    const stops = stopServices(
-      {
+    expect(
+      deploymentOf({
         services: listed([record("s1", "app", deployed(PUSHED))]),
-        processes: NO_PROCESSES,
-        names: new Map([[PUSHED.id!, SHA]]),
-        refused: null,
-        stated: new Map(),
-      },
-      NOW,
-    );
-    expect(stops.state === "known" ? stops.value[0]?.deployment : undefined).toMatchObject({
+        work: work({ names: { [PUSHED.id!]: SHA } }),
+      }),
+    ).toMatchObject({
       state: "known",
       value: { kind: "running", version: { sha: SHA, label: "3f9c1b2" } },
     });
-  });
-});
-
-describe("buildNames", () => {
-  const PROJECT = project("project-stage");
-  const builds = (...appVersions: ReadonlyArray<{ readonly id: string; readonly name?: string }>) =>
-    processesRead(
-      appVersions.map((appVersion, index) =>
-        runningProcess(`build-${index}`, { serviceIds: ["s1"], appVersion, project: PROJECT }),
-      ),
-      { project: PROJECT },
-    );
-
-  it("keeps what earlier builds named and adds what a running build names", () => {
-    const held = new Map([["v1", "first"]]);
-    expect([...buildNames(held, builds({ id: "v2", name: SHA }))]).toEqual([
-      ["v1", "first"],
-      ["v2", SHA],
-    ]);
-  });
-
-  it("is the same map while no build names anything new", () => {
-    const held = new Map([["v1", "first"]]);
-    expect(buildNames(held, builds({ id: "v1", name: "first" }))).toBe(held);
-    expect(buildNames(held, builds({ id: "v3" }))).toBe(held);
   });
 });
 
@@ -1052,64 +1061,6 @@ describe("a deploy of a commit only moves forward", () => {
   });
 });
 
-describe("heldThroughRecheck — a re-check keeps the last answer only where it is none (F5)", () => {
-  const NOW = 50_000;
-  const at = { ordinal: 1, atMs: 0 };
-  const deployment = (kind: "none" | "running"): Shown<Deployment> => ({
-    state: "known",
-    value:
-      kind === "none"
-        ? { kind: "none" }
-        : { kind: "running", activatedAt: null, version: deployedVersion("v1.0.0") },
-    asOf: at,
-    coverage: "complete",
-    freshness: { kind: "live" },
-  });
-  const stopOf = (
-    entry: Shown<Deployment>,
-  ): Extract<Known<ReadonlyArray<StopService>>, { state: "known" }> => ({
-    state: "known",
-    value: [{ service: service("app-id"), hostname: "app", deployment: entry }],
-    asOf: at,
-    coverage: "complete",
-    freshness: { kind: "live" },
-  });
-  const READING = { state: "reading", sinceMs: NOW, attempt: 1 } as const;
-  const PAUSED = { state: "unread", waitingFor: "visible" } as const;
-  it.each([
-    {
-      case: "nothing deployed, checked again: held, revalidating",
-      shown: deployment("none"),
-      next: READING,
-      held: { state: "known", value: { kind: "none" }, freshness: { kind: "revalidating" } },
-    },
-    {
-      case: "a version, checked again (a roll back no build named): never shown as current",
-      shown: deployment("running"),
-      next: READING,
-      held: READING,
-    },
-    {
-      case: "nothing deployed, its source paused: paused, never revalidating",
-      shown: deployment("none"),
-      next: PAUSED,
-      held: PAUSED,
-    },
-  ] as const)("$case", ({ shown, next, held }) => {
-    const result = heldThroughRecheck(stopOf(shown), stopOf(next as Shown<Deployment>), NOW);
-    expect(result.state === "known" ? result.value[0]?.deployment : result).toMatchObject(held);
-  });
-
-  it("holds a listing read again only where every service it showed ran nothing", () => {
-    expect(heldThroughRecheck(stopOf(deployment("none")), READING, NOW)).toMatchObject({
-      state: "known",
-      freshness: { kind: "revalidating" },
-    });
-    expect(heldThroughRecheck(stopOf(deployment("running")), READING, NOW)).toEqual(READING);
-    expect(heldThroughRecheck(stopOf(deployment("none")), PAUSED, NOW)).toEqual(PAUSED);
-  });
-});
-
 // The flow's version survives an unanswered runtime read; a failure still names its cause.
 it.each(["unread", "failed"] as const)(
   "stopView handles a %s runtime answer beside the flow's version",
@@ -1169,10 +1120,10 @@ it.each([
   const answer = stopServices(
     {
       services: servicesRead([record("app", "app", deployed(deploy))]),
-      processes: processesRead([]),
-      names: new Map(),
+      work: work(),
       refused: null,
       stated: new Map(),
+      detail: false,
     },
     NOW,
   );
@@ -1190,14 +1141,14 @@ it.each([
   });
 });
 
-it("a version no build names and no direct read can state ends visibly instead of checking forever", () => {
+it("a version with no id, which nothing can ever state, ends visibly instead of checking forever", () => {
   const answer = stopServices(
     {
-      services: servicesRead([record("app", "app", deployed(UNSTATED))]),
-      processes: processesRead([]),
-      names: new Map(),
+      services: servicesRead([record("app", "app", deployed({ ...UNSTATED, id: null }))]),
+      work: work(),
       refused: null,
       stated: new Map(),
+      detail: false,
     },
     NOW,
   );
@@ -1211,10 +1162,10 @@ it("the embedded name of the active version settles a stop even when source is o
   const answer = stopServices(
     {
       services: servicesRead([record("app", "app", deployed({ ...UNSTATED, name: "v1.0.0" }))]),
-      processes: processesRead([]),
-      names: new Map(),
+      work: work(),
       refused: null,
       stated: new Map(),
+      detail: false,
     },
     NOW,
   );
@@ -1230,10 +1181,10 @@ it("a deployment facet not stated yet is unknown until the service says, never a
   const answer = stopServices(
     {
       services: servicesRead([record("app", "app", UNRESOLVED_DEPLOYMENT)]),
-      processes: processesRead([]),
-      names: new Map(),
+      work: work(),
       refused: null,
       stated: new Map(),
+      detail: false,
     },
     NOW,
   );

@@ -1,43 +1,31 @@
 /**
- * The web's binding to the account runtime's project flow (DESIGN §7.3): the post-grant stage's
- * deployment store, bound once the epoch's first grant built it, and the hooks surfaces read it
- * through. The stores are the runtime's; nothing here holds a fact of its
- * own.
- *
- * It also carries the Mates' pushes into the account's bus: a lifecycle envelope names the
- * deployment facts it made old (`flow/envelopeInvalidations.ts`).
+ * The web's binding to the account runtime's stops (DESIGN §7.3): what each stop's services run,
+ * bound once the epoch's first grant built the post-grant stage, and the hooks surfaces read it
+ * through. A stop's read is the runtime's atom over the account's store and the stop's listing;
+ * nothing here holds a fact of its own.
  *
  * Closing the account lifetime unbinds it at once: a reader after sign-out sees nothing of it.
  */
-import type { PostGrantStage } from "@t3tools/client-runtime/zerops/account/runtime";
+import { useAtomValue } from "@effect/atom-react";
+import type { PostGrantStage, Stops } from "@t3tools/client-runtime/zerops/account/runtime";
 import {
-  envelopeInvalidations,
   stopDeploymentOf,
   type Deployment,
-  type DeploymentStore,
-  type EnvelopeServices,
   type StopService,
 } from "@t3tools/client-runtime/zerops/flow";
 import { projectKeyOf, type ProjectRef } from "@t3tools/client-runtime/zerops/data";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
-import type { ZeropsStateEnvelope } from "@t3tools/contracts";
-import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
+import { Atom } from "effect/unstable/reactivity";
+import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 
-import { invalidateZerops } from "./accountInvalidations";
 import { onAccountLifetimeClose } from "./accountLifetime";
-import { batchedPerTask } from "./taskBatch";
 
 // ── The binding ──────────────────────────────────────────────────────────────────────────────
 
-interface AccountFlow {
-  readonly deployments: DeploymentStore;
-  readonly services: EnvelopeServices;
-}
-
-let bound: AccountFlow | null = null;
+let bound: Stops | null = null;
 const listeners = new Set<() => void>();
 
-function publish(next: AccountFlow | null): void {
+function publish(next: Stops | null): void {
   bound = next;
   for (const listener of listeners) listener();
 }
@@ -47,19 +35,14 @@ onAccountLifetimeClose(() => {
 });
 
 /**
- * Makes the open account's post-grant stage the one the flow's surfaces read. Returns the way to
+ * Makes the open account's post-grant stage the one the stops' surfaces read. Returns the way to
  * unbind it, which leaves a newer binding alone.
  */
-export function bindAccountFlow(
-  stage: Pick<PostGrantStage, "deployments" | "services">,
-): () => void {
-  const flow: AccountFlow = {
-    deployments: stage.deployments,
-    services: stage.services,
-  };
-  publish(flow);
+export function bindAccountFlow(stage: Pick<PostGrantStage, "stops">): () => void {
+  const stops = stage.stops;
+  publish(stops);
   return () => {
-    if (bound === flow) publish(null);
+    if (bound === stops) publish(null);
   };
 }
 
@@ -70,121 +53,59 @@ function subscribeBinding(listener: () => void): () => void {
   };
 }
 
-function currentAccountFlow(): AccountFlow | null {
-  return bound;
-}
+const currentStops = (): Stops | null => bound;
 
-function useAccountFlow(): AccountFlow | null {
-  return useSyncExternalStore(subscribeBinding, currentAccountFlow, currentAccountFlow);
-}
-
-// ── The Mates' pushes ────────────────────────────────────────────────────────────────────────
-
-/** A Mate's lifecycle envelope moved on: what it made old is read again (§6.1). */
-export function lifecycleEnvelopeChanged(
-  previous: ZeropsStateEnvelope | undefined,
-  next: ZeropsStateEnvelope | undefined,
-): void {
-  if (bound === null) return;
-  for (const invalidation of envelopeInvalidations(previous, next, bound.services)) {
-    invalidateZerops(invalidation);
-  }
+function useBoundStops(): Stops | null {
+  return useSyncExternalStore(subscribeBinding, currentStops, currentStops);
 }
 
 // ── What surfaces read ───────────────────────────────────────────────────────────────────────
 
-/** Subscribes to the bound stores, moving their counter once per task however often they publish. */
-function useFlowSubscription(flow: AccountFlow | null): (listener: () => void) => () => void {
-  return useCallback(
-    (listener: () => void) => {
-      if (flow === null) return () => undefined;
-      const batched = batchedPerTask(() => {
-        versions.set(flow, (versions.get(flow) ?? 0) + 1);
-        listener();
-      });
-      const unsubscribe = flow.deployments.subscribe(batched.notify);
-      return () => {
-        unsubscribe();
-        batched.cancel();
-      };
-    },
-    [flow],
-  );
-}
-
-/** The bound stores' counter, as `useFlowSubscription` moves it. */
-function flowVersionOf(flow: AccountFlow | null): number {
-  return flow === null ? 0 : (versions.get(flow) ?? 0);
-}
-
-const versions = new WeakMap<AccountFlow, number>();
-
-/**
- * What the stops run as of the stores' counter: one immutable map per counter value, so the
- * answer moves exactly when the store does, whatever array the stops arrive in.
- */
-function stopDeploymentsSnapshot(
-  flow: AccountFlow | null,
-  stopKeys: string,
-): () => ReadonlyMap<string, Shown<Deployment>> {
-  const projects = JSON.parse(stopKeys) as ReadonlyArray<ProjectRef>;
-  let read: {
-    readonly version: number;
-    readonly stops: ReadonlyMap<string, Shown<Deployment>>;
-  } | null = null;
-  return () => {
-    const version = flowVersionOf(flow);
-    if (read === null || read.version !== version) {
-      read = {
-        version,
-        stops: new Map(
-          projects.map((project) => [
-            project.projectId,
-            flow === null ? UNBOUND : stopDeploymentOf(flow.deployments.stop(project)),
-          ]),
-        ),
-      };
-    }
-    return read.stops;
-  };
-}
-
-/** Nothing is read before the epoch's first grant built the stores. */
+/** Nothing is read before the epoch's first grant built the stops. */
 const UNBOUND: Shown<never> = { state: "unread", waitingFor: "access-grant" };
+const UNBOUND_SERVICES = Atom.make<Shown<ReadonlyArray<StopService>>>(UNBOUND);
 
 /**
- * What each stop runs (§4.7), by project id: demands the stops of the deployment store for as long
- * as the calling surface is mounted, and reads each again once per task however often it publishes.
- * A stop keeps its demand, and with it what its builds named, for as long as the surface draws it:
- * another stop joining or leaving the rows, or the same stops in a new array, never lets it go.
+ * What each stop runs (§4.7), by project id: demands the stops for as long as the calling surface
+ * is mounted. A stop keeps its demand for as long as the surface draws it: another stop joining or
+ * leaving the rows, or the same stops in a new array, never lets it go.
  */
 export function useStopDeployments(
   projects: ReadonlyArray<ProjectRef>,
   visible: ReadonlyArray<ProjectRef> = projects,
 ): ReadonlyMap<string, Shown<Deployment>> {
-  const flow = useAccountFlow();
+  const stops = useBoundStops();
   const stopKeys = JSON.stringify(projects);
   const visibleKeys = JSON.stringify(visible);
 
-  // The store's answers as of its counter: read through the store, never memoised on the stops.
-  // Subscribed before the stops are demanded, so what a demand publishes at once is heard.
-  const subscribe = useFlowSubscription(flow);
-  const snapshot = useMemo(() => stopDeploymentsSnapshot(flow, stopKeys), [flow, stopKeys]);
-  const stops = useSyncExternalStore(subscribe, snapshot, snapshot);
+  // One answer per change of what the stops read, whatever array the stops arrive in.
+  const deployments = useMemo(() => {
+    const refs = JSON.parse(stopKeys) as ReadonlyArray<ProjectRef>;
+    return Atom.make(
+      (get): ReadonlyMap<string, Shown<Deployment>> =>
+        new Map(
+          refs.map((project) => [
+            project.projectId,
+            stops === null ? UNBOUND : stopDeploymentOf(get(stops.services(project))),
+          ]),
+        ),
+    );
+  }, [stops, stopKeys]);
+  const answer = useAtomValue(deployments);
 
-  // Each stop's release, by project key, while the surface draws it from this flow.
+  // Each stop's release, by project key, while the surface draws it from these stops.
   const demanded = useRef(new Map<string, () => void>());
   useEffect(() => {
-    if (flow === null) return;
+    if (stops === null) return;
     const releases = demanded.current;
     return () => {
       for (const release of releases.values()) release();
       releases.clear();
     };
-  }, [flow]);
+  }, [stops]);
 
   useEffect(() => {
-    if (flow === null) return;
+    if (stops === null) return;
     const drawn = new Map<string, ProjectRef>(
       (JSON.parse(visibleKeys) as ReadonlyArray<ProjectRef>).map((project) => [
         projectKeyOf(project),
@@ -198,70 +119,50 @@ export function useStopDeployments(
       releases.delete(key);
     }
     for (const [key, project] of drawn) {
-      if (!releases.has(key)) releases.set(key, flow.deployments.demand(project));
+      if (!releases.has(key)) releases.set(key, stops.demand(project));
     }
-  }, [flow, visibleKeys]);
+  }, [stops, visibleKeys]);
 
-  return stops;
+  return answer;
 }
 
 /**
  * What one stop runs service by service (§4.7), unreduced: its runtime services, each with its own
- * deployment. Demands the stop for as long as the calling surface draws it, whoever else does, and
- * reads it again once per task however often the store publishes. `null` reads nothing.
+ * deployment. Demands the stop in detail for as long as the calling surface draws it, whoever else
+ * does. `null` reads nothing.
  */
 export function useStopServices(project: ProjectRef | null): Shown<ReadonlyArray<StopService>> {
-  const flow = useAccountFlow();
+  const stops = useBoundStops();
   const projectKey = project === null ? null : JSON.stringify(project);
-
-  // Subscribed before the stop is demanded, so what a demand publishes at once is heard.
-  const subscribe = useFlowSubscription(flow);
-  const snapshot = useMemo(() => stopServicesSnapshot(flow, projectKey), [flow, projectKey]);
-  const services = useSyncExternalStore(subscribe, snapshot, snapshot);
-
-  useStopDemand(flow, projectKey, "detail");
-
-  return services;
+  const services = useMemo(
+    () =>
+      stops === null || projectKey === null
+        ? UNBOUND_SERVICES
+        : stops.services(JSON.parse(projectKey) as ProjectRef),
+    [stops, projectKey],
+  );
+  useStopDemand(stops, projectKey, "detail");
+  return useAtomValue(services);
 }
 
-/** A drawn cell holds summary demand without adding another subscription to all stops. */
+/** A drawn cell holds summary demand without reading every stop. */
 export function useStopDeploymentDemand(project: ProjectRef | null): void {
-  const flow = useAccountFlow();
-  useStopDemand(flow, project === null ? null : JSON.stringify(project), "summary");
+  const stops = useBoundStops();
+  useStopDemand(stops, project === null ? null : JSON.stringify(project), "summary");
 }
 
 function useStopDemand(
-  flow: AccountFlow | null,
+  stops: Stops | null,
   projectKey: string | null,
   scope: "summary" | "detail",
 ): void {
   useEffect(() => {
-    if (flow === null || projectKey === null) return;
-    return flow.deployments.demand(JSON.parse(projectKey) as ProjectRef, scope);
-  }, [flow, projectKey, scope]);
-}
-
-/** One stop's services as of the stores' counter: one answer per counter value. */
-function stopServicesSnapshot(
-  flow: AccountFlow | null,
-  projectKey: string | null,
-): () => Shown<ReadonlyArray<StopService>> {
-  if (flow === null || projectKey === null) return () => UNBOUND;
-  const project = JSON.parse(projectKey) as ProjectRef;
-  let read: {
-    readonly version: number;
-    readonly services: Shown<ReadonlyArray<StopService>>;
-  } | null = null;
-  return () => {
-    const version = flowVersionOf(flow);
-    if (read === null || read.version !== version) {
-      read = { version, services: flow.deployments.stop(project) };
-    }
-    return read.services;
-  };
+    if (stops === null || projectKey === null) return;
+    return stops.demand(JSON.parse(projectKey) as ProjectRef, scope);
+  }, [stops, projectKey, scope]);
 }
 
 /** Restarts a refused visible demand only when the person asks. The runtime refresh is the caller's. */
 export function againStopDeployment(project: ProjectRef): void {
-  bound?.deployments.again(project);
+  bound?.again(project);
 }

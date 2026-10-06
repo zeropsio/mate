@@ -16,7 +16,7 @@
  * A release is offered as HQ offers it (`useReleasePermission`) of each production
  * runtime at its repository's `main` as HQ lists it, and made — or rolled
  * back — in HQ, as the person. What each stop runs is the account's
- * deployment store's answer (`flow/deploymentStore.ts`). A change is merged
+ * stops' answer (`account/stops.ts`). A change is merged
  * and closed in HQ, as the person, and comes back down HQ's stream.
  */
 import { useAtomValue } from "@effect/atom-react";

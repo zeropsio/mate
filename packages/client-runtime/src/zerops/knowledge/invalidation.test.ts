@@ -82,7 +82,7 @@ const openBus = (options: Partial<Pick<InvalidationBusOptions, "shown">> = {}) =
   });
 
 describe("the invalidation union (DESIGN §6.2)", () => {
-  it("is closed over the six topics of §6.2", () => {
+  it("is closed over its five topics", () => {
     // A topic missing here, or one more than the union has, fails the typecheck.
     const topics: Record<Invalidation["topic"], true> = {
       access: true,
@@ -90,11 +90,10 @@ describe("the invalidation union (DESIGN §6.2)", () => {
       project: true,
       environment: true,
       container: true,
-      deployment: true,
     };
     // @ts-expect-error — not a topic the bus carries
     const unknown: Invalidation["topic"] = "thread";
-    expect(Object.keys(topics)).toHaveLength(6);
+    expect(Object.keys(topics)).toHaveLength(5);
     expect(Object.keys(topics)).not.toContain(unknown);
   });
 });

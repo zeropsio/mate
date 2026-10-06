@@ -770,7 +770,7 @@ function collectOneWayViolations(
 // Rule 6, its construction half: the account runtime's modules — its invalidation bus, which one
 // owner holds (§6.2), and the post-grant stage's, built on the epoch's first grant: the
 // registration records, the container store (with its probe store), the exchange driver and the
-// deployment store — are constructed by the account runtime only. A call of a constructor anywhere else is reported; its
+// stops' demand — are constructed by the account runtime only. A call of a constructor anywhere else is reported; its
 // declaration is not, nor a test's or a test fixture's.
 const ACCOUNT_RUNTIME_FILE = `${CLIENT_RUNTIME_ZEROPS_DIR}/account/accountRuntime.ts`;
 const ACCOUNT_RUNTIME_CONSTRUCTORS: ReadonlyArray<string> = [
@@ -779,7 +779,7 @@ const ACCOUNT_RUNTIME_CONSTRUCTORS: ReadonlyArray<string> = [
   "makeRegistrationRecords",
   "makeContainerStore",
   "makeExchangeDriver",
-  "makeDeploymentStore",
+  "makeStops",
 ];
 
 interface ConstructionViolation {
@@ -2718,7 +2718,7 @@ it.layer(NodeServices.layer)("mate zone architecture", (it) => {
         "projections/banner.ts": 'import * as Stream from "effect/Stream";\n',
         "projections/candidates.ts": 'import { parseSemver } from "@t3tools/shared/semver";\n',
         "flow/groupFlow.ts": "export const read = () => localStorage.getItem('k');\n",
-        "flow/deploymentStore.ts": "export const later = () => setInterval(() => undefined, 1);\n",
+        "flow/deployment.ts": "export const later = () => setInterval(() => undefined, 1);\n",
         "environments/reachability.ts":
           "export const settle = () => requestAnimationFrame(() => undefined);\n",
         "environments/gate.ts": "export const gate = () => fetch('/healthz');\n",
@@ -2795,7 +2795,7 @@ it.layer(NodeServices.layer)("mate zone architecture", (it) => {
           "",
         ].join("\n"),
         "flow/groupFlow.ts": "export const at = () => performance.now();\n",
-        "flow/deploymentStore.ts": "export const at = () => Date.now();\n",
+        "flow/deployment.ts": "export const at = () => Date.now();\n",
         "environments/gate.ts": "export const wall = () => new Date().getTime();\n",
       });
 
@@ -2934,7 +2934,8 @@ it.layer(NodeServices.layer)("mate zone architecture", (it) => {
         ].join("\n"),
         [`${zerops}/environments/exchangeDriver.test.ts`]: "makeExchangeDriver(ports);\n",
         [`${zerops}/flow/groupFlow.ts`]: "const bus = makeInvalidationBus (options);\n",
-        "apps/web/src/zerops/accountForge.ts": "const store = makeDeploymentStore(ports);\n",
+        "apps/web/src/zerops/accountForge.ts":
+          "const stops = makeStops(data, registry, services);\n",
         "apps/web/src/zerops/AccountShell.tsx": "const driver = makeExchangeDriver(ports);\n",
         "apps/web/src/zerops/zeropsContainers.ts": [
           "const store = makeContainerStore({ clock, probe, readMateFlag, intents });",
@@ -2959,7 +2960,7 @@ it.layer(NodeServices.layer)("mate zone architecture", (it) => {
         },
         {
           file: "apps/web/src/zerops/accountForge.ts",
-          reason: "constructs makeDeploymentStore, a module of the account runtime, outside it",
+          reason: "constructs makeStops, a module of the account runtime, outside it",
         },
         {
           file: "apps/web/src/zerops/accountInvalidations.ts",

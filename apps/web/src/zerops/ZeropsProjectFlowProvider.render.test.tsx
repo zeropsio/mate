@@ -14,13 +14,14 @@ import {
   projectKeyOf,
   type ProjectRef,
 } from "@t3tools/client-runtime/zerops/data";
-import type { DeploymentStore, StopService } from "@t3tools/client-runtime/zerops/flow";
+import type { Stops } from "@t3tools/client-runtime/zerops/account/runtime";
+import type { StopService } from "@t3tools/client-runtime/zerops/flow";
 import type { HqEnvironment } from "@t3tools/client-runtime/zerops/hq";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { changeUrl, type HqChange, type RepoListEntry } from "@t3tools/shared/hqChanges";
 import type { Release } from "@t3tools/shared/hqRelease";
 import { RegistryContext } from "@effect/atom-react";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { Atom, AtomRegistry } from "effect/unstable/reactivity";
 import { act, createElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -435,30 +436,33 @@ describe("ZeropsProjectFlowProvider", () => {
       coverage: "complete",
       freshness: { kind: "live" },
     };
-    // The store publishes a stop as it is first demanded.
-    const demanded = new Set<string>();
-    const listeners = new Set<(project: ProjectRef) => void>();
-    const deployments = {
+    // A stop reads what runs there as it is first demanded.
+    const atoms = AtomRegistry.make();
+    const none: ReadonlySet<string> = new Set();
+    const demandedAtom = Atom.make({ ids: none });
+    const demanded = {
+      ids: () => [...atoms.get(demandedAtom).ids],
+      move: (change: (held: Set<string>) => void) => {
+        const held = new Set(atoms.get(demandedAtom).ids);
+        change(held);
+        atoms.set(demandedAtom, { ids: held });
+      },
+    };
+    const stops: Stops = {
       again: () => undefined,
       demand: (project: ProjectRef) => {
-        demanded.add(project.projectId);
-        for (const listener of listeners) listener(project);
-        return () => demanded.delete(project.projectId);
+        demanded.move((held) => held.add(project.projectId));
+        return () => demanded.move((held) => held.delete(project.projectId));
       },
-      stop: (project: ProjectRef) =>
-        demanded.has(project.projectId) ? running : { state: "unread", waitingFor: null },
-      shows: () => false,
-      subscribe: (listener: (project: ProjectRef) => void) => {
-        listeners.add(listener);
-        return () => listeners.delete(listener);
-      },
-      invalidate: () => undefined,
+      services: (project: ProjectRef) =>
+        Atom.make((get): Shown<ReadonlyArray<StopService>> =>
+          get(demandedAtom).ids.has(project.projectId)
+            ? running
+            : { state: "unread", waitingFor: null },
+        ),
       dispose: () => undefined,
-    } as DeploymentStore;
-    const unbind = bindAccountFlow({
-      deployments,
-      services: { serviceOf: () => null },
-    });
+    };
+    const unbind = bindAccountFlow({ stops });
     const { createRoot } = await import("react-dom/client");
     const seen: Array<ZeropsProjectFlowValue> = [];
 
@@ -469,11 +473,16 @@ describe("ZeropsProjectFlowProvider", () => {
 
     const root = createRoot(document.createElement("div") as unknown as Element);
     await act(async () => {
-      root.render(createElement(ZeropsProjectFlowProvider, null, createElement(Probe)));
+      root.render(
+        createElement(
+          RegistryContext.Provider,
+          { value: atoms },
+          createElement(ZeropsProjectFlowProvider, null, createElement(Probe)),
+        ),
+      );
     });
 
-    expect([...demanded]).toEqual(["loose-1"]);
-    // The store's publication reaches React in the next task.
+    expect(demanded.ids()).toEqual(["loose-1"]);
     await vi.waitFor(() =>
       expect(seen.at(-1)?.deployments.get("loose-1")).toMatchObject({
         state: "known",
@@ -483,13 +492,19 @@ describe("ZeropsProjectFlowProvider", () => {
 
     inventoryRefs.detail = new Set([unread.projectId]);
     await act(async () => {
-      root.render(createElement(ZeropsProjectFlowProvider, null, createElement(Probe)));
+      root.render(
+        createElement(
+          RegistryContext.Provider,
+          { value: atoms },
+          createElement(ZeropsProjectFlowProvider, null, createElement(Probe)),
+        ),
+      );
     });
-    expect([...demanded]).toEqual([unread.projectId]);
+    expect(demanded.ids()).toEqual([unread.projectId]);
     await act(async () => {
       root.unmount();
     });
-    expect([...demanded]).toEqual([]);
+    expect(demanded.ids()).toEqual([]);
     unbind();
   });
 
@@ -527,19 +542,19 @@ describe("ZeropsProjectFlowProvider", () => {
     ]);
     const demanded = new Set<string>();
     const unbind = bindAccountFlow({
-      deployments: {
+      stops: {
         again: () => undefined,
         demand: (project: ProjectRef) => {
           demanded.add(project.projectId);
           return () => demanded.delete(project.projectId);
         },
-        stop: () => ({ state: "unread", waitingFor: null }),
-        shows: () => false,
-        subscribe: () => () => undefined,
-        invalidate: () => undefined,
+        services: () =>
+          Atom.make<Shown<ReadonlyArray<StopService>>>({
+            state: "unread",
+            waitingFor: null,
+          }),
         dispose: () => undefined,
-      } as DeploymentStore,
-      services: { serviceOf: () => null },
+      },
     });
     const { createRoot } = await import("react-dom/client");
     const seen: Array<ZeropsProjectFlowValue> = [];

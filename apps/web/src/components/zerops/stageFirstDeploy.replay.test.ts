@@ -8,21 +8,22 @@ import {
   type GroupFlowInput,
 } from "@t3tools/client-runtime/zerops";
 import {
-  makeDeploymentStore,
   stopDeploymentOf,
+  stopServices,
   stopVerdict,
   stopView,
+  unnamedVersions,
   type Deployment,
 } from "@t3tools/client-runtime/zerops/flow";
 import {
   deployed,
-  processesRead,
   project,
   record,
-  runningProcess,
+  runningBuild,
   servicesRead,
+  work,
 } from "@t3tools/client-runtime/zerops/flow/fixtures";
-import type { ProcessStatus, ServiceDeployInfo } from "@t3tools/client-runtime/zerops/data";
+import type { ServiceDeployInfo } from "@t3tools/client-runtime/zerops/data";
 import type { ZeropsServiceDeployedVersion } from "@t3tools/client-runtime/zerops/data";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import type { HqJob } from "@t3tools/client-runtime/zerops/hq";
@@ -63,10 +64,10 @@ const IMPORTED: ServiceDeployInfo = {
 };
 
 /**
- * The first build's end, through the deployment store in the order run 5 saw it (window B): the
- * build running, its process gone (+1096.1 s), the listing read again with the new version active
- * and stated by nothing yet (+1096.4 s), then the account's store stating it (+1097.6 s). What the
- * store answers at each step is what every surface is handed.
+ * The first build's end, in the order run 5 saw it (window B): the build running, its process gone
+ * (+1096.1 s), the listing read again with the new version active and stated by nothing yet
+ * (+1096.4 s), then the organization's active versions and the service's variables stating it
+ * (+1097.6 s). What the stop reads at each step is what every surface is handed.
  */
 function firstBuild() {
   const stage = project(STAGE_ID);
@@ -74,64 +75,58 @@ function firstBuild() {
     servicesRead([record("app-id", "app", deployed(deploy), { project: stage })], {
       project: stage,
     });
-  const build = processesRead(
-    [
-      runningProcess("build-1", {
-        serviceIds: ["build-helper", "app-id"],
-        appVersion: { id: "version-2", status: "BUILDING" },
-        project: stage,
-      }),
-    ],
-    { project: stage },
-  );
+  const imported = {
+    id: "version-1",
+    projectId: STAGE_ID,
+    serviceId: "app-id",
+    status: "ACTIVE",
+    source: "NONE",
+  };
   let services = listed(IMPORTED);
-  let processes = build;
+  let held = work({ active: { "app-id": imported } });
   let stated: Shown<ZeropsServiceDeployedVersion> = { state: "unread", waitingFor: null };
-  let status: ProcessStatus | undefined;
-  let changed = () => undefined as void;
-  const clock = { ms: at(1033.9) };
-  const store = makeDeploymentStore({
-    services: () => services,
-    processes: () => processes,
-    deployedVersion: () => stated,
-    follow: (_project, listener) => {
-      changed = listener;
-      return () => undefined;
-    },
-    buildStatus: () => status,
-    nowMs: () => clock.ms,
-  });
-  store.demand(stage);
   const step = (t: number, change: () => void) => {
-    clock.ms = at(t);
     change();
-    changed();
-    return stopDeploymentOf(store.stop(stage));
+    return stopDeploymentOf(
+      stopServices(
+        {
+          services,
+          work: held,
+          refused: null,
+          stated: new Map(
+            unnamedVersions(services, held.names).map(({ versionId }) => [versionId, stated]),
+          ),
+          detail: false,
+        },
+        at(t),
+      ),
+    );
   };
   // The build is named by the commit it builds as the platform reads its pipeline.
+  const named = `main ${FIX.slice(0, 7)}`;
   const building = step(1033.9, () => {
-    processes = processesRead(
-      [
-        runningProcess("build-1", {
-          serviceIds: ["build-helper", "app-id"],
-          appVersion: { id: "version-2", name: `main ${FIX.slice(0, 7)}`, status: "BUILDING" },
-          project: stage,
-        }),
-      ],
-      { project: stage },
-    );
+    held = work({
+      active: { "app-id": imported },
+      builds: [runningBuild(["build-helper", "app-id"], { id: "version-2", name: named })],
+      names: { "version-2": named },
+    });
   });
   const ended = step(1096.1, () => {
-    processes = processesRead([], { project: stage });
-    status = "FINISHED";
+    held = work({
+      active: { "app-id": imported },
+      names: { "version-2": named },
+      lastBuilds: { "app-id": { processId: "build", status: "FINISHED" } },
+    });
   });
   const unstated = step(1096.4, () => {
     services = listed({ ...IMPORTED, id: "version-9", source: null });
   });
   const running = step(1097.6, () => {
+    const version = { ...imported, id: "version-9", source: "GIT" };
+    held = { ...held, versions: { "version-9": version }, active: { "app-id": version } };
     stated = {
       state: "known",
-      value: { activeId: "version-9", source: "GIT", name: `main ${FIX.slice(0, 7)}` },
+      value: { activeId: "version-9", source: "GIT", name: named },
       asOf: { ordinal: 2, atMs: at(1097.6) },
       coverage: "complete",
       freshness: { kind: "live" },
