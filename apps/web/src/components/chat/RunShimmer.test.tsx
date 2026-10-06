@@ -58,6 +58,22 @@ describe("RunShimmer", () => {
     expect(html.match(/class="run-now-mono"/gu)).toHaveLength(2);
   });
 
+  // On a cut line the box the sweep stands in is the line's own — its height, its ellipsis —
+  // and the words' look stays on the words and on their copy.
+  it.each([true, false])(
+    "on a cut line keeps the words' look on the words (sweeping: %s)",
+    (sweeps) => {
+      const html = renderToStaticMarkup(
+        <RunShimmer className="run-now-verb" inline sweeps={sweeps}>
+          {words}
+        </RunShimmer>,
+      );
+      expect(html).toMatch(/^<span(?![^>]*run-now-verb)[^>]*>/u);
+      expect(html).toMatch(/<span class="run-now-verb" data-sweep-words="">/u);
+      expect(html.includes('<span class="run-now-verb" data-sweep-ink="">')).toBe(sweeps);
+    },
+  );
+
   it("keeps the words in the same place whether it sweeps or not", () => {
     const still = renderToStaticMarkup(<RunShimmer sweeps={false}>{words}</RunShimmer>);
     const sweeping = renderToStaticMarkup(<RunShimmer sweeps>{words}</RunShimmer>);

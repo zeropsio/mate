@@ -12,9 +12,12 @@ import type { ReactNode } from "react";
  * from input (`aria-hidden`, `inert`): nobody hears them twice, no find or selection lands in it.
  * The words are copied as they are, so they must be words: nothing in them that keeps state.
  *
- * `inline` is for words that are part of a line cut with an ellipsis: they stand in a box of their
- * own as wide as they are (at most the line), cut with their own ellipsis, so the copy is cut
- * where they are.
+ * `inline` is for words that are part of a line cut with an ellipsis: while they sweep they stand
+ * in a box of their own as wide as they are (at most the line), cut there, so the copy is cut
+ * where they are. That box wears the line's own style — the words' (`className`) is on the words
+ * inside it — so its line is the line's height, whole glyphs in it, and its ellipsis is the one
+ * the line drew, in the line's ink. The copy's ellipsis is drawn in no ink: the light never
+ * touches it.
  */
 export function RunShimmer({
   sweeps,
@@ -29,14 +32,20 @@ export function RunShimmer({
 }) {
   return (
     <span
-      className={className}
+      className={inline ? undefined : className}
       data-run-shimmer={sweeps ? "" : undefined}
       data-sweep-cut={sweeps && inline ? "" : undefined}
     >
-      <span data-sweep-words="">{children}</span>
+      <span className={inline ? className : undefined} data-sweep-words="">
+        {children}
+      </span>
       {sweeps ? (
         <span aria-hidden="true" data-sweep-band="" inert>
-          <span data-sweep-copy="">{children}</span>
+          <span data-sweep-copy="">
+            <span className={inline ? className : undefined} data-sweep-ink="">
+              {children}
+            </span>
+          </span>
         </span>
       ) : null}
     </span>
