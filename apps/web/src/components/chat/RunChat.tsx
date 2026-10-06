@@ -80,6 +80,7 @@ import {
 } from "react";
 import { flushSync } from "react-dom";
 
+import { afterLayout } from "~/lib/afterLayout";
 import { cn } from "~/lib/utils";
 import { FileWriteDetail } from "./FileWriteDetail";
 import { stepWriteCalls } from "./fileWrites.logic";
@@ -595,11 +596,12 @@ function cappedAtEnd(box: HTMLElement): boolean {
 /** A fade at each edge of a box that has more past it (`.run-capped`). */
 function markCappedEdges(box: HTMLElement): void {
   if (typeof box.toggleAttribute !== "function") return;
-  box.toggleAttribute("data-more-above", box.scrollTop > 1);
-  box.toggleAttribute(
-    "data-more-below",
-    !cappedAtEnd(box) && box.scrollHeight > box.clientHeight + 1,
-  );
+  // Read whole before either is written: a fade written between two reads
+  // made the second restyle the page first.
+  const above = box.scrollTop > 1;
+  const below = !cappedAtEnd(box) && box.scrollHeight > box.clientHeight + 1;
+  box.toggleAttribute("data-more-above", above);
+  box.toggleAttribute("data-more-below", below);
 }
 
 interface CappedBoxProps {
@@ -659,19 +661,28 @@ function LogBox({ detail = false, part, open, onCut, className, children }: Capp
     const content = contentRef.current;
     if (box === null || content === null) return;
     const measure = () => {
-      if (!wholeRef.current) setCut(content.offsetHeight > box.clientHeight + 1);
+      if (wholeRef.current) return;
+      const next = content.offsetHeight > box.clientHeight + 1;
+      // Its fade at once, before the frame paints; the draw that says so follows.
+      if (typeof box.toggleAttribute === "function") box.toggleAttribute("data-more-below", next);
+      setCut(next);
     };
     measureRef.current = measure;
-    measure();
-    if (typeof ResizeObserver === "undefined") return;
+    // Measured once the page is laid out, as its observer first reports it:
+    // read as it mounts, each box of a history drawing its lines forced the
+    // page's layout in the middle of the draw.
+    if (typeof ResizeObserver === "undefined") {
+      measure();
+      return;
+    }
     const resized = new ResizeObserver(measure);
     resized.observe(content);
     return () => resized.disconnect();
   }, []);
   useLayoutEffect(() => {
     wholeRef.current = whole;
-    // Closed again: what runs past the cap is measured anew.
-    if (!whole) measureRef.current();
+    // Closed again: what runs past the cap is measured anew, once laid out.
+    if (!whole) afterLayout(() => measureRef.current());
   }, [whole]);
   const tellCut = useEffectEvent((next: boolean) => onCut?.(next));
   useEffect(() => tellCut(cut), [cut]);
@@ -778,11 +789,13 @@ function SlotBox({ follows = false, detail = false, part, className, children }:
       onScroll={() => {
         const box = boxRef.current;
         if (box === null) return;
+        // Read before its fades are written: a read after them restyled the page.
+        const top = box.scrollTop;
+        const end = cappedAtEnd(box);
         markCappedEdges(box);
         const own = ownTopRef.current;
         ownTopRef.current = null;
-        if (own !== null && Math.abs(box.scrollTop - own) <= 1) return;
-        const end = cappedAtEnd(box);
+        if (own !== null && Math.abs(top - own) <= 1) return;
         stickRef.current = end;
         if (end !== atEnd) setAtEnd(end);
       }}
@@ -3227,6 +3240,13 @@ function endedLine(item: RecordItem): RecordItem {
   return { ...item, step: { ...over, key: item.step.key } };
 }
 
+/** Sets a property of an element's own style, or takes it away; nothing when it says that already. */
+function writeStyle(element: HTMLElement, name: string, value: string | null): void {
+  if ((element.style.getPropertyValue(name) || null) === value) return;
+  if (value === null) element.style.removeProperty(name);
+  else element.style.setProperty(name, value);
+}
+
 /**
  * Places the live slot's face and clock on its first line, and says the room
  * the slot takes, its gap above it included: on a short page the card holds
@@ -3238,22 +3258,25 @@ function placeSlot(list: HTMLOListElement | null): void {
   const mark = list.querySelector<HTMLElement>("[data-slot-mark] > span");
   const slotBox = list.parentElement;
   if (slotBox === null) return;
+  // Every box read before anything is written: a write between two reads
+  // restyled the card, and the second read laid it out again.
   const line = mark?.getBoundingClientRect();
-  const top = slotBox.getBoundingClientRect().top;
-  const y = line === undefined ? null : line.top + line.height / 2 - top;
-  if (y === null) slotBox.style.removeProperty("--run-slot-line");
-  else slotBox.style.setProperty("--run-slot-line", `${y}px`);
+  const slotRect = slotBox.getBoundingClientRect();
+  const y = line === undefined ? null : line.top + line.height / 2 - slotRect.top;
   // The room the slot takes, its gap above it included: on a short page
   // the card holds it whole once the history has none left to give.
   const chat = slotBox.parentElement;
-  if (chat !== null) {
-    const above = slotBox.previousElementSibling ?? null;
-    const from =
-      above === null ? chat.getBoundingClientRect().top : above.getBoundingClientRect().bottom;
-    chat.style.setProperty(
-      "--run-slot-room",
-      `${Math.ceil(slotBox.getBoundingClientRect().bottom - from)}px`,
-    );
+  const above = slotBox.previousElementSibling ?? null;
+  const from =
+    chat === null
+      ? null
+      : above === null
+        ? chat.getBoundingClientRect().top
+        : above.getBoundingClientRect().bottom;
+  writeStyle(slotBox, "--run-slot-line", y === null ? null : `${y}px`);
+  // Said on the card, which every line of it inherits: written only when it changes.
+  if (chat !== null && from !== null) {
+    writeStyle(chat, "--run-slot-room", `${Math.ceil(slotRect.bottom - from)}px`);
   }
   // They move with the first line only once placed: a first paint, a
   // thread opened or a card scrolled back to never slides them in.
@@ -3484,8 +3507,10 @@ function LiveSlot({
   // Read once its room holds the height it showed: a slot read at its new
   // height first lowered the card's cap at once, and the card bounced back
   // the next frame as the slot eased (a phone's card, run 9).
+  // Read once the page is laid out, before it paints: in the draw itself it
+  // laid the page out early, on every word streamed into the slot.
   useLayoutEffect(() => {
-    placeSlot(listRef.current);
+    afterLayout(() => placeSlot(listRef.current));
     // Read when what it shows changed, never on every draw.
   }, [slot, live, items, said, lines.length]);
   // A row opened or shut in place, or the page resized: the room it takes
@@ -3700,6 +3725,8 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
     syncing: ctx.syncing,
     quietFrom,
     onChange: (from, to, redrawn) => {
+      // Out of sight, nobody watches it land: what arrives is simply there.
+      if (outOfSight) return;
       // What enters makes its room too: the history glides as the slot grows.
       const { leaving, entering } = slotMoves(from, to);
       if (leaving.length === 0 && !entering) return;
@@ -3806,8 +3833,23 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   // Read after each draw of a live run's card, once its landing glides
   // started — declared after the landing, so it runs after it: the next
   // change starts from what shows, never from the glides' destinations.
+  // Read once the page is laid out, before it paints: what the frame shows.
+  // Read in the draw, it laid the page out early on every word streamed, and
+  // read every line of the history's box again; out of sight, never.
+  const paintedDueRef = useRef({ due: false, wanted: false });
   useLayoutEffect(() => {
-    paintedRef.current = slotted ? paintedNow() : null;
+    const painted = paintedDueRef.current;
+    painted.wanted = slotted && !outOfSight;
+    if (!painted.wanted) {
+      paintedRef.current = null;
+      return;
+    }
+    if (painted.due) return;
+    painted.due = true;
+    afterLayout(() => {
+      painted.due = false;
+      if (painted.wanted) paintedRef.current = paintedNow();
+    });
   });
   // Every commit, before the list's row measures the card in its own.
   useLayoutEffect(() => cardRoomsRef.current?.flush());
@@ -4548,6 +4590,7 @@ function RunScroll({
     const list = listRef.current;
     if (element === null || list === null || typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(() => {
+      forgetPadding(element);
       follow.keep();
       redraw();
     });
@@ -4586,18 +4629,24 @@ function RunScroll({
           className="run-scroll"
           data-run-scroll=""
           onScroll={(event) => {
+            // One read of where it stands serves the whole event, and every
+            // read comes before its fades are written: a write between two
+            // reads restyled and laid out the page again, on every tick.
             const position = positionOf(event.currentTarget);
             const followed = followRef.current.follows;
             follow.read(position);
+            redraw();
             const element = scrollRef.current;
             if (element !== null) {
               // Brought back to the foot it set out for, it glides on to
-              // where the foot moved on since.
-              if (!followed && followRef.current.follows) follow.glide();
-              markEdges(element);
+              // where the foot moved on since — at once under reduced
+              // motion, which moves it: then it is read anew.
+              if (!followed && followRef.current.follows) {
+                follow.glide();
+                markEdges(element);
+              } else markEdges(element, position);
             }
             drawEarlier(position);
-            redraw();
             endsOnQuiet();
           }}
           onScrollEnd={() => follow.heard({ kind: "ended" })}
@@ -4989,10 +5038,33 @@ function plop(row: HTMLElement, from: number) {
  * Marks the edges the scroll has more past — a fade there says so — straight
  * on the element: a scroll never redraws the chat.
  */
-function markEdges(element: HTMLElement): void {
-  const cut = cutEdges(positionOf(element));
+function markEdges(element: HTMLElement, position: RunScrollPosition = positionOf(element)): void {
+  const cut = cutEdges(position);
   element.toggleAttribute("data-more-above", cut.above);
   element.toggleAttribute("data-more-below", cut.below);
+}
+
+/**
+ * Each run scroll's padding, top and bottom together: read once, and again
+ * after it resizes (`forgetPadding`). Read through its computed style on
+ * every scroll event, it restyled the page first each time.
+ */
+const paddings = new WeakMap<HTMLElement, number>();
+
+/** The scroll resized: its padding is read anew. */
+function forgetPadding(scroll: HTMLElement): void {
+  paddings.delete(scroll);
+}
+
+function paddingOf(scroll: HTMLElement): number {
+  let pad = paddings.get(scroll);
+  if (pad === undefined) {
+    const style = getComputedStyle(scroll);
+    pad =
+      (Number.parseFloat(style.paddingTop) || 0) + (Number.parseFloat(style.paddingBottom) || 0);
+    paddings.set(scroll, pad);
+  }
+  return pad;
 }
 
 /**
@@ -5003,9 +5075,7 @@ function positionOf(scroll: HTMLElement): RunScrollPosition {
   const list = scroll.firstElementChild as HTMLElement | null | undefined;
   // Drawn outside a page (a test's renderer), it is as it says.
   if (list === null || list === undefined || typeof getComputedStyle !== "function") return scroll;
-  const style = getComputedStyle(scroll);
-  const pad =
-    (Number.parseFloat(style.paddingTop) || 0) + (Number.parseFloat(style.paddingBottom) || 0);
+  const pad = paddingOf(scroll);
   return laidOutPosition({
     scrollTop: scroll.scrollTop,
     scrollHeight: scroll.scrollHeight,
