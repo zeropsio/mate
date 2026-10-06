@@ -72,7 +72,12 @@ HQ requires project-creation capability (or a structure writer), then evaluates 
 real projects. This prospective offer is never used as write evidence. A live stage or devstage
 occupies the stage slot, and a live production occupies production; missing Zerops projects free
 the slot. Occupied slots refuse `slot_taken`, including for a writer; replacing remains a separate
-write. Writes still authorize the actual project against fresh Zerops facts.
+write. Environment `project:<id>.can.finish` independently gives the existing attach decision for
+that held project, its stage/production tier and its application's current projects. It is present
+even when no environment declaration has been saved yet; a half-made stage occupying the slot can
+therefore refuse `add_stage` while allowing an OWNER/ADMIN to finish. This is permission to finish,
+not a claim that setup is incomplete; key status and presses retain their own facts. Devstage uses
+the stage attach target. Writes still authorize the actual project against fresh Zerops facts.
 The existing per-person `read_change` filter applies: environments are `{ refused: reason }` when
 that person cannot read application changes. Navigation carries no application release catalog,
 recipes, repositories or move destinations; those remain app detail.
@@ -96,11 +101,15 @@ Project `person` facts are already computed for the recipient: role, mayWrite, m
 waitsOnViewer and unseen. `ownerUserId` resolves the project's OWNER to a person; when there is no OWNER grant, it uses the
 current or last Claude signer, then Codex; null when none can be resolved. `mine` compares that
 owner to the viewer. `waitsOnViewer` compares the preferred agent signer to the viewer independently
-of OWNER, using Claude then Codex as today's client does. Each project has a separate `signers`
-value with optional `claude-code` and `codex` user IDs, from current login, last login, then saved
-signer. Signers and signer-derived facts are supplied only to people who may observe the Mate;
-other readers get empty signers and false waitsOnViewer. Saved signers are not duplicated inside
-`mate`. Token identities are excluded. Referenced people carry `avatarUrl` (null when absent).
+of OWNER, using the currently signed-in Claude then Codex person. Each project carries two maps,
+keyed by login/agent ID (including custom agents and other logins): `signedInNow` holds the current
+person only while the credential is present and is not an API token; `everSignedIn` holds the
+latest known person from current sign-in, last sign-in, then saved history. An empty historical map
+means HQ knows of no person having signed in yet. Saved or last signers never imply a current login.
+Both maps and signer-derived facts are supplied only to people who may observe the Mate; other
+readers get empty maps and false waitsOnViewer. Saved signers are not duplicated inside `mate`.
+Token identities are excluded. Referenced people carry `avatarUrl` (null when absent), decoded from
+Zerops member `user.avatar.smallAvatarUrl`, falling back to `externalAvatarUrl`.
 A changed overview updates only that project's facts and referenced person values, without
 re-reading structure, roles, recipes or environments. Unseen is null
 until source attention proves result identities and the person may observe the Mate. `seen` takes
