@@ -68,6 +68,7 @@ export function makeSampledAccount(input: {
     showHq: observation.showHq,
     moveOffers: observation.moveOffers,
     handoverCandidates: observation.handoverCandidates,
+    compare: observation.compare,
     logs: null,
   };
 }
