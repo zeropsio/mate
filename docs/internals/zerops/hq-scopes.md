@@ -159,8 +159,9 @@ Replies go only to the requesting connection. The HTTP
 `GET /api/apps/:appId/repos/:repo/compare` route is removed; clients use this socket request.
 
 An accepted attention report from a restarted Mate's newest link, with a new source environment
-or incarnation, rotates only that Mate's attention scope journal and sends an atomic `scope-reset`.
-The baseline carries the new source revision (including 0 after 7); subsequent updates are deltas.
+or epoch, rotates only that Mate's attention scope journal and sends an atomic `scope-reset`.
+The baseline carries the new source epoch and revision (including 0 after 7); subsequent updates
+are deltas.
 A cursor for the retired scope incarnation gets the current baseline, never retired source history.
 The first attention source also establishes a baseline. Older links and stale revisions remain
 fenced by ingestion. Navigation receives its separate targeted person/attention fact update.
@@ -188,8 +189,11 @@ independent of host scheduling, so a per-project query loop cannot hide behind a
 
 Today's overview frames continue to ingest. New Mate frames use
 `MateLinkUp` attention frames, with the canonical `MateAttention` from
-`packages/contracts/src/zeropsAttention.ts` (also re-exported as `HqAttentionValue`). Ingest fences the current link and source
-incarnation/revision; corrupt or older frames preserve prior values. `attentionState` distinguishes
+`packages/contracts/src/zeropsAttention.ts` (also re-exported as `HqAttentionValue`). Ingest fences the current link,
+then orders by source: inside one environment a higher epoch (the Mate's start count, saved
+beside its environment id) always wins and a lower one never does, whichever link brings it; an
+equal epoch orders by incarnation and revision. Corrupt or older frames preserve prior values, and
+an older run's frame never makes the held value live. `attentionState` distinguishes
 live, stored and absent evidence. Overview persists as before; source attention must be republished
 after Core restart. The link reader and scope value share that schema; there is no parallel
 structural attention codec.

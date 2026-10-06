@@ -1093,7 +1093,7 @@ describe("revisioned HQ values", () => {
       ),
   );
   it.effect(
-    "a new Mate attention incarnation replaces revision seven with an atomic baseline",
+    "a restarted Mate's attention, its next epoch, replaces revision seven with an atomic baseline",
     () =>
       Effect.scoped(
         Effect.gen(function* () {
@@ -1117,7 +1117,7 @@ describe("revisioned HQ values", () => {
           const newLink = yield* f.overviews.connect("P");
           const restarted = {
             ...value,
-            source: { ...value.source, incarnation: "second", revision: 0 },
+            source: { ...value.source, epoch: 2, incarnation: "second", revision: 0 },
             working: 0,
           };
           yield* f.overviews.reportAttention("P", newLink, restarted);
@@ -1126,7 +1126,7 @@ describe("revisioned HQ values", () => {
             next = resetOf(yield* client.take);
           assert.strictEqual(next.type, "scope-reset");
           assert.notStrictEqual(next.incarnation, first.incarnation);
-          assert.include(json(next.values), '"incarnation":"second","revision":0');
+          assert.include(json(next.values), '"epoch":2,"incarnation":"second","revision":0');
           yield* client.subscribe([
             {
               scope: attention,

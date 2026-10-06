@@ -308,6 +308,38 @@ it.effect("attention keeps source order and becomes live again on an unchanged n
   ),
 );
 
+it.effect("attention of an earlier run never replaces a later run's, from its newer link", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const overviews = yield* makeMateOverviews(memoryStore().store);
+      const later = {
+        source: { environmentId: "env", epoch: 2, incarnation: "later", revision: 0 },
+        mainThreadId: "main",
+        lastThreadId: "main",
+        working: 0,
+        waiting: 0,
+        results: [],
+        questions: [],
+        truncated: false,
+      };
+      yield* overviews.reportAttention("P", yield* overviews.connect("P"), later);
+      // The run before comes back from a partition, on a link newer than the later run's.
+      const partitioned = yield* overviews.connect("P");
+      yield* overviews.reportAttention("P", partitioned, {
+        ...later,
+        source: { ...later.source, epoch: 1, incarnation: "before", revision: 9 },
+        working: 3,
+      });
+      const held = (yield* overviews.all).get("P");
+      assert.deepStrictEqual(
+        { attention: held?.attention, state: held?.attentionState },
+        // The later run's word stays, and no link of the run before makes it live.
+        { attention: yield* readAttention(later), state: "stored" },
+      );
+    }),
+  ),
+);
+
 describe("MateOverviews in HQ's store", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
     it.effect("keeps a slept Mate's overview across a restart of its Core", () =>

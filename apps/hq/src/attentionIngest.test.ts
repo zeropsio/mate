@@ -48,3 +48,35 @@ it.each([
 ])("blank attention identity keeps previous source facts", (broken) => {
   expect(acceptAttention(value, broken)).toEqual(value);
 });
+
+it.each([
+  {
+    name: "the run before, after a partition, at a higher revision",
+    next: { epoch: 1, incarnation: "before", revision: 9 },
+    kept: true,
+  },
+  {
+    name: "another incarnation in the same epoch",
+    next: { epoch: 2, incarnation: "other", revision: 9 },
+    kept: true,
+  },
+  {
+    name: "the next run, from revision 0",
+    next: { epoch: 3, incarnation: "next", revision: 0 },
+    kept: false,
+  },
+  {
+    name: "another environment, from its first start",
+    next: { environmentId: "env-new", epoch: 1, incarnation: "fresh", revision: 0 },
+    kept: false,
+  },
+])("orders a Mate's runs by epoch first, then revision: $name", ({ next, kept }) => {
+  const held = {
+    ...value,
+    source: { ...value.source, epoch: 2, incarnation: "boot", revision: 0 },
+  };
+  const incoming = { ...value, source: { ...held.source, ...next }, working: 1 };
+  expect(acceptAttention(held, incoming)).toEqual(
+    kept ? held : Schema.decodeSync(HqAttentionValue)(incoming),
+  );
+});

@@ -34,6 +34,12 @@ import { Leader } from "./leader.ts";
 /** A frame of a Mate's overview, as its link brings it. */
 const readAttention = Schema.decodeUnknownOption(HqAttentionValue);
 
+/** Whether two attention values are of one run of one Mate. */
+const sameRun = (left: HqAttentionValue, right: HqAttentionValue) =>
+  left.source.environmentId === right.source.environmentId &&
+  left.source.epoch === right.source.epoch &&
+  left.source.incarnation === right.source.incarnation;
+
 export type OverviewFrame = Extract<MateLinkUp, { readonly type: "overview" }>;
 
 /** A Mate as HQ holds it: its presence, and its overview where it has one. */
@@ -200,25 +206,15 @@ export const makeMateOverviews = (
           if (entry === undefined || link !== newestOf(entry)) return;
           const read = readAttention(value);
           if (Option.isNone(read)) return;
-          const next = read.value;
           const prior = entry.attention;
-          if (
-            prior !== null &&
-            prior.source.incarnation === next.source.incarnation &&
-            prior.source.environmentId === next.source.environmentId &&
-            prior.source.revision > next.source.revision
-          )
+          const attention = acceptAttention(prior, read.value);
+          if (attention === prior) {
+            // Nothing newer: only the same run's word on a new link makes what is held live again.
+            if (entry.attentionOn === link || prior === null || !sameRun(prior, read.value)) return;
+          } else if (entry.attentionOn === link && prior !== null && !sameRun(prior, read.value)) {
+            // One link carries one run.
             return;
-          const attention = acceptAttention(prior, next);
-          if (
-            entry.attentionOn === link &&
-            prior !== null &&
-            attention !== null &&
-            (attention.source.incarnation !== prior.source.incarnation ||
-              attention.source.environmentId !== prior.source.environmentId)
-          )
-            return;
-          if (attention === prior && entry.attentionOn === link) return;
+          }
           yield* update(projectId, () => ({ ...entry, attention, attentionOn: link }));
         }),
       restore: Effect.gen(function* () {
