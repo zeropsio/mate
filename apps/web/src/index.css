@@ -201,19 +201,19 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --animate-ghost-pulse: ghost-pulse 2.4s infinite;
   --animate-status-ping: status-ping 2s infinite;
   /* A verb arriving in a row: it fades into the place a skeleton held, once. */
-  --animate-zerops-appear: zerops-appear 220ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  --animate-zerops-appear: zerops-appear 220ms cubic-bezier(0.23, 1, 0.32, 1) backwards;
   /* The Mate at work. Its panel after the turn rises in once; a status bar
      arriving opens its room; the result settles where the bars were. All
      once. */
-  --animate-panel-in: panel-in 420ms cubic-bezier(0.32, 0.72, 0, 1) both;
+  --animate-panel-in: panel-in 420ms cubic-bezier(0.32, 0.72, 0, 1) backwards;
   --animate-room-in: room-in 420ms cubic-bezier(0.32, 0.72, 0, 1) both;
   /* Reduced motion's arrival: a fade only (`run-fade`). */
-  --animate-run-fade: run-fade 200ms ease both;
-  --animate-report-in: report-in 480ms cubic-bezier(0.32, 0.72, 0, 1) both;
+  --animate-run-fade: run-fade 200ms ease backwards;
+  --animate-report-in: report-in 480ms cubic-bezier(0.32, 0.72, 0, 1) backwards;
   /* The run's chat. A bubble that arrives while the person watches rises in
      from the spine, once — quick, since one arrives every few seconds; what
      a bar or a bubble holds opens its room at the pace of a click. */
-  --animate-bubble-in: bubble-in 200ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  --animate-bubble-in: bubble-in 200ms cubic-bezier(0.23, 1, 0.32, 1) backwards;
   --animate-room-open: room-in 220ms cubic-bezier(0.23, 1, 0.32, 1) both;
   /* The Mate composing: three dots rising and brightening in turn, a wave
      rather than a blink — the one continuous motion on the card while it
@@ -224,13 +224,13 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --animate-typing-second: typing-wave 1.3s cubic-bezier(0.45, 0, 0.55, 1) -1.14s infinite;
   --animate-typing-third: typing-wave 1.3s cubic-bezier(0.45, 0, 0.55, 1) -0.98s infinite;
   /* A status line's new words: in from just below, out of a blur, once. */
-  --animate-words-in: words-in 260ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  --animate-words-in: words-in 260ms cubic-bezier(0.23, 1, 0.32, 1) backwards;
   /* The Mate's answer arriving while the person watches: up from just
      below, once. */
-  --animate-rise-in: rise-in 300ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  --animate-rise-in: rise-in 300ms cubic-bezier(0.23, 1, 0.32, 1) backwards;
   /* What a call returned, opened: down out of its header, once. The room it
      takes opens at once, so the chat can still bring its end into sight. */
-  --animate-detail-in: detail-in 220ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  --animate-detail-in: detail-in 220ms cubic-bezier(0.23, 1, 0.32, 1) backwards;
   --color-warning-foreground: var(--warning-foreground);
   --color-warning: var(--warning);
   --color-warning-surface: var(--warning-surface);
@@ -3240,13 +3240,13 @@ code {
    reduced motion it only fades in (T8). */
 @media (prefers-reduced-motion: no-preference) {
   .menu-dot[data-arrived] {
-    animation: menu-dot-in 220ms var(--ease-out-strong) both;
+    animation: menu-dot-in 220ms var(--ease-out-strong) backwards;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .menu-dot[data-arrived] {
-    animation: menu-dot-fade 220ms ease-out both;
+    animation: menu-dot-fade 220ms ease-out backwards;
   }
 }
 
@@ -3316,7 +3316,7 @@ code {
 /* p26/row — the row's stop, armed: "Stop?" crossfades in where the ■ stood (140 ms). */
 @media (prefers-reduced-motion: no-preference) {
   .menu-stop-armed {
-    animation: zerops-appear 140ms ease-out both;
+    animation: zerops-appear 140ms ease-out backwards;
   }
 }
 
@@ -4066,7 +4066,7 @@ code {
 
 @media (prefers-reduced-motion: no-preference) {
   .zerops-envpop-draft {
-    animation: zerops-envpop-rise 240ms var(--ease-out-strong) both;
+    animation: zerops-envpop-rise 240ms var(--ease-out-strong) backwards;
   }
 }
 
@@ -4105,13 +4105,13 @@ code {
    onto is simply there (`HeadingFaceMark`). */
 @media (prefers-reduced-motion: no-preference) {
   .zerops-heading-dot[data-arrived] {
-    animation: zerops-heading-dot-in 220ms var(--ease-out-strong) both;
+    animation: zerops-heading-dot-in 220ms var(--ease-out-strong) backwards;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .zerops-heading-dot[data-arrived] {
-    animation: zerops-heading-dot-fade 220ms ease-out both;
+    animation: zerops-heading-dot-fade 220ms ease-out backwards;
   }
 }
 
@@ -4287,7 +4287,7 @@ code {
 }
 @media (prefers-reduced-motion: no-preference) {
   .run-now-head[data-run-now-change] {
-    animation: run-now-in 180ms var(--ease-out-strong) both;
+    animation: run-now-in 180ms var(--ease-out-strong) backwards;
   }
   .run-now-leaving {
     animation: run-now-out 140ms var(--ease-out-strong) both;
@@ -4449,7 +4449,7 @@ code {
 /* "Thinking" between steps comes a moment late, so a quick gap between two
    steps never flashes it (the delay is set where it is drawn). */
 .run-slot-later {
-  animation: run-fade 200ms ease both;
+  animation: run-fade 200ms ease backwards;
 }
 .run-slot-more {
   padding-left: 36px;
@@ -4899,7 +4899,7 @@ button.run-bar:focus-visible {
   }
 }
 .run-rise {
-  animation: run-rise 320ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  animation: run-rise 320ms cubic-bezier(0.23, 1, 0.32, 1) backwards;
 }
 @media (prefers-reduced-motion: reduce) {
   .run-rise {
@@ -5189,7 +5189,7 @@ button.run-result-tile:hover::after {
 }
 .run-result-row[data-rising],
 .run-result-pictures[data-rising] {
-  animation: run-result-rise 320ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  animation: run-result-rise 320ms cubic-bezier(0.23, 1, 0.32, 1) backwards;
   animation-delay: calc(var(--row-index, 0) * 40ms);
 }
 @media (prefers-reduced-motion: reduce) {
@@ -6806,7 +6806,7 @@ a.message-file:focus-visible {
 }
 @media (prefers-reduced-motion: no-preference) {
   .rv-pic[data-fresh] img {
-    animation: rv-pic-in 180ms var(--ease-out-strong) both;
+    animation: rv-pic-in 180ms var(--ease-out-strong) backwards;
   }
 }
 @keyframes rv-pic-in {
@@ -7687,7 +7687,7 @@ button.rv-relrow:hover .rv-relrow-go {
 }
 
 .arrival-swap[data-arrival-swap="words"] > [data-swap-layer="entering"] {
-  animation: arrival-words-in 180ms var(--ease-out-strong) 40ms both;
+  animation: arrival-words-in 180ms var(--ease-out-strong) 40ms backwards;
 }
 
 .arrival-swap[data-arrival-swap="words"] > [data-swap-layer="leaving"] {
@@ -7695,7 +7695,7 @@ button.rv-relrow:hover .rv-relrow-go {
 }
 
 .arrival-swap[data-arrival-swap="slot"] > [data-swap-layer="entering"] {
-  animation: arrival-fade-in 200ms var(--ease-out-strong) 60ms both;
+  animation: arrival-fade-in 200ms var(--ease-out-strong) 60ms backwards;
 }
 
 .arrival-swap[data-arrival-swap="slot"] > [data-swap-layer="leaving"] {
@@ -8081,7 +8081,7 @@ button.rv-relrow:hover .rv-relrow-go {
 }
 
 .arrival-sign-in[data-arrives] {
-  animation: arrival-fade-in 200ms var(--ease-out-strong) both;
+  animation: arrival-fade-in 200ms var(--ease-out-strong) backwards;
 }
 
 .arrival-cards {
@@ -8488,7 +8488,7 @@ button.rv-relrow:hover .rv-relrow-go {
 /* A crewless Mate's subject arriving after its line stands — the first
    words sent — fades in where it stays: the name before it never moves. */
 .conversation-subject[data-arrived] {
-  animation: conversation-subject-in 180ms var(--ease-out-strong) both;
+  animation: conversation-subject-in 180ms var(--ease-out-strong) backwards;
 }
 
 @keyframes conversation-subject-in {
@@ -9241,25 +9241,25 @@ button.rv-relrow:hover .rv-relrow-go {
 @media (prefers-reduced-motion: no-preference) {
   /* A need arriving: its words and presses unfold from the top. */
   .crew-reveal[data-arrived] {
-    animation: crew-reveal 220ms var(--ease-out-strong) both;
+    animation: crew-reveal 220ms var(--ease-out-strong) backwards;
   }
 
   /* A view slides 24 px in from the right; back, the column from the left. */
   .crew-view[data-enter="forward"] {
-    animation: crew-view-forward 220ms var(--ease-out-strong) both;
+    animation: crew-view-forward 220ms var(--ease-out-strong) backwards;
   }
 
   .crew-view[data-enter="back"] {
-    animation: crew-view-back 220ms var(--ease-out-strong) both;
+    animation: crew-view-back 220ms var(--ease-out-strong) backwards;
   }
 
   /* The mode line's words change in place: its height never moves. */
   .crew-mode[data-arrived] {
-    animation: crew-fade 180ms var(--ease-out-strong) both;
+    animation: crew-fade 180ms var(--ease-out-strong) backwards;
   }
 
   .crew-dot[data-arrived] {
-    animation: crew-dot-in 220ms var(--ease-out-strong) both;
+    animation: crew-dot-in 220ms var(--ease-out-strong) backwards;
   }
 }
 
@@ -9268,7 +9268,7 @@ button.rv-relrow:hover .rv-relrow-go {
   .crew-view[data-enter],
   .crew-mode[data-arrived],
   .crew-dot[data-arrived] {
-    animation: crew-fade 180ms ease-out both;
+    animation: crew-fade 180ms ease-out backwards;
   }
 }
 
