@@ -84,7 +84,7 @@ function sameValue(left: unknown, right: unknown): boolean {
 
 /**
  * Whether `update` is `completion`'s echo: the same call, turn and instant,
- * and the same payload but for its status.
+ * and the same payload but for its status and its `data.wrote` mark.
  */
 export function isToolCallEcho(
   update: OrchestrationThreadActivity,
@@ -96,7 +96,19 @@ export function isToolCallEcho(
   const a = asRecord(update.payload);
   const b = asRecord(completion.payload);
   if (a === null || b === null) return false;
-  const { status: _updateStatus, ...updateRest } = a;
-  const { status: _completionStatus, ...completionRest } = b;
-  return sameValue(updateRest, completionRest);
+  return sameValue(comparedPart(a), comparedPart(b));
+}
+
+/**
+ * What of a payload an echo shares with its completion: all but its status,
+ * and but the projection's `data.wrote` mark — an update stored projected
+ * before the mark existed lacks it, while its completion, stored whole, gains
+ * it on every read.
+ */
+function comparedPart(payload: Record<string, unknown>): Record<string, unknown> {
+  const { status: _status, ...rest } = payload;
+  const data = asRecord(rest.data);
+  if (data === null || !("wrote" in data)) return rest;
+  const { wrote: _wrote, ...dataRest } = data;
+  return { ...rest, data: dataRest };
 }

@@ -63,11 +63,25 @@ describe("isToolCallEcho — the update a provider sends with a call's completio
       echo: false,
     },
     {
+      // p43/files marks a write or edit call `data.wrote` as it projects it. An
+      // update stored before that release has no mark, while its completion,
+      // stored whole, gains it on every read.
+      name: "an update stored before the write mark, against a completion that gains it",
+      update: row("tool.updated", result("inProgress")),
+      completion: row("tool.completed", {
+        ...result("completed"),
+        data: { ...result("completed").data, wrote: true },
+      }),
+      echo: true,
+    },
+    {
       name: "a start, not an update",
       update: row("tool.started", result("inProgress")),
       echo: false,
     },
-  ])("$name", ({ update, echo }) => {
-    expect(isToolCallEcho(update, row("tool.completed", result("completed")))).toBe(echo);
+  ])("$name", ({ update, completion, echo }) => {
+    expect(isToolCallEcho(update, completion ?? row("tool.completed", result("completed")))).toBe(
+      echo,
+    );
   });
 });
