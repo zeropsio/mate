@@ -111,8 +111,7 @@ export function buildLogFor(stepSource: ActivityProcess | undefined): BuildLogQu
  * source carries an appVersion, so its pipeline settles the outcome; a kind
  * with no appVersion at all (import's `stack.create`, subdomain, delete,
  * scale, manage) has no pipeline to read and must settle off the process's
- * own terminal status instead, or it never settles and ages into
- * `stale-timeout`.
+ * own terminal status instead, or it never settles.
  */
 export function outcomeFor(
   process: ActivityProcess,
@@ -201,7 +200,7 @@ export function observe(input: ObservationInput, nowMs: number): ObservationStat
  * How long after its start a card draws what the account store read of its operation. One its
  * result named by id, whatever its age: a running one — a build zcp stopped following — is read
  * by that handle until it ends, its card's phase being the build's answer; a settled one is read
- * once per open (`readsOperation`), so the same row shows the same details in any window and
+ * once per open, so the same row shows the same details in any window and
  * after a reload. One known only by its service and start: up to the ceiling.
  */
 export function operationReadCeilingMs(

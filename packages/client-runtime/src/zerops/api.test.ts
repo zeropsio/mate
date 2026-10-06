@@ -1946,7 +1946,7 @@ describe("ZeropsApiClient.exchangeWebSocketToken", () => {
     expect(stub.requests).toHaveLength(0);
     held.open();
 
-    await expect(restart).resolves.toBeUndefined();
+    await expect(restart).resolves.toEqual({ processId: undefined });
     expect(stub.requests).toHaveLength(1);
   });
 
