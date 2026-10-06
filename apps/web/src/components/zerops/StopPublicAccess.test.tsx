@@ -49,6 +49,12 @@ describe("a stop's public addresses", () => {
       never: ["None yet"],
     },
     {
+      name: "a partial read keeps known links beside the reading notice",
+      access: access({ state: "reading", routes: [WEB] }),
+      says: ["Reading public addresses", 'href="https://web.example.test"'],
+      never: ["None yet", "Again"],
+    },
+    {
       name: "read: each address that serves is a link",
       access: access({ routes: [WEB] }),
       says: ['href="https://web.example.test"', "web.example.test"],

@@ -47,7 +47,11 @@ const byServiceThenPort = (left: ZeropsPublicRoute, right: ZeropsPublicRoute) =>
 
 /** Where the project's routings stand: the ones read, or why there are none to show. */
 type Routings =
-  | { readonly kind: "read"; readonly values: ReadonlyArray<PublicRoutingValue> }
+  | {
+      readonly kind: "read";
+      readonly complete: boolean;
+      readonly values: ReadonlyArray<PublicRoutingValue>;
+    }
   | { readonly kind: "reading" | "failed" };
 
 /**
@@ -74,13 +78,22 @@ function routingsOf(read: ProjectionReads, { orgId, projectId }: ProjectKey): Ro
   if (refusedAlone(read, orgId)) {
     const own = projectRoutingsScope(orgId, projectId);
     if (read.stream(own).phase === "refused") return { kind: "failed" };
-    if (read.coverage(own) !== "complete") return { kind: "reading" };
-    return { kind: "read", values: values(read.members(own).ids) };
+    const coverage = read.coverage(own);
+    if (coverage === "unknown") return { kind: "reading" };
+    return {
+      kind: "read",
+      complete: coverage === "complete",
+      values: values(read.members(own).ids),
+    };
   }
-  const freshness = scopeFreshness(read, orgId, routingsScope(orgId));
+  const freshness = scopeFreshness(read, routingsScope(orgId));
   if (freshness.unavailableReason !== undefined) return { kind: "failed" };
-  return freshness.complete
-    ? { kind: "read", values: values(read.index("routingProject", projectId)) }
+  return read.coverage(routingsScope(orgId)) !== "unknown"
+    ? {
+        kind: "read",
+        complete: freshness.complete,
+        values: values(read.index("routingProject", projectId)),
+      }
     : { kind: "reading" };
 }
 
@@ -149,7 +162,7 @@ export const publicAccess: Projection<ProjectKey, PublicAccess> = {
     if (services.services === undefined || routings.kind !== "read" || project.kind !== "known")
       return { state: "reading", ...NOTHING, readsProject };
     return {
-      state: "ready",
+      state: routings.complete ? "ready" : "reading",
       ...addressesOf(project.value as ZeropsProject, services.services, routings.values),
       offers: derivePublicRouteOffers(services.services),
       readsProject,

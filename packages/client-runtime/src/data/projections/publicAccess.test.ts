@@ -188,6 +188,35 @@ describe("publicAccess", () => {
       inputs: navigation(),
       expected: { state: "reading", routes: [], pending: [], offers: [], readsProject: false },
     },
+    ...[routingsScope(ORG), projectRoutingsScope(ORG, "p1")].map((scope) => ({
+      name: `a partial rebaseline of ${scope} keeps the addresses already read`,
+      inputs: [
+        ...navigation(),
+        ...(scope === routingsScope(ORG) ? [] : refused(routingsScope(ORG))),
+        ...baselined(scope, {
+          r0: routing({ domains: [{ domainName: SUBDOMAIN.host }] }),
+          r1: routing(),
+        }),
+        { kind: "baseline-begin", scope, generation: 1 },
+        {
+          kind: "baseline-commit",
+          scope,
+          generation: 1,
+          via: "zerops-realtime",
+          members: ["r0", "r1"],
+          rows: [],
+          partial: true,
+        },
+        event(scope, { kind: "baseline-committed" }),
+      ] satisfies ReadonlyArray<AccountInput>,
+      expected: {
+        state: "reading",
+        routes: [SUBDOMAIN, DOMAIN],
+        pending: [],
+        offers: [],
+        readsProject: scope !== routingsScope(ORG),
+      } satisfies PublicAccess,
+    })),
     {
       name: "an outage keeps what was read: the routings stay while the link catches up",
       inputs: [

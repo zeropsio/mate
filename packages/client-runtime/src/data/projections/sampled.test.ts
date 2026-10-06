@@ -1,15 +1,13 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { liveZerops, ORG } from "../__fixtures__/account.ts";
+import { ORG } from "../__fixtures__/account.ts";
 import { locationsScope } from "../families/organizationLocations.ts";
 import { membersScope } from "../families/organizationMembers.ts";
-import { routingScope } from "../families/publicRouting.ts";
 import { agentsScope } from "../families/serviceAgents.ts";
 import { emptyAccount, type AccountState, type Family, type ScopeKey } from "../model.ts";
 import { reduceAccount, type AccountInput, type Row } from "../reducer.ts";
 import { readsOfState } from "../store.ts";
 import type { StreamOutcome } from "../streamMachine.ts";
-import { publicAccess } from "./publicAccess.ts";
 import {
   organizationLocations,
   organizationMembers,
@@ -134,78 +132,5 @@ describe("a sampled read, as a screen reads it", () => {
     expect(agents.s1).toMatchObject({ value: ["codex"], status: "ready" });
     expect(agents.s2).toMatchObject({ value: undefined, status: "failed" });
     expect(agents.s3).toMatchObject({ value: undefined, status: "loading" });
-  });
-});
-
-describe("publicAccess", () => {
-  const ROUTING = routingScope(ORG, "p1");
-  const project = {
-    id: "p1",
-    zeropsSubdomainHost: "1a2b",
-    publicZone: "fte2334ab.prg1-zerops.zone",
-  };
-  const web = {
-    id: "web",
-    projectId: "p1",
-    name: "web",
-    subdomainAccess: true,
-    ports: [{ port: 3000, scheme: "http" }],
-  };
-  const api = { id: "api", projectId: "p1", name: "api", ports: [{ port: 8080, scheme: "http" }] };
-  const routing = [
-    {
-      isSynced: true,
-      sslEnabled: true,
-      domains: [{ domainName: "example.com" }],
-      locations: [{ path: "/", port: 3000, serviceStackId: "web" }],
-    },
-  ];
-  const live = (inputs: ReadonlyArray<AccountInput>) =>
-    readsOfState(
-      apply(emptyAccount, [
-        ...liveZerops({ running: [], projects: [project], services: [web, api] }),
-        ...inputs,
-      ]),
-    );
-  const derive = (inputs: ReadonlyArray<AccountInput>) =>
-    publicAccess.derive(live(inputs), { orgId: ORG, projectId: "p1" });
-
-  it("is read while its routing is: no address before it answers", () => {
-    expect(derive(begun(ROUTING))).toEqual({
-      state: "reading",
-      denied: false,
-      routes: [],
-      offers: [],
-    });
-  });
-
-  it("joins its project's subdomains, its services' offers and its routing's domains", () => {
-    const access = derive([...begun(ROUTING), ...answered(ROUTING, "publicRouting", routing)]);
-    expect(access.state).toBe("ready");
-    expect(access.routes.map((route) => route.host)).toContain("example.com");
-    expect(access.routes.length).toBeGreaterThan(1);
-    expect(access.offers).toEqual([{ service: "api", serviceId: "api", port: 8080 }]);
-  });
-
-  it("keeps its addresses through a failed recheck, and says it failed", () => {
-    const access = derive([
-      ...begun(ROUTING),
-      ...answered(ROUTING, "publicRouting", routing),
-      revalidating(ROUTING),
-      failed(ROUTING, "transient"),
-    ]);
-    expect(access.state).toBe("failed");
-    expect(access.routes.map((route) => route.host)).toContain("example.com");
-  });
-
-  it.each<{ readonly outcome: StreamOutcome; readonly denied: boolean }>([
-    { outcome: "authoritative-denial", denied: true },
-    { outcome: "definitive-refusal", denied: false },
-  ])("a routing its owner refuses ($outcome) fails; denied: $denied", ({ outcome, denied }) => {
-    expect(derive([...begun(ROUTING), failed(ROUTING, outcome)])).toMatchObject({
-      state: "failed",
-      denied,
-      routes: [],
-    });
   });
 });
