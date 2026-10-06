@@ -5,10 +5,14 @@ import { linkKeys, type AccountState, type OperationRecord } from "../model.ts";
 import { makeAccountStore, readsOfState } from "../store.ts";
 import { AtomRegistry } from "effect/unstable/reactivity";
 import { operationEnd } from "./operationEnd.ts";
+import { detailScopeOf } from "../demand.ts";
 
 const INTENT = { kind: "delete-project", orgId: ORG, projectId: "p1" } as const;
 
-function stateWith(record: Partial<OperationRecord> | null, linkEvent?: "pause"): AccountState {
+function stateWith(
+  record: Partial<OperationRecord> | null,
+  linkEvent?: "pause" | "history-refused",
+): AccountState {
   const store = makeAccountStore(AtomRegistry.make());
   liveZerops({ running: [] }).forEach(store.dispatch);
   if (linkEvent === "pause")
@@ -18,6 +22,16 @@ function stateWith(record: Partial<OperationRecord> | null, linkEvent?: "pause")
       event: { kind: "demand", demanded: false },
       now: 0,
     });
+  if (linkEvent === "history-refused") {
+    // The project is gone: its history's read answers 404 and refuses that detail alone.
+    const key = detailScopeOf(ORG, { family: "process", listing: "history", ownerId: "p1" });
+    for (const event of [
+      { kind: "demand", demanded: true },
+      { kind: "attempt" },
+      { kind: "fault", fault: { outcome: "definitive-refusal", message: "HTTP 404" }, jitter: 0 },
+    ] as const)
+      store.dispatch({ kind: "stream", key, event, now: 0 });
+  }
   const state = store.state();
   if (record === null) return state;
   const operations = new Map(state.operations).set("r1", {
@@ -51,6 +65,12 @@ describe("operationEnd", () => {
       "accepted, its link no longer observed",
       { receipt: accepted },
       "pause" as const,
+      { stage: "unobserved" },
+    ],
+    [
+      "accepted, its project's history refused while its link is live",
+      { receipt: accepted },
+      "history-refused" as const,
       { stage: "unobserved" },
     ],
     [
