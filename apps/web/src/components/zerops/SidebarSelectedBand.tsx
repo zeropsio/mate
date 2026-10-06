@@ -7,8 +7,8 @@
  * selection instead of one row going dark and another lighting up. Units
  * paint no background of their own for being open.
  *
- * It is placed after every draw, before paint, and again whenever the list
- * changes size — a row growing a line, a crew's line arriving, a project
+ * It is placed after every draw, once the page is laid out and before paint,
+ * and again whenever the list changes size — a row growing a line, a crew's line arriving, a project
  * unfolding above it — so it never lags a frame behind its unit
  * (`bandPlacement`). While its project folds it shrinks with the fold, and it
  * is gone once the unit is. The first paint places it where it belongs,
@@ -88,23 +88,38 @@ export function SidebarSelectedBand({
     };
   });
 
-  // After every draw of the menu, before it paints.
+  // After every draw of the menu, before it paints, and whenever the list
+  // changes size without a draw of its own: a crew's line arriving, a
+  // project's fold opening, a font settling. Both are heard from the list's
+  // ResizeObserver, which the browser calls once it has laid the page out and
+  // before it paints, so reading the boxes costs no layout of its own: read
+  // in the draw's layout effect, they forced the style and layout of the whole
+  // page (~2,000 elements) on every click of a menu row, before the rest of
+  // the draw had even been written. Observing the list anew asks for one
+  // call after this draw's layout, as observing it does the first time.
+  const observer = useRef<ResizeObserver | null>(null);
   useLayoutEffect(() => {
     key.current = current ?? undefined;
-    place.current();
+    const root = band.current?.parentElement ?? null;
+    if (observer.current === null || root === null) {
+      place.current();
+      return;
+    }
+    observer.current.unobserve(root);
+    observer.current.observe(root);
   });
 
-  // And whenever the list changes size without a draw of its own: a crew's
-  // line arriving, a project's fold opening, a font settling.
   useLayoutEffect(() => {
     const root = band.current?.parentElement ?? null;
     if (root === null || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(() => {
+    const watching = new ResizeObserver(() => {
       place.current();
     });
-    observer.observe(root);
+    observer.current = watching;
+    watching.observe(root);
     return () => {
-      observer.disconnect();
+      watching.disconnect();
+      observer.current = null;
     };
   }, []);
 

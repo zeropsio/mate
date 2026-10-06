@@ -1071,8 +1071,11 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           rowTop < scrollBottom &&
           rowTop + Math.max(1, rowHeight ?? 1) > scrollTop;
 
-        if (strip) {
-          strip.dataset.inView = inView ? "true" : "false";
+        // Written only on a change: a write restyles the mark even when it
+        // says what it said, and this runs on every scroll event.
+        const said = inView ? "true" : "false";
+        if (strip && strip.dataset.inView !== said) {
+          strip.dataset.inView = said;
         }
       }
       const nextCurrentIndex = resolveTimelineMinimapCurrentIndex({
