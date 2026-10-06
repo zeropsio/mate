@@ -4104,46 +4104,34 @@ medium < high < xhigh` (a driver's own order does not rank: Grok reports its lev
     `Rune`): in an application a project is `<application> - <Mate>`, outside any just `<Mate>`.
   - _Why:_ the organization's project list in Zerops is where the projects of every application
     stand side by side; without the prefix a Mate's project says nothing of whose it is.
-- **2026-10-06** — **A written or edited file's row opens onto what was written, and "Open in
-  Files" reaches a file the agent wrote outside the workspace, read-only** (D9, the owner: "Are these
-  unclickable on purpose?", "Why can't this be opened in the Files tab?"). The row opens onto a new
-  file's content or an edit's change, drawn from the call's own stored payload
-  (`threads.fileWrites`): Claude Code's `Write`, `Edit`, `MultiEdit` and `NotebookEdit` inputs,
-  Codex's `fileChange` items, OpenCode's `write`, `edit`, `multiedit` and patch inputs, and an ACP
-  agent's `diff` blocks (Cursor, Grok, Antigravity). The client's copy of a call carries only a mark
-  that it wrote something; a call whose driver sent none keeps the row it had, and a running or
-  failed write opens onto nothing. Each file's text stands in the card's own item box: in the log
-  whole once opened, nothing scrolling inside (the 0.14.4 rule), in the working row at its height,
-  scrolling; it grows under the row only.
-  - _Rule — what `threads.readWrittenFile` serves:_ a file is served only when all of these hold,
-    each checked by the server against times the server stamped, never a time a browser sent:
-    - the caller may read the thread: the method takes `orchestration:read`, as `subscribeThread`
-      does, and the thread exists and is not deleted;
-    - the path is absolute, in its one normal form, and equals exactly — untrimmed — a path that a
-      `tool.completed` row of THIS thread names as written or edited, read from the stored payload
-      by the same reader that draws the row. A failed, declined or never-returned call wrote
-      nothing, a deleted file is not written, a path with a space around it is never recorded, and
-      another thread's writes count for nothing;
-    - the file is unchanged since the thread's newest such write: its change and modify times are no
-      later than that row's server-stamped completion plus 1.5 s, checked before the read and again
-      after it. Nobody can set a change time back, so content written in later (a token from
-      `npm login`, a key the CLI rewrites), a file moved or hard-linked onto the name, or a write
-      during the read is refused;
-    - the path is resolved a part at a time and never enters `/proc`, `/sys` or `/dev`, which name
-      the server's own process; every symbolic link on the way must be older than the thread's
-      first call (its first tool row's server stamp, not the thread's `created_at`, which its
-      creating command carries), and the links and the file must sit on a local file system, since
-      a FUSE or network mount reports whatever times it is told;
-    - the file is opened with `O_NOFOLLOW`, must be the very file the walk found (same device and
-      inode), must have one name and must have been last written after the thread's first call;
-    - it is a regular file of UTF-8 text with no NUL byte, at most 1 MiB: anything larger is
-      refused whole, never cut.
-  - _Refused:_ anything else, with a reason the Files tab says plainly ("This file changed after
-    Sage wrote it, so it isn't shown."); the row's own drawn content still shows. Nothing outside
-    the workspace is listed, searched or written. Looking a path up scans the thread's completed
-    rows for its text and parses only those that hold it.
-  - _Why:_ the agent's own words reach everyone who may read the thread anyway, so a file as it
-    wrote it is no new disclosure; what the rule stops is a reader, or an agent steering one,
-    reaching any other content through the server: an arbitrary path, `..`, a link, a hard link, a
-    file renamed onto the name, content written after the agent's write, the server's own `/proc`,
-    or a swap between the check and the read.
+- **2026-10-06** — **A written or edited file's row opens onto what the agent wrote, and "Open in
+  Files" shows a file it wrote outside the workspace as it wrote it** (D9, the owner: "Are these
+  unclickable on purpose?", "Why can't this be opened in the Files tab?"). The row opens onto a
+  write's content or an edit's new text, drawn from the call's own stored payload
+  (`threads.fileWrites`): Claude Code's `Write` content and `Edit`/`MultiEdit` `new_string`s and
+  `NotebookEdit` `new_source`, Codex's added files and the added lines of its updates, OpenCode's
+  `write` content, `edit`/`multiedit` `newString`s and the added lines of its patches, and the lines
+  an ACP agent's `diff` block adds over its old text (Cursor, Grok, Antigravity), worked out on the
+  server. A change that only removes reads as a count ("Removed 3 lines"). The client's copy of a
+  call carries only a mark that it wrote something; a call whose driver sent none keeps the row it
+  had, and a running or failed write opens onto nothing. Each file's text stands in the card's own
+  item box: in the log whole once opened, nothing scrolling inside (the 0.14.4 rule). "Open in
+  Files" for a path inside the workspace opens the Files tab as before; for one outside, the
+  read-only panel shows the thread's newest completed write of that path, labelled "As Sage wrote
+  it at 01:23" (`threads.writtenFile`).
+  - _Rule:_ what a reader sees is exactly what the agent wrote in its calls, from the thread's own
+    record. Nothing is read from disk, and nothing the agent only read or found in a file is sent:
+    never an edit's old text, a diff's removed or context lines, a patch's hunk headers, ACP's
+    `oldText` or a deleted file's content.
+    - Only a completed call wrote, as the server's own stored row says: a failed, declined or
+      never-returned call counts for nothing.
+    - The Files tab's path must equal exactly — untrimmed, in the form it was named — a path that a
+      completed call of THIS thread wrote; another thread's writes count for nothing.
+    - Both methods take `orchestration:read`, as `subscribeThread` does, and one answer carries at
+      most 1 MiB of text.
+  - _Why:_ a security review found that serving the file from disk cannot hold: an edit of one line
+    of `~/.npmrc` or an outside `.env` would serve the token beside it, which the agent never wrote
+    and readers never saw (a Read reaches them as an 84-character summary), and a renamed folder, a
+    write through a shared mapping, a FUSE mount, a timing slack or another clock each put other
+    content under the written name. The agent's own calls already reach every reader of the thread;
+    showing those, and only those, discloses nothing new.
