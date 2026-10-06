@@ -636,6 +636,50 @@ describe("ZeropsApiClient authentication", () => {
   });
 });
 
+describe("ZeropsApiClient.renewHeldSession — the data layer's one repair", () => {
+  const renewing = (respond: () => Response | Promise<Response>, session: ZeropsSession) => {
+    const stored: Array<ZeropsSession | null> = [];
+    const client = new ZeropsApiClient({
+      fetch: recordingFetch(respond).fetch,
+      onSessionChange: (next) => {
+        stored.push(next);
+      },
+    });
+    client.restoreSession(session);
+    return { client, stored };
+  };
+
+  it("ends the held session when the platform refuses its renewal", async () => {
+    const { client, stored } = renewing(
+      () => jsonResponse(401, { code: "notAuthorized" }),
+      SESSION,
+    );
+
+    await expect(client.renewHeldSession()).rejects.toMatchObject({ kind: "expired-session" });
+
+    expect(client.session).toBeNull();
+    expect(stored).toEqual([null]);
+  });
+
+  it("ends a handed-over session, which no renewal can repair", async () => {
+    const { client, stored } = renewing(() => jsonResponse(500, {}), { accessToken: "pat" });
+
+    await expect(client.renewHeldSession()).rejects.toMatchObject({ kind: "expired-session" });
+
+    expect(client.session).toBeNull();
+    expect(stored).toEqual([null]);
+  });
+
+  it("keeps the held session when its renewal does not reach the platform", async () => {
+    const { client, stored } = renewing(() => Promise.reject(new TypeError("offline")), SESSION);
+
+    await expect(client.renewHeldSession()).rejects.toThrow("offline");
+
+    expect(client.session).toEqual(SESSION);
+    expect(stored).toEqual([]);
+  });
+});
+
 describe("a throttled answer's Retry-After", () => {
   const NOW = Date.UTC(2026, 8, 30, 12, 0, 0);
   it.each<[string | null, number | null]>([

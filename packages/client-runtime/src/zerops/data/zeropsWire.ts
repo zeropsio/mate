@@ -51,7 +51,8 @@ export function zeropsFault(cause: unknown): StreamFault {
 
 /**
  * The session repaired once, as every request repairs it after a 401. A refresh the platform
- * refuses ends the session: nothing will repair it until the person signs in again.
+ * refuses ends the session (`renewHeldSession`) and refuses the link: nothing will repair it until
+ * the person signs in again, and nothing retries it.
  */
 export const repairZeropsSession = (client: ZeropsWireClient): Effect.Effect<void, StreamFault> =>
   Effect.tryPromise({
