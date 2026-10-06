@@ -2718,9 +2718,9 @@ code {
   [data-run-shimmer] {
     position: relative;
     isolation: isolate;
-    /* The mask clipped the words to their box; so does this, and it keeps
-       the window's three widths out of any scroll. */
-    overflow: clip;
+    /* It keeps the window's three widths out of any scroll; across only, so
+       no glyph is cut above or below. */
+    overflow-x: clip;
   }
 
   /* Words on a line cut with an ellipsis: a box as wide as they are, cut
@@ -2772,9 +2772,15 @@ code {
     display: block;
     width: calc(100% / 3);
     height: 100%;
-    overflow: clip;
+    overflow-x: clip;
     text-overflow: inherit;
+    /* Its own ellipsis in no ink: the line's stands steady under the light. */
+    -webkit-text-fill-color: transparent;
     animation: run-shimmer-hold 2s linear infinite;
+  }
+
+  [data-sweep-ink] {
+    -webkit-text-fill-color: currentColor;
   }
 }
 
