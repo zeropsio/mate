@@ -1,25 +1,27 @@
-import type { PublicAccessView } from "@t3tools/client-runtime/data";
-import { useStopPublicAccess } from "~/zerops/useStopPublicAccess";
+import { usePublicAccess, type PublicAccessView } from "~/zerops/usePublicAccess";
 import { Button } from "../ui/button";
 
-/** Address failures are independent of whether the deployed version is healthy. */
-export function StopPublicAccessStatus({
-  shown,
-  again,
-}: {
-  readonly shown: PublicAccessView | undefined;
-  readonly again: () => void;
-}) {
-  if (shown === undefined || shown.state === "ready") return null;
-  const failed = shown.state === "failed";
+/**
+ * Address failures are independent of whether the deployed version is healthy. An address put in
+ * place that does not serve yet is said as such, never offered as a link.
+ */
+export function StopPublicAccessStatus({ access }: { readonly access: PublicAccessView }) {
+  if (!access.bound || (access.state === "ready" && access.pending.length === 0)) return null;
+  const failed = access.state === "failed";
   return (
     <div
       data-zerops-surface="stop-public-access-status"
       className="flex items-center gap-2 text-xs text-muted-foreground"
     >
-      <span>{failed ? "Could not read public addresses." : "Reading public addresses…"}</span>
+      <span>
+        {failed
+          ? "Could not read public addresses."
+          : access.state === "reading"
+            ? "Reading public addresses…"
+            : `Publishing ${access.pending.map((route) => route.host).join(", ")}…`}
+      </span>
       {failed ? (
-        <Button size="sm" variant="outline" onClick={again}>
+        <Button size="sm" variant="outline" onClick={access.again}>
           Again
         </Button>
       ) : null}
@@ -27,24 +29,17 @@ export function StopPublicAccessStatus({
   );
 }
 
-/** Runtime-only stop rows have the same address read as their complete detail page. */
+/** Runtime-only stop rows have the same addresses as their complete detail page. */
 export function RuntimeStopPublicAccess({ projectId }: { readonly projectId: string }) {
-  const access = useStopPublicAccess(projectId);
-  return <StopPublicAccessLinks shown={access.shown} again={access.again} />;
+  return <StopPublicAccessLinks access={usePublicAccess(projectId)} />;
 }
 
-export function StopPublicAccessLinks({
-  shown,
-  again,
-}: {
-  readonly shown: PublicAccessView | undefined;
-  readonly again: () => void;
-}) {
-  if (shown === undefined) return null;
+export function StopPublicAccessLinks({ access }: { readonly access: PublicAccessView }) {
+  if (!access.bound) return null;
   return (
     <div className="flex min-w-0 flex-col gap-1">
-      <StopPublicAccessStatus shown={shown} again={again} />
-      {shown.routes.map((route) => (
+      <StopPublicAccessStatus access={access} />
+      {access.routes.map((route) => (
         <a
           className="truncate text-xs underline underline-offset-2"
           key={route.url}

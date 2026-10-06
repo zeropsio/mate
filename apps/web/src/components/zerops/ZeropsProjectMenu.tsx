@@ -1,4 +1,4 @@
-import { useStopPublicAccess } from "~/zerops/useStopPublicAccess";
+import { usePublicAccess } from "~/zerops/usePublicAccess";
 import { StopPublicAccessStatus } from "./StopPublicAccess";
 /**
  * The quiet actions on the projects screen — a Mate's, an environment's, a
@@ -57,9 +57,9 @@ export function ZeropsProjectMenu({
   readonly onEnableRoute?: (offer: ZeropsRouteOffer) => void;
   readonly enablingServiceId?: string | null;
 }): ReactNode {
-  const publicAccess = useStopPublicAccess(projectId);
-  routes = publicAccess.bound ? publicAccess.access.routes : routes;
-  offers = publicAccess.bound ? publicAccess.access.offers : offers;
+  const publicAccess = usePublicAccess(projectId);
+  routes = publicAccess.bound ? publicAccess.routes : routes;
+  offers = publicAccess.bound ? publicAccess.offers : offers;
   if (actions.length === 0 && routes === undefined && projectId === undefined) return null;
   return (
     <Menu>
@@ -76,11 +76,9 @@ export function ZeropsProjectMenu({
         <EllipsisIcon className="size-4" />
       </MenuTrigger>
       <MenuPopup align="end" className="min-w-48 max-w-[24rem]">
-        <StopPublicAccessStatus shown={publicAccess.shown} again={publicAccess.again} />
+        <StopPublicAccessStatus access={publicAccess} />
         {routes === undefined ||
-        (publicAccess.bound &&
-          publicAccess.access.state !== "ready" &&
-          routes.length === 0) ? null : (
+        (publicAccess.bound && publicAccess.state !== "ready" && routes.length === 0) ? null : (
           <ZeropsRouteMenuItems
             enablingServiceId={enablingServiceId ?? null}
             offers={offers ?? []}

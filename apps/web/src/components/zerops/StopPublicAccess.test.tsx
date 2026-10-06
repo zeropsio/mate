@@ -1,45 +1,68 @@
+import type { ZeropsPublicRoute } from "@t3tools/client-runtime/zerops";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
-import { StopPublicAccessLinks, StopPublicAccessStatus } from "./StopPublicAccess";
 
-describe("a stop's public access knowledge", () => {
-  it("an address list being read says reading, never no addresses", () => {
-    const html = renderToStaticMarkup(
-      <StopPublicAccessStatus
-        shown={{ state: "reading", denied: false, routes: [], offers: [] }}
-        again={() => {}}
-      />,
-    );
-    expect(html).toContain("Reading public addresses");
-    expect(html).not.toContain("None yet");
-  });
-  it("a failed address list names the failure and offers Again", () => {
-    const html = renderToStaticMarkup(
-      <StopPublicAccessStatus
-        shown={{ state: "failed", denied: false, routes: [], offers: [] }}
-        again={() => {}}
-      />,
-    );
-    expect(html).toContain("Could not read public addresses");
-    expect(html).toContain("Again");
-    expect(html).not.toContain("None yet");
-  });
+import type { PublicAccessView } from "~/zerops/usePublicAccess";
+import { StopPublicAccessLinks } from "./StopPublicAccess";
+
+const WEB: ZeropsPublicRoute = {
+  service: "web",
+  port: 80,
+  url: "https://web.example.test",
+  host: "web.example.test",
+};
+const SHOP: ZeropsPublicRoute = {
+  service: "web",
+  port: 80,
+  url: "https://shop.example.test",
+  host: "shop.example.test",
+};
+
+const access = (patch: Partial<PublicAccessView>): PublicAccessView => ({
+  state: "ready",
+  routes: [],
+  pending: [],
+  offers: [],
+  readsProject: false,
+  bound: true,
+  again: () => {},
+  ...patch,
 });
 
-it("runtime-only stops show their public links even before HQ detail answers", () => {
-  const html = renderToStaticMarkup(
-    <StopPublicAccessLinks
-      shown={{
-        state: "ready",
-        denied: false,
-        routes: [
-          { service: "web", port: 80, url: "https://web.example.test", host: "web.example.test" },
-        ],
-        offers: [],
-      }}
-      again={() => {}}
-    />,
-  );
-  expect(html).toContain('href="https://web.example.test"');
-  expect(html).toContain("web.example.test");
+describe("a stop's public addresses", () => {
+  it.each<{
+    readonly name: string;
+    readonly access: PublicAccessView;
+    readonly says: ReadonlyArray<string>;
+    readonly never: ReadonlyArray<string>;
+  }>([
+    {
+      name: "not read yet: says reading, never no addresses",
+      access: access({ state: "reading" }),
+      says: ["Reading public addresses"],
+      never: ["None yet", "Again"],
+    },
+    {
+      name: "refused: names the failure and offers Again",
+      access: access({ state: "failed" }),
+      says: ["Could not read public addresses", "Again"],
+      never: ["None yet"],
+    },
+    {
+      name: "read: each address that serves is a link",
+      access: access({ routes: [WEB] }),
+      says: ['href="https://web.example.test"', "web.example.test"],
+      never: ["Reading", "Publishing"],
+    },
+    {
+      name: "an address not in place yet is said to be publishing, never a link",
+      access: access({ routes: [WEB], pending: [SHOP] }),
+      says: ["Publishing shop.example.test", 'href="https://web.example.test"'],
+      never: ['href="https://shop.example.test"'],
+    },
+  ])("$name", ({ access: view, says, never }) => {
+    const html = renderToStaticMarkup(<StopPublicAccessLinks access={view} />);
+    for (const words of says) expect(html).toContain(words);
+    for (const words of never) expect(html).not.toContain(words);
+  });
 });

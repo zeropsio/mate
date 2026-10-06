@@ -1,9 +1,8 @@
 /**
  * An environment's public face: every URL the platform serves for it.
  *
- * Derived from Zerops project/services and public HTTP routings. Drawn stops own
- * their public-access read independently of the navigation candidate listing,
- * including a production environment with no Mate container to ask.
+ * Derived from a project and its services; the routings of its own domains join
+ * them in the data layer's `publicAccess` projection.
  * `servicePortOrigin` (api.ts) stays the single place the subdomain rule lives.
  *
  * Two kinds of service are left out on purpose. The zcp container's port is
@@ -85,52 +84,4 @@ export function derivePublicRoutes(
     }
   }
   return routes.sort(byServiceThenPort);
-}
-
-/** One visible stop's public face, read independently of navigation membership. */
-export interface ZeropsPublicAccess {
-  readonly routes: ReadonlyArray<ZeropsPublicRoute>;
-  readonly offers: ReadonlyArray<ZeropsRouteOffer>;
-}
-
-export function derivePublicAccess(
-  project: ZeropsProject,
-  services: ReadonlyArray<ZeropsService>,
-  routings: ReadonlyArray<{
-    readonly isSynced: boolean;
-    readonly sslEnabled: boolean;
-    readonly domains: ReadonlyArray<{ readonly domainName: string }>;
-    readonly locations: ReadonlyArray<{
-      readonly path: string;
-      readonly port: number;
-      readonly serviceStackId: string;
-    }>;
-  }>,
-): ZeropsPublicAccess {
-  const routes = new Map(derivePublicRoutes(project, services).map((route) => [route.url, route]));
-  const byId = new Map(
-    services
-      .filter((service) => service.isSystem !== true && !isZcpService(service))
-      .map((service) => [service.id, service]),
-  );
-  for (const routing of routings) {
-    if (!routing.isSynced) continue;
-    for (const location of routing.locations) {
-      const service = byId.get(location.serviceStackId);
-      if (service === undefined) continue;
-      for (const domain of routing.domains) {
-        const url = `${routing.sslEnabled ? "https" : "http"}://${domain.domainName}${location.path === "/" ? "" : location.path}`;
-        routes.set(url, {
-          service: service.name,
-          port: location.port,
-          url,
-          host: url.replace(/^https?:\/\//u, ""),
-        });
-      }
-    }
-  }
-  return {
-    routes: [...routes.values()].sort(byServiceThenPort),
-    offers: derivePublicRouteOffers(services),
-  };
 }
