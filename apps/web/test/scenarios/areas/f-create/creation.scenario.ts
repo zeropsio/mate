@@ -1,19 +1,10 @@
-import { describe, it, expect, afterEach } from "@effect/vitest";
+import { describe, it, expect } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { installCreation } from "./fake.ts";
 import { creation } from "./dsl.ts";
 import { productionRecipe } from "./recipe.ts";
-
-let refusalAssertionReached: boolean | undefined;
-afterEach(() => {
-  if (refusalAssertionReached !== undefined) {
-    const observed = refusalAssertionReached;
-    refusalAssertionReached = undefined;
-    expect(observed, "Expected-failure setup must reach the refusal retry assertion").toBe(true);
-  }
-});
 
 describe("F: creation through the hosted client", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
@@ -151,9 +142,8 @@ describe("F: creation through the hosted client", () => {
       }),
     );
     // Catches retrying a definitive 403 tied to GET /project/<id> while checking the new project's setup.
-    it.effect.fails("a refused creation read is not repeated after five seconds", () =>
+    it.effect("a refused creation read is not repeated after five seconds", () =>
       Effect.gen(function* () {
-        refusalAssertionReached = false;
         const s = yield* createScenario([installCreation]);
         yield* Effect.promise(() => s.clock.install());
         yield* s.given.signedIn;
@@ -170,7 +160,6 @@ describe("F: creation through the hosted client", () => {
         yield* c.pastRetryWindow;
         const after = c.refusedReads();
         yield* s.then.noExternalNetwork;
-        refusalAssertionReached = true;
         expect(after, "Definitive 403 on the new project was automatically retried").toBe(before);
       }),
     );

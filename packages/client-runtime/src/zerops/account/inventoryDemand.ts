@@ -14,7 +14,6 @@ import type { GrantSignal } from "../data/access/grantDriver.ts";
 import {
   evidenceProjectRefs,
   inventoryProjectRefs,
-  pendingDenials,
   projectsNeverSeen,
 } from "../data/access/grantProjects.ts";
 import { interestKeyOf, type ManagedZeropsDataRuntime } from "../data/runtime.ts";
@@ -227,4 +226,4 @@ export const holdListedAccess = (input: {
     );
   });
 
-export { evidenceProjectRefs, inventoryProjectRefs, pendingDenials, projectsNeverSeen };
+export { evidenceProjectRefs, inventoryProjectRefs, projectsNeverSeen };

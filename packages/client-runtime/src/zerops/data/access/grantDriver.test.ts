@@ -250,12 +250,10 @@ const tab = Effect.fnUntraced(function* (
     read: (target: ProjectRef) => grantPlatformRead(view().machine, target.projectId, ctx()),
     authority: (target: ProjectRef) =>
       view().machine.published.projects.get(target.projectId)?.authority,
-    /** Where a denial of `target` stands in the evidence the grant holds. */
-    denial: (target: ProjectRef) => {
+    /** Whether the evidence the grant holds closed `target`. */
+    denied: (target: ProjectRef) => {
       const phase = view().machine.phase;
-      return phase.phase === "granted"
-        ? phase.evidence.closedProjects.get(target.projectId)?.confirmation.status
-        : undefined;
+      return phase.phase === "granted" && phase.evidence.closedProjects.has(target.projectId);
     },
     access: () => Effect.map(runtime.state, ({ access }) => access),
     granted: () =>
@@ -489,43 +487,39 @@ describe("the access grant inside the data runtime", () => {
     ),
   );
 
-  it.effect(
-    "closes a denied project's writes at once and withholds it until a confirming read (G6)",
-    () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const platform = healthy();
-          const opened = yield* grantedTab(platform);
-          platform.outcome = (target) => (target === A ? forbidden : verified(target));
-          yield* opened.pass(12 * MINUTE - 2 * SECOND);
-          yield* opened.pass(2 * SECOND);
+  it.effect("closes a denied project at once and for good, reading it no more (G6)", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const platform = healthy();
+        const opened = yield* grantedTab(platform);
+        platform.outcome = (target) => (target === A ? forbidden : verified(target));
+        yield* opened.pass(12 * MINUTE - 2 * SECOND);
+        yield* opened.pass(2 * SECOND);
 
-          expect(opened.phase()).toBe("granted");
-          expect(opened.write(A)).toEqual({
-            allowed: false,
-            reason: "project-closed",
-            waitable: false,
-          });
-          expect(opened.write(B)).toEqual({ allowed: true });
-          // Withheld, not removed: the project stays in the grant's scopes (law 5).
-          expect(opened.authority(A)).toEqual({
-            kind: "withheld",
-            reason: "access-denied",
-            cause: null,
-          });
-          expect(yield* opened.granted()).toEqual(["project-b"]);
-          expect(opened.denial(A)).toBe("due");
+        expect(opened.phase()).toBe("granted");
+        expect(opened.write(A)).toEqual({
+          allowed: false,
+          reason: "project-closed",
+          waitable: false,
+        });
+        expect(opened.write(B)).toEqual({ allowed: true });
+        // Withheld, not removed: the project stays in the grant's scopes (law 5).
+        expect(opened.authority(A)).toEqual({
+          kind: "withheld",
+          reason: "access-denied",
+          cause: null,
+        });
+        expect(yield* opened.granted()).toEqual(["project-b"]);
+        expect(opened.denied(A)).toBe(true);
 
-          // The confirming read, 5 s after the denial, answers the same: it is gone.
-          yield* opened.pass(5 * SECOND);
-          yield* opened.pass(SECOND);
-          expect(opened.platform.reads.map(({ project: ref }) => ref.projectId)).toEqual([
-            "project-a",
-          ]);
-          expect(opened.denial(A)).toBe("confirmed");
-          expect(opened.read(A).allowed).toBe(false);
-        }),
-      ),
+        // No read confirms it later: a definitive refusal is never asked again by a clock.
+        const reads = opened.platform.reads.length;
+        yield* opened.pass(5 * SECOND);
+        yield* opened.pass(SECOND);
+        expect(opened.platform.reads.slice(reads)).toEqual([]);
+        expect(opened.read(A).allowed).toBe(false);
+      }),
+    ),
   );
 
   it.effect(
@@ -567,18 +561,14 @@ describe("the access grant inside the data runtime", () => {
       ),
   );
 
-  it.effect.each([
-    ["a second 403 confirms it gone", forbidden, false],
-    ["a 200 reopens it", verified(A), true],
-  ] as const)(
-    "keeps a project that 403s once after a lapse withheld until confirmed: %s (G6, T-L20)",
-    ([, confirmation, reopened]) =>
+  it.effect(
+    "closes a project that 403s in the round after a lapse, and grants the others (G6, T-L20)",
+    () =>
       Effect.scoped(
         Effect.gen(function* () {
           const platform = healthy();
           const opened = yield* grantedTab(platform);
-          platform.outcome = (target, read) =>
-            target === A ? (read === "round" ? forbidden : confirmation) : verified(target);
+          platform.outcome = (target) => (target === A ? forbidden : verified(target));
           yield* opened.freeze(30 * MINUTE);
           yield* opened.pass(2 * SECOND);
 
@@ -591,15 +581,7 @@ describe("the access grant inside the data runtime", () => {
           });
           expect(opened.write(A).allowed).toBe(false);
           expect(yield* opened.granted()).toEqual(["project-b"]);
-
-          yield* opened.pass(5 * SECOND);
-          yield* opened.pass(SECOND);
-
-          expect(opened.read(A).allowed).toBe(reopened);
-          expect(opened.authority(A)?.kind).toBe(reopened ? "authorized" : "withheld");
-          expect(yield* opened.granted()).toEqual(
-            reopened ? ["project-b", "project-a"] : ["project-b"],
-          );
+          expect(opened.denied(A)).toBe(true);
         }),
       ),
   );

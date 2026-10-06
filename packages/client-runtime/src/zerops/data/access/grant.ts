@@ -10,8 +10,8 @@
  * - Timers are hints. Every event first re-evaluates both clocks, and every capability is
  *   computed from the stamps at the instant it is asked for, so a deadline a frozen or
  *   throttled tab slept through is honoured when the tab next runs.
- * - A 403/404 closes that project's writes at once; its content is removed only after a direct
- *   confirming read at least the confirmation delay later (G6).
+ * - A 403/404 closes that project for good, at once: its writes, and its content (G6). A definitive
+ *   refusal is never asked again by a clock.
  * - A failed round or read retries on its ladder (policy) while the tab is visible: at once on a
  *   visible wake, `online` or a person's retry; nothing retries while the tab is hidden. A
  *   malformed answer is definitive, as a cell's decode is: only a person's retry asks again
@@ -87,20 +87,11 @@ export interface UnverifiedProject {
   readonly attempt: number;
 }
 
-/** A 403/404 was seen: writes are closed, content is withheld until a confirming read. */
+/** A 403/404 was seen: the project is closed for good, its writes and its content. */
 export interface ClosedProject {
   readonly project: ProjectRef;
   readonly deniedAt: Instant;
-  readonly confirmation:
-    | {
-        readonly status: "due";
-        /** Null after a definitive failure, until a person's retry. */
-        readonly at: Instant | null;
-        /** The last confirming read's failure, shown while it waits its rung. */
-        readonly failure: GrantFailure | null;
-        readonly attempt: number;
-      }
-    | { readonly status: "confirmed"; readonly evidence: DenialEvidence };
+  readonly evidence: DenialEvidence;
 }
 
 export interface Evidence {
@@ -188,10 +179,9 @@ export type GrantState =
     }
   | { readonly phase: "closed" };
 
-/** A read of one project outside a round: a per-project retry, or a denial's confirmation. */
+/** A read of one project outside a round: a per-project retry. */
 export interface ProjectAttempt {
   readonly attempt: number;
-  readonly kind: "verify" | "confirm";
   readonly project: ProjectRef;
   readonly startedAt: Instant;
 }
@@ -286,8 +276,7 @@ export type GrantEvent =
 export type GrantOp =
   /** `carried` are the projects this grant holds, so a round reads them even when unlisted. */
   | { readonly kind: "verify-round"; readonly carried: ReadonlyArray<ProjectRef> }
-  | { readonly kind: "verify-project"; readonly project: ProjectRef }
-  | { readonly kind: "confirm-denial"; readonly project: ProjectRef };
+  | { readonly kind: "verify-project"; readonly project: ProjectRef };
 
 export type GrantScope =
   | { readonly kind: "account" }
@@ -545,9 +534,9 @@ const withRenewal = (machine: GrantMachine, renewal: Renewal): GrantMachine => {
 
 /**
  * What a round reads: the demanded projects, and every project the held evidence still names —
- * verified, unverified, or denied pending its confirming read. A project no lease demands at the
- * instant a round starts is not one this account lost: only the platform's answer, or the
- * organization's membership gone, takes it out of the evidence. A confirmed denial is final.
+ * verified or unverified. A project no lease demands at the instant a round starts is not one this
+ * account lost: only the platform's answer, or the organization's membership gone, takes it out of
+ * the evidence. A denial is final.
  */
 const carriedProjects = (machine: GrantMachine): ReadonlyArray<ProjectRef> => {
   const carried = new Map<ZeropsProjectId, ProjectRef>(
@@ -560,9 +549,6 @@ const carriedProjects = (machine: GrantMachine): ReadonlyArray<ProjectRef> => {
   };
   for (const { access } of held.projects.values()) keep(access.project);
   for (const { project } of held.unverified.values()) keep(project);
-  for (const { project, confirmation } of held.closedProjects.values()) {
-    if (confirmation.status === "due") keep(project);
-  }
   return [...carried.values()];
 };
 
@@ -659,36 +645,16 @@ const closeProject = (
   machine: GrantMachine,
   project: ProjectRef,
   evidence: DenialEvidence,
-  readStartedAt: Instant | null,
   ctx: GrantContext,
   out: Effects,
 ): GrantMachine => {
   const held = heldEvidence(machine);
   if (held === null) return machine;
   const id = project.projectId;
+  if (held.closedProjects.has(id)) return machine;
   const closedProjects = new Map(held.closedProjects);
-  const closed = closedProjects.get(id);
-  if (closed === undefined) {
-    closedProjects.set(id, {
-      project,
-      deniedAt: ctx.now,
-      confirmation: {
-        status: "due",
-        at: after(ctx.now, ctx.policy.denialConfirmationDelayMs),
-        failure: null,
-        attempt: 0,
-      },
-    });
-  } else if (
-    closed.confirmation.status === "due" &&
-    readStartedAt !== null &&
-    reached(after(closed.deniedAt, ctx.policy.denialConfirmationDelayMs), readStartedAt)
-  ) {
-    closedProjects.set(id, { ...closed, confirmation: { status: "confirmed", evidence } });
-    out.push({ kind: "observe", observation: { kind: "project-gone", project, evidence } });
-  } else {
-    return machine;
-  }
+  closedProjects.set(id, { project, deniedAt: ctx.now, evidence });
+  out.push({ kind: "observe", observation: { kind: "project-gone", project, evidence } });
   const projects = new Map(held.projects);
   projects.delete(id);
   const unverified = new Map(held.unverified);
@@ -760,16 +726,14 @@ const completeRound = (
         break;
       case "denied":
         if (closed === undefined) {
-          const deniedAt = answer?.at ?? ctx.now;
           closedProjects.set(id, {
             project: target,
-            deniedAt,
-            confirmation: {
-              status: "due",
-              at: after(deniedAt, ctx.policy.denialConfirmationDelayMs),
-              failure: null,
-              attempt: 0,
-            },
+            deniedAt: answer?.at ?? ctx.now,
+            evidence: outcome.evidence,
+          });
+          out.push({
+            kind: "observe",
+            observation: { kind: "project-gone", project: target, evidence: outcome.evidence },
           });
         }
         break;
@@ -876,7 +840,7 @@ const projectResult = (
   const phase = machine.phase;
   const id = attempt.project.projectId;
   if (outcome.kind === "denied") {
-    return closeProject(machine, attempt.project, outcome.evidence, attempt.startedAt, ctx, out);
+    return closeProject(machine, attempt.project, outcome.evidence, ctx, out);
   }
   // Failure belongs to the accepted read even if authority lapsed while it ran.
   const held = heldEvidence(machine);
@@ -885,27 +849,8 @@ const projectResult = (
   // round, its evidence would be stamped later than itself (G2). Ordered on the monotonic clock,
   // so a wall clock set back within the tolerance cannot make every fresh read look stale.
   if (attempt.startedAt.mono < held.account.startedAt.mono) return machine;
-  const closed = held.closedProjects.get(id);
-  if (attempt.kind === "confirm") {
-    if (closed === undefined || closed.confirmation.status !== "due") return machine;
-    if (outcome.kind === "failed") {
-      const tries = closed.confirmation.attempt + 1;
-      const closedProjects = new Map(held.closedProjects);
-      closedProjects.set(id, {
-        ...closed,
-        confirmation: {
-          status: "due",
-          at: retryAtOf(ctx, outcome.failure, ctx.policy.projectRetryMs, tries),
-          failure: outcome.failure,
-          attempt: tries,
-        },
-      });
-      return withEvidence(machine, { ...held, closedProjects });
-    }
-  } else if (!held.unverified.has(id)) {
-    // Only a project the admitted evidence still holds as unverified takes a read's answer.
-    return machine;
-  }
+  // Only a project the admitted evidence still holds as unverified takes a read's answer.
+  if (!held.unverified.has(id)) return machine;
   if (outcome.kind === "failed") {
     const entry = held.unverified.get(id)!;
     const unverified = new Map(held.unverified);
@@ -963,26 +908,7 @@ const wake = (
       !person && definitive(entry.failure) ? entry : { ...entry, dueAt: ctx.now, attempt: 0 },
     ]),
   );
-  // A confirmation retrying after a failure restarts now; a first one keeps its G6 delay.
-  const closedProjects = new Map(
-    [...held.closedProjects].map(([id, entry]): [ZeropsProjectId, ClosedProject] => [
-      id,
-      entry.confirmation.status === "due" &&
-      entry.confirmation.attempt > 0 &&
-      (person || !definitive(entry.confirmation.failure))
-        ? {
-            ...entry,
-            confirmation: {
-              status: "due",
-              at: ctx.now,
-              failure: entry.confirmation.failure,
-              attempt: 0,
-            },
-          }
-        : entry,
-    ]),
-  );
-  return withEvidence(next, { ...held, unverified, closedProjects });
+  return withEvidence(next, { ...held, unverified });
 };
 
 const apply = (
@@ -1067,7 +993,7 @@ const apply = (
       };
       let next = withRound(machine, answered);
       if (event.outcome.kind === "denied") {
-        next = closeProject(next, event.project, event.outcome.evidence, round.startedAt, ctx, out);
+        next = closeProject(next, event.project, event.outcome.evidence, ctx, out);
       } else if (event.outcome.kind === "verified") {
         next = lowerRole(next, event.outcome.access);
       }
@@ -1090,7 +1016,7 @@ const apply = (
       return demandProjects({ ...machine, demandedProjects: event.projects }, event.projects, ctx);
     case "PROJECT_DENIED": {
       if (heldEvidence(machine) !== null) {
-        return closeProject(machine, event.project, event.evidence, null, ctx, out);
+        return closeProject(machine, event.project, event.evidence, ctx, out);
       }
       const round = grantRoundInFlight(machine);
       if (round === null) return machine;
@@ -1257,7 +1183,7 @@ const settle = (machine: GrantMachine, ctx: GrantContext, out: Effects): GrantMa
   return startProjectReads(next, ctx, out);
 };
 
-/** Requested project checks and denial confirmations run only under a fresh account grant. */
+/** Requested project checks run only under a fresh account grant. */
 const startProjectReads = (
   machine: GrantMachine,
   ctx: GrantContext,
@@ -1272,44 +1198,25 @@ const startProjectReads = (
   ) {
     return machine;
   }
-  const roundRunning = phase.renewal.status === "running";
-  const reads: Array<{ readonly kind: ProjectAttempt["kind"]; readonly project: ProjectRef }> = [];
-  if (!roundRunning) {
-    for (const [id, entry] of phase.evidence.unverified) {
-      if (
-        machine.demandedProjects.some((project) => project.projectId === id) &&
-        !machine.projectAttempts.has(id) &&
-        (entry.attempt === 0 || retrying(machine)) &&
-        due(entry.dueAt, ctx.now)
-      ) {
-        reads.push({ kind: "verify", project: entry.project });
-      }
-    }
-  }
-  for (const [id, entry] of phase.evidence.closedProjects) {
+  if (phase.renewal.status === "running") return machine;
+  const reads: Array<ProjectRef> = [];
+  for (const [id, entry] of phase.evidence.unverified) {
     if (
-      entry.confirmation.status === "due" &&
-      (entry.confirmation.attempt === 0 || retrying(machine)) &&
+      machine.demandedProjects.some((project) => project.projectId === id) &&
       !machine.projectAttempts.has(id) &&
-      due(entry.confirmation.at, ctx.now)
+      (entry.attempt === 0 || retrying(machine)) &&
+      due(entry.dueAt, ctx.now)
     ) {
-      reads.push({ kind: "confirm", project: entry.project });
+      reads.push(entry.project);
     }
   }
   if (reads.length === 0) return machine;
   const projectAttempts = new Map(machine.projectAttempts);
   let nextAttempt = machine.nextAttempt;
-  for (const read of reads) {
+  for (const project of reads) {
     const attempt = nextAttempt++;
-    projectAttempts.set(read.project.projectId, { ...read, attempt, startedAt: ctx.now });
-    out.push({
-      kind: "run",
-      attempt,
-      op:
-        read.kind === "verify"
-          ? { kind: "verify-project", project: read.project }
-          : { kind: "confirm-denial", project: read.project },
-    });
+    projectAttempts.set(project.projectId, { attempt, project, startedAt: ctx.now });
+    out.push({ kind: "run", attempt, op: { kind: "verify-project", project } });
   }
   return { ...machine, projectAttempts, nextAttempt };
 };
@@ -1425,16 +1332,6 @@ const reschedule = (machine: GrantMachine, ctx: GrantContext, out: Effects): Gra
           entry.dueAt !== null
         ) {
           candidates.push(entry.dueAt);
-        }
-      }
-      for (const [id, entry] of evidence.closedProjects) {
-        if (
-          entry.confirmation.status === "due" &&
-          (entry.confirmation.attempt === 0 || retrying(machine)) &&
-          !machine.projectAttempts.has(id) &&
-          entry.confirmation.at !== null
-        ) {
-          candidates.push(entry.confirmation.at);
         }
       }
     }

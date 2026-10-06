@@ -6,10 +6,9 @@ import type { Evidence } from "./grant.ts";
 import { projectKeyOf, type AccessState, type ProjectRef } from "../types.ts";
 
 /**
- * The projects admitted evidence names: verified ones, those whose latest
- * read failed, and those a denial withholds until a confirming read (G6).
- * A confirmed denial is the only way a project leaves. One only an
- * organization's list has named joins once its own read has answered.
+ * The projects admitted evidence names: verified ones, and those whose latest read failed. A
+ * denial is the only way a project leaves. One only an organization's list has named joins once
+ * its own read has answered.
  */
 export function evidenceProjectRefs(evidence: Evidence | null): ReadonlyArray<ProjectRef> {
   if (evidence === null) return [];
@@ -23,20 +22,7 @@ export function evidenceProjectRefs(evidence: Evidence | null): ReadonlyArray<Pr
     if (failure === null) continue;
     if (!evidence.projects.has(project.projectId)) refs.set(projectKeyOf(project), project);
   }
-  for (const { project, confirmation } of evidence.closedProjects.values()) {
-    if (confirmation.status === "due") refs.set(projectKeyOf(project), project);
-  }
   return [...refs.values()];
-}
-
-/** The projects a denial withholds until its confirming read (G6), by `projectKeyOf`. */
-export function pendingDenials(evidence: Evidence | null): ReadonlySet<string> {
-  if (evidence === null) return new Set();
-  return new Set(
-    [...evidence.closedProjects.values()]
-      .filter(({ confirmation }) => confirmation.status === "due")
-      .map(({ project }) => projectKeyOf(project)),
-  );
 }
 
 /**
@@ -72,8 +58,8 @@ export function inventoryProjectRefs(
 }
 
 /**
- * Which projects this person can never see: the grant withholds them, their denial is confirmed,
- * or their role is NO_ACCESS — as a command established it since, else as the evidence's round
+ * Which projects this person can never see: the grant withholds them, they were denied, or their
+ * role is NO_ACCESS — as a command established it since, else as the evidence's round
  * verified it. The inventory admits by the same rule (`inventoryProjectRefs`), so a listing never
  * counts as never seen a project the inventory reads. One only named so far, or whose read
  * failed, is still on its way.
@@ -82,7 +68,7 @@ export function projectsNeverSeen(input: {
   readonly evidence: Evidence | null;
   readonly access: AccessState | undefined;
   /** The grant withholds the project from this account (`ScopeAuthority` withheld). */
-  readonly withheld: (projectId: string) => boolean;
+  readonly withheld?: (projectId: string) => boolean;
 }): (projectId: string) => boolean {
   const roles = new Map<string, string>();
   for (const [projectId, { access }] of input.evidence?.projects ?? []) {
@@ -91,10 +77,9 @@ export function projectsNeverSeen(input: {
   for (const { project, role } of establishedRoles(input.access)) {
     roles.set(project.projectId, role);
   }
-  const confirmed = new Set<string>();
-  for (const [projectId, { confirmation }] of input.evidence?.closedProjects ?? []) {
-    if (confirmation.status === "confirmed") confirmed.add(projectId);
-  }
+  const denied = new Set<string>(input.evidence?.closedProjects.keys() ?? []);
   return (projectId) =>
-    roles.get(projectId) === "NO_ACCESS" || confirmed.has(projectId) || input.withheld(projectId);
+    roles.get(projectId) === "NO_ACCESS" ||
+    denied.has(projectId) ||
+    input.withheld?.(projectId) === true;
 }

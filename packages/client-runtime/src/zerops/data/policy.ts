@@ -188,8 +188,6 @@ export interface ZeropsGrantPolicy {
   readonly roundProjectConcurrency: number;
   /** A backwards wall-clock jump beyond this lapses the grant (G5). */
   readonly wallJumpBackToleranceMs: number;
-  /** A 403/404 removes content only after a direct read at least this much later agrees (G6). */
-  readonly denialConfirmationDelayMs: number;
   /** Before the first grant: the session backoff (§4.0 rungs). */
   readonly initialRetryMs: RetryLadder;
   /** A failed renewal while the held evidence is still valid, bounded by its deadline. */
@@ -219,7 +217,6 @@ export const DEFAULT_ZEROPS_GRANT_POLICY: ZeropsGrantPolicy = Object.freeze({
   roundDeadlinePerBatchMs: 15 * SECOND_MS,
   roundProjectConcurrency: 4,
   wallJumpBackToleranceMs: 60 * SECOND_MS,
-  denialConfirmationDelayMs: 5 * SECOND_MS,
   initialRetryMs: GRANT_RETRY_LADDERS.initial,
   renewalRetryMs: GRANT_RETRY_LADDERS.renewal,
   lapsedRetryMs: GRANT_RETRY_LADDERS.lapsed,

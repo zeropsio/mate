@@ -69,7 +69,6 @@ export {
   evidenceProjectRefs,
   heldEvidence,
   inventoryProjectRefs,
-  pendingDenials,
   projectsNeverSeen,
 } from "./inventoryDemand.ts";
 

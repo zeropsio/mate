@@ -3688,30 +3688,6 @@
     "expires": "never"
   },
   {
-    "path": "packages/client-runtime/src/zerops/data/access/grant.ts",
-    "kind": "retired-token",
-    "fingerprint": "denialConfirmationDelayMs",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "a 403 is confirmed after a delay; a definitive refusal stands",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/data/access/grant.ts",
-    "kind": "retired-token",
-    "fingerprint": "denialConfirmationDelayMs",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "a 403 is confirmed after a delay; a definitive refusal stands",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/data/access/grant.ts",
-    "kind": "retired-token",
-    "fingerprint": "denialConfirmationDelayMs",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "a 403 is confirmed after a delay; a definitive refusal stands",
-    "expires": "never"
-  },
-  {
     "path": "packages/client-runtime/src/zerops/data/atoms.ts",
     "kind": "retired-token",
     "fingerprint": "function stableAtom",
@@ -3757,22 +3733,6 @@
     "fingerprint": "releaseTableLists",
     "owner": "data-layer rewrite: projects",
     "reason": "closing the runtime erases its facts; a transport event never deletes a fact",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/data/policy.ts",
-    "kind": "retired-token",
-    "fingerprint": "denialConfirmationDelayMs",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "a 403 is confirmed after a delay; a definitive refusal stands",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/data/policy.ts",
-    "kind": "retired-token",
-    "fingerprint": "denialConfirmationDelayMs",
-    "owner": "data-layer rewrite: permissions/members",
-    "reason": "a 403 is confirmed after a delay; a definitive refusal stands",
     "expires": "never"
   },
   {

@@ -592,118 +592,6 @@ it.live("renews from REST alone while the push half still establishes", () =>
   ),
 );
 
-it.live("a renewal withholds a deleted project until a second read confirms it is gone", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const harness = yield* mountInventory(["kept", "revoked"]);
-      const renewal = harness.holdRenewal();
-      harness.projects.delete("revoked");
-      yield* harness.advance(RENEWAL_DUE_MS);
-      yield* renewal.verify();
-      const refs = () =>
-        [...harness.inventory()!.projectRefs.values()].map(({ projectId }) => projectId);
-
-      // One 403/404 closes the project's writes and withholds it; it stays listed (G6).
-      expect(refs()).toEqual(["kept", "revoked"]);
-      expect(
-        harness
-          .inventory()
-          ?.authority.get(inventoryProjectRefKey(harness.projectRef("org", "revoked"))),
-      ).toEqual({ kind: "withheld", reason: "access-denied", cause: null });
-      expect(grantedProjects(harness.grants.at(-1))).toEqual(["kept"]);
-      yield* renewal.establish();
-      // Its content is withheld at the inventory's read meanwhile (DESIGN §3.1).
-      expect(harness.inventory()?.projects.map(({ id }) => id)).toEqual(["kept"]);
-      expect(harness.inventory()?.isLoading).toBe(false);
-      expect(harness.inventory()?.error).toBeNull();
-
-      // The confirming read, 5 s after the denial, answers the same: it is gone.
-      yield* harness.advance(5_000);
-      expect(
-        harness.client.fetchProject.mock.calls.filter(([id]) => id === "revoked"),
-      ).toHaveLength(1);
-      expect(refs()).toEqual(["kept"]);
-      expect(harness.inventory()?.projects.map(({ id }) => id)).toEqual(["kept"]);
-      expect(harness.inventory()?.error).toBeNull();
-    }),
-  ),
-);
-
-it.live("a round back from a lapse withholds a denied project and restores the others", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const harness = yield* mountInventory(["kept", "revoked"]);
-      const readUser = harness.client.fetchUser.getMockImplementation()!;
-      const readProject = harness.client.fetchProject.getMockImplementation()!;
-      harness.client.fetchUser.mockImplementation(async () => {
-        throw new ZeropsApiError("Unavailable", "server", 503);
-      });
-      // Every renewal fails until the evidence runs out 15 min after the first round.
-      yield* harness.advance(15 * 60_000 + 1_000);
-      expect((yield* harness.runtime.state).access.status).toBe("expired");
-      expect(harness.container.textContent).toContain("Zerops isn't answering.");
-
-      harness.client.fetchUser.mockImplementation(readUser);
-      harness.client.fetchProject.mockImplementation(async (id: string) => {
-        if (id === "revoked") throw new ZeropsApiError("Forbidden", "forbidden");
-        return readProject(id);
-      });
-      const recovery = harness.holdRenewal();
-      invalidateZerops({ topic: "access", change: "renew-now" });
-      yield* harness.advance(250);
-      yield* recovery.verify();
-      const refs = () =>
-        [...harness.inventory()!.projectRefs.values()].map(({ projectId }) => projectId);
-      const authority = (id: string) =>
-        harness.inventory()?.authority.get(inventoryProjectRefKey(harness.projectRef("org", id)));
-
-      // The account is granted again; the project that answered 403 is not (T-L20).
-      expect((yield* harness.runtime.state).access.status).toBe("verified");
-      expect(harness.container.textContent).not.toContain("Zerops isn't answering.");
-      expect(grantedProjects(harness.grants.at(-1))).toEqual(["kept"]);
-      expect(authority("kept")).toEqual({ kind: "authorized" });
-      expect(authority("revoked")).toEqual({
-        kind: "withheld",
-        reason: "access-denied",
-        cause: null,
-      });
-      expect(refs()).toEqual(["kept", "revoked"]);
-
-      // The confirming read, 5 s after the denial, answers the same: it is gone.
-      yield* harness.advance(5_000);
-      expect(refs()).toEqual(["kept"]);
-      expect(authority("kept")).toEqual({ kind: "authorized" });
-      expect(grantedProjects(harness.grants.at(-1))).toEqual(["kept"]);
-    }),
-  ),
-);
-
-const grantedProjects = (grant: VerifiedAccessGrant | undefined) =>
-  grant?.projects.map(({ project }) => project.projectId);
-
-it.live("a project whose evidence runs out leaves the runtime's grant at its own deadline", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const harness = yield* mountInventory(["kept", "flaky"]);
-      const renewal = harness.holdRenewal();
-      harness.failing.add("flaky");
-      yield* harness.advance(RENEWAL_DUE_MS);
-      yield* renewal.verify();
-      // The renewal carries the project's evidence from the first round, still fresh.
-      expect(grantedProjects(harness.grants.at(-1))).toEqual(["kept", "flaky"]);
-
-      yield* harness.advance(15 * 60_000 - RENEWAL_DUE_MS);
-
-      // Its writes and reads end with its own evidence, not with the next round (G2, T-L19).
-      expect(grantedProjects(harness.grants.at(-1))).toEqual(["kept"]);
-      const access = (yield* harness.runtime.state).access;
-      expect(
-        access.status === "verified" && access.projects.map(({ project }) => project.projectId),
-      ).toEqual(["kept"]);
-    }),
-  ),
-);
-
 it.live(
   "a renewal that no longer reads an organization drops its projects from the runtime's grant",
   () =>
@@ -739,24 +627,6 @@ it.live(
 );
 
 it.live(
-  "a project manually retried verifies and joins the runtime's grant before the next round",
-  () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const harness = yield* mountInventory(["kept", "flaky"], { failing: ["flaky"] });
-        expect(grantedProjects(harness.grants.at(-1))).toEqual(["kept"]);
-        harness.failing.delete("flaky");
-
-        invalidateZerops({ topic: "access", change: "renew-now" });
-        yield* harness.advance(250);
-
-        expect(harness.client.fetchUser).toHaveBeenCalledTimes(1);
-        expect(grantedProjects(harness.grants.at(-1))).toEqual(["kept", "flaky"]);
-      }),
-    ),
-);
-
-it.live(
   "admits the api's writes through the epoch's own grant, and refuses them once it closed",
   () =>
     Effect.scoped(
@@ -782,6 +652,9 @@ it.live(
       }),
     ),
 );
+
+const grantedProjects = (grant: VerifiedAccessGrant | undefined) =>
+  grant?.projects.map(({ project }) => project.projectId);
 
 it.live("a round cut off by sign-out is recorded as dropped", () =>
   Effect.scoped(
@@ -900,102 +773,6 @@ it.live("Try again asks the grant to renew now and re-reads no inventory", () =>
       expect(harness.refreshed()).toEqual([]);
       // A retry during the round joins it (G7).
       expect(harness.client.fetchUser).toHaveBeenCalledTimes(1);
-    }),
-  ),
-);
-
-it.live(
-  "a renewal is not held open by a project the organization still lists and cannot hand over",
-  () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        // Deleting a project from outside the app — the Zerops GUI in another
-        // tab, or a script — is not atomic: the organization's list carries it
-        // for seconds after fetching it already answers `not-found`. That
-        // answer is settled knowledge, not an unfinished read, and treating it
-        // as one held the round open forever (measured live 2026-09-20).
-        const harness = yield* mountInventory(["kept", "vanishing"]);
-        harness.client.fetchProject.mockImplementation(async (id: string) => {
-          const project = harness.projects.get(id);
-          if (id === "vanishing" || project === undefined)
-            throw new ZeropsApiError("Gone", "not-found");
-          return project;
-        });
-        const renewal = harness.holdRenewal();
-        yield* harness.advance(RENEWAL_DUE_MS);
-        yield* renewal.verify();
-        yield* renewal.establish();
-        expect(harness.inventory()?.isLoading).toBe(false);
-        // Withheld until the confirming read, then gone (G6).
-        expect(
-          harness
-            .inventory()
-            ?.authority.get(inventoryProjectRefKey(harness.projectRef("org", "vanishing"))),
-        ).toEqual({ kind: "withheld", reason: "access-denied", cause: null });
-        yield* harness.advance(5_000);
-        expect(harness.inventory()?.isLoading).toBe(false);
-        expect(harness.inventory()?.projects.map(({ id }) => id)).toEqual(["kept"]);
-      }),
-    ),
-);
-
-it.live(
-  "the first mount is not held open by a project the organization still lists and cannot hand over",
-  () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        // Signing in seconds after a project was deleted from outside the app.
-        const harness = yield* mountInventory(["kept", "vanishing"], { gone: ["vanishing"] });
-        const vanishing = inventoryProjectRefKey(harness.projectRef("org", "vanishing"));
-
-        // Admitted at once, with the project withheld until the confirming read (G6, G10).
-        expect(grantedProjects(harness.grants.at(-1))).toEqual(["kept"]);
-        expect(harness.inventory()?.authority.get(vanishing)).toEqual({
-          kind: "withheld",
-          reason: "access-denied",
-          cause: null,
-        });
-        expect(harness.inventory()?.error).toBeNull();
-        yield* harness.advance(5_000);
-        expect(
-          [...harness.inventory()!.projectRefs.values()].map(({ projectId }) => projectId),
-        ).toEqual(["kept"]);
-        expect(harness.inventory()?.isLoading).toBe(false);
-      }),
-    ),
-);
-
-it.live("a renewal reverifies a command-created project the search index still omits", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const harness = yield* mountInventory();
-      yield* harness.advance(RENEWAL_DUE_MS - 1_000);
-      harness.projects.set("created", {
-        id: "created",
-        clientId: "org",
-        name: "Created",
-        status: "ACTIVE",
-      });
-      yield* actEffect(
-        harness.runtime.observeAccess({
-          kind: "project-access-established",
-          accountEpoch: harness.grants.at(-1)!.accountEpoch,
-          project: harness.projectRef("org", "created"),
-        }),
-      );
-      yield* harness.runtime.acquire({
-        kind: "project-inventory",
-        project: harness.projectRef("org", "created"),
-      });
-      const renewal = harness.holdRenewal();
-      yield* harness.advance(1_000);
-      yield* renewal.verify();
-      yield* renewal.establish();
-      expect(harness.client.fetchProject).toHaveBeenCalledWith("created");
-      expect(harness.grants.at(-1)?.projects.map(({ project }) => project.projectId)).toEqual([
-        "kept",
-        "created",
-      ]);
     }),
   ),
 );
