@@ -11,7 +11,7 @@ import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
 import { zeropsSessionAtom } from "../state/zerops";
-import { useChangeOffers, useReleasePermission } from "./useChangeOffers";
+import { useChangeOffers, useKeepDeployKeyOffer, useReleasePermission } from "./useChangeOffers";
 import { mountHqNavigation } from "~/zerops/__fixtures__/hqNavigation";
 
 const mounted: ReactTestRenderer[] = [];
@@ -213,5 +213,19 @@ describe("useReleasePermission", () => {
         useReleasePermission,
       )("app-shop"),
     ).toMatchObject({ allowed: false, reason: expect.stringMatching(/^HQ unavailable since /u) });
+  });
+});
+
+describe("useKeepDeployKeyOffer", () => {
+  it("says per environment whether HQ offers keeping its key; nothing where it has not said", () => {
+    const mayKeep = answerOf(STREAMED, useKeepDeployKeyOffer);
+    expect([mayKeep("p-stage"), mayKeep("p-prod"), mayKeep("p-elsewhere")]).toEqual([
+      true,
+      false,
+      undefined,
+    ]);
+    expect(answerOf({ ...STREAMED, current: false }, useKeepDeployKeyOffer)("p-stage")).toBe(
+      undefined,
+    );
   });
 });

@@ -1,10 +1,10 @@
 /**
  * B5, two browsers: whether a Mate's press in the other one is still at it is its hold at HQ and
- * its import's own process — HQ's word, never its project's age or this browser's clock.
+ * its import's own process — drawn anew the moment its hold runs out, never by its project's age.
  */
 import { RegistryContext } from "@effect/atom-react";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import type { HqPresses } from "@t3tools/client-runtime/zerops/hq";
+import type { HqPressValue } from "@t3tools/client-runtime/data";
 import { AtomRegistry } from "effect/unstable/reactivity";
 import { act, createElement, useLayoutEffect } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
@@ -26,6 +26,7 @@ vi.mock("./activity/useProjectsProcesses", () => ({
   },
 }));
 
+const NOW = Date.parse("2026-10-05T10:00:00.000Z");
 /** A Mate whose project lists no container yet. */
 const UNA = { key: "p-una", project: { id: "p-una" }, missingContainer: true } as ZeropsCandidate;
 
@@ -45,7 +46,8 @@ function Probe() {
   return null;
 }
 
-const mount = (presses: HqPresses | null) => {
+/** HQ's presses as its navigation says them: each held for `heldForMs` from HQ's read. */
+const mount = (presses: Readonly<Record<string, HqPressValue>> | null) => {
   const registry = AtomRegistry.make();
   if (presses !== null)
     mountHqNavigation(registry, "org-1", { structure: { ungrouped: [], apps: [] }, presses });
@@ -57,6 +59,7 @@ const mount = (presses: HqPresses | null) => {
 };
 
 beforeEach(() => {
+  vi.useFakeTimers({ now: NOW });
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   processes.of = new Map();
   probe.drawn = [];
@@ -64,26 +67,31 @@ beforeEach(() => {
 afterEach(() => {
   act(() => tree?.unmount());
   tree = undefined;
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
 describe("usePressesElsewhere", () => {
-  it.each([
-    {
-      name: "at it while HQ holds its press",
-      presses: { "p-una": { kind: "mate" } },
-      says: "pressing",
-    },
-    { name: "stopped once HQ holds no press of it", presses: {}, says: "stopped" },
-  ] as const)("reads a slow press as $name", ({ presses, says }) => {
-    mount(presses);
-    expect(said("p-una")).toBe(says);
-    expect(probe.drawn.at(-1)).toBe(says);
+  it("reads a slow press as at it while its hold runs, and as stopped the moment it ran out", async () => {
+    mount({ "p-una": { kind: "mate", heldForMs: 30_000, until: "2026-10-05T10:00:30.000Z" } });
+    expect(said("p-una")).toBe("pressing");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_001);
+    });
+    expect(said("p-una")).toBe("stopped");
+    expect(probe.drawn.at(-1)).toBe("stopped");
   });
 
   it("reads a press whose import failed as stopped at once, though its hold still runs", () => {
     processes.of = new Map([["p-una", [{ id: "imp-1", status: "FAILED" }]]]);
-    mount({ "p-una": { kind: "mate", importProcessId: "imp-1" } });
+    mount({
+      "p-una": {
+        kind: "mate",
+        heldForMs: 30_000,
+        until: "2026-10-05T10:00:30.000Z",
+        importProcessId: "imp-1",
+      },
+    });
     expect(processes.asked).toEqual(["p-una"]);
     expect(said("p-una")).toBe("stopped");
   });

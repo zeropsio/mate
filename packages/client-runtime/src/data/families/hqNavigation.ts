@@ -12,6 +12,7 @@ import { HqOffers } from "@t3tools/shared/hqOffers";
 import {
   HqNavigationApp,
   HqNavigationProject,
+  HqNavigationPress,
   HqNavigationStatus,
   type HqOfficialVerdict,
   type HqPersonFacts,
@@ -53,12 +54,11 @@ export interface HqPersonValue {
   readonly clientUserId: string;
 }
 
-/** A press HQ holds, by its project: what it makes, where, and its import once Zerops took it. */
-export interface HqPressValue {
-  readonly kind: "mate" | "stage" | "production";
-  readonly appId?: string;
-  readonly importProcessId?: string;
-}
+/**
+ * A press HQ holds, by its project: what it makes, where, its import once Zerops took it, and how
+ * long its hold runs on from HQ's read (`heldForMs`) — renewed holds come with a new `until`.
+ */
+export type HqPressValue = HqNavigationPress;
 
 declare module "../model.ts" {
   interface FamilyValues {
@@ -83,11 +83,6 @@ const Birth = Schema.Struct({
   projectId: Schema.optionalKey(Schema.NullOr(Schema.String)),
 });
 const Person = Schema.Struct({ name: Schema.String, clientUserId: Schema.String });
-const Press = Schema.Struct({
-  kind: Schema.Literals(["mate", "stage", "production"]),
-  appId: Schema.optionalKey(Schema.String),
-  importProcessId: Schema.optionalKey(Schema.String),
-});
 
 const decodeOrganization = Schema.decodeUnknownOption(Organization);
 const decodeStatus = Schema.decodeUnknownOption(HqNavigationStatus);
@@ -95,7 +90,7 @@ const decodeApp = Schema.decodeUnknownOption(HqNavigationApp);
 const decodeBirth = Schema.decodeUnknownOption(Birth);
 const decodeProject = Schema.decodeUnknownOption(HqNavigationProject);
 const decodePerson = Schema.decodeUnknownOption(Person);
-const decodePress = Schema.decodeUnknownOption(Press);
+const decodePress = Schema.decodeUnknownOption(HqNavigationPress);
 
 /** The id a `<prefix>:<id>` key names; `null` for another prefix. */
 const prefixed = (prefix: string) => ({

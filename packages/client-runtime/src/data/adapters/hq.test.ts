@@ -25,6 +25,7 @@ const app = (id: string, name: string, projectIds: ReadonlyArray<string> = []) =
   contents: { empty: projectIds.length === 0, deletingProjectIds: [] },
   projectIds,
   births: [],
+  environments: [],
 });
 const project = (projectId: string, appId: string | null, mate = true) => ({
   projectId,

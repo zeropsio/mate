@@ -181,12 +181,23 @@ export const hqPlacementsAtom = Atom.make((get): ReadonlyMap<string, HqPlacement
 }).pipe(Atom.withLabel("zerops:hq-placements"));
 
 /**
- * Each application's stage and production with their deploys (SPEC §3.2b), by its id. HQ's scope
- * protocol carries none of them yet — neither its navigation nor an application's detail — so none
- * is known: every surface reads them as not known until HQ sends them again.
+ * Each application's stage and production as HQ's navigation says them, with their deploys, by its
+ * id (SPEC §3.2b); an application whose environments HQ refused the reader, or sent none this build
+ * can read, is missing. Null while nothing is known of the organization's structure.
  */
 export const hqEnvironmentsAtom = Atom.make(
-  (): ReadonlyMap<string, ReadonlyArray<HqEnvironment>> | null => null,
+  (get): ReadonlyMap<string, ReadonlyArray<HqEnvironment>> | null => {
+    const structure = get(shownHqNavigationAtom).structure;
+    return structure === null
+      ? null
+      : new Map(
+          structure.apps.flatMap((app) =>
+            app.environments === undefined || "refused" in app.environments
+              ? []
+              : [[app.id, app.environments] as const],
+          ),
+        );
+  },
 ).pipe(Atom.withLabel("zerops:hq-environments"));
 
 /**

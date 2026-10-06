@@ -19,7 +19,7 @@ import type { ZeropsProject } from "../api.ts";
 
 import type { Known } from "../knowledge/known.ts";
 import type { HqMate, HqStructure } from "./client.ts";
-import type { HqPresses } from "./pressElsewhere.ts";
+import type { HqPressHold } from "./pressElsewhere.ts";
 
 export type HqPlacement =
   | {
@@ -66,7 +66,7 @@ export function placementsOf(
   structure: HqStructure,
   logins: ReadonlyMap<string, OverviewLogins> = new Map(),
   readyAgents: ReadonlyMap<string, boolean> = new Map(),
-  presses: HqPresses | null = null,
+  presses: Readonly<Record<string, Pick<HqPressHold, "kind" | "appId">>> | null = null,
 ): HqPlacements {
   const withLogins = (projectId: string, mate: HqMate): HqMate => {
     const told =

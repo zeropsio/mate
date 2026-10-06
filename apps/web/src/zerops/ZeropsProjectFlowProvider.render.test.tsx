@@ -1134,3 +1134,147 @@ describe("ZeropsProjectFlowProvider", () => {
     });
   });
 });
+
+describe("asking HQ to run a failed deploy again", () => {
+  const FAILED_SHA = "f".repeat(40);
+  const REDEPLOY = flowVerbKey({
+    kind: "redeploy",
+    groupId: "g1",
+    projectId: "p-stage",
+    service: "app",
+  });
+  /** HQ's job `id` of `app` at the failed commit, in `state`. */
+  const job = (id: string, state: "failed" | "queued"): HqEnvironment["jobs"][number] => ({
+    id,
+    kind: "deploy",
+    service: "app",
+    sha: FAILED_SHA,
+    state,
+    cause: id === "1" ? "merge" : "run_again",
+    ref: null,
+    reason: null,
+    appVersionId: null,
+    processId: null,
+    requestedBy: id === "1" ? null : "u-ada",
+    at: "2026-10-02T10:00:00.000Z",
+    endedAt: state === "failed" ? "2026-10-02T10:04:00.000Z" : null,
+    supersededBy: null,
+  });
+  const FAILED = job("1", "failed");
+  const stageWith = (...jobs: ReadonlyArray<HqEnvironment["jobs"][number]>): HqEnvironment => ({
+    ...environment("p-stage", "stage"),
+    jobs,
+  });
+
+  afterEach(() => {
+    hq.asked = [];
+    hq.answer = () => Promise.resolve({});
+    vi.unstubAllGlobals();
+  });
+
+  /** The provider over HQ's stream recording the stage's newest deploy of `app` as failed. */
+  async function mount() {
+    const atoms = signedInAtoms();
+    const navigation = mountHqNavigation(atoms, "org-1", structureWith([stageWith(FAILED)]));
+    installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const seen: Array<ZeropsProjectFlowValue> = [];
+    function Probe() {
+      seen.push(useZeropsProjectFlow());
+      return null;
+    }
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    await act(async () => {
+      root.render(
+        createElement(
+          RegistryContext.Provider,
+          { value: atoms },
+          createElement(ZeropsProjectFlowProvider, null, createElement(Probe)),
+        ),
+      );
+    });
+    const say = (...jobs: ReadonlyArray<HqEnvironment["jobs"][number]>) =>
+      act(async () => {
+        navigation.seed(structureWith([stageWith(...jobs)]));
+      });
+    const unmount = () =>
+      act(async () => {
+        root.unmount();
+      });
+    return { seen, say, unmount };
+  }
+
+  it("asks it by the environment's name, held until HQ's stream brings the job it asked for", async () => {
+    hq.answer = () => Promise.resolve(DEPLOYS);
+    const { seen, say, unmount } = await mount();
+    let outcome: unknown;
+    await act(async () => {
+      outcome = await seen
+        .at(-1)!
+        .redeploy("g1", "p-stage", { service: "app", sha: FAILED_SHA, after: "1" });
+    });
+    expect(outcome).toEqual({ ok: true, deploys: DEPLOYS });
+    expect(hq.asked).toEqual([
+      [
+        "redeploy",
+        { appId: "g1", environment: "stage", deploy: { service: "app", sha: FAILED_SHA } },
+      ],
+    ]);
+    expect(seen.at(-1)?.pending.has(REDEPLOY)).toBe(true);
+    // The stream again, its newest job still the one asked after: still under way.
+    await say(FAILED);
+    expect(seen.at(-1)?.pending.has(REDEPLOY)).toBe(true);
+    await say(job("2", "queued"), FAILED);
+    expect(seen.at(-1)?.pending.has(REDEPLOY)).toBe(false);
+    await unmount();
+  });
+
+  // The deploy-jobs design: a service running what HQ did not deploy is asked HQ's live commit
+  // again; its newest job went live, so only a newer one answers the ask.
+  it("holds a deploy asked over a live job until a newer job is there", async () => {
+    const live: HqEnvironment["jobs"][number] = {
+      ...job("5", "queued"),
+      state: "live",
+      appVersionId: "av-hq",
+      endedAt: "2026-10-02T10:04:00.000Z",
+    };
+    const { seen, say, unmount } = await mount();
+    await say(live);
+    await act(async () => {
+      await seen.at(-1)!.redeploy("g1", "p-stage", { service: "app", sha: FAILED_SHA, after: "5" });
+    });
+    expect(seen.at(-1)?.pending.has(REDEPLOY)).toBe(true);
+    await say(job("6", "queued"), live);
+    expect(seen.at(-1)?.pending.has(REDEPLOY)).toBe(false);
+    await unmount();
+  });
+
+  // Audit D2: a service the recipe declares and the project lacks, added by a person's ask.
+  it("adds a service by the environment's name, answering its deploys", async () => {
+    hq.answer = () => Promise.resolve(DEPLOYS);
+    const { seen, unmount } = await mount();
+    let outcome: unknown;
+    await act(async () => {
+      outcome = await seen.at(-1)!.addService("g1", "p-stage", "cache");
+    });
+    expect(outcome).toEqual({ ok: true, deploys: DEPLOYS });
+    expect(hq.asked).toEqual([
+      ["add-service", { appId: "g1", environment: "stage", service: "cache" }],
+    ]);
+    await unmount();
+  });
+
+  it("hands HQ's refusal back in its words, and holds nothing", async () => {
+    hq.answer = () => Promise.reject(new Error("A newer deploy took its place."));
+    const { seen, unmount } = await mount();
+    let outcome: unknown;
+    await act(async () => {
+      outcome = await seen
+        .at(-1)!
+        .redeploy("g1", "p-stage", { service: "app", sha: FAILED_SHA, after: "1" });
+    });
+    expect(outcome).toEqual({ ok: false, reason: "A newer deploy took its place." });
+    expect(seen.at(-1)?.pending.has(REDEPLOY)).toBe(false);
+    await unmount();
+  });
+});

@@ -27,6 +27,12 @@ const NAV: ReadonlyArray<ScopeKey> = [
 ];
 const revision = { kind: "hq", incarnation: "i", revision: 1 } as const;
 
+const PRESS = {
+  kind: "stage",
+  appId: "shop",
+  heldForMs: 30_000,
+  until: "2026-10-06T00:00:30.000Z",
+} as const;
 const person = { role: "DEVELOPER", mayWrite: true, mine: true, unseen: null };
 const mate = {
   face: "",
@@ -59,6 +65,7 @@ const rows: ReadonlyArray<Row> = [
       contents: { empty: false, deletingProjectIds: [] },
       projectIds: ["ada", "stage"],
       births: [],
+      environments: [],
     },
   },
   {
@@ -80,7 +87,7 @@ const rows: ReadonlyArray<Row> = [
     value: { projectId: "lone", appId: null, name: "Lone", kind: "mate", mate, person },
   },
   { family: "hqPerson", id: "u1", revision, value: { name: "Jan", clientUserId: "cu1" } },
-  { family: "hqPress", id: "p1", revision, value: { kind: "stage", appId: "shop" } },
+  { family: "hqPress", id: "p1", revision, value: PRESS },
 ];
 
 const stream = (
@@ -175,7 +182,7 @@ describe("hqNavigation", () => {
     ).toEqual([["Shop", ["Ada", "Stage"]]]);
     expect(structure?.ungrouped.map(({ name }) => name)).toEqual(["Lone"]);
     expect(people).toEqual({ u1: { name: "Jan", clientUserId: "cu1" } });
-    expect(presses).toEqual({ p1: { kind: "stage", appId: "shop" } });
+    expect(presses).toEqual({ p1: PRESS });
     expect(organization?.build).toBe("b1");
   });
 

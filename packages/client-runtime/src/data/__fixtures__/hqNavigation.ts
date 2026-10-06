@@ -7,7 +7,6 @@ import type { MateLiveView } from "@t3tools/shared/hqMates";
 import type { HqOfficialVerdict } from "@t3tools/shared/hqStream";
 
 import type { HqStructure } from "../../zerops/hq/client.ts";
-import type { HqPresses } from "../../zerops/hq/pressElsewhere.ts";
 import { hqMateScope } from "../families/hqMate.ts";
 import {
   hqAppsScope,
@@ -18,6 +17,7 @@ import {
   placementsScope,
   type HqAppValue,
   type HqPersonFacts,
+  type HqPressValue,
 } from "../families/hqNavigation.ts";
 import { linkKeys, type ScopeKey } from "../model.ts";
 import type { Row } from "../reducer.ts";
@@ -31,7 +31,8 @@ export interface SeededHq {
   readonly people?: Readonly<
     Record<string, { readonly name: string; readonly clientUserId?: string }>
   >;
-  readonly presses?: HqPresses;
+  /** HQ's presses, each held for `heldForMs` from HQ's read. */
+  readonly presses?: Readonly<Record<string, HqPressValue>>;
   readonly official?: HqOfficialVerdict | null;
   /** HQ answers now; `false` leaves it as it was read, its link down. */
   readonly live?: boolean;
@@ -128,6 +129,7 @@ export function seedHqNavigation(store: AccountStore, orgId: string, seed: Seede
           contents: app.contents ?? { empty: app.projects.length === 0, deletingProjectIds: [] },
           projectIds: app.projects.map(({ projectId }) => projectId),
           births: app.births ?? [],
+          environments: (app.environments ?? []) as HqAppValue["environments"],
         },
       },
       ...app.projects.map((project): Row => ({

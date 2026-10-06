@@ -21,6 +21,7 @@ const app = (id: string, name: string): HqAppValue => ({
   contents: { empty: false, deletingProjectIds: [] },
   projectIds: [],
   births: [],
+  environments: [],
 });
 const project = (projectId: string, appId: string | null): PlacementValue => ({
   projectId,

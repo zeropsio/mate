@@ -388,7 +388,7 @@ export function plainEvidenceOf(input: {
   readonly hqKnown: boolean;
   readonly structure: HqStructure | null;
   /** Each press HQ holds a record of, by project (`hq_press`); none before HQ said. */
-  readonly presses: HqPresses | null;
+  readonly presses: Readonly<Record<string, unknown>> | null;
   readonly hq: OfficialHq;
   /** The projects this tab is making or finishing. */
   readonly local: Iterable<string>;

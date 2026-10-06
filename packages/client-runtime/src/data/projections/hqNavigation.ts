@@ -11,12 +11,14 @@
 import type { HqPeople } from "@t3tools/shared/hqMates";
 
 import type { HqMate, HqStructure } from "../../zerops/hq/client.ts";
+import { environmentsOf } from "../../zerops/hq/environments.ts";
 import {
   hqAppsScope,
   hqPeopleScope,
   hqPressesScope,
   hqStatusScope,
   placementsScope,
+  type HqAppValue,
   type HqOrganizationValue,
   type HqPersonFacts,
   type HqPressValue,
@@ -70,6 +72,18 @@ function mateOf(mate: NonNullable<PlacementValue["mate"]>): HqMate {
   };
 }
 
+/**
+ * An application's stage and production with their deploys, to whoever reads its changes; HQ's
+ * refusal with its reason to one who only sees it; none where they cannot be read.
+ */
+function environmentsOfApp(
+  environments: HqAppValue["environments"],
+): Pick<HqStructure["apps"][number], "environments"> {
+  if ("refused" in environments) return { environments: { refused: environments.refused } };
+  const read = environmentsOf(environments);
+  return read === undefined ? {} : { environments: read };
+}
+
 const offersOf = (placement: PlacementValue) =>
   placement.can === undefined ? {} : { can: placement.can };
 
@@ -96,6 +110,7 @@ function structureOf(
       can: app.can,
       contents: app.contents,
       births: app.births,
+      ...environmentsOfApp(app.environments),
       projects: app.projectIds.flatMap((projectId) => {
         const placement = placements.get(projectId);
         return placement === undefined
