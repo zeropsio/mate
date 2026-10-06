@@ -11,12 +11,17 @@ import type {
   ServiceDeployInfo,
   ServiceRecord,
 } from "../data/types.ts";
-import type { Shown } from "../knowledge/known.ts";
-import type { ZeropsServiceDeployedVersion } from "../data/deployedVersion.ts";
 import { deployed, record, servicesRead } from "../flow/__fixtures__/services.ts";
 import type { StopService } from "../flow/deployment.ts";
-import { liveZerops, processValue, zeropsVersion } from "../../data/__fixtures__/account.ts";
+import {
+  liveServices,
+  liveZerops,
+  processValue,
+  serviceValue,
+  zeropsVersion,
+} from "../../data/__fixtures__/account.ts";
 import { runningScope } from "../../data/families/process.ts";
+import { servicesScope } from "../../data/families/service.ts";
 import { activeScope, versionScope } from "../../data/families/version.ts";
 import { accountReadsAtom } from "../../data/reads.ts";
 import { makeAccountStore, type AccountStore } from "../../data/store.ts";
@@ -44,13 +49,9 @@ function rig(options: { readonly refuse?: LeaseAdmissionError["reason"] } = {}) 
   const listing = Atom.make<CollectionRead<ServiceRecord>>(
     servicesRead([], { coverage: { kind: "none" }, project: STAGE }),
   );
-  const stated = Atom.make<Shown<ZeropsServiceDeployedVersion>>({
-    state: "unread",
-    waitingFor: null,
-  });
   const acquired: Array<string> = [];
   const data = {
-    reads: { servicesOf: () => listing, deployedVersion: () => stated },
+    reads: { servicesOf: () => listing },
     access: { clock: { currentTimeMillisUnsafe: () => NOW } },
     acquire: (descriptor: { readonly kind: string }) => {
       acquired.push(descriptor.kind);
@@ -104,12 +105,36 @@ function rig(options: { readonly refuse?: LeaseAdmissionError["reason"] } = {}) 
           project: STAGE,
         }),
       ),
-    state: (value: Shown<ZeropsServiceDeployedVersion>) => registry.set(stated, value),
     dispatch: (inputs: ReadonlyArray<Parameters<AccountStore["dispatch"]>[0]>) => {
       for (const input of inputs) store.dispatch(input);
     },
   };
 }
+
+/** The app's row, running `v-new` from `source`, its variables naming the build `named` started. */
+const serviceRow = (source: string | null, named: string) => ({
+  kind: "rows" as const,
+  scope: servicesScope(ORG_ID),
+  generation: 1,
+  method: "push" as const,
+  via: "zerops-realtime" as const,
+  rows: [
+    {
+      family: "service" as const,
+      id: "app-id",
+      value: serviceValue({
+        id: "app-id",
+        projectId: STAGE.projectId,
+        activeAppVersion: { id: "v-new", ...(source === null ? {} : { source }) },
+        userData: [
+          { key: "appVersionId", content: named },
+          { key: "appVersionName", content: "v0.2.0" },
+        ],
+      }),
+      revision: zeropsVersion(1),
+    },
+  ],
+});
 
 const versionRows = (...rows: ReadonlyArray<{ id: string; status: string; source: string }>) => ({
   kind: "rows" as const,
@@ -270,44 +295,61 @@ describe("a stop's services as the account's store and listing say them", () => 
     });
   });
 
-  it("waits in detail for the variables that name a version, and names it once they do", () => {
-    const { stops, dispatch, list, app, state } = rig();
+  it("names a version by its service's own row, once the row's variables name it", () => {
+    const { stops, dispatch, list, app } = rig();
     stops.demand(STAGE, "detail");
     dispatch(liveZerops({ running: [], active: [] }));
     list(PUSHED_BY_ID);
     dispatch([versionRows({ id: "v-new", status: "ACTIVE", source: "GIT" })]);
     expect(app()).toMatchObject({ state: "unread" });
 
-    state({
-      state: "known",
-      value: { activeId: "v-new", source: "GIT", name: "v0.2.0" },
-      asOf: { ordinal: 1, atMs: NOW },
-      coverage: "complete",
-      freshness: { kind: "live" },
-    });
+    dispatch([...liveServices(ORG_ID, []), serviceRow("GIT", "v-new")]);
     expect(app()).toMatchObject({ value: { kind: "running", version: { label: "v0.2.0" } } });
   });
 
   describe("what a service runs, its source stated", () => {
     const APP = service("app-id", STAGE);
-    const statedAs = (source: string | null): Shown<ZeropsServiceDeployedVersion> => ({
-      state: "known",
-      value: { activeId: "v-new", source, name: "v0.2.0" },
-      asOf: { ordinal: 1, atMs: NOW },
-      coverage: "complete",
-      freshness: { kind: "live" },
+    /** The organization's listing live, with the app's row running `v-new` from `source`. */
+    const running = (source: string | null) => [
+      ...liveZerops({ running: [], active: [], services: [] }),
+      serviceRow(source, "v-new"),
+    ];
+
+    it("is unread until the services listing holds the service's row", () => {
+      const { stops, registry } = rig();
+      expect(registry.get(stops.version(APP))).toEqual({ state: "unread", waitingFor: null });
     });
 
-    it("passes a version whose push stated its source through", () => {
-      const { stops, registry, state } = rig();
-      state(statedAs("GIT"));
+    it("fails a service the read listing does not hold", () => {
+      const { stops, registry, dispatch } = rig();
+      dispatch(liveZerops({ running: [], active: [], services: [] }));
+      expect(registry.get(stops.version(APP))).toMatchObject({
+        state: "failed",
+        failure: { kind: "refused", words: "The service is not there." },
+      });
+    });
+
+    it("passes a version whose row stated its source through", () => {
+      const { stops, registry, dispatch } = rig();
+      dispatch(running("GIT"));
       expect(registry.get(stops.version(APP))).toMatchObject({ value: { source: "GIT" } });
     });
 
-    it("waits for the active versions to source a version the push left unstated", () => {
-      const { stops, registry, state, dispatch } = rig();
-      dispatch(liveZerops({ running: [], active: [] }));
-      state(statedAs(null));
+    it("leaves a version nameless whose row's variables name a build started since", () => {
+      const { stops, registry, dispatch } = rig();
+      dispatch([
+        ...liveZerops({ running: [], active: [], services: [] }),
+        serviceRow("GIT", "v-next"),
+      ]);
+      expect(registry.get(stops.version(APP))).toMatchObject({
+        state: "known",
+        value: { activeId: "v-new", source: "GIT", name: null },
+      });
+    });
+
+    it("waits for the active versions to source a version the row left unstated", () => {
+      const { stops, registry, dispatch } = rig();
+      dispatch(running(null));
       expect(registry.get(stops.version(APP))).toEqual({ state: "unread", waitingFor: null });
 
       dispatch([versionRows({ id: "v-new", status: "ACTIVE", source: "NONE" })]);
@@ -318,9 +360,8 @@ describe("a stop's services as the account's store and listing say them", () => 
     });
 
     it("reads the version by id while a surface holds it, and fails it when the platform has none", () => {
-      const { stops, registry, state, dispatch, readById } = rig();
-      dispatch(liveZerops({ running: [], active: [] }));
-      state(statedAs(null));
+      const { stops, registry, dispatch, readById } = rig();
+      dispatch(running(null));
       registry.get(stops.version(APP));
       expect(readById()).toEqual([]);
       const release = stops.holdVersions([APP]);
@@ -350,9 +391,9 @@ describe("a stop's services as the account's store and listing say them", () => 
     });
 
     it("fails a version the refused active versions will never source", () => {
-      const { stops, registry, state, dispatch } = rig();
+      const { stops, registry, dispatch } = rig();
       dispatch([
-        ...liveZerops({ running: [], active: [] }),
+        ...running(null),
         {
           kind: "stream",
           key: activeScope(ORG_ID),
@@ -364,7 +405,6 @@ describe("a stop's services as the account's store and listing say them", () => 
           },
         },
       ]);
-      state(statedAs(null));
       expect(registry.get(stops.version(APP))).toMatchObject({ state: "failed" });
     });
   });

@@ -2,7 +2,7 @@
  * IN TRANSIT — owned by the slice that deletes the data runtime; deleted with it.
  *
  * The runtime's readers still take a project's services in its old shapes
- * (`CollectionRead<ServiceRecord>`): the stops' deployments, the topology, the Mate's setup marker.
+ * (`CollectionRead<ServiceRecord>`): the stops' deployments and the topology.
  * This bridge derives them, read only, from the account's store — the organization's services
  * listing (`projectServices`) — so services come from one source and the runtime reads none of its
  * own. Its freshness is the listing's own, stated as the project inventory's interest. Nothing here

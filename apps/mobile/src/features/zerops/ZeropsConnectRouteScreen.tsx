@@ -3,6 +3,7 @@ import {
   resolveMateVisibility,
   type RoleMateVisibility,
 } from "@t3tools/client-runtime/zerops/mateAccess";
+import { readMateMarker } from "@t3tools/client-runtime/data";
 import type { CandidatesNotice } from "@t3tools/client-runtime/zerops/projections";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { useCallback, useMemo, useRef, useState } from "react";
@@ -32,7 +33,8 @@ import {
 } from "./presentation";
 import { useZeropsCandidates } from "./useZeropsCandidates";
 import { useZeropsData } from "./ZeropsDataProvider";
-import { checkCloseOff, closeOffFacts, SETUP_MARKER } from "./close-off";
+import { checkCloseOff, closeOffFacts } from "./close-off";
+import { useAccountData } from "./ZeropsAccountData";
 import { PROJECT_ENV_ISOLATION_KEY, projectNameInApp } from "@t3tools/client-runtime/zerops";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
@@ -338,10 +340,12 @@ function ProjectPickerSurface(props: { readonly onDone: (environmentId: Environm
 
   // A Mate's close-off, read once as the person opens it (`close-off.ts`).
   const organizationId = activeOrganization?.id;
+  const accountData = useAccountData();
   const closeOffOf = useCallback(
     (candidate: MobileCandidate): (() => Promise<"held" | "clear">) | undefined => {
       const serviceId = candidate.service?.id;
-      if (organizationId === undefined || serviceId === undefined) return undefined;
+      if (organizationId === undefined || serviceId === undefined || accountData === null)
+        return undefined;
       return () =>
         checkCloseOff(closeOffFacts, {
           projectId: candidate.project.id,
@@ -349,11 +353,15 @@ function ProjectPickerSurface(props: { readonly onDone: (environmentId: Environm
             (await client.readProjectEnv(organizationId, candidate.project.id)).find(
               (entry) => entry.key === PROJECT_ENV_ISOLATION_KEY,
             )?.content,
-          readMarker: async () =>
-            (await client.listServiceVariableNames(serviceId)).includes(SETUP_MARKER),
+          // The account's read of the container's variables, by key (`families/mateVariables`).
+          readMarker: async () => {
+            const marker = await readMateMarker(accountData.registry, serviceId);
+            if (marker === "unknown") throw new Error("The press's marker could not be read.");
+            return marker;
+          },
         });
     },
-    [client, organizationId],
+    [accountData, client, organizationId],
   );
 
   // The row's verb: Open a connected Mate, else the account's Connect on its target (§4.4).

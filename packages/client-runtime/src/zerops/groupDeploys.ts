@@ -31,7 +31,7 @@ import type { ReleaseRollout } from "@t3tools/shared/hqRelease";
 import { type GroupEnvironment, type GroupEnvironmentTier } from "./groupEnvironments.ts";
 import { deployedCommit, type EnvironmentServiceState, type GroupRowTone } from "./groupRows.ts";
 import type { ZeropsEnvironmentRole } from "./groups.ts";
-import type { ZeropsServiceDeployedVersion } from "./data/deployedVersion.ts";
+import type { ZeropsServiceDeployedVersion } from "../data/projections/serviceRuns.ts";
 import { type HqEnvironment, jobFailed, jobsByService } from "./hq/environments.ts";
 import type { Shown } from "./knowledge/known.ts";
 import { recipeTierRepositories, recipeTierServices } from "./recipeTier.ts";
@@ -70,7 +70,7 @@ export interface GroupEnvironmentRowInput {
 
 /**
  * The version name each service runs, by service id, as the account's store states it
- * (`selectDeployedVersion`). A service it states no name for — not read yet, or running what
+ * (`serviceRuns`). A service it states no name for — not read yet, or running what
  * nobody named — is left out: its row says less until the store says more.
  */
 export function statedVersionNames(

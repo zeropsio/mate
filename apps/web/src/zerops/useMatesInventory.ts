@@ -1,11 +1,7 @@
 /**
  * The project inventories of the Mates a surface draws, held while it draws them. A Mate's
- * services are the organization's services listing's, read for every project at once; what the
- * held inventory still demands is the Mate's container's variables (its setup marker and Mate
- * flag), read only for the Mates drawn: the projects page's, a project page's own, the left
- * menu's rows as they are mounted. A drawn Mate's project's own row is held as well where it
- * decides the viewer's access (`ownRowWanted`): a NO_ACCESS member's project whose listing names no
- * grant of theirs. Whose a Mate is comes from HQ's person facts.
+ * Services come from the organization listing and Mate variables from the data layer.
+ * Drawn Mates hold their project inventory and, where needed, the viewer’s access verdict.
  */
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { useAtomValue } from "@effect/atom-react";

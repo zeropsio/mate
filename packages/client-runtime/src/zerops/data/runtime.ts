@@ -24,8 +24,7 @@ import {
   type RetryLadder,
 } from "../knowledge/retryPolicy.ts";
 import { makeGrantDriver, type ZeropsAccessGrant } from "./access/grantDriver.ts";
-import { bridgedServicesOf, createZeropsDataAtoms } from "./atoms.ts";
-import type { ServiceDeployObserved } from "./deployedVersion.ts";
+import { createZeropsDataAtoms } from "./atoms.ts";
 import { grantCapabilities } from "./access/capabilities.ts";
 import { commandAdmissionError, commandTarget } from "./commands.ts";
 import {
@@ -35,16 +34,9 @@ import {
   type ZeropsDataPolicy,
 } from "./policy.ts";
 import {
-  makeZeropsCells,
-  type ZeropsCellAdapter,
-  type ZeropsCells,
-  type ZeropsCellSourceError,
-} from "./cells.ts";
-import {
   makeInitialZeropsDataState,
   reduceZeropsDataState,
   type RuntimeControlInput,
-  type ZeropsDataFollowUp,
   type ZeropsDataState,
 } from "./state.ts";
 import type {
@@ -83,7 +75,6 @@ import type {
   RuntimeInterestDescriptor,
   ServiceRef,
   SharedReadOwnership,
-  TableQueryDescriptor,
   VerifiedAccessGrant,
   ZeropsDataAdapter,
   ZeropsDataRuntime,
@@ -108,12 +99,6 @@ import {
   projectKeyOf,
   queryKeyOf,
 } from "./types.ts";
-import {
-  serviceVariablesDescriptor,
-  TABLE_READ_RETRY_MS,
-  tableRowsDue,
-  tableRowsWanted,
-} from "./entityTable.ts";
 
 export function accountRefsEqual(left: AccountRef, right: AccountRef): boolean {
   return left.apiOrigin === right.apiOrigin && left.accountId === right.accountId;
@@ -174,14 +159,6 @@ function serializedInterestKey(descriptor: RuntimeInterestDescriptor): InterestK
     case "organization-inventory":
       return InterestKeySchema.make(
         JSON.stringify([descriptor.kind, organizationKeyOf(descriptor.organization)]),
-      );
-    case "project-variables":
-      return InterestKeySchema.make(
-        JSON.stringify([
-          descriptor.kind,
-          projectKeyOf(descriptor.project),
-          [...descriptor.serviceIds].sort(),
-        ]),
       );
     case "project-topology":
       return InterestKeySchema.make(
@@ -350,8 +327,8 @@ const queryKeysOfPlan = (plan: InterestPlan): ReadonlyArray<QueryKey> => [
  * An interest that registers and reads nothing of its own: a project's access (the grant's), the
  * organization's inventory, whose projects are the account store's — it holds the organization
  * for its projects' reads — and a project's inventory or topology, whose services are the account
- * store's too (`data/families/service.ts`): they hold the project for its variables', versions'
- * and metrics' reads. It observes from the moment it is held.
+ * store's too (`data/families/service.ts`): they hold the project for its versions' and metrics'
+ * reads. It observes from the moment it is held.
  */
 const readsNothing = (
   descriptor: RuntimeInterestDescriptor,
@@ -376,24 +353,6 @@ const readsNothing = (
  */
 export function planZeropsInterest(descriptor: RuntimeInterestDescriptor): InterestPlan {
   const organization = organizationOfInterest(descriptor);
-  const table = (query: TableQueryDescriptor): ReadonlyArray<PlannedRegistration> => [
-    {
-      descriptor: {
-        kind: "table-updates",
-        entity: "user-data",
-        organization,
-        serviceIds: query.serviceIds,
-      },
-      baseline: null,
-    },
-    { descriptor: { kind: "table-list", query }, baseline: { kind: "query", descriptor: query } },
-  ];
-  if (descriptor.kind === "project-variables") {
-    return {
-      registrations: table(serviceVariablesDescriptor(organization, descriptor.serviceIds)),
-      directReads: [],
-    };
-  }
   // The organization's projects and services are the account store's (`data/families/`): these
   // read none of their own.
   if (readsNothing(descriptor)) return { registrations: [], directReads: [] };
@@ -405,22 +364,13 @@ export function planZeropsInterest(descriptor: RuntimeInterestDescriptor): Inter
   };
 }
 
-/** How long an id a table is owed waits for its own update frame before it is read. */
-const TABLE_READ_GRACE_MS = 1_000;
-/** The most ids one table read names. */
-const TABLE_READ_BATCH = 500;
-
 function registrationKeyOf(descriptor: RegistrationDescriptor): string {
-  if (descriptor.kind === "entity-updates" || descriptor.kind === "table-updates")
+  if (descriptor.kind === "entity-updates")
     return JSON.stringify([
       descriptor.kind,
       descriptor.entity,
       organizationKeyOf(descriptor.organization),
-      "project" in descriptor
-        ? projectKeyOf(descriptor.project)
-        : descriptor.kind === "table-updates"
-          ? [...descriptor.serviceIds].sort()
-          : null,
+      "project" in descriptor ? projectKeyOf(descriptor.project) : null,
     ]);
   return JSON.stringify([descriptor.kind, queryKeyOf(descriptor.query)]);
 }
@@ -559,7 +509,6 @@ interface ZeropsDataRuntimeDiagnostics {
 
 export type ManagedZeropsDataRuntime = ZeropsDataRuntime &
   ZeropsDataRuntimeDiagnostics & {
-    readonly cells: ZeropsCells;
     /** The epoch's access grant, interpreted here (DESIGN §4.2, D16(a)). */
     readonly access: ZeropsAccessGrant;
     /**
@@ -574,17 +523,6 @@ const leaseError = (
   reason: LeaseAdmissionError["reason"],
   message: string,
 ): LeaseAdmissionError => ({ _tag: "ZeropsLeaseAdmissionError", reason, message });
-
-const unavailableResource = (): Effect.Effect<never, ZeropsCellSourceError> =>
-  Effect.fail({
-    _tag: "ZeropsCellSourceError",
-    kind: "unavailable",
-    retryable: false,
-  });
-
-const unavailableCellAdapter: ZeropsCellAdapter = {
-  readServiceMateFlag: unavailableResource,
-};
 
 function registrationInterest(observation: PlatformObservation): InterestIdentity | null {
   if (observation.kind === "query-membership-observed") return observation.registration.identity;
@@ -803,17 +741,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
   const model = yield* Ref.make(
     makeInitialZeropsDataState(options.scope, options.initialAccess ?? { status: "unverified" }),
   );
-  const cells = yield* makeZeropsCells({
-    scope: options.scope,
-    adapter: options.adapter.cells ?? unavailableCellAdapter,
-    access: () => Ref.getUnsafe(model).access,
-    maxEntries: policy.activeSharedReadsPerAccount,
-    // A failed cell's retry waits while the tab is hidden; the visible wake below reads it.
-    visible: () => Ref.getUnsafe(currentVisibility) === "visible",
-  });
   const clock = yield* Clock.Clock;
-  /** The access the cells were last reconciled with. */
-  let reconciledAccess = Ref.getUnsafe(model).access;
   const runtimeScope = yield* Scope.make();
   // Demand arrives from independently run UI effects; workers retain the account clock and scheduler.
   const forkOwned = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
@@ -877,9 +805,6 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
   let receiverEpoch = 0;
   let interestEpoch = 0;
   let scheduleHydration: (query: QueryKey) => Effect.Effect<void> = () => Effect.void;
-  let scheduleTableRead: (
-    followUp: Extract<ZeropsDataFollowUp, { readonly kind: "read-table-rows" }>,
-  ) => Effect.Effect<void> = () => Effect.void;
   let failReceiver: (
     receiver: RuntimeReceiver,
     reason: string,
@@ -939,10 +864,6 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
     }, 0);
   };
 
-  /**
-   * Every change of access reaches the cells, whatever made it. The
-   * atoms hear the change now, after the task, or when the ingress loop flushes its batch.
-   */
   /** A held interest failed on its own and retryable, whose retry nobody has scheduled yet. */
   const awaitsInterestRetry = (state: ZeropsDataState): boolean => {
     for (const runtimeInterest of interests.values()) {
@@ -964,10 +885,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           publicationEvents += 1;
           if (publication === "after-task") publishAfterTask();
           // A failure the reducer or an establishment published retries on its own backoff.
-          const retry = awaitsInterestRetry(next) ? requestInterestRetries : Effect.void;
-          if (next.access === reconciledAccess) return retry;
-          reconciledAccess = next.access;
-          return Effect.andThen(retry, cells.reconcileAccess);
+          return awaitsInterestRetry(next) ? requestInterestRetries : Effect.void;
         }),
       ),
       Effect.andThen(publication === "now" ? flushPublication : Effect.void),
@@ -1095,14 +1013,9 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           return reduction.followUps;
         }),
       );
-      yield* Effect.forEach(
-        followUps,
-        (followUp) =>
-          followUp.kind === "read-table-rows"
-            ? scheduleTableRead(followUp)
-            : scheduleHydration(followUp.query),
-        { discard: true },
-      );
+      yield* Effect.forEach(followUps, (followUp) => scheduleHydration(followUp.query), {
+        discard: true,
+      });
     });
 
   const failInterruptedInterest = (
@@ -1370,8 +1283,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
       return (
         target.kind === "query" &&
         (target.descriptor.kind === "projects-of-organization" ||
-          target.descriptor.kind === "services-of-project" ||
-          target.descriptor.kind === "service-variables-of-services")
+          target.descriptor.kind === "services-of-project")
           ? {
               ...base,
               kind: kind as "baseline",
@@ -1519,144 +1431,6 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         kind,
         target,
       } as ReadTicket;
-    });
-
-  /**
-   * The table reads waiting or in flight, by kind and organization: one loop each, and what
-   * wakes it when an id comes due sooner than it sleeps.
-   */
-  const tableReads = new Map<string, { wake: Deferred.Deferred<void> }>();
-  scheduleTableRead = (followUp) =>
-    Effect.gen(function* () {
-      const organizationKey = organizationKeyOf(followUp.organization);
-      const key = `${followUp.entity}:${organizationKey}`;
-      const running = tableReads.get(key);
-      if (running !== undefined) {
-        yield* Deferred.succeed(running.wake, undefined);
-        return;
-      }
-      if (yield* Ref.get(closed)) return;
-      const loop = { wake: yield* Deferred.make<void>() };
-      tableReads.set(key, loop);
-      // One loop per kind and organization: it reads what is due, batched, at most once a grace,
-      // and ends when nothing is owed. Ids that arrive while a batch reads, or past its cap, are
-      // read by the next round; one that arrives while the loop sleeps wakes it. A row found
-      // absent waits its back-off, and a failed read its retry (`entityTable.ts`), never a loop.
-      const read = Effect.gen(function* () {
-        let lastReadAt = yield* Clock.currentTimeMillis;
-        while (true) {
-          const before = yield* Clock.currentTimeMillis;
-          const eligible = [...interests.values()].filter(
-            (interest) =>
-              interest.leases.size > 0 &&
-              interest.descriptor.kind === "project-variables" &&
-              organizationKeyOf(interest.descriptor.project.organization) === organizationKey &&
-              receivers.get(receiverKeyOf(interest.descriptor))?.openFailure === null,
-          );
-          const dependents = new Map(eligible.map((interest) => [interest.key, interest.identity]));
-          if (dependents.size === 0) return;
-          const serviceIds = [
-            ...new Set(
-              eligible.flatMap((interest) =>
-                "serviceIds" in interest.descriptor ? interest.descriptor.serviceIds : [],
-              ),
-            ),
-          ];
-          const owed = [...(yield* Ref.get(model)).table.wanted.values()].filter(
-            (wanted) =>
-              wanted.entity === followUp.entity &&
-              organizationKeyOf(wanted.organization) === organizationKey &&
-              wanted.serviceIds.some((id) => serviceIds.includes(id)),
-          );
-          if (owed.length === 0) return;
-          // A grace after the last read and after the first id came due, so ids that arrive
-          // together are read together; every bound is absolute, so a wake never postpones it.
-          const dueAtMs = Math.min(...owed.map((wanted) => wanted.dueAtMs));
-          const readAt = Math.max(
-            lastReadAt + TABLE_READ_GRACE_MS,
-            dueAtMs + TABLE_READ_GRACE_MS,
-            throttledUntil(followUp.organization, "read"),
-          );
-          if (readAt > before) {
-            const woken = yield* Effect.raceFirst(
-              Effect.sleep(Duration.millis(readAt - before)).pipe(Effect.as(false)),
-              Deferred.await(loop.wake).pipe(Effect.as(true)),
-            );
-            if (woken) {
-              loop.wake = yield* Deferred.make<void>();
-              continue;
-            }
-          }
-          // Nothing is read while the tab is hidden: the visible wake starts the loop again.
-          if ((yield* Ref.get(closed)) || (yield* Ref.get(currentVisibility)) === "hidden") return;
-          const now = yield* Clock.currentTimeMillis;
-          const ids = tableRowsDue(
-            (yield* Ref.get(model)).table,
-            followUp.entity,
-            followUp.organization,
-            now,
-            serviceIds,
-          ).slice(0, TABLE_READ_BATCH);
-          if (ids.length === 0) continue;
-          const list = serviceVariablesDescriptor(followUp.organization, serviceIds);
-          const owner = {
-            kind: "shared" as const,
-            account: options.scope,
-            sharedReadId: ZeropsSharedReadId.make(options.makeOpaqueId()),
-          };
-          const ticket = yield* sharedReadTicket(
-            { kind: "query", descriptor: { ...list, ids } },
-            owner,
-            "baseline",
-          );
-          yield* applyControl({
-            kind: "shared-read-upserted",
-            requestId: ticket.requestId,
-            ownership: { owner, target: ticket.target, dependents, status: "active" },
-          });
-          const admitted = yield* admitRead(ticket);
-          const outcome = admitted
-            ? yield* runReadOutcome(ticket, null)
-            : { succeeded: false, error: readCapacityError() };
-          if (admitted) yield* awaitIngress;
-          yield* applyControl({ kind: "shared-read-released", requestId: ticket.requestId });
-          lastReadAt = yield* Clock.currentTimeMillis;
-          if (!admitted) {
-            yield* Effect.forEach(
-              eligible,
-              (interest) => {
-                const receiver = receivers.get(receiverKeyOf(interest.descriptor));
-                return receiver === undefined
-                  ? Effect.void
-                  : failReceiver(receiver, "The account read queue is full.", readCapacityError());
-              },
-              { discard: true },
-            );
-            return;
-          }
-          // A failed read is said where it is drawn, with its retry; the next success lifts it.
-          if (outcome.succeeded) {
-            yield* reviveRead(key);
-          } else {
-            const failed = [...dependents.values()];
-            yield* failInterests(
-              failed,
-              `Service metadata unavailable for ${ids.join(", ")}. ${outcome.error?.message ?? "The platform did not return these records."} Read again.`,
-              false,
-              { retryAtMs: lastReadAt + TABLE_READ_RETRY_MS, attempts: 1, retryable: true },
-            );
-            markReadFailed(failed, key);
-          }
-        }
-      });
-      yield* read.pipe(
-        Effect.ensuring(
-          Effect.sync(() => {
-            if (tableReads.get(key) === loop) tableReads.delete(key);
-          }),
-        ),
-        forkOwned,
-      );
     });
 
   /**
@@ -2132,8 +1906,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           subscriptionName: ZeropsWireSubscriptionName.make(options.makeOpaqueId()),
         };
         const request: RegistrationRequest =
-          planned.descriptor.kind === "entity-updates" ||
-          planned.descriptor.kind === "table-updates"
+          planned.descriptor.kind === "entity-updates"
             ? ({
                 ...base,
                 descriptor: planned.descriptor,
@@ -2945,8 +2718,8 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         { discard: true },
       );
       // A tab back before its pause still holds its receivers: what waited on them while it was
-      // hidden reads now, from a fresh budget — a failed entity, a read a Retry-After held, an owed
-      // row, a failed interest.
+      // hidden reads now, from a fresh budget — a failed entity, a read a Retry-After held, a failed
+      // interest.
       const queries = new Set<QueryKey>(heldPastHidden);
       heldPastHidden.clear();
       for (const [key, record] of hydrationAttempts) {
@@ -2958,11 +2731,6 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
       yield* Effect.forEach(queries, (query) => scheduleHydration(query).pipe(forkOwned), {
         discard: true,
       });
-      yield* Effect.forEach(
-        tableRowsWanted(state.table),
-        (batch) => scheduleTableRead({ kind: "read-table-rows", ...batch }),
-        { discard: true },
-      );
       yield* Effect.forEach(
         [
           ...new Set(
@@ -2983,7 +2751,6 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
       yield* Ref.set(currentVisibility, next);
       if (next === "visible") {
         yield* resumeFromBackground;
-        yield* cells.wake;
         return;
       }
       yield* Effect.sleep(Duration.millis(policy.hiddenReceiverPauseAfterMs));
@@ -3171,56 +2938,6 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         yield* requestRecovery(receiverFor(retriesOn(receiver.key)[0]!.interest.descriptor));
     });
 
-  /**
-   * What the services whose variables this runtime holds run now, as the account's store holds
-   * them (F13): a service that moved to another version has its trailing variables read again.
-   */
-  const heldDeploysAtom = Atom.make((get): ReadonlyArray<ServiceDeployObserved> => {
-    const deploys: Array<ServiceDeployObserved> = [];
-    for (const { descriptor, leases } of get(rootAtom).interests.values()) {
-      if (leases <= 0 || descriptor.kind !== "project-variables") continue;
-      for (const entry of bridgedServicesOf(get, descriptor.project).value) {
-        if (entry.knowledge !== "observed") continue;
-        const serviceId = entry.record.ref.serviceId;
-        const facet = entry.record.deployment;
-        const deploy = facet.knowledge === "observed" ? facet.fields.activeDeploy : null;
-        if (!descriptor.serviceIds.includes(serviceId) || deploy == null || deploy.id === null)
-          continue;
-        deploys.push({
-          organization: descriptor.project.organization,
-          serviceId,
-          deployId: deploy.id,
-        });
-      }
-    }
-    return deploys;
-  });
-  let heardDeploys = "";
-  const stopHearingDeploys = options.atomRegistry.subscribe(
-    heldDeploysAtom,
-    (deploys) => {
-      const key = JSON.stringify(deploys);
-      if (key === heardDeploys) return;
-      heardDeploys = key;
-      Effect.runForkWith(runtimeContext)(
-        Effect.gen(function* () {
-          yield* applyControl({
-            kind: "service-deploys-observed",
-            deploys,
-            atMs: yield* Clock.currentTimeMillis,
-          });
-          yield* Effect.forEach(
-            tableRowsWanted((yield* Ref.get(model)).table),
-            (batch) => scheduleTableRead({ kind: "read-table-rows", ...batch }),
-            { discard: true },
-          );
-        }).pipe(forkOwned),
-      );
-    },
-    { immediate: true },
-  );
-  yield* Scope.addFinalizer(runtimeScope, Effect.sync(stopHearingDeploys));
-
   const refresh: ZeropsDataRuntime["refresh"] = (scope) =>
     lifecycleLock.withPermit(
       Effect.gen(function* () {
@@ -3235,19 +2952,6 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
               ("project" in interest.descriptor &&
                 interest.descriptor.project.projectId === scope.projectId)),
         );
-        const serviceIds = [
-          ...new Set(
-            held.flatMap((interest) =>
-              "serviceIds" in interest.descriptor ? interest.descriptor.serviceIds : [],
-            ),
-          ),
-        ];
-        yield* applyControl({
-          kind: "metadata-retry-requested",
-          organization,
-          serviceIds,
-          atMs: yield* Clock.currentTimeMillis,
-        });
         // A project's again re-registers only its own subscriptions on the organization's healthy
         // socket. The organization's again, or a project's on a failed socket, replaces the socket
         // and re-establishes everything it carried.
@@ -3792,7 +3496,6 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         // What the shutdown dropped is never reached: its waiters are let go now.
         for (const barrier of barriers) yield* Deferred.succeed(barrier, undefined);
         barriers.clear();
-        yield* cells.shutdown;
         yield* Scope.close(runtimeScope, Exit.void);
         interests.clear();
         leases.clear();
@@ -3811,7 +3514,6 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
     scope: options.scope,
     reads: atoms.reads,
     commands,
-    cells,
     acquire,
     refresh,
     acquireMany,

@@ -3066,22 +3066,6 @@
   {
     "path": "packages/client-runtime/src/zerops/data/runtime.ts",
     "kind": "retired-token",
-    "fingerprint": "makeZeropsCells",
-    "owner": "data-layer rewrite: projects",
-    "reason": "runtime cells duplicate the store's members and project reads",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/data/runtime.ts",
-    "kind": "retired-token",
-    "fingerprint": "makeZeropsCells",
-    "owner": "data-layer rewrite: projects",
-    "reason": "runtime cells duplicate the store's members and project reads",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/data/runtime.ts",
-    "kind": "retired-token",
     "fingerprint": "new Map<InterestKey, RuntimeInterest>()",
     "owner": "data-layer rewrite: projects",
     "reason": "runtime interest and receiver maps duplicate the store's subscriptions",
@@ -3147,22 +3131,6 @@
     "path": "packages/client-runtime/src/zerops/data/state.ts",
     "kind": "retired-token",
     "fingerprint": "\"runtime-closed\"",
-    "owner": "data-layer rewrite: projects",
-    "reason": "closing the runtime erases its facts; a transport event never deletes a fact",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/data/state.ts",
-    "kind": "retired-token",
-    "fingerprint": "releaseTableLists",
-    "owner": "data-layer rewrite: projects",
-    "reason": "closing the runtime erases its facts; a transport event never deletes a fact",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/data/state.ts",
-    "kind": "retired-token",
-    "fingerprint": "releaseTableLists",
     "owner": "data-layer rewrite: projects",
     "reason": "closing the runtime erases its facts; a transport event never deletes a fact",
     "expires": "never"

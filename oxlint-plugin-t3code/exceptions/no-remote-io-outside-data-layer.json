@@ -10,14 +10,6 @@
   {
     "path": "apps/mobile/src/features/zerops/ZeropsConnectRouteScreen.tsx",
     "kind": "CallExpression",
-    "fingerprint": "client.listServiceVariableNames",
-    "owner": "data-layer rewrite: Zerops platform",
-    "reason": "only the data layer's adapters reach a remote: a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/mobile/src/features/zerops/ZeropsConnectRouteScreen.tsx",
-    "kind": "CallExpression",
     "fingerprint": "client.readProjectEnv",
     "owner": "data-layer rewrite: Zerops platform",
     "reason": "only the data layer's adapters reach a remote: a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",

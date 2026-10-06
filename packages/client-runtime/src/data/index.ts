@@ -77,6 +77,12 @@ export { servicesScope, type ServiceValue } from "./families/service.ts";
 export { PROJECT_ROUTINGS_LISTING } from "./families/publicRouting.ts";
 export { publicAccess, type PublicAccess } from "./projections/publicAccess.ts";
 export { projectServices, projectsServices, type ProjectServices } from "./projections/services.ts";
+export { mateVariables, type MateVariables } from "./projections/mateVariables.ts";
+export {
+  serviceRuns,
+  type ServiceRuns,
+  type ZeropsServiceDeployedVersion,
+} from "./projections/serviceRuns.ts";
 export type { ProjectUsage } from "./projections/usage.ts";
 export { usageOwnerOf } from "./families/usage.ts";
 export {
@@ -119,6 +125,8 @@ export {
   accountReadsAtom,
   NOT_READ_PROCESSES,
   listedProjectAtom,
+  mateVariablesAtom,
+  readMateMarker,
   NOT_READ_PROJECTS,
   NOT_READ_SERVICES,
   NOT_READ_USAGE,

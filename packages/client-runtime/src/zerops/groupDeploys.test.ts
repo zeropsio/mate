@@ -9,7 +9,7 @@ import {
   statedActiveVersions,
   statedVersionNames,
 } from "./groupDeploys.ts";
-import type { ZeropsServiceDeployedVersion } from "./data/deployedVersion.ts";
+import type { ZeropsServiceDeployedVersion } from "../data/projections/serviceRuns.ts";
 import { environmentRow } from "./groupRows.ts";
 import type { Shown } from "./knowledge/known.ts";
 import { jobInFlight, type HqEnvironment, type HqJob } from "./hq/environments.ts";

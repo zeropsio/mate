@@ -14,7 +14,6 @@ export * from "./environmentMachine.ts";
 export * from "./exchangeDriver.ts";
 export * from "./gate.ts";
 export * from "./listings.ts";
-export * from "./mateFlag.ts";
 export * from "./mateVoice.ts";
 export * from "./mateLink.ts";
 export * from "./probeStore.ts";

@@ -238,10 +238,12 @@ describe("H: hosted client budgets", () => {
         yield* b.when.browserSettled;
         const servicesAtStart = b.measure.projectServiceReads();
         const projectsAtStart = b.measure.projectReads();
+        const variablesAtStart = b.measure.variableReads();
         yield* Effect.promise(() => s.clock.advance(15 * 60_000));
         yield* b.when.browserSettled;
         const servicesIdle = b.measure.projectServiceReads() - servicesAtStart;
         const projectsIdle = b.measure.projectReads() - projectsAtStart;
+        const variablesIdle = b.measure.variableReads() - variablesAtStart;
         report(
           `H idle, owner: GET service-stack (with preflights) at start=${servicesAtStart}, over 15 min idle=${servicesIdle}; GET project (with preflights) at start=${projectsAtStart}, over 15 min idle (one renewal)=${projectsIdle}; 4 Mates`,
         );
@@ -250,6 +252,11 @@ describe("H: hosted client budgets", () => {
         expect(servicesIdle, "Per-project services reads while idle").toBe(0);
         expect(projectsAtStart, "Own project rows at start").toBe(0);
         expect(projectsIdle, "Own project rows over one renewal").toBe(0);
+        report(`H variables: startup=${variablesAtStart}, idle=${variablesIdle}; 4 Mates`);
+        expect(variablesAtStart, "One variables search per Mate at most").toBeLessThanOrEqual(
+          names.length,
+        );
+        expect(variablesIdle, "No variables search while idle").toBe(0);
       }),
     );
 
@@ -270,15 +277,22 @@ describe("H: hosted client budgets", () => {
         yield* b.when.menuReady(names);
         yield* b.when.browserSettled;
         const projectsAtStart = b.measure.projectReads();
+        const variablesAtStart = b.measure.variableReads();
         yield* Effect.promise(() => s.clock.advance(15 * 60_000));
         yield* b.when.browserSettled;
         const projectsIdle = b.measure.projectReads() - projectsAtStart;
+        const variablesIdle = b.measure.variableReads() - variablesAtStart;
         report(
           `H idle, Developer granted on 4 Mates: GET project (with preflights) at start=${projectsAtStart}, over 15 min idle (one renewal)=${projectsIdle}`,
         );
         yield* s.then.noExternalNetwork;
         expect(projectsAtStart, "Own project rows at start").toBe(0);
         expect(projectsIdle, "Own project rows over one renewal").toBe(0);
+        report(`H variables: startup=${variablesAtStart}, idle=${variablesIdle}; 4 Mates`);
+        expect(variablesAtStart, "One variables search per Mate at most").toBeLessThanOrEqual(
+          names.length,
+        );
+        expect(variablesIdle, "No variables search while idle").toBe(0);
       }),
     );
 
@@ -339,8 +353,8 @@ describe("H: hosted client budgets", () => {
         }),
     );
 
-    // Targets menu registrations growing with the number of Mates instead of organization scope.
-    it.effect.fails("target: menu registrations do not grow from one to four Mates", () =>
+    // Catches menu registrations growing with the number of Mates instead of organization scope.
+    it.effect("target: menu registrations do not grow from one to four Mates", () =>
       Effect.gen(function* () {
         const counts: number[] = [];
         for (const inventory of [["Ada"], names]) {

@@ -13,7 +13,7 @@ import {
   type Deployment,
   type StopService,
 } from "@t3tools/client-runtime/zerops/flow";
-import type { ZeropsServiceDeployedVersion } from "@t3tools/client-runtime/zerops/data";
+import type { ZeropsServiceDeployedVersion } from "@t3tools/client-runtime/data";
 import {
   projectKeyOf,
   type ProjectRef,

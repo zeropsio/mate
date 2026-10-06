@@ -242,13 +242,16 @@ vi.mock("./zeropsDataContext", () => ({
   useZeropsData: () => ({
     organizationRef: (organizationId: string) => ({ organizationId }),
     projectRef: (organizationId: string, projectId: string) => ({ organizationId, projectId }),
-    runtime: {
-      reads: { setupMarker: () => null },
-    },
+    runtime: {},
   }),
-  // The press's marker on each container, as the case states it: absent unless it says.
+  // Each container's Mate variables: its press's marker as the case states it, absent unless it says.
   useZeropsAtomSelections: (selections: ReadonlyArray<readonly [string, unknown]>) =>
-    new Map(selections.map(([serviceId]) => [serviceId, mock.markers.get(serviceId) ?? false])),
+    new Map(
+      selections.map(([serviceId]) => [
+        serviceId,
+        { flag: true, marker: mock.markers.get(serviceId) ?? false },
+      ]),
+    ),
 }));
 vi.mock("./useZeropsCandidates", () => ({
   useZeropsCandidates: () => ({ listing: mock.listing.current, refresh: () => {} }),

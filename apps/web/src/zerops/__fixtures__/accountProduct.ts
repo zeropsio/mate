@@ -140,7 +140,8 @@ function HarnessAccountData({
   }, [observation, orgId, registry, store]);
   // The account's operations over this store, as `ZeropsAccountData` builds them.
   const operations = useMemo(
-    () => accountOperations(store, registry, client, observation.demandDetail),
+    () =>
+      accountOperations(store, registry, client, observation.demandDetail, observation.revalidate),
     [client, observation, registry, store],
   );
   return createElement(AccountOperationsContext, { value: operations }, children);

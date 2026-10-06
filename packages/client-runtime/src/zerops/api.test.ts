@@ -2658,34 +2658,42 @@ describe("ZeropsApiClient.deleteProject", () => {
   });
 });
 
-describe("ZeropsApiClient.isZeropsMateEnabled", () => {
-  it("reads true from the platform's own flag, case- and space-insensitively", async () => {
-    const stub = recordingFetch(() =>
-      jsonResponse(200, { items: [{ id: "e1", key: "ZCP_MATE_ENABLED", content: " True " }] }),
-    );
-    const client = new ZeropsApiClient({ fetch: stub.fetch });
-    client.restoreSession(SESSION);
-
-    await expect(client.isZeropsMateEnabled("svc-1")).resolves.toBe(true);
-  });
-
-  it("reads false when the flag is present but not on", async () => {
-    const stub = recordingFetch(() =>
-      jsonResponse(200, { items: [{ id: "e1", key: "ZCP_MATE_ENABLED", content: "0" }] }),
-    );
-    const client = new ZeropsApiClient({ fetch: stub.fetch });
-    client.restoreSession(SESSION);
-
-    await expect(client.isZeropsMateEnabled("svc-1")).resolves.toBe(false);
-  });
-
-  it("reads false when the flag is absent entirely", async () => {
-    const stub = recordingFetch(() => jsonResponse(200, { items: [] }));
-    const client = new ZeropsApiClient({ fetch: stub.fetch });
-    client.restoreSession(SESSION);
-
-    await expect(client.isZeropsMateEnabled("svc-1")).resolves.toBe(false);
-  });
+describe("ZeropsApiClient.writeServiceSecret", () => {
+  const refused = () => jsonResponse(500, { error: { code: "internalServerError" } });
+  it.each([
+    {
+      name: "the key there, its sensitive value unreadable: written",
+      items: [{ id: "u1", key: "HQ_ORG_TOKEN", content: "REDACTED" }],
+      written: true,
+    },
+    { name: "the key absent: the refusal stands", items: [], written: false },
+  ])(
+    "reads a refused write back by key, never every variable: $name",
+    async ({ items, written }) => {
+      const http = recordingFetch((request) =>
+        request.method === "POST" && request.url.endsWith("/user-data/search")
+          ? jsonResponse(200, { items })
+          : refused(),
+      );
+      const client = new ZeropsApiClient({ fetch: http.fetch });
+      client.restoreSession(SESSION);
+      const write = client.writeServiceSecret({
+        clientId: "client-1",
+        serviceId: "svc-1",
+        key: "HQ_ORG_TOKEN",
+        content: "secret",
+      });
+      if (written) await expect(write).resolves.toBeUndefined();
+      else await expect(write).rejects.toBeDefined();
+      expect(http.requests.some((request) => request.url.endsWith("/env"))).toBe(false);
+      const search = http.requests.find((request) => request.url.endsWith("/user-data/search"));
+      expect(JSON.parse(search?.body ?? "{}").search).toEqual([
+        { name: "clientId", operator: "eq", value: "client-1" },
+        { name: "serviceStackId", operator: "eq", value: "svc-1" },
+        { name: "key", operator: "eq", value: "HQ_ORG_TOKEN" },
+      ]);
+    },
+  );
 });
 
 describe("HQ birth project env", () => {

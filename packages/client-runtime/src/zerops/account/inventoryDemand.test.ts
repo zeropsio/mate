@@ -110,7 +110,7 @@ describe("inventoryDemand", () => {
         },
       ]);
       expect(
-        inventoryDemand({ activeOrganizationId, grant, openedServices: [] }).map((row) =>
+        inventoryDemand({ activeOrganizationId, grant }).map((row) =>
           "organization" in row
             ? row.organization.organizationId
             : row.project.organization.organizationId,
@@ -209,29 +209,9 @@ it("does not turn admitted navigation projects into detail or deploy demand", ()
     inventoryDemand({
       activeOrganizationId: organization.organizationId,
       grant: drive(granted),
-      openedServices: [],
     }).map(({ kind }) => kind),
   ).toEqual(["organization-inventory"]);
 });
-
-it("navigation reads only Mate flags; opened detail reads all variables", () => {
-  const grant = drive(granted);
-  const descriptors = inventoryDemand({
-    activeOrganizationId: organization.organizationId,
-    grant,
-    openedServices: [
-      { project: A, serviceIds: ["app"], detail: false, mateServiceIds: [] },
-      { project: B, serviceIds: ["zcp", "app"], detail: false, mateServiceIds: ["zcp"] },
-      { project: C, serviceIds: ["zcp"], detail: false, mateServiceIds: ["zcp"] },
-      { project: C, serviceIds: ["app"], detail: true, mateServiceIds: [] },
-    ],
-  });
-  expect(descriptors.filter((row) => row.kind !== "organization-inventory")).toEqual([
-    { kind: "project-variables", project: B, serviceIds: ["zcp"] },
-    { kind: "project-variables", project: C, serviceIds: ["app"] },
-  ]);
-});
-
 describe("holdListedAccess", () => {
   const settle = Effect.gen(function* () {
     for (let turn = 0; turn < 20; turn++) {

@@ -1,4 +1,3 @@
-import type { ZeropsCellAdapter } from "./cells.ts";
 import type * as Clock from "effect/Clock";
 import type * as Effect from "effect/Effect";
 import type * as Result from "effect/Result";
@@ -8,8 +7,6 @@ import type * as Stream from "effect/Stream";
 import type { Atom } from "effect/unstable/reactivity";
 import type { ActivityAppVersion } from "../activity/dto.ts";
 import type { ZeropsProject } from "../api.ts";
-import type { Shown } from "../knowledge/known.ts";
-import type { ZeropsServiceDeployedVersion } from "./deployedVersion.ts";
 import type { ZeropsAgentType } from "../newProject.ts";
 
 /**
@@ -507,29 +504,7 @@ export type QueryDescriptor =
       readonly kind: "services-of-project";
       readonly project: ProjectRef;
       readonly schemaVersion: 1;
-    }
-  | {
-      /**
-       * The organization's service variables of these keys (`POST /user-data/search`, `key in`):
-       * the Mate flag and the deploy a service last started, for every service in one search.
-       */
-      readonly kind: "service-variables-of-services";
-      readonly organization: OrganizationRef;
-      readonly serviceIds: ReadonlyArray<string>;
-      readonly keys: ReadonlyArray<string>;
-      /** Only these variables: a read by id of rows the list's frames named (`entityTable.ts`). */
-      readonly ids?: ReadonlyArray<string>;
-      readonly schemaVersion: 1;
     };
-
-/** The searches whose rows the entity table holds as the platform sends them (`entityTable.ts`). */
-export type TableQueryDescriptor = Extract<
-  QueryDescriptor,
-  { readonly kind: "service-variables-of-services" }
->;
-
-/** The platform entities the entity table holds, by their search's path. */
-export type TableEntity = "user-data";
 
 export type EntityQueryDescriptor = Extract<
   QueryDescriptor,
@@ -573,17 +548,6 @@ export const queryKeyOf = (descriptor: QueryDescriptor): QueryKey => {
           String(descriptor.schemaVersion),
         ]),
       );
-    case "service-variables-of-services":
-      return QueryKey.make(
-        scopedKey([
-          descriptor.kind,
-          organizationKeyOf(descriptor.organization),
-          canonicalStringSet(descriptor.serviceIds),
-          canonicalStringSet(descriptor.keys),
-          descriptor.ids === undefined ? "" : canonicalStringSet(descriptor.ids),
-          String(descriptor.schemaVersion),
-        ]),
-      );
   }
 };
 
@@ -618,14 +582,7 @@ export interface MembershipQueryReadTarget<
   readonly descriptor: Descriptor;
 }
 
-export interface TableQueryReadTarget<
-  Descriptor extends TableQueryDescriptor = TableQueryDescriptor,
-> {
-  readonly kind: "query";
-  readonly descriptor: Descriptor;
-}
-
-export type ReadTarget = EntityReadTarget | MembershipQueryReadTarget | TableQueryReadTarget;
+export type ReadTarget = EntityReadTarget | MembershipQueryReadTarget;
 
 export type ReadOwner =
   | { readonly kind: "interest"; readonly identity: InterestIdentity }
@@ -663,12 +620,6 @@ export type ReadTicket =
       readonly kind: "baseline";
       readonly target: MembershipQueryReadTarget;
       /** Native membership after this marker overlays an admitted baseline. */
-      readonly membershipReceiptOrdinalAtStart: ReceiptOrdinal;
-    })
-  | (ReadTicketBase & {
-      readonly kind: "baseline";
-      readonly target: TableQueryReadTarget;
-      /** Membership frames after this marker overlay an admitted baseline. */
       readonly membershipReceiptOrdinalAtStart: ReceiptOrdinal;
     });
 
@@ -764,61 +715,11 @@ export interface EntityUnavailableObservation {
   readonly ticket: ReadTicket & { readonly target: EntityReadTarget };
 }
 
-/** One service variable, as `POST /user-data/search` states it. */
-export interface ServiceVariableRow {
-  readonly id: string;
-  readonly serviceId: string | null;
-  readonly projectId: string | null;
-  readonly key: string;
-  readonly content: string | null;
-}
-
-export type TableRow = ServiceVariableRow;
-
-export interface TableRowsOf {
-  readonly "user-data": ServiceVariableRow;
-}
-
-/**
- * Rows of a table entity: a search's whole answer (`direct-read`, which also states the list's
- * members), or the rows an update frame carries (`native-push`), each the full row.
- */
-export type TableRowsObservation = {
-  readonly kind: "table-rows-observed";
-  readonly entity: TableEntity;
-  readonly rows: ReadonlyArray<TableRow>;
-} & (
-  | {
-      readonly source: "direct-read";
-      readonly coverage: QueryCoverage;
-      readonly ticket: ReadTicket & { readonly target: TableQueryReadTarget };
-    }
-  | {
-      readonly source: "native-push";
-      readonly registration: RegistrationRequest & {
-        readonly descriptor: { readonly kind: "table-updates" };
-      };
-    }
-);
-
-/** An id a table list's stream added or deleted. */
-export interface TableMembershipObservation {
-  readonly kind: "table-membership-observed";
-  readonly operation: "add" | "remove";
-  readonly id: string;
-  readonly registration: RegistrationRequest & {
-    readonly descriptor: { readonly kind: "table-list" };
-  };
-}
-
-export type TableObservation = TableRowsObservation | TableMembershipObservation;
-
 export type PlatformObservation =
   | EntityObservation
   | QueryBaselineObservation
   | QueryMembershipObservation
-  | EntityUnavailableObservation
-  | TableObservation;
+  | EntityUnavailableObservation;
 
 export interface AdmittedObservation {
   readonly stamp: IngestionStamp;
@@ -1111,7 +1012,7 @@ export interface VerifiedAccessGrant {
 
 /**
  * Which project roles a caller admits for read access, beyond an outright `NO_ACCESS` entry.
- * - "any-role": cells.ts and logs.ts callers — any admitted role (including READ_ONLY) may read.
+ * - "any-role": logs.ts callers — any admitted role (including READ_ONLY) may read.
  * - "no-read-only": inventory.ts's unavailable-reopen fence — READ_ONLY may not reopen an
  *   unavailable facet, matching account-lifecycle.md's "READ_ONLY may not operate Mate".
  * These two behaviours are intentionally different today (F4); this predicate keeps each
@@ -1242,15 +1143,6 @@ export type CommandAttemptState =
 
 export type RuntimeInterestDescriptor =
   | { readonly kind: "organization-inventory"; readonly organization: OrganizationRef }
-  /**
-   * The organization's service variables the app reads (`SERVICE_VARIABLE_KEYS`): the Mate flag
-   * and the deploy a service last started, listed and streamed.
-   */
-  | {
-      readonly kind: "project-variables";
-      readonly project: ProjectRef;
-      readonly serviceIds: ReadonlyArray<string>;
-    }
   | {
       readonly kind: "project-topology";
       readonly project: ProjectRef;
@@ -1276,16 +1168,7 @@ export type RegistrationDescriptor =
       readonly project: ProjectRef;
       readonly organization: OrganizationRef;
     }
-  | { readonly kind: "query-membership"; readonly query: MembershipQueryDescriptor }
-  /** A table list's membership stream (`listStream`): the ids its search admits, as they change. */
-  | { readonly kind: "table-list"; readonly query: TableQueryDescriptor }
-  /** A table entity's update stream (`updateStream`) restricted to its service IDs. */
-  | {
-      readonly kind: "table-updates";
-      readonly entity: TableEntity;
-      readonly organization: OrganizationRef;
-      readonly serviceIds: ReadonlyArray<string>;
-    };
+  | { readonly kind: "query-membership"; readonly query: MembershipQueryDescriptor };
 
 export interface RequestContext {
   /** Effect interruption aborts the underlying fetch/socket work through this signal. */
@@ -1389,19 +1272,7 @@ export type RegistrationRequest =
       readonly descriptor: Extract<RegistrationDescriptor, { readonly kind: "entity-updates" }>;
       readonly baselineTicket: null;
     })
-  | MembershipRegistrationRequest<MembershipQueryDescriptor>
-  | (RegistrationRequestBase & {
-      readonly descriptor: Extract<RegistrationDescriptor, { readonly kind: "table-updates" }>;
-      readonly baselineTicket: null;
-    })
-  | (RegistrationRequestBase & {
-      readonly descriptor: Extract<RegistrationDescriptor, { readonly kind: "table-list" }>;
-      /** Also fences the subscription response's search answer. */
-      readonly baselineTicket: ReadTicket & {
-        readonly owner: { readonly kind: "interest"; readonly identity: InterestIdentity };
-        readonly target: TableQueryReadTarget;
-      };
-    });
+  | MembershipRegistrationRequest<MembershipQueryDescriptor>;
 
 export interface RegistrationReceipt {
   readonly responseObservations: ReadonlyArray<PlatformObservation>;
@@ -1552,8 +1423,6 @@ export interface ZeropsDataAdapter {
     context: RequestContext,
   ) => Effect.Effect<PlatformCommandReceipt, AdapterError>;
   readonly closeReceiver: (receiver: ReceiverHandle) => Effect.Effect<void>;
-  /** The reads no stream carries, one per cell kind (`cells.ts`); without them, none answers. */
-  readonly cells?: ZeropsCellAdapter;
 }
 
 export type InterestLease = {
@@ -1608,12 +1477,6 @@ export interface ZeropsDataReads {
   readonly servicesOf: (project: ProjectRef) => Atom.Atom<CollectionRead<ServiceRecord>>;
   readonly topology: (project: ProjectRef) => Atom.Atom<ProjectTopologyRead>;
   readonly commandAttempt: (attempt: CommandAttemptRef) => Atom.Atom<CommandAttemptState | null>;
-  /** What the service runs, as the account's store states it (`deployedVersion.ts`). */
-  readonly deployedVersion: (service: ServiceRef) => Atom.Atom<Shown<ZeropsServiceDeployedVersion>>;
-  /** The service's Mate flag, as the account's store states it (`deployedVersion.ts`). */
-  readonly mateFlag: (service: ServiceRef) => Atom.Atom<boolean | "unknown" | "unread">;
-  /** Whether the service carries the new press's marker (`deployedVersion.ts`). */
-  readonly setupMarker: (service: ServiceRef) => Atom.Atom<boolean | "unknown" | "unread">;
 }
 
 export interface CommandAdmissionError {
