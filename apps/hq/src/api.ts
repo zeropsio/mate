@@ -133,14 +133,7 @@ import { ROLES_UNANSWERED, Roles } from "./roles.ts";
 import type { RolloutCause } from "./rollouts.ts";
 import { PersonGitCredentials, type GitHolder } from "./personGitCredentials.ts";
 import { Sessions } from "./sessions.ts";
-import {
-  MATES_BATCH,
-  MateLinkTickets,
-  type StreamOptions,
-  StreamTickets,
-  serveStructureSocket,
-  structureMessages,
-} from "./stream.ts";
+import { MateLinkTickets, type StreamOptions, StreamTickets, serveHqSocket } from "./stream.ts";
 import { Structure, StructureRefused } from "./structure.ts";
 
 class SessionRequired extends Schema.TaggedError<SessionRequired>()("SessionRequired", {}) {}
@@ -1183,17 +1176,7 @@ const routes = (
             );
           });
           const socket = yield* request.upgrade;
-          const ended = yield* serveStructureSocket(
-            socket,
-            structureMessages(
-              userId,
-              ending,
-              options.recheck ?? Duration.seconds(30),
-              MATES_BATCH,
-              options.build,
-            ),
-            options.pingEvery ?? Duration.seconds(20),
-          );
+          const ended = yield* serveHqSocket(socket, userId, ending, options);
           // Which side ended it says whether a cut was HQ's or the way's (F26).
           yield* Effect.logInfo(`structure socket closed by ${ended.by} (${String(ended.code)})`);
           return HttpServerResponse.empty();

@@ -5,7 +5,7 @@
  * - **down**, the Mate's state (`state`) at once and after every change of its record, its birth or
  *   its changes (`changes.ts`); its access (`access`, `mateAccess.ts`) at once and after every view
  *   of the org HQ reads; and `ping` every 20 s;
- * - **up**, `pong`, and its overview (`overview`): the whole of it first, then the sections that
+ * - **up**, `pong`, source attention (`attention`), and its overview (`overview`): the whole of it first, then the sections that
  *   changed, kept by `mateOverviews.ts` for whoever may observe the Mate on their structure socket.
  *   A frame whose type HQ does not know is passed by — an older Mate's `summary` among them.
  *
@@ -28,6 +28,7 @@ import * as Clock from "effect/Clock";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import * as Socket from "effect/unstable/socket/Socket";
@@ -39,6 +40,15 @@ import { MateCredentials } from "./mateCredentials.ts";
 import { MateOverviews } from "./mateOverviews.ts";
 import { LiveSockets, socketEnding } from "./stream.ts";
 import { Structure } from "./structure.ts";
+
+const readAttentionFrame = Schema.decodeUnknownOption(
+  Schema.fromJsonString(
+    Schema.Struct({
+      type: Schema.Literal("attention"),
+      attention: Schema.Unknown,
+    }),
+  ),
+);
 
 export interface LinkOptions {
   /** How often HQ pings; 20 s. */
@@ -110,6 +120,11 @@ export const serveMateLink = (
           for (const frame of frames) {
             if (linkFrameBytes(frame) > MATE_LINK_FRAME_MAX) {
               return yield* close(1009, "frame too big");
+            }
+            const attention = readAttentionFrame(frame);
+            if (Option.isSome(attention)) {
+              yield* overviews.reportAttention(projectId, link, attention.value.attention);
+              continue;
             }
             const read = readLinkUp(frame);
             if (read.kind === "invalid") return yield* close(1007, "no link message");

@@ -236,7 +236,7 @@ const shown = (environments: StructureRead["apps"][number]["environments"]) => {
 const recordsOf = (apps: StructureRead["apps"]) =>
   apps.map(({ can: _offers, environments, projects, ...app }) => ({
     ...app,
-    projects: projects.map(({ can: _mate, moveTo: _choices, ...project }) => project),
+    projects: projects.map(({ can: _mate, ...project }) => project),
     environments: shown(environments).map(({ can: _offered, ...environment }) => environment),
   }));
 
@@ -359,10 +359,7 @@ describe("structure", () => {
               kind: "production",
             });
             yield* structure.createMate("owner", { projectId: "P_MATE", face: "face-1" });
-            const offered = Effect.map(
-              structure.read("owner"),
-              (read) => read.ungrouped.find((entry) => entry.projectId === "P_MATE")?.moveTo,
-            );
+            const offered = structure.moveDestinations("owner", "P_MATE");
             const intoProduction = reasonOf(
               structure.moveProject("owner", "P_MATE", { appId: shop.id, kind: "production" }),
             );
@@ -2644,7 +2641,7 @@ describe("structure", () => {
             );
             const ungrouped = (userId: string) =>
               Effect.map(structure.read(userId), (read) =>
-                read.ungrouped.map(({ can: _offers, moveTo: _choices, ...entry }) => entry),
+                read.ungrouped.map(({ can: _offers, ...entry }) => entry),
               );
             const listed = [
               {

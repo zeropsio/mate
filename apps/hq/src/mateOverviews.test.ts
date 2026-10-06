@@ -196,6 +196,8 @@ describe("MateOverviews", () => {
             yield* overviews.restore;
             const entry = (yield* overviews.all).get("P");
             assert.deepStrictEqual(entry, {
+              attention: null,
+              attentionState: "none",
               presence: { online: false, since: rows.get("P")!.reportedAt, overview: "stored" },
               overview: last,
             });
@@ -242,6 +244,46 @@ const linkedCore = (url?: string) =>
     return { ...core, owner, link };
   });
 
+it.effect("attention keeps source order and becomes live again on an unchanged new link", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const overviews = yield* makeMateOverviews(memoryStore().store);
+      const value = {
+        source: { environmentId: "env", incarnation: "boot", revision: 2 },
+        mainThreadId: "main",
+        lastThreadId: "last",
+        working: 0,
+        waiting: 0,
+        results: [],
+        questions: [],
+        truncated: false,
+      };
+      const first = yield* overviews.connect("P");
+      yield* overviews.reportAttention("P", first, value);
+      assert.strictEqual((yield* overviews.all).get("P")?.attentionState, "live");
+      const second = yield* overviews.connect("P");
+      assert.strictEqual((yield* overviews.all).get("P")?.attentionState, "stored");
+      yield* overviews.reportAttention("P", second, { ...value, results: null });
+      assert.strictEqual((yield* overviews.all).get("P")?.attentionState, "stored");
+      yield* overviews.reportAttention("P", second, value);
+      assert.strictEqual((yield* overviews.all).get("P")?.attentionState, "live");
+      yield* overviews.reportAttention("P", first, {
+        ...value,
+        source: { ...value.source, revision: 9 },
+      });
+      yield* overviews.reportAttention("P", second, {
+        ...value,
+        source: { ...value.source, revision: 1 },
+      });
+      yield* overviews.reportAttention("P", second, {
+        ...value,
+        source: { ...value.source, incarnation: "old" },
+      });
+      assert.deepStrictEqual((yield* overviews.all).get("P")?.attention, value);
+    }),
+  ),
+);
+
 describe("MateOverviews in HQ's store", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
     it.effect("keeps a slept Mate's overview across a restart of its Core", () =>
@@ -265,12 +307,23 @@ describe("MateOverviews in HQ's store", () => {
         const stream = yield* next.socket(
           `/api/structure/ws?ticket=${yield* ticketFor(next.call, owner)}`,
         );
-        const { mates } = (yield* stream.next("snapshot")) as {
-          readonly mates: Record<string, { readonly presence: { readonly overview: string } }>;
+        yield* stream.send({
+          type: "subscribe",
+          scopes: [{ scope: { kind: "attention", projectId: "P_MATE" } }],
+        });
+        const { values } = (yield* stream.next("scope-reset")) as {
+          readonly values: ReadonlyArray<{
+            readonly key: string;
+            readonly value: {
+              readonly presence: { readonly overview: string };
+              readonly overview: unknown;
+            };
+          }>;
         };
+        const mate = values.find((entry) => entry.key === "P_MATE")?.value;
         assert.deepStrictEqual(
-          { ...mates["P_MATE"], presence: mates["P_MATE"]?.presence.overview },
-          { ...overview, presence: "stored" },
+          { overview: mate?.overview, presence: mate?.presence.overview },
+          { overview, presence: "stored" },
         );
       }),
     );

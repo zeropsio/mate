@@ -10,7 +10,7 @@ import {
   appTarget,
   environmentOffers,
   mateOffers,
-  moveOffers,
+  moveDestinations,
   orgOffers,
   recordOffers,
   releaseTarget,
@@ -231,7 +231,7 @@ describe("HQ's offers on a Mate", () => {
     ],
     ["a reader", "reader", "P_MADE", true, {}],
   ])("moves for %s as the write decides", (_, userId, projectId, recorded, expected) => {
-    expect(moveOffers(userId, { projectId, held: "mate", recorded }, APPS, FACTS)).toEqual(
+    expect(moveDestinations(userId, { projectId, held: "mate", recorded }, APPS, FACTS)).toEqual(
       expected,
     );
   });

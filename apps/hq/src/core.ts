@@ -1,3 +1,4 @@
+import { hqScopesLayer } from "./hqScopes.ts";
 import { observationLayer } from "./observation.ts";
 /**
  * Core, composed once for `main.ts` and the tests: the routes served over its services, and the
@@ -136,25 +137,29 @@ const services = (options: CoreOptions) => {
       ),
       Layer.provideMerge(gitHostLayer({ rootDir: options.gitRoot })),
     ),
-  ).pipe(
-    Layer.provideMerge(mateOverviewsLayer),
-    // One set of buckets for the API's addresses and the door's people.
-    Layer.provideMerge(doorRateLimitLayer),
-    Layer.provideMerge(leader),
-    Layer.provideMerge(deployKeysLayer(keySecret)),
-    Layer.provideMerge(rolloutsLayer),
-    // Below the leader: its official check reads the org through the view every reader shares.
-    Layer.provideMerge(
-      rolesLayer({
-        hqProjectId: options.hqProjectId,
-        credential: options.credential,
-        ...(options.viewTtl === undefined ? {} : { viewTtl: options.viewTtl }),
-      }),
-    ),
-    Layer.provideMerge(
-      PgClient.layer({ url: options.databaseUrl, applicationName: "hq", maxConnections: 4 }),
-    ),
-  );
+  )
+    .pipe(
+      Layer.provideMerge(mateOverviewsLayer),
+      // One set of buckets for the API's addresses and the door's people.
+      Layer.provideMerge(doorRateLimitLayer),
+      Layer.provideMerge(leader),
+      Layer.provideMerge(deployKeysLayer(keySecret)),
+      Layer.provideMerge(rolloutsLayer),
+      // Below the leader: its official check reads the org through the view every reader shares.
+      Layer.provideMerge(
+        rolesLayer({
+          hqProjectId: options.hqProjectId,
+          credential: options.credential,
+          ...(options.viewTtl === undefined ? {} : { viewTtl: options.viewTtl }),
+        }),
+      ),
+      Layer.provideMerge(
+        PgClient.layer({ url: options.databaseUrl, applicationName: "hq", maxConnections: 4 }),
+      ),
+    )
+    .pipe((base) =>
+      hqScopesLayer(options.build, options.streamRecheck).pipe(Layer.provideMerge(base)),
+    );
 };
 
 /**

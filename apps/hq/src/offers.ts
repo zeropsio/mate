@@ -150,7 +150,7 @@ const KINDS: ReadonlyArray<RoleProjectKind> = ["mate", "devstage", "stage", "pro
  * only for a Mate HQ holds a record of (`mate_record_missing`); a production only where no other
  * production holds the place (`productionTaken`).
  */
-export const moveOffers = (
+export const moveDestinations = (
   userId: string,
   mate: { readonly projectId: string; readonly held: Held; readonly recorded: boolean },
   apps: ReadonlyArray<{ readonly id: string; readonly projects: ReadonlyArray<AppProjectRow> }>,

@@ -12,6 +12,8 @@
  *
  * @module mateOverviews
  */
+import { HqAttentionValue, type HqAttentionScopeValue } from "@t3tools/shared/hqStream";
+import { acceptAttention } from "./attentionIngest.ts";
 import type { MatePresence } from "@t3tools/shared/hqMates";
 import { type MateLinkUp, MateOverview } from "@t3tools/shared/mateLink";
 import * as Clock from "effect/Clock";
@@ -30,13 +32,12 @@ import * as SqlClient from "effect/unstable/sql/SqlClient";
 import { Leader } from "./leader.ts";
 
 /** A frame of a Mate's overview, as its link brings it. */
+const readAttention = Schema.decodeUnknownOption(HqAttentionValue);
+
 export type OverviewFrame = Extract<MateLinkUp, { readonly type: "overview" }>;
 
 /** A Mate as HQ holds it: its presence, and its overview where it has one. */
-export interface MateOverviewEntry {
-  readonly presence: MatePresence;
-  readonly overview: MateOverview | null;
-}
+export type MateOverviewEntry = HqAttentionScopeValue;
 
 /** A Mate's overview as HQ's store keeps it. */
 export interface StoredOverview {
@@ -59,6 +60,11 @@ export class MateOverviews extends Context.Service<
     readonly connect: (projectId: string) => Effect.Effect<number, never, Scope.Scope>;
     /** A frame the link `link` brought. */
     readonly report: (projectId: string, link: number, frame: OverviewFrame) => Effect.Effect<void>;
+    readonly reportAttention: (
+      projectId: string,
+      link: number,
+      value: unknown,
+    ) => Effect.Effect<void>;
     /**
      * Reads back what the store keeps of every Mate HQ holds no link of: offline, as of its
      * writing. At a takeover.
@@ -74,6 +80,8 @@ export class MateOverviews extends Context.Service<
 >()("@t3tools/hq/mateOverviews") {}
 
 interface Entry {
+  readonly attentionOn: number | null;
+  readonly attention: HqAttentionValue | null;
   /** Its open links, oldest first: the newest is the one HQ hears. */
   readonly links: ReadonlyArray<number>;
   /** When it last went online or offline: ISO. */
@@ -131,6 +139,8 @@ export const makeMateOverviews = (
           since: yield* now,
           overview: null,
           fullOn: null,
+          attention: null,
+          attentionOn: null,
         };
         entries.set(projectId, change(entry));
         yield* PubSub.publish(changed, projectId);
@@ -178,6 +188,33 @@ export const makeMateOverviews = (
             yield* Queue.offer(unsaved, projectId);
           }
         }),
+      reportAttention: (projectId, link, value) =>
+        Effect.gen(function* () {
+          const entry = entries.get(projectId);
+          if (entry === undefined || link !== newestOf(entry)) return;
+          const read = readAttention(value);
+          if (Option.isNone(read)) return;
+          const next = read.value;
+          const prior = entry.attention;
+          if (
+            prior !== null &&
+            prior.source.incarnation === next.source.incarnation &&
+            prior.source.environmentId === next.source.environmentId &&
+            prior.source.revision > next.source.revision
+          )
+            return;
+          const attention = acceptAttention(prior, next);
+          if (
+            entry.attentionOn === link &&
+            prior !== null &&
+            attention !== null &&
+            (attention.source.incarnation !== prior.source.incarnation ||
+              attention.source.environmentId !== prior.source.environmentId)
+          )
+            return;
+          if (attention === prior && entry.attentionOn === link) return;
+          yield* update(projectId, () => ({ ...entry, attention, attentionOn: link }));
+        }),
       restore: Effect.gen(function* () {
         for (const row of yield* store.load) {
           const entry = entries.get(row.projectId);
@@ -187,6 +224,8 @@ export const makeMateOverviews = (
             since: row.reportedAt,
             overview: row.overview,
             fullOn: null,
+            attention: null,
+            attentionOn: null,
           });
           yield* PubSub.publish(changed, row.projectId);
         }
@@ -203,7 +242,17 @@ export const makeMateOverviews = (
           new Map(
             [...entries].map(([projectId, entry]) => [
               projectId,
-              { presence: presenceOf(entry), overview: entry.overview },
+              {
+                presence: presenceOf(entry),
+                overview: entry.overview,
+                attention: entry.attention,
+                attentionState:
+                  entry.attention === null
+                    ? "none"
+                    : entry.attentionOn === newestOf(entry) && entry.links.length > 0
+                      ? "live"
+                      : "stored",
+              },
             ]),
           ),
       ),
