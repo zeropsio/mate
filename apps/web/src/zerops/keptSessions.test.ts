@@ -4,7 +4,11 @@ import {
   BearerConnectionRegistration,
   BearerConnectionTarget,
 } from "@t3tools/client-runtime/connection";
-import { KEPT_SESSIONS_KEY } from "@t3tools/client-runtime/zerops/keptSessions";
+import {
+  KEPT_SESSIONS_KEY,
+  makeKeptSessions,
+  MATE_SESSIONS,
+} from "@t3tools/client-runtime/zerops/keptSessions";
 import { AuthZeropsClientScopes, EnvironmentId, type AuthSessionState } from "@t3tools/contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -197,6 +201,50 @@ describe("a Mate session this tab mints in place of a kept one", () => {
     await settleLocks();
 
     expect(logouts().toSorted()).toEqual(["Bearer session-new", "Bearer session-old"]);
+  });
+});
+
+// A stored login the platform refused never opened its account here: its own kept sessions end.
+describe("a refused stored login's own kept sessions", () => {
+  /** A session kept under an account no tab has open: written where that account keeps it. */
+  const keepUnder = (accountId: string, key: string, name: string) => {
+    const storageKey = `mate:account:${accountId}:${KEPT_SESSIONS_KEY}`;
+    makeKeptSessions(
+      {
+        getItem: () => values.get(storageKey) ?? null,
+        setItem: (_name, value) => {
+          values.set(storageKey, value);
+        },
+        removeItem: () => {
+          values.delete(storageKey);
+        },
+      },
+      Date.now,
+      MATE_SESSIONS,
+    ).keep(key, session(name));
+  };
+
+  it.each([
+    ["end at their Mate, and no other account's do", false, ["Bearer session-shop"]],
+    ["wait for a tab that holds the account open", true, []],
+  ] as const)("%s", async (_name, otherTabHolds, ended) => {
+    keepUnder("person-1", "p1:zcp", "shop");
+    keepUnder("person-2", "p2:zcp", "blog");
+    const locks = fakeLocks();
+    vi.stubGlobal("navigator", { locks });
+    if (otherTabHolds)
+      void locks.request(
+        "mate:account-open:person-1",
+        { mode: "shared" },
+        () => new Promise(() => {}),
+      );
+
+    kept.endKeptSessionsOf("person-1");
+    await settleLocks();
+
+    expect(fetched.map(({ authorization }) => authorization)).toEqual(ended);
+    lifetime.openAccountLifetime("person-2");
+    expect(kept.keptSessions.read("p2:zcp")).not.toBeNull();
   });
 });
 

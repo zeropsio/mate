@@ -3,8 +3,9 @@
  * and its organizations' HQs' — under the account's scoped `localStorage`. The door's exchange
  * presents a Mate's again (`environmentPorts.ts`), HQ's API its own (`accountHq.ts`), and no kept
  * session outlives the login it was opened under: the account's close ends every one where it was
- * issued however the account closes — once no other tab of this origin holds the account open, for
- * a tab's sign-out is its own and the sessions are its neighbours' too.
+ * issued however the account closes, and a stored login the platform refused ends its own account's
+ * (`endKeptSessionsOf`) — each once no other tab of this origin holds that account open, since a
+ * neighbouring tab still on the account uses them.
  */
 import type { BearerConnectionRegistration } from "@t3tools/client-runtime/connection";
 import { endIssuedSession } from "@t3tools/client-runtime/data";
@@ -20,6 +21,7 @@ import { AuthZeropsClientScopes, type AuthSessionState } from "@t3tools/contract
 import {
   accountLocalStorage,
   accountStorageKey,
+  accountStorageKeyOf,
   currentAccountId,
   onAccountLifetimeClose,
   onAccountLifetimeOpen,
@@ -124,8 +126,12 @@ onAccountLifetimeOpen(() => {
  */
 export function endWhenAccountLeft(end: () => void): void {
   const accountId = currentAccountId();
+  if (accountId !== null) endWhenLeft(accountId, end);
+}
+
+/** Runs `end` once this tab let `accountId` go and no tab of this origin holds it open. */
+function endWhenLeft(accountId: string, end: () => void): void {
   const locks = webLocks();
-  if (accountId === null) return;
   if (locks === undefined) return end();
   const own = hold?.accountId === accountId ? hold.released : Promise.resolve();
   void own.then(() =>
@@ -179,6 +185,23 @@ export function keepMintedMateSession(
   }, setAside);
 }
 
+/** The sessions of every kind `accountId` keeps, its Mates' and its HQs', ended where issued. */
+function endKeptUnder(mateKey: string, hqKey: string): void {
+  for (const registration of keptUnder(mateKey, MATE_SESSIONS).drain())
+    endKeptSession(registration);
+  for (const session of keptUnder(hqKey, HQ_SESSIONS).drain()) endHqSession(session);
+}
+
+/**
+ * A stored login the platform refused never opened its account here: that account's own kept
+ * sessions end, once no tab of this origin holds the account open. No other account's are touched.
+ */
+export function endKeptSessionsOf(accountId: string): void {
+  const mateKey = accountStorageKeyOf(accountId, MATE_SESSIONS.storageKey);
+  const hqKey = accountStorageKeyOf(accountId, HQ_SESSIONS.storageKey);
+  endWhenLeft(accountId, () => endKeptUnder(mateKey, hqKey));
+}
+
 // However the account closes — signed out, replaced, its login refused while open — it ends every
 // session it kept, whether or not this tab ever built a connection runtime or reached HQ; where
 // another tab still holds the account open, that tab's close does.
@@ -186,10 +209,6 @@ onAccountLifetimeClose(() => {
   const mateKey = accountStorageKey(MATE_SESSIONS.storageKey);
   const hqKey = accountStorageKey(HQ_SESSIONS.storageKey);
   if (mateKey === null || hqKey === null) return;
-  endWhenAccountLeft(() => {
-    for (const registration of keptUnder(mateKey, MATE_SESSIONS).drain())
-      endKeptSession(registration);
-    for (const session of keptUnder(hqKey, HQ_SESSIONS).drain()) endHqSession(session);
-  });
+  endWhenAccountLeft(() => endKeptUnder(mateKey, hqKey));
   hold?.release();
 });

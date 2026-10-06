@@ -41,7 +41,7 @@ import { makeZeropsSessionCalls, probeZeropsPrincipal } from "@t3tools/client-ru
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
 import { rememberBootFrame } from "./bootFrame";
 // Its account hooks hold the account open and end its kept sessions: loaded before any account opens.
-import "./keptSessions";
+import { endKeptSessionsOf } from "./keptSessions";
 import {
   useCallback,
   useEffect,
@@ -163,6 +163,7 @@ function makeSession(storage: ZeropsStorageAdapter) {
   let driver!: ZeropsSessionDriver;
   /** True while the person's own sign-out runs: its session end is no refusal. */
   let signingOut = false;
+  const owner = ownerRecordIn(browser);
   const calls = makeZeropsSessionCalls({
     // The client's own token writes hold the same locks as every other writer in this browser.
     holdToken: tokenWrites,
@@ -189,6 +190,9 @@ function makeSession(storage: ZeropsStorageAdapter) {
       } catch (cause) {
         // The client has already cleared a session the API refused.
         if (client.session !== null) return unavailableVerdict(cause);
+        // That login never opened its account here: the account's own kept sessions end with it.
+        const refused = owner.read();
+        if (refused !== null) endKeptSessionsOf(refused.userId);
         return { kind: "unauthorized" };
       }
     },
@@ -197,7 +201,7 @@ function makeSession(storage: ZeropsStorageAdapter) {
     forgetSession: () => client.forgetSession(),
     openAccount: (user) => openAccountLifetime(user.id),
     closeAccount: closeAccountLifetime,
-    owner: ownerRecordIn(browser),
+    owner,
     withRefreshLock: (work) =>
       locks === undefined ? Promise.resolve().then(work) : locks.request(ZEROPS_REFRESH_LOCK, work),
     nowMs: () => performance.now(),

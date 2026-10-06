@@ -14,7 +14,12 @@ export function currentAccountEpoch(): number {
 }
 
 export function accountStorageKey(key: string): string | null {
-  return accountId === null ? null : `mate:account:${encodeURIComponent(accountId)}:${key}`;
+  return accountId === null ? null : accountStorageKeyOf(accountId, key);
+}
+
+/** Where `owner`'s account keeps `key`, whichever account is open now. */
+export function accountStorageKeyOf(owner: string, key: string): string {
+  return `mate:account:${encodeURIComponent(owner)}:${key}`;
 }
 
 export function openAccountLifetime(userId: string): void {
