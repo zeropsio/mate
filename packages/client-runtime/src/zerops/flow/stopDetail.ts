@@ -437,6 +437,7 @@ export function jobOf(
  */
 export function driftOf(state: EnvironmentServiceState): StopServiceDrift | undefined {
   const live = state.deploy?.live;
+  const latest = state.deploy?.latest;
   if (
     live === null ||
     live === undefined ||
@@ -445,21 +446,22 @@ export function driftOf(state: EnvironmentServiceState): StopServiceDrift | unde
     state.activeVersionId === undefined ||
     state.activeVersionId === null ||
     state.activeVersionId === live.appVersionId ||
-    (state.deploy !== undefined && jobInFlight(state.deploy.latest))
+    (latest !== undefined && jobInFlight(latest)) ||
+    (latest?.state === "unresolved" && latest.appVersionId === state.activeVersionId)
   ) {
     return undefined;
   }
   const runs = deployedVersion(state.appVersionName).label;
   // HQ asks again only the service's newest job: its live commit, while the newest is of it.
-  const latest = state.deploy?.latest ?? live;
+  const newest = latest ?? live;
   return {
     line:
       runs === undefined
         ? `${state.hostname} runs a version HQ did not deploy`
         : `${state.hostname} runs “${runs}”, which HQ did not deploy`,
     redeploy:
-      latest.sha === live.sha
-        ? { service: state.hostname, sha: live.sha, after: latest.id }
+      newest.sha === live.sha
+        ? { service: state.hostname, sha: live.sha, after: newest.id }
         : undefined,
     zerops: state.serviceId === undefined ? undefined : serviceDashboardUrl(state.serviceId),
   };

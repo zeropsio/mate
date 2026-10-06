@@ -1164,6 +1164,32 @@ describe("driftOf — a service running a version HQ did not deploy", () => {
     },
     { name: "HQ's own version", state: state({ activeVersionId: "av-hq" }), expected: undefined },
     {
+      name: "an unresolved HQ deploy's version may be what runs",
+      state: state({
+        activeVersionId: "av-unresolved",
+        deploy: { latest: deployRecord("unresolved", { appVersionId: "av-unresolved" }), live },
+      }),
+      expected: undefined,
+    },
+    {
+      name: "an unresolved HQ deploy names another version: drift still applies",
+      state: state({
+        deploy: {
+          latest: deployRecord("unresolved", {
+            id: "6",
+            sha: LIVE_SHA,
+            appVersionId: "av-unresolved",
+          }),
+          live,
+        },
+      }),
+      expected: {
+        line: "app runs “hotfix by hand”, which HQ did not deploy",
+        redeploy: { service: "app", sha: LIVE_SHA, after: "6" },
+        zerops: "https://app.zerops.io/service-stack/svc-app",
+      },
+    },
+    {
       name: "what runs not read",
       state: state({ activeVersionId: undefined }),
       expected: undefined,

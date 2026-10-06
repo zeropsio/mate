@@ -661,9 +661,15 @@ export const deploysLayer = (
               UPDATE hq_deploy_job
               SET state = 'superseded', superseded_by = ${made!.id}::bigint,
                   reason = ${`superseded by ${short(target.sha)}`}, ended_at = now(),
-                  updated_at = now()
+                  updated_at = now(),
+                  evidence = CASE WHEN evidence->>'phase' = 'waiting-for-build' THEN
+                    evidence || jsonb_build_object('phase', 'closed', 'nextActor', 'none',
+                      'nextAction', ${`Superseded by ${short(target.sha)}`}::text)
+                    ELSE evidence END
               WHERE project_id = ${projectId} AND kind = 'deploy' AND service = ${target.service}
-                AND state = 'queued' AND id <> ${made!.id}::bigint`;
+                AND (state = 'queued' OR (state = 'submitting' AND process_id IS NULL
+                  AND ended_at IS NULL AND evidence->>'phase' = 'waiting-for-build'))
+                AND id <> ${made!.id}::bigint`;
           }
           return { job: made!.id };
         });

@@ -1988,6 +1988,45 @@ describe("deploys", () => {
       ),
     );
 
+    it.effect("a newer deploy supersedes a waiting build and the environment worker moves on", () =>
+      withDeploys(({ appId, world, tiers, commit, deploys, until }) =>
+        Effect.gen(function* () {
+          tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
+          world.unanswered.add("buildAndDeploy");
+          const first = yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+          const service = yield* Deploys;
+          yield* service.changes.pipe(
+            Stream.mapEffect(() => service.operations(appId)),
+            Stream.filter((rows) => rows[0]?.evidence?.phase === "waiting-for-build"),
+            Stream.take(1),
+            Stream.runDrain,
+            Effect.timeout("2 seconds"),
+          );
+          world.unanswered.clear();
+          const second = yield* commit("web", { "index.js": "newer deploy\n" });
+          yield* until((rows) => rows.length === 2);
+          assert.strictEqual((yield* deploys)[0]?.state, "superseded");
+          yield* until((rows) => rows.at(-1)?.state === "live");
+          assert.deepStrictEqual(
+            (yield* deploys).map(({ sha, state }) => [sha, state]),
+            [
+              [first, "superseded"],
+              [second, "live"],
+            ],
+          );
+          const records = yield* service.operations(appId);
+          assert.strictEqual(records[0]?.evidence?.phase, "closed");
+          assert.strictEqual(records[0]?.evidence?.nextActor, "none");
+          const sql = yield* SqlClient.SqlClient;
+          const [link] = yield* sql<{ successor: string; newest: string }>`
+            SELECT superseded_by::text AS successor,
+              (SELECT max(id)::text FROM hq_deploy_job) AS newest
+            FROM hq_deploy_job WHERE sha = ${first}`;
+          assert.strictEqual(link?.successor, link?.newest);
+        }),
+      ),
+    );
+
     it.effect(
       "an unobservable build stays pending across restart and explicit Run again supersedes the wait",
       () =>
