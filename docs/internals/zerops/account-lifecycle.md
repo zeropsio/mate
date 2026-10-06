@@ -2,10 +2,9 @@
 
 The hosted client has one account boundary, outside the router and connection runtime. Only the
 Zerops callback can run before verification. A saved credential is not verification: Mate checks
-`user/info` before mounting the product. HQ menu memory can paint earlier. Navigation reads only
-the selected organization; project roles and services are demanded when a project opens, and for
-each Mate a surface draws with its menu — the projects page's, a project page's, the left menu's
-rows as they are mounted — so its container is known (`useMatesInventory`). Drawing a Mate never
+`user/info` before mounting the product. Navigation reads the selected organization's projects
+and services once. A drawn Mate row holds its project detail only when it decides access for a
+viewer without organization listing rights (`useVisibleProjectAccess`). Drawing a Mate never
 connects to it. Registration and second factors belong to the Zerops account application.
 
 ## Ownership and authority

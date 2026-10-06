@@ -2548,7 +2548,7 @@ function MateRow<T extends RosterCandidate>({
   // Nothing on its menu is about a Mate still being made, or one going: it
   // offers none — until its setup stopped, when *Finish setup* is on it.
   const actions = !outsideHq && mateRowOffersMenu({ deleting, coming }) ? offered : undefined;
-  // Its container is read while the row is drawn with its menu (`useDrawnMates`).
+  // Its project access detail is held while the row is drawn with its menu (`useDrawnProjectAccess`).
   const drawn = actions?.drawn;
   useEffect(() => drawn?.(), [drawn]);
   // Whose seat it is, and whether anybody has signed its agent in — read off

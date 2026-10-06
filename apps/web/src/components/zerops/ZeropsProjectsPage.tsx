@@ -93,7 +93,7 @@ import { withheldProjectNotices } from "~/zerops/inventoryContext";
 import { useZeropsInventory } from "~/zerops/ZeropsInventoryProvider";
 import { useProjectCreations } from "~/zerops/useProjectCreations";
 import { useZeropsFirstBuilds } from "~/zerops/useZeropsFirstBuilds";
-import { drawnMateProjects, useMatesInventory } from "~/zerops/useMatesInventory";
+import { drawnMateProjects, useVisibleProjectAccess } from "~/zerops/useVisibleProjectAccess";
 import { useNowMs } from "~/zerops/useNowMs";
 import { mateUpdateStatus } from "~/zerops/mateUpdate";
 import { useZeropsMateUpdateStates } from "~/zerops/useZeropsMateUpdate";
@@ -840,9 +840,10 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   const creationVerdicts = useProjectCreations(observedCandidates);
   // A first build whose process failed reads as the platform leaves it, with what removes it.
   const firstBuilds = useZeropsFirstBuilds(observedCandidates);
-  // Each Mate the page draws has its project read: its container is what Restart and the
-  // application's Add Mate and Add stage stand on.
-  useMatesInventory(useMemo(() => drawnMateProjects(observedCandidates), [observedCandidates]));
+  // Each drawn Mate holds only the project detail that decides the viewer’s access.
+  useVisibleProjectAccess(
+    useMemo(() => drawnMateProjects(observedCandidates), [observedCandidates]),
+  );
   const candidates = useMemo(
     () =>
       observedCandidates.map((candidate) =>
