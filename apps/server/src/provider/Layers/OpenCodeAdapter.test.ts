@@ -3406,6 +3406,75 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
     }),
   );
 
+  // A provider error says its error on its turn before the turn it fails —
+  // one record of the break — and a 429 is typed a usage limit, a pause.
+  it.effect.each([
+    {
+      name: "a usage limit",
+      error: { name: "APIError", data: { message: "Rate limited", statusCode: 429 } },
+      limit: true,
+    },
+    {
+      name: "a server error",
+      error: { name: "APIError", data: { message: "Internal error", statusCode: 500 } },
+      limit: false,
+    },
+  ])("says $name on its turn before failing it", ({ error, limit }) =>
+    Effect.gen(function* () {
+      const adapter = yield* OpenCodeAdapter;
+      const threadId = asThreadId(`thread-provider-error-${limit}`);
+      const sessionID = "http://127.0.0.1:9999/session";
+      const failure = promiseWithResolvers<unknown>();
+      runtimeMock.state.subscribedEvents = [failure.promise];
+      yield* adapter.startSession({
+        provider: ProviderDriverKind.make("opencode"),
+        threadId,
+        runtimeMode: "full-access",
+      });
+      const turn = yield* adapter.sendTurn({
+        threadId,
+        input: "Work",
+        modelSelection: createModelSelection(
+          ProviderInstanceId.make("opencode"),
+          "opencode/kimi-k3",
+        ),
+      });
+      const endedFiber = yield* adapter.streamEvents.pipe(
+        Stream.filter(
+          (event) =>
+            event.threadId === threadId &&
+            (event.type === "runtime.error" || event.type === "turn.completed"),
+        ),
+        Stream.takeUntil((event) => event.type === "turn.completed"),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      failure.resolve({
+        id: "evt-provider-error",
+        type: "session.error",
+        properties: { sessionID, error },
+      });
+      const ended = Array.from(yield* Fiber.join(endedFiber));
+      NodeAssert.deepEqual(
+        ended.map((event) => [event.type, event.turnId]),
+        [
+          ["runtime.error", turn.turnId],
+          ["turn.completed", turn.turnId],
+        ],
+      );
+      const [said, completed] = ended;
+      NodeAssert.equal(
+        said?.type === "runtime.error" ? said.payload.class : undefined,
+        limit ? "usage_limit" : "provider_error",
+      );
+      NodeAssert.equal(
+        completed?.type === "turn.completed" ? completed.payload.terminalReason : undefined,
+        limit ? "usage_limit" : undefined,
+      );
+      yield* adapter.stopSession(threadId);
+    }),
+  );
+
   it.effect("keeps progress live during automatic approval and never reopens a finished turn", () =>
     Effect.gen(function* () {
       const adapter = yield* OpenCodeAdapter;
@@ -5835,7 +5904,7 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
               event.type === "runtime.error",
           )
           .map((event) => event.type),
-        ["turn.completed", "runtime.error"],
+        ["runtime.error", "turn.completed"],
       );
       const failed = events.find((event) => event.type === "turn.completed");
       NodeAssert.equal(

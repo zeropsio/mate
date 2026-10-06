@@ -3558,6 +3558,11 @@ describe("ClaudeAdapterLive", () => {
       const errors = events.filter((event) => event.type === "runtime.error");
       assert.equal(errors.length, 1);
       assert.equal(errors[0]?.payload.message, expected);
+      // A usage limit is typed a pause, for the conversation to read without its words.
+      assert.equal(
+        errors[0]?.type === "runtime.error" ? errors[0].payload.class : undefined,
+        expected === usageLimitMessage ? "usage_limit" : "provider_error",
+      );
       assert.equal(completedTurn(events).state, "failed");
       assert.equal(completedTurn(events).errorMessage, expected);
     }).pipe(
@@ -5278,7 +5283,7 @@ describe("ClaudeAdapterLive", () => {
               ),
             );
           }),
-        words: "Claude Code exited (code 1). Send a message to pick up where it left off.",
+        words: "Claude Code stopped unexpectedly. Send a message to pick up where it left off.",
       },
       {
         name: "an earlier turn's stderr is not this one's",

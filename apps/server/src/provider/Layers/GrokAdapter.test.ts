@@ -1992,6 +1992,8 @@ it.layer(grokAdapterTestLayer)("GrokAdapterLive", (it) => {
           terminalEvent.payload.errorMessage ?? "",
           "Grok usage limit reached. Try again later.",
         );
+        // Typed a pause: the conversation never reads its words for it.
+        assert.equal(terminalEvent.payload.terminalReason, "usage_limit");
       }
 
       yield* Fiber.interrupt(runtimeEventsFiber);

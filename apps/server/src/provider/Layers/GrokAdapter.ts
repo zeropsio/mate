@@ -78,6 +78,7 @@ import {
   makeXAiAskUserQuestionCancelledResponse,
   makeXAiAskUserQuestionResponse,
   makeXAiExitPlanModeCapturedResponse,
+  isXAiRateLimitedError,
   promptResponseHasMissingXAiStopReason,
   XAiAskUserQuestionRequest,
   XAiExitPlanModeRequest,
@@ -591,6 +592,8 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
       expectedAcpSessionId: string,
       options?: {
         readonly errorMessage?: string;
+        /** The usage limit refused the turn: its failure is a pause. */
+        readonly usageLimited?: boolean;
         readonly completedStopReason?: EffectAcpSchema.StopReason | null;
         readonly emitTurnCompletion?: boolean;
         /** Interrupt/cancel: drop every outstanding prompt slot and settle once. */
@@ -712,6 +715,7 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
             payload: {
               state: "failed",
               errorMessage: options.errorMessage,
+              ...(options.usageLimited === true ? { terminalReason: "usage_limit" } : {}),
             },
           });
         } else if (shouldEmitCompletedTurn) {
@@ -1749,6 +1753,7 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
         );
 
         const promptFailureMessageRef = yield* Ref.make<string | undefined>(undefined);
+        const promptUsageLimitedRef = yield* Ref.make(false);
 
         return yield* Effect.gen(function* () {
           const promptStart = yield* prepared.promptLifecycle.withPermit(
@@ -1840,7 +1845,10 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
               Ref.set(
                 promptFailureMessageRef,
                 mapAcpToAdapterError(PROVIDER, input.threadId, "session/prompt", error).detail,
-              ).pipe(Effect.andThen(prepared.acp.drainEvents)),
+              ).pipe(
+                Effect.andThen(Ref.set(promptUsageLimitedRef, isXAiRateLimitedError(error))),
+                Effect.andThen(prepared.acp.drainEvents),
+              ),
             ),
             Effect.mapError((error) =>
               mapAcpToAdapterError(PROVIDER, input.threadId, "session/prompt", error),
@@ -2020,10 +2028,12 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
               }
 
               const errorMessage = yield* Ref.get(promptFailureMessageRef);
+              const usageLimited = yield* Ref.get(promptUsageLimitedRef);
               yield* withThreadLock(
                 input.threadId,
                 settlePromptInFlight(input.threadId, prepared.turnId, prepared.acpSessionId, {
                   errorMessage: errorMessage ?? "Grok prompt request failed.",
+                  usageLimited,
                 }),
               );
             }).pipe(Effect.ignore),

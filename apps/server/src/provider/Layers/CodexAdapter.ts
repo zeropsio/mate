@@ -1922,7 +1922,7 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
                   type: "runtime.error",
                   payload: {
                     message: usageLimitMessage,
-                    class: "provider_error",
+                    class: "usage_limit",
                     ...(turnError.message ? { detail: turnError.message } : {}),
                   },
                 };

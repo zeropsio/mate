@@ -580,6 +580,11 @@ const resolveXAiPromptCompletionFallback = ({
     }),
   );
 
+/** The xAI extension's own refusal at the usage limit (`settleXAiPromptCompletion`). */
+const isAcpRequestError = Schema.is(EffectAcpErrors.AcpRequestError);
+export const isXAiRateLimitedError = (error: unknown): boolean =>
+  isAcpRequestError(error) && error.code === xAiRateLimitedErrorCode;
+
 const settleXAiPromptCompletion = (
   deferred: Deferred.Deferred<EffectAcpSchema.PromptResponse, EffectAcpErrors.AcpRequestError>,
   notification: XAiPromptCompleteNotification,

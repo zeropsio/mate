@@ -201,6 +201,13 @@ function maxCheckpointTurnCount(
   return maxTurnCount;
 }
 
+/**
+ * How a turn's runtime.error record says it ended, for the conversation to
+ * read without its words: its agent died (`crash`), it failed (`failed`), or
+ * the provider's usage limit refused it (`usage-limit`), a pause.
+ */
+type RuntimeErrorTurnEnd = "crash" | "failed" | "usage-limit";
+
 function truncateDetail(value: string, limit = 180): string {
   return value.length > limit ? `${value.slice(0, limit - 3)}...` : value;
 }
@@ -654,6 +661,9 @@ export function runtimeEventToActivities(
           summary: "Runtime error",
           payload: {
             message: truncateDetail(event.payload.message),
+            ...(event.payload.class === "usage_limit"
+              ? { turnEnd: "usage-limit" satisfies RuntimeErrorTurnEnd }
+              : {}),
           },
           turnId: toTurnId(event.turnId) ?? null,
           ...maybeSequence,
@@ -1862,6 +1872,30 @@ const make = Effect.gen(function* () {
   );
 
   /**
+   * Whether the turn holds a runtime.error record already — in these words,
+   * as its record keeps them (cut and trimmed), or any when no words are
+   * given. One break is one record, whichever event says it first.
+   */
+  const runtimeErrorRecorded = Effect.fnUntraced(function* (input: {
+    readonly threadId: ThreadId;
+    readonly turnId: TurnId;
+    readonly message: string | null;
+  }) {
+    const recorded = yield* projectionThreadActivityRepository.listByThreadId({
+      threadId: input.threadId,
+      activityKinds: ["runtime.error"],
+      limit: 20,
+    });
+    const kept = input.message === null ? null : truncateDetail(input.message).trim();
+    return recorded.some((activity) => {
+      if (activity.turnId !== input.turnId) return false;
+      if (kept === null) return true;
+      const message = (activity.payload as { readonly message?: unknown } | null)?.message;
+      return typeof message === "string" && message.trim() === kept;
+    });
+  });
+
+  /**
    * The record of where a turn broke off — its agent's process died, or the
    * turn failed — in its own words: one per turn and words, whichever event
    * says it first (the adapter's runtime.error, the session's exit, the
@@ -1872,18 +1906,16 @@ const make = Effect.gen(function* () {
     readonly threadId: ThreadId;
     readonly turnId: TurnId;
     readonly words: string;
+    readonly turnEnd: RuntimeErrorTurnEnd;
+    /** Words of no one's own (a failure with no message): only where the turn holds no record. */
+    readonly unlessRecorded?: boolean;
   }) {
-    const recorded = yield* projectionThreadActivityRepository.listByThreadId({
+    const recorded = yield* runtimeErrorRecorded({
       threadId: input.threadId,
-      activityKinds: ["runtime.error"],
-      limit: 20,
+      turnId: input.turnId,
+      message: input.unlessRecorded === true ? null : input.words,
     });
-    const said = recorded.some(
-      (activity) =>
-        activity.turnId === input.turnId &&
-        (activity.payload as { readonly message?: unknown } | null)?.message === input.words,
-    );
-    if (said) return;
+    if (recorded) return;
     yield* orchestrationEngine.dispatch({
       type: "thread.activity.append",
       commandId: yield* providerCommandId(input.event, "turn-break-activity-append"),
@@ -1894,7 +1926,7 @@ const make = Effect.gen(function* () {
         tone: "error",
         kind: "runtime.error",
         summary: "Runtime error",
-        payload: { message: input.words },
+        payload: { message: truncateDetail(input.words), turnEnd: input.turnEnd },
         turnId: input.turnId,
       },
       createdAt: input.event.createdAt,
@@ -2062,6 +2094,7 @@ const make = Effect.gen(function* () {
               threadId: thread.id,
               turnId: crashedTurnId,
               words: crashWords,
+              turnEnd: "crash",
             });
           } else if (
             event.type === "turn.completed" &&
@@ -2073,7 +2106,9 @@ const make = Effect.gen(function* () {
                 event,
                 threadId: thread.id,
                 turnId: failedTurnId,
-                words: event.payload.errorMessage ?? agentStoppedUnexpectedly(event.provider),
+                words: event.payload.errorMessage ?? "The turn failed.",
+                turnEnd: event.payload.terminalReason === "usage_limit" ? "usage-limit" : "failed",
+                unlessRecorded: event.payload.errorMessage === undefined,
               });
             }
           }
@@ -2789,7 +2824,17 @@ const make = Effect.gen(function* () {
           if (observation !== null) threadLiveStep.observe(thread.id, observation);
         }
       }
-      yield* Effect.forEach(activities, (activity) =>
+      // An adapter's error the turn holds already, in the same words, is one
+      // record (a failed turn's record can come first).
+      const repeatsRecord =
+        event.type === "runtime.error" && eventTurnId !== undefined
+          ? yield* runtimeErrorRecorded({
+              threadId: thread.id,
+              turnId: eventTurnId,
+              message: event.payload.message,
+            })
+          : false;
+      yield* Effect.forEach(repeatsRecord ? [] : activities, (activity) =>
         providerCommandId(event, "thread-activity-append").pipe(
           Effect.flatMap((commandId) =>
             orchestrationEngine.dispatch({
@@ -2807,9 +2852,15 @@ const make = Effect.gen(function* () {
       if (event.type === "runtime.error") {
         const runtimeErrorMessage = event.payload.message;
 
-        const shouldApplyRuntimeError = !STRICT_PROVIDER_LIFECYCLE_GUARD
-          ? true
-          : activeTurnId === null || eventTurnId === undefined || sameId(activeTurnId, eventTurnId);
+        // The same error said again, its turn's record already standing,
+        // changes nothing (OpenCode's after the turn it failed).
+        const shouldApplyRuntimeError = repeatsRecord
+          ? false
+          : !STRICT_PROVIDER_LIFECYCLE_GUARD
+            ? true
+            : activeTurnId === null ||
+              eventTurnId === undefined ||
+              sameId(activeTurnId, eventTurnId);
 
         if (shouldApplyRuntimeError) {
           threadLiveStep.clearThread(thread.id);

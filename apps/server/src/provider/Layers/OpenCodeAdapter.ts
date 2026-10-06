@@ -680,6 +680,15 @@ function sessionErrorMessage(error: unknown): string {
     : "OpenCode session failed.";
 }
 
+/** OpenCode's provider refused the request at its rate or usage limit (HTTP 429). */
+export function sessionErrorIsUsageLimit(error: unknown): boolean {
+  if (!error || typeof error !== "object" || !("name" in error) || error.name !== "APIError") {
+    return false;
+  }
+  const data = "data" in error && error.data && typeof error.data === "object" ? error.data : null;
+  return data !== null && "statusCode" in data && data.statusCode === 429;
+}
+
 function updateProviderSession(
   context: OpenCodeSessionContext,
   patch: Partial<ProviderSession>,
@@ -1276,18 +1285,7 @@ export function makeOpenCodeAdapter(
         { status: "error", lastError: detail },
         { clearActiveTurnId: true },
       );
-      yield* emit({
-        ...(yield* buildEventBase({
-          threadId: context.session.threadId,
-          turnId: promptAdmission.turnId,
-          raw: promptAdmission.recoveryRaw,
-        })),
-        type: "turn.completed",
-        payload: {
-          state: "failed",
-          errorMessage: detail,
-        },
-      });
+      // The error before the turn it fails: one record of the break.
       yield* emit({
         ...(yield* buildEventBase({
           threadId: context.session.threadId,
@@ -1298,6 +1296,18 @@ export function makeOpenCodeAdapter(
         payload: {
           message: detail,
           class: "transport_error",
+        },
+      });
+      yield* emit({
+        ...(yield* buildEventBase({
+          threadId: context.session.threadId,
+          turnId: promptAdmission.turnId,
+          raw: promptAdmission.recoveryRaw,
+        })),
+        type: "turn.completed",
+        payload: {
+          state: "failed",
+          errorMessage: detail,
         },
       });
     });
@@ -2582,6 +2592,7 @@ export function makeOpenCodeAdapter(
 
         case "session.error": {
           const message = sessionErrorMessage(event.properties.error);
+          const usageLimited = sessionErrorIsUsageLimit(event.properties.error);
           const activeTurnId = context.activeTurnId;
           const cancellation = context.cancellation;
           if (isOpenCodeAbortError(event.properties.error)) {
@@ -2621,6 +2632,20 @@ export function makeOpenCodeAdapter(
             },
             { clearActiveTurnId: true },
           );
+          // The error, on its turn, before the turn it fails: one record.
+          yield* emit({
+            ...(yield* buildEventBase({
+              threadId: context.session.threadId,
+              ...(activeTurnId ? { turnId: activeTurnId } : {}),
+              raw: event,
+            })),
+            type: "runtime.error",
+            payload: {
+              message,
+              class: usageLimited ? "usage_limit" : "provider_error",
+              detail: event.properties.error,
+            },
+          });
           if (activeTurnId) {
             yield* emit({
               ...(yield* buildEventBase({
@@ -2632,21 +2657,10 @@ export function makeOpenCodeAdapter(
               payload: {
                 state: "failed",
                 errorMessage: message,
+                ...(usageLimited ? { terminalReason: "usage_limit" } : {}),
               },
             });
           }
-          yield* emit({
-            ...(yield* buildEventBase({
-              threadId: context.session.threadId,
-              raw: event,
-            })),
-            type: "runtime.error",
-            payload: {
-              message,
-              class: "provider_error",
-              detail: event.properties.error,
-            },
-          });
           if (terminalCancellation) {
             yield* Deferred.succeed(terminalCancellation.acknowledgment, undefined).pipe(
               Effect.ignore,

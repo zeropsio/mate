@@ -4285,6 +4285,12 @@ describe("ProviderRuntimeIngestion", () => {
       readonly turnState: "error" | "interrupted" | null;
       /** The turn's runtime.error records, by their words. */
       readonly errors: ReadonlyArray<string>;
+      /** The provider's usage limit refused it: its error and its failure say so, typed. */
+      readonly limit?: boolean;
+      /** A runtime.error the adapter says after the turn ended. */
+      readonly saidAfter?: string;
+      /** How each record says the turn ended. */
+      readonly turnEnds?: ReadonlyArray<string | undefined>;
     }> = [
       {
         name: "Codex's app server exits mid-turn",
@@ -4359,6 +4365,96 @@ describe("ProviderRuntimeIngestion", () => {
         errors: ["API Error: 500 Internal server error"],
       },
       {
+        name: "OpenCode's provider error, then the turn it fails: one record",
+        driver: "opencode",
+        saidFirst: "Rate limit exceeded for this model.",
+        ends: { failed: "Rate limit exceeded for this model." },
+        turnRunning: true,
+        status: "error",
+        lastError: "Rate limit exceeded for this model.",
+        turnState: "error",
+        errors: ["Rate limit exceeded for this model."],
+        turnEnds: [undefined],
+      },
+      {
+        name: "a failed turn, then the adapter's error in the same words: one record",
+        driver: "opencode",
+        ends: { failed: "Context window exceeded." },
+        saidAfter: "Context window exceeded.",
+        turnRunning: true,
+        status: "error",
+        lastError: "Context window exceeded.",
+        turnState: "error",
+        errors: ["Context window exceeded."],
+      },
+      {
+        name: "Codex's error longer than a record keeps, then its failed turn: one record",
+        driver: "codex",
+        saidFirst: `unexpected status 500: ${"x".repeat(300)}`,
+        ends: { failed: `unexpected status 500: ${"x".repeat(300)}` },
+        turnRunning: true,
+        status: "error",
+        lastError: `unexpected status 500: ${"x".repeat(300)}`,
+        turnState: "error",
+        errors: [`unexpected status 500: ${"x".repeat(154)}...`],
+      },
+      {
+        name: "a failed turn with no words says so neutrally",
+        driver: "codex",
+        ends: { failed: undefined },
+        turnRunning: true,
+        status: "error",
+        lastError: "Turn failed",
+        turnState: "error",
+        errors: ["The turn failed."],
+        turnEnds: ["failed"],
+      },
+      {
+        name: "a failed turn with no words, its error recorded: nothing more",
+        driver: "codex",
+        saidFirst: "stream disconnected before completion",
+        ends: { failed: undefined },
+        turnRunning: true,
+        status: "error",
+        lastError: "stream disconnected before completion",
+        turnState: "error",
+        errors: ["stream disconnected before completion"],
+      },
+      ...(
+        [
+          ["codex", "Codex usage limit reached. Try again at 9:20 PM."],
+          [
+            "claudeAgent",
+            "Claude usage limit reached. Send the message again once the limit resets.",
+          ],
+          ["opencode", "Rate limit exceeded: 429"],
+        ] as const
+      ).map(([driver, words]) => ({
+        name: `${driver}'s usage limit: one record, typed a pause`,
+        driver,
+        saidFirst: words,
+        ends: { failed: words },
+        limit: true,
+        turnRunning: true,
+        status: "error" as const,
+        lastError: words,
+        turnState: "error" as const,
+        errors: [words],
+        turnEnds: ["usage-limit"],
+      })),
+      {
+        name: "grok's usage limit: its failed turn alone, typed a pause",
+        driver: "grok",
+        ends: { failed: "Grok usage limit reached. Try again later." },
+        limit: true,
+        turnRunning: true,
+        status: "error",
+        lastError: "Grok usage limit reached. Try again later.",
+        turnState: "error",
+        errors: ["Grok usage limit reached. Try again later."],
+        turnEnds: ["usage-limit"],
+      },
+      {
         name: "a graceful close mid-turn is a stop, not a crash",
         driver: "codex",
         ends: { exit: "graceful" },
@@ -4407,7 +4503,10 @@ describe("ProviderRuntimeIngestion", () => {
             createdAt: "2026-01-01T00:00:02.000Z",
             threadId,
             turnId,
-            payload: { message: testCase.saidFirst },
+            payload: {
+              message: testCase.saidFirst,
+              ...(testCase.limit === true ? { class: "usage_limit" as const } : {}),
+            },
           });
         }
         if ("exit" in testCase.ends) {
@@ -4433,7 +4532,19 @@ describe("ProviderRuntimeIngestion", () => {
             payload: {
               state: "failed",
               ...(testCase.ends.failed === undefined ? {} : { errorMessage: testCase.ends.failed }),
+              ...(testCase.limit === true ? { terminalReason: "usage_limit" } : {}),
             },
+          });
+        }
+        if (testCase.saidAfter !== undefined) {
+          harness.emit({
+            type: "runtime.error",
+            eventId: asEventId("evt-crash-said-after"),
+            provider,
+            createdAt: "2026-01-01T00:00:04.000Z",
+            threadId,
+            turnId,
+            payload: { message: testCase.saidAfter },
           });
         }
         await harness.drain();
@@ -4451,6 +4562,14 @@ describe("ProviderRuntimeIngestion", () => {
             message: (activity.payload as { readonly message?: unknown }).message,
           })),
         ).toEqual(testCase.errors.map((message) => ({ turnId, message })));
+        if (testCase.turnEnds !== undefined) {
+          expect(
+            errors.map(
+              (activity: ProviderRuntimeTestActivity) =>
+                (activity.payload as { readonly turnEnd?: unknown }).turnEnd,
+            ),
+          ).toEqual(testCase.turnEnds);
+        }
 
         // The record lands before the session says the turn failed: it never
         // reads finished in between.
