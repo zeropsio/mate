@@ -68,8 +68,6 @@ import {
   type PressStepView,
 } from "../components/zerops/ZeropsEnvironmentCreationDialog.logic";
 import { setUpMateRecord } from "../components/zerops/ZeropsProjectRow.logic";
-import { useNewMate } from "./newMate";
-import { placedNewProjects, type NewProjectBirth } from "./newProjectBirth";
 import { useZeropsAtomSelections, type ZeropsDataContextValue } from "./zeropsDataContext";
 
 /** Where a press stands. */
@@ -262,7 +260,7 @@ function endPress(projectId: string, finishing: boolean): void {
 }
 
 /**
- * The presses (or creations) whose Mate has connected: nothing of them is left to say. A *Finish
+ * The presses whose Mate has connected: nothing of them is left to say. A *Finish
  * setup* is not one of them: it runs on a Mate that may have been up all along, and ends on its own
  * (`endPress`) once its row has said so.
  */
@@ -286,24 +284,14 @@ export function connectedPresses(
   );
 }
 
-/**
- * Ends the presses whose Mate has connected, as the listing reads them — and this tab's creations
- * of them: a creation reads as coming up only until its Mate first connects (`mateComing`).
- */
+/** Ends the presses whose Mate has connected, as the listing reads them. */
 export function useForgetConnectedPresses(
   candidates: ReadonlyArray<{ readonly project: { readonly id: string }; readonly group: string }>,
 ): void {
   const presses = useMatePresses();
-  const creations = useNewMate((state) => state.creations);
-  const forgetCreation = useNewMate((state) => state.forget);
   useEffect(() => {
     for (const projectId of connectedPresses(presses, candidates)) forgetPress(projectId);
   }, [candidates, presses]);
-  useEffect(() => {
-    for (const projectId of connectedPresses(Object.values(creations), candidates)) {
-      forgetCreation(projectId);
-    }
-  }, [candidates, creations, forgetCreation]);
 }
 
 /** The presses in flight in this browser, their project made or not (`whilePressing`). */
@@ -685,12 +673,12 @@ export function pressComingInput(
  * The creations this tab pressed in the organization in view, as the group tree places them
  * (`deriveZeropsGroups`' `births`): the projects page and the left menu read this one mapping, so
  * the two draw the same pending members. A press on a project already listed places nothing. The
- * New projects this tab is still making come after them, drawn from their press.
+ * creations this tab is still making come after them, placed from their ask (`placedNewProjects`).
  */
 export function placedPressesIn(
   presses: ReadonlyArray<MatePress>,
   organizationId: string | undefined,
-  made: ReadonlyArray<NewProjectBirth> = [],
+  made: ReadonlyArray<ZeropsPlacedBirth> = [],
 ): ReadonlyArray<ZeropsPlacedBirth> {
   return [
     ...presses.flatMap(({ projectId, organizationId: madeIn, startedAt, placement }) =>
@@ -698,7 +686,7 @@ export function placedPressesIn(
         ? []
         : [{ projectId, startedAt, placement }],
     ),
-    ...placedNewProjects(made, organizationId),
+    ...made,
   ];
 }
 

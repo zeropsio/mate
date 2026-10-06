@@ -84,7 +84,8 @@ import {
   useMatePresses,
   type MatePress,
 } from "~/zerops/matePress";
-import { useNewProjectBirths } from "~/zerops/newProjectBirth";
+import { useCreations } from "~/zerops/creations";
+import { placedNewProjects } from "~/zerops/newProjectBirth";
 import {
   useTakenBotNames,
   useZeropsCandidates,
@@ -834,7 +835,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     finishBirth,
   } = useZeropsProjectConnection();
   // The New projects this tab is making: drawn from the press, as the left menu draws them.
-  const made = useNewProjectBirths((state) => state.births);
+  const made = useCreations();
   const birthProjectIds = useMemo(
     () => new Set(presses.map((press) => press.projectId)),
     [presses],
@@ -937,7 +938,11 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   const groupTree = buildZeropsGroupTree(candidates, {
     rank: rankZeropsCandidateForListing,
     ...projectOrder,
-    births: placedPressesIn(presses, activeOrganization?.id, Object.values(made)),
+    births: placedPressesIn(
+      presses,
+      activeOrganization?.id,
+      placedNewProjects(made, activeOrganization?.id),
+    ),
     apps: emptyApplications(hqStructure, activeOrganization?.id),
   });
   const tints = useMemo(() => assignCandidateMateTints(candidates), [candidates]);
@@ -1003,9 +1008,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         hq: accountHq.hq,
         local: [
           ...presses.map((press) => press.projectId),
-          ...Object.values(made).flatMap((birth) =>
-            birth.projectId === null ? [] : [birth.projectId],
-          ),
+          ...made.flatMap((birth) => (birth.projectId === null ? [] : [birth.projectId])),
         ],
       }),
     [accountHq.hq, hqKnown, hqPresses, knownStructure, made, presses],
@@ -2762,10 +2765,10 @@ export function ZeropsProjectsPage() {
   // invitation and no title row over it — a "Projects" heading with a reload
   // over nothing frames emptiness as a failed list.
   const presses = useMatePresses();
-  const made = useNewProjectBirths((state) => state.births);
+  const made = useCreations();
   const firstRun = hasNoZeropsProject({
     listing,
-    creationPending: [...presses, ...Object.values(made)].some(
+    creationPending: [...presses, ...made].some(
       (birth) => birth.organizationId === activeOrganization?.id,
     ),
   });

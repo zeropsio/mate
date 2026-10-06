@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 
 import { closeAccountLifetime, openAccountLifetime } from "~/zerops/accountLifetime";
 import { beginPress, forgetPress } from "~/zerops/matePress";
-import { useNewMate } from "~/zerops/newMate";
+import { useNewMateDialog } from "~/zerops/newMate";
 
 import { ZeropsNewMateHost } from "./ZeropsNewMateHost";
 
@@ -25,6 +25,11 @@ vi.mock("~/zerops/ZeropsSessionProvider", () => ({
   useZeropsSession: () => ({ status: "signed-in", activeOrganization: ORGANIZATION }),
 }));
 vi.mock("~/zerops/useEnvironmentCreation", () => ({ useEnvironmentCreation: () => vi.fn() }));
+// The account's operations: the creation's steps run there once Add is pressed.
+vi.mock("~/zerops/accountOperations", async (actual) => ({
+  ...(await actual<typeof import("~/zerops/accountOperations")>()),
+  useAccountOperations: () => ({}),
+}));
 vi.mock("~/zerops/useZeropsCandidates", () => ({
   useZeropsCandidates: () => ({ listing: { state: "unread", waitingFor: null } }),
   useTakenBotNames: () => ({ names: [], complete: true }),
@@ -76,14 +81,14 @@ afterEach(() => {
   act(() => tree?.unmount());
   tree = undefined;
   forgetPress("p-vera");
-  useNewMate.setState({ asked: null });
+  useNewMateDialog.setState({ asked: null });
   closeAccountLifetime();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
 
-const open = (again?: Parameters<ReturnType<typeof useNewMate.getState>["ask"]>[1]) => {
-  act(() => useNewMate.getState().ask("g-acme", again));
+const open = (again?: Parameters<ReturnType<typeof useNewMateDialog.getState>["ask"]>[1]) => {
+  act(() => useNewMateDialog.getState().ask("g-acme", again));
   act(() => {
     tree = create(h(ZeropsNewMateHost));
   });

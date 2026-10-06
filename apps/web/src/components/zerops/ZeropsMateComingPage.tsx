@@ -101,13 +101,13 @@ import {
   type ArrivalStep,
 } from "~/zerops/mateArrival";
 import { MATE_STAND_UP_RETRY_LABEL, mateStandUpPhase } from "~/zerops/mateStandUp";
-import { useNewMate } from "~/zerops/newMate";
+import { dismissCreation, useCreations } from "~/zerops/creations";
+import { useMateHandOver } from "~/zerops/newMate";
 import {
   comingPlanned,
   creationSubsteps,
-  newProjectBirthOf,
+  madeOf,
   newProjectProgress,
-  useNewProjectBirths,
 } from "~/zerops/newProjectBirth";
 import { useHeldPast } from "~/zerops/useHeldPast";
 import { useProjectActivity } from "~/zerops/activity/useProjectActivity";
@@ -194,10 +194,9 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   // What this tab pressed for it, while it holds it.
   const press = useMatePress(projectId);
   const { services } = useProjectServices(projectId);
-  const creation = useNewMate((state) => state.creations[projectId]);
   // The New project or the Add this tab made whose Mate this is, while the tab holds it.
-  const made = useNewProjectBirths((state) => newProjectBirthOf(state.births, projectId));
-  const forgetCreation = useNewMate((state) => state.forget);
+  const creations = useCreations();
+  const made = useMemo(() => madeOf(creations, projectId), [creations, projectId]);
   // The platform's verdict on its creation, read while it may still be refused (H20).
   const verdicts = useProjectCreations(listed === undefined ? [] : [listed]);
   const candidate = useMemo(
@@ -207,13 +206,16 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
         : applyProjectCreationVerdict(listed, verdicts.get(projectId)),
     [listed, projectId, verdicts],
   );
+  // Made here, and not connected since: its press is over and its container on its way.
+  const creation = candidate?.group === "connected" ? undefined : made;
   const { health } = useZeropsContainers();
   const containerHealth = candidate === undefined ? undefined : health.get(candidate.key);
   const pressRetry = press?.state.kind === "failed" ? press.state.retry : null;
   // Made here and still not listed a minute on: its organization's projects are read once more —
   // a deletion the socket pushed leaves the listing's time at its last full read.
   const unlisted = creation !== undefined && listed === undefined;
-  const madeAt = creation?.at;
+  // From its press, while this tab holds it; else from the press of Create or Add.
+  const madeAt = creation === undefined ? undefined : (press?.startedAt ?? creation.startedAt);
   const reread = useRef(false);
   useEffect(() => {
     if (!unlisted || madeAt === undefined || reread.current) return;
@@ -233,7 +235,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
       listed: listed !== undefined,
       complete: held.complete,
       listedAtMs: listing.state === "known" ? listing.asOf.atMs : undefined,
-      madeAtMs: creation.at,
+      madeAtMs: press?.startedAt ?? creation.startedAt,
     });
   // What opens it is its machine (`mateLink`): found by its project while its row stands for the
   // project, and before the listing names it at all.
@@ -264,7 +266,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
             retryable: pressRetry !== null,
           },
     candidate,
-    setUpFailed: pressFailure(press) ?? creation?.failed,
+    setUpFailed: pressFailure(press),
     nowMs: Date.now(),
     created: creation !== undefined,
     listingLacksIt,
@@ -302,7 +304,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
       const listed = zeropsMateIdentityOf(candidate, tints);
       // Listed before HQ places it: no application to cut its name under, but its creation or its
       // press knows it, so its name is its own all along.
-      const app = creation?.groupName ?? press?.placement?.groupName;
+      const app = creation?.name ?? press?.placement?.groupName;
       if (readZeropsMembership(candidate.project).groupId !== undefined || app === undefined)
         return listed;
       return { ...listed, name: nameUnderApp(candidate.project.name, app) };
@@ -312,7 +314,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
       name: creation?.botName ?? press?.placement?.displayName ?? "",
       tint: face.tint,
       shape: face.shape,
-      project: creation?.groupName ?? press?.placement?.groupName,
+      project: creation?.name ?? press?.placement?.groupName,
       projectUrl: zeropsProjectUrl(projectId),
       connected: false,
       // This tab made it: the person looking asked for its stand-up.
@@ -370,7 +372,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   // whatever is read meanwhile.
   const [handing, setHanding] = useState(false);
   if (up && !handing) setHanding(true);
-  const handingOver = useNewMate((state) => state.handingOver);
+  const handingOver = useMateHandOver((state) => state.handingOver);
   // What the person types into the composer standing in while it connects: the conversation's
   // draft, the caret where they left it (`mateHandOver`). The conversation its menu row stands
   // for is known before it connects — its draft is typed into as its own composer would; else
@@ -559,13 +561,16 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
           ...(managed === undefined ? {} : { managed }),
           ...(setup === undefined ? {} : { setup }),
           ...(setupFailure === undefined ? {} : { setupFailure }),
-          ...(made === undefined ? {} : { press: creationSubsteps(made) }),
+          // Its press's steps while this tab holds the press; once over, its Mate's own line says them.
+          ...(made === undefined || press === undefined
+            ? {}
+            : { press: creationSubsteps(made, press.progress ?? null) }),
           ...(empty.agentReady ? { agentReady: true } : {}),
         };
 
   // *Finish setup*, where its press stopped before its container: the same verb as its menu's,
-  // offered to an owner or an admin in any browser — and at once, where this tab saw its
-  // registration refused (`registrationUnfinished`).
+  // offered to an owner or an admin in any browser — and at once, where this tab's press saw its
+  // registration refused.
   const unregistered = pressNote(lineProgress?.press)?.kind === "unfinished";
   const halfMade = (coming?.kind === "failed" && coming.verb === "finish-setup") || unregistered;
   const registryState = useZeropsRegistry();
@@ -580,8 +585,8 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
     finishEntry === undefined || "separator" in finishEntry ? undefined : finishEntry.onSelect;
 
   // *Finish setup* running, or through: its steps as the Add dialog draws them, and their end — on
-  // a Mate this tab made, its own step under the project's row follows it instead
-  // (`refinishNewProjectBirth`), and nothing above it moves.
+  // a Mate this tab made, its own step under the project's row follows that press instead
+  // (`creationSubsteps`), and nothing above it moves.
   const finish = made === undefined ? finishSetupView(press) : undefined;
 
   const deleteProject = useDeleteProject();
@@ -598,7 +603,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
       deleteProject,
       forgetCreation: (id) => {
         forgetPress(id);
-        forgetCreation(id);
+        if (made !== undefined) dismissCreation(made.birthId);
       },
     }).then((outcome) => {
       setRemoving(false);

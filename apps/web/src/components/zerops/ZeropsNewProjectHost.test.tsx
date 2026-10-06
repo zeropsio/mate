@@ -1,10 +1,11 @@
-import { act, createElement as h } from "react";
+import { act, createElement as h, useEffect } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { closeAccountLifetime, openAccountLifetime } from "~/zerops/accountLifetime";
 import { useNewProjectAsk } from "~/zerops/newProjectAsk";
-import { useNewProjectBirths } from "~/zerops/newProjectBirth";
+import { useCreations } from "~/zerops/creations";
+import type { NewProjectBirth } from "~/zerops/newProjectBirth";
 
 import type { NewProjectChoice } from "./ZeropsNewProjectForm";
 import { ZeropsNewProjectHost } from "./ZeropsNewProjectHost";
@@ -38,7 +39,19 @@ vi.mock("~/zerops/ZeropsSessionProvider", () => ({
 }));
 // HQ's writes are the account's operations: still under way while the dialog closes.
 vi.mock("~/zerops/accountOperations", () => ({
-  useAccountOperations: () => ({ run: app.pending }),
+  useAccountOperations: () => ({
+    run: app.pending,
+    readCreation: () => ({
+      steps: {
+        app: { state: "not-sent", attempt: 0 },
+        birth: { state: "not-sent", attempt: 0 },
+        project: { state: "not-sent", attempt: 0 },
+      },
+      appId: null,
+      birthId: null,
+      projectId: null,
+    }),
+  }),
   HQ_UNFOLLOWED: "HQ isn't answering.",
 }));
 vi.mock("~/zerops/zeropsDataContext", () => ({
@@ -77,15 +90,24 @@ vi.mock("./ZeropsNewProjectForm", () => ({
 
 let tree: ReactTestRenderer | undefined;
 
+/** The creations this tab holds, as its surfaces draw them. */
+let births: ReadonlyArray<NewProjectBirth> = [];
+function Held() {
+  const creations = useCreations();
+  useEffect(() => {
+    births = creations;
+  }, [creations]);
+  return null;
+}
+
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   openAccountLifetime("u-ada");
   app.navigate.mockClear();
   app.dialog = undefined;
-  useNewProjectBirths.setState({ births: {} });
   act(() => useNewProjectAsk.getState().ask());
   act(() => {
-    tree = create(h(ZeropsNewProjectHost));
+    tree = create(h("div", null, h(ZeropsNewProjectHost), h(Held)));
   });
 });
 afterEach(() => {
@@ -111,7 +133,6 @@ describe("New project's Create", () => {
       } as NewProjectChoice);
     });
     expect(dialogShown()).toBe(false);
-    const births = Object.values(useNewProjectBirths.getState().births);
     expect(births).toHaveLength(1);
     expect(births[0]).toMatchObject({ name: "Acme CRM", botName: "Vera", failed: null });
     expect(app.navigate).toHaveBeenCalledWith({

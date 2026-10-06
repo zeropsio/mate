@@ -4,6 +4,7 @@
  * the operation's progress projection; it never calls the platform itself.
  */
 import {
+  creationSteps,
   makeOperations,
   makeHqExecutor,
   makeZeropsExecutor,
@@ -13,6 +14,7 @@ import {
   operationEnd,
   operationProgress,
   type AccountStore,
+  type CreationRead,
   type DetailDemand,
   type OperationEnd,
   type OperationProgress,
@@ -52,6 +54,8 @@ export interface AccountOperations {
     appId: string,
     projectId: string,
   ) => Promise<{ readonly name: string; readonly keyed: boolean }>;
+  /** Where a creation's steps stand now, read off their operations (`creationSteps`). */
+  readonly readCreation: (orgId: string, creationId: string) => CreationRead;
 }
 
 /** What an HQ write says where its effect can no longer be followed in HQ's navigation. */
@@ -129,6 +133,8 @@ export function accountOperations(
   const made: AccountOperations = {
     untilEnd,
     untilEnvironment,
+    readCreation: (orgId, creationId) =>
+      registry.get(store.data.project(creationSteps, { orgId, creationId })),
     run: runToEnd({ operations, store, registry }),
     submit: async (intent) => {
       const requestId = await Effect.runPromise(operations.submit(intent));

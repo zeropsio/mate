@@ -282,22 +282,6 @@
   {
     "path": "apps/web/src/components/Sidebar.tsx",
     "kind": "retired-token",
-    "fingerprint": "useNewProjectBirths",
-    "owner": "data-layer rewrite: operations",
-    "reason": "births are tracked by app hooks; the operations adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/Sidebar.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useNewProjectBirths",
-    "owner": "data-layer rewrite: operations",
-    "reason": "births are tracked by app hooks; the operations adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/Sidebar.tsx",
-    "kind": "retired-token",
     "fingerprint": "useZeropsMateOwners()",
     "owner": "data-layer rewrite: permissions/members",
     "reason": "member names and Mate owners come from the member list; HQ sends them finished",
@@ -477,22 +461,6 @@
     "fingerprint": "rememberedComposerControl",
     "owner": "data-layer rewrite: Mate identity/connection",
     "reason": "the composer's model label is remembered in browser storage; the catalog's projection replaces it",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/SidebarComingEnds.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useNewProjectBirths",
-    "owner": "data-layer rewrite: operations",
-    "reason": "births are tracked by app hooks; the operations adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/SidebarComingEnds.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useNewProjectBirths",
-    "owner": "data-layer rewrite: operations",
-    "reason": "births are tracked by app hooks; the operations adapter feeds the store",
     "expires": "never"
   },
   {
@@ -914,54 +882,6 @@
   {
     "path": "apps/web/src/components/zerops/ZeropsMateComingPage.tsx",
     "kind": "retired-token",
-    "fingerprint": "useNewMate",
-    "owner": "data-layer rewrite: operations",
-    "reason": "births are tracked by app hooks; the operations adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsMateComingPage.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useNewMate",
-    "owner": "data-layer rewrite: operations",
-    "reason": "births are tracked by app hooks; the operations adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsMateComingPage.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useNewMate",
-    "owner": "data-layer rewrite: operations",
-    "reason": "births are tracked by app hooks; the operations adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsMateComingPage.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useNewMate",
-    "owner": "data-layer rewrite: operations",
-    "reason": "births are tracked by app hooks; the operations adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsMateComingPage.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useNewProjectBirths",
-    "owner": "data-layer rewrite: operations",
-    "reason": "births are tracked by app hooks; the operations adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsMateComingPage.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useNewProjectBirths",
-    "owner": "data-layer rewrite: operations",
-    "reason": "births are tracked by app hooks; the operations adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsMateComingPage.tsx",
-    "kind": "retired-token",
     "fingerprint": "useZeropsRegistry",
     "owner": "data-layer rewrite: HQ structure/apps",
     "reason": "registry, recipes and releases are read by app hooks; the HQ adapter feeds the store",
@@ -1013,78 +933,6 @@
     "fingerprint": "useZeropsMateUpdate",
     "owner": "data-layer rewrite: operations",
     "reason": "a Mate update settles to idle after a timer; only the source settles an operation",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsNewMateHost.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useNewMate",
-    "owner": "data-layer rewrite: operations",
-    "reason": "births are tracked by app hooks; the operations adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsNewMateHost.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useNewMate",
-    "owner": "data-layer rewrite: operations",
-    "reason": "births are tracked by app hooks; the operations adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsNewMateHost.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useNewMate",
-    "owner": "data-layer rewrite: operations",
-    "reason": "births are tracked by app hooks; the operations adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsNewMateHost.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useNewMate",
-    "owner": "data-layer rewrite: operations",
-    "reason": "births are tracked by app hooks; the operations adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsNewMateHost.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useNewMate",
-    "owner": "data-layer rewrite: operations",
-    "reason": "births are tracked by app hooks; the operations adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsNewMateHost.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useNewMate",
-    "owner": "data-layer rewrite: operations",
-    "reason": "births are tracked by app hooks; the operations adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsNewMateHost.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useNewMate",
-    "owner": "data-layer rewrite: operations",
-    "reason": "births are tracked by app hooks; the operations adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsNewProjectComingPage.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useNewProjectBirths",
-    "owner": "data-layer rewrite: operations",
-    "reason": "births are tracked by app hooks; the operations adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsNewProjectComingPage.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useNewProjectBirths",
-    "owner": "data-layer rewrite: operations",
-    "reason": "births are tracked by app hooks; the operations adapter feeds the store",
     "expires": "never"
   },
   {
@@ -1293,30 +1141,6 @@
     "fingerprint": "useMatesInventory(useMemo(() => drawnMateProjects",
     "owner": "data-layer rewrite: services",
     "reason": "the projects page prepares every drawn Mate's inventory up front; read on open",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useNewProjectBirths",
-    "owner": "data-layer rewrite: operations",
-    "reason": "births are tracked by app hooks; the operations adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useNewProjectBirths",
-    "owner": "data-layer rewrite: operations",
-    "reason": "births are tracked by app hooks; the operations adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useNewProjectBirths",
-    "owner": "data-layer rewrite: operations",
-    "reason": "births are tracked by app hooks; the operations adapter feeds the store",
     "expires": "never"
   },
   {
@@ -1645,22 +1469,6 @@
     "fingerprint": "settlePress(",
     "owner": "data-layer rewrite: operations",
     "reason": "kept (D42, orchestrator 2026-10-06): a press's hold at HQ is a lease and its renewal liveness — HQ lets a hold go once it is not renewed; no outcome is decided by it, and the press's writes are the account's operations",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/design/pressPage.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useNewProjectBirths",
-    "owner": "data-layer rewrite: operations",
-    "reason": "births are tracked by app hooks; the operations adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/design/pressPage.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useNewProjectBirths",
-    "owner": "data-layer rewrite: operations",
-    "reason": "births are tracked by app hooks; the operations adapter feeds the store",
     "expires": "never"
   },
   {
@@ -2552,139 +2360,11 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/zerops/matePress.ts",
-    "kind": "retired-token",
-    "fingerprint": "useNewMate",
-    "owner": "data-layer rewrite: operations",
-    "reason": "births are tracked by app hooks; the operations adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/matePress.ts",
-    "kind": "retired-token",
-    "fingerprint": "useNewMate",
-    "owner": "data-layer rewrite: operations",
-    "reason": "births are tracked by app hooks; the operations adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/matePress.ts",
-    "kind": "retired-token",
-    "fingerprint": "useNewMate",
-    "owner": "data-layer rewrite: operations",
-    "reason": "births are tracked by app hooks; the operations adapter feeds the store",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/zerops/mateScope.ts",
     "kind": "retired-token",
     "fingerprint": "shownInScope(",
     "owner": "data-layer rewrite: permissions/members",
     "reason": "the Mine filter and owner records are computed in the client; HQ sends them finished",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/newMate.ts",
-    "kind": "retired-token",
-    "fingerprint": "useNewMate",
-    "owner": "data-layer rewrite: operations",
-    "reason": "births are tracked by app hooks; the operations adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/newMate.ts",
-    "kind": "retired-token",
-    "fingerprint": "useNewMate",
-    "owner": "data-layer rewrite: operations",
-    "reason": "births are tracked by app hooks; the operations adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/newProjectBirth.ts",
-    "kind": "retired-token",
-    "fingerprint": "useNewMate",
-    "owner": "data-layer rewrite: operations",
-    "reason": "births are tracked by app hooks; the operations adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/newProjectBirth.ts",
-    "kind": "retired-token",
-    "fingerprint": "useNewMate",
-    "owner": "data-layer rewrite: operations",
-    "reason": "births are tracked by app hooks; the operations adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/newProjectBirth.ts",
-    "kind": "retired-token",
-    "fingerprint": "useNewProjectBirths",
-    "owner": "data-layer rewrite: operations",
-    "reason": "births are tracked by app hooks; the operations adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/newProjectBirth.ts",
-    "kind": "retired-token",
-    "fingerprint": "useNewProjectBirths",
-    "owner": "data-layer rewrite: operations",
-    "reason": "births are tracked by app hooks; the operations adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/newProjectBirth.ts",
-    "kind": "retired-token",
-    "fingerprint": "useNewProjectBirths",
-    "owner": "data-layer rewrite: operations",
-    "reason": "births are tracked by app hooks; the operations adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/newProjectBirth.ts",
-    "kind": "retired-token",
-    "fingerprint": "useNewProjectBirths",
-    "owner": "data-layer rewrite: operations",
-    "reason": "births are tracked by app hooks; the operations adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/newProjectBirth.ts",
-    "kind": "retired-token",
-    "fingerprint": "useNewProjectBirths",
-    "owner": "data-layer rewrite: operations",
-    "reason": "births are tracked by app hooks; the operations adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/newProjectBirth.ts",
-    "kind": "retired-token",
-    "fingerprint": "useNewProjectBirths",
-    "owner": "data-layer rewrite: operations",
-    "reason": "births are tracked by app hooks; the operations adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/newProjectBirth.ts",
-    "kind": "retired-token",
-    "fingerprint": "useNewProjectBirths",
-    "owner": "data-layer rewrite: operations",
-    "reason": "births are tracked by app hooks; the operations adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/newProjectBirth.ts",
-    "kind": "retired-token",
-    "fingerprint": "useNewProjectBirths",
-    "owner": "data-layer rewrite: operations",
-    "reason": "births are tracked by app hooks; the operations adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/newProjectBirth.ts",
-    "kind": "retired-token",
-    "fingerprint": "useNewProjectBirths",
-    "owner": "data-layer rewrite: operations",
-    "reason": "births are tracked by app hooks; the operations adapter feeds the store",
     "expires": "never"
   },
   {
@@ -2733,22 +2413,6 @@
     "fingerprint": "useMayAddEnvironment",
     "owner": "data-layer rewrite: permissions/members",
     "reason": "add-environment facts are computed in the client; HQ sends what the person may do",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useAddEnvironment.ts",
-    "kind": "retired-token",
-    "fingerprint": "useNewProjectBirths",
-    "owner": "data-layer rewrite: operations",
-    "reason": "births are tracked by app hooks; the operations adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useAddEnvironment.ts",
-    "kind": "retired-token",
-    "fingerprint": "useNewProjectBirths",
-    "owner": "data-layer rewrite: operations",
-    "reason": "births are tracked by app hooks; the operations adapter feeds the store",
     "expires": "never"
   },
   {
@@ -2954,22 +2618,6 @@
   {
     "path": "apps/web/src/zerops/useMateActions.tsx",
     "kind": "retired-token",
-    "fingerprint": "useNewProjectBirths",
-    "owner": "data-layer rewrite: operations",
-    "reason": "births are tracked by app hooks; the operations adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useMateActions.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useNewProjectBirths",
-    "owner": "data-layer rewrite: operations",
-    "reason": "births are tracked by app hooks; the operations adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useMateActions.tsx",
-    "kind": "retired-token",
     "fingerprint": "useZeropsOrganizationMembersRead",
     "owner": "data-layer rewrite: permissions/members",
     "reason": "the client reads organization members for owners and admins; HQ sends them finished",
@@ -3077,54 +2725,6 @@
     "fingerprint": "useMateActivityByProject(",
     "owner": "data-layer rewrite: Mate attention/overview",
     "reason": "Mate activity is picked by send time; the source decides, never the clock",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useMenuMateReadings.ts",
-    "kind": "retired-token",
-    "fingerprint": "useNewMate",
-    "owner": "data-layer rewrite: operations",
-    "reason": "births are tracked by app hooks; the operations adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useMenuMateReadings.ts",
-    "kind": "retired-token",
-    "fingerprint": "useNewMate",
-    "owner": "data-layer rewrite: operations",
-    "reason": "births are tracked by app hooks; the operations adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useNewProjectBirthPorts.ts",
-    "kind": "retired-token",
-    "fingerprint": "useNewMate",
-    "owner": "data-layer rewrite: operations",
-    "reason": "births are tracked by app hooks; the operations adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useNewProjectBirthPorts.ts",
-    "kind": "retired-token",
-    "fingerprint": "useNewMate",
-    "owner": "data-layer rewrite: operations",
-    "reason": "births are tracked by app hooks; the operations adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useOpenMate.ts",
-    "kind": "retired-token",
-    "fingerprint": "useNewMate",
-    "owner": "data-layer rewrite: operations",
-    "reason": "births are tracked by app hooks; the operations adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useOpenMate.ts",
-    "kind": "retired-token",
-    "fingerprint": "useNewMate",
-    "owner": "data-layer rewrite: operations",
-    "reason": "births are tracked by app hooks; the operations adapter feeds the store",
     "expires": "never"
   },
   {
