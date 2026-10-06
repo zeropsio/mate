@@ -365,6 +365,132 @@ describe("HQ scoped socket", () => {
         }),
       ),
     );
+    it.effect("seen acknowledges devstage attention without a Mate record", () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const core = yield* startCore(true, { reconcileEvery: Duration.hours(1) });
+          yield* untilHealth(core.call, "active");
+          const session = yield* sessionFor(core.call, "door-owner");
+          const app = yield* core.call("POST", "/api/apps", {
+            session,
+            body: { name: "Devstage" },
+          });
+          assert.strictEqual(app.status, 201);
+          const attached = yield* core.call(
+            "POST",
+            `/api/apps/${(app.body as { id: string }).id}/projects`,
+            {
+              session,
+              body: { projectId: "P_MATE", kind: "devstage", mate: { face: "face" } },
+            },
+          );
+          assert.strictEqual(attached.status, 201);
+          // This branch requires a body at attach; reproduce an attached project without its record.
+          yield* core.sql`DELETE FROM hq_mate WHERE project_id = ${"P_MATE"}`;
+          assert.lengthOf(yield* core.sql`SELECT * FROM hq_mate WHERE project_id = ${"P_MATE"}`, 0);
+          const credential = yield* enrollMate(core.call, core.fake, "P_MATE");
+          const issued = yield* core.call("POST", "/api/mate/link-ticket", {
+            headers: { authorization: `Mate ${credential}` },
+          });
+          assert.strictEqual(issued.status, 200);
+          const received = yield* Stream.toPull(
+            core.overviews.changes.pipe(
+              Stream.filterEffect(() =>
+                Effect.map(
+                  core.overviews.all,
+                  (entries) => entries.get("P_MATE")?.attention !== undefined,
+                ),
+              ),
+            ),
+          );
+          const wire = yield* Effect.acquireRelease(
+            Effect.promise(
+              () =>
+                new Promise<WebSocket>((resolve, reject) => {
+                  const ws = new WebSocket(
+                    `${core.origin.replace("http:", "ws:")}/api/mate/link?ticket=${(issued.body as { ticket: string }).ticket}`,
+                  );
+                  ws.addEventListener("open", () => resolve(ws), { once: true });
+                  ws.addEventListener("error", reject, { once: true });
+                }),
+            ),
+            (ws) => Effect.sync(() => ws.close()),
+          );
+          wire.send(
+            JSON.stringify({
+              type: "attention",
+              attention: {
+                source: { environmentId: "devstage", incarnation: "boot", revision: 1 },
+                mainThreadId: "thread",
+                lastThreadId: "thread",
+                working: 0,
+                waiting: 0,
+                results: [
+                  { threadId: "thread", turnId: "result", completedAt: "2026-10-06T00:00:00.000Z" },
+                ],
+                questions: [],
+                truncated: false,
+              },
+            }),
+          );
+          yield* received;
+          const ticket = yield* ticketFor(core.call, session);
+          const unseen = yield* Effect.promise(
+            () =>
+              new Promise<Array<number | null>>((resolve, reject) => {
+                const ws = new WebSocket(
+                  `${core.origin.replace("http:", "ws:")}/api/structure/ws?ticket=${ticket}`,
+                );
+                const fail = (error: unknown) => {
+                  clearTimeout(timeout);
+                  ws.close();
+                  reject(error);
+                };
+                const timeout = setTimeout(() => fail(new Error("no seen receipt")), 3000);
+                const values: Array<number | null> = [];
+                ws.addEventListener("open", () =>
+                  ws.send(
+                    JSON.stringify({
+                      type: "subscribe",
+                      scopes: [{ scope: { kind: "navigation" } }],
+                    }),
+                  ),
+                );
+                ws.addEventListener("error", fail);
+                ws.addEventListener("message", (event) => {
+                  const message = JSON.parse(String(event.data)) as {
+                    type: string;
+                    values?: Array<{ key: string; value: { person?: { unseen: number | null } } }>;
+                  };
+                  if (message.type === "ping") ws.send('{"type":"pong"}');
+                  if (message.type === "scope-error") return fail(new Error(String(event.data)));
+                  const project = message.values?.find((value) => value.key === "project:P_MATE");
+                  if (project !== undefined) values.push(project.value.person!.unseen);
+                  if (message.type === "scope-ready")
+                    ws.send(
+                      JSON.stringify({
+                        type: "seen",
+                        projectId: "P_MATE",
+                        resultIds: ["result"],
+                      }),
+                    );
+                  if (values.at(-1) === 0) {
+                    clearTimeout(timeout);
+                    ws.close();
+                    resolve(values);
+                  }
+                });
+              }),
+          );
+          assert.deepStrictEqual(unseen, [1, 0]);
+          assert.lengthOf(
+            yield* core.sql`SELECT * FROM hq_attention_seen WHERE project_id = ${"P_MATE"}`,
+            1,
+          );
+          assert.lengthOf(yield* core.sql`SELECT * FROM hq_mate WHERE project_id = ${"P_MATE"}`, 0);
+        }),
+      ),
+    );
     it.effect("the real Mate link ingests today's overview and revisioned attention", () =>
       Effect.scoped(
         Effect.gen(function* () {

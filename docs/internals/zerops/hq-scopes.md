@@ -70,7 +70,7 @@ until source attention proves result identities and the person may observe the M
 `projectId` and result IDs (attention result `turnId`); HQ accepts only currently published IDs,
 stores acknowledgement by person/project/result, and updates only that person's navigation.
 Acknowledgements survive Core restart. They load only for observed projects in the scope, and are
-deleted on forgetting a Mate (also by the Mate foreign key on record deletion). A synchronous epoch
+deleted on forgetting a Mate. A synchronous epoch
 fences the per-person cache so a recreated Mate cannot inherit an old result acknowledgement. A missing source attention report does not mean zero unseen.
 
 Send `move-offers` with `requestId` and `projectId` when the move dialog opens. The correlated reply
