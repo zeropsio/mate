@@ -230,7 +230,7 @@ describe("makeHqApi", () => {
       expect(hq.seen.at(-1)?.authorization).toBe("Bearer session-1");
     });
 
-    it("HQ no longer takes is forgotten, and the door's new one kept", async () => {
+    it("HQ no longer takes is forgotten, and renewed through the door within the call", async () => {
       const hq = fakeHq();
       const kept = keptStore("revoked");
       const door = doors();
@@ -241,8 +241,6 @@ describe("makeHqApi", () => {
         openSocket: NO_SOCKET,
         kept: kept.port,
       });
-      await expect(api.structure()).rejects.toMatchObject({ code: "session_required" });
-      expect(kept.told).toEqual(["forget revoked"]);
       await api.structure();
       expect(door.minted).toEqual(["door-1"]);
       expect(kept.told).toEqual([
@@ -251,7 +249,7 @@ describe("makeHqApi", () => {
       ]);
     });
 
-    it("another tab kept meanwhile replaces one HQ no longer takes, through no door", async () => {
+    it("another tab kept meanwhile renews one HQ no longer takes, through no door", async () => {
       const hq = fakeHq();
       const door = doors();
       const kept = keptStore(null);
@@ -274,7 +272,6 @@ describe("makeHqApi", () => {
       kept.replace("session-2");
       hq.revoke("session-1");
 
-      await expect(api.structure()).rejects.toMatchObject({ code: "session_required" });
       await api.structure();
       expect(door.minted).toEqual(["door-1"]);
       expect(hq.seen.at(-1)?.authorization).toBe("Bearer session-2");
@@ -316,7 +313,7 @@ describe("makeHqApi", () => {
     expect([await api.mateKey("P_ADA"), await api.mateKey("P_BEA")]).toEqual(["tok-ada", null]);
   });
 
-  it("ends a refused session visibly and enters again on the next explicit call", async () => {
+  it("renews a session HQ ended once, through the door, and the call goes on", async () => {
     const hq = fakeHq();
     const door = doors();
     const api = makeHqApi({
@@ -328,20 +325,91 @@ describe("makeHqApi", () => {
     await api.structure();
     hq.expire();
 
-    await expect(api.structure()).rejects.toMatchObject({ code: "session_required" });
-    expect(door.minted).toEqual(["door-1"]);
     await expect(api.structure()).resolves.toEqual({ ungrouped: [], apps: [] });
     expect(door.minted).toEqual(["door-1", "door-2"]);
+    expect(hq.seen.map((entry) => `${entry.method} ${entry.path} ${entry.authorization}`)).toEqual([
+      "POST /api/door null",
+      "GET /api/structure Bearer session-1",
+      "GET /api/structure Bearer session-1",
+      "POST /api/door null",
+      "GET /api/structure Bearer session-2",
+    ]);
+  });
 
+  it("renews through one door for calls that meet the ended session at once", async () => {
+    const hq = fakeHq();
+    const door = doors();
+    const api = makeHqApi({
+      address: ADDRESS,
+      fetch: hq.fetch,
+      throughDoor: door.throughDoor,
+      openSocket: NO_SOCKET,
+    });
+    await api.structure();
+    hq.expire();
+
+    await Promise.all([api.structure(), api.structure(), api.createApp("Acme")]);
+    expect(door.minted).toEqual(["door-1", "door-2"]);
+  });
+
+  it("ends a session whose renewal HQ refuses too, through one door", async () => {
+    let kept: string | null = "kept-session";
+    const door = doors();
     const stuck = makeHqApi({
       address: ADDRESS,
       fetch: fakeHq((seen) =>
         seen.path === "/api/structure" ? json(401, { code: "session_required" }) : undefined,
       ).fetch,
-      throughDoor: doors().throughDoor,
+      throughDoor: door.throughDoor,
+      openSocket: NO_SOCKET,
+      kept: {
+        read: () => kept,
+        keep: () => undefined,
+        forget: () => {
+          kept = null;
+        },
+      },
+    });
+    await expect(stuck.structure()).rejects.toMatchObject({ code: "session_required" });
+    expect(door.minted).toEqual(["door-1"]);
+  });
+
+  it("ends a session the door has just opened at once when HQ refuses it", async () => {
+    const door = doors();
+    const stuck = makeHqApi({
+      address: ADDRESS,
+      fetch: fakeHq((seen) =>
+        seen.path === "/api/structure" ? json(401, { code: "session_required" }) : undefined,
+      ).fetch,
+      throughDoor: door.throughDoor,
       openSocket: NO_SOCKET,
     });
     await expect(stuck.structure()).rejects.toMatchObject({ code: "session_required" });
+    expect(door.minted).toEqual(["door-1"]);
+  });
+
+  it("ends a session truthfully when its renewal's door is refused", async () => {
+    const hq = fakeHq((seen) =>
+      seen.path === "/api/door" &&
+      seen.body !== undefined &&
+      (seen.body as { token: string }).token === "door-2"
+        ? json(401, { code: "zerops_throwaway_required" })
+        : undefined,
+    );
+    const door = doors();
+    const api = makeHqApi({
+      address: ADDRESS,
+      fetch: hq.fetch,
+      throughDoor: door.throughDoor,
+      openSocket: NO_SOCKET,
+    });
+    await api.structure();
+    hq.expire();
+    await expect(api.structure()).rejects.toMatchObject({
+      kind: "refused",
+      code: "zerops_throwaway_required",
+    });
+    expect(door.minted).toEqual(["door-1", "door-2"]);
   });
 
   it("waits 45 s for a door that does not answer, then gives it up, and the next call enters again", async () => {
@@ -796,7 +864,7 @@ describe("makeHqApi — the structure socket", () => {
     else await expect(stream.done).rejects.toBeInstanceOf(HqError);
   });
 
-  it("comes through the door again for the next socket once HQ ended the session (4401)", async () => {
+  it("renews the session HQ ended over the socket (4401) and opens the next socket with it", async () => {
     const hq = ticketing();
     const door = doors();
     const sockets = fakeSockets();
@@ -806,24 +874,45 @@ describe("makeHqApi — the structure socket", () => {
       throughDoor: door.throughDoor,
       openSocket: sockets.openSocket,
     });
-    const first = streaming(api);
-    (await sockets.next()).on.close(4401);
-    await expect(first.done).rejects.toMatchObject({
-      kind: "refused",
-      code: "session_required",
-      status: 401,
-    });
-    streaming(api);
-    await sockets.next();
+    const stream = streaming(api);
+    const first = await sockets.next();
+    first.on.message(JSON.stringify({ type: "snapshot", ungrouped: [], apps: [] }));
+    hq.expire();
+    first.on.close(4401);
+    const renewed = await sockets.next();
+    expect(renewed.url).toContain("ticket=t-2");
     expect(door.minted).toEqual(["door-1", "door-2"]);
     expect(hq.seen.at(-1)).toMatchObject({
       path: "/api/stream-ticket",
       authorization: "Bearer session-2",
     });
+    renewed.on.close(1006);
+    await expect(stream.done).rejects.toMatchObject({ kind: "unavailable", code: "socket_1006" });
+  });
+
+  it("ends the stream refused when the renewed session's socket is ended (4401) before it said anything", async () => {
+    const hq = ticketing();
+    const door = doors();
+    const sockets = fakeSockets();
+    const api = makeHqApi({
+      address: ADDRESS,
+      fetch: hq.fetch,
+      throughDoor: door.throughDoor,
+      openSocket: sockets.openSocket,
+    });
+    const stream = streaming(api);
+    (await sockets.next()).on.close(4401);
+    (await sockets.next()).on.close(4401);
+    await expect(stream.done).rejects.toMatchObject({
+      kind: "refused",
+      code: "session_required",
+      status: 401,
+    });
+    expect(door.minted).toEqual(["door-1", "door-2"]);
   });
 
   // Audit K7: the session HQ ended over the socket is not presented again by the next load.
-  it("forgets the kept session HQ ended over the socket (4401)", async () => {
+  it("forgets the kept session HQ ended over the socket (4401), and keeps its renewal", async () => {
     let kept: string | null = null;
     const door = doors();
     const sockets = fakeSockets();
@@ -842,12 +931,8 @@ describe("makeHqApi — the structure socket", () => {
         },
       },
     });
-    const first = streaming(api);
-    (await sockets.next()).on.close(4401);
-    await expect(first.done).rejects.toMatchObject({ kind: "refused", code: "session_required" });
-    expect(kept).toBeNull();
-
     streaming(api);
+    (await sockets.next()).on.close(4401);
     await sockets.next();
     expect(door.minted).toEqual(["door-1", "door-2"]);
     expect(kept).toBe("session-2");

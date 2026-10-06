@@ -645,7 +645,7 @@ describe("automatic HQ recovery", () => {
 });
 
 describe("planned HQ segments", () => {
-  it.each([1000, 1001, 1006, 1011, 4401, 4408])(
+  it.each([1000, 1001, 1006, 1011, 4408])(
     "keeps structure and Mates live through rotation, then marks close %i stale",
     async (code) => {
       const h = harness();

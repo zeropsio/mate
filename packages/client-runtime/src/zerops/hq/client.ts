@@ -825,6 +825,9 @@ export function makeHqApi(input: {
     input.kept?.forget(token);
   };
 
+  /** The sessions the door opened that HQ has not yet taken on any call: none renews. */
+  const unproven = new WeakSet<Promise<string>>();
+
   const enter = () => {
     const entering = input
       .throughDoor(async (token) =>
@@ -844,28 +847,41 @@ export function makeHqApi(input: {
     entering.catch(() => {
       if (session === entering) session = null;
     });
+    unproven.add(entering);
     session = entering;
     return entering;
   };
 
-  /** A call as the session's holder; a refused session is forgotten for the next explicit call. */
+  /**
+   * A call as the session's holder. A session HQ no longer takes is forgotten and renewed once —
+   * another tab's kept one, else through the door — and the call made again; HQ refusing the
+   * renewal too, or a session from its door it never took, ends the call with that refusal. A call
+   * HQ refused for its session wrote nothing, so a write is made again as safely as a read.
+   */
   const authorized = async (
     path: string,
     init: RequestInit = {},
     write = false,
   ): Promise<Response> => {
-    const held = session ?? restore() ?? enter();
-    const token = await held;
-    try {
-      return await send(
-        input.fetch,
-        `${origin}${path}`,
-        { ...init, headers: { ...init.headers, Authorization: `Bearer ${token}` } },
-        write,
-      );
-    } catch (cause) {
-      if (cause instanceof HqError && cause.code === "session_required") drop(held, token);
-      throw cause;
+    let renewed = false;
+    for (;;) {
+      const held = session ?? restore() ?? enter();
+      const token = await held;
+      try {
+        const response = await send(
+          input.fetch,
+          `${origin}${path}`,
+          { ...init, headers: { ...init.headers, Authorization: `Bearer ${token}` } },
+          write,
+        );
+        unproven.delete(held);
+        return response;
+      } catch (cause) {
+        if (!(cause instanceof HqError && cause.code === "session_required")) throw cause;
+        drop(held, token);
+        if (renewed || unproven.has(held)) throw cause;
+        renewed = true;
+      }
     }
   };
 
@@ -960,6 +976,8 @@ export function makeHqApi(input: {
   return {
     structure: structureOf,
     streamStructure: async (handlers, signal) => {
+      /** HQ ended the last socket's session (4401), and the renewed one has said nothing yet. */
+      let renewing = false;
       while (!signal.aborted) {
         const { ticket } = await json<{ readonly ticket: string }>(
           await authorized("/api/stream-ticket", { method: "POST", signal }),
@@ -972,6 +990,7 @@ export function makeHqApi(input: {
         await new Promise<void>((resolve, reject) => {
           const socket = input.openSocket(url, {
             message: (data) => {
+              renewing = false;
               let message: unknown;
               try {
                 message = JSON.parse(data);
@@ -995,8 +1014,13 @@ export function makeHqApi(input: {
               } else if (code === HQ_STREAM_SEGMENT_CLOSE.code) {
                 resolve();
               } else if (code === SOCKET_CLOSE.sessionEnded) {
-                // The next call enters the door again, the next socket with it.
                 if (token !== null) drop(held, token);
+                // Renewed once: the next ticket enters the door again, the next socket with it.
+                if (!renewing) {
+                  renewing = true;
+                  resolve();
+                  return;
+                }
                 reject(
                   new HqError({
                     kind: "refused",

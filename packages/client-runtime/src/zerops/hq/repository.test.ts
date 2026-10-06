@@ -35,7 +35,7 @@ describe("HQ source client", () => {
       kind: "file",
     });
   });
-  it("ends an expired-session attempt and enters the door only on the person's next attempt", async () => {
+  it("renews an expired session through the door within the same attempt", async () => {
     const calls: string[] = [];
     let kept: string | null = "expired";
     const api = makeHqApi({
@@ -76,11 +76,10 @@ describe("HQ source client", () => {
       },
     });
     const query = { path: "", kind: "tree" as const };
-    await expect(api.repositorySource("app", "code", query)).rejects.toThrow();
-    expect(calls).toHaveLength(1);
     await expect(api.repositorySource("app", "code", query)).resolves.toMatchObject({
       kind: "tree",
     });
     expect(calls).toHaveLength(3);
+    expect(kept).toBe("fresh");
   });
 });

@@ -268,9 +268,8 @@ describe("A: sign-in, session and organizations", () => {
     );
 
     // Catches an expired HQ session permanently stopping live work until the user retries.
-    it.effect.fails("HQ session expires and renews itself", () =>
+    it.effect("HQ session expires and renews itself", () =>
       Effect.gen(function* () {
-        const reachedVisible = startExpectedFailure("HQ session expires and renews itself");
         const s = yield* accountScenario(true);
         yield* Effect.promise(() => s.clock.install());
         yield* s.given.project("Ada", { mate: true, app: "Shop" });
@@ -280,7 +279,6 @@ describe("A: sign-in, session and organizations", () => {
         yield* sessionEnds(s, "expiry");
         yield* s.when.hq.colleague.renamesProject("Shop", "Automatically renewed");
         yield* allowHqRetries(s, "Automatically renewed", s.receivedReplies);
-        reachedVisible();
         yield* s.then.menu.row("Automatically renewed").appears({ within: 10_000 });
         yield* retainedAuthorization();
         yield* s.then.noReload;
