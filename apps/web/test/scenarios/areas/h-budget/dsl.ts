@@ -52,6 +52,17 @@ export function budgets(s: Scenario) {
           );
           await observation.mateReady(name);
         }),
+      /** Opens the production chip's menu, which draws each stop's public addresses. */
+      opensProductionChip: Effect.promise(async () => {
+        await s.page
+          .locator('[data-zerops-surface="sidebar-production-chip"][data-zerops-chip="prod"]')
+          .setTimeout(15_000)
+          .click();
+        await s.page
+          .locator('[data-zerops-surface="sidebar-production-main"]')
+          .setTimeout(15_000)
+          .wait();
+      }),
       hqFirstData: (count: number) => Effect.promise(() => observation.hq.firstData(count)),
       browserSettled: Effect.promise(() => observation.browser.settled()),
       hqStateSettled: Effect.promise(() => observation.hq.stateSettled()),
@@ -71,6 +82,9 @@ export function budgets(s: Scenario) {
       /** One project's process history read, `GET /project/{id}/process`, and its preflight. */
       projectHistoryReads: () =>
         observation.browser.matching(/^(GET|OPTIONS) \/project\/[^/]+\/process(\?|$)/u),
+      /** One project's own routings read, `GET /project/{id}/public-http-routing`, and its preflight. */
+      projectRoutingReads: () =>
+        observation.browser.matching(/^(GET|OPTIONS) \/project\/[^/]+\/public-http-routing(\?|$)/u),
       /** One project's own services read, `GET /project/{id}/service-stack`, and its preflight. */
       projectServiceReads: () =>
         observation.browser.matching(/^(GET|OPTIONS) \/project\/[^/]+\/service-stack(\?|$)/u),

@@ -194,6 +194,36 @@ describe("H: hosted client budgets", () => {
       }),
     );
 
+    // Catches a per-project routings read for an organization reader: at start, with the
+    // production menu open, or repeated over an idle session.
+    it.effect("an organization reader reads no project's routings, shown or idle", () =>
+      Effect.gen(function* () {
+        const s = yield* createScenario([installBudget]);
+        const b = budgets(s);
+        yield* b.given.mates(names);
+        yield* s.given.project("Shop-live", {
+          app: "Shop",
+          kind: "production",
+          environmentName: "live",
+        });
+        yield* Effect.promise(() => s.clock.install());
+        yield* s.given.signedIn;
+        yield* b.when.menuReady(names);
+        yield* b.when.opensProductionChip;
+        yield* b.when.browserSettled;
+        const atStart = b.measure.projectRoutingReads();
+        yield* Effect.promise(() => s.clock.advance(120_000));
+        yield* b.when.browserSettled;
+        const idle = b.measure.projectRoutingReads() - atStart;
+        report(
+          `H routings: GET public-http-routing (with preflights) at start=${atStart}, over 2 min idle=${idle}; 4 Mates, production menu open`,
+        );
+        yield* s.then.noExternalNetwork;
+        expect(atStart, "Per-project routings reads at start").toBe(0);
+        expect(idle, "Per-project routings reads while idle").toBe(0);
+      }),
+    );
+
     // Catches a per-project services read: at start, or repeated over an idle session.
     it.effect("an idle session reads no project's services on its own", () =>
       Effect.gen(function* () {
