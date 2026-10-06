@@ -199,6 +199,48 @@ describe("B: menu liveness", () => {
       }),
     );
 
+    // Catches a restarted Mate whose attention starts its revisions over being held to the run
+    // before: another incarnation's live word replaces it (HANDOFF §2.2 / §8: within ~2 s).
+    it.effect("a restarted Mate's attention replaces its run before within two seconds", () =>
+      Effect.gen(function* () {
+        const s = yield* menuScenario();
+        yield* s.given.project("Ada", { mate: true });
+        yield* s.given.signedIn;
+        yield* s.then.menu.row("Ada").appears();
+        yield* s.colleague.reports("Ada", working, "working");
+        yield* s.colleague.reports("Ada", working, "working");
+        yield* s.menu.text("Ada", "Thinking", "sidebar-mate-live-step");
+        yield* s.colleague.restarts("Ada");
+        yield* s.colleague.attends("Ada", {});
+        yield* s.menu.lacks("Ada", "sidebar-mate-live-step", 2_000);
+        yield* s.then.noReload;
+      }),
+    );
+
+    // Catches a new chat reaching the row only with HQ's overview of it: the attention HQ relays
+    // names it first, and the row follows it alone (HANDOFF §2.2 / §8: within ~2 s).
+    it.effect(
+      "a new chat HQ relays the attention of alone reaches its row within two seconds",
+      () =>
+        Effect.gen(function* () {
+          const s = yield* menuScenario();
+          yield* s.given.project("Ada", { mate: true });
+          yield* s.given.signedIn;
+          yield* s.then.menu.row("Ada").appears();
+          yield* s.colleague.reports("Ada");
+          yield* s.menu.text("Ada", "Inspect the checkout", "sidebar-mate-subject");
+          yield* s.colleague.relays("Ada", {
+            mainThreadId: ThreadId.make("new-chat"),
+            lastThreadId: ThreadId.make("new-chat"),
+            waiting: 1,
+            questions: [{ threadId: ThreadId.make("new-chat"), kind: "approval", turnId: null }],
+          });
+          yield* s.menu.dot("Ada", "attention", 2_000);
+          yield* s.menu.lacks("Ada", "sidebar-mate-subject", 2_000);
+          yield* s.then.noReload;
+        }),
+    );
+
     // Catches a pending agent question hidden until its conversation is opened.
     it.effect("an agent waiting for input shows its question in the row", () =>
       Effect.gen(function* () {

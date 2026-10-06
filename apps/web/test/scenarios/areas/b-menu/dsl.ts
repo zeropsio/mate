@@ -6,6 +6,8 @@ import type { OverviewMain, MateThreadKind } from "@t3tools/shared/mateLink";
 import { createScenario } from "../../harness/scenario.ts";
 import {
   installMenu,
+  relayAttention,
+  restartMate,
   reportAttention,
   reportConversation,
   moveMate,
@@ -71,6 +73,27 @@ export const menuScenario = Effect.fn("menu.scenario")(function* (
           { timeout: within, polling: "raf" },
           name,
           surface,
+        ),
+      ),
+    /** The row of Mate `name` shows a `tone` dot within `within` ms. */
+    dot: (name: string, tone: string, within: number) =>
+      Effect.promise(() =>
+        s.page.waitForFunction(
+          (name, tone) =>
+            [
+              ...document.querySelectorAll<HTMLElement>('[data-zerops-surface="sidebar-mate"]'),
+            ].some(
+              (row) =>
+                row
+                  .querySelector<HTMLElement>('[data-zerops-surface="sidebar-mate-name"]')
+                  ?.innerText.trim() === name &&
+                row.querySelector(
+                  `[data-zerops-surface="sidebar-mate-dot"][data-tone="${tone}"]`,
+                ) !== null,
+            ),
+          { timeout: within, polling: "raf" },
+          name,
+          tone,
         ),
       ),
     absent: (name: string) =>
@@ -155,6 +178,11 @@ export const menuScenario = Effect.fn("menu.scenario")(function* (
         reportConversation(s.drivers, name, patch, kind),
       attends: (name: string, says: Parameters<MateFake["publishAttention"]>[0]) =>
         reportAttention(s.drivers, name, says),
+      /** Its attention moves up its link to HQ only. */
+      relays: (name: string, says: Parameters<MateFake["reviseAttention"]>[0]) =>
+        relayAttention(s.drivers, name, says),
+      /** Its server restarts: its attention's next word is a new incarnation's first revision. */
+      restarts: (name: string) => restartMate(s.drivers, name),
       holdsDetails: (app: string) => holdDetails(s.drivers, app),
       releasesDetails: releaseDetails(s.drivers),
       moves: (name: string, app: string | null) => moveMate(s.drivers, name, app),
