@@ -29,7 +29,15 @@ const project = (projectId: string, appId: string | null): PlacementValue => ({
   name: projectId,
   kind: "mate",
   mate: null,
-  person: { role: "DEVELOPER", mayWrite: true, mine: false, unseen: null },
+  person: {
+    role: "DEVELOPER",
+    mayWrite: true,
+    mine: false,
+    ownerUserId: null,
+    waitsOnViewer: false,
+    unseen: null,
+  },
+  signers: {},
 });
 
 const apply = (state: AccountState, inputs: ReadonlyArray<AccountInput>) =>

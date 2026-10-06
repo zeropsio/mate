@@ -37,6 +37,8 @@ export interface AccountData extends AccountReads {
   readonly showHq: AccountObservation["showHq"];
   /** Asks HQ where a Mate may move, as the move opens. */
   readonly moveOffers: AccountObservation["moveOffers"];
+  /** Asks HQ whom a Mate may be handed over to, as the hand-over opens. */
+  readonly handoverCandidates: AccountObservation["handoverCandidates"];
 }
 
 const AccountDataContext = createContext<AccountData | null>(null);
@@ -71,6 +73,7 @@ export function ZeropsAccountData({ children }: { readonly children: ReactNode }
       retry: observation.retry,
       showHq: observation.showHq,
       moveOffers: observation.moveOffers,
+      handoverCandidates: observation.handoverCandidates,
     }),
     [observation, orgId, store],
   );

@@ -7,7 +7,7 @@
  */
 export { observeAccount, type AccountObservation } from "./account.ts";
 export { makeHqWire } from "./adapters/hqWire.ts";
-export type { HqMoveOffers, HqWire } from "./adapters/hq.ts";
+export type { HqHandoverCandidates, HqMoveOffers, HqWire } from "./adapters/hq.ts";
 export type {
   HqAppValue,
   HqOrganizationValue,

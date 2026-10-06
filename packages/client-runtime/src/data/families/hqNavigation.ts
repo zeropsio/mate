@@ -12,6 +12,7 @@ import { HqOffers } from "@t3tools/shared/hqOffers";
 import {
   HqNavigationApp,
   HqNavigationProject,
+  HqNavigationPerson,
   HqNavigationPress,
   HqNavigationStatus,
   type HqOfficialVerdict,
@@ -49,10 +50,7 @@ export type HqAppValue = Omit<HqNavigationApp, "births"> & {
 export type PlacementValue = HqNavigationProject;
 export type { HqPersonFacts };
 
-export interface HqPersonValue {
-  readonly name: string;
-  readonly clientUserId: string;
-}
+export type HqPersonValue = HqNavigationPerson;
 
 /**
  * A press HQ holds, by its project: what it makes, where, its import once Zerops took it, and how
@@ -82,14 +80,13 @@ const Birth = Schema.Struct({
   face: Schema.String,
   projectId: Schema.optionalKey(Schema.NullOr(Schema.String)),
 });
-const Person = Schema.Struct({ name: Schema.String, clientUserId: Schema.String });
 
 const decodeOrganization = Schema.decodeUnknownOption(Organization);
 const decodeStatus = Schema.decodeUnknownOption(HqNavigationStatus);
 const decodeApp = Schema.decodeUnknownOption(HqNavigationApp);
 const decodeBirth = Schema.decodeUnknownOption(Birth);
 const decodeProject = Schema.decodeUnknownOption(HqNavigationProject);
-const decodePerson = Schema.decodeUnknownOption(Person);
+const decodePerson = Schema.decodeUnknownOption(HqNavigationPerson);
 const decodePress = Schema.decodeUnknownOption(HqNavigationPress);
 
 /** The id a `<prefix>:<id>` key names; `null` for another prefix. */

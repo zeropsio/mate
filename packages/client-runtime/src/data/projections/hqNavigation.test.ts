@@ -33,7 +33,14 @@ const PRESS = {
   heldForMs: 30_000,
   until: "2026-10-06T00:00:30.000Z",
 } as const;
-const person = { role: "DEVELOPER", mayWrite: true, mine: true, unseen: null };
+const person = {
+  role: "DEVELOPER",
+  mayWrite: true,
+  mine: true,
+  ownerUserId: null,
+  waitsOnViewer: false,
+  unseen: null,
+};
 const mate = {
   face: "",
   madeBy: null,
@@ -72,21 +79,50 @@ const rows: ReadonlyArray<Row> = [
     family: "placement",
     id: "ada",
     revision,
-    value: { projectId: "ada", appId: "shop", name: "Ada", kind: "mate", mate, person },
+    value: {
+      projectId: "ada",
+      appId: "shop",
+      name: "Ada",
+      kind: "mate",
+      mate,
+      person,
+      signers: {},
+    },
   },
   {
     family: "placement",
     id: "stage",
     revision,
-    value: { projectId: "stage", appId: "shop", name: "Stage", kind: "stage", mate: null, person },
+    value: {
+      projectId: "stage",
+      appId: "shop",
+      name: "Stage",
+      kind: "stage",
+      mate: null,
+      person,
+      signers: {},
+    },
   },
   {
     family: "placement",
     id: "lone",
     revision,
-    value: { projectId: "lone", appId: null, name: "Lone", kind: "mate", mate, person },
+    value: {
+      projectId: "lone",
+      appId: null,
+      name: "Lone",
+      kind: "mate",
+      mate,
+      person,
+      signers: {},
+    },
   },
-  { family: "hqPerson", id: "u1", revision, value: { name: "Jan", clientUserId: "cu1" } },
+  {
+    family: "hqPerson",
+    id: "u1",
+    revision,
+    value: { name: "Jan", clientUserId: "cu1", avatarUrl: null },
+  },
   { family: "hqPress", id: "p1", revision, value: PRESS },
 ];
 
@@ -181,7 +217,7 @@ describe("hqNavigation", () => {
       structure?.apps.map(({ name, projects }) => [name, projects.map((p) => p.name)]),
     ).toEqual([["Shop", ["Ada", "Stage"]]]);
     expect(structure?.ungrouped.map(({ name }) => name)).toEqual(["Lone"]);
-    expect(people).toEqual({ u1: { name: "Jan", clientUserId: "cu1" } });
+    expect(people).toEqual({ u1: { name: "Jan", clientUserId: "cu1", avatarUrl: null } });
     expect(presses).toEqual({ p1: PRESS });
     expect(organization?.build).toBe("b1");
   });

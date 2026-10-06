@@ -638,14 +638,6 @@ describe("HQ API", () => {
                       processId: null,
                       appVersionId: null,
                       verifiedVersionId: null,
-                      evidence: {
-                        phase: "closed",
-                        processes: [],
-                        version: null,
-                        nextActor: "none",
-                        nextAction: "Operation ended",
-                      },
-                      steps: [],
                       behind: null,
                       reason:
                         "stage has no deploy token yet; an admin who opens the projects page in Zerops Mate mints it",

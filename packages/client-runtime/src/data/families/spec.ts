@@ -58,8 +58,11 @@ export interface HqFamilySource<Value> {
   readonly idOf: (key: string, owner: ScopeOwner) => string | null;
   /** The record key an id is held under: what a resume names as a retained key. */
   readonly keyOf: (id: string, owner: ScopeOwner) => string;
-  /** A record's value; `null` for one this build cannot read, which then changes nothing. */
-  readonly decode: (raw: unknown) => Value | null;
+  /**
+   * A record's value, its key naming which record it is (an application detail's `releases` or
+   * `recipe:stage`); `null` for one this build cannot read, which then changes nothing.
+   */
+  readonly decode: (raw: unknown, key: string) => Value | null;
   /** A detail family's scope for one owner (`DetailDemand.ownerId`). */
   readonly wireScope?: (ownerId: string) => HqScope;
 }

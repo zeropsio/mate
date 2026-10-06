@@ -23,6 +23,7 @@ import {
   hqStreamCloseFailure,
   HqStreamMessage,
   type HqCursor,
+  type HqHandoverCandidate,
   type HqScope,
   type HqScopeDelivery,
   type HqStreamRequest,
@@ -81,6 +82,9 @@ export function classifyHqClose(code: number): StreamFault {
 /** What HQ says a Mate may be moved into, per application, as asked when the move opens. */
 export type HqMoveOffers = Readonly<Record<string, ReadonlyArray<string>>>;
 
+/** Whom a Mate may be handed over to, as HQ answers when the hand-over opens. */
+export type HqHandoverCandidates = ReadonlyArray<HqHandoverCandidate>;
+
 const decodeMessage = Schema.decodeUnknownOption(Schema.fromJsonString(HqStreamMessage));
 
 /** The families each scope kind feeds. */
@@ -108,6 +112,10 @@ export function hqNavigationLink(options: {
   readonly demandDetail: (demand: DetailDemand) => () => void;
   /** Asks HQ where a Mate may move, on the open socket. */
   readonly moveOffers: (projectId: string) => Effect.Effect<HqMoveOffers, StreamFault>;
+  /** Asks HQ whom a Mate may be handed over to, on the open socket. */
+  readonly handoverCandidates: (
+    projectId: string,
+  ) => Effect.Effect<HqHandoverCandidates, StreamFault>;
   /** Tells HQ the reader saw these results of a Mate. */
   readonly seen: (projectId: string, resultIds: ReadonlyArray<string>) => Effect.Effect<void>;
   /** Ends the link's own holds (each Mate's attention). */
@@ -190,7 +198,8 @@ export function hqNavigationLink(options: {
   const cursors = new Map<string, HqCursor>();
   /** The segment open now, if any: what a request is sent on. */
   let open: HqSegment | null = null;
-  const pendingOffers = new Map<string, Deferred.Deferred<HqMoveOffers, StreamFault>>();
+  /** The asks sent on the open socket that HQ has not answered yet, by request id. */
+  const pendingOffers = new Map<string, Deferred.Deferred<unknown, StreamFault>>();
   let requests = 0;
   /** Looks at the demanded details again in the attempt under way, if one is. */
   let wakeAttempt: (() => void) | null = null;
@@ -275,7 +284,7 @@ export function hqNavigationLink(options: {
             for (const { spec } of entry.registered.families) {
               const id = spec.hq!.idOf(recordKey, entry.registered.owner);
               if (id === null) continue;
-              const decoded = spec.hq!.decode(value);
+              const decoded = spec.hq!.decode(value, recordKey);
               // A record this build cannot read changes nothing: its last value stays.
               if (decoded !== null)
                 rows.push({ family: spec.family, id, value: decoded, revision } as Row);
@@ -356,6 +365,7 @@ export function hqNavigationLink(options: {
               const fault: StreamFault = {
                 outcome: message.disposition === "refused" ? "definitive-refusal" : "transient",
                 message: message.reason ?? `HQ could not read this (${message.code}).`,
+                code: message.code,
               };
               if (message.disposition === "refused") refused.add(hqScopeKey(message.scope));
               const jitter = yield* Random.next;
@@ -364,18 +374,21 @@ export function hqNavigationLink(options: {
               return;
             }
             case "move-offers":
-            case "move-offers-error": {
+            case "move-offers-error":
+            case "handover-candidates":
+            case "handover-candidates-error": {
               const waiting = pendingOffers.get(message.requestId);
               if (waiting === undefined) return;
               pendingOffers.delete(message.requestId);
-              yield* message.type === "move-offers"
-                ? Deferred.succeed(waiting, message.moveTo)
-                : Deferred.fail(waiting, {
-                    outcome: message.disposition === "refused" ? "definitive-refusal" : "transient",
-                    message:
-                      message.reason ?? `HQ could not say where it may move (${message.code}).`,
-                  });
-              return;
+              if (message.type === "move-offers")
+                return yield* Deferred.succeed(waiting, message.moveTo);
+              if (message.type === "handover-candidates")
+                return yield* Deferred.succeed(waiting, message.candidates);
+              return yield* Deferred.fail(waiting, {
+                outcome: message.disposition === "refused" ? "definitive-refusal" : "transient",
+                message: message.reason ?? `HQ could not answer this (${message.code}).`,
+                code: message.code,
+              });
             }
           }
         });
@@ -494,6 +507,27 @@ export function hqNavigationLink(options: {
       );
     });
 
+  /** One question to HQ on the open socket, answered by its request id; none without a socket. */
+  const ask = <A>(
+    type: "move-offers" | "handover-candidates",
+    projectId: string,
+  ): Effect.Effect<A, StreamFault> =>
+    Effect.suspend(() => {
+      const segment = open;
+      if (segment === null)
+        return Effect.fail<StreamFault>({
+          outcome: "transient",
+          message: "HQ's stream is not open.",
+        });
+      const requestId = `${type}-${(requests += 1)}`;
+      const answer = Deferred.makeUnsafe<unknown, StreamFault>();
+      pendingOffers.set(requestId, answer);
+      return Effect.andThen(
+        segment.send({ type, requestId, projectId }),
+        Deferred.await(answer) as Effect.Effect<A, StreamFault>,
+      );
+    });
+
   return {
     key,
     scopes,
@@ -501,22 +535,8 @@ export function hqNavigationLink(options: {
     attempt,
     childMoved: () => wakeAttempt?.(),
     demandDetail: (demand) => demands.hold(detailScopeOf(orgId, demand)),
-    moveOffers: (projectId) =>
-      Effect.suspend(() => {
-        const segment = open;
-        if (segment === null)
-          return Effect.fail<StreamFault>({
-            outcome: "transient",
-            message: "HQ's stream is not open.",
-          });
-        const requestId = `move-${(requests += 1)}`;
-        const answer = Deferred.makeUnsafe<HqMoveOffers, StreamFault>();
-        pendingOffers.set(requestId, answer);
-        return Effect.andThen(
-          segment.send({ type: "move-offers", requestId, projectId }),
-          Deferred.await(answer),
-        );
-      }),
+    moveOffers: (projectId) => ask<HqMoveOffers>("move-offers", projectId),
+    handoverCandidates: (projectId) => ask<HqHandoverCandidates>("handover-candidates", projectId),
     seen: (projectId, resultIds) =>
       Effect.suspend(() =>
         open === null ? Effect.void : open.send({ type: "seen", projectId, resultIds }),

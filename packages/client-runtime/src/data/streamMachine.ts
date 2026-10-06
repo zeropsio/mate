@@ -54,6 +54,8 @@ export type StreamOutcome = Extract<
 export interface StreamFault {
   readonly outcome: StreamOutcome;
   readonly message: string;
+  /** The source's own code for it (HQ's `scope-error` code), where it named one. */
+  readonly code?: string;
   /** What the source asked for (`Retry-After`), ms. */
   readonly retryAfterMs?: number;
 }

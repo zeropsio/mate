@@ -39,7 +39,14 @@ export interface SeededHq {
   readonly person?: HqPersonFacts;
 }
 
-const PERSON: HqPersonFacts = { role: "DEVELOPER", mayWrite: true, mine: false, unseen: null };
+const PERSON: HqPersonFacts = {
+  role: "DEVELOPER",
+  mayWrite: true,
+  mine: false,
+  ownerUserId: null,
+  waitsOnViewer: false,
+  unseen: null,
+};
 let revisions = 0;
 
 export function seedHqNavigation(store: AccountStore, orgId: string, seed: SeededHq): void {
@@ -94,7 +101,6 @@ export function seedHqNavigation(store: AccountStore, orgId: string, seed: Seede
     closedOff: mate.closedOff ?? false,
     keyWider: mate.keyWider ?? false,
     ...(mate.birthId == null ? {} : { birthId: mate.birthId }),
-    ...(mate.signers === undefined ? {} : { signers: mate.signers }),
   });
   const rows: Row[] = [
     {
@@ -144,6 +150,7 @@ export function seedHqNavigation(store: AccountStore, orgId: string, seed: Seede
           mate: project.mate === null ? null : mateOf(project.mate),
           ...(project.can === undefined ? {} : { can: project.can as HqAppValue["can"] }),
           person: seed.person ?? PERSON,
+          signers: project.mate?.signers ?? {},
         },
       })),
     ]),
@@ -159,13 +166,14 @@ export function seedHqNavigation(store: AccountStore, orgId: string, seed: Seede
         mate: mateOf(project.mate),
         ...(project.can === undefined ? {} : { can: project.can as HqAppValue["can"] }),
         person: seed.person ?? PERSON,
+        signers: project.mate.signers ?? {},
       },
     })),
     ...Object.entries(seed.people ?? {}).map(([id, person]): Row => ({
       family: "hqPerson",
       id,
       revision,
-      value: { name: person.name, clientUserId: person.clientUserId ?? "" },
+      value: { name: person.name, clientUserId: person.clientUserId ?? "", avatarUrl: null },
     })),
     ...Object.entries(seed.presses ?? {}).map(([id, press]): Row => ({
       family: "hqPress",

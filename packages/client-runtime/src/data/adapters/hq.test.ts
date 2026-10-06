@@ -35,7 +35,15 @@ const project = (projectId: string, appId: string | null, mate = true) => ({
   mate: mate
     ? { face: "", madeBy: null, standupRequestedBy: null, closedOff: false, keyWider: false }
     : null,
-  person: { role: "DEVELOPER", mayWrite: true, mine: false, unseen: null },
+  person: {
+    role: "DEVELOPER",
+    mayWrite: true,
+    mine: false,
+    ownerUserId: null,
+    waitsOnViewer: false,
+    unseen: null,
+  },
+  signers: {},
 });
 
 const navigation = (
@@ -198,6 +206,7 @@ describe("hqNavigationLink", () => {
       });
       yield* settle;
       expect(phase(store, hqAppsScope(ORG))).toBe("refused");
+      expect(store.state().streams.get(hqAppsScope(ORG))?.fault?.code).toBe("zerops_refused");
       expect(appName(store, "shop")).toBe("Shop");
       // A segment's end does not ask a refused scope again.
       yield* fixture.endSegment;
@@ -287,6 +296,41 @@ describe("hqNavigationLink", () => {
         moveTo: { shop: ["allowed"] },
       });
       expect(yield* Fiber.join(asked)).toEqual({ shop: ["allowed"] });
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+});
+
+describe("asking HQ on the open socket", () => {
+  it.effect("asks whom a Mate may be handed over to, and hands HQ's refusal back", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const fixture = hqFixtureWire();
+      const { fiber, link } = yield* live(store, fixture);
+      const asked = yield* Effect.forkChild(link.handoverCandidates("ada"));
+      yield* settle;
+      const request = fixture.sent.at(-1)?.request as { type: string; requestId: string };
+      expect(request).toMatchObject({ type: "handover-candidates", projectId: "ada" });
+      const candidate = { userId: "u1", name: "Jan", clientUserId: "cu1", avatarUrl: null };
+      yield* fixture.send({
+        type: "handover-candidates",
+        requestId: request.requestId,
+        projectId: "ada",
+        candidates: [candidate],
+      });
+      expect(yield* Fiber.join(asked)).toEqual([candidate]);
+      const refused = yield* Effect.forkChild(Effect.flip(link.handoverCandidates("ada")));
+      yield* settle;
+      const second = fixture.sent.at(-1)?.request as { requestId: string };
+      yield* fixture.send({
+        type: "handover-candidates-error",
+        requestId: second.requestId,
+        projectId: "ada",
+        code: "forbidden",
+        reason: null,
+        disposition: "refused",
+      });
+      expect((yield* Fiber.join(refused)).outcome).toBe("definitive-refusal");
       yield* Fiber.interrupt(fiber);
     }),
   );

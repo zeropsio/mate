@@ -228,10 +228,9 @@ describe("G: outages, sleep and several tabs", () => {
       }),
     );
 
-    // Targets corrupt HQ data deleting the last valid task instead of keeping it until a valid replacement.
-    it.effect.fails("Ada's task is kept after a corrupt update", () =>
+    // Catches corrupt HQ data deleting the last valid task instead of keeping it until a valid replacement.
+    it.effect("Ada's task is kept after a corrupt update", () =>
       Effect.gen(function* () {
-        const target = expectedFailureTarget("retained task after corrupt update");
         const s = yield* givenOutage();
         yield* reportsWork(s, "Ada", "Inspect Ada checkout");
         yield* s.given.signedIn;
@@ -240,7 +239,7 @@ describe("G: outages, sleep and several tabs", () => {
         yield* s.when.hq.colleague.renamesProject("Shop", "Shop after corrupt");
         yield* menuSays(s.page, "Shop after corrupt");
         yield* checkpoint(s);
-        yield* target(menuSays(s.page, "Inspect Ada checkout"));
+        yield* menuSays(s.page, "Inspect Ada checkout");
       }),
     );
   });

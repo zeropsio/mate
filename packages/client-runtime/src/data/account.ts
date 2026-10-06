@@ -8,7 +8,12 @@
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 
-import { hqNavigationLink, type HqMoveOffers, type HqWire } from "./adapters/hq.ts";
+import {
+  hqNavigationLink,
+  type HqHandoverCandidates,
+  type HqMoveOffers,
+  type HqWire,
+} from "./adapters/hq.ts";
 import { zeropsNavigationLink, type ZeropsWire } from "./adapters/zerops.ts";
 import type { DetailDemand } from "./demand.ts";
 import { familySpec } from "./families/index.ts";
@@ -61,6 +66,8 @@ export interface RunningHq extends RunningLink {
   readonly rewire: (wire: HqWire) => void;
   /** Asks HQ where a Mate may move, as the move opens. */
   readonly moveOffers: (projectId: string) => Promise<HqMoveOffers>;
+  /** Asks HQ whom a Mate may be handed over to, as the hand-over opens. */
+  readonly handoverCandidates: (projectId: string) => Promise<HqHandoverCandidates>;
   /** Tells HQ the reader saw these results of a Mate. */
   readonly seen: (projectId: string, resultIds: ReadonlyArray<string>) => void;
 }
@@ -83,6 +90,7 @@ export function startHqNavigation(options: {
     signal: (signal) => void Effect.runFork(supervisor.signal(signal)),
     demandDetail: link.demandDetail,
     moveOffers: (projectId) => Effect.runPromise(link.moveOffers(projectId)),
+    handoverCandidates: (projectId) => Effect.runPromise(link.handoverCandidates(projectId)),
     seen: (projectId, resultIds) => void Effect.runFork(link.seen(projectId, resultIds)),
     rewire: link.rewire,
     stop: () => {
@@ -104,6 +112,8 @@ export interface AccountObservation {
   readonly showHq: (hq: { readonly orgId: string; readonly wire: HqWire } | null) => void;
   /** Asks the shown organization's HQ where a Mate may move; refused without one. */
   readonly moveOffers: (projectId: string) => Promise<HqMoveOffers>;
+  /** Asks the shown organization's HQ whom a Mate may be handed over to; refused without one. */
+  readonly handoverCandidates: (projectId: string) => Promise<HqHandoverCandidates>;
   /** Tells the shown organization's HQ the reader saw these results of a Mate. */
   readonly seen: (projectId: string, resultIds: ReadonlyArray<string>) => void;
   /**
@@ -210,6 +220,10 @@ export function observeAccount(options: {
       hq === null
         ? Promise.reject(new Error("No HQ is observed for the organization shown."))
         : hq.link.moveOffers(projectId),
+    handoverCandidates: (projectId) =>
+      hq === null
+        ? Promise.reject(new Error("No HQ is observed for the organization shown."))
+        : hq.link.handoverCandidates(projectId),
     seen: (projectId, resultIds) => hq?.link.seen(projectId, resultIds),
     demandDetail: (demand) => {
       const source = familySpec(demand.family).scope.source === "hq" ? "hq" : "zerops";
