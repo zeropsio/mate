@@ -20,7 +20,7 @@
  */
 import type { Instant } from "../data/access/grant.ts";
 import type { ContainerVerdict } from "./environmentMachine.ts";
-import type { ProbeCadence, ProbeReading } from "./probeStore.ts";
+import type { ProbeCadence, ProbeReading } from "./probe.ts";
 
 // ── Facts ─────────────────────────────────────────────────────────────────────────────────────
 

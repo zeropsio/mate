@@ -14,16 +14,15 @@ import {
   type EnvironmentDiagnostic,
   type Presence,
 } from "./environmentMachine.ts";
+import { makeExchangeDriver, type ExchangeDriver } from "./exchangeDriver.ts";
 import {
   EXCHANGE_CONCURRENCY,
-  makeExchangeDriver,
   type AccountGuards,
   type DemandReason,
   type ExchangeClock,
-  type ExchangeDriver,
   type ExchangeRequest,
   type TargetKey,
-} from "./exchangeDriver.ts";
+} from "./exchange.ts";
 import { selectReachability } from "./reachability.ts";
 
 const GRANTED: AccountGuards = {

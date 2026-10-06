@@ -7,7 +7,7 @@ import type { CandidateRow } from "../projections/candidates.ts";
 import type { Presence } from "./environmentMachine.ts";
 import type { RegistrationRecord } from "./records.ts";
 import { containerTargetsOf, listTargets, type ListedTarget } from "./targets.ts";
-import type { TargetKey } from "./exchangeDriver.ts";
+import type { TargetKey } from "./exchange.ts";
 
 const ORIGIN = "https://zcp-24cb-8080.prg1.zerops.app";
 const ENV = EnvironmentId.make("environment-1");

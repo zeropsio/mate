@@ -50,7 +50,7 @@ import {
   type AddressMemory,
   type CandidateRow,
 } from "../projections/candidates.ts";
-import { systemExchangeClock } from "./exchangeDriver.ts";
+import { systemExchangeClock } from "./exchange.ts";
 
 /** One organization's Mate candidates. */
 export interface OrganizationListing {

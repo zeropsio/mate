@@ -5,7 +5,7 @@
  */
 import type { EnvironmentId } from "@t3tools/contracts";
 
-import type { TargetKey } from "./exchangeDriver.ts";
+import type { TargetKey } from "./exchange.ts";
 
 export const REGISTRATION_RECORDS_KEY = "zerops-mate.registration-records.v1";
 

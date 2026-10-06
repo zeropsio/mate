@@ -1,15 +1,9 @@
 import { EnvironmentId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import type { ExchangeClock } from "./exchangeDriver.ts";
-import {
-  makeProbeStore,
-  OVERDUE_PROBE_SLOTS,
-  PROBE_DEADLINE_MS,
-  PROBE_POOL_SIZE,
-  type ProbeCadence,
-  type ProbeReading,
-} from "./probeStore.ts";
+import type { ExchangeClock } from "./exchange.ts";
+import { makeProbeStore, OVERDUE_PROBE_SLOTS, PROBE_POOL_SIZE } from "./probeStore.ts";
+import { PROBE_DEADLINE_MS, type ProbeCadence, type ProbeReading } from "./probe.ts";
 
 /** Answers settle across a few promise hops; this lets every one of them land. */
 const flush = async (): Promise<void> => {

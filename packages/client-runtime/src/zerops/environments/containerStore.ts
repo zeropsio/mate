@@ -35,14 +35,16 @@ import {
   type PlatformStatus,
 } from "./containerMachine.ts";
 import type { ContainerVerdict } from "./environmentMachine.ts";
-import type { ExchangeClock, ExchangeDriver, TargetKey } from "./exchangeDriver.ts";
 import {
-  makeProbeStore,
-  type ProbeAsk,
-  type ProbeCadence,
-  type ProbeReading,
-  type ProbeStorePorts,
-} from "./probeStore.ts";
+  INIT_AT_READ_DEADLINE_MS,
+  type ExchangeClock,
+  type IntentRequest,
+  type IntentStorage,
+  type TargetKey,
+} from "./exchange.ts";
+import type { ExchangeDriver } from "./exchangeDriver.ts";
+import type { ProbeAsk, ProbeCadence, ProbeReading } from "./probe.ts";
+import { makeProbeStore, type ProbeStorePorts } from "./probeStore.ts";
 import { targetProject } from "./targets.ts";
 
 /** One target as the platform describes it now. */
@@ -51,13 +53,6 @@ export interface ContainerTarget {
   /** The Mate's public origin; null while the platform gives it none. */
   readonly origin: string | null;
   readonly platform: PlatformStatus;
-}
-
-/** Where this tab keeps its intents (`sessionStorage` under the account key). */
-export interface IntentStorage {
-  readonly read: () => string | null;
-  /** Null forgets them. */
-  readonly write: (value: string | null) => void;
 }
 
 /** One persisted intent; `since` is wall time, the one clock a reload keeps. */
@@ -83,18 +78,6 @@ export interface ContainerStorePorts {
   readonly readMateFlag: (key: TargetKey) => Promise<MateFlag>;
   readonly intents: IntentStorage;
 }
-
-/** What our verb asks: the store stamps it with the time it was accepted. */
-export type IntentRequest =
-  | {
-      readonly kind: "restart" | "enable" | "upgrade-restart";
-      /** The `initAt` read before the verb was sent (`initAt`); null when it could not say. */
-      readonly initAt?: string | null;
-    }
-  | { readonly kind: "update"; readonly from: string | null };
-
-/** How long the read before a restart verb may hold the verb back. */
-export const INIT_AT_READ_DEADLINE_MS = 3_000;
 
 export interface ContainerStore {
   /** Every target the platform lists, as it stands now; a target left out is forgotten. */

@@ -17,7 +17,7 @@ import type { EnvironmentId } from "@t3tools/contracts";
 
 import { resolveEnvironment, type DescriptorIndex } from "./descriptorIndex.ts";
 import type { EnvironmentMachine } from "./environmentMachine.ts";
-import type { TargetKey } from "./exchangeDriver.ts";
+import type { TargetKey } from "./exchange.ts";
 import { environmentLinkable, selectReachability, type Reachability } from "./reachability.ts";
 import type { RegistrationRecord } from "./records.ts";
 import { targetProject } from "./targets.ts";

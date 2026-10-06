@@ -58,9 +58,8 @@ import {
   bindContainerStore,
   type ContainerStore,
   type ContainerStorePorts,
-  type IntentRequest,
-  type IntentStorage,
 } from "../environments/containerStore.ts";
+import { type IntentRequest, type IntentStorage } from "../environments/exchange.ts";
 import {
   indexDescriptors,
   resolveEnvironment,
@@ -79,16 +78,15 @@ import type {
   EnvironmentMachine,
   LinkPhase,
 } from "../environments/environmentMachine.ts";
+import type { ExchangeDriver, ExchangeDriverPorts } from "../environments/exchangeDriver.ts";
 import type {
   ConnectOutcome,
   ExchangeClock,
-  ExchangeDriver,
-  ExchangeDriverPorts,
   ExchangeRequest,
   InstallOutcome,
   TargetKey,
-} from "../environments/exchangeDriver.ts";
-import type { ProbeReading } from "../environments/probeStore.ts";
+} from "../environments/exchange.ts";
+import type { ProbeReading } from "../environments/probe.ts";
 import type {
   RecordsStorage,
   RegistrationRecord,

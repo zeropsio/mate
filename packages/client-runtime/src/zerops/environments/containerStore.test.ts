@@ -7,14 +7,14 @@ import type { MateFlag, PlatformStatus } from "./containerMachine.ts";
 import {
   bindContainerStore,
   HQ_WAIT_MS,
-  INIT_AT_READ_DEADLINE_MS,
   makeContainerStore,
   type ContainerStore,
   type ContainerTarget,
-  type IntentStorage,
 } from "./containerStore.ts";
-import { makeExchangeDriver, type ExchangeClock } from "./exchangeDriver.ts";
-import type { ProbeReading } from "./probeStore.ts";
+import { INIT_AT_READ_DEADLINE_MS, type IntentStorage } from "./exchange.ts";
+import { makeExchangeDriver } from "./exchangeDriver.ts";
+import { type ExchangeClock } from "./exchange.ts";
+import type { ProbeReading } from "./probe.ts";
 import { reachabilityPhrase, selectReachability } from "./reachability.ts";
 
 /** Answers settle across a few promise hops; this lets every one of them land. */

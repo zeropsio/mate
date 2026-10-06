@@ -18,42 +18,18 @@
  *   (`ProbeAsk`). Either way its reading is as old as the read it rests on (`ProbeAnswer`).
  */
 import type { Instant } from "../data/access/grant.ts";
-import type { DescriptorFacts } from "./environmentMachine.ts";
-import type { ExchangeClock } from "./exchangeDriver.ts";
-
-/** What one probe of an origin concluded (`containerHealth.ts` reads it). */
-export type ProbeReading =
-  /**
-   * The descriptor answered: Mate is up. `projectId` is the project it states, null outside
-   * Zerops mode; `initAt` is `/healthz`'s, read beside it.
-   */
-  | {
-      readonly kind: "ready";
-      readonly descriptor: DescriptorFacts;
-      readonly projectId: string | null;
-      readonly initAt: string | null;
-    }
-  /** `/healthz` answered, zcp's init not complete, and the descriptor did not: Mate is coming up. */
-  | { readonly kind: "initializing"; readonly initAt: string | null }
-  /**
-   * `/healthz` says zcp's init is complete and the descriptor did not answer: the container is up
-   * and its Mate is not answering — stopped, or crashed — never a container still coming up.
-   */
-  | { readonly kind: "not-answering"; readonly initAt: string | null }
-  /** Neither route is served: an older zcp, or one with `ZCP_MATE_ENABLED` off. */
-  | { readonly kind: "predates-mate" }
-  /** No usable answer before the deadline: the container is away, or restarting. */
-  | { readonly kind: "unreachable" };
-
-/**
- * How often a container's level asks for its origin to be read. An `overdue` poll backs off
- * (`OVERDUE_POLL_INTERVALS_MS`) within the pool's overdue share: the level ran past its cap, or
- * nothing but failed probes says the container is coming up.
- */
-export type ProbeCadence =
-  | { readonly kind: "poll"; readonly overdue: boolean }
-  | { readonly kind: "on-demand" }
-  | { readonly kind: "none" };
+import type { ExchangeClock } from "./exchange.ts";
+import {
+  HIDDEN_PROBE_PAUSE_MS,
+  OVERDUE_POLL_INTERVALS_MS,
+  POLL_INTERVAL_MS,
+  PROBE_DEADLINE_MS,
+  type ProbeAnswer,
+  type ProbeAsk,
+  type ProbeCadence,
+  type ProbeRead,
+  type ProbeReading,
+} from "./probe.ts";
 
 /** An origin's fact (C6). */
 export type ProbeFact =
@@ -61,38 +37,8 @@ export type ProbeFact =
   | { readonly status: "read"; readonly reading: ProbeReading; readonly sentAt: Instant };
 
 export const PROBE_POOL_SIZE = 4;
-export const PROBE_DEADLINE_MS = 8_000;
 /** Overdue origins never hold more of the pool than this. */
 export const OVERDUE_PROBE_SLOTS = 2;
-export const POLL_INTERVAL_MS = 2_000;
-/** An overdue poll reads at these intervals, staying on the last. */
-export const OVERDUE_POLL_INTERVALS_MS: ReadonlyArray<number> = [10_000, 20_000, 40_000, 60_000];
-export const HIDDEN_PROBE_PAUSE_MS = 60_000;
-
-/**
- * What one probe asks of its read: `fresh` for a container coming up, or for a caller waiting on a
- * probe started after it asked — a reading another reader made a moment ago will not do.
- */
-export interface ProbeAsk {
-  readonly fresh: boolean;
-}
-
-/**
- * What one probe reads: `fresh` as asked, and `initAt` — `/healthz` beside the descriptor — for a
- * container coming up or a caller waiting on a probe started now, whose restart is judged by it.
- */
-export interface ProbeRead extends ProbeAsk {
-  readonly initAt: boolean;
-}
-
-/**
- * What one probe read, and when the read it rests on was sent: a descriptor another reader read a
- * moment ago (`descriptorShare.ts`) is as old as that read, never as new as the probe.
- */
-export interface ProbeAnswer {
-  readonly reading: ProbeReading;
-  readonly sentAt: Instant;
-}
 
 export interface ProbeStorePorts {
   readonly clock: Pick<ExchangeClock, "now" | "setTimer">;

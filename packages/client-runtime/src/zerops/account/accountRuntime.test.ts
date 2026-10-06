@@ -39,7 +39,7 @@ import type { CloseOffWord } from "../environments/closeOff.ts";
 import { mateListingsAtom } from "../environments/listings.ts";
 import { readServiceMateFlag } from "../environments/mateFlag.ts";
 import { rowTarget } from "../environments/mateLink.ts";
-import type { ProbeReading } from "../environments/probeStore.ts";
+import type { ProbeReading } from "../environments/probe.ts";
 import { REGISTRATION_RECORDS_KEY, type RegistrationRecord } from "../environments/records.ts";
 import { heldCandidates } from "../projections/candidates.ts";
 import type { ExchangeAnswer } from "../identityExchange.ts";

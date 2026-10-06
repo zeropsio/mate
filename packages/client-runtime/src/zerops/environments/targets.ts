@@ -23,7 +23,7 @@ import type { Known } from "../knowledge/known.ts";
 import { heldCandidates, type CandidateRow } from "../projections/candidates.ts";
 import type { ContainerTarget } from "./containerStore.ts";
 import type { Presence, ServiceTransition } from "./environmentMachine.ts";
-import type { TargetKey } from "./exchangeDriver.ts";
+import type { TargetKey } from "./exchange.ts";
 import type { RegistrationRecord } from "./records.ts";
 
 const SERVICE_TRANSITIONS: ReadonlySet<string> = new Set<ServiceTransition>([
