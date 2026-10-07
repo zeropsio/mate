@@ -13,7 +13,7 @@ describe("zeropsErrorMessage", () => {
       [new Error("Network request failed"), "Network request failed"],
       [
         {
-          _tag: "ZeropsDataAdapterError",
+          _tag: "UnknownFailure",
           kind: "uncertain",
           message: "The platform accepted the request but its response was lost.",
         },
@@ -34,13 +34,13 @@ describe("isUncertainZeropsFailure — a write the platform may have done anyway
     { case: "the client's own", cause: new ZeropsApiError("Lost.", "uncertain"), uncertain: true },
     {
       case: "the data layer's",
-      cause: { _tag: "ZeropsDataAdapterError", kind: "uncertain", message: "Lost." },
-      uncertain: true,
+      cause: { _tag: "UnknownFailure", kind: "uncertain", message: "Lost." },
+      uncertain: false,
     },
     { case: "a refusal", cause: new ZeropsApiError("No.", "forbidden", 403), uncertain: false },
     {
       case: "the data layer's refusal",
-      cause: { _tag: "ZeropsDataAdapterError", kind: "forbidden", message: "No." },
+      cause: { _tag: "UnknownFailure", kind: "forbidden", message: "No." },
       uncertain: false,
     },
     { case: "anything else", cause: new Error("Lost."), uncertain: false },

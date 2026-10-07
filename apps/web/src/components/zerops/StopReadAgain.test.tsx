@@ -1,15 +1,13 @@
 import { act, createElement } from "react";
-import * as Effect from "effect/Effect";
 import { afterEach, expect, it, vi } from "vite-plus/test";
 import type { ProjectRef } from "@t3tools/client-runtime/zerops/data";
 import { TestNode, buttonsLabelled, press } from "~/zerops/__fixtures__/testDom";
 import { InventoryContext, type Inventory } from "~/zerops/inventoryContext";
-import { ZeropsDataContext, type ZeropsDataContextValue } from "~/zerops/zeropsDataContext";
+import { AccountDataContext, type AccountData } from "~/zerops/ZeropsAccountData";
 import { StopReadAgain } from "./StopReadAgain";
 const calls = vi.hoisted(() => [] as string[]);
 const drawn = vi.hoisted(() => [] as string[]);
 vi.mock("~/zerops/accountForge", () => ({
-  againStopDeployment: () => calls.push("demand"),
   useStopDeploymentDemand: (ref: ProjectRef | null) => {
     if (ref !== null) drawn.push(ref.projectId);
   },
@@ -62,7 +60,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 it.each(["transport", "access-denied", "access-lapsed", "unread"])(
-  "a failed/refused runtime read offers one manual Again: %s",
+  "a failed/refused source read offers one manual Again: %s",
   async (failure) => {
     read.failure = failure;
     const document = new TestNode("#document", null, 9);
@@ -80,15 +78,17 @@ it.each(["transport", "access-denied", "access-lapsed", "unread"])(
     } as ProjectRef;
     const inventory = { projectRefs: new Map([["prod", project]]) } as unknown as Inventory;
     const data = {
-      runtime: { refresh: (ref: ProjectRef) => Effect.sync(() => calls.push(ref.projectId)) },
-    } as unknown as ZeropsDataContextValue;
+      retry: () => calls.push("navigation"),
+      retryDetail: (demand: { readonly ownerId: string }) =>
+        calls.push(`invalid detail:${demand.ownerId}`),
+    } as unknown as AccountData;
     await act(async () =>
       root.render(
         createElement(
           InventoryContext,
           { value: inventory },
           createElement(
-            ZeropsDataContext,
+            AccountDataContext,
             { value: data },
             createElement(StopReadAgain, { projectId: "prod" }),
           ),
@@ -100,7 +100,7 @@ it.each(["transport", "access-denied", "access-lapsed", "unread"])(
     expect(calls).toEqual([]);
     if (failure !== "unread") {
       await act(async () => press(buttonsLabelled(container, "Again")[0]!));
-      expect(calls).toEqual(["demand", "prod"]);
+      expect(calls).toEqual(["navigation"]);
     }
     await act(async () => root.unmount());
   },

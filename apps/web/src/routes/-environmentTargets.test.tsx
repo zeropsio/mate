@@ -89,8 +89,6 @@ function shellStage(): AccountEnvironments {
     setDeleting: () => undefined,
     closeOffHolds: () => new Map(),
     detailProjects: () => new Set(),
-    detailFailure: () => null,
-    retryDetail: () => undefined,
     subscribe: () => () => undefined,
     connect: () => new Promise(() => undefined),
     hold: () => () => undefined,
@@ -130,7 +128,6 @@ const inventory = (status: string | null): Inventory => ({
   error: null,
   projectRefs: new Map(),
   authority: new Map(),
-  account: { kind: "authorized" },
   lost: new Set(),
 });
 
@@ -390,10 +387,9 @@ describe("the route gate over the Mate adapter's machines", () => {
     const restarting = target({ kind: "transitioning", status: "RESTARTING" }, "RESTARTING");
 
     driver.setAccount({
-      postGrant: true,
-      identityMint: { allowed: true },
-      zeropsFailing: false,
-      grantVerifiedAtMs: nowMs,
+      verified: true,
+
+      zeropsState: "live",
     });
     driver.setVisible(true);
     driver.setTargets([active]);
@@ -446,7 +442,6 @@ const HELD = {
   rereading: null,
 } as const;
 const PRESENT = { kind: "present", origin: ORIGIN } as const;
-const LAPSED = { kind: "withheld", reason: "access-lapsed", cause: null } as const;
 
 /** A target machine remembered for `env-a`, present and with its container ready. */
 const machine = (overrides: Partial<EnvironmentMachine>): EnvironmentMachine => ({
@@ -839,11 +834,11 @@ describe("useRouteGateInputs", () => {
       gate: { kind: "unavailable", reachability: null },
     },
     {
-      // Absence is earned under verified access only (M5): a lapse keeps looking.
-      name: "every descriptor named another, while the account's access lapses",
+      // Absence requires complete source coverage.
+      name: "every descriptor named another, while the project roster is still partial",
       machines: other({ kind: "none", reconnect: false }),
       readings: new Map([[OTHER, { kind: "predates-mate" }]]),
-      inventory: { ...inventory("ACTIVE"), account: LAPSED },
+      inventory: { ...inventory("ACTIVE"), isLoading: true },
       gate: { kind: "wait", reachability: null },
     },
   ];
@@ -865,18 +860,6 @@ describe("useRouteGateInputs", () => {
       inventory("ACTIVE"),
       machine({ credential: HELD, link: DROPPED }),
       { kind: "shown", until: null },
-    ],
-    [
-      "a lapse over a connected link",
-      { ...inventory("ACTIVE"), account: LAPSED },
-      machine({ credential: HELD, link: { phase: "connected", since: { wall: 0, mono: 0 } } }),
-      { kind: "shown", until: null },
-    ],
-    [
-      "a lapse over a link that dropped more than 10 min ago",
-      { ...inventory("ACTIVE"), account: LAPSED },
-      machine({ credential: HELD, link: DROPPED, linkLostAt: { wall: 0, mono: 0 } }),
-      { kind: "suppressed", reason: "access-lapsed" },
     ],
     [
       "a confirmed loss of its project",
@@ -965,10 +948,9 @@ function descriptorRig(
     intents: { read: () => null, write: () => undefined },
   });
   adapter.setAccount({
-    postGrant: true,
-    identityMint: { allowed: true },
-    zeropsFailing: false,
-    grantVerifiedAtMs: nowMs,
+    verified: true,
+
+    zeropsState: "live",
   });
   adapter.setVisible(true);
   adapter.setTargets(

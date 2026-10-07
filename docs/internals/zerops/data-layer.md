@@ -237,12 +237,14 @@ The rewrite lands in waves. The remaining lanes are:
 - Menu first-paint and outage truth.
 - Variables on declared data-layer demand.
 - Releases and environments client surfaces.
-- Final removal of the old runtime and remaining duplicate paths.
+- Remaining duplicate paths in the families above.
 
-Code in these areas is being replaced — coordinate before changing it. Build new work on the data
-layer, not on the old runtime: `packages/client-runtime/src/zerops/data/runtime.ts` and its related
-stores, grant plumbing and wrappers are being deleted. An old call site is migration debt, not a
-pattern to copy.
+Code in these areas is being replaced — coordinate before changing it. The old Zerops runtime,
+query cells, grant driver and second realtime socket are removed. The verified account owns one
+Zerops store and transport, with its Mate presentation adapter closed before its registry. Operations
+admit each write against the store's current platform-access projection and fence the account again
+before sending, including after an awaited source read or session repair. Transport loss retains
+access evidence; an authoritative refusal stays final until explicit retry or changed input.
 
 HQ change attachments are the `hqPicture` detail family. A description picture near the viewport demands its immutable
 attachment identity; the HQ link reads its bytes through the wire once and publishes the answer
@@ -252,3 +254,8 @@ belong to the mounted view and are revoked when it releases them; bytes remain i
 Build-log transport opening is not evidence that its baseline is read. A valid source frame,
 including an explicitly empty frame, ends the initial loading state. Publication batching only
 coalesces updates; elapsed time never declares a log live.
+
+HQ review descriptions, commits and linked changes use the `hqChangeRead` detail family on the
+account's HQ link. Its owner identity includes the requested change and review snapshot, so another
+head demands another read. A settled snapshot remains in account memory through outages and
+remounts; only explicit retry or revalidation reads the same identity again.

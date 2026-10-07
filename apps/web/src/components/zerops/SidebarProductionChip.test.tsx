@@ -19,7 +19,6 @@ import {
 } from "./SidebarProductionChip.logic";
 
 vi.mock("~/zerops/accountForge", () => ({
-  againStopDeployment: () => {},
   useStopDeploymentDemand: () => {},
   useStopDeployments: () => new Map(),
 }));

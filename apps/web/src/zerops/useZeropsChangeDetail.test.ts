@@ -2,9 +2,11 @@ import type { ChangeDetailResponse, ChangeLink } from "@t3tools/shared/hqChanges
 import { act, createElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
+import { RegistryContext } from "@effect/atom-react";
+import { AccountDataContext } from "./ZeropsAccountData";
+import { reviewAccount } from "./__fixtures__/reviewAccount";
 import { TestNode } from "./__fixtures__/testDom";
 import {
-  forgetChangeDetails,
   mergedMain,
   useZeropsChangeDetail,
   type ZeropsChangeDetail,
@@ -84,10 +86,23 @@ async function mount(requests: ReadonlyArray<ZeropsChangeDetailRequest | null>) 
     seen.push(useZeropsChangeDetail(request));
     return null;
   }
+  const account = reviewAccount(({ link, snapshot }) =>
+    official.api.change(link, undefined, snapshot),
+  );
   const root = createRoot(document.createElement("div") as unknown as Element);
   for (const request of requests) {
     await act(async () => {
-      root.render(createElement(Probe, { request }));
+      root.render(
+        createElement(
+          RegistryContext.Provider,
+          { value: account.registry },
+          createElement(
+            AccountDataContext.Provider,
+            { value: account.data },
+            createElement(Probe, { request }),
+          ),
+        ),
+      );
     });
   }
   return {
@@ -104,7 +119,6 @@ describe("useZeropsChangeDetail", () => {
     hq.answers = [];
     hq.reads = [];
     hq.snapshots = [];
-    forgetChangeDetails();
     vi.unstubAllGlobals();
   });
 

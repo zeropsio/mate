@@ -60,8 +60,8 @@ vi.mock("../editorPreferences", () => ({
   usePreferredEditor: () => [null, vi.fn()],
 }));
 // A change no flow carries is asked of the forge; here the forge is still answering.
-vi.mock("../zerops/useZeropsLandedChange", () => ({
-  useZeropsLandedChange: () => ({ kind: "reading" }),
+vi.mock("../zerops/useLinkedChange", () => ({
+  useLinkedChange: () => ({ kind: "reading" }),
 }));
 vi.mock("~/lib/openPullRequestLink", () => ({
   findProjectForChangeRequest: () => undefined,

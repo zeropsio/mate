@@ -57,7 +57,7 @@ vi.mock("./ZeropsSessionProvider", () => ({
     activeOrganization: session.activeId === null ? null : { id: session.activeId },
   }),
 }));
-vi.mock("./ZeropsDataProvider", () => ({
+vi.mock("./ZeropsAccountEnvironmentProvider", () => ({
   useZeropsData: () => ({
     binding: runtime.binding,
     error: null,

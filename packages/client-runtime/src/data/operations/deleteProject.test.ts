@@ -153,21 +153,22 @@ describe("delete-project", () => {
     }),
   );
 
-  it.effect("a deletion its admission refused before sending is unsent, never maybe-landed", () =>
-    Effect.gen(function* () {
-      const store = account();
-      const { operations } = operationsOf(store, () =>
-        Promise.reject(
-          new ZeropsWriteNotSent({ message: "Project access could not be verified." }),
-        ),
-      );
-      yield* operations.submit(DELETE);
-      expect(progress(store)).toEqual({
-        stage: "unsent",
-        next: "send-again",
-        reason: "Project access could not be verified.",
-      });
-    }),
+  it.effect(
+    "a deletion its admission refused before sending stays refused, never maybe-landed",
+    () =>
+      Effect.gen(function* () {
+        const store = account();
+        const { operations } = operationsOf(store, () =>
+          Promise.reject(
+            new ZeropsWriteNotSent({ message: "Project access could not be verified." }),
+          ),
+        );
+        yield* operations.submit(DELETE);
+        expect(progress(store)).toEqual({
+          stage: "refused",
+          reason: "Project access could not be verified.",
+        });
+      }),
   );
 
   it.effect("a refusal says what Zerops said", () =>

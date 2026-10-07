@@ -53,7 +53,6 @@ function stage() {
   const registry = AtomRegistry.make();
   const stopDemands: Array<string> = [];
   let stopDemandCalls = 0;
-  let agains = 0;
   const atoms = new Map<string, Atom.Writable<Shown<ReadonlyArray<StopService>>>>();
   const atomOf = (projectId: string) => {
     let atom = atoms.get(projectId);
@@ -88,16 +87,12 @@ function stage() {
       stopDemands.push(project.projectId);
       return () => stopDemands.splice(stopDemands.indexOf(project.projectId), 1);
     },
-    again: () => {
-      agains += 1;
-    },
     dispose: () => undefined,
   } satisfies Stops;
   return {
     stage: { stops },
     stopDemands,
     stopDemandCalls: () => stopDemandCalls,
-    agains: () => agains,
     /** Renders under the registry the stops publish to. */
     wrap: (node: ReactNode) => (
       <RegistryContext.Provider value={registry}>{node}</RegistryContext.Provider>
@@ -120,18 +115,28 @@ afterEach(async () => {
 
 describe("the account's project flow in the web", () => {
   it("closing the account lifetime unbinds the stops at once", async () => {
+    const document = installTestDom();
+    const { createRoot } = await import("react-dom/client");
     const { openAccountLifetime, closeAccountLifetime } = await import("./accountLifetime");
-    const { againStopDeployment, bindAccountFlow } = await import("./accountForge");
+    const { useStopDeploymentDemand, bindAccountFlow } = await import("./accountForge");
     openAccountLifetime("person-a");
     const rig = stage();
     bindAccountFlow(rig.stage);
-    againStopDeployment(PROJECT);
-    expect(rig.agains()).toBe(1);
+    function ReadStop() {
+      useStopDeploymentDemand(PROJECT);
+      return null;
+    }
+    const root = createRoot(document.createElement("div") as unknown as HTMLElement);
+    try {
+      root.render(rig.wrap(<ReadStop />));
+      await vi.waitFor(() => expect(rig.stopDemands).toEqual([PROJECT.projectId]));
 
-    closeAccountLifetime();
-
-    againStopDeployment(PROJECT);
-    expect(rig.agains()).toBe(1);
+      closeAccountLifetime();
+      await vi.waitFor(() => expect(rig.stopDemands).toEqual([]));
+      expect(rig.stopDemandCalls()).toBe(1);
+    } finally {
+      root.unmount();
+    }
   });
 
   it("the stop rows read what each stop deploys from the account's store while they are shown", async () => {

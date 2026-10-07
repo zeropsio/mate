@@ -11,7 +11,7 @@ import {
   type EnvironmentMachine,
 } from "./environmentMachine.ts";
 import { isTerminalReachability, selectReachability } from "./reachability.ts";
-import type { Instant } from "../data/access/grant.ts";
+import type { Instant } from "./exchange.ts";
 import { explore } from "../testing/explore.ts";
 
 /**
@@ -35,10 +35,10 @@ const GRANTED: EnvironmentGuards = {
   want: true,
   routeTarget: false,
   visible: true,
-  postGrant: true,
-  identityMint: { allowed: true },
-  zeropsFailing: false,
-  grantVerifiedAtMs: 0,
+  verified: true,
+
+  zeropsState: "live",
+
   budget: true,
 };
 
@@ -46,10 +46,8 @@ const GUARD_VARIANTS: ReadonlyArray<EnvironmentGuards> = [
   GRANTED,
   { ...GRANTED, want: false },
   { ...GRANTED, visible: false },
-  { ...GRANTED, postGrant: false },
-  { ...GRANTED, identityMint: { allowed: false, reason: "access-lapsed", waitable: true } },
-  { ...GRANTED, identityMint: { allowed: false, reason: "epoch-closed", waitable: false } },
-  { ...GRANTED, zeropsFailing: true },
+  { ...GRANTED, verified: false },
+  { ...GRANTED, zeropsState: "unavailable" },
   { ...GRANTED, budget: false },
 ];
 
@@ -237,8 +235,7 @@ const violations = (
       effect.kind === "run" && effect.op.kind === "exchange",
   );
   // I5: at most one exchange at a time, and none while P ≠ present — but for a remembered Mate
-  // whose descriptor names its record (A16) — before the first grant, or while `identityMint` is
-  // not allowed.
+  // whose descriptor names its record (A16) — before sign-in is verified.
   if (exchanges.length > 1) found.push(`I5: ${exchanges.length} exchanges in one step`);
   for (const exchange of exchanges) {
     if (credential.kind !== "exchanging" || credential.attempt !== exchange.attempt) {
@@ -260,8 +257,7 @@ const violations = (
     if (machine.presence.kind !== "present" && !remembered) {
       found.push("I5: exchange while P ≠ present");
     }
-    if (!machine.guards.postGrant) found.push("I5: exchange before the first grant");
-    if (!machine.guards.identityMint.allowed) found.push("I5: exchange while identityMint refuses");
+    if (!machine.guards.verified) found.push("I5: exchange before sign-in verification");
   }
   // I7: every non-terminal state has a timer or waits on a named input or the user.
   const due =

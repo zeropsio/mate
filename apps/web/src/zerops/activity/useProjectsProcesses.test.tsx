@@ -60,7 +60,6 @@ vi.mock("../inventoryContext", async (importOriginal) => ({
     ({
       projectRefs: new Map(["p-ada", "p-cy"].map((id) => [projectKeyOf(ref(id)), ref(id)])),
       authority: new Map(),
-      account: { kind: "authorized" },
     }) as unknown as Inventory,
 }));
 

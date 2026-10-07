@@ -59,7 +59,7 @@ export interface AccountData extends AccountReads {
 export const AccountDataContext = createContext<AccountData | null>(null);
 
 /**
- * The account's store, for the hosts that run its adapters (`ZeropsDataProvider`'s Mate adapter):
+ * The account's store, for the hosts that run its adapters (`ZeropsAccountEnvironmentProvider`'s Mate adapter):
  * never a screen's — screens read projections.
  */
 export const AccountStoreContext = createContext<AccountStore | null>(null);
@@ -111,7 +111,14 @@ export function ZeropsAccountData({ children }: { readonly children: ReactNode }
   // The operations are built here, over the store this mount owns: no screen reaches its writer.
   const operations = useMemo(
     () =>
-      accountOperations(store, registry, client, observation.demandDetail, observation.revalidate),
+      accountOperations(
+        store,
+        registry,
+        client,
+        observation.demandDetail,
+        observation.revalidate,
+        observation.readDetail,
+      ),
     [client, observation, registry, store],
   );
   // The account's reads move to each new value as it comes, never unset between: a moment without

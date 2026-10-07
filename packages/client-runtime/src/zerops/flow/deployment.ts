@@ -25,17 +25,58 @@
  * @module flow/deployment
  */
 import { isZcpService } from "../containerAddress.ts";
-import { serviceRecordToZeropsService } from "../data/dto.ts";
 import type { ZeropsServiceDeployedVersion } from "../../data/projections/serviceRuns.ts";
-import type {
-  CollectionRead,
-  IngestionStamp,
-  InterestState,
-  LeaseAdmissionError,
-  ServiceDeployInfo,
-  ServiceRecord,
-  ServiceRef,
-} from "../data/types.ts";
+import type { ProjectRef, ServiceRef } from "../data/types.ts";
+import { ZeropsServiceId } from "../data/types.ts";
+import type { ProjectServices } from "../../data/projections/services.ts";
+import type { ServiceValue } from "../../data/families/service.ts";
+import type { ZeropsAppVersion } from "../api.ts";
+
+export interface DeploymentServices extends ProjectServices {
+  readonly project: ProjectRef;
+}
+export interface ServiceDeployInfo {
+  readonly id: string | null;
+  readonly status: string | null;
+  readonly source: string | null;
+  readonly activatedAt: string | null;
+  readonly name: string | null;
+  readonly branch: string | null;
+  readonly commit: string | null;
+  readonly tag: string | null;
+  readonly repository: string | null;
+}
+function deployOf(service: ServiceValue, version: ZeropsAppVersion): ServiceDeployInfo {
+  const variable = (key: string) =>
+    service.userData?.find((entry) => entry.key === key)?.content?.trim() || null;
+  const id = version.id ?? null;
+  return {
+    id,
+    status: version.status ?? null,
+    source: version.source ?? null,
+    activatedAt: version.lastUpdate || version.created || null,
+    name:
+      version.name ??
+      (id !== null && variable("appVersionId") === id ? variable("appVersionName") : null),
+    branch:
+      version.githubIntegration?.branchName ??
+      version.gitlabIntegration?.branchName ??
+      version.publicGitSource?.branchName ??
+      null,
+    commit: version.githubIntegration?.commit ?? version.gitlabIntegration?.commit ?? null,
+    tag: version.githubIntegration?.tagName ?? version.gitlabIntegration?.tagName ?? null,
+    repository:
+      version.githubIntegration?.repositoryFullName ??
+      version.gitlabIntegration?.repositoryFullName ??
+      version.publicGitSource?.repositoryUrl ??
+      null,
+  };
+}
+const serviceRef = (project: ProjectRef, service: ServiceValue): ServiceRef => ({
+  kind: "service",
+  project,
+  serviceId: ZeropsServiceId.make(service.id),
+});
 import { deployWord } from "../groupDeploys.ts";
 import {
   deployedCommit,
@@ -144,11 +185,6 @@ function pushedVersion(deploy: ServiceDeployInfo): DeployedVersion {
 const runsNothing = (deploy: ServiceDeployInfo | null): deploy is null =>
   deploy === null || deploy.source === "NONE";
 
-const toStamp = (stamp: IngestionStamp): Stamp => ({
-  ordinal: stamp.receiptOrdinal,
-  atMs: stamp.observedAtMs,
-});
-
 /** What one service contributes to its stop. */
 type ServiceAnswer =
   | { readonly kind: "not-a-stop" }
@@ -160,25 +196,13 @@ type ServiceAnswer =
   | { readonly kind: "unstated"; readonly deploy: ServiceDeployInfo; readonly asOf: Stamp }
   | { readonly kind: "running"; readonly deploy: ServiceDeployInfo; readonly asOf: Stamp };
 
-function serviceAnswer(knowledge: CollectionRead<ServiceRecord>["value"][number]): ServiceAnswer {
-  // A service the platform no longer shows is not what the stop runs.
-  if (knowledge.knowledge === "unavailable") return { kind: "not-a-stop" };
-  if (knowledge.knowledge === "unresolved") return { kind: "pending" };
-  const record = knowledge.record;
-  const service = serviceRecordToZeropsService(record);
-  if (service === null) return { kind: "pending" };
-  // The platform's core and the Mate's own container deploy nothing the group declared.
+function serviceAnswer(service: ServiceValue): ServiceAnswer {
   if (service.isSystem === true || isZcpService(service)) return { kind: "not-a-stop" };
-  const facet = record.deployment;
-  if (facet.knowledge === "unavailable")
-    return { kind: "withheld", reason: facet.reason, atMs: facet.stamp.observedAtMs };
-  if (facet.knowledge === "unresolved" || facet.fields.activeDeploy === undefined)
-    return { kind: "pending" };
-  const deploy = facet.fields.activeDeploy;
-  const asOf = toStamp(facet.stamp);
+  if (service.activeAppVersion === undefined) return { kind: "pending" };
+  const deploy =
+    service.activeAppVersion === null ? null : deployOf(service, service.activeAppVersion);
+  const asOf = { ordinal: 0, atMs: 0 };
   if (runsNothing(deploy)) return { kind: "none", asOf };
-  // A version whose source nobody stated may be that `NONE` one: a native
-  // frame names only its id, status and times (A14). Neither running nor none.
   if (deploy.source === null) return { kind: "unstated", deploy, asOf };
   return { kind: "running", deploy, asOf };
 }
@@ -202,22 +226,23 @@ const SEVERITY: Record<SourceState["kind"], number> = {
   failed: 4,
 };
 
-function sourceOf(interest: InterestState): SourceState {
-  switch (interest.status) {
-    case "observing":
-      return { kind: "observing" };
-    case "establishing":
-      return { kind: "establishing", sinceMs: interest.startedAtMs };
-    case "paused":
-      return { kind: "paused", reason: interest.reason };
-    case "failed":
-      return {
-        kind: "failed",
-        failure: { kind: "transport", detail: interest.reason },
-        attempts: interest.attempts,
-        retryAtMs: interest.retryAtMs,
-      };
-  }
+function sourceOf(read: ProjectServices): SourceState {
+  if (read.unavailableReason !== undefined)
+    return {
+      kind: "failed",
+      failure: { kind: "refused", code: read.unavailableReason, words: "" },
+      attempts: 1,
+      retryAtMs: null,
+    };
+  if (read.live) return { kind: "observing" };
+  if (read.reconnecting)
+    return {
+      kind: "failed",
+      failure: { kind: "transport", detail: "catching up" },
+      attempts: 1,
+      retryAtMs: null,
+    };
+  return { kind: "establishing", sinceMs: 0 };
 }
 
 function worstSource(sources: ReadonlyArray<SourceState>): SourceState {
@@ -288,13 +313,11 @@ export interface StopService {
 
 /** What a stop is read from: its services' listing, and the account's store's word on its work. */
 export interface StopReads {
-  readonly services: CollectionRead<ServiceRecord>;
+  readonly services: DeploymentServices;
   /** The stop's running builds, what its builds named, its services' active versions. */
   readonly work: StopWork;
   /** What the organization's active versions state of each version a service runs, by its id. */
   readonly versions: ReadonlyMap<string, VersionSource>;
-  /** Why the platform took no demand for the stop's services; nothing is read then. */
-  readonly refused: DemandRefusal | null;
   /**
    * What the service's own variables name an active version a push left unnamed and no build
    * named, by that version's id (A11, `unnamedVersions`).
@@ -302,13 +325,6 @@ export interface StopReads {
   readonly stated: ReadonlyMap<string, Shown<ZeropsServiceDeployedVersion>>;
   /** Read in detail: a version nothing else names waits for its variables to name it. */
   readonly detail: boolean;
-}
-
-/** The platform took no demand for a stop's services, until a manual Again. */
-export interface DemandRefusal {
-  readonly reason: LeaseAdmissionError["reason"];
-  /** How many times in a row it refused. */
-  readonly attempt: number;
 }
 
 /** The store's word on running work and versions, as the stop's sources say it. */
@@ -340,28 +356,26 @@ function workSource(work: StopWork): SourceState {
  * version's id: only the service's own variables can name it (A11).
  */
 export function unnamedVersions(
-  services: CollectionRead<ServiceRecord>,
+  services: DeploymentServices,
   names: StopWork["names"],
 ): ReadonlyArray<{ readonly service: ServiceRef; readonly versionId: string }> {
-  return services.value.flatMap((knowledge) => {
-    const answer = serviceAnswer(knowledge);
-    if (knowledge.knowledge !== "observed" || answer.kind !== "unstated") return [];
+  return (services.services ?? []).flatMap((service) => {
+    const answer = serviceAnswer(service);
+    if (answer.kind !== "unstated") return [];
     const versionId = answer.deploy.id;
     return versionId === null || answer.deploy.name !== null || Object.hasOwn(names, versionId)
       ? []
-      : [{ service: knowledge.record.ref, versionId }];
+      : [{ service: serviceRef(services.project, service), versionId }];
   });
 }
 
-/** The active version each listed service names, as the stop's work is keyed by. */
 export function listedVersions(
-  services: CollectionRead<ServiceRecord>,
+  services: DeploymentServices,
 ): ReadonlyArray<{ readonly serviceId: string; readonly versionId: string | null }> {
-  return services.value.flatMap((knowledge) => {
-    if (knowledge.knowledge !== "observed") return [];
-    const answer = serviceAnswer(knowledge);
-    return [{ serviceId: knowledge.record.ref.serviceId, versionId: activeVersionId(answer) }];
-  });
+  return (services.services ?? []).map((service) => ({
+    serviceId: service.id,
+    versionId: activeVersionId(serviceAnswer(service)),
+  }));
 }
 
 /** What one listed service contributes to its stop's list. */
@@ -565,15 +579,13 @@ function serviceDeployment(
 }
 
 function listedService(
-  knowledge: CollectionRead<ServiceRecord>["value"][number],
+  service: ServiceValue,
+  project: ProjectRef,
   context: StopContext,
 ): ListedService {
-  const answer = serviceAnswer(knowledge);
+  const answer = serviceAnswer(service);
   if (answer.kind === "not-a-stop") return answer;
-  if (knowledge.knowledge !== "observed") return { kind: "unidentified" };
-  const service = serviceRecordToZeropsService(knowledge.record);
-  if (service === null) return { kind: "unidentified" };
-  const ref = knowledge.record.ref;
+  const ref = serviceRef(project, service);
   return {
     kind: "stop",
     stop: {
@@ -584,45 +596,28 @@ function listedService(
   };
 }
 
-/**
- * A stop's runtime services, by hostname, each with its own deployment. The list is known once the
- * project's listing is complete and every listed service is identified; one service still being
- * read holds its own deployment, never its neighbours'.
- */
+/** A complete service listing earns the stop's list; a missing deployment holds only its row. */
 export function stopServices(reads: StopReads, nowMs: number): Known<ReadonlyArray<StopService>> {
   const read = reads.services;
-  const listing = worstSource(read.observation.required.map(sourceOf));
+  const listing = sourceOf(read);
   const context: StopContext = {
     work: reads.work,
     versions: reads.versions,
     stated: reads.stated,
     detail: reads.detail,
-    // A service's deployment stands on both: its builds and versions are the store's.
-    source:
-      reads.refused === null
-        ? worstSource([listing, workSource(reads.work)])
-        : {
-            kind: "failed",
-            failure: { kind: "refused", code: reads.refused.reason, words: "" },
-            attempts: reads.refused.attempt,
-            retryAtMs: null,
-          },
+    source: worstSource([listing, workSource(reads.work)]),
     nowMs,
   };
-  const listed = read.value.map((knowledge) => listedService(knowledge, context));
-  if (
-    read.query.status !== "observed" ||
-    read.query.coverage.kind !== "exhausted-traversal" ||
-    listed.some((entry) => entry.kind === "unidentified")
-  ) {
-    return notYetKnown(reads.refused === null ? listing : context.source, nowMs);
-  }
+  if (read.services === undefined) return notYetKnown(listing, nowMs);
   return {
     state: "known",
-    value: listed
-      .flatMap((entry) => (entry.kind === "stop" ? [entry.stop] : []))
-      .sort((left, right) => left.hostname.localeCompare(right.hostname)),
-    asOf: toStamp(read.query.stamp),
+    value: read.services
+      .flatMap((service) => {
+        const entry = listedService(service, read.project, context);
+        return entry.kind === "stop" ? [entry.stop] : [];
+      })
+      .sort((a, b) => a.hostname.localeCompare(b.hostname)),
+    asOf: { ordinal: 0, atMs: 0 },
     coverage: "complete",
     freshness: freshnessOf(listing, nowMs),
   };

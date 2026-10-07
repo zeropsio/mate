@@ -25,6 +25,7 @@ import { membersScope } from "../families/organizationMembers.ts";
 import { projectRoutingsScope, routingsScope } from "../families/publicRouting.ts";
 import { STREAM_POLICY } from "../streamMachine.ts";
 import { ownRowWanted, listedProject } from "../projections/projects.ts";
+import { platformInventory } from "../projections/platformInventory.ts";
 import { readsOfState } from "../store.ts";
 
 import {
@@ -442,7 +443,12 @@ describe("zeropsNavigationLink", () => {
     () =>
       Effect.gen(function* () {
         const store = makeAccountStore(AtomRegistry.make());
-        const project = { id: "p", name: "p", status: "ACTIVE", _version: 1 };
+        const inventory = () =>
+          platformInventory.derive(readsOfState(store.state()), {
+            orgId: ORG,
+            viewer: { id: ORG, name: "Org", membershipId: "member", roleCode: "ADMIN" },
+          });
+        const project = { id: "p", name: "p", status: "ACTIVE", clientId: ORG, _version: 1 };
         const fixture = fixtureWire((request) =>
           request.method === "GET"
             ? Effect.succeed({ status: 403, body: null })
@@ -458,12 +464,14 @@ describe("zeropsNavigationLink", () => {
         });
         yield* settle;
         expect(factOf(store.state(), "project", "p")?.content.kind).toBe("purged");
+        expect(inventory().denied).toEqual(["p"]);
 
         yield* fixture.push(fixture.subscription(PROJECT_SEARCH, "updateStream"), {
-          update: [project],
+          update: [{ ...project, _version: 2 }],
         });
         yield* settle;
         expect(factOf(store.state(), "project", "p")?.content.kind).toBe("purged");
+        expect(inventory().denied).toEqual(["p"]);
 
         yield* fixture.drop({ outcome: "transient", message: "socket closed" });
         yield* settle;
@@ -475,6 +483,8 @@ describe("zeropsNavigationLink", () => {
           access: "allowed",
         });
         expect(store.state().memberships.get(projectsScope(ORG))?.members.get("p")).toBe("member");
+        expect(inventory().denied).toEqual([]);
+        expect(inventory().projects.map(({ id }) => id)).toEqual(["p"]);
         yield* Fiber.interrupt(fiber);
       }),
   );

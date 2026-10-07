@@ -175,10 +175,9 @@ describe("repair is the Mate adapter's", () => {
       intents: { read: () => null, write: () => undefined },
     });
     driver.setAccount({
-      postGrant: true,
-      identityMint: { allowed: true },
-      zeropsFailing: false,
-      grantVerifiedAtMs: null,
+      verified: true,
+
+      zeropsState: "live",
     });
     driver.setVisible(true);
     driver.setTargets([

@@ -38,7 +38,7 @@ const named = (store: AccountStore, name: string, version = 2) =>
 
 /** The tag writer's own refusal: the project was renamed since the rename was planned. */
 const renamedSince = {
-  _tag: "ZeropsDataAdapterError",
+  _tag: "ZeropsProjectTagWriteError",
   kind: "rejected",
   message: "This project was renamed since. Nothing was changed.",
   retryable: false,

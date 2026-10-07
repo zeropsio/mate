@@ -206,9 +206,9 @@ export function supersedes(
 }
 
 /**
- * Whether a row replaces the fact held for it: a newer revision does. After a denial purged it, the
- * same revision restores it only from an answer that lists it — a baseline, or a read of a member
- * — never from a push, which says nothing of the viewer's access having returned.
+ * Whether a row replaces the fact held for it: a newer revision does. A denial is restored only
+ * by an owner answer — a baseline, or a read of a member — never by a push, which says nothing
+ * of the viewer's access having returned.
  */
 function admits(
   state: AccountState,
@@ -216,6 +216,7 @@ function admits(
   current: Fact<unknown>,
   row: Row,
 ): boolean {
+  if (current.content.kind === "purged" && input.method === "push") return false;
   if (supersedes(current.revision, row.revision, input.method)) return true;
   // A read with no revision — a by-id read, or a detail listing's baseline read — newer by the
   // owner's own word (`FamilySpec.readIsNewer`). A push always carries its revision.
@@ -260,6 +261,7 @@ function reduceRows(
 ): AccountState {
   // One copy of the facts a reduction writes, never one per row.
   let draft: Map<FactKey, Fact<unknown>> | null = null;
+  let memberships = state.memberships;
   for (const row of input.rows) {
     const key = factKey(row.family, row.id);
     const current = (draft ?? state.facts).get(key);
@@ -320,12 +322,27 @@ function reduceRows(
     };
     draft ??= new Map(state.facts);
     draft.set(key, fact);
+    // Only a fresh owner answer restores an excluded entity, never a transport event or delta.
+    if (current?.content.kind === "purged" || current?.content.kind === "deleted") {
+      for (const [scope, membership] of memberships) {
+        if (scopeSpec(scope).family !== row.family || !membership.excluded.has(row.id)) continue;
+        const excluded = new Set(membership.excluded);
+        excluded.delete(row.id);
+        memberships = new Map(memberships).set(scope, { ...membership, excluded });
+        changed.add(`members:${scope}`);
+      }
+    }
     changed.add(key);
   }
-  return draft === null ? state : { ...state, facts: draft };
+  return draft === null ? state : { ...state, facts: draft, memberships };
 }
 
-const EMPTY_MEMBERSHIP: Membership = { coverage: "unknown", members: new Map(), baseline: null };
+const EMPTY_MEMBERSHIP: Membership = {
+  coverage: "unknown",
+  members: new Map(),
+  excluded: new Set(),
+  baseline: null,
+};
 
 function reduceMembership(
   state: AccountState,
@@ -348,11 +365,12 @@ function reduceMembership(
     });
   const members = new Map(membership.members);
   for (const id of delta.add) members.set(id, "member");
-  for (const id of delta.remove) members.set(id, leaving);
+  const removed = delta.remove.filter((id) => !membership.excluded.has(id));
+  for (const id of removed) members.set(id, leaving);
   const unresolved = delta.add.filter((id) => !state.facts.has(factKey(family, id)));
   if (unresolved.length > 0) directives.push({ kind: "resolve-rows", key: scope, ids: unresolved });
-  if (leaving === "absent-unverified" && delta.remove.length > 0)
-    directives.push({ kind: "verify-absence", key: scope, ids: delta.remove });
+  if (leaving === "absent-unverified" && removed.length > 0)
+    directives.push({ kind: "verify-absence", key: scope, ids: removed });
   return withMembership(state, scope, { ...membership, members });
 }
 
@@ -395,6 +413,7 @@ function commitBaseline(
   next = withMembership(next, scope, {
     coverage,
     members: new Map(membership.members),
+    excluded: next.memberships.get(scope)?.excluded ?? membership.excluded,
     baseline: null,
   });
   const admitted = new Set(input.members);
@@ -427,14 +446,21 @@ function leaveScope(
   return withMembership(state, scope, { ...membership, members });
 }
 
-/** The entity's id leaves every scope of its family: it is gone, or not the viewer's to list. */
+/** Keep the owner's exclusion in the family scope, while removing every listed membership. */
 function unlist(state: AccountState, family: Family, id: string, changed: Set<ReadKey>) {
+  const fact = state.facts.get(factKey(family, id));
+  const ownScope = fact === undefined ? undefined : ownScopeOf(fact.scope);
   let memberships = state.memberships;
-  for (const [scope, membership] of state.memberships) {
-    if (scopeSpec(scope).family !== family || !membership.members.has(id)) continue;
+  const scopes = new Set(state.memberships.keys());
+  if (ownScope !== undefined) scopes.add(ownScope);
+  for (const scope of scopes) {
+    const membership = state.memberships.get(scope) ?? EMPTY_MEMBERSHIP;
+    if (scopeSpec(scope).family !== family || (scope !== ownScope && !membership.members.has(id)))
+      continue;
     const members = new Map(membership.members);
     members.delete(id);
-    memberships = new Map(memberships).set(scope, { ...membership, members });
+    const excluded = new Set(membership.excluded).add(id);
+    memberships = new Map(memberships).set(scope, { ...membership, members, excluded });
     changed.add(`members:${scope}`);
   }
   return memberships;

@@ -1905,12 +1905,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   // Persisted cleanup debt is restored after a crash, once inventory admits the account.
   const throwawayCleanup = useZeropsThrowawaySweep({
     clientId: activeOrganization?.id,
-    // Not on sign-in alone: deleting a token is a `project-write`, and the api
-    // admits one only through the epoch's grant (`admitWritesThrough`), which
-    // refuses it once its wait for the first grant ran out. The sweep ran on
-    // mount, was refused, and gave up for the life of that mount — so four
-    // door tokens from deleted projects were still on the account hours later
-    // (measured 2026-09-19). The account having been read is the grant admitted.
+    // Cleanup waits for the account inventory; its operation fences every write on sign-in.
     enabled: status === "signed-in" && !inventory.isLoading,
   });
 

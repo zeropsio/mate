@@ -253,7 +253,7 @@ describe("useAccountHq — the official HQ this page holds", () => {
       },
     });
     const data = {
-      runtime: { scope },
+      scope,
     } as unknown as ZeropsDataContextValue;
     const seen: Array<AccountHq> = [];
     function Probe() {
@@ -294,7 +294,7 @@ describe("useAccountHq — the official HQ this page holds", () => {
       members: async () => [anchor(endpoint.projectId, endpoint.address)],
     });
     const data = {
-      runtime: { scope },
+      scope,
     } as unknown as ZeropsDataContextValue;
     const session = {
       client: { accountEpoch: "stable-account" },
@@ -520,7 +520,7 @@ describe("useAccountHq — the HQ whose session the account kept, verified behin
         }),
     });
     const data = {
-      runtime: { scope },
+      scope,
     } as unknown as ZeropsDataContextValue;
     const seen: Array<AccountHq> = [];
     function Probe() {
@@ -912,7 +912,7 @@ describe("useAccountHq — no official HQ, kept too", () => {
       },
     });
     const data = {
-      runtime: { scope },
+      scope,
     } as unknown as ZeropsDataContextValue;
     const seen: Array<AccountHq> = [];
     function Probe() {

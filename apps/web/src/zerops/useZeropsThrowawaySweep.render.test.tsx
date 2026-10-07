@@ -1,3 +1,4 @@
+import { AtomRegistry } from "effect/unstable/reactivity";
 import { act, useLayoutEffect } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -7,11 +8,13 @@ import {
   type ThrowawayDebt,
 } from "@t3tools/client-runtime/zerops/doorThrowaway";
 import { ZeropsApiError } from "@t3tools/client-runtime/zerops";
+import { openAccountLifetime, closeAccountLifetime } from "./accountLifetime";
 import { useZeropsThrowawaySweep } from "./useZeropsThrowawaySweep";
 
 const NOW = Date.parse("2026-10-04T10:00:00Z");
 const mocks = vi.hoisted(() => ({
   debt: undefined as ThrowawayDebt | undefined,
+  registry: null as AtomRegistry.AtomRegistry | null,
   read: vi.fn(),
   remove: vi.fn(),
 }));
@@ -23,22 +26,27 @@ vi.mock("./ZeropsSessionProvider", () => {
       ((await mocks.read(clientId)) as ReadonlyArray<{ readonly tokenId: string }>).map(
         ({ tokenId, ...token }) => ({ id: tokenId, ...token }),
       ),
-    deleteIntegrationToken: (...args: unknown[]) => mocks.remove(...args),
+    deleteIntegrationToken: async (
+      input: unknown,
+      _signal?: AbortSignal,
+      beforeWrite?: () => Promise<void>,
+    ) => {
+      await beforeWrite?.();
+      return mocks.remove(input);
+    },
   };
   return { useZeropsSession: () => ({ client, user: { id: "ada" } }) };
 });
 // The account's operations as its data mount builds them, over a store of the test's registry.
 vi.mock("./accountOperations", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./accountOperations")>();
-  const { RegistryContext } = await import("@effect/atom-react");
   const { makeAccountStore } = await import("@t3tools/client-runtime/data");
-  const { useContext } = await import("react");
   const { useZeropsSession } = await import("./ZeropsSessionProvider");
   const stores = new WeakMap<object, ReturnType<typeof makeAccountStore>>();
   return {
     ...actual,
     useAccountOperations: () => {
-      const registry = useContext(RegistryContext);
+      const registry = mocks.registry!;
       let store = stores.get(registry);
       if (store === undefined) {
         store = makeAccountStore(registry);
@@ -50,6 +58,7 @@ vi.mock("./accountOperations", async (importOriginal) => {
         useZeropsSession().client,
         () => () => {},
         () => {},
+        async () => false,
       );
     },
   };
@@ -77,6 +86,8 @@ const tokens = [
 ];
 
 beforeEach(() => {
+  openAccountLifetime("ada");
+  mocks.registry = AtomRegistry.make();
   vi.useFakeTimers({ now: NOW });
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   mocks.debt = makeThrowawayDebt();
@@ -84,8 +95,10 @@ beforeEach(() => {
   mocks.remove.mockReset().mockResolvedValue(undefined);
 });
 afterEach(() => {
+  closeAccountLifetime();
   act(() => tree?.unmount());
   tree = undefined;
+  mocks.registry?.dispose();
   vi.useRealTimers();
   vi.unstubAllGlobals();
 });
@@ -328,6 +341,8 @@ describe("inventory throwaway cleanup", () => {
     expect(shown.state).toBe("failed");
     act(() => tree!.unmount());
     tree = undefined;
+    mocks.registry?.dispose();
+    mocks.registry = AtomRegistry.make();
     mocks.debt = makeThrowawayDebt(storage);
     await mount();
     expect(shown.state).toBe("failed");

@@ -8,7 +8,7 @@ import * as Result from "effect/Result";
 
 import { ZeropsApiError, type ZeropsProject } from "../../../zerops/api.ts";
 import type { OperationReceipt } from "../../model.ts";
-import type { ProjectTagWriter } from "../../../zerops/data/tagWriter.ts";
+import type { ProjectTagWriter } from "./projectTags.ts";
 import type { OwnerUnobservable } from "../coordinator.ts";
 import type { IntentOf } from "../kind.ts";
 import { answeredReceipt } from "./answered.ts";
@@ -25,7 +25,7 @@ const tagWrite = <A>(call: () => Promise<A>) =>
         typeof cause === "object" &&
         cause !== null &&
         "_tag" in cause &&
-        cause._tag === "ZeropsDataAdapterError" &&
+        cause._tag === "ZeropsProjectTagWriteError" &&
         "kind" in cause &&
         cause.kind === "rejected" &&
         "message" in cause &&

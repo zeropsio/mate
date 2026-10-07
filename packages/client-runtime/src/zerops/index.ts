@@ -22,7 +22,6 @@ export {
   type ZeropsStatHistoryWindow,
   type ZeropsStatPair,
   type ZeropsUser,
-  type WriteAdmission,
 } from "./api.ts";
 
 export {
@@ -531,12 +530,6 @@ export {
   type GitOverviewChange,
   type GitOverviewRepository,
 } from "./gitOverview.ts";
-export {
-  grantListing,
-  projectGrantsOf,
-  withProjectGrants,
-  type ProjectGrants,
-} from "./projectGrants.ts";
 export {
   onlyTheseCanAddAProject,
   FINISH_MATE_SETUP_VERB,

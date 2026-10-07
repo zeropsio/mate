@@ -40,14 +40,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/mobile/src/features/zerops/ZeropsDataProvider.tsx",
-    "kind": "retired-token",
-    "fingerprint": "ZeropsDataProvider(",
-    "owner": "data-layer rewrite: projects",
-    "reason": "the app's data provider wires I/O in the view tree; adapters own I/O",
-    "expires": "never"
-  },
-  {
     "path": "apps/mobile/src/features/zerops/account-ports.ts",
     "kind": "retired-token",
     "fingerprint": "hqAbsent()",
@@ -416,35 +408,11 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/components/zerops/ZeropsChangeLinkChip.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsLandedChange",
-    "owner": "data-layer rewrite: changes/review",
-    "reason": "a hook reads a landed change itself; the changes adapter owns the read",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsChangeLinkChip.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsLandedChange",
-    "owner": "data-layer rewrite: changes/review",
-    "reason": "a hook reads a landed change itself; the changes adapter owns the read",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsChangeLinkChip.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsLandedChange",
-    "owner": "data-layer rewrite: changes/review",
-    "reason": "a hook reads a landed change itself; the changes adapter owns the read",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/components/zerops/ZeropsDataPanel.tsx",
     "kind": "retired-token",
     "fingerprint": "const runRequest = async",
     "owner": "data-layer rewrite: services",
-    "reason": "a component runs its own data-catalog requests; the adapter owns them",
+    "reason": "Mate database catalog and query reads need their own fact family and surface projection. They do not call the removed Zerops runtime; removing them here would delete current database actions.",
     "expires": "never"
   },
   {
@@ -768,30 +736,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/components/zerops/review/ZeropsChangeReview.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsLandedChange",
-    "owner": "data-layer rewrite: changes/review",
-    "reason": "a hook reads a landed change itself; the changes adapter owns the read",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/review/ZeropsChangeReview.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsLandedChange",
-    "owner": "data-layer rewrite: changes/review",
-    "reason": "a hook reads a landed change itself; the changes adapter owns the read",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/review/ZeropsChangeReview.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsLandedChange",
-    "owner": "data-layer rewrite: changes/review",
-    "reason": "a hook reads a landed change itself; the changes adapter owns the read",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/design/pressPage.tsx",
     "kind": "retired-token",
     "fingerprint": "settlePress(",
@@ -1052,7 +996,7 @@
     "kind": "retired-token",
     "fingerprint": "zeropsInventoryAtom",
     "owner": "data-layer rewrite: services",
-    "reason": "inventory atoms and trouble refs remember a verdict; the services projection reads the store",
+    "reason": "The inventory atom is the current presentation join for navigation and project topology. Its removal belongs to the closing surface projection over HQ placement and Mate connections; this runtime lane replaces its platform input.",
     "expires": "never"
   },
   {
@@ -1060,7 +1004,7 @@
     "kind": "retired-token",
     "fingerprint": "zeropsInventoryAtom",
     "owner": "data-layer rewrite: services",
-    "reason": "inventory atoms and trouble refs remember a verdict; the services projection reads the store",
+    "reason": "The inventory atom is the current presentation join for navigation and project topology. Its removal belongs to the closing surface projection over HQ placement and Mate connections; this runtime lane replaces its platform input.",
     "expires": "never"
   },
   {
@@ -1068,7 +1012,7 @@
     "kind": "retired-token",
     "fingerprint": "zeropsInventoryAtom",
     "owner": "data-layer rewrite: services",
-    "reason": "inventory atoms and trouble refs remember a verdict; the services projection reads the store",
+    "reason": "The inventory atom is the current presentation join for navigation and project topology. Its removal belongs to the closing surface projection over HQ placement and Mate connections; this runtime lane replaces its platform input.",
     "expires": "never"
   },
   {
@@ -1076,39 +1020,7 @@
     "kind": "retired-token",
     "fingerprint": "zeropsInventoryAtom",
     "owner": "data-layer rewrite: services",
-    "reason": "inventory atoms and trouble refs remember a verdict; the services projection reads the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsDataProvider.tsx",
-    "kind": "retired-token",
-    "fingerprint": "ZeropsDataProvider(",
-    "owner": "data-layer rewrite: projects",
-    "reason": "the app's data provider wires I/O in the view tree; adapters own I/O",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsInventoryProvider.tsx",
-    "kind": "retired-token",
-    "fingerprint": "troubleRef",
-    "owner": "data-layer rewrite: services",
-    "reason": "inventory atoms and trouble refs remember a verdict; the services projection reads the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsInventoryProvider.tsx",
-    "kind": "retired-token",
-    "fingerprint": "troubleRef",
-    "owner": "data-layer rewrite: services",
-    "reason": "inventory atoms and trouble refs remember a verdict; the services projection reads the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsInventoryProvider.tsx",
-    "kind": "retired-token",
-    "fingerprint": "troubleRef",
-    "owner": "data-layer rewrite: services",
-    "reason": "inventory atoms and trouble refs remember a verdict; the services projection reads the store",
+    "reason": "The inventory atom is the current presentation join for navigation and project topology. Its removal belongs to the closing surface projection over HQ placement and Mate connections; this runtime lane replaces its platform input.",
     "expires": "never"
   },
   {
@@ -1116,7 +1028,7 @@
     "kind": "retired-token",
     "fingerprint": "zeropsInventoryAtom",
     "owner": "data-layer rewrite: services",
-    "reason": "inventory atoms and trouble refs remember a verdict; the services projection reads the store",
+    "reason": "The inventory atom is the current presentation join for navigation and project topology. Its removal belongs to the closing surface projection over HQ placement and Mate connections; this runtime lane replaces its platform input.",
     "expires": "never"
   },
   {
@@ -1124,31 +1036,7 @@
     "kind": "retired-token",
     "fingerprint": "zeropsInventoryAtom",
     "owner": "data-layer rewrite: services",
-    "reason": "inventory atoms and trouble refs remember a verdict; the services projection reads the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/accountHq.ts",
-    "kind": "retired-token",
-    "fingerprint": "const apis = new Map<string, HqApi>()",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "the app keeps its own HQ clients and sockets; the HQ adapter owns them",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/accountHq.ts",
-    "kind": "retired-token",
-    "fingerprint": "openBrowserSocket",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "the app keeps its own HQ clients and sockets; the HQ adapter owns them",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/accountHq.ts",
-    "kind": "retired-token",
-    "fingerprint": "openBrowserSocket",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "the app keeps its own HQ clients and sockets; the HQ adapter owns them",
+    "reason": "The inventory atom is the current presentation join for navigation and project topology. Its removal belongs to the closing surface projection over HQ placement and Mate connections; this runtime lane replaces its platform input.",
     "expires": "never"
   },
   {
@@ -1180,7 +1068,7 @@
     "kind": "retired-token",
     "fingerprint": "rememberedRef",
     "owner": "data-layer rewrite: running work/processes",
-    "reason": "a remembered ref stands in for a fact; the store holds what the source said",
+    "reason": "Mate browser-stream frames omit revision and completeness; the last partial frame cannot move into a fact family until the source contract identifies replacement, absence and deletion. This lane does not change that contract.",
     "expires": "never"
   },
   {
@@ -1188,7 +1076,7 @@
     "kind": "retired-token",
     "fingerprint": "rememberedRef",
     "owner": "data-layer rewrite: running work/processes",
-    "reason": "a remembered ref stands in for a fact; the store holds what the source said",
+    "reason": "Mate browser-stream frames omit revision and completeness; the last partial frame cannot move into a fact family until the source contract identifies replacement, absence and deletion. This lane does not change that contract.",
     "expires": "never"
   },
   {
@@ -1196,7 +1084,7 @@
     "kind": "retired-token",
     "fingerprint": "rememberedRef",
     "owner": "data-layer rewrite: running work/processes",
-    "reason": "a remembered ref stands in for a fact; the store holds what the source said",
+    "reason": "Mate browser-stream frames omit revision and completeness; the last partial frame cannot move into a fact family until the source contract identifies replacement, absence and deletion. This lane does not change that contract.",
     "expires": "never"
   },
   {
@@ -1204,7 +1092,7 @@
     "kind": "retired-token",
     "fingerprint": "rememberedRef",
     "owner": "data-layer rewrite: running work/processes",
-    "reason": "a remembered ref stands in for a fact; the store holds what the source said",
+    "reason": "Mate browser-stream frames omit revision and completeness; the last partial frame cannot move into a fact family until the source contract identifies replacement, absence and deletion. This lane does not change that contract.",
     "expires": "never"
   },
   {
@@ -1212,7 +1100,7 @@
     "kind": "retired-token",
     "fingerprint": "rememberedRef",
     "owner": "data-layer rewrite: running work/processes",
-    "reason": "a remembered ref stands in for a fact; the store holds what the source said",
+    "reason": "Mate browser-stream frames omit revision and completeness; the last partial frame cannot move into a fact family until the source contract identifies replacement, absence and deletion. This lane does not change that contract.",
     "expires": "never"
   },
   {
@@ -1220,7 +1108,7 @@
     "kind": "retired-token",
     "fingerprint": "rememberedRef",
     "owner": "data-layer rewrite: running work/processes",
-    "reason": "a remembered ref stands in for a fact; the store holds what the source said",
+    "reason": "Mate browser-stream frames omit revision and completeness; the last partial frame cannot move into a fact family until the source contract identifies replacement, absence and deletion. This lane does not change that contract.",
     "expires": "never"
   },
   {
@@ -1260,7 +1148,7 @@
     "kind": "retired-token",
     "fingerprint": "useZeropsDataCatalogStore",
     "owner": "data-layer rewrite: services",
-    "reason": "a component runs its own data-catalog requests; the adapter owns them",
+    "reason": "Mate database catalog and query reads need their own fact family and surface projection. They do not call the removed Zerops runtime; removing them here would delete current database actions.",
     "expires": "never"
   },
   {
@@ -1488,22 +1376,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/zerops/useZeropsChangeDetail.ts",
-    "kind": "retired-token",
-    "fingerprint": "function readOnce(",
-    "owner": "data-layer rewrite: changes/review",
-    "reason": "a component-level LRU reads change readouts once; the changes adapter owns the read",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsChangeDetail.ts",
-    "kind": "retired-token",
-    "fingerprint": "new LRUCache<ReadoutPart<ChangeReadout>>",
-    "owner": "data-layer rewrite: changes/review",
-    "reason": "a component-level LRU reads change readouts once; the changes adapter owns the read",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/zerops/useZeropsDataMentions.ts",
     "kind": "retired-token",
     "fingerprint": "useZeropsDataCatalogStore",
@@ -1532,7 +1404,7 @@
     "kind": "retired-token",
     "fingerprint": "zeropsInventoryAtom",
     "owner": "data-layer rewrite: services",
-    "reason": "inventory atoms and trouble refs remember a verdict; the services projection reads the store",
+    "reason": "The inventory atom is the current presentation join for navigation and project topology. Its removal belongs to the closing surface projection over HQ placement and Mate connections; this runtime lane replaces its platform input.",
     "expires": "never"
   },
   {
@@ -1540,7 +1412,7 @@
     "kind": "retired-token",
     "fingerprint": "zeropsInventoryAtom",
     "owner": "data-layer rewrite: services",
-    "reason": "inventory atoms and trouble refs remember a verdict; the services projection reads the store",
+    "reason": "The inventory atom is the current presentation join for navigation and project topology. Its removal belongs to the closing surface projection over HQ placement and Mate connections; this runtime lane replaces its platform input.",
     "expires": "never"
   },
   {
@@ -1549,22 +1421,6 @@
     "fingerprint": "useZeropsGitRemoteProbes",
     "owner": "data-layer rewrite: Mate identity/connection",
     "reason": "a component probes git remotes itself; the adapter owns the read",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsLandedChange.ts",
-    "kind": "retired-token",
-    "fingerprint": "async function readChange(",
-    "owner": "data-layer rewrite: changes/review",
-    "reason": "a hook reads a landed change itself; the changes adapter owns the read",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsLandedChange.ts",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsLandedChange",
-    "owner": "data-layer rewrite: changes/review",
-    "reason": "a hook reads a landed change itself; the changes adapter owns the read",
     "expires": "never"
   },
   {
@@ -1904,158 +1760,6 @@
     "expires": "never"
   },
   {
-    "path": "packages/client-runtime/src/zerops/data/access/capabilities.ts",
-    "kind": "retired-token",
-    "fingerprint": "\"runtime-closed\"",
-    "owner": "data-layer rewrite: projects",
-    "reason": "closing the runtime erases its facts; a transport event never deletes a fact",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/data/atoms.ts",
-    "kind": "retired-token",
-    "fingerprint": "function stableAtom",
-    "owner": "data-layer rewrite: projects",
-    "reason": "a root atom per runtime and stable-atom wrappers duplicate the store; projections read the store",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/data/runtime.ts",
-    "kind": "retired-token",
-    "fingerprint": "\"runtime-closed\"",
-    "owner": "data-layer rewrite: projects",
-    "reason": "closing the runtime erases its facts; a transport event never deletes a fact",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/data/runtime.ts",
-    "kind": "retired-token",
-    "fingerprint": "\"runtime-closed\"",
-    "owner": "data-layer rewrite: projects",
-    "reason": "closing the runtime erases its facts; a transport event never deletes a fact",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/data/runtime.ts",
-    "kind": "retired-token",
-    "fingerprint": "\"runtime-closed\"",
-    "owner": "data-layer rewrite: projects",
-    "reason": "closing the runtime erases its facts; a transport event never deletes a fact",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/data/runtime.ts",
-    "kind": "retired-token",
-    "fingerprint": "\"runtime-closed\"",
-    "owner": "data-layer rewrite: projects",
-    "reason": "closing the runtime erases its facts; a transport event never deletes a fact",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/data/runtime.ts",
-    "kind": "retired-token",
-    "fingerprint": "const rootAtom = Atom.make",
-    "owner": "data-layer rewrite: projects",
-    "reason": "a root atom per runtime and stable-atom wrappers duplicate the store; projections read the store",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/data/runtime.ts",
-    "kind": "retired-token",
-    "fingerprint": "ensureReceiver(",
-    "owner": "data-layer rewrite: projects",
-    "reason": "the data runtime's direct receivers bypass the store; adapters feed one store",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/data/runtime.ts",
-    "kind": "retired-token",
-    "fingerprint": "new Map<InterestKey, RuntimeInterest>()",
-    "owner": "data-layer rewrite: projects",
-    "reason": "runtime interest and receiver maps duplicate the store's subscriptions",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/data/runtime.ts",
-    "kind": "retired-token",
-    "fingerprint": "new Map<string, RuntimeReceiver>()",
-    "owner": "data-layer rewrite: projects",
-    "reason": "runtime interest and receiver maps duplicate the store's subscriptions",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/data/runtime.ts",
-    "kind": "retired-token",
-    "fingerprint": "new Map<string, RuntimeReceiver>()",
-    "owner": "data-layer rewrite: projects",
-    "reason": "runtime interest and receiver maps duplicate the store's subscriptions",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/data/runtime.ts",
-    "kind": "retired-token",
-    "fingerprint": "new Map<string, RuntimeReceiver>()",
-    "owner": "data-layer rewrite: projects",
-    "reason": "runtime interest and receiver maps duplicate the store's subscriptions",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/data/runtime.ts",
-    "kind": "retired-token",
-    "fingerprint": "plan.directReads",
-    "owner": "data-layer rewrite: projects",
-    "reason": "the data runtime's direct receivers bypass the store; adapters feed one store",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/data/runtime.ts",
-    "kind": "retired-token",
-    "fingerprint": "plan.directReads",
-    "owner": "data-layer rewrite: projects",
-    "reason": "the data runtime's direct receivers bypass the store; adapters feed one store",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/data/state.ts",
-    "kind": "retired-token",
-    "fingerprint": "\"runtime-closed\"",
-    "owner": "data-layer rewrite: projects",
-    "reason": "closing the runtime erases its facts; a transport event never deletes a fact",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/data/state.ts",
-    "kind": "retired-token",
-    "fingerprint": "\"runtime-closed\"",
-    "owner": "data-layer rewrite: projects",
-    "reason": "closing the runtime erases its facts; a transport event never deletes a fact",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/data/state.ts",
-    "kind": "retired-token",
-    "fingerprint": "\"runtime-closed\"",
-    "owner": "data-layer rewrite: projects",
-    "reason": "closing the runtime erases its facts; a transport event never deletes a fact",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/data/types.ts",
-    "kind": "retired-token",
-    "fingerprint": "\"runtime-closed\"",
-    "owner": "data-layer rewrite: projects",
-    "reason": "closing the runtime erases its facts; a transport event never deletes a fact",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/data/types.ts",
-    "kind": "retired-token",
-    "fingerprint": "\"runtime-closed\"",
-    "owner": "data-layer rewrite: projects",
-    "reason": "closing the runtime erases its facts; a transport event never deletes a fact",
-    "expires": "never"
-  },
-  {
     "path": "packages/client-runtime/src/zerops/environments/gate.ts",
     "kind": "retired-token",
     "fingerprint": "CONVERSATION_UNVERIFIED_BOUND_MS",
@@ -2101,62 +1805,6 @@
     "fingerprint": "firstReleaseHandoff(",
     "owner": "data-layer rewrite: releases/environments",
     "reason": "the review hand-off is decided in the app; the operation's result says where to go",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsInventoryProvider.tsx",
-    "kind": "retired-token",
-    "fingerprint": "organizationProjectsRead",
-    "owner": "data-layer rewrite: services",
-    "reason": "the inventory reads the organization projects through the in-transit bridge to the project family until the services slice replaces the inventory",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsInventoryProvider.tsx",
-    "kind": "retired-token",
-    "fingerprint": "organizationProjectsRead",
-    "owner": "data-layer rewrite: services",
-    "reason": "the inventory reads the organization projects through the in-transit bridge to the project family until the services slice replaces the inventory",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/account/accountRuntime.ts",
-    "kind": "retired-token",
-    "fingerprint": "organizationProjectsRead",
-    "owner": "data-layer rewrite: services",
-    "reason": "the inventory reads the organization projects through the in-transit bridge to the project family until the services slice replaces the inventory",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/account/projectBridge.ts",
-    "kind": "retired-token",
-    "fingerprint": "organizationProjectsRead",
-    "owner": "data-layer rewrite: services",
-    "reason": "the inventory reads the organization projects through the in-transit bridge to the project family until the services slice replaces the inventory",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/data/atoms.ts",
-    "kind": "retired-token",
-    "fingerprint": "runtimeServicesRead",
-    "owner": "data-layer rewrite: Zerops runtime deletion",
-    "reason": "the runtime's readers take a project's services through the in-transit bridge to the services family until the runtime is deleted",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/data/atoms.ts",
-    "kind": "retired-token",
-    "fingerprint": "runtimeServicesRead",
-    "owner": "data-layer rewrite: Zerops runtime deletion",
-    "reason": "the runtime's readers take a project's services through the in-transit bridge to the services family until the runtime is deleted",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/data/serviceBridge.ts",
-    "kind": "retired-token",
-    "fingerprint": "runtimeServicesRead",
-    "owner": "data-layer rewrite: Zerops runtime deletion",
-    "reason": "the runtime's readers take a project's services through the in-transit bridge to the services family until the runtime is deleted",
     "expires": "never"
   }
 ]

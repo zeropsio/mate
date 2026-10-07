@@ -28,11 +28,12 @@ import {
 import { reduceAccount, streamOf, type AccountInput, type RuntimeDirective } from "./reducer.ts";
 import type { StreamState } from "./streamMachine.ts";
 
-/** A scope's membership as a reader sees it: listed ids, and those whose leaving is unproven. */
+/** A scope's membership as a reader sees it: listed ids, unproven departures and owner-proven exclusions. */
 export interface MembershipRead {
   readonly coverage: Coverage;
   readonly ids: ReadonlyArray<string>;
   readonly unverified: ReadonlyArray<string>;
+  readonly excluded: ReadonlyArray<string>;
 }
 
 /** Everything a projection may read: keyed, filtered by access, never a whole table. */
@@ -120,6 +121,7 @@ function valueOf(state: AccountState, key: ReadKey): unknown {
         coverage: membership?.coverage ?? "unknown",
         ids,
         unverified,
+        excluded: [...(membership?.excluded ?? [])],
       } satisfies MembershipRead;
     }
     case "coverage":

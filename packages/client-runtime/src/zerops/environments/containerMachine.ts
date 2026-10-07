@@ -18,7 +18,7 @@
  *   unanswered probes, long enough for the platform to say why; silent past it, it is a boot
  *   that only failed probes suggest — `guessed`, read at the backing-off intervals, and capped.
  */
-import type { Instant } from "../data/access/grant.ts";
+import type { Instant } from "./exchange.ts";
 import type { ContainerVerdict } from "./environmentMachine.ts";
 import type { ProbeCadence, ProbeReading } from "./probe.ts";
 

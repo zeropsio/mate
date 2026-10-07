@@ -8,14 +8,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/mobile/src/features/zerops/ZeropsDataProvider.tsx",
-    "kind": "NewExpression",
-    "fingerprint": "new WebSocket",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "only the data layer's adapters reach a remote: the app opens a Mate or Zerops stream or reads a Mate itself; the adapter owns it and the app reads the projection",
-    "expires": "never"
-  },
-  {
     "path": "apps/mobile/src/features/zerops/mate-descriptors.ts",
     "kind": "CallExpression",
     "fingerprint": "globalThis.fetch",
@@ -168,14 +160,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/zerops/ZeropsDataProvider.tsx",
-    "kind": "NewExpression",
-    "fingerprint": "new WebSocket",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "only the data layer's adapters reach a remote: the app opens a Mate or Zerops stream or reads a Mate itself; the adapter owns it and the app reads the projection",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/zerops/ZeropsSessionProvider.tsx",
     "kind": "MemberExpression",
     "fingerprint": "globalThis.fetch",
@@ -221,38 +205,6 @@
     "fingerprint": "fetch",
     "owner": "data-layer rewrite: HQ",
     "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/accountHq.ts",
-    "kind": "CallExpression",
-    "fingerprint": "fetch",
-    "owner": "data-layer rewrite: HQ",
-    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/accountHq.ts",
-    "kind": "CallExpression",
-    "fingerprint": "fetch",
-    "owner": "data-layer rewrite: HQ",
-    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/accountHq.ts",
-    "kind": "CallExpression",
-    "fingerprint": "makeHqApi",
-    "owner": "data-layer rewrite: HQ",
-    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/accountHq.ts",
-    "kind": "NewExpression",
-    "fingerprint": "new WebSocket",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "only the data layer's adapters reach a remote: the app opens a Mate or Zerops stream or reads a Mate itself; the adapter owns it and the app reads the projection",
     "expires": "never"
   },
   {
@@ -539,22 +491,6 @@
     "path": "apps/web/src/zerops/useRepositorySource.ts",
     "kind": "CallExpression",
     "fingerprint": "api.repositorySource",
-    "owner": "data-layer rewrite: HQ",
-    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsChangeDetail.ts",
-    "kind": "CallExpression",
-    "fingerprint": "api.change",
-    "owner": "data-layer rewrite: HQ",
-    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsLandedChange.ts",
-    "kind": "CallExpression",
-    "fingerprint": "hq.api.change",
     "owner": "data-layer rewrite: HQ",
     "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
     "expires": "never"

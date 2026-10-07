@@ -1,62 +1,32 @@
-import {
-  DEFAULT_ZEROPS_DATA_POLICY,
-  createZeropsDataAtoms,
-  makeInitialZeropsDataState,
-  projectKeyOf,
-  reduceZeropsDataState,
-  type ManagedZeropsDataRuntime,
-} from "@t3tools/client-runtime/zerops/data";
+import { projectKeyOf, type ScopeAuthority } from "@t3tools/client-runtime/zerops/data";
 import type { AccountStore } from "@t3tools/client-runtime/data";
 import { EnvironmentId } from "@t3tools/contracts";
-import { Atom, AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/unstable/reactivity";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
   environmentProjectRef,
   projectTopologyAtom,
-  zeropsDataRuntimeAtom,
   zeropsInventoryAtom,
   type EnvironmentProjects,
   type ProjectTopologySnapshot,
 } from "../state/zerops";
 import { mountRoster } from "@t3tools/client-runtime/zerops/testing";
 import type { InventoryProjection } from "./inventoryContext";
-import {
-  desiredInterest,
-  identity,
-  organization,
-  project,
-  scope,
-} from "./__fixtures__/platformData";
+import { organization, project } from "./__fixtures__/platformData";
 
 const owner = project();
 
 /** The account's inventory as its product publishes it, the project's authority as given. */
-const inventoryWith = (
-  authority: InventoryProjection["account"],
-  account: InventoryProjection["account"] = { kind: "authorized" },
-): InventoryProjection => ({
+const inventoryWith = (authority: ScopeAuthority): InventoryProjection => ({
   projects: [],
   projectRefs: new Map([[projectKeyOf(owner), owner]]),
   authority: new Map([[projectKeyOf(owner), authority]]),
-  account,
 });
 
-/** A data runtime whose state the test pushes facets into, and the registry it lives in. */
-function pushedRuntime() {
-  const id = identity();
-  const stateAtom = Atom.make(
-    reduceZeropsDataState(
-      makeInitialZeropsDataState(scope()),
-      { kind: "interest-upserted", interest: desiredInterest(id) },
-      DEFAULT_ZEROPS_DATA_POLICY,
-    ).state,
-  );
+/** The account store's facts and the registry that projects them. */
+function pushedStore() {
   const registry = AtomRegistry.make();
-  const { reads } = createZeropsDataAtoms(stateAtom);
-  registry.set(zeropsDataRuntimeAtom, {
-    reads,
-  } as unknown as ManagedZeropsDataRuntime);
   registry.set(zeropsInventoryAtom, inventoryWith({ kind: "authorized" }));
   // The project and its services are the account store's: its roster and the organization's
   // services listing list them.
@@ -149,7 +119,7 @@ describe("the derived topology", () => {
   it.each(["usage", "usage-history"] as const)(
     "shows the %s read's failure while keeping the topology",
     (kind) => {
-      const runtime = pushedRuntime();
+      const runtime = pushedStore();
       runtime.pushProject();
       runtime.pushServices([]);
       runtime.failUsage(kind);
@@ -160,7 +130,7 @@ describe("the derived topology", () => {
   );
 
   it("the topology view updates from a pushed facet with no writer", () => {
-    const runtime = pushedRuntime();
+    const runtime = pushedStore();
 
     runtime.pushProject();
     runtime.pushServices([]);
@@ -171,7 +141,7 @@ describe("the derived topology", () => {
   });
 
   it("a service's usage reaches the view when its read changes", () => {
-    const runtime = pushedRuntime();
+    const runtime = pushedStore();
     runtime.pushProject();
     runtime.pushServices([APP]);
     expect(runtime.snapshots.at(-1)?.view?.usageRead).toBe(false);
@@ -201,7 +171,7 @@ describe("the derived topology", () => {
   });
 
   it("a service's history reaches the view when its read changes", () => {
-    const runtime = pushedRuntime();
+    const runtime = pushedStore();
     runtime.pushProject();
     runtime.pushServices([APP]);
 
@@ -224,18 +194,9 @@ describe("the derived topology", () => {
     runtime.close();
   });
 
-  // DESIGN §4.2 G12: withheld at the read, per project and with a lapse, and back with authority.
-  it.each([
-    ["its project", inventoryWith({ kind: "withheld", reason: "access-unverified", cause: null })],
-    [
-      "the account",
-      inventoryWith(
-        { kind: "authorized" },
-        { kind: "withheld", reason: "access-lapsed", cause: null },
-      ),
-    ],
-  ])("shows nothing of a project while the grant withholds %s", (_scope, withheld) => {
-    const runtime = pushedRuntime();
+  it("withholds source-denied project content and restores it when allowed", () => {
+    const withheld = inventoryWith({ kind: "withheld", reason: "access-denied", cause: null });
+    const runtime = pushedStore();
     runtime.pushProject();
     runtime.pushServices([APP]);
     expect(runtime.snapshots.at(-1)?.view?.project.name).toBe("acme-docs-dev");

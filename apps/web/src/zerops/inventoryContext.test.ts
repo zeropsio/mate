@@ -35,11 +35,9 @@ const ref: ProjectRef = {
 };
 
 const AUTHORIZED: ScopeAuthority = { kind: "authorized" };
-const LAPSED: ScopeAuthority = { kind: "withheld", reason: "access-lapsed", cause: null };
 
 const inventory = (
   authority: ScopeAuthority | null,
-  account: ScopeAuthority = AUTHORIZED,
   lost: ReadonlyArray<string> = [],
 ): Inventory => ({
   projects: [],
@@ -47,7 +45,6 @@ const inventory = (
   error: null,
   projectRefs: new Map([[inventoryProjectRefKey(ref), ref]]),
   authority: authority === null ? new Map() : new Map([[inventoryProjectRefKey(ref), authority]]),
-  account,
   lost: new Set(lost),
 });
 
@@ -75,12 +72,6 @@ describe("withheldProjectNotice", () => {
     ],
   ] as const)("%s", (_case, authority, projectId, notice) => {
     expect(withheldProjectNotice(inventory(authority), projectId)).toBe(notice);
-  });
-
-  // DESIGN §3.4: a lapse withholds every project, with one app banner and no per-row words.
-  it("says nothing per project while a lapse withholds them all", () => {
-    expect(withheldProjectNotice(inventory(AUTHORIZED, LAPSED), "p1")).toBeNull();
-    expect(withheldProjectNotices(inventory(LAPSED, LAPSED))).toEqual([]);
   });
 
   // Gate F: one cause-only sentence per withheld region. Two projects withheld for the same
@@ -121,14 +112,13 @@ describe("withheldProjectNotice", () => {
 describe("projectAuthority and conversationAccess", () => {
   it.each([
     ["a verified project", inventory(AUTHORIZED), AUTHORIZED, AUTHORIZED],
-    ["a lapse, over the project's own authority", inventory(AUTHORIZED, LAPSED), LAPSED, LAPSED],
     [
-      "a denial awaiting its confirming read",
+      "a source denial",
       inventory({ kind: "withheld", reason: "access-denied", cause: null }),
       { kind: "withheld", reason: "access-denied", cause: null },
       { kind: "withheld", reason: "access-denied", cause: null },
     ],
-    ["a confirmed loss", inventory(null, AUTHORIZED, ["p1"]), AUTHORIZED, { kind: "lost" }],
+    ["a confirmed loss", inventory(null, ["p1"]), AUTHORIZED, { kind: "lost" }],
   ] as const)("%s", (_case, held, authority, access) => {
     expect(projectAuthority(held, "p1")).toEqual(authority);
     expect(conversationAccess(held, "p1")).toEqual(access);
@@ -140,8 +130,7 @@ describe("useProjectDialog", () => {
     vi.unstubAllGlobals();
   });
 
-  // DESIGN §4.2 G6, G12: what a dialog captured of a project outlives the read that withholds it,
-  // so the dialog closes on the project's own withholding, not only on the account's lapse.
+  // A dialog's captured content must close when its source withholds that project.
   it.each([
     ["an authorized project", "open on p1", inventory(AUTHORIZED)],
     [
@@ -154,8 +143,7 @@ describe("useProjectDialog", () => {
       "closed",
       inventory({ kind: "withheld", reason: "access-denied", cause: null }),
     ],
-    ["a project proved lost", "closed", inventory(AUTHORIZED, AUTHORIZED, ["p1"])],
-    ["the account's lapse", "closed", inventory(AUTHORIZED, LAPSED)],
+    ["a project proved lost", "closed", inventory(AUTHORIZED, ["p1"])],
   ] as const)("a dialog open on p1, then %s: %s", async (_case, shown, next) => {
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
     function Dialog() {

@@ -1,20 +1,13 @@
-import * as Context from "effect/Context";
-import * as Effect from "effect/Effect";
-import { Atom, AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/unstable/reactivity";
 import { describe, expect, it } from "vite-plus/test";
 
 import { project, service } from "../data/__fixtures__/index.ts";
-import type { ManagedZeropsDataRuntime } from "../data/runtime.ts";
-import type {
-  CollectionRead,
-  LeaseAdmissionError,
-  ServiceDeployInfo,
-  ServiceRecord,
-} from "../data/types.ts";
-import { deployed, record, servicesRead } from "../flow/__fixtures__/services.ts";
+import type { ServiceDeployInfo } from "../flow/deployment.ts";
+import { deployed, record } from "../flow/__fixtures__/services.ts";
 import type { StopService } from "../flow/deployment.ts";
 import {
   liveServices,
+  liveProjects,
   liveZerops,
   processValue,
   serviceValue,
@@ -29,7 +22,6 @@ import { makeStops } from "./stops.ts";
 
 const ORG_ID = "org";
 const STAGE = project("project-stage");
-const NOW = 100_000;
 
 /** What a native service frame states of a new active version: its id, status and times. */
 const PUSHED_BY_ID: ServiceDeployInfo = {
@@ -44,27 +36,13 @@ const PUSHED_BY_ID: ServiceDeployInfo = {
   repository: null,
 };
 
-function rig(options: { readonly refuse?: LeaseAdmissionError["reason"] } = {}) {
+function rig() {
   const registry = AtomRegistry.make();
-  const listing = Atom.make<CollectionRead<ServiceRecord>>(
-    servicesRead([], { coverage: { kind: "none" }, project: STAGE }),
-  );
   const acquired: Array<string> = [];
-  const data = {
-    reads: { servicesOf: () => listing },
-    access: { clock: { currentTimeMillisUnsafe: () => NOW } },
-    acquire: (descriptor: { readonly kind: string }) => {
-      acquired.push(descriptor.kind);
-      return options.refuse === undefined
-        ? Effect.never
-        : Effect.fail({
-            _tag: "ZeropsLeaseAdmissionError",
-            reason: options.refuse,
-            message: "refused",
-          } satisfies LeaseAdmissionError);
-    },
-  } as unknown as ManagedZeropsDataRuntime;
   const store: AccountStore = makeAccountStore(registry);
+  for (const input of liveProjects(ORG_ID, [{ id: STAGE.projectId }])) store.dispatch(input);
+  let revision = 1;
+  let listed = false;
   /** The versions held to be read by id now. */
   const readById = new Set<string>();
   /** The projects whose process history is held now. */
@@ -73,6 +51,10 @@ function rig(options: { readonly refuse?: LeaseAdmissionError["reason"] } = {}) 
     data: store.data,
     orgId: ORG_ID,
     demandDetail: (demand) => {
+      if (demand.family === "service") {
+        acquired.push("services");
+        return () => undefined;
+      }
       if (demand.family === "process") {
         histories.add(demand.ownerId);
         return () => histories.delete(demand.ownerId);
@@ -83,7 +65,7 @@ function rig(options: { readonly refuse?: LeaseAdmissionError["reason"] } = {}) 
     },
     renewHeld: () => {},
   });
-  const stops = makeStops(data, registry, Context.empty());
+  const stops = makeStops(registry);
   const services = () => registry.get(stops.services(STAGE));
   const app = (): StopService["deployment"] | undefined => {
     const shown = services();
@@ -98,13 +80,31 @@ function rig(options: { readonly refuse?: LeaseAdmissionError["reason"] } = {}) 
     histories: () => [...histories],
     services,
     app,
-    list: (deploy: ServiceDeployInfo | null) =>
-      registry.set(
-        listing,
-        servicesRead([record("app-id", "app", deployed(deploy), { project: STAGE })], {
-          project: STAGE,
-        }),
-      ),
+    list: (deploy: ServiceDeployInfo | null) => {
+      if (!listed) {
+        listed = true;
+        for (const input of liveServices(ORG_ID, [
+          { ...record("app-id", "app", deployed(deploy), { project: STAGE }) },
+        ]))
+          store.dispatch(input);
+        return;
+      }
+      store.dispatch({
+        kind: "rows",
+        scope: servicesScope(ORG_ID),
+        generation: 1,
+        method: "push",
+        via: "zerops-realtime",
+        rows: [
+          {
+            family: "service",
+            id: "app-id",
+            value: record("app-id", "app", deployed(deploy), { project: STAGE }),
+            revision: zeropsVersion(++revision),
+          },
+        ],
+      });
+    },
     dispatch: (inputs: ReadonlyArray<Parameters<AccountStore["dispatch"]>[0]>) => {
       for (const input of inputs) store.dispatch(input);
     },
@@ -131,7 +131,7 @@ const serviceRow = (source: string | null, named: string) => ({
           { key: "appVersionName", content: "v0.2.0" },
         ],
       }),
-      revision: zeropsVersion(1),
+      revision: zeropsVersion(10),
     },
   ],
 });
@@ -301,9 +301,9 @@ describe("a stop's services as the account's store and listing say them", () => 
     dispatch(liveZerops({ running: [], active: [] }));
     list(PUSHED_BY_ID);
     dispatch([versionRows({ id: "v-new", status: "ACTIVE", source: "GIT" })]);
-    expect(app()).toMatchObject({ state: "unread" });
+    expect(app()).toMatchObject({ value: { kind: "running" } });
 
-    dispatch([...liveServices(ORG_ID, []), serviceRow("GIT", "v-new")]);
+    dispatch([serviceRow("GIT", "v-new")]);
     expect(app()).toMatchObject({ value: { kind: "running", version: { label: "v0.2.0" } } });
   });
 
@@ -420,29 +420,14 @@ describe("a stop's services as the account's store and listing say them", () => 
     summary();
   });
 
-  it("holds summary demand, and detail adds the project's topology", () => {
-    const { stops, acquired } = rig();
+  it("reads the navigation services without a project detail demand and releases history independently", () => {
+    const { stops, acquired, histories } = rig();
     const release = stops.demand(STAGE);
     const detail = stops.demand(STAGE, "detail");
-    expect(acquired).toEqual(["project-inventory", "project-topology"]);
+    expect(acquired).toEqual([]);
+    expect(histories()).toEqual([STAGE.projectId]);
     detail();
-    expect(acquired).toEqual(["project-inventory", "project-topology", "project-inventory"]);
+    expect(histories()).toEqual([]);
     release();
-  });
-
-  it("fails a stop whose demand the platform refused until a manual Again", () => {
-    const { stops, services, dispatch, acquired } = rig({ refuse: "account-capacity" });
-    stops.demand(STAGE);
-    dispatch(liveZerops({ running: [], active: [] }));
-    expect(services()).toMatchObject({
-      state: "failed",
-      failure: { kind: "refused", code: "account-capacity" },
-      attempt: 1,
-    });
-    expect(acquired).toHaveLength(1);
-
-    stops.again(STAGE);
-    expect(acquired).toHaveLength(2);
-    expect(services()).toMatchObject({ state: "failed", attempt: 2 });
   });
 });

@@ -13,19 +13,9 @@ import {
 } from "@t3tools/client-runtime/zerops/account/runtime";
 import {
   AccountEpoch,
-  decodeEntityDirectResponse,
-  decodeEntityQueryPages,
-  decodeRegistrationResponse,
   makeZeropsApiOrigin,
-  makeZeropsDataRuntime,
   ZeropsAccountId,
-  ZeropsOrganizationId,
-  ZeropsProjectId,
-  type AccessVerifier,
   type AccountScope,
-  type MembershipQueryDescriptor,
-  type ManagedZeropsDataRuntime,
-  type ZeropsDataAdapter,
 } from "@t3tools/client-runtime/zerops/data";
 import { knownServices, type ProbeReading } from "@t3tools/client-runtime/zerops/environments";
 import { makePlatformSignals } from "@t3tools/client-runtime/zerops/knowledge";
@@ -36,9 +26,7 @@ import {
   type DeadlineClock,
 } from "@t3tools/client-runtime/zerops/testing";
 import * as Clock from "effect/Clock";
-import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
-import * as Stream from "effect/Stream";
 import { AtomRegistry } from "effect/unstable/reactivity";
 import {
   projectServicesAtom,
@@ -67,17 +55,6 @@ const scope: AccountScope = {
   },
   epoch: AccountEpoch.make(1),
 };
-const organization = {
-  kind: "organization" as const,
-  account: scope.account,
-  organizationId: ZeropsOrganizationId.make(ORGANIZATION_ID),
-};
-const project = {
-  kind: "project" as const,
-  organization,
-  projectId: ZeropsProjectId.make(PROJECT_ID),
-};
-
 /** The one project's platform: its zcp service's status is the test's to change. */
 const platform = () => {
   const state = { service: "ACTIVE" };
@@ -97,87 +74,10 @@ const platform = () => {
     subdomainAccess: true,
     ports: [{ port: 8080 }],
   });
-  const rowsOf = (query: MembershipQueryDescriptor): ReadonlyArray<unknown> =>
-    query.kind === "projects-of-organization" ? [projectRow] : [serviceRow()];
-  const adapter: ZeropsDataAdapter = {
-    openReceiver: (_scope, receiving, identity) =>
-      Effect.succeed({
-        identity,
-        organization: receiving,
-        delivery: "hot-single-consumer-buffered-before-open-resolves",
-        events: Stream.never,
-      }),
-    register: (_receiver, request) =>
-      Effect.sync(() => {
-        if (request.descriptor.kind !== "query-membership") return { responseObservations: [] };
-        const items = rowsOf(request.descriptor.query);
-        return {
-          responseObservations: decodeRegistrationResponse(request, {
-            items,
-            totalHits: items.length,
-          }).observations,
-        };
-      }),
-    read: (ticket) =>
-      Effect.sync(() => {
-        if (ticket.target.kind === "query") {
-          const descriptor = ticket.target.descriptor as MembershipQueryDescriptor;
-          const rows = rowsOf(descriptor);
-          return {
-            observations: decodeEntityQueryPages(descriptor, ticket, [
-              { rows, totalCount: rows.length },
-            ]).observations,
-          };
-        }
-        return {
-          observations:
-            ticket.target.kind === "project"
-              ? decodeEntityDirectResponse(ticket, projectRow).observations
-              : [],
-        };
-      }),
-    execute: () => Effect.succeed({ observations: [] }),
-    closeReceiver: () => Effect.void,
-  };
   return {
-    adapter,
     projectRow,
     serviceRow,
     setService: (status: string) => void (state.service = status),
-  };
-};
-
-/** A grant whose first round waits for the test, then verifies the one project as its owner. */
-const heldVerifier = () => {
-  const answers: Array<Deferred.Deferred<void>> = [];
-  const verifier: AccessVerifier = {
-    verifyRound: ({ round, report }) =>
-      Effect.gen(function* () {
-        const answer = yield* Deferred.make<void>();
-        answers.push(answer);
-        yield* Deferred.await(answer);
-        yield* report({
-          type: "ROUND_ACCOUNT",
-          round,
-          organizations: [{ organization, mutationsAllowed: true }],
-          projects: [project],
-        });
-        yield* report({
-          type: "ROUND_PROJECT",
-          round,
-          project,
-          outcome: {
-            kind: "verified",
-            access: { project, role: "OWNER", mutationsAllowed: true },
-          },
-        });
-      }),
-    verifyProject: () => Effect.never,
-  };
-  return {
-    verifier,
-    rounds: () => answers.length,
-    answer: () => Deferred.succeed(answers.at(-1)!, undefined),
   };
 };
 
@@ -196,7 +96,6 @@ const settle = Effect.gen(function* () {
 const openMobileAccount = Effect.fnUntraced(function* (clock: DeadlineClock) {
   const registry = AtomRegistry.make();
   const place = platform();
-  const grant = heldVerifier();
 
   const exchanges: Array<DoorRequest> = [];
   const retried: Array<EnvironmentId> = [];
@@ -252,30 +151,19 @@ const openMobileAccount = Effect.fnUntraced(function* (clock: DeadlineClock) {
   const store = mountRoster(registry, ORGANIZATION_ID, [place.projectRow], {
     services: [place.serviceRow()],
   });
-  const built = yield* Effect.gen(function* () {
-    const data: ManagedZeropsDataRuntime = yield* makeZeropsDataRuntime({
-      scope,
-      adapter: place.adapter,
-      atomRegistry: registry,
-      makeOpaqueId: (() => {
-        let next = 0;
-        return () => `opaque-${++next}`;
-      })(),
-    });
-    return yield* makeAccountRuntime({
-      data,
-      verifier: grant.verifier,
-      signals: makePlatformSignals({
-        hidden: () => false,
-        online: () => true,
-        now: () => ({ wall: clock.wallMs(), mono: clock.monoMs() }),
-        listen: () => () => undefined,
-      }),
-      atomRegistry: registry,
-      environments: ports,
-      store,
-    });
+  const built = yield* makeAccountRuntime({
+    account: scope,
+    signals: makePlatformSignals({
+      hidden: () => false,
+      online: () => true,
+      now: () => ({ wall: clock.wallMs(), mono: clock.monoMs() }),
+      listen: () => () => undefined,
+    }),
+    atomRegistry: registry,
+    environments: ports,
+    store,
   }).pipe(Effect.provideService(Clock.Clock, clock));
+  built.environments.setActiveOrganization(ORGANIZATION_ID);
   yield* Effect.addFinalizer(() => built.close("application-close"));
   let serviceVersion = 1;
 
@@ -329,7 +217,6 @@ const openMobileAccount = Effect.fnUntraced(function* (clock: DeadlineClock) {
 
   return {
     built,
-    grant,
     exchanges,
     retried,
     probe,
@@ -362,11 +249,10 @@ describe("a Mate on mobile", () => {
         const clock = yield* makeDeadlineClock({ startWallMs: START_WALL_MS });
         const account = yield* openMobileAccount(clock);
         account.probe.answer = ready(null);
-        yield* account.grant.answer();
         yield* settle;
         yield* clock.advance(SECOND);
         yield* settle;
-        const { environments } = yield* account.built.postGrant;
+        const { environments } = account.built;
         expect(account.exchanges).toEqual([]);
 
         const close = openMateScreen(environments, ENVIRONMENT_ID);
@@ -375,36 +261,6 @@ describe("a Mate on mobile", () => {
         yield* clock.advance(SECOND);
         yield* settle;
 
-        expect(account.exchanges.map(({ key, reason }) => ({ key, reason }))).toEqual([
-          { key: KEY, reason: "restore" },
-        ]);
-        expect(account.machines().get(KEY)?.credential.kind).toBe("held");
-      }),
-    ),
-  );
-
-  it.effect("no exchange before the first grant on mobile", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const clock = yield* makeDeadlineClock({ startWallMs: START_WALL_MS });
-        // The app starts on the Mate's screen.
-        const close = openMateScreen(null, ENVIRONMENT_ID);
-        yield* Effect.addFinalizer(() => Effect.sync(close));
-        const account = yield* openMobileAccount(clock);
-        account.probe.answer = ready(null);
-        yield* clock.advance(SECOND);
-        yield* settle;
-
-        // The remembered Mate is on the platform; the grant's first round is still out.
-        expect(account.grant.rounds()).toBe(1);
-        expect(account.exchanges).toEqual([]);
-
-        yield* account.grant.answer();
-        yield* settle;
-        yield* clock.advance(SECOND);
-        yield* settle;
-
-        yield* account.built.postGrant;
         expect(account.exchanges.map(({ key, reason }) => ({ key, reason }))).toEqual([
           { key: KEY, reason: "restore" },
         ]);
@@ -423,11 +279,9 @@ describe("a Mate on mobile", () => {
           yield* Effect.addFinalizer(() => Effect.sync(close));
           const account = yield* openMobileAccount(clock);
           account.probe.answer = ready("2026-09-23T09:00:00Z");
-          yield* account.grant.answer();
           yield* settle;
           yield* clock.advance(SECOND);
           yield* settle;
-          yield* account.built.postGrant;
           account.catalog().link(ENVIRONMENT_ID, { phase: "connected" });
           yield* settle;
           expect(account.row()).toMatchObject({ label: "Connected", action: "Open" });

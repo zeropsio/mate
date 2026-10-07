@@ -25,10 +25,10 @@ const GUARDS: EnvironmentGuards = {
   want: true,
   routeTarget: true,
   visible: true,
-  postGrant: true,
-  identityMint: { allowed: true },
-  zeropsFailing: false,
-  grantVerifiedAtMs: 0,
+  verified: true,
+
+  zeropsState: "live",
+
   budget: true,
 };
 
@@ -639,8 +639,7 @@ describe("environment machine (DESIGN §4.4)", () => {
 
   /**
    * Restart is offered for identity `failed` only when two consecutive descriptor reads report
-   * `failed` with an advancing `identityCheckedAt` AND this tab's grant is granted and fresh over
-   * the same period: Zerops answered us after the Mate's key first failed.
+   * `failed` with an advancing `identityCheckedAt` while the account's source is live.
    */
   describe("the Restart-for-identity rule", () => {
     const FIRST = "2026-09-23T10:00:00.000Z";
@@ -648,10 +647,10 @@ describe("environment machine (DESIGN §4.4)", () => {
     const failedAt = (checkedAt: string) =>
       descriptor({ identity: "failed", identityCheckedAt: checkedAt });
 
-    /** Two failed exchanges; the grant input between them decides "fresh over the period". */
+    /** Two failed exchanges, then the account's current source liveness. */
     const twoFailures = (input: {
       readonly second: string;
-      readonly grantBetween: Partial<EnvironmentGuards>;
+      readonly sourceState: Partial<EnvironmentGuards>;
     }): EnvironmentMachine => {
       const start = drive(initialEnvironment({ record: ENV_A }), [
         { type: "GUARDS", guards: GUARDS },
@@ -667,7 +666,6 @@ describe("environment machine (DESIGN §4.4)", () => {
             failure: { class: "retryable", cause: { kind: "identity-failed" } },
             descriptor: failedAt(FIRST),
           },
-          { type: "GUARDS", guards: { ...GUARDS, ...input.grantBetween } },
           { type: "TICK" },
         ],
         start.nowMs,
@@ -681,6 +679,7 @@ describe("environment machine (DESIGN §4.4)", () => {
             failure: { class: "retryable", cause: { kind: "identity-failed" } },
             descriptor: failedAt(input.second),
           },
+          { type: "GUARDS", guards: { ...GUARDS, ...input.sourceState } },
         ],
         first.nowMs,
       ).machine;
@@ -689,25 +688,25 @@ describe("environment machine (DESIGN §4.4)", () => {
     const rows: ReadonlyArray<{
       readonly name: string;
       readonly second: string;
-      readonly grantBetween: (firstFailedAtMs: number) => Partial<EnvironmentGuards>;
+      readonly sourceState: () => Partial<EnvironmentGuards>;
       readonly offered: boolean;
     }> = [
       {
-        name: "advancing check, grant verified after the first failure → offered",
+        name: "advancing check while Zerops answers → offered",
         second: SECOND,
-        grantBetween: (ms) => ({ grantVerifiedAtMs: ms + 500 }),
+        sourceState: () => ({ zeropsState: "live" }),
         offered: true,
       },
       {
         name: "the same check reported twice → not offered",
         second: FIRST,
-        grantBetween: (ms) => ({ grantVerifiedAtMs: ms + 500 }),
+        sourceState: () => ({ zeropsState: "live" }),
         offered: false,
       },
       {
-        name: "no grant round since the first failure (a Zerops outage) → not offered",
+        name: "Zerops source is down → not offered",
         second: SECOND,
-        grantBetween: () => ({ grantVerifiedAtMs: 0 }),
+        sourceState: () => ({ zeropsState: "unavailable" }),
         offered: false,
       },
     ];
@@ -715,20 +714,20 @@ describe("environment machine (DESIGN §4.4)", () => {
       it(row.name, () => {
         const machine = twoFailures({
           second: row.second,
-          grantBetween: row.grantBetween(104_000),
+          sourceState: row.sourceState(),
         });
         expect(machine.credential.kind).toBe("backoff");
         expect(identityRestartOffered(machine)).toBe(row.offered);
       });
     }
 
-    it("a grant round failing after the second failure withdraws the offer", () => {
+    it("a source outage after the second failure withdraws the offer", () => {
       const machine = twoFailures({
         second: SECOND,
-        grantBetween: { grantVerifiedAtMs: 104_500 },
+        sourceState: { zeropsState: "live" },
       });
       const outage = drive(machine, [
-        { type: "GUARDS", guards: { ...GUARDS, grantVerifiedAtMs: 104_500, zeropsFailing: true } },
+        { type: "GUARDS", guards: { ...GUARDS, zeropsState: "unavailable" } },
       ]).machine;
       expect(identityRestartOffered(outage)).toBe(false);
     });

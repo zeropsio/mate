@@ -3,13 +3,11 @@ import { describe, expect, it, vi } from "@effect/vitest";
 import {
   DEFAULT_ZEROPS_API_BASE,
   ZeropsApiClient,
-  ZeropsWriteNotSent,
   ZeropsApiError,
   parseRetryAfterMs,
   servicePortOrigin,
   zeropsClientsFromUser,
   type ZeropsProject,
-  type WriteAdmission,
   type ZeropsService,
 } from "./api.ts";
 import { requiresZeropsTwoFactor, type ZeropsSession } from "./session.ts";
@@ -34,36 +32,6 @@ function jsonResponse(status: number, body: unknown): Response {
     headers: { "content-type": "application/json" },
   });
 }
-
-/** Admits writes once `open` is called, or refuses them with `refusal`. */
-const heldAdmission = (): {
-  readonly admission: WriteAdmission;
-  readonly asked: () => number;
-  readonly open: () => void;
-  readonly refuse: (refusal: unknown) => void;
-} => {
-  let asked = 0;
-  let settle: { readonly open: () => void; readonly refuse: (refusal: unknown) => void } | null =
-    null;
-  return {
-    admission: {
-      beforeProjectWrite: () => {
-        asked += 1;
-        return new Promise<void>((resolve, reject) => {
-          settle = { open: resolve, refuse: reject };
-        });
-      },
-    },
-    asked: () => asked,
-    open: () => settle?.open(),
-    refuse: (refusal) => settle?.refuse(refusal),
-  };
-};
-const refusal = {
-  _tag: "ZeropsCommandAdmissionError",
-  reason: "access-expired",
-  message: "Project access could not be verified.",
-};
 
 function recordingFetch(handler: (request: RecordedRequest) => Response | Promise<Response>): {
   readonly fetch: (input: string, init?: RequestInit) => Promise<Response>;
@@ -1887,104 +1855,6 @@ describe("ZeropsApiClient.exchangeWebSocketToken", () => {
     expect((error as DOMException).name).toBe("AbortError");
     expect(client.session).toEqual(SESSION);
   });
-
-  it("admits explicit POST reads while project writes are refused", async () => {
-    const stub = recordingFetch((request) => {
-      if (request.url.endsWith("/web-socket/login"))
-        return jsonResponse(200, { webSocketToken: "ws-token" });
-      return jsonResponse(204, {});
-    });
-    const client = new ZeropsApiClient({ fetch: stub.fetch });
-    client.restoreSession(SESSION);
-    client.admitWritesThrough({ beforeProjectWrite: () => Promise.reject(refusal) });
-
-    await client.exchangeWebSocketToken();
-
-    await expect(
-      client.requestData({
-        path: "/service-stack/service/restart",
-        method: "PUT",
-        operationKind: "project-write",
-        signal: new AbortController().signal,
-        background: false,
-      }),
-    ).rejects.toBeInstanceOf(ZeropsWriteNotSent);
-    expect(stub.requests).toHaveLength(1);
-  });
-
-  it("sends a project write only once its admission lets it", async () => {
-    const stub = recordingFetch(() => jsonResponse(200, {}));
-    const client = new ZeropsApiClient({ fetch: stub.fetch });
-    client.restoreSession(SESSION);
-    const held = heldAdmission();
-    client.admitWritesThrough(held.admission);
-
-    const restart = client.restartService("service-1");
-    await vi.waitFor(() => expect(held.asked()).toBe(1));
-    expect(stub.requests).toHaveLength(0);
-    held.open();
-
-    await expect(restart).resolves.toEqual({ processId: undefined });
-    expect(stub.requests).toHaveLength(1);
-  });
-
-  it("says a write its admission refused was never sent, in the admission's words", async () => {
-    const stub = recordingFetch(() => jsonResponse(204, {}));
-    const client = new ZeropsApiClient({ fetch: stub.fetch });
-    client.restoreSession(SESSION);
-    const held = heldAdmission();
-    client.admitWritesThrough(held.admission);
-
-    const restart = client.restartService("service-1");
-    await vi.waitFor(() => expect(held.asked()).toBe(1));
-    held.refuse(refusal);
-
-    const refused = await restart.catch((cause: unknown) => cause);
-    expect(refused).toBeInstanceOf(ZeropsWriteNotSent);
-    expect(refused).toMatchObject({ message: refusal.message, refusal });
-    expect(stub.requests).toHaveLength(0);
-  });
-
-  it("ends a write's wait for admission when its caller gives up, with nothing sent", async () => {
-    const stub = recordingFetch(() => jsonResponse(204, {}));
-    const client = new ZeropsApiClient({ fetch: stub.fetch });
-    client.restoreSession(SESSION);
-    const held = heldAdmission();
-    client.admitWritesThrough(held.admission);
-    const controller = new AbortController();
-
-    const restart = client.restartService("service-1", controller.signal);
-    await vi.waitFor(() => expect(held.asked()).toBe(1));
-    controller.abort();
-
-    await expect(restart).rejects.toMatchObject({ name: "AbortError" });
-    held.open();
-    await Promise.resolve();
-    expect(stub.requests).toHaveLength(0);
-  });
-
-  it("asks the admission again before a write retry after token refresh", async () => {
-    let writes = 0;
-    const stub = recordingFetch((request) => {
-      if (request.url.endsWith("/auth/refresh")) {
-        return jsonResponse(200, { ...SESSION, accessToken: "access-2" });
-      }
-      writes += 1;
-      return jsonResponse(401, { error: { code: "unauthorized" } });
-    });
-    const client = new ZeropsApiClient({ fetch: stub.fetch });
-    client.restoreSession(SESSION);
-    client.admitWritesThrough({
-      beforeProjectWrite: () => (writes === 0 ? Promise.resolve() : Promise.reject(refusal)),
-    });
-
-    await expect(client.restartService("service-1")).rejects.toBeInstanceOf(ZeropsWriteNotSent);
-
-    expect(stub.requests.filter((request) => request.url.includes("/restart"))).toHaveLength(1);
-    expect(stub.requests.filter((request) => request.url.endsWith("/auth/refresh"))).toHaveLength(
-      1,
-    );
-  });
 });
 
 describe("ZeropsApiClient.listIntegrationTokens", () => {
@@ -2028,7 +1898,7 @@ describe("ZeropsApiClient app versions — a deploy through the API", () => {
         if (input.endsWith("/upload")) {
           uploads.push({
             contentType: new Headers(init?.headers).get("content-type"),
-            bytes: (init?.body as Uint8Array).byteLength,
+            bytes: (init?.body as Uint8Array | undefined)?.byteLength ?? 0,
           });
         }
         return stub.fetch(input, init);
@@ -2128,7 +1998,6 @@ describe("ZeropsApiClient.deleteThrowaway", () => {
       },
     });
     client.restoreSession(SESSION);
-    client.admitWritesThrough({ beforeProjectWrite: () => Promise.reject(refusal) });
 
     await expect(
       client.deleteThrowaway(

@@ -4,6 +4,7 @@
  *
  * @module data/families
  */
+import { hqChangeReadFamily } from "./hqChangeRead.ts";
 import type { Family, MemberState, ScopeKey } from "../model.ts";
 import {
   hqAppFamily,
@@ -80,6 +81,7 @@ export const FAMILIES = defineFamilies([
   mateLinkFamily,
   hqProtocolFamily,
   hqPictureFamily,
+  hqChangeReadFamily,
 ]);
 
 const byFamily = new Map<string, AnyFamilySpec>(FAMILIES.map((spec) => [spec.family, spec]));

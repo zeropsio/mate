@@ -15,7 +15,7 @@ describe("@t3tools/client-runtime/zerops/environments", () => {
     expect(typeof environments.routeGatePhrase).toBe("function");
     expect(typeof environments.mateLink).toBe("function");
     expect(typeof environments.listTargets).toBe("function");
-    expect(typeof environments.mateListingsAtom).toBe("function");
+    expect(typeof environments.mateListingsAtom).toBe("object");
     expect(typeof environments.containerSnapshotOf).toBe("function");
   });
 });

@@ -207,3 +207,25 @@ export {
   pictureLink,
   type HqPictureKey,
 } from "./families/hqPicture.ts";
+
+export {
+  platformAccess,
+  type PlatformAccess,
+  type PlatformAccessKey,
+} from "./projections/platformAccess.ts";
+
+export { platformInventory, type PlatformInventory } from "./projections/platformInventory.ts";
+
+export { hqChangeRead, type HqChangeRead } from "./projections/hqChangeRead.ts";
+export {
+  changeReadOwner,
+  changeReadId,
+  changeReadRequest,
+  changeReadScope,
+} from "./families/hqChangeRead.ts";
+
+export { readsOfState } from "./store.ts";
+export { streamOf } from "./reducer.ts";
+export { classifyHqCall } from "./adapters/hqWire.ts";
+
+export { makeBrowserHqApi, readAccountHqHealth } from "./adapters/hqBrowser.ts";
