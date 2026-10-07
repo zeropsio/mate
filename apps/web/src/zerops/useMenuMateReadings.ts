@@ -1,3 +1,4 @@
+import { lastKnownMateWords } from "./lastKnownMate.logic";
 import { failedSetupProcess } from "@t3tools/client-runtime/data";
 import { useProjectsActivityRead } from "./activity/useProjectActivity";
 /**
@@ -89,6 +90,13 @@ export function useToldActivity(projectId: string): ZeropsAgentActivity | undefi
     () => (told === undefined ? undefined : overviewAgentActivity(told, false, {})),
     [told],
   );
+}
+
+export function useLastKnownMateWords(
+  projectId: string | null | undefined,
+  name: string,
+): string | undefined {
+  return lastKnownMateWords(useToldActivity(projectId ?? ""), name);
 }
 
 /**
