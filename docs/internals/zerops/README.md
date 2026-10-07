@@ -8,6 +8,8 @@ lives in `../../../../zcp/docs/spec-mate.md` §2.8.
 
 - **[`primer.md`](primer.md)** — Domain terms for Mate, HQ, applications, environments and crew
 - **[`data-layer.md`](data-layer.md)** — Shared ownership, observation, demand and operation rules
+- **[`engine.md`](engine.md)** — The Mate engine: its terms and the rules every part obeys
+  - _Lifecycle:_ Changes when an engine rule or term changes
 - **[`map.md`](map.md)** — The systems and every channel between them
   - _Lifecycle:_ Changes when a channel is added or removed
 - **[`verified.md`](verified.md)** — Relied-on platform facts and commands to re-check them
