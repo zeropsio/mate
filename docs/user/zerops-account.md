@@ -113,3 +113,7 @@ If HQ's live connection drops, Mate keeps the last projects shown with their as-
 it is retrying every 30 seconds and offers **Try again**. A session or permission refusal stops
 automatic reconnects and shows the reason; **Try again** starts a new attempt. Reconnecting the
 stream does not repeat your writes.
+
+Move places a Mate within the same organization and HQ. Its container, conversations and repository history stay in place. Cross-organization, cross-HQ and physical container migration are unsupported. HQ explains destination refusals in the Move dialog; changing between a Mate and a deploy environment is refused until its credential and job migration can be completed.
+
+If Move was accepted but Zerops still has its original name, **Finish renaming** completes that remainder. After a deleted Mate is gone, **Finish deleting Mate** on Projects completes its original HQ and exact-key cleanup. Reopening the account restores these actions from HQ; a lost answer does not start another Move or project deletion.

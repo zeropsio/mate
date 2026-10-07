@@ -23,6 +23,10 @@ declare module "../model.ts" {
       readonly preparedRequestId: string;
       readonly completionRequestId: string;
     };
+    readonly "complete-key-retirement": DeletionTarget & {
+      readonly preparedRequestId: string;
+      readonly completionRequestId: string;
+    };
   }
   interface OperationResults {
     readonly "prepare-mate-deletion": {
@@ -42,10 +46,12 @@ export const completeMateDeletion: OperationKind<"complete-mate-deletion"> = {
   kind: "complete-mate-deletion",
   executor: "hq",
   reflected: (read, intent) => read.fact("placement", intent.projectId).kind === "deleted",
-  settledBy: (read, intent) =>
-    read.fact("placement", intent.projectId).kind === "deleted" ? { kind: "succeeded" } : null,
-  effectHandles: (read, intent) =>
-    read.fact("placement", intent.projectId).kind === "deleted" ? [intent.projectId] : [],
+};
+
+export const completeKeyRetirement: OperationKind<"complete-key-retirement"> = {
+  kind: "complete-key-retirement",
+  executor: "hq",
+  reflected: () => false,
 };
 
 export const retireMateKey: OperationKind<"retire-mate-key"> = {
@@ -79,10 +85,7 @@ export function mateKeyRetirementAllowed(
     completed.intent.hqProjectId === prepared.intent.hqProjectId &&
     completed.intent.preparedRequestId === intent.preparedRequestId &&
     completed.intent.completion === key.completion &&
-    (completed.receipt.outcome.kind === "succeeded" ||
-      (completed.receipt.outcome.kind === "pending" &&
-        completeMateDeletion.settledBy?.(read, completed.intent, completed.receipt)?.kind ===
-          "succeeded"))
+    completed.receipt.outcome.kind === "succeeded"
   );
 }
 
@@ -90,4 +93,5 @@ export const MATE_DELETION_KINDS = [
   prepareMateDeletion,
   completeMateDeletion,
   retireMateKey,
+  completeKeyRetirement,
 ] as const;

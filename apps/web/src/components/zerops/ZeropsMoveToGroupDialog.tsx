@@ -4,6 +4,7 @@
  * for an application, as the menus that open it do; the Mate is named, its Zerops project never.
  */
 import type { ZeropsEnvironmentRole } from "@t3tools/client-runtime/zerops";
+import { hqRefusalWords } from "@t3tools/client-runtime/zerops/hq";
 import { useId, useState } from "react";
 
 import { Button } from "../ui/button";
@@ -183,6 +184,21 @@ export function ZeropsMoveToGroupForm({
             ) : null}
           </div>
         )}
+        {(choices.refused ?? [])
+          .filter(
+            (entry) =>
+              entry.appId === target || !choices.apps.some((app) => app.id === entry.appId),
+          )
+          .map((entry) => (
+            <p key={`${entry.appId}:${entry.role}`} className="text-sm">
+              {entry.appName} · {environmentRoleLabel(entry.role)}:{" "}
+              {hqRefusalWords({ code: "forbidden", reason: entry.reason })}
+            </p>
+          ))}
+        <p className="text-sm">
+          Move changes placement within this HQ and organization. Moving a container to another HQ
+          or organization is not supported.
+        </p>
         {membership !== undefined ? (
           <div className="space-y-2 text-sm" data-zerops-surface="move-review">
             <p>

@@ -3,6 +3,8 @@
  * deliver it: for tests of the surfaces that read it through projections, from the structure,
  * Mates, people and presses they describe.
  */
+import type { HqLifecycleRecord } from "@t3tools/shared/hqLifecycle";
+import { hqLifecycleScope, lifecycleReceipt } from "../families/hqLifecycle.ts";
 import type { MateLiveView } from "@t3tools/shared/hqMates";
 import type { HqOfficialVerdict } from "@t3tools/shared/hqStream";
 
@@ -26,6 +28,7 @@ import type { StreamEvent } from "../streamMachine.ts";
 
 export interface SeededHq {
   readonly structure?: HqStructure;
+  readonly lifecycle?: ReadonlyArray<HqLifecycleRecord>;
   /** Each Mate HQ relays, by project. */
   readonly mates?: Readonly<Record<string, MateLiveView>>;
   readonly people?: Readonly<
@@ -63,6 +66,7 @@ export function seedHqNavigation(store: AccountStore, orgId: string, seed: Seede
     placementsScope(orgId),
     hqPeopleScope(orgId),
     hqPressesScope(orgId),
+    hqLifecycleScope(orgId),
   ];
   const mates = Object.keys(seed.mates ?? {}).map((projectId) => hqMateScope(orgId, projectId));
   const live = (key: ScopeKey | ReturnType<typeof linkKeys.hq>) =>
@@ -107,6 +111,12 @@ export function seedHqNavigation(store: AccountStore, orgId: string, seed: Seede
     ...(mate.birthId == null ? {} : { birthId: mate.birthId }),
   });
   const rows: Row[] = [
+    ...(seed.lifecycle ?? []).map((record): Row => ({
+      family: "hqLifecycle",
+      id: record.requestId,
+      revision,
+      value: record,
+    })),
     {
       family: "hqOrganization",
       id: orgId,
@@ -199,6 +209,14 @@ export function seedHqNavigation(store: AccountStore, orgId: string, seed: Seede
     removals: [],
   });
   store.dispatch({ kind: "hq-ready", scopes: navigationScopes });
+  for (const record of seed.lifecycle ?? []) {
+    store.dispatch({
+      kind: "operation-recorded",
+      requestId: record.requestId,
+      intent: record.intent,
+    });
+    store.dispatch({ kind: "operation-receipt", receipt: lifecycleReceipt(record) });
+  }
   for (const [projectId, mate] of Object.entries(seed.mates ?? {})) {
     const { presence, ...overview } = mate;
     const scopes = generations([hqMateScope(orgId, projectId)]);

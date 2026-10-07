@@ -1,3 +1,4 @@
+import { lifecycleReceipt } from "../../families/hqLifecycle.ts";
 /**
  * HQ as the owner of the operations it executes: each kind's write through the organization's
  * official HQ, its answer the receipt. A write whose answer was lost — HQ's client could not read
@@ -23,7 +24,6 @@ import type { OperationIntent, OperationReceipt, OperationResult } from "../../m
 import type { StreamFault } from "../../streamMachine.ts";
 import type { OperationExecutor, UncertainAcceptance } from "../coordinator.ts";
 import type { HqWriteIntent } from "../hqWrites.ts";
-import { changesMateClass, type MoveProjectIntent } from "../moveProject.ts";
 
 import {
   changeHandle,
@@ -53,15 +53,7 @@ export type HqWrites = Pick<
   | "keepDeployToken"
 > &
   FlowWrites &
-  Partial<
-    Pick<HqApi, "moveProject" | "mateKey" | "prepareProjectDeletion" | "completeProjectDeletion">
-  > & {
-    /** HQ retains this original request and finishes its class-change side effects. */
-    readonly moveProjectOperation?: (
-      requestId: string,
-      intent: MoveProjectIntent,
-    ) => Promise<OperationReceipt>;
-  };
+  Partial<Pick<HqApi, "lifecycleWrite" | "lifecycleReceipt">>;
 
 type Write = <A>(call: () => Promise<A>) => Effect.Effect<A, StreamFault | UncertainAcceptance>;
 
@@ -144,7 +136,8 @@ function faultOf(cause: unknown): StreamFault | UncertainAcceptance {
   const message = cause instanceof Error ? cause.message : String(cause);
   if (!(cause instanceof HqError) || cause.kind === "uncertain")
     return { outcome: "uncertain-acceptance", message };
-  if (cause.kind === "refused") return { outcome: "definitive-refusal", message };
+  if (cause.kind === "refused")
+    return { outcome: "definitive-refusal", message, code: cause.reason ?? cause.code };
   return { outcome: "transient", message };
 }
 
@@ -267,6 +260,46 @@ export function makeHqExecutor(ports: {
   };
 
   return {
+    lookupKinds: new Set([
+      "move-project",
+      "prepare-mate-deletion",
+      "complete-mate-deletion",
+      "complete-key-retirement",
+    ]),
+    lookup: (requestId, intent) =>
+      Effect.gen(function* () {
+        if (
+          !("orgId" in intent) ||
+          !("hqProjectId" in intent) ||
+          ports.active?.() !== true ||
+          ports.hqProjectIdOf?.(intent.orgId) !== intent.hqProjectId
+        )
+          return yield* Effect.fail<StreamFault>({
+            outcome: "definitive-refusal",
+            message: "Return to the original account and HQ to check this operation.",
+          });
+        const api = ports.apiOf(intent.orgId);
+        if (api?.lifecycleReceipt === undefined)
+          return yield* Effect.fail<StreamFault>({ outcome: "transient", message: HQ_NOT_OPEN });
+        const record = yield* Effect.tryPromise({
+          try: () => api.lifecycleReceipt!(requestId),
+          catch: (cause): StreamFault => {
+            const fault = faultOf(cause);
+            return fault.outcome === "uncertain-acceptance"
+              ? { outcome: "transient", message: fault.message }
+              : fault;
+          },
+        });
+        if (
+          record !== null &&
+          (record.intent.orgId !== intent.orgId || record.intent.hqProjectId !== intent.hqProjectId)
+        )
+          return yield* Effect.fail<StreamFault>({
+            outcome: "definitive-refusal",
+            message: "HQ did not confirm the original request's owner.",
+          });
+        return record === null ? null : lifecycleReceipt(record);
+      }),
     isCurrent: (intent) =>
       ports.active?.() !== false &&
       (!("hqProjectId" in intent) ||
@@ -281,7 +314,8 @@ export function makeHqExecutor(ports: {
         if (
           intent.kind === "move-project" ||
           intent.kind === "prepare-mate-deletion" ||
-          intent.kind === "complete-mate-deletion"
+          intent.kind === "complete-mate-deletion" ||
+          intent.kind === "complete-key-retirement"
         ) {
           if (
             ports.active === undefined ||
@@ -297,73 +331,16 @@ export function makeHqExecutor(ports: {
               outcome: "definitive-refusal",
               message: HQ_NOT_OPEN,
             });
-          if (intent.kind === "prepare-mate-deletion") {
-            const keyOf = api.mateKey;
-            const prepare = api.prepareProjectDeletion;
-            if (keyOf === undefined || prepare === undefined)
-              return yield* Effect.fail<StreamFault>({
-                outcome: "definitive-refusal",
-                message: "This HQ cannot prepare deletion.",
-              });
-            const keyTokenId = yield* Effect.tryPromise({
-              try: () => keyOf(intent.projectId),
-              catch: (cause) => {
-                const fault = faultOf(cause);
-                return fault.outcome === "uncertain-acceptance"
-                  ? { outcome: "transient" as const, message: fault.message }
-                  : fault;
-              },
+          if (api.lifecycleWrite === undefined)
+            return yield* Effect.fail<StreamFault>({
+              outcome: "definitive-refusal",
+              message: "Update HQ to use lifecycle receipts.",
             });
-            if (!ports.active() || ports.hqProjectIdOf?.(intent.orgId) !== intent.hqProjectId)
-              return yield* Effect.fail<StreamFault>({
-                outcome: "definitive-refusal",
-                message: "This Zerops sign-in or its HQ has changed.",
-              });
-            const completion = yield* Effect.tryPromise({
-              try: () => prepare(intent.projectId),
-              catch: faultOf,
-            });
-            return answered(requestId, intent.projectId, { keyTokenId, completion });
-          }
-          if (intent.kind === "complete-mate-deletion") {
-            const complete = api.completeProjectDeletion;
-            if (complete === undefined)
-              return yield* Effect.fail<StreamFault>({
-                outcome: "definitive-refusal",
-                message: "This HQ cannot complete deletion.",
-              });
-            yield* Effect.tryPromise({
-              try: () => complete(intent.projectId, intent.completion),
-              catch: faultOf,
-            });
-          } else {
-            if (api.moveProjectOperation !== undefined)
-              return yield* Effect.tryPromise({
-                try: () => api.moveProjectOperation!(requestId, intent),
-                catch: faultOf,
-              });
-            if (changesMateClass(intent))
-              return yield* Effect.fail<StreamFault>({
-                outcome: "definitive-refusal",
-                message:
-                  "This HQ cannot safely finish a move that changes the Mate's role. Update HQ before trying again.",
-                code: "class_move_receipt_required",
-              });
-            const move = api.moveProject;
-            if (move === undefined)
-              return yield* Effect.fail<StreamFault>({
-                outcome: "definitive-refusal",
-                message: "This HQ cannot move projects.",
-              });
-            yield* Effect.tryPromise({
-              try: () => move(intent.projectId, intent.to),
-              catch: faultOf,
-            });
-          }
-          return {
-            ...answered(requestId, intent.projectId),
-            affected: [{ family: "placement", id: intent.projectId }],
-          };
+          const record = yield* Effect.tryPromise({
+            try: () => api.lifecycleWrite!(requestId, intent),
+            catch: faultOf,
+          });
+          return lifecycleReceipt(record);
         }
         if (FLOW_KINDS.has(intent.kind)) {
           const flow = intent as FlowWriteIntent;

@@ -1,3 +1,4 @@
+import { HqLifecycleRecord, type HqLifecycleIntent } from "@t3tools/shared/hqLifecycle";
 import { RASTER_CONTENT_TYPES } from "@t3tools/shared/hqAttachments";
 /**
  * HQ's API as the client calls it (`apps/hq/src/api.ts`), through HQ's door.
@@ -259,10 +260,12 @@ export interface HqApi {
    * The id of the key a Mate's container holds, as the Mate named it to HQ (`GET
    * /api/mates/{projectId}/key`); none where it named none. Told to the project's admin alone.
    */
-  /** Authorizes completion before Zerops removes the project's roles. */
-  readonly prepareProjectDeletion: (projectId: string) => Promise<string>;
-  /** One attempt to verify absence and release HQ's held rows; refusal is visible to the caller. */
-  readonly completeProjectDeletion: (projectId: string, completion: string) => Promise<void>;
+  /** Original lifecycle requests and results, retained by the accepting HQ for this person. */
+  readonly lifecycleWrite: (
+    requestId: string,
+    intent: HqLifecycleIntent,
+  ) => Promise<HqLifecycleRecord>;
+  readonly lifecycleReceipt: (requestId: string) => Promise<HqLifecycleRecord | null>;
   readonly mateKey: (projectId: string, signal?: AbortSignal) => Promise<string | null>;
   /** A Mate's face, as HQ records it (`PATCH /api/mates/{projectId}`). */
   readonly updateMate: (projectId: string, change: { readonly face: string }) => Promise<void>;
@@ -270,14 +273,6 @@ export interface HqApi {
   readonly renameApp: (appId: string, name: string) => Promise<void>;
   /** Deletes an application that holds nothing; HQ refuses one that does (`app_not_empty`). */
   readonly deleteApp: (appId: string) => Promise<void>;
-  /**
-   * A project into an application as `kind`, or a Mate out of every one — `appId: null` (`PUT
-   * /api/projects/{projectId}/app`).
-   */
-  readonly moveProject: (
-    projectId: string,
-    to: { readonly appId: string | null; readonly kind: RoleProjectKind },
-  ) => Promise<void>;
   /** A Mate set up on a project of its own, in no application (`POST /api/mates`). */
   readonly createMate: (mate: { readonly projectId: string } & HqMateSetUp) => Promise<void>;
   /**
@@ -1040,24 +1035,20 @@ export function makeHqApi(input: {
           ),
         )
       ).deploys,
-    prepareProjectDeletion: async (projectId) =>
+    lifecycleWrite: async (requestId, intent) =>
+      decoded(HqLifecycleRecord)(
+        await authorized(
+          `/api/lifecycle/${encodeURIComponent(requestId)}`,
+          { method: "POST", body: JSON.stringify(intent) },
+          true,
+        ),
+      ),
+    lifecycleReceipt: async (requestId) =>
       (
-        await json<{ readonly completion: string }>(
-          await authorized(`/api/projects/${encodeURIComponent(projectId)}/deletion`, {
-            method: "POST",
-          }),
+        await decoded(Schema.Struct({ record: Schema.NullOr(HqLifecycleRecord) }))(
+          await authorized(`/api/lifecycle/${encodeURIComponent(requestId)}`),
         )
-      ).completion,
-    completeProjectDeletion: async (projectId, completion) => {
-      await authorized(
-        `/api/projects/${encodeURIComponent(projectId)}/deleted`,
-        {
-          method: "POST",
-          body: JSON.stringify({ completion }),
-        },
-        true,
-      );
-    },
+      ).record,
     mateKey: async (projectId, signal) =>
       (
         await json<{ readonly keyTokenId: string | null }>(
@@ -1089,13 +1080,6 @@ export function makeHqApi(input: {
         () => authorized(`/api/apps/${encodeURIComponent(appId)}`, { method: "DELETE" }, true),
         async () => (await appOf(appId)) === undefined,
       ),
-    moveProject: async (projectId, to) => {
-      await authorized(
-        `/api/projects/${encodeURIComponent(projectId)}/app`,
-        { method: "PUT", body: JSON.stringify(to) },
-        true,
-      );
-    },
     createMate: (mate) =>
       confirmedDone(
         () => authorized("/api/mates", { method: "POST", body: JSON.stringify(mate) }, true),

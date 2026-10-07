@@ -255,3 +255,10 @@ export { streamOf } from "./reducer.ts";
 export { classifyHqCall } from "./adapters/hqWire.ts";
 
 export { makeBrowserHqApi, readAccountHqHealth } from "./adapters/hqBrowser.ts";
+
+export {
+  lifecycleRemainders,
+  NO_LIFECYCLE_REMAINDERS,
+  type LifecycleRemainders,
+} from "./projections/lifecycleRemainders.ts";
+export { recordedMoveRemainder } from "./projections/recordedMoveRemainder.ts";

@@ -173,6 +173,9 @@ export const HqMoveOffersMessage = Schema.Struct({
   requestId: Schema.String,
   projectId: Schema.String,
   moveTo: Schema.Record(Schema.String, Schema.Array(Schema.String)),
+  refused: Schema.optionalKey(
+    Schema.Record(Schema.String, Schema.Record(Schema.String, Schema.String)),
+  ),
 });
 export const HqMoveOffersError = Schema.Struct({
   type: Schema.Literal("move-offers-error"),

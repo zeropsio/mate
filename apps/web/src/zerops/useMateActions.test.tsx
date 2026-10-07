@@ -14,11 +14,15 @@ import { AtomRegistry } from "effect/unstable/reactivity";
 import { act } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { useUnrenamedProjects } from "./unrenamedProjects";
 
 import type { ZeropsMenuAction } from "../components/zerops/ZeropsProjectMenu";
 import { zeropsSessionAtom } from "../state/zerops";
-import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
+import {
+  captureAccountLifetime,
+  currentAccountId,
+  closeAccountLifetime,
+  openAccountLifetime,
+} from "./accountLifetime";
 import { KEY_WIDER_WHY, mateAddedBy, useMateActions, type MateActions } from "./useMateActions";
 import type { ZeropsCandidatePresentation } from "./useZeropsCandidates";
 import { mountHqNavigation } from "~/zerops/__fixtures__/hqNavigation";
@@ -76,6 +80,12 @@ const mock = vi.hoisted(() => ({
   updateMate: vi.fn(),
   /** HQ's move of a project, and its creation of an application a Mate is moved into. */
   moveProject: vi.fn(),
+  moveRemainders: new Map<
+    string,
+    { requestId: string; projectId: string; from: string; to: string }
+  >(),
+  moveIntents: [] as unknown[],
+  runReceipts: new Map<string, unknown>(),
   createApp: vi.fn(),
   restartContainer: vi.fn(),
   threads: [] as Array<{
@@ -167,11 +177,19 @@ vi.mock("./useHqOffers", () => ({
       : { kind: "refused", reason: "not_structure_writer" },
 }));
 vi.mock("./ZeropsAccountData", () => ({
+  useProjection: () => ({
+    renames: currentAccountId() === mock.user?.id ? mock.moveRemainders : new Map(),
+    deletions: [],
+  }),
   useAccountDataOptional: () =>
     mock.noAccountData
       ? null
       : {
-          moveOffers: () => mock.moveAnswer?.() ?? Promise.resolve(mock.moveTo),
+          moveOffers: () =>
+            (mock.moveAnswer?.() ?? Promise.resolve(mock.moveTo)).then((moveTo) => ({
+              moveTo,
+              refused: {},
+            })),
           handoverCandidates: (projectId: string) => {
             mock.handoverAsked.push(projectId);
             return mock.handoverAnswer();
@@ -230,6 +248,7 @@ vi.mock("./accountOperations", () => ({
       if (intent.kind === "assign-mate-owner") return mock.assignMateOwner(intent);
       try {
         await mock.renameProject(intent);
+        if ("projectId" in intent) mock.moveRemainders.delete(String(intent.projectId));
         return {
           requestId: "r1",
           evidence: null,
@@ -243,9 +262,77 @@ vi.mock("./accountOperations", () => ({
         };
       }
     },
+    readProgress: () => ({ stage: "uncertain" }),
+    untilMoveRemainder: async ({ requestId }: { requestId: string }) => {
+      const remainder = [...mock.moveRemainders.values()].find(
+        (value) => value.requestId === requestId,
+      );
+      return remainder === undefined
+        ? { kind: "done" }
+        : {
+            kind: "rename",
+            projectId: remainder.projectId,
+            from: remainder.from,
+            name: remainder.to,
+          };
+    },
     // A press's writes: none is answered here.
-    run: async (intent: { readonly kind: string; readonly name?: string }) => {
+    run: async (
+      intent: {
+        readonly kind: string;
+        readonly name?: string;
+        readonly projectId?: string;
+        readonly to?: unknown;
+        readonly rename?: { from: string; name: string };
+        readonly completion?: string;
+        readonly tokenId?: string;
+      },
+      options: { requestId?: string },
+    ) => {
+      if (options.requestId !== undefined && mock.runReceipts.has(options.requestId))
+        return mock.runReceipts.get(options.requestId);
+      if (intent.kind === "move-project") {
+        mock.moveIntents.push(intent);
+        if (intent.projectId !== undefined) mock.moveRemainders.delete(intent.projectId);
+        await mock.moveProject(intent.projectId, intent.to);
+        if (
+          intent.rename !== undefined &&
+          intent.projectId !== undefined &&
+          intent.rename.from !== intent.rename.name
+        )
+          mock.moveRemainders.set(intent.projectId, {
+            requestId: options.requestId ?? "move",
+            projectId: intent.projectId,
+            from: intent.rename.from,
+            to: intent.rename.name,
+          });
+      }
+      if (intent.kind === "prepare-mate-deletion") {
+        mock.keyReads++;
+        const active = captureAccountLifetime();
+        const keyTokenId =
+          mock.keyAnswer !== null
+            ? await mock.keyAnswer()
+            : mock.mateKeyFailure
+              ? await Promise.reject(new Error("HQ is unavailable"))
+              : mock.mateKey;
+        if (!active()) return { keyTokenId, completion: "unused" };
+        const result = {
+          keyTokenId,
+          completion: await mock.prepareProjectDeletion(intent.projectId),
+        };
+        if (options.requestId !== undefined) mock.runReceipts.set(options.requestId, result);
+        return result;
+      }
+      if (intent.kind === "delete-project") await mock.deleteProject(intent.projectId);
+      if (intent.kind === "complete-mate-deletion")
+        await mock.completeProjectDeletion(intent.projectId, intent.completion);
+      if (intent.kind === "retire-mate-key") {
+        mock.deletedTokens.push(intent.tokenId!);
+        if (mock.deleteTokenFailure) throw new Error("Key retirement refused");
+      }
       if (intent.kind === "create-app") return { appId: (await mock.createApp(intent.name)).id };
+      if (options.requestId !== undefined) mock.runReceipts.set(options.requestId, undefined);
       return undefined;
     },
   }),
@@ -435,7 +522,9 @@ beforeEach(() => {
   mock.deleteDialog.current = null;
   mock.moveDialog.current = null;
   mock.updateMate.mockReset();
-  useUnrenamedProjects.setState({ left: new Map() });
+  mock.moveRemainders.clear();
+  mock.moveIntents = [];
+  mock.runReceipts.clear();
   mock.moveProject.mockReset();
   mock.createApp.mockReset();
   mock.renameProject.mockReset();
@@ -1201,7 +1290,7 @@ describe("useMateActions — Finish setup on a Mate HQ holds in its application,
     ).toBe(false);
   });
 
-  it("registers it there again under HQ's face, writing no new Mate", async () => {
+  it("preserves its existing HQ record while finishing its container", async () => {
     mock.finishMateSetup.mockResolvedValue({ ok: true });
     mock.listing.current = {
       state: "known",
@@ -1219,11 +1308,7 @@ describe("useMateActions — Finish setup on a Mate HQ holds in its application,
     expect(mock.finishMateSetup.mock.calls[0]![0]).toMatchObject({
       projectId: IVO.project.id,
       container: { agents: [] },
-      registration: {
-        kind: "mate",
-        groupId: "acme",
-        mate: { face: { tint: "coral", shape: "gem" } },
-      },
+      registration: null,
       // A Mate HQ holds is not adopted: its key is not touched.
       harden: false,
     });

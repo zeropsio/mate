@@ -487,6 +487,8 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
                 value: { can: view.can, unheld: view.unheld, tools: view.tools ?? [], build },
               });
               values.push(yield* statusValue);
+              for (const record of yield* structure.lifecycleRecords(entry.userId))
+                values.push({ key: `lifecycle:${record.requestId}`, value: record });
             }
             for (const app of view.apps) {
               if (projects === undefined) {
@@ -1332,12 +1334,12 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
                     }
                     case "move-offers": {
                       yield* structure.moveDestinations(userId, request.projectId).pipe(
-                        Effect.flatMap((moveTo) =>
+                        Effect.flatMap((offers) =>
                           Queue.offer(queue, {
                             type: "move-offers",
                             requestId: request.requestId,
                             projectId: request.projectId,
-                            moveTo,
+                            ...offers,
                           }),
                         ),
                         Effect.catch((error) => {

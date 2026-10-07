@@ -54,7 +54,12 @@ export interface OperationExecutor {
     intent: OperationIntent,
   ) => Effect.Effect<OperationReceipt | OwnerUnobservable, StreamFault | UncertainAcceptance>;
   /** The receipt the owner holds for this request id; `null` when it never took it. */
-  readonly lookup?: (requestId: string) => Effect.Effect<OwnerAnswer, StreamFault>;
+  readonly lookup?: (
+    requestId: string,
+    intent: OperationIntent,
+  ) => Effect.Effect<OwnerAnswer, StreamFault>;
+  /** Kinds for which this owner retains the original request id; other kinds use their source effects. */
+  readonly lookupKinds?: ReadonlySet<string>;
   /** The receipt behind an external handle; `null` when the owner holds none for it. */
   readonly lookupHandle?: (handle: string) => Effect.Effect<OwnerAnswer, StreamFault>;
 }
@@ -226,7 +231,7 @@ export function makeOperations(options: {
         onSuccess: (receipt) => admit(receipt, requestId),
         onFailure: () => admit(null, requestId),
       });
-    if (executor.lookup === undefined) {
+    if (executor.lookup === undefined || executor.lookupKinds?.has(intent.kind) === false) {
       const adopted = adoptable(requestId, intent);
       const resultOf = kindOf(intent).adoptedResult;
       return admit(
@@ -247,7 +252,7 @@ export function makeOperations(options: {
         requestId,
       );
     }
-    return Effect.matchEffect(executor.lookup(requestId), {
+    return Effect.matchEffect(executor.lookup(requestId, intent), {
       onSuccess: (answer) => {
         if (answer !== null) return admit(answer, requestId);
         // Never taken: sent again now, once; after that it waits, unsent, for the person.

@@ -1,3 +1,4 @@
+import { lifecycleReceipt } from "../families/hqLifecycle.ts";
 /**
  * HQ, our own source (`@t3tools/shared/hqStream`, `docs/internals/zerops/hq-scopes.md`): one socket
  * per account, organization and renderer, carrying the scopes this renderer demands. The
@@ -94,7 +95,10 @@ export function classifyHqClose(code: number): StreamFault {
 }
 
 /** What HQ says a Mate may be moved into, per application, as asked when the move opens. */
-export type HqMoveOffers = Readonly<Record<string, ReadonlyArray<string>>>;
+export interface HqMoveOffers {
+  readonly moveTo: Readonly<Record<string, ReadonlyArray<string>>>;
+  readonly refused: Readonly<Record<string, Readonly<Record<string, string>>>>;
+}
 
 /**
  * How long a socket may say nothing — not even HQ's ping, sent every 20 s — before it is given up:
@@ -382,6 +386,19 @@ export function hqNavigationLink(options: {
             rows,
             removals,
           });
+          // Only committed, recipient-filtered HQ values can restore a lifecycle request.
+          for (const row of rows) {
+            if (row.family !== "hqLifecycle") continue;
+            const fact = readsOfState(store.state()).fact("hqLifecycle", row.id);
+            if (fact?.kind !== "known" || fact.value.intent.orgId !== orgId) continue;
+            const record = fact.value;
+            store.dispatch({
+              kind: "operation-recorded",
+              requestId: record.requestId,
+              intent: record.intent,
+            });
+            store.dispatch({ kind: "operation-receipt", receipt: lifecycleReceipt(record) });
+          }
           cursors.set(scopeKey, { incarnation: message.incarnation, revision: message.revision });
         });
 
@@ -493,7 +510,10 @@ export function hqNavigationLink(options: {
               if (waiting === undefined) return;
               pendingOffers.delete(message.requestId);
               if (message.type === "move-offers")
-                return yield* Deferred.succeed(waiting, message.moveTo);
+                return yield* Deferred.succeed(waiting, {
+                  moveTo: message.moveTo,
+                  refused: message.refused ?? {},
+                });
               if (message.type === "handover-candidates")
                 return yield* Deferred.succeed(waiting, message.candidates);
               if (message.type === "compare")

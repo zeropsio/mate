@@ -220,20 +220,37 @@ export const moveDestinations = (
   mate: { readonly projectId: string; readonly held: Held; readonly recorded: boolean },
   apps: ReadonlyArray<{ readonly id: string; readonly projects: ReadonlyArray<AppProjectRow> }>,
   facts: Facts,
-): Readonly<Record<string, ReadonlyArray<RoleProjectKind>>> => {
-  const kindsInto = (appProjects: ReadonlyArray<AppProjectRow>) =>
-    KINDS.filter(
-      (kind) =>
-        (mate.recorded || !isMateKind(kind)) &&
-        !productionTaken(mate.projectId, kind, appProjects, facts) &&
-        offer(userId, "move", moveTarget(mate.projectId, mate.held, kind, appProjects), facts)
-          .allow,
-    );
-  const into = [
-    ...apps.map((app) => [app.id, kindsInto(app.projects)] as const),
-    ...(offer(userId, "create_app", null, facts).allow ? [["new", kindsInto([])] as const] : []),
-  ];
-  return Object.fromEntries(into.filter(([, kinds]) => kinds.length > 0));
+): {
+  readonly moveTo: Readonly<Record<string, ReadonlyArray<RoleProjectKind>>>;
+  readonly refused: Readonly<Record<string, Readonly<Record<string, string>>>>;
+} => {
+  const into = [...apps.map((app) => [app.id, app.projects] as const), ["new", []] as const];
+  const refused: Record<string, Record<string, string>> = {};
+  const moveTo: Record<string, RoleProjectKind[]> = {};
+  for (const [id, projects] of into) {
+    const reasons: Record<string, string> = {};
+    const kinds: RoleProjectKind[] = [];
+    for (const kind of KINDS) {
+      const decision =
+        id === "new" && !offer(userId, "create_app", null, facts).allow
+          ? offer(userId, "create_app", null, facts)
+          : offer(userId, "move", moveTarget(mate.projectId, mate.held, kind, projects), facts);
+      const reason = !decision.allow
+        ? decision.reason
+        : !mate.recorded && isMateKind(kind)
+          ? "mate_record_missing"
+          : productionTaken(mate.projectId, kind, projects, facts)
+            ? "production_taken"
+            : isMateKind(mate.held) !== isMateKind(kind)
+              ? "class_move_receipt_required"
+              : undefined;
+      if (reason === undefined) kinds.push(kind);
+      else reasons[kind] = reason;
+    }
+    if (kinds.length > 0) moveTo[id] = kinds;
+    if (Object.keys(reasons).length > 0) refused[id] = reasons;
+  }
+  return { moveTo, refused };
 };
 
 /** Whether the person may write the record of a Mate on `projectId`, which HQ holds nowhere. */

@@ -1,5 +1,6 @@
 import { RestartMateWarning } from "~/zerops/RestartMateConfirmation";
 import { ZeropsThrowawayCleanup } from "./ZeropsThrowawayCleanup";
+import { ZeropsDeletionRecovery } from "./ZeropsDeletionRecovery";
 import { captureAccountLifetime } from "~/zerops/accountLifetime";
 import { useZeropsUpgradeRestart, type UpgradeRecovery } from "~/zerops/useZeropsUpgradeRestart";
 /**
@@ -1064,7 +1065,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
           structure: hqStructure.structure,
           project: candidate.project,
           press: held,
-          writer: orgOffer("create_app").kind === "allowed",
+
           mayCreateRecord: (() => {
             const offers = mateOffersOf(projectId);
             return offers?.held === false && offers.createRecord.kind === "allowed";
@@ -1170,7 +1171,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     candidate: ZeropsCandidatePresentation,
     tags: ZeropsMembership,
     mate: boolean,
-    action?: ZeropsRowAction,
     updateMenuActions?: ReadonlyArray<ZeropsMenuAction>,
   ): React.ReactNode => {
     if (isZeropsToolCandidate(candidate)) return undefined;
@@ -2199,7 +2199,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
               face={mateFace(candidate)}
               layout={layout}
               line={line}
-              menu={renderEnvironmentMenu(candidate, tags, true, action, menuActions)}
+              menu={renderEnvironmentMenu(candidate, tags, true, menuActions)}
               name={name}
               onSelect={select}
               preview={preview}
@@ -2219,7 +2219,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         face={mateFace(candidate)}
         layout={layout}
         line={line}
-        menu={renderEnvironmentMenu(candidate, tags, true, action, [])}
+        menu={renderEnvironmentMenu(candidate, tags, true, [])}
         name={name}
         onSelect={select}
         preview={preview}
@@ -2526,7 +2526,10 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     // the last row is never under it with the menu closed.
     <div className="space-y-6 pb-12">
       {status === "signed-in" && activeOrganization !== null && !inventory.isLoading ? (
-        <ZeropsThrowawayCleanup view={throwawayCleanup} />
+        <>
+          <ZeropsThrowawayCleanup view={throwawayCleanup} />
+          <ZeropsDeletionRecovery />
+        </>
       ) : null}
       {listingNotice === null ? null : listingNotice.region === "placeholder" ? (
         // Nothing read yet: the one wait line at the page's centre, where the boot frame said it.

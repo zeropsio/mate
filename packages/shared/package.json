@@ -414,7 +414,8 @@
     "./mateFaces": {
       "types": "./src/mateFaces.ts",
       "import": "./src/mateFaces.ts"
-    }
+    },
+    "./hqLifecycle": "./src/hqLifecycle.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

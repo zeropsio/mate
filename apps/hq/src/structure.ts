@@ -1,3 +1,4 @@
+import { HqLifecycleRecord, HqLifecycleIntent } from "@t3tools/shared/hqLifecycle";
 // @effect-diagnostics nodeBuiltinImport:off -- opaque deletion handles use the existing HQ key and byte encoding.
 /**
  * The structure of applications (ADR 0002): applications, the Zerops projects each holds with
@@ -71,6 +72,9 @@ import { type OrgView, Roles, confirmingRefusal, decidedFresh } from "./roles.ts
 import { Rollouts, addRollout } from "./rollouts.ts";
 import { ZeropsApi, type ZeropsError } from "./zerops/api.ts";
 
+const encodeLifecycleIntent = Schema.encodeSync(Schema.fromJsonString(HqLifecycleIntent));
+const encodeLifecycleRecord = Schema.encodeSync(Schema.fromJsonString(HqLifecycleRecord));
+
 export class StructureRefused extends Schema.TaggedError<StructureRefused>()("StructureRefused", {
   code: Schema.Literals([
     "forbidden",
@@ -94,10 +98,12 @@ export class StructureRefused extends Schema.TaggedError<StructureRefused>()("St
     "app_not_found",
     "app_not_empty",
     "project_still_exists",
+    "key_still_exists",
     "mate_not_found",
     "placed_or_production_taken",
     "production_taken",
     "held_changed",
+    "class_move_receipt_required",
     "environment_with_kind",
     "environment_name_missing",
     "environment_name_long",
@@ -380,10 +386,26 @@ export class Structure extends Context.Service<
      * a Mate by an owner or admin of its project, into an application they see; an environment
      * by an org owner or admin. A Mate out of any application is listed `ungrouped`.
      */
+    readonly lifecycleWrite: (
+      userId: string,
+      requestId: string,
+      intent: HqLifecycleIntent,
+    ) => Effect.Effect<HqLifecycleRecord, WriteError>;
+    readonly lifecycleReceipt: (
+      userId: string,
+      requestId: string,
+    ) => Effect.Effect<HqLifecycleRecord | null, WriteError>;
+    readonly lifecycleRecords: (
+      userId: string,
+    ) => Effect.Effect<ReadonlyArray<HqLifecycleRecord>, WriteError>;
     readonly moveProject: (
       userId: string,
       projectId: string,
-      target: { readonly appId: string | null; readonly kind: AttachInput["kind"] },
+      target: {
+        readonly appId: string | null;
+        readonly kind: AttachInput["kind"];
+        readonly expected?: { readonly appId: string | null; readonly kind: string };
+      },
     ) => Effect.Effect<
       {
         readonly projectId: string;
@@ -493,10 +515,7 @@ export class Structure extends Context.Service<
     readonly moveDestinations: (
       userId: string,
       projectId: string,
-    ) => Effect.Effect<
-      Readonly<Record<string, ReadonlyArray<RoleProjectKind>>>,
-      SqlError | ZeropsError
-    >;
+    ) => Effect.Effect<ReturnType<typeof moveDestinations>, SqlError | ZeropsError>;
     readonly read: (userId: string) => Effect.Effect<StructureRead, SqlError | ZeropsError>;
     /**
      * Follows Zerops: what HQ holds of projects it no longer has (missing from the org's list, and
@@ -1016,7 +1035,159 @@ export const structureLayer = (options: {
           );
         });
 
-      return Structure.of({
+      const checkExpected = (
+        projectId: string,
+        expected: { readonly appId: string | null; readonly kind: string } | undefined,
+      ) =>
+        Effect.gen(function* () {
+          if (expected === undefined) return;
+          const rows = yield* sql<{
+            readonly app_id: string;
+            readonly kind: string;
+          }>`SELECT app_id::text AS app_id, kind FROM hq_app_project WHERE project_id = ${projectId}`;
+          if (
+            (rows[0]?.app_id ?? null) !== expected.appId ||
+            (rows[0]?.kind ?? "mate") !== expected.kind
+          )
+            return yield* refuse("conflict", "held_changed");
+        });
+      const readLifecycle = (userId: string, requestId: string) =>
+        Effect.gen(function* () {
+          const rows = yield* sql<{
+            readonly record: unknown;
+          }>`SELECT record FROM hq_lifecycle_receipt WHERE request_id = ${requestId} AND user_id = ${userId}`;
+          return rows[0] === undefined
+            ? null
+            : yield* Schema.decodeUnknownEffect(HqLifecycleRecord)(rows[0].record).pipe(
+                Effect.orDie,
+              );
+        });
+      const structure: Structure["Service"] = Structure.of({
+        lifecycleReceipt: fresh((userId, requestId) =>
+          Effect.gen(function* () {
+            const view = yield* roles.forWrite;
+            if (
+              !view.members.some((member) => member.userId === userId && member.status === "ACTIVE")
+            )
+              return yield* refuse("forbidden", "not_active_member");
+            return yield* readLifecycle(userId, requestId);
+          }),
+        ),
+        lifecycleRecords: (userId) =>
+          Effect.gen(function* () {
+            const view = yield* roles.view;
+            if (
+              !view.members.some((member) => member.userId === userId && member.status === "ACTIVE")
+            )
+              return yield* refuse("forbidden", "not_active_member");
+            // Only the latest Move per project can own a rename remainder. Deletion keeps its original pair.
+            const rows = yield* sql<{ readonly record: unknown }>`SELECT record FROM (
+            SELECT DISTINCT ON (project_id, kind) record, seq FROM hq_lifecycle_receipt retained WHERE user_id = ${userId} AND NOT EXISTS (SELECT 1 FROM hq_lifecycle_receipt finished WHERE finished.user_id = retained.user_id AND finished.project_id = retained.project_id AND finished.kind = 'complete-key-retirement') ORDER BY project_id, kind, seq DESC
+          ) retained ORDER BY seq`;
+            return yield* Effect.forEach(rows, (row) =>
+              Schema.decodeUnknownEffect(HqLifecycleRecord)(row.record).pipe(Effect.orDie),
+            );
+          }),
+        lifecycleWrite: fresh((userId, requestId, intent) =>
+          Effect.gen(function* () {
+            const view = yield* roles.forWrite;
+            if (
+              !view.members.some((member) => member.userId === userId && member.status === "ACTIVE")
+            )
+              return yield* refuse("forbidden", "not_active_member");
+            if (intent.hqProjectId !== options.hqProjectId || intent.orgId !== view.orgId)
+              return yield* refuse("forbidden", "hq_project");
+            const result = yield* leader.write(
+              Effect.gen(function* () {
+                yield* sql`SELECT pg_advisory_xact_lock(hashtextextended(${requestId}, 1))`;
+                const previous = yield* readLifecycle(userId, requestId);
+                if (previous !== null) {
+                  if (encodeLifecycleIntent(previous.intent) !== encodeLifecycleIntent(intent))
+                    return yield* refuse("conflict", "held_changed");
+                  return previous;
+                }
+                const occupied =
+                  yield* sql`SELECT 1 FROM hq_lifecycle_receipt WHERE request_id = ${requestId}`;
+                if (occupied.length > 0) return yield* refuse("forbidden", "not_project_admin");
+                const projectName = view.projects.find(
+                  (project) => project.id === intent.projectId,
+                )?.name;
+                let record: HqLifecycleRecord = {
+                  requestId,
+                  intent,
+                  ...(projectName === undefined ? {} : { projectName }),
+                };
+                if (intent.kind === "move-project") {
+                  // Class-changing moves require platform key/job migration, which this owner cannot prove.
+                  if (isMateKind(intent.from.kind) !== isMateKind(intent.to.kind))
+                    return yield* refuse("invalid", "class_move_receipt_required");
+                  yield* structure.moveProject(userId, intent.projectId, {
+                    ...intent.to,
+                    expected: intent.from,
+                  });
+                } else if (intent.kind === "prepare-mate-deletion") {
+                  const completion = yield* structure.prepareProjectDeletion(
+                    userId,
+                    intent.projectId,
+                  );
+                  const key = yield* sql<{
+                    readonly key_token_id: string | null;
+                  }>`SELECT key_token_id FROM hq_mate_credential WHERE project_id = ${intent.projectId} AND revoked_at IS NULL`;
+                  record = {
+                    ...record,
+                    result: { keyTokenId: key[0]?.key_token_id ?? null, completion },
+                  };
+                } else if (intent.kind === "complete-mate-deletion") {
+                  const prepared = yield* readLifecycle(userId, intent.preparedRequestId);
+                  if (
+                    prepared?.intent.kind !== "prepare-mate-deletion" ||
+                    prepared.intent.projectId !== intent.projectId ||
+                    prepared.result?.completion !== intent.completion
+                  )
+                    return yield* refuse("forbidden", "not_project_admin");
+                  yield* structure.completeProjectDeletion(
+                    userId,
+                    intent.projectId,
+                    intent.completion,
+                  );
+                } else {
+                  const prepared = yield* readLifecycle(userId, intent.preparedRequestId);
+                  const completed = yield* readLifecycle(userId, intent.completionRequestId);
+                  if (
+                    prepared?.intent.kind !== "prepare-mate-deletion" ||
+                    prepared.intent.projectId !== intent.projectId ||
+                    prepared.result === undefined ||
+                    completed?.intent.kind !== "complete-mate-deletion" ||
+                    completed.intent.preparedRequestId !== intent.preparedRequestId ||
+                    completed.intent.projectId !== intent.projectId
+                  )
+                    return yield* refuse("forbidden", "not_project_admin");
+                  const keyId = prepared.result.keyTokenId;
+                  if (keyId !== null) {
+                    if (Option.isNone(options.credential))
+                      return yield* refuse("invalid", "no_key_secret");
+                    const absent = yield* zerops
+                      .tokenProjects(
+                        intent.orgId,
+                        keyId,
+                      )(options.credential.value)
+                      .pipe(
+                        Effect.as(false),
+                        Effect.catchTag("ZeropsRefused", (error) =>
+                          error.reason === "not_found" ? Effect.succeed(true) : Effect.fail(error),
+                        ),
+                      );
+                    if (!absent) return yield* refuse("conflict", "key_still_exists");
+                  }
+                }
+                yield* sql`INSERT INTO hq_lifecycle_receipt (request_id, user_id, project_id, kind, record) VALUES (${requestId}, ${userId}, ${intent.projectId}, ${intent.kind}, ${encodeLifecycleRecord(record)}::jsonb)`;
+                return record;
+              }),
+            );
+            yield* changed;
+            return result;
+          }),
+        ),
         reconcile,
         prepareProjectDeletion: fresh((userId, projectId) =>
           Effect.gen(function* () {
@@ -1430,7 +1601,7 @@ export const structureLayer = (options: {
             }),
           ),
 
-        moveProject: fresh((userId, projectId, { appId, kind }) =>
+        moveProject: fresh((userId, projectId, { appId, kind, expected }) =>
           Effect.gen(function* () {
             if (projectId === options.hqProjectId) {
               return yield* refuse("invalid", "hq_project");
@@ -1443,6 +1614,7 @@ export const structureLayer = (options: {
                 Effect.gen(function* () {
                   yield* lockProject(sql, projectId);
                   const held = yield* heldOf(sql, projectId);
+                  yield* checkExpected(projectId, expected);
                   yield* allowed(userId, "detach", { projectId, held }, view);
                   return yield* sql`
                     DELETE FROM hq_app_project
@@ -1483,6 +1655,7 @@ export const structureLayer = (options: {
                 Effect.gen(function* () {
                   yield* lockProject(sql, projectId);
                   const held = yield* heldOf(sql, projectId);
+                  yield* checkExpected(projectId, expected);
                   const apps = yield* sql`
                     SELECT 1 FROM hq_app WHERE id::text = ${appId} FOR NO KEY UPDATE`;
                   const currentTarget = yield* sql<{
@@ -1681,7 +1854,7 @@ export const structureLayer = (options: {
         read: (userId) => Effect.map(loadRead(), (source) => source.forPerson(userId)),
         moveDestinations: (userId, projectId) =>
           Effect.gen(function* () {
-            if (projectId === options.hqProjectId) return {};
+            if (projectId === options.hqProjectId) return { moveTo: {}, refused: {} };
             const facts = yield* roles.view;
             const rows = yield* sql<{
               readonly app_id: string;
@@ -1707,5 +1880,6 @@ export const structureLayer = (options: {
             );
           }),
       });
+      return structure;
     }),
   );

@@ -29,7 +29,8 @@ import { hqBirthReads } from "./hqBirthReads.ts";
 import type { OperationExecutor } from "../coordinator.ts";
 import { createProjectExecutor } from "./createProject.ts";
 import { deleteProjectExecutor } from "./deleteProject.ts";
-import { retireMateKeyExecutor } from "./mateDeletion.ts";
+import { readRetiredMateKey, retireMateKeyExecutor } from "./mateDeletion.ts";
+import { mateKeyRetirementAllowed } from "../mateDeletion.ts";
 import { hqBirthExecutor } from "./hqBirth.ts";
 import { hqUpdateExecutor } from "./hqUpdate.ts";
 import { creationWritesExecutor } from "./creationWrites.ts";
@@ -293,6 +294,25 @@ export function makeZeropsExecutor(input: {
   };
   return {
     isCurrent: () => input.active(),
+    lookupKinds: new Set(["retire-mate-key"]),
+    lookup: (requestId, intent) =>
+      Effect.gen(function* () {
+        if (
+          intent.kind !== "retire-mate-key" ||
+          !input.active() ||
+          !mateKeyRetirementAllowed(readsOfState(input.store.state()), intent)
+        )
+          return {
+            unobservable: {
+              nextActor: "person",
+              nextAction: "Return to the original account and deletion receipt",
+            },
+          };
+        const answer = yield* readRetiredMateKey(input.client, requestId, intent);
+        return input.active()
+          ? answer
+          : { unobservable: { nextActor: "person", nextAction: "Return to the original account" } };
+      }),
     submit: (requestId, intent) => {
       const admission = () =>
         admitPlatformOperation({

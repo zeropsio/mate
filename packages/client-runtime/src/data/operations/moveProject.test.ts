@@ -42,16 +42,40 @@ function account() {
 
 function operationsOf(
   store: AccountStore,
-  send: NonNullable<HqWrites["moveProject"]>,
+  send: (projectId: string, to: MoveProjectIntent["to"]) => Promise<void>,
   active = () => true,
   hqId = () => "hq-1",
+  retained = () => false,
 ) {
   return makeOperations({
     store,
     makeId: () => "original",
     executors: {
       hq: makeHqExecutor({
-        apiOf: () => ({ moveProject: send }) as unknown as HqWrites,
+        apiOf: () =>
+          ({
+            lifecycleWrite: async (requestId: string, intent: MoveProjectIntent) => {
+              if (
+                (intent.from.kind === "mate" || intent.from.kind === "devstage") !==
+                (intent.to.kind === "mate" || intent.to.kind === "devstage")
+              )
+                throw new HqError({
+                  kind: "refused",
+                  code: "class_move_receipt_required",
+                  message: "Class migration needs its lifecycle receipt.",
+                });
+              await send(intent.projectId, intent.to);
+              return { requestId, intent };
+            },
+            lifecycleReceipt: async (requestId: string) => {
+              if (retained()) return { requestId, intent: MOVE };
+              throw new HqError({
+                kind: "unavailable",
+                code: "network",
+                message: "HQ cannot read the original receipt.",
+              });
+            },
+          }) as unknown as HqWrites,
         hqProjectIdOf: hqId,
         active,
         zerops: {
@@ -87,22 +111,14 @@ describe("placement Move receipts", () => {
         store,
         makeId: () => "original",
         executors: {
-          hq: makeHqExecutor({
-            apiOf: () =>
-              ({
-                moveProjectOperation: async (requestId: string, sent: MoveProjectIntent) => {
-                  expect(requestId).toBe("original");
-                  expect(sent).toEqual(intent);
-                  return accepted;
-                },
-              }) as unknown as HqWrites,
-            hqProjectIdOf: () => "hq-1",
-            active: () => true,
-            zerops: {
-              mintIntegrationToken: () => Promise.reject(new Error("HQ owns rotation")),
-              deleteIntegrationToken: () => Promise.reject(new Error("HQ owns rotation")),
-            },
-          }),
+          hq: {
+            submit: (requestId, sent) =>
+              Effect.sync(() => {
+                expect(requestId).toBe("original");
+                expect(sent).toEqual(intent);
+                return accepted;
+              }),
+          },
         },
       });
       yield* operations.submit(intent);
@@ -145,15 +161,23 @@ describe("placement Move receipts", () => {
     Effect.gen(function* () {
       const store = account();
       const calls: string[] = [];
-      const operations = operationsOf(store, async (id, to) => {
-        expect(store.state().operations.get("original")?.intent).toEqual(MOVE);
-        calls.push(id);
-        expect(to).toEqual(MOVE.to);
-        return lost();
-      });
+      let retained = false;
+      const operations = operationsOf(
+        store,
+        async (id, to) => {
+          expect(store.state().operations.get("original")?.intent).toEqual(MOVE);
+          calls.push(id);
+          expect(to).toEqual(MOVE.to);
+          return lost();
+        },
+        () => true,
+        () => "hq-1",
+        () => retained,
+      );
       yield* operations.submit(MOVE);
       expect(progress(store).stage).toBe("uncertain");
       placement(store, target);
+      retained = target === "target";
       yield* operations.retry("original");
       yield* operations.submit(MOVE, "original");
       expect(progress(store).stage).toBe(expected);
@@ -181,9 +205,20 @@ describe("placement Move receipts", () => {
     Effect.gen(function* () {
       const store = account();
       placement(store, "target");
-      const operations = operationsOf(store, () => Promise.reject(new Error("must not send")));
+      const operations = operationsOf(
+        store,
+        () => Promise.reject(new Error("must not send")),
+        () => true,
+        () => "hq-1",
+        () => true,
+      );
       yield* operations.resume("original", MOVE, [], []);
-      expect(progress(store)).toEqual({ stage: "done", operationId: "p1", outcome: "succeeded" });
+      expect(progress(store)).toEqual({
+        stage: "done",
+        operationId: "original",
+        outcome: "succeeded",
+      });
+      expect(store.state().operations.get("original")?.receipt?.requestId).toBe("original");
     }),
   );
 

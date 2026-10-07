@@ -297,7 +297,8 @@ const fixture = Effect.gen(function* () {
         return sourceNow();
       }),
       changes: Stream.fromPubSub(structureChanged),
-      moveDestinations: () => Effect.succeed({ A: ["mate"] }),
+      moveDestinations: () => Effect.succeed({ moveTo: { A: ["mate"] }, refused: {} }),
+      lifecycleRecords: () => Effect.succeed([]),
     } as unknown as Structure["Service"]),
     Layer.succeed(Roles, {
       view: roleView,

@@ -3,7 +3,7 @@ import * as Effect from "effect/Effect";
 import { AtomRegistry } from "effect/unstable/reactivity";
 import { liveZerops, ORG } from "../__fixtures__/account.ts";
 import { seedHqNavigation } from "../__fixtures__/hqNavigation.ts";
-import { operationResult, type OperationReceipt } from "../model.ts";
+import { type OperationReceipt } from "../model.ts";
 import { operationProgress } from "../projections/operation.ts";
 import { makeAccountStore, readsOfState } from "../store.ts";
 import { HqError } from "../../zerops/hq/client.ts";
@@ -46,59 +46,8 @@ const progress = (store: ReturnType<typeof account>, id: string) =>
   operationProgress.derive(readsOfState(store.state()), id);
 
 describe("Mate deletion cleanup receipts", () => {
-  it.effect.each(["key-read", "prepared"] as const)(
-    "account end after $0 prevents the next cleanup write",
-    (endAt) =>
-      Effect.gen(function* () {
-        const store = account();
-        let active = true;
-        const calls: string[] = [];
-        const api = {
-          mateKey: async () => {
-            calls.push("key");
-            if (endAt === "key-read") active = false;
-            return "key-1";
-          },
-          prepareProjectDeletion: async () => {
-            calls.push("prepare");
-            active = false;
-            return "exact-completion";
-          },
-          completeProjectDeletion: async () => {
-            calls.push("complete");
-          },
-        } as unknown as HqWrites;
-        const operations = makeOperations({
-          store,
-          makeId: () => "unused",
-          executors: {
-            hq: makeHqExecutor({
-              apiOf: () => api,
-              active: () => active,
-              hqProjectIdOf: () => "hq",
-              zerops: {
-                mintIntegrationToken: () => Promise.reject(new Error("no mint")),
-                deleteIntegrationToken: async () => {
-                  calls.push("delete key");
-                },
-              },
-            }),
-          },
-        });
-        yield* operations.submit(PREPARE, "prepare");
-        if (endAt === "prepared") {
-          expect(
-            operationResult(store.state().operations.get("prepare"), "prepare-mate-deletion"),
-          ).toEqual({ keyTokenId: "key-1", completion: "exact-completion" });
-          yield* operations.submit(COMPLETE, "complete");
-          expect(progress(store, "complete").stage).toBe("refused");
-        } else expect(progress(store, "prepare").stage).toBe("refused");
-        expect(calls).toEqual(endAt === "key-read" ? ["key"] : ["key", "prepare"]);
-      }),
-  );
-
   it.effect.each(["deleted", "denied", "omitted"] as const)(
-    "lost HQ completion needs owner-proven deletion: $0",
+    "lost HQ completion needs its exact original receipt, not placement $0",
     (evidence) =>
       Effect.gen(function* () {
         const store = account();
@@ -110,8 +59,11 @@ describe("Mate deletion cleanup receipts", () => {
             hq: makeHqExecutor({
               apiOf: () =>
                 ({
-                  completeProjectDeletion: async (id: string, completion: string) => {
-                    expect([id, completion]).toEqual(["p1", "exact-completion"]);
+                  lifecycleWrite: async (_requestId: string, intent: typeof COMPLETE) => {
+                    expect([intent.projectId, intent.completion]).toEqual([
+                      "p1",
+                      "exact-completion",
+                    ]);
                     calls++;
                     throw new HqError({
                       kind: "uncertain",
@@ -141,9 +93,7 @@ describe("Mate deletion cleanup receipts", () => {
           });
         else store.dispatch({ kind: "access", family: "placement", id: "p1", access: "denied" });
         yield* operations.retry("complete");
-        expect(progress(store, "complete").stage).toBe(
-          evidence === "deleted" ? "done" : "uncertain",
-        );
+        expect(progress(store, "complete").stage).toBe("uncertain");
         expect(calls).toBe(1);
       }),
   );

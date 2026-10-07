@@ -429,7 +429,7 @@ describe("hqNavigationLink", () => {
         projectId: "ada",
         moveTo: { shop: ["allowed"] },
       });
-      expect(yield* Fiber.join(asked)).toEqual({ shop: ["allowed"] });
+      expect(yield* Fiber.join(asked)).toEqual({ moveTo: { shop: ["allowed"] }, refused: {} });
       yield* Fiber.interrupt(fiber);
     }),
   );
@@ -947,4 +947,46 @@ describe("classifyHqClose", () => {
   ])("$code is $outcome", ({ code, outcome }) => {
     expect(classifyHqClose(code).outcome).toBe(outcome);
   });
+});
+
+describe("HQ lifecycle receipt delivery", () => {
+  it.effect.each(["whole", "damaged", "another account", "outage"] as const)(
+    "restores only the original owner's readable request: %s",
+    (entry) =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const fixture = hqFixtureWire();
+        const running = yield* run(store, fixture);
+        const record = {
+          requestId: "prepare",
+          intent: {
+            kind: "prepare-mate-deletion",
+            orgId: entry === "another account" ? "other" : ORG,
+            hqProjectId: "hq",
+            projectId: "ada",
+          },
+          result: { keyTokenId: "exact-key", completion: "exact-seal" },
+        };
+        yield* fixture.send(
+          navigation("scope-reset", 1, [
+            {
+              key: "lifecycle:prepare",
+              value: entry === "damaged" ? { requestId: "prepare" } : record,
+            },
+          ]),
+        );
+        yield* fixture.send(ready(1));
+        yield* settle;
+        if (entry === "outage") {
+          yield* fixture.drop({ outcome: "transient", message: "HQ down" });
+          yield* settle;
+        }
+        expect(store.state().operations.get("prepare")?.receipt?.acceptance).toEqual(
+          entry === "damaged" || entry === "another account"
+            ? undefined
+            : { kind: "accepted", result: record.result },
+        );
+        yield* Fiber.interrupt(running.fiber);
+      }),
+  );
 });

@@ -128,7 +128,6 @@ import {
   useInterruptedPresses,
   useMatePresses,
 } from "./matePress";
-import { useDeleteProject } from "./deleteProject";
 import { useRestartMate } from "./mateRestart";
 import {
   planProjectLeave,
@@ -137,7 +136,10 @@ import {
   renameStillDue,
   type ProjectRename,
 } from "./projectRenames.logic";
-import { useUnrenamedProjects } from "./unrenamedProjects";
+import { lifecycleRemainders, NO_LIFECYCLE_REMAINDERS } from "@t3tools/client-runtime/data";
+import { Atom } from "effect/unstable/reactivity";
+import { useProjection } from "./ZeropsAccountData";
+import { randomUUID } from "~/lib/utils";
 import { useRenameProjects } from "./useRenameProjects";
 import { useAccountOperations } from "./accountOperations";
 import { useZeropsData } from "./zeropsDataContext";
@@ -160,6 +162,7 @@ type MateDialog =
       readonly kind: "move";
       readonly candidate: ZeropsCandidatePresentation;
       readonly moveTo?: HqMoveTo;
+      readonly refused?: import("@t3tools/shared/hqOffers").HqMoveRefusals;
       readonly reading?: boolean;
       readonly readError?: string;
       readonly retryRead?: boolean;
@@ -168,9 +171,7 @@ type MateDialog =
       readonly kind: "delete";
       readonly candidate: ZeropsCandidatePresentation;
       readonly cleanup?: {
-        readonly keyTokenId: string | null;
-        readonly completion: string;
-        readonly hqDone: boolean;
+        readonly preparedRequestId: string;
       };
     };
 
@@ -183,6 +184,7 @@ interface DialogPress {
   readonly error: string | null;
 }
 
+const NO_REMAINDERS = Atom.make(NO_LIFECYCLE_REMAINDERS);
 const UNPRESSED: DialogPress = { pending: false, error: null };
 
 /** HQ says this Mate's key reads other projects too (`keyWider`, ADR 0003's fallout). */
@@ -273,6 +275,19 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [trouble, setTrouble] = useState<string | null>(null);
   const writing = useRef(new Set<string>());
+  const moveAttempts = useRef(
+    new Map<
+      string,
+      {
+        readonly requestId: string;
+        readonly intent: import("@t3tools/client-runtime/data").MoveProjectIntent;
+      }
+    >(),
+  );
+  const appAttempts = useRef(
+    new Map<string, { readonly requestId: string; readonly name: string }>(),
+  );
+  const deletionRequests = useRef(new Map<string, string>());
   const choiceRead = useRef({ orgId: activeOrganization?.id, attempt: 0 });
   useEffect(() => {
     if (choiceRead.current.orgId === activeOrganization?.id) return;
@@ -333,10 +348,15 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
    * leaving (`detach`): each application listed, a new one, or none.
    */
   const moveChoicesFor = useCallback(
-    (candidate: ZeropsCandidatePresentation, moveTo: HqMoveTo) => {
+    (
+      candidate: ZeropsCandidatePresentation,
+      moveTo: HqMoveTo,
+      refused?: import("@t3tools/shared/hqOffers").HqMoveRefusals,
+    ) => {
       const offers = mateOffersOf(candidate.project.id);
       return moveChoices({
         moveTo,
+        refused,
         detach: offers?.held === true && offers.detach.kind === "allowed",
         apps: groupTree.groups.map(({ group }) => ({ id: group.groupId, name: group.name })),
       });
@@ -351,7 +371,10 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       setPress(UNPRESSED);
       setDialog({ kind: "move", candidate, reading: true });
       const settle = (
-        answer: Pick<Extract<MateDialog, { kind: "move" }>, "moveTo" | "readError" | "retryRead">,
+        answer: Pick<
+          Extract<MateDialog, { kind: "move" }>,
+          "moveTo" | "refused" | "readError" | "retryRead"
+        >,
       ) => {
         if (!isCurrent() || attempt !== choiceRead.current.attempt) return;
         setDialog({ kind: "move", candidate, ...answer });
@@ -361,7 +384,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
         return;
       }
       askMoveOffers(candidate.project.id).then(
-        (moveTo) => settle({ moveTo }),
+        (offers) => settle(offers),
         (fault: unknown) =>
           settle({ readError: zeropsErrorMessage(fault), retryRead: !definitiveRefusal(fault) }),
       );
@@ -500,7 +523,6 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   );
 
   const restartMate = useRestartMate();
-  const deleteProject = useDeleteProject();
   const restart = useCallback(
     (candidate: ZeropsCandidatePresentation) => {
       const serviceId = candidate.service?.id;
@@ -548,7 +570,6 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       if (activeOrganization === null || writing.current.has(candidate.key)) return;
       const full = renamedProjectName(candidate.project, name);
       if (full === undefined) return;
-      useUnrenamedProjects.getState().drop(candidate.project.id);
       void write(
         candidate.key,
         () =>
@@ -621,21 +642,24 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   );
 
   /**
-   * The renames Zerops has not taken after a move, by project (`unrenamedProjects.ts`): HQ has the
+   * The renames Zerops has not taken after a move, by the original HQ receipt: HQ has the
    * Mate in its new application, its project still carries the old name. Finished by *Finish
    * renaming*, with the targets planned before the move — while the project is named as planned from.
    */
-  const unrenamed = useUnrenamedProjects((store) => store.left);
+  const remainders = useProjection(
+    lifecycleRemainders,
+    activeOrganization === null || accountHq.hq.kind !== "official"
+      ? null
+      : { orgId: activeOrganization.id, hqProjectId: officialHq(accountHq).projectId },
+    NO_REMAINDERS,
+  );
+  const unrenamed = remainders.renames;
   const renameProjects = useRenameProjects();
   const settleRenames = useCallback(
     async (renames: ReadonlyArray<ProjectRename>, lead: string) => {
       const isCurrent = captureAccountLifetime();
       const failures = await renameProjects(renames);
       if (!isCurrent()) return;
-      useUnrenamedProjects.getState().settle(
-        renames,
-        failures.map(({ rename }) => rename),
-      );
       if (failures.length > 0) throw new Error(`${lead}${projectRenameTrouble(failures)}`);
     },
     [renameProjects],
@@ -657,8 +681,6 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
           : membership.kind === "new"
             ? membership.name
             : groupTree.groups.find(({ group }) => group.groupId === membership.appId)?.group.name;
-      // Whatever a move before left is stale from here: this one plans from the name as it stands.
-      useUnrenamedProjects.getState().drop(candidate.project.id);
       const project = { id: candidate.project.id, name: candidate.project.name };
       const oldApp = readZeropsMembership(candidate.project).label;
       const plan =
@@ -671,35 +693,75 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       void write(
         candidate.key,
         async () => {
-          const api = hqApi();
-          if (membership.kind === "none") {
-            await api.moveProject(candidate.project.id, { appId: null, kind: "mate" });
-            placed = true;
-            if (!isCurrent()) return;
-            await settleRenames(plan, "Left the project, but not renamed in Zerops. ");
-            return;
+          const hq = officialHq(accountHq);
+          if (membership.kind === "new") {
+            const previous = appAttempts.current.get(candidate.project.id);
+            if (previous !== undefined && previous.name !== membership.name)
+              throw new Error(
+                "Check the original project creation before choosing another destination.",
+              );
+            if (previous === undefined)
+              appAttempts.current.set(candidate.project.id, {
+                requestId: randomUUID(),
+                name: membership.name,
+              });
           }
           const appId =
-            membership.kind === "new"
-              ? (
-                  await operations.run(
-                    { kind: "create-app", orgId: activeOrganization.id, name: membership.name },
-                    {
-                      orgId: activeOrganization.id,
-                      unobserved:
-                        "HQ may have created the project. Check it before starting another Move.",
-                    },
-                  )
-                ).appId
-              : membership.appId;
+            membership.kind === "none"
+              ? null
+              : membership.kind === "new"
+                ? (
+                    await operations.run(
+                      { kind: "create-app", orgId: activeOrganization.id, name: membership.name },
+                      {
+                        orgId: activeOrganization.id,
+                        requestId: appAttempts.current.get(candidate.project.id)!.requestId,
+                        unobserved:
+                          "HQ may have created the project. Check it before starting another Move.",
+                      },
+                    )
+                  ).appId
+                : membership.appId;
           if (!isCurrent()) return;
-          await api.moveProject(candidate.project.id, {
-            appId,
-            kind: kindOfRole(membership.role),
+          const requestId =
+            moveAttempts.current.get(candidate.project.id)?.requestId ?? randomUUID();
+          const held = heldOf(candidate.project);
+          if (held === "unknown")
+            throw new Error("HQ must read this Mate’s placement before Move.");
+          const intent = moveAttempts.current.get(candidate.project.id)?.intent ?? {
+            kind: "move-project" as const,
+            orgId: activeOrganization.id,
+            hqProjectId: hq.projectId,
+            projectId: candidate.project.id,
+            from: {
+              appId: readZeropsMembership(candidate.project).groupId ?? null,
+              kind: held === "none" ? "mate" : held,
+            },
+            to: { appId, kind: membership.kind === "none" ? "mate" : kindOfRole(membership.role) },
+            rename: { from: project.name, name: plan[0]?.to ?? project.name },
+          };
+          moveAttempts.current.set(candidate.project.id, { requestId, intent });
+          await operations.run(intent, {
+            orgId: activeOrganization.id,
+            requestId,
+            unobserved:
+              "HQ may have taken this Move. Read its original receipt before moving again.",
           });
           placed = true;
+          moveAttempts.current.delete(candidate.project.id);
+          appAttempts.current.delete(candidate.project.id);
           if (!isCurrent()) return;
-          await settleRenames(plan, "Moved, but not renamed in Zerops. ");
+          const remainder = await operations.untilMoveRemainder({
+            orgId: intent.orgId,
+            hqProjectId: intent.hqProjectId,
+            requestId,
+          });
+          if (!isCurrent()) return;
+          if (remainder.kind === "rename")
+            await settleRenames(
+              [{ projectId: remainder.projectId, from: remainder.from, to: remainder.name }],
+              "Moved, but not renamed in Zerops. ",
+            );
         },
         () => {
           setPress(UNPRESSED);
@@ -708,6 +770,12 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
         },
         (reason) => {
           setPress({ pending: false, error: reason });
+          const attempt = moveAttempts.current.get(candidate.project.id);
+          if (
+            attempt !== undefined &&
+            operations.readProgress(attempt.requestId).stage === "refused"
+          )
+            moveAttempts.current.delete(candidate.project.id);
           // Placement already landed: Finish renaming owns the remainder, never another Move.
           if (placed) setDialog(null);
         },
@@ -716,7 +784,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
     [
       activeOrganization,
       groupTree.groups,
-      hqApi,
+      accountHq,
       operations,
       refresh,
       setDialog,
@@ -846,7 +914,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
         structure: hqStructure?.structure ?? null,
         project: candidate.project,
         press,
-        writer: whole,
+
         mayCreateRecord: mayCreateRecord(candidate),
         standUp: candidate.service !== undefined && interrupted.has(candidate.service.id),
         candidates,
@@ -970,15 +1038,6 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   );
 
   /**
-   * The id of the key a Mate's container holds, as the Mate named it to HQ; none where it named
-   * none, or HQ does not say.
-   */
-  const mateKeyOf = useCallback(
-    (projectId: string): Promise<string | null> => hqApi().mateKey(projectId),
-    [hqApi],
-  );
-
-  /**
    * Deletes the Mate's project, and its key with it — by the id the Mate named to HQ, read before
    * its project goes; none is matched by name (audit K3: a deleted Mate's key was left on the
    * account, and a member holding tokens cannot be taken off the org). Connection demand ends
@@ -993,9 +1052,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
     (
       candidate: ZeropsCandidatePresentation,
       cleanup?: {
-        readonly keyTokenId: string | null;
-        readonly completion: string;
-        readonly hqDone: boolean;
+        readonly preparedRequestId: string;
       },
     ) => {
       if (activeOrganization === null) return;
@@ -1009,16 +1066,34 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       const projectId = candidate.project.id;
       setPress({ pending: true, error: null });
       void (async () => {
-        const keyTokenId = cleanup === undefined ? await mateKeyOf(projectId) : cleanup.keyTokenId;
-        if (!isCurrent()) return;
-        const completion = cleanup?.completion ?? (await hqApi().prepareProjectDeletion(projectId));
+        const hqProjectId = officialHq(accountHq).projectId;
+        const preparedRequestId =
+          cleanup?.preparedRequestId ?? deletionRequests.current.get(projectId) ?? randomUUID();
+        deletionRequests.current.set(projectId, preparedRequestId);
+        const prepared = await operations.run(
+          { kind: "prepare-mate-deletion", orgId: clientId, hqProjectId, projectId },
+          {
+            orgId: clientId,
+            requestId: preparedRequestId,
+            unobserved:
+              "HQ may have prepared this deletion. Read its original receipt before trying again.",
+          },
+        );
+        const { keyTokenId, completion } = prepared;
         if (!isCurrent()) return;
         if (cleanup === undefined) {
           if (!isCurrent()) return;
           const environments = currentAccountEnvironments();
           environments?.setDeleting(projectId, true);
           try {
-            await deleteProject(projectId);
+            await operations.run(
+              { kind: "delete-project", orgId: clientId, projectId },
+              {
+                orgId: clientId,
+                requestId: `${preparedRequestId}:delete`,
+                unobserved: "Check the original deletion process before deleting again.",
+              },
+            );
           } catch (cause) {
             environments?.setDeleting(projectId, false);
             throw cause;
@@ -1030,23 +1105,67 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
           setDialog({
             kind: "delete",
             candidate,
-            cleanup: { keyTokenId, completion, hqDone: false },
+            cleanup: { preparedRequestId },
           });
         }
-        if (!cleanup?.hqDone) {
+        {
           if (!isCurrent()) return;
-          await hqApi().completeProjectDeletion(projectId, completion);
+          await operations.run(
+            {
+              kind: "complete-mate-deletion",
+              orgId: clientId,
+              hqProjectId,
+              projectId,
+              preparedRequestId,
+              completion,
+            },
+            {
+              orgId: clientId,
+              requestId: `${preparedRequestId}:complete`,
+              unobserved: "HQ may have completed this deletion. Read its original receipt.",
+            },
+          );
           if (!isCurrent()) return;
           setDialog({
             kind: "delete",
             candidate,
-            cleanup: { keyTokenId, completion, hqDone: true },
+            cleanup: { preparedRequestId },
           });
         }
         if (keyTokenId !== null) {
           if (!isCurrent()) return;
-          await client.deleteIntegrationToken({ clientId, tokenId: keyTokenId });
+          await operations.run(
+            {
+              kind: "retire-mate-key",
+              orgId: clientId,
+              projectId,
+              tokenId: keyTokenId,
+              preparedRequestId,
+              completionRequestId: `${preparedRequestId}:complete`,
+            },
+            {
+              orgId: clientId,
+              requestId: `${preparedRequestId}:retire`,
+              unobserved: "Read the original key before trying cleanup again.",
+            },
+          );
         }
+        if (!isCurrent()) return;
+        await operations.run(
+          {
+            kind: "complete-key-retirement",
+            orgId: clientId,
+            hqProjectId,
+            projectId,
+            preparedRequestId,
+            completionRequestId: `${preparedRequestId}:complete`,
+          },
+          {
+            orgId: clientId,
+            requestId: `${preparedRequestId}:retired`,
+            unobserved: "HQ must confirm the key cleanup before this deletion is finished.",
+          },
+        );
       })()
         .finally(() => {
           writing.current.delete(candidate.key);
@@ -1065,16 +1184,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
           },
         );
     },
-    [
-      activeOrganization,
-      client,
-      deleteProject,
-      leaveDeleted,
-      mateKeyOf,
-      hqApi,
-      organizationRef,
-      setDialog,
-    ],
+    [activeOrganization, accountHq, operations, leaveDeleted, organizationRef, setDialog],
   );
 
   /**
@@ -1430,7 +1540,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
           choices={
             dialog.moveTo === undefined
               ? { apps: [], newApp: [], none: false }
-              : moveChoicesFor(dialog.candidate, dialog.moveTo)
+              : moveChoicesFor(dialog.candidate, dialog.moveTo, dialog.refused)
           }
           reading={dialog.reading}
           readError={dialog.readError}

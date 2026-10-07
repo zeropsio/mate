@@ -121,6 +121,9 @@ const STRUCTURE_WORDS: Readonly<Record<string, string>> = {
   placed_or_production_taken:
     "This Zerops project is in a project already, or that project has its production.",
   production_taken: "That project has its production already.",
+  class_move_receipt_required:
+    "This Move needs a credential and job migration that HQ cannot complete yet.",
+  key_still_exists: "The original Mate key still exists. Finish its key cleanup first.",
   held_changed: "Somebody changed this project in HQ meanwhile. Try again.",
   // A Mate's changes (`@t3tools/shared/hqChanges`), as a person meets them.
   repo_not_found: "HQ has no such repository.",

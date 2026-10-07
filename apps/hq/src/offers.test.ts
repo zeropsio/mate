@@ -231,8 +231,17 @@ describe("HQ's offers on a Mate", () => {
     ],
     ["a reader", "reader", "P_MADE", true, {}],
   ])("moves for %s as the write decides", (_, userId, projectId, recorded, expected) => {
-    expect(moveDestinations(userId, { projectId, held: "mate", recorded }, APPS, FACTS)).toEqual(
-      expected,
+    expect(
+      moveDestinations(userId, { projectId, held: "mate", recorded }, APPS, FACTS).moveTo,
+    ).toEqual(
+      Object.fromEntries(
+        Object.entries(expected)
+          .map(
+            ([id, kinds]) =>
+              [id, kinds.filter((kind) => kind === "mate" || kind === "devstage")] as const,
+          )
+          .filter(([, kinds]) => kinds.length > 0),
+      ),
     );
   });
 

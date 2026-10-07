@@ -1281,7 +1281,7 @@ describe("finishMateSetup — the harden path", () => {
       structure: { ungrouped: [], apps: [] } as never,
       project: { id: "p-old", name: "shop", status: "ACTIVE", tagList: [] },
       press: readMatePress("p-old"),
-      writer: false,
+
       mayCreateRecord: true,
       standUp: false,
       candidates: [],
@@ -1389,7 +1389,7 @@ describe("finishMateSetup — the harden path", () => {
         tagList: ["mate"],
       } as never,
       press: undefined,
-      writer: false,
+
       mayCreateRecord: true,
       standUp: false,
       candidates: [],

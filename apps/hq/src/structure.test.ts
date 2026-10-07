@@ -484,7 +484,10 @@ describe("structure", () => {
         Effect.gen(function* () {
           const structure = yield* Structure;
           yield* structure.createApp("owner", "Destination");
-          assert.deepStrictEqual(yield* structure.moveDestinations("owner", "HQ"), {});
+          assert.deepStrictEqual(yield* structure.moveDestinations("owner", "HQ"), {
+            moveTo: {},
+            refused: {},
+          });
           assert.strictEqual(
             yield* reasonOf(structure.moveProject("owner", "HQ", { appId: null, kind: "mate" })),
             "hq_project",
@@ -511,8 +514,8 @@ describe("structure", () => {
             );
             // Shop's production holds the place: not offered, and refused.
             assert.deepStrictEqual(
-              [(yield* offered)?.[shop.id], yield* intoProduction],
-              [["mate", "devstage", "stage"], "production_taken"],
+              [(yield* offered).moveTo[shop.id], yield* intoProduction],
+              [["mate", "devstage"], "production_taken"],
             );
             // Zerops no longer has it: it makes room, offered and taken.
             yield* Ref.update(view, (org) => ({
@@ -520,8 +523,8 @@ describe("structure", () => {
               projects: org.projects.filter((project) => project.id !== "P_PROD"),
             }));
             assert.deepStrictEqual(
-              [(yield* offered)?.[shop.id], yield* intoProduction],
-              [["mate", "devstage", "stage", "production"], "ok"],
+              [(yield* offered).moveTo[shop.id], yield* intoProduction],
+              [["mate", "devstage"], "ok"],
             );
           }),
         ),
@@ -2975,6 +2978,210 @@ describe("structure", () => {
           assert.strictEqual(blog.name, "Blog");
         }),
       ),
+    );
+  });
+});
+
+describe("original lifecycle receipts", () => {
+  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    it.effect.each(["present", "absent", "refused", "outage"] as const)(
+      "key cleanup is retained only from source-proven absence: %s",
+      (caseName) =>
+        withStructure((view, _down, world) =>
+          Effect.gen(function* () {
+            const structure = yield* Structure;
+            const sql = yield* SqlClient.SqlClient;
+            const core = {
+              id: "core",
+              name: "Core",
+              orgId: "ORG",
+              roleCode: "READ_ONLY",
+              canCreateProjects: false,
+              canViewFinances: false,
+              canEditFinances: false,
+              projects: [],
+              createdMs: 0,
+              createdByUser: null,
+            };
+            world.tokens.set("org-key", core);
+            if (caseName !== "absent")
+              world.tokens.set("key-value", {
+                ...core,
+                id: "exact-key",
+                orgId: caseName === "refused" ? "elsewhere" : "ORG",
+              });
+            yield* structure.createMate("owner", { projectId: "P_MATE", face: "face" });
+            yield* sql`INSERT INTO hq_mate_credential (credential_hash, project_id, key_token_id) VALUES ('fake-hash', 'P_MATE', 'exact-key')`;
+            const target = { orgId: "ORG", hqProjectId: "HQ", projectId: "P_MATE" };
+            const prepared = yield* structure.lifecycleWrite("owner", "prepare", {
+              kind: "prepare-mate-deletion",
+              ...target,
+            });
+            const completion = prepared.result!.completion;
+            yield* Ref.update(view, (current) => ({
+              ...current,
+              projects: current.projects.filter((row) => row.id !== "P_MATE"),
+            }));
+            yield* structure.lifecycleWrite("owner", "prepare:complete", {
+              kind: "complete-mate-deletion",
+              ...target,
+              preparedRequestId: "prepare",
+              completion,
+            });
+            world.down = caseName === "outage";
+            const retired = {
+              kind: "complete-key-retirement" as const,
+              ...target,
+              preparedRequestId: "prepare",
+              completionRequestId: "prepare:complete",
+            };
+            if (caseName === "absent") {
+              const receipt = yield* structure.lifecycleWrite("owner", "prepare:retired", retired);
+              assert.deepStrictEqual(
+                yield* structure.lifecycleReceipt("owner", "prepare:retired"),
+                receipt,
+              );
+              yield* Ref.update(view, (current) => ({
+                ...current,
+                members: current.members.filter((member) => member.userId !== "owner"),
+              }));
+              assert.strictEqual(
+                yield* reasonOf(structure.lifecycleWrite("owner", "prepare:retired", retired)),
+                "not_active_member",
+              );
+            } else {
+              assert.strictEqual(
+                yield* outcome(structure.lifecycleWrite("owner", "prepare:retired", retired)),
+                caseName === "present"
+                  ? "conflict"
+                  : caseName === "outage"
+                    ? "ZeropsUnavailable"
+                    : "insufficientPermissions",
+              );
+              assert.strictEqual(
+                yield* structure.lifecycleReceipt("owner", "prepare:retired"),
+                null,
+              );
+            }
+          }),
+        ),
+    );
+    it.effect.each(["accepted", "source changed", "class changed"] as const)(
+      "Move keeps the original review: %s",
+      (caseName) =>
+        withStructure(() =>
+          Effect.gen(function* () {
+            const structure = yield* Structure;
+            const source = yield* structure.createApp("owner", "Source");
+            const destination = yield* structure.createApp("owner", "Destination");
+            yield* structure.attachProject("owner", source.id, {
+              projectId: "P_MATE",
+              kind: "mate",
+              mate: { face: "face" },
+            });
+            const intent = {
+              kind: "move-project" as const,
+              orgId: "ORG",
+              hqProjectId: "HQ",
+              projectId: "P_MATE",
+              from: {
+                appId: caseName === "source changed" ? null : source.id,
+                kind: "mate" as const,
+              },
+              to: {
+                appId: destination.id,
+                kind: caseName === "class changed" ? ("production" as const) : ("mate" as const),
+              },
+              rename: { from: "name of P_MATE", name: "Destination - Mate" },
+            };
+            if (caseName !== "accepted") {
+              assert.strictEqual(
+                yield* reasonOf(structure.lifecycleWrite("owner", "move-original", intent)),
+                caseName === "source changed" ? "held_changed" : "class_move_receipt_required",
+              );
+              assert.strictEqual(yield* structure.lifecycleReceipt("owner", "move-original"), null);
+              return;
+            }
+            const receipt = yield* structure.lifecycleWrite("owner", "move-original", intent);
+            assert.deepStrictEqual(
+              yield* structure.lifecycleWrite("owner", "move-original", intent),
+              receipt,
+            );
+            assert.deepStrictEqual(
+              yield* structure.lifecycleReceipt("owner", "move-original"),
+              receipt,
+            );
+            assert.strictEqual(yield* structure.lifecycleReceipt("reader", "move-original"), null);
+            assert.deepStrictEqual(yield* structure.lifecycleRecords("owner"), [receipt]);
+            assert.strictEqual(
+              yield* reasonOf(
+                structure.lifecycleWrite("owner", "move-original", {
+                  ...intent,
+                  rename: { ...intent.rename, name: "Other" },
+                }),
+              ),
+              "held_changed",
+            );
+          }),
+        ),
+    );
+    it.effect(
+      "deletion retains its exact key and sealed completion after the project's roles disappear",
+      () =>
+        withStructure((view) =>
+          Effect.gen(function* () {
+            const structure = yield* Structure;
+            const sql = yield* SqlClient.SqlClient;
+            yield* structure.createMate("owner", { projectId: "P_MATE", face: "face" });
+            yield* sql`INSERT INTO hq_mate_credential (credential_hash, project_id, key_token_id) VALUES ('fake-hash', 'P_MATE', 'exact-key')`;
+            const target = { orgId: "ORG", hqProjectId: "HQ", projectId: "P_MATE" };
+            const prepared = yield* structure.lifecycleWrite("owner", "prepare-original", {
+              kind: "prepare-mate-deletion",
+              ...target,
+            });
+            assert.strictEqual(prepared.result?.keyTokenId, "exact-key");
+            const completion = prepared.result?.completion;
+            assert.isDefined(completion);
+            if (completion === undefined) return;
+            yield* Ref.update(view, (current) => ({
+              ...current,
+              projects: current.projects.filter((row) => row.id !== "P_MATE"),
+            }));
+            const complete = {
+              kind: "complete-mate-deletion" as const,
+              ...target,
+              preparedRequestId: "prepare-original",
+              completion,
+            };
+            assert.strictEqual(
+              yield* reasonOf(structure.lifecycleWrite("reader", "wrong-owner", complete)),
+              "not_project_admin",
+            );
+            const completed = yield* structure.lifecycleWrite(
+              "owner",
+              "complete-original",
+              complete,
+            );
+            assert.deepStrictEqual(
+              yield* structure.lifecycleWrite("owner", "complete-original", complete),
+              completed,
+            );
+            assert.deepStrictEqual(
+              yield* structure.lifecycleReceipt("owner", "prepare-original"),
+              prepared,
+            );
+            const retired = {
+              kind: "complete-key-retirement" as const,
+              ...target,
+              preparedRequestId: "prepare-original",
+              completionRequestId: "complete-original",
+            };
+            assert.strictEqual(
+              yield* reasonOf(structure.lifecycleWrite("reader", "wrong-retirement", retired)),
+              "not_project_admin",
+            );
+          }),
+        ),
     );
   });
 });

@@ -1,3 +1,4 @@
+import { HqLifecycleIntent } from "@t3tools/shared/hqLifecycle";
 import { Observation } from "./observation.ts";
 import { DEFAULT_HOSTED_APP_URL } from "@t3tools/shared/connectAuth";
 import { RASTER_CONTENT_TYPES, rasterContentType } from "@t3tools/shared/hqAttachments";
@@ -1361,6 +1362,36 @@ const routes = (
               const deploys = yield* deploysOf({ cause: "key_kept", projectId, by: userId });
               return json({ deploys }, 200);
             }),
+          );
+        }),
+      ),
+    ),
+    HttpRouter.add(
+      "POST",
+      "/api/lifecycle/:requestId",
+      handle(
+        Effect.gen(function* () {
+          const intent = yield* jsonBody(HqLifecycleIntent, BODY_LIMIT);
+          return yield* outliving(
+            Effect.gen(function* () {
+              const { userId } = yield* principal;
+              const requestId = (yield* HttpRouter.params)["requestId"] ?? "";
+              return json(yield* (yield* Structure).lifecycleWrite(userId, requestId, intent), 200);
+            }),
+          );
+        }),
+      ),
+    ),
+    HttpRouter.add(
+      "GET",
+      "/api/lifecycle/:requestId",
+      handle(
+        Effect.gen(function* () {
+          const { userId } = yield* principal;
+          const requestId = (yield* HttpRouter.params)["requestId"] ?? "";
+          return json(
+            { record: yield* (yield* Structure).lifecycleReceipt(userId, requestId) },
+            200,
           );
         }),
       ),

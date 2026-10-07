@@ -5,6 +5,43 @@ import { zeropsFault } from "../../../zerops/data/zeropsWire.ts";
 import type { IntentOf } from "../kind.ts";
 import { answeredReceipt } from "./answered.ts";
 import { verb } from "./write.ts";
+import type { OperationReceipt } from "../../model.ts";
+import type { StreamFault } from "../../streamMachine.ts";
+
+export const retiredMateKeyReceipt = (
+  requestId: string,
+  intent: IntentOf<"retire-mate-key">,
+): OperationReceipt => ({
+  ...answeredReceipt(requestId, { family: "project", id: intent.projectId }),
+  handles: [intent.tokenId],
+  outcome: { kind: "succeeded", evidence: "Zerops confirms the exact key is absent." },
+});
+
+export const readRetiredMateKey = (
+  platform: {
+    readonly readIntegrationToken: (
+      orgId: string,
+      tokenId: string,
+    ) => Promise<{ readonly id: string } | undefined>;
+  },
+  requestId: string,
+  intent: IntentOf<"retire-mate-key">,
+) =>
+  Effect.tryPromise({
+    try: () => platform.readIntegrationToken(intent.orgId, intent.tokenId),
+    catch: zeropsFault,
+  }).pipe(
+    Effect.flatMap((key) =>
+      key === undefined
+        ? Effect.succeed(retiredMateKeyReceipt(requestId, intent))
+        : key.id === intent.tokenId
+          ? Effect.succeed(null)
+          : Effect.fail<StreamFault>({
+              outcome: "transient",
+              message: "Zerops did not confirm the exact key's identity.",
+            }),
+    ),
+  );
 
 export function retireMateKeyExecutor(platform: {
   readonly readIntegrationToken: (

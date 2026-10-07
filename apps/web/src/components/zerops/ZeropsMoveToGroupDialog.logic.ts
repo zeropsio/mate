@@ -8,7 +8,7 @@
  */
 
 import { kindOfRole, type ZeropsEnvironmentRole } from "@t3tools/client-runtime/zerops";
-import type { HqMoveTo } from "@t3tools/shared/hqOffers";
+import type { HqMoveRefusals, HqMoveTo } from "@t3tools/shared/hqOffers";
 
 /** An application, as the person sees it. */
 export interface MoveApp {
@@ -30,6 +30,12 @@ export interface MoveChoices {
   readonly newApp: ReadonlyArray<ZeropsEnvironmentRole>;
   /** Whether it may leave its application. */
   readonly none: boolean;
+  readonly refused?: ReadonlyArray<{
+    readonly appId: string;
+    readonly appName: string;
+    readonly role: ZeropsEnvironmentRole;
+    readonly reason: string;
+  }>;
 }
 
 const MOVE_ROLES: ReadonlyArray<ZeropsEnvironmentRole> = ["dev", "stage", "prod"];
@@ -41,6 +47,7 @@ const MOVE_ROLES: ReadonlyArray<ZeropsEnvironmentRole> = ["dev", "stage", "prod"
  */
 export function moveChoices(input: {
   readonly moveTo: HqMoveTo | undefined;
+  readonly refused?: HqMoveRefusals | undefined;
   /** Whether HQ offers it leaving its application (`detach`). */
   readonly detach: boolean;
   readonly apps: ReadonlyArray<MoveApp>;
@@ -54,6 +61,18 @@ export function moveChoices(input: {
     }),
     newApp: rolesInto("new"),
     none: input.detach,
+    ...(input.refused === undefined
+      ? {}
+      : {
+          refused: [...input.apps, { id: "new", name: "New project" }].flatMap((app) =>
+            MOVE_ROLES.flatMap((role) => {
+              const reason = input.refused?.[app.id]?.[kindOfRole(role)];
+              return reason === undefined
+                ? []
+                : [{ appId: app.id, appName: app.name, role, reason }];
+            }),
+          ),
+        }),
   };
 }
 

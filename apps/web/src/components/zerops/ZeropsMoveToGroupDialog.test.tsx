@@ -43,6 +43,21 @@ const submit = (tree: ReactTestRenderer) =>
     tree.root.findByType("form").props.onSubmit({ preventDefault: noop });
   });
 
+it("words the source's denied destination beside allowed choices without submitting it", () => {
+  const sent = vi.fn();
+  const { tree } = mount({
+    choices: {
+      apps: [{ id: "acme", name: "Acme", roles: ["dev"] }],
+      newApp: [],
+      none: false,
+      refused: [{ appId: "acme", appName: "Acme", role: "prod", reason: "production_taken" }],
+    },
+    onSubmit: sent,
+  });
+  expect(JSON.stringify(tree.toJSON())).toContain("That project has its production already.");
+  expect(sent).not.toHaveBeenCalled();
+});
+
 /** The form as the dialog draws it, its first choice picked. */
 const drawn = (target: { readonly groupId: string | undefined }) =>
   renderToStaticMarkup(

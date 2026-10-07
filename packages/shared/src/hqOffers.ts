@@ -40,6 +40,12 @@ export type HqOffers = typeof HqOffers.Type;
 export const HqMoveTo = Schema.Record(Schema.String, Schema.Array(Schema.String));
 export type HqMoveTo = typeof HqMoveTo.Type;
 
+export const HqMoveRefusals = Schema.Record(
+  Schema.String,
+  Schema.Record(Schema.String, Schema.String),
+);
+export type HqMoveRefusals = typeof HqMoveRefusals.Type;
+
 /** A `can` record as HQ writes it: a decision for each of `V`. */
 export type HqOffersOf<V extends string> = { readonly [K in V]: Decision };
 

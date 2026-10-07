@@ -14,6 +14,8 @@ import {
   makeHqExecutor,
   makeZeropsExecutor,
   recordedEnvironment,
+  recordedMoveRemainder,
+  type MoveRemainder,
   runToEnd,
   type RunToEnd,
   operationEnd,
@@ -58,6 +60,10 @@ export interface AccountOperations {
   readonly untilEnd: (requestId: string, orgId: string) => Promise<NonNullable<OperationEnd>>;
   /** Runs one intent to its end: its owner's result, or what stopped it (`runToEnd`). */
   readonly run: RunToEnd;
+  readonly readProgress: (requestId: string) => OperationProgress;
+  readonly untilMoveRemainder: (
+    key: Parameters<typeof recordedMoveRemainder.derive>[1],
+  ) => Promise<MoveRemainder>;
   /**
    * The environment HQ's navigation records for a project attached to `appId`, once it does:
    * its name, and whether HQ holds a key that works. Rejects with what stops the wait.
@@ -142,7 +148,11 @@ export function accountOperations(
           : intent.kind === "bind-birth"
             ? intent.projectId
             : null;
-    if (projectId === null || options.requestId !== undefined) return runStep(intent, options);
+    if (options.requestId !== undefined)
+      return Effect.runPromise(operations.retry(options.requestId)).then(() =>
+        runStep(intent, options),
+      );
+    if (projectId === null) return runStep(intent, options);
     const key = { orgId: options.orgId, projectId };
     const current = registry.get(store.data.project(mateRegistration, key));
     return runStep(intent, {
@@ -182,6 +192,27 @@ export function accountOperations(
       if (ended) cancel();
     });
   const made: AccountOperations = {
+    readProgress: (requestId) => registry.get(store.data.project(operationProgress, requestId)),
+    untilMoveRemainder: (key) =>
+      new Promise((resolve, reject) => {
+        let ended = false;
+        let cancel: (() => void) | undefined;
+        cancel = registry.subscribe(
+          store.data.project(recordedMoveRemainder, key),
+          (value) => {
+            if (ended || value.kind === "checking" || value.kind === "waiting") return;
+            ended = true;
+            if (value.kind === "unobserved" || value.kind === "withheld")
+              reject(
+                new Error("HQ must confirm the original Move before its project can be renamed."),
+              );
+            else resolve(value);
+            cancel?.();
+          },
+          { immediate: true },
+        );
+        if (ended) cancel();
+      }),
     untilEnd,
     untilEnvironment,
     readCreation: (orgId, creationId) =>

@@ -860,16 +860,6 @@ describe("makeHqApi — application name and a project's application", () => {
       { method: "DELETE", path: "/api/apps/app-1" },
     ],
     [
-      "moves a project into another application",
-      (api) => api.moveProject("p1", { appId: "app-2", kind: "mate" }),
-      { method: "PUT", path: "/api/projects/p1/app", body: { appId: "app-2", kind: "mate" } },
-    ],
-    [
-      "takes a Mate out of every application",
-      (api) => api.moveProject("p1", { appId: null, kind: "mate" }),
-      { method: "PUT", path: "/api/projects/p1/app", body: { appId: null, kind: "mate" } },
-    ],
-    [
       "sets a Mate up in no application, by its record",
       (api) => api.createMate({ projectId: "p1", face: "sky:flower:named" }),
       {
@@ -1611,9 +1601,7 @@ describe("makeHqApi — a write HQ may have made", () => {
     readonly ask: (api: HqApi) => Promise<void>;
   }>([
     { name: "face", ask: (api) => api.updateMate("p1", { face: "sky" }) },
-    { name: "project move", ask: (api) => api.moveProject("p1", { appId: null, kind: "mate" }) },
     { name: "deploy token", ask: (api) => api.keepDeployToken("app-1", "stage", "token") },
-    { name: "deletion completion", ask: (api) => api.completeProjectDeletion("p1", "completion") },
   ])("a failed $name write stays uncertain and manual Again writes once", async ({ ask }) => {
     let failed = true;
     const writes: Seen[] = [];
@@ -1741,17 +1729,25 @@ describe("makeHqApi — a write HQ may have made", () => {
   });
 });
 
-describe("makeHqApi — explicit deletion completion", () => {
-  it("passes the scoped handle once and shows HQ refusal for a manual Again", async () => {
-    let refuse = true;
+describe("makeHqApi — original lifecycle receipts", () => {
+  const intent = {
+    kind: "prepare-mate-deletion" as const,
+    orgId: "org",
+    hqProjectId: "hq",
+    projectId: "P_MATE",
+  };
+  it("reads the retained result after a lost write without sending another preparation", async () => {
+    const record = {
+      requestId: "original",
+      intent,
+      result: { completion: "scoped-handle", keyTokenId: "exact-key" },
+    };
     const hq = fakeHq((seen) =>
-      seen.path.endsWith("/deletion")
-        ? json(200, { completion: "scoped-handle" })
-        : seen.path.endsWith("/deleted")
-          ? refuse
-            ? json(409, { code: "conflict", reason: "project_still_exists" })
-            : json(200, { projectId: "P_MATE" })
-          : undefined,
+      seen.path === "/api/lifecycle/original"
+        ? seen.method === "POST"
+          ? json(503, { code: "internal_error" })
+          : json(200, { record })
+        : undefined,
     );
     const api = makeHqApi({
       address: ADDRESS,
@@ -1759,17 +1755,36 @@ describe("makeHqApi — explicit deletion completion", () => {
       throughDoor: doors().throughDoor,
       openSocket: NO_SOCKET,
     });
-    const completion = await api.prepareProjectDeletion("P_MATE");
-    await expect(api.completeProjectDeletion("P_MATE", completion)).rejects.toMatchObject({
+    await expect(api.lifecycleWrite("original", intent)).rejects.toMatchObject({
+      kind: "uncertain",
+    });
+    expect(await api.lifecycleReceipt("original")).toEqual(record);
+    expect(
+      hq.seen.filter((seen) => seen.path === "/api/lifecycle/original" && seen.method === "POST"),
+    ).toHaveLength(1);
+  });
+  it("sends the original preparation id and completion seal, wording the source refusal", async () => {
+    const complete = {
+      ...intent,
+      kind: "complete-mate-deletion" as const,
+      preparedRequestId: "original",
+      completion: "scoped-handle",
+    };
+    const hq = fakeHq((seen) =>
+      seen.path === "/api/lifecycle/original%3Acomplete"
+        ? json(409, { code: "conflict", reason: "project_still_exists" })
+        : undefined,
+    );
+    const api = makeHqApi({
+      address: ADDRESS,
+      fetch: hq.fetch,
+      throughDoor: doors().throughDoor,
+      openSocket: NO_SOCKET,
+    });
+    await expect(api.lifecycleWrite("original:complete", complete)).rejects.toMatchObject({
       reason: "project_still_exists",
     });
-    expect(hq.seen.filter((seen) => seen.path.endsWith("/deleted"))).toEqual([
-      expect.objectContaining({ method: "POST", body: { completion: "scoped-handle" } }),
-    ]);
-    refuse = false;
-    await api.completeProjectDeletion("P_MATE", completion);
-    expect(hq.seen.filter((seen) => seen.path.endsWith("/deletion"))).toHaveLength(1);
-    expect(hq.seen.filter((seen) => seen.path.endsWith("/deleted"))).toHaveLength(2);
+    expect(hq.seen.at(-1)?.body).toEqual(complete);
   });
 });
 
