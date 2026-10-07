@@ -9,8 +9,8 @@
  *
  * Merge squashes it in HQ with the head the review shows, and *Close without merging…* asks
  * before it closes it — each where HQ offers it to the person (`useChangeOffers`). After
- * Merge the review stays: it says what happened, and where production waits for a code change,
- * its button opens the release's review in place. A recipe change is never released: its review
+ * Merge the review stays: it says what happened and where production waits for a code change.
+ * Production has its own release review. A recipe change is never released: its review
  * says, from the files it changed, what its merge does to the environments made from it.
  *
  * `ChangeReviewView` is the picture with every read handed in, so the harness shows each state.
@@ -115,6 +115,7 @@ export function ZeropsChangeReview({
   // The change's head, words and landing are its application's detail: held while it is drawn.
   useHqAppDetailHold([target.groupId]);
   const reviewOffers = useChangeOffers()(target.groupId);
+  const denied = reviewOffers?.readRefused === true;
   const router = useRouter();
   // The application's flow, what a release would put live compared while the review is drawn.
   const flows = useProjectFlows(
@@ -144,16 +145,19 @@ export function ZeropsChangeReview({
   // A change the flow does not hold — landed before the flow was read, or a flow not read yet —
   // is read on its own.
   const landed = useLinkedChange(
-    open !== undefined || merged !== undefined
+    denied || open !== undefined || merged !== undefined
       ? null
       : { appId: target.groupId, repo: target.repository, number: target.number },
   );
-  const current = open ?? merged ?? (landed.kind === "read" ? landed.pull : undefined);
+  const current = denied
+    ? undefined
+    : (open ?? merged ?? (landed.kind === "read" ? landed.pull : undefined));
   // A change just merged leaves the open ones a read before the landed ones have it: the review
   // keeps the change it was showing.
   const [held, setHeld] = useState(current);
-  if (current !== undefined && current !== held) setHeld(current);
-  const pull = current ?? held;
+  if (denied && held !== undefined) setHeld(undefined);
+  else if (current !== undefined && current !== held) setHeld(current);
+  const pull = denied ? undefined : (current ?? held);
 
   if (pull === undefined) {
     return (
@@ -166,7 +170,7 @@ export function ZeropsChangeReview({
         onClose={onClose}
         onOpenPage={onOpenPage}
         primary={
-          landed.readAgain === undefined
+          denied || landed.readAgain === undefined
             ? undefined
             : {
                 label: "Read again",
@@ -180,7 +184,14 @@ export function ZeropsChangeReview({
         verdict={changeReadVerdict({
           repository: target.repository,
           number: target.number,
-          read: landed.kind === "read" ? { kind: "reading" } : landed,
+          read: denied
+            ? {
+                kind: "refused",
+                reason: reviewOffers.why.read ?? "HQ no longer offers read access to this change.",
+              }
+            : landed.kind === "read"
+              ? { kind: "reading" }
+              : landed,
           failure: flows.readFailure,
           projectKnown: flows.groupsRead ? flows.knownGroups.has(target.groupId) : undefined,
         })}
@@ -223,7 +234,7 @@ function ChangeReviewData({
   readonly frame: ReviewFrame;
   readonly onOpenPage: (() => void) | undefined;
   readonly back: ReviewButton | undefined;
-  readonly pull: FlowPullRequest;
+  readonly pull: FlowPullRequest & Pick<ChangeReviewInput["pull"], "pipeline">;
   readonly target: ChangeTarget;
   readonly titleId: string | undefined;
   readonly onClose: () => void;
@@ -239,7 +250,18 @@ function ChangeReviewData({
   const verbs = useFlowVerbs();
   const mateNames = useMateNames();
   const [press, setPress] = useState<ReviewPress>({ kind: "idle" });
-  const [closing, setClosing] = useState<ReviewClose>({ kind: "idle" });
+  const [closePress, setClosePress] = useState({
+    head: pull.headSha,
+    press: { kind: "idle" } as ReviewClose,
+  });
+  // A confirmation is for the work shown when it was asked. A newer push needs a new confirmation;
+  // an already-submitted close keeps following its receipt.
+  const changed =
+    closePress.head !== pull.headSha &&
+    (closePress.press.kind === "asked" || closePress.press.kind === "refused");
+  const closing: ReviewClose = changed ? { kind: "idle" } : closePress.press;
+  if (changed) setClosePress({ head: pull.headSha, press: { kind: "idle" } });
+  const setClosing = (press: ReviewClose) => setClosePress({ head: pull.headSha, press });
   const change = { repository: pull.repository, number: pull.number };
   const merge = async () => {
     setPress({ kind: "running" });
@@ -404,7 +426,7 @@ const NO_REMARKS: ReadonlyArray<ChangeRemark> = [];
 export interface ChangeReviewViewProps {
   /** A dialog over the conversation, or the change's own page. */
   readonly frame?: ReviewFrame | undefined;
-  readonly pull: FlowPullRequest;
+  readonly pull: FlowPullRequest & Pick<ChangeReviewInput["pull"], "pipeline">;
   /** The Mate that wrote it — its name, its face, and whether it is the person's own. */
   readonly mate: {
     readonly name: string;
@@ -540,7 +562,9 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
   const fix = model.verdict.fix;
   // Asked to close it: the button closes it, and the quiet word keeps it open.
   const asked =
-    closing.kind === "asked" || closing.kind === "running" || closing.kind === "refused";
+    model.verdict.state === "close-confirm" ||
+    model.verdict.state === "closing" ||
+    model.verdict.state === "close-refused";
   // Merged or closed: nothing more to ask of it here.
   const over = model.verdict.state === "merged" || model.verdict.state === "closed";
   // Read from the release or roll back that lists it: merged already, and that is the next review.
@@ -551,7 +575,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
     <ZeropsReviewSurface
       back={props.back}
       consequence={
-        props.offers?.merge === false && props.offers.why.merge !== undefined
+        !over && !asked && props.offers?.merge === false && props.offers.why.merge !== undefined
           ? props.offers.why.merge
           : model.consequence
       }
@@ -587,11 +611,11 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
           ? undefined
           : {
               ...primary,
-              busy: press.kind === "running" || closing.kind === "running",
+              busy: model.verdict.state === "merging" || model.verdict.state === "closing",
               label:
-                press.kind === "running"
+                model.verdict.state === "merging"
                   ? "Merging"
-                  : closing.kind === "running"
+                  : model.verdict.state === "closing"
                     ? "Closing"
                     : primary.label,
               onPress: () => {
@@ -631,6 +655,31 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
           <ReviewWhere answer={answer} />
         </ReviewSection>
       )}
+      <ReviewSection title="Pipeline checks">
+        {model.pipeline?.why === undefined ? null : <p>{model.pipeline.why}</p>}
+        {model.pipeline?.checks.length === 0 ? null : (
+          <ul>
+            {model.pipeline?.checks.map((check) => (
+              <li key={check.id}>
+                {check.name} ·{" "}
+                {check.requirement === "required"
+                  ? "Required by repository"
+                  : check.requirement === "advisory"
+                    ? "Advisory"
+                    : "Requirement unknown"}{" "}
+                ·{" "}
+                {check.state === "passed"
+                  ? "Passed"
+                  : check.state === "failed"
+                    ? "Failed"
+                    : check.state === "running"
+                      ? "Running"
+                      : "Status unknown"}
+              </li>
+            ))}
+          </ul>
+        )}
+      </ReviewSection>
       <ReviewDescription
         description={pull.description}
         hqAddress={props.hqAddress}

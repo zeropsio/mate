@@ -1,9 +1,69 @@
+// @effect-diagnostics nodeBuiltinImport:off -- temporary git checkout for a real Mate push.
+import * as NodeFS from "node:fs";
+import * as NodePath from "node:path";
+import { enrollMate } from "../../../../../hq/test/harness/runningCore.ts";
+import { gitClient } from "../../../../../hq/test/harness/gitClient.ts";
+import { remoteOf } from "../../../../../hq/test/harness/mates.ts";
 import * as Effect from "effect/Effect";
+import * as Schema from "effect/Schema";
+import { ChangeDetailResponse } from "@t3tools/shared/hqChanges";
+import { MateState } from "@t3tools/shared/mateLink";
 import { expect } from "@effect/vitest";
 import type { createScenario } from "../../harness/scenario.ts";
-export { changeFixture, anotherOrganization } from "../../fakes/d-change/changes.ts";
+import { changeFixture as originalChangeFixture } from "../../fakes/d-change/changes.ts";
+export { anotherOrganization } from "../../fakes/d-change/changes.ts";
 
 type Scenario = Effect.Success<ReturnType<typeof createScenario>>;
+const decodeDetail = Schema.decodeUnknownEffect(ChangeDetailResponse);
+const decodeMateState = Schema.decodeUnknownSync(MateState);
+
+/** Real HQ outcomes and another real push; scenarios contain only user actions and assertions. */
+export const changeFixture = Effect.fn(function* (s: Scenario) {
+  const change = yield* originalChangeFixture(s);
+  const appId = s.appIds.get("Shop")!;
+  const path = `/api/apps/${appId}/changes/appdev/1`;
+  return {
+    ...change,
+    closedWithBranch: Effect.gen(function* () {
+      const response = yield* s.drivers.core.call("GET", path, { session: s.owner });
+      expect(response.status).toBe(200);
+      const record = yield* decodeDetail(response.body);
+      expect(record.change.state).toBe("closed");
+      const git = yield* s.drivers.core.gitHost.git;
+      const branches = yield* git.branches({ appId, id: "appdev" });
+      expect(branches.items.find((branch) => branch.ref === "refs/heads/mate/Ada/1")?.sha).toBe(
+        record.change.head,
+      );
+    }),
+    pushAgain: Effect.gen(function* () {
+      const credential = yield* enrollMate(s.drivers.core.call, s.drivers.core.fake, "Ada");
+      const git = yield* gitClient;
+      yield* git.checked([
+        "clone",
+        "--branch",
+        "mate/Ada/1",
+        remoteOf(s.drivers.core.origin, credential, appId, "appdev"),
+        "work",
+      ]);
+      const work = NodePath.join(git.dir, "work");
+      yield* Effect.sync(() => NodeFS.writeFileSync(NodePath.join(work, "tax.txt"), "Tax: 4\n"));
+      yield* git.checked(["add", "tax.txt"], work);
+      yield* git.checked(["commit", "-m", "Show tax"], work);
+      const head = yield* git.checked(["rev-parse", "HEAD"], work);
+      yield* git.checked(["push", "origin", "HEAD:refs/heads/mate/Ada/1"], work);
+      yield* s.drivers.links
+        .get("Ada")!
+        .takeWhere(
+          "HQ recorded the newer change head",
+          (frame) =>
+            frame.type === "state" &&
+            decodeMateState(frame.mate).changes.some(
+              (change) => change.repo === "appdev" && change.number === 1 && change.head === head,
+            ),
+        );
+    }),
+  };
+});
 
 export function review(s: Pick<Scenario, "page" | "web">) {
   let guardedDocument: number | undefined;
@@ -150,6 +210,24 @@ export function review(s: Pick<Scenario, "page" | "web">) {
     }),
     merge: Effect.promise(async () => {
       await s.page.locator('::-p-aria(Merge[role="button"])').click();
+    }),
+    askClose: Effect.promise(async () => {
+      await s.page.locator('::-p-aria(Close without merging…[role="button"])').click();
+    }),
+    confirmClose: Effect.promise(async () => {
+      await s.page.locator('::-p-aria(Close without merging[role="button"])').click();
+    }),
+    cannotClose: Effect.promise(async () => {
+      expect(
+        await s.page.evaluate(() =>
+          [...document.querySelectorAll<HTMLButtonElement>("button")].some(
+            (button) =>
+              button.innerText.trim().startsWith("Close without merging") &&
+              !button.disabled &&
+              button.getBoundingClientRect().height > 0,
+          ),
+        ),
+      ).toBe(false);
     }),
     cannotMerge: Effect.promise(async () => {
       expect(
