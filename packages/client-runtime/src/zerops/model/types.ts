@@ -228,7 +228,7 @@ export interface ZeropsEnvChange {
    * `generate-dotenv` writes a local `.env`, or with `preview` only reads what
    * it would change; an action it does not know updates.
    */
-  readonly action: "get" | "set" | "delete" | "dotenv" | "dotenvPreview" | "update";
+  readonly action: "get" | "set" | "delete" | "request" | "dotenv" | "dotenvPreview" | "update";
   readonly scope: "project" | "service";
   /** The service by its hostname, or the setup block a `.env` is written for. */
   readonly service?: string;
@@ -239,6 +239,23 @@ export interface ZeropsEnvChange {
    * this many variables nothing sets — set by hand, lost on a write.
    */
   readonly refused?: number;
+  /** `request` only, when it named a key: the value it asked the person for. */
+  readonly request?: ZeropsVaultRequest;
+}
+
+/**
+ * A value the agent asked the person for (`zerops_env action=request`): one only they have, typed
+ * into Mate and written straight to the vault — it never crosses the conversation. There is no
+ * value here, only its name, how it is kept, and why it is asked.
+ */
+export interface ZeropsVaultRequest {
+  readonly key: string;
+  /** zcp's answer, else the input's flag, else by name — as zcp decides it. */
+  readonly sensitive: boolean;
+  /** One sentence for the person: what it is for and where to find it. */
+  readonly reason?: string;
+  /** zcp found the key in that vault already: nothing was asked. */
+  readonly alreadySet: boolean;
 }
 
 /**

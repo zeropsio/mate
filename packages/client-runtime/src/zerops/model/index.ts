@@ -34,6 +34,7 @@ export type {
   ZeropsCallImage,
   ZeropsCallStatus,
   ZeropsEnvChange,
+  ZeropsVaultRequest,
   ZeropsOperation,
   ZeropsOperationBrowserSummary,
   ZeropsOperationKind,

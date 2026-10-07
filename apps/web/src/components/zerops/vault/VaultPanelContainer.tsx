@@ -15,6 +15,7 @@ import {
   vaultImpact,
   type VaultChange,
   type VaultScopeRef,
+  type VaultView,
   type VaultWrite,
 } from "@t3tools/client-runtime/data";
 import { useAtomValue } from "@effect/atom-react";
@@ -49,6 +50,73 @@ const CHANGE_OF: Readonly<Record<VaultWrite["kind"], VaultChange["kind"]>> = {
   remove: "removed",
 };
 
+/**
+ * Writes to one project's vault as `vault-write` operations, each waited to its end: how it ended,
+ * and — when the platform took it — the change as the Mate is told it, read off the vault as it
+ * stood (a removed value's readers are gone from the view once it is).
+ */
+export function useVaultWriter(project: VaultProject | undefined, view: VaultView) {
+  const operations = useAccountOperations();
+  const run = useCallback(
+    async (
+      intent: Parameters<typeof operations.submit>[0] & { readonly orgId: string },
+    ): Promise<VaultWriteOutcome> => {
+      const { requestId, progress } = await operations.submit(intent);
+      return (
+        vaultOutcome(progress) ??
+        vaultOutcome(await operations.untilEnd(requestId, intent.orgId)) ?? { ok: true }
+      );
+    },
+    [operations],
+  );
+  const write = useCallback(
+    async (
+      scope: VaultScopeRef,
+      write: VaultWrite,
+    ): Promise<{ readonly outcome: VaultWriteOutcome; readonly change: VaultChange | null }> => {
+      if (project === undefined) {
+        return {
+          outcome: {
+            ok: false,
+            code: null,
+            message: "This environment's project is not known yet.",
+          },
+          change: null,
+        };
+      }
+      const impact = vaultImpact(view, scope, write);
+      const held = view.scopes.find(
+        (each) => each.id === (scope.kind === "shared" ? "shared" : scope.serviceId),
+      );
+      const outcome = await run({
+        kind: "vault-write",
+        orgId: project.orgId,
+        projectId: project.projectId,
+        scope,
+        write,
+      });
+      if (!outcome.ok) return { outcome, change: null };
+      return {
+        outcome,
+        change: {
+          scope,
+          hostname: held?.hostname ?? null,
+          key: write.key,
+          kind: CHANGE_OF[write.kind],
+          sensitive:
+            write.kind === "remove"
+              ? (held?.values.find((value) => value.id === write.id)?.sensitive ?? false)
+              : write.sensitive,
+          at: new Date().toISOString(),
+          impact,
+        },
+      };
+    },
+    [project, run, view],
+  );
+  return { run, write };
+}
+
 /** One project's vault, fed from the account. `onWritten` hears each write the platform took. */
 export function ProjectVaultPanel({
   project,
@@ -67,53 +135,14 @@ export function ProjectVaultPanel({
   useDetailDemand("serviceVariable", undefined, projectId);
   useDetailDemand("process", "history", projectId);
   const shown = useAtomValue(projectId === null ? UNREAD : vaultAtom(projectId));
-  const operations = useAccountOperations();
-  const run = useCallback(
-    async (
-      intent: Parameters<typeof operations.submit>[0] & { readonly orgId: string },
-    ): Promise<VaultWriteOutcome> => {
-      const { requestId, progress } = await operations.submit(intent);
-      return (
-        vaultOutcome(progress) ??
-        vaultOutcome(await operations.untilEnd(requestId, intent.orgId)) ?? { ok: true }
-      );
-    },
-    [operations],
-  );
+  const { run, write: writeVault } = useVaultWriter(project, shown);
   const onWrite = useCallback(
     async (scope: VaultScopeRef, write: VaultWrite): Promise<VaultWriteOutcome> => {
-      if (project === undefined) {
-        return { ok: false, code: null, message: "This environment's project is not known yet." };
-      }
-      // What the write means is read off the vault as it stood: a removed value's readers are
-      // gone from the view once it is.
-      const impact = vaultImpact(shown, scope, write);
-      const held = shown.scopes.find(
-        (each) => each.id === (scope.kind === "shared" ? "shared" : scope.serviceId),
-      );
-      const outcome = await run({
-        kind: "vault-write",
-        orgId: project.orgId,
-        projectId: project.projectId,
-        scope,
-        write,
-      });
-      if (outcome.ok)
-        onWritten?.({
-          scope,
-          hostname: held?.hostname ?? null,
-          key: write.key,
-          kind: CHANGE_OF[write.kind],
-          sensitive:
-            write.kind === "remove"
-              ? (held?.values.find((value) => value.id === write.id)?.sensitive ?? false)
-              : write.sensitive,
-          at: new Date().toISOString(),
-          impact,
-        });
+      const { outcome, change } = await writeVault(scope, write);
+      if (change !== null) onWritten?.(change);
       return outcome;
     },
-    [onWritten, project, run, shown],
+    [onWritten, writeVault],
   );
   const onRestart = useCallback(
     async (serviceId: string): Promise<void> => {

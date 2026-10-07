@@ -369,6 +369,50 @@
       "captures": []
     },
     {
+      "id": "zerops-vault-request",
+      "title": "Zerops vault request card",
+      "components": [
+        "apps/web/src/components/zerops/vault/VaultRequestCard.tsx",
+        "apps/web/src/components/zerops/vault/VaultRequestCardContainer.tsx",
+        "apps/web/src/components/zerops/vault/vaultRequest.logic.ts"
+      ],
+      "entryPoints": [
+        {
+          "kind": "inline",
+          "value": "Conversation, after a run whose Mate called zerops_env action=request"
+        }
+      ],
+      "clients": {
+        "web": "yes",
+        "desktop": "yes",
+        "mobile": {
+          "status": "n/a",
+          "reason": "Native release is dormant; its entry directs users to hosted Mate. This web surface has no active native implementation."
+        }
+      },
+      "providers": "n/a",
+      "connectionModes": ["zerops-door"],
+      "contracts": ["@t3tools/client-runtime/data", "@t3tools/client-runtime/zerops/model"],
+      "reverseStates": [
+        {
+          "action": "Put in vault",
+          "reverse": "none: a sensitive value is never read back; the Vault tab removes or replaces it."
+        },
+        {
+          "action": "Not now",
+          "reverse": "none: kept in memory only; a reload draws the request open until the key is in the vault."
+        }
+      ],
+      "docs": {
+        "none": "No docs/user page documents the vault request yet."
+      },
+      "tests": [
+        "apps/web/src/components/zerops/vault/VaultRequestCard.test.tsx",
+        "apps/web/src/components/zerops/vault/vaultRequest.logic.test.ts"
+      ],
+      "captures": []
+    },
+    {
       "id": "zerops-review",
       "title": "Zerops review",
       "components": [
