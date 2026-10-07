@@ -1087,7 +1087,8 @@ describe("MessagesTimeline", () => {
 
     expect(markup).toContain("contextWindow.test.ts");
     expect(markup).toContain("Wadduo");
-    expect(markup).toContain('data-testid="file-diff"');
+    expect(markup).toContain("Loading diff...");
+    expect(markup).toContain("keeps valid zero-usage snapshots");
     expect(markup).not.toContain(">Review comment<");
     expect(markup).not.toContain("&lt;review_comment");
     expect(markup).not.toContain("&lt;/review_comment&gt;");

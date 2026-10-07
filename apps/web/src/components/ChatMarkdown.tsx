@@ -83,8 +83,7 @@ import {
   usePreferredEditor,
 } from "../editorPreferences";
 import { openInEditorMenuLabel } from "../editorLabels";
-import { resolveDiffThemeName, type DiffThemeName } from "../lib/diffRendering";
-import { fnv1a32 } from "../lib/diffRendering";
+import { fnv1a32, resolveDiffThemeName, type DiffThemeName } from "../lib/diffPresentation";
 import { LRUCache } from "../lib/lruCache";
 import { getSyntaxHighlighterPromise } from "../lib/syntaxHighlighting";
 import { GitHubIcon } from "./Icons";

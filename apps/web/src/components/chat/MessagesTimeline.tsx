@@ -51,8 +51,7 @@ import { revealBy } from "./timelineReveal.logic";
 import { usePace } from "./usePace";
 import { FOLLOW_TAU_MS, approach } from "./runMotion.logic";
 import { LegendList, type LegendListRef } from "@legendapp/list/react";
-import { FileDiff } from "@pierre/diffs/react";
-import { DiffWorkerPoolProvider } from "../DiffWorkerPoolProvider";
+import { ReviewCommentDiff } from "./ReviewCommentDiff";
 import {
   createMessageAttachmentPreviewProjector,
   deriveTimelineEntries,
@@ -67,11 +66,6 @@ import {
   isImageAttachment,
   type TurnDiffSummary,
 } from "../../types";
-import {
-  getRenderablePatch,
-  resolveDiffThemeName,
-  resolveFileDiffPath,
-} from "../../lib/diffRendering";
 import ChatMarkdown from "../ChatMarkdown";
 import { queuedBubbleState, type QueuedComposerMessage } from "../../queuedMessageStore";
 import {
@@ -219,7 +213,6 @@ import { vaultAskOf } from "../zerops/vault/vaultRequest.logic";
 import { useOperationCard } from "../../zerops/activity/useOperationCard";
 import { formatWorkspaceRelativePath } from "../../filePathDisplay";
 import {
-  buildReviewCommentRenderablePatch,
   formatReviewCommentFence,
   parseReviewCommentMessageSegments,
   type ReviewCommentContext,
@@ -3373,10 +3366,6 @@ const UserMessageBody = memo(function UserMessageBody(props: {
 function UserMessageReviewCommentCard({ comment }: { comment: ReviewCommentContext }) {
   const ctx = use(TimelineRowCtx);
   const fenceLanguage = comment.fenceLanguage ?? "diff";
-  const renderablePatch = getRenderablePatch(
-    buildReviewCommentRenderablePatch(comment),
-    `review-comment:${comment.id}`,
-  );
 
   return (
     <div className="space-y-2 rounded-lg border border-border/70 bg-background/70 p-3">
@@ -3402,25 +3391,8 @@ function UserMessageReviewCommentCard({ comment }: { comment: ReviewCommentConte
           className="text-message-foreground"
         />
       )}
-      {renderablePatch?.kind === "files" && (
-        <DiffWorkerPoolProvider>
-          {renderablePatch.files.map((fileDiff) => (
-            <FileDiff
-              key={resolveFileDiffPath(fileDiff)}
-              fileDiff={fileDiff}
-              options={{
-                collapsed: false,
-                diffStyle: "unified",
-                theme: resolveDiffThemeName(ctx.resolvedTheme),
-              }}
-            />
-          ))}
-        </DiffWorkerPoolProvider>
-      )}
-      {renderablePatch?.kind === "raw" && (
-        <pre className="overflow-x-auto rounded-md bg-muted/40 p-2 text-xs">
-          {renderablePatch.text}
-        </pre>
+      {fenceLanguage === "diff" && comment.diff.trim().length > 0 && (
+        <ReviewCommentDiff comment={comment} theme={ctx.resolvedTheme} />
       )}
     </div>
   );

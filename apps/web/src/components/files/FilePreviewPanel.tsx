@@ -1,3 +1,4 @@
+import { resolveDiffThemeName } from "~/lib/diffPresentation";
 import { AssetImage } from "~/assets/AssetImage";
 import type {
   EditorId,
@@ -21,7 +22,7 @@ import { useRemoteOpenState } from "~/remoteOpen";
 import { useClientSettings } from "~/hooks/useSettings";
 import { useTheme } from "~/hooks/useTheme";
 import { getLocalStorageItem, setLocalStorageItem, useLocalStorage } from "~/hooks/useLocalStorage";
-import { DIFF_SURFACE_THEME_UNSAFE_CSS, resolveDiffThemeName } from "~/lib/diffRendering";
+import { DIFF_SURFACE_THEME_UNSAFE_CSS } from "~/lib/diffRendering";
 import { cn } from "~/lib/utils";
 import { resolvePathLinkTarget } from "~/terminal-links";
 import { ScrollArea } from "~/components/ui/scroll-area";

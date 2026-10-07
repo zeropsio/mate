@@ -1,3 +1,4 @@
+import { resolveDiffThemeName } from "~/lib/diffPresentation";
 import { useAtomValue } from "@effect/atom-react";
 import type { FileDiffContentsLoader } from "@pierre/diffs";
 import { useParams } from "@tanstack/react-router";
@@ -39,7 +40,6 @@ import {
   getDiffCollapseIconClassName,
   getDiffLineStat,
   getRenderablePatch,
-  resolveDiffThemeName,
   resolveFileDiffPath,
 } from "../lib/diffRendering";
 import { areAllDiffFilesCollapsed, toggleAllDiffFiles } from "../lib/diffCollapse";

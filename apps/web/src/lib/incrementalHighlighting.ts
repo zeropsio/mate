@@ -1,6 +1,6 @@
 import type { DiffsHighlighter } from "@pierre/diffs";
 
-import type { DiffThemeName } from "./diffRendering";
+import type { DiffThemeName } from "./diffPresentation";
 
 function codeChildren(root: ReturnType<DiffsHighlighter["codeToHast"]>) {
   const pre = root.children.find((node) => node.type === "element" && node.tagName === "pre");
