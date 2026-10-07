@@ -192,6 +192,8 @@ type Inbox =
   | { readonly _tag: "live"; readonly frame: LiveFrame }
   | { readonly _tag: "failed"; readonly cause: unknown };
 
+/** Inputs a subscription holds while its client reads the frames before them. */
+const INBOX = 1024;
 /** Streamed text the live plane named by a key no committed item has yet. */
 const PENDING_KEYS = 8;
 /** Keys of items whose boundary was sent: their late deltas are dropped. */
@@ -265,7 +267,9 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
       const epoch = caller.epoch;
       return Stream.unwrap(
         Effect.gen(function* () {
-          const inbox = yield* Queue.unbounded<Inbox>();
+          // Bounded: a subscriber that stops reading holds the live plane back, which drops it
+          // frames and says so (Gap); it is then opened again with the text so far.
+          const inbox = yield* Queue.bounded<Inbox>(INBOX);
           // Attach first: whatever commits or streams from here on reaches the inbox.
           const attachedAt = yield* records.head(conversation);
           yield* conversations.subscribe(conversation, attachedAt).pipe(
