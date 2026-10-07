@@ -2612,6 +2612,51 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
+  it.effect("refuses to clone a project into V1 once the Mate engine owns the conversation", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const parentDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-ws-engine-clone-" });
+      const touched: Array<string> = [];
+      yield* buildAppUnderTest({
+        config: { mateEngine: "mate" },
+        layers: {
+          orchestrationEngine: {
+            dispatch: (command) =>
+              Effect.sync(() => void touched.push(command.type)).pipe(Effect.as({ sequence: 1 })),
+          },
+          sourceControlRepositoryService: {
+            prepareClone: (input) =>
+              Effect.sync(() => void touched.push("prepareClone")).pipe(
+                Effect.as({
+                  destinationPath: input.destinationPath,
+                  remoteUrl: input.remoteUrl ?? "",
+                  cloneUrl: input.remoteUrl ?? "",
+                  repository: null,
+                }),
+              ),
+          },
+        },
+      });
+
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const refused = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          client[WS_METHODS.projectCloneStart]({
+            projectId: ProjectId.make("project-engine-clone"),
+            title: "t3code",
+            createdAt: "2026-10-07T10:00:00.000Z",
+            remoteUrl: "git@github.com:octocat/t3code.git",
+            destinationPath: path.join(parentDir, "t3code"),
+          }).pipe(Effect.flip),
+        ),
+      );
+
+      assert.equal(refused.message, ENGINE_MOVED);
+      assert.deepEqual(touched, []);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
   it.effect("refuses a V1 command over HTTP once the Mate engine owns the conversation", () =>
     Effect.gen(function* () {
       const dispatched: Array<string> = [];
