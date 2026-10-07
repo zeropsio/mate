@@ -564,8 +564,8 @@ export function jumpWritePlan(input: {
       return {
         hint:
           input.pausedUntilLabel === undefined
-            ? "I've hit a usage limit. Sending tries again."
-            : `I've hit a usage limit — available again at ${input.pausedUntilLabel}. Sending tries again.`,
+            ? `${name} hit a usage limit. Sending tries again.`
+            : `${name} hit a usage limit — can continue at ${input.pausedUntilLabel}. Sending tries again.`,
         action: "send",
       };
     }

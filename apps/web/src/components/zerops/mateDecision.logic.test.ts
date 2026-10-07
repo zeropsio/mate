@@ -151,7 +151,7 @@ describe("mateDecision — what a Mate waits on, as a surface answers it", () =>
       }),
     ).toEqual({
       kind: "failure",
-      message: "I need a Claude sign-in to continue.",
+      message: "Kai needs a Claude sign-in to continue.",
     });
   });
 
@@ -162,7 +162,7 @@ describe("mateDecision — what a Mate waits on, as a surface answers it", () =>
         kind: "failed",
         failure: "Claude usage limit reached. Send the message again.",
       }),
-    ).toEqual({ kind: "failure", message: "I've hit the Claude limit." });
+    ).toEqual({ kind: "failure", message: "Kai hit the Claude limit." });
   });
   it("leaves another failure that says it could not authenticate as it came", () => {
     const failure = "mirror_error: Git could not authenticate with the remote.";

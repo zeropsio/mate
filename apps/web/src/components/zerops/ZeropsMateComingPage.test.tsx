@@ -234,6 +234,7 @@ vi.mock("./ZeropsMateEmptyState", () => ({
       readonly kind: string;
       readonly below: ReactNode;
       readonly headline?: string;
+      readonly sentence?: string;
     };
     readonly mate: { readonly name: string };
   }) =>
@@ -242,6 +243,7 @@ vi.mock("./ZeropsMateEmptyState", () => ({
       { "data-kind": coming.kind },
       mate.name,
       coming.headline,
+      coming.sentence,
       coming.below,
       standUpFailure === undefined
         ? null
@@ -355,7 +357,7 @@ describe("a Mate's own view while its link is made", () => {
     act(() => vi.advanceTimersByTime(10_000));
     openView();
     expect(said()).toContain("Quinn");
-    expect(said()).toContain("I'm reconnecting. Your conversation will open when I'm back.");
+    expect(said()).toContain("Quinn is reconnecting.");
     expect(app.connect).toHaveBeenCalledWith({ key: KEY });
     expect(app.navigate).not.toHaveBeenCalled();
   });
@@ -372,7 +374,7 @@ describe("a Mate's own view while its link is made", () => {
       },
     } satisfies MateLink;
     openView();
-    expect(said()).toContain("I'm having trouble connecting. Trying again in 5 s.");
+    expect(said()).toContain("Quinn is reconnecting.");
     expect(buttons()).toEqual(["Try now"]);
     app.connect.mockClear();
     act(() =>
@@ -393,7 +395,7 @@ describe("a Mate's own view while its link is made", () => {
       reachability: { kind: "refused-credential" },
     } satisfies MateLink;
     openView();
-    expect(said()).toContain("I couldn't accept your sign-in.");
+    expect(said()).toContain("Quinn couldn't accept your sign-in.");
     expect(buttons()).toEqual(["Try again"]);
     app.connect.mockClear();
     act(() =>
@@ -418,7 +420,7 @@ describe("a Mate's own view while its link is made", () => {
   it("waits for a machine to name it before connecting: a Connect before the stage holds it ends unheard", () => {
     app.link = { key: KEY, environmentId: undefined, reachability: null } satisfies MateLink;
     openView();
-    expect(said()).toContain("I'm opening the conversation.");
+    expect(said()).toContain("Quinn is opening the conversation.");
     expect(app.connect).not.toHaveBeenCalled();
     expect(app.navigate).not.toHaveBeenCalled();
   });
@@ -432,7 +434,8 @@ describe("a Mate's own view while its link is made", () => {
         reachability: { kind: "gone", because: "direct-not-found" },
       } satisfies MateLink,
       listing: listingOf([QUINN]),
-      words: "This project is no longer available. It was deleted, or you no longer have access.",
+      words:
+        "Quinn's project is no longer available. It was deleted, or you no longer have access.",
       name: "Quinn",
     },
     {
@@ -1297,7 +1300,7 @@ it("shows HQ's read-only refusal and never connects a listed Mate", () => {
   act(() => {
     tree = create(h(ZeropsMateComingPage, { projectId: PROJECT }));
   });
-  expect(said()).toContain("You can see this project in Zerops but can't operate its Mate.");
+  expect(said()).toContain("You can see the project, but can't operate its Mate.");
   expect(app.connect).not.toHaveBeenCalled();
   expect(buttons()).not.toContain("Connect");
 });

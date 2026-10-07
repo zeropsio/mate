@@ -73,16 +73,20 @@ Nested rounded edges run parallel: the outer radius is the inner radius plus the
 
 ### Notices in the web client
 
-- A normal wait, usage limit, sign-in request or lost connection is a status, with neutral ink,
-  a soft surface and the standard border. Amber marks a decision or caution. Red marks a broken
+- Informational waits use calm grey ink, a soft surface and the standard border. Stopped or
+  blocked work (a usage limit, pause, sign-in or pending answer) uses an amber icon and short label
+  in the menu and conversation, plus the menu attention dot. Red marks a broken
   action that needs the person now; it belongs on the small mark, rather than tinting the whole notice.
-- When the state is the Mate's own, it speaks in first person: “I've hit the Claude limit.”
+- When the state is the Mate's own, name it in third person: “Rosa hit the Claude limit.”
   Other facts address the person directly. Say the state once; a timeline pause owns its notice.
 - Give the next action where it is available, rather than asking the person to type a message again.
   Give a reset time only when the coding agent supplies it, and promise automatic continuation only
   while it is enabled. A passed clock time is not evidence that work has resumed.
 - A restart uses the existing waking face, with reduced motion respected. A lost link says it is
   reconnecting; it does not claim a restart. Opening a conversation has an immediate visible state.
+  Conversation waits and refusals share
+  a compact composition: the known Mate's face, a named state line, one short secondary line and
+  actions aligned with the text. Project services stay in a collapsible list.
 
 ## 4. Rules — machine-checked
 

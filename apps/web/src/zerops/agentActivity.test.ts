@@ -747,7 +747,7 @@ describe("what a Mate's row says without words", () => {
     expect(activity?.face).toBe("sleep");
     expect(activity?.usageLimited).toBe(true);
     expect(activity?.pausedUntil).toBeUndefined();
-    expect(activity?.errorLine).toBe("I've hit the Claude limit.");
+    expect(activity?.errorLine).toBe(refused.session!.lastError);
   });
 
   it("names its conversation by the key a draft is kept under", () => {
@@ -810,11 +810,11 @@ describe("agentActivityErrorLine", () => {
     { name: "no error kept, no line", lastError: null, kind: "failed", line: undefined },
     // F7: under the Mate's name, its sign-in failure says what the person signs in to.
     {
-      name: "a signed-out Mate says what to sign in to, not the driver's words",
+      name: "retains the source error for the named surface to present",
       lastError:
         "Claude's sign-in has expired. Sign Claude in again, then send a message to pick up where it left off.",
       kind: "failed",
-      line: "I need a Claude sign-in to continue.",
+      line: "Claude's sign-in has expired. Sign Claude in again, then send a message to pick up where it left off.",
     },
   ])("$name", ({ lastError, kind, line }) => {
     expect(agentActivityErrorLine({ session: session(lastError) }, kind).errorLine).toBe(line);

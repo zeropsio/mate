@@ -15,12 +15,9 @@ import type { ReactNode } from "react";
 import { useMateDetailRead, useTryMateAgain } from "~/zerops/accountEnvironments";
 import { MateDetailFailure } from "./MateDetailFailure";
 
-import { mateOpeningAwake, type ZeropsMateIdentity } from "~/zerops/mateIdentities";
-import { stageSpeaks } from "~/zerops/mateOpeningStage";
 import { useMateVoice } from "~/zerops/mateVoiceContext";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
-import { Button } from "../ui/button";
-import { MateLinkLine, MateLinkProcesses, type Spoken } from "./MateLinkLine";
+import { MateLinkLine, type Spoken } from "./MateLinkLine";
 import { RouteStandIn } from "./RouteStandIn";
 import { MateComingFrame, MateComingHeader } from "./ZeropsMateComingPage";
 import { MateEmptyStateView } from "./ZeropsMateEmptyState";
@@ -44,12 +41,15 @@ export function MateLinkStage({
   readonly composer?: ReactNode;
 }) {
   const { failure, again } = useMateDetailRead(projectId, environmentId);
-  if (failure !== null) return <MateDetailFailure message={failure.message} again={again} />;
+  if (environmentId === null && failure !== null)
+    return <MateDetailFailure message={failure.message} again={again} />;
   return environmentId === null ? (
     <MateLinkWords voice={voice} />
   ) : (
     <MateLinkStageOf
       composer={composer}
+      failure={failure}
+      again={again}
       environmentId={environmentId}
       projectId={projectId}
       voice={voice}
@@ -58,20 +58,28 @@ export function MateLinkStage({
 }
 
 function MateLinkWords({ voice }: { readonly voice: Spoken }) {
-  return stageSpeaks(voice) ? (
-    <div className="flex h-full flex-1 items-center justify-center p-8">
-      <p className="text-center text-sm text-muted-foreground" role="status">
-        {voice.text}
-      </p>
-    </div>
-  ) : (
-    <div className="flex h-full items-center justify-center p-8" role="status">
-      <p className="text-sm text-muted-foreground">Opening the conversation…</p>
-    </div>
+  return (
+    <MateEmptyStateView
+      coming={{
+        kind: "reaching",
+        face: voice.face,
+        severity: voice.severity,
+        headline: voice.headline ?? voice.text ?? "The Mate is opening the conversation.",
+        sentence: voice.secondary ?? "Waiting for the conversation to be read.",
+        below: null,
+      }}
+      mate={null}
+      phase={null}
+      signIn={null}
+      signInRequired={false}
+      unknown={null}
+    />
   );
 }
 
 function MateLinkStageOf({
+  failure,
+  again,
   environmentId,
   voice,
   projectId,
@@ -81,40 +89,29 @@ function MateLinkStageOf({
   readonly voice: Spoken;
   readonly projectId: string | null;
   readonly composer: ReactNode;
+  readonly failure: { readonly message: string } | null;
+  readonly again: () => void;
 }) {
   const at = useZeropsMate(environmentId);
   // Try now asks its Mate again, its exchange as well as its link, as the banner's does.
   const tryAgain = useTryMateAgain();
-  if (at.kind === "nobody") return <MateLinkWords voice={voice} />;
+  if (at.kind === "nobody" && failure === null) return <MateLinkWords voice={voice} />;
   // Before the directory names who lives here, the stage is the named one's with the face, the
   // name and the header's place held: its verbs, its processes and its words need
   // no name, and nothing moves when the name arrives.
   const known = at.kind === "mate" ? at.mate : null;
   const askAgain = askAgainLabel(voice.actions);
   const onTryNow = askAgain === null ? undefined : () => tryAgain(environmentId);
-  if (!stageSpeaks(voice)) {
-    return (
-      <MateOpeningPage
-        below={
-          <>
-            {voice.processes && projectId !== null ? (
-              <MateLinkProcesses mateServiceId={known?.serviceId} projectId={projectId} />
-            ) : null}
-            {onTryNow === undefined ? null : (
-              <Button onClick={onTryNow} size="compact" variant="pill">
-                {askAgain}
-              </Button>
-            )}
-          </>
-        }
-        composer={composer}
-        // Opening, it wears the pose its container has — awake where the listing has it running —
-        // not asleep for this page's own wait.
-        mate={known === null ? undefined : { ...known, connected: mateOpeningAwake(known) }}
-      />
-    );
-  }
   const mate = known === null ? null : { ...known, connected: false };
+  if (failure !== null)
+    return (
+      <MateComingFrame
+        composer={composer}
+        header={mate === null ? null : <MateComingHeader mate={mate} />}
+      >
+        <MateDetailFailure mate={mate} message={failure.message} again={again} />
+      </MateComingFrame>
+    );
   return (
     <MateComingFrame
       composer={composer}
@@ -124,7 +121,12 @@ function MateLinkStageOf({
         coming={{
           kind: "reaching",
           face: voice.face,
-          headline: voice.text ?? undefined,
+          severity: voice.severity,
+          headline:
+            voice.headline ??
+            voice.text ??
+            `${known?.name || "The Mate"} is opening the conversation.`,
+          sentence: voice.secondary,
           below: (
             <MateLinkLine
               mateServiceId={mate?.serviceId}
@@ -138,45 +140,6 @@ function MateLinkStageOf({
           ),
         }}
         mate={mate}
-        phase={null}
-        signIn={null}
-        signInRequired={false}
-        unknown={null}
-      />
-    </MateComingFrame>
-  );
-}
-
-/**
- * A Mate's conversation on its way: its header as the conversation draws it — the face and the
- * name, its menu and the panel toggles in their places, inert; its place held empty while the Mate
- * is not known — the page quiet, one headline where the conversation will open, and the
- * composer standing in.
- */
-function MateOpeningPage({
-  mate,
-  composer,
-  below,
-}: {
-  readonly mate: ZeropsMateIdentity | undefined;
-  readonly composer: ReactNode;
-  readonly below: ReactNode;
-}) {
-  return (
-    <MateComingFrame
-      composer={composer}
-      header={
-        mate === undefined ? null : <MateComingHeader mate={mate} standsIn={{ subject: null }} />
-      }
-    >
-      <MateEmptyStateView
-        coming={{
-          kind: "reaching",
-          face: "idle",
-          headline: "I'm opening the conversation.",
-          below,
-        }}
-        mate={mate ?? null}
         phase={null}
         signIn={null}
         signInRequired={false}

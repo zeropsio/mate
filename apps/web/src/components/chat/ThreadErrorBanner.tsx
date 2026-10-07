@@ -40,9 +40,11 @@ export const ThreadErrorBanner = memo(function ThreadErrorBanner({
   onDismiss,
   onAuthorize,
   driver,
+  mateName,
   usageLimitShown = false,
 }: {
   error: string | null;
+  mateName?: string | undefined;
   /** The timeline already owns this expected pause; say it once. */
   usageLimitShown?: boolean;
   /** The conversation's agent driver (its session's `providerName`): only its own sign-in failure is one. */
@@ -61,12 +63,12 @@ export const ThreadErrorBanner = memo(function ThreadErrorBanner({
   if (!error) return null;
   const limit = usageLimitProvider(error);
   if (limit !== null && usageLimitShown) return null;
-  const words = mateFailureWords(error, driver);
+  const words = mateFailureWords(error, driver, mateName);
   const needsSignIn = agentNeedsSignIn(error, driver);
   if (needsSignIn) {
     return (
       <div className="mx-auto w-fit max-w-[min(48rem,calc(100%-2rem))] pt-3">
-        <Alert variant="default" role="status" controlAlignment="first-line">
+        <Alert variant="warning" role="status" controlAlignment="first-line">
           {limit === null ? <CircleAlertIcon /> : <PauseIcon />}
           <AlertDescription>{words}</AlertDescription>
           {onAuthorize === undefined ? null : (
@@ -88,7 +90,7 @@ export const ThreadErrorBanner = memo(function ThreadErrorBanner({
   return (
     <div className="mx-auto w-fit max-w-[min(48rem,calc(100%-2rem))] pt-3">
       <Alert
-        variant={limit === null ? "error" : "default"}
+        variant={limit === null ? "error" : "warning"}
         role={limit === null ? "alert" : "status"}
         controlAlignment="first-line"
       >

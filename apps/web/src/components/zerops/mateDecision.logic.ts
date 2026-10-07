@@ -125,7 +125,7 @@ export function mateDecision(input: {
         message:
           input.failure === undefined
             ? undefined
-            : mateFailureWords(input.failure, input.failureDriver),
+            : mateFailureWords(input.failure, input.failureDriver, input.name),
       };
     default:
       return undefined;

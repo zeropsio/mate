@@ -553,7 +553,7 @@ describe("mateRowView — a row's state lives in its right slot and its third li
       state: "paused",
       rowFace: "sleep",
       slot: { kind: "paused", until: "2026-09-29T14:20:00.000Z" },
-      dot: undefined,
+      dot: "attention",
       strong: false,
       reply: {
         kind: "words",
@@ -576,11 +576,11 @@ describe("mateRowView — a row's state lives in its right slot and its third li
       state: "paused",
       rowFace: "sleep",
       slot: { kind: "paused", until: "2026-09-29T14:20:00.000Z" },
-      dot: undefined,
+      dot: "attention",
       strong: false,
       reply: {
         kind: "words",
-        text: "I've hit the Claude limit.",
+        text: "The Mate hit the Claude limit.",
         tone: "muted",
       },
     },
@@ -959,7 +959,7 @@ describe("mateRowReading — the face follows the work, and the words never outr
       }),
       state: "paused",
       face: "sleep",
-      dot: undefined,
+      dot: "attention",
     },
     {
       case: "stopped on an error, its change waits: the error shows",

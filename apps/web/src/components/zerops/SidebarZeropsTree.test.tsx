@@ -869,7 +869,7 @@ describe("a Mate with no owner, or nobody signed in", () => {
       // One line of the row's leading, on the words' edge, the words' muted ink.
       expect(found?.[0]).toEqual(expect.stringContaining("leading-4.5"));
       expect(found?.[0]).toEqual(expect.stringContaining("text-muted-foreground"));
-      expect(html).not.toContain(">Sign in<");
+      expect(html).not.toMatch(/<button[^>]*>Sign in<\/button>/u);
       expect(html).not.toContain("sidebar-mate-sign-in-verb");
     },
   );
@@ -2230,7 +2230,7 @@ describe("a project collapsed to its heading", () => {
     const heading = classesOf(/<div class="([^"]*)"[^>]*data-zerops-surface="sidebar-project"/u);
     const title = classesOf(/<span class="([^"]*zerops-project-name[^"]*)"/u);
     const rows = classesOf(/data-zerops-surface="sidebar-project-rows"><div class="([^"]*)"/u);
-    const mate = classesOf(/<button class="([^"]*)"[^>]*data-zerops-surface="sidebar-mate"/u);
+    const mate = classesOf(/<button[^>]*class="([^"]*)"[^>]*data-zerops-surface="sidebar-mate"/u);
     const block = classesOf(/<div class="(flex flex-col mt-2\.5)"/u);
     const folded = classesOf(
       /<div aria-hidden="true" class="([^"]*)"[^>]*data-zerops-surface="sidebar-project-room"/u,
@@ -2932,7 +2932,10 @@ describe("arranging the projects by hand", () => {
       ["shop", "links"],
     );
     const spoken = mounted.root.find(
-      (node) => typeof node.type === "string" && node.props.role === "status",
+      (node) =>
+        typeof node.type === "string" &&
+        node.props.role === "status" &&
+        node.props["aria-live"] === "polite",
     );
     expect(text(spoken)).toBe("Shop moved to 1 of 2.");
   });
@@ -2974,6 +2977,22 @@ describe("a Mate's row says more without words", () => {
     /<span[^>]*data-zerops-surface="sidebar-mate-time"[^>]*>(?:<span[^>]*><\/span>)?(.*?)<\/span>/u.exec(
       html,
     )?.[0] ?? "";
+
+  it("shows a named limit and attention before the Mate is opened", () => {
+    const html = render([CRM_DEV], {
+      getActivity: () =>
+        live({
+          kind: "failed",
+          usageLimited: true,
+          errorLine: "Claude usage limit reached",
+          pausedUntil: "2099-10-07T14:00:00Z",
+        }),
+    });
+    expect(html).toContain(">Limit · until ");
+    expect(html).toContain("hit the Claude limit.");
+    expect(html).toContain("Provider limit");
+    expect(html).not.toContain("I've hit");
+  });
 
   // The working face turns and glances, and its step is the row's third
   // line: no ring around it repeats the step as a count in blue (S3).

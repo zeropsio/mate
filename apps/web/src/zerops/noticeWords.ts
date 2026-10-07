@@ -11,17 +11,21 @@ export function usageLimitProvider(error: string | null | undefined): string | n
   return /^you[’']ve hit your [\w\s-]*?limit\b/i.test(error.trim()) ? "coding agent" : null;
 }
 
-export function usageLimitWords(provider: string, reset?: string): string {
+export function usageLimitWords(provider: string, reset?: string, mateName = "The Mate"): string {
   const name = provider === "coding agent" ? "coding agent's" : provider;
   return reset === undefined
-    ? `I've hit the ${name} limit.`
-    : `I've hit the ${name} limit — available again at ${reset}.`;
+    ? `${mateName} hit the ${name} limit.`
+    : `${mateName} hit the ${name} limit — can continue at ${reset}.`;
 }
 
 /** Expected refusals have one voice across the web menu, conversation and jump box. */
-export function mateFailureWords(error: string, driver?: string | null): string {
+export function mateFailureWords(
+  error: string,
+  driver?: string | null,
+  mateName = "The Mate",
+): string {
   const limit = usageLimitProvider(error);
-  if (limit !== null) return usageLimitWords(limit);
+  if (limit !== null) return usageLimitWords(limit, undefined, mateName);
   const agent = signedOutAgent(error, driver);
-  return agent === null ? error : `I need a ${agent} sign-in to continue.`;
+  return agent === null ? error : `${mateName} needs a ${agent} sign-in to continue.`;
 }

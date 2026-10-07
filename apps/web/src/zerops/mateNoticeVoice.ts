@@ -8,12 +8,40 @@ export type WebMateVoice =
   | { readonly surface: "none" }
   | (Exclude<MateVoice, { readonly surface: "none" }> & {
       readonly face?: "idle" | "sleep" | "waking";
+      readonly severity?: "info" | "attention" | "danger" | undefined;
+      readonly headline?: string;
+      readonly secondary?: string;
     });
 
 /** Web copy and pose follow source evidence. Native clients keep their current presentation. */
 export function mateNoticeVoice(input: Omit<MateVoiceInput, "heldMs">): WebMateVoice {
   const { reachability, conversationShown } = input;
+  const name = input.mateName.trim() || "The Mate";
   const surface = conversationShown ? "banner" : "stage";
+  const say = (
+    headline: string,
+    secondary: string,
+    face: "idle" | "sleep" | "waking" = "sleep",
+    actions: Exclude<MateVoice, { surface: "none" }>["actions"] = [],
+    processes = false,
+  ): WebMateVoice => ({
+    surface,
+    severity:
+      reachability?.kind === "refused-configuration" ||
+      reachability?.kind === "not-answering" ||
+      reachability?.kind === "no-address"
+        ? "danger"
+        : actions.length > 0 ||
+            (reachability?.kind === "connecting" && reachability.waitingOn === "visible")
+          ? "attention"
+          : "info",
+    headline,
+    secondary,
+    text: `${headline} ${secondary}`,
+    face,
+    actions,
+    processes,
+  });
   const notice =
     reachability?.kind === "ready"
       ? reachability.notice
@@ -21,104 +49,177 @@ export function mateNoticeVoice(input: Omit<MateVoiceInput, "heldMs">): WebMateV
         ? reachability.container
         : null;
   if (notice?.level === "restarting" || notice?.level === "updating") {
-    // An overdue restart already has a source verdict and its own next action.
     if (!("overdue" in notice && notice.overdue)) {
-      return {
-        surface,
-        face: "waking",
-        processes: false,
-        actions: [],
-        text:
-          notice.level === "restarting"
-            ? "I'm restarting. A little stretch, then back to work."
-            : "I'm updating. Back once the update finishes.",
-      };
+      return notice.level === "restarting"
+        ? say(`${name} is restarting.`, "A little stretch, then back to work.", "waking")
+        : say(
+            `${name} is updating.`,
+            "The conversation will open once the update finishes.",
+            "waking",
+          );
     }
   }
   if (
     reachability === null ||
     reachability.kind === "resolving" ||
-    (reachability.kind === "connecting" &&
-      reachability.waitingOn !== "access" &&
-      reachability.waitingOn !== "visible")
+    (reachability.kind === "connecting" && reachability.waitingOn !== "visible")
   ) {
     return conversationShown
       ? { surface: "none" }
-      : {
-          surface,
-          face: "idle",
-          processes: true,
-          actions: ["try-now"],
-          text: "I'm opening the conversation.",
-        };
-  }
-  if (reachability.kind === "reconnecting" && reachability.retryAtMs === undefined) {
-    return {
-      surface,
-      face: "sleep",
-      processes: false,
-      actions: ["try-now"],
-      text: "I'm reconnecting. Your conversation will open when I'm back.",
-    };
+      : say(
+          `${name} is opening the conversation.`,
+          "Waiting for the conversation to be read.",
+          "idle",
+          [],
+          false,
+        );
   }
   if (reachability.kind === "ready" && reachability.notice === null) return { surface: "none" };
-  const phrase = reachabilityPhrase(reachability, input);
-  let text = phrase.text;
+  const phrase = reachabilityPhrase(reachability, { ...input, mateName: name });
+  const actions = phrase.actions;
   switch (reachability.kind) {
     case "replaced":
-      text = "I've been redeployed. My earlier conversations aren't available here.";
-      break;
+      return say(
+        `${name} was redeployed.`,
+        "Earlier conversations aren't available here.",
+        "sleep",
+        actions,
+      );
     case "refused-configuration":
-      text = "I couldn't accept these connection settings.";
-      break;
+      return say(
+        `${name} refused the connection settings.`,
+        "Check the settings before trying again.",
+        "sleep",
+        actions,
+      );
     case "refused-credential":
-      text = "I couldn't accept your sign-in.";
-      break;
+      return say(
+        `${name} couldn't accept your sign-in.`,
+        "Try again to renew the connection.",
+        "sleep",
+        actions,
+      );
+    case "refused-role":
+      return say(
+        `${name} isn't available with your access.`,
+        "You can see the project, but can't operate its Mate.",
+        "sleep",
+        actions,
+      );
+    case "gone":
+      return say(
+        `${name}'s project is no longer available.`,
+        "It was deleted, or you no longer have access.",
+        "sleep",
+        actions,
+      );
     case "update-required":
-      text = `I'm on ${reachability.actual}. I need ${reachability.minimum} or newer to open the conversation.`;
-      break;
+      return say(
+        `${name} needs an update.`,
+        `Version ${reachability.actual} is installed; ${reachability.minimum} or newer is required.`,
+        "sleep",
+        actions,
+      );
+    case "update-unavailable":
+      return say(
+        `${name} needs newer Zerops tooling.`,
+        "The installed tooling supplies an older Mate than this app supports.",
+        "sleep",
+        actions,
+      );
     case "no-address":
-      text = "I don't have a public address.";
-      break;
+      return say(
+        `${name} has no public address.`,
+        "Open the project in Zerops to check its address.",
+        "sleep",
+        actions,
+      );
     case "waiting-for-zerops":
-      text = "I can't reach Zerops. I'll reconnect when it answers.";
-      break;
+      return say(
+        `${name} can't reach Zerops.`,
+        "The connection will resume when Zerops answers.",
+        "sleep",
+        actions,
+      );
     case "not-answering":
-      text = "I'm unreachable on this connection.";
-      break;
+      return say(`${name} isn't answering.`, "Try the connection again.", "sleep", actions);
     case "reconnecting":
-    case "retrying":
-      text =
-        text
-          ?.replace("This Mate's server", "My server")
-          .replace("This Mate can't", "I can't")
-          .replace("This Mate isn't answering.", "I'm having trouble connecting.")
-          .replace(
-            "This tab couldn't set up the connection to this Mate.",
-            "This tab couldn't connect to me.",
-          ) ?? null;
-      break;
-    case "container":
-      if ("overdue" in reachability.container && reachability.container.overdue) {
-        text = "I'm taking longer to start.";
-      } else {
-        switch (reachability.container.level) {
-          case "creating":
-          case "provisioning":
-            text = "I'm getting ready.";
-            break;
-          case "booting":
-            text = "I'm starting.";
-            break;
-          case "inactive":
-            text = "I'm stopped.";
-            break;
-          case "needs-update":
-            text = "I need an update before I can start.";
-            break;
-        }
+    case "retrying": {
+      if (reachability.kind === "reconnecting" && reachability.retryAtMs === undefined) {
+        return say(
+          `${name} is reconnecting.`,
+          "The conversation will open when the connection returns.",
+          "sleep",
+        );
       }
-      break;
+      const secondary = phrase.text ?? "The conversation will open when the connection returns.";
+      return say(
+        `${name} is reconnecting.`,
+        secondary.replaceAll("This Mate", name).replaceAll("this Mate", name),
+        "sleep",
+        actions,
+      );
+    }
+    case "container": {
+      if ("overdue" in reachability.container && reachability.container.overdue) {
+        return say(
+          `${name} is taking longer to start.`,
+          "Check the connection or restart from projects.",
+          "sleep",
+          actions,
+        );
+      }
+      switch (reachability.container.level) {
+        case "creating":
+        case "provisioning":
+          return say(
+            `${name} is getting ready.`,
+            "Zerops is preparing the container.",
+            "waking",
+            actions,
+          );
+        case "booting":
+          return say(
+            `${name} is starting.`,
+            "Waiting for the container to answer.",
+            "waking",
+            actions,
+          );
+        case "inactive":
+          return say(
+            `${name} is stopped.`,
+            "Open projects to start the container.",
+            "sleep",
+            actions,
+          );
+        case "needs-update":
+          return say(
+            `${name} needs an update before starting.`,
+            "Open projects to restart the container.",
+            "sleep",
+            actions,
+          );
+        default:
+          return say(
+            `${name} isn't ready to start.`,
+            phrase.text ?? "Check the container in Zerops.",
+            "sleep",
+            actions,
+          );
+      }
+    }
+    case "connecting":
+      return say(
+        `${name} is paused while this tab is in the background.`,
+        "Return to this tab to continue connecting.",
+        "sleep",
+      );
+    default:
+      return say(
+        `${name} is taking longer to start.`,
+        phrase.text ?? "Waiting for the connection to be verified.",
+        "sleep",
+        actions,
+      );
   }
-  return { surface, face: "sleep", processes: false, text, actions: phrase.actions };
 }

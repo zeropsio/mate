@@ -1,4 +1,5 @@
-import { usageLimitProvider, usageLimitWords } from "../../zerops/noticeWords";
+import { mateStatus } from "../../zerops/mateStatus.logic";
+import { mateFailureWords } from "../../zerops/noticeWords";
 /**
  * What a Mate's row in the left menu draws, read from what the row knows —
  * pure, so each rule has its table.
@@ -365,6 +366,7 @@ export interface MateRowView {
 export function mateRowView(
   activity: ZeropsAgentActivity | undefined,
   face: MateMarkState,
+  name = "The Mate",
 ): MateRowView {
   if (activity === undefined) {
     const needs = face === "needs";
@@ -400,7 +402,9 @@ export function mateRowView(
     face: state === "failed" ? ("idle" as const) : face,
     slot,
     dot:
-      state === "needs"
+      state === "needs" ||
+      state === "paused" ||
+      (state === "failed" && mateStatus(activity)?.severity === "attention")
         ? ("attention" as const)
         : state === "unread"
           ? ("unread" as const)
@@ -445,13 +449,19 @@ export function mateRowView(
       return view(
         activity.errorLine === undefined
           ? said("muted")
-          : { kind: "words", text: activity.errorLine, tone: "failed" },
+          : {
+              kind: "words",
+              text: mateFailureWords(activity.errorLine, undefined, name),
+              tone: "failed",
+            },
       );
     case "unread":
       return view(asked("ink-2"));
     case "paused": {
-      const provider = usageLimitProvider(activity.errorLine);
-      const text = provider === null ? activity.errorLine : usageLimitWords(provider);
+      const text =
+        activity.errorLine === undefined
+          ? undefined
+          : mateFailureWords(activity.errorLine, undefined, name);
       return view(
         activity.errorLine === undefined
           ? said("muted")
@@ -514,6 +524,7 @@ export function mateFinishingView(view: MateRowView): MateRowView {
  * conversation it was read from still stands; a word at rest is only ever at rest.
  */
 export function mateRowReading(input: {
+  readonly name?: string;
   /** Its container is connected right now. */
   readonly connected: boolean;
   readonly activity: ZeropsAgentActivity | undefined;
@@ -534,6 +545,7 @@ export function mateRowReading(input: {
       activity?.usageLimited === true || activity?.pausedUntil !== undefined,
       input.mine,
     ),
+    input.name,
   );
 }
 

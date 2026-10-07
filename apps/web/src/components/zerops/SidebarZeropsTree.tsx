@@ -1,3 +1,5 @@
+import { mateStatus } from "../../zerops/mateStatus.logic";
+import { MateStatusMarker } from "./MateStatusMarker";
 /**
  * The left menu's projects: each a heading, then its Mates, each with its
  * crew and its open changes.
@@ -1245,6 +1247,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
             const live = getActivity?.(item);
             const coming = getComing?.(item);
             const read = mateRowReading({
+              name: projectNameInApp(item.project),
               connected: mateAwake(item, hqMates),
               activity: live,
               reviewWaits: reviewWaits(item),
@@ -2628,6 +2631,7 @@ function MateRowView<T extends RosterCandidate>({
   const hqPeople = useHqProjectPerson(candidate.project.id);
   const nowMs = useNowMs();
   const read = mateRowReading({
+    name: projectNameInApp(candidate.project),
     connected: up,
     activity,
     reviewWaits,
@@ -2673,7 +2677,14 @@ function MateRowView<T extends RosterCandidate>({
     outsideHq || deleting || finishing !== undefined || view.coming !== undefined || containerless
       ? undefined
       : seated.signInLine;
-  const dot = view.dot ?? (signIn !== undefined && seated.waitsOnViewer ? "attention" : undefined);
+  const status =
+    deleting || view.coming !== undefined ? null : mateStatus(activity, signIn !== undefined);
+  const dot =
+    (status?.severity === "attention" &&
+    (status.kind === "limit" ||
+      (status.kind === "sign-in" ? seated.waitsOnViewer : hqPeople?.waitsOnViewer === true))
+      ? "attention"
+      : view.dot) ?? (signIn !== undefined && seated.waitsOnViewer ? "attention" : undefined);
   // What its face's corner wears (`ownerBadge`), and whether its face is paler: not the viewer's.
   const badge =
     outsideHq || (containerless && seated.seat.kind === "nobody")
@@ -2841,7 +2852,11 @@ function MateRowView<T extends RosterCandidate>({
         // the menu's edge and every word at 56 (the list starts at 9). It
         // paints nothing of its own: its unit is lit, under the pointer or
         // by the list's one band, which slides to it (`SidebarSelectedBand`).
-        aria-label={dot === undefined ? undefined : `${name}, ${mateDotLabel(dot)}`}
+        aria-label={
+          dot === undefined
+            ? undefined
+            : `${name}, ${status?.kind === "limit" ? "Provider limit" : mateDotLabel(dot)}`
+        }
         aria-disabled={deleting || outsideHq || undefined}
         className="menu-row grid w-full min-w-0 cursor-pointer grid-cols-[28px_minmax(0,1fr)] items-start gap-x-3 py-2.5 ps-1.75 pe-2 text-left text-sidebar-foreground outline-none select-none focus-visible:ring-2 focus-visible:ring-ring aria-disabled:cursor-default"
         data-zerops-surface="sidebar-mate"
@@ -2987,7 +3002,14 @@ function MateRowView<T extends RosterCandidate>({
           ) : (
             <MateAskLine line={askLine} rises={askChanged} />
           )}
-          {outsideHq || view.reply === undefined ? null : (
+          {outsideHq ? null : status !== null ? (
+            <span className="flex min-w-0 items-center gap-2">
+              <MateStatusMarker mateName={name} status={status} timestampFormat={timestampFormat} />
+              {status.kind === "limit" || view.reply === undefined ? null : (
+                <MateReply known={known} reply={view.reply} />
+              )}
+            </span>
+          ) : view.reply === undefined ? null : (
             <MateReply known={known} reply={view.reply} />
           )}
           {deleting ? <MateDeletingLine /> : null}

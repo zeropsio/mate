@@ -391,7 +391,7 @@ const ACTIVITY = new Map<string, ZeropsAgentActivity>([
     activity({
       id: "shop-mira",
       subject: "Split the checkout into a two-step flow with a saved basket",
-      snippet: "I hit the usage limit. I pick up again when it resets.",
+      snippet: "Mira hit the usage limit. Work can continue when it resets.",
       hours: 1,
       face: "sleep",
       pausedUntil: new Date(Date.now() + 2.5 * 3_600_000).toISOString(),

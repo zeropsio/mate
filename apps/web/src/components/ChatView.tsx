@@ -8482,6 +8482,10 @@ export default function ChatView(props: ChatViewProps) {
         {zeropsSignInDialog.dialog}
 
         <ThreadErrorBanner
+          mateName={(() => {
+            const at = zeropsMateAt(zeropsMates, environmentId);
+            return at.kind === "mate" ? at.mate.name : undefined;
+          })()}
           driver={activeServerThread?.session?.providerName ?? null}
           error={visibleThreadError}
           usageLimitShown={conversationEntries.some(

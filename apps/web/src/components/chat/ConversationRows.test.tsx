@@ -36,8 +36,8 @@ describe("the usage-limit pause", () => {
       />,
     );
   it("names the agent whose limit holds the work", () => {
-    expect(render(false, null)).toContain("I&#x27;ve hit the Codex limit.");
-    expect(render(false, null)).toContain("hasn&#x27;t given me a reset time");
+    expect(render(false, null)).toContain("Nova hit the Codex limit.");
+    expect(render(false, null)).toContain("hasn&#x27;t given a reset time");
   });
   it("only promises automatic continuation when the server has enabled it", () => {
     const reset = new Date(NOW_MS + 3_600_000).toISOString();
@@ -59,7 +59,7 @@ describe("the usage-limit pause", () => {
     expect(notice).not.toContain("try again automatically");
   });
   it("only a resume receipt says it picked up again", () => {
-    expect(render(true, at(60), at(30))).toContain("I picked up again");
+    expect(render(true, at(60), at(30))).toContain("Nova picked up again");
   });
 });
 

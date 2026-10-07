@@ -178,7 +178,7 @@ function SignedInRootRouteView() {
       ? draftReachability
       : gate.kind === "outlet"
         ? (gate.banner ?? READY)
-        : gate.kind === "wait"
+        : gate.kind === "wait" || gate.kind === "unavailable"
           ? gate.reachability
           : null;
   // Seconds tick only while the words count down to the link's next try.
@@ -186,7 +186,10 @@ function SignedInRootRouteView() {
   const gatePhrase = routeGatePhrase(gate, { nowMs, mateName: gateInputs.mateName });
   const speaksFor = routeEnvironment ?? draftEnvironmentId;
   const voice =
-    speaksFor !== null && (gate.kind === "outlet" || gate.kind === "wait")
+    speaksFor !== null &&
+    (gate.kind === "outlet" ||
+      gate.kind === "wait" ||
+      (gate.kind === "unavailable" && gate.reachability !== null))
       ? mateNoticeVoice({
           reachability: linkReachability,
           conversationShown: gate.kind === "outlet" && conversation.kind === "shown",
@@ -196,7 +199,7 @@ function SignedInRootRouteView() {
               ? draftMate.kind === "mate"
                 ? draftMate.mate.name
                 : undefined
-              : routeMateName) ?? "This Mate",
+              : routeMateName) ?? "The Mate",
         })
       : SILENT_VOICE;
   // The conversation the route names, for the stand-in its stage draws.
@@ -245,7 +248,8 @@ function SignedInRootRouteView() {
               conversation={conversation}
               voice={voice}
               stage={
-                gate.kind === "wait" ? (
+                gate.kind === "wait" ||
+                (gate.kind === "unavailable" && gate.reachability !== null) ? (
                   <MateLinkStage
                     composer={
                       routeThreadRef === null ? null : <RouteStandIn threadRef={routeThreadRef} />

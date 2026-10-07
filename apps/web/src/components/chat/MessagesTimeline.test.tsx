@@ -255,16 +255,15 @@ describe("MessagesTimeline", () => {
     expect(markup).toContain('aria-label="Next turn"');
   });
 
-  // A conversation on its way draws no face — the header wears its Mate's
-  // (pass 30, D2) — and its one line waits its beat before it says anything;
-  // a new draft's pane says nothing at all.
-  it("draws no face while a conversation is on its way, its one line held for its beat", () => {
+  it("shows the source reading the conversation immediately, with no guessed face or retry", () => {
     const loading = renderToStaticMarkup(
       <MessagesTimeline {...buildProps()} hideEmptyPlaceholder loading timelineEntries={[]} />,
     );
     expect(loading).toContain('role="status"');
     expect(loading).not.toContain("data-mate-face-state");
-    expect(loading).not.toContain("Opening");
+    expect(loading).toContain("The Mate is opening the conversation.");
+    expect(loading).toContain("Waiting for the conversation to be read.");
+    expect(loading).not.toContain(">Try now<");
     const hero = renderToStaticMarkup(
       <MessagesTimeline {...buildProps()} hideEmptyPlaceholder timelineEntries={[]} />,
     );
@@ -1860,7 +1859,7 @@ describe("MessagesTimeline — the conversation", () => {
       />,
     );
     expect(markup.match(/data-conversation-pause=/g)).toHaveLength(1);
-    expect(markup).toContain("I&#x27;ve hit the coding agent&#x27;s limit.");
+    expect(markup).toContain("This Mate hit the coding agent&#x27;s limit.");
     expect(markup).toContain("2 more attempts");
     expect(markup).not.toContain("You&#x27;ve hit your session limit");
   });

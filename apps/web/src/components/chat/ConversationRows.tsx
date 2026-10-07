@@ -1,3 +1,4 @@
+import { MateStatusMarker } from "../zerops/MateStatusMarker";
 /**
  * The conversation's own rows — the line for each stretch of the Mate's work,
  * the receipt on a message it has not read yet, the quiet seams between days,
@@ -382,6 +383,7 @@ export interface ServerUsagePause {
  */
 export function PauseBlock({
   row,
+  speaker,
   nowMs,
   timestampFormat,
   serverPause,
@@ -403,15 +405,15 @@ export function PauseBlock({
   const passed = reset !== null && reset <= nowMs;
   const autoResume = serverPause?.autoResume ?? false;
   const detail = resumed
-    ? `I picked up again ${spokenMoment(row.resumedAt!, timestampFormat)}.`
+    ? `${speaker.name} picked up again ${spokenMoment(row.resumedAt!, timestampFormat)}.`
     : resetsAt === null
-      ? "The coding agent hasn't given me a reset time yet."
+      ? "The coding agent hasn't given a reset time yet."
       : passed
-        ? "The reset time has passed. I'm still paused until the coding agent lets me continue."
+        ? `${speaker.name} is still paused after the reset time; the coding agent hasn't allowed continuation.`
         : serverPause === null
           ? `Available again at ${formatDayAwareTimestamp(resetsAt, timestampFormat)}.`
           : autoResume
-            ? `I'll try again automatically at ${formatDayAwareTimestamp(resetsAt, timestampFormat)}.`
+            ? `${speaker.name} will try again automatically at ${formatDayAwareTimestamp(resetsAt, timestampFormat)}.`
             : `Available again at ${formatDayAwareTimestamp(resetsAt, timestampFormat)}. Automatic continuation is off.`;
   return (
     <div
@@ -430,15 +432,29 @@ export function PauseBlock({
       <div className="flex min-w-0 items-center gap-1.5 text-line" data-pause-head>
         {/* Its words keep their gap, so its mark gives the gap back: 14 + 6 px. */}
         <LineMark className="w-3.5">
-          <PauseIcon className="size-3.5 text-muted-foreground" />
+          <PauseIcon
+            className={cn("size-3.5", resumed ? "text-muted-foreground" : "text-status-attention")}
+          />
         </LineMark>
         <span className="font-medium">
           {resumed
-            ? "Back to work"
+            ? `${speaker.name} is back to work.`
             : row.provider === undefined
-              ? "I've hit the coding agent's limit."
-              : usageLimitWords(row.provider)}
+              ? usageLimitWords("coding agent", undefined, speaker.name)
+              : usageLimitWords(row.provider, undefined, speaker.name)}
         </span>
+        {resumed ? null : (
+          <MateStatusMarker
+            mateName={speaker.name}
+            status={{
+              kind: "limit",
+              severity: "attention",
+              until: resetsAt ?? undefined,
+              provider: row.provider,
+            }}
+            timestampFormat={timestampFormat}
+          />
+        )}
         {row.held > 0 ? (
           <Tooltip>
             <TooltipTrigger

@@ -1,10 +1,4 @@
-/**
- * A Mate's link as the line under its name says it (`mateVoice`): nothing for a blip, "Opening
- * Quinn…" for a first connect that is slow, "Quinn is restarting." while Zerops restarts it —
- * and, under a slow first connect, the platform's processes: the Mate's own container first
- * while the platform works on it, then each service with its dot. The Mate's own view and the
- * route's stage (`MateLinkStage`) both put it in their slot.
- */
+/** Recovery actions and optional collapsed diagnostics, aligned below the Mate's state line. */
 import { askAgainLabel, type RouteGatePhrase } from "@t3tools/client-runtime/zerops/environments";
 import type { WebMateVoice as MateVoice } from "../../zerops/mateNoticeVoice";
 import { Link } from "@tanstack/react-router";
@@ -46,7 +40,7 @@ export function MateLinkProcesses({
   return <MateLinkProcessesView services={ordered} />;
 }
 
-/** The processes as drawn: one name and one dot each, centred under the line. */
+/** Optional diagnostics: one service per line, collapsed until the person asks to see them. */
 export function MateLinkProcessesView({
   services,
 }: {
@@ -54,9 +48,17 @@ export function MateLinkProcessesView({
 }) {
   if (services.length === 0) return null;
   return (
-    <div className="mt-3 flex justify-center" data-zerops-surface="mate-link-processes">
-      <ArrivalServices services={services} />
-    </div>
+    <details
+      className="w-full text-sm text-muted-foreground"
+      data-zerops-surface="mate-link-processes"
+    >
+      <summary className="cursor-pointer">Project services ({services.length})</summary>
+      <div className="mt-3 grid gap-2">
+        {services.map((service) => (
+          <ArrivalServices key={service.name} services={[service]} />
+        ))}
+      </div>
+    </details>
   );
 }
 
@@ -104,7 +106,7 @@ export function MateLinkLineView({
   readonly onTryNow: (() => void) | undefined;
 }) {
   return (
-    <div className="flex flex-col items-center">
+    <div className="flex w-full flex-col items-start gap-4">
       <MateOpeningLine
         onTryNow={onTryNow}
         phrase={{ text: voice.text, actions: voice.actions }}
@@ -148,15 +150,14 @@ export function MateOpeningLine({
       (action === "open-in-zerops" && projectUrl === undefined),
   );
   return (
-    <div
-      className="mx-auto flex w-full max-w-sm flex-col items-center gap-3"
-      data-zerops-surface="mate-opening"
-    >
-      <p className="text-center text-sm text-muted-foreground" role="status">
-        {phrase.text}
-      </p>
+    <div className="flex w-full flex-col items-start gap-3" data-zerops-surface="mate-opening">
+      {phrase.text === null ? null : (
+        <p className="text-sm text-muted-foreground" role="status">
+          {phrase.text}
+        </p>
+      )}
       {askAgain !== null || openInZerops || toProjects ? (
-        <div className="flex flex-wrap items-center justify-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {askAgain === null ? null : (
             <Button onClick={onTryNow} size="compact" variant="pill">
               {askAgain}

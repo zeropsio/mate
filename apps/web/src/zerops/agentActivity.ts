@@ -61,7 +61,7 @@ import {
 } from "@t3tools/shared/threadStatus";
 
 import { threadStatusPill, type ThreadStatusPill } from "../components/Sidebar.logic";
-import { mateFailureWords, usageLimitProvider } from "./noticeWords";
+import { usageLimitProvider } from "./noticeWords";
 import { liveStepWords, type LiveStepWords } from "./liveStep";
 
 /**
@@ -497,7 +497,7 @@ export function agentActivityErrorLine(
     .map((line) => line.trim())
     .find((line) => line.length > 0);
   if (first === undefined) return {};
-  return { errorLine: maskSecrets(mateFailureWords(first)) };
+  return { errorLine: maskSecrets(first) };
 }
 
 export function deriveZeropsAgentActivity(

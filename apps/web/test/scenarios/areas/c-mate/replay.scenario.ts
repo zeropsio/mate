@@ -189,7 +189,20 @@ describe("C: reading, replay and attention", () => {
           usagePause: wire.usagePause,
         });
         wire.shell();
-        yield* chat.then.text("I've hit the coding agent's limit.");
+        yield* reportConversation(s.drivers, "Ada", { usagePause: wire.usagePause });
+        yield* chat.then.text("Ada hit the coding agent's limit.");
+        yield* Effect.promise(async () => {
+          const marker = await s.page.waitForSelector(
+            '[data-zerops-mate-row="Ada"] [role="status"]',
+            { visible: true, timeout: 8000 },
+          );
+          expect(await marker?.evaluate((node) => node.textContent)).toContain("Limit");
+          expect(
+            await s.page.$eval('[data-zerops-mate-row="Ada"] button', (node) =>
+              node.getAttribute("aria-label"),
+            ),
+          ).toBe("Ada, Provider limit");
+        });
         yield* chat.then.control("Continue automatically", "switch");
         yield* chat.step(
           "the person's resume choice is acknowledged by the source",

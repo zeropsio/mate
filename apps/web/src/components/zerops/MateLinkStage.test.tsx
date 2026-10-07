@@ -54,10 +54,11 @@ vi.mock("./MateLinkLine", () => ({
 vi.mock("./ZeropsMateEmptyState", () => ({
   MateEmptyStateView: (props: {
     mate: { name: string } | null;
-    coming: { below: ReactNode; headline?: string } | null;
+    coming: { below: ReactNode; headline?: string; sentence?: string } | null;
   }) => (
     <section data-empty-state={props.mate === null ? "unnamed" : props.mate.name}>
       <h2>{props.coming?.headline}</h2>
+      <p>{props.coming?.sentence}</p>
       {props.coming?.below}
     </section>
   ),
@@ -72,13 +73,13 @@ describe("MateOpeningView: a conversation's page lands when its Mate is known, n
     [
       "who lives here unknown: the header's place held empty, the line unnamed, the composer in",
       { kind: "unknown" },
-      ["<header></header>", "I&#x27;m opening the conversation.", "data-stand-in"],
+      ["<header></header>", "The Mate is opening the conversation.", "data-stand-in"],
       ["Quill"],
     ],
     [
       "the directory names the Mate: its face and name, its own line",
       { kind: "mate", mate: QUILL },
-      ["<h1>Quill</h1>", "I&#x27;m opening the conversation.", "data-stand-in"],
+      ["<h1>Quill</h1>", "Quill is opening the conversation.", "data-stand-in"],
       [],
     ],
   ] as const)("%s", (_case, at, shown, absent) => {
@@ -126,42 +127,48 @@ describe("MateOpeningView: a conversation's page lands when its Mate is known, n
   it.each([
     ["unnamed", { kind: "unknown" }],
     ["named", { kind: "mate", mate: QUILL }],
-  ] as const)(
-    "while the link is quiet, %s: its Try now and processes under the line",
-    (_case, at) => {
-      who.at = at;
-      try {
-        const markup = renderToStaticMarkup(
-          <MateLinkStage
-            environmentId={ref.environmentId}
-            projectId="project-orchard"
-            voice={{ surface: "stage", text: null, actions: ["try-now"], processes: true }}
-          />,
-        );
-        expect(markup).toContain("Try now</button>");
-        expect(markup).toContain("data-processes");
-      } finally {
-        who.at = { kind: "unknown" };
-      }
-    },
-  );
+  ] as const)("while the link is opening, %s: no recovery action or service noise", (_case, at) => {
+    who.at = at;
+    try {
+      const markup = renderToStaticMarkup(
+        <MateLinkStage
+          environmentId={ref.environmentId}
+          projectId="project-orchard"
+          voice={{ surface: "stage", text: null, actions: [], processes: false }}
+        />,
+      );
+      expect(markup).not.toContain("Try now</button>");
+      expect(markup).not.toContain("data-processes");
+    } finally {
+      who.at = { kind: "unknown" };
+    }
+  });
 });
 
-it("an unknown Mate's refused inventory read names the failure and offers Again", () => {
-  detail.failure = { message: "The account receiver budget is full." };
-  try {
-    const markup = renderToStaticMarkup(
-      <MateLinkStage
-        environmentId={ref.environmentId}
-        projectId={null}
-        voice={{ surface: "stage", text: null, actions: [], processes: false }}
-      />,
-    );
-    expect(markup).toContain("Could not read this Mate");
-    expect(markup).toContain("The account receiver budget is full.");
-    expect(markup).toContain("Again</button>");
-    expect(markup).not.toContain("Opening");
-  } finally {
-    detail.failure = null;
-  }
-});
+it.each([
+  ["unknown", { kind: "unknown" }, "The Mate"],
+  ["known", { kind: "mate", mate: QUILL }, "Quill"],
+  ["no Mate named", { kind: "nobody" }, "The Mate"],
+] as const)(
+  "%s: a refused inventory read names the failure and offers Again",
+  (_case, at, name) => {
+    who.at = at;
+    detail.failure = { message: "The account receiver budget is full." };
+    try {
+      const markup = renderToStaticMarkup(
+        <MateLinkStage
+          environmentId={ref.environmentId}
+          projectId={null}
+          voice={{ surface: "stage", text: null, actions: [], processes: false }}
+        />,
+      );
+      expect(markup).toContain(`${name}&#x27;s project could not be read.`);
+      expect(markup).toContain("The account receiver budget is full.");
+      expect(markup).toContain("Again</button>");
+      expect(markup).not.toContain("Opening");
+    } finally {
+      detail.failure = null;
+      who.at = { kind: "unknown" };
+    }
+  },
+);

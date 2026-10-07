@@ -741,13 +741,15 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
           : page.kind === "unreachable"
             ? {
                 kind: "unreachable",
+                severity: linkVoice.surface === "none" ? undefined : linkVoice.severity,
                 face: "sleep",
                 headline:
                   page.reachability === null
                     ? (mateOpeningPhrase(page, { nowMs, mateName: named.name }).text ?? undefined)
                     : linkVoice.surface === "none"
                       ? undefined
-                      : (linkVoice.text ?? undefined),
+                      : (linkVoice.headline ?? linkVoice.text ?? undefined),
+                sentence: linkVoice.surface === "none" ? undefined : linkVoice.secondary,
                 below: (
                   <MateOpeningLine
                     onTryNow={tryNow}
@@ -762,8 +764,13 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
               }
             : {
                 kind: "reaching",
+                severity: linkVoice.surface === "none" ? undefined : linkVoice.severity,
                 face: linkVoice.surface === "none" ? "idle" : linkVoice.face,
-                headline: linkVoice.surface === "none" ? undefined : (linkVoice.text ?? undefined),
+                headline:
+                  linkVoice.surface === "none"
+                    ? undefined
+                    : (linkVoice.headline ?? linkVoice.text ?? undefined),
+                sentence: linkVoice.surface === "none" ? undefined : linkVoice.secondary,
                 below: (
                   <MateLinkLine
                     mateServiceId={mate.serviceId}
@@ -796,7 +803,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   const standInSubject = liveActivity?.subject ?? toldActivity?.subject ?? null;
 
   if (detailFailure !== null)
-    return <MateDetailFailure message={detailFailure.message} again={readAgain} />;
+    return <MateDetailFailure mate={mate} message={detailFailure.message} again={readAgain} />;
   return (
     <MateComingFrame
       composer={standsInComposer ? <ConversationFooterStandIn draft={draft} /> : null}

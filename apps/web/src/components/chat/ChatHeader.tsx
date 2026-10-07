@@ -1,3 +1,6 @@
+import { mateStatus } from "../../zerops/mateStatus.logic";
+import { MateStatusMarker } from "../zerops/MateStatusMarker";
+import { useEnvironmentSettings } from "../../hooks/useSettings";
 import {
   type EnvironmentId,
   type EditorId,
@@ -272,6 +275,8 @@ export const ChatHeader = memo(function ChatHeader({
     [activeThreadEnvironmentId, activeThreadId],
   );
   const mateActivity = useZeropsThreadActivity(activeThreadRef);
+  const status = mateStatus(mateActivity);
+  const settings = useEnvironmentSettings(activeThreadEnvironmentId);
   const activeThreadShell = useThreadShell(activeThreadRef);
   const spoken = activeThreadShell?.latestUserMessageAt != null;
   // A crewmate's chat is headed by the crewmate, and it is the crew engine's:
@@ -560,24 +565,33 @@ export const ChatHeader = memo(function ChatHeader({
       ) : lead === "strip" ? (
         // The line of the Mate's conversations: the Mate, then its crew. What
         // the chat is about is the Mate's hover, never words on the line.
-        <ConversationStrip
-          crewChat={
-            crewOrigin === null ? null : { handle: crewOrigin.crewmate, title: activeThreadTitle }
-          }
-          currentThreadId={isServerThread ? activeThreadId : null}
-          environmentId={activeThreadEnvironmentId}
-          onEditBrief={onEditBrief}
-          onEditJob={onEditCrewmateJob}
-          onRename={isServerThread && crewOrigin === null ? startRename : null}
-          renameField={
-            renamingTitle === null ? null : (
-              <div className="absolute inset-y-0 start-8.5 end-0 flex max-w-96 items-center">
-                {renameInput(true)}
-              </div>
-            )
-          }
-          subject={crewOrigin === null && spoken ? headline : null}
-        />
+        <>
+          <ConversationStrip
+            crewChat={
+              crewOrigin === null ? null : { handle: crewOrigin.crewmate, title: activeThreadTitle }
+            }
+            currentThreadId={isServerThread ? activeThreadId : null}
+            environmentId={activeThreadEnvironmentId}
+            onEditBrief={onEditBrief}
+            onEditJob={onEditCrewmateJob}
+            onRename={isServerThread && crewOrigin === null ? startRename : null}
+            renameField={
+              renamingTitle === null ? null : (
+                <div className="absolute inset-y-0 start-8.5 end-0 flex max-w-96 items-center">
+                  {renameInput(true)}
+                </div>
+              )
+            }
+            subject={crewOrigin === null && spoken ? headline : null}
+          />
+          {status === null ? null : (
+            <MateStatusMarker
+              mateName={mate?.name}
+              status={status}
+              timestampFormat={settings.timestampFormat}
+            />
+          )}
+        </>
       ) : (
         <WorkspaceBreadcrumb ariaLabel="Thread breadcrumb" className="flex-1">
           {/* The project always leads the header: knowing which project a
