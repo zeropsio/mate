@@ -24,7 +24,6 @@ import {
   type MateMoment,
   type MateMomentPlayer,
 } from "./mateFaceMoment.logic";
-import "./MateFaceMoments.css";
 
 type MateFaceSize = "dot" | "sm" | "md" | "lg";
 
@@ -229,8 +228,7 @@ function useMoment(input: {
  * asleep's closed eyes (`matePose`). Idle and asleep it is still. Events it
  * watches happen get a moment (`MateFaceMoments.css`): a question raised is a
  * jump that lands with a splat, a run done a little dance, falling asleep a
- * nod with a zzz, and whatever its caller cues. With reduced motion only the
- * morph remains. Decorative on its own — the name and the state are always
+ * nod with a zzz, and whatever its caller cues. With reduced motion the face stays still. Decorative on its own — the name and the state are always
  * written beside it — so it carries no accessible name.
  */
 function MateFace({

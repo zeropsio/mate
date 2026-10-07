@@ -1,4 +1,5 @@
 @import "./fonts.css";
+@import "./components/zerops/primitives/MateFaceMoments.css";
 @import "tailwindcss";
 
 @custom-variant dark (&:is(.dark, .dark *));

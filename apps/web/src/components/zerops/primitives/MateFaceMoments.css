@@ -3733,3 +3733,21 @@
     transition: none;
   }
 }
+
+@media (prefers-reduced-motion: no-preference) {
+  [data-mate-restart-words] {
+    animation: mate-restart-words 10s infinite;
+  }
+}
+
+@keyframes mate-restart-words {
+  0%,
+  5%,
+  95%,
+  100% {
+    opacity: 1;
+  }
+  98% {
+    opacity: 0;
+  }
+}

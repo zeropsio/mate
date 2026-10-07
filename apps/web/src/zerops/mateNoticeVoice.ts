@@ -1,6 +1,6 @@
 import type { MateRecovery } from "@t3tools/client-runtime/data";
 import { recoveryNotice } from "./mateRecovery.logic";
-import { restartLine } from "./restartLine";
+import { restartLine, RESTART_LINES } from "./restartLine";
 
 import {
   reachabilityPhrase,
@@ -17,6 +17,7 @@ export type WebMateVoice =
       readonly secondary?: string;
       /** Its container is restarting: its face plays the restart for as long as it lasts. */
       readonly restarting?: true;
+      readonly restartLines?: ReadonlyArray<string>;
     });
 
 /** Web copy and pose follow source evidence. Native clients keep their current presentation. */
@@ -91,6 +92,7 @@ export function mateNoticeVoice(
         ? {
             ...say(`${name} is restarting.`, restartLine(name, input.restartLine ?? 0), "waking"),
             restarting: true,
+            restartLines: RESTART_LINES.map((line) => line(name)),
           }
         : say(
             `${name} is updating.`,

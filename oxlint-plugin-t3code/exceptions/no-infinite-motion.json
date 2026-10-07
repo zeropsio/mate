@@ -302,5 +302,13 @@
     "owner": "karel",
     "reason": "The owner's stand-up pacing (2026-10-07): a calm 12 s walk for as long as the stand-up runs, transforms on the face's HTML boxes, off under reduced motion",
     "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/primitives/MateFaceMoments.css",
+    "kind": "css-declaration",
+    "fingerprint": "[data-mate-restart-words]{animation:mate-restart-words 10s infinite}",
+    "owner": "karel",
+    "reason": "The requested named restart lines rotate while source evidence says restarting; opacity on one HTML text box is composited and the cycle is off under reduced motion. Copy never decides readiness.",
+    "expires": "never"
   }
 ]
