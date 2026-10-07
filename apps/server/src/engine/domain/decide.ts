@@ -274,21 +274,23 @@ const admitNext = (b: StepBuilder): void => {
   b.emit({ _tag: "RunAdmitted", runId: next });
   const run = b.run(next);
   if (needsPrepare(run) && run.prepare === "none") {
-    // The workspace is captured before the agent starts work (D7): the send waits on it.
+    // Every run is admitted for its principal (D6) and its workspace captured before the agent
+    // starts work (D7): the send waits on both. A maintenance command captures nothing.
     b.effect("run.prepare", run.id, 1, run.id, {
       runId: run.id,
       instanceId: b.state.agent?.instanceId ?? null,
       principal: run.principal,
       trigger: run.trigger,
+      ...(run.maintenance ? { capture: false } : {}),
     });
     return;
   }
   dispatch(b, run);
 };
 
-/** Every run captures its workspace first, but a maintenance turn and one the agent started. */
+/** Every run is prepared (admitted, its workspace captured) but one the agent started itself. */
 const needsPrepare = (run: RunRecord): boolean =>
-  !run.maintenance && !(run.trigger.kind === "wake" && run.trigger.cause === "self");
+  !(run.trigger.kind === "wake" && run.trigger.cause === "self");
 
 /** How long an open session sits with nothing to do before the engine closes it. */
 export const SESSION_IDLE_MS = 30 * 60_000;
@@ -411,7 +413,7 @@ const endRun = (
   }
   b.emit({ _tag: "RunEnded", runId: run.id, end, source });
   // Every run that asked for a capture releases it, whatever ended it.
-  if (run.prepare !== "none") {
+  if (run.prepare !== "none" && !run.maintenance) {
     b.effect("workspace.finish", run.id, 1, run.id, {
       runId: run.id,
       started: run.startedAt !== null,
@@ -630,6 +632,8 @@ const steer = (b: StepBuilder, command: Extract<Command, { _tag: "Steer" }>): vo
     sessionId: session.id,
     itemId: item,
     text: command.text,
+    instanceId: b.state.agent?.instanceId ?? null,
+    principal: b.envelope.principal,
   });
   b.result = { ...b.result, runId: run.id, itemId: item };
 };
@@ -845,6 +849,26 @@ const effectSettled = (b: StepBuilder, id: EffectId, outcome: EffectOutcome): vo
         markStarted(b, run, accepted.providerTurnId, accepted.turn ?? run.turn);
       }
       return;
+    case "provider.steer": {
+      // A steer that never reached the agent (refused, or no live session) reads so.
+      if (failure === null) return;
+      const item = b.state.items[id.slice(0, id.indexOf("/e/provider.steer/"))];
+      if (item?.body.kind !== "person") return;
+      const undelivered = outcome.kind === "failed" ? outcome.undelivered : undefined;
+      b.emit({
+        _tag: "ItemUpdated",
+        runId: run.id,
+        itemId: item.id,
+        body: {
+          ...item.body,
+          delivery: {
+            state: undelivered === undefined || undelivered === true ? "refused" : "unknown",
+            at: b.now,
+          },
+        },
+      });
+      return;
+    }
     case "provider.interrupt":
       // The interrupt's acknowledgement is not the turn's end: the run stays until its own turn
       // ends. An interrupt that failed leaves nothing to wait for, so the Stop ends the run.

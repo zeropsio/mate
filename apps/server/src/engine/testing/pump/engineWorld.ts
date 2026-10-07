@@ -68,8 +68,8 @@ export interface RunRow {
 
 export interface WorldOptions {
   readonly driver: BridgeDriver;
-  /** Admission refuses every run with these words. */
-  readonly refuse?: string;
+  /** Admission refuses every run with these words, or the principals this names. */
+  readonly refuse?: string | ((principal: Principal) => string | undefined);
 }
 
 let lives = 0;
@@ -88,10 +88,13 @@ export const makeEngineWorld = (options: WorldOptions) =>
       Layer.succeed(
         RunAdmission,
         RunAdmission.of({
-          admit: () =>
-            options.refuse === undefined
+          admit: ({ principal }) => {
+            const refusal =
+              typeof options.refuse === "function" ? options.refuse(principal) : options.refuse;
+            return refusal === undefined
               ? Effect.void
-              : Effect.fail(new RunRefused({ message: options.refuse })),
+              : Effect.fail(new RunRefused({ message: refusal }));
+          },
         }),
       ),
       Layer.succeed(

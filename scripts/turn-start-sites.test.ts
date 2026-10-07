@@ -57,7 +57,7 @@ const ENGINE_DIR = "apps/server/src/engine/";
 const RUN_ADMISSION_ADAPTERS: ReadonlyArray<string> = ["apps/server/src/zerops/engineAdapters.ts"];
 /** The engine module that asks `RunAdmission`: at most one, the run's workspace capture. */
 const ENGINE_RUN_ADMISSION_SITES: ReadonlyArray<string> = [
-  "apps/server/src/engine/effects/runPrepare.ts",
+  "apps/server/src/engine/effects/admission.ts",
 ];
 
 const ADMIT_RUN_PATTERN = /\.admitRun\(/u;

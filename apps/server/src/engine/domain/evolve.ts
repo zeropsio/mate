@@ -235,12 +235,13 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
           personBody: own ? body : run.personBody,
         };
       });
-      if (body.kind === "person") {
-        // Only a message waiting for its own run is newer work; a steered one joins the run.
+      if (body.kind === "person" && body.delivery.state !== "steered") {
+        // Only a message waiting for its own run is newer work.
         return body.delivery.state === "queued"
           ? { ...counted, lastPersonSeq: event.seq }
           : counted;
       }
+      // A steered message joins the run, open with it: its steer's outcome may still change it.
       return {
         ...counted,
         items: {

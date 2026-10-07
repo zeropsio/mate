@@ -15,7 +15,8 @@ import type { Principal, RunTrigger, ThreadId } from "@t3tools/contracts";
 
 import { WorkspaceHistory } from "../../checkpointing/WorkspaceHistory.ts";
 import type { EffectHandler } from "../outbox/EffectWorker.ts";
-import { AgentWorkspace, RunAdmission } from "../ports.ts";
+import { AgentWorkspace } from "../ports.ts";
+import { makeAdmit } from "./admission.ts";
 import { failed, ok, wordsOf } from "./shared.ts";
 
 interface Payload {
@@ -23,10 +24,12 @@ interface Payload {
   readonly instanceId: string | null;
   readonly principal: Principal;
   readonly trigger: RunTrigger;
+  /** False for a maintenance command: admitted, nothing captured (absent: captured). */
+  readonly capture?: boolean;
 }
 
 export const makeRunPrepare = Effect.gen(function* () {
-  const admission = yield* RunAdmission;
+  const admit = yield* makeAdmit;
   const history = yield* WorkspaceHistory;
   const workspace = yield* AgentWorkspace;
   return {
@@ -34,17 +37,9 @@ export const makeRunPrepare = Effect.gen(function* () {
     run: (row) =>
       Effect.gen(function* () {
         const payload = row.payload as Payload;
-        const refused = yield* admission
-          .admit({
-            instanceId: payload.instanceId ?? "",
-            principal: payload.principal,
-            trigger: payload.trigger,
-          })
-          .pipe(
-            Effect.as(null),
-            Effect.catchTag("RunRefused", (refusal) => Effect.succeed(refusal.message)),
-          );
+        const refused = yield* admit(payload);
         if (refused !== null) return failed(refused, { refused: true });
+        if (payload.capture === false) return ok();
         const setup = yield* workspace.of(row.conversationId);
         // Best effort: a capture that broke never holds the message back or tries again.
         const broke = yield* history

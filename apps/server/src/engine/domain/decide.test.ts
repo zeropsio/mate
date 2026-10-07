@@ -252,7 +252,9 @@ const transitions: ReadonlyArray<Row> = [
     name: "a maintenance turn skips the capture",
     given: [],
     when: send("/compact", { maintenance: true }),
-    effects: ["session.open"],
+    // Admitted like any run (D6), nothing captured.
+    effects: ["run.prepare"],
+    also: (scene) => expect(scene.effects[0]).toMatchObject({ payload: { capture: false } }),
   },
   {
     name: "every run that asked for a capture releases it when it ends",
@@ -502,7 +504,10 @@ const transitions: ReadonlyArray<Row> = [
     [
       ["a newer person message", [...running, send("newer")]],
       ["a Stop was asked", [...running, stop()]],
-      ["a maintenance turn", [send("/compact", { maintenance: true }), opened(1), sent(1)]],
+      [
+        "a maintenance turn",
+        [send("/compact", { maintenance: true }), prepared(1), opened(1), sent(1)],
+      ],
       ["archived", [...running, { _tag: "Archive" }]],
     ] as const
   ).map(([reason, given]): Row => ({
