@@ -2467,6 +2467,15 @@ code {
   line-height: calc(20 / 13);
 }
 
+/* Columns size block pictures, rather than pictures sizing their columns.
+   A percentage-sized picture participating in automatic table sizing can
+   alternate the column widths and row height on each measurement. Its slot
+   excludes intrinsic image widths, including when the bytes first decode. */
+.chat-markdown :is(th, td) [data-markdown-image-block] {
+  contain: inline-size;
+  width: 100%;
+}
+
 .chat-markdown th,
 .chat-markdown td {
   padding: 0.45rem 0.75rem;
