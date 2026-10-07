@@ -137,3 +137,30 @@ describe("a run a restart cut, as a person reads it", () => {
     ),
   );
 });
+
+describe("a conversation's agent", () => {
+  it.effect("opens its sessions on the model options it was given (the first turn's effort)", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* makeEngineWorld({ driver: "claudeAgent" });
+        yield* w.boot;
+        yield* w.tell({
+          _tag: "AssignAgent",
+          agent: {
+            instanceId: "claudeAgent",
+            driver: "claudeAgent",
+            model: "m1",
+            options: [{ id: "effort", value: "xhigh" }],
+            profile: { kind: "mate" },
+          },
+        });
+        yield* w.tell({ _tag: "Send", text: "Stand up" });
+        assert.deepStrictEqual(
+          (w.provider.starts[0] as { readonly modelSelection?: unknown }).modelSelection,
+          { instanceId: "claudeAgent", model: "m1", options: [{ id: "effort", value: "xhigh" }] },
+        );
+        yield* w.shutdown;
+      }),
+    ),
+  );
+});

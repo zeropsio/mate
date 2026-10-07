@@ -363,6 +363,7 @@ const dispatch = (b: StepBuilder, run: RunRecord, justOpened = false): void => {
     instanceId: b.state.agent?.instanceId ?? null,
     driver: b.state.agent?.driver ?? null,
     model: b.state.model,
+    options: b.state.agent?.options ?? null,
     resume: b.state.lastNativeRef,
     rotateFrom: b.state.rotatingFrom,
   });

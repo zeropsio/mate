@@ -86,6 +86,8 @@ export const makeScriptedProvider = (options: ScriptedProviderOptions) =>
     const pubsub = yield* PubSub.unbounded<ProviderRuntimeEvent>();
     const sessions = new Map<string, Session>();
     const calls: Array<string> = [];
+    /** Each session start's input, as the engine asked it. */
+    const starts: Array<unknown> = [];
     let events = 0;
     let requests = 0;
     let items = 0;
@@ -155,6 +157,7 @@ export const makeScriptedProvider = (options: ScriptedProviderOptions) =>
       startSession: (threadId, input) =>
         Effect.gen(function* () {
           calls.push(`start ${threadId}`);
+          starts.push(input);
           if (options.failStart !== undefined) {
             const words = options.failStart;
             options.failStart = undefined;
@@ -480,7 +483,7 @@ export const makeScriptedProvider = (options: ScriptedProviderOptions) =>
       foreign: (thread: string) => emit("turn.started", thread, { turnId: "X" }),
     };
 
-    return { service, agent, calls, sessions, options };
+    return { service, agent, calls, starts, sessions, options };
   });
 
 export type ScriptedProvider = Effect.Success<ReturnType<typeof makeScriptedProvider>>;

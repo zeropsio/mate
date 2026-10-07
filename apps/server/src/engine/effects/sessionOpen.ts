@@ -12,7 +12,12 @@
  */
 import * as Effect from "effect/Effect";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
-import { SessionId, type ConversationId, type EffectOutcome } from "@t3tools/contracts";
+import {
+  SessionId,
+  type ConversationId,
+  type EffectOutcome,
+  type ProviderOptionSelection,
+} from "@t3tools/contracts";
 
 import { ProviderService } from "../../provider/Services/ProviderService.ts";
 import { DRIVER_CAPABILITIES } from "../bridge/capabilities.ts";
@@ -29,6 +34,8 @@ interface Payload {
   readonly instanceId: string | null;
   readonly driver: string | null;
   readonly model: string | null;
+  /** The agent's model options (absent from a payload a build before them wrote). */
+  readonly options?: ReadonlyArray<ProviderOptionSelection> | null;
   readonly resume: string | null;
   readonly rotateFrom: string | null;
 }
@@ -92,6 +99,7 @@ export const makeSessionOpen = Effect.gen(function* () {
                     modelSelection: {
                       instanceId: payload.instanceId as never,
                       model: payload.model,
+                      ...(payload.options == null ? {} : { options: payload.options }),
                     },
                   }),
             }),

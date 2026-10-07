@@ -12,6 +12,7 @@ import * as Schema from "effect/Schema";
 import * as SchemaTransformation from "effect/SchemaTransformation";
 
 import { CommandId, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { ProviderOptionSelection } from "./model.ts";
 import { ChatImageAttachment } from "./orchestration.ts";
 
 // ── ids ──────────────────────────────────────────────────────────────────────────────────────
@@ -511,6 +512,8 @@ export const ConversationAgent = Schema.Struct({
   instanceId: Schema.String,
   driver: Schema.String,
   model: Schema.NullOr(Schema.String),
+  /** The model's options its sessions open with (a new conversation's effort, D10). */
+  options: Schema.optionalKey(Schema.Array(ProviderOptionSelection)),
   profile: AgentProfile,
 });
 export type ConversationAgent = typeof ConversationAgent.Type;
