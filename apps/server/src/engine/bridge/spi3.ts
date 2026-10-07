@@ -31,6 +31,7 @@ import type {
   TurnHandle,
   ThreadTokenUsageSnapshot,
   ToolLifecycleItemType,
+  ToolPresentation,
   UserInputQuestion,
 } from "@t3tools/contracts";
 import type * as Brand from "effect/Brand";
@@ -164,6 +165,8 @@ export type ItemBody =
       readonly toolKind: ToolLifecycleItemType;
       readonly call?: SpiToolCall;
       readonly title?: string;
+      /** How the call presents itself, as its agent last said (SPI 2.7): an MCP tool's title and server. */
+      readonly presentation?: ToolPresentation;
     }
   | { readonly kind: "error"; readonly words: string }
   | { readonly kind: "other"; readonly title?: string };

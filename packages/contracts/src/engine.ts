@@ -14,6 +14,7 @@ import * as SchemaTransformation from "effect/SchemaTransformation";
 import { CommandId, TrimmedNonEmptyString } from "./baseSchemas.ts";
 import { ProviderOptionSelection } from "./model.ts";
 import { ChatImageAttachment } from "./orchestration.ts";
+import { ToolPresentation } from "./providerRuntime.ts";
 
 // ── ids ──────────────────────────────────────────────────────────────────────────────────────
 
@@ -329,6 +330,8 @@ const itemBodyFields = {
       "unreturned",
     ]),
     endedAt: Schema.NullOr(Millis),
+    /** How the call presents itself, as its agent said: an MCP tool's title and server. */
+    presentation: Schema.optionalKey(ToolPresentation),
   },
   request: { requestId: RequestId },
   /** Background work the agent started (a helper, a shell, a monitor), under the run it served. */

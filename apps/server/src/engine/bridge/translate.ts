@@ -526,7 +526,7 @@ export function makeTranslator(options: TranslatorOptions): Translator {
       item = newItem(turn, itemBody(event));
       if (nativeId !== undefined) owner.items.set(nativeId, item);
     } else {
-      item.body = itemBody(event);
+      item.body = itemBody(event, item.body);
     }
     if (payload.responseId !== undefined && item.response === undefined) {
       item.response = responseKey(item.turn, payload.responseId);
@@ -1165,16 +1165,22 @@ function itemBody(
     { type: "item.started" | "item.updated" | "item.completed" }
   > &
     SpiEvent,
+  previous?: ItemBody,
 ): ItemBody {
   const payload = event.payload;
   const itemType = payload.itemType;
   if (isToolLifecycleItemType(itemType)) {
     const call = event.toolCall ?? applyToolCall(event).toolCall;
+    // A driver names a call's presentation once it knows it; a later step that does not repeat
+    // it keeps the one it gave.
+    const presentation =
+      payload.presentation ?? (previous?.kind === "tool" ? previous.presentation : undefined);
     return {
       kind: "tool",
       toolKind: itemType,
       ...(call === undefined ? {} : { call }),
       ...(payload.title === undefined ? {} : { title: payload.title }),
+      ...(presentation === undefined ? {} : { presentation }),
     };
   }
   switch (itemType) {

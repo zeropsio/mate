@@ -67,8 +67,10 @@ const goldens: ReadonlyArray<{
       "h1.i2 opened: call tool ToolSearch running",
       "h1.i2 closed: call tool ToolSearch done",
       "h1.i3 opened: call tool zerops_workflow running",
+      "h1.i3 updated: call tool zerops_workflow running",
       "h1.i3 closed: call tool zerops_workflow done",
       "h1.i4 opened: call tool zerops_mount running",
+      "h1.i4 updated: call tool zerops_mount running",
       "h1.i4 closed: call tool zerops_mount done",
       "h1.i5 opened: note",
       'h1.i5 closed: note "Both calls done. Stopping here as asked."',
@@ -224,12 +226,17 @@ describe("the pump's mapping", () => {
     });
   });
 
-  const call = (status: string) =>
+  const call = (status: string, presentation?: unknown) =>
     sig({
       type: "item.upsert",
       turn: H1,
       item: "h1.i1",
-      body: { kind: "tool", toolKind: "mcp_tool_call", title: "MCP tool call" },
+      body: {
+        kind: "tool",
+        toolKind: "mcp_tool_call",
+        title: "MCP tool call",
+        ...(presentation === undefined ? {} : { presentation }),
+      },
       status,
     });
   const closedCall = (step: ReturnType<ReturnType<typeof makeToCore>["step"]>) => {
@@ -246,6 +253,24 @@ describe("the pump's mapping", () => {
     const toCore = makeToCore();
     toCore.step(call("running"), 0);
     assert.strictEqual(closedCall(toCore.step(call(status), 0))?.state, state);
+  });
+
+  it("a call's presentation, an MCP tool's own title and server, rides on its record", () => {
+    const presentation = {
+      title: "Deploy a service",
+      source: { key: "mcp:zerops", name: "Zerops", iconUrl: "https://zerops.io/icon.svg" },
+    };
+    const toCore = makeToCore();
+    toCore.step(call("running"), 0);
+    assert.deepStrictEqual(closedCall(toCore.step(call("completed", presentation), 0)), {
+      kind: "call",
+      step: "tool",
+      tool: { name: "MCP tool call" },
+      words: "MCP tool call",
+      state: "done",
+      endedAt: 0,
+      presentation,
+    });
   });
 
   it("streamed text goes live as it comes and settles when its item closes", () => {

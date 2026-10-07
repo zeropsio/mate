@@ -478,6 +478,9 @@ const engineBody = (
           words: body.title ?? null,
           state: CALL_STATES[item.status] as Extract<ItemBody, { kind: "call" }>["state"],
           endedAt,
+          ...(body.kind === "tool" && body.presentation !== undefined
+            ? { presentation: body.presentation }
+            : {}),
         },
         ...(output === undefined || output === "" ? {} : { detail: output }),
       };

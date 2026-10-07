@@ -48,6 +48,7 @@ describe("engine ids are derived from their cause", () => {
 const decodeEvent = Schema.decodeUnknownSync(EngineEvent);
 const decodeRunEnd = Schema.decodeUnknownSync(RunEnd);
 const decodeItem = Schema.decodeUnknownSync(Item);
+const encodeItem = Schema.encodeSync(Item);
 const decodeResult = Schema.decodeUnknownSync(CommandResult);
 const encodeEvent = Schema.encodeSync(EngineEvent);
 const header = {
@@ -112,6 +113,26 @@ describe("forward-compatible members", () => {
       frames: 3,
     });
     expect(item).toMatchObject({ kind: "unknown", type: "hologram", seq: 5, rev: 6 });
+  });
+
+  it("keeps a call's presentation, an MCP tool's own title and server, through its record", () => {
+    const raw = {
+      id: itemId(run, 2),
+      conversationId: "mate",
+      runId: run,
+      seq: 6,
+      rev: 7,
+      at: 1,
+      by: { kind: "mate" },
+      kind: "call",
+      step: "tool",
+      tool: { name: "zerops_deploy", server: "zerops" },
+      words: null,
+      state: "stopped",
+      endedAt: 2,
+      presentation: { title: "Deploy a service", source: { key: "mcp:zerops", name: "Zerops" } },
+    };
+    expect(encodeItem(decodeItem(raw))).toEqual(raw);
   });
 
   it("decodes a rejection reason from a newer engine as unknown", () => {

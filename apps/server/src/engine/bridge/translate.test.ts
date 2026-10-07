@@ -1288,6 +1288,28 @@ describe("the fold's rules", () => {
       "h1 ended completed — agent",
     ]);
   });
+
+  it("claudeAgent [scripted]: a call carries the latest presentation its agent gives it, an MCP tool's title and server", () => {
+    const w = wire("claudeAgent");
+    const presentation = {
+      title: "Deploy a service",
+      source: { key: "mcp:zerops", name: "Zerops", iconUrl: "https://zerops.io/icon.svg" },
+    };
+    const { signals } = run("claudeAgent", THREAD, [
+      ...w.open(),
+      ...w.begin(H1, "X1"),
+      w.tool("X1", "call-1", "started", { itemType: "mcp_tool_call" }),
+      w.tool("X1", "call-1", "updated", { itemType: "mcp_tool_call", presentation }),
+      w.tool("X1", "call-1", "completed", { itemType: "mcp_tool_call" }),
+    ]);
+    const bodies = signals.flatMap((signal) =>
+      signal.type === "item.upsert" && signal.body.kind === "tool" ? [signal.body] : [],
+    );
+    assert.deepStrictEqual(
+      bodies.map((body) => body.presentation),
+      [undefined, presentation, presentation],
+    );
+  });
 });
 
 // ── mock: real adapters, authored wire or the ACP mock agent ───────────
