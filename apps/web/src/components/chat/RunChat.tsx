@@ -1706,6 +1706,8 @@ function ZeropsOperationDetail({
     operation,
     environmentId,
     useCarried("log", () => false),
+    true,
+    threadRef?.threadId ?? null,
   );
   return (
     <ZeropsOperationCard
@@ -1796,6 +1798,7 @@ function WatchedOperationBubble(props: OperationLineProps) {
     ctx.activeThreadEnvironmentId,
     useCarried("log", () => false),
     line !== null && line === standsOpen,
+    ctx.threadRef?.threadId ?? null,
   );
   return <OperationLine {...props} regions={regions} />;
 }

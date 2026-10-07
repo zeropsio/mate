@@ -479,8 +479,7 @@ function collectUiImportViolations(
   return violations;
 }
 
-// Dependency rules 2 and 3 of the client state model
-// (docs/internals/zerops/client-state-model.md, "Module boundaries"). A zone is
+// Keep computation zones pure and independent of UI or runtime effects. A zone is
 // a set of paths under `cr/zerops`, matched by name so that a module landing at
 // a zone path is checked from its first commit; a path with no file yet holds
 // vacuously. Each zone file is walked through its value imports: relative
@@ -850,8 +849,7 @@ function collectGrantInterpreterUses(
   });
 }
 
-// Rule 5: `Cell`, `newCell`, `advance` and `read` stay private to the stores
-// (docs/internals/zerops/client-state-model.md, "Module boundaries"). A store is
+// `Cell`, `newCell`, `advance` and `read` stay private to the stores. A store is
 // the knowledge kernel itself, the store kit, the data runtime (one store whose
 // internals hold its cells) or a module named `…Store`. Every edge counts, a
 // type-only `Cell` included, and a namespace, star or dynamic import of

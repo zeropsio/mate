@@ -102,6 +102,12 @@ describe("mapCanvasPointToDevicePixels", () => {
   });
 });
 
+it("keeps an identified tool image's source format", () => {
+  expect(
+    frameImageSrc({ type: "frame", data: "PNG", mimeType: "image/png", width: 10, height: 20 }),
+  ).toBe("data:image/png;base64,PNG");
+});
+
 describe("foldBrowserStreamEvent", () => {
   const stateEvent = (
     status: "no-browser" | "connecting" | "live",

@@ -1,280 +1,56 @@
 # Client data layer
 
-This is the change contract for agents working on the client. Since Mate 0.14.26 the client data
-layer is the only data path; the old Zerops runtime is removed. Follow this model for new work.
-The implementation recipe lives in
-[`packages/client-runtime/src/data/README.md`](../../../packages/client-runtime/src/data/README.md).
+Remote facts have one path: **source adapter → reducer → account store → projection → surface**.
+The shared implementation belongs in `packages/client-runtime/src/data`; web and mobile use it,
+and desktop uses the web client. Provider evidence enters through the [provider runtime SPI](spi.md).
 
-## Why one layer
+## Ownership
 
-Separate fetches, caches and recovery loops make the same fact disagree between screens. They
-also make navigation expensive, erase known values during outages and turn guesses into verdicts.
-The client needs one path from remote evidence to a surface:
+Each fact has one authoritative source and one writer in the client. Facts are keyed by domain
+identity, within the verified account's lifetime. Remote values and verdicts stay in account memory;
+browser storage holds local preferences, drafts and sign-in state under their own contracts.
+A remembered value grants no access. Each write is authorized by its owner when it runs.
 
-**adapter → reducer → account store → projection → component**
+Keep value, authority, source order, coverage, freshness and access separate. A working transport
+does not prove that a scope is current or authorized. Missing, partial, stale and refused evidence
+are different states. Absence and deletion need affirmative owner evidence; silence, omitted data,
+transport failure and elapsed time prove neither.
 
-Zerops owns platform facts and permissions; HQ owns application structure, changes, releases and
-the operations it accepts; Mate owns conversations and agent activity. A cache grants no access,
-and a write is authorized again by its owner. Provider events reach owned product code through
-the [provider runtime SPI](spi.md), not through client knowledge of individual provider drivers.
+## Observation
 
-The rules are:
+Adapters normalize source evidence; the reducer alone admits and orders it. Commit a baseline
+atomically, then admit newer input buffered while it was read. Fence obsolete attempts and closed
+account lifetimes. Scope a damaged or refused read to the evidence it affects. Keep known values
+through transient failures; withhold protected values when access is unverified and purge them on
+an authoritative denial.
+Whole-value replacement requires complete evidence for that identity; partial input preserves
+unproven values. Replaceable observations keep distinct identities by owner and purpose. Releasing a view releases its demand; ending the owning account closes
+its observations before disposing their state.
 
-- Show what the source proved. Unknown, stale, partial and refused are distinct states. Missing
-  data is not proof of loading, deletion, failure or success. A cold menu shows a skeleton.
-- Keep source data in the account's memory, never in browser storage. Preferences, drafts and
-  sign-in state have separate contracts; they cannot restore remote facts or verdicts.
-- HQ computes person facts: role, may-write, Mine, ownership, waits-on-viewer and unseen results.
-  The client reads these facts rather than deriving them from membership lists or saved signers.
-- Use realtime and explicit demand rather than fixed-interval polling for live facts. Sources
-  without realtime use the layer's declared sampled policy and never claim to be live.
-- Preserve known values during transient outages and mark their coverage stale. Unverified access
-  withholds protected values; authoritative denial purges affected data without claiming deletion.
+Share account-wide observations. Hold detail only while a consumer or an accepted operation
+needs it; share demand and release it at the last holder. Use the source's realtime
+contract where available. A sampled source declares its demand and freshness policy centrally;
+components never add independent fetch, polling or recovery loops.
 
-## Shape and lifecycle
+Projections are pure functions over keyed facts, source coverage, access and operations. Surfaces
+read projections, express demand and submit intents. They do not own a second remote cache, infer
+person facts from credentials or substitute clock order for source order. Retry policy belongs to
+the shared stream supervisor. Automatic recovery is visible and bounded in rate while demanded.
+Every wait has a deadline or names its next action. A definitive refusal stops automatic recovery
+and waits for changed input, changed access or an explicit retry.
 
-`packages/client-runtime/src/data` owns the common stream machine, supervisor, reducer, keyed
-account store, family registry, projections and operations. Consumers use the
-`@t3tools/client-runtime/data` entry. Web and mobile share the model; desktop uses the web surface.
-The existing Mate conversation snapshot and sequence replay remain their own sanctioned transport.
+## Writes and evidence
 
-There is one `makeAccountStore` per account. Facts are keyed by domain id within their family,
-not by the transport that delivered them. Value, authority, source revision, membership, coverage,
-freshness and access are separate information. The reducer is the only writer, including for
-operation receipts. Keyed atoms and dependencies update only the projections that read a change.
-Screens do not subscribe to whole tables.
+Record an operation and its identity before sending. Acceptance, reflection in observed facts and
+completion are separate states. An accepted operation retains its observation demand after the
+originating surface closes. Operation predicates stay pure; adapters and executors own remote I/O.
 
-Every connection and logical scope runs the common stream machine. Its phases include connecting,
-baselining, live, stale, recovering, reauthenticating, paused, refused, unsupported and closed.
-A healthy socket does not prove its scopes are current. Every wait has a deadline or a named next
-action. An adapter classifies failures; the supervisor owns retry, capped backoff, session repair
-and refusal. Transient reads can retry without restarting an otherwise healthy link.
+Resolve a lost answer by its original request identity, handle or uniquely attributable owner
+evidence. Never blindly repeat a write that may have been accepted. A disappearing process or an
+observation deadline cannot manufacture success or failure. When the outcome cannot be recovered,
+retain an unresolved receipt naming who acts next and what they can do.
 
-A definitive refusal ends the attempt until an input or permission changes or the person explicitly
-retries. Focus, remount, socket rotation and elapsed time cannot revive it. Baselines commit
-atomically, buffered newer changes apply afterward, and obsolete attempts are fenced out. A damaged
-row preserves its previous value and refuses only the affected read. Transport events never delete
-facts; only owner evidence does.
-
-`families/index.ts` registers `FAMILIES`. A family declares its value, authority, listing scope,
-membership semantics, demand, decoding and optional indexes. Navigation is observed once per
-organization; detail is observed only while demanded for its owner. Registration and store behavior
-come from that declaration rather than from separate screen-specific fetch loops.
-
-`observeAccount` holds the active organization, its HQ link and outstanding detail demand:
-
-- `demandDetail({ family, listing?, ownerId })` holds a detail while a surface needs it and returns
-  a release function. Release on unmount or when the detail closes. Multiple holders share demand.
-- `readDetail(...)` holds a detail until its read settles, then releases it. A flow receives no
-  answer promptly when there is no usable link; it must not wait indefinitely for reconnection.
-- `revalidate(...)` requests fresh sampled evidence after our own write; `retryDetail(...)` is an
-  explicit retry. Navigation must never hydrate detail to fill a menu row.
-
-For a source without realtime, declare a sampled family with its path, optional search, decoder
-and freshness policy. Reads happen on demand, on revalidation after our write and, where declared,
-on the shared sampling cadence while demanded. A once-only policy reads again only after a write
-or explicit retry. This is an honest sample, not a substitute live stream or a component timer.
-
-Projections in `data/projections` are small pure functions for a surface: a menu row, release chip,
-review or connection page. They join keyed facts and derive the visible state from coverage,
-streams, access and operations. Surfaces read projections only; they express demand and submit
-intents through the layer, without fetching, opening sockets or keeping another verdict cache.
-
-## Operations and receipts
-
-An operation is recorded before sending its intent. Its receipt carries identity, executor,
-affected facts, handles and evidence. Acceptance, reflection in a scope and completion are separate
-states. Current platform state, an operation's retained completion evidence and an agent's completed
-turn are separate truths.
-
-Each pure kind in `data/operations/<kind>.ts` declares:
-
-- `reflected(read, intent, receipt)`: whether the receipt's effect is visible in the owner's facts.
-- `settledBy(read, intent, receipt)`: where applicable, owner evidence that ends the operation.
-- `effectHandles(read, intent)`: evidence for adopting an effect after an uncertain answer when
-  the owner does not retain request ids. Adopt only a new, uniquely attributable handle.
-- `observedIn(intent, receipt)`: the detail that must remain demanded from acceptance to settlement,
-  even after the originating surface closes.
-
-Register kinds in `operations/kinds.ts` (`OPERATION_KINDS`). Executors live only under
-`data/operations/executors`, including Zerops and HQ executors. They submit and look up the original
-request id or handle as supported by the owner. Kind predicates stay pure; adapters and executors
-are the remote I/O boundary.
-
-Before HQ exists, its setup runs as a Zerops operation with child writes and observation demand.
-Its append-only journal stays in HQ's project environment for recovery across browsers; the gate
-reads progress from operation receipts. Mate registration receipts likewise retain a refusal and
-its reason after the originating press ends, until a later registration replaces that verdict.
-
-A lost answer is resolved from the original id, handle or proven effect, never by blindly sending
-again. HQ retains operation evidence across client reconnects and tab closure. A process disappearing
-from a running list does not prove its outcome. Timers may bound observation but cannot invent a
-failure or success. If the owner can no longer observe the end, show an unresolved receipt with
-the next actor and action.
-
-## Zerops realtime contract
-
-Organization-wide registrations are filtered by Zerops for the credential's permitted projects,
-both in baseline responses and pushes. Navigation must use these registrations rather than reading
-every project's inventory separately. The core families are projects, processes, services and
-active versions; each uses a membership and an entity-update registration.
-
-- `listStream` provides the registration baseline and membership additions/removals.
-- `updateStream` provides whole entity rows ordered by `_version`. Register updates before taking
-  membership baselines so racing changes are buffered. Membership and entity updates can arrive
-  in either order.
-- Running-process membership pairs with updates for all process states. Filtering updates to
-  running processes loses terminal evidence and leaves indicators running forever.
-- Deletion notifications arrive only through `listStream`, never `updateStream`. Leaving a
-  filtered list is not necessarily entity deletion; verify deletion versus lost access before
-  tombstoning. Likewise, leaving ACTIVE-version membership can mean replacement by a newer version.
-- There is no replay after a disconnect. Re-register demanded scopes for a fresh baseline.
-  Intermediate states during the gap are unavailable; operation owners retain outcome evidence.
-- A socket can stay open and answer pings after access or token revocation. A `401` or `403` from
-  a REST read or registration is revocation evidence: end the affected attempt, withhold/purge
-  affected account or project data and enter session/access recovery. Re-register after permission
-  changes; do not wait for every family to emit removals. A pong proves transport, not authorization.
-
-Detail registrations and sampled reads are additional demand, not work performed for every menu
-entry. A direct current-state read must not wait for realtime setup.
-
-Public HTTP routings use one additional organization-wide membership/update pair. Addresses are
-joined with services by id; a routing must be synced before its address becomes a link. A service
-switch without that routing means publication is pending. A routing leaving membership removes its
-address without claiming entity deletion. If the organization routing search is refused to a
-viewer who can read individual projects, only that scope is refused. A visible project then demands
-its filtered pair; if that search is also refused, its GET listing is refreshed by service-switch
-or terminal routing-process evidence. Receiver rotation and elapsed time never repeat a refused
-search. Partial answers retain previously read addresses while reporting incomplete coverage.
-
-## HQ scopes
-
-The full wire contract is [HQ scopes and revisions](hq-scopes.md). One socket serves each renderer
-and organization. Scopes are navigation, app-detail, change, discussion, operation and attention.
-Navigation carries compact menu and person facts; releases, recipes, repositories and other detail
-are demanded independently. Each scope has its own incarnation and monotonically increasing revision.
-
-On reconnect, subscribe with the last committed cursor `{ incarnation, revision }` and `knownKeys`.
-HQ sends retained deltas or resets only that scope; `scope-ready` ends catchup. Commit values and
-explicit removals atomically. Removals distinguish `deleted` from `no-access`; omission or corruption
-preserves previous facts, including during resets. A reset establishes a new revision baseline;
-a delta requires the same incarnation and the next revision.
-
-Scope errors affect that scope. Transient errors preserve facts with unavailable coverage; refused
-scopes need an input/access change or explicit `retry`. Segment rotation resumes scopes rather than
-fetching a full structure snapshot or hydrating application detail. Session expiry enters session
-repair; an outage must not masquerade as sign-out or a retryable source refusal.
-
-`move-offers`, `handover-candidates` and `compare` are correlated request/reply exchanges when the
-person opens the relevant surface. They are not eagerly enumerated for navigation. HQ checks
-recipient access, replies only to the requester and retains the refusal/transient distinction.
-The eventual write still checks current permissions.
-
-## Mate attention ordering
-
-Mate attention is one source-owned value: environment identity, start epoch, incarnation, revision,
-chat identities, working/waiting counts, result/question identities and truncation. A new chat
-raises the revision even when counts stay unchanged. The open Mate's direct value and HQ's relay
-feed the same family and reducer.
-
-Within one environment, the persisted start epoch increases on each server start. A higher epoch
-wins over an earlier run regardless of arrival path or live/stored status. Within the same epoch
-and incarnation, the higher revision wins. An absent epoch decodes to zero, below every counted
-start, so a container awaiting its Mate update still participates in the same ordering. A
-conflicting incarnation is not ordered by its string
-or receipt time. Distinct environment identities have no comparable epoch; a live source is needed
-to establish replacement. HQ's scope cursor orders delivery, not Mate's source value.
-
-Live and stored describe source evidence separately from ordering. A live client-to-HQ connection
-cannot make stored attention live while HQ cannot hear Mate. Older live evidence cannot overwrite
-a newer epoch merely because it is live. A direct connection proves freshness only for the source
-revision it observed; confirming the retained revision refreshes that evidence without replacing
-its value. HQ computes unseen from result identities and per-person
-acknowledgements; absent attention means unknown unseen, not zero.
-
-## Guards and proof
-
-The oxlint rules `no-remote-io-outside-data-layer`, `no-remote-data-in-browser-storage` and
-`no-retired-mechanism` enforce the boundary and retirement. Their exception ledgers record
-remaining migration debt and sanctioned boundaries and only shrink; do not add an exception to build
-a new old path. A surviving sanctioned
-boundary needs an explicit reason. `scripts/check-guard-exceptions.ts` reconciles ledger entries
-against actual findings so deletions cannot leave stale exemptions.
-
-The hosted scenario suite lives in `apps/web/test/scenarios`. It exercises the built client with
-real HQ Core and controlled source drivers. Its areas are A sign-in, B menu, C Mate, D changes/review,
-E environments/releases, F creation, G outages and H request/render budgets. `fails` marks a known
-bug, not acceptable target behavior; remove the marker when the scenario's behavior is fixed.
-See its [README](../../../apps/web/test/scenarios/README.md) for running and extending it. Native
-mobile and desktop behavior still need a separate surface decision.
-
-## Rules for a change
-
-1. Put new remote reads or subscriptions in `data/adapters`; put remote operation execution in
-   `data/operations/executors`. Use the shared stream/supervisor policy rather than a new recovery loop.
-2. Add a family in `families/<name>.ts`: declare its value, owner, scope/demand, decoding, membership,
-   revision and indexes as needed, then register it in `families/index.ts`. Declare realtime or
-   sampled source behavior explicitly. Decide what leaving means and how access/deletion is proved.
-3. Add a pure projection in `projections/<name>.ts` with `name`, `keyOf`, `derive` and equality.
-   Read keyed facts, memberships, indexes, streams and operations. Test outage, partial coverage,
-   refusal and ordering inputs. Move every affected surface to that projection.
-4. Add a pure operation kind, register it in `operations/kinds.ts`, wire its executor and define
-   reflection, settlement and observation demand. Test uncertain acceptance and recovery from evidence.
-5. Follow shared behavior through web, desktop and mobile, shrink the replaced path's guard entries
-   and cover the affected scenario area. Run focused checks appropriate to the change.
-
-Never fetch directly in a component or hook, cache remote facts or verdicts in `localStorage`,
-use timers to decide outcomes or source precedence, compute person facts in the client, or make
-navigation fetch every detail. Do not retain a parallel old path after its replacement is wired.
-
-## Remaining work after Mate 0.14.26
-
-As of 2026-10-07, three items remain in transit:
-
-- **D03 — inventory presentation join.** The inventory atom still joins navigation and project
-  topology. Replace that presentation join with the closing projection over HQ placement and Mate
-  connections; its platform input already comes from the data layer.
-- **D57 — database catalog/query family.** Mate database actions still need a fact family and
-  surface projection for their catalog and query reads. They do not use the removed Zerops runtime;
-  deleting their current path before replacing it would remove working database actions.
-- **D47 — `rememberedRef`.** Mate browser-stream frames lack call identity, revision and replacement
-  completeness. Moving the last partial frame into a fact family requires a contract and server
-  change that proves replacement, absence and deletion; client timing cannot supply that evidence.
-
-The guard ledgers in `oxlint-plugin-t3code/exceptions/*.json` retain these reason classes
-(counted at 0.14.26; these are findings, not separate features):
-
-- **67 remote-I/O entries:** Mate transport/socket/client wiring and direct stream/HTTP reads
-  (18), Mate command atoms constructed by the app (23), direct HQ calls (20), and Zerops calls in
-  hooks/components or operation flows (6). Their remaining boundaries belong in transport adapters,
-  source adapters or operation executors, with surfaces dispatching and reading projections.
-- **226 retired-mechanism entries:** duplicate Mate environment/query/feed/config/shell atoms;
-  workspace-image, project-file and git-remote reads; HQ registry/recipe/release/credential hooks
-  and readiness flags; mobile candidate selection; client-derived member/permission facts;
-  locally held creation, press, update and hand-off state, polling and grace timers; usage/attention
-  reads and stored composer labels/change strips. The ledger also explicitly preserves D03's
-  inventory join, D57's database actions and D47's unversioned partial browser frames until their
-  replacements have the required presentation or source contract.
-- **8 storage entries:** the copied provider/model label (2), the copied HQ change strip (3), and
-  this tab's container intents (3). Remote labels and strips must come from projections; local
-  intent bookkeeping needs its declared allowlisted home rather than becoming a remote verdict cache.
-
-The old Zerops runtime, query cells, grant driver and second realtime socket are removed. The verified account owns one
-Zerops store and transport, with its Mate presentation adapter closed before its registry. Operations
-admit each write against the store's current platform-access projection and fence the account again
-before sending, including after an awaited source read or session repair. Transport loss retains
-access evidence; an authoritative refusal stays final until explicit retry or changed input.
-
-HQ change attachments are the `hqPicture` detail family. A description picture near the viewport demands its immutable
-attachment identity; the HQ link reads its bytes through the wire once and publishes the answer
-through the reducer. Refusal survives remount and segment rotation until explicit retry. Blob URLs
-belong to the mounted view and are revoked when it releases them; bytes remain in account memory.
-
-Build-log transport opening is not evidence that its baseline is read. A valid source frame,
-including an explicitly empty frame, ends the initial loading state. Publication batching only
-coalesces updates; elapsed time never declares a log live.
-
-HQ review descriptions, commits and linked changes use the `hqChangeRead` detail family on the
-account's HQ link. Its owner identity includes the requested change and review snapshot, so another
-head demands another read. A settled snapshot remains in account memory through outages and
-remounts; only explicit retry or revalidation reads the same identity again.
+New families, projections and operations use these same boundaries. Replacing an input preserves
+every existing product test sentence and follows all affected clients. Keep source-specific wire
+shapes, policies and surface behavior in code and tests; platform assumptions belong beside the
+code that depends on them or in a short ledger with a verification command.

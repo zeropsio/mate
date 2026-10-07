@@ -9,45 +9,17 @@
  * `../../../../zcp/docs/spec-mate.md` §5 "Data surface".
  */
 import type {
-  ZeropsDataConsoleBlob,
   ZeropsDataConsoleColumn,
   ZeropsDataConsoleError,
   ZeropsDataConsoleNode,
   ZeropsDataConsolePage,
   ZeropsDataConsolePath,
   ZeropsDataConsoleService,
-  ZeropsDataConsoleSessionEvent,
-  ZeropsDataConsoleStatus,
   ZeropsDataConsoleTablePage,
 } from "@t3tools/contracts";
 
 import { humanizeTtl } from "./dataBlob.ts";
 import type { ZeropsTopologyService } from "./topology.ts";
-
-// ---------------------------------------------------------------------------
-// Session fold
-// ---------------------------------------------------------------------------
-
-/** `allowWrites` rides on the wire event (`ZeropsDataConsoleSessionEvent`) but isn't folded here — nothing in this read-only slice reads it; slice 2 (writes) adds it back to the state when something needs it. */
-export interface ZeropsDataConsoleSessionState {
-  readonly status: ZeropsDataConsoleStatus;
-  readonly reason?: string;
-}
-
-export const INITIAL_DATA_CONSOLE_STATE: ZeropsDataConsoleSessionState = {
-  status: "idle",
-};
-
-/** Pure fold: `(state, next session event) → state`. The server's own first emission on subscribe re-seeds `status`, so a reconnect never has to be special-cased here. */
-export function foldDataConsoleSessionEvent(
-  state: ZeropsDataConsoleSessionState,
-  event: ZeropsDataConsoleSessionEvent,
-): ZeropsDataConsoleSessionState {
-  return {
-    status: event.status,
-    ...(event.reason !== undefined ? { reason: event.reason } : {}),
-  };
-}
 
 // ---------------------------------------------------------------------------
 // Tree model

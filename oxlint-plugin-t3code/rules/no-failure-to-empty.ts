@@ -359,9 +359,8 @@ const isDiscarded = (node: ESTree.Node): boolean => {
 };
 
 /**
- * Guards the failure-to-empty shapes of the client state model
- * (`docs/internals/zerops/client-state-model.md`, "Negatives are earned") in the Zerops client
- * code: a rejected read turned into `[]`, `undefined` or `null` by `.catch` (a handler that
+ * A failed or unknown read is not evidence of an empty result. Guard the Zerops client
+ * against failure-to-empty shapes: a rejected read turned into `[]`, `undefined` or `null` by `.catch` (a handler that
  * returns nothing or runs off its end answers `undefined`), a store read defaulted to an empty
  * with `??`, and a conditional that checks whether a Known or an AsyncResult holds its value,
  * reads that `.value` on one branch and answers `undefined`, `null` or an empty on the other

@@ -338,37 +338,6 @@ describe("createZeropsFeedAtoms", () => {
     }).pipe(Effect.scoped),
   );
 
-  /**
-   * The daemon connection stays open server-side for as long as any client
-   * subscriber is mounted (S8b brief: "disconnects on last unsubscribe") —
-   * so this atom must drop its subscription promptly once the panel
-   * unmounts, unlike the knowledge feeds, which are cheap to keep warm at
-   * the family's five-minute default.
-   */
-  it.live("keeps the browser stream's idle TTL short", () =>
-    Effect.gen(function* () {
-      const rig = yield* makeHarness();
-      const browserAtom = rig.feeds.browserStream({ environmentId: ENVIRONMENT_ID, input: {} });
-
-      expect(browserAtom.idleTTL).toBeLessThanOrEqual(10_000);
-    }).pipe(Effect.scoped),
-  );
-
-  /**
-   * Same rationale as the browser stream above: the console child process is
-   * spawned/kept warm server-side only while a subscriber is attached
-   * (spec-dataconsole.md §4.3's 10-minute idle kill), so this atom must not
-   * linger at the family's five-minute default either.
-   */
-  it.live("keeps the data console's idle TTL short", () =>
-    Effect.gen(function* () {
-      const rig = yield* makeHarness();
-      const dataConsoleAtom = rig.feeds.dataConsole({ environmentId: ENVIRONMENT_ID, input: {} });
-
-      expect(dataConsoleAtom.idleTTL).toBeLessThanOrEqual(10_000);
-    }).pipe(Effect.scoped),
-  );
-
   it.live("delivers the crew snapshot as a live value, whatever its status", () =>
     Effect.gen(function* () {
       const rig = yield* makeHarness();

@@ -14,7 +14,9 @@ import type { ZeropsTopologyView } from "@t3tools/client-runtime/zerops/topology
 
 import { reactHookHarness as hooks } from "../../test/reactHookHarness";
 
-const browserStreamSpy = vi.hoisted(() => vi.fn<() => unknown>(() => undefined));
+const browserStreamSpy = vi.hoisted(() =>
+  vi.fn<() => unknown>(() => ({ kind: "unknown", frame: null, freshness: "unknown" })),
+);
 const topologySpy = vi.hoisted(() => vi.fn<() => unknown>(() => undefined));
 
 vi.mock("react", async (importOriginal) => {
@@ -35,8 +37,9 @@ vi.mock("react/compiler-runtime", async () => {
 
 vi.mock("../useZeropsFeeds.ts", () => ({
   useZeropsTopology: topologySpy,
-  useZeropsBrowserStream: browserStreamSpy,
 }));
+
+vi.mock("../browserStreamLinks.tsx", () => ({ useMateBrowserCallFrame: browserStreamSpy }));
 
 vi.mock("../useNowMs.ts", () => ({
   useSecondsNowMs: () => Date.parse("2026-09-01T00:00:42.000Z"),
@@ -735,26 +738,44 @@ describe("useOperationCard — the browser card's live viewport (hook)", () => {
   beforeEach(() => {
     hooks.reset();
     browserStreamSpy.mockReset();
-    browserStreamSpy.mockReturnValue(undefined);
+    browserStreamSpy.mockReturnValue({ kind: "unknown", frame: null, freshness: "unknown" });
   });
 
-  it("subscribes to the browser feed only for an in-progress browser call, once per thread", () => {
+  it("demands frames only while running and always reads the exact call identity", () => {
     hooks.beginRender();
     useOperationCard(operation({ kind: "browser", phase: "done" }), ENVIRONMENT_ID);
-    expect(browserStreamSpy).toHaveBeenLastCalledWith(null);
+    expect(browserStreamSpy).toHaveBeenLastCalledWith(ENVIRONMENT_ID, "e1", false, null, "t1");
 
     hooks.beginRender();
     useOperationCard(operation({ kind: "deploy", phase: "running" }), ENVIRONMENT_ID);
-    expect(browserStreamSpy).toHaveBeenLastCalledWith(null);
+    expect(browserStreamSpy).toHaveBeenLastCalledWith(ENVIRONMENT_ID, null, false, null, "t1");
 
     hooks.beginRender();
     useOperationCard(operation({ kind: "browser", phase: "running" }), ENVIRONMENT_ID);
-    expect(browserStreamSpy).toHaveBeenLastCalledWith(ENVIRONMENT_ID);
+    expect(browserStreamSpy).toHaveBeenLastCalledWith(ENVIRONMENT_ID, "e1", true, null, "t1");
     expect(browserStreamSpy).toHaveBeenCalledTimes(3);
   });
 
+  it("passes thread and turn identity to the keyed result projection", () => {
+    hooks.beginRender();
+    useOperationCard(
+      operation({ kind: "browser", phase: "running", callIds: ["call"], turnId: "turn" }),
+      ENVIRONMENT_ID,
+      undefined,
+      true,
+      "thread",
+    );
+    expect(browserStreamSpy).toHaveBeenLastCalledWith(
+      ENVIRONMENT_ID,
+      "call",
+      true,
+      "thread",
+      "turn",
+    );
+  });
+
   it("passes the latest frame as liveFrame while the call is running, and live: true", () => {
-    browserStreamSpy.mockReturnValue({ status: "live", frame: FRAME });
+    browserStreamSpy.mockReturnValue({ kind: "known", frame: FRAME, freshness: "live" });
     hooks.beginRender();
     const region = useOperationCard(
       operation({ kind: "browser", phase: "running" }),
@@ -768,14 +789,20 @@ describe("useOperationCard — the browser card's live viewport (hook)", () => {
     });
   });
 
-  it("keeps the last frame once the call completes, so a result without a screenshot still shows it", () => {
-    const running = operation({ key: "call:brw1", kind: "browser", phase: "running" });
-    browserStreamSpy.mockReturnValue({ status: "live", frame: FRAME });
+  it("reads the retained source slot after completion and after the card remounts", () => {
+    const running = operation({
+      key: "op:brw1",
+      callIds: ["brw1"],
+      kind: "browser",
+      phase: "running",
+    });
+    browserStreamSpy.mockReturnValue({ kind: "known", frame: FRAME, freshness: "live" });
     hooks.beginRender();
     useOperationCard(running, ENVIRONMENT_ID);
 
-    const done = operation({ key: "call:brw1", kind: "browser", phase: "done" });
-    browserStreamSpy.mockReturnValue(undefined);
+    const done = operation({ key: "op:brw1", callIds: ["brw1"], kind: "browser", phase: "done" });
+    hooks.reset();
+    browserStreamSpy.mockReturnValue({ kind: "known", frame: FRAME, freshness: "stale" });
     hooks.beginRender();
     const region = useOperationCard(done, ENVIRONMENT_ID);
 
@@ -787,18 +814,44 @@ describe("useOperationCard — the browser card's live viewport (hook)", () => {
     });
   });
 
-  it("never carries a remembered frame across two different browser operations", () => {
-    const first = operation({ key: "call:brw1", kind: "browser", phase: "running" });
-    browserStreamSpy.mockReturnValue({ status: "live", frame: FRAME });
+  it("withholds a running call's last-known frame until its revision is observed again", () => {
+    browserStreamSpy.mockReturnValue({ kind: "known", frame: FRAME, freshness: "stale" });
+    hooks.beginRender();
+    const region = useOperationCard(
+      operation({ kind: "browser", phase: "running" }),
+      ENVIRONMENT_ID,
+    );
+    expect(region.live).toBe(true);
+    expect(region.liveFrame).toBeUndefined();
+  });
+
+  it("never gives an unknown second call the first call's frame", () => {
+    const first = operation({
+      key: "op:brw1",
+      callIds: ["brw1"],
+      kind: "browser",
+      phase: "running",
+    });
+    browserStreamSpy.mockReturnValue({ kind: "known", frame: FRAME, freshness: "live" });
     hooks.beginRender();
     useOperationCard(first, ENVIRONMENT_ID);
 
-    const second = operation({ key: "call:brw2", kind: "browser", phase: "done" });
-    browserStreamSpy.mockReturnValue(undefined);
+    const second = operation({ key: "op:brw2", callIds: ["brw2"], kind: "browser", phase: "done" });
+    browserStreamSpy.mockReturnValue({ kind: "unknown", frame: null, freshness: "unknown" });
     hooks.beginRender();
     const region = useOperationCard(second, ENVIRONMENT_ID);
 
     expect(region.liveFrame).toBeUndefined();
+  });
+
+  it("shows no stale frame when the source proves absence or cannot identify the call", () => {
+    for (const kind of ["unknown", "absent", "refused"]) {
+      browserStreamSpy.mockReturnValue({ kind, frame: null, freshness: "unknown" });
+      hooks.beginRender();
+      expect(
+        useOperationCard(operation({ kind: "browser" }), ENVIRONMENT_ID).liveFrame,
+      ).toBeUndefined();
+    }
   });
 
   it("carries neither live nor liveFrame for a non-browser operation", () => {

@@ -3005,7 +3005,13 @@ const OperationTimelineRow = memo(function OperationTimelineRow({
   row: Extract<TimelineRow, { kind: "operation" }>;
 }) {
   const ctx = use(TimelineRowCtx);
-  const regions = useOperationCard(row.operation, ctx.activeThreadEnvironmentId);
+  const regions = useOperationCard(
+    row.operation,
+    ctx.activeThreadEnvironmentId,
+    undefined,
+    true,
+    ctx.threadRef?.threadId ?? null,
+  );
   // A request for a vault value is the person's to answer: its card is the ask.
   if (vaultAskOf(row.operation) !== null) {
     return (

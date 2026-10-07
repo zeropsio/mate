@@ -1,5 +1,5 @@
-import { projectKeyOf, type ScopeAuthority } from "@t3tools/client-runtime/zerops/data";
-import type { AccountStore } from "@t3tools/client-runtime/data";
+import { projectKeyOf } from "@t3tools/client-runtime/zerops/data";
+import type { ProjectTopologySnapshot, AccountStore } from "@t3tools/client-runtime/data";
 import { EnvironmentId } from "@t3tools/contracts";
 import { AtomRegistry } from "effect/unstable/reactivity";
 import { describe, expect, it } from "vite-plus/test";
@@ -7,27 +7,22 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   environmentProjectRef,
   projectTopologyAtom,
-  zeropsInventoryAtom,
+  zeropsSessionAtom,
   type EnvironmentProjects,
-  type ProjectTopologySnapshot,
 } from "../state/zerops";
 import { mountRoster } from "@t3tools/client-runtime/zerops/testing";
-import type { InventoryProjection } from "./inventoryContext";
 import { organization, project } from "./__fixtures__/platformData";
 
 const owner = project();
 
-/** The account's inventory as its product publishes it, the project's authority as given. */
-const inventoryWith = (authority: ScopeAuthority): InventoryProjection => ({
-  projects: [],
-  projectRefs: new Map([[projectKeyOf(owner), owner]]),
-  authority: new Map([[projectKeyOf(owner), authority]]),
-});
-
 /** The account store's facts and the registry that projects them. */
 function pushedStore() {
   const registry = AtomRegistry.make();
-  registry.set(zeropsInventoryAtom, inventoryWith({ kind: "authorized" }));
+  registry.set(zeropsSessionAtom, {
+    status: "signed-in",
+    organizationStatus: "selected",
+    activeOrganization: organization,
+  });
   // The project and its services are the account store's: its roster and the organization's
   // services listing list them.
   const projectRow = {
@@ -102,7 +97,17 @@ function pushedStore() {
     release();
     registry.dispose();
   };
-  return { registry, pushProject, pushServices, pushUsage, failUsage, snapshots, close };
+  return {
+    registry,
+    pushProject,
+    pushServices,
+    pushUsage,
+    failUsage,
+    snapshots,
+    close,
+    access: (access: "denied" | "allowed") =>
+      store!.dispatch({ kind: "access", family: "project", id: owner.projectId, access }),
+  };
 }
 
 const APP = {
@@ -195,16 +200,15 @@ describe("the derived topology", () => {
   });
 
   it("withholds source-denied project content and restores it when allowed", () => {
-    const withheld = inventoryWith({ kind: "withheld", reason: "access-denied", cause: null });
     const runtime = pushedStore();
     runtime.pushProject();
     runtime.pushServices([APP]);
     expect(runtime.snapshots.at(-1)?.view?.project.name).toBe("acme-docs-dev");
 
-    runtime.registry.set(zeropsInventoryAtom, withheld);
+    runtime.access("denied");
     expect(runtime.snapshots.at(-1)?.view).toBeUndefined();
 
-    runtime.registry.set(zeropsInventoryAtom, inventoryWith({ kind: "authorized" }));
+    runtime.pushServices([APP]);
     expect(runtime.snapshots.at(-1)?.view?.project.name).toBe("acme-docs-dev");
     runtime.close();
   });

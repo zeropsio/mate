@@ -134,9 +134,8 @@ import { useComposerPathSearch } from "../../lib/composerPathSearchState";
 import {
   type DataMentionEntry,
   describeServiceContext,
-  describeTableContext,
 } from "@t3tools/client-runtime/zerops/dataConsole";
-import { useZeropsDataCatalogStore } from "../../zerops/dataCatalog";
+import { useDatabaseCatalog, useDatabaseMentionRead } from "../../zerops/useDatabase";
 import { useZeropsDataMentions } from "../../zerops/useZeropsDataMentions";
 import { composerModelOptionsFor, isNewConversation } from "../../zerops/newConversationEffort";
 import { getProviderModelCapabilities } from "../../providerModels";
@@ -325,8 +324,6 @@ import type { ReviewCommentContext } from "../../reviewCommentContext";
 
 const WORKSPACE_SNAPSHOT_RETRY_COOLDOWN_MS = 10_000;
 
-/** Stable empty read of the data mention catalog, so a project without one never re-renders on identity. */
-const EMPTY_DATA_MENTIONS: ReadonlyArray<DataMentionEntry> = [];
 /** Stable empty skills and commands while no provider is selected, so the menu items keep their identity. */
 const NO_PROVIDER_SKILLS: ServerProvider["skills"] = [];
 /** `@` names crewmates first (`mentionCrewmates`). */
@@ -1339,14 +1336,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     environmentId,
     isPathTrigger ? pathTriggerQuery : null,
   );
-  const dataCatalogEntries =
-    useZeropsDataCatalogStore((store) => store.byEnvironment[environmentId]?.entries) ??
-    EMPTY_DATA_MENTIONS;
-  const callDataConsole = useAtomCommand(zeropsCommands.dataConsoleCall, {
-    label: "zerops data mention context",
-    reportFailure: false,
-    reportDefect: false,
-  });
+  const dataCatalogEntries = useDatabaseCatalog(environmentId).entries;
+  const readDataMention = useDatabaseMentionRead(environmentId);
   const compactSlashCommandAvailable =
     composerTrigger?.kind === "slash-command" &&
     prompt.slice(0, composerTrigger.rangeStart).trim() === "" &&
@@ -2095,20 +2086,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         if (entry.kind === "service") {
           return describeServiceContext(entry, dataCatalogEntries);
         }
-        const result = await callDataConsole({
-          environmentId,
-          input: {
-            kind: "table",
-            path: { service: entry.service, segments: entry.segments },
-            page: { limit: 1 },
-          },
-        });
-        if (result._tag !== "Success" || result.value.kind !== "table") return undefined;
-        return describeTableContext({
-          service: { hostname: entry.service, type: entry.serviceType },
-          path: { service: entry.service, segments: entry.segments },
-          columns: result.value.page.columns,
-        });
+        return readDataMention(entry);
       })();
       if (described === undefined) return;
       // The user may have kept typing while the schema was in flight; only
@@ -2150,7 +2128,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     },
     [
       activeThread,
-      callDataConsole,
+      readDataMention,
       composerDraftTarget,
       dataCatalogEntries,
       environmentId,

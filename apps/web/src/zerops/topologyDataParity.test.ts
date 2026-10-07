@@ -8,7 +8,9 @@ import {
 import { describe, expect, it } from "vite-plus/test";
 
 import { project } from "./__fixtures__/platformData";
-import { projectTopologySnapshotFromRead } from "../state/zerops";
+import { inventoryTopology } from "@t3tools/client-runtime/data";
+import { AtomRegistry } from "effect/unstable/reactivity";
+import { mountRoster } from "@t3tools/client-runtime/zerops/testing";
 
 const owner = project();
 const projectDto = {
@@ -90,7 +92,26 @@ function fixture() {
   const pushed = (row: Partial<ZeropsService> & { readonly id: string }) => {
     rows = rows.map((held) => (held.id === row.id ? { ...held, ...row } : held));
   };
-  const snapshot = () => projectTopologySnapshotFromRead(projectDto, listed(), []).view!;
+  const snapshot = () => {
+    const registry = AtomRegistry.make();
+    const store = mountRoster(registry, owner.organization.organizationId, [projectDto], {
+      services: rows,
+    });
+    const result = registry.get(
+      store.data.project(inventoryTopology, {
+        orgId: owner.organization.organizationId,
+        projectId: owner.projectId,
+        viewer: {
+          id: owner.organization.organizationId,
+          name: "Org",
+          membershipId: "member",
+          roleCode: "ADMIN",
+        },
+      }),
+    ).view!;
+    registry.dispose();
+    return result;
+  };
   return { snapshot, listed, pushed };
 }
 
@@ -112,7 +133,12 @@ describe("original topology behavior through the central data pipeline", () => {
   it("hides system services even after a row update, without hiding zcp", () => {
     const f = fixture();
     f.pushed({ id: "core", name: "core", status: "ACTIVE" });
-    expect(f.snapshot().services.map((row) => row.serviceId)).toEqual(["zcp", "app"]);
+    expect(
+      f
+        .snapshot()
+        .services.map((row) => row.serviceId)
+        .toSorted(),
+    ).toEqual(["app", "zcp"]);
   });
 
   it("preserves runtime version, deploy activation, routes and autoscaling", () => {

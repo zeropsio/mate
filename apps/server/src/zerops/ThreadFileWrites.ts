@@ -2,7 +2,9 @@
  * What a thread's agent wrote, from the thread's own record: the stored
  * payloads of its calls, read by `fileWrites.ts`. Nothing is read from disk,
  * and nothing the agent only read or found in a file is sent — a reader sees
- * exactly what the agent wrote in its calls (design-decisions.md, 2026-10-06):
+ * exactly what the agent wrote in its calls. A disk read could reveal adjacent
+ * secrets or content changed since the call; only recorded completed writes are
+ * served to thread readers:
  *
  * - `fileWrites` — a write's or an edit's row opens onto what its call wrote;
  * - `writtenFile` — the Files tab's view of a file written outside the

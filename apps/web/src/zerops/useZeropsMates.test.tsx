@@ -1,12 +1,11 @@
 import { mountRoster } from "@t3tools/client-runtime/zerops/testing";
 import type { EnvironmentPresentation } from "@t3tools/client-runtime/connection";
 import type { ZeropsProject, ZeropsService } from "@t3tools/client-runtime/zerops";
-import { projectKeyOf } from "@t3tools/client-runtime/zerops/data";
 import { EnvironmentId } from "@t3tools/contracts";
 import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { zeropsInventoryAtom, zeropsSessionAtom } from "../state/zerops";
+import { zeropsSessionAtom } from "../state/zerops";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { organization, project } from "./__fixtures__/platformData";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
@@ -75,11 +74,6 @@ function publishAccount(registry: AtomRegistry.AtomRegistry) {
     status: "signed-in",
     organizationStatus: "selected",
     activeOrganization: organization,
-  });
-  registry.set(zeropsInventoryAtom, {
-    projects: [PROJECT],
-    projectRefs: new Map([[projectKeyOf(owner), owner]]),
-    authority: new Map(),
   });
 }
 

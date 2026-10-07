@@ -45,7 +45,8 @@ const stored = vi.hoisted(() => ({
 }));
 /** What each stop runs, as the platform says it, for the tests that draw it. */
 const stops = vi.hoisted(() => ({ deployments: new Map<string, unknown>() }));
-vi.mock("~/zerops/projectFlows", () => ({
+vi.mock("~/zerops/projectFlows", async (original) => ({
+  ...(await original<typeof import("~/zerops/projectFlows")>()),
   useStopDeploymentsShown: () => stops.deployments,
 }));
 vi.mock("~/zerops/collapsedProjects", () => ({
@@ -96,6 +97,7 @@ vi.mock("~/zerops/accountForge", async (original) => {
 const session = vi.hoisted(() => ({ viewer: undefined as string | undefined }));
 vi.mock("~/zerops/ZeropsSessionProvider", async (original) => ({
   ...(await original<typeof import("~/zerops/ZeropsSessionProvider")>()),
+  useZeropsSession: () => ({ status: "signed-in", activeOrganization: { id: "org-1" } }),
   useZeropsSessionOptional: () =>
     session.viewer === undefined ? null : { user: { id: session.viewer } },
 }));
@@ -149,7 +151,7 @@ import {
 import { useSidebarJump } from "~/zerops/sidebarJump";
 import { useSidebarReveal } from "~/zerops/sidebarReveal";
 import { zeropsSessionAtom } from "~/state/zerops";
-import { organization } from "~/zerops/__fixtures__/platformData";
+import { organization, project } from "~/zerops/__fixtures__/platformData";
 import type { SidebarCrewRead } from "./crew/SidebarCrewLine";
 import { MateMenu, type MateRowActions } from "./SidebarMateMenu";
 import {
@@ -160,6 +162,8 @@ import {
   type SidebarProjectFlow,
 } from "./SidebarZeropsTree";
 import { mountHqNavigation } from "~/zerops/__fixtures__/hqNavigation";
+import { useProjectFlows } from "~/zerops/projectFlows";
+import { AccountDataContext, type AccountData } from "~/zerops/ZeropsAccountData";
 
 /** One comparison HQ answered for `appdev`: what a release would put live. */
 const compared = (commits: ReadonlyArray<{ readonly sha: string; readonly subject: string }>) => ({
@@ -4255,5 +4259,151 @@ describe("the menu's coming-up line reads what the platform makes, never how old
       project: { ...item.project, created: madeAt(Date.now() - minutes * 60_000) },
     } as ZeropsCandidate;
     expect(lineWords(render([CRM_DEV, stage]))).toBe("Stage coming up · adding the app");
+  });
+});
+
+describe("the menu's release offer", () => {
+  it("after a merge reaches stage, the menu offers a release when production exists", () => {
+    const registry = AtomRegistry.make();
+    registry.set(zeropsSessionAtom, {
+      status: "signed-in",
+      organizationStatus: "selected",
+      activeOrganization: organization,
+    });
+    const { store } = mountHqNavigation(registry, organization.organizationId, {
+      structure: {
+        apps: [
+          {
+            id: "aaa",
+            name: "Beviro CRM",
+            projects: [
+              { projectId: "crm-dev", name: "Ada", kind: "mate", mate: { face: "" } },
+              { projectId: "crm-stage", name: "Stage", kind: "stage", mate: null },
+              { projectId: "crm-prod", name: "Production", kind: "production", mate: null },
+            ],
+            environments: [
+              {
+                name: "stage",
+                tier: "stage",
+                projectId: "crm-stage",
+                sources: ["main"],
+                order: 1,
+                jobs: [],
+                keyHeld: true,
+                keyInvalid: false,
+              },
+              {
+                name: "production",
+                tier: "production",
+                projectId: "crm-prod",
+                sources: ["release"],
+                order: 2,
+                jobs: [],
+                keyHeld: true,
+                keyInvalid: false,
+              },
+            ],
+          },
+        ],
+        ungrouped: [],
+      },
+      // HQ compared the merged main with the older code production still runs.
+      releaseOffers: {
+        aaa: {
+          head: "a".repeat(40),
+          suggestion: "v2.4.1",
+          gate: { allow: true },
+          inFlight: null,
+          summary: { total: 1, more: 0, subjects: ["Quicker checkout"], atLeast: false },
+        },
+      },
+    });
+    stops.deployments = new Map([
+      [
+        "crm-stage",
+        {
+          state: "known",
+          freshness: "current",
+          value: { kind: "running", version: { label: "main", commit: "a".repeat(40) } },
+        },
+      ],
+      [
+        "crm-prod",
+        {
+          state: "known",
+          freshness: "current",
+          value: { kind: "running", version: { label: "v2.4.0", commit: "b".repeat(40) } },
+        },
+      ],
+    ]);
+    const inventory: Inventory = {
+      projects: [CRM_DEV.project, CRM_STAGE.project, CRM_PROD.project],
+      projectRefs: new Map(["crm-dev", "crm-stage", "crm-prod"].map((id) => [id, project(id)])),
+      authority: new Map(),
+      lost: new Set(),
+      isLoading: false,
+      error: null,
+    };
+    const unexpectedRead = () => {
+      throw new Error("The menu must not read detail for a release offer.");
+    };
+    const accountData: AccountData = {
+      data: store.data,
+      orgId: organization.organizationId,
+      logs: null,
+      demandDetail: unexpectedRead,
+      renewHeld: unexpectedRead,
+      retry: unexpectedRead,
+      showHq: unexpectedRead,
+      moveOffers: unexpectedRead,
+      handoverCandidates: unexpectedRead,
+      readDetail: unexpectedRead,
+      revalidate: unexpectedRead,
+      retryDetail: unexpectedRead,
+      compare: unexpectedRead,
+    };
+    function Menu() {
+      const { flows } = useProjectFlows("every");
+      return (
+        <SidebarZeropsTree
+          candidates={[CRM_DEV, up(CRM_STAGE), up(CRM_PROD)]}
+          complete
+          onBrowseProjects={() => {}}
+          onSelect={() => {}}
+          getFlow={(id) => {
+            const flow = flows.get(id);
+            return flow === undefined
+              ? undefined
+              : {
+                  pullRequests: flow.pullRequests,
+                  environments: new Map(flow.environments.map((row) => [row.projectId, row])),
+                  releaseOffered: flow.release.gate.allowed,
+                  releaseSummary: flow.release.summary,
+                  releaseTag: flow.release.suggestion,
+                };
+          }}
+        />
+      );
+    }
+    try {
+      const html = renderToStaticMarkup(
+        <RegistryContext.Provider value={registry}>
+          <AccountDataContext.Provider value={accountData}>
+            <InventoryContext.Provider value={inventory}>
+              <Menu />
+            </InventoryContext.Provider>
+          </AccountDataContext.Provider>
+        </RegistryContext.Provider>,
+      );
+      expect(html).toContain("1 change not released");
+      expect(html).toContain('data-zerops-surface="sidebar-project-line-door"');
+      expect(html).toContain(">Review</button>");
+      expect(html).toContain('data-zerops-surface="sidebar-production-chip"');
+      expect([...store.state().streams.keys()].some((key) => key.includes("hq-app-detail"))).toBe(
+        false,
+      );
+    } finally {
+      registry.dispose();
+    }
   });
 });

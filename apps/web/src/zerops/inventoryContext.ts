@@ -2,10 +2,7 @@ import { createContext, useContext, useMemo, useState } from "react";
 
 import type { InventoryTroubleVoice } from "./inventoryTrouble.logic";
 import type { ZeropsProject } from "@t3tools/client-runtime/zerops";
-import {
-  deriveZeropsCandidates,
-  type ZeropsCandidate,
-} from "@t3tools/client-runtime/zerops/candidates";
+import { type ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import {
   projectKeyOf,
   type ProjectRef,
@@ -14,7 +11,12 @@ import {
 import type { ConversationAccess } from "@t3tools/client-runtime/zerops/environments";
 import { knownPresentation, type KnownSurface } from "@t3tools/client-runtime/zerops/knowledge";
 
-import { useProjectsServices } from "./ZeropsAccountData";
+import { inventoryCandidates } from "@t3tools/client-runtime/data";
+import { useAccountData } from "./ZeropsAccountData";
+import { useZeropsData } from "./zeropsDataContext";
+import { useZeropsSession } from "./ZeropsSessionProvider";
+import { Atom } from "effect/unstable/reactivity";
+import { useAtomValue } from "@effect/atom-react";
 
 export interface Inventory {
   /**
@@ -109,6 +111,8 @@ export function withheldProjectNotices(inventory: Inventory): ReadonlyArray<stri
   return [...notices];
 }
 
+const NO_CANDIDATES = Atom.make<ReadonlyArray<ZeropsCandidate>>([]);
+
 /**
  * Folds every inventory project against its services, as the organization's services listing
  * holds them, into the flat candidate list every consumer needs to find or classify an
@@ -117,15 +121,20 @@ export function withheldProjectNotices(inventory: Inventory): ReadonlyArray<stri
  * afterward.
  */
 export function useInventoryCandidates(): ReadonlyArray<ZeropsCandidate> {
-  const { projects } = useZeropsInventory();
-  const projectIds = useMemo(() => projects.map(({ id }) => id), [projects]);
-  const services = useProjectsServices(projectIds);
-  return useMemo(
-    () =>
-      projects.flatMap((project) =>
-        deriveZeropsCandidates(project, services[project.id]?.services ?? null, new Map()),
-      ),
-    [projects, services],
+  const account = useAccountData();
+  const { activeOrganization } = useZeropsSession();
+  const { organizationRef } = useZeropsData();
+  return useAtomValue(
+    useMemo(
+      () =>
+        activeOrganization === null
+          ? NO_CANDIDATES
+          : account.data.project(inventoryCandidates, {
+              organization: organizationRef(activeOrganization.id),
+              viewer: activeOrganization,
+            }),
+      [account.data, activeOrganization, organizationRef],
+    ),
   );
 }
 

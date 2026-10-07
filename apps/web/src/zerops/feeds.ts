@@ -40,18 +40,7 @@ import {
   type EnvironmentRegistry,
 } from "@t3tools/client-runtime/connection";
 import { subscribe } from "@t3tools/client-runtime/rpc";
-import {
-  createEnvironmentRpcSubscriptionAtomFamily,
-  followStreamInEnvironment,
-} from "@t3tools/client-runtime/state/runtime";
-import {
-  foldBrowserStreamEvent,
-  INITIAL_BROWSER_STREAM_STATE,
-} from "@t3tools/client-runtime/zerops/browserStream";
-import {
-  foldDataConsoleSessionEvent,
-  INITIAL_DATA_CONSOLE_STATE,
-} from "@t3tools/client-runtime/zerops/dataConsole";
+import { followStreamInEnvironment } from "@t3tools/client-runtime/state/runtime";
 import {
   foldMateFeed,
   mateFeed,
@@ -93,16 +82,6 @@ export interface ZeropsAgentAuthTarget {
 }
 
 export interface ZeropsCrewTarget {
-  readonly environmentId: EnvironmentId;
-  readonly input: Record<string, never>;
-}
-
-export interface ZeropsBrowserStreamTarget {
-  readonly environmentId: EnvironmentId;
-  readonly input: Record<string, never>;
-}
-
-export interface ZeropsDataConsoleTarget {
   readonly environmentId: EnvironmentId;
   readonly input: Record<string, never>;
 }
@@ -249,62 +228,5 @@ export function createZeropsFeedAtoms<R, E>(runtime: Atom.AtomRuntime<Environmen
       ),
   });
 
-  /**
-   * `subscribeZeropsBrowserStream` interleaves state transitions and frames
-   * on one stream; `transform` folds it (`foldBrowserStreamEvent`) into the
-   * accumulated snapshot every consumer reads, so a reconnect's fresh
-   * `no-browser`/`connecting` re-seed never has to be special-cased by a
-   * caller. The raw subscription result (an `AsyncResult`) is exposed — a
-   * server without this method (0.2.5 and older) fails the subscription
-   * outright, and the panel needs to tell that apart from a successful
-   * "no-browser" state.
-   *
-   * `idleTtlMs` is a few seconds, not the family default of five minutes:
-   * the server keeps the daemon connection open for as long as ANY
-   * subscriber is attached, so leaving this atom mounted at the default TTL
-   * would hold that connection open for minutes after the viewer has
-   * navigated away from the panel.
-   */
-  const browserStream = createEnvironmentRpcSubscriptionAtomFamily(runtime, {
-    label: "environment-data:zerops:browserStream",
-    tag: WS_METHODS.subscribeZeropsBrowserStream,
-    idleTtlMs: 5_000,
-    transform: (stream) =>
-      stream.pipe(
-        Stream.mapAccum(
-          () => INITIAL_BROWSER_STREAM_STATE,
-          (state, event) => {
-            const next = foldBrowserStreamEvent(state, event);
-            return [next, [next]] as const;
-          },
-        ),
-      ),
-  });
-
-  /**
-   * `subscribeZeropsDataConsole` (spec-dataconsole.md §4.3): the console
-   * child process's own lifecycle, folded the same way as `browserStream`
-   * (`foldDataConsoleSessionEvent`) so a reconnect's fresh `idle`/`starting`
-   * re-seed is never special-cased by a caller. `idleTtlMs` matches
-   * `browserStream` for the same reason — the server only keeps the console
-   * process warm while a subscriber is attached, so the family default
-   * (five minutes) would hold it open long after the panel closed.
-   */
-  const dataConsole = createEnvironmentRpcSubscriptionAtomFamily(runtime, {
-    label: "environment-data:zerops:dataConsole",
-    tag: WS_METHODS.subscribeZeropsDataConsole,
-    idleTtlMs: 5_000,
-    transform: (stream) =>
-      stream.pipe(
-        Stream.mapAccum(
-          () => INITIAL_DATA_CONSOLE_STATE,
-          (state, event) => {
-            const next = foldDataConsoleSessionEvent(state, event);
-            return [next, [next]] as const;
-          },
-        ),
-      ),
-  });
-
-  return { lifecycle, agentAuth, crew, browserStream, dataConsole };
+  return { lifecycle, agentAuth, crew };
 }

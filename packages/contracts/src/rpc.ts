@@ -1099,7 +1099,7 @@ const WsZeropsLoginRemoveRpc = Rpc.make(WS_METHODS.zeropsLoginRemove, {
  * disconnects on last unsubscribe — never persistent.
  */
 const WsSubscribeZeropsBrowserStreamRpc = Rpc.make(WS_METHODS.subscribeZeropsBrowserStream, {
-  payload: Schema.Struct({}),
+  payload: Schema.Struct({ callFrames: Schema.optional(Schema.Boolean) }),
   success: ZeropsBrowserStreamEvent,
   error: EnvironmentAuthorizationError,
   stream: true,
