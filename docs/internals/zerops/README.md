@@ -35,9 +35,6 @@ no plan of their own.
 - **[`spi.md`](spi.md)** — The provider runtime SPI contract: boundary, version/changelog, event
   kinds, delivery guarantee, enrichment, typed capabilities, fixtures, porting checklist
   - _Lifecycle:_ Changes when the SPI version bumps or a capability/fixture/porting step changes
-- **[`crew.md`](crew.md)** — Crew mode as built: the three levels, where its code lives, the switch,
-  the crew home files, the RPCs, the seams, phase B and C
-  - _Lifecycle:_ Changes when a crew module, seam or phase lands
 - **[`compat.md`](compat.md)** — Per-port compatibility matrix: ported upstream SHA × CLI/SDK/Effect
   versions × fixture set
   - _Lifecycle:_ One row per port, never edited in place
