@@ -63,6 +63,7 @@ describe("projectVariablesFamily.decode", () => {
         id: "p1",
         version: null,
         value: {
+          complete: true,
           rows: [
             {
               id: "e1",
@@ -102,6 +103,7 @@ describe("projectVariablesFamily.decode", () => {
         id: "p1",
         version: null,
         value: {
+          complete: true,
           rows: [
             expect.objectContaining({ key: "STRIPE_KEY", sensitive: true, value: null }),
             expect.objectContaining({ key: "TOKEN", sensitive: true, value: null }),
@@ -113,13 +115,17 @@ describe("projectVariablesFamily.decode", () => {
     {
       name: "reads a project without variables as none",
       raw: { id: "p1", envList: [] },
-      row: { id: "p1", version: null, value: { rows: [] } },
+      row: { id: "p1", version: null, value: { rows: [], complete: true } },
     },
     { name: "refuses a project row without its list", raw: { id: "p1" }, row: null },
     {
-      name: "refuses a project whose variable is damaged",
-      raw: { id: "p1", envList: [{ id: "e1" }] },
-      row: null,
+      name: "keeps the readable variables of a project one of whose is damaged, as incomplete",
+      raw: { id: "p1", envList: [{ id: "e1" }, envRow({ id: "e2" })] },
+      row: {
+        id: "p1",
+        version: null,
+        value: { complete: false, rows: [expect.objectContaining({ id: "e2", key: "LOG_LEVEL" })] },
+      },
     },
   ])("$name", ({ raw, row }) => {
     expect(projectDecode(raw)).toEqual(row);

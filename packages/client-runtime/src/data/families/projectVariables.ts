@@ -29,6 +29,8 @@ export interface VariableRow {
 
 export interface ProjectVariablesValue {
   readonly rows: ReadonlyArray<VariableRow>;
+  /** Whether every row was readable: a damaged one is left out, and its absence proves nothing. */
+  readonly complete: boolean;
 }
 
 declare module "../model.ts" {
@@ -67,9 +69,10 @@ export const keptRow = (row: typeof VariableFields.Type): VariableRow => {
 
 const ProjectRow = Schema.Struct({
   id: Schema.NonEmptyString,
-  envList: Schema.Array(VariableFields),
+  envList: Schema.Array(Schema.Unknown),
 });
 const decodeProject = Schema.decodeUnknownOption(ProjectRow);
+const decodeVariable = Schema.decodeUnknownOption(VariableFields);
 
 export const projectVariablesFamily: FamilySpec<"projectVariables"> = {
   family: "projectVariables",
@@ -89,11 +92,20 @@ export const projectVariablesFamily: FamilySpec<"projectVariables"> = {
     decode: (raw) =>
       Option.match(decodeProject(raw), {
         onNone: () => null,
-        onSome: (project) => ({
-          id: project.id,
-          version: null,
-          value: { rows: project.envList.map(keptRow) },
-        }),
+        onSome: (project) => {
+          // A damaged row is refused alone: its neighbours are kept, the answer incomplete.
+          const rows = project.envList.flatMap((raw) =>
+            Option.match(decodeVariable(raw), {
+              onNone: () => [],
+              onSome: (row) => [keptRow(row)],
+            }),
+          );
+          return {
+            id: project.id,
+            version: null,
+            value: { rows, complete: rows.length === project.envList.length },
+          };
+        },
       }),
   },
 };

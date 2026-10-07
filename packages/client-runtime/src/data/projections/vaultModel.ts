@@ -28,6 +28,11 @@ export interface VaultView {
    */
   readonly status: "unread" | "ready" | "failed";
   /**
+   * Both reads answered whole: every row was read. Until then an absence proves nothing — no
+   * `unread` or `missing` is claimed, and an impact never says nothing reads a value.
+   */
+  readonly complete: boolean;
+  /**
    * Shared first, then the project's runtime services by hostname, then the ones Zerops runs for
    * it (databases, storage…) by hostname. The Mate's own container (zcp) and build containers are
    * never listed.
@@ -177,6 +182,11 @@ export interface VaultImpact {
   readonly unread: boolean;
   /** A removal: services that read it would get the literal text `${KEY}` after their next start. */
   readonly literal: ReadonlyArray<{ readonly serviceId: string; readonly hostname: string }>;
+  /**
+   * Read off a view that was not whole (`VaultView.complete` false): more may read it than listed,
+   * and `unread` is never claimed. Absent where the view was whole.
+   */
+  readonly partial?: true;
 }
 
 /** One vault change since a moment, for the note a Mate's agent hears (never the value). */

@@ -45,6 +45,7 @@ const scope = (patch: Partial<VaultScope> & Pick<VaultScope, "ref" | "id">): Vau
 
 const VIEW: VaultView = {
   status: "ready",
+  complete: true,
   notLive: [],
   scopes: [
     scope({
@@ -290,6 +291,77 @@ describe("vaultNote", () => {
         "~ API_URL  Shared · plain · appdev, appstage read it at run — restart appdev, appstage",
         "− TOKEN  appdev · plain · appdev reads it — it runs Shared's TOKEN after a restart; restart appdev",
         "− UNUSED  appstage · plain · nothing read it",
+      ].join("\n"),
+    );
+  });
+});
+
+describe("an incomplete view", () => {
+  const PARTIAL: VaultView = { ...VIEW, complete: false };
+  const UNKNOWN: VaultImpact = { restart: [], unread: false, literal: [], partial: true };
+
+  it.each<{
+    readonly name: string;
+    readonly scope: VaultChange["scope"];
+    readonly write: Parameters<typeof vaultImpact>[2];
+    readonly impact: VaultImpact;
+  }>([
+    {
+      name: "never says nothing reads a new value",
+      scope: SHARED,
+      write: { kind: "add", key: "NEW", value: "x", sensitive: false },
+      impact: UNKNOWN,
+    },
+    {
+      name: "never says nothing reads an updated one",
+      scope: SHARED,
+      write: { kind: "update", id: "e-stripe", key: "STRIPE_KEY", value: "x", sensitive: true },
+      impact: UNKNOWN,
+    },
+    {
+      name: "names the readers it knows, as perhaps not all",
+      scope: SHARED,
+      write: { kind: "update", id: "e-log", key: "LOG_LEVEL", value: "warn", sensitive: false },
+      impact: { restart: [appdev, appstage], unread: false, literal: [], partial: true },
+    },
+  ])("$name", ({ scope: target, write, impact }) => {
+    expect(vaultImpact(PARTIAL, target, write)).toEqual(impact);
+  });
+
+  it("lists changes with impacts that claim no absence", () => {
+    expect(vaultChangesSince(PARTIAL, T(10), []).map((change) => change.impact)).toEqual([
+      { restart: [appdev], unread: false, literal: [], partial: true },
+      UNKNOWN,
+    ]);
+  });
+
+  it("notes that who reads it is not known", () => {
+    expect(
+      vaultNote([
+        {
+          scope: SHARED,
+          hostname: null,
+          key: "STRIPE_KEY",
+          kind: "added",
+          sensitive: true,
+          at: T(11),
+          impact: UNKNOWN,
+        },
+        {
+          scope: SHARED,
+          hostname: null,
+          key: "OLD",
+          kind: "removed",
+          sensitive: false,
+          at: T(11),
+          impact: UNKNOWN,
+        },
+      ]),
+    ).toBe(
+      [
+        "Vault changes since your last turn (values are never shown to you):",
+        "+ STRIPE_KEY  Shared · sensitive · who reads it is not known yet — the vault was not read whole",
+        "− OLD  Shared · plain · who read it is not known — the vault was not read whole",
       ].join("\n"),
     );
   });

@@ -54,6 +54,7 @@ const value = (
 
 export const VAULT_FIXTURE: VaultView = {
   status: "ready",
+  complete: true,
   scopes: [
     {
       ref: SHARED,

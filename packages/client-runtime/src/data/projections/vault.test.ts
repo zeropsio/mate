@@ -412,13 +412,37 @@ describe("vault", () => {
     ]);
   });
 
-  it("claims nothing from an absence while an answer is partial", () => {
-    const view = viewOf(
-      base,
-      sharedAnswer,
-      answered(SERVICES_SCOPE, "serviceVariable", [...SERVICE_ROWS, { id: "damaged" }], true),
-    );
-    expect(view.notLive.map((each) => each.kind)).toEqual(["restart", "self"]);
+  it.each([
+    {
+      name: "a service row is unreadable",
+      view: () =>
+        viewOf(
+          base,
+          sharedAnswer,
+          answered(SERVICES_SCOPE, "serviceVariable", [...SERVICE_ROWS, { id: "damaged" }], true),
+        ),
+    },
+    {
+      name: "a Shared row is unreadable",
+      view: () =>
+        viewOf(
+          base,
+          answered(SHARED_SCOPE, "projectVariables", [
+            { id: PROJECT, envList: [...SHARED_ROWS, { id: "damaged" }] },
+          ]),
+          servicesAnswer,
+        ),
+    },
+  ])("is incomplete and claims nothing from an absence while $name", ({ view }) => {
+    const partial = view();
+    expect(partial.complete).toBe(false);
+    expect(partial.notLive.map((each) => each.kind)).toEqual(["restart", "self"]);
+    expect(value(partial, "shared", "LOG_LEVEL").value).toBe("info");
+  });
+
+  it("is complete once both answers are whole", () => {
+    expect(ready.complete).toBe(true);
+    expect(viewOf(base).complete).toBe(false);
   });
 });
 

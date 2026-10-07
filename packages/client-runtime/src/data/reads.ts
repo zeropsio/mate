@@ -107,7 +107,12 @@ export const projectUsageAtom = Atom.family((owner: string) =>
   }).pipe(Atom.withLabel(`data:project-usage:${owner}`)),
 );
 
-export const NOT_READ_VAULT: VaultView = { status: "unread", scopes: [], notLive: [] };
+export const NOT_READ_VAULT: VaultView = {
+  status: "unread",
+  complete: false,
+  scopes: [],
+  notLive: [],
+};
 
 /**
  * One project's vault, in the shown organization, as the mounted account holds it; not read

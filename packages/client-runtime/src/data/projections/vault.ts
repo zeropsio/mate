@@ -167,10 +167,12 @@ export const vault: Projection<VaultKey, VaultView> = {
         : coverage.includes("unknown")
           ? "unread"
           : "ready";
-    // An absence proves nothing until both answers are whole: nothing is "unread" or "missing".
-    const whole = coverage.every((each) => each === "complete");
-
     const projectFact = read.fact("projectVariables", projectId);
+    // An absence proves nothing until both answers are whole: nothing is "unread" or "missing".
+    const whole =
+      coverage.every((each) => each === "complete") &&
+      (projectFact.kind !== "known" || projectFact.value.complete);
+
     const sharedRows: ReadonlyArray<VariableRow> =
       projectFact.kind === "known" ? projectFact.value.rows : [];
     const sharedValues = sharedRows.filter((row) => isUser(row) && !isMateOwned(row.key));
@@ -282,7 +284,12 @@ export const vault: Projection<VaultKey, VaultView> = {
     const managed = services.filter(({ ref }) => ref.kind === "managed").map(serviceScope);
     const scopes = [shared, ...runtimes, ...managed];
 
-    return { status, scopes, notLive: notLiveOf(scopes, deployedAt, whole, historyRead) };
+    return {
+      status,
+      complete: whole,
+      scopes,
+      notLive: notLiveOf(scopes, deployedAt, whole, historyRead),
+    };
   },
   equals: sameValue,
 };

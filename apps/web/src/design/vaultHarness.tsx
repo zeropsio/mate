@@ -31,7 +31,7 @@ const noop = () => {};
 
 const VIEWS: Record<string, VaultView> = {
   ready: VAULT_FIXTURE,
-  unread: { status: "unread", scopes: [], notLive: [] },
+  unread: { status: "unread", complete: false, scopes: [], notLive: [] },
   failed: { ...VAULT_FIXTURE, status: "failed" },
   live: { ...VAULT_FIXTURE, notLive: [] },
 };
