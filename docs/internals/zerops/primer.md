@@ -5,7 +5,7 @@ piece lives, what is built, what is proven on the platform, and what is open —
 carries **state** and nothing else: design is the spec (`../../../../zcp/docs/spec-mate.md`), the
 decisions and their reasons are [`design-decisions.md`](design-decisions.md), measured facts are the
 ledger (`verified.md`), the client's state model — fact owners, machines, lifetimes — is
-[`client-state-model.md`](client-state-model.md), crew mode as built is [`crew.md`](crew.md), and
+[`client-state-model.md`](client-state-model.md), crew terms are defined below, and
 the owner's screen-by-screen notes are the journal in `../../../../zcp/plans/` (transient). A row
 here changes in the commit that changes the fact; the commit is the evidence.
 
@@ -22,6 +22,11 @@ the plans say what is wanted, this page what stands.
 ---
 
 ## 1. What it is
+
+A **crew** is a Mate's standing group of coding agents. A **crewmate** is one member. A
+**writer** builds in its own copy of the code; a **reader** reviews without writing; a **lead**
+plans and coordinates the crew. A **task** is a piece of work assigned to a crewmate. A **stint**
+is one session of its conversation.
 
 Every Zerops organization that uses Mate has one **HQ**: a Zerops project named `Headquarters` and
 tagged `mate:hq`, holding **Core** (the service `hq`), its Postgres (`db`), a volume (`vol`) where
@@ -592,19 +597,6 @@ still to come says so.
   - _Proven by:_ `MessagesTimeline.logic.test.ts` (the gaps, the seams),
     `ZeropsNextStepBanner.test.tsx`, `composerTopMemory.test.ts`, `mateNextStep.test.ts`,
     `ComposerModelControl.logic.test.ts`, `composerTypeScale.test.ts`
-- **—** — Pass 16: composer pictures (D9)
-  - _State:_ **live** in a Mate's composer, 2026-09-29: a 3210 × 2118 paste stood in the text as a
-    121 × 80 picture, and its view said "Sends 2000 × 1320 · PNG, 595 KB" (removed after, never
-    sent); a send with _Keep original_ and an image error are not yet seen live. The server fits a
-    picture over the limits for every provider, on a worker thread, one at a time. **Open**: Codex
-    keeps its image order — its adapter is ported code — so there only the labels tie a picture to
-    its place (§7, 19)
-  - _Built in:_ mate 0.11.63 (PR #32); the server's worker `dbb52f3eb`
-  - _Proven by:_ `composerPictures.test.ts` (shared and web), `imageCompression.test.ts`,
-    `ComposerPromptEditor.pictures.test.tsx`, `messagePictures.logic.test.ts`,
-    `attachmentFit.test.ts`, `Normalizer.attachments.test.ts`, `ClaudeAdapter.test.ts`; the harness
-    `/design-pictures.html`
-
 - **—** — Pass 16: a thread's live step and waiting question on its shell (D5, D6)
   - _State:_ built — the Mate server relays a running thread's step and a waiting thread's first
     question on its shell, in memory, with no migration and no push added; replayed through the
@@ -737,47 +729,6 @@ still to come says so.
     `ZeropsChangeFaceDialog.logic.test.ts`, `ZeropsChangeFaceDialog.test.tsx`,
     `useMateActions.test.tsx`, `ZeropsNewProjectForm.test.tsx`; the harnesses `/design-face.html`
     and `/design-newproject.html`
-- **—** — Pass 20: the Crew tab as the approved board draws it, and a time limit that counts working
-  time
-  - _State:_ built; seen live on the localhost pair, 2026-09-30, on Fen's crew on Letopis: the tab's
-    column — its goal's title, "Give the crew something to do…" to the lead, a row per crewmate
-    under its job — and the mode line "Stopped working on its own: its 8 hours are up. It spent
-    $0.00." with nothing to resume: the idle-time case, from a Mate server that still counts wall
-    time, which the new clock ends once the Mate updates. Measured in the harness against the board
-    at 540 px (390 on a phone), light and dark, in every state: the goal's fields and the job's
-    choices where the board draws them, the menus 316 and 364 px wide; _Answer_'s box unclipping
-    over 220 ms while the rows below slide from their places, a view sliding 24 px in 220 ms, a fade
-    alone under reduced motion. **Open**: §7, 24
-  - _Built in:_ mate 0.11.68 (PR #38): `0a50374c4` `b0c04c015` `515767d99` `d09af66b9` `ade2140f6`
-  - _Proven by:_ `CrewHead.logic.test.ts`, `CrewRows.logic.test.ts`, `CrewLeadPlan.logic.test.ts`,
-    `CrewRunDialog.logic.test.ts`, `CrewGoal.logic.test.ts`, `phrases.test.ts`, `crewRuns.test.ts`,
-    `crewMachines.test.ts`, `crewCards.test.ts`, `crewSnapshot.test.ts`,
-    `ProjectionSnapshotQuery.test.ts`; the harness `/design-crew.html?state=…`
-- **—** — Pass 21: the crew closed to a viewer who may not run its logins
-  - _State:_ **live** on the localhost pair, 2026-09-30, on Fen's crew on Letopis, viewed by a
-    member who did not sign its agent in: the Crew tab's composer slot reads "Signed in by another
-    project member — only they can run this crew." with _Sign in with your own account_, 48 px like
-    the composer it replaces; the crew's ··· and every press that runs or changes the crew gone;
-    rows, conversations and _In Fen's code_ still open. The server refuses those commands at the
-    crew's door for anyone admission would refuse on the logins they reach, in admission's words;
-    any member may stop or pause a running crew (D6). **Open**: §7, 25
-  - _Built in:_ mate 0.11.69 (PR #39): `afc985197` `fb037dfbf` `14f927c35` `2897faa9f` `e8bf91f67`
-    `8eda33226` `d7f68bad8` `15d042d5c`
-  - _Proven by:_ `CrewDoor` tests in the server crew suite, `crewAccess.test.ts`,
-    `CrewPanel.test.tsx`, `CrewRows.logic.test.ts`; the harness
-    `/design-crew.html?state=…&viewer=other`
-- **—** — Pass 21: a crewmate's empty conversation — whose it is, its job, its work
-  - _State:_ **live** on the localhost pair, 2026-09-30, Lead's empty conversation in Fen's crew:
-    its face at the place of Fen's own (72 px, top 410 at 1786), "Fen's lead · plans and reviews the
-    crew's work" after Fen's small face, the _Its job_ card with its job's first line in the
-    person's words and never the words it says to the crewmate, its finished work, "previous
-    conversation ↗" to the stint before; _Change its job_ only where the crew's door would take it;
-    the name and face held empty until the crew is read. The fake "Message Lead…" gone. **Open**:
-    §7, 25
-  - _Built in:_ mate 0.11.69 (PR #39): `a182bbcdc` `772238fb2` `4ba2cd12e` `3d5ba49a4` `514dc7c16`
-    `43b8a9598` `b4356072d` `d621dd0f4`
-  - _Proven by:_ `CrewmateEmptyState.test.tsx`, `CrewmateEmptyState.logic.test.ts`,
-    `phrases.test.ts`; the harness `/design-crewmate.html`
 - **—** — Pass 21: a run is opened by the message that started it; Stop settles a start that never
   ran
   - _State:_ built, 2026-09-30, from Juno's "Thinking · 17:42:08": a message whose run never came

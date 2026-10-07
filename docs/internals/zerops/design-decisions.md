@@ -737,9 +737,6 @@ Mate`, `Wait for it`) is the grey `secondary` pill; `Open` is `outline`. Row pil
   its own ("Checked the workflow"). The heading says only who worked and how long.
   - _Why:_ the owner: "why isn't 'Kai worked for 5m 3s · edited 7 files · ran 5 commands · started
     11 helpers' in the 'result' style?"
-- **2026-09-27** — **A picture in the Mate's words opens in the image viewer**, the message's other
-  pictures beside it; a step's pictures are drawn in its modal.
-  - _Why:_ the owner, of a picture in an answer: "why aren't these opening in modal?"
 - **2026-09-27** — **A helper's report is a line where it finished**: one that finished after its
   run ended is what woke the next run, never a line of the record that started it; what woke a run
   is said only when that run shows something.
@@ -955,14 +952,6 @@ Mate`, `Wait for it`) is the grey `secondary` pill; `Open` is `outline`. Row pil
   reads as the Mate, then what it is on.** Under a Mate the task follows its name in the muted voice
   at the body's weight, and comes up under the pointer.
   - _Why:_ a long prompt as the person typed it read as a second heading as loud as the Mate's name
-- **2026-09-29** — **An answer's pictures hold their room before they load.** A workspace picture's
-  first sight holds 16:9 across the text, its opener as wide as that room (a width in percent inside
-  a button that shrinks to its content is none); once seen, a picture's shape is remembered by where
-  it came from (256 kept) and it takes the width it will stand at, `min(its width, 30rem, 30rem ×
-its ratio)`, its size attributes giving its height before a byte has come; a picture from an
-  address of its own, as often a badge, holds no 16:9 place; only a first sight fades in.
-  - _Why:_ a picture took no room until its bytes came: opening a conversation, pictures grew one by
-    one and everything in sight jumped
 - **2026-09-29** — **A conversation fades in once the list has put it in place.** The timeline
   list's reveal (`timeline-legend-list`; no picker list) eases in over 140 ms; hiding stays instant.
   - _Why:_ every switch between Mates was a cut from nothing to the whole conversation
@@ -1016,11 +1005,6 @@ its ratio)`, its size attributes giving its height before a byte has come; a pic
   control to see the rest. **Supersedes:** the chat's own scroll of the 2026-09-27 _run reads as a
   chat_ row and the 2026-09-29 _page scrolls on past a run's chat_ row.
   - _Why:_ two scrollbars in one view is where most of the earlier passes' scroll bugs lived
-- **2026-09-29** — **Composer pictures in this pass** (the owner's D9), after the composer's top and
-  its one control: a picture sits in the text where it is pasted, takes notes and a crop, goes
-  fitted, and is sent as placed (P1–P5).
-  - _Why:_ the approved prototype had waited for a yes that was never asked for again, and a 5.46 MB
-    paste had just failed a Mate's turn
 - **2026-09-29** — **The person's bubble is neutral grey** (the owner's D10): one step darker than
   the canvas in light (`oklch(0.918 0.006 255.5)`), one step lighter in dark (`oklch(0.26 0.009
 178)`), the same shape and size; the phone's bubble follows the generated tokens.
@@ -1171,53 +1155,12 @@ its ratio)`, its size attributes giving its height before a byte has come; a pic
   control cannot open. Send, disabled, is a grey disc, never a faded blue; 32 px, 36 on a phone for
   the finger.
   - _Why:_ three 14 px dropdowns at 500 were louder than the conversation's own words
-- **2026-09-29** — **A picture sits where it is pasted** (P1). At the caret, a thumbnail on a line
-  of its own in the text, 80 px tall; a file dropped on the text lands under the pointer; a drag
-  moves it; Backspace removes it like a character. It is one character of the prompt, `￻` from the
-  Specials block — the terminal contexts own `￼`, and a private-use character risks a glyph pasted
-  from a terminal font. The old tray over the text goes.
-  - _Why:_ the Mate reads words and pictures in the order they were placed
-- **2026-09-29** — **Notes and a crop on the picture** (P2, P3). A click pins a numbered note, a
-  drag boxes an area, C crops; the marks are drawn into the copy the Mate sees, one drawing for
-  copy, thumbnail and view. No flash on insert or close: the picture landing where the caret was is
-  its feedback. A reload keeps the copy, its notes and its edits but not the pasted file (the
-  browser's storage cannot hold it), so after one the notes still edit and the marks and crop stand
-  as they were.
-  - _Why:_ a picture with no marks tells the Mate nothing about which part is wrong
-- **2026-09-29** — **The copy the Mate sees is fitted; the original goes only when kept** (P4). At
-  most 2000 px a side and 3,932,160 bytes, which is 5 MB once base64: as pasted where it is
-  unmarked, whole and within both, else PNG, then JPEG from .92 down to .68 on white, then smaller.
-  _Keep original_ sends the untouched file beside it as a file whose path the agent is told, never
-  as a second picture to look at.
-  - _Why:_ a 5.46 MB paste had failed a Mate's turn with an image error
-- **2026-09-29** — **A message shows each picture where it was put** (P5): words and pictures in
-  their order, a picture at most 300 px tall, its notes under it at 14 px with 12 px badges — the
-  prototype's 13 and 10.5 px, brought onto the type scale — and "Original kept · 4.4 MB".
-  - _Why:_ the person should see what the Mate read, in the order it read it
-- **2026-09-29** — **The server fits what the client did not, before any agent sees it.** A picture
-  over the limits — from the phone, an older client, a pasted data URL — is fitted in the message's
-  normalisation for every provider, on a worker thread and one picture at a time across the server;
-  one over 25 MP is refused before it is decoded, and an interlaced PNG is inflated only as far as
-  its header says. Claude reads each picture right after its label, while a message whose last words
-  are a slash command or a skill, or that ends on a picture, keeps the images-first layout. An image
-  error names the picture, its size and what to do. The phone shrinks a photo to the same 2000 px.
-  - _Why:_ a fit takes up to a second and hundreds of megabytes, and on the server's own thread it
-    held every other request up; the Claude CLI runs a command from a message's last text
-- **2026-09-29** — **Codex keeps its image order.** It takes pictures by path after one text item,
-  and its adapter is ported code that stays upstream's, so the labels alone tie each picture to its
-  place there; the server's fit covers its limits.
-  - _Why:_ a diverged port is an expensive port next time, and Codex reads no base64 limit
 - **2026-09-29** — **A fix request joins an unsent draft.** Written into a composer that holds the
   person's words, the request goes after them, a blank line apart, the caret where it continues; the
   same request twice changes nothing. A change's fix goes only to the Mate that wrote it, which
   alone can push its branch; a run's only to the run's own Mate, whose services it found the problem
   in (2026-09-29: "'ask lena to fix' when im at iris").
   - _Why:_ a request must never take the person's own words away
-- **2026-09-29** — **A crew task lands from its review.** The board's task, the lead's plan, the
-  crew section's _Waiting on you_ and a crew task's result row say _Review_; the review's button is
-  _Land_ (_Land now_ while the task is still worked on), and it says "Landed" only once the task has
-  landed.
-  - _Why:_ landing is a merge into the person's tree and deserves the same reading
 - **2026-09-29** — **The server relays the live step, in memory, and the client paces it.** A
   running thread's shell carries its step — thinking, writing, or the calls running — only while its
   session runs a turn, cleared however the turn ends; nothing is persisted, there is no migration,
@@ -1306,21 +1249,6 @@ its ratio)`, its size attributes giving its height before a byte has come; a pic
   crew is its face and name. No _New chat_ anywhere; a Mate's older chats are listed from a ⌄ after
   its name. **Supersedes** the strip, the subject line, the lane bar and the lead's bar.
   - _Why:_ every mechanic of crew mode stood in the header in the engine's words
-- **2026-09-29** — **A crewmate's menu says what each thing does** (the owner: "still no idea
-  whatsoever what any of these functionalities will do"). Its job's first sentence as the person's
-  line ("You own Game systems: how life…" reads "How life…"), then _Try its work_ — "Opens its copy
-  of the app. Nothing is in <Mate>'s code yet." (its app, run first while stopped; at the Mate's dev
-  address when it cannot run on its own) — _Stop its app_ while it runs, _Change its job_ — "What
-  it's responsible for." — and _Clear its conversation_ — "It keeps its job and its work."; the
-  lead's: _Change the brief_ — "What the whole crew works toward." A crew task ready to land offers
-  _Try it_ before _Review_ on its result row. A crewmate's chat that has not started opens on the
-  crewmate, without the job saves dated before its first message.
-  - _Why:_ a menu of engine nouns meant nothing to the person it was for
-- **2026-09-29** — **The Crew tab is the crew's one home** (the owner: "shouldn't we put the 'setup
-  crew' screen from the zerops tab to the 'crew' tab? "). For a Mate without a crew it offers _Set up a crew_; a crew is its section above
-  its board in one column. The Zerops tab keeps the map and the coding agents' card, and no crew
-  section.
-  - _Why:_ setting up a crew lived on the project map's tab
 - **2026-09-29** — **A picked tint recolours nobody.** A Mate that picked its tint wears it; the
   rest share the tints their names give them among themselves alone, exactly as before any Mate
   could pick, so two Mates may wear one tint and their shapes tell them apart. The New Mate dialog
@@ -1507,77 +1435,6 @@ its ratio)`, its size attributes giving its height before a byte has come; a pic
   that holds them had wrapped them in the sign-in rows' white card; in the stand-up it only ever
   shows the buttons, so they stand on the page as they are.
   - _Why:_ seen live on a new Mate in the test org: a white bar behind two blue pills
-- **2026-09-30** — **The Crew tab is one column in the person's words, as the approved "Mate Crew
-  Tab" board draws it** (the owner, 2026-09-29: "im fine with the crew tab design"). Its head is the
-  crew's goal and one line saying how the crew works right now, with one press; then one composer
-  that gives the crew something to do; a row per crewmate, saying what it is on and what it needs
-  from you, with the presses that answer it in place; and _In Fen's code_, what went in. The board
-  with its five columns and its sheets, the caps labels, the lead's chip, the version chips,
-  handles, task numbers and attempts, and the footer's engine lines go: each crewmate's row says
-  what it is on now and next, and a list with nothing in it is not drawn. **Supersedes:** "a crew is
-  its section above its board in one column" of the 2026-09-29 _Crew tab is the crew's one home_
-  row.
-  - _Why:_ the section spoke the engine — "CREW" and "LEAD" labels, `@handles`, "V3 AT NEXT TURN",
-    "Paused · time limit reached" — and the owner found it "not clear how it works at all"
-- **2026-09-30** — **How the crew works is one line with one press: one _Stop_, and _Keep going…_
-  when a limit stopped it.** "Works when you give it something to do"; "Working with you · finished
-  work waits for your review" with _Let it work on its own…_; "Working on its own · $6.40 of $20 · 1
-  h 12 m of 8 h" with _Stop_ — everyone stops where they are, and their work is kept; "Stopped
-  working on its own: it spent its $20" with _Keep going…_, which sets apart the limit that stopped
-  it and asks for more money or more time, added to what it spent or worked — never a new figure —
-  and for its time only while something is left to do; a refused turn, _Try again_; "Wrapping up".
-  Pause is not offered. _Let it work on its own_ asks, in plain words, how much it may spend and for
-  how long, the stop before 80 % of the Claude plan's limit, what happens to a finished piece of
-  work (wait for my review, add it once the lead approves it, or once its checks pass), whether the
-  lead may start its own tasks, and whether crewmates may show their work at Fen's dev address. The
-  line's words change in place, fading in, and nothing under it moves.
-  - _Why:_ _Start run_, _Pause_ beside _Stop_ and _Resume_ were four controls for one question — is
-    the crew working on its own — and a figure typed on resuming could be under what the crew had
-    already spent
-- **2026-09-30** — **The lead's plan stands in the lead's row, and its _Start_ lets the crew work on
-  its own, going on first where it stopped.** A line per task — whose it is, what it is, what it
-  waits for ("after Season clock") — then "Start lets the crew work on its own: up to $20, for up to
-  8 hours." with _Change_, and _Start_ and _Drop the plan_ ("Nobody starts on it."); while it waits,
-  the composer reads "Tell the lead what to change…". _Start_ takes the plan into the work of a crew
-  working on its own; with none, it starts that on the last limits, the first time through the
-  dialog; a crew that stopped goes on first, through the dialog where a limit stopped it, since it
-  goes on only with more.
-  - _Why:_ a plan accepted while the crew was paused waited unseen: the lead's tasks start only
-    while the crew works on its own
-- **2026-09-30** — **Setup, the crew's goal and a crewmate's job are views in the tab's place, each
-  with one Save.** A view takes the column's place — "‹ Crew" back, a heading, its fields, and a
-  footer in reach with one line and its presses — sliding 24 px in from the right and back from the
-  left over 220 ms, never on a first paint, a fade under reduced motion. Setup asks the goal first,
-  then who's on it: _Let Fen suggest a crew_ (Fen reads the goal and proposes who does what; its
-  draft arrives by itself, "Click anyone to change them."), _Start with a lead and two builders_, or
-  _Add someone yourself_; each drafted row is the tab's own, and _Start the crew_ gives each builder
-  its own copy of Fen's code, each row saying how that goes until the crew stands and the view
-  becomes the tab. The goal is four plain fields: Title, What it's for, Rules every crewmate
-  follows, Done when. A job is what it's responsible for, what it does — _Builds_, in its own copy
-  of Fen's code, or _Reviews_, changing nothing — and under _More_ its name and face, what it runs
-  on, its service and its commands; the handle is never shown. Each saves once, saying what follows:
-  "It picks up its new job with its next message, in a fresh conversation. Its work stays."
-  - _Why:_ three editors in sheets, each with three ways to save, a handle and two restart switches,
-    asked the person to run the engine
-- **2026-09-30** — **The crew speaks the person's words; no engine noun is a control or a label.**
-  The glossary's crew rows (§2): add to Fen's code and in Fen's code for land and landed, the goal
-  for the brief, Fen's code for your tree, ship for deliver, working on its own for a run, Clear its
-  conversation for starting fresh, Drop it for discard, Let it for allow, Back to Fen's, Stopped for
-  parked, and Builds, Reviews and Plans for writer, reader and lead. A task stopped mid-way says
-  when, with the limit's own figure — "Stopped mid-way when the $20 ran out.", "when the 8 hours ran
-  out", "when it neared 80 % of your Claude plan's limit", "when you stopped it" — and a new
-  conversation's seam line says what changed, never a version: "Its job changed", "The crew's goal
-  changed — from its next message", "You cleared its conversation", "A fresh conversation: the last
-  one grew too long". **Supersedes:** _Change the brief_ of the 2026-09-29 _crewmate's menu says
-  what each thing does_ row, now _Change the goal_.
-  - _Why:_ briefs, versions, runs, landing and trees meant nothing to the person the crew works for
-- **2026-09-30** — **A crew's time limit counts only the time it works.** Its clock runs while the
-  crew works on its own and one of its turns runs, and stands, keeping what it counted, while none
-  does: a crew sitting idle, waiting on you or with nothing to do never uses up its time, and "1 h
-  12 m of 8 h" is working time. A Mate server from before still counts wall time, so its crew can
-  read "Stopped working on its own: its 8 hours are up. It spent $0.00." until the Mate updates.
-  - _Why:_ the owner's crew spent its 8 hours at $0.00, and the owner approved the board with idle
-    time not counting
 - **2026-09-30** — **A card holding nothing but its line is the composer's rounded rectangle, and it
   keeps its box closed** (the owner: "why the collapsed state has no bg at all?", then of the live
   card at its first thought: "the state of border radiuses in the initial thinking with no other
@@ -1589,22 +1446,6 @@ its ratio)`, its size attributes giving its height before a byte has come; a pic
   list's layout. **Supersedes** "a line with nothing under it is no card".
   - _Why:_ a bare line floated between bubbles; the pill read as a stadium; a leftover 75 px stood
     under the live line
-- **2026-09-30** — **The crew is as closed as the conversation to a viewer who may not run it** (the
-  owner: "its not guarded against use by non authed people"). The crew's door on the server refuses
-  what runs or changes the crew for whoever admission would refuse on the logins it reaches; the
-  client offers only what the door would take — the Crew tab's composer slot says whose it is and
-  offers the sign-in, in the composer's 48 px. Any member may stop or pause a running crew (D6: a
-  colleague can stop what they cannot start).
-  - _Why:_ the Crew tab took work for someone else's agent
-- **2026-09-30** — **A crewmate's empty conversation says whose it is, its job and its work** (the
-  owner: "the empty state shoud look much better, it should still probably show a small Fen, the
-  desc must be better and obvious that this is the crew's member desc"). Its face stands where the
-  Mate's own empty conversation puts its face; under its name, the Mate's small face and "Fen's lead
-  · plans and reviews the crew's work"; a card headed _Its job_, as the job view heads it, with its
-  job's first line in the person's words — never the sentences it says to the crewmate — its
-  finished work under it, and _Change its job_ only where the crew's door would take it; a later
-  conversation links the one before. Name and face stay empty until the crew is read.
-  - _Why:_ a face in a void, a sentence that read as nobody's, and a fake "Message Lead…"
 - **2026-09-30** — **A project whose Mates haven't written its recipe takes no other Mate** (the
   owner: "we need to deal with states where you are trying to add a second mate but the first
   haven't created the group's imports yet - shouldn't be possible with explanation"). A new Mate is
@@ -2191,25 +2032,6 @@ no-cache`.
     trusted the tag the same way.
   - _Why:_ 0.13 dropped the tag fallback, so a login made before the record began (v0.11.79) was
     refused for everyone, its signer too.
-- **2026-10-04** — **Crew work carries on after a restart, from the stage it recorded.**
-  - 0.13's operations persist their stage before each side effect. At boot the engine carries each
-    interrupted one on from that stage:
-    - a turn continues in its copy as its starter;
-    - a checkpoint commits again;
-    - a check merges and checks again;
-    - a landing records the outcome its trailer already shows, or lands again as the person who
-      pressed Land.
-  - A waiting Allow goes out again at boot. A refused task starts again once a sign-in changes. In a
-    run, a failed check goes back to its crewmate.
-  - The boot sweeps the crew copies: a dirty copy is saved as a WIP commit, said in its crewmate's
-    chat with its files, branch and commit (no side effect nobody sees, 2026-10-05), and a missing
-    one comes back only when its branch, landings and tip prove nothing is lost.
-  - Only an ambiguous resume waits for a person, with its reason: a rebuild a person chose, a task
-    changed since, a resume admission refuses.
-  - **Supersedes:** "crew work interrupted by a restart is shown and continued by a person, never
-    repaired at boot".
-  - _Why:_ a Mate update mid-run paused every crew until someone pressed Continue; the recorded
-    stages make the resume safe.
 - **2026-10-05** — **Automatic recovery is wanted; a clock standing in for an answer is not.**
   - **Wanted:** recovery with a clear logic — renewing a session, reconnecting, re-subscribing,
     re-reading, re-running an idempotent step after a transient failure (network, timeout, 5xx, the
@@ -2292,15 +2114,6 @@ medium < high < xhigh` (a driver's own order does not rank: Grok reports its lev
   Codex's helpers were already named by their nickname or path. Where the launch named none, or
   aged out, the task's words stand as before. Cursor, Grok, Antigravity and OpenCode report no
   named helpers.
-- **2026-10-07** — **Unavailable conversation images explain their failure and keep their place.**
-  Supersedes N2's removal of missing result pictures. A missing workspace asset or attachment is
-  unavailable immediately, with the owner's reason; a transient signing failure gets the bounded
-  backoff schedule before becoming unavailable. Failed image requests or decoding also say
-  "Image unavailable". The strip retains its tiles and count; an unavailable "+N" tile can still
-  open later loaded pictures. Missing-file verdicts are no longer persisted in browser storage.
-  Web and desktop share this behavior. Mobile already shows unavailable for signing and byte
-  failures and has no run-result strip; no wire or provider contracts change. Workspace images
-  remain references to their source files, including `/tmp`; this change cannot recover deleted bytes.
 - **2026-10-06** — **A written or edited file's row opens onto what the agent wrote, and "Open in
   Files" shows a file it wrote outside the workspace as it wrote it** (D9, the owner: "Are these
   unclickable on purpose?", "Why can't this be opened in the Files tab?"). The row opens onto a
