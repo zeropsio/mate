@@ -98,6 +98,19 @@ export type ProviderSignal =
       readonly turn?: TurnHandle;
       readonly resetsAt: number | null;
     }
+  /**
+   * Background work the agent started (a helper, a shell, a monitor): an item under the run whose
+   * turn started it, open until it ends — it may outlive that turn.
+   */
+  | {
+      readonly kind: "work-upserted";
+      readonly work: string;
+      /** The turn that started it; `"unknown"` when the driver could not say. */
+      readonly origin: TurnHandle | "unknown";
+      readonly workKind: Extract<ItemBody, { readonly kind: "work" }>["workKind"];
+      readonly status: Extract<ItemBody, { readonly kind: "work" }>["status"];
+      readonly title?: string;
+    }
   /** A limit whose reset was unknown learned its reset time (the driver's rate-limit report). */
   | { readonly kind: "usage-reset-known"; readonly resetsAt: number }
   | { readonly kind: "session-exited"; readonly reason: string }

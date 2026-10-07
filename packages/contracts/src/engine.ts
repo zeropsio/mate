@@ -269,6 +269,21 @@ export type Run = typeof Run.Type;
 
 // ── items ───────────────────────────────────────────────────────────────────────────────────
 
+/** Background work's kinds and states, as the bridge reports them. */
+export const WORK_KINDS = ["helper", "shell", "monitor", "other"] as const;
+export const WORK_STATUSES = [
+  "running",
+  "waiting",
+  "idle",
+  "completed",
+  "failed",
+  "stopped",
+  /** Still running when its session closed: nothing can report its end. */
+  "lost",
+] as const;
+/** The states after which background work never reports again. */
+export const WORK_ENDED: ReadonlySet<string> = new Set(["completed", "failed", "stopped", "lost"]);
+
 const itemBodyFields = {
   person: {
     text: Schema.String,
@@ -297,6 +312,13 @@ const itemBodyFields = {
     endedAt: Schema.NullOr(Millis),
   },
   request: { requestId: RequestId },
+  /** Background work the agent started (a helper, a shell, a monitor), under the run it served. */
+  work: {
+    work: Schema.String,
+    workKind: forwardCompatibleLiterals(WORK_KINDS),
+    status: forwardCompatibleLiterals(WORK_STATUSES),
+    title: Schema.NullOr(Schema.String),
+  },
   context: { notes: Schema.Array(Schema.String) },
   marker: {
     marker: Schema.Struct({
@@ -319,6 +341,7 @@ export const ItemBody = forwardCompatibleUnion({
     Schema.Struct({ kind: Schema.Literal("thought"), ...itemBodyFields.thought }),
     Schema.Struct({ kind: Schema.Literal("call"), ...itemBodyFields.call }),
     Schema.Struct({ kind: Schema.Literal("request"), ...itemBodyFields.request }),
+    Schema.Struct({ kind: Schema.Literal("work"), ...itemBodyFields.work }),
     Schema.Struct({ kind: Schema.Literal("context"), ...itemBodyFields.context }),
     Schema.Struct({ kind: Schema.Literal("marker"), ...itemBodyFields.marker }),
   ],
@@ -361,6 +384,7 @@ export const Item = forwardCompatibleUnion({
       kind: Schema.Literal("request"),
       ...itemBodyFields.request,
     }),
+    Schema.Struct({ ...itemBaseFields, kind: Schema.Literal("work"), ...itemBodyFields.work }),
     Schema.Struct({
       ...itemBaseFields,
       kind: Schema.Literal("context"),

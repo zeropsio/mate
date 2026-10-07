@@ -1156,3 +1156,47 @@ describe("decide: a signal delivered again changes nothing", () => {
     });
   });
 });
+
+describe("decide: helpers and jobs are items under their run", () => {
+  const work = (
+    status: Extract<ProviderSignal, { kind: "work-upserted" }>["status"],
+    origin: TurnHandle | "unknown" = T(1),
+  ): Command =>
+    signal({
+      kind: "work-upserted",
+      work: "w1",
+      origin,
+      workKind: "helper",
+      status,
+      title: "Explore",
+    });
+  it("a helper the agent started is an item under the run whose turn started it", () => {
+    const { log, state } = playAll([...proofRunning, work("running")]);
+    expect(log.at(-1)).toMatchObject({
+      _tag: "ItemOpened",
+      runId: r(1),
+      key: "w1",
+      body: { kind: "work", workKind: "helper", status: "running", title: "Explore" },
+    });
+    expect(Object.values(state.items).map((item) => item.key)).toEqual(["w1"]);
+  });
+  it("background work outlives its turn's end and closes on its own end", () => {
+    const { log, state } = playAll([
+      ...proofRunning,
+      work("running"),
+      turnEnded,
+      work("completed"),
+    ]);
+    expect(log.filter((e) => e._tag === "ItemClosed").map((e) => e.body.kind)).toEqual(["work"]);
+    expect(log.at(-1)).toMatchObject({
+      _tag: "ItemClosed",
+      runId: r(1),
+      body: { status: "completed" },
+    });
+    expect(state.items).toEqual({});
+  });
+  it("work whose turn the driver cannot name is filed under the latest run", () => {
+    const { log } = playAll([...proofRunning, turnEnded, work("running", "unknown")]);
+    expect(log.at(-1)).toMatchObject({ _tag: "ItemOpened", runId: r(1), key: "w1" });
+  });
+});

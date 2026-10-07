@@ -34,6 +34,7 @@ import {
   type SessionCapabilities,
   type SessionId,
   type TurnHandle,
+  WORK_ENDED,
 } from "@t3tools/contracts";
 
 import type { TurnOutcome } from "../bridge/spi3.ts";
@@ -290,7 +291,7 @@ const updatePerson = (b: StepBuilder, run: RunRecord, delivery: Delivery) => {
 };
 
 /**
- * Ends a run: its open items close, its requests lapse, its watchdog is cancelled, and its
+ * Ends a run: its open items close (background work runs on and closes itself), its requests lapse, its watchdog is cancelled, and its
  * message never stays queued — refused when it never went out, or `unsent` (refused, or unknown
  * for a send that may have arrived) when it ends while sending.
  */
@@ -302,7 +303,7 @@ const endRun = (
   unsent: "refused" | "unknown" = "unknown",
 ): void => {
   for (const item of Object.values(b.state.items)) {
-    if (item.runId !== run.id) continue;
+    if (item.runId !== run.id || item.body.kind === "work") continue;
     b.emit({
       _tag: "ItemClosed",
       runId: run.id,
@@ -902,6 +903,45 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
       endRun(b, live, end, signal.source);
       if (end.kind === "usage-limit") limited(b, live, end.resetsAt);
       admitNext(b);
+      return;
+    }
+    case "work-upserted": {
+      const body: ItemBody = {
+        kind: "work",
+        work: signal.work,
+        workKind: signal.workKind,
+        status: signal.status,
+        title: signal.title ?? null,
+      };
+      const ends = WORK_ENDED.has(signal.status);
+      const closed = b.state.closedItems[signal.work];
+      if (closed !== undefined) return updateClosed(b, closed, body);
+      const open = Object.values(b.state.items).find((item) => item.key === signal.work);
+      if (open !== undefined) {
+        if (ends) b.emit({ _tag: "ItemClosed", runId: open.runId, itemId: open.id, body });
+        else if (contentDigest(open.body) !== contentDigest(body)) {
+          b.emit({ _tag: "ItemUpdated", runId: open.runId, itemId: open.id, body });
+        }
+        return;
+      }
+      // Under the run whose turn started it; a driver that cannot say files it under the latest.
+      const owner =
+        signal.origin === "unknown"
+          ? b.state.latestRunId === null
+            ? undefined
+            : b.state.runs[b.state.latestRunId]
+          : runOfTurn(b.state, signal.origin);
+      if (owner === undefined || owner.state === "queued" || owner.state === "admitted") return;
+      const id = deriveItemId(owner.id, owner.nextItemOrdinal);
+      b.emit({
+        _tag: "ItemOpened",
+        runId: owner.id,
+        itemId: id,
+        key: signal.work,
+        by: { kind: "mate" },
+        body,
+      });
+      if (ends) b.emit({ _tag: "ItemClosed", runId: owner.id, itemId: id, body });
       return;
     }
     case "usage-reset-known": {

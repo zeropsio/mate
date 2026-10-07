@@ -182,6 +182,7 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
         ...ended,
         runs,
         turns: keep(ended.turns, (run) => run),
+        items: keep(ended.items, (item) => item.runId),
         closedItems: keep(ended.closedItems, (item) => item.runId),
         askedKeys: keep(ended.askedKeys, (run) => run),
         queue: state.queue.filter((id) => id !== event.runId),
