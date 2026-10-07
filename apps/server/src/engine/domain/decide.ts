@@ -2,13 +2,16 @@
  * `decide(state, envelope, now)`: every rule and guard of a conversation, pure.
  *
  * A run moves queued → admitted → sending → running ⇄ waiting → ended, one active at a time.
- * Admission opens a session as an effect when none fits (never as a side effect of a send), and
- * waits while a usage limit pauses the conversation. A run ends by what someone said: the agent,
- * the bridge inferring a crash or a failed effect, the engine on a Stop no provider confirmed, or
- * the provider confirming a Stop. A restart cuts the active run and arms a continuation only when
- * no newer person message, no Stop, no archive and no maintenance turn stands against it; the
- * continuation is a new run that `joins` the cut one, as a usage resume joins its limited run and an
- * agent-started turn joins the run whose work it reports. A watchdog only marks a run unresponsive.
+ * Admission captures the run's workspace first (`run.prepare`), then opens a session as an effect
+ * when none fits (never as a side effect of a send), and waits while a usage limit pauses the
+ * conversation. Every turn-scoped signal is routed to its own turn's run, never to the active one.
+ * A run ends by evidence, its source the bridge's word (the agent, a Stop asked or confirmed, a
+ * crash, a close, the next turn) or the engine's (a restart, an effect that failed for good); a
+ * Stop ends a run only on its turn's own end. A restart cuts the active run and arms a
+ * continuation only when no newer person message, no Stop, no archive and no maintenance turn
+ * stands against it; the continuation is a new run that `joins` the cut one, as a usage resume
+ * joins its limited run and an agent-started turn joins the run whose work it reports. A watchdog
+ * only marks a running run unresponsive.
  *
  * @module engine/domain/decide
  */
