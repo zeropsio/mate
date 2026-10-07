@@ -185,6 +185,10 @@ export const serveMateLink = (
               }
               continue;
             }
+            if (read.kind === "message" && read.message.type === "health") {
+              yield* overviews.reportHealth(projectId, link, read.message.health);
+              continue;
+            }
             if (read.kind === "message" && read.message.type === "attention") {
               yield* overviews.reportAttention(projectId, link, read.message.attention);
               continue;

@@ -1,15 +1,7 @@
-/**
- * A Mate's link as the line under its name says it (`mateVoice`): nothing for a blip, "Opening
- * Quinn…" for a first connect that is slow, "Quinn is restarting." while Zerops restarts it —
- * and, under a slow first connect, the platform's processes: the Mate's own container first
- * while the platform works on it, then each service with its dot. The Mate's own view and the
- * route's stage (`MateLinkStage`) both put it in their slot.
- */
-import {
-  askAgainLabel,
-  type MateVoice,
-  type RouteGatePhrase,
-} from "@t3tools/client-runtime/zerops/environments";
+/** Recovery actions and optional collapsed diagnostics, aligned below the Mate's state line. */
+import { useMateRecoveryAction } from "~/zerops/useMateRecoveryAction";
+import { askAgainLabel, type RouteGatePhrase } from "@t3tools/client-runtime/zerops/environments";
+import type { WebMateVoice as MateVoice } from "../../zerops/mateNoticeVoice";
 import { Link } from "@tanstack/react-router";
 import { useState, type ReactElement, type ReactNode } from "react";
 
@@ -49,7 +41,7 @@ export function MateLinkProcesses({
   return <MateLinkProcessesView services={ordered} />;
 }
 
-/** The processes as drawn: one name and one dot each, centred under the line. */
+/** Optional diagnostics: one service per line, collapsed until the person asks to see them. */
 export function MateLinkProcessesView({
   services,
 }: {
@@ -57,9 +49,17 @@ export function MateLinkProcessesView({
 }) {
   if (services.length === 0) return null;
   return (
-    <div className="mt-3 flex justify-center" data-zerops-surface="mate-link-processes">
-      <ArrivalServices services={services} />
-    </div>
+    <details
+      className="w-full text-sm text-muted-foreground"
+      data-zerops-surface="mate-link-processes"
+    >
+      <summary className="cursor-pointer">Project services ({services.length})</summary>
+      <div className="mt-3 grid gap-2">
+        {services.map((service) => (
+          <ArrivalServices key={service.name} services={[service]} />
+        ))}
+      </div>
+    </details>
   );
 }
 
@@ -77,8 +77,11 @@ export function MateLinkLine({
   readonly projectUrl: string | undefined;
   readonly onTryNow: (() => void) | undefined;
 }) {
+  const recovery = useMateRecoveryAction(projectId);
   return (
     <MateLinkLineView
+      onContainerAction={recovery.act}
+      busy={recovery.busy}
       onTryNow={onTryNow}
       processes={
         voice.processes && projectId !== null ? (
@@ -99,7 +102,11 @@ export function MateLinkLineView({
   projects,
   projectUrl,
   onTryNow,
+  onContainerAction,
+  busy,
 }: {
+  readonly onContainerAction?: ((action: "start" | "restart") => void) | undefined;
+  readonly busy?: boolean | undefined;
   readonly voice: Spoken;
   readonly processes: ReactNode;
   readonly projects: ReactElement;
@@ -107,8 +114,10 @@ export function MateLinkLineView({
   readonly onTryNow: (() => void) | undefined;
 }) {
   return (
-    <div className="flex flex-col items-center">
+    <div className="flex w-full flex-col items-start gap-4">
       <MateOpeningLine
+        onContainerAction={onContainerAction}
+        busy={busy}
         onTryNow={onTryNow}
         phrase={{ text: voice.text, actions: voice.actions }}
         projects={projects}
@@ -131,7 +140,11 @@ export function MateOpeningLine({
   projectUrl,
   onTryNow,
   projects,
+  onContainerAction,
+  busy,
 }: {
+  readonly onContainerAction?: ((action: "start" | "restart") => void) | undefined;
+  readonly busy?: boolean | undefined;
   readonly phrase: RouteGatePhrase;
   /** Its project in Zerops, for "Open in Zerops". */
   readonly projectUrl: string | undefined;
@@ -142,24 +155,40 @@ export function MateOpeningLine({
 }): ReactNode {
   const askAgain = onTryNow === undefined ? null : askAgainLabel(phrase.actions);
   const openInZerops = projectUrl !== undefined && phrase.actions.includes("open-in-zerops");
+  const containerAction = phrase.actions.includes("start")
+    ? "start"
+    : phrase.actions.includes("restart")
+      ? "restart"
+      : null;
   const toProjects = phrase.actions.some(
     (action) =>
       action === "go-to-projects" ||
-      action === "start" ||
+      ((action === "start" || action === "restart") && onContainerAction === undefined) ||
       action === "enable" ||
-      action === "restart" ||
       (action === "open-in-zerops" && projectUrl === undefined),
   );
   return (
-    <div
-      className="mx-auto flex w-full max-w-sm flex-col items-center gap-3"
-      data-zerops-surface="mate-opening"
-    >
-      <p className="text-center text-sm text-muted-foreground" role="status">
-        {phrase.text}
-      </p>
-      {askAgain !== null || openInZerops || toProjects ? (
-        <div className="flex flex-wrap items-center justify-center gap-2">
+    <div className="flex w-full flex-col items-start gap-3" data-zerops-surface="mate-opening">
+      {phrase.text === null ? null : (
+        <p className="text-sm text-muted-foreground" role="status">
+          {phrase.text}
+        </p>
+      )}
+      {askAgain !== null ||
+      openInZerops ||
+      toProjects ||
+      (containerAction !== null && onContainerAction !== undefined) ? (
+        <div className="flex flex-wrap items-center gap-2">
+          {containerAction === null || onContainerAction === undefined ? null : (
+            <Button
+              disabled={busy}
+              onClick={() => onContainerAction(containerAction)}
+              size="compact"
+              variant="pill"
+            >
+              {busy ? "Asking Zerops…" : containerAction === "start" ? "Start" : "Retry restart"}
+            </Button>
+          )}
           {askAgain === null ? null : (
             <Button onClick={onTryNow} size="compact" variant="pill">
               {askAgain}

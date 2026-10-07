@@ -102,3 +102,43 @@ it.each([
 ])("server chat boundary change %s selects all C journeys", (path) => {
   expect(selectScenarioAreas([path])).toContain("c-mate");
 });
+
+it.each([{ args: [] }, { args: ["--list"] }])(
+  "an unchanged lane skips checks ($args)",
+  ({ args }) => {
+    const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-gate-empty-"));
+    const git = (...args: string[]) => {
+      const result = NodeChildProcess.spawnSync("git", args, { cwd: root, encoding: "utf8" });
+      if (result.status !== 0) throw new Error(result.stderr);
+    };
+    try {
+      NodeFS.mkdirSync(NodePath.join(root, "scripts"));
+      for (const name of ["gate-changed.ts", "chat-gate.ts"])
+        NodeFS.copyFileSync(
+          NodePath.join(import.meta.dirname, name),
+          NodePath.join(root, "scripts", name),
+        );
+      git("init", "-q");
+      git("-c", "user.name=Gate fixture", "-c", "user.email=gate@example.test", "add", ".");
+      git(
+        "-c",
+        "user.name=Gate fixture",
+        "-c",
+        "user.email=gate@example.test",
+        "commit",
+        "-qm",
+        "fixture",
+      );
+      const result = NodeChildProcess.spawnSync(
+        process.execPath,
+        ["scripts/gate-changed.ts", "--base", "HEAD", ...args],
+        { cwd: root, encoding: "utf8" },
+      );
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stdout).toContain("No changed files; no gates to run.");
+      expect(result.stdout).not.toContain("guard ledgers");
+    } finally {
+      NodeFS.rmSync(root, { recursive: true, force: true });
+    }
+  },
+);

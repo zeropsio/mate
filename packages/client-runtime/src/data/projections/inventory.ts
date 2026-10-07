@@ -115,6 +115,28 @@ export const inventory: Projection<InventoryKey, InventoryRead> = {
     ),
 };
 
+/** Content and access drawn by inventory consumers, independent of transport status. */
+export type InventoryContents = Pick<
+  InventoryRead,
+  "projects" | "projectRefs" | "authority" | "lost" | "isLoading" | "error"
+>;
+export const inventoryContents: Projection<InventoryKey, InventoryContents> = {
+  name: "inventoryContents",
+  keyOf: inventory.keyOf,
+  derive: (read, key) => {
+    const { projects, projectRefs, authority, lost, isLoading, error } = inventory.derive(
+      read,
+      key,
+    );
+    return { projects, projectRefs, authority, lost, isLoading, error };
+  },
+  equals: (a, b) =>
+    sameValue(
+      { ...a, projectRefs: [...a.projectRefs], authority: [...a.authority], lost: [...a.lost] },
+      { ...b, projectRefs: [...b.projectRefs], authority: [...b.authority], lost: [...b.lost] },
+    ),
+};
+
 /** The candidates needed by a connection host; service pushes do not rerender the inventory. */
 export const inventoryCandidates: Projection<InventoryKey, ReadonlyArray<ZeropsCandidate>> = {
   name: "inventoryCandidates",

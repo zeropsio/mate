@@ -171,6 +171,42 @@ describe("createEndFollow", () => {
     expect(scroll.element.scrollTop).toBe(endOf(scroll));
   });
 
+  it("settles when reaching the end changes a picture's height", () => {
+    let top = 600;
+    let resized = false;
+    const element = {
+      scrollHeight: 1000,
+      clientHeight: 400,
+      get scrollTop() {
+        return top;
+      },
+      set scrollTop(next: number) {
+        top = Math.max(0, Math.min(next, this.scrollHeight - this.clientHeight));
+        if (!resized && top === this.scrollHeight - this.clientHeight) {
+          resized = true;
+          this.scrollHeight += 155;
+          // The list reports the newly laid-out row after the scroll frame.
+          frames.push(() => follow.follow());
+        }
+      },
+    };
+    const follow = createEndFollow({
+      viewport: () => element as unknown as HTMLElement,
+      follows: () => true,
+    });
+    element.scrollHeight += 300;
+    follow.follow();
+    for (let guard = 0; frames.length > 0 && guard < 200; guard += 1) {
+      now += FRAME_MS;
+      for (const frame of frames.splice(0)) frame(now);
+    }
+    expect(resized).toBe(true);
+    expect(element.scrollTop).toBe(element.scrollHeight - element.clientHeight);
+    expect(frames).toHaveLength(0);
+    follow.follow();
+    expect(frames).toHaveLength(0);
+  });
+
   it("stops where the person scrolled up mid-glide, and stays", () => {
     const { scroll, follow } = atItsEnd();
     grow(scroll, follow, 600);

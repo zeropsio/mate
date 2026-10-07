@@ -8,7 +8,12 @@ import { project } from "./__fixtures__/platformData";
 import { TestNode, buttonsLabelled, press } from "./__fixtures__/testDom";
 import { AccountDataContext, type AccountData } from "./ZeropsAccountData";
 import { ZeropsInventoryProvider } from "./ZeropsInventoryProvider";
-import { conversationAccess, useProjectDialog, useZeropsInventory } from "./inventoryContext";
+import {
+  conversationAccess,
+  useAccountTrouble,
+  useProjectDialog,
+  useZeropsInventory,
+} from "./inventoryContext";
 
 const owner = project("protected");
 const viewer = {
@@ -47,7 +52,9 @@ it.each(["denial", "outage"] as const)(
     const { createRoot } = await import("react-dom/client");
     const container = document.createElement("div");
     const root = createRoot(container as unknown as Element);
+    let renders = 0;
     function Protected() {
+      renders++;
       const inventory = useZeropsInventory();
       const access = conversationAccess(inventory, owner.projectId);
       const [dialog, setDialog] = useProjectDialog(
@@ -67,6 +74,9 @@ it.each(["denial", "outage"] as const)(
         dialog === null ? "dialog closed" : "captured protected dialog",
       );
     }
+    function Status() {
+      return createElement("span", null, useAccountTrouble()?.trouble?.sentence);
+    }
     const data = {
       data: store.data,
       orgId: viewer.id,
@@ -81,7 +91,12 @@ it.each(["denial", "outage"] as const)(
             createElement(
               AccountDataContext,
               { value: data },
-              createElement(ZeropsInventoryProvider, null, createElement(Protected)),
+              createElement(
+                ZeropsInventoryProvider,
+                null,
+                createElement(Protected),
+                createElement(Status),
+              ),
             ),
           ),
         ),
@@ -89,6 +104,7 @@ it.each(["denial", "outage"] as const)(
       await act(async () => press(buttonsLabelled(container, "Open dialog")[0]!));
       expect(container.textContent).toContain("protected conversation and draft");
       expect(container.textContent).toContain("captured protected dialog");
+      const before = renders;
       await act(async () => {
         store.dispatch(
           source === "denial"
@@ -105,6 +121,32 @@ it.each(["denial", "outage"] as const)(
               },
         );
       });
+      if (source === "outage") expect(renders).toBe(before);
+      if (source === "outage") {
+        expect(container.textContent).not.toContain("Zerops isn't answering");
+        await act(async () => {
+          store.dispatch({
+            kind: "stream",
+            key: `zerops:${viewer.id}`,
+            now: 0,
+            event: { kind: "retry-due" },
+          });
+          store.dispatch({
+            kind: "stream",
+            key: `zerops:${viewer.id}`,
+            now: 0,
+            event: { kind: "handshake" },
+          });
+          store.dispatch({
+            kind: "stream",
+            key: `zerops:${viewer.id}`,
+            now: 0,
+            event: { kind: "fault", jitter: 0, fault: { outcome: "transient", message: "503" } },
+          });
+        });
+        expect(container.textContent).toContain("Zerops isn't answering. Trying again…");
+        expect(renders).toBe(before);
+      }
       const read = registry.get(
         store.data.project(platformInventory, { orgId: viewer.id, viewer }),
       );

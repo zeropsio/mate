@@ -163,6 +163,8 @@ export interface FamilyIndex<Value> {
 }
 
 export interface FamilySpec<F extends Family> {
+  /** Display identity safe to retain when protected content is purged, for named recovery notices. */
+  readonly labelOf?: (value: FamilyValues[F]) => string;
   readonly family: F;
   readonly authority: Authority;
   /**

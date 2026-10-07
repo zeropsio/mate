@@ -151,6 +151,10 @@ if (import.meta.main) {
   if (!base) throw new Error("--base needs a git ref");
   const comparison = comparisonBase(root, base);
   const paths = changedPaths(root, comparison);
+  if (paths.length === 0) {
+    console.log("No changed files; no gates to run.");
+    process.exit(0);
+  }
   const existing = paths.filter((path) => NodeFS.existsSync(NodePath.join(root, path)));
   const chatGate = selectsChatGate(paths);
   const packages = touchedPackages(paths, workspacePackages(root));
@@ -247,12 +251,13 @@ if (import.meta.main) {
   if (areas.length)
     steps.push({
       name: `scenarios ${areas.join(",")}`,
+      cwd: "apps/web",
       command: "vp",
       args: [
         "test",
         "run",
         "--config",
-        "apps/web/test/scenarios/vitest.config.ts",
+        "test/scenarios/vitest.config.ts",
         ...(chatGate ? ["--exclude", "test/scenarios/areas/c-mate/**"] : []),
         ...(areas.length === scenarioAreas.length
           ? []
@@ -268,9 +273,18 @@ if (import.meta.main) {
     );
     for (const step of steps) {
       const started = Date.now();
+      // Lanes share the laptop. Standalone runs can opt into the same budget explicitly.
+      const env: typeof process.env = {
+        ...process.env,
+        MATE_TEST_JOBS: process.env.MATE_TEST_JOBS ?? "8",
+        PATH,
+      };
+      // Keep the scenarios' configured serial PostgreSQL fixtures when unit workers are bounded.
+      if (step.args.some((arg) => arg.endsWith("/scenarios/vitest.config.ts")))
+        delete env.VITEST_MAX_WORKERS;
       const result = NodeChildProcess.spawnSync(step.command, step.args, {
         cwd: NodePath.join(root, step.cwd ?? "."),
-        env: { ...process.env, PATH },
+        env,
         stdio: "inherit",
       });
       console.log(

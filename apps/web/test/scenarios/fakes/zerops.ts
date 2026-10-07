@@ -209,7 +209,15 @@ export class ZeropsFake {
         const matches =
           this.canReadRow(registration.apiToken, kind, full) &&
           this.matches(full, registration.search);
-        if (output === "updateStream") {
+        if (output === "listing") {
+          this.push(registration, {
+            items: this.rows(kind).filter(
+              (row) =>
+                this.canReadRow(registration.apiToken, kind, row) &&
+                this.matches(row, registration.search),
+            ),
+          });
+        } else if (output === "updateStream") {
           if (matches) this.push(registration, { update: [full] });
         } else {
           const was = registration.members.has(row.id);
@@ -227,6 +235,7 @@ export class ZeropsFake {
       ? ["updateStream", "listStream"]
       : ["listStream", "updateStream"])
       send(output);
+    send("listing");
   }
 
   remove(kind: string, id: string) {
@@ -659,7 +668,9 @@ export class ZeropsFake {
     );
     const limit = Number(request.body.limit ?? 1000);
     const offset = Number(request.body.offset ?? 0);
-    const output = String(request.body.wsOutputType ?? "");
+    const output = String(
+      request.body.wsOutputType ?? (request.body.subscriptionName ? "listing" : ""),
+    );
     if (output) {
       const name = String(request.body.subscriptionName);
       const receiver = String(request.body.receiverId);

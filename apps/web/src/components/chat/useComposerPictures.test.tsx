@@ -195,6 +195,46 @@ afterEach(async () => {
 });
 
 describe("a picture's copy", () => {
+  it("a note edited while the picture's copy is being made leaves it ready to send", async () => {
+    await show(A);
+    await act(() => api.add([pngFile("shot-1200x800.png")]));
+    await settle();
+    const image = draftOf(A)!.images[0]!;
+    await act(() => api.open(image.id));
+    const made = deferred<unknown>();
+    copies.fit.mockReturnValueOnce(made.promise);
+    const mark = pin("m1", 40, 40, "First note");
+    await act(() =>
+      (api.view as ReactElement<ComposerPictureViewProps>).props.onChange({
+        ...image.picture!,
+        marks: [mark],
+      }),
+    );
+    await settle(600);
+    const preparing = imageOf(A, image.id)!.picture!;
+    expect(preparing.preparing).toBe(true);
+    await act(() =>
+      (api.view as ReactElement<ComposerPictureViewProps>).props.onChange({
+        ...preparing,
+        marks: [{ ...mark, note: "Edited note" }],
+      }),
+    );
+    made.resolve({
+      kind: "fitted",
+      blob: new Blob([new Uint8Array(32)], { type: "image/jpeg" }),
+      width: 1000,
+      height: 667,
+      type: "image/jpeg",
+    });
+    await settle();
+    expect(api.blockReason).toBeNull();
+    expect(imageOf(A, image.id)!.picture).toMatchObject({
+      preparing: false,
+      marks: [{ note: "Edited note" }],
+    });
+    expect(copies.fit).toHaveBeenCalledTimes(2);
+  });
+
   it("a note edited after a reload leaves the picture ready to send", async () => {
     const mark = pin("m1", 40, 40, "Too small");
     useComposerDraftStore.getState().insertImage(A, `Look:${P}`, reloadedPicture("one", [mark]), 0);

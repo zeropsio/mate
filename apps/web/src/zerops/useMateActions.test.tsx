@@ -9,6 +9,7 @@ import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import { readZeropsMembership, type ZeropsMateFace } from "@t3tools/client-runtime/zerops";
 import {
   makeAccountStore,
+  creationPressStoreAtom,
   makeOperations,
   makeHqExecutor,
   operationProgress,
@@ -39,6 +40,7 @@ import {
 import { KEY_WIDER_WHY, mateAddedBy, useMateActions, type MateActions } from "./useMateActions";
 import type { ZeropsCandidatePresentation } from "./useZeropsCandidates";
 import { mountHqNavigation } from "~/zerops/__fixtures__/hqNavigation";
+import { appAtomRegistry } from "~/rpc/atomRegistry";
 
 interface AssignDialogProps {
   readonly candidates: ReadonlyArray<{ readonly clientUserId: string; readonly name: string }>;
@@ -150,6 +152,7 @@ const mock = vi.hoisted(() => ({
   /** The delete dialog as the hook mounts it. */
   deleteDialog: {
     current: null as {
+      readonly onOpenChange: (open: boolean) => void;
       readonly onConfirm: () => void;
       readonly error: string | null;
       readonly cleanup?: boolean;
@@ -435,8 +438,8 @@ vi.mock("./usePressesElsewhere", () => ({
   usePressesElsewhere: () => (projectId: string) => mock.pressElsewhere(projectId),
 }));
 vi.mock("./inventoryContext", async () => {
-  const { useState } = await import("react");
-  return { useProjectDialog: () => useState(null) };
+  const { useDialogState } = await import("./useDialogState");
+  return { useProjectDialog: useDialogState };
 });
 // The organization's official HQ, where a Mate's face is written.
 vi.mock("./accountHq", async (original) => ({
@@ -541,6 +544,7 @@ function Probe() {
 const mounted: ReactTestRenderer[] = [];
 beforeEach(() => {
   openAccountLifetime("user-ada");
+  appAtomRegistry.set(creationPressStoreAtom, makeAccountStore(appAtomRegistry));
   mock.restartContainer.mockReset();
   mock.restartContainer.mockResolvedValue(undefined);
   mock.threads = [];
@@ -598,6 +602,8 @@ afterEach(() => {
     });
   }
   closeAccountLifetime();
+  appAtomRegistry.get(creationPressStoreAtom)?.close();
+  appAtomRegistry.set(creationPressStoreAtom, null);
 });
 
 /** The hook mounted, over `registry` where the case seeds HQ's structure in one. */
@@ -771,6 +777,31 @@ describe("useMateActions — Change face…", () => {
     expect(mock.dialog.current).toBeNull();
   });
 
+  it.each([false, true])(
+    "a dismissed face save cannot reopen or replace a later dialog (reopen %s)",
+    async (reopen) => {
+      let answer!: (value: unknown) => void;
+      mock.updateMate.mockReturnValue(
+        new Promise((resolve) => {
+          answer = resolve;
+        }),
+      );
+      mount();
+      openFace(FEN);
+      await act(async () => mock.dialog.current!.onSave({ tint: "rose", shape: "seal" }));
+      act(() => {
+        mock.dialog.current!.onCancel();
+        mock.dialog.current!.onOpenChangeComplete(false);
+      });
+      mock.dialog.current = null;
+      if (reopen) openFace(QUINN);
+      await act(async () => answer(undefined));
+      act(() => mounted[0]!.update(<Probe />));
+      if (reopen) expect(mock.dialog.current).toMatchObject({ open: true, name: "Quinn" });
+      else expect(mock.dialog.current).toBeNull();
+    },
+  );
+
   it("closes the way a dialog does on Cancel too, and then is gone", () => {
     mount();
     openFace(FEN);
@@ -840,6 +871,7 @@ describe("useMateActions — Change face…", () => {
     act(() => mounted.splice(0).forEach((tree) => tree.unmount()));
     closeAccountLifetime();
     openAccountLifetime("user-ada");
+    appAtomRegistry.set(creationPressStoreAtom, makeAccountStore(appAtomRegistry));
     mock.updateMate.mockReset().mockResolvedValue(undefined);
     mock.dialog.current = null;
     mount(registry);
@@ -2132,6 +2164,24 @@ describe("useMateActions — deletion failures finish visibly", () => {
     expect(mock.deleteProject).not.toHaveBeenCalled();
     expect(mock.completeProjectDeletion).not.toHaveBeenCalled();
     expect(mock.deletedTokens).toEqual([]);
+  });
+
+  it("a deletion finishing after dismissal cannot resurrect its confirmation", async () => {
+    let finish!: () => void;
+    mock.deleteProject.mockImplementation(
+      () =>
+        new Promise<{ value: undefined }>((resolve) => {
+          finish = () => resolve({ value: undefined });
+        }),
+    );
+    openDelete();
+    await confirm();
+    act(() => mock.deleteDialog.current!.onOpenChange(false));
+    mock.deleteDialog.current = null;
+    await act(async () => finish());
+    act(() => mounted[0]!.update(<Probe />));
+    expect(mock.deleteDialog.current).toBeNull();
+    expect(mock.completeProjectDeletion).toHaveBeenCalledOnce();
   });
 
   it("removes connection demand before the delete runs and keeps it off through cleanup", async () => {

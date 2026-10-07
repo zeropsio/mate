@@ -143,6 +143,8 @@ export function buildLogSessionKeyOf(projectId: string, query: BuildLogQuery): B
     query.buildServiceStackId,
     query.appVersionId,
     query.fromIso ?? null,
+    query.tillIso ?? null,
+    query.processId ?? null,
   ]) as BuildLogSessionKey;
 }
 

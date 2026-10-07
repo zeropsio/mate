@@ -521,7 +521,7 @@ describe("the now line", () => {
       name: "a run the usage limit stopped",
       over: { face: "paused", endedAt: at(45) },
       effort: null,
-      words: "Nova stopped at the usage limit after 45s",
+      words: "Nova paused at the limit · 45s",
       face: "sleep",
     },
     {

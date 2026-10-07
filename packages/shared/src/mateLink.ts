@@ -31,6 +31,7 @@ import {
   ExecutionEnvironmentUpdate,
   IsoDateTime,
   MateAttention,
+  MateHealth,
   OrchestrationLatestTurn,
   OrchestrationSessionStatus,
   ProviderInteractionMode,
@@ -287,6 +288,7 @@ export const MateLinkUp = Schema.Union([
     full: Schema.Literal(false),
     sections: MateOverviewSections,
   }),
+  Schema.Struct({ type: Schema.Literal("health"), health: MateHealth }),
   Schema.Struct({ type: Schema.Literal("attention"), attention: MateAttention }),
 ]);
 export type MateLinkUp = typeof MateLinkUp.Type;

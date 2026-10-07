@@ -87,6 +87,93 @@ function answers(
 }
 
 describe("zeropsNavigationLink", () => {
+  it.effect(
+    "an identical reconnect publishes no roster values and reports only failed recovery",
+    () =>
+      Effect.gen(function* () {
+        const registry = AtomRegistry.make();
+        const store = makeAccountStore(registry);
+        const answer = answers(
+          () => [],
+          () => [{ ...PROBE_PROJECT, _version: null }],
+        );
+        let failRegistration = false;
+        const fixture = fixtureWire((request) =>
+          failRegistration ? Effect.fail(classifyHttp(503)) : answer(request),
+        );
+        const { fiber, supervisor } = yield* runLink(store, fixture);
+        const visible = store.data.project(listedProject, {
+          orgId: ORG,
+          projectId: PROBE_PROJECT_ID,
+        });
+        let publications = 0;
+        const stop = registry.subscribe(visible, () => publications++);
+        const stopFact = registry.subscribe(
+          store.data.fact("project", PROBE_PROJECT_ID),
+          () => publications++,
+        );
+        const inventory = () =>
+          platformInventory.derive(readsOfState(store.state()), { orgId: ORG, viewer: undefined });
+        let membershipDerives = 0;
+        const members = store.data.project(
+          {
+            name: "test-roster",
+            keyOf: (key: string) => key,
+            derive: (read, org: string) => {
+              membershipDerives++;
+              return read.members(projectsScope(org)).ids;
+            },
+            equals: (a, b) => a === b,
+          },
+          ORG,
+        );
+        const stopMembers = registry.subscribe(members, () => publications++);
+        registry.get(members);
+        membershipDerives = 0;
+        publications = 0;
+        const heldProject = registry.get(store.data.fact("project", PROBE_PROJECT_ID));
+        if (heldProject.kind !== "known") throw new Error("The project was not read");
+        publications = 0;
+        store.dispatch({
+          kind: "rows",
+          scope: projectsScope(ORG),
+          generation: 1,
+          method: "push",
+          via: "zerops-realtime",
+          rows: [
+            {
+              family: "project",
+              id: PROBE_PROJECT_ID,
+              value: heldProject.value,
+              revision: heldProject.revision,
+            },
+          ],
+        });
+        yield* fixture.drop({ outcome: "transient", message: "socket closed" });
+        yield* settle;
+        expect(inventory().trouble).toBeNull();
+        yield* supervisor.signal("manual-retry");
+        yield* settle;
+        expect(fixture.opens()).toBe(2);
+        expect(inventory().trouble).toBeNull();
+        expect(publications).toBe(0);
+        expect(membershipDerives).toBe(0);
+        failRegistration = true;
+        yield* fixture.drop({ outcome: "transient", message: "socket closed" });
+        yield* settle;
+        expect(inventory().trouble).toBeNull();
+        yield* supervisor.signal("manual-retry");
+        yield* settle;
+        expect(inventory().trouble).toBe("retrying");
+        expect(registry.get(visible)?.id).toBe(PROBE_PROJECT_ID);
+        stop();
+        stopFact();
+        stopMembers();
+        yield* Fiber.interrupt(fiber);
+        registry.dispose();
+      }),
+  );
+
   it.effect("replays the recorded running work: lit before membership, cleared by its end", () =>
     Effect.gen(function* () {
       const store = makeAccountStore(AtomRegistry.make());
@@ -701,6 +788,9 @@ describe("a demanded detail", () => {
       yield* settle;
       expect(reads()).toBe(1);
       expect(store.state().streams.get(scope)?.phase).toBe("refused");
+      expect(readsOfState(store.state()).fact("project", PROBE_PROJECT_ID)).toMatchObject(
+        status === 404 ? { kind: "deleted" } : { kind: "withheld", reason: "denied" },
+      );
 
       // Neither the former five-second confirmation nor drawing the same Mate retries it.
       yield* TestClock.adjust(5_000);

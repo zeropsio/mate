@@ -36,6 +36,7 @@ import { NodeWS } from "@effect/platform-node/NodeSocket";
 import type {
   CrewSnapshot,
   MateAttention,
+  MateHealth,
   OrchestrationThreadShell,
   ServerProvider,
 } from "@t3tools/contracts";
@@ -127,6 +128,7 @@ export type HqStanding =
   | { readonly kind: "linked"; readonly mate: MateState };
 
 export interface ZeropsHqLinkOptions {
+  readonly health?: Stream.Stream<MateHealth>;
   readonly usage?: UsageLink;
   /** The enrollment as it stands now; none until zcp has enrolled. */
   readonly readEnrollment: Effect.Effect<Option.Option<HqEnrollment>>;
@@ -317,6 +319,10 @@ export const makeZeropsHqLink = (
           }),
         );
         const heard = Stream.runForEach(options.changes, () => Ref.set(dirty, true));
+        const health =
+          options.health === undefined
+            ? Effect.never
+            : Stream.runForEach(options.health, (value) => send({ type: "health", health: value }));
         const attention = Stream.runForEach(options.attention, (value) =>
           send({ type: "attention", attention: value }),
         );
@@ -347,7 +353,7 @@ export const makeZeropsHqLink = (
         const relayed = yield* Effect.forkScoped(
           Effect.raceFirst(
             relay,
-            Effect.all([overviews, heard, attention, ...(usage ? [usage.run] : [])], {
+            Effect.all([overviews, heard, attention, health, ...(usage ? [usage.run] : [])], {
               concurrency: "unbounded",
             }),
           ).pipe(Effect.ensuring(quit)),
@@ -599,6 +605,7 @@ export const layer = (crew: OverviewSources["crew"]) =>
         connect: connectLinkSocket,
         relayAccess: (yield* ZeropsProjectAccess).relayed,
         attention: (yield* ZeropsMateAttention).changes,
+        health: (yield* ZeropsMateAttention).healthChanges,
         ...(Option.isSome(usage) ? { usage: usage.value } : {}),
         ...feed,
       });

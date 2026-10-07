@@ -28,7 +28,7 @@ export function ZeropsRestartMateDialog({
     <Dialog
       open
       onOpenChange={(open) => {
-        if (!open && !pending) onCancel();
+        if (!open) onCancel();
       }}
     >
       <DialogPopup className="max-w-md">
@@ -42,7 +42,7 @@ export function ZeropsRestartMateDialog({
           </DialogPanel>
         )}
         <DialogFooter>
-          <Button disabled={pending} onClick={onCancel} variant="ghost">
+          <Button onClick={onCancel} variant="ghost">
             Cancel
           </Button>
           <Button disabled={pending} onClick={onConfirm}>

@@ -1,3 +1,4 @@
+import type { WebMateVoice as MateVoice } from "~/zerops/mateNoticeVoice";
 import {
   connectionBannerCopy,
   type EnvironmentConnectionPresentation,
@@ -6,7 +7,7 @@ import {
   type AtomCommandResult,
   isAtomCommandInterrupted,
 } from "@t3tools/client-runtime/state/runtime";
-import { askAgainLabel, type MateVoice } from "@t3tools/client-runtime/zerops/environments";
+import { askAgainLabel } from "@t3tools/client-runtime/zerops/environments";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { WifiOffIcon } from "lucide-react";
 import type { ReactElement } from "react";
@@ -30,7 +31,7 @@ export function environmentConnectionBannerItem(input: {
   if (copy === null) return null;
   return {
     id: `environment-unavailable:${input.environmentId}`,
-    variant: input.connection.phase === "error" ? "error" : "warning",
+    variant: input.connection.phase === "error" ? "error" : "default",
     icon: <WifiOffIcon />,
     title: copy.title,
     ...(copy.description === null ? {} : { description: copy.description }),
@@ -56,32 +57,71 @@ export function mateVoiceBannerItem(input: {
   readonly voice: MateVoice;
   readonly onRetry: () => void;
   readonly projects: ReactElement;
+  readonly onContainerAction?: ((action: "start" | "restart") => void) | undefined;
+  readonly busy?: boolean;
+  readonly projectUrl?: string;
 }): ComposerBannerStackItem | null {
   const { voice } = input;
   if (voice.surface !== "banner" || voice.text === null) return null;
   const askAgain = askAgainLabel(voice.actions);
+  const containerAction = voice.actions.includes("start")
+    ? "start"
+    : voice.actions.includes("restart")
+      ? "restart"
+      : null;
+  const openInZerops = voice.actions.includes("open-in-zerops") && input.projectUrl !== undefined;
   const toProjects = voice.actions.some(
     (action) =>
       action === "go-to-projects" ||
-      action === "start" ||
+      ((action === "start" || action === "restart") && input.onContainerAction === undefined) ||
       action === "enable" ||
-      action === "restart" ||
-      action === "open-in-zerops",
+      (action === "open-in-zerops" && !openInZerops),
   );
   return {
     id: `mate-link:${input.environmentId}`,
-    variant: "warning",
+    variant:
+      voice.severity === "danger"
+        ? "error"
+        : voice.severity === "attention"
+          ? "warning"
+          : "default",
     icon: <WifiOffIcon />,
-    title: voice.text,
-    ...(askAgain !== null || toProjects
+    title: voice.headline ?? voice.text,
+    ...(voice.secondary === undefined ? {} : { description: voice.secondary }),
+    ...(askAgain !== null ||
+    toProjects ||
+    openInZerops ||
+    (containerAction !== null && input.onContainerAction !== undefined)
       ? {
           actions: (
             <>
+              {containerAction === null || input.onContainerAction === undefined ? null : (
+                <Button
+                  disabled={input.busy}
+                  size="xs"
+                  onClick={() => input.onContainerAction?.(containerAction)}
+                >
+                  {input.busy
+                    ? "Asking Zerops…"
+                    : containerAction === "start"
+                      ? "Start"
+                      : "Retry restart"}
+                </Button>
+              )}
               {askAgain === null ? null : (
                 <Button size="xs" onClick={input.onRetry}>
                   {askAgain}
                 </Button>
               )}
+              {openInZerops ? (
+                <Button
+                  render={<a href={input.projectUrl} target="_blank" rel="noreferrer" />}
+                  size="xs"
+                  variant="outline"
+                >
+                  Open in Zerops
+                </Button>
+              ) : null}
               {toProjects ? (
                 <Button render={input.projects} size="xs" variant="outline">
                   Go to projects

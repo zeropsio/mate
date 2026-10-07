@@ -87,9 +87,17 @@ export function publicRead<T>(fact: Fact<T> | undefined): PublicRead<T> {
   if (fact === undefined) return { kind: "unknown" };
   switch (fact.content.kind) {
     case "deleted":
-      return { kind: "deleted", evidence: fact.content.evidence };
+      return {
+        kind: "deleted",
+        evidence: fact.content.evidence,
+        ...(fact.label === undefined ? {} : { label: fact.label }),
+      };
     case "purged":
-      return { kind: "withheld", reason: "denied" };
+      return {
+        kind: "withheld",
+        reason: "denied",
+        ...(fact.label === undefined ? {} : { label: fact.label }),
+      };
     case "value":
       return {
         kind: "known",

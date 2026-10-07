@@ -2,6 +2,9 @@
 
 import { AlertDialog as AlertDialogPrimitive } from "@base-ui/react/alert-dialog";
 
+import { XIcon } from "lucide-react";
+import { Button } from "~/components/ui/button";
+
 import { cn } from "~/lib/utils";
 import {
   DIALOG_BACKDROP_CLASS,
@@ -42,6 +45,7 @@ function AlertDialogPopup({
   className,
   bottomStickOnMobile = true,
   portalContainer,
+  children,
   ...props
 }: AlertDialogPrimitive.Popup.Props & {
   bottomStickOnMobile?: boolean;
@@ -62,7 +66,16 @@ function AlertDialogPopup({
           )}
           data-slot="alert-dialog-popup"
           {...props}
-        />
+        >
+          {children}
+          <AlertDialogPrimitive.Close
+            aria-label="Close"
+            className="absolute end-2 top-2"
+            render={<Button size="icon" variant="ghost" />}
+          >
+            <XIcon />
+          </AlertDialogPrimitive.Close>
+        </AlertDialogPrimitive.Popup>
       </AlertDialogViewport>
     </AlertDialogPortal>
   );
@@ -102,7 +115,7 @@ function AlertDialogFooter({
 function AlertDialogTitle({ className, ...props }: AlertDialogPrimitive.Title.Props) {
   return (
     <AlertDialogPrimitive.Title
-      className={cn("wrap-anywhere font-semibold text-xl leading-none", className)}
+      className={cn("wrap-anywhere pe-8 font-semibold text-xl leading-none", className)}
       data-slot="alert-dialog-title"
       {...props}
     />

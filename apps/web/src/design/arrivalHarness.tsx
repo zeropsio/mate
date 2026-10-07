@@ -1,3 +1,4 @@
+import { setupFailureReason } from "@t3tools/client-runtime/data";
 /**
  * A Mate's arrival, in every state, at the owner's size (1786 × 1000, the menu at 435): the
  * approved "Arrival" board's Direction A and its sign-in S1, drawn by the real stage
@@ -37,7 +38,7 @@ import {
   type TimelineRowSharedState,
 } from "~/components/chat/timelineContext";
 import { Button } from "~/components/ui/button";
-import { Dialog } from "~/components/ui/dialog";
+import { Dialog, DialogTrigger } from "~/components/ui/dialog";
 import { WorkspacePageHeader } from "~/components/WorkspacePageHeader";
 import { MateFace } from "~/components/zerops/primitives";
 import {
@@ -539,15 +540,49 @@ function comingOf(state: HarnessState, nowMs: number): MateEmptyComing | null {
       ),
     };
   }
+  const failure = setupFailureReason(state.mate.name, "CommandExec: init command failed", [
+    "curl: (6) Could not resolve host: zerops.io",
+    "zcp init: command not found (exit 127)",
+  ]);
   const coming: MateComing =
     state.coming === "not-created"
       ? {
           kind: "failed",
-          line: "Its workspace could not be created. Nothing was signed in yet.",
-          verb: "remove",
+          line: failure.text,
+          verb: "try-again",
         }
       : { kind: "coming", line: "Coming up. A few minutes." };
-  const progress = comingProgress(state.coming, nowMs);
+  const progress =
+    state.coming === "not-created"
+      ? deriveBirthProgress(
+          {
+            project: { status: "ACTIVE" },
+            container: { serviceId: "zcp", status: "ACTION_FAILED", hasOrigin: false },
+            processes: [
+              {
+                actionName: "project.create",
+                status: "FINISHED",
+                serviceIds: [],
+                createdAt: "2026-10-07T10:00:00Z",
+                startedAt: "2026-10-07T10:00:00Z",
+                finishedAt: "2026-10-07T10:00:44Z",
+              },
+              {
+                actionName: "stack.create",
+                status: "FAILED",
+                serviceIds: ["zcp"],
+                createdAt: "2026-10-07T10:00:44Z",
+                startedAt: "2026-10-07T10:00:44Z",
+                finishedAt: "2026-10-07T10:01:54Z",
+                failReason: "CommandExec: init command failed",
+              },
+            ],
+            health: undefined,
+            connection: "none",
+          },
+          nowMs,
+        )
+      : comingProgress(state.coming, nowMs);
   return {
     kind: coming.kind,
     sentence: comingSentenceOf({ coming, progress, nowMs }),
@@ -557,6 +592,25 @@ function comingOf(state: HarnessState, nowMs: number): MateEmptyComing | null {
         mate={state.mate}
         nowMs={nowMs}
         onRemove={() => undefined}
+        {...(state.coming === "not-created"
+          ? {
+              onTryAgain: () => undefined,
+              setupFailureDetails: {
+                details: failure.details,
+                status: "ended",
+                retrying: false,
+                projectUrl: "https://app.zerops.io/project/fixture",
+                process: {
+                  id: "fixture-dns",
+                  projectId: "fixture",
+                  status: "FAILED",
+                  actionName: "stack.create",
+                  serviceStackIds: ["zcp"],
+                  created: "2026-10-07T10:00:44Z",
+                },
+              },
+            }
+          : {})}
         progress={progress}
         you={YOU}
       />
@@ -657,7 +711,12 @@ function Pane({ state, go }: { readonly state: HarnessState; readonly go: (id: s
     <div className="relative flex min-h-0 min-w-0 flex-1 flex-col" data-harness-pane>
       {state.conversation === true ? <Conversation /> : stage}
       {state.dialog === undefined ? null : (
-        <Dialog open>
+        <Dialog defaultOpen key={state.id}>
+          <div className="self-start p-4">
+            <DialogTrigger render={<Button size="sm" variant="outline" />}>
+              Sign {state.mate.name} in
+            </DialogTrigger>
+          </div>
           <ZeropsAgentSignInDialogPopup mateName={state.mate.name}>
             <FixtureSignIn
               fixed={state.dialog}

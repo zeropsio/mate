@@ -148,7 +148,10 @@ function useFrameWaitLine(signedIn: boolean, own: string | undefined): string | 
 function FormError({ message }: { readonly message: string | null }) {
   if (!message) return null;
   return (
-    <p className="rounded-lg border border-destructive/40 bg-destructive/8 px-3 py-2 text-sm text-destructive-foreground">
+    <p
+      role="alert"
+      className="rounded-lg border border-border bg-muted/35 px-3 py-2 text-sm text-foreground"
+    >
       {message}
     </p>
   );

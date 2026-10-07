@@ -8,17 +8,14 @@ const mock = vi.hoisted(() => ({
   submit: vi.fn(),
   toasts: [] as Array<{ readonly type: string; readonly title: string }>,
 }));
-vi.mock("./useZeropsCandidates", () => ({ useZeropsCandidates: () => ({ listing: null }) }));
-vi.mock("@t3tools/client-runtime/zerops/projections", () => ({
-  heldCandidates: () => ({
-    rows: [
-      {
-        key: "p1:s1",
-        project: { id: "p1" },
-        service: { id: "s1", status: "SERVICE_FAILED" },
-      },
-    ],
-  }),
+vi.mock("./useZeropsCandidates", () => ({
+  useHeldZeropsCandidates: () => [
+    {
+      key: "p1:s1",
+      project: { id: "p1" },
+      service: { id: "s1", status: "SERVICE_FAILED" },
+    },
+  ],
 }));
 vi.mock("./accountOperations", () => ({ useAccountOperations: () => ({ submit: mock.submit }) }));
 vi.mock("./ZeropsAccountData", () => ({ useAccountData: () => ({ orgId: "org-1" }) }));

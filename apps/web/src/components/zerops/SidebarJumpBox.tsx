@@ -271,6 +271,7 @@ function useJumpWrite(
           name: target.name,
           owner: target.owner,
           conversation: target.conversation,
+          usageLimited: target.usageLimited,
           pausedUntilLabel:
             target.pausedUntil === undefined
               ? undefined

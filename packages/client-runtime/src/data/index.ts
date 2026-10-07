@@ -286,6 +286,7 @@ export { recordedMoveRemainder } from "./projections/recordedMoveRemainder.ts";
 
 export {
   inventory,
+  inventoryContents,
   inventoryCandidates,
   NOT_READ_INVENTORY,
   inventoryPlacements,
@@ -318,6 +319,7 @@ export {
 } from "./families/mateBrowserFrame.ts";
 export {
   mateBrowserFrame,
+  mateBrowserFrames,
   mateBrowserStream,
   UNKNOWN_BROWSER_FRAME,
   type MateBrowserFrameRead,
@@ -435,3 +437,34 @@ export * from "./operations/executors/mateTerminal.ts";
 export * from "./projections/mateActions.ts";
 export { makeArchiveReads, makeArchiveWire } from "./adapters/mateArchive.ts";
 export { mateArchive, type ArchiveReading } from "./projections/mateArchive.ts";
+
+export {
+  setupFailure,
+  failedSetupProcess,
+  setupFailureLogQuery,
+  setupFailureReason,
+} from "./projections/setupFailure.ts";
+export type { MateFeedFamily, MateFeedValues, MateFeedKey } from "./families/mateFeeds.ts";
+
+export {
+  createAccountConversationAtoms,
+  mateConversationStoreAtom,
+} from "./adapters/mateConversation.ts";
+
+export { creationProgress } from "./projections/creationProgress.ts";
+export {
+  creationPressStoreAtom,
+  beginCreationPress,
+  recordCreationProgress,
+} from "./operations/executors/creationPress.ts";
+
+export { mateFeedServices } from "./adapters/mateFeeds.ts";
+
+export { sharedMateSetupDemand, closeSharedMateSetupDemand } from "./adapters/mateSetup.ts";
+export { mateSetupRetryCommand } from "./mateActionReads.ts";
+export { mateRecovery, type MateRecovery } from "./projections/mateRecovery.ts";
+export { mateHealth, mateHealthCopy, type MateHealthRead } from "./projections/mateHealth.ts";
+export { mateHealthAtom } from "./reads.ts";
+
+export { makeMateHealthWire } from "./adapters/mateHealth.ts";
+export { startMateHealth } from "./account.ts";

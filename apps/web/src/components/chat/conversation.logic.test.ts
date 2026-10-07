@@ -712,20 +712,18 @@ describe("deriveConversationStructure", () => {
     },
   );
 
-  // A woken run read "Rosa stopped after 1s", then "Rosa thought 1s" 200 ms
-  // later: the server settled the turn a moment before its words landed. A
-  // turn just settled with no words yet stays live for the last words' wait,
-  // and settles once, with them.
+  // Completion is a reported outcome, even before its answer arrives.
+  // Clock position and missing words cannot turn it into live or stopped work.
   it.each([
     {
       name: "just settled, its words not yet in",
       now: Date.parse(at(59)) + 500,
       words: false,
-      live: true,
+      live: false,
     },
     { name: "its words in", now: Date.parse(at(59)) + 500, words: true, live: false },
     {
-      name: "past the wait, still no words: cut off after all",
+      name: "later, still no words",
       now: Date.parse(at(59)) + LAST_WORDS_GRACE_MS + 1,
       words: false,
       live: false,
@@ -738,7 +736,7 @@ describe("deriveConversationStructure", () => {
       live: false,
     },
   ] as const)(
-    "keeps a turn the server just settled live until its words land: $name",
+    "shows a reported completion without inferring a stop: $name",
     ({ now, words, live }) => {
       const entries = [
         user("m0", 0),
@@ -752,7 +750,7 @@ describe("deriveConversationStructure", () => {
         nowMs: now,
       }).turns;
       expect(first!.live).toBe(live);
-      expect(first!.interrupted).toBe(!live && words === false);
+      expect(first!.interrupted).toBe(false);
     },
   );
 
@@ -1221,6 +1219,7 @@ describe("a run that broke off", () => {
       ],
       latest: { id: "t1", state: "error", completed: true },
       brokeOff: {
+        entryId: "e1",
         reason: "Codex stopped unexpectedly.",
         next: "Send a message to pick up where it left off.",
       },
@@ -1239,7 +1238,7 @@ describe("a run that broke off", () => {
       ],
       latest: { id: "t2", state: "completed", completed: true },
       // Only the latest run says what to do next.
-      brokeOff: { reason: "Codex stopped unexpectedly.", next: null },
+      brokeOff: { entryId: "e1", reason: "Codex stopped unexpectedly.", next: null },
       answer: null,
       face: "brokeOff",
     },
@@ -1251,7 +1250,7 @@ describe("a run that broke off", () => {
         crashed("e1", "t1", 2, "API Error: 500 Internal server error"),
       ],
       latest: { id: "t1", state: "error", completed: true },
-      brokeOff: { reason: "API Error: 500 Internal server error", next: null },
+      brokeOff: { entryId: "e1", reason: "API Error: 500 Internal server error", next: null },
       answer: null,
       face: "brokeOff",
     },

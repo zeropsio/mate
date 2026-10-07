@@ -1,3 +1,15 @@
+import { Atom } from "effect/unstable/reactivity";
+import {
+  makeAccountStore,
+  creationPressStoreAtom,
+  accountReadsAtom,
+  type AccountStore,
+  type ProjectServices,
+} from "@t3tools/client-runtime/data";
+import { appAtomRegistry } from "../rpc/atomRegistry";
+beforeEach(() => {
+  appAtomRegistry.set(creationPressStoreAtom, makeAccountStore(appAtomRegistry));
+});
 import {
   acquireHqPressLease as pressHold,
   PRESS_RENEW_MS,
@@ -12,7 +24,7 @@ import {
 import { HqError } from "@t3tools/client-runtime/zerops/hq";
 import type { RunToEnd } from "@t3tools/client-runtime/data";
 import { ZeropsApiError } from "@t3tools/client-runtime/zerops";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import {
   beginPress,
@@ -36,7 +48,7 @@ import {
   pressesInFlight,
   readMatePress,
   runPress,
-  settlePress,
+  recordPressOutcome,
   STOPPED_SHOWN_MS,
   mateFinishRegistration,
   PRESS_MAY_HAVE_LANDED,
@@ -49,6 +61,26 @@ import {
 import { accountHqApi } from "./accountHq";
 import type { LockManagerLike } from "./mateLocks";
 
+const serviceRead = Atom.make<ProjectServices>({ services: [], live: true, reconnecting: false });
+function servicesReading(value: ProjectServices) {
+  appAtomRegistry.set(serviceRead, value);
+  const owner = appAtomRegistry.get(creationPressStoreAtom)!;
+  const data: AccountStore["data"] = {
+    ...owner.data,
+    project: (projection, key) =>
+      projection.name === "projectServices"
+        ? (serviceRead as unknown as ReturnType<
+            typeof owner.data.project<typeof key, ReturnType<typeof projection.derive>>
+          >)
+        : owner.data.project(projection, key),
+  };
+  appAtomRegistry.set(accountReadsAtom, {
+    orgId: "org-acme",
+    data,
+    demandDetail: () => () => {},
+    renewHeld: () => {},
+  });
+}
 /** A step's owner answer. */
 const answered = <A>(answer: { readonly value: A }) => Promise.resolve(answer.value);
 /**
@@ -458,6 +490,12 @@ describe("runPress — a press settled, tried again, and one at a time", () => {
     begin();
     expect(await press(["ok"])).toMatchObject({ ok: true });
     expect(readMatePress("p-1")).toBeUndefined();
+    const owner = appAtomRegistry.get(creationPressStoreAtom)!;
+    expect(
+      [...owner.state().operations.values()]
+        .filter((record) => record.intent.kind === "creation-press")
+        .map((record) => record.receipt?.outcome.kind),
+    ).toEqual(["succeeded"]);
   });
 
   it("settles a press that stopped with Try again, which resumes it at the step that stopped", async () => {
@@ -745,7 +783,7 @@ describe("a press's hold at HQ", () => {
 });
 
 describe("a press whose write's answer was lost", () => {
-  it("says the write may have landed, and Try again reads before it writes", async () => {
+  it("says the write may have landed and withholds retry without owner evidence", async () => {
     beginPress({
       projectId: "p-1",
       organizationId: "org-acme",
@@ -777,7 +815,7 @@ describe("a press whose write's answer was lost", () => {
         step: "import-container",
         reason: `Zerops command exceeded its deadline. ${PRESS_MAY_HAVE_LANDED}`,
       });
-      expect(state?.kind === "failed" ? state.retry : null).not.toBeNull();
+      expect(state?.kind === "failed" ? state.retry : null).toBeNull();
     } finally {
       forgetPress("p-1");
     }
@@ -940,7 +978,7 @@ describe("a Finish setup that stopped", () => {
       begin(container);
       if (progress !== undefined) progressPress("p-stop", progress);
       const resume: MatePress["resumeSetup"] = async () => ({ ok: true }) as never;
-      settlePress("p-stop", stopped, resume);
+      recordPressOutcome("p-stop", stopped, resume);
       const press = readMatePress("p-stop");
       expect(finishSetupRowLine(press)).toBe("Setup stopped");
       expect(pressComingInput([press!], "p-stop")).toEqual({
@@ -965,10 +1003,10 @@ describe("a Finish setup that stopped", () => {
     vi.useFakeTimers();
     try {
       begin(false);
-      settlePress("p-stop", STOPPED);
+      recordPressOutcome("p-stop", STOPPED);
       vi.advanceTimersByTime(STOPPED_SHOWN_MS - 1_000);
       begin(false);
-      settlePress("p-stop", STOPPED);
+      recordPressOutcome("p-stop", STOPPED);
       vi.advanceTimersByTime(1_000);
       expect(finishSetupRowLine(readMatePress("p-stop"))).toBe("Setup stopped");
       vi.advanceTimersByTime(STOPPED_SHOWN_MS);
@@ -983,7 +1021,7 @@ describe("a Finish setup that stopped", () => {
     try {
       begin(false);
       expect(finishSetupRunning(readMatePress("p-stop"))).toBe(true);
-      settlePress("p-stop", STOPPED);
+      recordPressOutcome("p-stop", STOPPED);
       expect(finishSetupRunning(readMatePress("p-stop"))).toBe(false);
     } finally {
       forgetPress("p-stop");
@@ -1178,12 +1216,16 @@ describe("finishMateSetup — the harden path", () => {
     calls: Array<string>,
     services: ReadonlyArray<ReturnType<typeof zcp>> = [],
   ): PressInputs => {
+    servicesReading({
+      services: services.map((service) => ({ ...service, projectId: "p-old" })),
+      live: true,
+      reconnecting: false,
+    });
     const client = {
       readProjectEnv: async () => {
         calls.push("read isolation");
         return [{ key: "envIsolation", content: "service" }];
       },
-      listProjectServices: async () => services,
     };
     const isolateProjectEnv = () => {
       calls.push("harden");
@@ -1604,7 +1646,7 @@ describe("finishMateSetup — the harden path", () => {
   it("hardens before it resumes a stopped press this tab keeps", async () => {
     begin();
     const calls: Array<string> = [];
-    settlePress(
+    recordPressOutcome(
       "p-old",
       { kind: "failed", step: "close-off", reason: "No.", retry: null },
       async () => {
@@ -1735,6 +1777,11 @@ describe("finishMateSetup — the harden path", () => {
     expect(stopped).toMatchObject({ kind: "failed", reason: error });
     if (stopped?.kind !== "failed" || stopped.retry === null) throw new Error("no retry");
     services.pop();
+    servicesReading({
+      services: services.map((service) => ({ ...service, projectId: "p-old" })),
+      live: true,
+      reconnecting: false,
+    });
     await stopped.retry();
     expect(calls).toEqual(["harden", "record sky:seal as svc-1", "mark"]);
     forgetPress("p-old");
@@ -1842,23 +1889,13 @@ describe("finishMateSetup — the harden path", () => {
     forgetPress("p-old");
   });
 
-  it("reads the project's services once and exposes a manual continuation after failure", async () => {
+  it("withholds service selection while unread and resumes manually after the source answers", async () => {
     begin();
     const calls: Array<string> = [];
-    let reads = 0;
     const base = inputs(() => true, calls);
+    servicesReading({ services: undefined, live: false, reconnecting: false });
     const finishing = {
-      inputs: {
-        ...base,
-        client: {
-          ...base.client,
-          listProjectServices: async () => {
-            reads += 1;
-            if (reads === 1) throw new Error("Zerops isn't answering.");
-            return [];
-          },
-        } as unknown as PressInputs["client"],
-      },
+      inputs: base,
       projectId: "p-old",
       projectName: "Acme - Ada",
       container: null,
@@ -1869,15 +1906,15 @@ describe("finishMateSetup — the harden path", () => {
     };
     expect(await finishMateSetup(finishing)).toMatchObject({
       ok: false,
-      error: "Zerops isn't answering.",
+      error:
+        "The project's current services are unavailable. Try Finish setup after they are read.",
     });
-    expect(reads).toBe(1);
     expect(calls).toEqual([]);
     const stopped = readMatePress("p-old")?.state;
     if (stopped?.kind !== "failed" || stopped.retry === null)
       throw new Error("no manual continuation");
+    servicesReading({ services: [], live: true, reconnecting: false });
     await stopped.retry();
-    expect(reads).toBe(2);
     expect(readMatePress("p-old")?.state).toEqual({ kind: "pressed" });
     forgetPress("p-old");
   });

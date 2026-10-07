@@ -4,7 +4,6 @@ import {
   type ComposerPathSearchTarget,
 } from "@t3tools/client-runtime/state/threads";
 import {
-  createThreadSearchResultsAtomFamily,
   makeThreadSearchKey,
   type EnvironmentThreadSearchMatch,
 } from "@t3tools/client-runtime/state/thread-search";
@@ -44,16 +43,28 @@ const EMPTY_THREAD_SEARCH_MATCHES: ReadonlyArray<EnvironmentThreadSearchMatch> =
 const EMPTY_THREAD_SEARCH_ATOM = Atom.make({
   matches: EMPTY_THREAD_SEARCH_MATCHES,
   isLoading: false,
+  incomplete: false,
 }).pipe(Atom.withLabel("web:thread-search:empty"));
 
-const threadSearchResultsAtom = createThreadSearchResultsAtomFamily({
-  getSearchAtom: (environmentId, query) =>
-    orchestrationEnvironment.threadSearch({
-      environmentId,
-      input: { query },
-    }),
-  labelPrefix: "web:thread-search",
-});
+const threadSearchResultsAtom = Atom.family((key: string) =>
+  Atom.make((get) => {
+    const [environmentIds, query] = JSON.parse(key) as [ReadonlyArray<EnvironmentId>, string];
+    const matches: EnvironmentThreadSearchMatch[] = [];
+    let isLoading = false;
+    let incomplete = false;
+    for (const environmentId of environmentIds) {
+      const result = get(
+        orchestrationEnvironment.threadSearch({ environmentId, input: { query } }),
+      );
+      isLoading ||= result.waiting;
+      incomplete ||= result._tag !== "Success";
+      const value = Option.getOrUndefined(AsyncResult.value(result));
+      if (value !== undefined)
+        matches.push(...value.matches.map((match) => ({ ...match, environmentId })));
+    }
+    return { matches, isLoading, incomplete };
+  }),
+);
 
 export interface ThreadDetailView {
   readonly data: OrchestrationThread | null;
@@ -101,6 +112,7 @@ export function useThreadSearch(
 ): {
   readonly matches: ReadonlyArray<EnvironmentThreadSearchMatch>;
   readonly isPending: boolean;
+  readonly incomplete: boolean;
 } {
   const presentations = useAtomValue(environmentPresentations.presentationsAtom);
   const environmentIds = useMemo(
@@ -122,6 +134,7 @@ export function useThreadSearch(
   return {
     matches: isDebouncing ? EMPTY_THREAD_SEARCH_MATCHES : result.matches,
     isPending: canSearch && (isDebouncing || result.isLoading),
+    incomplete: canSearch && !isDebouncing && result.incomplete,
   };
 }
 

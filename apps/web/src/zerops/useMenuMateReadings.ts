@@ -1,3 +1,5 @@
+import { failedSetupProcess } from "@t3tools/client-runtime/data";
+import { useProjectsActivityRead } from "./activity/useProjectActivity";
 /**
  * How the left menu reads each Mate it draws: what its row says (`useMateRowActivity` — its
  * attention as the account's store holds it, at rest while that word is not of now) and
@@ -136,6 +138,7 @@ export function useMateComingOf(
   const closeOffHolds = useCloseOffHolds();
   const verdicts = useProjectCreations(candidates);
   const firstBuilds = useZeropsFirstBuilds(candidates);
+  const processFacts = useProjectsActivityRead(candidates.map((candidate) => candidate.project.id));
   const pressOf = usePressesElsewhere(candidates);
   const wokeAt = useComingClock(candidates);
   return useCallback(
@@ -144,6 +147,19 @@ export function useMateComingOf(
       // Made here, and not connected since.
       const created =
         candidate.group !== "connected" && madeOf(creations, candidate.project.id) !== undefined;
+      const unfinished = closeOffOpenOf(
+        closeOffHolds,
+        candidate.project.id,
+        presses.find((entry) => entry.projectId === candidate.project.id),
+      );
+      if (
+        candidate.group !== "connected" &&
+        (press !== undefined || created || unfinished) &&
+        failedSetupProcess(processFacts[candidate.project.id]?.processes, candidate.service?.id) !==
+          undefined
+      ) {
+        return { kind: "failed", line: "Setup stopped.", verb: "try-again" };
+      }
       return mateComing({
         press,
         // A row says only the hold it offers Finish setup for; the others, its own view.
@@ -167,7 +183,17 @@ export function useMateComingOf(
         pressElsewhere: pressOf(candidate.project.id),
       });
     },
-    [presses, creations, firstBuilds, mateLink, pressOf, verdicts, closeOffHolds, wokeAt],
+    [
+      presses,
+      creations,
+      firstBuilds,
+      mateLink,
+      pressOf,
+      verdicts,
+      closeOffHolds,
+      wokeAt,
+      processFacts,
+    ],
   );
 }
 

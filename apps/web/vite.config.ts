@@ -149,6 +149,45 @@ function devCompressionPlugin(): Plugin {
   };
 }
 
+/** Opt-in module composition alongside the manifest, without shipping analysis in normal builds. */
+function bundleCompositionPlugin(): Plugin {
+  return {
+    name: "mate:bundle-composition",
+    apply: "build",
+    generateBundle(_options, bundle) {
+      this.emitFile({
+        type: "asset",
+        fileName: "bundle-composition.json",
+        source: JSON.stringify(
+          Object.fromEntries(
+            Object.entries(bundle).flatMap(([file, chunk]) =>
+              chunk.type === "chunk"
+                ? [
+                    [
+                      file,
+                      {
+                        imports: chunk.imports,
+                        dynamicImports: chunk.dynamicImports,
+                        modules: Object.fromEntries(
+                          Object.entries(chunk.modules).map(([id, module]) => [
+                            id.replace(`${import.meta.dirname.replace(/\/apps\/web$/u, "")}/`, ""),
+                            { renderedLength: module.renderedLength },
+                          ]),
+                        ),
+                      },
+                    ],
+                  ]
+                : [],
+            ),
+          ),
+          null,
+          2,
+        ),
+      });
+    },
+  };
+}
+
 // Vite rejects requests whose Host header isn't localhost, which blocks sharing
 // a dev server over a LAN alias (ngrok, a LAN IP alias) — goes through the env var.
 const configuredAllowedHosts = (process.env.T3CODE_DEV_ALLOWED_HOSTS ?? "")
@@ -163,7 +202,8 @@ export default defineConfig(() => {
     assetsInclude: ["**/*.wasm"],
     plugins: [
       devCompressionPlugin(),
-      tanstackRouter(),
+      ...(process.env.T3CODE_WEB_ANALYZE === "1" ? [bundleCompositionPlugin()] : []),
+      tanstackRouter({ autoCodeSplitting: true }),
       react(),
       babel({
         // We need to be explicit about the parser options after moving to @vitejs/plugin-react v6.0.0
@@ -265,6 +305,13 @@ export default defineConfig(() => {
       emptyOutDir: true,
       manifest: true,
       sourcemap: buildSourcemap,
+      rolldownOptions: {
+        output: {
+          // Shared startup modules belong to one fetch, rather than a request for each icon/helper.
+          // The tag follows the actual static graph and leaves demanded surfaces outside it.
+          codeSplitting: { groups: [{ name: "startup", tags: ["$initial" as const] }] },
+        },
+      },
     },
     test: {
       projects: [defineProject(unitTestProject)],

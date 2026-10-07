@@ -2,6 +2,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import {
   makeMateSetupDemand,
+  sharedMateSetupDemand,
   mateSetupOwner,
   setupProgress,
   NO_SETUP_PROGRESS,
@@ -35,7 +36,7 @@ export function useMateSetup(origin: string | undefined, epoch?: string): MateSe
     if (store === null) return null;
     let held = managers.get(store);
     if (held === undefined) {
-      held = makeMateSetupDemand(store, whenShown);
+      held = sharedMateSetupDemand(store, whenShown);
       managers.set(store, held);
       active.add(held);
     }

@@ -85,7 +85,7 @@ export function ZeropsChangeFaceForm({
         >
           {error}
         </p>
-        <Button disabled={pending} onClick={onCancel} type="button" variant="ghost">
+        <Button onClick={onCancel} type="button" variant="ghost">
           Cancel
         </Button>
         <Button aria-busy={pending || undefined} disabled={pending} type="submit">
@@ -116,11 +116,7 @@ export function ZeropsChangeFaceDialog({
 }) {
   return (
     <Dialog
-      onOpenChange={(next) => {
-        // A press the platform is answering is seen through: its refusal has somewhere to land.
-        if (!next && form.pending) return;
-        onOpenChange(next);
-      }}
+      onOpenChange={onOpenChange}
       {...(onOpenChangeComplete === undefined ? {} : { onOpenChangeComplete })}
       open={open}
     >

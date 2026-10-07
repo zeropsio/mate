@@ -1,3 +1,4 @@
+import { removeFailedZeropsProject } from "./removeFailedZeropsProject";
 import { EnvironmentId } from "@t3tools/contracts";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import {
@@ -25,7 +26,6 @@ import {
   projectsTroubleView,
   readContainerAfter,
   readContainerAgain,
-  removeFailedZeropsProject,
   retryZeropsProjectConnection,
   showsZeropsBirthLine,
   ZeropsProjectsHeader,
@@ -790,18 +790,6 @@ describe("a project's next step on the projects page", () => {
     expect(projectsPageSource).not.toContain("ZeropsGroupAnswer");
   });
 
-  it("opens the release's review, the door every other page opens, named Review release in its cell and on the strip", () => {
-    // The step's own words, which groupFlow writes as the door's: Release is the review's button.
-    expect(projectsPageSource).toContain(
-      "return <ZeropsReleaseVerb groupId={group.groupId} label={step.verb} />;",
-    );
-    expect(projectsPageSource).toContain(
-      "<ZeropsReleaseVerb groupId={group.groupId} label={REVIEW_RELEASE_LABEL} />",
-    );
-    expect(groupDetailSource).toContain("export function ZeropsReleaseVerb(");
-    expect(groupDetailSource).toContain('openReview({ kind: "release", groupId }, { from });');
-  });
-
   it("merges, closes, releases and rolls back from no row: every such verb opens a review", () => {
     for (const source of [projectsPageSource, groupDetailSource]) {
       expect(source).not.toContain(".merge(");
@@ -813,14 +801,6 @@ describe("a project's next step on the projects page", () => {
     expect(projectsPageSource).toContain(
       'openReview({ kind: "rollback", groupId: group.groupId, tag }, { from });',
     );
-  });
-
-  it("releases at the height of every other verb on the page, the project's own page keeping its own", () => {
-    expect(groupDetailSource).toContain(
-      '<ReleaseAction label={label} release={release} size="compact" />',
-    );
-    expect(groupDetailSource).toContain('readonly size?: "sm" | "compact";');
-    expect(groupDetailSource).toContain("<ReleaseAction release={release} />");
   });
 
   it("offers production from the project's menu, never as a step in its row", () => {

@@ -49,7 +49,7 @@ export function FileBrowserPanelState(
   return (
     <div role="alert" className="flex min-h-0 flex-1 items-center justify-center p-4">
       <div className="flex max-w-sm flex-col items-start gap-3">
-        <p className="text-xs leading-relaxed text-destructive">{state.message}</p>
+        <p className="text-xs leading-relaxed text-foreground">{state.message}</p>
         <Button
           type="button"
           variant="outline"

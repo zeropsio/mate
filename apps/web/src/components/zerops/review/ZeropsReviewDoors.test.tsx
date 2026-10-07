@@ -22,6 +22,7 @@ import sidebarCrewLineSource from "../crew/SidebarCrewLine.tsx?raw";
 import gitSurfaceSource from "../ZeropsGitSurface.tsx?raw";
 import gitTabSource from "../ZeropsGitTab.tsx?raw";
 import groupDetailSource from "../ZeropsGroupDetail.tsx?raw";
+import releaseVerbSource from "../ZeropsReleaseVerb.tsx?raw";
 import projectsPageSource from "../ZeropsProjectsPage.tsx?raw";
 import releaseRowsSource from "../ZeropsReleaseRows.tsx?raw";
 import reviewDialogSource from "./ZeropsReviewDialog.tsx?raw";
@@ -52,7 +53,7 @@ describe("every door opens the review and never acts itself (R1)", () => {
     ],
     [
       "a project's and a stop's pages, and a change's, which is its review",
-      groupDetailSource,
+      groupDetailSource + releaseVerbSource,
       ["openReview(", 'kind: "release"', 'kind: "rollback"', "<ZeropsChangeReview", 'frame="page"'],
     ],
     ["the Git tab", gitTabSource, ["onReviewPullRequest"]],

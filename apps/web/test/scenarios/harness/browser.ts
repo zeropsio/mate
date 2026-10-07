@@ -3,8 +3,51 @@ import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
 import { afterAll, expect } from "vite-plus/test";
 import puppeteer, { type Page, type BrowserContext } from "puppeteer-core";
+import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import { clientClock, type ScenarioWallClock } from "./clientClock.ts";
 import { serve } from "./http.ts";
+
+/** A positive send waits for the composer to acknowledge its text and offer Send or Queue. */
+export async function sendConversationMessage(page: Page, message: string, waitForReady = true) {
+  const input = page
+    .locator(
+      '::-p-aria([role="textbox"]):not([inert], [inert] *, [aria-hidden="true"], [aria-hidden="true"] *)',
+    )
+    .setTimeout(8000);
+  const modifier = HostProcessPlatform.defaultValue() === "darwin" ? "Meta" : "Control";
+  await (await input.waitHandle()).focus();
+  await page.keyboard.down(modifier);
+  await page.keyboard.press("a");
+  await page.keyboard.up(modifier);
+  await page.keyboard.press("Backspace");
+  await page.keyboard.type(message);
+  await page.waitForFunction(
+    (message) => document.activeElement?.textContent === message,
+    { timeout: 8000, polling: "raf" },
+    message,
+  );
+  if (waitForReady) {
+    try {
+      await page.waitForFunction(
+        () =>
+          [...document.querySelectorAll<HTMLButtonElement>("button[type=submit]")].some(
+            (button) =>
+              ["Send message", "Queue message"].includes(button.getAttribute("aria-label") ?? "") &&
+              !button.disabled &&
+              button.getBoundingClientRect().height > 0,
+          ),
+        { timeout: 8000, polling: "raf" },
+      );
+    } catch (cause) {
+      throw new Error(
+        `Composer did not become ready:\n${await page.evaluate(() => document.body.innerText)}`,
+        { cause },
+      );
+    }
+  }
+  await (await input.waitHandle()).focus();
+  await page.keyboard.press("Enter");
+}
 
 // Vitest inverts afterEach failures inside it.fails too. Retain diagnostics from every opened
 // browser until the file-level hook, which cannot become an expected domain failure.
@@ -122,8 +165,27 @@ export async function openBrowser(
     page.on("console", (message) => {
       if (["warn", "error"].includes(message.type())) errors.push(message.text());
     });
+    // CDP's byte entries preserve file uploads; fetchPostData decodes them as text.
+    const network = await page.createCDPSession();
+    const postBodies = new Map<string, ArrayBuffer>();
+    const opaqueBodies = new Set<string>();
+    network.on("Network.requestWillBeSent", ({ requestId, request }) => {
+      if (request.hasPostData && !request.postDataEntries && request.postData === undefined)
+        opaqueBodies.add(requestId);
+      if (request.postDataEntries?.every((entry) => entry.bytes !== undefined))
+        postBodies.set(
+          requestId,
+          Uint8Array.from(
+            Buffer.concat(
+              request.postDataEntries.map((entry) => Buffer.from(entry.bytes!, "base64")),
+            ),
+          ).buffer,
+        );
+    });
+    await network.send("Network.enable");
     await page.setRequestInterception(true);
     page.on("request", async (request) => {
+      const requestId = "id" in request && typeof request.id === "string" ? request.id : null;
       try {
         const url = new URL(request.url());
         if (["data:", "blob:"].includes(url.protocol)) {
@@ -140,10 +202,22 @@ export async function openBrowser(
             headers["x-scenario-person"] = identities.get(page) ?? "personal";
           delete headers.host;
           delete headers["content-length"];
+          // File/Blob bytes are opaque to CDP. Let Chrome forward them intact.
+          if (requestId !== null && opaqueBodies.has(requestId)) {
+            await request.continue({ url: local.href, headers });
+            return;
+          }
           const response = await fetch(local, {
             method: request.method(),
             headers,
-            ...(request.hasPostData() ? { body: (await request.fetchPostData()) ?? "" } : {}),
+            ...(request.hasPostData()
+              ? {
+                  body:
+                    (requestId === null ? undefined : postBodies.get(requestId)) ??
+                    (await request.fetchPostData()) ??
+                    "",
+                }
+              : {}),
             redirect: "manual",
           });
           await request.respond({
@@ -159,6 +233,11 @@ export async function openBrowser(
       } catch (error) {
         errors.push(String(error));
         if (!request.isInterceptResolutionHandled()) await request.abort();
+      } finally {
+        if (requestId !== null) {
+          postBodies.delete(requestId);
+          opaqueBodies.delete(requestId);
+        }
       }
     });
     // Only transport addresses change. The app still computes production container URLs and

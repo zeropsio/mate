@@ -20,8 +20,10 @@ Opening a Mate reads its project before connecting. If that read cannot start, M
 reason and **Again**. Press **Again** to make one new attempt.
 
 If a Zerops data stream drops, Mate reconnects automatically with increasing delays. The last
-known data stays visible with **Reconnecting…**, its as-of time, and a warning that updates during
-the interruption may be missing. **Try now** starts a fresh connection immediately. Reconnecting
+known data stays visible. A connection that recovers successfully does not show an outage banner
+or disturb the open chat. If a connection or fresh-baseline attempt fails, the menu reports that
+Zerops is not answering and offers **Try now**, without moving the rows above it. **Try now**
+starts a fresh connection immediately. Reconnecting
 reads a fresh baseline; it does not repeat operations. A refused session or permission ends the
 connection visibly instead of reconnecting. Failed detail reads still need a manual check.
 
@@ -41,6 +43,9 @@ and offers a connection check instead of automatically restarting again.
 
 **Restart** in a Mate's menu asks for confirmation. When Mate knows of running chats, the
 confirmation names them and says restarting interrupts their turns. You can still restart.
+While a confirmed restart prevents the conversation from opening, the Mate shows
+its waking face and says it is restarting. An unavailable link says it is
+reconnecting or unreachable instead; it does not claim a restart without evidence.
 After boot, an interrupted chat names the completed Zerops restart, stop or deploy and who asked
 for it when that information is available. A container replacement is identified when its start
 time proves it happened during the turn; otherwise the chat gives Mate's restart time. Send a
@@ -51,6 +56,12 @@ The projects page cleans up expired temporary sign-in tokens left by an interrup
 Cleanup progress and failures stay visible. Use **Clean up sign-in tokens** to find older
 leftovers, or **Try again** after a cleanup failure. Reloading preserves a failed cleanup and
 still requires **Try again**.
+
+When a Mate's container setup fails, its view explains the cause from Zerops's process result
+and setup log. Step durations stop at the recorded process end; missing timestamps have no
+invented duration. **Details** shows the last log lines and a Zerops link identifies the process.
+**Try again** starts a new container setup attempt; **Remove** deletes the failed Mate's project.
+A DNS failure means the project cannot reach the internet: try later or contact Zerops support.
 
 Signing out locks every Mate tab sharing this browser login. It does not sign out other devices or
 stop work already running in a project. Signing out of the Zerops website is separate from revoking
@@ -69,6 +80,8 @@ history and agent work belong to the container; the browser cache is not a backu
 
 If an operation's response is lost, inspect the project and its services before starting it again.
 Mate reports uncertainty rather than assuming the operation failed or creating another project.
+When a setup write may have landed, Mate withholds its setup retry until you inspect the accepted
+project and operation.
 
 Creation progress and failures survive a reload of the same tab. A request interrupted before
 Mate heard its answer is shown as uncertain; check the projects before starting again.
@@ -76,7 +89,8 @@ Mate heard its answer is shown as uncertain; check the projects before starting 
 A Mate added from a recipe starts development after its asker signs an agent in. A Mate with no
 recipe waits for you to say what to build. If the stand-up message fails to send, Mate says so and
 offers **Try again** and gives you the composer back so you can type instead. It never sends another
-attempt automatically.
+attempt automatically. A retry stays in progress until the Mate reports that the stand-up finished
+or stopped; accepting the retry alone does not mean setup is ready.
 
 If a provider sign-in says it could not be recorded, that attempt did not finish. Press **Try again**
 to sign in again after the server can write its record. The login cannot start personal turns until
@@ -117,3 +131,12 @@ stream does not repeat your writes.
 Move places a Mate within the same organization and HQ. Its container, conversations and repository history stay in place. Cross-organization, cross-HQ and physical container migration are unsupported. HQ explains destination refusals in the Move dialog; changing between a Mate and a deploy environment is refused until its credential and job migration can be completed.
 
 If Move was accepted but Zerops still has its original name, **Finish renaming** completes that remainder. After a deleted Mate is gone, **Finish deleting Mate** on Projects completes its original HQ and exact-key cleanup. Reopening the account restores these actions from HQ; a lost answer does not start another Move or project deletion.
+
+If access to a Mate's project is removed, Mate names the project and asks you to contact its owner.
+A confirmed project deletion has a separate message and no link to the deleted project. An
+authoritative restoration of access lets the open route reconnect.
+
+A stopped container offers **Start**. A failed start or restart names the Mate and the startup
+failure, with **Retry restart** and **Open in Zerops** for the process details. During a lost
+connection, provider sign-in controls stay inactive until the Mate reconnects. Reported disk
+exhaustion asks you to free space; it does not claim that a conversation write failed.

@@ -7,6 +7,10 @@ import { readMigrations } from "./src/migrationFiles.ts";
 export default mergeConfig(
   baseConfig,
   defineConfig({
+    test: {
+      globalSetup: ["../../scripts/pg-test-lock.setup.ts"],
+      fileParallelism: false,
+    },
     pack: {
       entry: ["src/main.ts"],
       outDir: "dist",

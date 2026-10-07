@@ -142,6 +142,25 @@ describe("Claude's steps", () => {
     { agentId: "codex", login: undefined },
   ];
 
+  it("disconnection disables the provider link and rejects a pasted code", () => {
+    draw({ agents: ready(), available: false });
+    const link = host.querySelector<HTMLAnchorElement>("[data-sign-in-open]");
+    const event = new MouseEvent("click", { bubbles: true, cancelable: true });
+    act(() => {
+      link?.dispatchEvent(event);
+    });
+    expect(event.defaultPrevented).toBe(true);
+    expect(host.textContent).not.toContain("Claude is open in a new tab.");
+    const field = host.querySelector<HTMLInputElement>("[data-sign-in-code]");
+    expect(field?.disabled).toBe(true);
+    const paste = new Event("paste", { bubbles: true, cancelable: true });
+    Object.defineProperty(paste, "clipboardData", { value: { getData: () => "old-code" } });
+    act(() => {
+      field?.dispatchEvent(paste);
+    });
+    expect(calls.codes).toEqual([]);
+  });
+
   it("links Open Claude to the page its login printed, and marks it opened once pressed", () => {
     draw({ agents: ready() });
     const press = host.querySelector<HTMLAnchorElement>("[data-sign-in-open]");
@@ -269,4 +288,14 @@ describe("the sign-in in a dialog", () => {
     click(host.querySelector("[data-sign-in-replace]"));
     expect(calls.start).toEqual(["codex"]);
   });
+});
+
+it("a disconnected Mate keeps the login inert and does not start a fixed sign-in", () => {
+  draw({ available: false, fixed: true, agents: [{ agentId: "claude-code", login: undefined }] });
+  expect(host.querySelector("[data-zerops-surface=agent-sign-in]")?.hasAttribute("inert")).toBe(
+    true,
+  );
+  expect(calls.start).toEqual([]);
+  draw({ available: true, fixed: true, agents: [{ agentId: "claude-code", login: undefined }] });
+  expect(calls.start).toEqual(["claude-code"]);
 });
