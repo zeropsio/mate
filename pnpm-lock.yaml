@@ -505,6 +505,12 @@ importers:
       sharp:
         specifier: ^0.35.5
         version: 0.35.5(@types/node@24.12.4)
+      stream-chain:
+        specifier: ^4.2.6
+        version: 4.2.6
+      stream-json:
+        specifier: 3.6.0
+        version: 3.6.0
       yaml:
         specifier: ^2.9.0
         version: 2.9.0
@@ -8710,6 +8716,12 @@ packages:
   stream-buffers@2.2.0:
     resolution: {integrity: sha512-uyQK/mx5QjHun80FLJTfaWE7JtwfRMKBLkMne6udYOmvH0CawotVa7TfgYHzAnpphn4+TweIx1QKMnRIbipmUg==}
     engines: {node: '>= 0.10.0'}
+
+  stream-chain@4.2.6:
+    resolution: {integrity: sha512-1zeJ8CrtJfmiba26ui8jXkq/xLRFvhzkdH02D5QLO9Cnovgeb28IJxg88DdraWnjnkbOol/++uIAybJbJhk7ig==}
+
+  stream-json@3.6.0:
+    resolution: {integrity: sha512-NiJdqxKyau579z/E8vfqcjWfSDWxW/AT99javFXdPXF147Z5za85LRXSHEmSX9TKOakB7gaIccfD0fOIctb7KQ==}
 
   streamx@2.28.1:
     resolution: {integrity: sha512-zEzXb0s5Cds7tqMH6rhZ05lcJydCWiQPEwiNngVqzsxCc962vLY4Uw+mW7od8kDH258k2Uz/JrOkdIAAhSh9VA==}
@@ -18250,6 +18262,12 @@ snapshots:
   std-env@4.1.0: {}
 
   stream-buffers@2.2.0: {}
+
+  stream-chain@4.2.6: {}
+
+  stream-json@3.6.0:
+    dependencies:
+      stream-chain: 4.2.6
 
   streamx@2.28.1:
     dependencies:
