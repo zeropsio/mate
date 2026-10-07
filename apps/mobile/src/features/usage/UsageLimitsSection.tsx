@@ -14,7 +14,6 @@ import {
   elapsedShare,
   formatDuration,
   formatResetsIn,
-  LIMITS_READ_DEADLINE_MS,
   limitsNotice,
   limitsPage,
   paceOf,
@@ -389,30 +388,26 @@ export function UsageLimitsSection(props: {
   const { now } = props;
   const presentations = useAtomValue(environmentPresentations.presentationsAtom);
   const listed = useAtomValue(environmentCatalog.catalogValueAtom).isReady;
-  // Painted once, when every environment has answered or the deadline passed, least quota left
-  // first; then everything stands where it was painted, a late one joining at the very end
+  // Answers are shown progressively, with late accounts joining at the end
   // (`limitsPage`, as the web's).
-  const deadlinePassed = useDeadlinePassed(LIMITS_READ_DEADLINE_MS);
-  // What was painted, kept for the next read: once painted it never waits again, nothing moves.
-  const [kept, setKept] = useState<{
-    readonly painted: boolean;
-    readonly placed: readonly string[];
-  }>({ painted: false, placed: [] });
+  // Keep presentation order while each source answers independently.
+  const [placed, setPlaced] = useState<readonly string[]>([]);
   const page = limitsPage({
     listed,
     presentations,
-    deadlinePassed,
-    painted: kept.painted,
-    placed: kept.placed,
+    placed,
   });
   const { state, reading, entries, tellApart } = page;
-  if (page.painted !== kept.painted || page.placed.join("\n") !== kept.placed.join("\n")) {
-    setKept({ painted: page.painted, placed: page.placed });
+  if (page.placed.join("\n") !== placed.join("\n")) {
+    setPlaced(page.placed);
   }
   const readingLine = useReadingLine(reading);
 
   if (state === "wait") {
     return <View className="py-16">{readingLine}</View>;
+  }
+  if (state === "unavailable") {
+    return <Text>Subscription limits could not be read from every environment.</Text>;
   }
   if (state === "none") {
     return (
@@ -492,16 +487,6 @@ export function UsageLimitsSection(props: {
       {reading ? readingLine : null}
     </>
   );
-}
-
-/** Whether `ms` has passed since this mounted: false, then true for good. */
-function useDeadlinePassed(ms: number): boolean {
-  const [passed, setPassed] = useState(false);
-  useEffect(() => {
-    const timer = setTimeout(() => setPassed(true), ms);
-    return () => clearTimeout(timer);
-  }, [ms]);
-  return passed;
 }
 
 /** The wait's beat before its line, as the web's (`BOOT_WAIT_LINE_MS`). */

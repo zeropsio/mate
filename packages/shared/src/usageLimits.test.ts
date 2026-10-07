@@ -831,16 +831,12 @@ describe("limitsPage: painted once, least quota first, never none before it is k
   const page = (
     options: {
       readonly listed?: boolean;
-      readonly deadlinePassed?: boolean;
-      readonly painted?: boolean;
       readonly placed?: readonly string[];
     },
     ...environments: ReadonlyArray<readonly [string, ReturnType<typeof at>]>
   ) =>
     limitsPage({
       listed: options.listed ?? true,
-      deadlinePassed: options.deadlinePassed ?? false,
-      painted: options.painted ?? (options.placed?.length ?? 0) > 0,
       placed: options.placed ?? [],
       presentations: new Map(environments.map(([id, entry]) => [EnvironmentId.make(id), entry])),
     });
@@ -880,19 +876,19 @@ describe("limitsPage: painted once, least quota first, never none before it is k
       { state: "shown", reading: false, order: ["roomy@example.com"] },
     ],
     [
-      "one still on its way before the deadline: the reading line alone",
+      "answered limits are shown while another source reads",
       page({}, ["a", at("connected", [roomy])], ["b", at("connecting")]),
-      { state: "wait", reading: true, order: [] },
+      { state: "shown", reading: true, order: ["roomy@example.com"] },
     ],
     [
-      "the list not whole before the deadline: the reading line alone",
+      "answered limits are shown before discovery completes",
       page({ listed: false }, ["a", at("connected", [roomy])]),
-      { state: "wait", reading: true, order: [] },
+      { state: "shown", reading: true, order: ["roomy@example.com"] },
     ],
     [
-      "one still on its way past the deadline: the others least quota first, the line under them",
+      "multiple answered accounts appear while another source is pending",
       page(
-        { deadlinePassed: true },
+        {},
         ["a", at("connected", [roomy])],
         ["b", at("available")],
         ["c", at("connected", [tight])],
@@ -916,7 +912,6 @@ describe("limitsPage: painted once, least quota first, never none before it is k
       "a late answer joins at the very end, after every source and notice painted",
       page(
         {
-          deadlinePassed: true,
           placed: ["source:a:hub-1", "account:claudeAgent:roomy@example.com"],
         },
         ["a", at("connected", [roomy], null, [hub])],
@@ -948,20 +943,20 @@ describe("limitsPage: painted once, least quota first, never none before it is k
       { state: "shown", reading: false, order: ["roomy@example.com", "middle@example.com"] },
     ],
     [
-      // Painted "none", then a Mate starts connecting: what was painted stays, the line under it.
-      "a painted none never goes back to waiting",
-      page({ painted: true }, ["a", at("connected", [])], ["b", at("connecting")]),
-      { state: "none", reading: true, order: [] },
+      // A new pending source invalidates a prior absence verdict.
+      "a previous empty answer cannot establish a new pending answer",
+      page({}, ["a", at("connected", [])], ["b", at("connecting")]),
+      { state: "wait", reading: true, order: [] },
     ],
     [
       "every environment settled, none reports limits",
       page({}, ["a", at("connected", [])], ["b", at("error", null, "gone")]),
-      { state: "none", reading: false, order: [] },
+      { state: "unavailable", reading: false, order: [] },
     ],
     [
-      "the deadline passed with nothing reporting",
-      page({ deadlinePassed: true }, ["a", at("connecting")]),
-      { state: "none", reading: true, order: [] },
+      "a pending source never proves absence",
+      page({}, ["a", at("connecting")]),
+      { state: "wait", reading: true, order: [] },
     ],
     [
       "no environment and the list not whole",
@@ -975,8 +970,7 @@ describe("limitsPage: painted once, least quota first, never none before it is k
 
   it("hands back what it painted, for the next read to keep", () => {
     const result = page({}, ["a", at("connected", [roomy])], ["b", at("connected", [tight])]);
-    expect({ painted: result.painted, placed: result.placed }).toEqual({
-      painted: true,
+    expect({ placed: result.placed }).toEqual({
       placed: ["account:claudeAgent:tight@example.com", "account:claudeAgent:roomy@example.com"],
     });
   });

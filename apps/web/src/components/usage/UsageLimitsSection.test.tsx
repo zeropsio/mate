@@ -71,3 +71,12 @@ describe("UsageLimitsSection: never none before every environment answered", () 
     expect(html.includes(NONE)).toBe(says === NONE);
   });
 });
+
+it("missing Mate identity cannot establish that no account reports limits", () => {
+  testState.presentations = new Map();
+  const html = renderToStaticMarkup(
+    <UsageLimitsSection identities={new Map()} listed now={0} unavailableNames={["A"]} />,
+  );
+  expect(html).not.toContain(NONE);
+  expect(html).toContain("Subscription limits could not be read");
+});
