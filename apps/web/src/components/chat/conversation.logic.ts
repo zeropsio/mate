@@ -837,36 +837,6 @@ export function latestFinishedWordsAt(
   return parseMs(last.message.updatedAt ?? last.createdAt);
 }
 
-/**
- * Until when the latest turn, settled by the server with no words of its own
- * yet, stays live: a woken run read "stopped after 1s" for 200 ms, until its
- * words landed and it read "thought 1s". Null when it has its words, is not
- * the server's settled turn, or the wait (`LAST_WORDS_GRACE_MS`) has run out
- * — then it ended on a step after all, and is told so.
- */
-export function settlingWithoutWordsUntil(
-  entries: ReadonlyArray<TimelineEntry>,
-  latestTurn: TimelineLatestTurnLike | null,
-  isWorking: boolean,
-  nowMs: number | undefined,
-): number | null {
-  if (isWorking || nowMs === undefined || latestTurn?.state !== "completed") return null;
-  const completedMs = parseMs(latestTurn.completedAt);
-  if (completedMs === null || nowMs >= completedMs + LAST_WORDS_GRACE_MS) return null;
-  const last = entries.findLast(
-    (entry) =>
-      !isUserMessageEntry(entry) &&
-      countsAsLastWord(entry) &&
-      timelineEntryTurnId(entry) === latestTurn.turnId,
-  );
-  if (last === undefined) return null;
-  // Its words, or a plan it proposed — which ends a turn by design. A
-  // thought last waits: its words nearly always follow it.
-  const said =
-    (last.kind === "message" && last.message.role === "assistant") || last.kind === "proposed-plan";
-  return said ? null : completedMs + LAST_WORDS_GRACE_MS;
-}
-
 export function deriveConversationStructure(given: {
   readonly timelineEntries: ReadonlyArray<TimelineEntry>;
   readonly latestTurn: TimelineLatestTurnLike | null;
@@ -883,16 +853,10 @@ export function deriveConversationStructure(given: {
   readonly helperWorks?: (taskId: string) => boolean;
 }): ConversationStructure {
   const entries = given.timelineEntries;
-  // The server settled the latest turn a moment before its words landed: it
-  // stays live for the last words' wait, so it settles once, with them.
-  const settling =
-    settlingWithoutWordsUntil(entries, given.latestTurn, given.isWorking, given.nowMs) !== null;
-  const input = settling ? { ...given, isWorking: true } : given;
+  const input = given;
   const unsettledTurnId =
-    settling && given.latestTurn !== null
-      ? given.latestTurn.turnId
-      : (deriveUnsettledTurnId(input.latestTurn, input.runningTurnId) ??
-        (input.isWorking ? unnamedRunningTurnId(entries, input.latestTurn) : null));
+    deriveUnsettledTurnId(input.latestTurn, input.runningTurnId) ??
+    (input.isWorking ? unnamedRunningTurnId(entries, input.latestTurn) : null);
   const terminalIds = deriveTerminalAssistantMessageIds(entries);
   const spans = deriveTurnSpans({
     timelineEntries: entries,
@@ -987,7 +951,7 @@ export function deriveConversationStructure(given: {
     const interrupted =
       !live &&
       !waiting &&
-      ((isLatestTurn && input.latestTurn?.state === "interrupted") || endedOnAStep(turnEntries));
+      (isLatestTurn ? input.latestTurn?.state === "interrupted" : endedOnAStep(turnEntries));
     // The person's next message came while it ran: their message interrupted
     // it, never their Stop (Noibit, run 11: "stopped after 8m 11s").
     const next = spans[spanIndex + 1];

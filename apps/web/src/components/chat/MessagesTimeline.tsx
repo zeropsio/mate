@@ -172,11 +172,7 @@ import {
   textContainsInlineTerminalContextLabels,
 } from "./userMessageTerminalContexts";
 import { SkillInlineText } from "./SkillInlineText";
-import {
-  LAST_WORDS_GRACE_MS,
-  latestFinishedWordsAt,
-  settlingWithoutWordsUntil,
-} from "./conversation.logic";
+import { LAST_WORDS_GRACE_MS, latestFinishedWordsAt } from "./conversation.logic";
 import { TurnReport } from "./TurnReport";
 import { ConversationAfterWork, ConversationWorking, dockDraws } from "./ConversationWorking";
 import { useEndingsHeld } from "./useEndingsHeld";
@@ -511,20 +507,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     );
     return () => clearTimeout(timer);
   }, [finishedWordsAt]);
-  // A turn the server settled before its words landed stays live for the
-  // last words' wait (`settlingWithoutWordsUntil`): derived again once it ran out.
-  const settlingUntil = useMemo(
-    () => settlingWithoutWordsUntil(timelineEntries, latestTurn ?? null, isWorking, nowMs),
-    [timelineEntries, latestTurn, isWorking, nowMs],
-  );
-  useEffect(() => {
-    if (settlingUntil === null) return;
-    const timer = setTimeout(
-      () => setNowMs(Math.max(Date.now(), settlingUntil + 1)),
-      Math.max(0, Math.min(LAST_WORDS_GRACE_MS, settlingUntil - Date.now())) + 20,
-    );
-    return () => clearTimeout(timer);
-  }, [settlingUntil]);
   // Which of the helpers one launch started woke a run: the panel knows when
   // each finished.
   const helperFinishes = useMemo(
