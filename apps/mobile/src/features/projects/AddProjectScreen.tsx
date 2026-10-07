@@ -359,7 +359,10 @@ function useEnvironmentOptions(): ReadonlyArray<EnvironmentOption> {
         connectionErrorTraceId: runtime?.connectionErrorTraceId ?? null,
       };
     });
-    return Arr.sort(options, environmentOptionOrder);
+    return Arr.sort(
+      options.filter((environment) => canCreateProjectInEnvironment(environment.connectionState)),
+      environmentOptionOrder,
+    );
   }, [connectedEnvironments, savedConnectionsById, serverConfigByEnvironmentId]);
 }
 
