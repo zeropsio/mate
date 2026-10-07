@@ -19,7 +19,7 @@ const runtime = (id: string, name: string) => ({
   name,
   serviceStackTypeInfo: {
     serviceStackTypeCategory: "USER",
-    serviceStackTypeVersionName: "nodejs@22",
+    serviceStackTypeVersionName: "ubuntu/nodejs@22",
   },
 });
 const SERVICES = [

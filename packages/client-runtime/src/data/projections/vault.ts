@@ -113,6 +113,12 @@ function sortRows(kind: ServiceKind, rows: ReadonlyArray<Held>) {
   return { system, entries, values };
 }
 
+/** The service's type and version without the OS the platform may prefix (`ubuntu/nodejs@22`). */
+const typeOf = (service: ServiceValue): string | null => {
+  const type = service.serviceStackTypeInfo?.serviceStackTypeVersionName;
+  return type == null ? null : type.slice(type.indexOf("/") + 1);
+};
+
 const byKey = <T extends { readonly key: string }>(left: T, right: T) =>
   left.key.localeCompare(right.key);
 
@@ -223,7 +229,7 @@ export const vault: Projection<VaultKey, VaultView> = {
         id: ref.serviceId,
         hostname: ref.hostname,
         kind: ref.kind === "managed" ? "managed" : "runtime",
-        serviceType: service.serviceStackTypeInfo?.serviceStackTypeVersionName ?? null,
+        serviceType: typeOf(service),
         editable: ref.kind === "runtime",
         values: values.map(({ id, row }) => valueOf(scopeRef, id, row, isSystem(row))).sort(byKey),
         reads: [...ref.entries.keys()].sort().map((key): VaultRead => ({
