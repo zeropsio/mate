@@ -229,7 +229,7 @@ describe("F: creation through the hosted client", () => {
         c.refuseCreatedProjectAccess();
         yield* c.newProject;
         yield* c.submitProject;
-        yield* c.text("Nova");
+        yield* c.matePage("Nova");
         yield* c.settled;
         expect(c.refusedReads(), "The owner read the new project's own row").toBe(0);
         yield* Effect.promise(() => s.clock.advance(5_000));

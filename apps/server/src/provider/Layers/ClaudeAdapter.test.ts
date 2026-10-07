@@ -6492,6 +6492,11 @@ describe("ClaudeAdapterLive", () => {
         ],
       );
 
+      assert.isTrue(
+        runtimeEvents.some(
+          (event) => event.type === "account.rate-limits.updated" && event.payload.refused === true,
+        ),
+      );
       runtimeEventsFiber.interruptUnsafe();
     }).pipe(
       Effect.provideService(Random.Random, makeDeterministicRandomService()),
@@ -7221,8 +7226,13 @@ describe("ClaudeAdapterLive", () => {
       }
       yield* drainSdkMessages;
       assert.deepEqual(
-        runtimeEvents.filter((event) => event.type === "account.rate-limits.updated"),
-        [],
+        runtimeEvents.flatMap((event) =>
+          event.type === "account.rate-limits.updated" ? [event.payload] : [],
+        ),
+        [
+          { limits: { windows: [] }, refused: true },
+          { limits: { windows: [] }, refused: true },
+        ],
       );
 
       yield* Ref.set(scopedLimitNames, { overageIncluded: "Model A" });
@@ -7250,7 +7260,10 @@ describe("ClaudeAdapterLive", () => {
         ],
       );
       assert.equal(
-        runtimeEvents.filter((event) => event.type === "account.rate-limits.updated").length,
+        runtimeEvents.filter(
+          (event) =>
+            event.type === "account.rate-limits.updated" && event.payload.limits.windows.length > 0,
+        ).length,
         1,
       );
       runtimeEventsFiber.interruptUnsafe();

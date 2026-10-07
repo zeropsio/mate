@@ -44,7 +44,7 @@ describe("makeHqWire", () => {
   );
 
   it.effect.each([
-    { code: 4401, outcome: "recoverable-session" },
+    { code: 4401, outcome: "transient" },
     { code: 4403, outcome: "definitive-refusal" },
     { code: 1011, outcome: "transient" },
   ])("fails a segment HQ closed with $code as $outcome", ({ code, outcome }) =>
@@ -66,9 +66,9 @@ describe("classifyHqCall", () => {
     new HqError({ kind: "refused", code, status: 403, message: code });
   it.each([
     {
-      name: "a session HQ no longer takes",
+      name: "a renewed session HQ still refuses",
       cause: refused("session_required"),
-      outcome: "recoverable-session",
+      outcome: "definitive-refusal",
     },
     { name: "Zerops refusing HQ", cause: refused("zerops_refused"), outcome: "definitive-refusal" },
     {
@@ -79,6 +79,13 @@ describe("classifyHqCall", () => {
     { name: "anything else", cause: new Error("boom"), outcome: "transient" },
   ])("$name is $outcome", ({ cause, outcome }) => {
     expect(classifyHqCall(cause).outcome).toBe(outcome);
+  });
+  it("an unreadable version names reload as the next action", () => {
+    expect(classifyHqCall(refused("unreadable"))).toMatchObject({
+      outcome: "definitive-refusal",
+      code: "unreadable",
+      message: expect.stringContaining("Reload Mate to get the current version."),
+    });
   });
 });
 

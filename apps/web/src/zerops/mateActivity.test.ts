@@ -1,3 +1,6 @@
+import { lastKnownMateWords } from "./lastKnownMate.logic";
+import { mateRowView } from "../components/zerops/SidebarMateRow.logic";
+import { mateStatus } from "./mateStatus.logic";
 import type { MateAttentionRead } from "@t3tools/client-runtime/data";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import {
@@ -333,5 +336,92 @@ describe("seenResultsOf — what the person saw of a Mate's results", () => {
     { name: "a chat never visited", visits: {}, seen: [] },
   ])("$name", ({ visits, seen }) => {
     expect(seenResultsOf(said({ results }), visits)).toEqual(seen);
+  });
+});
+
+describe("HQ evidence becomes current or last-known Mate words", () => {
+  it.each(["Claude", "Codex"])(
+    "keeps %s's limit and source time during an outage without a current marker",
+    (provider) => {
+      const main = VERA.main!;
+      const overview = {
+        ...VERA,
+        main: {
+          ...main,
+          updatedAt: ASKED,
+          session: { status: "error" as const, lastError: `${provider} usage limit reached.` },
+          latestTurn: { ...main.latestTurn!, state: "error" as const },
+          usagePause: { resetsAt: DONE },
+        },
+      };
+      const held = read({
+        attention: attention(
+          said({
+            questions: [
+              { threadId: ThreadId.make("t1"), turnId: TurnId.make("turn-1"), kind: "failed" },
+            ],
+          }),
+          false,
+        ),
+        overviews: new Map([["p-vera", overview]]),
+      });
+      expect(held?.lastKnown?.at).toBe(ASKED);
+      expect(lastKnownMateWords(held, "Skákala")).toContain(`Skákala hit the ${provider} limit`);
+      expect(lastKnownMateWords(held, "Skákala")).toContain("Last known");
+      expect(lastKnownMateWords(held, "Skákala")).toContain("can continue at");
+      expect(mateStatus(held)).toBeNull();
+      expect(mateRowView(held, "sleep", "Skákala").reply).toMatchObject({
+        kind: "words",
+        text: expect.stringContaining("Last known"),
+      });
+      const live = read({
+        attention: attention(
+          said({
+            questions: [
+              { threadId: ThreadId.make("t1"), turnId: TurnId.make("turn-1"), kind: "failed" },
+            ],
+          }),
+        ),
+        overviews: new Map([["p-vera", overview]]),
+      });
+      expect(mateStatus(live)).toMatchObject({
+        kind: "limit",
+        severity: "attention",
+        provider,
+        until: DONE,
+      });
+      expect(lastKnownMateWords(live, "Skákala")).toBeUndefined();
+    },
+  );
+  it("keeps a reset-free streaming Claude refusal visible while the provider's turn stays active", () => {
+    const overview = {
+      ...VERA,
+      main: {
+        ...VERA.main!,
+        session: { status: "running" as const, lastError: "Claude usage limit reached." },
+        latestTurn: { ...VERA.main!.latestTurn!, state: "running" as const, completedAt: null },
+      },
+    };
+    const live = read({
+      attention: attention(said({ working: 1 })),
+      overviews: new Map([["p-vera", overview]]),
+    });
+    expect(mateStatus(live)).toMatchObject({
+      kind: "limit",
+      severity: "attention",
+      provider: "Claude",
+      until: undefined,
+    });
+    expect(mateRowView(live, "sleep", "Skákala").reply).toMatchObject({
+      text: "Skákala hit the Claude limit.",
+    });
+  });
+  it("has no last-known claim where HQ holds no main state", () => {
+    expect(
+      lastKnownMateWords(
+        read({ overviews: new Map([["p-vera", { ...VERA, main: null }]]) }),
+        "Skákala",
+      ),
+    ).toBeUndefined();
   });
 });

@@ -167,6 +167,7 @@ export const startCore = (
     readonly httpServer?: NodeHttp.Server;
     readonly url?: string;
     readonly orgId?: string;
+    readonly build?: string;
     readonly gitRoot?: string;
     /** How long the org's view is kept, and how often the structure reconciles; 200 ms each. */
     readonly viewTtl?: Duration.Duration;
@@ -222,7 +223,7 @@ export const startCore = (
         given.keySecret === null
           ? Option.none()
           : Option.some(Redacted.make(given.keySecret ?? TEST_KEY_SECRET)),
-      build: "test",
+      build: given.build ?? "test",
       drainFor: Duration.millis(300),
       heartbeat: Duration.millis(100),
       retryAfter: Duration.millis(100),

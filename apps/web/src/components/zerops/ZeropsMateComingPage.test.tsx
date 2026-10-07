@@ -110,7 +110,10 @@ vi.mock("~/zerops/useHqOffers", () => ({
 }));
 vi.mock("~/zerops/registration", () => ({ useMateRegistration: () => app.registration }));
 vi.mock("~/zerops/useMateRecovery", () => ({ useMateRecovery: () => app.recovery }));
-vi.mock("~/zerops/useMenuMateReadings", () => ({ useToldActivity: () => app.told }));
+vi.mock("~/zerops/useMenuMateReadings", () => ({
+  useToldActivity: () => app.told,
+  useLastKnownMateWords: () => undefined,
+}));
 
 vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => app.navigate,

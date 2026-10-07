@@ -90,6 +90,12 @@
  *   or that the person declined. Claude emits it, the other drivers do not
  *   yet. Additive.
  *
+ * - 2.9 (2026-10-08): `account.rate-limits.updated` gains optional `refused`:
+ *   a parked turn's provider refusal (`true`) or explicit window recovery (`false`),
+ *   independent of any reset time. Claude emits it; the other adapters keep their
+ *   terminal usage-limit errors. Codex also supplies the existing typed `blocked`
+ *   reset on a refused turn when its snapshot names an exhausted window.
+ *
  * @module providerRuntimeSpi
  */
 import type { EventId } from "./baseSchemas.ts";
@@ -102,7 +108,7 @@ import type { CanonicalItemType, ProviderRuntimeEvent } from "./providerRuntime.
  * enrichment) changes what owned code may depend on (a new member, a
  * renamed field, a narrowed payload shape).
  */
-export const PROVIDER_RUNTIME_SPI_VERSION = "2.8";
+export const PROVIDER_RUNTIME_SPI_VERSION = "2.9";
 
 /**
  * One image content block an MCP tool result carried, e.g. a

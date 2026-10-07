@@ -18,14 +18,24 @@ import { classifyHqClose, type HqWire } from "./hq.ts";
 
 const encodeRequest = Schema.encodeSync(Schema.fromJsonString(HqStreamRequest));
 
-/** How a call HQ failed classifies: its session to repair, its refusal, or an outage. */
+/** The API renews rejected sessions before returning: its final refusal, or an outage. */
 export function classifyHqCall(cause: unknown): StreamFault {
-  const message = cause instanceof Error ? cause.message : "HQ could not be reached.";
+  const message =
+    cause instanceof HqError && cause.code === "unreadable"
+      ? `${cause.message} Reload Mate to get the current version.`
+      : cause instanceof Error
+        ? cause.message
+        : "HQ could not be reached.";
   if (!(cause instanceof HqError) || cause.kind !== "refused")
     return { outcome: "transient", message };
-  return cause.code === "session_required"
-    ? { outcome: "recoverable-session", message }
-    : { outcome: "definitive-refusal", message };
+  return {
+    outcome: "definitive-refusal",
+    message:
+      cause.code === "session_required"
+        ? "HQ refused the renewed session. Try again, or sign in to Zerops again."
+        : message,
+    code: cause.code,
+  };
 }
 
 export function makeHqWire(

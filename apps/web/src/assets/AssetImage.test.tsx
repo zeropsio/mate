@@ -51,3 +51,45 @@ it("measures the drawn image itself and keeps authorized pixels in its reserved 
   expect(renderer.root.findByType("img").props["data-image-src"]).toBe(source);
   act(() => renderer.unmount());
 });
+
+it("a reserved picture hides browser fallback until decoding finishes", async () => {
+  (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+  let decoded!: () => void;
+  const decoding = new Promise<void>((resolve) => {
+    decoded = resolve;
+  });
+  let renderer!: ReturnType<typeof create>;
+  await act(async () => {
+    renderer = create(
+      <AssetImage src="https://image.test/shot.png" alt="Picture 2" width={640} height={320} />,
+      {
+        createNodeMock: () => ({ decode: () => decoding }),
+      },
+    );
+  });
+  expect(renderer.root.findByType("img").props.style.opacity).toBe(0);
+  await act(async () => {
+    decoded();
+    await decoding;
+  });
+  expect(renderer.root.findByType("img").props.style.opacity).toBe(1);
+  act(() => renderer.unmount());
+});
+
+it("a failed picture explains the failure and retries on request", () => {
+  (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+  let renderer!: ReturnType<typeof create>;
+  act(() => {
+    renderer = create(
+      <AssetImage src="https://image.test/missing.png" alt="Picture 3" width={640} height={320} />,
+    );
+  });
+  act(() => renderer.root.findByType("img").props.onError({}));
+  expect(renderer.root.findAllByType("img")).toHaveLength(0);
+  expect(JSON.stringify(renderer.toJSON())).toContain("Image unavailable");
+  const retry = renderer.root.findByType("button");
+  expect(retry.children).toEqual(["Try again"]);
+  act(() => retry.props.onClick({ stopPropagation() {} }));
+  expect(renderer.root.findByType("img").props.src).toBe("https://image.test/missing.png");
+  act(() => renderer.unmount());
+});

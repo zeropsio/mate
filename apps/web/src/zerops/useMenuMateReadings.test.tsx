@@ -1,4 +1,5 @@
 import { RegistryContext } from "@effect/atom-react";
+import { MateAttention } from "@t3tools/contracts";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { MateLiveView } from "@t3tools/shared/hqMates";
 import * as Schema from "effect/Schema";
@@ -17,6 +18,7 @@ import {
   useComingClock,
   useMateConversationsRead,
   useMateRowActivity,
+  useLastKnownMateWords,
 } from "./useMenuMateReadings";
 import { useMatesActivity } from "./useZeropsAgentActivity";
 import { mountHqNavigation } from "~/zerops/__fixtures__/hqNavigation";
@@ -110,6 +112,48 @@ describe("useMenuMateReadings — a Mate HQ tells of, no socket to it", () => {
     const read = mountedOver(told(VERA), () => useMateRowActivity(useMatesActivity()))(UNOPENED);
     expect(read).toMatchObject({ threadId: "t1", kind: "working" });
     expect(mateRowReading({ connected: false, activity: read, mine: false }).face).toBe("working");
+  });
+
+  it("an unreachable Mate keeps HQ's attention alongside the dated overview", () => {
+    const registry = AtomRegistry.make();
+    const { store } = mountHqNavigation(registry, "org-acme", { mates: { "p-vera": VERA } });
+    const attention = Schema.decodeUnknownSync(MateAttention)({
+      source: { environmentId: "env-vera", incarnation: "run-1", revision: 1 },
+      mainThreadId: "t1",
+      lastThreadId: "t1",
+      working: 0,
+      waiting: 1,
+      results: [],
+      questions: [{ threadId: "t1", turnId: "turn-1", kind: "approval" }],
+      truncated: false,
+    });
+    const scope = "hq:org-acme:mate-attention:p-vera";
+    store.dispatch({
+      kind: "stream",
+      key: scope,
+      now: 0,
+      event: { kind: "demand", demanded: true },
+    });
+    store.dispatch({ kind: "stream", key: scope, now: 0, event: { kind: "attempt" } });
+    store.dispatch({ kind: "stream", key: scope, now: 0, event: { kind: "handshake" } });
+    store.dispatch({
+      kind: "hq-delivery",
+      scopes: [{ scope, generation: 1 }],
+      reset: true,
+      rows: [
+        {
+          family: "mateAttention",
+          id: "p-vera",
+          value: attention,
+          revision: { kind: "mate-attention", ...attention.source, live: false },
+        },
+      ],
+      removals: [],
+    });
+    const words = mountedOver(registry, () => useLastKnownMateWords("p-vera", "Vera"));
+    expect(words).toContain("Last known");
+    expect(words).toContain("Vera was waiting for approval.");
+    expect(words).not.toContain("Vera was working.");
   });
 
   it("a Mate HQ told of has its conversations read without a socket", () => {

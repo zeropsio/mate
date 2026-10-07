@@ -134,3 +134,77 @@ it.each([
       secondary: expect.stringContaining("Rosa"),
     });
 });
+
+describe("an unreachable Mate's last-known state", () => {
+  it.each([false, true])(
+    "labels the source state and time beside the conversation: %s",
+    (conversationShown) => {
+      expect(
+        mateNoticeVoice({
+          reachability: { kind: "not-answering", overdue: false },
+          conversationShown,
+          nowMs: 0,
+          mateName: "Skákala",
+          lastKnown: "Last known 14:20: Skákala hit the Claude limit.",
+        }),
+      ).toMatchObject({
+        surface: conversationShown ? "banner" : "stage",
+        headline: "Skákala isn't answering.",
+        secondary: "Last known 14:20: Skákala hit the Claude limit.",
+        actions: ["try-now"],
+      });
+    },
+  );
+  it("says only that it isn't answering where HQ knows nothing", () => {
+    expect(
+      mateNoticeVoice({
+        reachability: { kind: "not-answering", overdue: false },
+        conversationShown: false,
+        nowMs: 0,
+        mateName: "Rosa",
+      }),
+    ).toMatchObject({ headline: "Rosa isn't answering.", secondary: "" });
+  });
+  it("does not show the held state over a ready connection", () => {
+    expect(
+      mateNoticeVoice({
+        reachability: { kind: "ready", notice: null },
+        conversationShown: true,
+        nowMs: 0,
+        mateName: "Rosa",
+        lastKnown: "Last known 14:20: Rosa hit the Claude limit.",
+      }),
+    ).toEqual({ surface: "none" });
+  });
+});
+
+it("an ongoing restart keeps the last-known state alongside every notice line", () => {
+  const held = "Last known 14:20: Rosa hit the Claude limit.";
+  const voice = mateNoticeVoice({
+    mateName: "Rosa",
+    nowMs: 0,
+    conversationShown: true,
+    reachability: { kind: "not-answering", overdue: false },
+    lastKnown: held,
+    recovery: {
+      standing: { kind: "unknown" },
+      status: "ACTIVE",
+      process: {
+        id: "restart",
+        actionName: "stack.restart",
+        status: "RUNNING",
+        created: "2026-10-07",
+        projectId: "p",
+        serviceStackIds: ["s"],
+      },
+    },
+  });
+  expect(voice).toMatchObject({
+    surface: "banner",
+    headline: "Rosa is restarting.",
+    secondary: expect.stringContaining(held),
+  });
+  expect("restartLines" in voice && voice.restartLines?.every((line) => line.includes(held))).toBe(
+    true,
+  );
+});

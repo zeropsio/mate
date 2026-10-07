@@ -23,7 +23,7 @@ export const contentAssetResponse = Effect.fn("contentAssetResponse")(function* 
     return contentAssetFailure("object-missing", 404);
   const etag = `"sha256-${object.digest}"`;
   const headers: Record<string, string> = {
-    "Cache-Control": "private, no-cache",
+    "Cache-Control": "private, max-age=31536000, immutable",
     ETag: etag,
     Vary: "Origin",
     "X-Content-Type-Options": "nosniff",

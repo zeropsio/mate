@@ -292,6 +292,25 @@ describe("ThreadUsagePauseReactor", () => {
     ),
   );
 
+  it.effect("lifts a scheduled pause when the provider confirms all windows recovered", () =>
+    withReactor(({ publish, settle, pause, userMessages }) =>
+      Effect.gen(function* () {
+        yield* publish(blockedEvent(RESETS_AT));
+        yield* publish({
+          ...blockedEvent(RESETS_AT),
+          type: "account.rate-limits.updated",
+          eventId: EventId.make("limit-recovered"),
+          payload: { limits: { windows: [] }, refused: false },
+        });
+        yield* settle;
+        assert.isNull(yield* pause);
+        yield* TestClock.adjust("3 hours");
+        yield* settle;
+        assert.deepEqual(yield* userMessages, []);
+      }),
+    ),
+  );
+
   it.effect("lifts the pause when a turn completes, and the old reset then does nothing", () =>
     withReactor(({ publish, settle, pause, userMessages }) =>
       Effect.gen(function* () {

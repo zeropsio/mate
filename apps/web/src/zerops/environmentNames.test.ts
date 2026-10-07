@@ -1,5 +1,5 @@
 import { EnvironmentId } from "@t3tools/contracts";
-import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import type { ZeropsMateIdentity } from "./mateIdentities";
 import { describe, expect, it } from "vite-plus/test";
 
 import { zeropsEnvironmentNames } from "./environmentNames";
@@ -10,17 +10,18 @@ const ENV_B = EnvironmentId.make("env-b");
 function candidate(input: {
   readonly key: string;
   readonly name: string;
-  readonly environmentId?: EnvironmentId;
-}): ZeropsCandidate {
+  readonly environmentId?: EnvironmentId | undefined;
+}): { readonly environmentId?: EnvironmentId | undefined; readonly mate: ZeropsMateIdentity } {
   return {
-    key: input.key,
-    group: "connected",
-    project: {
-      id: `p-${input.key}`,
+    environmentId: input.environmentId,
+    mate: {
       name: input.name,
-      status: "ACTIVE",
-    } as ZeropsCandidate["project"],
-    ...(input.environmentId === undefined ? {} : { environmentId: input.environmentId }),
+      tint: "slate",
+      shape: "squircle",
+      project: undefined,
+      projectUrl: "",
+      connected: false,
+    },
   };
 }
 
@@ -55,6 +56,11 @@ describe("zeropsEnvironmentNames", () => {
       expected: [[ENV_A, "first"]],
     },
   ])("$name", ({ candidates, expected }) => {
-    expect([...zeropsEnvironmentNames(candidates)]).toEqual(expected);
+    const directory = new Map<EnvironmentId, ZeropsMateIdentity>();
+    for (const row of candidates) {
+      if (row.environmentId !== undefined && !directory.has(row.environmentId))
+        directory.set(row.environmentId, row.mate);
+    }
+    expect([...zeropsEnvironmentNames(directory)]).toEqual(expected);
   });
 });
