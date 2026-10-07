@@ -210,7 +210,11 @@ export function makeZeropsExecutor(input: {
     const provisionHq = hqProvisionExecutor({
       store: input.store,
       deps: {
-        run: input.run,
+        run: async (intent, options) => {
+          if (intent.kind === "hq-update")
+            intent = { ...intent, carried: (await input.hqCore()).build };
+          return input.run(intent, options);
+        },
         reads: hqBirthReads(client),
         waits: hqBirthWaits({
           data: input.store.data,
