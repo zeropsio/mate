@@ -21,7 +21,6 @@ import {
   messageAppears,
   showsWokenTab,
 } from "./dsl.ts";
-import { expectedFailureTarget } from "./expectedFailure.ts";
 
 describe("G: outages, sleep and several tabs", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
@@ -192,9 +191,8 @@ describe("G: outages, sleep and several tabs", () => {
     );
 
     // Targets an HQ outage erasing a pending question that the user still needs to answer.
-    it.effect.fails("HQ down retains the last known pending question", () =>
+    it.effect("HQ down retains the last known pending question", () =>
       Effect.gen(function* () {
-        const target = expectedFailureTarget("retained pending question");
         const s = yield* givenOutage();
         yield* reportsWork(s, "Ada", "Inspect checkout", "Which checkout should I inspect?");
         yield* s.given.signedIn;
@@ -203,7 +201,7 @@ describe("G: outages, sleep and several tabs", () => {
         yield* s.then.hq.isUnavailable;
         yield* cappedHqOutage(s);
         yield* checkpoint(s);
-        yield* target(menuSays(s.page, "Which checkout should I inspect?")).pipe(
+        yield* menuSays(s.page, "Which checkout should I inspect?").pipe(
           Effect.catchDefect((cause) =>
             Effect.die(
               new Error("Last known pending question disappeared during HQ outage", { cause }),

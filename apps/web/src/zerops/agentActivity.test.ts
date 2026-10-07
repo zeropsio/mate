@@ -24,6 +24,7 @@ import {
   mateFaceOf,
   mateReviewWaits,
   overviewAgentActivity,
+  restingActivity,
   threadAgentActivity,
 } from "./agentActivity";
 
@@ -881,6 +882,25 @@ describe("the row's live step", () => {
 });
 
 describe("the question a needs-you row says", () => {
+  it("retains a last-known question during an outage without claiming live activity", () => {
+    const activity = restingActivity(
+      threadAgentActivity(
+        shell({
+          hasPendingUserInput: true,
+          pendingQuestion: "Which checkout should I inspect?",
+        }),
+        undefined,
+      ),
+    );
+    expect(activity).toMatchObject({
+      question: "Which checkout should I inspect?",
+      kind: "idle",
+      status: null,
+      remembered: true,
+    });
+    expect(activity.liveStep).toBeUndefined();
+  });
+
   it.each<{
     readonly name: string;
     readonly thread: EnvironmentThreadShell;

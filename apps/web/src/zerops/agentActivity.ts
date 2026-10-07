@@ -520,16 +520,11 @@ export function deriveZeropsAgentActivity(
 
 /**
  * An activity as last told, with nothing only true now — at rest, no status, no step, no
- * question, no error, no pause — so no clock ticks and no *Stop* is offered from it.
+ * error, no pause — so no clock ticks and no *Stop* is offered from it. Its last-known question
+ * stays readable beside the source's stale indication until a newer answer replaces it.
  */
 export function restingActivity(activity: ZeropsAgentActivity): ZeropsAgentActivity {
-  const {
-    liveStep: _step,
-    waitsOnHelpers: _helpers,
-    question: _question,
-    errorLine: _error,
-    ...words
-  } = activity;
+  const { liveStep: _step, waitsOnHelpers: _helpers, errorLine: _error, ...words } = activity;
   return {
     ...words,
     kind: "idle",
