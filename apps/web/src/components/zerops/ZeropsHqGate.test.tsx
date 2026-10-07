@@ -22,6 +22,13 @@ const steps = (html: string) =>
   );
 
 describe("HqGateScreen", () => {
+  it("explains HQ creation and waits for an administrator to choose Set up HQ", () => {
+    const html = screen({});
+    expect(html).toContain("Set up HQ");
+    expect(html).toContain("a project named Headquarters in Zerops");
+    expect(steps(html)).toEqual([]);
+    expect(html).not.toContain("Setting up Mate");
+  });
   it("shows an owner HQ being set up, step by step, with the one it is on", () => {
     const html = screen({ birth: { kind: "running", step: "deploy" } });
     expect(html).toContain("Setting up Mate for Acme");

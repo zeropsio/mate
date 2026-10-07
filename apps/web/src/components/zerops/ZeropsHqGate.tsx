@@ -7,7 +7,7 @@ import { RegistryContext } from "@effect/atom-react";
 import { hqBirthProgress, hqBirthRequestId } from "@t3tools/client-runtime/data";
 import { HQ_BIRTH_DOING, HQ_BIRTH_STEPS } from "@t3tools/client-runtime/zerops/hq";
 import { CheckIcon, CircleAlertIcon } from "lucide-react";
-import { useCallback, useContext, useEffect } from "react";
+import { useCallback, useContext } from "react";
 
 import { cn } from "~/lib/utils";
 import { captureAccountLifetime } from "~/zerops/accountLifetime";
@@ -23,7 +23,7 @@ import { Spinner } from "../ui/spinner";
 
 type ClosedGate = Exclude<HqGate, { readonly kind: "open" }>;
 
-/** The gate over the organization open now; its birth starts the moment it shows. */
+/** The gate over the organization open now; an administrator chooses when to set up HQ. */
 export function ZeropsHqGate({ gate }: { readonly gate: ClosedGate }) {
   const { activeOrganization, client } = useZeropsSession();
   const clientId = activeOrganization?.id ?? "";
@@ -50,15 +50,12 @@ export function ZeropsHqGate({ gate }: { readonly gate: ClosedGate }) {
     },
     [client, clientId, data, operations, registry, reread],
   );
-  const birthDue = gate.kind === "birth" && held === null;
-  useEffect(() => {
-    if (birthDue) bear(false);
-  }, [bear, birthDue]);
   return (
     <HqGateScreen
       organizationName={activeOrganization?.name ?? "this organization"}
       gate={gate}
       birth={hqBirthView(held)}
+      onStart={() => bear(false)}
       onTryAgain={() => bear(true)}
       onReadAgain={reread}
     />
@@ -69,12 +66,14 @@ export function HqGateScreen({
   organizationName,
   gate,
   birth,
+  onStart,
   onTryAgain,
   onReadAgain,
 }: {
   readonly organizationName: string;
   readonly gate: ClosedGate;
   readonly birth: HqBirthView | undefined;
+  readonly onStart?: () => void;
   readonly onTryAgain: () => void;
   readonly onReadAgain: () => void;
 }) {
@@ -85,7 +84,12 @@ export function HqGateScreen({
     >
       <div className="flex w-full max-w-md flex-col gap-4">
         {gate.kind === "birth" ? (
-          <HqBirth organizationName={organizationName} birth={birth} onTryAgain={onTryAgain} />
+          <HqBirth
+            organizationName={organizationName}
+            birth={birth}
+            onStart={onStart}
+            onTryAgain={onTryAgain}
+          />
         ) : gate.kind === "reading" ? (
           gate.failed ? (
             <div className="flex flex-col items-start gap-3">
@@ -115,14 +119,31 @@ export function HqGateScreen({
 function HqBirth({
   organizationName,
   birth,
+  onStart,
   onTryAgain,
 }: {
   readonly organizationName: string;
   readonly birth: HqBirthView | undefined;
+  readonly onStart: (() => void) | undefined;
   readonly onTryAgain: () => void;
 }) {
-  const at =
-    birth === undefined ? 0 : HQ_BIRTH_STEPS.indexOf(birth.step === "done" ? "ready" : birth.step);
+  if (birth === undefined) {
+    return (
+      <>
+        <h1 className="text-xl font-medium text-foreground">Set up Mate for {organizationName}</h1>
+        <p className="text-sm text-muted-foreground">
+          Mate keeps this organization's applications in its HQ, a project named Headquarters in
+          Zerops. Setting it up takes a few minutes. Any admin can continue it from another browser.
+        </p>
+        <div>
+          <Button size="sm" variant="secondary" onClick={onStart}>
+            Set up HQ
+          </Button>
+        </div>
+      </>
+    );
+  }
+  const at = HQ_BIRTH_STEPS.indexOf(birth.step === "done" ? "ready" : birth.step);
   const finished = birth?.kind === "running" && birth.step === "done";
   return (
     <>
