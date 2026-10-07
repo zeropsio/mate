@@ -1,3 +1,15 @@
+import { mateShellFamily, mateThreadFamily } from "./mateConversation.ts";
+import { mateGitRemoteFamily } from "./mateGitRemote.ts";
+import { mateRepositoryDiscoveryFamily } from "./mateRepositoryDiscovery.ts";
+import { mateRepositoryFamily } from "./mateRepository.ts";
+import { mateThreadSearchFamily } from "./mateThreadSearch.ts";
+import { mateTurnDiffFamily } from "./mateTurnDiff.ts";
+import { mateThreadDiffFamily } from "./mateThreadDiff.ts";
+import { mateWorkflowScriptFamily } from "./mateWorkflowScript.ts";
+import { mateTraceDiagnosticsFamily } from "./mateTraceDiagnostics.ts";
+import { mateProcessDiagnosticsFamily } from "./mateProcessDiagnostics.ts";
+import { mateProcessResourceHistoryFamily } from "./mateProcessResourceHistory.ts";
+import { mateResourceTelemetryHistoryFamily } from "./mateResourceTelemetryHistory.ts";
 import { mateArchiveFamily } from "./mateArchive.ts";
 import { mateVcsFamily } from "./mateVcs.ts";
 import { hqGitCredentialsFamily, hqGitCredentialRequestFamily } from "./hqGitCredentials.ts";
@@ -82,6 +94,20 @@ export function defineFamilies(
 }
 
 export const FAMILIES = defineFamilies([
+  mateShellFamily,
+  mateThreadFamily,
+  mateGitRemoteFamily,
+  mateRepositoryDiscoveryFamily,
+  mateRepositoryFamily,
+  mateThreadSearchFamily,
+  mateTurnDiffFamily,
+  mateThreadDiffFamily,
+  mateWorkflowScriptFamily,
+  mateTraceDiagnosticsFamily,
+  mateProcessDiagnosticsFamily,
+  mateProcessResourceHistoryFamily,
+  mateResourceTelemetryHistoryFamily,
+
   mateArchiveFamily,
   mateVcsFamily,
   hqGitCredentialsFamily,

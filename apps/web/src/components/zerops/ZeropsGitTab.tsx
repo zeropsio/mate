@@ -20,7 +20,7 @@
  *
  * Whether each remote answers is the third read here, and the only one that is
  * neither live nor on a clock: `zerops.git.probeRemote` on open and after each
- * verb (`useZeropsGitRemoteProbe`).
+ * verb (`useGitRemoteReads`).
  */
 import {
   changeAskLabel,
@@ -41,7 +41,7 @@ import { useComposerDraftStore } from "../../composerDraftStore";
 
 import { mergedMain } from "../../zerops/useZeropsChangeDetail";
 import { useProjectTopology } from "../../zerops/useProjectTopology";
-import { checkoutPathFor, useZeropsGitRemoteProbes } from "../../zerops/useZeropsGitRemoteProbe";
+import { checkoutPathFor, useGitRemoteReads } from "../../zerops/useZeropsGitRemoteProbe";
 import { useVcsPullAction } from "../../state/sourceControlActions";
 import { useEnvironmentQuery } from "../../state/query";
 import { vcsEnvironment } from "../../state/vcs";
@@ -175,7 +175,7 @@ function KnownGitTab({
    * needs the repositories, and they come from this Mate's own topology. One
    * round on open, one more after each verb (`generation`), never on a clock.
    */
-  const remotes = useZeropsGitRemoteProbes({
+  const remotes = useGitRemoteReads({
     environmentId,
     repositories,
     generation,

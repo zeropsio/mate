@@ -9,11 +9,8 @@ import { AsyncResult, Atom } from "effect/unstable/reactivity";
 import { EnvironmentRegistry } from "../connection/registry.ts";
 import type { PreparedConnection } from "../connection/model.ts";
 import { EnvironmentSupervisor } from "../connection/supervisor.ts";
-import { environmentEndpointUrl } from "../environment/endpoint.ts";
 import { ManagedRelayDpopSigner } from "../relay/managedRelay.ts";
 import { safeErrorLogAttributes } from "../errors/safeLog.ts";
-import { executeEnvironmentHttpRequest, makeEnvironmentHttpApiGroupClient } from "../rpc/http.ts";
-import { buildEnvironmentAuthHeaders, withEnvironmentCredentials } from "./environmentHttpAuth.ts";
 import { followStreamInEnvironment } from "./runtime.ts";
 
 function initialConfigOption<E>(
@@ -30,36 +27,8 @@ function initialConfigOption<E>(
   );
 }
 
-// Bounded so a wedged environment cannot pin the permissions check (and with it
-// the settings UI) in a loading state for long.
-const DEFAULT_SESSION_STATE_TIMEOUT_MS = 6_000;
-
-/**
- * Read the granted scopes of this client's session on one environment via its
- * `/api/auth/session` endpoint, authenticated with whatever credential the
- * connection was prepared with (cookie, bearer, or DPoP).
- */
-export const fetchEnvironmentSessionState = Effect.fn(
-  "clientRuntime.state.fetchEnvironmentSessionState",
-)(function* (input: {
-  readonly prepared: PreparedConnection;
-  readonly signer: Option.Option<ManagedRelayDpopSigner["Service"]>;
-  readonly timeoutMs?: number;
-}) {
-  const requestUrl = environmentEndpointUrl(input.prepared.httpBaseUrl, "/api/auth/session");
-  const client = yield* makeEnvironmentHttpApiGroupClient(input.prepared.httpBaseUrl, "auth");
-  const headers = yield* buildEnvironmentAuthHeaders(
-    input.prepared.httpAuthorization,
-    "GET",
-    requestUrl,
-    input.signer,
-  );
-  return yield* executeEnvironmentHttpRequest(
-    requestUrl,
-    input.timeoutMs ?? DEFAULT_SESSION_STATE_TIMEOUT_MS,
-    withEnvironmentCredentials(input.prepared.httpAuthorization, client.session({ headers })),
-  );
-});
+export { fetchEnvironmentSessionState } from "../data/adapters/mateClientAccess.ts";
+import { fetchEnvironmentSessionState } from "../data/adapters/mateClientAccess.ts";
 
 export function createEnvironmentSessionAtoms<R, E>(
   runtime: Atom.AtomRuntime<EnvironmentRegistry | HttpClient.HttpClient | R, E>,
@@ -159,4 +128,31 @@ export function createEnvironmentSessionAtoms<R, E>(
     sessionStateAtom,
     sessionStateValueAtom,
   };
+}
+
+/** Connection preparation is transport state, separate from published source facts. */
+export function createPreparedConnectionAtoms<R, E>(
+  runtime: Atom.AtomRuntime<EnvironmentRegistry | R, E>,
+) {
+  const preparedConnectionAtom = Atom.family((environmentId: EnvironmentId) =>
+    runtime.atom(
+      followStreamInEnvironment(
+        environmentId,
+        Stream.unwrap(
+          Effect.map(EnvironmentSupervisor, (supervisor) =>
+            SubscriptionRef.changes(supervisor.prepared),
+          ),
+        ),
+      ),
+      { initialValue: Option.none<PreparedConnection>() },
+    ),
+  );
+  const preparedConnectionValueAtom = Atom.family((environmentId: EnvironmentId) =>
+    Atom.make((get) =>
+      Option.getOrElse(AsyncResult.value(get(preparedConnectionAtom(environmentId))), () =>
+        Option.none<PreparedConnection>(),
+      ),
+    ),
+  );
+  return { preparedConnectionAtom, preparedConnectionValueAtom };
 }

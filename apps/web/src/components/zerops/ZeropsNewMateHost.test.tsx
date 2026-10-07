@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { creationPressStoreAtom, makeAccountStore } from "@t3tools/client-runtime/data";
 import { act, createElement as h } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -8,6 +9,7 @@ import { beginPress, forgetPress } from "~/zerops/matePress";
 import { useNewMateDialog } from "~/zerops/newMate";
 
 import { ZeropsNewMateHost } from "./ZeropsNewMateHost";
+import { appAtomRegistry, AppAtomRegistryProvider } from "~/rpc/atomRegistry";
 
 const ORGANIZATION = { id: "org-acme", name: "acme", roleCode: "OWNER" };
 
@@ -65,6 +67,7 @@ let tree: ReactTestRenderer | undefined;
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   openAccountLifetime("u-ada");
+  appAtomRegistry.set(creationPressStoreAtom, makeAccountStore(appAtomRegistry));
   app.dialog = undefined;
   // Acme CRM, as the menu draws it: its first Mate on its way.
   beginPress({
@@ -84,6 +87,8 @@ afterEach(() => {
   act(() => tree?.unmount());
   tree = undefined;
   forgetPress("p-vera");
+  appAtomRegistry.get(creationPressStoreAtom)?.close();
+  appAtomRegistry.set(creationPressStoreAtom, null);
   useNewMateDialog.setState({ asked: null });
   closeAccountLifetime();
   vi.unstubAllGlobals();
@@ -93,7 +98,7 @@ afterEach(() => {
 const open = (again?: Parameters<ReturnType<typeof useNewMateDialog.getState>["ask"]>[1]) => {
   act(() => useNewMateDialog.getState().ask("g-acme", again));
   act(() => {
-    tree = create(h(ZeropsNewMateHost));
+    tree = create(h(AppAtomRegistryProvider, null, h(ZeropsNewMateHost)));
   });
   return app.dialog!;
 };

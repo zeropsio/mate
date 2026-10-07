@@ -31,7 +31,7 @@ export function useQuestionAttachments(input: {
   readonly scope: string | null;
   readonly environmentId: EnvironmentId;
   readonly questionId: string | null;
-  readonly supported: boolean;
+  readonly supported: boolean | null;
   readonly onError: (message: string) => void;
 }) {
   const [byScope, setByScope] = useState<Record<string, ReadonlyArray<QuestionFile>>>({});
@@ -61,6 +61,10 @@ export function useQuestionAttachments(input: {
   const add = async (files: ReadonlyArray<File>) => {
     const { scope, questionId, environmentId } = input;
     if (scope === null || questionId === null) return;
+    if (input.supported === null)
+      return input.onError(
+        "This Mate's attachment support is still being read. Try again once it is ready.",
+      );
     if (!input.supported) return input.onError("This Mate cannot take question attachments yet.");
     const count = reserved.current.get(scope) ?? 0;
     if (count + files.length > PROVIDER_SEND_TURN_MAX_ATTACHMENTS)

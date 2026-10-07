@@ -2630,8 +2630,10 @@ export default function ChatView(props: ChatViewProps) {
         pendingUserInputQuestionIndexByRequestId[activePendingUserInput.requestId] ?? 0
       ]?.id ?? null,
     supported:
-      supportsAttachmentUploads &&
-      attachmentEnvironmentConfig?.environment.capabilities.questionAttachments === true,
+      attachmentEnvironmentConfig === null
+        ? null
+        : supportsAttachmentUploads &&
+          attachmentEnvironmentConfig.environment.capabilities.questionAttachments === true,
     onError: (message) => {
       if (activeThreadId) setThreadError(activeThreadId, message);
     },

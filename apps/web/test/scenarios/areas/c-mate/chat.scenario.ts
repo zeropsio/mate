@@ -145,6 +145,7 @@ describe("C: opening a Mate and chat", () => {
         const { s, chat } = yield* setup;
         yield* s.given.signedIn;
         yield* chat.when.open();
+        yield* chat.then.enabledControl("GPT-5.4");
         chat.fixture().question();
         yield* chat.then.text("Which environment should I inspect?");
         yield* chat.when.click("Staging");
@@ -205,7 +206,7 @@ describe("C: opening a Mate and chat", () => {
         chat.fixture().offboardSigner();
         yield* chat.then.signInRequired;
         yield* chat.then.text("The existing conversation is still here");
-        yield* chat.when.send("Do not start a turn on the removed login");
+        yield* chat.when.attemptSend("Do not start a turn on the removed login");
         yield* chat.then.noText("Do not start a turn on the removed login");
         expect(chat.fixture().sentTurnCount()).toBe(sent);
         expect(chat.fixture().responseCount()).toBe(0);
@@ -241,7 +242,7 @@ describe("C: opening a Mate and chat", () => {
         chat.fixture().ownership = "unrecorded";
         yield* s.given.signedIn;
         yield* chat.when.open();
-        yield* chat.when.send("This must not reach the agent");
+        yield* chat.when.attemptSend("This must not reach the agent");
         yield* chat.then.blockedPromptRemains("This must not reach the agent");
         yield* chat.then.sendDisabled;
         yield* chat.then.text("This agent's sign-in was not recorded");

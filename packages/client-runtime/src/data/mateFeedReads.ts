@@ -35,7 +35,9 @@ export function mateFeedAsyncAtom<F extends MateFeedFamily>(key: MateFeedKey<F>)
     const read = get(source);
     switch (read.state) {
       case "known":
-        return AsyncResult.success(read.value);
+        return AsyncResult.success(read.value, {
+          waiting: read.freshness.kind === "revalidating" || read.freshness.kind === "stale",
+        });
       case "failed":
         return AsyncResult.failure(Cause.fail(read.failure));
       default:

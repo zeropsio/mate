@@ -1,9 +1,9 @@
+import { createAccountConversationAtoms } from "@t3tools/client-runtime/data";
 import {
   AVAILABLE_CONNECTION_STATE,
   connectionProjectionPhase,
 } from "@t3tools/client-runtime/connection";
 import {
-  createEnvironmentShellAtoms,
   createEnvironmentSnapshotAtom,
   createShellEnvironmentAtoms,
   type EnvironmentShellState,
@@ -18,7 +18,19 @@ import { connectionAtomRuntime } from "../connection/runtime";
 import { isHostedStaticApp } from "../hostedPairing";
 
 export const shellEnvironment = createShellEnvironmentAtoms(connectionAtomRuntime);
-export const environmentShell = createEnvironmentShellAtoms(connectionAtomRuntime);
+const conversation = createAccountConversationAtoms(connectionAtomRuntime);
+export const environmentShell = {
+  stateAtom: conversation.shellStateAtom,
+  stateValueAtom: Atom.family((environmentId: EnvironmentId) =>
+    Atom.make((get) =>
+      Option.getOrElse(AsyncResult.value(get(conversation.shellStateAtom(environmentId))), () => ({
+        snapshot: Option.none(),
+        status: "empty" as const,
+        error: Option.none(),
+      })),
+    ),
+  ),
+};
 export const environmentSnapshotAtom = createEnvironmentSnapshotAtom(environmentShell.stateAtom);
 
 /**

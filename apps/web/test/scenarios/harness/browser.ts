@@ -3,8 +3,51 @@ import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
 import { afterAll, expect } from "vite-plus/test";
 import puppeteer, { type Page, type BrowserContext } from "puppeteer-core";
+import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import { clientClock, type ScenarioWallClock } from "./clientClock.ts";
 import { serve } from "./http.ts";
+
+/** A positive send waits for the composer to acknowledge its text and offer Send or Queue. */
+export async function sendConversationMessage(page: Page, message: string, waitForReady = true) {
+  const input = page
+    .locator(
+      '::-p-aria([role="textbox"]):not([inert], [inert] *, [aria-hidden="true"], [aria-hidden="true"] *)',
+    )
+    .setTimeout(8000);
+  const modifier = HostProcessPlatform.defaultValue() === "darwin" ? "Meta" : "Control";
+  await (await input.waitHandle()).focus();
+  await page.keyboard.down(modifier);
+  await page.keyboard.press("a");
+  await page.keyboard.up(modifier);
+  await page.keyboard.press("Backspace");
+  await page.keyboard.type(message);
+  await page.waitForFunction(
+    (message) => document.activeElement?.textContent === message,
+    { timeout: 8000, polling: "raf" },
+    message,
+  );
+  if (waitForReady) {
+    try {
+      await page.waitForFunction(
+        () =>
+          [...document.querySelectorAll<HTMLButtonElement>("button[type=submit]")].some(
+            (button) =>
+              ["Send message", "Queue message"].includes(button.getAttribute("aria-label") ?? "") &&
+              !button.disabled &&
+              button.getBoundingClientRect().height > 0,
+          ),
+        { timeout: 8000, polling: "raf" },
+      );
+    } catch (cause) {
+      throw new Error(
+        `Composer did not become ready:\n${await page.evaluate(() => document.body.innerText)}`,
+        { cause },
+      );
+    }
+  }
+  await (await input.waitHandle()).focus();
+  await page.keyboard.press("Enter");
+}
 
 // Vitest inverts afterEach failures inside it.fails too. Retain diagnostics from every opened
 // browser until the file-level hook, which cannot become an expected domain failure.

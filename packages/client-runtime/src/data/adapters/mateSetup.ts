@@ -181,3 +181,21 @@ export function makeMateSetupDemand(
     },
   };
 }
+
+const accountSetupDemands = new WeakMap<AccountStore, ReturnType<typeof makeMateSetupDemand>>();
+export function sharedMateSetupDemand(
+  store: AccountStore,
+  whenReadable?: (resume: () => void) => () => void,
+) {
+  let host = accountSetupDemands.get(store);
+  if (host === undefined) {
+    host = makeMateSetupDemand(store, whenReadable);
+    accountSetupDemands.set(store, host);
+  }
+  return host;
+}
+
+export function closeSharedMateSetupDemand(store: AccountStore) {
+  accountSetupDemands.get(store)?.close();
+  accountSetupDemands.delete(store);
+}

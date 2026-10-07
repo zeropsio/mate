@@ -1,8 +1,64 @@
 /** The reviewed Mate workspace reads: distinct source identities and fact families. */
-import { WS_METHODS, type EnvironmentId } from "@t3tools/contracts";
+import { ORCHESTRATION_WS_METHODS, WS_METHODS, type EnvironmentId } from "@t3tools/contracts";
 import type { EnvironmentRpcInput, EnvironmentRpcSuccess } from "../../rpc/client.ts";
 import type { ScopeKey } from "../model.ts";
 export const WORKSPACE_READS = {
+  gitRemote: {
+    family: "mateGitRemote",
+    tag: WS_METHODS.zeropsGitProbeRemote,
+    suffix: "workspace-gitRemote",
+  },
+  repositoryDiscovery: {
+    family: "mateRepositoryDiscovery",
+    tag: WS_METHODS.serverDiscoverSourceControl,
+    suffix: "workspace-repositoryDiscovery",
+  },
+  repository: {
+    family: "mateRepository",
+    tag: WS_METHODS.sourceControlLookupRepository,
+    suffix: "workspace-repository",
+  },
+  threadSearch: {
+    family: "mateThreadSearch",
+    tag: ORCHESTRATION_WS_METHODS.searchThreads,
+    suffix: "workspace-threadSearch",
+  },
+  turnDiff: {
+    family: "mateTurnDiff",
+    tag: ORCHESTRATION_WS_METHODS.getTurnDiff,
+    suffix: "workspace-turnDiff",
+  },
+  fullThreadDiff: {
+    family: "mateThreadDiff",
+    tag: ORCHESTRATION_WS_METHODS.getFullThreadDiff,
+    suffix: "workspace-fullThreadDiff",
+  },
+  workflowScript: {
+    family: "mateWorkflowScript",
+    tag: ORCHESTRATION_WS_METHODS.getWorkflowScript,
+    suffix: "workspace-workflowScript",
+  },
+  traceDiagnostics: {
+    family: "mateTraceDiagnostics",
+    tag: WS_METHODS.serverGetTraceDiagnostics,
+    suffix: "workspace-traceDiagnostics",
+  },
+  processDiagnostics: {
+    family: "mateProcessDiagnostics",
+    tag: WS_METHODS.serverGetProcessDiagnostics,
+    suffix: "workspace-processDiagnostics",
+  },
+  processResourceHistory: {
+    family: "mateProcessResourceHistory",
+    tag: WS_METHODS.serverGetProcessResourceHistory,
+    suffix: "workspace-processResourceHistory",
+  },
+  resourceTelemetryHistory: {
+    family: "mateResourceTelemetryHistory",
+    tag: WS_METHODS.serverGetResourceTelemetryHistory,
+    suffix: "workspace-resourceTelemetryHistory",
+  },
+
   assetUrl: {
     family: "mateAssetUrl",
     tag: WS_METHODS.assetsCreateUrl,
