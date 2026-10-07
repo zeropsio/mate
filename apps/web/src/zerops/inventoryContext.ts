@@ -1,4 +1,6 @@
-import { createContext, useContext, useMemo, useState } from "react";
+import { createContext, useContext, useMemo } from "react";
+
+import { useDialogState } from "./useDialogState";
 
 import type { InventoryTroubleVoice } from "./inventoryTrouble.logic";
 import type { ZeropsProject } from "@t3tools/client-runtime/zerops";
@@ -155,18 +157,17 @@ export function useZeropsInventory(): Inventory {
  * A dialog's state that holds one project's content — what it captured when it opened — closed the
  * moment its source withholds it or proves it lost. A captured copy outlives a withheld read.
  */
-export function useProjectDialog<T>(
-  projectOf: (dialog: T) => string,
-): readonly [T | null, (dialog: T | null) => void] {
+export function useProjectDialog<T>(projectOf: (dialog: T) => string) {
   const inventory = useZeropsInventory();
-  const [dialog, setDialog] = useState<T | null>(null);
-  if (dialog === null) return [null, setDialog];
+  const state = useDialogState<T>();
+  const [dialog, setDialog, captureReply] = state;
+  if (dialog === null) return [null, setDialog, captureReply] as const;
   const projectId = projectOf(dialog);
   if (inventory.lost.has(projectId) || projectAuthority(inventory, projectId).kind === "withheld") {
     setDialog(null);
-    return [null, setDialog];
+    return [null, setDialog, captureReply] as const;
   }
-  return [dialog, setDialog];
+  return state;
 }
 
 /**

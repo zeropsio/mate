@@ -359,16 +359,28 @@ describe("B: menu liveness", () => {
         yield* s.given.project("Ada", { mate: true });
         yield* s.given.project("Bea", { mate: true });
         yield* s.colleague.denies("Ada");
-        yield* Effect.promise(() => s.clock.install());
         yield* s.given.signedIn;
         yield* s.then.menu.row("Ada").appears();
         yield* s.then.menu.row("Bea").appears();
         const retained = yield* s.then.menu.keepsRows(["Ada"]);
+        const refusal = s.page.waitForResponse(
+          (response) =>
+            new URL(response.url()).pathname.endsWith("/project/Ada") && response.status() === 403,
+          { timeout: 10_000 },
+        );
+        // Leaving Zerops' roster asks its owner to verify absence; that owner refuses the read.
+        yield* s.colleague.deletes("Ada");
+        yield* Effect.promise(async () => {
+          await (await refusal).buffer();
+          await s.page.evaluate(
+            () =>
+              new Promise<void>((resolve) =>
+                requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+              ),
+          );
+        });
         yield* s.colleague.deletes("Bea");
-        yield* Effect.promise(() => s.clock.advance(12 * 60_000));
         yield* s.menu.absent("Bea");
-        // Keep observing through any delayed confirmation reads and their rendered results.
-        yield* s.colleague.settlesRefusal("Ada");
         yield* retained;
         yield* s.then.noReload;
         yield* s.then.noExternalNetwork;

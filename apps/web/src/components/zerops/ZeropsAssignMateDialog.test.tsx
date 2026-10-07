@@ -47,9 +47,9 @@ describe("ZeropsAssignMateForm", () => {
     expect(html).toMatch(/role="alert"[^>]*>Zerops refused the hand-over\.</u);
   });
 
-  it("holds its verbs while the platform answers", () => {
+  it("allows dismissal while the platform answers and prevents another submit", () => {
     const html = renderToStaticMarkup(form({ pending: true }));
-    expect(html).toMatch(/<button[^>]*disabled=""[^>]*>Cancel/u);
+    expect(html).not.toMatch(/<button[^>]*disabled=""[^>]*>Cancel/u);
     expect(html).toMatch(/<button type="submit"[^>]*aria-busy="true"/u);
   });
 

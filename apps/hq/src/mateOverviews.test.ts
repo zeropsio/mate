@@ -1,3 +1,5 @@
+import { MateHealth } from "@t3tools/contracts";
+import * as Deferred from "effect/Deferred";
 import { assert, describe, it } from "@effect/vitest";
 import { HqAttentionValue } from "@t3tools/shared/hqStream";
 import * as Schema from "effect/Schema";
@@ -22,6 +24,7 @@ import { tempPostgresLayer } from "../test/harness/tempPostgres.ts";
 import { makeMateOverviews } from "./mateOverviews.ts";
 
 /** What `saves` holds once the store's worker, which runs beside the link, has had its turns. */
+const readHealth = Schema.decodeUnknownSync(MateHealth);
 const readAttention = Schema.decodeEffect(HqAttentionValue);
 it.effect("forget cleans retained result acknowledgements even without an overview", () =>
   Effect.scoped(
@@ -217,6 +220,8 @@ describe("MateOverviews", () => {
             yield* overviews.restore;
             const entry = (yield* overviews.all).get("P");
             assert.deepStrictEqual(entry, {
+              health: null,
+              healthState: "none",
               attention: null,
               attentionState: "none",
               presence: { online: false, since: rows.get("P")!.reportedAt, overview: "stored" },
@@ -475,3 +480,69 @@ describe("MateOverviews in HQ's store", () => {
     );
   });
 });
+
+const healthSample = readHealth({
+  source: { environmentId: "env-1", epoch: 2, incarnation: "new", revision: 1 },
+  sampledAt: "2026-10-07T12:00:00Z",
+  evidence: {
+    status: "strained",
+    severity: "critical",
+    resources: ["memory"],
+    memory: null,
+    cpu: null,
+    io: null,
+    disk: null,
+    unavailable: ["memory.current"],
+  },
+});
+
+it.effect("keeps health without an overview and restores it as last-known", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const saved = yield* Deferred.make<void>();
+      const healthRows = new Map<string, MateHealth>();
+      const store = {
+        ...memoryStore().store,
+        loadHealth: Effect.sync(() =>
+          [...healthRows].map(([projectId, health]) => ({
+            projectId,
+            health,
+            reportedAt: health.sampledAt,
+          })),
+        ),
+        saveHealth: (id: string, health: MateHealth) =>
+          Effect.sync(() => {
+            healthRows.set(id, health);
+          }).pipe(Effect.andThen(Deferred.succeed(saved, undefined))),
+      };
+      const reports = yield* makeMateOverviews(store);
+      const link = yield* reports.connect("P");
+      yield* reports.reportHealth("P", link, healthSample);
+      yield* Deferred.await(saved);
+      assert.deepStrictEqual((yield* reports.all).get("P")?.health, healthSample);
+      assert.strictEqual((yield* reports.all).get("P")?.healthState, "live");
+      assert.strictEqual((yield* reports.all).get("P")?.overview, null);
+      const restored = yield* makeMateOverviews(store);
+      yield* restored.restore;
+      assert.deepStrictEqual((yield* restored.all).get("P")?.health, healthSample);
+      assert.strictEqual((yield* restored.all).get("P")?.healthState, "stored");
+    }),
+  ),
+);
+
+it.effect("an older reconnect cannot replace newer retained health before attention arrives", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const reports = yield* makeMateOverviews(memoryStore().store);
+      const newest = yield* reports.connect("P");
+      yield* reports.reportHealth("P", newest, healthSample);
+      const older = yield* reports.connect("P");
+      yield* reports.reportHealth("P", older, {
+        ...healthSample,
+        source: { ...healthSample.source, epoch: 1, incarnation: "old" },
+      });
+      assert.deepStrictEqual((yield* reports.all).get("P")?.health, healthSample);
+      assert.strictEqual((yield* reports.all).get("P")?.healthState, "live");
+    }),
+  ),
+);

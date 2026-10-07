@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { liveServices, ORG, zeropsVersion } from "../__fixtures__/account.ts";
+import { liveServices, liveZerops, ORG, zeropsVersion } from "../__fixtures__/account.ts";
 import { serviceFamily, servicesScope, type ServiceValue } from "../families/service.ts";
 import { emptyAccount, type AccountState } from "../model.ts";
 import { reduceAccount, type AccountInput } from "../reducer.ts";
@@ -18,6 +18,39 @@ const named = (id: string, name: string): NonNullable<ServiceValue["userData"]> 
 
 const listed = (row: Partial<ServiceValue>) =>
   apply(liveServices(ORG, [{ id: "app", projectId: "p1", ...row }]));
+
+it.each(["v-old", "v-other"])(
+  "joins only the exact active version after a failed newer build (%s)",
+  (versionId) => {
+    const state = apply(
+      liveZerops({
+        services: [
+          {
+            id: "app",
+            projectId: "p1",
+            activeAppVersion: { id: "v-old", source: "GIT" },
+            userData: named("v-new", "new commit"),
+          },
+        ],
+        running: [
+          {
+            id: "old-build",
+            projectId: "p1",
+            serviceStackIds: ["app"],
+            status: "FINISHED",
+            appVersion: { id: versionId, name: "old commit" },
+          },
+        ],
+      }),
+    );
+    expect(serviceRuns.derive(readsOfState(state), { orgId: ORG, serviceId: "app" })).toMatchObject(
+      {
+        activeId: "v-old",
+        name: versionId === "v-old" ? "old commit" : null,
+      },
+    );
+  },
+);
 
 describe("serviceRuns", () => {
   it.each<{

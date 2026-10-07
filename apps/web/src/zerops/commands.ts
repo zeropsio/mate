@@ -1,4 +1,8 @@
-import { mateActionCommand, mateAuthCheckCommand } from "@t3tools/client-runtime/data";
+import {
+  mateSetupRetryCommand,
+  mateActionCommand,
+  mateAuthCheckCommand,
+} from "@t3tools/client-runtime/data";
 /**
  * The reviewed set of Zerops commands a client may issue.
  *
@@ -27,17 +31,12 @@ import { mateActionCommand, mateAuthCheckCommand } from "@t3tools/client-runtime
  */
 import { makeMateBrowserInputCommand } from "@t3tools/client-runtime/data";
 import type { EnvironmentRegistry } from "@t3tools/client-runtime/connection";
-import { createEnvironmentRpcCommand } from "@t3tools/client-runtime/state/runtime";
-import { WS_METHODS } from "@t3tools/contracts";
 import { Atom } from "effect/unstable/reactivity";
 
 export function createZeropsCommandAtoms<R, E>(
   runtime: Atom.AtomRuntime<EnvironmentRegistry | R, E>,
 ) {
-  const standUpRetry = createEnvironmentRpcCommand(runtime, {
-    label: "environment-data:zerops:standUp:retry",
-    tag: WS_METHODS.zeropsStandUpRetry,
-  });
+  const standUpRetry = mateSetupRetryCommand(runtime);
   const agentAuthCheck = mateAuthCheckCommand(runtime);
   const agentLoginStart = mateActionCommand(runtime, "agentLoginStart");
 
@@ -53,11 +52,6 @@ export function createZeropsCommandAtoms<R, E>(
 
   const browserInput = makeMateBrowserInputCommand(runtime);
 
-  const gitProbeRemote = createEnvironmentRpcCommand(runtime, {
-    label: "environment-data:zerops:git:probeRemote",
-    tag: WS_METHODS.zeropsGitProbeRemote,
-  });
-
   return {
     standUpRetry,
     agentAuthCheck,
@@ -68,6 +62,5 @@ export function createZeropsCommandAtoms<R, E>(
     loginAdd,
     loginRemove,
     browserInput,
-    gitProbeRemote,
   };
 }

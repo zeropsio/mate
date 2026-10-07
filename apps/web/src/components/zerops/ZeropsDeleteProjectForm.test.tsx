@@ -1,6 +1,6 @@
 /**
  * Deleting a project that holds nothing (E2E 2026-10-03, F5): one question, one button. While HQ
- * answers it says *Deleting…* and neither button takes a press; a refusal stays in the dialog.
+ * answers it says *Deleting…* and another delete cannot be submitted, and Cancel dismisses it; a refusal stays in the dialog.
  */
 import type { ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -58,10 +58,10 @@ describe("ZeropsDeleteProjectForm", () => {
     );
   });
 
-  it("says Deleting… while HQ answers, and takes no press", () => {
+  it("says Deleting… while HQ answers, and allows dismissal and prevents another delete", () => {
     const html = renderToStaticMarkup(form({ pending: true }));
     expect(html).toContain("Deleting…");
-    expect(buttons(html).map((button) => button.disabled)).toEqual([true, true]);
+    expect(buttons(html).map((button) => button.disabled)).toEqual([false, true]);
   });
 
   it("says HQ's refusal under the question", () => {

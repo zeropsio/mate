@@ -11,7 +11,7 @@ vi.mock("@tanstack/react-router", async () => {
 });
 
 const session = vi.hoisted(() => ({
-  status: "signed-out" as "signed-out" | "loading" | "unavailable",
+  status: "signed-out" as "signed-out" | "signed-in" | "loading" | "unavailable",
   retrying: false,
 }));
 
@@ -42,6 +42,15 @@ import { ZeropsHostedLanding } from "./ZeropsHostedLanding";
 function renderLanding(): string {
   return renderToStaticMarkup(<ZeropsHostedLanding />);
 }
+
+it("draws the projects surface as soon as the account is verified", () => {
+  session.status = "signed-in";
+  try {
+    expect(renderLanding()).toContain("Projects");
+  } finally {
+    session.status = "signed-out";
+  }
+});
 
 describe("ZeropsHostedLanding entry action", () => {
   it("offers account handover without a second authentication implementation", () => {

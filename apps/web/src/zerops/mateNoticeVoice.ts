@@ -1,3 +1,5 @@
+import type { MateRecovery } from "@t3tools/client-runtime/data";
+import { recoveryNotice } from "./mateRecovery.logic";
 import {
   reachabilityPhrase,
   type MateVoice,
@@ -14,7 +16,9 @@ export type WebMateVoice =
     });
 
 /** Web copy and pose follow source evidence. Native clients keep their current presentation. */
-export function mateNoticeVoice(input: Omit<MateVoiceInput, "heldMs">): WebMateVoice {
+export function mateNoticeVoice(
+  input: Omit<MateVoiceInput, "heldMs"> & { readonly recovery?: MateRecovery },
+): WebMateVoice {
   const { reachability, conversationShown } = input;
   const name = input.mateName.trim() || "The Mate";
   const surface = conversationShown ? "banner" : "stage";
@@ -48,6 +52,32 @@ export function mateNoticeVoice(input: Omit<MateVoiceInput, "heldMs">): WebMateV
       : reachability?.kind === "container"
         ? reachability.container
         : null;
+  const recovery =
+    (input.recovery === undefined ? null : recoveryNotice(input.recovery, name)) ??
+    (notice?.level === "inactive"
+      ? recoveryNotice(
+          { standing: { kind: "unknown" }, status: notice.status, process: undefined },
+          name,
+        )
+      : null);
+  if (recovery !== null)
+    return {
+      surface,
+      text: recovery.text,
+      headline: recovery.text,
+      secondary: "",
+      severity:
+        recovery.tone === "error" ? "danger" : recovery.tone === "warning" ? "attention" : "info",
+      actions: recovery.actions,
+      processes: false,
+      face:
+        (input.recovery?.process?.status === "RUNNING" ||
+          input.recovery?.process?.status === "PENDING") &&
+        (input.recovery.process.actionName === "stack.restart" ||
+          input.recovery.process.actionName === "stack.start")
+          ? "waking"
+          : "sleep",
+    };
   if (notice?.level === "restarting" || notice?.level === "updating") {
     if (!("overdue" in notice && notice.overdue)) {
       return notice.level === "restarting"
@@ -108,8 +138,16 @@ export function mateNoticeVoice(input: Omit<MateVoiceInput, "heldMs">): WebMateV
       );
     case "gone":
       return say(
-        `${name}'s project is no longer available.`,
-        "It was deleted, or you no longer have access.",
+        reachability.because === "direct-not-found"
+          ? `${name}'s project was deleted.`
+          : reachability.because === "direct-forbidden"
+            ? `You no longer have access to ${name}'s project.`
+            : `${name}'s project isn't listed for this account.`,
+        reachability.because === "direct-not-found"
+          ? "This conversation is no longer available."
+          : reachability.because === "direct-forbidden"
+            ? "Ask a project owner to restore it."
+            : "Zerops has not confirmed whether you still have access.",
         "sleep",
         actions,
       );

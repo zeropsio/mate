@@ -53,7 +53,7 @@ import { deadline } from "../../harness/http.ts";
 import * as Schema from "effect/Schema";
 import * as DateTime from "effect/DateTime";
 import type { MateFake } from "../../fakes/mate.ts";
-import { definePerson } from "../../fakes/zeropsWorld.ts";
+import { definePerson, projectRoles } from "../../fakes/zeropsWorld.ts";
 import type { ScenarioDrivers, ScenarioExtension } from "../../harness/scenario.ts";
 import * as Effect from "effect/Effect";
 import { enrollMate } from "../../../../../hq/test/harness/runningCore.ts";
@@ -1402,6 +1402,21 @@ export class ChatDriver {
     return this.responses.length;
   }
 
+  /** A recorded login expires at its provider; ownership and conversation remain unchanged. */
+  expireLogin() {
+    this.authSnapshot = decodeAuth({
+      available: true,
+      agents: this.auth().agents.map((agent) => ({ ...agent, providerAuth: "unauthenticated" })),
+    });
+    this.providers(
+      this.mate.config.providers.map((provider) => ({
+        ...provider,
+        auth: { status: "unauthenticated" },
+      })),
+    );
+    this.publishAuth();
+  }
+
   offboardSigner() {
     this.signerOffboarded = true;
     for (const [socket, subscriptions] of this.mate.subscriptions)
@@ -1677,4 +1692,47 @@ export function vaultWrites(drivers: ScenarioDrivers) {
     return { body: {} };
   });
   return control;
+}
+
+/** A platform lifecycle answer for this scenario's container; no provider outcome is inferred. */
+export function reportContainer(
+  drivers: ScenarioDrivers,
+  name: string,
+  status: string,
+  failedRestart = false,
+) {
+  const service = drivers.zerops.entities.get("service-stack")?.get(`service-${name}`);
+  if (!service) throw new Error(`No container for ${name}`);
+  if (failedRestart)
+    drivers.zerops.put("process", {
+      id: `restart-${name}`,
+      projectId: name,
+      clientId: "ORG",
+      serviceStackId: service.id,
+      actionName: "stack.restart",
+      status: "FAILED",
+      created: "2026-10-07T20:00:00Z",
+      started: "2026-10-07T20:00:00Z",
+      finished: "2026-10-07T20:00:02Z",
+      publicMeta: { failReason: "CommandExec: init command failed (exit 23)" },
+    });
+  drivers.zerops.put("service-stack", { ...service, status });
+}
+
+/** Changes only this person's project grant and publishes the platform's filtered membership. */
+export function projectGrant(drivers: ScenarioDrivers, name: string, allowed: boolean) {
+  const project = drivers.zerops.entities.get("project")?.get(name);
+  if (!project) throw new Error(`No project ${name}`);
+  definePerson(drivers.zerops.world, "owner", {
+    role: "NO_ACCESS",
+    grants: allowed ? { [name]: "BASIC_USER" } : {},
+  });
+  drivers.zerops.put("project", {
+    ...project,
+    userRoles: projectRoles(drivers.zerops.world, name),
+  });
+}
+
+export function deleteProjectEvidence(drivers: ScenarioDrivers, name: string) {
+  drivers.zerops.remove("project", name);
 }

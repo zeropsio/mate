@@ -21,7 +21,7 @@ import { MateFake } from "../fakes/mate.ts";
 import { hqConnection } from "../fakes/hqConnection.ts";
 import { serve } from "./http.ts";
 import { startScenarioCore, type HqTimings } from "./hqCore.ts";
-import { openBrowser, clickText, visibleText } from "./browser.ts";
+import { openBrowser, clickText, visibleText, sendConversationMessage } from "./browser.ts";
 
 const decodeOverview = Schema.decodeUnknownEffect(MateOverview);
 const encodeLink = Schema.encodeEffect(MateLinkUp);
@@ -307,12 +307,7 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
           }),
       },
       conversation: {
-        sends: (message: string) =>
-          Effect.promise(async () => {
-            const editor = page.locator('::-p-aria([role="textbox"])');
-            await editor.fill(message);
-            await page.keyboard.press("Enter");
-          }),
+        sends: (message: string) => Effect.promise(() => sendConversationMessage(page, message)),
       },
       hq: {
         socket: {

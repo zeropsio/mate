@@ -107,6 +107,7 @@ export interface RouteGateInputs {
   /** The route's Zerops project, when a target names the environment. */
   readonly projectId: string | null;
   readonly mateName: string;
+  readonly serviceId?: string | undefined;
 }
 
 const AUTHORIZED: ConversationAccess = { kind: "authorized" };
@@ -176,6 +177,9 @@ export function useRouteGateInputs(environmentId: EnvironmentId | null): RouteGa
   if (environmentId === null) return { target: null, projectId: null, mateName: "This Mate" };
   return {
     target,
+    serviceId: (resolveEnvironment(machines, index, environmentId)?.key ?? hqNamed?.key)?.split(
+      ":",
+    )[1],
     projectId:
       (resolveEnvironment(machines, index, environmentId)?.key ?? hqNamed?.key)?.split(":")[0] ??
       null,

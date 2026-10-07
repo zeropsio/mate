@@ -1,3 +1,4 @@
+import { MateHealth } from "./mateHealth.ts";
 import * as Schema from "effect/Schema";
 import * as Rpc from "effect/unstable/rpc/Rpc";
 import * as RpcGroup from "effect/unstable/rpc/RpcGroup";
@@ -377,6 +378,7 @@ export const WS_METHODS = {
   subscribeResourceTelemetry: "subscribeResourceTelemetry",
   subscribeZeropsLifecycle: "subscribeZeropsLifecycle",
   subscribeZeropsAgentAuth: "subscribeZeropsAgentAuth",
+  subscribeZeropsHealth: "subscribeZeropsHealth",
   subscribeZeropsAttention: "subscribeZeropsAttention",
   subscribeZeropsBrowserStream: "subscribeZeropsBrowserStream",
   subscribeZeropsDataConsole: "subscribeZeropsDataConsole",
@@ -1027,6 +1029,13 @@ const WsSubscribeZeropsAgentAuthRpc = Rpc.make(WS_METHODS.subscribeZeropsAgentAu
 });
 
 /** The Mate's attention (`MateAttention`) now, then each new revision. */
+const WsSubscribeZeropsHealthRpc = Rpc.make(WS_METHODS.subscribeZeropsHealth, {
+  payload: Schema.Struct({}),
+  success: MateHealth,
+  error: EnvironmentAuthorizationError,
+  stream: true,
+});
+
 const WsSubscribeZeropsAttentionRpc = Rpc.make(WS_METHODS.subscribeZeropsAttention, {
   payload: Schema.Struct({}),
   success: MateAttention,
@@ -1316,6 +1325,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsZeropsStandUpRetryRpc,
   WsSubscribeZeropsLifecycleRpc,
   WsSubscribeZeropsAgentAuthRpc,
+  WsSubscribeZeropsHealthRpc,
   WsSubscribeZeropsAttentionRpc,
   WsZeropsAgentLoginStartRpc,
   WsZeropsAgentAuthCheckRpc,

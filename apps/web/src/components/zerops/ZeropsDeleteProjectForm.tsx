@@ -1,6 +1,6 @@
 /**
  * Deleting a project that holds nothing: one question that says what goes and what stays, one
- * button that does it. While HQ answers it says *Deleting…* and neither button takes a press; the
+ * button that does it. While HQ answers it says *Deleting…* and another delete cannot be submitted; Cancel dismisses it; the
  * two words hold one room, so the button keeps its width. A refusal stays under the question, on
  * a line that is always there.
  */
@@ -59,7 +59,7 @@ export function ZeropsDeleteProjectForm({
         </p>
       </DialogPanel>
       <DialogFooter>
-        <Button disabled={pending} onClick={onCancel} type="button" variant="ghost">
+        <Button onClick={onCancel} type="button" variant="ghost">
           Cancel
         </Button>
         <Button

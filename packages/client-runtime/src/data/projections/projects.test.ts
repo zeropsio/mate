@@ -272,3 +272,64 @@ describe("ownRowWanted", () => {
     expect(ownRowWanted("NO_ACCESS", null)).toBe(true);
   });
 });
+
+describe("named project recovery", () => {
+  it.each(["denied", "deleted"] as const)("retains only the identity after %s", (kind) => {
+    const state = apply(live(), [
+      kind === "deleted"
+        ? { kind: "proven-deletion", family: "project", id: "a", evidence: "projectNotFound" }
+        : { kind: "access", family: "project", id: "a", access: "denied" },
+    ]);
+    const read = readsOfState(state);
+    expect(projectStanding.derive(read, { orgId: ORG, projectId: "a" })).toEqual({
+      kind,
+      name: "a",
+    });
+    expect(read.fact("project", "a")).not.toHaveProperty("value");
+    expect(organizationProjects.derive(read, ORG).projects.map((p) => p.id)).not.toContain("a");
+  });
+  it("membership return asks for owner confirmation, then restores the open route's access", () => {
+    const denied = apply(live(), [
+      { kind: "access", family: "project", id: "a", access: "denied" },
+    ]);
+    const returned = reduceAccount(denied, delta(["a"], []));
+    expect(returned.directives).toContainEqual({ kind: "resolve-rows", key: SCOPE, ids: ["a"] });
+    expect(
+      projectStanding.derive(readsOfState(returned.state), { orgId: ORG, projectId: "a" }).kind,
+    ).toBe("denied");
+    const confirmed = apply(returned.state, [
+      {
+        kind: "rows",
+        scope: SCOPE,
+        generation: 1,
+        method: "read",
+        via: "zerops-read",
+        rows: [
+          {
+            family: "project",
+            id: "a",
+            value: projectValue({ id: "a" }),
+            revision: zeropsVersion(2),
+          },
+        ],
+      },
+    ]);
+    expect(
+      projectStanding.derive(readsOfState(confirmed), { orgId: ORG, projectId: "a" }).kind,
+    ).toBe("listed");
+  });
+  it("a direct projectNotFound proves deletion before any payload was read", () => {
+    const state = apply(emptyAccount, [
+      {
+        kind: "proven-deletion",
+        family: "project",
+        id: "unknown",
+        scope: SCOPE,
+        evidence: "projectNotFound",
+      },
+    ]);
+    expect(
+      projectStanding.derive(readsOfState(state), { orgId: ORG, projectId: "unknown" }),
+    ).toEqual({ kind: "deleted" });
+  });
+});

@@ -1227,6 +1227,8 @@ const buildAppUnderTest = (options?: {
               ...options?.layers?.zeropsBrowserStream,
             }),
             Layer.mock(ZeropsMateAttention)({
+              healthCurrent: Effect.succeed(Option.none()),
+              healthChanges: Stream.empty,
               current: Effect.succeed(FIXTURE_ATTENTION),
               changes: Stream.make(FIXTURE_ATTENTION),
             }),

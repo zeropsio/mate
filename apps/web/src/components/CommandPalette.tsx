@@ -2679,6 +2679,11 @@ function OpenCommandPaletteDialog(props: {
           </div>
         </div>
       ) : null}
+      {threadSearch.incomplete && !threadSearch.isPending ? (
+        <p role="status" className="px-3 pb-2 text-xs text-muted-foreground">
+          Some conversations could not be searched.
+        </p>
+      ) : null}
       <CommandPaletteResults
         groups={displayedGroups}
         highlightedItemValue={highlightedItemValue}
@@ -2700,9 +2705,11 @@ function OpenCommandPaletteDialog(props: {
                 ? {
                     emptyStateMessage: "Press Enter to create this folder and add it as a project.",
                   }
-                : threadSearch.isPending
-                  ? { emptyStateMessage: "Searching thread messages…" }
-                  : { emptyStateMessage: paletteNoMatchMessage({ isActionsOnly, listsRead }) })}
+                : threadSearch.incomplete && !threadSearch.isPending
+                  ? { emptyStateMessage: "Some conversations could not be searched." }
+                  : threadSearch.isPending
+                    ? { emptyStateMessage: "Searching thread messages…" }
+                    : { emptyStateMessage: paletteNoMatchMessage({ isActionsOnly, listsRead }) })}
       />
     </CommandPaletteContent>
   );

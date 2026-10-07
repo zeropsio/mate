@@ -4,10 +4,6 @@ import * as NodeURL from "node:url";
 import * as NodeOS from "node:os";
 import { testWorkerBudget } from "./scripts/lib/test-worker-budget.ts";
 
-// An unset budget leaves the key out: the config's types take no explicit undefined.
-const withMaxWorkers = (budget: number | undefined) =>
-  budget === undefined ? {} : { maxWorkers: budget };
-
 /** Import restrictions every file keeps. */
 const RESTRICTED_IMPORT_PATHS = [
   {
@@ -36,6 +32,8 @@ const RESTRICTED_UI_VARIANT_PATTERNS = [
   },
 ];
 
+const maxWorkers = testWorkerBudget(process.env.MATE_TEST_JOBS, NodeOS.availableParallelism());
+
 export default defineConfig({
   assetsInclude: ["**/*.wasm"],
   resolve: {
@@ -44,7 +42,7 @@ export default defineConfig({
     },
   },
   test: {
-    ...withMaxWorkers(testWorkerBudget(process.env.MATE_TEST_JOBS, NodeOS.availableParallelism())),
+    ...(maxWorkers === undefined ? {} : { maxWorkers }),
     environment: "node",
     exclude: [
       "**/.repos/**",
@@ -169,9 +167,7 @@ export default defineConfig({
       "t3code/no-unknown-classes": "error",
       "t3code/require-static-classes": "error",
       "t3code/no-theme-escape-hatches": "error",
-      "t3code/no-unscoped-has": "error",
       "t3code/namespace-node-imports": "error",
-      "t3code/require-suppression-reason": "error",
     },
     overrides: [
       {

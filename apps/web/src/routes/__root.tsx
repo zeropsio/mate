@@ -1,3 +1,5 @@
+import { useMateRecovery } from "../zerops/useMateRecovery";
+import { recoveryNotice } from "../zerops/mateRecovery.logic";
 import { EnvironmentId, type ServerLifecycleWelcomePayload } from "@t3tools/contracts";
 import { scopedProjectKey, scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
@@ -184,7 +186,16 @@ function SignedInRootRouteView() {
           : null;
   // Seconds tick only while the words count down to the link's next try.
   const nowMs = useSecondsNowMs(reachabilityCountsDown(linkReachability));
-  const gatePhrase = routeGatePhrase(gate, { nowMs, mateName: gateInputs.mateName });
+  const recovery = useMateRecovery(
+    gateInputs.projectId,
+    gateInputs.serviceId,
+    linkReachability?.kind !== "ready",
+  );
+  const recoveryPhrase = recoveryNotice(recovery, routeMateName ?? gateInputs.mateName);
+  const projectUnavailable =
+    recovery.standing.kind === "deleted" || recovery.standing.kind === "denied";
+  const gatePhrase =
+    recoveryPhrase ?? routeGatePhrase(gate, { nowMs, mateName: gateInputs.mateName });
   const speaksFor = routeEnvironment ?? draftEnvironmentId;
   const voice =
     speaksFor !== null &&
@@ -193,6 +204,7 @@ function SignedInRootRouteView() {
       (gate.kind === "unavailable" && gate.reachability !== null))
       ? mateNoticeVoice({
           reachability: linkReachability,
+          recovery,
           conversationShown: gate.kind === "outlet" && conversation.kind === "shown",
           nowMs,
           mateName:
@@ -245,8 +257,12 @@ function SignedInRootRouteView() {
             <RouteGateView
               gate={gate}
               phrase={gatePhrase}
-              projectId={gateInputs.projectId}
-              conversation={conversation}
+              projectId={projectUnavailable ? null : gateInputs.projectId}
+              recoveryPhrase={recoveryPhrase}
+              projectUnavailable={projectUnavailable}
+              conversation={
+                projectUnavailable ? { kind: "suppressed", reason: "access-denied" } : conversation
+              }
               voice={voice}
               stage={
                 gate.kind === "wait" ||
