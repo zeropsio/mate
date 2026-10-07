@@ -185,7 +185,7 @@ export const makeUsageLink = Effect.fnUntraced(function* (
           ledger,
           binding,
           { provider, roots: stores[provider] },
-          { ...(floor === undefined ? {} : { floor }), ledgerId: meta.ledgerId },
+          { ...(floor === undefined ? {} : { floor }), baseline, ledgerId: meta.ledgerId },
         ).pipe(Effect.catchCause(() => Effect.logWarning("Usage source capture unavailable")));
     }
     if (baseline) yield* ledger.markBaselined;

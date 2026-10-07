@@ -490,8 +490,8 @@ export function meterAntigravityGeneration(generation: AntigravityGeneration): M
   const [first, ...others] = generation.keys;
   if (first === undefined) return { facts: [], gaps: ["antigravity-missing-native-identity"] };
   const { record } = generation;
-  // Only the database file's time dates it: when it ran is unknown.
-  const dated = generation.timestampQuality > 0;
+  // Only its own clock dates a generation; its conversation's start or the file's time never do.
+  const dated = generation.timestampQuality === 2;
   return {
     facts: [
       {
@@ -504,6 +504,12 @@ export function meterAntigravityGeneration(generation: AntigravityGeneration): M
         evidence: "generation",
       },
     ],
-    gaps: dated ? [] : ["antigravity-file-time-only"],
+    gaps: dated
+      ? []
+      : [
+          generation.timestampQuality === 1
+            ? "antigravity-conversation-time-only"
+            : "antigravity-file-time-only",
+        ],
   };
 }

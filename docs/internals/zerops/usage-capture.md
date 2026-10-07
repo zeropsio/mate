@@ -36,7 +36,10 @@ only where the provider has no cache-write meter at all (Codex without the field
 leaves a value out is unknown. Claude reasoning is its `thinking_tokens`, unknown without them. Reported single cache-write durations use
 HQ's standard/fast 5-minute or 1-hour bands; unknown or mixed durations remain unpriced; reasoning is never added to output twice. Neither meter declares historical completeness,
 settled cancellation coverage or inferred run/actor provenance. Grok, OpenCode and Antigravity are
-captured too (a database record's position is its file, its ordinal the scan); Cursor, whose only
+captured too (a database record's position is its file, its ordinal the scan). Antigravity is read
+per conversation database from its high-water row: one on disk when capture began is baseline, and
+only a generation's own clock dates it (its conversation's start or the file's time leave it
+undated). Cursor, whose only
 source is an account-wide API, publishes unsupported meter coverage, even for a disabled instance.
 
 Startup reconciliation, transcript filesystem changes, settings changes and provider runtime events

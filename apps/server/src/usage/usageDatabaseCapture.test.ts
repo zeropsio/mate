@@ -283,3 +283,129 @@ it.effect("an Antigravity generation keeps one fact as its identities arrive", (
     }),
   ),
 );
+
+/** An Antigravity conversation database: its steps (no clock of their own) and its start. */
+const conversation = (path: string, startedSeconds: number | null) => {
+  const db = new NodeSqlite.DatabaseSync(path);
+  db.exec(
+    "CREATE TABLE gen_metadata (idx INTEGER, data BLOB); CREATE TABLE steps (idx INTEGER, metadata BLOB); CREATE TABLE trajectory_metadata_blob (data BLOB)",
+  );
+  if (startedSeconds !== null)
+    db.prepare("INSERT INTO trajectory_metadata_blob VALUES (?)").run(
+      new Uint8Array(protoBytes(2, protoNumber(1, startedSeconds))),
+    );
+  return {
+    step: (idx: number, id: string, output: number) =>
+      db
+        .prepare("INSERT INTO steps VALUES (?, ?)")
+        .run(
+          idx,
+          new Uint8Array(
+            protoBytes(9, [...protoNumber(2, 7), ...protoNumber(3, output), ...protoText(11, id)]),
+          ),
+        ),
+    restep: (idx: number, id: string, output: number) =>
+      db
+        .prepare("UPDATE steps SET metadata = ? WHERE idx = ?")
+        .run(
+          new Uint8Array(
+            protoBytes(9, [...protoNumber(2, 7), ...protoNumber(3, output), ...protoText(11, id)]),
+          ),
+          idx,
+        ),
+    close: () => db.close(),
+  };
+};
+const antigravityAt = (directory: string) =>
+  Effect.gen(function* () {
+    const conversations = NodePath.join(directory, "antigravity", "conversations");
+    yield* Effect.tryPromise(() => NodeFSP.mkdir(conversations, { recursive: true }));
+    return conversations;
+  });
+const stepId = (id: string) => usageDigest(["antigravity", [`antigravity:11:${id}`]]);
+
+it.effect(
+  "an Antigravity generation timed only by its conversation's start is captured undated, though the conversation began before capture",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const directory = yield* temporary;
+        const conversations = yield* antigravityAt(directory);
+        const db = conversation(
+          NodePath.join(conversations, "started.db"),
+          Math.floor(floor / 1000) - 3_600,
+        );
+        db.step(0, "late", 3);
+        db.close();
+        yield* withLedger(directory, (ledger) =>
+          Effect.gen(function* () {
+            yield* captureDatabaseSource(
+              ledger,
+              binding,
+              { provider: "antigravity", roots: [conversations] },
+              { floor, now: () => floor + 60_000 },
+            );
+            const fact = (yield* journaled(ledger)).get(stepId("late"));
+            assert.deepEqual(fact?.time, { kind: "undated" });
+          }),
+        );
+      }),
+    ),
+);
+
+it.effect(
+  "an undated Antigravity generation on disk when capture began stays in the baseline; one added after it is captured",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const directory = yield* temporary;
+        const conversations = yield* antigravityAt(directory);
+        const path = NodePath.join(conversations, "old.db");
+        const db = conversation(path, null);
+        yield* Effect.addFinalizer(() => Effect.sync(() => db.close()));
+        db.step(0, "before", 3);
+        yield* withLedger(directory, (ledger) =>
+          Effect.gen(function* () {
+            const source = { provider: "antigravity" as const, roots: [conversations] };
+            yield* captureDatabaseSource(ledger, binding, source, {
+              floor,
+              baseline: true,
+              now: () => floor + 60_000,
+            });
+            assert.equal((yield* journaled(ledger)).size, 0);
+            db.step(1, "after", 4);
+            yield* captureDatabaseSource(ledger, binding, source, {
+              floor,
+              now: () => floor + 120_000,
+            });
+            assert.sameMembers([...(yield* journaled(ledger)).keys()], [stepId("after")]);
+          }),
+        );
+      }),
+    ),
+);
+
+it.effect("an Antigravity database is read from where its last scan left it", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const directory = yield* temporary;
+      const conversations = yield* antigravityAt(directory);
+      const db = conversation(NodePath.join(conversations, "growing.db"), null);
+      yield* Effect.addFinalizer(() => Effect.sync(() => db.close()));
+      db.step(0, "first", 3);
+      yield* withLedger(directory, (ledger) =>
+        Effect.gen(function* () {
+          const source = { provider: "antigravity" as const, roots: [conversations] };
+          yield* captureDatabaseSource(ledger, binding, source, { floor, now: () => floor + 1 });
+          // A row behind the high-water mark is not read again; a new one is.
+          db.restep(0, "first", 30);
+          db.step(1, "second", 4);
+          yield* captureDatabaseSource(ledger, binding, source, { floor, now: () => floor + 2 });
+          const facts = yield* journaled(ledger);
+          assert.equal(facts.get(stepId("first"))?.components.output, "3");
+          assert.isTrue(facts.has(stepId("second")));
+        }),
+      );
+    }),
+  ),
+);

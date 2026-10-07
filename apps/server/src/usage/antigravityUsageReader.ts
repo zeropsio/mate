@@ -158,7 +158,23 @@ interface UsageCandidate {
   timestampQuality: number;
 }
 
-async function readDatabase(path: string, fallbackTimestamp: number): Promise<UsageCandidate[]> {
+/** The highest row each usage table had when it was read. */
+export interface AntigravityHighWater {
+  readonly generation: number;
+  readonly step: number;
+}
+interface DatabaseRead {
+  readonly candidates: UsageCandidate[];
+  readonly high: AntigravityHighWater;
+  /** When the conversation began, when it says. */
+  readonly startedAtMs: number | null;
+}
+
+async function readDatabase(
+  path: string,
+  fallbackTimestamp: number,
+  after: AntigravityHighWater = { generation: -1, step: -1 },
+): Promise<DatabaseRead> {
   const db = new NodeSqlite.DatabaseSync(path, { readOnly: true });
   try {
     db.exec("PRAGMA busy_timeout = 100; BEGIN");
@@ -171,9 +187,9 @@ async function readDatabase(path: string, fallbackTimestamp: number): Promise<Us
     if (!tables.has("gen_metadata") && !tables.has("steps")) {
       throw new Error("Missing Antigravity usage tables");
     }
-    const readMetadata = async (query: string, column: string, step: boolean) => {
+    const readMetadata = async (query: string, column: string, step: boolean, from: number) => {
       const entries: Array<{ idx: number; entry: Metadata }> = [];
-      for (const row of db.prepare(query).iterate()) {
+      for (const row of db.prepare(query).iterate(from)) {
         if (typeof row.idx !== "number") throw new Error("Invalid Antigravity metadata index");
         entries.push({ idx: row.idx, entry: metadata(blob(row[column]), step) });
         if (entries.length % 256 === 0) await NodeTimersPromises.setImmediate();
@@ -181,7 +197,12 @@ async function readDatabase(path: string, fallbackTimestamp: number): Promise<Us
       return entries;
     };
     const generations = tables.has("gen_metadata")
-      ? await readMetadata("SELECT idx, data FROM gen_metadata ORDER BY idx", "data", false)
+      ? await readMetadata(
+          "SELECT idx, data FROM gen_metadata WHERE idx > ? ORDER BY idx",
+          "data",
+          false,
+          after.generation,
+        )
       : [];
     let trajectoryTimestamp: number | null = null;
     if (tables.has("trajectory_metadata_blob")) {
@@ -191,9 +212,10 @@ async function readDatabase(path: string, fallbackTimestamp: number): Promise<Us
     }
     const steps = tables.has("steps")
       ? await readMetadata(
-          "SELECT idx, metadata FROM steps WHERE metadata IS NOT NULL ORDER BY idx",
+          "SELECT idx, metadata FROM steps WHERE metadata IS NOT NULL AND idx > ? ORDER BY idx",
           "metadata",
           true,
+          after.step,
         )
       : [];
     const sessionId = NodePath.basename(path, ".db");
@@ -251,10 +273,114 @@ async function readDatabase(path: string, fallbackTimestamp: number): Promise<Us
         }
       }
     }
-    return records;
+    const highest = (table: string, previous: number) => {
+      if (!tables.has(table)) return previous;
+      const row = db.prepare(`SELECT max(idx) AS idx FROM ${table}`).get();
+      return typeof row?.idx === "number" ? Math.max(row.idx, previous) : previous;
+    };
+    return {
+      candidates: records,
+      high: {
+        generation: highest("gen_metadata", after.generation),
+        step: highest("steps", after.step),
+      },
+      startedAtMs: trajectoryTimestamp,
+    };
   } finally {
     db.close();
   }
+}
+
+/** Every conversation database under `roots` once (by real path), and the paths that failed. */
+export async function listAntigravityDatabases(
+  roots: readonly string[],
+): Promise<{ readonly databases: string[]; readonly errors: string[] }> {
+  const databases: string[] = [];
+  const errors: string[] = [];
+  const visited = new Set<string>();
+  const walk = async (directory: string): Promise<void> => {
+    let entries;
+    try {
+      entries = await NodeFSP.readdir(directory, { withFileTypes: true });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") errors.push(directory);
+      return;
+    }
+    entries.sort((a, b) => a.name.localeCompare(b.name));
+    for (const entry of entries) {
+      const path = NodePath.join(directory, entry.name);
+      if (entry.isDirectory()) await walk(path);
+      else if (entry.isFile() && entry.name.endsWith(".db")) {
+        try {
+          const canonical = await NodeFSP.realpath(path);
+          if (visited.has(canonical)) continue;
+          visited.add(canonical);
+          databases.push(canonical);
+        } catch {
+          errors.push(path);
+        }
+      }
+    }
+  };
+  for (const root of roots) await walk(root);
+  return { databases, errors };
+}
+
+/** How far a conversation database's usage tables reach, without reading a row of them. */
+export function antigravityHighWater(path: string): AntigravityHighWater {
+  const db = new NodeSqlite.DatabaseSync(path, { readOnly: true });
+  try {
+    db.exec("PRAGMA busy_timeout = 100");
+    const tables = new Set(
+      db
+        .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
+        .all()
+        .map((row) => row.name),
+    );
+    const highest = (table: string) => {
+      if (!tables.has(table)) return -1;
+      const row = db.prepare(`SELECT max(idx) AS idx FROM ${table}`).get();
+      return typeof row?.idx === "number" ? row.idx : -1;
+    };
+    return { generation: highest("gen_metadata"), step: highest("steps") };
+  } finally {
+    db.close();
+  }
+}
+
+/**
+ * The generations one conversation database added after `after`, merged by shared identity, and
+ * how far its tables reach now. A generation without its own clock keeps quality 1 (its
+ * conversation's start) or 0 (only the file's time); neither dates it.
+ */
+export async function readAntigravityDatabase(
+  path: string,
+  after?: AntigravityHighWater,
+): Promise<{
+  readonly generations: AntigravityGeneration[];
+  readonly high: AntigravityHighWater;
+  readonly startedAtMs: number | null;
+}> {
+  const stat = await NodeFSP.stat(path);
+  const read = await readDatabase(path, stat.mtimeMs, after);
+  const { groups, identities, find, append } = grouping();
+  for (const candidate of read.candidates) append(candidate, 0);
+  const groupKeys = new Map<number, string[]>();
+  for (const [key, index] of identities) {
+    const root = find(index);
+    groupKeys.set(root, [...(groupKeys.get(root) ?? []), key]);
+  }
+  const generations: AntigravityGeneration[] = [];
+  for (const [index, group] of groups.entries()) {
+    if (group.parent !== index) continue;
+    generations.push({
+      path,
+      record: group.record,
+      keys: groupKeys.get(index) ?? [],
+      timestampQuality: group.timestampQuality,
+    });
+  }
+  return { generations, high: read.high, startedAtMs: read.startedAtMs };
 }
 
 export interface AntigravityGeneration {
@@ -267,17 +393,8 @@ export interface AntigravityGeneration {
   readonly timestampQuality: number;
 }
 
-/** Reads and merges aliases across every configured Antigravity store before date filtering. */
-export async function readAntigravityUsage(
-  conversationsDirectories: string | readonly string[],
-  sinceMs: number,
-) {
-  const roots =
-    typeof conversationsDirectories === "string"
-      ? [conversationsDirectories]
-      : conversationsDirectories;
-  const files: Array<{ root: string; path: string; records: UsageRecord[] }> = [];
-  const errors: string[] = [];
+/** Generations seen under a shared identity, merged into one: the union of what each saw. */
+function grouping() {
   const identities = new Map<string, number>();
   const groups: Array<
     UsageCandidate & { parent: number; size: number; owner: number; fileIndex: number }
@@ -341,6 +458,21 @@ export async function readAntigravityUsage(
       identities.set(key, index);
     }
   };
+  return { groups, identities, find, append };
+}
+
+/** Reads and merges aliases across every configured Antigravity store before date filtering. */
+export async function readAntigravityUsage(
+  conversationsDirectories: string | readonly string[],
+  sinceMs: number,
+) {
+  const roots =
+    typeof conversationsDirectories === "string"
+      ? [conversationsDirectories]
+      : conversationsDirectories;
+  const files: Array<{ root: string; path: string; records: UsageRecord[] }> = [];
+  const errors: string[] = [];
+  const { groups, append } = grouping();
   const visited = new Set<string>();
   const walk = async (directory: string, root: string): Promise<void> => {
     let entries;
@@ -361,7 +493,7 @@ export async function readAntigravityUsage(
           if (visited.has(canonical)) continue;
           visited.add(canonical);
           const stat = await NodeFSP.stat(path);
-          const candidates = await readDatabase(path, stat.mtimeMs);
+          const { candidates } = await readDatabase(path, stat.mtimeMs);
           const fileIndex = files.length;
           files.push({ root, path, records: [] });
           for (const [index, candidate] of candidates.entries()) {
@@ -375,26 +507,10 @@ export async function readAntigravityUsage(
     }
   };
   for (const root of roots) await walk(root, root);
-  const groupKeys = new Map<number, string[]>();
-  for (const [key, index] of identities) {
-    const root = find(index);
-    groupKeys.set(root, [...(groupKeys.get(root) ?? []), key]);
-  }
-  /** Each kept generation with every identity it was seen under, its own first. */
-  const generations: AntigravityGeneration[] = [];
   for (const [index, group] of groups.entries()) {
     if (group.parent === index && group.record.timestampMs >= sinceMs) {
       files[group.fileIndex]!.records.push(group.record);
-      const keys = groupKeys.get(index) ?? [];
-      generations.push({
-        path: files[group.fileIndex]!.path,
-        record: group.record,
-        keys: keys.includes(group.record.dedupeKey ?? "")
-          ? [group.record.dedupeKey!, ...keys.filter((key) => key !== group.record.dedupeKey)]
-          : keys,
-        timestampQuality: group.timestampQuality,
-      });
     }
   }
-  return { files, errors, generations };
+  return { files, errors };
 }

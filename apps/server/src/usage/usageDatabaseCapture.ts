@@ -8,7 +8,11 @@ import { type UsageCoverage } from "@t3tools/contracts";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
-import { readAntigravityUsage } from "./antigravityUsageReader.ts";
+import {
+  antigravityHighWater,
+  listAntigravityDatabases,
+  readAntigravityDatabase,
+} from "./antigravityUsageReader.ts";
 import { readOpenCodeUsage } from "./opencodeUsageReader.ts";
 import { UsageLedgerError, type UsageBinding, type UsageLedger } from "./UsageLedger.ts";
 import {
@@ -30,6 +34,8 @@ export interface DatabaseCaptureOptions {
   readonly ledgerId?: string;
   /** The scan's clock (epoch ms). */
   readonly now?: () => number;
+  /** Capture is beginning: what a database holds now is the baseline, never sent. */
+  readonly baseline?: boolean;
 }
 /** A record written up to this long before the previous scan may still have been missed by it. */
 export const DATABASE_LOOKBACK_MS = 60 * 60 * 1000;
@@ -48,29 +54,109 @@ interface Read {
   readonly gaps: ReadonlyArray<string>;
 }
 
+/** OpenCode's messages created since `since`, across its stores. */
 const read = async (source: DatabaseSource, since: number): Promise<Read> => {
   const position = (path: string) => usageDigest([source.provider, path]);
-  if (source.provider === "opencode") {
-    const records: Array<Read["records"][number]> = [];
-    let failed = false;
-    for (const root of source.roots) {
-      const result = await readOpenCodeUsage(root, since);
-      failed ||= result.error;
-      for (const file of result.files)
-        for (const record of file.records)
-          records.push({ position: position(file.path), metered: meterOpenCodeMessage(record) });
-    }
-    return { records, gaps: failed ? ["opencode-source-unreadable"] : [] };
+  const records: Array<Read["records"][number]> = [];
+  let failed = false;
+  for (const root of source.roots) {
+    const result = await readOpenCodeUsage(root, since);
+    failed ||= result.error;
+    for (const file of result.files)
+      for (const record of file.records)
+        records.push({ position: position(file.path), metered: meterOpenCodeMessage(record) });
   }
-  const result = await readAntigravityUsage(source.roots, since);
-  return {
-    records: result.generations.map((generation) => ({
-      position: position(generation.path),
-      metered: meterAntigravityGeneration(generation),
-    })),
-    gaps: result.errors.length > 0 ? ["antigravity-source-unreadable"] : [],
-  };
+  return { records, gaps: failed ? ["opencode-source-unreadable"] : [] };
 };
+
+const HighWater = Schema.Struct({
+  generation: Schema.Number,
+  step: Schema.Number,
+  ordinal: Schema.Number,
+});
+const decodeHighWater = Schema.decodeUnknownSync(Schema.fromJsonString(HighWater));
+
+/**
+ * Antigravity, one conversation database at a time from its high-water mark: a database on disk
+ * when capture began is all baseline; one found later is read whole. Only a generation's own clock
+ * dates it, and one from before capture began is never a fact.
+ */
+const captureAntigravity = Effect.fnUntraced(function* (
+  ledger: UsageLedger,
+  binding: UsageBinding,
+  source: DatabaseSource,
+  options: DatabaseCaptureOptions,
+) {
+  const origin = yield* ledger.bind(
+    usageDigest(["container-provider-history", source.provider]),
+    binding,
+    source.provider,
+  );
+  const gaps = new Set<string>(origin.coverage.gaps);
+  const listed = yield* Effect.tryPromise(() => listAntigravityDatabases(source.roots)).pipe(
+    Effect.catch(() => Effect.succeed({ databases: [], errors: ["listing"] })),
+  );
+  if (listed.errors.length > 0) gaps.add("antigravity-source-unreadable");
+  const now = options.now ? options.now() : yield* Clock.currentTimeMillis;
+  for (const path of listed.databases) {
+    const key = usageDigest(["antigravity-database", path]);
+    const saved = yield* ledger.checkpoint(key);
+    const previous = saved ? decodeHighWater(saved) : undefined;
+    if (previous === undefined && options.baseline) {
+      const high = yield* Effect.try(() => antigravityHighWater(path)).pipe(Effect.option);
+      if (high._tag === "None") gaps.add("antigravity-source-unreadable");
+      else
+        yield* ledger.transaction(
+          ledger.saveCheckpoint(key, usageCanonical({ ...high.value, ordinal: now })),
+        );
+      continue;
+    }
+    const read = yield* Effect.tryPromise(() => readAntigravityDatabase(path, previous)).pipe(
+      Effect.option,
+    );
+    if (read._tag === "None") {
+      gaps.add("antigravity-source-unreadable");
+      continue;
+    }
+    const ordinal = Math.max(now, (previous?.ordinal ?? 0) + 1);
+    const facts: MeterFact[] = [];
+    for (const generation of read.value.generations) {
+      const metered = meterAntigravityGeneration(generation);
+      for (const gap of metered.gaps) gaps.add(gap);
+      for (const fact of metered.facts)
+        if (
+          options.floor === undefined ||
+          fact.time.kind !== "instant" ||
+          Date.parse(fact.time.at) >= options.floor
+        )
+          facts.push(fact);
+    }
+    const position = usageDigest([source.provider, path]);
+    const written = yield* ledger
+      .transaction(
+        Effect.gen(function* () {
+          if (options.ledgerId && (yield* ledger.metadata).ledgerId !== options.ledgerId)
+            return yield* new UsageLedgerError({ code: "ledger-restarted" });
+          for (const fact of facts)
+            yield* ledger.capture({ ...fact, originId: origin.originId }, position, ordinal);
+          yield* ledger.saveCheckpoint(key, usageCanonical({ ...read.value.high, ordinal }));
+        }),
+      )
+      .pipe(
+        Effect.as(true),
+        Effect.catchCause(() => Effect.succeed(false)),
+      );
+    if (!written) gaps.add("source-capture-failed");
+  }
+  const latest = (yield* ledger.origins).find((item) => item.originId === origin.originId);
+  for (const gap of latest?.coverage.gaps ?? []) gaps.add(gap);
+  yield* ledger.coverage(origin.originId, {
+    state: "partial",
+    since: origin.coverage.since,
+    through: null,
+    gaps: [...gaps].slice(0, 32),
+  });
+});
 
 export const captureDatabaseSource = Effect.fnUntraced(function* (
   ledger: UsageLedger,
@@ -78,6 +164,8 @@ export const captureDatabaseSource = Effect.fnUntraced(function* (
   source: DatabaseSource,
   options: DatabaseCaptureOptions = {},
 ) {
+  if (source.provider === "antigravity")
+    return yield* captureAntigravity(ledger, binding, source, options);
   const origin = yield* ledger.bind(
     usageDigest(["container-provider-history", source.provider]),
     binding,
