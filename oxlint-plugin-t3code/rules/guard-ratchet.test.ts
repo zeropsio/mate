@@ -21,7 +21,12 @@ const check = (assertion: string) => {
     ${assertion}
   `,
     ],
-    { cwd: new URL("../", import.meta.url), encoding: "utf8" },
+    {
+      cwd: new URL("../", import.meta.url),
+      encoding: "utf8",
+      // Synthetic repositories own their baseline; CI cases set their event explicitly.
+      env: { ...process.env, CI: "false", GITHUB_ACTIONS: "false", GITHUB_EVENT_PATH: "" },
+    },
   );
   assert.equal(result.status, 0, result.stdout + result.stderr);
 };
