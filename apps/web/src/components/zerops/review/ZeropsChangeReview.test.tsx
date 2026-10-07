@@ -3,7 +3,11 @@
  * merge did to the project's environments, from the files it changed, and never offers a release;
  * a code change still hands over to the release production waits for.
  */
-import { changeReadout, releaseOffer, type FlowPullRequest } from "@t3tools/client-runtime/zerops";
+import {
+  changeReadout,
+  RELEASE_NOTHING_NEW_ON_MAIN,
+  type FlowPullRequest,
+} from "@t3tools/client-runtime/zerops";
 import type { ChangeDetailResponse, ChangeFile, HqChange } from "@t3tools/shared/hqChanges";
 import { HqError } from "@t3tools/client-runtime/zerops/hq";
 import { Window } from "happy-dom";
@@ -29,6 +33,7 @@ import {
  */
 const account = vi.hoisted(() => ({
   changes: new Map<string, unknown>(),
+  flowPull: undefined as FlowPullRequest | undefined,
   reads: [] as Array<string>,
   readError: null as unknown,
   verbs: [] as Array<readonly unknown[]>,
@@ -41,7 +46,23 @@ vi.mock("~/zerops/projectFlows", () => ({
     readFailure: undefined,
     groupsRead: false,
     knownGroups: new Set(),
-    flows: new Map(),
+    flows:
+      account.flowPull === undefined
+        ? new Map()
+        : new Map([
+            [
+              "group-orchard",
+              {
+                pullRequests: [account.flowPull],
+                merged: [],
+                repos: [],
+                environmentInputs: [],
+                releases: [],
+                releasesKnown: true,
+                release: { gate: { allowed: false, reason: "Nothing to release." }, contents: [] },
+              },
+            ],
+          ]),
     releaseFailures: new Map(),
   }),
   useMateNames: () => new Map(),
@@ -203,7 +224,7 @@ const DEVELOPS: ZeropsChangeOffers = {
 
 /** The review of `pull` in a project with a stage and a production two changes behind `main`. */
 function render(
-  pull: FlowPullRequest,
+  pull: ChangeReviewViewProps["pull"],
   files: ReadonlyArray<ChangeFile>,
   over: Partial<ChangeReviewViewProps> = {},
 ): string {
@@ -307,7 +328,6 @@ describe("ChangeReviewView: a change after its merge", () => {
     document.body.innerHTML = markup;
     const job = document.querySelector('[data-zerops-job-state="queued"]');
     expect(job?.closest("section")?.querySelector("h3")?.textContent).toBe("Where");
-    expect(job?.closest("section")?.parentElement?.classList.contains("rv-body")).toBe(true);
     expect(document.body.textContent.match(/queued behind/g)).toHaveLength(1);
     expect(document.body.textContent.match(/Production could not be read/g)).toHaveLength(1);
   });
@@ -337,7 +357,9 @@ describe("ChangeReviewView: a change after its merge", () => {
     const html = render(merged(), [changed("src/mail.ts")], {
       back: { label: "Roll back", onPress: noop },
     });
-    expect(html).toMatch(/<button class="rv-back" data-review-back=""[^>]*>[\s\S]*?Roll back/u);
+    const document = new Window().document;
+    document.body.innerHTML = html;
+    expect(document.querySelector("[data-review-back]")?.textContent).toContain("Roll back");
     expect(html).not.toContain("data-review-primary");
   });
 
@@ -350,16 +372,9 @@ describe("ChangeReviewView: a change after its merge", () => {
 
   it("offers no Review release when production already runs the merged squash commit", () => {
     // The change's branch head differs from the squash on main; production runs the squash.
-    const offer = releaseOffer({
-      candidate: new Map([["app", MAIN]]),
-      production: new Map([["app", MAIN.slice(0, 7)]]),
-      permission: { allowed: true },
-      tags: ["v0.1.0"],
-      live: { state: "known", moved: [] },
-    });
     const html = render(merged(), [changed("src/mail.ts")], {
       waitingForProduction: 0,
-      release: offer.gate,
+      release: { allowed: false, reason: RELEASE_NOTHING_NEW_ON_MAIN },
     });
     expect(footOf(html)).not.toContain("Review release");
     expect(footOf(html)).toContain("Production already runs what is merged.");
@@ -368,7 +383,11 @@ describe("ChangeReviewView: a change after its merge", () => {
 });
 
 /** The review's foot: what its buttons say. */
-const footOf = (html: string) => html.slice(html.indexOf('<footer class="rv-foot">'));
+const footOf = (html: string) => {
+  const document = new Window().document;
+  document.body.innerHTML = html;
+  return document.querySelector("footer")?.innerHTML ?? "";
+};
 
 describe("ChangeReviewView: an open change", () => {
   it("says since when HQ does not answer instead of silently removing its actions", () => {
@@ -512,6 +531,7 @@ const API_CHANGE: HqChange = {
 describe("ZeropsChangeReview: a change its project's flow does not hold yet", () => {
   afterEach(() => {
     account.changes.clear();
+    account.flowPull = undefined;
     account.readError = null;
     account.reads.length = 0;
     account.verbs.length = 0;
@@ -522,31 +542,40 @@ describe("ZeropsChangeReview: a change its project's flow does not hold yet", ()
   });
 
   /** The review of API_CHANGE, mounted; `test` reads what it drew, and presses what it may. */
-  async function reviewed(test: (host: TestNode) => void | Promise<void>): Promise<void> {
+  async function reviewed(
+    test: (host: TestNode, rerender: () => Promise<void>) => void | Promise<void>,
+  ): Promise<void> {
     account.changes.set("group-orchard/apidev#1", API_CHANGE);
     installTestDom();
     const { createRoot } = await import("react-dom/client");
     const host = document.createElement("div") as unknown as TestNode;
     const root = createRoot(host as unknown as Element);
     const data = reviewAccount(({ link }) => hq.api.change(link));
-    await act(async () => {
-      root.render(
-        createElement(
-          RegistryContext.Provider,
-          { value: data.registry },
+    const rerender = () =>
+      act(async () => {
+        root.render(
           createElement(
-            AccountDataContext,
-            { value: data.data },
-            createElement(ZeropsChangeReview, {
-              target: { kind: "change", groupId: "group-orchard", repository: "apidev", number: 1 },
-              titleId: "t",
-              onClose: noop,
-            }),
+            RegistryContext.Provider,
+            { value: data.registry },
+            createElement(
+              AccountDataContext,
+              { value: data.data },
+              createElement(ZeropsChangeReview, {
+                target: {
+                  kind: "change",
+                  groupId: "group-orchard",
+                  repository: "apidev",
+                  number: 1,
+                },
+                titleId: "t",
+                onClose: noop,
+              }),
+            ),
           ),
-        ),
-      );
-    });
-    await test(host);
+        );
+      });
+    await rerender();
+    await test(host, rerender);
     await act(async () => {
       root.unmount();
     });
@@ -654,6 +683,49 @@ describe("ZeropsChangeReview: a change its project's flow does not hold yet", ()
     });
   });
 
+  it("withholds a previously readable change after HQ explicitly refuses read access", async () => {
+    detail.readout = READ_DETAIL;
+    await reviewed(async (host, rerender) => {
+      expect(host.textContent).toContain(API_CHANGE.title);
+      offers.held.current = {
+        ...DEVELOPS,
+        read: false,
+        comment: false,
+        merge: false,
+        close: false,
+        readRefused: true,
+        why: { read: "You no longer have access to this project." },
+      };
+      await rerender();
+      expect(host.textContent).toContain("You no longer have access to this project.");
+      expect(host.textContent).not.toContain(API_CHANGE.title);
+      expect(host.textContent).not.toContain("src/api.ts");
+      expect(buttonsOf(host, "Merge")).toHaveLength(0);
+      expect(account.verbs).toEqual([]);
+    });
+  });
+
+  it("requires another Close confirmation after a newer head is shown", async () => {
+    account.flowPull = merged({
+      repository: "apidev",
+      number: 1,
+      merged: false,
+      state: "open",
+      headSha: API_CHANGE.head ?? undefined,
+    });
+    detail.readout = READ_DETAIL;
+    await reviewed(async (host, rerender) => {
+      await pressed(host, "Close without merging…");
+      expect(host.textContent).toContain("Close #1 without merging?");
+      account.flowPull = { ...account.flowPull!, headSha: "e".repeat(40) };
+      await rerender();
+      expect(host.textContent).not.toContain("Close #1 without merging?");
+      expect(account.verbs).toEqual([]);
+      await pressed(host, "Close without merging…");
+      expect(host.textContent).toContain("Close #1 without merging?");
+    });
+  });
+
   it("keeps it open when asked to, closing nothing", async () => {
     await reviewed(async (host) => {
       await pressed(host, "Close without merging…");
@@ -710,5 +782,63 @@ describe("the one question after the first merge", () => {
     ],
   ])("is not asked when %s", (_name, pull, over) => {
     expect(textOf(render(pull, [changed("a.ts")], over))).not.toContain("Where should it run?");
+  });
+});
+
+describe("ChangeReviewView: current pipeline evidence and terminal facts", () => {
+  const open = merged({ merged: false, state: "open" });
+  it.each([
+    ["required", "running", "Required checks running", false],
+    ["required", "failed", "Required checks failed", false],
+    ["advisory", "failed", "Ready to merge", true],
+    ["unknown", "failed", "Ready to merge", true],
+  ] as const)(
+    "shows %s %s checks with their identity and holds only required checks",
+    (requirement, state, title, enabled) => {
+      const html = render(
+        {
+          ...open,
+          pipeline: {
+            head: open.headSha!,
+            requirements: "known",
+            checks: [{ id: "unit", name: "Unit tests", requirement, state }],
+          },
+        },
+        [],
+      );
+      const document = new Window().document;
+      document.body.innerHTML = html;
+      expect(document.body.textContent).toContain(title);
+      expect(document.body.textContent).toContain("Unit tests");
+      expect(document.body.textContent).toContain(
+        requirement === "required"
+          ? "Required by repository"
+          : requirement === "advisory"
+            ? "Advisory"
+            : "Requirement unknown",
+      );
+      const button = document.querySelector('[data-zerops-primary-action="Merge"]');
+      expect(button).not.toBeNull();
+      expect(button?.hasAttribute("disabled")).toBe(!enabled);
+    },
+  );
+  it("shows unknown repository requirements for a ready clean change", () => {
+    expect(textOf(render(open, []))).toContain("Repository check requirements are unknown.");
+  });
+  it("keeps an authoritative terminal outcome when an old local press and lost offers remain", () => {
+    const html = render(merged({ merged: false, state: "closed" }), [], {
+      press: { kind: "done" },
+      closing: { kind: "asked" },
+      offers: {
+        ...DEVELOPS,
+        merge: false,
+        close: false,
+        why: { merge: "No permission to merge." },
+      },
+    });
+    expect(textOf(html)).toContain("Closed without merging");
+    expect(textOf(html)).not.toContain("Merged into main");
+    expect(textOf(html)).not.toContain("No permission to merge.");
+    expect(html).not.toContain("data-review-primary");
   });
 });

@@ -116,6 +116,52 @@ describe("D: change review, comments and merge", () => {
       }),
     );
 
+    // A confirmation is overtaken by a colleague's merge: its authoritative result must win.
+    it.effect(
+      "a colleague merge ends an open Close confirmation without claiming a local close",
+      () =>
+        Effect.gen(function* () {
+          const { s, change, r } = yield* setup;
+          yield* s.given.signedIn;
+          yield* r.open;
+          yield* r.mergeEnabled;
+          yield* r.askClose;
+          yield* r.text("Close #1 without merging?");
+          yield* change.colleagueMerges;
+          yield* r.text("Merged into main");
+          yield* r.cannotClose;
+          yield* r.cannotMerge;
+          yield* s.then.noReload;
+          yield* s.then.noExternalNetwork;
+        }),
+    );
+
+    // New work pushed after the question needs a new confirmation before it may be closed.
+    it.effect(
+      "a newer push cancels Close confirmation; closing the reviewed head keeps its branch",
+      () =>
+        Effect.gen(function* () {
+          const { s, change, r } = yield* setup;
+          yield* s.given.signedIn;
+          yield* r.open;
+          yield* r.mergeEnabled;
+          yield* r.askClose;
+          yield* r.text("Close #1 without merging?");
+          yield* change.pushAgain;
+          yield* r.text("tax.txt");
+          yield* r.text("Draft");
+          yield* r.askClose;
+          yield* r.text("Close #1 without merging?");
+          yield* r.confirmClose;
+          yield* r.text("Closed without merging");
+          yield* r.cannotMerge;
+          yield* r.cannotClose;
+          yield* change.closedWithBranch;
+          yield* s.then.noReload;
+          yield* s.then.noExternalNetwork;
+        }),
+    );
+
     // Catches a read-only colleague being offered Merge despite HQ denying development rights.
     it.effect("a reader can review but cannot merge", () =>
       Effect.gen(function* () {

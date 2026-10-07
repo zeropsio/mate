@@ -3,7 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { isRecipeProposal } from "./projectFlow.ts";
 import { recipeReach, type RecipeReach } from "./recipeReach.ts";
-import { releaseOffer, RELEASE_NOTHING_NEW_ON_MAIN } from "./release.ts";
+import { RELEASE_NOTHING_NEW_ON_MAIN, type ReleaseGate } from "./release.ts";
 
 /** HQ's rule refusing the person the release, in its words (`releasePermission`). */
 const NOT_A_RELEASER = {
@@ -48,63 +48,39 @@ function change(over: Partial<ChangeReviewInput> = {}): ChangeReviewInput {
 
 const pull = (over: Partial<ChangeReviewInput["pull"]>) => ({ ...change().pull, ...over });
 
-describe("change and release reviews share the release verdict", () => {
-  const squash = "a".repeat(40);
-  const later = "b".repeat(40);
-  const previous = "c".repeat(40);
-
-  it.each([
-    { name: "merged + released", merged: true, main: squash, production: squash, allowed: false },
-    {
-      name: "merged + not released",
-      merged: true,
-      main: squash,
-      production: previous,
-      allowed: true,
+describe("change and release reviews use HQ's release verdict", () => {
+  it.each([true, false])(
+    "keeps HQ's release gate when allowed is %s; Merge has ended",
+    (allowed) => {
+      const gate: ReleaseGate = allowed
+        ? { allowed: true }
+        : { allowed: false, reason: RELEASE_NOTHING_NEW_ON_MAIN };
+      const dialog = releaseReview({
+        tag: "v0.1.1",
+        gate,
+        permission: { allowed: true },
+        changes: allowed ? 1 : 0,
+        onStage: undefined,
+        services: ["app"],
+        replaces: { kind: "release", tag: "v0.1.0" },
+        outcome: { kind: "offered" },
+        now: NOW,
+      });
+      const footer = changeReview(
+        change({
+          pull: pull({ merged: true }),
+          waiting: { count: allowed ? 1 : 0, live: "v0.1.0" },
+          release: gate,
+        }),
+      );
+      expect(dialog.verdict.title).toBe(allowed ? "Ready to release" : "Nothing to release");
+      expect(footer.primary).toBeUndefined();
+      if (!allowed) {
+        expect(footer.consequence).toBe(RELEASE_NOTHING_NEW_ON_MAIN);
+        expect(footer.verdict.why).not.toContain("waits for production");
+      }
     },
-    { name: "not merged", merged: false, main: previous, production: previous, allowed: false },
-    {
-      name: "released with later merges",
-      merged: true,
-      main: later,
-      production: squash,
-      allowed: true,
-    },
-  ])("$name", ({ merged, main, production, allowed }) => {
-    const offer = releaseOffer({
-      candidate: new Map([["app", main]]),
-      production: new Map([["app", production.slice(0, 7)]]),
-      permission: { allowed: true },
-      tags: ["v0.1.0"],
-      live: { state: "known", moved: [] },
-    });
-    const dialog = releaseReview({
-      tag: offer.suggestion,
-      gate: offer.gate,
-      permission: { allowed: true },
-      changes: allowed ? 1 : 0,
-      onStage: undefined,
-      services: ["app"],
-      replaces: { kind: "release", tag: "v0.1.0" },
-      outcome: { kind: "offered" },
-      now: NOW,
-    });
-    const footer = changeReview(
-      change({
-        pull: pull({ merged }),
-        waiting: { count: allowed ? 1 : 0, live: "v0.1.0" },
-        release: offer.gate,
-      }),
-    );
-    expect(offer.gate.allowed).toBe(allowed);
-    expect(dialog.verdict.title).toBe(allowed ? "Ready to release" : "Nothing to release");
-    // A merge ends its review: the release has its own doors (the owner, 2026-10-05).
-    expect(footer.primary?.label).toBe(merged ? undefined : "Merge");
-    if (merged && !allowed) {
-      expect(footer.consequence).toBe(RELEASE_NOTHING_NEW_ON_MAIN);
-      expect(footer.verdict.why).not.toContain("waits for production");
-    }
-  });
+  );
 });
 
 describe("changeReview: the verdict comes first (R2)", () => {
@@ -1308,4 +1284,111 @@ describe("changeReview: where should it run (the one question)", () => {
       changeReview(first({ addable })).question?.options.map((option) => option.label),
     ).toEqual(labels);
   });
+});
+
+describe("changeReview: repository pipeline evidence", () => {
+  const head = "a".repeat(40);
+  const pipeline = (
+    requirement: "required" | "advisory" | "unknown",
+    state: "running" | "failed" | "passed" | "unknown",
+  ) => ({
+    head,
+    requirements: "known" as const,
+    checks: [{ id: "unit", name: "Unit tests", requirement, state }],
+  });
+  it.each([
+    ["required", "running", false, "checks-running"],
+    ["required", "failed", false, "checks-failed"],
+    ["required", "unknown", false, "checks-unknown"],
+    ["required", "passed", true, "ready"],
+    ["advisory", "running", true, "ready"],
+    ["advisory", "failed", true, "ready"],
+    ["unknown", "failed", true, "ready"],
+  ] as const)(
+    "%s %s checks only hold Merge when the repository requires them",
+    (requirement, state, enabled, verdict) => {
+      const review = changeReview(
+        change({ pull: pull({ headSha: head, pipeline: pipeline(requirement, state) }) }),
+      );
+      expect(review.verdict.state).toBe(verdict);
+      expect(review.primary?.enabled).toBe(enabled);
+      expect(review.pipeline?.checks).toEqual(pipeline(requirement, state).checks);
+      if (!enabled) {
+        expect(review.verdict.why).toContain("Unit tests");
+        expect(review.primary?.safe).toBe(false);
+      }
+    },
+  );
+  it("does not infer known requirements or passed checks from a ready clean change", () => {
+    const review = changeReview(change({ pull: pull({ ready: true }) }));
+    expect(review.pipeline?.why).toBe("Repository check requirements are unknown.");
+    expect(review.pipeline?.checks).toEqual([]);
+    expect(review.primary?.enabled).toBe(true);
+  });
+  it("distinguishes a repository with no checks from unknown requirements", () => {
+    const review = changeReview(
+      change({
+        pull: pull({ headSha: head, pipeline: { head, requirements: "known", checks: [] } }),
+      }),
+    );
+    expect(review.pipeline?.why).toBe("No pipeline checks.");
+    expect(review.primary?.enabled).toBe(true);
+  });
+
+  it.each(["passed", "failed", "running"] as const)(
+    "does not apply %s checks from a different head",
+    (state) => {
+      const review = changeReview(
+        change({ pull: pull({ headSha: "b".repeat(40), pipeline: pipeline("required", state) }) }),
+      );
+      expect(review.pipeline?.why).toBe("Pipeline checks have not been read for this head.");
+      expect(review.pipeline?.checks[0]).toMatchObject({
+        name: "Unit tests",
+        requirement: "unknown",
+        state: "unknown",
+      });
+      expect(review.primary?.enabled).toBe(true);
+    },
+  );
+});
+
+describe("changeReview: competing terminal outcomes and permissions", () => {
+  it.each([
+    [
+      "merged",
+      { merged: true },
+      { kind: "refused", reason: "Already merged." },
+      { kind: "running" },
+    ],
+    ["merged", { merged: true }, { kind: "idle" }, { kind: "done" }],
+    ["closed", { state: "closed" }, { kind: "running" }, { kind: "asked" }],
+    ["closed", { state: "closed" }, { kind: "done" }, { kind: "idle" }],
+  ] as const)(
+    "owner-proven %s ends pending or outdated local presses",
+    (state, over, press, close) => {
+      const review = changeReview(change({ pull: pull(over), press, close }));
+      expect(review.verdict.state).toBe(state);
+      expect(review.primary).toBeUndefined();
+      expect(review.secondary).toBeUndefined();
+      expect(review.verdict.why).not.toContain("You closed it");
+    },
+  );
+  it.each([false, undefined] as const)(
+    "cannot confirm or retry Close after permission becomes %s",
+    (close) => {
+      for (const kind of ["asked", "refused"] as const) {
+        const review = changeReview(
+          change({
+            close: kind === "asked" ? { kind } : { kind, reason: "No access." },
+            offered: close === undefined ? undefined : { merge: true, close },
+          }),
+        );
+        expect(review.primary?.enabled).toBe(false);
+        expect(review.primary?.safe).toBe(false);
+        expect(review.consequence).toContain(
+          close === undefined ? "HQ has not said" : "HQ no longer offers",
+        );
+      }
+    },
+  );
 });

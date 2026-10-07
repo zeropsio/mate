@@ -51,6 +51,9 @@ export type ReviewState =
   | "conflict"
   | "empty"
   | "checking"
+  | "checks-running"
+  | "checks-failed"
+  | "checks-unknown"
   | "merging"
   | "merge-refused"
   | "merged"
@@ -150,7 +153,25 @@ export interface ReviewQuestion {
   readonly dismiss: string;
 }
 
+/** Pipeline evidence for one shown head. Only the forge/repository may mark a check required. */
+interface ChangePipeline {
+  readonly head: string;
+  readonly requirements: "known" | "unknown";
+  readonly checks: ReadonlyArray<{
+    readonly id: string;
+    readonly name: string;
+    readonly requirement: "required" | "advisory" | "unknown";
+    readonly state: "running" | "passed" | "failed" | "unknown";
+  }>;
+}
+
 export interface ReviewModel {
+  readonly pipeline?:
+    | {
+        readonly checks: ChangePipeline["checks"];
+        readonly why: string | undefined;
+      }
+    | undefined;
   readonly verdict: ReviewVerdict;
   /** What pressing does, said beside the button — or, once it is over, where things stand. */
   readonly consequence: string;
@@ -215,6 +236,8 @@ function baseName(path: string): string {
 export interface ChangeReviewInput {
   readonly pull: {
     readonly number: number;
+    readonly headSha?: string | undefined;
+    readonly pipeline?: ChangePipeline | undefined;
     readonly kind: FlowPullRequestKind;
     readonly baseBranch: string;
     readonly mergeability: MergeabilityKind;
@@ -315,7 +338,12 @@ function closeReview(
 ): ReviewModel {
   const { pull } = input;
   const number = `#${String(pull.number)}`;
-  const consequence = `Closes ${number} for good; ${input.mateName}'s branch stays as it is.`;
+  const allowed = input.offered?.close === true;
+  const consequence = allowed
+    ? `Closes ${number} for good; ${input.mateName}'s branch stays as it is.`
+    : input.offered === undefined
+      ? "Closing waits: HQ has not said whether you may close this change."
+      : "HQ no longer offers Close for this change.";
   const primary = (enabled: boolean): ReviewPrimary => ({
     label: CLOSE_LABEL,
     enabled,
@@ -332,7 +360,7 @@ function closeReview(
           fix: undefined,
         },
         consequence,
-        primary: primary(true),
+        primary: primary(allowed),
         secondary: KEEP_OPEN,
       };
     case "running":
@@ -358,7 +386,7 @@ function closeReview(
         },
         consequence,
         // A second try is the person's deliberate press, as Merge's is.
-        primary: primary(true),
+        primary: primary(allowed),
         secondary: KEEP_OPEN,
       };
   }
@@ -456,6 +484,33 @@ function sentences(...parts: ReadonlyArray<string | undefined>): string {
   return parts.filter((part) => part !== undefined && part.length > 0).join(" ");
 }
 
+function changePipelineOf(pull: ChangeReviewInput["pull"]): NonNullable<ReviewModel["pipeline"]> {
+  const pipeline = pull.pipeline;
+  if (pipeline === undefined) {
+    return { checks: [], why: "Repository check requirements are unknown." };
+  }
+  if (pull.headSha === undefined || pipeline.head !== pull.headSha) {
+    return {
+      checks: pipeline.checks.map((check) => ({
+        ...check,
+        requirement: "unknown",
+        state: "unknown",
+      })),
+      why: "Pipeline checks have not been read for this head.",
+    };
+  }
+  return {
+    checks: pipeline.checks,
+    why:
+      pipeline.requirements === "unknown" ||
+      pipeline.checks.some((check) => check.requirement === "unknown")
+        ? "Repository check requirements are unknown."
+        : pipeline.checks.length === 0
+          ? "No pipeline checks."
+          : undefined,
+  };
+}
+
 /** The change's own verdict, before anything was pressed. */
 function changeVerdictOf(input: ChangeReviewInput): {
   readonly verdict: ReviewVerdict;
@@ -537,6 +592,37 @@ function changeVerdictOf(input: ChangeReviewInput): {
     };
   }
 
+  const required = changePipelineOf(pull).checks.filter(
+    (check) => check.requirement === "required" && check.state !== "passed",
+  );
+  if (required.length > 0) {
+    const failed = required.some((check) => check.state === "failed");
+    const unknown = required.some((check) => check.state === "unknown");
+    const names = listed(required.map((check) => check.name));
+    return {
+      enabled: false,
+      verdict: {
+        state: failed ? "checks-failed" : unknown ? "checks-unknown" : "checks-running",
+        tone: failed ? "failed" : unknown ? "quiet" : "busy",
+        title: failed
+          ? "Required checks failed"
+          : unknown
+            ? "Required checks unknown"
+            : "Required checks running",
+        why: `${names}: required by the repository. ${failed ? "Ask the Mate to fix the failed checks and push again." : unknown ? "Wait for current check evidence." : "Wait for the checks to finish."}`,
+        fix: failed
+          ? {
+              verb: "fix it",
+              problem: {
+                what: `Required pipeline checks failed for change #${String(pull.number)}: ${names}`,
+                ask: "Fix the failed checks and deliver the change again.",
+              },
+            }
+          : undefined,
+      },
+    };
+  }
+
   const commits =
     input.commits === undefined ? undefined : count(input.commits, "commit", "commits");
   if (pull.behind) {
@@ -601,12 +687,21 @@ function whereShouldItRun(input: ChangeReviewInput): ReviewQuestion | undefined 
   };
 }
 
-export function changeReview(input: ChangeReviewInput): ReviewModel {
+function changeReviewModel(input: ChangeReviewInput): ReviewModel {
   const { pull } = input;
   const base = pull.baseBranch;
   const press = input.press ?? { kind: "idle" };
   const close = input.close ?? { kind: "idle" };
 
+  // Owner-proven terminal facts win over an outdated local press.
+  if (!pull.merged && pull.state === "closed") {
+    return closedReview(
+      base,
+      close.kind === "done"
+        ? "You closed it; its branch is still there"
+        : "Somebody closed it; its branch is still there",
+    );
+  }
   if (pull.merged || press.kind === "done") {
     const age =
       pull.mergedAt === undefined
@@ -652,8 +747,6 @@ export function changeReview(input: ChangeReviewInput): ReviewModel {
 
   // Closed by this press: said at once, before HQ's stream brings it closed.
   if (close.kind === "done") return closedReview(base, "You closed it; its branch is still there");
-  if (pull.state === "closed")
-    return closedReview(base, "Somebody closed it; its branch is still there");
   if (close.kind !== "idle") return closeReview(input, close);
   // Close without merging, quiet beside Merge where HQ's rule offers it — never while Merge runs.
   const secondary = input.offered?.close === true ? CLOSE_OFFER : undefined;
@@ -684,6 +777,9 @@ export function changeReview(input: ChangeReviewInput): ReviewModel {
     behind: "Merging waits until the conflict is resolved.",
     conflict: "Merging waits until the conflict is resolved.",
     checking: "Merging waits until HQ knows it merges cleanly.",
+    "checks-running": "Merging waits for the repository's required checks to finish.",
+    "checks-failed": "Merging waits until the Mate fixes the required checks and pushes again.",
+    "checks-unknown": "Merging waits for evidence of the repository's required checks.",
   };
   // What holds it back, said beside it: the change's own trouble, or — for a change nothing is
   // wrong with — its files still being read, which Merge waits for.
@@ -744,6 +840,11 @@ export function changeReview(input: ChangeReviewInput): ReviewModel {
     },
     secondary,
   };
+}
+
+/** One review policy for every client; absent pipeline evidence stays visibly unknown. */
+export function changeReview(input: ChangeReviewInput): ReviewModel {
+  return { ...changeReviewModel(input), pipeline: changePipelineOf(input.pull) };
 }
 
 // ---------------------------------------------------------------------------
