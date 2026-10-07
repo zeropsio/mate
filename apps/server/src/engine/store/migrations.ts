@@ -11,6 +11,7 @@ import Migration0001 from "./Migrations/0001_EngineCore.ts";
 import Migration0002 from "./Migrations/0002_EngineWakeArming.ts";
 import Migration0003 from "./Migrations/0003_EngineEffectSettling.ts";
 import Migration0004 from "./Migrations/0004_EngineWakeRetry.ts";
+import Migration0005 from "./Migrations/0005_EngineConversationAgent.ts";
 
 export const ENGINE_MIGRATIONS_TABLE = "engine_migrations";
 
@@ -19,6 +20,7 @@ const migrations = {
   "2_EngineWakeArming": Migration0002,
   "3_EngineEffectSettling": Migration0003,
   "4_EngineWakeRetry": Migration0004,
+  "5_EngineConversationAgent": Migration0005,
 } as const;
 
 const run = Migrator.make({});

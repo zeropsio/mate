@@ -379,8 +379,14 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
       };
     case "SessionClosed":
       return state.session?.id === event.sessionId ? { ...state, session: null } : state;
+    case "AgentAssigned":
+      return { ...state, agent: event.agent, model: event.agent.model ?? state.model };
     case "ModelSwitched":
-      return { ...state, model: event.model };
+      return {
+        ...state,
+        model: event.model,
+        agent: state.agent === null ? null : { ...state.agent, model: event.model },
+      };
     case "ConversationArchived":
       return { ...state, archived: true };
     case "ConversationUnarchived":

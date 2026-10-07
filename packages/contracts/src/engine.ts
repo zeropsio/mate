@@ -471,6 +471,32 @@ export type Request = typeof Request.Type;
 
 // ── the conversation row ────────────────────────────────────────────────────────────────────
 
+/** Who the conversation's agent is to people: the Mate, or a crewmate of it. */
+export const AgentProfile = forwardCompatibleUnion({
+  key: "kind",
+  known: ["mate", "crewmate", "unknown"],
+  members: [
+    Schema.Struct({ kind: Schema.Literal("mate") }),
+    Schema.Struct({ kind: Schema.Literal("crewmate"), id: Schema.String, name: Schema.String }),
+  ],
+  fallback: unknownKind,
+  toFallback: toUnknownKind,
+});
+export type AgentProfile = typeof AgentProfile.Type;
+
+/**
+ * The agent a conversation belongs to: the provider instance and driver it runs on, the model it
+ * runs, and its profile. A client decides what Send may do from it alone (whose sign-in, which
+ * driver), never from a model name.
+ */
+export const ConversationAgent = Schema.Struct({
+  instanceId: Schema.String,
+  driver: Schema.String,
+  model: Schema.NullOr(Schema.String),
+  profile: AgentProfile,
+});
+export type ConversationAgent = typeof ConversationAgent.Type;
+
 export const ConversationRowState = forwardCompatibleUnion({
   key: "kind",
   known: ["idle", "queued", "working", "waiting", "paused", "failed", "unknown"],
@@ -498,10 +524,8 @@ export type ConversationRowState = typeof ConversationRowState.Type;
 /** The menu row, the face, HQ's relayed row. */
 export const ConversationRow = Schema.Struct({
   conversationId: ConversationId,
-  agent: Schema.Union([
-    Schema.Struct({ kind: Schema.Literal("mate") }),
-    Schema.Struct({ kind: Schema.Literal("crewmate"), id: Schema.String, name: Schema.String }),
-  ]),
+  /** Null until the conversation is given its agent. */
+  agent: Schema.NullOr(ConversationAgent),
   revision: Schema.Struct({ environmentId: Schema.String, epoch: Schema.Int, seq: Schema.Int }),
   state: ConversationRowState,
   activeRunId: Schema.NullOr(RunId),
@@ -672,6 +696,8 @@ export const SessionClosed = event("SessionClosed", {
 });
 /** A usage limit whose reset nobody knew stops holding the queue (the person wrote again). */
 export const UsagePauseLifted = event("UsagePauseLifted", { reason: Schema.String });
+/** The conversation is given the agent it belongs to (and runs that agent's model). */
+export const AgentAssigned = event("AgentAssigned", { agent: ConversationAgent, by: Principal });
 export const ModelSwitched = event("ModelSwitched", { model: Schema.String, by: Principal });
 export const ConversationArchived = event("ConversationArchived", { by: Principal });
 export const ConversationUnarchived = event("ConversationUnarchived", { by: Principal });
@@ -727,6 +753,7 @@ const knownEvents = [
   SessionOpened,
   SessionClosed,
   UsagePauseLifted,
+  AgentAssigned,
   ModelSwitched,
   ConversationArchived,
   ConversationUnarchived,

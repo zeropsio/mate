@@ -1200,3 +1200,37 @@ describe("decide: helpers and jobs are items under their run", () => {
     expect(log.at(-1)).toMatchObject({ _tag: "ItemOpened", runId: r(1), key: "w1" });
   });
 });
+
+describe("decide: the conversation holds the agent it belongs to", () => {
+  const agent = {
+    instanceId: "claude-ana",
+    driver: "claudeAgent",
+    model: "opus",
+    profile: { kind: "mate" },
+  } as const;
+  it("a conversation given its agent runs that agent's model and opens sessions on its instance", () => {
+    const { state, log } = playAll([{ _tag: "AssignAgent", agent }, send("go")]);
+    expect(state.agent).toEqual(agent);
+    expect(state.model).toBe("opus");
+    expect(log.find((e) => e._tag === "AgentAssigned")).toMatchObject({ agent, by: ana });
+    const scene = play([{ _tag: "AssignAgent", agent }, send("go")]);
+    expect(scene.effects[0]).toMatchObject({
+      kind: "session.open",
+      payload: { instanceId: "claude-ana", driver: "claudeAgent", model: "opus" },
+    });
+  });
+  it("a model switch is the conversation agent's model", () => {
+    const { state } = playAll([
+      { _tag: "AssignAgent", agent },
+      { _tag: "SwitchModel", model: "sonnet" },
+    ]);
+    expect(state.agent).toEqual({ ...agent, model: "sonnet" });
+  });
+  it("giving a conversation the agent it already has records nothing", () => {
+    const scene = play([
+      { _tag: "AssignAgent", agent },
+      { _tag: "AssignAgent", agent },
+    ]);
+    expect(scene.events).toEqual([]);
+  });
+});

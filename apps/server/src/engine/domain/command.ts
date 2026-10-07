@@ -10,6 +10,7 @@
  */
 import type {
   BootId,
+  ConversationAgent,
   CommandId,
   CommandResult,
   ConversationId,
@@ -135,6 +136,8 @@ export type Command =
     }
   | { readonly _tag: "Steer"; readonly runId: RunId; readonly text: string }
   | { readonly _tag: "SwitchModel"; readonly model: string }
+  /** The conversation is given the agent it belongs to: instance, driver, model and profile. */
+  | { readonly _tag: "AssignAgent"; readonly agent: ConversationAgent }
   | { readonly _tag: "Archive" }
   | { readonly _tag: "Unarchive" }
   | {

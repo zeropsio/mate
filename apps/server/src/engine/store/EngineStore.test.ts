@@ -1,6 +1,13 @@
 import { assert, describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import { CommandId, ConversationId, type SessionId, type TurnHandle } from "@t3tools/contracts";
+import * as Schema from "effect/Schema";
+import {
+  CommandId,
+  ConversationAgent,
+  ConversationId,
+  type SessionId,
+  type TurnHandle,
+} from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
@@ -310,6 +317,30 @@ describe("EngineStore", () => {
 
 const note = (key: string) =>
   ({ kind: "note", text: `note ${key}`, streaming: true, answer: false }) as const;
+
+const decodeAgent = Schema.decodeUnknownSync(Schema.fromJsonString(ConversationAgent));
+
+describe("EngineStore: the conversation's row", () => {
+  it.layer(sqliteWithEngineTables)("agent", (it) => {
+    it.effect("holds the agent the conversation belongs to", () =>
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        const store = yield* makeEngineStore();
+        const agent = {
+          instanceId: "codex-bo",
+          driver: "codex",
+          model: "gpt-5",
+          profile: { kind: "crewmate", id: "c1", name: "Fen" },
+        } as const;
+        yield* drive(store, initialState(conversation), [{ _tag: "AssignAgent", agent }]);
+        const [row] = yield* sql<{ readonly agent_json: string | null }>`
+          SELECT agent_json FROM engine_conversation WHERE conversation_id = ${conversation}
+        `;
+        expect(decodeAgent(row!.agent_json!)).toEqual(agent);
+      }),
+    );
+  });
+});
 
 describe("EngineStore: what it writes, it can read back", () => {
   it.effect(

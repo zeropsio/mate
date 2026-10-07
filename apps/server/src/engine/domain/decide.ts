@@ -189,6 +189,12 @@ const handle = (b: StepBuilder, command: Command): void => {
         b.emit({ _tag: "ModelSwitched", model: command.model, by: b.envelope.principal });
       }
       return;
+    case "AssignAgent":
+      if (b.state.archived) throw new Rejected("archived");
+      if (JSON.stringify(b.state.agent) !== JSON.stringify(command.agent)) {
+        b.emit({ _tag: "AgentAssigned", agent: command.agent, by: b.envelope.principal });
+      }
+      return;
     case "Archive":
       if (!b.state.archived) b.emit({ _tag: "ConversationArchived", by: b.envelope.principal });
       return;
@@ -273,6 +279,8 @@ const dispatch = (b: StepBuilder, run: RunRecord, justOpened = false): void => {
   }
   b.effect("session.open", run.id, run.sessionOpenAttempts + 1, run.id, {
     runId: run.id,
+    instanceId: b.state.agent?.instanceId ?? null,
+    driver: b.state.agent?.driver ?? null,
     model: b.state.model,
     resume: b.state.lastNativeRef,
     rotateFrom: session?.id ?? null,

@@ -6,6 +6,7 @@
  * @module engine/domain/state
  */
 import type {
+  ConversationAgent,
   ConversationId,
   EffectId,
   ItemActor,
@@ -127,6 +128,8 @@ export interface ConversationState {
   readonly conversationId: ConversationId;
   readonly headSeq: number;
   readonly archived: boolean;
+  /** The agent the conversation belongs to, once assigned. */
+  readonly agent: ConversationAgent | null;
   readonly model: string | null;
   readonly nextRunOrdinal: number;
   readonly runs: Readonly<Record<string, RunRecord>>;
@@ -167,6 +170,7 @@ export const initialState = (conversationId: ConversationId): ConversationState 
   conversationId,
   headSeq: 0,
   archived: false,
+  agent: null,
   model: null,
   nextRunOrdinal: 1,
   runs: {},

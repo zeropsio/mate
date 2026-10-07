@@ -286,6 +286,7 @@ export const makeEngineStore = Effect.fn("makeEngineStore")(function* (
         return sql`
           UPDATE engine_wake SET state = 'cancelled' WHERE wake_id = ${event.wakeId}
         `.pipe(Effect.asVoid);
+      case "AgentAssigned":
       case "ModelSwitched":
       case "UsagePauseLifted":
       case "ConversationArchived":
@@ -412,18 +413,18 @@ export const makeEngineStore = Effect.fn("makeEngineStore")(function* (
       const snapshotJson = jsonText({ v: STATE_VERSION, state: next });
       yield* sql`
         INSERT INTO engine_conversation (
-          conversation_id, head_seq, snapshot_json, snapshot_seq, updated_at
-        ) VALUES (${c}, ${newHead}, ${snapshotJson}, ${newHead}, ${now})
+          conversation_id, head_seq, snapshot_json, snapshot_seq, updated_at, agent_json
+        ) VALUES (${c}, ${newHead}, ${snapshotJson}, ${newHead}, ${now}, ${json(next.agent)})
         ON CONFLICT (conversation_id) DO UPDATE SET head_seq = excluded.head_seq,
           snapshot_json = excluded.snapshot_json, snapshot_seq = excluded.snapshot_seq,
-          updated_at = excluded.updated_at
+          updated_at = excluded.updated_at, agent_json = excluded.agent_json
       `;
     } else {
       yield* sql`
-        INSERT INTO engine_conversation (conversation_id, head_seq, updated_at)
-        VALUES (${c}, ${newHead}, ${now})
+        INSERT INTO engine_conversation (conversation_id, head_seq, updated_at, agent_json)
+        VALUES (${c}, ${newHead}, ${now}, ${json(next.agent)})
         ON CONFLICT (conversation_id) DO UPDATE SET head_seq = excluded.head_seq,
-          updated_at = excluded.updated_at
+          updated_at = excluded.updated_at, agent_json = excluded.agent_json
       `;
     }
     yield* fault("snapshot");
