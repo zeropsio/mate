@@ -33,6 +33,7 @@ import type {
 import type { Command } from "./domain/command.ts";
 import type { WakeKind } from "./ports.ts";
 import type { ConversationList, ConversationView } from "./read/conversationView.ts";
+import { unservedWire, type EngineWireShape } from "./wire/EngineWire.ts";
 
 export { brokeOffLine, conversationRowOf, restartLine } from "./read/conversationRow.ts";
 export type {
@@ -146,6 +147,11 @@ export interface MateEngineService {
     conversationId: ConversationId,
     find: { readonly itemIds: ReadonlyArray<string> } | { readonly naming: string },
   ) => Effect.Effect<ReadonlyArray<CallData>>;
+  /**
+   * The conversation wire the clients subscribe to and call (`registerEngineRpc`): in V1 mode it
+   * answers every method `unserved`.
+   */
+  readonly wire: EngineWireShape;
   /** The latest run a wake started, or the one a provider turn belongs to, ended or not. */
   readonly runOf: (
     find: { readonly wakeId: WakeId } | { readonly providerTurnId: string },
@@ -185,4 +191,5 @@ export const inertMateEngine: MateEngineService = {
   callProgress: () => Effect.void,
   callData: () => Effect.succeed([]),
   runOf: () => Effect.succeed(undefined),
+  wire: unservedWire,
 };

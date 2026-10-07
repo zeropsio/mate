@@ -97,7 +97,6 @@ export type RunRecord = typeof RunRecord.Type;
 /** The conversation's own facts: its agent, its session, what holds its queue. */
 export const ConversationHeader = Schema.Struct({
   conversationId: ConversationId,
-  head: Schema.Int,
   agent: Schema.NullOr(ConversationAgent),
   archived: Schema.Boolean,
   model: Schema.NullOr(Schema.String),
@@ -217,7 +216,7 @@ export const EngineConversationFrame = forwardCompatibleUnion({
       stream: Schema.String,
       text: Schema.String,
     }),
-    /** More streamed text, placed at `offset` of the stream's text. */
+    /** More streamed text, placed at `offset` (in UTF-16 code units) of the stream's text. */
     Schema.Struct({
       type: Schema.Literal("live.append"),
       itemId: ItemId,
