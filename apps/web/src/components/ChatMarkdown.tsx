@@ -224,7 +224,7 @@ function findTaskListMarkerOffset(markdown: string, listItemStart: number): numb
  * the leading character against the item's own overflow. Rather than widening
  * the gutter for every list, only lists whose widest marker is 3+ characters
  * get a wider `--list-gutter`. The width includes a negative marker's minus
- * sign.
+ * sign, the period, and the trailing space.
  */
 function orderedListGutterStyle(
   itemCount: number,
@@ -235,7 +235,7 @@ function orderedListGutterStyle(
   const lastNumber = firstNumber + Math.max(itemCount - 1, 0);
   const markerWidth = Math.max(String(firstNumber).length, String(lastNumber).length);
   if (markerWidth <= 2) return undefined;
-  return { "--list-gutter": `${markerWidth + 1}ch` };
+  return { "--list-gutter": `${markerWidth + 2}ch` };
 }
 
 type MarkdownHtmlAstNode = {
