@@ -20,6 +20,7 @@ import { TempPostgres, tempPostgresLayer } from "../test/harness/tempPostgres.ts
 import { tempDir } from "../test/harness/tempDir.ts";
 import { activeCoreLayer } from "../test/harness/activeCore.ts";
 import { Leader } from "./leader.ts";
+import { ZeropsUnavailable } from "./zerops/api.ts";
 import { makeUsageLedger } from "./usageLedger.ts";
 import { zeroUsage, contributionOf } from "./usageAccounting.ts";
 import { usageCheckpoint, protectUsageCut, pruneUsageDetail } from "./usageRetention.ts";
@@ -874,6 +875,23 @@ describe("HQ usage ledger boundaries", () => {
             assert.strictEqual(yield* total, "100");
           }),
         ),
+    );
+    it.effect("a Mate is offered capture with HQ's org while Zerops does not answer", () =>
+      database(
+        Effect.gen(function* () {
+          const { sql, leader } = yield* setup;
+          let answering = true;
+          const readOrg = Effect.suspend(() =>
+            answering
+              ? Effect.succeed("ORG")
+              : Effect.fail(new ZeropsUnavailable({ operation: "org", message: "down" })),
+          );
+          const ledger = yield* makeUsageLedger(sql, leader, readOrg);
+          assert.strictEqual((yield* ledger.open("P", "test-credential")).orgId, "ORG");
+          answering = false;
+          assert.strictEqual((yield* ledger.open("P", "test-credential")).orgId, "ORG");
+        }),
+      ),
     );
     it.effect("39,000 real-schema facts keep summary and keyset detail bounded", () =>
       database(

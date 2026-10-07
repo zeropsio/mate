@@ -102,6 +102,19 @@ export const makeUsageLedger = Effect.fnUntraced(function* (
   readOrg: Effect.Effect<string, ZeropsError>,
 ) {
   const processId = NodeCrypto.randomUUID();
+  // HQ serves one org: once read, it is offered to Mates while Zerops does not answer, so a Zerops
+  // outage never closes Mate links at accept.
+  let knownOrg: string | undefined;
+  const offeredOrg = readOrg.pipe(
+    Effect.tap((org) =>
+      Effect.sync(() => {
+        knownOrg = org;
+      }),
+    ),
+    Effect.catch((error) =>
+      knownOrg === undefined ? Effect.fail(error) : Effect.succeed(knownOrg),
+    ),
+  );
   const changed = yield* PubSub.unbounded<void>();
   const fail = (code: string) => new UsageRefused({ code });
   const credentialHash = (credential: string) =>
@@ -464,7 +477,7 @@ export const makeUsageLedger = Effect.fnUntraced(function* (
   });
   return {
     open: (projectId: string, credential: string) =>
-      Effect.flatMap(readOrg, (orgId) =>
+      Effect.flatMap(offeredOrg, (orgId) =>
         leader.write(
           Effect.gen(function* () {
             yield* lockProject(sql, projectId);
