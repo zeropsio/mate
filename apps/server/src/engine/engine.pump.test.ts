@@ -16,6 +16,7 @@ import * as SqlClient from "effect/unstable/sql/SqlClient";
 import type { BridgeDriver } from "./bridge/spi3.ts";
 import type { Command } from "./domain/command.ts";
 import { CONTINUE_TEXT, resentText } from "./domain/decide.ts";
+import { PROVIDER_CALL_BOUND_MS } from "./effects/shared.ts";
 import { DRIVERS, makeEngineWorld, mate, type EngineWorld } from "./testing/pump/engineWorld.ts";
 
 const r = (n: number): RunId => runId(mate, n);
@@ -803,6 +804,48 @@ describe("the running engine", () => {
         yield* w.advance(300);
         assert.deepStrictEqual(yield* ending(w, 1), ["ended", "stopped", "stop-confirmed"]);
         assert.strictEqual(w.provider.calls.at(-1), `interrupt ${w.thread} T1`);
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  it.effect(
+    "a Stop the driver never answers lets the second Stop close the session; the call is bounded",
+    () =>
+      scene(
+        Effect.gen(function* () {
+          const w = yield* world("codex", { scripted: { interruptHangs: true } });
+          yield* send(w);
+          yield* stop(w);
+          yield* stop(w);
+          assert.deepStrictEqual(yield* ending(w, 1), ["ended", "stopped", "inferred-from-close"]);
+          assert.strictEqual(w.provider.calls.at(-1), `stop ${w.thread}`);
+          // The wedged interrupt settles as timed out: an effect's outcome, never the run's.
+          yield* w.advance(PROVIDER_CALL_BOUND_MS);
+          const outcome = yield* w.within(
+            Effect.gen(function* () {
+              const sql = yield* SqlClient.SqlClient;
+              return yield* sql<{ readonly kind: string }>`
+              SELECT json_extract(outcome_json, '$.kind') AS kind FROM engine_effect
+              WHERE kind = 'provider.interrupt'`;
+            }),
+          );
+          assert.deepStrictEqual(
+            outcome.map((row) => row.kind),
+            ["timed-out"],
+          );
+          assert.deepStrictEqual(yield* ending(w, 1), ["ended", "stopped", "inferred-from-close"]);
+          yield* w.shutdown;
+        }),
+      ),
+  );
+
+  it.effect("a server stopping never waits on a wedged call", () =>
+    scene(
+      Effect.gen(function* () {
+        const w = yield* world("codex", { scripted: { interruptHangs: true } });
+        yield* send(w);
+        yield* stop(w);
         yield* w.shutdown;
       }),
     ),

@@ -10,7 +10,9 @@
  *
  * @module engine/effects/sessionOpen
  */
+import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import { SessionId, type ConversationId, type EffectOutcome } from "@t3tools/contracts";
 
@@ -22,7 +24,7 @@ import { effectSettledCommandId } from "../domain/ids.ts";
 import type { EffectHandler } from "../outbox/EffectWorker.ts";
 import { AgentWorkspace } from "../ports.ts";
 import { TurnPump } from "../pump/TurnPump.ts";
-import { failed, knownDriver, recovering, wordsOf } from "./shared.ts";
+import { bounded, failed, knownDriver, recovering, timedOut, wordsOf } from "./shared.ts";
 
 interface Payload {
   readonly runId: string;
@@ -81,29 +83,41 @@ export const makeSessionOpen = Effect.gen(function* () {
             from: payload.resume === null && payload.rotateFrom === null ? "fresh" : "resume",
           });
           const started = yield* Effect.exit(
-            provider.startSession(host.thread, {
-              threadId: host.thread,
-              providerInstanceId: payload.instanceId as never,
-              cwd: setup.cwd,
-              runtimeMode: setup.runtimeMode,
-              ...(payload.model === null
-                ? {}
-                : {
-                    modelSelection: {
-                      instanceId: payload.instanceId as never,
-                      model: payload.model,
-                    },
-                  }),
-            }),
+            bounded(
+              provider.startSession(host.thread, {
+                threadId: host.thread,
+                providerInstanceId: payload.instanceId as never,
+                cwd: setup.cwd,
+                runtimeMode: setup.runtimeMode,
+                ...(payload.model === null
+                  ? {}
+                  : {
+                      modelSelection: {
+                        instanceId: payload.instanceId as never,
+                        model: payload.model,
+                      },
+                    }),
+              }),
+            ),
           );
+          if (started._tag === "Success" && started.value._tag === "None") {
+            yield* host.record({
+              kind: "start-failed",
+              words: "The session did not open in time.",
+            });
+            yield* host.discard(session);
+            return timedOut;
+          }
           if (started._tag === "Failure") {
+            if (Cause.hasInterrupts(started.cause)) return yield* Effect.failCause(started.cause);
             const words = wordsOf(started.cause);
             yield* host.record({ kind: "start-failed", words });
             yield* host.discard(session);
             return failed(words);
           }
-          opened = started.value;
-          yield* host.record({ kind: "started", resume: started.value.resumeCursor });
+          const startedSession = Option.getOrThrow(started.value);
+          opened = startedSession;
+          yield* host.record({ kind: "started", resume: startedSession.resumeCursor });
         }
         const value: SessionOpenedValue = {
           sessionId: session,

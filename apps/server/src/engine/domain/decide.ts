@@ -85,7 +85,7 @@ export const EFFECT_KINDS = {
   "provider.send": { lane: "turn", class: "process-bound" },
   "provider.interrupt": { lane: "control", class: "process-bound" },
   "provider.respond": { lane: "control", class: "process-bound" },
-  "session.close": { lane: "control", class: "process-bound" },
+  "session.close": { lane: "close", class: "process-bound" },
   "run.prepare": { lane: "side", class: "replay-safe" },
   "workspace.finish": { lane: "side", class: "replay-safe" },
   "provider.steer": { lane: "turn", class: "process-bound" },
@@ -783,7 +783,11 @@ const effectSettled = (b: StepBuilder, id: EffectId, outcome: EffectOutcome): vo
       ? null
       : outcome.kind === "unknown"
         ? `an outcome this build does not know (${outcome.type})`
-        : outcome.reason;
+        : outcome.kind === "timed-out"
+          ? `The agent did not answer within ${Math.round(outcome.after / 1000)} s.`
+          : outcome.reason;
+  // A call that timed out says nothing of what the agent did: only evidence ends a run.
+  const timedOut = outcome.kind === "timed-out";
   if (effect.kind === "session.close") return sessionCloseSettled(b, closing, outcome);
   const run = effect.runId === null ? undefined : b.state.runs[effect.runId];
   if (run === undefined || run.state === "ended") {
@@ -846,14 +850,16 @@ const effectSettled = (b: StepBuilder, id: EffectId, outcome: EffectOutcome): vo
       return;
     case "provider.interrupt":
       // The interrupt's acknowledgement is not the turn's end: the run stays until its own turn
-      // ends. An interrupt that failed leaves nothing to wait for, so the Stop ends the run.
-      if (failure !== null && run.stopAsked !== null && isLive(run)) {
+      // ends. An interrupt that failed leaves nothing to wait for, so the Stop ends the run; one
+      // that timed out may still land, so the run waits on its turn (or a second Stop).
+      if (failure !== null && !timedOut && run.stopAsked !== null && isLive(run)) {
         endRun(b, run, { kind: "stopped", by: run.stopAsked.by }, "stop-asked");
         admitNext(b);
       }
       return;
     case "provider.respond":
-      if (failure === null || answered === undefined || !isLive(run)) return;
+      // An answer that timed out may have reached the agent: the request's close will say.
+      if (failure === null || timedOut || answered === undefined || !isLive(run)) return;
       if (outcome.kind === "failed" && outcome.refused === true) {
         // The driver can no longer take any answer: the request expired, nothing waits on it.
         b.emit({

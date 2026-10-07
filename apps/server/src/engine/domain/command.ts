@@ -199,9 +199,11 @@ export type EventDraft = DistributiveOmit<KnownEngineEvent, HeaderKey>;
  * Where an effect queues; each conversation's lane is FIFO, lanes run side by side. `turn`: the
  * session and what goes into it (open, send, steer) — a send settles once the driver accepted it,
  * so the lane frees while the turn runs. `control`: what must never wait behind a send (interrupt,
- * answer, close). `side`: work beside the agent (the workspace capture, its finish).
+ * answer). `close`: a session's close, which never waits behind an interrupt the driver does not
+ * answer (a second Stop closes the session). `side`: work beside the agent (the workspace capture,
+ * its finish).
  */
-export type EffectLane = "turn" | "control" | "side";
+export type EffectLane = "turn" | "control" | "close" | "side";
 /** Boot cuts a process-bound effect (its process is gone) and requeues a replay-safe one. */
 export type EffectClass = "process-bound" | "replay-safe";
 

@@ -702,7 +702,7 @@ const transitions: ReadonlyArray<Row> = [
     events: ["EffectOutcomeRecorded", "EffectRequested", "SessionClosing"],
     effects: ["session.close"],
     also: (scene) =>
-      expect(scene.effects[0]).toMatchObject({ lane: "control", payload: { reason: "model" } }),
+      expect(scene.effects[0]).toMatchObject({ lane: "close", payload: { reason: "model" } }),
   },
   {
     name: "archiving an archived conversation records nothing",
@@ -1391,7 +1391,7 @@ describe("decide: sessions close as the engine asks", () => {
   it("a second Stop on a turn whose first was not confirmed closes its session", () => {
     const scene = play([...running, stop(), stop()]);
     expect(scene.effects).toMatchObject([
-      { kind: "session.close", lane: "control", payload: { sessionId: "s1", reason: "stop" } },
+      { kind: "session.close", lane: "close", payload: { sessionId: "s1", reason: "stop" } },
     ]);
     expect(closing(scene)).toMatchObject({ sessionId: "s1", reason: "stop" });
     expect(scene.state.runs[r(1)]?.state).toBe("running");

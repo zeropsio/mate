@@ -8,12 +8,13 @@
  * @module engine/effects/providerInterrupt
  */
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import type { TurnHandle, TurnId } from "@t3tools/contracts";
 
 import { ProviderService } from "../../provider/Services/ProviderService.ts";
 import type { EffectHandler } from "../outbox/EffectWorker.ts";
 import { TurnPump } from "../pump/TurnPump.ts";
-import { failed, liveHost, ok, recovering } from "./shared.ts";
+import { bounded, failed, liveHost, ok, recovering, timedOut } from "./shared.ts";
 
 export const makeProviderInterrupt = Effect.gen(function* () {
   const provider = yield* ProviderService;
@@ -41,11 +42,13 @@ export const makeProviderInterrupt = Effect.gen(function* () {
           undefined;
         // Its turn has no name yet (the send is on the way): the host stops it once it opens.
         if (native === undefined && turn !== null) return ok({ deferred: true });
-        yield* provider.interruptTurn({
-          threadId: host.thread,
-          ...(native === undefined ? {} : { turnId: native as TurnId }),
-        });
-        return ok();
+        const answered = yield* bounded(
+          provider.interruptTurn({
+            threadId: host.thread,
+            ...(native === undefined ? {} : { turnId: native as TurnId }),
+          }),
+        );
+        return Option.isNone(answered) ? timedOut : ok();
       }).pipe(Effect.catchCause(recovering)),
   } satisfies EffectHandler;
 });

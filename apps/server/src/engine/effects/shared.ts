@@ -17,6 +17,9 @@ import { isBridgeDriver } from "../bridge/capabilities.ts";
 import type { HandlerResult } from "../outbox/EffectWorker.ts";
 import type { SessionHost } from "../pump/SessionHost.ts";
 
+/** How long a handler waits on one provider call before it settles the effect `timed-out`. */
+export const PROVIDER_CALL_BOUND_MS = 60_000;
+
 export const done = (outcome: EffectOutcome): HandlerResult => ({ _tag: "Done", outcome });
 export const ok = (value?: unknown): HandlerResult =>
   done(value === undefined ? { kind: "ok" } : { kind: "ok", value });
@@ -24,6 +27,16 @@ export const failed = (
   reason: string,
   extra: Omit<Extract<EffectOutcome, { kind: "failed" }>, "kind" | "reason"> = {},
 ): HandlerResult => done({ kind: "failed", reason, ...extra });
+
+/**
+ * One provider call, bounded: its answer, or none when the bound passed (the effect then settles
+ * `timed-out`). Interruptible inside the worker's uninterruptible run, so neither the bound nor a
+ * server stopping ever waits on a wedged call.
+ */
+export const bounded = <A, E, R>(call: Effect.Effect<A, E, R>) =>
+  Effect.interruptible(Effect.timeoutOption(call, PROVIDER_CALL_BOUND_MS));
+
+export const timedOut: HandlerResult = done({ kind: "timed-out", after: PROVIDER_CALL_BOUND_MS });
 
 /** A driver the bridge can fold. */
 export const knownDriver = (driver: string | null): driver is BridgeDriver =>

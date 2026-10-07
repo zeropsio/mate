@@ -14,6 +14,7 @@
  *
  * @module engine/outbox/EffectWorker
  */
+import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -83,15 +84,18 @@ export const makeEffectWorker = Effect.fn("makeEffectWorker")(function* (
     }
     // A process-bound handler that failed may already have acted (a message may be out), so it is
     // never tried again: its failure is the outcome. A replay-safe one is retried.
+    // An interruption (the server stopping) is no outcome: the next boot cuts or requeues it.
     const act = handler
       .run(row)
       .pipe(
         Effect.catchCause((cause) =>
-          Effect.succeed<HandlerResult>(
-            row.class === "process-bound"
-              ? { _tag: "Done", outcome: { kind: "failed", reason: String(cause) } }
-              : { _tag: "Retry", reason: String(cause) },
-          ),
+          Cause.hasInterrupts(cause)
+            ? Effect.failCause(cause as Cause.Cause<never>)
+            : Effect.succeed<HandlerResult>(
+                row.class === "process-bound"
+                  ? { _tag: "Done", outcome: { kind: "failed", reason: String(cause) } }
+                  : { _tag: "Retry", reason: String(cause) },
+              ),
         ),
       );
     if (handler.adopt === undefined) return act;

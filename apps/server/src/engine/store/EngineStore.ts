@@ -134,7 +134,13 @@ const jsonText = (value: unknown): string => JSON.stringify(value);
 
 const isStoreError = Schema.is(EngineStoreError);
 
-const effectState = { ok: "done", failed: "failed", cut: "cut", unknown: "failed" } as const;
+const effectState = {
+  ok: "done",
+  failed: "failed",
+  cut: "cut",
+  "timed-out": "failed",
+  unknown: "failed",
+} as const;
 
 export const makeEngineStore = Effect.fn("makeEngineStore")(function* (
   options: EngineStoreOptions = {},
