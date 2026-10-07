@@ -243,8 +243,10 @@ Do not put environment variable assignments in `Launch arguments`.
 
 ## Usage limits
 
-If your Claude subscription runs out of usage mid-turn, the thread shows which
-limit was reached and the remaining wait when Claude provides a reset time.
-Claude Code holds the turn until that window reopens, so it can keep showing as
-working. Wait for the reset, or stop the turn and continue later. The warning's
-timestamp shows when the displayed wait started.
+If your Claude subscription reaches a usage limit, Mate shows a quiet pause in the
+conversation and menu. A reset time appears only when Claude reports one.
+
+When the pause offers **Continue automatically**, turn it on to let Mate try the
+held work again at the reset. Turn it off to keep the work paused. Passing the
+reset time alone does not mean work has resumed; the conversation shows when the
+coding agent actually continues. If no reset is known, the notice says so.

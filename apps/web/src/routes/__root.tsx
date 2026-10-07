@@ -2,10 +2,6 @@ import { EnvironmentId, type ServerLifecycleWelcomePayload } from "@t3tools/cont
 import { scopedProjectKey, scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import {
-  MATE_VOICE_QUIET_MS,
-  MATE_VOICE_SLOW_MS,
-  mateVoice,
-  mateVoiceQuietKey,
   type Reachability,
   reachabilityCountsDown,
   routeGatePhrase,
@@ -83,13 +79,13 @@ import {
   useRouteConversation,
   useRouteGateInputs,
 } from "./-environmentTargets";
+import { mateNoticeVoice } from "../zerops/mateNoticeVoice";
 import { MateLinkStage } from "../components/zerops/MateLinkStage";
 import { RouteStandIn } from "../components/zerops/RouteStandIn";
 import { resolveThreadRouteRef } from "../threadRoutes";
 import { RouteGateView } from "./-routeGate";
 import { useHqGate } from "../zerops/hqGate";
 import { installMateDiagnostics } from "~/zerops/diagnostics";
-import { useHeldPast } from "~/zerops/useHeldPast";
 import { useSecondsNowMs } from "~/zerops/useNowMs";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
 import { ZeropsReviewProvider } from "~/zerops/ZeropsReviewProvider";
@@ -190,16 +186,11 @@ function SignedInRootRouteView() {
   const nowMs = useSecondsNowMs(reachabilityCountsDown(linkReachability));
   const gatePhrase = routeGatePhrase(gate, { nowMs, mateName: gateInputs.mateName });
   const speaksFor = routeEnvironment ?? draftEnvironmentId;
-  // The quiet is kept by what the voice would say, so one line never goes and comes back.
-  const quietKey = `${speaksFor ?? "none"}:${gate.kind}:${mateVoiceQuietKey(linkReachability)}`;
-  const quietPast = useHeldPast(quietKey, MATE_VOICE_QUIET_MS);
-  const slowPast = useHeldPast(quietKey, MATE_VOICE_SLOW_MS);
   const voice =
     speaksFor !== null && (gate.kind === "outlet" || gate.kind === "wait")
-      ? mateVoice({
+      ? mateNoticeVoice({
           reachability: linkReachability,
           conversationShown: gate.kind === "outlet" && conversation.kind === "shown",
-          heldMs: slowPast ? MATE_VOICE_SLOW_MS : quietPast ? MATE_VOICE_QUIET_MS : 0,
           nowMs,
           mateName:
             (routeEnvironment === null

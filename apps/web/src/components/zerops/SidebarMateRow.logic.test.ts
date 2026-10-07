@@ -581,7 +581,7 @@ describe("mateRowView — a row's state lives in its right slot and its third li
       strong: false,
       reply: {
         kind: "words",
-        text: "Thumbnails load lazily now; the gallery opens in 90 ms.",
+        text: "I've hit the Claude limit.",
         tone: "muted",
       },
     },

@@ -693,8 +693,9 @@ export function ZeropsDataPanel({
   const errorLine =
     errorText !== undefined ? (
       <p
-        className="rounded-[var(--zerops-card-radius)] bg-destructive/8 px-2 py-1 text-destructive-foreground text-xs"
+        className="rounded-xl bg-muted/35 px-2 py-1 text-foreground text-xs"
         data-zerops-data-error
+        role="alert"
       >
         {errorText}
       </p>

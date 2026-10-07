@@ -836,7 +836,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         className={cn("flex flex-col items-start gap-1.5 px-2.5 py-2", className)}
         data-zerops-surface="sidebar-environments-empty"
       >
-        <span className="text-xs text-sidebar-muted-foreground">No environment has Mate yet</span>
+        <span className="text-xs text-sidebar-muted-foreground">No Mate yet</span>
         <button
           className="inline-flex cursor-pointer items-center rounded-md border border-sidebar-border px-2.5 py-1 text-xs font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
           onClick={onBrowseProjects}
@@ -3166,9 +3166,9 @@ function MateSlot({
               <PauseIcon aria-hidden="true" className="size-2.5" />
               {formatShortTimestamp(slot.until, timestampFormat)}
             </span>
-            <span className="sr-only">{`Paused at a usage limit, picks up ${upcoming}`}</span>
+            <span className="sr-only">{`Paused at a usage limit, available again ${upcoming}`}</span>
           </TooltipTrigger>
-          <TooltipPopup side="right">{`Paused at a usage limit. Picks up ${upcoming}.`}</TooltipPopup>
+          <TooltipPopup side="right">{`Paused at a usage limit. Available again ${upcoming}.`}</TooltipPopup>
         </Tooltip>
       );
     }

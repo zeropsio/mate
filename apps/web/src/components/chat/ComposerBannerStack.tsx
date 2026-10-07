@@ -23,14 +23,14 @@ const exitTransitionStyle = {
 } satisfies CSSProperties;
 
 // The collapsed cap peeking above the front banner is the only hint that more
-// banners are stacked behind it, so its border must match the severity of the
-// first hidden banner — a neutral banner must not masquerade as a warning.
+// banners are stacked behind it. Problems keep the same quiet frame; the
+// notice's small mark carries its severity.
 const stackCapBorderClass: Record<ComposerBannerStackItem["variant"], string> = {
   default: "border-[var(--chat-composer-attached-outline)]",
-  error: "border-destructive/24",
+  error: "border-border",
   info: "border-info/24",
   success: "border-success/24",
-  warning: "border-warning/24",
+  warning: "border-border",
 };
 
 export interface ComposerBannerStackItem {
@@ -237,7 +237,7 @@ function ComposerBannerStackAlert({
             <Button
               size="icon-xs"
               variant="ghost"
-              aria-label={item.dismissLabel ?? "Dismiss warning"}
+              aria-label={item.dismissLabel ?? "Dismiss notice"}
               disabled={exiting}
               onClick={onDismissRequest}
             >

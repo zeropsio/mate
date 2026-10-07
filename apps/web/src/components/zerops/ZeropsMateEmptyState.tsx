@@ -38,7 +38,7 @@ import type { KnownMessage } from "@t3tools/client-runtime/zerops/knowledge";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import { Fragment, useEffect, useId, useMemo, useRef, type ReactNode } from "react";
 
-import { MATE_SHAPE_OF_TINT, MATE_TINT_IDS } from "@t3tools/shared/brand";
+import { MATE_SHAPE_OF_TINT, MATE_TINT_IDS, type MateMarkState } from "@t3tools/shared/brand";
 import { cn } from "~/lib/utils";
 
 import { useServerConfigs, useThreadShells } from "../../state/entities";
@@ -241,6 +241,9 @@ const UNNAMED: DrawnMate = {
  * can be done about it.
  */
 export interface MateEmptyComing {
+  readonly face?: MateMarkState | undefined;
+  /** A source-backed link state speaks as the Mate in the headline. */
+  readonly headline?: string | undefined;
   readonly kind: MateViewKind;
   readonly below: ReactNode;
   /** The sentence under the headline: how long is left, or why it stopped. */
@@ -348,7 +351,8 @@ export function MateEmptyStateView({
   });
   // The minute clock its pose reads: it wakes only while it arrives (`mateArriving`).
   const nowMs = useNowMs();
-  const clauses = arrivalHeadlineClauses(mate, kind);
+  const clauses =
+    coming?.headline === undefined ? arrivalHeadlineClauses(mate, kind) : [coming.headline];
   const sentence =
     coming !== null && coming.over !== true && coming.sentence !== undefined
       ? coming.sentence
@@ -391,7 +395,10 @@ export function MateEmptyStateView({
           data-mate-face-reserved={named === null ? "" : undefined}
           size="lg"
           shape={mate.shape}
-          state={arrivalFace(kind, mate.connected, mateArriving(mate.arrivingUntil, nowMs))}
+          state={
+            coming?.face ??
+            arrivalFace(kind, mate.connected, mateArriving(mate.arrivingUntil, nowMs))
+          }
           tint={mate.tint}
         />
         <ArrivalSwap

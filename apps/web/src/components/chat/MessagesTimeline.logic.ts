@@ -1,3 +1,4 @@
+import { usageLimitProvider } from "../../zerops/noticeWords";
 import type { MateTintId } from "@t3tools/shared/brand";
 import { sameValue } from "../../lib/sameValue";
 import {
@@ -643,6 +644,8 @@ type MessagesTimelineRowBody =
       id: string;
       createdAt: string;
       resetsAt: string | null;
+      /** The provider named by this refusal, never the current composer choice. */
+      provider?: string;
       /** When the Mate picked up again, once it has. */
       resumedAt: string | null;
       /** Attempts the same limit refused after this one. */
@@ -2151,11 +2154,17 @@ export function deriveMessagesTimelineRows(input: {
     const limitError = turn.stretches
       .flatMap((stretch) => stretch.entries)
       .findLast((entry) => isUsageLimitError(entry));
+    const provider = usageLimitProvider(
+      limitError?.kind === "work"
+        ? (limitError.entry.detail ?? limitError.entry.label)
+        : turn.answer?.message.text,
+    );
     const answerAt =
       limitError?.createdAt ?? turn.answer?.createdAt ?? turn.stretches.at(-1)!.startedAt;
     const row: Extract<MessagesTimelineRow, { kind: "pause" }> = {
       kind: "pause",
       id: `pause:${turn.key}`,
+      ...(provider === null ? {} : { provider }),
       createdAt: answerAt,
       resetsAt: turn.limit.resetsAt,
       resumedAt: null,

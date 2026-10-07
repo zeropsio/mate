@@ -5,11 +5,8 @@
  * while the platform works on it, then each service with its dot. The Mate's own view and the
  * route's stage (`MateLinkStage`) both put it in their slot.
  */
-import {
-  askAgainLabel,
-  type MateVoice,
-  type RouteGatePhrase,
-} from "@t3tools/client-runtime/zerops/environments";
+import { askAgainLabel, type RouteGatePhrase } from "@t3tools/client-runtime/zerops/environments";
+import type { WebMateVoice as MateVoice } from "../../zerops/mateNoticeVoice";
 import { Link } from "@tanstack/react-router";
 import { useState, type ReactElement, type ReactNode } from "react";
 

@@ -38,10 +38,6 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import { applyProjectCreationVerdict } from "@t3tools/client-runtime/zerops/candidates";
 import {
-  MATE_VOICE_QUIET_MS,
-  MATE_VOICE_SLOW_MS,
-  mateVoice,
-  mateVoiceQuietKey,
   reachabilityCountsDown,
   type MateVoice,
 } from "@t3tools/client-runtime/zerops/environments";
@@ -74,8 +70,8 @@ import {
   mateArrivalShown,
   mateComing,
   mateComingPage,
-  mateConnectKey,
   mateOpeningPhrase,
+  mateConnectKey,
   type MateComing,
 } from "~/zerops/mateComing";
 import {
@@ -108,7 +104,7 @@ import {
   madeOf,
   newProjectProgress,
 } from "~/zerops/newProjectBirth";
-import { useHeldPast } from "~/zerops/useHeldPast";
+import { mateNoticeVoice } from "~/zerops/mateNoticeVoice";
 import { useProjectActivity } from "~/zerops/activity/useProjectActivity";
 import { useNowMs, useSecondsNowMs } from "~/zerops/useNowMs";
 import { useToldActivity } from "~/zerops/useMenuMateReadings";
@@ -605,22 +601,16 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   const nowMs = useSecondsNowMs(
     page?.kind === "reaching" && reachabilityCountsDown(page.reachability),
   );
-  // What its link says under its name (`mateVoice`): nothing for a blip, "Opening Wren…" and the
-  // platform's processes for a first connect that is slow, a restart in its name.
+  // The same source-driven link voice as an existing conversation.
   const linkReachability =
-    page?.kind === "reaching"
+    page?.kind === "reaching" || page?.kind === "unreachable"
       ? page.reachability
       : page?.kind === "up"
         ? (link.reachability ?? null)
         : null;
-  // The quiet is kept by what the voice would say, so "Opening Wren…" never goes and comes back.
-  const linkQuietKey = `${projectId}:${mateVoiceQuietKey(linkReachability)}`;
-  const linkPast = useHeldPast(linkQuietKey, MATE_VOICE_QUIET_MS);
-  const linkSlow = useHeldPast(linkQuietKey, MATE_VOICE_SLOW_MS);
-  const linkVoice = mateVoice({
+  const linkVoice = mateNoticeVoice({
     reachability: linkReachability,
     conversationShown: false,
-    heldMs: linkSlow ? MATE_VOICE_SLOW_MS : linkPast ? MATE_VOICE_QUIET_MS : 0,
     nowMs,
     mateName: named.name,
   });
@@ -669,24 +659,38 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
           : page.kind === "unreachable"
             ? {
                 kind: "unreachable",
+                face: "sleep",
+                headline:
+                  page.reachability === null
+                    ? (mateOpeningPhrase(page, { nowMs, mateName: named.name }).text ?? undefined)
+                    : linkVoice.surface === "none"
+                      ? undefined
+                      : (linkVoice.text ?? undefined),
                 below: (
                   <MateOpeningLine
                     onTryNow={tryNow}
                     projects={<Link to="/zerops" />}
-                    phrase={mateOpeningPhrase(page, { nowMs, mateName: named.name })}
+                    phrase={{
+                      ...mateOpeningPhrase(page, { nowMs, mateName: named.name }),
+                      text: null,
+                    }}
                     projectUrl={mate.projectUrl}
                   />
                 ),
               }
             : {
                 kind: "reaching",
+                face: linkVoice.surface === "none" ? "idle" : linkVoice.face,
+                headline: linkVoice.surface === "none" ? undefined : (linkVoice.text ?? undefined),
                 below: (
                   <MateLinkLine
                     mateServiceId={mate.serviceId}
                     onTryNow={tryNow}
                     projectId={projectId}
                     projectUrl={mate.projectUrl}
-                    voice={linkVoice.surface === "none" ? SILENT_STAGE : linkVoice}
+                    voice={
+                      linkVoice.surface === "none" ? SILENT_STAGE : { ...linkVoice, text: null }
+                    }
                   />
                 ),
               };

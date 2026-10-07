@@ -1,3 +1,4 @@
+import { isUsageLimitError, timelineEntryTurnId } from "./chat/conversation.logic";
 import { useStandupsDone } from "../zerops/activity/useStandupReading";
 import { useThreadModelSelection } from "../zerops/useThreadModelSelection";
 import type {
@@ -8361,12 +8362,12 @@ export default function ChatView(props: ChatViewProps) {
         <ThreadErrorBanner
           driver={activeServerThread?.session?.providerName ?? null}
           error={visibleThreadError}
-          mate={(() => {
-            const mateAt = zeropsMateAt(zeropsMates, environmentId);
-            return mateAt.kind === "mate" ? mateAt.mate.name : undefined;
-          })()}
-          // An agent that is not signed in is signed in here, not through a
-          // shell on a container nobody has one on.
+          usageLimitShown={conversationEntries.some(
+            (entry) =>
+              isUsageLimitError(entry) &&
+              timelineEntryTurnId(entry) === activeThread.latestTurn?.turnId,
+          )}
+          // Sign-in opens this Mate's coding-agent dialog.
           onAuthorize={
             activeThreadRef === null
               ? undefined

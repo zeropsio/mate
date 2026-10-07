@@ -54,9 +54,10 @@ vi.mock("./MateLinkLine", () => ({
 vi.mock("./ZeropsMateEmptyState", () => ({
   MateEmptyStateView: (props: {
     mate: { name: string } | null;
-    coming: { below: ReactNode } | null;
+    coming: { below: ReactNode; headline?: string } | null;
   }) => (
     <section data-empty-state={props.mate === null ? "unnamed" : props.mate.name}>
+      <h2>{props.coming?.headline}</h2>
       {props.coming?.below}
     </section>
   ),
@@ -71,13 +72,13 @@ describe("MateOpeningView: a conversation's page lands when its Mate is known, n
     [
       "who lives here unknown: the header's place held empty, the line unnamed, the composer in",
       { kind: "unknown" },
-      ["<header></header>", "Opening the conversation…", "data-stand-in"],
+      ["<header></header>", "I&#x27;m opening the conversation.", "data-stand-in"],
       ["Quill"],
     ],
     [
       "the directory names the Mate: its face and name, its own line",
       { kind: "mate", mate: QUILL },
-      ["<h1>Quill</h1>", "Opening Quill&#x27;s conversation…", "data-stand-in"],
+      ["<h1>Quill</h1>", "I&#x27;m opening the conversation.", "data-stand-in"],
       [],
     ],
   ] as const)("%s", (_case, at, shown, absent) => {
@@ -113,7 +114,7 @@ describe("MateOpeningView: a conversation's page lands when its Mate is known, n
         />,
       );
       for (const text of shown) expect(markup).toContain(text);
-      expect(markup).toContain('data-line="Reconnecting…"');
+      expect(markup).toContain("Reconnecting…</h2>");
       expect(markup).toContain("Try now</button>");
       expect(markup).toMatch(/data-project-url="[^"]+"/u);
       expect(markup).toContain("data-stand-in");
