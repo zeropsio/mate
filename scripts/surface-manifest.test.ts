@@ -196,6 +196,7 @@ const EXPECTED_SURFACE_IDS = [
   "zerops-data",
   "zerops-git-tab",
   "zerops-vault",
+  "zerops-vault-request",
   "zerops-review",
   "zerops-service-map",
   "zerops-quick-actions",
