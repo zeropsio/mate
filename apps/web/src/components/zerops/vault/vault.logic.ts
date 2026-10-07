@@ -34,7 +34,7 @@ export function joinNames(names: ReadonlyArray<string>): string {
 
 const ref = (name: string) => `\${${name}}`;
 
-export const SHARED_NAME = "Shared";
+export const SHARED_NAME = "All apps";
 
 /** Shared, or the service's hostname. */
 export function scopeName(scope: Pick<VaultScope, "hostname">): string {
@@ -91,7 +91,7 @@ export function keyProblem(key: string, scope: VaultScope): string | null {
   if (!VAULT_KEY_PATTERN.test(key)) return KEY_FORMAT_WORDS;
   const upper = key.toUpperCase();
   const held = scope.values.find((value) => value.key.toUpperCase() === upper);
-  if (held !== undefined) return `${held.key} is already in ${scopeName(scope)}`;
+  if (held !== undefined) return `${held.key} already exists`;
   const entry = scope.reads.find((read) => read.key.toUpperCase() === upper);
   if (entry !== undefined) return `${scopeName(scope)}'s zerops.yml already sets ${entry.key}`;
   return null;
@@ -488,7 +488,7 @@ export function refusalWords(
   if (reason !== null && reason !== "") return reason;
   switch (errorCode) {
     case "projectEnvDuplicateKey":
-      return `${key} is already in ${scopeName(scope)}`;
+      return `${key} already exists`;
     case "userDataDuplicateKey":
       return `${scopeName(scope)} already has ${key} in its values or zerops.yml`;
     case "projectEnvKeyInvalid":

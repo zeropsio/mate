@@ -17,6 +17,7 @@ import { createRoot } from "react-dom/client";
 import { RightPanelTabs } from "~/components/RightPanelTabs";
 import { VaultPanelBody } from "~/components/zerops/vault/VaultPanel";
 import { VAULT_FIXTURE, vaultFixtureImpact } from "~/components/zerops/vault/vaultFixture";
+import { VAULT_STORE_FIXTURE } from "~/components/zerops/vault/vaultStoreFixture";
 import { resolveRightPanelAvailability } from "~/rightPanelKinds";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import "../index.css";
@@ -35,7 +36,7 @@ const VIEWS: Record<string, VaultView> = {
   failed: { ...VAULT_FIXTURE, status: "failed" },
   live: { ...VAULT_FIXTURE, notLive: [] },
 };
-const VIEW = VIEWS[STATE] ?? VAULT_FIXTURE;
+const VIEW = params.get("data") === "store" ? VAULT_STORE_FIXTURE : (VIEWS[STATE] ?? VAULT_FIXTURE);
 
 function Harness() {
   return (

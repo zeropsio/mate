@@ -9434,9 +9434,8 @@ button.rv-relrow:hover .rv-relrow-go {
 /* ==== end of the Crew tab ==== */
 
 /* ==== the Vault tab ==== */
-/* The Quiet look (the owner's vault prototype, 2026-10-07): one scope at a time under a segmented
-   bar whose pill slides; two-line rows that open in place; what is not live yet in one quiet
-   warning block whose items grow in and fold away. Heights move by grid rows, so a row's body
+/* The vault: one list in groups, one-line rows that open in place; what is not live yet in one
+   quiet warning block whose items grow in and fold away. Heights move by grid rows, so a row's body
    and an item travel with the content under them; reduced motion keeps only the end states. */
 .vault-panel {
   --vault-ease: cubic-bezier(0.23, 1, 0.32, 1);
@@ -9458,48 +9457,49 @@ button.rv-relrow:hover .rv-relrow-go {
   width: 188px;
 }
 
-.vault-scopes {
-  position: relative;
-  display: flex;
-  gap: 2px;
-  padding: 2px;
-  overflow-x: auto;
-  overscroll-behavior-x: contain;
-  scrollbar-width: none;
-  border-radius: var(--radius-lg);
-  background: color-mix(in oklab, var(--input) 40%, transparent);
+/* One list in groups named for what the values are for: a heading hugs its rows, groups sit apart. */
+.vault-group {
+  margin-top: 18px;
 }
 
-.vault-scopes::-webkit-scrollbar {
-  display: none;
+.vault-group:first-child {
+  margin-top: 4px;
 }
 
-.vault-scope-pill {
-  position: absolute;
-  top: 2px;
-  bottom: 2px;
-  left: 0;
-  width: var(--vault-pill-w, 0px);
-  border-radius: var(--radius-md);
-  background: var(--card);
-  box-shadow:
-    0 1px 2px color-mix(in oklab, var(--foreground) 8%, transparent),
-    0 0 0 1px color-mix(in oklab, var(--foreground) 4%, transparent);
-  transform: translateX(var(--vault-pill-x, 2px));
-  transition:
-    transform 0.28s var(--vault-ease),
-    width 0.28s var(--vault-ease);
+/* A `${name}` inside a value, and the app a value belongs to: quiet chips in the line. */
+.vault-ref,
+.vault-only {
+  display: inline-block;
+  padding: 0 5px;
+  border-radius: 5px;
+  background: var(--vault-mark);
+  font-size: 11px;
+  line-height: 17px;
+  vertical-align: 1px;
 }
 
-.dark .vault-scope-pill {
-  background: color-mix(in oklab, var(--input) 72%, transparent);
+.vault-ref {
+  margin-inline: 1px;
+  font-family: var(--font-mono);
 }
 
-.vault-scope {
-  position: relative;
-  z-index: 1;
-  flex: 1 0 auto;
-  transition: color 0.15s;
+.vault-dots {
+  font-size: 8px;
+  line-height: 1;
+  letter-spacing: 2px;
+  vertical-align: 1px;
+}
+
+.vault-row[data-open] .vault-row-value {
+  visibility: hidden;
+}
+
+.vault-chevron {
+  transition: transform 0.2s var(--vault-ease);
+}
+
+.vault-row[data-open] .vault-chevron {
+  transform: rotate(180deg);
 }
 
 /* What is not live yet: the block and each item fold in and out. */
@@ -9606,44 +9606,6 @@ button.rv-relrow:hover .rv-relrow-go {
   background: color-mix(in oklab, var(--border) 60%, transparent);
 }
 
-/* A service's mark: 16 px, overlapped in a stack, amber when it runs the previous value. */
-.vault-mark {
-  display: grid;
-  place-items: center;
-  flex: none;
-  width: 16px;
-  height: 16px;
-  border-radius: 5px;
-  background: var(--vault-mark);
-  color: color-mix(in oklab, var(--foreground) 62%, transparent);
-  box-shadow: 0 0 0 2px var(--vault-row-bg);
-  font-size: 9px;
-  font-weight: 600;
-  line-height: 1;
-  letter-spacing: 0.02em;
-  transition: box-shadow 0.16s;
-}
-
-.vault-mark + .vault-mark {
-  margin-left: -3px;
-}
-
-.vault-mark[data-restart] {
-  background: var(--warning-surface);
-  color: var(--warning-foreground);
-  box-shadow:
-    0 0 0 2px var(--vault-row-bg),
-    inset 0 0 0 1.5px var(--warning);
-}
-
-.vault-mark[data-flat] {
-  box-shadow: none;
-}
-
-.vault-mark[data-flat][data-restart] {
-  box-shadow: inset 0 0 0 1.5px var(--warning);
-}
-
 .vault-settled {
   animation: vault-settled 1.4s var(--vault-ease) both;
 }
@@ -9660,7 +9622,7 @@ button.rv-relrow:hover .rv-relrow-go {
 
 @media (prefers-reduced-motion: reduce) {
   .vault-find,
-  .vault-scope-pill,
+  .vault-chevron,
   .vault-fold,
   .vault-row,
   .vault-row-body,
