@@ -21,6 +21,10 @@ import {
   ANTIGRAVITY_DEFAULT_MODEL,
   type EnvironmentId,
   isProviderDriverKind,
+  type KeybindingCommand,
+  type KeybindingRule,
+  type ResolvedKeybindingsConfig,
+  type ServerUpsertKeybindingInput,
   ProjectId,
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   type MessageId,
@@ -42,6 +46,10 @@ import {
   type Thread,
   type ThreadShell,
 } from "../types";
+import {
+  decodeProjectScriptKeybindingRule,
+  keybindingValueForCommand,
+} from "../lib/projectScriptKeybindings";
 import { type ComposerImageAttachment, type DraftThreadState } from "../composerDraftStore";
 import * as Schema from "effect/Schema";
 import { appAtomRegistry } from "../rpc/atomRegistry";
@@ -1508,4 +1516,43 @@ export function queuedSendOutcome(failure: QueuedSendFailure, retries: number): 
       return { action: "hold", reason: words ?? "Didn't send." };
     }
   }
+}
+
+/**
+ * What saving an action's shortcut writes to the desktop's keybindings: the new one replacing
+ * the one it had, or — cleared, or the action deleted — the old one gone, so no shortcut is left
+ * running an action that no longer has it. One another project's action of the same id still
+ * runs by is kept; the leftovers of earlier edits go.
+ */
+export function projectScriptKeybindingWrites(input: {
+  /** The shortcut it is saved with; null when cleared or deleted. */
+  readonly rule: KeybindingRule | null;
+  readonly command: KeybindingCommand | null;
+  /** The keybindings the server holds now. */
+  readonly bound: ResolvedKeybindingsConfig;
+  readonly retainedElsewhere: boolean;
+}): {
+  readonly remove: ReadonlyArray<KeybindingRule>;
+  readonly upsert: ServerUpsertKeybindingInput | null;
+} {
+  const { rule, command } = input;
+  if (rule === null && input.retainedElsewhere) return { remove: [], upsert: null };
+  const previous = input.bound.flatMap((binding) => {
+    if (command === null || binding.command !== command || binding.whenAst) return [];
+    try {
+      const decoded = decodeProjectScriptKeybindingRule({
+        keybinding: keybindingValueForCommand([binding], command),
+        command,
+      });
+      return decoded ? [decoded] : [];
+    } catch {
+      return [];
+    }
+  });
+  if (rule === null) return { remove: previous, upsert: null };
+  const latest = previous.at(-1);
+  return {
+    remove: previous.slice(0, -1),
+    upsert: latest !== undefined && latest.key !== rule.key ? { ...rule, replace: latest } : rule,
+  };
 }

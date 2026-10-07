@@ -856,20 +856,17 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
             .filter((part): part is string => typeof part === "string" && part.length > 0)
             .join("\n\n");
     };
-    const pastedTextOverLimit = (text: string | undefined) =>
+    // Most adapters see generic files only through their path line, so a file
+    // whose line does not fit would be silently dropped. Images still go natively.
+    const fileContextOverLimit = (text: string | undefined) =>
       text !== undefined &&
       text.length > PROVIDER_SEND_TURN_MAX_INPUT_CHARS &&
-      attachments.some(
-        (attachment) =>
-          attachment.type === "file" &&
-          "source" in attachment &&
-          attachment.source?._tag === "pasted-text",
-      );
+      attachments.some((attachment) => attachment.type === "file");
     const overLimit = toValidationError(
       "ProviderService.sendTurn",
-      `Input plus pasted-text attachment context exceeds the ${PROVIDER_SEND_TURN_MAX_INPUT_CHARS} character limit`,
+      `Input plus attachment context exceeds the ${PROVIDER_SEND_TURN_MAX_INPUT_CHARS} character limit`,
     );
-    if (pastedTextOverLimit(inputWithPaths([]))) return yield* overLimit;
+    if (fileContextOverLimit(inputWithPaths([]))) return yield* overLimit;
 
     yield* Effect.annotateCurrentSpan({
       "provider.operation": "send-turn",
@@ -902,8 +899,14 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
           indexDir: serverConfig.uploadsIndexDir,
           items: resolvedAttachments,
         });
-        const inputTextWithAttachmentPaths = inputWithPaths(places);
-        if (pastedTextOverLimit(inputTextWithAttachmentPaths)) return yield* overLimit;
+        const withPaths = inputWithPaths(places);
+        if (fileContextOverLimit(withPaths)) return yield* overLimit;
+        // Only images are left over the limit here, and they go natively, so
+        // their path lines are what gives way.
+        const inputTextWithAttachmentPaths =
+          withPaths !== undefined && withPaths.length > PROVIDER_SEND_TURN_MAX_INPUT_CHARS
+            ? parsed.input
+            : withPaths;
         const input = {
           ...parsed,
           ...(inputTextWithAttachmentPaths !== undefined

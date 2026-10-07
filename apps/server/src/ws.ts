@@ -1932,6 +1932,7 @@ const makeWsRpcLayer = (
                 ? providerRegistry.refreshWorkspaceSnapshot({
                     instanceId: input.instanceId,
                     cwd: input.cwd,
+                    fresh: input.fresh === true,
                   })
                 : input.instanceId !== undefined
                   ? providerRegistry.refreshInstance(input.instanceId)
@@ -2591,11 +2592,19 @@ const makeWsRpcLayer = (
                     resource: input.resource,
                   });
                 }
+                // A cloned project exists before its files do. Clients ask again
+                // when the clone lands.
+                const clone = yield* projectCloneTracker.get(project.value.id);
+                const projectCheckoutPending =
+                  clone !== null &&
+                  clone.phase !== "done" &&
+                  clone.destinationPath === project.value.workspaceRoot;
                 const image =
                   input.imageMode === "reference"
                     ? yield* resolveImageAsset({
                         ...input,
                         projectId: project.value.id,
+                        projectCheckoutPending,
                         ...(project.value.faviconPath
                           ? { projectFaviconPath: project.value.faviconPath }
                           : {}),
@@ -2633,6 +2642,7 @@ const makeWsRpcLayer = (
                   ...(project.value.faviconPath
                     ? { projectFaviconPath: project.value.faviconPath }
                     : {}),
+                  projectCheckoutPending,
                 });
               }
               const thread = yield* projectionSnapshotQuery

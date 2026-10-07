@@ -60,7 +60,6 @@ export interface ServerDerivedPaths {
   /** Which stored attachment was kept under which name in the uploads folder. */
   readonly uploadsIndexDir: string;
   readonly logsDir: string;
-  readonly serverLogPath: string;
   readonly serverTracePath: string;
   readonly providerLogsDir: string;
   readonly providerEventLogPath: string;
@@ -196,7 +195,6 @@ export const deriveServerPaths = Effect.fn(function* (
     uploadsDir: join(baseDir, "uploads"),
     uploadsIndexDir: join(baseDir, "uploads-index"),
     logsDir,
-    serverLogPath: join(logsDir, "server.log"),
     serverTracePath: join(logsDir, "server.trace.ndjson"),
     providerLogsDir,
     providerEventLogPath: join(providerLogsDir, "events.log"),

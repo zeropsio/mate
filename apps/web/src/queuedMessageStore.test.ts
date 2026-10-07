@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from "vite-plus/test";
 import { CommandId, MessageId } from "@t3tools/contracts";
 
 import {
+  drainGenerationOf,
   isQueuedMessageDue,
   queuedBubbleState,
   queuedSendAttemptIds,
@@ -25,7 +26,7 @@ function makeMessage(prompt: string): Omit<QueuedComposerMessage, "id"> {
 
 describe("queuedMessageStore", () => {
   beforeEach(() => {
-    useQueuedMessageStore.setState({ queuesByThreadKey: {}, drainGeneration: 0 });
+    useQueuedMessageStore.setState({ queuesByThreadKey: {}, drainGenerationByThreadKey: {} });
   });
 
   it("keeps messages in submission order per thread", () => {
@@ -95,9 +96,9 @@ describe("queuedMessageStore", () => {
     enqueue("thread-b", makeMessage("other"));
 
     expect(drain("thread-a").map((message) => message.prompt)).toEqual(["first", "second"]);
-    expect(useQueuedMessageStore.getState().drainGeneration).toBe(1);
+    expect(drainGenerationOf("thread-a")).toBe(1);
     expect(drain("thread-a")).toEqual([]);
-    expect(useQueuedMessageStore.getState().drainGeneration).toBe(1);
+    expect(drainGenerationOf("thread-a")).toBe(2);
     expect(useQueuedMessageStore.getState().queuesByThreadKey["thread-b"]).toHaveLength(1);
   });
 });
@@ -149,7 +150,7 @@ describe("queued message dispatch timing", () => {
 // unheld for the drain to retry; a send refused is held with its reason, which the bubble shows.
 describe("a queued send that did not go", () => {
   beforeEach(() => {
-    useQueuedMessageStore.setState({ queuesByThreadKey: {}, drainGeneration: 0 });
+    useQueuedMessageStore.setState({ queuesByThreadKey: {}, drainGenerationByThreadKey: {} });
   });
 
   it.each([
@@ -276,7 +277,7 @@ describe("the ids a queued send goes with", () => {
   const fresh = { commandId: CommandId.make("command-2"), messageId: MessageId.make("message-2") };
 
   beforeEach(() => {
-    useQueuedMessageStore.setState({ queuesByThreadKey: {}, drainGeneration: 0 });
+    useQueuedMessageStore.setState({ queuesByThreadKey: {}, drainGenerationByThreadKey: {} });
   });
 
   it("an interrupted send's ids stay with it; a person's Retry lets them go", () => {

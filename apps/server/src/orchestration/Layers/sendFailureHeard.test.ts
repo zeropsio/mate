@@ -69,6 +69,7 @@ import { OrchestrationEngineLive } from "./OrchestrationEngine.ts";
 import { OrchestrationProjectionPipelineLive } from "./ProjectionPipeline.ts";
 import { OrchestrationProjectionSnapshotQueryLive } from "./ProjectionSnapshotQuery.ts";
 import { ProviderCommandReactorLive } from "./ProviderCommandReactor.ts";
+import { TerminalManager } from "../../terminal/Manager.ts";
 import { ProviderRuntimeIngestionLive } from "./ProviderRuntimeIngestion.ts";
 
 const THREAD = ThreadId.make("thread-1");
@@ -280,6 +281,7 @@ function harnessLayer(input: {
     Layer.provideMerge(engineLayer),
     Layer.provideMerge(OrchestrationProjectionSnapshotQueryLive),
     Layer.provideMerge(ThreadBackgroundLiveness.layer),
+    Layer.provide(Layer.mock(TerminalManager)({ closeIdle: () => Effect.void })),
     Layer.provideMerge(ThreadPlanProgress.layer),
     Layer.provideMerge(ThreadLiveStep.layer),
     Layer.provideMerge(RepositoryIdentityResolver.layer),

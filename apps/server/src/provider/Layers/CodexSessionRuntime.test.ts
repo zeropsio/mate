@@ -1016,6 +1016,77 @@ describe("openCodexThread", () => {
     }),
   );
 
+  // Codex refuses to resume a session it archived; unarchiving keeps its
+  // history, where a fresh start would lose it.
+  it.effect.each([
+    {
+      name: "an archived session is unarchived and resumed with its history",
+      resumeErrors: ["session saved-thread is archived"],
+      calls: ["thread/resume", "thread/unarchive", "thread/resume"],
+      outcome: "saved-thread",
+    },
+    {
+      name: "Codex's unarchive hint unarchives and resumes the session",
+      resumeErrors: ["Run `codex unarchive saved-thread` to unarchive it first."],
+      calls: ["thread/resume", "thread/unarchive", "thread/resume"],
+      outcome: "saved-thread",
+    },
+    {
+      name: "an archived workspace is no archived session to unarchive",
+      resumeErrors: ["workspace is archived"],
+      calls: ["thread/resume"],
+      outcome: "workspace is archived",
+    },
+    {
+      name: "an unrelated archive path is no archived session to unarchive",
+      resumeErrors: ["permission denied reading archived_sessions/saved-thread"],
+      calls: ["thread/resume"],
+      outcome: "permission denied reading archived_sessions/saved-thread",
+    },
+    {
+      name: "a session still archived after unarchiving is not retried twice",
+      resumeErrors: ["session saved-thread is archived", "session saved-thread is archived"],
+      calls: ["thread/resume", "thread/unarchive", "thread/resume"],
+      outcome: "session saved-thread is archived",
+    },
+  ])("$name", ({ resumeErrors, calls: expectedCalls, outcome }) =>
+    Effect.gen(function* () {
+      const calls: string[] = [];
+      let resumeAttempt = 0;
+      const opened = yield* openCodexThread({
+        client: {
+          request: () => Effect.die("An archived session must not start fresh"),
+          raw: {
+            request: (method: string) => {
+              calls.push(method);
+              if (method === "thread/unarchive") return Effect.succeed({});
+              const errorMessage = resumeErrors[resumeAttempt++];
+              return errorMessage === undefined
+                ? Effect.succeed(makeThreadOpenResponse("saved-thread"))
+                : Effect.fail(
+                    new CodexErrors.CodexAppServerRequestError({ code: -32603, errorMessage }),
+                  );
+            },
+          },
+        },
+        threadId: ThreadId.make("thread-1"),
+        runtimeMode: "full-access",
+        cwd: "/tmp/project",
+        requestedModel: "gpt-5.3-codex",
+        serviceTier: undefined,
+        resumeThreadId: "saved-thread",
+      }).pipe(
+        Effect.map((metadata) => metadata.thread.id),
+        Effect.catch((error) =>
+          Effect.succeed(isCodexAppServerRequestError(error) ? error.errorMessage : "?"),
+        ),
+      );
+
+      NodeAssert.deepStrictEqual(calls, expectedCalls);
+      NodeAssert.equal(opened, outcome);
+    }),
+  );
+
   it.effect("propagates non-recoverable resume failures", () =>
     Effect.gen(function* () {
       const client = {

@@ -108,6 +108,7 @@ import { authHttpApiLayer, environmentAuthenticatedAuthLayer } from "./auth/http
 import * as ZeropsGitSpawner from "./zerops/ZeropsGitSpawner.ts";
 import * as ZeropsRepositorySource from "./zerops/ZeropsRepositorySource.ts";
 import { zeropsHttpApiLayer, zeropsSetupRouteLayer } from "./zerops/http.ts";
+import * as ReplayMarkers from "./auth/replayMarkers.ts";
 import * as ServerSecretStore from "./auth/ServerSecretStore.ts";
 import * as AssetSigningKey from "./assets/AssetSigningKey.ts";
 import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
@@ -472,6 +473,7 @@ const AntigravityInstallationRefreshLive = Layer.effectDiscard(
 
 const RuntimeCoreDependenciesLive = ReactorLayerLive.pipe(
   Layer.provideMerge(AntigravityInstallationRefreshLive),
+  Layer.provideMerge(ReplayMarkers.layer),
   Layer.provideMerge(ProviderAuthServiceLive),
   // Core Services
   Layer.provideMerge(ServerSettingsLayerLive),

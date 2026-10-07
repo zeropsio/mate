@@ -63,6 +63,8 @@ Full map, `imported.lock` enforcement, and the adapter SPI contract: `docs/inter
 
 ## Commands
 
+- Prepare a lane: `node scripts/prepare-worktree.ts` (frozen install, Electron, local prerequisites).
+
 - Lanes run `node scripts/gate-changed.ts` (default diff: merge-base with `origin/main`, plus
   staged/working/untracked files). It checks guard ledgers, `vp check` on touched files, incremental
   typechecks of touched packages, related tests and only affected scenario areas. `--list` previews

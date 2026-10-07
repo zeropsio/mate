@@ -62,11 +62,22 @@ import {
 } from "../../serverSettings.ts";
 import { VcsStatusBroadcaster } from "../../vcs/VcsStatusBroadcaster.ts";
 import { GitWorkflowService } from "../../git/GitWorkflowService.ts";
+import { TerminalManager } from "../../terminal/Manager.ts";
 import { withAgentNotes } from "../agentNotes.ts";
 import { makeSendLanes } from "../../sendLanes.ts";
 import { classifyModelSelectionChange, selectionAtSend } from "../modelSelectionChange.ts";
 import { describeProviderFailure, formatProviderFailure } from "../providerFailureText.ts";
 const isProviderAdapterRequestError = Schema.is(ProviderAdapterRequestError);
+
+/**
+ * A model change only a new Claude session can run, refused while the thread's background
+ * agents or watch loops are live: they run inside the old process, and a new session would end
+ * them and lose their results. Said to the person, never deferred in silence.
+ */
+export class BackgroundWorkBlocksModelChangeError extends Schema.TaggedError<BackgroundWorkBlocksModelChangeError>()(
+  "BackgroundWorkBlocksModelChangeError",
+  { threadId: Schema.String },
+) {}
 const isProviderAdapterSessionClosedError = Schema.is(ProviderAdapterSessionClosedError);
 const isProviderAdapterSessionNotFoundError = Schema.is(ProviderAdapterSessionNotFoundError);
 const isSessionGoneError = (
@@ -258,6 +269,7 @@ const make = Effect.gen(function* () {
   const vcsStatusBroadcaster = yield* VcsStatusBroadcaster;
   const textGeneration = yield* TextGeneration;
   const serverSettingsService = yield* ServerSettingsService;
+  const terminalManager = yield* TerminalManager;
   const serverCommandId = (tag: string) =>
     crypto.randomUUIDv4.pipe(Effect.map((uuid) => CommandId.make(`server:${tag}:${uuid}`)));
   const serverEventId = () => crypto.randomUUIDv4.pipe(Effect.map(EventId.make));
@@ -833,11 +845,16 @@ const make = Effect.gen(function* () {
             })
           : "none";
       // A running turn is never cut off for a model selection: a change only a
-      // new session can run waits until the session is idle.
+      // new session can run waits until the session is idle. Background agents
+      // and watch loops run inside the provider's process: with them live, the
+      // change is refused with its reason, never deferred in silence.
       const sessionRunning =
         activeSession?.status === "running" || thread.session?.status === "running";
       const shouldRestartForModelSelectionChange =
         modelSelectionChange === "new-session" && !sessionRunning;
+      if (shouldRestartForModelSelectionChange && (thread.backgroundLiveness ?? null) !== null) {
+        return yield* new BackgroundWorkBlocksModelChangeError({ threadId });
+      }
       if (
         !runtimeModeChanged &&
         !cwdChanged &&
@@ -2041,6 +2058,15 @@ const make = Effect.gen(function* () {
       case "thread.session-stop-requested":
         yield* processSessionStopRequested(event);
         return;
+      case "thread.settled": {
+        // A thread re-engaged before this event ran keeps its shells.
+        const thread = yield* resolveThreadShell(event.payload.threadId);
+        if (thread?.settledOverride !== "settled") return;
+        // Idle shells close so they stop holding the worktree. A terminal that
+        // runs a command (a dev server, an editor) stays for the person to close.
+        yield* terminalManager.closeIdle({ threadId: event.payload.threadId });
+        return;
+      }
     }
   });
 
@@ -2090,7 +2116,8 @@ const make = Effect.gen(function* () {
         event.type === "thread.turn-interrupt-requested" ||
         event.type === "thread.approval-response-requested" ||
         event.type === "thread.user-input-response-requested" ||
-        event.type === "thread.session-stop-requested"
+        event.type === "thread.session-stop-requested" ||
+        event.type === "thread.settled"
       ) {
         return yield* worker.enqueue(event);
       }

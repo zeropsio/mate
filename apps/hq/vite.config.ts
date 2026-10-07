@@ -8,7 +8,7 @@ export default mergeConfig(
   baseConfig,
   defineConfig({
     test: {
-      globalSetup: ["../../scripts/pg-test-lock.setup.ts"],
+      globalSetup: ["../../scripts/test-postgres.setup.ts"],
       fileParallelism: false,
     },
     pack: {

@@ -19,10 +19,12 @@ import * as Schema from "effect/Schema";
 import * as SchemaIssue from "effect/SchemaIssue";
 import * as SchemaTransformation from "effect/SchemaTransformation";
 import { Argument, Flag } from "effect/unstable/cli";
+import * as CliError from "effect/unstable/cli/CliError";
 
 import { readBootstrapEnvelope } from "../bootstrap.ts";
 import * as ServerConfig from "../config.ts";
 import { expandHomePath, resolveBaseDir } from "../os-jank.ts";
+import { isProcessAlive, readPersistedServerRuntimeState } from "../serverRuntimeState.ts";
 import { resolveZeropsEnvironment } from "../zerops/ZeropsEnvironment.ts";
 
 export const modeFlag = Flag.Literals("mode", ServerConfig.RuntimeMode.literals).pipe(
@@ -83,16 +85,22 @@ export const logWebSocketEventsFlag = Flag.Boolean("log-websocket-events").pipe(
   Flag.withAlias("log-ws-events"),
   Flag.optional,
 );
+// Trace file location, shared by the server and `mate trace summary`.
+export const traceFileConfig = Config.String("T3CODE_TRACE_FILE").pipe(
+  Config.option,
+  Config.map(Option.getOrUndefined),
+);
+export const traceMaxFilesConfig = Config.Int("T3CODE_TRACE_MAX_FILES").pipe(
+  Config.withDefault(10),
+);
+
 const EnvServerConfig = Config.all({
   logLevel: Config.LogLevel("T3CODE_LOG_LEVEL").pipe(Config.withDefault("Info")),
   traceMinLevel: Config.LogLevel("T3CODE_TRACE_MIN_LEVEL").pipe(Config.withDefault("Info")),
   traceTimingEnabled: Config.Boolean("T3CODE_TRACE_TIMING_ENABLED").pipe(Config.withDefault(true)),
-  traceFile: Config.String("T3CODE_TRACE_FILE").pipe(
-    Config.option,
-    Config.map(Option.getOrUndefined),
-  ),
+  traceFile: traceFileConfig,
   traceMaxBytes: Config.Int("T3CODE_TRACE_MAX_BYTES").pipe(Config.withDefault(10 * 1024 * 1024)),
-  traceMaxFiles: Config.Int("T3CODE_TRACE_MAX_FILES").pipe(Config.withDefault(10)),
+  traceMaxFiles: traceMaxFilesConfig,
   traceBatchWindowMs: Config.Int("T3CODE_TRACE_BATCH_WINDOW_MS").pipe(Config.withDefault(1_000)),
   otlpTracesUrl: Config.String("T3CODE_OTLP_TRACES_URL").pipe(
     Config.option,
@@ -275,6 +283,7 @@ export const resolveServerConfig = (
   options?: {
     readonly startupPresentation?: ServerConfig.StartupPresentation;
     readonly forceAutoBootstrapProjectFromCwd?: boolean;
+    readonly rejectRunningServer?: boolean;
   },
 ) =>
   Effect.gen(function* () {
@@ -343,10 +352,20 @@ export const resolveServerConfig = (
     );
     const rawCwd = Option.getOrElse(normalizedFlags.cwd, () => process.cwd());
     const cwd = path.resolve(yield* expandHomePath(rawCwd.trim()));
-    yield* fs.makeDirectory(cwd, { recursive: true });
     const derivedPaths = yield* ServerConfig.deriveServerPaths(baseDir, devUrl, {
       baseDirIsExplicit: Option.isSome(explicitBaseDir),
     });
+    // An interactive CLI must not start over a discovered server. Lifetime locking
+    // and supervisor handoff are separate; this preflight cannot arbitrate two starts.
+    if (options?.rejectRunningServer && mode === "web") {
+      const runtime = yield* readPersistedServerRuntimeState(derivedPaths.serverRuntimeStatePath);
+      if (Option.isSome(runtime) && runtime.value.pid > 0 && isProcessAlive(runtime.value.pid)) {
+        return yield* new CliError.UserError({
+          cause: `A Zerops Mate server is already running for ${baseDir} (pid ${runtime.value.pid}, ${runtime.value.origin}). Connect to that server, stop it before starting another, or use a different --base-dir.`,
+        });
+      }
+    }
+    yield* fs.makeDirectory(cwd, { recursive: true });
     yield* ServerConfig.ensureServerDirectories(derivedPaths);
     const persistedObservabilitySettings = yield* loadPersistedObservabilitySettings(
       derivedPaths.settingsPath,

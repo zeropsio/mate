@@ -1,39 +1,46 @@
 import { assert, describe, it } from "@effect/vitest";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Path from "effect/Path";
 import * as PlatformError from "effect/PlatformError";
 import * as Sink from "effect/Sink";
 import * as Stream from "effect/Stream";
+import * as TestClock from "effect/testing/TestClock";
 import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
 
 import * as DesktopEnvironment from "./DesktopEnvironment.ts";
+import * as DesktopAssets from "./DesktopAssets.ts";
 import * as DesktopLinuxUrlHandler from "./DesktopLinuxUrlHandler.ts";
 
 interface RecordedRegistration {
   readonly directories: string[];
   readonly files: Array<{ readonly path: string; readonly content: string }>;
   readonly commands: Array<{ readonly command: string; readonly args: ReadonlyArray<string> }>;
+  readonly copies: Array<{ readonly source: string; readonly destination: string }>;
 }
 
-const makeEnvironment = (overrides: Record<string, unknown> = {}) =>
+const makeEnvironment = (path: Path.Path, overrides: Record<string, unknown> = {}) =>
   DesktopEnvironment.DesktopEnvironment.of({
     platform: "linux",
     isPackaged: true,
     isDevelopment: false,
     displayName: "Zerops Mate (Alpha)",
+    linuxDesktopEntryName: "zerops-mate.desktop",
     linuxWmClass: "t3code",
     linuxApplicationsDir: "/home/alice/.local/share/applications",
     appImagePath: Option.some("/home/alice/Applications/T3-Code.AppImage"),
-    path: { join: (...parts: ReadonlyArray<string>) => parts.join("/") },
+    path,
     ...overrides,
   } as unknown as DesktopEnvironment.DesktopEnvironment["Service"]);
 
-const mockProcess = (exitCode: number) =>
+const mockProcess = (exitCode: number, stalled = false) =>
   ChildProcessSpawner.makeHandle({
     pid: ChildProcessSpawner.ProcessId(1),
-    exitCode: Effect.succeed(ChildProcessSpawner.ExitCode(exitCode)),
+    exitCode: stalled ? Effect.never : Effect.succeed(ChildProcessSpawner.ExitCode(exitCode)),
     isRunning: Effect.succeed(false),
     kill: () => Effect.void,
     unref: Effect.succeed(Effect.void),
@@ -49,15 +56,40 @@ const makeHandlerLayer = (
   recorded: RecordedRegistration,
   input: {
     readonly environment?: Record<string, unknown>;
+    readonly updateDesktopDatabaseExitCode?: number;
+    readonly updateDesktopDatabaseStalled?: boolean;
+    readonly updateDesktopDatabaseStarted?: Deferred.Deferred<void>;
     readonly xdgMimeExitCode?: number;
     readonly writeError?: PlatformError.PlatformError;
+    readonly iconSource?: string;
+    readonly iconCopyError?: PlatformError.PlatformError;
   } = {},
 ) =>
   DesktopLinuxUrlHandler.layer.pipe(
     Layer.provide(
       Layer.mergeAll(
-        Layer.succeed(DesktopEnvironment.DesktopEnvironment, makeEnvironment(input.environment)),
+        Layer.effect(
+          DesktopEnvironment.DesktopEnvironment,
+          Path.Path.pipe(
+            Effect.map((path) => makeEnvironment(path, input.environment)),
+            Effect.provide(Path.layer),
+          ),
+        ),
+        Layer.succeed(DesktopAssets.DesktopAssets, {
+          iconPaths: Effect.succeed({
+            png: Option.fromUndefinedOr(input.iconSource),
+            ico: Option.none(),
+            icns: Option.none(),
+          }),
+          resolveResourcePath: () => Effect.succeedNone,
+        }),
         FileSystem.layerNoop({
+          copyFile: (source, destination) =>
+            input.iconCopyError
+              ? Effect.fail(input.iconCopyError)
+              : Effect.sync(() => {
+                  recorded.copies.push({ source, destination });
+                }),
           makeDirectory: (path) =>
             Effect.sync(() => {
               recorded.directories.push(path);
@@ -76,11 +108,31 @@ const makeHandlerLayer = (
               readonly command: string;
               readonly args: ReadonlyArray<string>;
             };
+            if (childProcess.command === "update-desktop-database") {
+              assert.isTrue(
+                recorded.files.length > 0,
+                "the desktop entry must exist before refreshing the MIME cache",
+              );
+            }
             recorded.commands.push({
               command: childProcess.command,
               args: childProcess.args,
             });
-            return Effect.succeed(mockProcess(input.xdgMimeExitCode ?? 0));
+            const exitCode =
+              childProcess.command === "update-desktop-database"
+                ? (input.updateDesktopDatabaseExitCode ?? 0)
+                : (input.xdgMimeExitCode ?? 0);
+            const handle = mockProcess(
+              exitCode,
+              childProcess.command === "update-desktop-database" &&
+                input.updateDesktopDatabaseStalled === true,
+            );
+            return childProcess.command === "update-desktop-database" &&
+              input.updateDesktopDatabaseStarted
+              ? Deferred.succeed(input.updateDesktopDatabaseStarted, undefined).pipe(
+                  Effect.as(handle),
+                )
+              : Effect.succeed(handle);
           }),
         ),
       ),
@@ -100,6 +152,7 @@ const emptyRecording = (): RecordedRegistration => ({
   directories: [],
   files: [],
   commands: [],
+  copies: [],
 });
 
 describe("DesktopLinuxUrlHandler", () => {
@@ -108,6 +161,7 @@ describe("DesktopLinuxUrlHandler", () => {
       displayName: "Zerops Mate (Nightly)",
       execTarget: '/home/al ice/Apps/T3 "100%" $HOME\\x.AppImage',
       scheme: "zerops-mate",
+      iconPath: "/home/al ice/icons/T3\\x.png",
     });
 
     assert.include(entry, "[Desktop Entry]");
@@ -122,6 +176,7 @@ describe("DesktopLinuxUrlHandler", () => {
     assert.include(entry, "NoDisplay=true");
     assert.notInclude(entry, "StartupWMClass=");
     assert.include(entry, "MimeType=x-scheme-handler/zerops-mate;");
+    assert.include(entry, "Icon=/home/al ice/icons/T3\\\\x.png");
   });
 
   it("carries structured context on registration errors", () => {
@@ -151,31 +206,38 @@ describe("DesktopLinuxUrlHandler", () => {
     );
   });
 
-  it.effect("writes the handler entry and claims the scheme default via xdg-mime", () => {
-    const recorded = emptyRecording();
+  it.effect(
+    "writes the handler entry, refreshes the MIME cache, and claims the scheme default",
+    () => {
+      const recorded = emptyRecording();
 
-    return Effect.gen(function* () {
-      yield* runRegister(recorded);
+      return Effect.gen(function* () {
+        yield* runRegister(recorded);
 
-      assert.deepEqual(recorded.directories, ["/home/alice/.local/share/applications"]);
-      assert.equal(recorded.files.length, 1);
-      assert.equal(
-        recorded.files[0]?.path,
-        "/home/alice/.local/share/applications/zerops-mate-url-handler.desktop",
-      );
-      assert.include(
-        recorded.files[0]?.content,
-        'Exec="/home/alice/Applications/T3-Code.AppImage" %U',
-      );
-      assert.include(recorded.files[0]?.content, "MimeType=x-scheme-handler/zerops-mate;");
-      assert.deepEqual(recorded.commands, [
-        {
-          command: "xdg-mime",
-          args: ["default", "zerops-mate-url-handler.desktop", "x-scheme-handler/zerops-mate"],
-        },
-      ]);
-    });
-  });
+        assert.deepEqual(recorded.directories, ["/home/alice/.local/share/applications"]);
+        assert.equal(recorded.files.length, 1);
+        assert.equal(
+          recorded.files[0]?.path,
+          "/home/alice/.local/share/applications/zerops-mate-url-handler.desktop",
+        );
+        assert.include(
+          recorded.files[0]?.content,
+          'Exec="/home/alice/Applications/T3-Code.AppImage" %U',
+        );
+        assert.include(recorded.files[0]?.content, "MimeType=x-scheme-handler/zerops-mate;");
+        assert.deepEqual(recorded.commands, [
+          {
+            command: "update-desktop-database",
+            args: ["/home/alice/.local/share/applications"],
+          },
+          {
+            command: "xdg-mime",
+            args: ["default", "zerops-mate-url-handler.desktop", "x-scheme-handler/zerops-mate"],
+          },
+        ]);
+      });
+    },
+  );
 
   it.effect("falls back to the process executable outside an AppImage", () => {
     const recorded = emptyRecording();
@@ -186,6 +248,41 @@ describe("DesktopLinuxUrlHandler", () => {
       assert.include(
         recorded.files[0]?.content,
         `Exec=${DesktopLinuxUrlHandler.escapeDesktopEntryExecArgument(process.execPath)} %U`,
+      );
+    });
+  });
+
+  it.effect("installs a persistent icon beside the handler entry", () => {
+    const recorded = emptyRecording();
+    const iconPath = "/home/alice/.local/share/icons/zerops-mate.desktop.png";
+    return Effect.gen(function* () {
+      yield* runRegister(recorded, {
+        iconSource: "/tmp/.mount_T3/resources/icon.png",
+      });
+      assert.include(recorded.files[0]?.content, `Icon=${iconPath}`);
+      assert.deepEqual(recorded.copies, [
+        { source: "/tmp/.mount_T3/resources/icon.png", destination: iconPath },
+      ]);
+      assert.equal(recorded.commands.at(-1)?.command, "xdg-mime");
+    });
+  });
+
+  it.effect("still registers the handler when copying its icon fails", () => {
+    const recorded = emptyRecording();
+    return Effect.gen(function* () {
+      yield* runRegister(recorded, {
+        iconSource: "/tmp/.mount_T3/resources/icon.png",
+        iconCopyError: PlatformError.systemError({
+          _tag: "PermissionDenied",
+          module: "FileSystem",
+          method: "copyFile",
+          description: "read-only icon directory",
+        }),
+      });
+      assert.equal(recorded.files.length, 1);
+      assert.deepEqual(
+        recorded.commands.map(({ command }) => command),
+        ["update-desktop-database", "xdg-mime"],
       );
     });
   });
@@ -207,10 +304,12 @@ describe("DesktopLinuxUrlHandler", () => {
   });
 
   it.effect("never fails startup when registration cannot complete", () => {
+    const desktopDatabaseFailed = emptyRecording();
     const xdgMimeFailed = emptyRecording();
     const writeFailed = emptyRecording();
 
     return Effect.gen(function* () {
+      yield* runRegister(desktopDatabaseFailed, { updateDesktopDatabaseExitCode: 1 });
       yield* runRegister(xdgMimeFailed, { xdgMimeExitCode: 1 });
       yield* runRegister(writeFailed, {
         writeError: PlatformError.systemError({
@@ -222,8 +321,32 @@ describe("DesktopLinuxUrlHandler", () => {
         }),
       });
 
+      assert.deepEqual(
+        desktopDatabaseFailed.commands.map(({ command }) => command),
+        ["update-desktop-database", "xdg-mime"],
+      );
       assert.equal(xdgMimeFailed.files.length, 1);
       assert.deepEqual(writeFailed.commands, []);
     });
   });
+
+  it.effect("continues to xdg-mime when the desktop MIME cache refresh stalls", () =>
+    Effect.gen(function* () {
+      const recorded = emptyRecording();
+      const started = yield* Deferred.make<void>();
+      const registration = yield* runRegister(recorded, {
+        updateDesktopDatabaseStalled: true,
+        updateDesktopDatabaseStarted: started,
+      }).pipe(Effect.forkChild);
+
+      yield* Deferred.await(started);
+      yield* TestClock.adjust("5 seconds");
+      yield* Fiber.join(registration);
+
+      assert.deepEqual(
+        recorded.commands.map(({ command }) => command),
+        ["update-desktop-database", "xdg-mime"],
+      );
+    }),
+  );
 });

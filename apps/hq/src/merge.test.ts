@@ -454,7 +454,8 @@ describe("a change merged into main, or closed", () => {
           yield* rowsWhere(
             url,
             `SELECT pg_terminate_backend(pid) AS cut FROM pg_stat_activity
-               WHERE wait_event_type = 'Lock' AND query LIKE '%INSERT INTO hq_git_event%'`,
+               WHERE datname = current_database() AND wait_event_type = 'Lock'
+                 AND query LIKE '%INSERT INTO hq_git_event%'`,
             (rows) => rows.length > 0,
           );
           yield* db.query("ROLLBACK");

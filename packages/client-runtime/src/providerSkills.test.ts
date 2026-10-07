@@ -2,10 +2,12 @@ import { ProviderDriverKind, ProviderInstanceId, type ServerProvider } from "@t3
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  workspaceSnapshotRetryDelayMs,
   dedupeProviderSkillsByName,
   formatProviderSkillDisplayName,
   getProviderSlashCommandsForSlashMenu,
   getProviderSkillsForSlashMenu,
+  hasCompleteProviderWorkspaceSnapshot,
   resolveProviderSkillsForCwd,
   resolveProviderSlashCommandsForCwd,
   resolveProviderSkillSourceKind,
@@ -250,5 +252,41 @@ describe("workspace provider snapshots", () => {
   it("keeps the machine snapshot before this cwd has a provider snapshot", () => {
     expect(resolveProviderSkillsForCwd(provider, "/workspace/project-b")).toEqual(provider.skills);
     expect(resolveProviderSlashCommandsForCwd(provider, null)).toEqual(provider.slashCommands);
+  });
+
+  it("uses partial workspace skills and commands while keeping discovery retryable", () => {
+    const partial = {
+      ...provider,
+      workspaceSnapshots: provider.workspaceSnapshots.map((snapshot) => ({
+        ...snapshot,
+        slashCommands: [{ name: "compact" }],
+        slashCommandsPending: true,
+      })),
+    } satisfies ServerProvider;
+    expect(resolveProviderSkillsForCwd(partial, "/workspace/project-a")).toEqual(
+      provider.workspaceSnapshots[0]?.skills,
+    );
+    expect(resolveProviderSlashCommandsForCwd(partial, "/workspace/project-a")).toEqual([
+      { name: "compact" },
+    ]);
+    expect(hasCompleteProviderWorkspaceSnapshot(partial, "/workspace/project-a")).toBe(false);
+    expect(hasCompleteProviderWorkspaceSnapshot(provider, "/workspace/project-a")).toBe(true);
+    expect(hasCompleteProviderWorkspaceSnapshot(provider, "/workspace/project-b")).toBe(false);
+    expect(hasCompleteProviderWorkspaceSnapshot(undefined, "/workspace/project-a")).toBe(false);
+    expect(hasCompleteProviderWorkspaceSnapshot(provider, null)).toBe(false);
+  });
+});
+
+// Each retry spawns a coding-agent process in the workspace, so a probe that
+// keeps failing is asked less and less often.
+describe("workspaceSnapshotRetryDelayMs", () => {
+  it.each([
+    [1, 10_000],
+    [2, 30_000],
+    [3, 60_000],
+    [4, 300_000],
+    [12, 300_000],
+  ])("a workspace scan that failed %i time(s) is retried after %i ms", (failures, delay) => {
+    expect(workspaceSnapshotRetryDelayMs(failures)).toBe(delay);
   });
 });

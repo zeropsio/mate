@@ -380,6 +380,9 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
       assert.deepStrictEqual((linux.linux as Record<string, unknown>).protocols, [
         { name: "Zerops Mate", schemes: ["zerops-mate", "zerops-mate-dev"] },
       ]);
+      assert.deepStrictEqual(linux.toolsets, { appimage: "1.0.3" });
+      assert.notProperty(mac, "toolsets");
+      assert.notProperty(win, "toolsets");
       assert.notProperty(mac.mac as Record<string, unknown>, "sign");
       // The desktop no longer embeds a server, so every platform (including
       // mac) ships the same unconditional `files` exclusion list.

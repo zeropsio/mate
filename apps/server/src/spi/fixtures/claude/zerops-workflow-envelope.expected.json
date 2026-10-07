@@ -977,8 +977,102 @@
     }
   },
   {
-    "type": "thread.token-usage.updated",
+    "type": "item.updated",
     "eventId": "evt-18",
+    "provider": "claudeAgent",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "threadId": "spi-replay-claude-thread",
+    "turnId": "turn-0",
+    "itemId": "item-2",
+    "payload": {
+      "itemType": "mcp_tool_call",
+      "status": "inProgress",
+      "title": "MCP tool call",
+      "detail": "mcp__zerops__zerops_workflow: {\"action\":\"status\"}",
+      "data": {
+        "toolName": "mcp__zerops__zerops_workflow",
+        "input": {
+          "action": "status"
+        }
+      },
+      "presentation": {
+        "title": "Workflow orchestration",
+        "source": {
+          "key": "mcp:zerops",
+          "name": "zcp"
+        }
+      }
+    },
+    "providerRefs": {
+      "providerItemId": "item-2"
+    },
+    "raw": {
+      "source": "claude.sdk.message",
+      "method": "claude/assistant",
+      "payload": {
+        "type": "assistant",
+        "message": {
+          "model": "claude-opus-5",
+          "id": "msg_011CeWiUjGGgFEubXDRoafne",
+          "type": "message",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "tool_use",
+              "id": "item-2",
+              "name": "mcp__zerops__zerops_workflow",
+              "input": {
+                "action": "status"
+              },
+              "caller": {
+                "type": "direct"
+              }
+            }
+          ],
+          "stop_reason": null,
+          "stop_sequence": null,
+          "stop_details": null,
+          "usage": {
+            "input_tokens": 2,
+            "cache_creation_input_tokens": 7592,
+            "cache_read_input_tokens": 21473,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 7592
+            },
+            "output_tokens": 33,
+            "service_tier": "standard",
+            "inference_geo": "not_available"
+          },
+          "diagnostics": null,
+          "context_management": null
+        },
+        "parent_tool_use_id": null,
+        "session_id": "eb868018-ad42-4b78-869c-a3c08eada6d2",
+        "uuid": "20479bcf-ca02-435e-91e9-a76d45f8be79",
+        "timestamp": "2026-08-29T08:22:08.403Z",
+        "request_id": "req_011CeWiUiWsfuyAjq2ifVT8a",
+        "tool_use_meta": [
+          {
+            "id": "item-2",
+            "display_name": "Workflow orchestration",
+            "server_display_name": "zcp"
+          }
+        ]
+      }
+    },
+    "toolCall": {
+      "name": "zerops_workflow",
+      "rawName": "mcp__zerops__zerops_workflow",
+      "server": "zerops",
+      "arguments": {
+        "action": "status"
+      }
+    }
+  },
+  {
+    "type": "thread.token-usage.updated",
+    "eventId": "evt-19",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",
@@ -1038,7 +1132,7 @@
   },
   {
     "type": "item.updated",
-    "eventId": "evt-19",
+    "eventId": "evt-20",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",
@@ -1063,6 +1157,13 @@
               "text": "## Status\nPhase: idle\nServices: s3git1, s3git2, weatherdash\n  - s3git1 (ubuntu/nodejs@22) — bootstrapped=true, mode=dev, closeMode=unset, gitPush=unconfigured, buildIntegration=none, deployed=true — base prefix ubuntu/ — write it on BOTH zerops.yaml build.base and run.base (legacy nodejs@22 + os: ubuntu ≡ ubuntu/nodejs@22; run.base rewrites the service OS on every deploy)\n  - s3git2 (ubuntu/nodejs@22) — bootstrapped=true, mode=dev, closeMode=unset, gitPush=unconfigured, buildIntegration=none, deployed=true — base prefix ubuntu/ — write it on BOTH zerops.yaml build.base and run.base (legacy nodejs@22 + os: ubuntu ≡ ubuntu/nodejs@22; run.base rewrites the service OS on every deploy)\n  - weatherdash (alpine/nginx@1.22) — bootstrapped=true, mode=simple, closeMode=auto, gitPush=unconfigured, buildIntegration=none, deployed=true\nGuidance:\n  === bootstrap-route-options ===\n  ### Bootstrap is two-phase\n\n  First call returns `kind: \"route-menu\"` listing `routeOptions[]` — no\n  session is open yet. Second call opens the session and returns\n  `kind: \"session-active\"`. Read `kind` on every response.\n\n  ```\n  zerops_workflow action=\"start\" workflow=\"bootstrap\" intent=\"<one-sentence>\"\n     → kind=\"route-menu\", routeOptions=[...]\n  zerops_workflow action=\"start\" workflow=\"bootstrap\" route=\"<picked>\" \\\n     recipeSlug=\"<slug>\"   # if route=\"recipe\"\n     sessionId=\"<id>\"      # if route=\"resume\"\n     → kind=\"session-active\"\n  ```\n\n  ### Coexistence with existing services\n\n  Existing services in the project (bootstrapped or not) are **independent**.\n  Bootstrap creates **new** services alongside them — it does not modify,\n  re-import, or replace existing ones. To add a service to a project that\n  already has some, pick a non-colliding hostname and bootstrap normally.\n  `zerops_import override=true` is destructive and reserved for explicit\n  user requests (config change on a known service), never the default\n  path when bootstrap surfaces a hostname collision.\n\n  ### Ranked options\n\n  | Route | Present when | Carries | Dispatch / rule |\n  |---|---|---|---|\n  | `resume` | Snapshot has `resumable: true` | `resumeSession`, `resumeServices` | Pick first unless intentionally overriding: `route=\"resume\" sessionId=\"<resumeSession>\"`. |\n  | `adopt` | Runtime services lack bootstrap records (`not bootstrapped`) | `adoptServices[]` | Attach ZCP tracking to running services — no infra change. Use when the user's intent matches the listed `adoptServices[]`. To add NEW services alongside (instead of adopting these), use `classic`. |\n  | `recipe` | Up to three recipe matches | `recipeSlug`, `confidence`, `collisions[]` | `route=\"recipe\" recipeSlug=\"<value from routeOptions[].recipeSlug>\"`. Copy the slug verbatim from the discover response — corpus slugs don't carry a `zerops-` prefix even when users name a recipe by its branded form (`\"zerops-laravel-minimal\"`). Collisions recover by runtime rename or same-type managed `resolution: EXISTS`; switch routes only for different-type managed collision or independent infra. |\n  | `classic` | Always available | none | `route=\"classic\"` for manual planning. Default path for creating new services in any project state — fresh project or alongside existing ones. |\n\n  ### Explicit overrides\n\n  Explicit `route` on the first call bypasses discovery. Use only after\n  prior discovery or direct user route choice. Valid values:\n  `adopt`, `recipe`, `classic`, `resume`. Empty route re-enters discovery.\n\n  ### Collision semantics\n\n  `collisions[]` annotates recipe options; enforcement happens at plan\n  submission. Pre-plan hostnames: rename runtimes or set managed deps to\n  `EXISTS` before submitting.\n  === idle-develop-entry ===\n  The project has at least one bootstrapped service ready to receive\n  code. Start a develop session:\n\n  ```\n  zerops_workflow action=\"start\" workflow=\"develop\" intent=\"{task-description}\" scope=[\"s3git1\",…]\n  ```\n\n  The envelope will flip to `phase: develop-active`; subsequent status\n  calls show `workSession.deploys[]` and `workSession.verifies[]` as\n  you iterate. Once the develop session is active, auto-close semantics\n  land in the develop response.\n\n  **To add a NEW service to this project** — run bootstrap workflow\n  again with a non-colliding hostname (`route=\"classic\"` or\n  `route=\"recipe\"`). The new service exists alongside the bootstrapped\n  ones; bootstrap never modifies or replaces existing services.\n  === idle-launch-entry ===\n  The project has bootstrapped services with at least one successful deploy — a legitimate candidate for promotion to a SEPARATE production Zerops project. When the user's intent is \"go live\", \"deploy to prod\", \"launch production\", \"promote to prod\", or the Czech equivalents (\"nasaď to na prod\", \"udělej produkční projekt\"), use the launch-production workflow rather than running `zcli project create` or hand-writing an import.yaml:\n\n  ```\n  zerops_workflow action=\"start\" workflow=\"launch-production\" intent=\"<one-line>\" targetService=\"<dev-hostname>\"\n  ```\n\n  The workflow handles bundle composition (managed deps promoted to HA, production scaling tier), source-control mutation (appending `setup: prod` block to `zerops.yaml`), a single integration token with project-creation permission staged as a service secret for the launch window and never persisted — either minted by ZCP itself from a one-time platform delegation on the user's confirmation, or supplied once by the user as a fallback — and a post-launch checklist (first release, window close via confirm-production, attach domain). Multi-call narrowing: `scope-prompt` → `classify-prompt` → `ready-to-launch` → `launching` → `configuring-pipeline` → `launched`.\n\n  For standard-mode dev/stage pairs, pass the dev-half hostname as `targetService` (a stage-half hostname is accepted too — the handler normalizes it to the dev half). Continue developing the existing services through the develop entry instead when the user's intent is iteration, not promotion.\nNext:\n  ▸ Primary: Start a develop task — zerops_workflow action=\"start\" intent=\"...\" workflow=\"develop\"\n  · Alternatives:\n      - Add more services — zerops_workflow action=\"start\" workflow=\"bootstrap\"\n\n```json zcp-envelope\n{\"phase\":\"idle\",\"environment\":\"container\",\"idleScenario\":\"bootstrapped\",\"selfService\":{\"hostname\":\"zcp\"},\"project\":{\"id\":\"nTV3oMB2SS634ImDJnQckg\",\"name\":\"z3-eval\"},\"services\":[{\"hostname\":\"s3git1\",\"typeVersion\":\"ubuntu/nodejs@22\",\"runtimeClass\":\"dynamic\",\"status\":\"ACTIVE\",\"bootstrapped\":true,\"deployed\":true,\"mode\":\"dev\",\"closeDeployMode\":\"unset\",\"gitPushState\":\"unconfigured\",\"buildIntegration\":\"none\"},{\"hostname\":\"s3git2\",\"typeVersion\":\"ubuntu/nodejs@22\",\"runtimeClass\":\"dynamic\",\"status\":\"ACTIVE\",\"bootstrapped\":true,\"deployed\":true,\"mode\":\"dev\",\"closeDeployMode\":\"unset\",\"gitPushState\":\"unconfigured\",\"buildIntegration\":\"none\"},{\"hostname\":\"weatherdash\",\"typeVersion\":\"alpine/nginx@1.22\",\"runtimeClass\":\"static\",\"status\":\"ACTIVE\",\"bootstrapped\":true,\"deployed\":true,\"mode\":\"simple\",\"closeDeployMode\":\"auto\",\"gitPushState\":\"unconfigured\",\"buildIntegration\":\"none\",\"setupName\":\"weatherdash\"}],\"generated\":\"2026-08-29T08:22:08.413683454Z\"}\n```\n"
             }
           ]
+        }
+      },
+      "presentation": {
+        "title": "Workflow orchestration",
+        "source": {
+          "key": "mcp:zerops",
+          "name": "zcp"
         }
       }
     },
@@ -1116,7 +1217,7 @@
   },
   {
     "type": "item.completed",
-    "eventId": "evt-20",
+    "eventId": "evt-21",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",
@@ -1141,6 +1242,13 @@
               "text": "## Status\nPhase: idle\nServices: s3git1, s3git2, weatherdash\n  - s3git1 (ubuntu/nodejs@22) — bootstrapped=true, mode=dev, closeMode=unset, gitPush=unconfigured, buildIntegration=none, deployed=true — base prefix ubuntu/ — write it on BOTH zerops.yaml build.base and run.base (legacy nodejs@22 + os: ubuntu ≡ ubuntu/nodejs@22; run.base rewrites the service OS on every deploy)\n  - s3git2 (ubuntu/nodejs@22) — bootstrapped=true, mode=dev, closeMode=unset, gitPush=unconfigured, buildIntegration=none, deployed=true — base prefix ubuntu/ — write it on BOTH zerops.yaml build.base and run.base (legacy nodejs@22 + os: ubuntu ≡ ubuntu/nodejs@22; run.base rewrites the service OS on every deploy)\n  - weatherdash (alpine/nginx@1.22) — bootstrapped=true, mode=simple, closeMode=auto, gitPush=unconfigured, buildIntegration=none, deployed=true\nGuidance:\n  === bootstrap-route-options ===\n  ### Bootstrap is two-phase\n\n  First call returns `kind: \"route-menu\"` listing `routeOptions[]` — no\n  session is open yet. Second call opens the session and returns\n  `kind: \"session-active\"`. Read `kind` on every response.\n\n  ```\n  zerops_workflow action=\"start\" workflow=\"bootstrap\" intent=\"<one-sentence>\"\n     → kind=\"route-menu\", routeOptions=[...]\n  zerops_workflow action=\"start\" workflow=\"bootstrap\" route=\"<picked>\" \\\n     recipeSlug=\"<slug>\"   # if route=\"recipe\"\n     sessionId=\"<id>\"      # if route=\"resume\"\n     → kind=\"session-active\"\n  ```\n\n  ### Coexistence with existing services\n\n  Existing services in the project (bootstrapped or not) are **independent**.\n  Bootstrap creates **new** services alongside them — it does not modify,\n  re-import, or replace existing ones. To add a service to a project that\n  already has some, pick a non-colliding hostname and bootstrap normally.\n  `zerops_import override=true` is destructive and reserved for explicit\n  user requests (config change on a known service), never the default\n  path when bootstrap surfaces a hostname collision.\n\n  ### Ranked options\n\n  | Route | Present when | Carries | Dispatch / rule |\n  |---|---|---|---|\n  | `resume` | Snapshot has `resumable: true` | `resumeSession`, `resumeServices` | Pick first unless intentionally overriding: `route=\"resume\" sessionId=\"<resumeSession>\"`. |\n  | `adopt` | Runtime services lack bootstrap records (`not bootstrapped`) | `adoptServices[]` | Attach ZCP tracking to running services — no infra change. Use when the user's intent matches the listed `adoptServices[]`. To add NEW services alongside (instead of adopting these), use `classic`. |\n  | `recipe` | Up to three recipe matches | `recipeSlug`, `confidence`, `collisions[]` | `route=\"recipe\" recipeSlug=\"<value from routeOptions[].recipeSlug>\"`. Copy the slug verbatim from the discover response — corpus slugs don't carry a `zerops-` prefix even when users name a recipe by its branded form (`\"zerops-laravel-minimal\"`). Collisions recover by runtime rename or same-type managed `resolution: EXISTS`; switch routes only for different-type managed collision or independent infra. |\n  | `classic` | Always available | none | `route=\"classic\"` for manual planning. Default path for creating new services in any project state — fresh project or alongside existing ones. |\n\n  ### Explicit overrides\n\n  Explicit `route` on the first call bypasses discovery. Use only after\n  prior discovery or direct user route choice. Valid values:\n  `adopt`, `recipe`, `classic`, `resume`. Empty route re-enters discovery.\n\n  ### Collision semantics\n\n  `collisions[]` annotates recipe options; enforcement happens at plan\n  submission. Pre-plan hostnames: rename runtimes or set managed deps to\n  `EXISTS` before submitting.\n  === idle-develop-entry ===\n  The project has at least one bootstrapped service ready to receive\n  code. Start a develop session:\n\n  ```\n  zerops_workflow action=\"start\" workflow=\"develop\" intent=\"{task-description}\" scope=[\"s3git1\",…]\n  ```\n\n  The envelope will flip to `phase: develop-active`; subsequent status\n  calls show `workSession.deploys[]` and `workSession.verifies[]` as\n  you iterate. Once the develop session is active, auto-close semantics\n  land in the develop response.\n\n  **To add a NEW service to this project** — run bootstrap workflow\n  again with a non-colliding hostname (`route=\"classic\"` or\n  `route=\"recipe\"`). The new service exists alongside the bootstrapped\n  ones; bootstrap never modifies or replaces existing services.\n  === idle-launch-entry ===\n  The project has bootstrapped services with at least one successful deploy — a legitimate candidate for promotion to a SEPARATE production Zerops project. When the user's intent is \"go live\", \"deploy to prod\", \"launch production\", \"promote to prod\", or the Czech equivalents (\"nasaď to na prod\", \"udělej produkční projekt\"), use the launch-production workflow rather than running `zcli project create` or hand-writing an import.yaml:\n\n  ```\n  zerops_workflow action=\"start\" workflow=\"launch-production\" intent=\"<one-line>\" targetService=\"<dev-hostname>\"\n  ```\n\n  The workflow handles bundle composition (managed deps promoted to HA, production scaling tier), source-control mutation (appending `setup: prod` block to `zerops.yaml`), a single integration token with project-creation permission staged as a service secret for the launch window and never persisted — either minted by ZCP itself from a one-time platform delegation on the user's confirmation, or supplied once by the user as a fallback — and a post-launch checklist (first release, window close via confirm-production, attach domain). Multi-call narrowing: `scope-prompt` → `classify-prompt` → `ready-to-launch` → `launching` → `configuring-pipeline` → `launched`.\n\n  For standard-mode dev/stage pairs, pass the dev-half hostname as `targetService` (a stage-half hostname is accepted too — the handler normalizes it to the dev half). Continue developing the existing services through the develop entry instead when the user's intent is iteration, not promotion.\nNext:\n  ▸ Primary: Start a develop task — zerops_workflow action=\"start\" intent=\"...\" workflow=\"develop\"\n  · Alternatives:\n      - Add more services — zerops_workflow action=\"start\" workflow=\"bootstrap\"\n\n```json zcp-envelope\n{\"phase\":\"idle\",\"environment\":\"container\",\"idleScenario\":\"bootstrapped\",\"selfService\":{\"hostname\":\"zcp\"},\"project\":{\"id\":\"nTV3oMB2SS634ImDJnQckg\",\"name\":\"z3-eval\"},\"services\":[{\"hostname\":\"s3git1\",\"typeVersion\":\"ubuntu/nodejs@22\",\"runtimeClass\":\"dynamic\",\"status\":\"ACTIVE\",\"bootstrapped\":true,\"deployed\":true,\"mode\":\"dev\",\"closeDeployMode\":\"unset\",\"gitPushState\":\"unconfigured\",\"buildIntegration\":\"none\"},{\"hostname\":\"s3git2\",\"typeVersion\":\"ubuntu/nodejs@22\",\"runtimeClass\":\"dynamic\",\"status\":\"ACTIVE\",\"bootstrapped\":true,\"deployed\":true,\"mode\":\"dev\",\"closeDeployMode\":\"unset\",\"gitPushState\":\"unconfigured\",\"buildIntegration\":\"none\"},{\"hostname\":\"weatherdash\",\"typeVersion\":\"alpine/nginx@1.22\",\"runtimeClass\":\"static\",\"status\":\"ACTIVE\",\"bootstrapped\":true,\"deployed\":true,\"mode\":\"simple\",\"closeDeployMode\":\"auto\",\"gitPushState\":\"unconfigured\",\"buildIntegration\":\"none\",\"setupName\":\"weatherdash\"}],\"generated\":\"2026-08-29T08:22:08.413683454Z\"}\n```\n"
             }
           ]
+        }
+      },
+      "presentation": {
+        "title": "Workflow orchestration",
+        "source": {
+          "key": "mcp:zerops",
+          "name": "zcp"
         }
       }
     },
@@ -1193,7 +1301,7 @@
     }
   },
   {
-    "eventId": "evt-21",
+    "eventId": "evt-22",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",
@@ -1226,7 +1334,7 @@
   },
   {
     "type": "item.started",
-    "eventId": "evt-22",
+    "eventId": "evt-23",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",
@@ -1278,7 +1386,7 @@
   },
   {
     "type": "item.updated",
-    "eventId": "evt-23",
+    "eventId": "evt-24",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",
@@ -1327,8 +1435,102 @@
     }
   },
   {
+    "type": "item.updated",
+    "eventId": "evt-25",
+    "provider": "claudeAgent",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "threadId": "spi-replay-claude-thread",
+    "turnId": "turn-0",
+    "itemId": "item-3",
+    "payload": {
+      "itemType": "mcp_tool_call",
+      "status": "inProgress",
+      "title": "MCP tool call",
+      "detail": "mcp__zerops__zerops_mount: {\"action\":\"status\"}",
+      "data": {
+        "toolName": "mcp__zerops__zerops_mount",
+        "input": {
+          "action": "status"
+        }
+      },
+      "presentation": {
+        "title": "Mount/unmount service filesystems",
+        "source": {
+          "key": "mcp:zerops",
+          "name": "zcp"
+        }
+      }
+    },
+    "providerRefs": {
+      "providerItemId": "item-3"
+    },
+    "raw": {
+      "source": "claude.sdk.message",
+      "method": "claude/assistant",
+      "payload": {
+        "type": "assistant",
+        "message": {
+          "model": "claude-opus-5",
+          "id": "msg_011CeWiUqCxU6JnFJNLpj5rU",
+          "type": "message",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "tool_use",
+              "id": "item-3",
+              "name": "mcp__zerops__zerops_mount",
+              "input": {
+                "action": "status"
+              },
+              "caller": {
+                "type": "direct"
+              }
+            }
+          ],
+          "stop_reason": null,
+          "stop_sequence": null,
+          "stop_details": null,
+          "usage": {
+            "input_tokens": 2,
+            "cache_creation_input_tokens": 2928,
+            "cache_read_input_tokens": 29065,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 2928
+            },
+            "output_tokens": 27,
+            "service_tier": "standard",
+            "inference_geo": "not_available"
+          },
+          "diagnostics": null,
+          "context_management": null
+        },
+        "parent_tool_use_id": null,
+        "session_id": "eb868018-ad42-4b78-869c-a3c08eada6d2",
+        "uuid": "566f10e4-2e32-4061-9caf-f3c00fc23535",
+        "timestamp": "2026-08-29T08:22:09.767Z",
+        "request_id": "req_011CeWiUpNMNMkXiqGGVCVoe",
+        "tool_use_meta": [
+          {
+            "id": "item-3",
+            "display_name": "Mount/unmount service filesystems",
+            "server_display_name": "zcp"
+          }
+        ]
+      }
+    },
+    "toolCall": {
+      "name": "zerops_mount",
+      "rawName": "mcp__zerops__zerops_mount",
+      "server": "zerops",
+      "arguments": {
+        "action": "status"
+      }
+    }
+  },
+  {
     "type": "thread.token-usage.updated",
-    "eventId": "evt-24",
+    "eventId": "evt-26",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",
@@ -1388,7 +1590,7 @@
   },
   {
     "type": "item.updated",
-    "eventId": "evt-25",
+    "eventId": "evt-27",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",
@@ -1413,6 +1615,13 @@
               "text": "{\"mounts\":[{\"hostname\":\"core\",\"mountPath\":\"/var/www/core\",\"mounted\":false},{\"hostname\":\"zcp\",\"mountPath\":\"/var/www/zcp\",\"mounted\":false},{\"hostname\":\"s3git1\",\"mountPath\":\"/var/www/s3git1\",\"mounted\":true,\"writable\":true},{\"hostname\":\"s3git2\",\"mountPath\":\"/var/www/s3git2\",\"mounted\":true,\"writable\":true},{\"hostname\":\"weatherdash\",\"mountPath\":\"/var/www/weatherdash\",\"mounted\":true,\"writable\":true}],\"envelope\":{\"phase\":\"idle\",\"environment\":\"container\",\"idleScenario\":\"bootstrapped\",\"selfService\":{\"hostname\":\"zcp\"},\"project\":{\"id\":\"nTV3oMB2SS634ImDJnQckg\",\"name\":\"z3-eval\"},\"services\":[{\"hostname\":\"s3git1\",\"typeVersion\":\"ubuntu/nodejs@22\",\"runtimeClass\":\"dynamic\",\"status\":\"ACTIVE\",\"bootstrapped\":true,\"deployed\":true,\"mode\":\"dev\",\"closeDeployMode\":\"unset\",\"gitPushState\":\"unconfigured\",\"buildIntegration\":\"none\"},{\"hostname\":\"s3git2\",\"typeVersion\":\"ubuntu/nodejs@22\",\"runtimeClass\":\"dynamic\",\"status\":\"ACTIVE\",\"bootstrapped\":true,\"deployed\":true,\"mode\":\"dev\",\"closeDeployMode\":\"unset\",\"gitPushState\":\"unconfigured\",\"buildIntegration\":\"none\"},{\"hostname\":\"weatherdash\",\"typeVersion\":\"alpine/nginx@1.22\",\"runtimeClass\":\"static\",\"status\":\"ACTIVE\",\"bootstrapped\":true,\"deployed\":true,\"mode\":\"simple\",\"closeDeployMode\":\"auto\",\"gitPushState\":\"unconfigured\",\"buildIntegration\":\"none\",\"setupName\":\"weatherdash\"}],\"generated\":\"2026-08-29T08:22:09.943350336Z\"}}"
             }
           ]
+        }
+      },
+      "presentation": {
+        "title": "Mount/unmount service filesystems",
+        "source": {
+          "key": "mcp:zerops",
+          "name": "zcp"
         }
       }
     },
@@ -1466,7 +1675,7 @@
   },
   {
     "type": "item.completed",
-    "eventId": "evt-26",
+    "eventId": "evt-28",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",
@@ -1491,6 +1700,13 @@
               "text": "{\"mounts\":[{\"hostname\":\"core\",\"mountPath\":\"/var/www/core\",\"mounted\":false},{\"hostname\":\"zcp\",\"mountPath\":\"/var/www/zcp\",\"mounted\":false},{\"hostname\":\"s3git1\",\"mountPath\":\"/var/www/s3git1\",\"mounted\":true,\"writable\":true},{\"hostname\":\"s3git2\",\"mountPath\":\"/var/www/s3git2\",\"mounted\":true,\"writable\":true},{\"hostname\":\"weatherdash\",\"mountPath\":\"/var/www/weatherdash\",\"mounted\":true,\"writable\":true}],\"envelope\":{\"phase\":\"idle\",\"environment\":\"container\",\"idleScenario\":\"bootstrapped\",\"selfService\":{\"hostname\":\"zcp\"},\"project\":{\"id\":\"nTV3oMB2SS634ImDJnQckg\",\"name\":\"z3-eval\"},\"services\":[{\"hostname\":\"s3git1\",\"typeVersion\":\"ubuntu/nodejs@22\",\"runtimeClass\":\"dynamic\",\"status\":\"ACTIVE\",\"bootstrapped\":true,\"deployed\":true,\"mode\":\"dev\",\"closeDeployMode\":\"unset\",\"gitPushState\":\"unconfigured\",\"buildIntegration\":\"none\"},{\"hostname\":\"s3git2\",\"typeVersion\":\"ubuntu/nodejs@22\",\"runtimeClass\":\"dynamic\",\"status\":\"ACTIVE\",\"bootstrapped\":true,\"deployed\":true,\"mode\":\"dev\",\"closeDeployMode\":\"unset\",\"gitPushState\":\"unconfigured\",\"buildIntegration\":\"none\"},{\"hostname\":\"weatherdash\",\"typeVersion\":\"alpine/nginx@1.22\",\"runtimeClass\":\"static\",\"status\":\"ACTIVE\",\"bootstrapped\":true,\"deployed\":true,\"mode\":\"simple\",\"closeDeployMode\":\"auto\",\"gitPushState\":\"unconfigured\",\"buildIntegration\":\"none\",\"setupName\":\"weatherdash\"}],\"generated\":\"2026-08-29T08:22:09.943350336Z\"}}"
             }
           ]
+        }
+      },
+      "presentation": {
+        "title": "Mount/unmount service filesystems",
+        "source": {
+          "key": "mcp:zerops",
+          "name": "zcp"
         }
       }
     },
@@ -1543,7 +1759,7 @@
     }
   },
   {
-    "eventId": "evt-27",
+    "eventId": "evt-29",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",
@@ -1576,7 +1792,7 @@
   },
   {
     "type": "content.delta",
-    "eventId": "evt-28",
+    "eventId": "evt-30",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",
@@ -1608,7 +1824,7 @@
   },
   {
     "type": "content.delta",
-    "eventId": "evt-29",
+    "eventId": "evt-31",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",
@@ -1640,7 +1856,7 @@
   },
   {
     "type": "content.delta",
-    "eventId": "evt-30",
+    "eventId": "evt-32",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",
@@ -1672,7 +1888,7 @@
   },
   {
     "type": "content.delta",
-    "eventId": "evt-31",
+    "eventId": "evt-33",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",
@@ -1704,7 +1920,7 @@
   },
   {
     "type": "content.delta",
-    "eventId": "evt-32",
+    "eventId": "evt-34",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",
@@ -1736,7 +1952,7 @@
   },
   {
     "type": "content.delta",
-    "eventId": "evt-33",
+    "eventId": "evt-35",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",
@@ -1768,7 +1984,7 @@
   },
   {
     "type": "item.completed",
-    "eventId": "evt-34",
+    "eventId": "evt-36",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "itemId": "item-4",
@@ -1797,7 +2013,7 @@
   },
   {
     "type": "thread.token-usage.updated",
-    "eventId": "evt-35",
+    "eventId": "evt-37",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",
@@ -1857,7 +2073,7 @@
   },
   {
     "type": "thread.token-usage.updated",
-    "eventId": "evt-36",
+    "eventId": "evt-38",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",
@@ -1987,7 +2203,7 @@
   },
   {
     "type": "turn.completed",
-    "eventId": "evt-37",
+    "eventId": "evt-39",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",

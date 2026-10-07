@@ -26,8 +26,10 @@ import {
   type ThreadId,
   type TurnId,
   UserInputAttachmentAnswerPayload,
+  type ToolPresentation,
 } from "@t3tools/contracts";
 import { isLatestTurnSettled } from "@t3tools/shared/orchestrationTiming";
+import { skillInvocation } from "@t3tools/shared/toolActivity";
 
 import { humanizeToolName, TIMELINE_HIDDEN_TOOL_NAMES } from "@t3tools/client-runtime/zerops/model";
 import type {
@@ -119,6 +121,8 @@ export interface WorkCallInput {
   readonly glob?: string;
   readonly url?: string;
   readonly query?: string;
+  /** The skill a skill call loads, whichever agent's (`skillInvocation`). */
+  readonly skill?: string;
 }
 
 const CALL_INPUT_KEYS: ReadonlyArray<readonly [string, keyof WorkCallInput]> = [
@@ -130,6 +134,32 @@ const CALL_INPUT_KEYS: ReadonlyArray<readonly [string, keyof WorkCallInput]> = [
   ["url", "url"],
   ["query", "query"],
 ];
+
+/** A call's presentation as the server carries it (`ToolPresentation`): its title, its source. */
+function readToolPresentation(value: unknown): ToolPresentation | undefined {
+  const record = asRecord(value);
+  if (record === null) return undefined;
+  const title = asTrimmedString(record.title);
+  const source = asRecord(record.source);
+  const key = asTrimmedString(source?.key);
+  const name = asTrimmedString(source?.name);
+  const iconUrl = asTrimmedString(source?.iconUrl);
+  const iconUrlDark = asTrimmedString(source?.iconUrlDark);
+  if (title === null && (key === null || name === null)) return undefined;
+  return {
+    ...(title !== null ? { title } : {}),
+    ...(key !== null && name !== null
+      ? {
+          source: {
+            key,
+            name,
+            ...(iconUrl !== null ? { iconUrl } : {}),
+            ...(iconUrlDark !== null ? { iconUrlDark } : {}),
+          },
+        }
+      : {}),
+  };
+}
 
 function readCallInput(input: Record<string, unknown> | null): WorkCallInput | undefined {
   if (input === null) return undefined;
@@ -176,6 +206,8 @@ export interface WorkLogEntry {
    * Absent where the provider names none.
    */
   responseId?: string;
+  /** How its call presents itself, as its agent said: an MCP tool's title and server. */
+  toolPresentation?: ToolPresentation;
   turnId?: TurnId | null;
   /** Stable provider identity across in-progress and completed lifecycle updates. */
   toolCallId?: string;
@@ -1175,11 +1207,13 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
     typeof payload?.responseId === "string" && payload.responseId.trim().length > 0
       ? payload.responseId
       : undefined;
+  const toolPresentation = readToolPresentation(payload?.presentation);
   const entry: DerivedWorkLogEntry = {
     id: activity.id,
     createdAt: activity.createdAt,
     startedAt: activity.createdAt,
     ...(responseId !== undefined ? { responseId } : {}),
+    ...(toolPresentation !== undefined ? { toolPresentation } : {}),
     turnId: activity.turnId,
     label: taskLabel || activity.summary,
     tone:
@@ -1259,8 +1293,12 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
       }
     }
   } else if (!isTaskActivity) {
-    const callInput = readCallInput(asRecord(data?.input));
-    if (callInput !== undefined) entry.callInput = callInput;
+    const input = asRecord(data?.input);
+    const skill = skillInvocation(asTrimmedString(data?.toolName), input)?.name;
+    const callInput = readCallInput(input);
+    if (callInput !== undefined || skill !== undefined) {
+      entry.callInput = { ...callInput, ...(skill !== undefined ? { skill } : {}) };
+    }
     const output = asTrimmedString(asRecord(data?.rawOutput)?.content) ?? "";
     const sent = BACKGROUND_NOTICE.exec(output);
     if (sent?.[1] !== undefined) entry.sentToBackground = sent[1];
