@@ -444,6 +444,7 @@ import {
   collectUserMessageBlobPreviewUrls,
   createLocalDispatchSnapshot,
   deriveComposerSendState,
+  projectScriptKeybindingWrites,
   dismissBranchMismatchForSession,
   hasEnvironmentReconnectWarningGraceElapsed,
   latestTurnStartFailureId,
@@ -1382,6 +1383,9 @@ export default function ChatView(props: ChatViewProps) {
   );
   const routeThreadKey = useMemo(() => scopedThreadKey(routeThreadRef), [routeThreadRef]);
   const updateProjectScriptSettings = useAtomCommand(serverEnvironment.updateSettings, {
+    reportFailure: false,
+  });
+  const removeKeybinding = useAtomCommand(serverEnvironment.removeKeybinding, {
     reportFailure: false,
   });
   const upsertKeybinding = useAtomCommand(serverEnvironment.upsertKeybinding, {
@@ -3620,18 +3624,44 @@ export default function ChatView(props: ChatViewProps) {
         command: input.keybindingCommand,
       });
 
-      if (isElectron && keybindingRule) {
-        return mapAtomCommandResult(
-          await upsertKeybinding({
-            environmentId,
-            input: keybindingRule,
-          }),
-          () => undefined,
-        );
+      if (!isElectron) return updateResult;
+      const scriptId =
+        input.keybindingCommand === null
+          ? null
+          : projectScriptIdFromCommand(input.keybindingCommand);
+      const writes = projectScriptKeybindingWrites({
+        rule: keybindingRule,
+        command: input.keybindingCommand,
+        bound: environmentById.get(environmentId)?.serverConfig?.keybindings ?? [],
+        retainedElsewhere:
+          scriptId !== null &&
+          allProjects.some(
+            (other) =>
+              other.environmentId === environmentId &&
+              other.id !== input.projectId &&
+              resolveProjectScripts(settings, other).some((script) => script.id === scriptId),
+          ),
+      });
+      for (const rule of writes.remove) {
+        const removed = await removeKeybinding({ environmentId, input: rule });
+        if (removed._tag === "Failure") return mapAtomCommandResult(removed, () => undefined);
       }
-      return updateResult;
+      return writes.upsert === null
+        ? updateResult
+        : mapAtomCommandResult(
+            await upsertKeybinding({ environmentId, input: writes.upsert }),
+            () => undefined,
+          );
     },
-    [environmentId, updateProjectScriptSettings, upsertKeybinding],
+    [
+      allProjects,
+      environmentById,
+      environmentId,
+      removeKeybinding,
+      settings,
+      updateProjectScriptSettings,
+      upsertKeybinding,
+    ],
   );
   const saveProjectScript = useCallback(
     async (input: NewProjectScriptInput): Promise<AtomCommandResult<void, unknown>> => {
