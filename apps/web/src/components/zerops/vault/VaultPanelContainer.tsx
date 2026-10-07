@@ -29,7 +29,7 @@ import { useRightPanelStore } from "~/rightPanelStore";
 import { useProjectFilePickerQuery, useProjectFileQuery } from "../../files/projectFilesQueryState";
 import { deployConfigPath, setupLine } from "./vaultGroups.logic";
 import { useAccountOperations } from "~/zerops/accountOperations";
-import { useDetailDemand } from "~/zerops/ZeropsAccountData";
+import { useAccountDataOptional, useDetailDemand } from "~/zerops/ZeropsAccountData";
 import { useKnownMate } from "~/zerops/useZeropsMates";
 import { useZeropsEnvironmentProject } from "~/zerops/useZeropsEnvironmentProject";
 import { recordVaultWrite } from "~/zerops/vaultTurnNotes";
@@ -145,6 +145,7 @@ export function ProjectVaultPanel({
   useDetailDemand("process", "history", projectId);
   const shown = useAtomValue(projectId === null ? UNREAD : vaultAtom(projectId));
   const { run, write: writeVault } = useVaultWriter(project, shown);
+  const reveal = useAccountDataOptional()?.reveal;
   const onWrite = useCallback(
     async (scope: VaultScopeRef, write: VaultWrite): Promise<VaultWriteOutcome> => {
       const { outcome, change } = await writeVault(scope, write);
@@ -176,6 +177,7 @@ export function ProjectVaultPanel({
       view={shown}
       who={who}
       {...(renderDeployConfig === undefined ? {} : { renderDeployConfig })}
+      {...(reveal === undefined ? {} : { onReveal: reveal.reveal })}
     />
   );
 }

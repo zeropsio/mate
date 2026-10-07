@@ -179,6 +179,8 @@ export const ZEROPS_CLIENT_VERBS = [
   "renewHeldSession",
   "requestData",
   "restartService",
+  "revealProjectVariable",
+  "revealServiceVariable",
   "setIntegrationTokenProjects",
   "setProjectMemberRole",
   "startProject",

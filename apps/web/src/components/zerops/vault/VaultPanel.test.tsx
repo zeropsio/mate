@@ -264,7 +264,7 @@ describe("VaultPanelBody — a row opens in place", () => {
     await click(button(body, "Make secret"));
     expect(writes).toEqual([]);
     expect(body.querySelector("[role=alertdialog]")?.textContent).toContain(
-      "Once it's secret, nobody can read it back",
+      "Once it's secret it stays hidden",
     );
     await click(button(body, "Make it secret"));
     expect(writes[0]?.write).toEqual({
@@ -274,6 +274,38 @@ describe("VaultPanelBody — a row opens in place", () => {
       value: "cookie-value",
       sensitive: true,
     });
+  });
+
+  it("shows a secret to the person who asks, and only then", async () => {
+    const asked: Array<{ scope: VaultScopeRef; id: string }> = [];
+    const { container } = await mount({
+      onReveal: async (scope, id) => {
+        asked.push({ scope, id });
+        return { ok: true, value: "session-value" };
+      },
+    });
+    await openRow(container, "SESSION_SECRET");
+    const body = q(container, '[data-vault-body="SESSION_SECRET"]')!;
+    const field = body.querySelector<HTMLInputElement>('input[aria-label="Session secret"]')!;
+    expect(field.value).toBe("");
+    expect(asked).toEqual([]);
+    await click(body.querySelector('button[aria-label="Show"]'));
+    expect(asked).toEqual([{ scope: { kind: "shared" }, id: "v-session" }]);
+    expect(field.value).toBe("session-value");
+    expect(field.type).toBe("text");
+    expect(button(body, "Save").disabled).toBe(true);
+  });
+
+  it("says why Zerops would not show a secret", async () => {
+    const { container } = await mount({
+      onReveal: async () => ({ ok: false, code: "notAuthorized" }),
+    });
+    await openRow(container, "SESSION_SECRET");
+    const body = q(container, '[data-vault-body="SESSION_SECRET"]')!;
+    await click(body.querySelector('button[aria-label="Show"]'));
+    expect(body.querySelector("[role=alert]")?.textContent).toBe(
+      "Your role in this organization can't show secrets.",
+    );
   });
 
   it("guards a removal that services read until the person says remove anyway", async () => {
@@ -351,7 +383,7 @@ describe("VaultPanelBody — what needs the person", () => {
     ]);
   });
 
-  it("offers to make every readable secret secret at once, and leaves a sign-in password readable", async () => {
+  it("offers to make every readable secret secret at once", async () => {
     const { container, writes } = await mount({
       view: withShared(
         plain("v-cookie", "COOKIE_SECRET", "cookie-value"),
@@ -360,11 +392,11 @@ describe("VaultPanelBody — what needs the person", () => {
       ),
     });
     const card = q(container, '[data-vault-needs="readable"]')!;
-    expect(card.querySelector("h3")?.textContent).toBe("2 secrets aren't protected");
+    expect(card.querySelector("h3")?.textContent).toBe("3 secrets aren't protected");
     await click(button(card, "Make secret"));
     expect(
       writes.map(({ write }) => `${write.key} ${write.kind === "update" && write.sensitive}`),
-    ).toEqual(["COOKIE_SECRET true", "JWT_SECRET true"]);
+    ).toEqual(["SUPERADMIN_PASSWORD true", "COOKIE_SECRET true", "JWT_SECRET true"]);
   });
 });
 
@@ -463,6 +495,17 @@ describe("VaultPanelBody — apps", () => {
       ),
     ).toBe("${db_password}");
     expect(q(container, '[data-vault-row="password"] > button')).toBeNull();
+  });
+
+  it("shows a database's password on request", async () => {
+    const { container } = await mount({
+      onReveal: async () => ({ ok: true, value: "db-pass" }),
+    });
+    await openApp(container, "db");
+    const row = q(container, '[data-vault-row="password"]')!;
+    expect(row.querySelector("[data-vault-shown]")).toBeNull();
+    await click(row.querySelector('button[aria-label="Show"]'));
+    expect(row.querySelector("[data-vault-shown]")?.textContent).toBe("db-pass");
   });
 
   it("says an app has nothing of its own yet, with Add", async () => {
