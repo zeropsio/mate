@@ -224,6 +224,30 @@ describe("the pump's mapping", () => {
     });
   });
 
+  const call = (status: string) =>
+    sig({
+      type: "item.upsert",
+      turn: H1,
+      item: "h1.i1",
+      body: { kind: "tool", toolKind: "mcp_tool_call", title: "MCP tool call" },
+      status,
+    });
+  const closedCall = (step: ReturnType<ReturnType<typeof makeToCore>["step"]>) => {
+    const closed = step.signals.find((signal) => signal.kind === "item-closed");
+    return closed?.kind === "item-closed" && closed.body.kind === "call" ? closed.body : undefined;
+  };
+
+  it.each([
+    ["completed", "done"],
+    ["failed", "failed"],
+    ["declined", "declined"],
+    ["stopped", "stopped"],
+  ] as const)("a call the bridge closes %s is a %s call", (status, state) => {
+    const toCore = makeToCore();
+    toCore.step(call("running"), 0);
+    assert.strictEqual(closedCall(toCore.step(call(status), 0))?.state, state);
+  });
+
   it("streamed text goes live as it comes and settles when its item closes", () => {
     const toCore = makeToCore();
     toCore.step(upsert("h1.i1", "running"), 0);

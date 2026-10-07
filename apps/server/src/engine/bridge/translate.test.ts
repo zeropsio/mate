@@ -1271,6 +1271,23 @@ describe("the fold's rules", () => {
       { reason: "unknown-turn", type: "item.started" },
     ]);
   });
+
+  it("claudeAgent [scripted]: a call Claude cancelled before it answered closes stopped, never done", () => {
+    const w = wire("claudeAgent");
+    const lines = runScript("claudeAgent", [
+      ...w.open(),
+      ...w.begin(H1, "X1"),
+      w.tool("X1", "call-1", "started"),
+      w.tool("X1", "call-1", "completed", { status: "stopped" }),
+      w.completed("X1"),
+      ...w.returns(H1, "X1"),
+    ]);
+    assert.deepStrictEqual(lines, [
+      ...CALL_RUNS,
+      "h1.i1 tool command_execution stopped",
+      "h1 ended completed — agent",
+    ]);
+  });
 });
 
 // ── mock: real adapters, authored wire or the ACP mock agent ───────────

@@ -423,6 +423,7 @@ const CALL_STATES: Record<ItemStatus, string> = {
   failed: "failed",
   declined: "declined",
   unreturned: "unreturned",
+  stopped: "stopped",
   cut: "stopped",
 };
 

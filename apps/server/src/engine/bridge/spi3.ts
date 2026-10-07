@@ -147,6 +147,8 @@ export type ItemStatus =
   | "completed"
   | "failed"
   | "declined"
+  /** A call cancelled before it ran to an answer: no result, no failure (SPI 2.8). */
+  | "stopped"
   /** A call still open when its turn ended: no result, never a call that came back. */
   | "unreturned"
   /** Text or reasoning still being written when its turn ended. */

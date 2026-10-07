@@ -1203,6 +1203,7 @@ function itemStatus(
   if (payload.unreturned === true) return "unreturned";
   if (payload.status === "failed") return "failed";
   if (payload.status === "declined") return "declined";
+  if (payload.status === "stopped") return "stopped";
   if (event.type === "item.completed") return "completed";
   return payload.status === "completed" ? "completed" : "running";
 }
