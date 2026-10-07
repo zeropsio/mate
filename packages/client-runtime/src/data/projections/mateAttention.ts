@@ -29,12 +29,15 @@ export interface MateAttentionRead {
 
 const isLive = (read: ProjectionReads, key: StreamKey) => read.stream(key).phase === "live";
 
-function attentionOf(read: ProjectionReads, orgId: string, projectId: string): MateAttentionRead {
+function attentionOf(
+  read: ProjectionReads,
+  orgId: string,
+  projectId: string,
+  listed: boolean,
+): MateAttentionRead {
   const placement = read.fact("placement", projectId);
   const unseen =
-    placement.kind === "known" && read.members(placementsScope(orgId)).ids.includes(projectId)
-      ? (placement.value.person?.unseen ?? null)
-      : null;
+    placement.kind === "known" && listed ? (placement.value.person?.unseen ?? null) : null;
   const fact = read.fact("mateAttention", projectId);
   if (fact.kind !== "known") return { attention: null, live: false, unseen };
   const direct =
@@ -59,9 +62,14 @@ export const matesAttention: Projection<
 > = {
   name: "matesAttention",
   keyOf: ({ orgId, projectIds }) => `${orgId}/${projectIds.join(",")}`,
-  derive: (read, { orgId, projectIds }) =>
-    Object.fromEntries(
-      projectIds.map((projectId) => [projectId, attentionOf(read, orgId, projectId)]),
-    ),
+  derive: (read, { orgId, projectIds }) => {
+    const listed = new Set(read.members(placementsScope(orgId)).ids);
+    return Object.fromEntries(
+      projectIds.map((projectId) => [
+        projectId,
+        attentionOf(read, orgId, projectId, listed.has(projectId)),
+      ]),
+    );
+  },
   equals: sameValue,
 };
