@@ -27,7 +27,7 @@ export function MateImages({
 }) {
   const wire = Option.getOrNull(AsyncResult.value(useAtomValue(wireAtom)));
   const images = useMemo(
-    () => (wire === null ? null : makeMateImages({ store, wire })),
+    () => (wire === null ? null : makeMateImages({ store, wire, reuseRetained: true })),
     [store, wire],
   );
   useEffect(() => () => images?.stop(), [images]);

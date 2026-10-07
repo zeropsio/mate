@@ -24,7 +24,9 @@ known facts; uncertain access withholds bytes; authoritative denial purges them.
 refusal requires an explicit retry. The existing Mate authorization header protects the stable
 `/api/assets/objects/<digest>/<original|preview>` route, resolved beneath the environment base path.
 Session and owner checks run before GET, HEAD, validators and ranges. Responses use a strong digest
-ETag and `Cache-Control: private, no-cache`; cached reloads revalidate with a bodyless 304.
+ETag and `Cache-Control: private, max-age=31536000, immutable`. The hosted client reuses
+authorized Blob facts across conversation reopen within the account lifetime; an unseen digest
+can use the browser’s private cache without revalidation.
 
 Only an actual ENOSPC or SQLITE_FULL starts reclamation, and only regenerable previews may be
 removed. Originals are never reclaimed, including objects without occurrence references. Preview

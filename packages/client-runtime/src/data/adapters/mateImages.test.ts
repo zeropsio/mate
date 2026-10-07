@@ -123,6 +123,7 @@ it("withholds cached previews on unverified access and purges them on authoritat
   });
   const images = makeMateImages({
     store,
+    reuseRetained: true,
     wire: {
       read: () => Effect.succeed({ blob: new Blob(["picture"]) }),
       repair: () => Effect.void,
@@ -157,6 +158,7 @@ it("revalidates withheld bytes after the connection positively verifies access a
   let reads = 0;
   const images = makeMateImages({
     store,
+    reuseRetained: true,
     wire: {
       read: () =>
         Effect.sync(() => {
@@ -188,5 +190,41 @@ it("revalidates withheld bytes after the connection positively verifies access a
   await recovered;
   expect(reads).toBe(2);
   release();
+  images.stop();
+});
+
+it("reopening a seen conversation image reuses its authorized Blob without another read", async () => {
+  const store = makeAccountStore(AtomRegistry.make());
+  let reads = 0;
+  const blob = new Blob(["image"]);
+  const images = makeMateImages({
+    store,
+    reuseRetained: true,
+    wire: {
+      read: () =>
+        Effect.sync(() => {
+          reads++;
+          return { blob };
+        }),
+      repair: () => Effect.void,
+    },
+  });
+  const first = settled(store);
+  const release = images.demand(key);
+  await first;
+  release();
+  const connected = new Promise<void>((resolve) => {
+    const unsubscribe = store.subscribe(() => {
+      if (streamOf(store.state(), mateImageScope(key)).phase === "live") {
+        unsubscribe();
+        resolve();
+      }
+    });
+  });
+  const again = images.demand(key);
+  await connected;
+  expect(reads).toBe(1);
+  expect(mateImage.derive(readsOfState(store.state()), key)).toMatchObject({ kind: "ready", blob });
+  again();
   images.stop();
 });
