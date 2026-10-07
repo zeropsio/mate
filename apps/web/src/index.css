@@ -2946,19 +2946,6 @@ code {
     animation-delay: calc(var(--mate-face-phase, 0) * -0.2s);
   }
 
-  /* Three hops as it starts to need you, the first at once, then it waits
-     with its eyes wide: a person can be away for hours, and a face hopping
-     all that while in the corner of the eye would wear on them. Only as it
-     starts to: a reload, a remount or a list opening onto a waiting Mate
-     shows it waiting, not arriving at it. */
-  [data-mate-face-arrived="needs"] [data-mate-face-hop] {
-    animation: mate-face-hop 2.8s 3;
-  }
-
-  [data-mate-face-arrived="done"] [data-mate-face-hop] {
-    animation: mate-face-pop 620ms var(--ease-out-strong) 1;
-  }
-
   /* A Mate's row under the pointer: its face looks up at you. Pressed, the
      face gives a little under the finger and springs back as it lets go. */
   [data-zerops-surface="sidebar-mate"]:hover [data-mate-face-look] {
@@ -3024,50 +3011,6 @@ code {
   }
   50% {
     scale: 1.05;
-  }
-}
-
-/* Crouch, jump, land — squash and stretch, from its feet — then rest. */
-@keyframes mate-face-hop {
-  0% {
-    translate: 0 0;
-    scale: 1 1;
-    animation-timing-function: cubic-bezier(0.33, 0, 0.67, 1);
-  }
-  6% {
-    translate: 0 0;
-    scale: 1.07 0.9;
-    animation-timing-function: cubic-bezier(0.2, 0.8, 0.4, 1);
-  }
-  14% {
-    translate: 0 -13%;
-    scale: 0.96 1.05;
-    animation-timing-function: cubic-bezier(0.6, 0, 0.8, 0.6);
-  }
-  21% {
-    translate: 0 0;
-    scale: 1.05 0.94;
-    animation-timing-function: cubic-bezier(0.2, 0.8, 0.4, 1);
-  }
-  30%,
-  100% {
-    translate: 0 0;
-    scale: 1 1;
-  }
-}
-
-@keyframes mate-face-pop {
-  0% {
-    scale: 1;
-  }
-  32% {
-    scale: 1.18;
-  }
-  58% {
-    scale: 0.95;
-  }
-  100% {
-    scale: 1;
   }
 }
 

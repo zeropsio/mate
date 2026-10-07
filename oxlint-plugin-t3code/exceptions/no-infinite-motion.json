@@ -246,5 +246,61 @@
     "owner": "ales",
     "reason": "The sweep's copy of the words slides back by what its window slides, so it stands still under it: translate on an HTML box, composited, only while the window runs, stopped by reduced motion",
     "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/primitives/MateFaceMoments.css",
+    "kind": "css-declaration",
+    "fingerprint": "[data-mate-face-restarting]:not([data-mate-face-moment]) [data-mate-face-hop]{animation:mate-face-restart-body 10s infinite}",
+    "owner": "karel",
+    "reason": "The owner's restart loop (2026-10-07): a calm 10 s cycle for as long as the container restarts, transforms on the face's HTML boxes, off under reduced motion",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/primitives/MateFaceMoments.css",
+    "kind": "css-declaration",
+    "fingerprint": "[data-mate-face-restarting]:not([data-mate-face-moment]) [data-mate-face-moment-box]{animation:mate-face-restart-shake 10s infinite}",
+    "owner": "karel",
+    "reason": "The owner's restart loop (2026-10-07): a calm 10 s cycle for as long as the container restarts, transforms on the face's HTML boxes, off under reduced motion",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/primitives/MateFaceMoments.css",
+    "kind": "css-declaration",
+    "fingerprint": "[data-mate-face-restarting]:not([data-mate-face-moment]) [data-mate-face-eye=\"left\"]{animation:mate-face-restart-eye-left 10s infinite}",
+    "owner": "karel",
+    "reason": "The owner's restart loop (2026-10-07): a calm 10 s cycle for as long as the container restarts, transforms on the face's HTML boxes, off under reduced motion",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/primitives/MateFaceMoments.css",
+    "kind": "css-declaration",
+    "fingerprint": "[data-mate-face-restarting]:not([data-mate-face-moment]) [data-mate-face-eye=\"right\"]{animation:mate-face-restart-eye-right 10s infinite}",
+    "owner": "karel",
+    "reason": "The owner's restart loop (2026-10-07): a calm 10 s cycle for as long as the container restarts, transforms on the face's HTML boxes, off under reduced motion",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/primitives/MateFaceMoments.css",
+    "kind": "css-declaration",
+    "fingerprint": "[data-mate-face-pacing]:not([data-mate-face-moment]) [data-mate-face-moment-box]{animation:mate-face-pace 12s linear infinite}",
+    "owner": "karel",
+    "reason": "The owner's stand-up pacing (2026-10-07): a calm 12 s walk for as long as the stand-up runs, transforms on the face's HTML boxes, off under reduced motion",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/primitives/MateFaceMoments.css",
+    "kind": "css-declaration",
+    "fingerprint": "[data-mate-face-pacing]:not([data-mate-face-moment]) [data-mate-face-hop]{animation:mate-face-pace-body 12s linear infinite}",
+    "owner": "karel",
+    "reason": "The owner's stand-up pacing (2026-10-07): a calm 12 s walk for as long as the stand-up runs, transforms on the face's HTML boxes, off under reduced motion",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/primitives/MateFaceMoments.css",
+    "kind": "css-declaration",
+    "fingerprint": "[data-mate-face-pacing]:not([data-mate-face-moment]) [data-mate-face-look]{animation:mate-face-pace-look 12s linear infinite}",
+    "owner": "karel",
+    "reason": "The owner's stand-up pacing (2026-10-07): a calm 12 s walk for as long as the stand-up runs, transforms on the face's HTML boxes, off under reduced motion",
+    "expires": "never"
   }
 ]

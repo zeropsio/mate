@@ -11,9 +11,9 @@ import {
 import { act } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { create } from "react-test-renderer";
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { MateFace, mateFaceArrival } from "./MateFace";
+import { MateFace, type MateFaceCue } from "./MateFace";
 
 /** The attributes of every element a face draws, keyed by the part it plays. */
 function parts(html: string) {
@@ -175,62 +175,160 @@ describe("MateFace", () => {
     expect(html).toContain('data-mate-face-state="waking"');
   });
 
-  // A face greets an arrival while it is on screen: a run done after work or
-  // a question, a question raised — never marking a Mate unread (idle to done),
-  // never a state it already held.
-  it.each<[MateMarkState, MateMarkState, MateMarkState | undefined]>([
-    ["working", "done", "done"],
-    ["needs", "done", "done"],
-    ["idle", "done", undefined],
-    ["working", "needs", "needs"],
-    ["idle", "needs", "needs"],
-    ["done", "idle", undefined],
-    ["idle", "working", undefined],
-  ])("greets %s → %s as %s", (previous, next, arrival) => {
-    expect(mateFaceArrival(previous, next)).toBe(arrival);
-  });
+  describe("moments", () => {
+    afterEach(() => vi.unstubAllGlobals());
 
-  it("greets no arrival from a pose that only stood in until the state was read", () => {
-    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-    const arrivedOf = (renderer: ReturnType<typeof create>) =>
-      renderer.root.findByProps({ "data-zerops-primitive": "mate-face" }).props[
-        "data-mate-face-arrived"
-      ];
-    let renderer: ReturnType<typeof create> | undefined;
-    // A menu row after a reload: idle until its socket answers that the Mate waits.
-    act(() => {
-      renderer = create(<MateFace greets known={false} state="idle" tint="sky" />);
+    const watch = (reduced = false) => {
+      (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+      vi.stubGlobal("window", { matchMedia: vi.fn(() => ({ matches: reduced })) });
+    };
+    const faceOf = (renderer: ReturnType<typeof create>) =>
+      renderer.root.findByProps({ "data-zerops-primitive": "mate-face" });
+    const momentOf = (renderer: ReturnType<typeof create>) =>
+      faceOf(renderer).props["data-mate-face-moment"];
+    const finish = (renderer: ReturnType<typeof create>, moment: string) =>
+      act(() => faceOf(renderer).props.onAnimationEnd({ animationName: `mate-moment-${moment}` }));
+    const failed: MateFaceCue = { moment: "doubletake", key: "failed" };
+
+    it("plays a cued event that happens while it is watched, once, and stands still after", () => {
+      watch();
+      let renderer: ReturnType<typeof create> | undefined;
+      act(() => {
+        renderer = create(<MateFace state="idle" tint="sky" />);
+      });
+      act(() => renderer!.update(<MateFace cues={[failed]} state="needs" tint="sky" />));
+      expect(momentOf(renderer!)).toBe("doubletake");
+      // A re-render hands the same fact again: nothing restarts, nothing is cut short.
+      act(() => renderer!.update(<MateFace cues={[failed]} state="needs" tint="sky" />));
+      expect(momentOf(renderer!)).toBe("doubletake");
+      // Another box's animation ending is not the moment's.
+      act(() =>
+        faceOf(renderer!).props.onAnimationEnd({ animationName: "mate-moment-doubletake-look" }),
+      );
+      expect(momentOf(renderer!)).toBe("doubletake");
+      finish(renderer!, "doubletake");
+      expect(momentOf(renderer!)).toBeUndefined();
+      act(() => renderer!.update(<MateFace cues={[failed]} state="needs" tint="sky" />));
+      expect(momentOf(renderer!)).toBeUndefined();
+      act(() => renderer!.unmount());
     });
-    act(() => renderer!.update(<MateFace greets known state="needs" tint="sky" />));
-    expect(arrivedOf(renderer!)).toBeUndefined();
-    // Read, a question raised while it is on screen is greeted.
-    act(() => renderer!.update(<MateFace greets known state="working" tint="sky" />));
-    act(() => renderer!.update(<MateFace greets known state="needs" tint="sky" />));
-    expect(arrivedOf(renderer!)).toBe("needs");
-    act(() => renderer!.unmount());
-  });
 
-  // A face reused from one Mate to the next (a header), or drawn
-  // asleep until its Mate connects, would greet arrivals that never happened:
-  // greeting is the menu row's and the status line's alone.
-  it("greets nothing unless asked to", () => {
-    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-    let renderer: ReturnType<typeof create> | undefined;
-    act(() => {
-      renderer = create(<MateFace state="working" tint="rose" />);
+    it("plays nothing for an event it was first drawn with: a reload shows the state", () => {
+      watch();
+      let renderer: ReturnType<typeof create> | undefined;
+      act(() => {
+        renderer = create(<MateFace cues={[failed]} greets state="needs" tint="sky" />);
+      });
+      expect(momentOf(renderer!)).toBeUndefined();
+      act(() => renderer!.update(<MateFace cues={[failed]} greets state="needs" tint="sky" />));
+      expect(momentOf(renderer!)).toBeUndefined();
+      act(() => renderer!.unmount());
+      expect(
+        renderToStaticMarkup(<MateFace cues={[failed]} greets state="done" tint="violet" />),
+      ).not.toContain("data-mate-face-moment=");
     });
-    act(() => renderer!.update(<MateFace state="needs" tint="rose" />));
-    expect(
-      renderer!.root.findByProps({ "data-zerops-primitive": "mate-face" }).props[
-        "data-mate-face-arrived"
-      ],
-    ).toBeUndefined();
-    act(() => renderer!.unmount());
-  });
 
-  it("marks no arrival on a first paint: a reload shows the state, not the arriving at it", () => {
-    const html = renderToStaticMarkup(<MateFace state="done" tint="violet" />);
-    expect(html).not.toContain("data-mate-face-arrived");
+    it("shows the still after-pose with reduced motion", () => {
+      watch(true);
+      let renderer: ReturnType<typeof create> | undefined;
+      act(() => {
+        renderer = create(<MateFace greets state="working" tint="sky" />);
+      });
+      act(() => renderer!.update(<MateFace cues={[failed]} greets state="done" tint="sky" />));
+      expect(momentOf(renderer!)).toBeUndefined();
+      expect(faceOf(renderer!).props["data-mate-face-state"]).toBe("done");
+      act(() => renderer!.unmount());
+    });
+
+    // The menu row greets the changes of pose it watches (`mateFaceArrival`).
+    it.each<[MateMarkState, MateMarkState, string]>([
+      ["working", "needs", "boing"],
+      ["working", "done", "dance"],
+      ["idle", "sleep", "nod"],
+    ])("greets %s → %s with %s", (previous, next, moment) => {
+      watch();
+      let renderer: ReturnType<typeof create> | undefined;
+      act(() => {
+        renderer = create(<MateFace greets state={previous} tint="rose" />);
+      });
+      act(() => renderer!.update(<MateFace greets state={next} tint="rose" />));
+      expect(momentOf(renderer!)).toBe(moment);
+      act(() => renderer!.unmount());
+    });
+
+    it("lets the event its caller names outrank the change of pose it brings", () => {
+      watch();
+      let renderer: ReturnType<typeof create> | undefined;
+      act(() => {
+        renderer = create(<MateFace greets state="working" tint="rose" />);
+      });
+      act(() => renderer!.update(<MateFace cues={[failed]} greets state="needs" tint="rose" />));
+      expect(momentOf(renderer!)).toBe("doubletake");
+      finish(renderer!, "doubletake");
+      expect(momentOf(renderer!)).toBeUndefined();
+      act(() => renderer!.unmount());
+    });
+
+    it("lets a moment finish before the next event plays", () => {
+      watch();
+      let renderer: ReturnType<typeof create> | undefined;
+      act(() => {
+        renderer = create(<MateFace greets state="working" tint="rose" />);
+      });
+      act(() => renderer!.update(<MateFace greets state="done" tint="rose" />));
+      act(() => renderer!.update(<MateFace greets state="sleep" tint="rose" />));
+      expect(momentOf(renderer!)).toBe("dance");
+      finish(renderer!, "dance");
+      expect(momentOf(renderer!)).toBe("nod");
+      act(() => renderer!.unmount());
+    });
+
+    it("drifts a zzz up while it nods off, and only then", () => {
+      watch();
+      let renderer: ReturnType<typeof create> | undefined;
+      act(() => {
+        renderer = create(<MateFace greets state="idle" tint="sand" />);
+      });
+      const zzz = () => renderer!.root.findAll((node) => node.props["data-mate-face-zzz"] === "");
+      expect(zzz()).toHaveLength(0);
+      act(() => renderer!.update(<MateFace greets state="sleep" tint="sand" />));
+      expect(zzz()).toHaveLength(1);
+      finish(renderer!, "nod");
+      expect(zzz()).toHaveLength(0);
+      act(() => renderer!.unmount());
+    });
+
+    it("greets no change of pose from a stand-in, nor unless asked to", () => {
+      watch();
+      let renderer: ReturnType<typeof create> | undefined;
+      // A menu row after a reload: idle until its socket answers that the Mate waits.
+      act(() => {
+        renderer = create(<MateFace greets known={false} state="idle" tint="sky" />);
+      });
+      act(() => renderer!.update(<MateFace greets known state="needs" tint="sky" />));
+      expect(momentOf(renderer!)).toBeUndefined();
+      // A header, reused from one Mate to the next, greets nothing of its own.
+      act(() => renderer!.update(<MateFace state="working" tint="sky" />));
+      act(() => renderer!.update(<MateFace state="done" tint="sky" />));
+      expect(momentOf(renderer!)).toBeUndefined();
+      act(() => renderer!.unmount());
+    });
+
+    it("plays its own arrival on its first paint", () => {
+      watch();
+      let renderer: ReturnType<typeof create> | undefined;
+      act(() => {
+        renderer = create(
+          <MateFace
+            cues={[{ moment: "peek", key: "open:t1", arrives: true }]}
+            state="idle"
+            tint="olive"
+          />,
+        );
+      });
+      expect(momentOf(renderer!)).toBe("peek");
+      act(() => renderer!.unmount());
+    });
   });
 
   it("looks where the status line says: up while thinking, down while writing", () => {

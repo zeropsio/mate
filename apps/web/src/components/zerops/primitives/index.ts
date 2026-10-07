@@ -17,7 +17,7 @@ export type { StatusDotProps } from "./StatusDot";
 export { Avatar } from "./Avatar";
 export type { AvatarProps, AvatarSize } from "./Avatar";
 export { MateFace } from "./MateFace";
-export type { MateFaceGaze, MateFaceProps, MateFaceSize } from "./MateFace";
+export type { MateFaceCue, MateFaceGaze, MateFaceProps, MateFaceSize } from "./MateFace";
 export { VERDICT_BORDER_CLASS, VerdictPanel, VerdictPanelWaiting } from "./VerdictPanel";
 export type { VerdictPanelProps } from "./VerdictPanel";
 export { StepGlyph } from "./StepGlyph";
