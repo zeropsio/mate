@@ -1129,6 +1129,44 @@ describe("the fold's rules", () => {
     ]);
   });
 
+  it("codex [scripted]: the host reaches a turn and an open request by the driver's own ids, a closed request by none", () => {
+    const w = wire("codex");
+    const translator = makeTranslator({ driver: "codex", threadId: THREAD });
+    for (const input of [
+      ...w.open(),
+      ...w.begin(H1, "X1"),
+      w.event("request.opened", {
+        turnId: "X1",
+        requestId: "req-a",
+        payload: { requestType: "command_execution_approval" },
+      }),
+      w.event("user-input.requested", {
+        turnId: "X1",
+        requestId: "req-b",
+        payload: { questions: [] },
+      }),
+    ]) {
+      translator.step(input);
+    }
+    assert.strictEqual(translator.nativeTurn(H1), "X1");
+    assert.isUndefined(translator.nativeTurn(H2));
+    assert.deepStrictEqual(translator.nativeRequest("s1.r1" as RequestKey), {
+      id: "req-a",
+      kind: "approval",
+    });
+    assert.deepStrictEqual(translator.nativeRequest("s1.r2" as RequestKey), {
+      id: "req-b",
+      kind: "question",
+    });
+    translator.step(
+      w.event("request.resolved", {
+        requestId: "req-a",
+        payload: { requestType: "command_execution_approval", decision: "accept" },
+      }),
+    );
+    assert.isUndefined(translator.nativeRequest("s1.r1" as RequestKey));
+  });
+
   it("antigravity [scripted]: a question it asks takes no typed answer", () => {
     const w = wire("antigravity");
     const { signals } = run("antigravity", THREAD, [

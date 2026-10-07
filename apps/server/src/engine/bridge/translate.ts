@@ -71,9 +71,19 @@ export interface DroppedInput {
   readonly type: string;
 }
 
+/** What the host answers a request with: the driver's own id, and which call takes the answer. */
+export interface NativeRequest {
+  readonly id: string;
+  readonly kind: "approval" | "question";
+}
+
 export interface Translator {
   readonly step: (input: BridgeInput) => ReadonlyArray<DriverSignal>;
   readonly dropped: () => ReadonlyArray<DroppedInput>;
+  /** The driver's own id for a turn, once the driver named it: what an interrupt is sent for. */
+  readonly nativeTurn: (turn: TurnHandle) => string | undefined;
+  /** An open request's native id and kind; none once it closed: nothing can take an answer. */
+  readonly nativeRequest: (key: RequestKey) => NativeRequest | undefined;
 }
 
 /** The whole log at once. */
@@ -137,6 +147,8 @@ interface RequestState {
   readonly key: RequestKey;
   readonly session: SessionState;
   readonly turn?: TurnState;
+  readonly kind: NativeRequest["kind"];
+  readonly native?: string;
   open: boolean;
 }
 
@@ -167,6 +179,7 @@ interface SessionState {
 export function makeTranslator(options: TranslatorOptions): Translator {
   const caps = DRIVER_CAPABILITIES[options.driver];
   const turns = new Map<TurnHandle, TurnState>();
+  const requestsByKey = new Map<RequestKey, RequestState>();
   const dropped: Array<DroppedInput> = [];
   let session: SessionState | undefined;
   let implicitCount = 0;
@@ -526,7 +539,11 @@ export function makeTranslator(options: TranslatorOptions): Translator {
     emit(request.session, { type: "request.closed", request: request.key, how });
   };
 
-  const openRequest = (owner: SessionState, event: SpiEvent): RequestState => {
+  const openRequest = (
+    owner: SessionState,
+    event: SpiEvent,
+    kind: NativeRequest["kind"],
+  ): RequestState => {
     owner.requestCount += 1;
     const turn =
       event.turnId === undefined ? owner.open : owner.nativeTurns.get(String(event.turnId));
@@ -534,9 +551,12 @@ export function makeTranslator(options: TranslatorOptions): Translator {
       key: `${owner.key}.r${owner.requestCount}` as RequestKey,
       session: owner,
       ...(turn !== undefined && turn.phase === "open" ? { turn } : {}),
+      kind,
+      ...(event.requestId === undefined ? {} : { native: String(event.requestId) }),
       open: true,
     };
     if (event.requestId !== undefined) owner.requests.set(String(event.requestId), request);
+    requestsByKey.set(request.key, request);
     return request;
   };
 
@@ -686,7 +706,7 @@ export function makeTranslator(options: TranslatorOptions): Translator {
         return;
       }
       case "request.opened": {
-        const request = openRequest(owner, event);
+        const request = openRequest(owner, event, "approval");
         const payload = event.payload;
         emit(owner, {
           type: "request.opened",
@@ -702,7 +722,7 @@ export function makeTranslator(options: TranslatorOptions): Translator {
         return;
       }
       case "user-input.requested": {
-        const request = openRequest(owner, event);
+        const request = openRequest(owner, event, "question");
         const questions = event.payload.questions;
         emit(owner, {
           type: "request.opened",
@@ -994,6 +1014,13 @@ export function makeTranslator(options: TranslatorOptions): Translator {
       return out;
     },
     dropped: () => dropped,
+    nativeTurn: (turn) => turns.get(turn)?.native,
+    nativeRequest: (key) => {
+      const request = requestsByKey.get(key);
+      return request?.open === true && request.native !== undefined
+        ? { id: request.native, kind: request.kind }
+        : undefined;
+    },
   };
 }
 
