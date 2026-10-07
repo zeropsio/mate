@@ -177,3 +177,34 @@ describe("an unreachable Mate's last-known state", () => {
     ).toEqual({ surface: "none" });
   });
 });
+
+it("an ongoing restart keeps the last-known state alongside every notice line", () => {
+  const held = "Last known 14:20: Rosa hit the Claude limit.";
+  const voice = mateNoticeVoice({
+    mateName: "Rosa",
+    nowMs: 0,
+    conversationShown: true,
+    reachability: { kind: "not-answering", overdue: false },
+    lastKnown: held,
+    recovery: {
+      standing: { kind: "unknown" },
+      status: "ACTIVE",
+      process: {
+        id: "restart",
+        actionName: "stack.restart",
+        status: "RUNNING",
+        created: "2026-10-07",
+        projectId: "p",
+        serviceStackIds: ["s"],
+      },
+    },
+  });
+  expect(voice).toMatchObject({
+    surface: "banner",
+    headline: "Rosa is restarting.",
+    secondary: expect.stringContaining(held),
+  });
+  expect("restartLines" in voice && voice.restartLines?.every((line) => line.includes(held))).toBe(
+    true,
+  );
+});
