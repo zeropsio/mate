@@ -106,6 +106,10 @@ interface Gate {
 
 const ENGINE = { kind: "engine" } as const;
 
+/** A batch the actor did not take is told again after `min(30 s, 100 ms · 2^(n − 1))`. */
+export const batchRetryMs = (attempt: number): number =>
+  Math.min(30_000, 100 * 2 ** Math.max(0, attempt - 1));
+
 export const makeSessionHost = Effect.fnUntraced(function* (
   input: {
     readonly conversationId: ConversationId;
@@ -127,32 +131,43 @@ export const makeSessionHost = Effect.fnUntraced(function* (
   let current: SessionId | null = null;
   let recording: SessionId | null = null;
 
-  const tell = (session: SessionId, gate: Gate, signals: ReadonlyArray<ProviderSignal>) => {
-    if (deps.stopping()) return Effect.void;
-    gate.batches += 1;
-    return deps.conversations
-      .tell({
+  /**
+   * Tells a batch until the actor takes it: a batch is content-idempotent, and one lost would
+   * leave its run running forever (its turn's end). Backs off, never drops; stops only with the
+   * server.
+   */
+  const tell = (session: SessionId, gate: Gate, signals: ReadonlyArray<ProviderSignal>) =>
+    Effect.gen(function* () {
+      if (deps.stopping()) return;
+      gate.batches += 1;
+      const envelope = {
         commandId: signalsCommandId(session, gate.batches),
         conversationId: input.conversationId,
         principal: ENGINE,
         command: { _tag: "ProviderSignals", sessionId: session, signals },
-      })
-      .pipe(
-        Effect.retry({ times: 3 }),
-        Effect.tap((result) =>
-          result._tag === "Rejected"
-            ? Effect.logDebug("engine pump: a batch was refused", {
-                session,
-                reason: result.rejection.reason,
-              })
-            : Effect.void,
-        ),
-        Effect.catchCause((cause) =>
-          Effect.logWarning("engine pump: a batch could not be told", { session, cause }),
-        ),
-        Effect.asVoid,
-      );
-  };
+      } as const;
+      for (let attempt = 1; ; attempt++) {
+        const told = yield* Effect.exit(deps.conversations.tell(envelope));
+        if (told._tag === "Success") {
+          if (told.value._tag === "Rejected") {
+            yield* Effect.logDebug("engine pump: a batch was refused", {
+              session,
+              reason: told.value.rejection.reason,
+            });
+          }
+          return;
+        }
+        if (deps.stopping()) return;
+        if (attempt === 1 || attempt % 10 === 0) {
+          yield* Effect.logWarning("engine pump: a batch was not taken; it is told again", {
+            session,
+            attempt,
+            cause: told.cause,
+          });
+        }
+        yield* Effect.sleep(batchRetryMs(attempt));
+      }
+    });
 
   const resolve = (turn: TurnHandle, evidence: SendEvidence) => {
     const send = waiting.get(turn);
