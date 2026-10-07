@@ -28,7 +28,7 @@ import {
   EMPTY_PROJECT_TOPOLOGY_SNAPSHOT,
   type ProjectTopologySnapshot,
   accountReadsAtom,
-  inventory,
+  inventoryContents,
   inventoryPlacements,
   inventoryPlacementStatus,
   shownHqMatesAtom,
@@ -38,6 +38,7 @@ import {
   type HqNavigationRead,
 } from "@t3tools/client-runtime/data";
 
+import { sameValue } from "../lib/sameValue";
 import type { HqStanding } from "../zerops/accountHq";
 import { registeredZeropsOrigins, rowEnvironment } from "../zerops/environmentOrigins";
 export { zeropsFeeds } from "../zerops/feeds";
@@ -192,7 +193,7 @@ export const inventoryReadAtom = Atom.make((get): InventoryProjection | null => 
   const organization = get(zeropsSessionAtom)?.activeOrganization;
   return account === null || organization == null || account.orgId !== organization.organizationId
     ? null
-    : get(account.data.project(inventory, { organization, viewer: account.viewer }));
+    : get(account.data.project(inventoryContents, { organization, viewer: account.viewer }));
 }).pipe(Atom.withLabel("data:inventory"));
 
 /** One environment this renderer registered, as the connection catalog presents it. */
@@ -342,7 +343,13 @@ export const environmentProjectsAtom = Atom.make((get): EnvironmentProjects => {
       listed.set(environmentId, row.project.id);
   }
   return { described, listed };
-}).pipe(Atom.withLabel("zerops:environment-projects"));
+}).pipe(
+  Atom.withEquality<EnvironmentProjects>(
+    (a, b) =>
+      sameValue([...a.described], [...b.described]) && sameValue([...a.listed], [...b.listed]),
+  ),
+  Atom.withLabel("zerops:environment-projects"),
+);
 
 /**
  * The project an environment belongs to (C3): its descriptor's word first, then the Mate this tab
@@ -423,3 +430,13 @@ export const hqMainChatsAtom = Atom.make((get) => {
     ]),
   );
 }).pipe(Atom.withEquality((a, b) => shareEqual(a, b) === a));
+
+const projectTopologyViews = Atom.family((key: string) =>
+  Atom.make((get) => get(projectTopologies(key)).view).pipe(Atom.withEquality(sameValue)),
+);
+
+/** The topology's contents, without subscribing a drawing to source freshness. */
+export function projectTopologyViewAtom(project: ProjectRef) {
+  projectTopologyAtom(project);
+  return projectTopologyViews(projectKeyOf(project));
+}

@@ -24,7 +24,7 @@ const viewer = { id: "org", name: "Org", membershipId: "member", roleCode: "ADMI
 const key = { organization, viewer };
 const project = { id: "p", clientId: "org", name: "Platform name", status: "ACTIVE" };
 
-it.each(["live", "outage", "partial", "refused", "denied"] as const)(
+it.each(["live", "recovering", "outage", "partial", "refused", "denied"] as const)(
   "inventory joins source facts with %s coverage",
   (state) => {
     const registry = AtomRegistry.make();
@@ -42,8 +42,24 @@ it.each(["live", "outage", "partial", "refused", "denied"] as const)(
       },
     });
     const scope = projectsScope("org");
-    if (state === "outage")
+    if (state === "recovering" || state === "outage") {
       store.dispatch({ kind: "stream", key: scope, now: 0, event: { kind: "parent-lost" } });
+      store.dispatch({
+        kind: "stream",
+        key: "zerops:org",
+        now: 0,
+        event: { kind: "fault", jitter: 0, fault: { outcome: "transient", message: "closed" } },
+      });
+    }
+    if (state === "outage") {
+      store.dispatch({ kind: "stream", key: "zerops:org", now: 0, event: { kind: "retry-due" } });
+      store.dispatch({
+        kind: "stream",
+        key: "zerops:org",
+        now: 0,
+        event: { kind: "fault", jitter: 0, fault: { outcome: "transient", message: "503" } },
+      });
+    }
     if (state === "partial") {
       store.dispatch({ kind: "baseline-begin", scope, generation: 1 });
       store.dispatch({

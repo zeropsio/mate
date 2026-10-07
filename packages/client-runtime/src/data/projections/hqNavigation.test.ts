@@ -310,16 +310,21 @@ describe("hqNavigation", () => {
 
   it("says when HQ's retries are as far apart as they get", () => {
     const failing = (failures: number) =>
-      apply(
-        read,
-        Array.from({ length: failures }, () =>
+      apply(read, [
+        stream(linkKeys.hq(ORG), {
+          kind: "fault",
+          fault: { outcome: "transient", message: "Closed" },
+          jitter: 0,
+        }),
+        ...Array.from({ length: failures }, () => [
+          stream(linkKeys.hq(ORG), { kind: "retry-due" }),
           stream(linkKeys.hq(ORG), {
             kind: "fault",
-            fault: { outcome: "transient", message: "HQ's stream broke." },
+            fault: { outcome: "transient", message: "Reconnect failed" },
             jitter: 0,
           }),
-        ),
-      );
+        ]).flat(),
+      ]);
     expect(navigation(failing(1)).capped).toBe(false);
     expect(navigation(failing(7)).capped).toBe(true);
   });

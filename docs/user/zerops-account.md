@@ -20,8 +20,10 @@ Opening a Mate reads its project before connecting. If that read cannot start, M
 reason and **Again**. Press **Again** to make one new attempt.
 
 If a Zerops data stream drops, Mate reconnects automatically with increasing delays. The last
-known data stays visible with **Reconnecting…**, its as-of time, and a warning that updates during
-the interruption may be missing. **Try now** starts a fresh connection immediately. Reconnecting
+known data stays visible. A connection that recovers successfully does not show an outage banner
+or disturb the open chat. If a connection or fresh-baseline attempt fails, the menu reports that
+Zerops is not answering and offers **Try now**, without moving the rows above it. **Try now**
+starts a fresh connection immediately. Reconnecting
 reads a fresh baseline; it does not repeat operations. A refused session or permission ends the
 connection visibly instead of reconnecting. Failed detail reads still need a manual check.
 

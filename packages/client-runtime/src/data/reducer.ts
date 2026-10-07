@@ -16,6 +16,8 @@ import {
   scopeSpec,
   streamMode,
 } from "./families/index.ts";
+import { sameValue } from "./projections/equal.ts";
+
 import type { FamilyIndex } from "./families/spec.ts";
 import {
   factKey,
@@ -327,6 +329,13 @@ function reduceRows(
       access: current?.access === "unverified" ? "unverified" : "allowed",
       ...(row.producer === undefined ? {} : { producer: row.producer }),
     };
+    // Zerops rows are plain DTOs. Other owners may hold runtime values such as Maps.
+    if (
+      spec.authority === "zerops" &&
+      current !== undefined &&
+      sameValue(current, { ...fact, method: current.method, via: current.via })
+    )
+      continue;
     draft ??= new Map(state.facts);
     draft.set(key, fact);
     // Only a fresh owner answer restores an excluded entity, never a transport event or delta.
@@ -434,7 +443,7 @@ function commitBaseline(
   }
   next = withMembership(next, scope, {
     coverage,
-    members: new Map(membership.members),
+    members: membership.members,
     excluded: next.memberships.get(scope)?.excluded ?? membership.excluded,
     baseline: null,
   });

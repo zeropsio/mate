@@ -1,5 +1,5 @@
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
-import { inventory, NOT_READ_INVENTORY } from "@t3tools/client-runtime/data";
+import { inventory, inventoryContents, NOT_READ_INVENTORY } from "@t3tools/client-runtime/data";
 import { Atom } from "effect/unstable/reactivity";
 import { useContext, useEffect, useMemo, type ReactNode } from "react";
 import { zeropsSessionAtom } from "../state/zerops";
@@ -23,7 +23,7 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
       () =>
         activeOrganization === null
           ? UNREAD_INVENTORY
-          : account.data.project(inventory, {
+          : account.data.project(inventoryContents, {
               organization: organizationRef(activeOrganization.id),
               viewer: activeOrganization,
             }),
@@ -38,6 +38,33 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
         activeOrganization === null ? null : organizationRef(activeOrganization.id),
     });
   }, [registry, status, organizationStatus, activeOrganization, organizationRef]);
+  const held = useMemo(() => ({ projects: read.projects }), [read.projects]);
+  return (
+    <InventoryContext value={read}>
+      <HeldInventoryContext value={held}>
+        <InventoryTroubleProvider>{children}</InventoryTroubleProvider>
+      </HeldInventoryContext>
+    </InventoryContext>
+  );
+}
+
+/** Only the account line subscribes to connection recovery. */
+function InventoryTroubleProvider({ children }: { readonly children: ReactNode }) {
+  const { activeOrganization } = useZeropsSession();
+  const { organizationRef } = useZeropsData();
+  const account = useAccountData();
+  const read = useAtomValue(
+    useMemo(
+      () =>
+        activeOrganization === null
+          ? UNREAD_INVENTORY
+          : account.data.project(inventory, {
+              organization: organizationRef(activeOrganization.id),
+              viewer: activeOrganization,
+            }),
+      [account.data, activeOrganization, organizationRef],
+    ),
+  );
   const trouble = useMemo(
     () => ({
       trouble: inventoryTroubleVoice(read.trouble),
@@ -50,11 +77,5 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
     }),
     [read.live, read.trouble, activeOrganization?.name, account.retry],
   );
-  return (
-    <InventoryContext value={read}>
-      <HeldInventoryContext value={read}>
-        <AccountTroubleContext value={trouble}>{children}</AccountTroubleContext>
-      </HeldInventoryContext>
-    </InventoryContext>
-  );
+  return <AccountTroubleContext value={trouble}>{children}</AccountTroubleContext>;
 }

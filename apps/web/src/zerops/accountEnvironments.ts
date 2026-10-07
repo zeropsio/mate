@@ -41,6 +41,7 @@ import type { EnvironmentId } from "@t3tools/contracts";
 import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
 import { useCallback, useContext, useEffect, useMemo, useSyncExternalStore } from "react";
 
+import { sameValue } from "../lib/sameValue";
 import { useAtomCommand } from "../state/use-atom-command";
 import { hqMatesAtom, hqProjectOf, hqProjectAtom } from "../state/zerops";
 import { invalidateZerops } from "./accountInvalidations";
@@ -168,9 +169,19 @@ export function useMateOfEnvironment(environmentId: string | null | undefined):
       readonly origin: string | null;
     }
   | undefined {
-  const mate = useAtomValue(environmentId == null ? NO_MATE : mateOfEnvironmentAtom(environmentId));
+  const mate = useAtomValue(environmentId == null ? NO_MATE : mateLocationAtom(environmentId));
   return mate ?? undefined;
 }
+
+/** A Mate's location is independent of its transport and the platform's freshness. */
+const mateLocationAtom = Atom.family((environmentId: string) =>
+  Atom.make((get): Pick<MateLinkValue, "projectId" | "orgId" | "origin"> | null => {
+    const mate = get(mateOfEnvironmentAtom(environmentId));
+    return mate === null
+      ? null
+      : { projectId: mate.projectId, orgId: mate.orgId, origin: mate.origin };
+  }).pipe(Atom.withEquality(sameValue)),
+);
 
 const NO_MATE = Atom.make(null);
 

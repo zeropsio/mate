@@ -8,7 +8,6 @@
  */
 import { useAtomValue } from "@effect/atom-react";
 import {
-  NOT_READ_VAULT,
   vaultAtom,
   vaultChangesSince,
   vaultNote,
@@ -19,6 +18,7 @@ import { Atom } from "effect/unstable/reactivity";
 import { useCallback, useMemo } from "react";
 import { create } from "zustand";
 
+import { sameValue } from "../lib/sameValue";
 import { useDetailDemand } from "./ZeropsAccountData";
 import { useZeropsEnvironmentProject } from "./useZeropsEnvironmentProject";
 import {
@@ -39,7 +39,6 @@ const useVaultTurnStore = create<VaultTurnState>()(() => ({ own: {}, hidden: {} 
 
 const NO_CHANGES: ReadonlyArray<VaultChange> = [];
 const NO_IDS: ReadonlyArray<string> = [];
-const UNREAD = Atom.make(NOT_READ_VAULT);
 
 /** A write the person made to a project's vault from here: told with the next message. */
 export function recordVaultWrite(projectId: string, change: VaultChange): void {
@@ -102,7 +101,17 @@ export function useVaultTurnNotes(
   useDetailDemand("projectVariables", undefined, projectId);
   useDetailDemand("serviceVariable", undefined, projectId);
   useDetailDemand("process", "history", projectId);
-  const view = useAtomValue(projectId === null ? UNREAD : vaultAtom(projectId));
+  const since = useAtomValue(
+    useMemo(
+      () =>
+        Atom.make((get) =>
+          projectId === null || spokeAt === undefined
+            ? NO_CHANGES
+            : vaultChangesSince(get(vaultAtom(projectId)), spokeAt, []),
+        ).pipe(Atom.withEquality(sameValue)),
+      [projectId, spokeAt],
+    ),
+  );
   const own = useVaultTurnStore((state) =>
     projectId === null ? NO_CHANGES : (state.own[projectId] ?? NO_CHANGES),
   );
@@ -115,10 +124,10 @@ export function useVaultTurnNotes(
         ? NO_CHANGES
         : vaultTurnChanges({
             own,
-            since: spokeAt === undefined ? NO_CHANGES : vaultChangesSince(view, spokeAt, []),
+            since,
             hidden: new Set(hidden),
           }),
-    [hidden, own, projectId, spokeAt, threadKey, view],
+    [hidden, own, projectId, since, threadKey],
   );
   const note = useMemo(() => vaultNote(changes), [changes]);
   const dismiss = useCallback(

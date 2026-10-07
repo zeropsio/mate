@@ -1,5 +1,7 @@
-import { Atom } from "effect/unstable/reactivity";
 // @vitest-environment happy-dom
+import { Atom } from "effect/unstable/reactivity";
+import type { CandidateRow } from "@t3tools/client-runtime/zerops/projections";
+import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { heldCandidates, selectCandidates } from "@t3tools/client-runtime/zerops/projections";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import {
@@ -137,6 +139,8 @@ const environments = { setOnScreen: (projectId: string | null) => app.onScreen(p
 vi.mock("~/zerops/useOpenMate", () => ({ useOpenMate: () => app.openMate }));
 vi.mock("~/zerops/usePressesElsewhere", () => ({ usePressesElsewhere: () => () => "stopped" }));
 vi.mock("~/zerops/useZeropsCandidates", () => ({
+  useHeldZeropsCandidates: () =>
+    heldCandidates(app.listing as Shown<ReadonlyArray<CandidateRow>>).rows,
   useZeropsCandidates: () => ({
     listing: app.listing,
     wholeForPerson: app.wholeForPerson,
