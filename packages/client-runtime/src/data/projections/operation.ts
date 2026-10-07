@@ -21,7 +21,12 @@ export type OperationProgress =
       readonly reason?: string;
     }
   | { readonly stage: "uncertain"; readonly next: "asking-owner" | "ask-owner-again" }
-  | { readonly stage: "refused"; readonly reason: string }
+  | {
+      readonly stage: "refused";
+      readonly reason: string;
+      /** The owner's own code for it (`userDataDuplicateKey`), where it named one. */
+      readonly code?: string;
+    }
   | { readonly stage: "accepted" | "reflected"; readonly operationId: string }
   | {
       readonly stage: "done";
@@ -70,8 +75,10 @@ export const operationProgressOf = (
         default:
           return { stage: "submitting" };
       }
-    if (receipt.acceptance.kind === "refused")
-      return { stage: "refused", reason: receipt.acceptance.reason };
+    if (receipt.acceptance.kind === "refused") {
+      const { reason, code } = receipt.acceptance;
+      return { stage: "refused", reason, ...(code === undefined ? {} : { code }) };
+    }
     const kind = operationKind(kinds, record.intent);
     // The owner's facts may say the end before — or instead of — its receipt.
     const settled = kind.settledBy?.(read, record.intent, receipt) ?? null;
