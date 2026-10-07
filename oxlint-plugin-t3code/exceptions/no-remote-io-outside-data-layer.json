@@ -40,14 +40,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/components/zerops/ZeropsNewProjectHost.tsx",
-    "kind": "CallExpression",
-    "fingerprint": "fetch",
-    "owner": "data-layer rewrite: Zerops platform",
-    "reason": "Retained operation-flow debt: this call performs project creation, press coordination, deletion or Mate mutation. Deleting it would remove the corresponding action; replacing its write, lost-answer handling and owner receipt requires a dedicated operation executor migration.",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/zerops/commands.ts",
     "kind": "CallExpression",
     "fingerprint": "createEnvironmentRpcCommand",

@@ -40,10 +40,15 @@
  * ⋯ menu finishes it (*Finish setup*).
  */
 import { useNavigate } from "@tanstack/react-router";
-import { organizationLocations, type LocationsRead } from "@t3tools/client-runtime/data";
+import {
+  organizationLocations,
+  regionRecommendation,
+  demandLocationLatency,
+  type LocationsRead,
+} from "@t3tools/client-runtime/data";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { Atom } from "effect/unstable/reactivity";
-import { useEffect, useMemo, useState } from "react";
+import { useContext, useEffect, useMemo, useState } from "react";
 
 import {
   generateBotName,
@@ -60,7 +65,11 @@ import { useRunNewProject } from "~/zerops/useRunNewProject";
 import { useNewProjectAsk } from "~/zerops/newProjectAsk";
 import { useHqOffers, useOrgOffers } from "~/zerops/useHqOffers";
 import { useTakenBotNames, useZeropsCandidates } from "~/zerops/useZeropsCandidates";
-import { useAccountDataOptional, useProjection } from "~/zerops/ZeropsAccountData";
+import {
+  AccountStoreContext,
+  useAccountDataOptional,
+  useProjection,
+} from "~/zerops/ZeropsAccountData";
 import type { ZeropsOrganizationStatus } from "~/zerops/ZeropsSessionProvider";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
@@ -81,6 +90,7 @@ export function zeropsNewProjectScopeStepVisible(input: {
 }
 
 /** Mounted once, above every view: the dialog while New project is asked for. */
+const NO_RECOMMENDATION = Atom.make<string | null>(null);
 const UNREAD_LOCATIONS = Atom.make<LocationsRead>({ status: "loading", locations: [] });
 
 export function ZeropsNewProjectHost() {
@@ -135,44 +145,28 @@ function NewProjectDialog() {
   const offered = useProjection(organizationLocations, placesFor, UNREAD_LOCATIONS);
   const locations = offered.locations;
   const locationKey = activeOrganization?.id ?? "";
+  const store = useContext(AccountStoreContext);
+  useEffect(() => {
+    if (store === null || placesFor === null || locations.length <= 1) return;
+    const release = locations.map((location) =>
+      demandLocationLatency({ store, orgId: placesFor, location }),
+    );
+    return () => {
+      for (const stop of release) stop();
+    };
+  }, [store, placesFor, locations]);
+  const recommendation = useProjection(
+    regionRecommendation,
+    placesFor === null ? null : { orgId: placesFor, locations },
+    NO_RECOMMENDATION,
+  );
   const locationId =
     locationChoice?.key === locationKey &&
     locations.some((location) => location.id === locationChoice.id)
       ? locationChoice.id
-      : (locations[0]?.id ?? null);
+      : (recommendation ?? locations[0]?.id ?? null);
   const locationStatus = !activeOrganization || !canCreate ? "ready" : offered.status;
   const locationError = offered.status === "failed" ? "Couldn't load the locations." : null;
-
-  useEffect(() => {
-    if (locations.length <= 1) return;
-    let cancelled = false;
-    // Match the Zerops GUI's default: measure all locations in parallel
-    // and preselect the lowest observed latency. This is a bounded health
-    // probe, independent of the platform configuration read.
-    void Promise.all(
-      locations.map(async (location) => {
-        const startedAt = performance.now();
-        try {
-          const response = await fetch(location.pingUrl, { cache: "no-store" });
-          if (!response.ok) return null;
-          return { id: location.id, latency: performance.now() - startedAt };
-        } catch {
-          return null;
-        }
-      }),
-    ).then((results) => {
-      if (cancelled) return;
-      const fastest = results
-        .filter((result): result is { readonly id: string; readonly latency: number } =>
-          Boolean(result),
-        )
-        .sort((left, right) => left.latency - right.latency)[0];
-      if (fastest) setLocationChoice({ key: locationKey, id: fastest.id });
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [locationKey, locations]);
 
   const onOpenChange = (open: boolean) => {
     if (!open) dismiss();
