@@ -13,7 +13,7 @@ import { Button } from "../../ui/button";
 import { Spinner } from "../../ui/spinner";
 import { MateFace } from "../primitives";
 import { notLiveClosing, notLiveId, notLiveWords, RESTART_CONFIRM } from "./vault.logic";
-import { VaultMark, VaultWords } from "./VaultRow";
+import { VaultWords } from "./VaultRow";
 
 const LEAVE_MS = 240;
 
@@ -182,7 +182,6 @@ function RestartLine(props: {
   return (
     <div className="grid gap-1.5 py-1" data-vault-restart={props.hostname}>
       <div className="flex min-h-8 items-center gap-2 text-xs text-muted-foreground">
-        <VaultMark flat monogram={props.monogram} restart={false} />
         <span>{props.hostname}</span>
         <span className="grow" />
         <Button

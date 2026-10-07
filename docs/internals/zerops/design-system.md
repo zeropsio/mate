@@ -34,8 +34,8 @@ identifiers and comments keep their code names.
 | T3 Connect, Tailscale, T3 Code                 | **omit**                                     |
 | Open in editor                                 | **Cloud IDE**                                |
 | zcp                                            | **Zerops Control Plane**                     |
-| project-level variables                        | **Shared**                                   |
-| environment variables, secrets                 | **vault values; Plain or Sensitive**         |
+| project-level variables, Shared                | **values**; an app's own: **own values**     |
+| environment variables, Plain / Sensitive       | **vault values**; sensitive: **secret**      |
 | control plane (product name)                   | **Zerops Mate**                              |
 | stage half of a dev/stage pair                 | **preview**                                  |
 | deploying a crewmate's work                    | **Deploy to {host}**                         |

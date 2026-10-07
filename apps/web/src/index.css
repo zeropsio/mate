@@ -9434,16 +9434,141 @@ button.rv-relrow:hover .rv-relrow-go {
 /* ==== end of the Crew tab ==== */
 
 /* ==== the Vault tab ==== */
-/* The Quiet look (the owner's vault prototype, 2026-10-07): one scope at a time under a segmented
-   bar whose pill slides; two-line rows that open in place; what is not live yet in one quiet
-   warning block whose items grow in and fold away. Heights move by grid rows, so a row's body
+/* The vault: one list in groups, one-line rows that open in place; what is not live yet in one
+   quiet warning block whose items grow in and fold away. Heights move by grid rows, so a row's body
    and an item travel with the content under them; reduced motion keeps only the end states. */
 .vault-panel {
   --vault-ease: cubic-bezier(0.23, 1, 0.32, 1);
-  --vault-row-hover: color-mix(in oklab, var(--accent) 55%, var(--card));
+  --vault-row-hover: color-mix(in oklab, var(--foreground) 3.5%, var(--card));
+  --vault-row-open: color-mix(in oklab, var(--foreground) 2.5%, var(--card));
   --vault-mark: color-mix(in oklab, var(--foreground) 7%, var(--card));
   --vault-row-bg: var(--card);
+  --vault-hairline: color-mix(in oklab, var(--border) 70%, transparent);
+  --vault-edge: color-mix(in oklab, var(--border) 80%, transparent);
   container-type: inline-size;
+}
+
+.dark .vault-panel {
+  --vault-row-hover: color-mix(in oklab, var(--foreground) 5%, var(--card));
+  --vault-row-open: color-mix(in oklab, var(--foreground) 3.5%, var(--card));
+}
+
+/* The page under the cards is the right panel's own surface, as under Files and Data. */
+.vault-canvas {
+  background: transparent;
+}
+
+/* One card: a group of values, an app list, what an app reads. */
+/* A card as the right panel draws its own (the launcher's): card surface, a light edge. */
+.vault-box {
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  background: var(--card);
+  box-shadow: 0 0 0 1px var(--vault-edge);
+}
+
+.dark .vault-box,
+.dark .vault-callout {
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--foreground) 6%, transparent);
+}
+
+.vault-box-head + .vault-rows,
+.vault-rows > * + * {
+  border-top: 1px solid var(--vault-hairline);
+}
+
+/* Values / Apps: the two ways into the vault. */
+.vault-switch {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 9px;
+  background: color-mix(in oklab, var(--foreground) 6%, var(--background));
+}
+
+.vault-switch-item {
+  height: 26px;
+  padding-inline: 12px;
+  border-radius: 7px;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  font-weight: 500;
+  transition:
+    background-color 0.16s,
+    color 0.16s,
+    box-shadow 0.16s;
+}
+
+.vault-switch-item:hover:not(:disabled) {
+  color: var(--foreground);
+}
+
+.vault-switch-item:focus {
+  outline: none;
+}
+
+.vault-switch-item:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+
+.vault-switch-item[aria-selected="true"] {
+  background: var(--card);
+  color: var(--foreground);
+  box-shadow:
+    0 1px 2px color-mix(in oklab, var(--foreground) 10%, transparent),
+    0 0 0 1px color-mix(in oklab, var(--foreground) 5%, transparent);
+}
+
+.dark .vault-switch-item[aria-selected="true"] {
+  background: color-mix(in oklab, var(--foreground) 12%, var(--card));
+}
+
+/* What needs the person: a card with a toned icon, a title and its action. */
+.vault-callout {
+  padding: 14px;
+  border-radius: var(--radius-lg);
+  background: var(--card);
+  box-shadow: 0 0 0 1px var(--vault-edge);
+}
+
+.vault-callout-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+}
+
+.vault-callout[data-tone="attention"] .vault-callout-icon {
+  background: var(--warning-surface);
+  color: var(--warning-foreground);
+}
+
+.vault-callout[data-tone="advice"] .vault-callout-icon {
+  background: color-mix(in oklab, var(--primary) 12%, var(--card));
+  color: var(--primary);
+}
+
+.vault-file-link {
+  color: var(--muted-foreground);
+  text-underline-offset: 2px;
+}
+
+.vault-file-link:hover {
+  color: var(--foreground);
+  text-decoration: underline;
+}
+
+/* What needs the person sits apart from the values under it. */
+.vault-callout + .vault-box {
+  margin-top: 8px;
+}
+
+.vault-app-icon {
+  background: color-mix(in oklab, var(--foreground) 6%, var(--card));
+  color: var(--muted-foreground);
 }
 
 .vault-find {
@@ -9458,48 +9583,40 @@ button.rv-relrow:hover .rv-relrow-go {
   width: 188px;
 }
 
-.vault-scopes {
-  position: relative;
-  display: flex;
-  gap: 2px;
-  padding: 2px;
-  overflow-x: auto;
-  overscroll-behavior-x: contain;
-  scrollbar-width: none;
-  border-radius: var(--radius-lg);
-  background: color-mix(in oklab, var(--input) 40%, transparent);
+/* A `${name}` inside a value, and the app a value belongs to: quiet chips in the line. */
+.vault-ref,
+.vault-only {
+  display: inline-block;
+  padding: 0 5px;
+  border-radius: 5px;
+  background: var(--vault-mark);
+  font-size: 11px;
+  line-height: 17px;
+  vertical-align: 1px;
 }
 
-.vault-scopes::-webkit-scrollbar {
-  display: none;
+.vault-ref {
+  margin-inline: 1px;
+  font-family: var(--font-mono);
 }
 
-.vault-scope-pill {
-  position: absolute;
-  top: 2px;
-  bottom: 2px;
-  left: 0;
-  width: var(--vault-pill-w, 0px);
-  border-radius: var(--radius-md);
-  background: var(--card);
-  box-shadow:
-    0 1px 2px color-mix(in oklab, var(--foreground) 8%, transparent),
-    0 0 0 1px color-mix(in oklab, var(--foreground) 4%, transparent);
-  transform: translateX(var(--vault-pill-x, 2px));
-  transition:
-    transform 0.28s var(--vault-ease),
-    width 0.28s var(--vault-ease);
+.vault-dots {
+  font-size: 8px;
+  line-height: 1;
+  letter-spacing: 2px;
+  vertical-align: 1px;
 }
 
-.dark .vault-scope-pill {
-  background: color-mix(in oklab, var(--input) 72%, transparent);
+.vault-row[data-open] .vault-row-value {
+  visibility: hidden;
 }
 
-.vault-scope {
-  position: relative;
-  z-index: 1;
-  flex: 1 0 auto;
-  transition: color 0.15s;
+.vault-chevron {
+  transition: transform 0.2s var(--vault-ease);
+}
+
+.vault-row[data-open] .vault-chevron {
+  transform: rotate(180deg);
 }
 
 /* What is not live yet: the block and each item fold in and out. */
@@ -9547,12 +9664,8 @@ button.rv-relrow:hover .rv-relrow-go {
 .vault-row {
   --vault-row-bg: var(--card);
   position: relative;
-  border-radius: var(--radius-lg);
   background: var(--vault-row-bg);
-  transition:
-    background-color 0.16s,
-    box-shadow 0.24s var(--vault-ease),
-    margin 0.24s var(--vault-ease);
+  transition: background-color 0.16s;
 }
 
 .vault-row:not([data-static]):not([data-open]):hover {
@@ -9560,10 +9673,7 @@ button.rv-relrow:hover .rv-relrow-go {
 }
 
 .vault-row[data-open] {
-  margin-block: 6px;
-  box-shadow:
-    0 0 0 1px var(--border),
-    0 10px 28px -16px color-mix(in oklab, var(--foreground) 32%, transparent);
+  --vault-row-bg: var(--vault-row-open);
 }
 
 .vault-row[data-flash] {
@@ -9606,44 +9716,6 @@ button.rv-relrow:hover .rv-relrow-go {
   background: color-mix(in oklab, var(--border) 60%, transparent);
 }
 
-/* A service's mark: 16 px, overlapped in a stack, amber when it runs the previous value. */
-.vault-mark {
-  display: grid;
-  place-items: center;
-  flex: none;
-  width: 16px;
-  height: 16px;
-  border-radius: 5px;
-  background: var(--vault-mark);
-  color: color-mix(in oklab, var(--foreground) 62%, transparent);
-  box-shadow: 0 0 0 2px var(--vault-row-bg);
-  font-size: 9px;
-  font-weight: 600;
-  line-height: 1;
-  letter-spacing: 0.02em;
-  transition: box-shadow 0.16s;
-}
-
-.vault-mark + .vault-mark {
-  margin-left: -3px;
-}
-
-.vault-mark[data-restart] {
-  background: var(--warning-surface);
-  color: var(--warning-foreground);
-  box-shadow:
-    0 0 0 2px var(--vault-row-bg),
-    inset 0 0 0 1.5px var(--warning);
-}
-
-.vault-mark[data-flat] {
-  box-shadow: none;
-}
-
-.vault-mark[data-flat][data-restart] {
-  box-shadow: inset 0 0 0 1.5px var(--warning);
-}
-
 .vault-settled {
   animation: vault-settled 1.4s var(--vault-ease) both;
 }
@@ -9660,7 +9732,7 @@ button.rv-relrow:hover .rv-relrow-go {
 
 @media (prefers-reduced-motion: reduce) {
   .vault-find,
-  .vault-scope-pill,
+  .vault-chevron,
   .vault-fold,
   .vault-row,
   .vault-row-body,

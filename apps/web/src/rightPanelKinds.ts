@@ -166,7 +166,7 @@ export const RIGHT_PANEL_KIND_META = {
   vault: {
     launcher: {
       label: "Vault",
-      description: "See and change the project's variables.",
+      description: "Settings and secrets your apps use.",
       // V is Data's; E stands in for the environment's variables.
       shortcut: "E",
       unavailableHint: "Available in a Zerops project.",

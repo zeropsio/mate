@@ -64,7 +64,9 @@ export function VaultAddCard(props: VaultAddCardProps) {
     <div className="mx-2 mt-0.5 mb-2 vault-card rounded-xl bg-card p-px" data-vault-add>
       <div className="flex items-center gap-1.5 px-3 pt-2.5 font-medium text-xs text-foreground">
         <PlusIcon aria-hidden="true" className="size-3.5 text-muted-foreground" />
-        New value in {scopeName(scope)}
+        {scope.hostname === null
+          ? "New value for every app"
+          : `New value for ${scope.hostname} only`}
       </div>
       <div className="grid gap-2 px-3 pt-2.5 pb-3">
         <div className="grid grid-cols-[156px_minmax(0,1fr)_auto] items-center gap-2">
@@ -82,7 +84,7 @@ export function VaultAddCard(props: VaultAddCardProps) {
               event.preventDefault();
               props.onPasteEnv(pasted);
             }}
-            placeholder="KEY"
+            placeholder="NAME"
             size="sm"
             spellCheck={false}
             value={key}
@@ -128,18 +130,18 @@ export function VaultAddCard(props: VaultAddCardProps) {
         <div className="flex items-center gap-2">
           <label className="flex h-7 cursor-pointer items-center gap-2 text-xs text-muted-foreground">
             <Switch
-              aria-label="Sensitive"
+              aria-label="Secret"
               checked={sensitive}
               onCheckedChange={(next) => setChosen(next)}
             />
             <LockIcon aria-hidden="true" className="size-3" />
-            <span className={sensitive ? "text-foreground" : undefined}>Sensitive</span>
+            <span className={sensitive ? "text-foreground" : undefined}>Secret</span>
           </label>
           <span className="truncate text-xs text-muted-foreground" data-vault-add-auto>
             {sensitive && chosen === null && word !== null
-              ? `on because the name holds ${word}`
+              ? "the name says secret — nobody reads it back once saved"
               : sensitive
-                ? "write-only once saved"
+                ? "nobody reads it back once saved"
                 : ""}
           </span>
           <span className="grow" />
@@ -152,7 +154,7 @@ export function VaultAddCard(props: VaultAddCardProps) {
           </Button>
         </div>
         <p className="text-xs leading-4 text-muted-foreground">
-          Enter saves · Esc cancels · paste a whole .env into KEY to add many
+          Enter saves · Esc cancels · paste a whole .env into NAME to add many
         </p>
       </div>
     </div>

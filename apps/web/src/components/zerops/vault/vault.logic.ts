@@ -34,7 +34,7 @@ export function joinNames(names: ReadonlyArray<string>): string {
 
 const ref = (name: string) => `\${${name}}`;
 
-export const SHARED_NAME = "Shared";
+export const SHARED_NAME = "All apps";
 
 /** Shared, or the service's hostname. */
 export function scopeName(scope: Pick<VaultScope, "hostname">): string {
@@ -91,7 +91,7 @@ export function keyProblem(key: string, scope: VaultScope): string | null {
   if (!VAULT_KEY_PATTERN.test(key)) return KEY_FORMAT_WORDS;
   const upper = key.toUpperCase();
   const held = scope.values.find((value) => value.key.toUpperCase() === upper);
-  if (held !== undefined) return `${held.key} is already in ${scopeName(scope)}`;
+  if (held !== undefined) return `${held.key} already exists`;
   const entry = scope.reads.find((read) => read.key.toUpperCase() === upper);
   if (entry !== undefined) return `${scopeName(scope)}'s zerops.yml already sets ${entry.key}`;
   return null;
@@ -282,7 +282,13 @@ export function readSource(view: VaultView, scope: VaultScope, read: VaultRead):
     case "value": {
       const target = scopeOfRef(view, first.scope);
       const text =
-        target === undefined ? first.name : target.id === scope.id ? "own" : scopeName(target);
+        target === undefined
+          ? first.name
+          : target.id === scope.id
+            ? "its own"
+            : target.kind === "shared"
+              ? "vault"
+              : scopeName(target);
       return {
         kind: "source",
         text,
@@ -292,7 +298,7 @@ export function readSource(view: VaultView, scope: VaultScope, read: VaultRead):
     case "entry":
       return { kind: "source", text: first.key, target: null };
     case "platform":
-      return { kind: "source", text: "platform", target: null };
+      return { kind: "source", text: "Zerops", target: null };
     case "self":
       return { kind: "bad", text: "self", name: first.name };
     case "missing":
@@ -488,7 +494,7 @@ export function refusalWords(
   if (reason !== null && reason !== "") return reason;
   switch (errorCode) {
     case "projectEnvDuplicateKey":
-      return `${key} is already in ${scopeName(scope)}`;
+      return `${key} already exists`;
     case "userDataDuplicateKey":
       return `${scopeName(scope)} already has ${key} in its values or zerops.yml`;
     case "projectEnvKeyInvalid":
