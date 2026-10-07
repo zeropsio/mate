@@ -90,6 +90,8 @@ describe("provider compatibility", () => {
   it("marks known-incompatible CLI versions broken in the bundled policy", () => {
     const bundled = ModelManifest.BUNDLED_MODEL_MANIFEST.compatibility;
     for (const [kind, version, expected] of [
+      ["grok", "1.0.12", "broken"],
+      ["grok", "1.0.13", "supported"],
       ["opencode", "1.14.18", "broken"],
       ["opencode", "1.14.19", "supported"],
       ["opencode", "1.99.0", "supported"],
