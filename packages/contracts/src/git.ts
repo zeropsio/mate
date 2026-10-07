@@ -1,5 +1,11 @@
 import * as Schema from "effect/Schema";
-import { NonNegativeInt, PositiveInt, ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import {
+  ForwardCompatibleOptional,
+  NonNegativeInt,
+  PositiveInt,
+  ThreadId,
+  TrimmedNonEmptyString,
+} from "./baseSchemas.ts";
 import { SourceControlProviderError, SourceControlProviderInfo } from "./sourceControl.ts";
 import { VcsDriverKind } from "./vcs.ts";
 
@@ -361,7 +367,8 @@ export class GitCommandError extends Schema.TaggedError<GitCommandError>()("GitC
   stdoutLength: Schema.optional(Schema.Number),
   stderrLength: Schema.optional(Schema.Number),
   outputLength: Schema.optional(Schema.Number),
-  reason: Schema.optional(GitCommandFailureReason),
+  // A newer server may name a reason this build does not know; it decodes as absent.
+  reason: ForwardCompatibleOptional(GitCommandFailureReason),
   detail: Schema.String,
   cause: Schema.optional(Schema.Defect()),
 }) {
