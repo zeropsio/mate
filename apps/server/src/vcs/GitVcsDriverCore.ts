@@ -419,6 +419,29 @@ function gitCommandContext(
   } as const;
 }
 
+/**
+ * Git reads an argument that starts with a dash as an option (`--upload-pack=…` runs a command,
+ * `--output=…` writes a file), and no ref or remote name starts with one. A caller's names are
+ * refused before git runs, which also covers commands that can't take `--end-of-options`.
+ */
+function refuseOptionLikeNames(
+  operation: string,
+  cwd: string,
+  names: ReadonlyArray<string | null | undefined>,
+): Effect.Effect<void, GitCommandError> {
+  const optionLike = names.find((name) => name?.startsWith("-"));
+  return optionLike === undefined
+    ? Effect.void
+    : Effect.fail(
+        new GitCommandError({
+          operation,
+          command: "git",
+          cwd,
+          detail: `'${optionLike}' is not a ref or remote name.`,
+        }),
+      );
+}
+
 function parseDefaultBranchFromRemoteHeadRef(value: string, remoteName: string): string | null {
   const trimmed = value.trim();
   const prefix = `refs/remotes/${remoteName}/`;
@@ -3451,15 +3474,17 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
             ).pipe(Effect.map((result) => result.exitCode === 0))
           : false;
 
+      // No `--end-of-options` here: checkout before git 2.43.1 keeps it in argv and fails with
+      // "only one reference expected"; a ref that starts with a dash is refused before this runs.
       const checkoutArgs = localInputExists
-        ? ["checkout", "--end-of-options", input.refName]
+        ? ["checkout", input.refName]
         : remoteExists && !localTrackingBranch && localTrackedBranchTargetExists
-          ? ["checkout", "--end-of-options", input.refName]
+          ? ["checkout", input.refName]
           : remoteExists && !localTrackingBranch
-            ? ["checkout", "--track", "--end-of-options", input.refName]
+            ? ["checkout", "--track", input.refName]
             : remoteExists && localTrackingBranch
-              ? ["checkout", "--end-of-options", localTrackingBranch]
-              : ["checkout", "--end-of-options", input.refName];
+              ? ["checkout", localTrackingBranch]
+              : ["checkout", input.refName];
 
       // A stale ref must not turn into a path checkout that discards local edits.
       yield* executeGit("GitVcsDriver.switchRef.checkout", input.cwd, [...checkoutArgs, "--"], {
@@ -3566,7 +3591,11 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     readConfigValue,
     listRefs,
     createWorktree: (input, options) =>
-      withListRefsInvalidation(input.cwd, createWorktree(input, options)),
+      refuseOptionLikeNames("GitVcsDriver.createWorktree", input.cwd, [
+        input.refName,
+        input.newRefName,
+        input.baseRefName,
+      ]).pipe(Effect.andThen(withListRefsInvalidation(input.cwd, createWorktree(input, options)))),
     fetchPullRequestBranch: (input) =>
       withListRefsInvalidation(input.cwd, fetchPullRequestBranch(input)),
     fetchPullRequestHeadCommit,
@@ -3576,18 +3605,37 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     ensureRemote: (input) => withListRefsInvalidation(input.cwd, ensureRemote(input)),
     resolvePrimaryRemoteName,
     resolveDefaultBranchName,
-    fetchRemote: (input) => withListRefsInvalidation(input.cwd, fetchRemote(input)),
+    fetchRemote: (input) =>
+      refuseOptionLikeNames("GitVcsDriver.fetchRemote", input.cwd, [input.remoteName]).pipe(
+        Effect.andThen(withListRefsInvalidation(input.cwd, fetchRemote(input))),
+      ),
     remoteExists,
     resolveRemoteTrackingCommit,
-    fetchRemoteBranch: (input) => withListRefsInvalidation(input.cwd, fetchRemoteBranch(input)),
+    fetchRemoteBranch: (input) =>
+      refuseOptionLikeNames("GitVcsDriver.fetchRemoteBranch", input.cwd, [
+        input.remoteName,
+        input.remoteBranch,
+        input.localBranch,
+      ]).pipe(Effect.andThen(withListRefsInvalidation(input.cwd, fetchRemoteBranch(input)))),
     fetchRemoteTrackingBranch: (input) =>
-      withListRefsInvalidation(input.cwd, fetchRemoteTrackingBranch(input)),
+      refuseOptionLikeNames("GitVcsDriver.fetchRemoteTrackingBranch", input.cwd, [
+        input.remoteName,
+        input.remoteBranch,
+      ]).pipe(
+        Effect.andThen(withListRefsInvalidation(input.cwd, fetchRemoteTrackingBranch(input))),
+      ),
     setBranchUpstream: (input) => withListRefsInvalidation(input.cwd, setBranchUpstream(input)),
     removeWorktree: (input) => withListRefsInvalidation(input.cwd, removeWorktree(input)),
     pruneWorktrees: (input) => withListRefsInvalidation(input.cwd, pruneWorktrees(input)),
     renameBranch: (input) => withListRefsInvalidation(input.cwd, renameBranch(input)),
-    createRef: (input) => withListRefsInvalidation(input.cwd, createRef(input)),
-    switchRef: (input) => withListRefsInvalidation(input.cwd, switchRef(input)),
+    createRef: (input) =>
+      refuseOptionLikeNames("GitVcsDriver.createRef", input.cwd, [input.refName]).pipe(
+        Effect.andThen(withListRefsInvalidation(input.cwd, createRef(input))),
+      ),
+    switchRef: (input) =>
+      refuseOptionLikeNames("GitVcsDriver.switchRef", input.cwd, [input.refName]).pipe(
+        Effect.andThen(withListRefsInvalidation(input.cwd, switchRef(input))),
+      ),
     initRepo: initRepoWithListRefsInvalidation,
     listLocalBranchNames,
   });

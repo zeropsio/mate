@@ -3157,3 +3157,100 @@ describe("a ref or remote name that starts with a dash", () => {
     );
   }
 });
+
+describe("a caller's ref or remote name that starts with a dash is refused before git runs", () => {
+  const cases: ReadonlyArray<{
+    readonly name: string;
+    readonly run: (
+      driver: GitVcsDriver.GitVcsDriver["Service"],
+    ) => Effect.Effect<unknown, GitCommandError>;
+  }> = [
+    {
+      name: "a checkout of a ref",
+      run: (driver) => driver.switchRef({ cwd: "/repo", refName: "--detach" }),
+    },
+    {
+      name: "a new ref",
+      run: (driver) => driver.createRef({ cwd: "/repo", refName: "--list", switchRef: true }),
+    },
+    {
+      name: "a worktree's ref",
+      run: (driver) => driver.createWorktree({ cwd: "/repo", refName: "--detach", path: null }),
+    },
+    {
+      name: "a worktree's new ref",
+      run: (driver) =>
+        driver.createWorktree({ cwd: "/repo", refName: "main", newRefName: "-f", path: null }),
+    },
+    {
+      name: "a worktree's base ref",
+      run: (driver) =>
+        driver.createWorktree({
+          cwd: "/repo",
+          refName: "main",
+          newRefName: "feature/x",
+          baseRefName: "--orphan",
+          path: null,
+        }),
+    },
+    {
+      name: "a fetched remote",
+      run: (driver) => driver.fetchRemote({ cwd: "/repo", remoteName: "--upload-pack=x" }),
+    },
+    {
+      name: "a fetched remote branch's local branch",
+      run: (driver) =>
+        driver.fetchRemoteBranch({
+          cwd: "/repo",
+          remoteName: "origin",
+          remoteBranch: "main",
+          localBranch: "--force",
+        }),
+    },
+    {
+      name: "a fetched remote branch's remote",
+      run: (driver) =>
+        driver.fetchRemoteBranch({
+          cwd: "/repo",
+          remoteName: "--upload-pack=x",
+          remoteBranch: "main",
+          localBranch: "main",
+        }),
+    },
+    {
+      name: "a tracked remote",
+      run: (driver) =>
+        driver.fetchRemoteTrackingBranch({
+          cwd: "/repo",
+          remoteName: "--upload-pack=x",
+          remoteBranch: "main",
+        }),
+    },
+  ];
+
+  for (const testCase of cases) {
+    it.effect(testCase.name, () => {
+      const commands: Array<ReadonlyArray<string>> = [];
+      const spawner = ChildProcessSpawner.make((command) =>
+        Effect.sync(() => {
+          if (ChildProcess.isStandardCommand(command)) commands.push(command.args);
+          return makeNonRepositoryHandle();
+        }),
+      );
+      return Effect.gen(function* () {
+        const driver = yield* makeGitVcsDriverCore().pipe(
+          Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+        );
+        commands.length = 0;
+
+        const result = yield* testCase.run(driver).pipe(Effect.result);
+
+        assert.isTrue(Result.isFailure(result));
+        assert.deepStrictEqual(commands, []);
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(ServerConfigLayer.pipe(Layer.provideMerge(NodeServices.layer))),
+      );
+    });
+  }
+});
