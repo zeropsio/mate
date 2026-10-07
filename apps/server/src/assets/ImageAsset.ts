@@ -26,6 +26,7 @@ export const resolveImageAsset = Effect.fn("resolveImageAsset")(function* (
     readonly projectId?: ProjectId;
     readonly workspaceRoot?: string;
     readonly projectFaviconPath?: string;
+    readonly projectCheckoutPending?: boolean;
   },
 ) {
   const config = yield* ServerConfig;
