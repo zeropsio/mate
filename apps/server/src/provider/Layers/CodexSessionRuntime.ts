@@ -1320,7 +1320,8 @@ export const makeCodexSessionRuntime = (
 > =>
   Effect.gen(function* () {
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-    const runtimeScope = yield* Scope.Scope;
+    // A child of the caller's scope, so closing the runtime never closes the caller's.
+    const runtimeScope = yield* Scope.fork(yield* Scope.Scope);
     const crypto = yield* Crypto.Crypto;
     const events = yield* Queue.unbounded<ProviderEvent>();
     const pendingApprovalsRef = yield* Ref.make(new Map<ApprovalRequestId, PendingApproval>());
