@@ -336,6 +336,19 @@ describe("durable Mate usage boundary", () => {
       ),
   );
 
+  it.effect("a baseline finished for a replaced ledger never marks the new one baselined", () =>
+    withLedger((ledger) =>
+      Effect.gen(function* () {
+        yield* ledger.begin(binding);
+        const old = (yield* ledger.metadata).ledgerId;
+        yield* ledger.restart({ ...binding, mateId: "mate-2" });
+        yield* ledger.markBaselined(old);
+        assert.isFalse((yield* ledger.metadata).baselined);
+        yield* ledger.markBaselined((yield* ledger.metadata).ledgerId);
+        assert.isTrue((yield* ledger.metadata).baselined);
+      }),
+    ),
+  );
   it.effect("a new ledger never takes an origin under the registration it replaced", () =>
     withLedger((ledger) =>
       Effect.gen(function* () {

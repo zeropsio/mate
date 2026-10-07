@@ -108,7 +108,7 @@ const world = Effect.gen(function* () {
           ledgerId: meta.ledgerId,
         },
       );
-      if (meta.baselined === false) yield* mate.markBaselined;
+      if (meta.baselined === false) yield* mate.markBaselined(meta.ledgerId);
     });
   /** What HQ has recorded for every Mate, in tokens. */
   const recorded = Effect.map(

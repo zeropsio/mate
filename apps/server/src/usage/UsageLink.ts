@@ -192,7 +192,7 @@ export const makeUsageLink = Effect.fnUntraced(function* (
           { ...(floor === undefined ? {} : { floor }), baseline, ledgerId: meta.ledgerId },
         ).pipe(Effect.catchCause(() => Effect.logWarning("Usage source capture unavailable")));
     }
-    if (baseline) yield* ledger.markBaselined;
+    if (baseline) yield* ledger.markBaselined(meta.ledgerId);
     wake?.();
   }).pipe(Effect.catchCause(() => Effect.logWarning("Usage ledger capture unavailable")));
   yield* Effect.forkScoped(Effect.forever(Queue.take(dirty).pipe(Effect.andThen(scan))));

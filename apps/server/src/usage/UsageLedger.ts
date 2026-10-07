@@ -417,8 +417,10 @@ export const makeUsageLedger = Effect.gen(function* () {
       baselined: false,
     });
   });
-  const markBaselined = Effect.gen(function* () {
-    yield* saveMeta({ ...(yield* metadata), baselined: true });
+  /** The baseline of ledger `ledgerId` is done; one started anew meanwhile still needs its own. */
+  const markBaselined = Effect.fnUntraced(function* (ledgerId: string) {
+    const meta = yield* metadata;
+    if (meta.ledgerId === ledgerId) yield* saveMeta({ ...meta, baselined: true });
   });
   const transaction = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     sql.withTransaction(
@@ -442,7 +444,7 @@ export const makeUsageLedger = Effect.gen(function* () {
     origins,
     begin: (binding: UsageBinding) => transaction(begin(binding)),
     restart: (binding: UsageBinding) => transaction(restart(binding)),
-    markBaselined: transaction(markBaselined),
+    markBaselined: (ledgerId: string) => transaction(markBaselined(ledgerId)),
     hello,
     digestAt,
     batch,
