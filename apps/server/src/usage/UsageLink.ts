@@ -36,24 +36,10 @@ import {
   type CaptureSource,
   type WatchDirectory,
 } from "./usageCapture.ts";
-import { makeUsageReplication } from "./usageReplication.ts";
+import { makeUsageReplication, renewsLedger } from "./usageReplication.ts";
 import { DEFAULT_WATCH_RETRY, makeSourceWatches, type WatchRetry } from "./usageWatches.ts";
 
-/**
- * Refusals a new ledger recovers from: HQ restored past this one or holds its origins under another
- * lineage (a lost or restored `usage.sqlite`), or the two disagree on the journal's prefix.
- */
 const isLedgerError = Schema.is(UsageLedgerError);
-const USAGE_RENEWING_CODES: ReadonlySet<string> = new Set([
-  "ledger_rollback_conflict",
-  "origin_lineage_conflict",
-  "ledger_binding_conflict",
-  "origin_binding",
-  "prefix_conflict",
-  "prefix-conflict",
-  "ledger-rollback",
-  "unproved-replay-prefix",
-]);
 export interface UsageLane {
   readonly ping: Effect.Effect<void>;
   readonly state: (message: Extract<MateLinkDown, { type: "state" }>) => Effect.Effect<void>;
@@ -235,12 +221,7 @@ export const makeUsageLink = Effect.fnUntraced(function* (
           effect.pipe(
             Effect.catch((error) => {
               // One renewal per link: a refusal of the new ledger waits for the next link.
-              if (
-                renewed ||
-                !binding ||
-                !isLedgerError(error) ||
-                !USAGE_RENEWING_CODES.has(error.code)
-              )
+              if (renewed || !binding || !isLedgerError(error) || !renewsLedger(error.code))
                 return halt;
               renewed = true;
               return renew(binding, error.code).pipe(Effect.andThen(advertise));

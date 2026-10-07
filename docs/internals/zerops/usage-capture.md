@@ -96,4 +96,7 @@ path for now; this server change does not modify shared client behavior or mobil
 
 Focused proof lives in `apps/server/src/usage/usageLedger.test.ts` and `usageCapture.test.ts`: ACK
 loss/replay, bounded paged repair, restart, copied history, binding/prefix conflicts, counter resets,
-source-checkpoint rollback and corrections. Existing HQ-link tests protect overview/attention.
+source-checkpoint rollback and corrections. `apps/hq/src/usageEndToEnd.test.ts` runs the Mate's
+ledger, meter and lane against a running Core on Postgres (a dropped link, a restart, a fenced link,
+a snapshot, a restored and a lost `usage.sqlite`) in the regular `apps/hq` test run. Existing
+HQ-link tests protect overview/attention.

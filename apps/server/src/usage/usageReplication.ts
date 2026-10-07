@@ -10,6 +10,22 @@ import { UsageLedgerError, type UsageLedger } from "./UsageLedger.ts";
 export const USAGE_RETRY_FIRST_MS = 5_000;
 export const USAGE_RETRY_MAX_MS = 300_000;
 
+/**
+ * Refusals a new ledger recovers from: HQ restored past this one or holds its origins under another
+ * lineage (a lost or restored `usage.sqlite`), or the two disagree on the journal's prefix.
+ */
+const RENEWING_CODES: ReadonlySet<string> = new Set([
+  "ledger_rollback_conflict",
+  "origin_lineage_conflict",
+  "ledger_binding_conflict",
+  "origin_binding",
+  "prefix_conflict",
+  "prefix-conflict",
+  "ledger-rollback",
+  "unproved-replay-prefix",
+]);
+export const renewsLedger = (code: string) => RENEWING_CODES.has(code);
+
 export const makeUsageReplication = (ledger: UsageLedger) => {
   const lock = Semaphore.makeUnsafe(1);
   let channel: string | undefined;
