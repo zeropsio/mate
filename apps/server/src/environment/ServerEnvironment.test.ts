@@ -178,6 +178,30 @@ it.layer(NodeServices.layer)("ServerEnvironmentLive", (it) => {
     }),
   );
 
+  it.effect("advertises the Mate engine only when the engine owns the conversation", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const baseDir = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "t3-server-environment-engine-test-",
+      });
+      const config = yield* makeServerConfig(baseDir);
+      const describe = (mateEngine: ServerConfig.MateEngineMode) =>
+        Effect.gen(function* () {
+          return yield* (yield* ServerEnvironment.ServerEnvironment).getDescriptor;
+        }).pipe(
+          Effect.provide(
+            ServerEnvironment.layer.pipe(
+              Layer.provide(ServerSecretStore.layer),
+              Layer.provide(ServerConfig.layer({ ...config, mateEngine })),
+            ),
+          ),
+        );
+
+      expect((yield* describe("mate")).capabilities.mateEngine).toEqual({ protocol: 1 });
+      expect((yield* describe("v1")).capabilities).not.toHaveProperty("mateEngine");
+    }),
+  );
+
   // Additive, contract C-5: a Zerops container states which project it
   // belongs to (a fact it already owns through the env contract, non-secret)
   // — absent everywhere else, including a plain `t3 serve`.
