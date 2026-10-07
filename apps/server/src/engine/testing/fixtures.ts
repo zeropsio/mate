@@ -13,12 +13,12 @@ import {
   type Principal,
 } from "@t3tools/contracts";
 
-import * as NodeSqliteClient from "../persistence/NodeSqliteClient.ts";
-import type { Command, Envelope, ProviderSignal } from "./domain/command.ts";
-import { decide } from "./domain/decide.ts";
-import type { ConversationState } from "./domain/state.ts";
-import type { Committed, EngineStoreShape } from "./store/EngineStore.ts";
-import { runEngineMigrations } from "./store/migrations.ts";
+import * as NodeSqliteClient from "../../persistence/NodeSqliteClient.ts";
+import type { Command, Envelope, ProviderSignal } from "../domain/command.ts";
+import { decide } from "../domain/decide.ts";
+import type { ConversationState } from "../domain/state.ts";
+import type { Committed, EngineStoreShape } from "../store/EngineStore.ts";
+import { runEngineMigrations } from "../store/migrations.ts";
 
 export const sqliteWithEngineTables = Layer.effectDiscard(runEngineMigrations()).pipe(
   Layer.provideMerge(NodeSqliteClient.layer({ filename: ":memory:" })),

@@ -18,7 +18,7 @@ import {
   signal,
   sqliteWithEngineTables,
   turnEnded,
-} from "../engine.testFixtures.ts";
+} from "../testing/fixtures.ts";
 import { EngineStoreError, makeEngineStore, type CommitStage } from "./EngineStore.ts";
 
 const TABLES = [

@@ -18,8 +18,8 @@ import { assert, describe, it } from "vite-plus/test";
 
 import type { BridgeDriver, RequestKey, SessionKey, TurnHandle } from "./spi3.ts";
 import { type BridgeInput, makeTranslator } from "./translate.ts";
-import { crashOncePath, recordAcp, recordClaude, recordCodex } from "./testkit/record.ts";
-import { integrityBreach, signalLines, textOf } from "./testkit/signals.ts";
+import { crashOncePath, recordAcp, recordClaude, recordCodex } from "../testing/bridge/record.ts";
+import { integrityBreach, signalLines, textOf } from "../testing/bridge/signals.ts";
 
 const __dirname = NodePath.dirname(NodeURL.fileURLToPath(import.meta.url));
 const fixturesRoot = NodePath.join(__dirname, "../../spi/fixtures");

@@ -3,7 +3,7 @@
  * pins the stream as sentences, and the integrity checks every stream must
  * pass whatever the driver.
  */
-import type { DriverSignal, TurnOutcome } from "../spi3.ts";
+import type { DriverSignal, TurnOutcome } from "../../bridge/spi3.ts";
 
 const outcomeLine = (outcome: TurnOutcome): string => {
   switch (outcome.kind) {

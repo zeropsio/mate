@@ -26,7 +26,7 @@ import {
   send,
   sent,
   sqliteWithEngineTables,
-} from "../engine.testFixtures.ts";
+} from "../testing/fixtures.ts";
 import * as EngineSignals from "../EngineSignals.ts";
 import * as EngineStoreModule from "../store/EngineStore.ts";
 import { EngineStore } from "../store/EngineStore.ts";

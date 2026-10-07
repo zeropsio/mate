@@ -8,7 +8,7 @@ import { ConversationId } from "@t3tools/contracts";
 import * as ConversationsModule from "../Conversations.ts";
 import { Conversations } from "../Conversations.ts";
 import type { Command } from "../domain/command.ts";
-import { envelope, sqliteWithEngineTables } from "../engine.testFixtures.ts";
+import { envelope, sqliteWithEngineTables } from "../testing/fixtures.ts";
 import * as EngineSignals from "../EngineSignals.ts";
 import * as EngineStoreModule from "../store/EngineStore.ts";
 import { EngineStore } from "../store/EngineStore.ts";

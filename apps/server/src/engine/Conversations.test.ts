@@ -10,7 +10,7 @@ import { ConversationId, type EngineEvent } from "@t3tools/contracts";
 import { makeConversationActor } from "./ConversationActor.ts";
 import * as ConversationsModule from "./Conversations.ts";
 import { Conversations } from "./Conversations.ts";
-import { envelope, r, send, sqliteWithEngineTables } from "./engine.testFixtures.ts";
+import { envelope, r, send, sqliteWithEngineTables } from "./testing/fixtures.ts";
 import * as EngineSignals from "./EngineSignals.ts";
 import { EngineStore, makeEngineStore } from "./store/EngineStore.ts";
 
