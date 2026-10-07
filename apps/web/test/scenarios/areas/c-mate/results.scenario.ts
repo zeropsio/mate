@@ -281,6 +281,7 @@ describe("C: calls, results and crew actions", () => {
                 { itemType: "mcp_tool_call" },
               );
             }
+            yield* Effect.promise(() => wire.browserSubscribed());
             wire.browser({
               type: "call-result",
               callId: "browser-order",
@@ -303,13 +304,12 @@ describe("C: calls, results and crew actions", () => {
             wire.run("browser-run", "completed", null, "browser-answer");
             yield* chat.then.once("The page checks returned");
             yield* chat.when.activate("Show work");
-            yield* chat.when.press(
-              "Checked /orders and /checkout in the browser, 2 checks passed. Show the checks",
-            );
-            yield* chat.when.press("/orders. Open the screenshot");
+            yield* chat.when.pressEnding(". Show the checks");
+            yield* chat.when.press("/orders on desktop");
+            yield* chat.when.press("View of /orders on desktop");
             yield* chat.then.picture(picture);
             yield* chat.when.key("Escape");
-            yield* chat.then.control("/checkout. Open the screenshot", "button", false);
+            yield* chat.then.control("View of /checkout on desktop", "button", false);
             wire.browser({
               type: "call-result",
               callId: "browser-order",
@@ -318,7 +318,7 @@ describe("C: calls, results and crew actions", () => {
               revision: 3,
               completeness: "partial",
             });
-            yield* chat.then.control("/orders. Open the screenshot");
+            yield* chat.then.control("View of /orders on desktop");
             wire.browser({
               type: "call-result",
               callId: "browser-order",
@@ -328,7 +328,7 @@ describe("C: calls, results and crew actions", () => {
               completeness: "complete",
               frame: null,
             });
-            yield* chat.then.control("/orders. Open the screenshot", "button", false);
+            yield* chat.then.control("View of /orders on desktop", "button", false);
           }),
         );
         yield* s.then.noExternalNetwork;
@@ -434,13 +434,13 @@ describe("C: calls, results and crew actions", () => {
             yield* chat.then.text("Workspace files stay as they are");
             yield* chat.when.press("Revert and keep changes");
             const refused = yield* Effect.promise(() =>
-              wire.waitForCommand("thread.checkpoint.revert"),
+              wire.waitForCommand("thread.conversation.revert"),
             );
             expect(refused).toMatchObject({
               threadId: "thread-Ada",
               turnCount: 0,
-              restoreFiles: false,
             });
+            expect(refused).not.toHaveProperty("restoreFiles");
             yield* chat.then.text("Reconnect apidev and retry.");
             yield* chat.then.text("The successful partial result remains");
             wire.revertRefusal = null;

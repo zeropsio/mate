@@ -125,6 +125,10 @@ export function mateChat(
         ),
       visit: (path: string) => Effect.promise(() => page.goto(`${s.web.origin}${path}`)),
       click,
+      pressEnding: (suffix: string) =>
+        Effect.promise(() =>
+          page.locator(`button[aria-label$="${suffix}"]`).setTimeout(8000).click(),
+        ),
       press: (name: string, role = "button") =>
         Effect.promise(async () => {
           try {
@@ -323,7 +327,12 @@ export function mateChat(
             (names) => {
               const shown = [...document.querySelectorAll('[role="menuitemradio"]')]
                 .filter((row) => row.getBoundingClientRect().height > 0)
-                .map((row) => row.textContent?.replace(/\s+/g, " ").trim());
+                .map((row) =>
+                  [...row.querySelectorAll("span:not(:has(span))")]
+                    .map((span) => span.textContent?.trim())
+                    .filter(Boolean)
+                    .join(" "),
+                );
               return JSON.stringify(shown) === JSON.stringify(names);
             },
             { timeout: 8000, polling: "raf" },

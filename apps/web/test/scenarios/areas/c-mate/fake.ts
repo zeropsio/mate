@@ -350,6 +350,7 @@ export class ChatDriver {
       if (request.tag === WS_METHODS.subscribeZeropsBrowserStream) {
         mate.subscriptions.get(socket)!.set(request.id, request);
         mate.chunk(socket, request.id, [{ type: "state", status: "no-browser" }]);
+        this.receipts.emit("browser-subscription");
         return true;
       }
       if (request.tag === WS_METHODS.subscribeZeropsDataConsole) {
@@ -532,7 +533,7 @@ export class ChatDriver {
       const command = decodeCommand(request.payload);
       this.commands.push(command);
       this.receipts.emit("wire");
-      if (command.type === "thread.checkpoint.revert" && this.revertRefusal) {
+      if (command.type === "thread.conversation.revert" && this.revertRefusal) {
         socket.send(
           JSON.stringify({
             _tag: "Exit",
@@ -688,6 +689,29 @@ export class ChatDriver {
         }),
       release: () => release(snapshot),
     };
+  }
+
+  async browserSubscribed() {
+    const subscribed = () =>
+      [...this.mate.subscriptions.values()].some((requests) =>
+        [...requests.values()].some(
+          (request) => request.tag === WS_METHODS.subscribeZeropsBrowserStream,
+        ),
+      );
+    if (subscribed()) return;
+    let received = () => {};
+    try {
+      await deadline(
+        new Promise<void>((resolve) => {
+          received = resolve;
+          this.receipts.once("browser-subscription", received);
+        }),
+        "Browser stream subscription",
+        8000,
+      );
+    } finally {
+      this.receipts.off("browser-subscription", received);
+    }
   }
 
   browser(event: ZeropsBrowserStreamEvent) {
