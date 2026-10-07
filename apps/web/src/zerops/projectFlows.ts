@@ -11,6 +11,8 @@ import {
   hqAppReleaseOffers,
   shownHqAppChangesAtom,
   type AppEnvironmentsRead,
+  projectFlow,
+  projectApplications,
 } from "@t3tools/client-runtime/data";
 import {
   flowReleaseOf,
@@ -23,20 +25,8 @@ import {
   statedActiveVersions,
   statedVersionNames,
   summarizeEnvironmentServices,
-  type EnvironmentRow,
-  type FlowPullRequest,
-  type FlowReleaseRow,
-  type GroupEnvironment,
-  type GroupEnvironmentRowInput,
-  type GroupEnvironmentTier,
   type GroupStopProject,
   type GroupStops,
-  type Moved,
-  type ProductionRun,
-  type ReleaseComparison,
-  type ReleaseEntry,
-  type ReleaseGate,
-  type ReleaseContentsSummary,
 } from "@t3tools/client-runtime/zerops";
 import {
   ZeropsProjectId,
@@ -46,7 +36,6 @@ import {
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import type { Deployment } from "@t3tools/client-runtime/zerops/flow";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
-import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 import { Atom } from "effect/unstable/reactivity";
 import { useContext, useEffect, useMemo } from "react";
 
@@ -73,99 +62,15 @@ import {
   type GroupChanges,
   type ReleaseLive,
   type ReleasePlan,
-} from "./projectFlowJoin";
+} from "@t3tools/client-runtime/data";
 import { releaseGateOf, useOfferReading } from "./appOffers";
 import { useHqAppDetailHold, useHqAppRecipes, useHqAppReleases } from "./useHqAppDetail";
 import { useReleaseComparisons } from "./useReleaseComparisons";
 import { useAccountOrgId, useProjection, useProjectsServices } from "./ZeropsAccountData";
 import { useZeropsSession, useZeropsSessionOptional } from "./ZeropsSessionProvider";
 
-/** What *Release* offers on a project, when it is offered at all. */
-export interface ZeropsReleaseOffer {
-  readonly comparisonFailure?:
-    | { readonly reason: string; readonly again?: (() => void) | undefined }
-    | undefined;
-  readonly summary?: ReleaseContentsSummary | undefined;
-  readonly gate: ReleaseGate;
-  /**
-   * HQ's offer to this person (`can`'s `release`), its refusal in words; `undefined` while HQ
-   * has not said. HQ asks it again at the press.
-   */
-  readonly permission: ReleaseGate | undefined;
-  /** The recipe's `main` as read with the offer: what the release tags; HQ refuses one that moved. */
-  readonly groupHead: string | undefined;
-  /** The next patch, suggested from the newest existing tag. */
-  readonly suggestion: string;
-  readonly comparison: ReadonlyArray<ReleaseComparison>;
-  /** What the tag would list — what the verb tags, so it matches what was shown. */
-  readonly entries: ReadonlyArray<ReleaseEntry>;
-  /** The release tag on its way to production (`releaseInFlight`); Release waits for it. */
-  readonly inFlight: string | undefined;
-  /** The newest release, once HQ ended its deploy with some of it not live (`releaseStalled`). */
-  readonly stalled: string | undefined;
-  /**
-   * What pressing it would put live, per repository HQ compared (`movedCommits`): the commits
-   * `main` has that its services do not run. With squash merges each is one task delivered.
-   * Nothing until all of it is known — the gate holds Release until then.
-   */
-  readonly contents: ReadonlyArray<Moved>;
-  /** Production's services whose commit cannot be told: what goes live on them is not said. */
-  readonly untold: ReadonlyArray<string>;
-  /**
-   * What each production service runs (`productionRuns`), whole; `undefined` until it is known. A
-   * roll back compares from it what leaves production and what comes back.
-   */
-  readonly runs: ReadonlyMap<string, ProductionRun> | undefined;
-  /** The repository each production runtime builds from (the recipe's); `undefined` until read. */
-  readonly repositories: ReadonlyMap<string, string> | undefined;
-}
-
-/** One project's flow: its environments, what is waiting, what was released. */
-export interface ZeropsProjectFlow {
-  readonly groupId: string;
-  readonly declarations: ReadonlyArray<GroupEnvironment>;
-  /**
-   * Whether HQ has told the project's environments: until then `declarations` is empty for want of
-   * an answer, not because the project has none.
-   */
-  readonly declarationsRead: boolean;
-  /** Stages first, then the production — the order code travels. */
-  readonly environments: ReadonlyArray<EnvironmentRow>;
-  readonly environmentInputs: ReadonlyArray<GroupEnvironmentRowInput>;
-  /** The tiers the recipe on `main` holds; empty until it is read (`recipeRead`). */
-  readonly recipeTiers: ReadonlyArray<GroupEnvironmentTier>;
-  /** Whether the recipe on `main` is read: until it is, `recipeTiers` is empty for want of an answer. */
-  readonly recipeRead: boolean;
-  /** Every open change a push reached on the project's repositories, as HQ's stream says. */
-  readonly pullRequests: ReadonlyArray<FlowPullRequest>;
-  /**
-   * Whether HQ's stream has told the project's changes: until then
-   * `pullRequests` is empty for want of an answer, not of a change, and the
-   * left menu draws no change row. Once told, they stand through a stream
-   * that goes quiet.
-   */
-  readonly changesKnown: boolean;
-  /**
-   * Why its changes were never told: HQ not answering while none are held. `undefined` once
-   * they are, or while HQ answers.
-   */
-  readonly changesFailure?: string | undefined;
-  /** The changes that have landed — what a conversation's timeline places. */
-  readonly merged: ReadonlyArray<FlowPullRequest>;
-  /** Newest first. */
-  readonly releases: ReadonlyArray<FlowReleaseRow>;
-  /**
-   * Whether HQ has answered the application's releases: until then `releases` is empty for want
-   * of an answer, and production's chip says only what the platform says.
-   */
-  readonly releasesKnown: boolean;
-  /**
-   * The application's repositories with their `main`, as HQ last listed them; `undefined` until it
-   * answered. What a history and a release read from.
-   */
-  readonly repos: ReadonlyArray<RepoListEntry> | undefined;
-  readonly release: ZeropsReleaseOffer;
-}
+export type { ZeropsProjectFlow, ZeropsReleaseOffer } from "@t3tools/client-runtime/data";
+import type { ZeropsProjectFlow } from "@t3tools/client-runtime/data";
 
 /**
  * Applications' flows as the surfaces that draw them read them, with what the account says around
@@ -352,6 +257,74 @@ export function useStopDeploymentsShown(
  * would put live is compared only for a surface that shows it (`compare`), and only while it is
  * drawn; elsewhere the offer stays unasked.
  */
+export function useCompactProjectFlows(apps: FlowApps): ProjectFlows {
+  const account = useAtomValue(accountReadsAtom);
+  const session = useZeropsSession();
+  const orgId = session.activeOrganization?.id;
+  const accountHq = useAccountHq(orgId);
+  const hqAddress = accountHq.hq.kind === "official" ? accountHq.hq.address : undefined;
+  const appKey = apps === "every" ? null : apps.join("\n");
+  const atom = useMemo(
+    () =>
+      Atom.make((get): ProjectFlows => {
+        if (
+          account === null ||
+          account.orgId == null ||
+          account.orgId !== orgId ||
+          session.status !== "signed-in"
+        )
+          return {
+            hqAddress,
+            readFailure: undefined,
+            groupsRead: false,
+            knownGroups: new Set(),
+            flows: EMPTY_FLOWS,
+            releaseFailures: new Map(),
+          };
+        const navigation = get(account.data.project(projectApplications, account.orgId));
+        const ids = navigation.ids;
+        const flows = new Map<string, ZeropsProjectFlow>();
+        for (const appId of ids) {
+          if (appKey !== null && !appKey.split("\n").includes(appId)) continue;
+          const flow = get(
+            account.data.project(projectFlow, {
+              orgId: account.orgId,
+              appId,
+              hqAddress,
+              viewer: session.activeOrganization ?? undefined,
+            }),
+          );
+          if (flow !== undefined) flows.set(appId, flow);
+        }
+        return {
+          hqAddress,
+          readFailure: navigation.unavailable
+            ? HQ_CHANGES_UNANSWERED
+            : accountHq.status === "failed"
+              ? "The organization's HQ could not be read."
+              : accountHq.status === "ready" && accountHq.hq.kind !== "official"
+                ? "This organization has no HQ."
+                : undefined,
+          groupsRead: navigation.read,
+          knownGroups: new Set(ids),
+          flows,
+          releaseFailures: new Map(),
+        };
+      }),
+    [
+      account,
+      orgId,
+      session.status,
+      session.activeOrganization,
+      hqAddress,
+      appKey,
+      accountHq.status,
+      accountHq.hq.kind,
+    ],
+  );
+  return useAtomValue(atom);
+}
+
 export function useProjectFlows(
   apps: FlowApps,
   options: { readonly compare?: boolean } = {},

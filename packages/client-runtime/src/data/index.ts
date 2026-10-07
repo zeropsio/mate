@@ -471,3 +471,27 @@ export { startMateHealth } from "./account.ts";
 
 export { hqMateIdentities, type HqMateIdentity } from "./projections/hqMateIdentity.ts";
 export { shownHqMateIdentitiesAtom } from "./reads.ts";
+
+export {
+  groupChangesOf,
+  groupStopsFor,
+  HQ_CHANGES_UNANSWERED,
+  joinProjectFlows,
+  NOT_COMPARED,
+  type GroupChanges,
+  type ReleaseLive,
+  type ReleasePlan,
+  type ZeropsProjectFlow,
+  type ZeropsReleaseOffer,
+} from "./projections/projectFlowJoin.ts";
+
+export {
+  projectFlow,
+  projectApplications,
+  projectSummary,
+  type ProjectFlowKey,
+} from "./projections/projectFlow.ts";
+
+export { inventoryGroups, type InventoryGroupsKey } from "./projections/inventoryGroups.ts";
+
+export { hqProjectPerson } from "./projections/hqProjectPeople.ts";

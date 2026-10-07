@@ -2,6 +2,20 @@ import type * as React from "react";
 import { act } from "react";
 import { describe, expect, it, vi } from "vite-plus/test";
 
+const detailHolds = vi.hoisted(() => new Map<string, number>());
+vi.mock("~/zerops/ZeropsAccountData", () => ({
+  useAccountDataOptional: () => ({
+    demandDetail: ({ ownerId }: { readonly ownerId: string }) => {
+      detailHolds.set(ownerId, (detailHolds.get(ownerId) ?? 0) + 1);
+      return () => {
+        const remaining = detailHolds.get(ownerId)! - 1;
+        if (remaining === 0) detailHolds.delete(ownerId);
+        else detailHolds.set(ownerId, remaining);
+      };
+    },
+  }),
+}));
+
 vi.mock("@tanstack/react-router", async () => {
   const { createElement } = await import("react");
   return {
@@ -442,4 +456,23 @@ describe("a row the page names (?group=)", () => {
     expect(scrolled).toEqual(["project-fff"]);
     vi.unstubAllGlobals();
   });
+});
+
+describe("Projects detail demand", () => {
+  it.each([1, 12, 48])(
+    "%i collapsed applications hold no detail; opening one holds only its scope",
+    (count) => {
+      detailHolds.clear();
+      const groups = Array.from({ length: count }, (_, index) => quiet(`app-${index}`));
+      const tree = mount(<ZeropsProjectsFlow<Item> {...FLOW_PROPS} groups={groups} />);
+      expect([...detailHolds]).toEqual([]);
+      const row = tree.root.findByProps({ "data-zerops-group": "app-0" });
+      const toggle = row.findByProps({ "data-zerops-row-toggle": "true" });
+      act(() => toggle.props.onClick());
+      expect([...detailHolds]).toEqual([["app-0", 1]]);
+      act(() => toggle.props.onClick());
+      expect([...detailHolds]).toEqual([]);
+      act(() => tree.unmount());
+    },
+  );
 });
