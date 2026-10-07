@@ -761,9 +761,9 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
     if (!modelListMounted) return;
     return modelListRef.current?.getState().listen("totalSize", setModelListContentSize);
   }, [modelListMounted]);
-  // Fit the list to its rows plus the combobox list `py-1` and LegendList `py-1.5`.
+  // Fit the list to its rows plus LegendList's `py-1.5` (the combobox list's padding is off here).
   const modelListHeight =
-    filteredItemKeys.length === 0 ? 0 : `calc(${modelListContentSize}px + var(--spacing) * 5)`;
+    filteredItemKeys.length === 0 ? 0 : `calc(${modelListContentSize}px + var(--spacing) * 3)`;
   const updateModelListScrollFades = useCallback(() => {
     const scrollElement = modelListRef.current?.getScrollableNode();
     if (!(scrollElement instanceof HTMLElement)) {
