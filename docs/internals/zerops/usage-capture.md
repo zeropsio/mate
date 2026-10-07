@@ -52,8 +52,9 @@ prompt, output or credential is exported in the normalized facts.
 A successful versioned state handshake enables hello; legacy HQ links get no speculative usage
 batches. Source wakes and socket receipts serialize on the same lane, including snapshot negotiation.
 HQ returns its actual cursor/digest and a fresh channel. Facts and coverage from a source added after hello require a new source declaration before export.
-A cursor ahead of the local cut,
-or a conflicting known prefix, stops only this lane. Prefix digests survive journal compaction,
+An unavailable HQ (`transient`) is asked again
+after 5 s, doubling to 5 min; a `fenced` lane stops quietly and the newer link's hello reopens it.
+A cursor ahead of the local cut, or a conflicting known prefix, stops only this lane. Prefix digests survive journal compaction,
 so a copied divergent ledger cannot hide a known branch conflict behind an expired journal.
 
 Batches contain at most 100 entries and 48 KiB, with one logical batch/page in flight. The current

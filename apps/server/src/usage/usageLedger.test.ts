@@ -2,6 +2,7 @@ import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Deferred from "effect/Deferred";
 import * as Fiber from "effect/Fiber";
+import * as TestClock from "effect/testing/TestClock";
 import type * as SqlClient from "effect/unstable/sql/SqlClient";
 import type { UsageFact } from "@t3tools/contracts";
 import {
@@ -332,6 +333,35 @@ describe("durable Mate usage boundary", () => {
           assert.equal((yield* ledger.metadata).highWater, Number(hello.highWater));
         }),
       ),
+  );
+
+  it.effect("an unavailable HQ is asked again after a growing delay, never at once", () =>
+    withLedger((ledger) =>
+      Effect.gen(function* () {
+        const lane = makeUsageReplication(ledger);
+        const hello = yield* lane.hello;
+        const unavailable = {
+          type: "usage-error" as const,
+          ledgerId: hello.ledgerId,
+          code: "usage_ingest_unavailable",
+          disposition: "transient" as const,
+        };
+        assert.isUndefined(yield* lane.receive(unavailable));
+        assert.isUndefined(yield* lane.next);
+        yield* TestClock.adjust("5 seconds");
+        assert.equal((yield* lane.next)?.type, "usage-hello");
+        assert.isUndefined(yield* lane.receive(unavailable));
+        yield* TestClock.adjust("5 seconds");
+        assert.isUndefined(yield* lane.next);
+        yield* TestClock.adjust("5 seconds");
+        assert.equal((yield* lane.next)?.type, "usage-hello");
+        const hq = new Hq();
+        yield* lane.receive(hq.resume(hello, "open"));
+        assert.isUndefined(yield* lane.receive(unavailable));
+        yield* TestClock.adjust("5 seconds");
+        assert.equal((yield* lane.next)?.type, "usage-hello");
+      }),
+    ),
   );
 
   it.effect("a fenced lane stops quietly and the next link's lane carries the journal on", () =>
