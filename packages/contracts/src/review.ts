@@ -1,11 +1,11 @@
 import * as Schema from "effect/Schema";
 import { TrimmedNonEmptyString } from "./baseSchemas.ts";
-import { GitCommandError } from "./git.ts";
+import { GitCommandError, GitRefName } from "./git.ts";
 import { VcsError } from "./vcs.ts";
 
 export const ReviewDiffPreviewInput = Schema.Struct({
   cwd: TrimmedNonEmptyString,
-  baseRef: Schema.optional(TrimmedNonEmptyString),
+  baseRef: Schema.optional(GitRefName),
   ignoreWhitespace: Schema.optionalKey(Schema.Boolean),
   file: Schema.optionalKey(
     Schema.Struct({
@@ -46,8 +46,8 @@ export const ReviewDiffFileContentsInput = Schema.Struct({
   cwd: TrimmedNonEmptyString,
   sourceKind: ReviewDiffPreviewSourceKind,
   changeType: Schema.Literals(["change", "rename-pure", "rename-changed", "new", "deleted"]),
-  baseRef: Schema.NullOr(TrimmedNonEmptyString),
-  headRef: Schema.NullOr(TrimmedNonEmptyString),
+  baseRef: Schema.NullOr(GitRefName),
+  headRef: Schema.NullOr(GitRefName),
   oldPath: TrimmedNonEmptyString,
   newPath: TrimmedNonEmptyString,
 });

@@ -3586,8 +3586,15 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       withListRefsInvalidation(cwd, pushCurrentBranch(cwd, fallbackBranch, options)),
     pullCurrentBranch: (cwd) => withListRefsInvalidation(cwd, pullCurrentBranch(cwd)),
     readRangeContext,
-    getReviewDiffPreview,
-    getReviewDiffFileContents,
+    getReviewDiffPreview: (input) =>
+      refuseOptionLikeNames("GitVcsDriver.getReviewDiffPreview", input.cwd, [input.baseRef]).pipe(
+        Effect.andThen(getReviewDiffPreview(input)),
+      ),
+    getReviewDiffFileContents: (input) =>
+      refuseOptionLikeNames("GitVcsDriver.getReviewDiffFileContents", input.cwd, [
+        input.baseRef,
+        input.headRef,
+      ]).pipe(Effect.andThen(getReviewDiffFileContents(input))),
     readConfigValue,
     listRefs,
     createWorktree: (input, options) =>

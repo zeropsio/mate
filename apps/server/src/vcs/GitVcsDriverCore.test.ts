@@ -3254,3 +3254,79 @@ describe("a caller's ref or remote name that starts with a dash is refused befor
     });
   }
 });
+
+describe("a review ref that starts with a dash", () => {
+  const cases: ReadonlyArray<{
+    readonly name: string;
+    readonly run: (
+      driver: GitVcsDriver.GitVcsDriver["Service"],
+      cwd: string,
+      output: string,
+    ) => Effect.Effect<unknown, GitCommandError>;
+  }> = [
+    {
+      name: "a review against a base ref is refused and writes no file",
+      run: (driver, cwd, output) =>
+        driver.getReviewDiffPreview({ cwd, baseRef: `--output=${output}` }),
+    },
+    {
+      name: "a working-tree file expansion against a base ref is refused and writes no file",
+      run: (driver, cwd, output) =>
+        driver.getReviewDiffFileContents({
+          cwd,
+          sourceKind: "working-tree",
+          changeType: "change",
+          baseRef: `--output=${output}`,
+          headRef: null,
+          oldPath: "README.md",
+          newPath: "README.md",
+        }),
+    },
+    {
+      name: "a branch file expansion with a dash base ref is refused and writes no file",
+      run: (driver, cwd, output) =>
+        driver.getReviewDiffFileContents({
+          cwd,
+          sourceKind: "branch-range",
+          changeType: "change",
+          baseRef: `--output=${output}`,
+          headRef: "HEAD",
+          oldPath: "README.md",
+          newPath: "README.md",
+        }),
+    },
+    {
+      name: "a branch file expansion with a dash head ref is refused and writes no file",
+      run: (driver, cwd, output) =>
+        driver.getReviewDiffFileContents({
+          cwd,
+          sourceKind: "branch-range",
+          changeType: "change",
+          baseRef: "HEAD",
+          headRef: `--output=${output}`,
+          oldPath: "README.md",
+          newPath: "README.md",
+        }),
+    },
+  ];
+
+  for (const testCase of cases) {
+    it.effect(testCase.name, () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem;
+          const driver = yield* GitVcsDriver.GitVcsDriver;
+          const cwd = yield* makeTmpDir("git-review-dash-");
+          const scratch = yield* makeTmpDir("git-review-dash-out-");
+          yield* initRepoWithCommit(cwd);
+          yield* writeTextFile(cwd, "README.md", "# changed\n");
+
+          const result = yield* testCase.run(driver, cwd, `${scratch}/out`).pipe(Effect.result);
+
+          assert.isTrue(Result.isFailure(result));
+          assert.deepStrictEqual(yield* fs.readDirectory(scratch), []);
+        }),
+      ).pipe(Effect.provide(TestLayer)),
+    );
+  }
+});
