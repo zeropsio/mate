@@ -471,7 +471,11 @@ function ArrivalComposition({
   const spokenSentence = restarting
     ? restartLine(mate?.name ?? "The Mate", restart.cycle)
     : sentence;
-  const stoodUp = useChangeCue<string>(kind, () => undefined, standUpDoneCue);
+  const stoodUp = useChangeCue<string>(
+    slot.id === "stand-up-failed" ? slot.id : kind,
+    () => undefined,
+    standUpDoneCue,
+  );
   return (
     <div
       className="flex h-full flex-col items-center px-5 sm:px-6"

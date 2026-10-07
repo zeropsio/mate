@@ -199,3 +199,29 @@ it("keeps a restarting Mate and its words still with reduced motion", async () =
     vi.unstubAllGlobals();
   }
 });
+
+it("a stand-up message that failed plays no success dance", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const host = document.createElement("div");
+  const root = createRoot(host);
+  const show = (failed: boolean) =>
+    root.render(
+      <MateEmptyStateView
+        mate={{ name: "Rosa", tint: "rose", shape: "flower", project: "Orchard", connected: true }}
+        phase="standing-up"
+        signIn={null}
+        signInRequired={false}
+        unknown={null}
+        standUpFailure={failed ? { retrying: false, retry: () => undefined } : undefined}
+      />,
+    );
+  try {
+    await act(() => show(false));
+    await act(() => show(true));
+    expect(host.textContent).toContain("The message to Rosa didn't go through.");
+    expect(host.querySelector('[data-mate-face-moment="dance"]')).toBeNull();
+  } finally {
+    await act(() => root.unmount());
+    vi.unstubAllGlobals();
+  }
+});

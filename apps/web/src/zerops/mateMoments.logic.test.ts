@@ -115,6 +115,7 @@ describe("which events a Mate's faces greet", () => {
     ["standing-up", "question", "dance"],
     ["standing-up", "standing-up", undefined],
     ["standing-up", "coming-failed", undefined],
+    ["standing-up", "stand-up-failed", undefined],
     ["standing-up", "unreachable", undefined],
     ["standing-up", "sign-in", undefined],
     ["sign-in", "question", undefined],
