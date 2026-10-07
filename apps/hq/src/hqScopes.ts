@@ -27,6 +27,8 @@ import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
+import { HqUsageReader, USAGE_REPORT_LIMITS } from "./usageReport.ts";
+import { usageOwner } from "./usageAccess.ts";
 import { ZeropsRefused, type ZeropsError } from "./zerops/api.ts";
 import { Changes } from "./changes.ts";
 import type { ChangeNavigationSource } from "./changeNavigation.ts";
@@ -118,12 +120,20 @@ const metadata = (error: unknown) =>
         failureMetadata(error),
         (): { code?: string; reason?: string | null } => ({}),
       );
-const refusalProvesRemoval = (code: string) => code === "forbidden" || code.endsWith("_not_found");
+const refusalProvesRemoval = (code: string) =>
+  code === "forbidden" || code === "usage_page_invalidated" || code.endsWith("_not_found");
 const refusalDisposition = (code: string) =>
-  code === HQ_ZEROPS_REFUSED.code || code === "unsupported" || refusalProvesRemoval(code)
+  code === HQ_ZEROPS_REFUSED.code ||
+  code === "unsupported" ||
+  code.startsWith("usage_") ||
+  code === "unresolved_owner_scope" ||
+  refusalProvesRemoval(code)
     ? ("refused" as const)
     : ("transient" as const);
 const json = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
+const readUsageAccess = Schema.decodeUnknownOption(
+  Schema.Struct({ generation: Schema.Struct({ access: Schema.String }) }),
+);
 const readAttentionSource = Schema.decodeUnknownOption(
   Schema.Struct({ attention: Schema.NullOr(HqAttentionValue) }),
 );
@@ -144,6 +154,7 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
       const leader = yield* Leader;
       const recomputes = yield* Recomputes;
       const operations = yield* HqOperationReader;
+      const usageReader = yield* HqUsageReader;
       const readHealth = healthParts.pipe(
         Effect.provideContext(yield* Effect.context<Effect.Services<typeof healthParts>>()),
       );
@@ -162,6 +173,8 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
         generation: number;
         sourceVersion: number;
         attentionSource?: string;
+        usageAccess?: string;
+        usageOwners?: ReadonlyMap<string, string | null | undefined>;
         refreshing: boolean;
         subscribing: number;
         failure?: Extract<HqStreamMessage, { type: "scope-error" }>;
@@ -376,16 +389,57 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
           },
         };
       });
+      const usageOwnerFor = (
+        current: StructureSource,
+        all: ReadonlyMap<string, MateOverviewEntry>,
+        userId: string,
+        projectId: string,
+      ) => {
+        const view = viewFor(current, userId);
+        if (!observedProjects(view).some((project) => project.projectId === projectId))
+          return undefined;
+        const mate = [...view.ungrouped, ...view.apps.flatMap((app) => app.projects)].find(
+          (project) => project.projectId === projectId,
+        )?.mate;
+        const overview = all.get(projectId)?.overview;
+        const everSignedIn = {
+          ...mate?.signers,
+          ...Object.fromEntries(
+            Object.entries(overview?.logins ?? {}).flatMap(([login, digest]) => {
+              const user = digest.lastSignedInBy ?? digest.signedInBy;
+              return user === null ? [] : [[login, user]];
+            }),
+          ),
+        };
+        return usageOwner({
+          facts: current.facts,
+          projectId,
+          everSignedIn,
+          runsWithoutSignIn: overview?.identity.runsWithoutSignIn === true,
+          madeBy: mate?.madeBy ?? null,
+          standupRequestedBy: mate?.standupRequestedBy ?? null,
+        });
+      };
       const load = (entry: Entry, current: StructureSource, projects?: ReadonlySet<string>) =>
         Effect.gen(function* () {
           const view = viewFor(current, entry.userId);
           const scope = entry.scope;
-          if (scope.kind === "agentUsage")
-            return yield* new ScopeReadRefused({
-              code: "unsupported",
-              reason: "usage_reader_not_installed",
-            });
           const all = yield* overviewsNow;
+          if (scope.kind === "agentUsage") {
+            if (usageReader.read === undefined)
+              return yield* new ScopeReadRefused({
+                code: "unsupported",
+                reason: "usage_reader_not_installed",
+              });
+            const report = yield* usageReader.read(entry.userId, scope, current, all);
+            entry.usageOwners = new Map(
+              observedProjects(view).map((project) => [
+                project.projectId,
+                usageOwnerFor(current, all, entry.userId, project.projectId),
+              ]),
+            );
+            return { values: [{ key: "report", value: report }], removals: [] as HqRemoval[] };
+          }
           const observable = observedProjects(view);
           // Permission comes first: unknown ids must not reveal source membership.
           if (!permitted(scope, current, entry.userId))
@@ -450,7 +504,6 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
                   member?.roleCode ??
                   "NO_ACCESS",
               );
-              const owner = project?.userRoles.find((role) => role.roleCode === "OWNER");
               const attention = observable.some((project) => project.projectId === projectId)
                 ? all.get(projectId)?.attention
                 : null;
@@ -459,17 +512,14 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
                 observable.some((project) => project.projectId === projectId) &&
                 all.get(projectId)?.overview?.identity.runsWithoutSignIn === true;
               const mate = listed.find((project) => project.projectId === projectId)?.mate;
-              const ownerUserId =
-                owner !== undefined
-                  ? (current.facts.members.find(
-                      (member) =>
-                        member.kind === "person" && member.clientUserId === owner.clientUserId,
-                    )?.userId ?? null)
-                  : (everSignedIn["claude-code"] ??
-                    everSignedIn.codex ??
-                    (runsWithoutSignIn
-                      ? (mate?.madeBy ?? mate?.standupRequestedBy ?? null)
-                      : null));
+              const ownerUserId = usageOwner({
+                facts: current.facts,
+                projectId,
+                everSignedIn,
+                runsWithoutSignIn,
+                madeBy: mate?.madeBy ?? null,
+                standupRequestedBy: mate?.standupRequestedBy ?? null,
+              });
               const waitsOn =
                 signedInNow["claude-code"] ??
                 signedInNow.codex ??
@@ -690,6 +740,13 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
             )
               continue;
             let baseline = false;
+            if (entry.scope.kind === "agentUsage") {
+              const value = readUsageAccess(data.values[0]?.value);
+              if (Option.isSome(value)) {
+                baseline = entry.usageAccess !== value.value.generation.access;
+                entry.usageAccess = value.value.generation.access;
+              }
+            }
             if (entry.scope.kind === "attention") {
               const read = readAttentionSource(data.values[0]?.value);
               if (Option.isSome(read) && read.value.attention !== null) {
@@ -724,8 +781,12 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
                   [],
                   entry.journal.keys().map((key) => ({
                     key,
-                    reason: code === "forbidden" ? "no-access" : "deleted",
+                    reason:
+                      code === "forbidden" || code === "usage_page_invalidated"
+                        ? "no-access"
+                        : "deleted",
                   })),
+                  entry.scope.kind === "agentUsage",
                 );
                 if (message !== undefined) yield* send(entry, [message]);
               }
@@ -787,7 +848,9 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
             const affected =
               kind === "roles" ||
               kind === "structure" ||
-              (entry.scope.kind !== "attention" && entry.scope.kind !== "navigation");
+              (entry.scope.kind !== "attention" &&
+                entry.scope.kind !== "navigation" &&
+                entry.scope.kind !== "agentUsage");
             if (affected) {
               delete entry.failure;
               entry.dirty = true;
@@ -801,7 +864,20 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
           overviewCache = undefined;
           if (forgotten)
             for (const [key, record] of seen) if (record.projectId === projectId) seen.delete(key);
+          const all = yield* overviewsNow;
           for (const entry of journals.values()) {
+            if (
+              entry.scope.kind === "agentUsage" &&
+              source !== undefined &&
+              entry.failure === undefined &&
+              entry.usageOwners?.has(projectId) === true &&
+              usageOwnerFor(source, all, entry.userId, projectId) !==
+                entry.usageOwners.get(projectId)
+            ) {
+              entry.dirty = true;
+              entry.generation += 1;
+              if (demanded(entry)) yield* scheduleRefresh(entry);
+            }
             if (entry.scope.kind === "attention" && entry.scope.projectId === projectId) {
               if (entry.failure?.code.endsWith("_not_found")) delete entry.failure;
               entry.dirty = true;
@@ -951,10 +1027,11 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
           Effect.provideService(Scope.Scope, hubScope),
         );
       type Signal =
-        | { kind: "structure" | "detail" | "roles" | "environment" }
+        | { kind: "structure" | "detail" | "roles" | "environment" | "usage" }
         | { kind: "attention" | "forget"; projectId: string };
       const pulls = yield* Effect.forEach(
         [
+          (usageReader.changes ?? Stream.empty).pipe(Stream.map((): Signal => ({ kind: "usage" }))),
           structure.changes.pipe(Stream.map((): Signal => ({ kind: "structure" }))),
           roles.views.pipe(
             Stream.filter((seen) => fingerprint(seen.view) !== rolesFingerprint),
@@ -1012,6 +1089,15 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
         Effect.forever(
           Effect.flatMap(Queue.take(signals), (signal) => {
             pending.delete(json(signal));
+            if (signal.kind === "usage")
+              return Effect.gen(function* () {
+                for (const entry of journals.values())
+                  if (entry.scope.kind === "agentUsage" && entry.failure === undefined) {
+                    entry.dirty = true;
+                    entry.generation += 1;
+                    if (demanded(entry)) yield* scheduleRefresh(entry);
+                  }
+              });
             return signal.kind === "attention" || signal.kind === "forget"
               ? refreshAttention(signal.projectId, signal.kind === "forget")
               : signal.kind === "environment"
@@ -1274,6 +1360,29 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
                       const demanded: Array<{ subscription: HqSubscription; demand: number }> = [];
                       for (const subscription of request.scopes) {
                         const key = hqScopeKey(subscription.scope);
+                        const usageScopes = new Set(
+                          [...connections]
+                            .filter((value) => value.userId === userId)
+                            .flatMap((value) =>
+                              [...value.wanted.keys()].filter((key) =>
+                                key.startsWith('["agentUsage"'),
+                              ),
+                            ),
+                        );
+                        if (
+                          subscription.scope.kind === "agentUsage" &&
+                          !usageScopes.has(key) &&
+                          usageScopes.size >= USAGE_REPORT_LIMITS.scopesPerPerson
+                        ) {
+                          yield* Queue.offer(queue, {
+                            type: "scope-error",
+                            scope: subscription.scope,
+                            code: "usage_too_many_reports",
+                            reason: null,
+                            disposition: "refused",
+                          });
+                          continue;
+                        }
                         if (!wanted.has(key) && wanted.size >= 128) {
                           yield* Queue.offer(queue, {
                             type: "scope-error",

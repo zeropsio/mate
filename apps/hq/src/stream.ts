@@ -20,6 +20,8 @@ import * as Schema from "effect/Schema";
 import type * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import * as Socket from "effect/unstable/socket/Socket";
+import { HqUsageReader } from "./usageReport.ts";
+import { AGENT_USAGE_REPORT_PROTOCOL } from "@t3tools/shared/agentUsage";
 import { HqScopes, type ScopeOutput } from "./hqScopes.ts";
 
 export interface StreamOptions {
@@ -52,6 +54,7 @@ export const serveHqSocket = <R>(
 ) =>
   Effect.scoped(
     Effect.gen(function* () {
+      const usageReader = yield* HqUsageReader;
       const connection = yield* (yield* HqScopes).open(
         userId,
         options.sessionId === undefined
@@ -83,6 +86,9 @@ export const serveHqSocket = <R>(
                     ...message,
                     core: {
                       protocol: HQ_NAVIGATION_PROTOCOL,
+                      ...(usageReader.read === undefined
+                        ? {}
+                        : { agentUsage: AGENT_USAGE_REPORT_PROTOCOL }),
                       ...(options.build === undefined ? {} : { build: options.build }),
                     },
                   }

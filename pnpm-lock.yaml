@@ -173,6 +173,9 @@ importers:
       '@effect/sql-pg':
         specifier: 4.0.0-rc.115
         version: 4.0.0-rc.115(effect@4.0.0-rc.115(patch_hash=fb0386e99edcd1a408028628debfa14a019de296d4550836a75471d9cd574c50))
+      '@t3tools/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       '@t3tools/hq-git':
         specifier: workspace:*
         version: link:../../packages/hq-git

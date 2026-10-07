@@ -1,3 +1,5 @@
+import { usageLedgerLayer } from "./usageLedger.ts";
+import { hqUsageReaderLayer } from "./hqUsage.ts";
 import { hqScopesLayer } from "./hqScopes.ts";
 import { hqOperationReaderLayer } from "./hqOperations.ts";
 import { observationLayer } from "./observation.ts";
@@ -141,6 +143,7 @@ const services = (options: CoreOptions) => {
     ),
   )
     .pipe(
+      Layer.provideMerge(usageLedgerLayer),
       Layer.provideMerge(mateOverviewsLayer),
       // One set of buckets for the API's addresses and the door's people.
       Layer.provideMerge(doorRateLimitLayer),
@@ -161,7 +164,9 @@ const services = (options: CoreOptions) => {
     )
     .pipe((base) =>
       hqScopesLayer(options.build, options.streamRecheck).pipe(
-        Layer.provideMerge(hqOperationReaderLayer.pipe(Layer.provideMerge(base))),
+        Layer.provideMerge(
+          Layer.mergeAll(hqOperationReaderLayer, hqUsageReaderLayer).pipe(Layer.provideMerge(base)),
+        ),
       ),
     );
 };

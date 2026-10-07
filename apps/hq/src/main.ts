@@ -31,6 +31,20 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Redacted from "effect/Redacted";
+import * as Schema from "effect/Schema";
+import * as SqlClient from "effect/unstable/sql/SqlClient";
+import * as PgClient from "@effect/sql-pg/PgClient";
+import * as PgConnection from "@effect/sql-pg/PgConnection";
+import { AGENT_USAGE_EXACT_DAYS } from "@t3tools/contracts";
+import { LOCK_KEY } from "./leader.ts";
+import { UsageRefused } from "./usageLedger.ts";
+import {
+  usageCheckpoint,
+  protectUsageCut,
+  pruneUsageDetail,
+  USAGE_PRUNE_BATCH_ROWS,
+} from "./usageRetention.ts";
 
 import { directoryStore, setsIn } from "./backup.ts";
 import { BUCKET_ENV, bucketFromEnv, bucketStore } from "./bucketStore.ts";
@@ -46,6 +60,7 @@ import {
 
 /** The build stamp the bundle carries (`vite.config.ts`); an unbundled run is `dev`. */
 declare const __HQ_BUILD__: string | undefined;
+const encodeUsageCheckpoint = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
 const BUILD = typeof __HQ_BUILD__ === "undefined" ? "dev" : __HQ_BUILD__;
 
 /** Every repository on the volume `vol` (zerops.yml), which survives a deploy. */
@@ -130,6 +145,54 @@ const restore = (set: string, flags: ReadonlySet<string>) =>
     });
   });
 
+/** Trusted operator seam, like restore: prune only an independently restored permanent cut.
+ * Keep Core stopped while protecting/pruning. URLs come from environment, never printed.
+ */
+const usageRetention = (setId?: string) =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const url = yield* Config.Redacted("DATABASE_URL");
+      yield* Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        if (setId === undefined) {
+          yield* Console.log(yield* encodeUsageCheckpoint(yield* usageCheckpoint(sql)));
+          return;
+        }
+        const restoredUrl = yield* Config.Redacted("HQ_USAGE_RESTORED_DATABASE_URL");
+        if (Redacted.value(url) === Redacted.value(restoredUrl))
+          return yield* new UsageRefused({ code: "usage_independent_restore_required" });
+        const connection = yield* PgConnection.make({ url });
+        const lock = yield* connection.query(
+          `SELECT pg_try_advisory_lock(${String(LOCK_KEY)}) AS locked`,
+        );
+        if (lock.rows[0]?.["locked"] !== true)
+          return yield* new UsageRefused({ code: "usage_stop_core_before_pruning" });
+        const expected = yield* usageCheckpoint(sql);
+        const restored = yield* Effect.flatMap(SqlClient.SqlClient, usageCheckpoint).pipe(
+          Effect.provide(PgClient.layer({ url: restoredUrl })),
+        );
+        yield* protectUsageCut(
+          sql,
+          { write: sql.withTransaction },
+          { setId, independent: true, expected, restored },
+        );
+        const [target] = yield* sql<{
+          readonly day: string;
+        }>`SELECT to_char((now() AT TIME ZONE 'UTC')::date-${AGENT_USAGE_EXACT_DAYS},'YYYY-MM-DD') AS day`;
+        if (target === undefined) return yield* new UsageRefused({ code: "usage_state_missing" });
+        let removed = 0;
+        let batch: number;
+        do {
+          batch = yield* pruneUsageDetail(sql, { write: sql.withTransaction }, target.day);
+          removed += batch;
+        } while (batch === USAGE_PRUNE_BATCH_ROWS);
+        yield* Console.log(
+          `usage exactSince=${target.day} retired=${String(removed)} protectedSet=${setId}`,
+        );
+      }).pipe(Effect.provide(PgClient.layer({ url })));
+    }),
+  );
+
 const [command, ...args] = process.argv.slice(2);
 if (command === "sets") {
   Effect.gen(function* () {
@@ -146,6 +209,20 @@ if (command === "sets") {
       }
     }
   }).pipe(NodeRuntime.runMain);
+} else if (command === "usage-checkpoint") {
+  usageRetention().pipe(NodeRuntime.runMain);
+} else if (command === "usage-protect-prune") {
+  const [setId] = args;
+  (setId === undefined || args.length !== 1
+    ? Console.log("usage: main.mjs usage-protect-prune <independent-set-id>").pipe(
+        Effect.andThen(
+          Effect.sync(() => {
+            process.exitCode = 2;
+          }),
+        ),
+      )
+    : usageRetention(setId)
+  ).pipe(NodeRuntime.runMain);
 } else if (command === "restore") {
   const [set, ...flags] = args;
   (set === undefined || flags.some((flag) => flag !== "--from-volume" && flag !== "--replace")

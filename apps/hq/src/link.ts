@@ -33,6 +33,12 @@ import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import * as Socket from "effect/unstable/socket/Socket";
 
+import { UsageLane } from "./usageLedger.ts";
+import {
+  UsageLinkUp,
+  AGENT_USAGE_CAPTURE_PROTOCOL,
+  AGENT_USAGE_REPORT_PROTOCOL,
+} from "@t3tools/shared/agentUsage";
 import { Changes } from "./changes.ts";
 import { Leader } from "./leader.ts";
 import { MateAccess } from "./mateAccess.ts";
@@ -62,6 +68,7 @@ const signersOf = (logins: OverviewLogins | undefined): Record<string, string> =
     }),
   );
 
+const isUsage = Schema.is(UsageLinkUp);
 const encodeDown = (message: MateLinkDown) => JSON.stringify(message);
 
 /**
@@ -84,6 +91,11 @@ export const serveMateLink = (
       const credentials = yield* MateCredentials;
       const leader = yield* Leader;
       const access = yield* MateAccess;
+      const usage = (yield* UsageLane).ledger;
+      const sender =
+        usage === undefined
+          ? undefined
+          : yield* usage.open(projectId, credential).pipe(Effect.catch(() => Effect.undefined));
       const pingEvery = options.pingEvery ?? Duration.seconds(20);
       const { close, heardClose, ending } = yield* socketEnding(writer);
       yield* (yield* LiveSockets).track(close);
@@ -95,7 +107,19 @@ export const serveMateLink = (
         const record = yield* structure.mateState(projectId);
         if (Option.isNone(record)) return;
         const mate: MateState = { ...record.value, ...(yield* changes.mateChanges(projectId)) };
-        const frame = encodeDown({ type: "state", mate });
+        const frame = encodeDown({
+          type: "state",
+          mate,
+          ...(sender === undefined
+            ? {}
+            : {
+                usage: {
+                  capture: AGENT_USAGE_CAPTURE_PROTOCOL,
+                  report: AGENT_USAGE_REPORT_PROTOCOL,
+                  mateId: sender.mateId,
+                },
+              }),
+        });
         if ((yield* Ref.getAndSet(sent, frame)) !== frame) yield* writer.write(frame);
       });
       const heard = yield* Ref.make(yield* Clock.currentTimeMillis);
@@ -122,7 +146,44 @@ export const serveMateLink = (
               const envelope = readFrameType(frame);
               // A corrupt attention value preserves prior facts; the next valid revision can arrive.
               if (Option.isSome(envelope) && envelope.value.type === "attention") continue;
+              if (Option.isSome(envelope) && envelope.value.type.startsWith("usage-")) {
+                yield* writer.write(
+                  encodeDown({
+                    type: "usage-error",
+                    ledgerId: "unknown",
+                    code: "usage_frame_invalid",
+                    disposition: "refused",
+                  }),
+                );
+                continue;
+              }
               return yield* close(1007, "no link message");
+            }
+            if (read.kind === "message" && isUsage(read.message)) {
+              if (usage !== undefined && sender !== undefined) {
+                const message = read.message;
+                yield* usage.receive(sender, message).pipe(
+                  Effect.flatMap((answer) => writer.write(encodeDown(answer))),
+                  Effect.catch((error) =>
+                    writer.write(
+                      encodeDown({
+                        type: "usage-error",
+                        ledgerId: message.ledgerId,
+                        code:
+                          error._tag === "UsageRefused" ? error.code : "usage_ingest_unavailable",
+                        disposition:
+                          error._tag === "UsageRefused"
+                            ? error.code === "unsupported_protocol"
+                              ? "unsupported"
+                              : "refused"
+                            : "transient",
+                      }),
+                    ),
+                  ),
+                  Effect.ignore,
+                );
+              }
+              continue;
             }
             if (read.kind === "message" && read.message.type === "attention") {
               yield* overviews.reportAttention(projectId, link, read.message.attention);

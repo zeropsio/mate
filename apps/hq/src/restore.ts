@@ -71,6 +71,13 @@ const DROP_TABLES = `DO $$ DECLARE t text; BEGIN
   LOOP EXECUTE 'DROP TABLE IF EXISTS ' || t || ' CASCADE'; END LOOP;
 END $$`;
 
+// Table replacement also replaces migration-owned routines and aggregates.
+const DROP_USAGE_ROUTINES = `DO $$ DECLARE routine record; BEGIN
+  FOR routine IN SELECT p.oid,p.prokind,format('%I.%I(%s)',n.nspname,p.proname,pg_get_function_identity_arguments(p.oid)) AS signature
+    FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.proname LIKE 'hq_usage_%'
+  LOOP EXECUTE 'DROP ' || CASE WHEN routine.prokind='a' THEN 'AGGREGATE' ELSE 'FUNCTION' END || ' IF EXISTS ' || routine.signature || ' CASCADE'; END LOOP;
+END $$`;
+
 const fail = (reason: BackupError["reason"], message: string) =>
   Effect.fail(new BackupError({ reason, message }));
 
@@ -182,6 +189,7 @@ const databaseFrom = (dump: string, target: RestoreTarget, stamp: string, query:
         target.databaseUrl,
       );
       yield* query(DROP_TABLES);
+      yield* query(DROP_USAGE_ROUTINES);
       const left = yield* count(`
           SELECT count(*)::int AS n FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
           WHERE n.nspname = 'public'`);
@@ -201,6 +209,15 @@ const databaseFrom = (dump: string, target: RestoreTarget, stamp: string, query:
       target.databaseUrl,
     );
     yield* query("UPDATE hq_session SET revoked_at = now() WHERE revoked_at IS NULL");
+    if (
+      (yield* query("SELECT to_regclass('public.hq_usage_state') IS NOT NULL AS present"))
+        .rows[0]?.["present"] === true
+    ) {
+      yield* query(
+        "UPDATE hq_usage_state SET recovery='partial',protection_verified=false,protected_revision=NULL,protected_set=NULL,revision=revision+1 WHERE id=1",
+      );
+      yield* query("DELETE FROM hq_usage_sender");
+    }
     // Older sets predate person Git passwords; restored ones never revive an old password.
     if (
       (yield* query("SELECT to_regclass('public.hq_git_credential') IS NOT NULL AS present"))
