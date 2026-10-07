@@ -47,6 +47,12 @@ const decodeAgent = Schema.decodeUnknownEffect(Schema.fromJsonString(Conversatio
 const decodeEnd = Schema.decodeUnknownEffect(Schema.fromJsonString(RunEnd));
 const decodeSource = Schema.decodeUnknownEffect(RunEndSource);
 
+interface RunEndRow {
+  readonly run_id: string;
+  readonly end_json: string | null;
+  readonly end_source: string | null;
+}
+
 export interface LiveEngineOptions {
   readonly worker?: EffectWorkerOptions;
   readonly conversations?: ConversationsModule.ConversationsOptions;
@@ -190,22 +196,25 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
 
     const runOf: MateEngineService["runOf"] = (find) =>
       ("wakeId" in find
-        ? sql<{ readonly run_id: string; readonly end_json: string | null }>`
-            SELECT run_id, end_json FROM engine_run
+        ? sql<RunEndRow>`
+            SELECT run_id, end_json, end_source FROM engine_run
             WHERE json_extract(trigger_json, '$.wakeId') = ${find.wakeId}
             ORDER BY ordinal DESC LIMIT 1
           `
-        : sql<{ readonly run_id: string; readonly end_json: string | null }>`
-            SELECT run_id, end_json FROM engine_run WHERE provider_turn_id = ${find.providerTurnId}
+        : sql<RunEndRow>`
+            SELECT run_id, end_json, end_source FROM engine_run
+            WHERE provider_turn_id = ${find.providerTurnId}
             ORDER BY ordinal DESC LIMIT 1
           `
       ).pipe(
         Effect.flatMap((rows) => {
           const row = rows[0];
           if (row === undefined) return Effect.succeed(undefined);
-          return Effect.map(
-            row.end_json === null ? Effect.succeed(null) : decodeEnd(row.end_json),
-            (end) => ({ runId: RunId.make(row.run_id), end }),
+          return Effect.all({
+            end: row.end_json === null ? Effect.succeed(null) : decodeEnd(row.end_json),
+            source: row.end_source === null ? Effect.succeed(null) : decodeSource(row.end_source),
+          }).pipe(
+            Effect.map(({ end, source }) => ({ runId: RunId.make(row.run_id), end, source })),
           );
         }),
         Effect.orElseSucceed(() => undefined),

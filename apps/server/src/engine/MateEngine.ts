@@ -105,7 +105,14 @@ export interface MateEngineService {
   /** The latest run a wake started, or the one a provider turn belongs to, ended or not. */
   readonly runOf: (
     find: { readonly wakeId: WakeId } | { readonly providerTurnId: string },
-  ) => Effect.Effect<{ readonly runId: RunId; readonly end: RunEnd | null } | undefined>;
+  ) => Effect.Effect<
+    | {
+        readonly runId: RunId;
+        readonly end: RunEnd | null;
+        readonly source: RunEndSource | null;
+      }
+    | undefined
+  >;
 }
 
 export class MateEngine extends Context.Service<MateEngine, MateEngineService>()(

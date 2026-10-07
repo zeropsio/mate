@@ -203,6 +203,7 @@ const liveLayer = Layer.mergeAll(
           ),
         ),
         Layer.provide(ZeropsTurnAdmissionLive),
+        Layer.provide(MateEngineLive),
       ),
     ),
   ),
