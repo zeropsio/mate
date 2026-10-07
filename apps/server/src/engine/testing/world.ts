@@ -150,6 +150,32 @@ export class World {
           }),
       },
       { kind: "provider.interrupt", run: (row) => Effect.sync(() => (this.act(row), ok())) },
+      {
+        kind: "session.close",
+        run: (row) =>
+          Effect.sync(() => {
+            this.act(row);
+            const session = this.sessions.get((row.payload as { sessionId: string }).sessionId);
+            if (session !== undefined) session.alive = false;
+            return ok();
+          }),
+      },
+      // Replay-safe work beside the agent: a capture and its release land as evidence.
+      ...["run.prepare", "workspace.finish"].map((kind): EffectHandler => ({
+        kind,
+        adopt: (row) =>
+          Effect.sync(() =>
+            this.landed.has(row.effectId)
+              ? Option.some<EffectOutcome>({ kind: "ok" })
+              : Option.none(),
+          ),
+        run: (row) =>
+          Effect.suspend(() => {
+            this.act(row);
+            this.landed.add(row.effectId);
+            return hang(row, ok());
+          }),
+      })),
       { kind: "provider.respond", run: (row) => Effect.sync(() => (this.act(row), ok())) },
       { kind: "provider.steer", run: (row) => Effect.sync(() => (this.act(row), ok())) },
       {

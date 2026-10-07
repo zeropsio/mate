@@ -541,12 +541,22 @@ export type ConversationRow = typeof ConversationRow.Type;
 
 // ── sessions, effects, wakes ────────────────────────────────────────────────────────────────
 
-export const SessionCloseReason = forwardCompatibleLiterals([
+/**
+ * Why a session closed: a model switch rotated it; it exited; the server restarted; it was closed
+ * (a newer session replaced it); the person signed out; a second Stop; a usage limit parked its
+ * turn; it sat idle.
+ */
+export const SESSION_CLOSE_REASONS = [
   "model",
   "exited",
   "restart",
   "closed",
-]);
+  "signed-out",
+  "stop",
+  "usage-limit",
+  "idle",
+] as const;
+export const SessionCloseReason = forwardCompatibleLiterals(SESSION_CLOSE_REASONS);
 export type SessionCloseReason = typeof SessionCloseReason.Type;
 
 export const SessionCapabilities = Schema.Struct({
@@ -690,6 +700,12 @@ export const SessionOpened = event("SessionOpened", {
   capabilities: SessionCapabilities,
   rotatedFrom: Schema.NullOr(SessionId),
 });
+/** The engine asked the session to close; nothing goes into it until it has. */
+export const SessionClosing = event("SessionClosing", {
+  sessionId: SessionId,
+  reason: SessionCloseReason,
+  effectId: EffectId,
+});
 export const SessionClosed = event("SessionClosed", {
   sessionId: SessionId,
   reason: SessionCloseReason,
@@ -751,6 +767,7 @@ const knownEvents = [
   RequestReopened,
   RequestClosed,
   SessionOpened,
+  SessionClosing,
   SessionClosed,
   UsagePauseLifted,
   AgentAssigned,

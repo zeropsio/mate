@@ -35,6 +35,7 @@ import {
   drive,
   envelope,
   opened,
+  prepared,
   r,
   send,
   sent,
@@ -136,6 +137,10 @@ const sessionOpen: EffectHandler = {
       },
     }),
 };
+const runPrepare: EffectHandler = {
+  kind: "run.prepare",
+  run: () => Effect.succeed({ _tag: "Done", outcome: { kind: "ok" } }),
+};
 const providerSend: EffectHandler = {
   kind: "provider.send",
   run: () =>
@@ -145,7 +150,7 @@ const providerSend: EffectHandler = {
 const engine = Layer.mergeAll(
   ConversationsModule.layer(),
   EffectOutboxModule.layer,
-  Layer.succeed(EffectHandlers, handlersOf(echo, flaky, sessionOpen, providerSend)),
+  Layer.succeed(EffectHandlers, handlersOf(echo, flaky, runPrepare, sessionOpen, providerSend)),
 ).pipe(
   Layer.provideMerge(Layer.mergeAll(EngineStoreModule.layer, EngineSignals.layer)),
   Layer.provideMerge(sqliteWithEngineTables),
@@ -321,6 +326,8 @@ describe("EffectWorker", () => {
           "RunAdmitted",
           "EffectRequested",
           "EffectOutcomeRecorded",
+          "EffectRequested",
+          "EffectOutcomeRecorded",
           "SessionOpened",
           "EffectRequested",
           "RunSending",
@@ -342,11 +349,13 @@ describe("EffectWorker", () => {
         const side = ConversationId.make("side");
         yield* drive(store, yield* store.load(live), [
           envelope(send(), { conversation: live }),
+          envelope(prepared(1, live), { conversation: live }),
           envelope(opened(1, live), { conversation: live }),
           envelope(sent(1, live), { conversation: live }),
         ]);
         yield* drive(store, yield* store.load(opening), [
           envelope(send(), { conversation: opening }),
+          envelope(prepared(1, opening), { conversation: opening }),
         ]);
         yield* enqueue(side, [{ id: "replayable" }]);
         yield* outbox.claim(boot1, 0);
@@ -419,8 +428,7 @@ describe("EffectWorker: a restart", () => {
         const conversations = yield* Conversations;
         const worker = yield* makeEffectWorker(newBoot());
         yield* conversations.ask(env({ _tag: "Send", text: "first" }));
-        yield* worker.runOnce;
-        yield* worker.runOnce;
+        for (let i = 0; i < 3; i++) yield* worker.runOnce; // capture, session, send
         yield* conversations.tell(signalsFrom("w1", ended));
       }).pipe(Effect.provide(engineLayer(file, world.handlers())));
       world.crash();
@@ -429,12 +437,12 @@ describe("EffectWorker: a restart", () => {
         const worker = yield* makeEffectWorker(newBoot());
         yield* worker.reconcileAtBoot;
         yield* conversations.ask(env({ _tag: "Send", text: "after the restart" }));
-        for (let i = 0; i < 4; i++) yield* worker.runOnce;
+        for (let i = 0; i < 6; i++) yield* worker.runOnce;
         const { state, events } = yield* audit(mate);
         return {
           asked: events
-            .filter((e) => e._tag === "EffectRequested")
-            .map((e) => (e as { kind: string }).kind)
+            .flatMap((e) => (e._tag === "EffectRequested" ? [e.kind] : []))
+            .filter((kind) => kind === "session.open" || kind === "provider.send")
             .slice(2),
           run: state.runs[r(2, mate)]?.end?.kind ?? state.runs[r(2, mate)]?.state,
           received: world.received.map((x) => x.text),
@@ -456,10 +464,11 @@ describe("EffectWorker: a restart", () => {
         const conversations = yield* Conversations;
         const worker = yield* makeEffectWorker(newBoot());
         yield* conversations.ask(env({ _tag: "Send", text: "first" }));
-        yield* worker.runOnce;
-        yield* worker.runOnce;
+        for (let i = 0; i < 3; i++) yield* worker.runOnce; // capture, session, send
         yield* conversations.tell(signalsFrom("w1", ended));
         yield* conversations.ask(env({ _tag: "Send", text: "second" }));
+        yield* worker.runOnce; // the first run releases its capture
+        yield* worker.runOnce; // the second is captured: its send is queued on w1
       }).pipe(Effect.provide(engineLayer(file, world.handlers())));
       world.crash();
       const received = yield* Effect.gen(function* () {
@@ -555,7 +564,8 @@ describe("EffectWorker: the worker", () => {
         const conversations = yield* Conversations;
         const worker = yield* makeEffectWorker(newBoot());
         yield* conversations.ask(env({ _tag: "Send", text: "go" }));
-        failing = 4; // the first try and the worker's three immediate retries
+        yield* worker.runOnce; // the capture
+        failing = 4; // the session's outcome: the first try and the worker's three immediate retries
         yield* Effect.exit(worker.runOnce);
         for (let i = 0; i < 3; i++) {
           yield* TestClock.adjust(60_000);
@@ -571,7 +581,10 @@ describe("EffectWorker: the worker", () => {
           rows: rows.map((x) => `${x.kind}:${x.state}`),
         };
       }).pipe(Effect.provide(engineLayer(file, world.handlers(), { fault: () => fault() })));
-      expect(result).toEqual({ run: "running", rows: ["session.open:done", "provider.send:done"] });
+      expect(result).toEqual({
+        run: "running",
+        rows: ["run.prepare:done", "session.open:done", "provider.send:done"],
+      });
     }),
   );
 
@@ -590,6 +603,7 @@ describe("EffectWorker: the worker", () => {
         const conversations = yield* Conversations;
         const worker = yield* makeEffectWorker(newBoot());
         yield* conversations.ask(env({ _tag: "Send", text: "go" }));
+        yield* worker.runOnce; // the capture
         failing = 1; // the store refuses every commit from now on, then the process dies
         yield* Effect.exit(worker.runOnce);
       }).pipe(Effect.provide(engineLayer(file, world.handlers(), { fault: () => fault() })));
@@ -623,6 +637,7 @@ describe("EffectWorker: the worker", () => {
         const conversations = yield* Conversations;
         const worker = yield* makeEffectWorker(newBoot());
         yield* conversations.ask(env({ _tag: "Send", text: "deploy" }));
+        yield* worker.runOnce; // run.prepare
         yield* worker.runOnce; // session.open
         for (let i = 0; i < 6; i++) {
           yield* worker.runOnce;

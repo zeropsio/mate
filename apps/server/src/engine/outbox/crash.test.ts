@@ -45,6 +45,7 @@ const turnEnded = (run: number | TurnHandle): ProviderSignal => ({
 });
 const script: ReadonlyArray<Move> = [
   { kind: "ask", command: { _tag: "Send", text: "go" }, id: "send-1" },
+  { kind: "work" }, // run.prepare
   { kind: "work" }, // session.open
   { kind: "work" }, // provider.send
   {
@@ -82,6 +83,8 @@ const script: ReadonlyArray<Move> = [
   { kind: "work" }, // provider.respond
   { kind: "signals", signals: [turnEnded(1)] },
   { kind: "ask", command: { _tag: "Send", text: "again" }, id: "send-2" },
+  { kind: "work" }, // workspace.finish of the first run
+  { kind: "work" }, // run.prepare
   { kind: "work" }, // provider.send
   { kind: "signals", signals: [turnEnded(2)] },
 ];
@@ -155,10 +158,12 @@ const playUntilCrash = (file: string, world: World, crash: Crash, played: Played
         const acted = yield* Deferred.make<void>();
         const before = [...world.acts.values()].reduce((a, b) => a + b, 0);
         for (const kind of [
+          "run.prepare",
           "session.open",
           "provider.send",
           "provider.respond",
           "provider.interrupt",
+          "workspace.finish",
         ])
           world.hangAfterAct.add(kind);
         yield* Effect.forkDetach(worker.runOnce);

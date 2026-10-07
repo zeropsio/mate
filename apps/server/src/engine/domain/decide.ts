@@ -32,6 +32,7 @@ import {
   type RunId,
   type RunTrigger,
   type SessionCapabilities,
+  type SessionCloseReason,
   type SessionId,
   type TurnHandle,
   WORK_ENDED,
@@ -79,6 +80,9 @@ export const EFFECT_KINDS = {
   "provider.send": { lane: "turn", class: "process-bound" },
   "provider.interrupt": { lane: "control", class: "process-bound" },
   "provider.respond": { lane: "control", class: "process-bound" },
+  "session.close": { lane: "control", class: "process-bound" },
+  "run.prepare": { lane: "side", class: "replay-safe" },
+  "workspace.finish": { lane: "side", class: "replay-safe" },
   "provider.steer": { lane: "turn", class: "process-bound" },
 } as const satisfies Record<string, { lane: EffectLane; class: EffectClass }>;
 export type EngineEffectKind = keyof typeof EFFECT_KINDS;
@@ -93,6 +97,7 @@ export interface SessionOpenedValue {
 }
 
 const ENGINE: Principal = { kind: "engine" };
+const ENGINE_ACTOR = { kind: "engine" } as const;
 
 class Rejected {
   readonly reason: RejectionReason;
@@ -195,6 +200,8 @@ const handle = (b: StepBuilder, command: Command): void => {
         b.emit({ _tag: "AgentAssigned", agent: command.agent, by: b.envelope.principal });
       }
       return;
+    case "CloseSession":
+      return closeSession(b, command.reason);
     case "Archive":
       if (!b.state.archived) b.emit({ _tag: "ConversationArchived", by: b.envelope.principal });
       return;
@@ -250,24 +257,87 @@ const paused = (b: StepBuilder) =>
   b.state.pausedUntil === "unknown" ||
   (b.state.pausedUntil !== null && b.now < b.state.pausedUntil);
 
-/** Admits the oldest queued run when nothing is active and no usage limit holds the queue. */
+/**
+ * Admits the oldest queued run when nothing is active and no usage limit holds the queue; with
+ * nothing to admit, an open session starts its idle time.
+ */
 const admitNext = (b: StepBuilder): void => {
-  if (b.state.activeRunId !== null || paused(b)) return;
-  const next = b.state.queue[0];
-  if (next === undefined) return;
+  if (b.state.activeRunId !== null) return;
+  const next = paused(b) ? undefined : b.state.queue[0];
+  if (next === undefined) return armIdle(b);
+  cancelIdle(b);
   b.emit({ _tag: "RunAdmitted", runId: next });
-  dispatch(b, b.run(next));
+  const run = b.run(next);
+  if (needsPrepare(run) && run.prepare === "none") {
+    // The workspace is captured before the agent starts work (D7): the send waits on it.
+    b.effect("run.prepare", run.id, 1, run.id, { runId: run.id });
+    return;
+  }
+  dispatch(b, run);
+};
+
+/** Every run captures its workspace first, but a maintenance turn and one the agent started. */
+const needsPrepare = (run: RunRecord): boolean =>
+  !run.maintenance && !(run.trigger.kind === "wake" && run.trigger.cause === "self");
+
+/** How long an open session sits with nothing to do before the engine closes it. */
+export const SESSION_IDLE_MS = 30 * 60_000;
+
+const idleWakeId = (b: StepBuilder, session: SessionId) =>
+  deriveWakeId(b.state.conversationId, "session-idle", session);
+
+const armIdle = (b: StepBuilder): void => {
+  const session = b.state.session;
+  if (session === null || b.state.closing !== null || b.state.queue.length > 0) return;
+  if (b.state.wakes[idleWakeId(b, session.id)] !== undefined) return;
+  b.emit({
+    _tag: "WakeArmed",
+    wakeId: idleWakeId(b, session.id),
+    kind: "session-idle",
+    dueAt: b.now + SESSION_IDLE_MS,
+    cron: null,
+    principal: ENGINE,
+    joins: null,
+    text: null,
+  });
+};
+
+const cancelIdle = (b: StepBuilder): void => {
+  for (const wake of Object.values(b.state.wakes)) {
+    if (wake.kind === "session-idle") {
+      b.emit({ _tag: "WakeCancelled", wakeId: wake.id, reason: "a run was admitted" });
+    }
+  }
+};
+
+/** Asks the session to close; nothing goes into it until it has. */
+const closeSession = (b: StepBuilder, reason: SessionCloseReason): void => {
+  const session = b.state.session;
+  if (session === null || b.state.closing !== null) return;
+  const effect = b.effect("session.close", session.id, session.closeAttempts + 1, null, {
+    sessionId: session.id,
+    reason,
+  });
+  b.emit({ _tag: "SessionClosing", sessionId: session.id, reason, effectId: effect });
 };
 
 /**
  * Sends an admitted run on a fitting session, or asks for one. A session fits by the model the
  * engine asked for when it opened it, never by the driver's own spelling of it; a session just
- * opened for this run fits.
+ * opened for this run fits. One that does not fit is closed first (a model switch rotates it).
+ * A run whose workspace capture has not settled, or a session closing, waits.
  */
 const dispatch = (b: StepBuilder, run: RunRecord, justOpened = false): void => {
+  if (needsPrepare(run) && run.prepare !== "done") return;
+  if (b.state.closing !== null) return;
+  const opening = Object.values(b.state.effects).some(
+    (effect) => effect.kind === "session.open" && effect.runId === run.id,
+  );
+  if (opening) return;
   const session = b.state.session;
   const fits = b.state.model === null || session?.requestedModel === b.state.model || justOpened;
-  if (session !== null && fits) {
+  if (session !== null && !fits) return closeSession(b, "model");
+  if (session !== null) {
     const effect = b.effect("provider.send", run.id, run.sendAttempts + 1, run.id, {
       runId: run.id,
       sessionId: session.id,
@@ -283,7 +353,7 @@ const dispatch = (b: StepBuilder, run: RunRecord, justOpened = false): void => {
     driver: b.state.agent?.driver ?? null,
     model: b.state.model,
     resume: b.state.lastNativeRef,
-    rotateFrom: session?.id ?? null,
+    rotateFrom: b.state.rotatingFrom,
   });
 };
 
@@ -328,6 +398,13 @@ const endRun = (
     updatePerson(b, run, run.state === "sending" ? unsent : "refused");
   }
   b.emit({ _tag: "RunEnded", runId: run.id, end, source });
+  // Every run that asked for a capture releases it, whatever ended it.
+  if (run.prepare !== "none") {
+    b.effect("workspace.finish", run.id, 1, run.id, {
+      runId: run.id,
+      started: run.startedAt !== null,
+    });
+  }
 };
 
 const settledBody = (body: ItemBody, end: RunEnd): ItemBody => {
@@ -443,7 +520,16 @@ const stop = (b: StepBuilder, target: RunId | undefined): void => {
   const run = b.state.runs[id];
   if (run === undefined) throw new Rejected("unknown-run");
   if (run.state === "ended") throw new Rejected("run-ended");
-  if (run.stopAsked !== null) throw new Rejected("stop-already-asked");
+  if (run.stopAsked !== null) {
+    // A second Stop on a turn whose first was not confirmed closes its session.
+    const session = b.state.session;
+    if (!isLive(run) || session === null || session.id !== run.sessionId) {
+      throw new Rejected("stop-already-asked");
+    }
+    if (b.state.closing !== null) throw new Rejected("stop-already-asked");
+    b.result = { ...b.result, runId: run.id };
+    return closeSession(b, "stop");
+  }
   b.result = { ...b.result, runId: run.id };
   if (!isLive(run) || run.sessionId === null) {
     b.emit({ _tag: "RunStopAsked", runId: run.id, by: b.envelope.principal, effectId: null });
@@ -579,6 +665,17 @@ const wakeFired = (
   switch (wake.kind) {
     case "watchdog":
       return watchdogFired(b, wake.joins);
+    case "session-idle": {
+      // Closes the session only if it is still the one that sat idle and nothing needs it.
+      const session = b.state.session;
+      const idle =
+        session !== null &&
+        id === idleWakeId(b, session.id) &&
+        b.state.activeRunId === null &&
+        Object.keys(b.state.requests).length === 0;
+      if (idle) closeSession(b, "idle");
+      return;
+    }
     case "restart-continuation": {
       const joined = wake.joins;
       const refusal = b.state.archived
@@ -654,20 +751,41 @@ const effectSettled = (b: StepBuilder, id: EffectId, outcome: EffectOutcome): vo
   const effect = b.state.effects[id];
   if (effect === undefined) throw new Rejected("unknown-effect");
   const answered = b.state.answering[id];
+  const closing = b.state.closing?.effectId === id ? b.state.closing : null;
   b.emit({ _tag: "EffectOutcomeRecorded", effectId: id, kind: effect.kind, outcome });
-  const run = effect.runId === null ? undefined : b.state.runs[effect.runId];
-  if (run === undefined || run.state === "ended") {
-    if (effect.kind === "session.open" && outcome.kind === "ok") openSession(b, outcome.value);
-    admitNext(b);
-    return;
-  }
   const failure =
     outcome.kind === "ok"
       ? null
       : outcome.kind === "unknown"
         ? `an outcome this build does not know (${outcome.type})`
         : outcome.reason;
+  if (effect.kind === "session.close") return sessionCloseSettled(b, closing, outcome);
+  const run = effect.runId === null ? undefined : b.state.runs[effect.runId];
+  if (run === undefined || run.state === "ended") {
+    if (effect.kind === "session.open" && outcome.kind === "ok") openSession(b, outcome.value);
+    admitNext(b);
+    return;
+  }
   switch (effect.kind) {
+    case "run.prepare": {
+      if (outcome.kind === "failed" && outcome.refused === true) {
+        // Only admission refuses a run, and before anything of it ran.
+        endRun(
+          b,
+          run,
+          { kind: "failed", reason: outcome.reason, next: null },
+          "inferred-from-effect",
+        );
+        admitNext(b);
+        return;
+      }
+      // Any capture outcome sends the message; what could not be captured is recorded.
+      for (const gap of captureGaps(outcome, failure)) {
+        recordMarker(b, run, { kind: "capture-gap", reason: gap });
+      }
+      if (run.state === "admitted") dispatch(b, b.run(run.id));
+      return;
+    }
     case "session.open":
       if (failure !== null) {
         endRun(b, run, { kind: "failed", reason: failure, next: null }, "inferred-from-effect");
@@ -731,6 +849,69 @@ const effectSettled = (b: StepBuilder, id: EffectId, outcome: EffectOutcome): vo
   }
 };
 
+/** What a capture could not take, one line per service; a failed capture is one gap. */
+const captureGaps = (outcome: EffectOutcome, failure: string | null): ReadonlyArray<string> => {
+  if (failure !== null) return [`The workspace capture failed: ${failure}`];
+  const value = outcome.kind === "ok" ? outcome.value : undefined;
+  const gaps =
+    typeof value === "object" && value !== null ? (value as { gaps?: unknown }).gaps : undefined;
+  if (!Array.isArray(gaps)) return [];
+  return gaps.flatMap((gap: unknown) => {
+    const { service, reason } = (gap ?? {}) as { service?: unknown; reason?: unknown };
+    return typeof service === "string" && typeof reason === "string"
+      ? [`${service}: ${reason}`]
+      : [];
+  });
+};
+
+/** A marker the engine records under a run, closed as it opens. */
+const recordMarker = (
+  b: StepBuilder,
+  run: RunRecord,
+  marker: { readonly kind: string; readonly reason?: string },
+): void => {
+  const id = deriveItemId(run.id, b.run(run.id).nextItemOrdinal);
+  const body: ItemBody = { kind: "marker", marker };
+  b.emit({ _tag: "ItemOpened", runId: run.id, itemId: id, key: null, by: ENGINE_ACTOR, body });
+  b.emit({ _tag: "ItemClosed", runId: run.id, itemId: id, body });
+};
+
+/**
+ * The session closed as asked (or its close failed: it is treated as gone). A run still live on
+ * it ends from that evidence; a session the idle check found busy is kept and idles again.
+ */
+const sessionCloseSettled = (
+  b: StepBuilder,
+  closing: ConversationState["closing"],
+  outcome: EffectOutcome,
+): void => {
+  if (closing === null) return admitNext(b);
+  const kept =
+    closing.reason === "idle" &&
+    outcome.kind === "ok" &&
+    typeof outcome.value === "object" &&
+    outcome.value !== null &&
+    (outcome.value as { kept?: unknown }).kept === true;
+  if (kept) return armIdle(b);
+  const run = activeRun(b.state);
+  if (run !== undefined && isLive(run) && run.sessionId === closing.sessionId) {
+    endRun(
+      b,
+      run,
+      run.stopAsked !== null
+        ? { kind: "stopped", by: run.stopAsked.by }
+        : { kind: "crashed", reason: `The session closed (${closing.reason}).` },
+      "inferred-from-close",
+    );
+  }
+  if (b.state.session?.id === closing.sessionId) {
+    b.emit({ _tag: "SessionClosed", sessionId: closing.sessionId, reason: closing.reason });
+  }
+  const admitted = activeRun(b.state);
+  if (admitted?.state === "admitted") return dispatch(b, admitted);
+  admitNext(b);
+};
+
 /** What a send settles with: the turn the message went into, and the driver's id for it. */
 const sendAccepted = (
   value: unknown,
@@ -758,7 +939,8 @@ const openSession = (b: StepBuilder, value: unknown): void => {
     model: opened.model,
     nativeRef: opened.nativeRef,
     capabilities: opened.capabilities,
-    rotatedFrom: previous !== null && previous.id !== opened.sessionId ? previous.id : null,
+    rotatedFrom:
+      previous !== null && previous.id !== opened.sessionId ? previous.id : b.state.rotatingFrom,
   });
 };
 
@@ -976,6 +1158,11 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
       if (run !== undefined && isLive(run)) {
         endRun(b, run, { kind: "usage-limit", resetsAt: signal.resetsAt }, "agent");
         limited(b, run, signal.resetsAt);
+        // A parked turn (Claude) sits in its session until the reset: close it; the resume
+        // reopens the session with its resume cursor and sends explicitly.
+        if (signal.parks === true && b.state.session?.id === run.sessionId) {
+          closeSession(b, "usage-limit");
+        }
       }
       admitNext(b);
       return;
@@ -1164,11 +1351,9 @@ const recovered = (
     b.emit({ _tag: "SessionClosed", sessionId: b.state.session.id, reason: "restart" });
   }
   const admitted = activeRun(b.state);
-  const opening = Object.values(b.state.effects).some(
-    (effect) => effect.kind === "session.open" && effect.runId === admitted?.id,
-  );
   if (admitted?.state === "admitted") {
-    if (!opening) dispatch(b, admitted);
+    // Its capture, requeued with the replay-safe work, still settles first.
+    dispatch(b, admitted);
     return;
   }
   admitNext(b);

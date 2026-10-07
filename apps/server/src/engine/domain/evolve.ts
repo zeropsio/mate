@@ -93,6 +93,7 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
         nextRequestOrdinal: 1,
         sessionOpenAttempts: 0,
         sendAttempts: 0,
+        prepare: "none",
         personBody: null,
       };
       const next: ConversationState = {
@@ -374,11 +375,18 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
           model: event.model,
           nativeRef: event.nativeRef,
           capabilities: event.capabilities,
+          closeAttempts: 0,
         },
         lastNativeRef: event.nativeRef ?? state.lastNativeRef,
+        rotatingFrom: null,
       };
     case "SessionClosed":
-      return state.session?.id === event.sessionId ? { ...state, session: null } : state;
+      return {
+        ...state,
+        session: state.session?.id === event.sessionId ? null : state.session,
+        closing: state.closing?.sessionId === event.sessionId ? null : state.closing,
+        rotatingFrom: event.reason === "model" ? event.sessionId : state.rotatingFrom,
+      };
     case "AgentAssigned":
       return { ...state, agent: event.agent, model: event.agent.model ?? state.model };
     case "ModelSwitched":
@@ -400,7 +408,14 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
             }))
           : event.kind === "provider.send"
             ? withRun(state, event.runId, (run) => ({ ...run, sendAttempts: run.sendAttempts + 1 }))
-            : state;
+            : event.kind === "run.prepare"
+              ? withRun(state, event.runId, (run) => ({ ...run, prepare: "asked" }))
+              : event.kind === "session.close" && state.session !== null
+                ? {
+                    ...state,
+                    session: { ...state.session, closeAttempts: state.session.closeAttempts + 1 },
+                  }
+                : state;
       return {
         ...counted,
         effects: {
@@ -409,11 +424,23 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
         },
       };
     }
-    case "EffectOutcomeRecorded":
+    case "EffectOutcomeRecorded": {
+      const effect = state.effects[event.effectId];
+      const prepared =
+        effect?.kind === "run.prepare"
+          ? withRun(state, effect.runId, (run) => ({ ...run, prepare: "done" }))
+          : state;
+      return {
+        ...prepared,
+        effects: without(prepared.effects, event.effectId),
+        answering: without(prepared.answering, event.effectId),
+        closing: prepared.closing?.effectId === event.effectId ? null : prepared.closing,
+      };
+    }
+    case "SessionClosing":
       return {
         ...state,
-        effects: without(state.effects, event.effectId),
-        answering: without(state.answering, event.effectId),
+        closing: { sessionId: event.sessionId, reason: event.reason, effectId: event.effectId },
       };
     case "WakeArmed":
       return {

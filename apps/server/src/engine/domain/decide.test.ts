@@ -9,6 +9,7 @@ import {
   requestId,
   runId,
   wakeId,
+  type EffectOutcome,
   type EngineEventTag,
   type KnownEngineEvent,
   type Principal,
@@ -22,7 +23,13 @@ import {
 import type { TurnOutcome } from "../bridge/spi3.ts";
 
 import type { Command, Decision, EffectDraft, ProviderSignal } from "./command.ts";
-import { CONTINUE_TEXT, WATCHDOG_SILENCE_MS, decide, resentText } from "./decide.ts";
+import {
+  CONTINUE_TEXT,
+  SESSION_IDLE_MS,
+  WATCHDOG_SILENCE_MS,
+  decide,
+  resentText,
+} from "./decide.ts";
 import { fold, stampEvents } from "./evolve.ts";
 import { initialState, type ConversationState } from "./state.ts";
 
@@ -113,6 +120,11 @@ const opened = (run: number, options: { session?: string; steer?: boolean; n?: n
     options.n,
   );
 const sent = (run: number) => settled(r(run), "provider.send", { kind: "ok" });
+/** Run n's workspace capture settles: its send may go. */
+const prepared = (run: number, outcome: EffectOutcome = { kind: "ok" }) =>
+  settled(r(run), "run.prepare", outcome);
+/** The session closed as the engine asked. */
+const sessionClosed = (session = "s1") => settled(session, "session.close", { kind: "ok" });
 const signal = (...signals: ReadonlyArray<ProviderSignal>): Command => ({
   _tag: "ProviderSignals",
   sessionId: s1,
@@ -143,9 +155,14 @@ const note = (key: string) =>
 
 // ── scenes ──────────────────────────────────────────────────────────────────────────────────
 
-const running: ReadonlyArray<Step> = [send(), opened(1), sent(1)];
+const running: ReadonlyArray<Step> = [send(), prepared(1), opened(1), sent(1)];
 const waiting: ReadonlyArray<Step> = [...running, requestOpened()];
-const runningWithSteer: ReadonlyArray<Step> = [send(), opened(1, { steer: true }), sent(1)];
+const runningWithSteer: ReadonlyArray<Step> = [
+  send(),
+  prepared(1),
+  opened(1, { steer: true }),
+  sent(1),
+];
 const limited: ReadonlyArray<Step> = [
   ...running,
   signal({ kind: "usage-limit", resetsAt: T0 + 60 * MINUTE }),
@@ -173,16 +190,73 @@ const tags = (scene: Scene) => scene.events.map((event) => event._tag);
 
 const transitions: ReadonlyArray<Row> = [
   {
-    name: "a person's message queues a run and asks for a session when none is open",
+    name: "a person's message queues a run and captures its workspace before anything is sent",
     given: [],
     when: send(),
     events: ["RunQueued", "ItemOpened", "RunAdmitted", "EffectRequested"],
-    effects: ["session.open"],
+    effects: ["run.prepare"],
     run: { n: 1, state: "admitted", principal: ana },
+    also: (scene) => expect(scene.effects[0]).toMatchObject({ lane: "side", class: "replay-safe" }),
+  },
+  {
+    name: "a captured run asks for a session when none is open",
+    given: [send()],
+    when: prepared(1),
+    events: ["EffectOutcomeRecorded", "EffectRequested"],
+    effects: ["session.open"],
+    run: { n: 1, state: "admitted" },
+  },
+  {
+    name: "a capture that failed still sends the message, its gap recorded under the run",
+    given: [send()],
+    when: prepared(1, { kind: "failed", reason: "ssh timed out" }),
+    events: ["EffectOutcomeRecorded", "ItemOpened", "ItemClosed", "EffectRequested"],
+    effects: ["session.open"],
+    also: (scene) =>
+      expect(scene.events[1]).toMatchObject({
+        runId: r(1),
+        by: { kind: "engine" },
+        body: { kind: "marker", marker: { kind: "capture-gap" } },
+      }),
+  },
+  {
+    name: "a capture records each service it could not snapshot",
+    given: [send()],
+    when: prepared(1, {
+      kind: "ok",
+      value: { gaps: [{ service: "api", reason: "Snapshot refused: disk full" }] },
+    }),
+    events: ["EffectOutcomeRecorded", "ItemOpened", "ItemClosed", "EffectRequested"],
+    also: (scene) =>
+      expect(scene.events[1]).toMatchObject({
+        body: { marker: { kind: "capture-gap", reason: "api: Snapshot refused: disk full" } },
+      }),
+  },
+  {
+    name: "a run its admission refuses ends failed before anything of it ran",
+    given: [send()],
+    when: prepared(1, { kind: "failed", reason: "the signer is offboarded", refused: true }),
+    run: { n: 1, end: "failed", source: "inferred-from-effect" },
+    also: (scene) =>
+      expect(scene.effects.map((effect) => effect.kind)).toEqual(["workspace.finish"]),
+  },
+  {
+    name: "a maintenance turn skips the capture",
+    given: [],
+    when: send("/compact", { maintenance: true }),
+    effects: ["session.open"],
+  },
+  {
+    name: "every run that asked for a capture releases it when it ends",
+    given: running,
+    when: turnEnded,
+    effects: ["workspace.finish"],
+    also: (scene) =>
+      expect(scene.effects[0]).toMatchObject({ payload: { runId: r(1), started: true } }),
   },
   {
     name: "an opened session sends the admitted run",
-    given: [send()],
+    given: [send(), prepared(1)],
     when: opened(1),
     events: ["EffectOutcomeRecorded", "SessionOpened", "EffectRequested", "RunSending"],
     effects: ["provider.send"],
@@ -190,7 +264,7 @@ const transitions: ReadonlyArray<Row> = [
   },
   {
     name: "the provider accepting the send starts the run and delivers the message",
-    given: [send(), opened(1)],
+    given: [send(), prepared(1), opened(1)],
     when: sent(1),
     events: ["EffectOutcomeRecorded", "RunStarted", "ItemUpdated", "WakeArmed"],
     run: { n: 1, state: "running" },
@@ -201,7 +275,7 @@ const transitions: ReadonlyArray<Row> = [
   },
   {
     name: "a turn-started signal starts a run still sending",
-    given: [send(), opened(1)],
+    given: [send(), prepared(1), opened(1)],
     when: signal({ kind: "turn-started", turn: T(1), origin: "engine", providerTurnId: "t1" }),
     events: ["RunStarted", "ItemUpdated", "WakeArmed"],
     run: { n: 1, state: "running" },
@@ -215,9 +289,9 @@ const transitions: ReadonlyArray<Row> = [
   },
   {
     name: "a message on an open idle session is sent at once",
-    given: [...running, turnEnded],
-    when: send("again"),
-    events: ["RunQueued", "ItemOpened", "RunAdmitted", "EffectRequested", "RunSending"],
+    given: [...running, turnEnded, send("again")],
+    when: prepared(2),
+    events: ["EffectOutcomeRecorded", "EffectRequested", "RunSending"],
     effects: ["provider.send"],
     run: { n: 2, state: "sending" },
   },
@@ -252,9 +326,10 @@ const transitions: ReadonlyArray<Row> = [
     name: "the agent ending its turn completes the run and admits the next",
     given: [...running, send("next")],
     when: turnEnded,
-    events: ["WakeCancelled", "RunEnded", "RunAdmitted", "EffectRequested", "RunSending"],
+    events: ["WakeCancelled", "RunEnded", "EffectRequested", "RunAdmitted", "EffectRequested"],
+    effects: ["workspace.finish", "run.prepare"],
     run: { n: 1, end: "completed", source: "agent" },
-    also: (scene) => expect(scene.state.runs[r(2)]?.state).toBe("sending"),
+    also: (scene) => expect(scene.state.runs[r(2)]?.state).toBe("admitted"),
   },
   {
     name: "a failed turn ends failed, said by the agent",
@@ -280,7 +355,7 @@ const transitions: ReadonlyArray<Row> = [
       signal({ kind: "item-opened", turn: T(1), key: "k", by: { kind: "mate" }, body: note("k") }),
     ],
     when: signal({ kind: "session-exited", reason: "exit 137" }),
-    events: ["ItemClosed", "RequestClosed", "RunEnded", "SessionClosed"],
+    events: ["ItemClosed", "RequestClosed", "RunEnded", "EffectRequested", "SessionClosed"],
     run: { n: 1, end: "crashed", source: "inferred-from-crash" },
     also: (scene) => {
       expect(scene.events[0]).toMatchObject({ body: { streaming: false } });
@@ -322,7 +397,7 @@ const transitions: ReadonlyArray<Row> = [
     given: [...running, send("next"), stop(), settled(r(1), "provider.interrupt", { kind: "ok" })],
     when: ended(1, { kind: "interrupted" }, "stop-asked"),
     run: { n: 1, end: "stopped", source: "stop-asked" },
-    also: (scene) => expect(scene.state.runs[r(2)]?.state).toBe("sending"),
+    also: (scene) => expect(scene.state.runs[r(2)]?.state).toBe("admitted"),
   },
   {
     name: "an interrupt that fails still ends the run, said by the Stop",
@@ -332,13 +407,13 @@ const transitions: ReadonlyArray<Row> = [
   },
   {
     name: "a session that fails to open ends the admitted run failed, inferred",
-    given: [send()],
+    given: [send(), prepared(1)],
     when: settled(r(1), "session.open", { kind: "failed", reason: "not signed in" }),
     run: { n: 1, end: "failed", source: "inferred-from-effect" },
   },
   {
     name: "a send that fails ends the run failed, inferred",
-    given: [send(), opened(1)],
+    given: [send(), prepared(1), opened(1)],
     when: settled(r(1), "provider.send", { kind: "failed", reason: "socket closed" }),
     run: { n: 1, end: "failed", source: "inferred-from-effect" },
   },
@@ -346,10 +421,10 @@ const transitions: ReadonlyArray<Row> = [
     name: "a usage limit ends the run and arms a resume at the reset",
     given: running,
     when: signal({ kind: "usage-limit", resetsAt: T0 + 60 * MINUTE }),
-    events: ["WakeCancelled", "RunEnded", "WakeArmed"],
+    events: ["WakeCancelled", "RunEnded", "EffectRequested", "WakeArmed", "WakeArmed"],
     run: { n: 1, end: "usage-limit", source: "agent" },
     also: (scene) => {
-      expect(scene.events[2]).toMatchObject({ kind: "usage-resume", dueAt: T0 + 60 * MINUTE });
+      expect(scene.events[3]).toMatchObject({ kind: "usage-resume", dueAt: T0 + 60 * MINUTE });
       expect(scene.state.pausedUntil).toBe(T0 + 60 * MINUTE);
     },
   },
@@ -364,25 +439,25 @@ const transitions: ReadonlyArray<Row> = [
     name: "the usage resume starts a run that joins the limited run, with its principal",
     given: limited,
     when: fired("usage-resume", r(1), T0 + 60 * MINUTE),
-    events: ["WakeFired", "RunQueued", "RunAdmitted", "EffectRequested", "RunSending"],
-    run: { n: 2, state: "sending", joins: 1, cause: "usage-resume", principal: ana },
+    events: ["WakeFired", "RunQueued", "WakeCancelled", "RunAdmitted", "EffectRequested"],
+    run: { n: 2, state: "admitted", joins: 1, cause: "usage-resume", principal: ana },
     also: (scene) => expect(scene.state.pausedUntil).toBeNull(),
   },
   {
     name: "the usage resume gives way to a message sent during the limit",
     given: [...limited, { command: send("me first"), by: bo }],
     when: fired("usage-resume", r(1), T0 + 60 * MINUTE),
-    events: ["WakeFired", "RunAdmitted", "EffectRequested", "RunSending"],
-    run: { n: 2, state: "sending", principal: bo },
+    events: ["WakeFired", "WakeCancelled", "RunAdmitted", "EffectRequested"],
+    run: { n: 2, state: "admitted", principal: bo },
   },
   {
     name: "a restart cuts the live run and arms its continuation",
     given: running,
     when: recovered(),
-    events: ["WakeCancelled", "RunEnded", "WakeArmed", "SessionClosed"],
+    events: ["WakeCancelled", "RunEnded", "EffectRequested", "WakeArmed", "SessionClosed"],
     run: { n: 1, end: "cut-by-restart", source: "inferred-from-restart" },
     also: (scene) =>
-      expect(scene.events[2]).toMatchObject({
+      expect(scene.events[3]).toMatchObject({
         kind: "restart-continuation",
         joins: r(1),
         text: CONTINUE_TEXT,
@@ -393,11 +468,20 @@ const transitions: ReadonlyArray<Row> = [
     given: [...running, recovered()],
     when: fired("restart-continuation", r(1)),
     events: ["WakeFired", "RunQueued", "RunAdmitted", "EffectRequested"],
-    effects: ["session.open"],
+    effects: ["run.prepare"],
     run: { n: 2, state: "admitted", joins: 1, cause: "restart-continuation", principal: ana },
     also: (scene) => {
       expect(scene.state.runs[r(1)]?.end).toEqual({ kind: "cut-by-restart", continuedBy: r(2) });
-      expect(scene.effects[0]?.payload).toMatchObject({ resume: "native-1" });
+      const captured = play([
+        ...running,
+        recovered(),
+        fired("restart-continuation", r(1)),
+        prepared(2),
+      ]);
+      expect(captured.effects[0]).toMatchObject({
+        kind: "session.open",
+        payload: { resume: "native-1" },
+      });
     },
   },
   ...(
@@ -435,7 +519,7 @@ const transitions: ReadonlyArray<Row> = [
   },
   {
     name: "a restart puts a message whose send never started back at the head, to go as it was",
-    given: [...running, turnEnded, send("second")],
+    given: [...running, turnEnded, send("second"), prepared(2)],
     when: {
       command: {
         _tag: "Recovered",
@@ -457,7 +541,7 @@ const transitions: ReadonlyArray<Row> = [
   },
   {
     name: "a message whose send a restart cut mid-flight goes again in its own words, marked",
-    given: [...running, turnEnded, send("second")],
+    given: [...running, turnEnded, send("second"), prepared(2)],
     when: recovered([effectId(r(2), "provider.send", 1)]),
     run: { n: 2, end: "cut-by-restart", source: "inferred-from-restart" },
     also: (scene) =>
@@ -475,7 +559,7 @@ const transitions: ReadonlyArray<Row> = [
   },
   {
     name: "a restart asks again for the session of an admitted run whose opening it cut",
-    given: [send()],
+    given: [send(), prepared(1)],
     when: recovered([effectId(r(1), "session.open", 1)]),
     events: ["EffectOutcomeRecorded", "EffectRequested"],
     effects: ["session.open"],
@@ -483,7 +567,7 @@ const transitions: ReadonlyArray<Row> = [
   },
   {
     name: "a turn the agent starts itself joins the run whose work it reports",
-    given: [...running, turnEnded, { command: send("other"), by: bo }, ended(2)],
+    given: [...running, turnEnded, { command: send("other"), by: bo }, prepared(2), ended(2)],
     when: signal({
       kind: "turn-started",
       turn: "bg" as TurnHandle,
@@ -584,17 +668,27 @@ const transitions: ReadonlyArray<Row> = [
     },
   },
   {
-    name: "a model switch opens a new session for the next run, rotating the old one",
-    given: [...running, turnEnded, { _tag: "SwitchModel", model: "opus" }, send("with opus")],
-    when: opened(2, { session: "s2" }),
-    events: [
-      "EffectOutcomeRecorded",
-      "SessionClosed",
-      "SessionOpened",
-      "EffectRequested",
-      "RunSending",
+    name: "a model switch closes the session for the next run and opens one rotating from it",
+    given: [
+      ...running,
+      turnEnded,
+      { _tag: "SwitchModel", model: "opus" },
+      send("with opus"),
+      prepared(2),
+      sessionClosed(),
     ],
-    also: (scene) => expect(scene.events[2]).toMatchObject({ rotatedFrom: s1 }),
+    when: opened(2, { session: "s2" }),
+    events: ["EffectOutcomeRecorded", "SessionOpened", "EffectRequested", "RunSending"],
+    also: (scene) => expect(scene.events[1]).toMatchObject({ rotatedFrom: s1 }),
+  },
+  {
+    name: "a model switch closes the session that does not fit before anything is sent",
+    given: [...running, turnEnded, { _tag: "SwitchModel", model: "opus" }, send("with opus")],
+    when: prepared(2),
+    events: ["EffectOutcomeRecorded", "EffectRequested", "SessionClosing"],
+    effects: ["session.close"],
+    also: (scene) =>
+      expect(scene.effects[0]).toMatchObject({ lane: "control", payload: { reason: "model" } }),
   },
   {
     name: "archiving an archived conversation records nothing",
@@ -662,8 +756,8 @@ const rejections: ReadonlyArray<{
     reason: "run-ended",
   },
   {
-    name: "a second Stop",
-    given: [...running, stop()],
+    name: "a third Stop while the session closes",
+    given: [...running, stop(), stop()],
     when: stop(),
     reason: "stop-already-asked",
   },
@@ -838,7 +932,7 @@ const delivery = (log: ReadonlyArray<KnownEngineEvent>) =>
     .at(-1);
 const sentTurn = (run: number) =>
   settled(r(run), "provider.send", { kind: "ok", value: { providerTurnId: `t${run}` } });
-const proofRunning: ReadonlyArray<Step> = [send("go"), opened(1), sentTurn(1)];
+const proofRunning: ReadonlyArray<Step> = [send("go"), prepared(1), opened(1), sentTurn(1)];
 
 describe("decide: a turn's signals land on its own run", () => {
   it("the provider's own end of a stopped turn never ends the next run", () => {
@@ -848,6 +942,7 @@ describe("decide: a turn's signals land on its own run", () => {
       stop(),
       settled(r(1), "provider.interrupt", { kind: "ok" }),
       ended(1, { kind: "interrupted" }, "stop-confirmed"),
+      prepared(2),
     ]);
     expect(ends(log)).toEqual(["1:stopped/stop-confirmed"]);
     expect(state.runs[r(2)]?.state).toBe("sending");
@@ -927,6 +1022,7 @@ describe("decide: a session fits by the model the engine asked for", () => {
     const { log } = playAll([
       { _tag: "SwitchModel", model: chosen },
       send("one"),
+      prepared(1),
       settled(r(1), "session.open", {
         kind: "ok",
         value: {
@@ -995,7 +1091,7 @@ describe("decide: a person's message never reads queued once its run has ended",
     ["a usage limit before the turn", [signal({ kind: "usage-limit", resetsAt: T0 + 60_000 })]],
     ["a turn that ended before it was seen to start", [turnEnded]],
   ] as const)("%s settles the message's delivery", (_name, last) => {
-    const { state, log } = playAll([send("go"), opened(1), ...last]);
+    const { state, log } = playAll([send("go"), prepared(1), opened(1), ...last]);
     expect(state.runs[r(1)]?.state).toBe("ended");
     expect(delivery(log)).not.toBe("queued");
   });
@@ -1005,6 +1101,7 @@ describe("decide: an answer the provider refused", () => {
   it("a failed answer leaves the run waiting on its request", () => {
     const { state } = playAll([
       send("go"),
+      prepared(1),
       opened(1),
       sent(1),
       requestOpened("q"),
@@ -1025,7 +1122,7 @@ describe("decide: a usage limit, a refused answer and a message's delivery", () 
       ...proofRunning,
       unknownLimit,
       fired("usage-probe", r(1), T0 + 15 * MINUTE),
-      opened(2),
+      prepared(2),
       signal({ kind: "usage-limit", turn: T(2), resetsAt: null }),
     ]);
     expect(second.state.runs[r(2)]).toMatchObject({ joins: r(1), end: { kind: "usage-limit" } });
@@ -1034,10 +1131,13 @@ describe("decide: a usage limit, a refused answer and a message's delivery", () 
       ...proofRunning,
       unknownLimit,
       fired("usage-probe", r(1), T0 + 15 * MINUTE),
+      prepared(2),
       signal({ kind: "usage-limit", turn: T(2), resetsAt: null }),
       fired("usage-probe", r(2), T0 + 45 * MINUTE),
+      prepared(3),
       signal({ kind: "usage-limit", turn: T(3), resetsAt: null }),
       fired("usage-probe", r(3), T0 + 105 * MINUTE),
+      prepared(4),
       signal({ kind: "usage-limit", turn: T(4), resetsAt: null }),
     ]);
     expect(capped.state.wakes[probeOf(4)]?.dueAt).toBe(T0 + 165 * MINUTE);
@@ -1045,7 +1145,7 @@ describe("decide: a usage limit, a refused answer and a message's delivery", () 
   it("the person writing again lifts a limit whose reset nobody knows", () => {
     const { state } = playAll([...proofRunning, unknownLimit, send("try again")]);
     expect({ run: state.runs[r(2)]?.state, paused: state.pausedUntil }).toEqual({
-      run: "sending",
+      run: "admitted",
       paused: null,
     });
     expect(state.wakes[probeOf(1)]).toBeUndefined();
@@ -1111,7 +1211,7 @@ describe("decide: a usage limit, a refused answer and a message's delivery", () 
       "unknown",
     ],
   ] as const)("%s", (_name, last, expected) => {
-    expect(delivery(playAll([send("go"), opened(1), last]).log)).toBe(expected);
+    expect(delivery(playAll([send("go"), prepared(1), opened(1), last]).log)).toBe(expected);
   });
 });
 
@@ -1213,7 +1313,7 @@ describe("decide: the conversation holds the agent it belongs to", () => {
     expect(state.agent).toEqual(agent);
     expect(state.model).toBe("opus");
     expect(log.find((e) => e._tag === "AgentAssigned")).toMatchObject({ agent, by: ana });
-    const scene = play([{ _tag: "AssignAgent", agent }, send("go")]);
+    const scene = play([{ _tag: "AssignAgent", agent }, send("go"), prepared(1)]);
     expect(scene.effects[0]).toMatchObject({
       kind: "session.open",
       payload: { instanceId: "claude-ana", driver: "claudeAgent", model: "opus" },
@@ -1237,7 +1337,7 @@ describe("decide: the conversation holds the agent it belongs to", () => {
 
 describe("decide: effect lanes", () => {
   it("a send queues in the turn lane; a Stop and an answer in the control lane, never behind it", () => {
-    const sendScene = play([send(), opened(1)]);
+    const sendScene = play([send(), prepared(1), opened(1)]);
     const stopScene = play([...running, stop()]);
     const answerScene = play([
       ...waiting,
@@ -1248,5 +1348,81 @@ describe("decide: effect lanes", () => {
         scene.effects.map((effect) => `${effect.kind}:${effect.lane}`),
       ),
     ).toEqual(["provider.send:turn", "provider.interrupt:control", "provider.respond:control"]);
+  });
+});
+
+describe("decide: sessions close as the engine asks", () => {
+  const closing = (scene: Scene) => scene.state.closing;
+  it("a second Stop on a turn whose first was not confirmed closes its session", () => {
+    const scene = play([...running, stop(), stop()]);
+    expect(scene.effects).toMatchObject([
+      { kind: "session.close", lane: "control", payload: { sessionId: "s1", reason: "stop" } },
+    ]);
+    expect(closing(scene)).toMatchObject({ sessionId: "s1", reason: "stop" });
+    expect(scene.state.runs[r(1)]?.state).toBe("running");
+  });
+  it("the closed session ends a stopped run from the close and the next is admitted", () => {
+    const { state, log } = playAll([...running, send("next"), stop(), stop(), sessionClosed()]);
+    expect(ends(log)).toEqual(["1:stopped/inferred-from-close"]);
+    expect(log.find((e) => e._tag === "SessionClosed")).toMatchObject({ reason: "stop" });
+    expect(state.runs[r(2)]?.state).toBe("admitted");
+  });
+  it("a usage limit that parks its turn closes the session; the resume opens a new one", () => {
+    const reset = T0 + 60 * MINUTE;
+    const scene = play([
+      ...running,
+      signal({ kind: "usage-limit", turn: T(1), resetsAt: reset, parks: true }),
+    ]);
+    expect(scene.effects.map((effect) => effect.kind)).toEqual([
+      "workspace.finish",
+      "session.close",
+    ]);
+    const resumed = play([
+      ...running,
+      signal({ kind: "usage-limit", turn: T(1), resetsAt: reset, parks: true }),
+      sessionClosed(),
+      fired("usage-resume", r(1), reset),
+      prepared(2),
+    ]);
+    expect(resumed.effects).toMatchObject([
+      { kind: "session.open", payload: { resume: "native-1" } },
+    ]);
+  });
+  it("a session with nothing to do starts its idle time, and an admission cancels it", () => {
+    const idle = play([...running, turnEnded]);
+    expect(idle.state.wakes[wakeId(conversation, "session-idle", "s1")]?.dueAt).toBe(
+      T0 + SESSION_IDLE_MS,
+    );
+    const busy = play([...running, turnEnded, send("again")]);
+    expect(busy.events.filter((e) => e._tag === "WakeCancelled")).toMatchObject([
+      { wakeId: wakeId(conversation, "session-idle", "s1") },
+    ]);
+  });
+  it("a session idle for its whole time is closed; one busy with background work is kept", () => {
+    const idleFired = fired("session-idle", "s1", T0 + SESSION_IDLE_MS);
+    const closed = play([...running, turnEnded, idleFired]);
+    expect(closed.effects).toMatchObject([{ kind: "session.close", payload: { reason: "idle" } }]);
+    const kept = play([
+      ...running,
+      turnEnded,
+      idleFired,
+      settled("s1", "session.close", { kind: "ok", value: { kept: true } }),
+    ]);
+    expect(kept.state.session?.id).toBe("s1");
+    expect(kept.events.map((e) => e._tag)).toEqual(["EffectOutcomeRecorded", "WakeArmed"]);
+  });
+  it("signing out closes the conversation's session", () => {
+    const scene = play([...running, turnEnded, { _tag: "CloseSession", reason: "signed-out" }]);
+    expect(scene.effects).toMatchObject([
+      { kind: "session.close", payload: { reason: "signed-out" } },
+    ]);
+  });
+  it("a session closed under a live run ends the run from the close", () => {
+    const { log } = playAll([
+      ...running,
+      { _tag: "CloseSession", reason: "signed-out" },
+      sessionClosed(),
+    ]);
+    expect(ends(log)).toEqual(["1:crashed/inferred-from-close"]);
   });
 });

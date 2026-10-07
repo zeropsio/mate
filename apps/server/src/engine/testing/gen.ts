@@ -116,6 +116,7 @@ export class Gen {
       ["steer", active !== undefined && isLive(active.state) ? 0.5 : 0.05],
       ["model", 0.3],
       ["archive", 0.15],
+      ["sign-out", 0.05],
       ["unarchive", state.archived ? 1 : 0.05],
       ["arm", 0.4],
       ["cancel", wakes.length > 0 ? 0.2 : 0.02],
@@ -173,6 +174,8 @@ export class Gen {
         };
       case "archive":
         return { envelope: this.env({ _tag: "Archive" }), now: at };
+      case "sign-out":
+        return { envelope: this.env({ _tag: "CloseSession", reason: "signed-out" }), now: at };
       case "unarchive":
         return { envelope: this.env({ _tag: "Unarchive" }), now: at };
       case "arm": {
@@ -252,6 +255,10 @@ export class Gen {
       };
     } else if (effect.kind === "provider.send") {
       value = { providerTurnId: `t${++this.turns}` };
+    } else if (effect.kind === "session.close" && rng.chance(0.2)) {
+      value = { kept: true };
+    } else if (effect.kind === "run.prepare" && rng.chance(0.2)) {
+      value = { gaps: [{ service: "api", reason: "Snapshot refused" }] };
     }
     return this.env(
       {
@@ -296,6 +303,8 @@ export class Gen {
         ["turn-ended", 2],
         ["usage-limit", 0.3],
         ["session-exited", 0.15],
+        ["work", 0.4],
+        ["reset-known", 0.1],
         ["activity", 1],
       ]);
       const n = ++this.keys;
@@ -387,10 +396,23 @@ export class Gen {
             kind: "usage-limit",
             ...(rng.chance(0.7) ? { turn: turn() } : {}),
             resetsAt: rng.chance(0.75) ? _now + rng.int(1, 90) * 60_000 : null,
+            ...(rng.chance(0.3) ? { parks: true } : {}),
           });
           break;
         case "session-exited":
           signals.push({ kind: "session-exited", reason: "exit 137" });
+          break;
+        case "work":
+          signals.push({
+            kind: "work-upserted",
+            work: `w${rng.int(1, 3)}`,
+            origin: rng.chance(0.8) ? turn() : "unknown",
+            workKind: rng.pick(["helper", "shell"] as const),
+            status: rng.pick(["running", "running", "completed", "failed", "lost"] as const),
+          });
+          break;
+        case "reset-known":
+          signals.push({ kind: "usage-reset-known", resetsAt: _now + rng.int(1, 60) * 60_000 });
           break;
         default:
           signals.push({ kind: "activity", turn: turn() });

@@ -98,6 +98,8 @@ export type ProviderSignal =
       /** The turn the limit parked or ended; absent between turns. */
       readonly turn?: TurnHandle;
       readonly resetsAt: number | null;
+      /** The driver parked the turn (Claude): its session is closed, the resume reopens it. */
+      readonly parks?: boolean;
     }
   /**
    * Background work the agent started (a helper, a shell, a monitor): an item under the run whose
@@ -138,6 +140,8 @@ export type Command =
   | { readonly _tag: "SwitchModel"; readonly model: string }
   /** The conversation is given the agent it belongs to: instance, driver, model and profile. */
   | { readonly _tag: "AssignAgent"; readonly agent: ConversationAgent }
+  /** Close the conversation's session from outside: the person signed out. */
+  | { readonly _tag: "CloseSession"; readonly reason: "signed-out" }
   | { readonly _tag: "Archive" }
   | { readonly _tag: "Unarchive" }
   | {

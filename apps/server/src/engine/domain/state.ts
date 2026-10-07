@@ -20,6 +20,7 @@ import type {
   RunState,
   RunTrigger,
   SessionCapabilities,
+  SessionCloseReason,
   SessionId,
   TurnHandle,
   WakeId,
@@ -29,7 +30,7 @@ import type {
 export const KEPT_ENDED_RUNS = 16;
 
 /** Bumped whenever the shape changes: a snapshot of another version is ignored and refolded. */
-export const STATE_VERSION = 3;
+export const STATE_VERSION = 4;
 
 export interface RunRecord {
   readonly id: RunId;
@@ -63,6 +64,8 @@ export interface RunRecord {
   readonly sessionOpenAttempts: number;
   /** Sends asked for this run: a run requeued before its send started sends again. */
   readonly sendAttempts: number;
+  /** Its workspace capture (`run.prepare`): none asked, asked, or settled — the send waits on it. */
+  readonly prepare: "none" | "asked" | "done";
   /** The person message that queued it, as the record shows it. */
   readonly personBody: PersonBody | null;
 }
@@ -122,6 +125,8 @@ export interface SessionRecord {
   readonly model: string | null;
   readonly nativeRef: string | null;
   readonly capabilities: SessionCapabilities;
+  /** Closes asked of it: one an idle check kept is asked again later as a new effect. */
+  readonly closeAttempts: number;
 }
 
 export interface ConversationState {
@@ -145,6 +150,14 @@ export interface ConversationState {
   /** Sequence of the latest person message (a sent or steered one). */
   readonly lastPersonSeq: number;
   readonly session: SessionRecord | null;
+  /** The close the engine asked of the session; nothing goes into it meanwhile. */
+  readonly closing: {
+    readonly sessionId: SessionId;
+    readonly reason: SessionCloseReason;
+    readonly effectId: EffectId;
+  } | null;
+  /** The session a model switch closed: the next one opened rotates from it. */
+  readonly rotatingFrom: SessionId | null;
   /** The native thread of the last session, so the next one resumes it. */
   readonly lastNativeRef: string | null;
   /**
@@ -181,6 +194,8 @@ export const initialState = (conversationId: ConversationId): ConversationState 
   turns: {},
   lastPersonSeq: 0,
   session: null,
+  closing: null,
+  rotatingFrom: null,
   lastNativeRef: null,
   pausedUntil: null,
   usageProbeMs: null,

@@ -54,7 +54,13 @@ const signalEnds = ["completed", "failed", "usage-limit", "stopped", "crashed"].
 );
 const ENDERS: Readonly<Record<string, ReadonlyArray<string>>> = {
   Stop: ["stopped/stop-asked"],
-  EffectSettled: ["failed/inferred-from-effect", "stopped/stop-asked"],
+  EffectSettled: [
+    "failed/inferred-from-effect",
+    "stopped/stop-asked",
+    // The session the engine closed: the evidence of its close.
+    "stopped/inferred-from-close",
+    "crashed/inferred-from-close",
+  ],
   ProviderSignals: signalEnds,
   Recovered: ["cut-by-restart/inferred-from-restart"],
 };

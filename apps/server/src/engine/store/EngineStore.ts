@@ -287,6 +287,7 @@ export const makeEngineStore = Effect.fn("makeEngineStore")(function* (
           UPDATE engine_wake SET state = 'cancelled' WHERE wake_id = ${event.wakeId}
         `.pipe(Effect.asVoid);
       case "AgentAssigned":
+      case "SessionClosing":
       case "ModelSwitched":
       case "UsagePauseLifted":
       case "ConversationArchived":

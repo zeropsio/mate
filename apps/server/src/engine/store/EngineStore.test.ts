@@ -21,6 +21,7 @@ import {
   ended,
   envelope,
   opened,
+  prepared,
   r,
   send,
   sent,
@@ -78,7 +79,7 @@ describe("EngineStore", () => {
             result: { _tag: "Accepted", seq: 4, runId: r(1), itemId: `${r(1)}/i/1` },
             run: { state: "admitted", rev: 3 },
             item: { kind: "person" },
-            effects: [{ kind: "session.open", state: "pending" }],
+            effects: [{ kind: "run.prepare", state: "pending" }],
             enqueued: true,
           },
         );
@@ -222,6 +223,7 @@ describe("EngineStore", () => {
         const store = yield* makeEngineStore({ snapshotEvery: 5 });
         const script = [
           send(),
+          prepared(1),
           opened(1),
           sent(1),
           signal(
@@ -234,6 +236,7 @@ describe("EngineStore", () => {
           ),
           send("queued"),
           turnEnded,
+          prepared(2),
           sent(2),
           signal({
             kind: "item-opened",
@@ -288,6 +291,7 @@ describe("EngineStore", () => {
         const store = yield* makeEngineStore();
         yield* drive(store, initialState(conversation), [
           send(),
+          prepared(1),
           opened(1),
           sent(1),
           signal({
