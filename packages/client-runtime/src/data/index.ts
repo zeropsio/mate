@@ -106,6 +106,7 @@ export type {
   VaultWrite,
 } from "./projections/vaultModel.ts";
 export { vault, type VaultKey } from "./projections/vault.ts";
+export { vaultChangesSince, vaultImpact, vaultNote } from "./projections/vaultChanges.ts";
 export {
   projectVariablesScope,
   type ProjectVariablesValue,
