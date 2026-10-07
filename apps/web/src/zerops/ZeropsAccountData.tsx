@@ -20,11 +20,13 @@ import {
   type AccountReads,
   type BuildLogRegistry,
   type DetailDemand,
+  type DatabaseReads,
   type Projection,
 } from "@t3tools/client-runtime/data";
 import { Atom } from "effect/unstable/reactivity";
 import { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
 
+import { useAccountDatabase } from "./accountDatabase";
 import { useAccountBuildLogs } from "./accountBuildLogs";
 import { onAccountLifetimeClose } from "./accountLifetime";
 import { accountOperations, AccountOperationsContext } from "./accountOperations";
@@ -37,6 +39,7 @@ import { useZeropsSession } from "./ZeropsSessionProvider";
  */
 export interface AccountData extends AccountReads {
   readonly retry: () => void;
+  readonly database?: DatabaseReads | null;
   /** The organization's official HQ, once known (`ZeropsHqNavigation`); `null` while none is. */
   readonly showHq: AccountObservation["showHq"];
   /** Asks HQ where a Mate may move, as the move opens. */
@@ -78,6 +81,7 @@ export function ZeropsAccountData({ children }: { readonly children: ReactNode }
     [client, store],
   );
   const logs = useAccountBuildLogs(client, store);
+  const database = useAccountDatabase(store);
   const orgId = status === "signed-in" ? (activeOrganization?.id ?? null) : null;
   // The account's lifetime closes (sign-out, another account) before React unmounts this, and
   // disposes the registry right after: the account's data ends first, so what the unmounting
@@ -90,6 +94,7 @@ export function ZeropsAccountData({ children }: { readonly children: ReactNode }
   const value = useMemo(
     () => ({
       data: store.data,
+      database,
       viewer: activeOrganization ?? undefined,
       orgId,
       demandDetail: observation.demandDetail,
@@ -104,7 +109,7 @@ export function ZeropsAccountData({ children }: { readonly children: ReactNode }
       logs,
       compare: observation.compare,
     }),
-    [activeOrganization, logs, observation, orgId, store],
+    [activeOrganization, database, logs, observation, orgId, store],
   );
   // Each open Mate's attention straight from it, and what the person saw of its results to HQ.
   useOpenMatesAttention(store);

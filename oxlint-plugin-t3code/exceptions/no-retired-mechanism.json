@@ -240,22 +240,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/components/chat/ChatComposer.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsDataCatalogStore",
-    "owner": "data-layer rewrite: services",
-    "reason": "a component runs its own data-catalog requests; the adapter owns them",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/chat/ChatComposer.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsDataCatalogStore",
-    "owner": "data-layer rewrite: services",
-    "reason": "a component runs its own data-catalog requests; the adapter owns them",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/components/chat/ProviderModelPicker.tsx",
     "kind": "retired-token",
     "fingerprint": "rememberComposerControl",
@@ -405,14 +389,6 @@
     "fingerprint": "useSentAsks",
     "owner": "data-layer rewrite: operations",
     "reason": "creations and sent asks are kept by the app; the operations adapter feeds the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsDataPanel.tsx",
-    "kind": "retired-token",
-    "fingerprint": "const runRequest = async",
-    "owner": "data-layer rewrite: services",
-    "reason": "Mate database catalog and query reads need their own fact family and surface projection. They do not call the removed Zerops runtime; removing them here would delete current database actions.",
     "expires": "never"
   },
   {
@@ -1096,14 +1072,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/zerops/dataCatalog.ts",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsDataCatalogStore",
-    "owner": "data-layer rewrite: services",
-    "reason": "Mate database catalog and query reads need their own fact family and surface projection. They do not call the removed Zerops runtime; removing them here would delete current database actions.",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/zerops/feeds.ts",
     "kind": "retired-token",
     "fingerprint": "createZeropsFeedAtoms",
@@ -1325,30 +1293,6 @@
     "fingerprint": "useMatesSettled()",
     "owner": "data-layer rewrite: HQ structure/apps",
     "reason": "a settled flag for HQ Mates stands in for the stream's state; read the stream state",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsDataMentions.ts",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsDataCatalogStore",
-    "owner": "data-layer rewrite: services",
-    "reason": "a component runs its own data-catalog requests; the adapter owns them",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsDataMentions.ts",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsDataCatalogStore",
-    "owner": "data-layer rewrite: services",
-    "reason": "a component runs its own data-catalog requests; the adapter owns them",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsDataMentions.ts",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsDataCatalogStore",
-    "owner": "data-layer rewrite: services",
-    "reason": "a component runs its own data-catalog requests; the adapter owns them",
     "expires": "never"
   },
   {

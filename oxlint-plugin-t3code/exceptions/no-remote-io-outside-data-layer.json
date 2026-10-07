@@ -304,14 +304,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/zerops/commands.ts",
-    "kind": "CallExpression",
-    "fingerprint": "createEnvironmentRpcCommand",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "only the data layer's adapters reach a remote: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/zerops/crew/crewCommands.ts",
     "kind": "CallExpression",
     "fingerprint": "createEnvironmentRpcCommand",
@@ -333,14 +325,6 @@
     "fingerprint": "createEnvironmentRpcCommand",
     "owner": "data-layer rewrite: Mate identity/connection",
     "reason": "only the data layer's adapters reach a remote: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/feeds.ts",
-    "kind": "CallExpression",
-    "fingerprint": "createEnvironmentRpcSubscriptionAtomFamily",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "only the data layer's adapters reach a remote: the app opens a Mate or Zerops stream or reads a Mate itself; the adapter owns it and the app reads the projection",
     "expires": "never"
   },
   {

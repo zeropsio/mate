@@ -9,8 +9,18 @@ import type {
   ZeropsDataConsoleTablePage,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
-import { AsyncResult } from "effect/unstable/reactivity";
-import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { AtomRegistry, AsyncResult } from "effect/unstable/reactivity";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+
+import {
+  makeAccountStore,
+  makeDatabaseReads,
+  databasePanel,
+  readsOfState,
+  type AccountStore,
+  type DatabaseReads,
+} from "@t3tools/client-runtime/data";
+import { joinServicesWithTopology } from "@t3tools/client-runtime/zerops/dataConsole";
 
 import type { TerminalContextSelection } from "../../lib/terminalContext";
 import { reactHookHarness as hooks } from "../../test/reactHookHarness";
@@ -73,12 +83,36 @@ vi.mock("./ZeropsMateUpdateControl", () => ({
   }) => children({ line: "mate-update-line", menuActions: [] }),
 }));
 
-vi.mock("../../state/use-atom-command", () => ({
-  useAtomCommand: () => commandSpy,
-}));
-
-vi.mock("../../state/zeropsCommands", () => ({
-  zeropsCommands: { dataConsoleCall: Symbol("dataConsoleCall") },
+let accountStore: AccountStore;
+let database: DatabaseReads;
+let atomRegistry: AtomRegistry.AtomRegistry;
+vi.mock("../../zerops/useDatabase", () => ({
+  useDatabasePanel: (environmentId: EnvironmentId | null, panelId: string) => ({
+    ...databasePanel.derive(readsOfState(accountStore.state()), {
+      environmentId: environmentId ?? EnvironmentId.make("none"),
+      panelId,
+    }),
+    available: true,
+    read: (intent: Parameters<DatabaseReads["read"]>[2]) =>
+      environmentId === null ? Promise.resolve() : database.read(environmentId, panelId, intent),
+    update: (intent: Parameters<DatabaseReads["update"]>[2]) => {
+      if (environmentId !== null) database.update(environmentId, panelId, intent);
+    },
+  }),
+  useDatabaseServices: (environmentId: EnvironmentId | null, panelId: string) => {
+    const panel = databasePanel.derive(readsOfState(accountStore.state()), {
+      environmentId: environmentId ?? EnvironmentId.make("none"),
+      panelId,
+    });
+    return joinServicesWithTopology(
+      panel.services ?? [],
+      (
+        feedState.topology.view as
+          | { services?: Parameters<typeof joinServicesWithTopology>[1] }
+          | undefined
+      )?.services,
+    );
+  },
 }));
 
 import { collapsedPrefix, treePathKey } from "@t3tools/client-runtime/zerops/dataConsole";
@@ -252,7 +286,23 @@ async function serviceTab(options: RenderOptions = {}) {
 }
 
 describe("ZeropsDataPanel", () => {
+  afterEach(() => {
+    database.close();
+    atomRegistry.dispose();
+  });
   beforeEach(() => {
+    atomRegistry = AtomRegistry.make();
+    accountStore = makeAccountStore(atomRegistry);
+    database = makeDatabaseReads({
+      store: accountStore,
+      wire: {
+        call: async (environmentId, input) => {
+          const result = await commandSpy({ environmentId, input });
+          if (result?._tag === "Success") return result.value;
+          throw result?._tag === "Failure" ? Cause.squash(result.cause) : new Error("No answer");
+        },
+      },
+    });
     hooks.reset();
     commandSpy.mockReset();
     onOpenService.mockReset();

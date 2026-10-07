@@ -4,6 +4,7 @@
  *
  * @module data/families
  */
+import { databaseFamily, databaseSessionFamily } from "./database.ts";
 import { hqChangeReadFamily } from "./hqChangeRead.ts";
 import type { Family, MemberState, ScopeKey } from "../model.ts";
 import {
@@ -82,6 +83,8 @@ export const FAMILIES = defineFamilies([
   hqProtocolFamily,
   hqPictureFamily,
   hqChangeReadFamily,
+  databaseFamily,
+  databaseSessionFamily,
 ]);
 
 const byFamily = new Map<string, AnyFamilySpec>(FAMILIES.map((spec) => [spec.family, spec]));
@@ -119,7 +122,9 @@ export function scopeListing(scope: ScopeKey): ScopeListing {
  * once where time never ages it; the rest realtime.
  */
 export function streamMode(key: string): "realtime" | "sampled" | "once" {
-  if (key.startsWith("mate:")) return "sampled";
+  if (key.startsWith("mate:database-session-")) return "realtime";
+  if (key.startsWith("mate:"))
+    return bySuffix.get(key.split(":")[2] ?? "")?.spec.scope.mode ?? "sampled";
   const sampled = bySuffix.get(key.split(":")[2] ?? "")?.spec.sampled;
   if (sampled === undefined) return "realtime";
   return sampled.freshMs === null ? "once" : "sampled";

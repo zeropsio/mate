@@ -3,9 +3,12 @@ import type {
   ZeropsDataConsoleRequest,
   ZeropsDataConsoleResponse,
 } from "@t3tools/contracts";
-import { beforeEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 
-import { useZeropsDataCatalogStore } from "./dataCatalog";
+import { AtomRegistry } from "effect/unstable/reactivity";
+import { makeAccountStore, readsOfState, type AccountStore } from "../store.ts";
+import { databaseCatalog } from "../projections/database.ts";
+import { makeDatabaseReads, type DatabaseReads } from "./database.ts";
 
 const environmentId = "env-1" as EnvironmentId;
 
@@ -69,53 +72,77 @@ const twoLevelCaller = () =>
     return undefined;
   });
 
-describe("useZeropsDataCatalogStore", () => {
+let registry: AtomRegistry.AtomRegistry;
+let store: AccountStore;
+let database: DatabaseReads;
+let sourceCall: (
+  request: ZeropsDataConsoleRequest,
+) => Promise<ZeropsDataConsoleResponse | undefined>;
+const load = (call: typeof sourceCall) => {
+  sourceCall = call;
+  return database.catalog(environmentId);
+};
+const entry = () => databaseCatalog.derive(readsOfState(store.state()), environmentId);
+
+describe("database catalog behaviour", () => {
   beforeEach(() => {
-    useZeropsDataCatalogStore.setState({ byEnvironment: {} });
+    registry = AtomRegistry.make();
+    store = makeAccountStore(registry);
+    database = makeDatabaseReads({
+      store,
+      wire: {
+        call: async (_environmentId, request) => {
+          const answer = await sourceCall(request);
+          if (answer === undefined)
+            throw { outcome: "definitive-refusal", message: "No catalog answer." };
+          return answer;
+        },
+      },
+    });
+  });
+  afterEach(() => {
+    database.close();
+    registry.dispose();
   });
 
   it("discovers with a refresh, so a service created after the console started is offered", async () => {
     const caller = twoLevelCaller();
-    await useZeropsDataCatalogStore.getState().load(environmentId, caller.call);
+    await load(caller.call);
 
     expect(caller.requests[0]).toEqual({ kind: "refresh" });
   });
 
   it("walks browsable services down through their containers and lists their tables", async () => {
     const caller = twoLevelCaller();
-    await useZeropsDataCatalogStore.getState().load(environmentId, caller.call);
+    await load(caller.call);
 
-    const entry = useZeropsDataCatalogStore.getState().byEnvironment[environmentId];
-    expect(entry?.status).toBe("ready");
-    expect(entry?.entries.map((mention) => mention.token)).toEqual(["db", "db.orders"]);
+    const result = entry();
+    expect(result?.status).toBe("ready");
+    expect(result?.entries.map((mention) => mention.token)).toEqual(["db", "db.orders"]);
     expect(caller.requests.filter((request) => request.kind === "tree").length).toBe(2);
   });
 
   it("loads once per environment and never re-requests for the session", async () => {
     const caller = twoLevelCaller();
-    await useZeropsDataCatalogStore.getState().load(environmentId, caller.call);
-    await useZeropsDataCatalogStore.getState().load(environmentId, caller.call);
+    await load(caller.call);
+    await load(caller.call);
 
     expect(caller.requests.filter((request) => request.kind === "refresh").length).toBe(1);
   });
 
   it("fails without throwing when discovery answers nothing", async () => {
     const caller = callerFor(() => undefined);
-    await useZeropsDataCatalogStore.getState().load(environmentId, caller.call);
+    await load(caller.call);
 
-    const entry = useZeropsDataCatalogStore.getState().byEnvironment[environmentId];
-    expect(entry?.status).toBe("failed");
-    expect(entry?.entries).toEqual([]);
+    const result = entry();
+    expect(result?.status).toBe("failed");
+    expect(result?.entries).toEqual([]);
   });
 
   it("fails without throwing when a request rejects", async () => {
-    await useZeropsDataCatalogStore
-      .getState()
-      .load(environmentId, () => Promise.reject(new Error("gone")));
+    await load(() => Promise.reject(new Error("gone")));
 
-    expect(useZeropsDataCatalogStore.getState().byEnvironment[environmentId]?.status).toBe(
-      "failed",
-    );
+    expect(entry()?.status).toBe("failed");
   });
 
   it("keeps a service whose tree fails, with the tables it did read", async () => {
@@ -129,11 +156,11 @@ describe("useZeropsDataCatalogStore", () => {
           } as ZeropsDataConsoleResponse)
         : undefined,
     );
-    await useZeropsDataCatalogStore.getState().load(environmentId, caller.call);
+    await load(caller.call);
 
-    const entry = useZeropsDataCatalogStore.getState().byEnvironment[environmentId];
-    expect(entry?.status).toBe("ready");
-    expect(entry?.entries.map((mention) => mention.token)).toEqual(["db"]);
+    const result = entry();
+    expect(result?.status).toBe("ready");
+    expect(result?.entries.map((mention) => mention.token)).toEqual(["db"]);
   });
 
   it("drops a lone schema from the mention token and keeps the full path as an alias", async () => {
@@ -162,9 +189,9 @@ describe("useZeropsDataCatalogStore", () => {
       }
       return undefined;
     });
-    await useZeropsDataCatalogStore.getState().load(environmentId, caller.call);
+    await load(caller.call);
 
-    const entries = useZeropsDataCatalogStore.getState().byEnvironment[environmentId]?.entries;
+    const entries = entry()?.entries;
     expect(entries?.map((entry) => entry.token)).toEqual(["db", "db.orders"]);
     expect(entries?.[1]?.aliases).toEqual(["db.public.orders"]);
   });
@@ -195,12 +222,12 @@ describe("useZeropsDataCatalogStore", () => {
       }
       return undefined;
     });
-    await useZeropsDataCatalogStore.getState().load(environmentId, caller.call);
+    await load(caller.call);
 
-    expect(
-      useZeropsDataCatalogStore
-        .getState()
-        .byEnvironment[environmentId]?.entries.map((entry) => entry.token),
-    ).toEqual(["db", "db.public.orders", "db.billing.orders"]);
+    expect(entry().entries.map((entry) => entry.token)).toEqual([
+      "db",
+      "db.public.orders",
+      "db.billing.orders",
+    ]);
   });
 });

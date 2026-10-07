@@ -6,9 +6,11 @@ import { reactHookHarness as hooks } from "../test/reactHookHarness";
 const feedState = vi.hoisted(() => ({ session: undefined as unknown }));
 const catalogState = vi.hoisted(() => ({
   load: vi.fn(() => Promise.resolve()),
-  byEnvironment: {} as Record<string, unknown>,
+  catalog: { status: "loading", entries: [] } as {
+    status: string;
+    entries: ReadonlyArray<unknown>;
+  },
 }));
-const commandSpy = vi.hoisted(() => vi.fn());
 
 vi.mock("react", async (importOriginal) => {
   const actual = await importOriginal<typeof import("react")>();
@@ -29,16 +31,11 @@ vi.mock("./useZeropsFeeds", () => ({
   useZeropsDataConsole: () => feedState.session,
 }));
 
-vi.mock("./dataCatalog", () => ({
-  useZeropsDataCatalogStore: (selector: (state: unknown) => unknown) => selector(catalogState),
-}));
-
-vi.mock("../state/use-atom-command", () => ({
-  useAtomCommand: () => commandSpy,
-}));
-
-vi.mock("../state/zeropsCommands", () => ({
-  zeropsCommands: { dataConsoleCall: Symbol("dataConsoleCall") },
+vi.mock("./useDatabase", () => ({
+  useDatabaseCatalog: () => catalogState.catalog,
+  useDatabaseCatalogDemand: (_environmentId: unknown, demanded: boolean) => {
+    if (demanded) catalogState.load();
+  },
 }));
 
 import { useZeropsDataMentions } from "./useZeropsDataMentions";
@@ -53,8 +50,7 @@ function call(query: string | null) {
 describe("useZeropsDataMentions", () => {
   beforeEach(() => {
     catalogState.load.mockClear();
-    catalogState.byEnvironment = {};
-    commandSpy.mockReset();
+    catalogState.catalog = { status: "loading", entries: [] };
     feedState.session = undefined;
   });
 
@@ -89,21 +85,19 @@ describe("useZeropsDataMentions", () => {
 
   it("matches the loaded catalog once it is ready", () => {
     feedState.session = { status: "ready" };
-    catalogState.byEnvironment = {
-      [environmentId]: {
-        status: "ready",
-        entries: [
-          {
-            kind: "table",
-            service: "db",
-            serviceType: "postgresql@16",
-            segments: ["public", "orders"],
-            token: "db.public.orders",
-            aliases: ["db.orders"],
-            label: "db · public.orders",
-          },
-        ],
-      },
+    catalogState.catalog = {
+      status: "ready",
+      entries: [
+        {
+          kind: "table",
+          service: "db",
+          serviceType: "postgresql@16",
+          segments: ["public", "orders"],
+          token: "db.public.orders",
+          aliases: ["db.orders"],
+          label: "db · public.orders",
+        },
+      ],
     };
 
     expect(call("db.orders").map((entry) => entry.token)).toEqual(["db.public.orders"]);

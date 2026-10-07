@@ -240,6 +240,23 @@ export {
 } from "./projections/inventory.ts";
 
 export {
+  makeDatabaseReads,
+  makeDatabaseWire,
+  type DatabaseReads,
+  type DatabaseReadIntent,
+} from "./adapters/database.ts";
+export {
+  databasePanel,
+  databaseSession,
+  databaseServices,
+  databaseCatalog,
+  databaseMentionContext,
+  type DatabasePanelRead,
+  type DatabaseCatalogRead,
+} from "./projections/database.ts";
+export { emptyDatabasePanel, databaseTreeTarget } from "./families/database.ts";
+
+export {
   inventoryTopology,
   EMPTY_PROJECT_TOPOLOGY_SNAPSHOT,
   type ProjectTopologySnapshot,

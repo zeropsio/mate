@@ -18,6 +18,8 @@
  * (`ChatView.tsx`, `ZeropsPanel.tsx`) demands it, and where a caller that needs liveness or
  * the last-read error reads it instead of through this thin view-only read.
  */
+import { useDatabaseSession } from "./useDatabaseSession";
+
 import { useAtomValue } from "@effect/atom-react";
 import type {
   EnvironmentId,
@@ -31,10 +33,6 @@ import {
   INITIAL_BROWSER_STREAM_STATE,
   type ZeropsBrowserStreamState,
 } from "@t3tools/client-runtime/zerops/browserStream";
-import {
-  INITIAL_DATA_CONSOLE_STATE,
-  type ZeropsDataConsoleSessionState,
-} from "@t3tools/client-runtime/zerops/dataConsole";
 import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
 import type { ProjectRef } from "@t3tools/client-runtime/zerops/data";
 import type { ZeropsTopologyView } from "@t3tools/client-runtime/zerops/topology";
@@ -138,24 +136,5 @@ export function useZeropsBrowserStream(
   return AsyncResult.getOrElse(result, () => INITIAL_BROWSER_STREAM_STATE);
 }
 
-/**
- * `undefined` — no environment, nothing to show. Unlike
- * `useZeropsBrowserStream`, a failed subscription collapses to the same
- * `idle` snapshot as "not yet connected" rather than a distinct
- * `"unavailable"` sentinel: `subscribeZeropsDataConsole` ships together with
- * this panel (there is no pre-existing server build that lacks the method
- * the way 0.2.5 lacks the browser stream), and the session status enum
- * already carries its own `"unavailable"` state for the broker-level
- * failure the panel shows.
- */
-export function useZeropsDataConsole(
-  environmentId: EnvironmentId | null,
-): ZeropsDataConsoleSessionState | undefined {
-  const result = useAtomValue(
-    environmentId === null ? EMPTY_ATOM : zeropsFeeds.dataConsole({ environmentId, input: {} }),
-  );
-  if (environmentId === null || result === undefined) {
-    return undefined;
-  }
-  return AsyncResult.getOrElse(result, () => INITIAL_DATA_CONSOLE_STATE);
-}
+/** The console process's status through its account projection and shared detail demand. */
+export const useZeropsDataConsole = useDatabaseSession;

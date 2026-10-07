@@ -176,6 +176,8 @@ export interface FamilySpec<F extends Family> {
     readonly suffix: string;
     readonly leaving: MemberState;
     readonly demand: "navigation" | "detail";
+    /** How a Mate scope is observed while demanded: pushes, repeated reads or one answer. */
+    readonly mode?: "realtime" | "sampled" | "once";
   };
   /**
    * The indexes the reducer keeps for it. A member's `listed` is how this family's own scope lists

@@ -27,11 +27,9 @@ import {
   emptyTable,
   emptyTree,
   expandTreePath,
-  foldDataConsoleSessionEvent,
   formatCell,
   filtersDirty,
   hasActiveFilters,
-  INITIAL_DATA_CONSOLE_STATE,
   documentListingModel,
   isNodeUnloaded,
   joinServicesWithTopology,
@@ -48,32 +46,6 @@ import {
   treePathKey,
   visibleColumns,
 } from "./dataConsole.ts";
-
-// ---------------------------------------------------------------------------
-// Session fold
-// ---------------------------------------------------------------------------
-
-describe("foldDataConsoleSessionEvent", () => {
-  it("starts idle", () => {
-    expect(INITIAL_DATA_CONSOLE_STATE).toEqual({ status: "idle" });
-  });
-
-  it("adopts the event's status/reason (the server's first emission re-seeds state); allowWrites is not folded (unread in this read-only slice)", () => {
-    const next = foldDataConsoleSessionEvent(INITIAL_DATA_CONSOLE_STATE, {
-      status: "ready",
-      allowWrites: true,
-    });
-    expect(next).toEqual({ status: "ready", reason: undefined });
-  });
-
-  it("carries the unavailable reason through", () => {
-    const next = foldDataConsoleSessionEvent(INITIAL_DATA_CONSOLE_STATE, {
-      status: "unavailable",
-      reason: "zcp is not available",
-    });
-    expect(next).toEqual({ status: "unavailable", reason: "zcp is not available" });
-  });
-});
 
 // ---------------------------------------------------------------------------
 // Tree model

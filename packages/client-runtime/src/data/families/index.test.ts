@@ -63,6 +63,9 @@ describe("the registries", () => {
     { key: "zerops:org:projectRoutings:p1", mode: "realtime" },
     { key: "zerops:org:agents:s1", mode: "sampled" },
     { key: "hq:org:unregistered", mode: "realtime" },
+    { key: "mate:env:database:panel/query", mode: "once" },
+    { key: "mate:database-session-env", mode: "realtime" },
+    { key: "mate:database-session-env:database-session", mode: "realtime" },
   ])("observe $key as $mode", ({ key, mode }) => {
     expect(streamMode(key)).toBe(mode);
   });
