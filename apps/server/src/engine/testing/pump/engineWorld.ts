@@ -70,6 +70,8 @@ export interface WorldOptions {
   readonly driver: BridgeDriver;
   /** Admission refuses every run with these words. */
   readonly refuse?: string;
+  /** Admission itself breaks (a defect) with these words. */
+  readonly admissionDies?: string;
 }
 
 let lives = 0;
@@ -89,9 +91,11 @@ export const makeEngineWorld = (options: WorldOptions) =>
         RunAdmission,
         RunAdmission.of({
           admit: () =>
-            options.refuse === undefined
-              ? Effect.void
-              : Effect.fail(new RunRefused({ message: options.refuse })),
+            options.admissionDies !== undefined
+              ? Effect.die(new Error(options.admissionDies))
+              : options.refuse === undefined
+                ? Effect.void
+                : Effect.fail(new RunRefused({ message: options.refuse })),
         }),
       ),
       Layer.succeed(

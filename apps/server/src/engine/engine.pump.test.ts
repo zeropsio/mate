@@ -25,6 +25,7 @@ const world = (
   driver: BridgeDriver,
   options: {
     readonly refuse?: string;
+    readonly admissionDies?: string;
     readonly scripted?: Partial<{ ignoreInterrupt: boolean; holdNextSend: boolean }>;
   } = {},
 ) =>
@@ -32,6 +33,7 @@ const world = (
     const w = yield* makeEngineWorld({
       driver,
       ...(options.refuse === undefined ? {} : { refuse: options.refuse }),
+      ...(options.admissionDies === undefined ? {} : { admissionDies: options.admissionDies }),
     });
     Object.assign(w.provider.options, options.scripted ?? {});
     yield* w.boot;
@@ -117,6 +119,21 @@ describe("the running engine", () => {
             "inferred-from-effect",
           ],
         );
+        assert.isFalse(w.history.calls.some((call) => call.startsWith("prepare")));
+        assert.deepStrictEqual(w.provider.calls, []);
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  it.effect("an admission that breaks ends the run failed, and nothing is captured or sent", () =>
+    scene(
+      Effect.gen(function* () {
+        const w = yield* world("codex", { admissionDies: "the signer store is unreachable" });
+        yield* send(w);
+        yield* w.advance(MINUTE);
+        const run = yield* w.run(r(1));
+        assert.deepStrictEqual([run?.end?.kind, run?.source], ["failed", "inferred-from-effect"]);
         assert.isFalse(w.history.calls.some((call) => call.startsWith("prepare")));
         assert.deepStrictEqual(w.provider.calls, []);
         yield* w.shutdown;
