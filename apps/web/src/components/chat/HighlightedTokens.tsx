@@ -16,15 +16,15 @@ type TokenLines = ReadonlyArray<ReadonlyArray<SyntaxToken>>;
 const NO_EMBEDDED_SCRIPTS: ReadonlyArray<EmbeddedScript> = [];
 
 /**
- * A token's style. `muted` mixes its hue into the muted ink and drops bold, so
- * highlighted code reads no louder than the same code in that ink.
+ * A token's style. `muted` mixes 30% of its hue into the muted ink and drops
+ * bold, so highlighted code reads no louder than the same code in that ink.
  */
 function syntaxTokenStyle(token: SyntaxToken, muted = false): CSSProperties {
   const fontStyle = token.fontStyle ?? 0;
   if (muted) {
     return {
       ...(token.color
-        ? { color: `color-mix(in srgb, ${token.color} 55%, var(--muted-foreground))` }
+        ? { color: `color-mix(in srgb, ${token.color} 30%, var(--muted-foreground))` }
         : {}),
       ...(fontStyle & 1 ? { fontStyle: "italic" } : {}),
     };
