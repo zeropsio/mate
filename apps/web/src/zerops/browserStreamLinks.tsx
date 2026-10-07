@@ -79,7 +79,7 @@ export function MateBrowserFrames({
     );
   }, [registry, store]);
   useEffect(() => onAccountLifetimeClose(host.close), [host]);
-  useEffect(() => () => host.close(), [host]);
+  // View cleanup releases its holds; only the account ends this host permanently.
   return <BrowserDemandContext value={host.hold}>{children}</BrowserDemandContext>;
 }
 function useBrowserDemand(environmentId: EnvironmentId | null): void {

@@ -253,7 +253,9 @@ frames stay last-known after reconnect until that revision is observed again; ru
 last-known images. A frame without that identity cannot become a call result just because a card is mounted or a call
 is active. Older servers omit the identity, so their call slots stay unknown while the live browser
 panel still reads the viewport. The optional RPC call-result capability keeps older clients able
-to subscribe to the same relay. Account teardown closes demanded adapters before registry disposal.
+to subscribe to the same relay. View cleanup releases shared demand without permanently closing
+its host, so StrictMode can acquire it again. Account teardown permanently closes demanded adapters
+before registry disposal.
 
 The three guard ledgers retain only findings whose exact fingerprints still exist. Every surviving
 entry explains its retained dependency: 64 remote-I/O findings, 205 retired-mechanism findings and
