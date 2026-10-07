@@ -40,6 +40,7 @@ import type { EffectWorkerOptions } from "./outbox/EffectWorker.ts";
 import * as TurnPumpModule from "./pump/TurnPump.ts";
 import * as EngineStoreModule from "./store/EngineStore.ts";
 import { runEngineMigrations } from "./store/migrations.ts";
+import { makeEngineWire, type EngineWireOptions } from "./wire/EngineWire.ts";
 
 const ENGINE = { kind: "engine" } as const;
 
@@ -64,6 +65,7 @@ interface RunEndRow {
 export interface LiveEngineOptions {
   readonly worker?: EffectWorkerOptions;
   readonly conversations?: ConversationsModule.ConversationsOptions;
+  readonly wire?: EngineWireOptions;
 }
 
 export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
@@ -320,8 +322,11 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
         Effect.orElseSucceed(() => undefined),
       );
 
+    const wire = yield* makeEngineWire(options.wire);
+
     return MateEngine.of({
       live: true,
+      wire,
       start,
       conversations: readConversationViews.pipe(
         Effect.provideService(Conversations, conversations),

@@ -43,4 +43,5 @@ export * from "./usage.ts";
 export * from "./rpc.ts";
 export * from "./agentUsage.ts";
 export * from "./engine.ts";
+export * from "./engineWire.ts";
 export * from "./mateHealth.ts";
