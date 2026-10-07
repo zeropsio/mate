@@ -22,36 +22,10 @@ here (the owner decides only what the orchestrator brief §6 lists).
     test, not banned; one `isLatestTurnSettled` (`packages/shared/src/orchestrationTiming.ts`). |
     five vocabularies disagreed; the first bridge flipped finished relay states back to active; the
     first order hid the Woke dismiss button
-- **2026-08-30** — W3-F5c-DOOR is re-scoped: nothing in the client reads `bootstrapMethods` to
-  choose a door today (the door is `isHostedStaticApp()` + `/api/auth/session`), so the slice
-  introduces one pure `resolveDoor(gate, { pathname, environmentCount })` over a named four-way gate
-  state, consumed at all seven gate sites plus a new gate on `/zerops`, folding
-  `resolveChatIndexView` in; `bootstrapMethods` becomes a door input only for the manual-link copy
-  (`zerops-identity` branch); the hosted-static short-circuit stays first (desktop boots on
-  `t3code://`); widening the same-origin door, `platform.ts`'s connection source, the `/mate`
-  constant and favicons stay F6.
-  - _Why:_ the descriptor is not a door input yet; desktop would crash on a descriptor fetch before
-    the short-circuit; R4 owns the copy module
-- **2026-08-30** — `ZeropsChatChrome.panel` (available/unavailable/unknown) is produced by the chat
-  chrome resolver for W3-F5c-PANEL's launcher adapter (`zeropsPanel` input); until PANEL lands its
-  only reader is `launcher`. Declared, not orphaned.
-- **2026-08-30** — The chat chrome hands the Zerops panel the agent-auth SNAPSHOT it owns
-  (`agentAuthCard: snapshot | null`), never a boolean: ownership of the card is unforgeable — a
-  surface renders only what the resolver produced.
 - **2026-08-30** — Timeline folds: a settled Zerops milestone escapes every collapse path — turn
   fold, partitioned tool summary, overflow, AND the active-turn `work-live` group (a research gap:
   the inventory said three). Membership is by entry identity, never by id (duplicate ids exist). An
   escaped card is a standalone row (keeps its section wrapper).
-- **2026-08-30** — The door resolver reproduces HEAD exactly: pathname normalised the way the router
-  matches (`/pair/`, `/Pair`), the `/connect` carve-out is a SHELL rule only, `/pair` renders the
-  redirect it resolves to (no phrase-less null), the shell reads a named `gate` field (no synthetic
-  second call), matrix expectations are hand-written literals, an empty bootstrap-method set is a
-  phrased state without a form, `/usage` is gated like every other app route, `AuthGateState` lives
-  with the producer.
-- **2026-08-30** — A slice that moves a decision must keep HEAD's default until a phrase exists for
-  the new state: the right-panel adapter is tri-state, but Diff stays optimistic while the git
-  answer is in flight; only Zerops — whose answer arrives late over a subscription — reaches
-  `unknown` in production. Copy that moves modules must move the R4 registration with it.
 - **2026-09-03** — Chat output: a recognized Zerops call is one anchor row in the transcript (its
   `tool.started` row's id/time, never merged away) and one card per **operation** reduced from the
   call stream (`client-runtime/zerops/model`, domain keys `op:<toolCallId>` per call /
@@ -74,123 +48,6 @@ here (the owner decides only what the orchestrator brief §6 lists).
   `reduceZeropsOperations` (R5-R9, one `phaseFor`), `composeSession` — strip, map and every card
   read its single `ZeropsThreadModel`, never their own derivation. Concept:
   `../../../../zcp/plans/mate-session-model-2026-09-05.md`.
-- **2026-09-05** — Row actions on `/zerops` use the primary pill only for verbs that change state
-  (Connect, Enable Zerops Mate, Set up Mate, Wait for it); navigation (Open) is the secondary pill.
-  Blue acts; a screen of six identical blue Open pills says nothing.
-  - _Why:_ six connected rows each carried a primary blue pill and the one state-changing verb was
-    indistinguishable from navigation
-- **2026-09-05** — The roster says `Idle` for a connected environment with nothing running and
-  `Connecting` while a registered socket comes up; the dot keeps the connected tone (teal). The
-  socket is the client's business; the row answers what the agent is up to.
-  - _Why:_ "Connected" on every row answered a question nobody on the roster was asking
-- **2026-09-05** — The product's name is set once, by the lockup: the still mark beside the "mate"
-  wordmark from identity v1 §06 (Sora SemiBold, lowercase, −0.015 em, outlined into `MATE_WORDMARK`
-  so no page waits on a webfont; x-height three eighths of the mark's height, its band centred on
-  the mark, the ink half the mark's height right of it — the owner's two corrections of 2026-09-05,
-  superseding identity v1's window-height word and 2 s gap). No surface repeats "Zerops" or "Zerops
-  Mate" as a text, eyebrow or breadcrumb beside it. Inside a link that names itself the lockup is
-  `decorative` (aria-hidden) so the name is announced once. The boot splash shows the still open
-  mark — the favicon's — so the frame before React and the first frame after it agree.
-  - _Why:_ the first screen a person saw had "Zerops" three times (header, eyebrow, copy) and no
-    product mark; a Zerops logo flashed before the Mate mark on every reload
-- **2026-09-05** — Choosing an organization is a page (`h1`, one sentence, a 1/2/3-column grid of
-  cards), not a section under an "Environments" title that does not apply yet. The chosen
-  organization is a control in the bar, with no "Organization" label of its own.
-  - _Why:_ the picker sat under a page title and a micro-label for a page that had not started; a
-    `max-w-3xl` grid left a third of the frame empty
-- **2026-09-05** — Rows on `/zerops` have fixed cells: status `w-40`, action `w-44`, menu `w-8`, row
-  `min-h` 50 px; the action and menu cells are reserved on every row once any row can act, so a pill
-  arriving with a health answer moves nothing. Tools come last: account-level, they belong to no
-  group and no dev/stage/production axis.
-  - _Why:_ rows grew and re-flowed as health answered row by row; an empty Tools section headed the
-    list
-- **2026-09-05** — The creating action sits in the title row ("New environment", a primary pill
-  beside "Environments"), never under the list. The wizard is "New environment" with the breadcrumb
-  "Environments / New environment" and a one-line description; the form's first field is "Name".
-  - _Why:_ a "New project" outline button sat below a 19-row list, and the wizard said "New project"
-    three times before the form
-- **2026-09-05** — On a list, blue is for the one verb that reaches an agent right now (`Connect`)
-  and for the page's own action (`New environment`); a setup chore (`Enable Zerops Mate`, `Set up
-Mate`, `Wait for it`) is the grey `secondary` pill; `Open` is `outline`. Row pills are the `sm`
-  size (32 px). Supersedes the 2026-09-05 row that made every state-changing verb primary.
-  - _Why:_ nineteen rows produced a wall of twelve 36 px blue pills; nothing stood out, least of all
-    the one row that was ready
-- **2026-09-05** — While a row's probe is out, its action cell holds a pill-shaped `Skeleton`; the
-  verb then fades into that place (`animate-zerops-appear`, 220 ms, once). Nothing appears from
-  nothing. The status cell is left-aligned so the dots form a column; rows are separated by a
-  hairline; "Ungrouped" is drawn only when there is a group to be distinct from.
-  - _Why:_ the verb popped into an empty cell after the probe, which reads as a shift even when
-    nothing around it moves; right-aligned statuses left a ragged edge of dots
-- **2026-09-05** — A bucket reason is phrased by `zeropsReasonSentence` before a row shows it:
-  platform status tokens become words ("The container is stopped."), a trailing parenthesis goes,
-  "container" gets its article, the line ends as a sentence. `candidates.ts` keeps writing reasons
-  for the log.
-  - _Why:_ "container is STOPPED" sat under "The container is not answering." on the same list
-- **2026-09-05** — The pairing pages — the token form, the hosted pairing states, the pending link —
-  stand in `ZeropsLandingShell`: the lockup in the bar, the live mark, a title, one sentence, a card
-  with one full-width action; the supporting note and `Reload app` are one small line under the
-  form. `AuthSurfaceShell` is deleted.
-  - _Why:_ the one-time-link page was the last surface drawing its own header: `ZEROPS MATE (DEV)`
-    in tracked uppercase over a `shadow-2xl` card on emerald and sky gradients
-- **2026-09-05** — A draft names its Zerops project the way a thread does: `ChatView` demands the
-  project's topology (`useProjectTopology`, derived from the account's runtime) keyed on the
-  environment, not the thread, and `resolveZeropsChatChrome` reads the project name off the topology
-  whenever it has answered. The draft headline prefers the caller's resolved name over the logical
-  group's.
-  - _Why:_ a draft in `acme-docs-dev` read `www / New thread` and "What should we build in www?" —
-    the workspace folder, the same on every container — because only the open panel mounted the
-    writer, so the panel's own default-open never fired either
-- **2026-09-05** — Settings › Zerops says "Zerops" once, in the breadcrumb and the title; its rows
-  are `Account` ("Signed in on this browser.", then the person and their email) and `Organization`
-  ("Environments and permissions come from the organization you pick."). Search still finds them
-  under "Zerops account" / "Zerops organizations".
-  - _Why:_ the page said Zerops six times and "Projects" where the product says environments
-- **2026-09-05** — The sign-in card shows one way in at a time: closed, `Continue with Zerops`, "No
-  account yet? Create one on Zerops" and "Sign in with a password instead"; open, the email/password
-  form with `Sign in`, "No Zerops account? Create one" and "Use the Zerops sign-in instead". One
-  primary action and one sign-up link in either state; the hairline between the two link lines goes.
-  - _Why:_ with the form open the card carried two primary buttons and two "create one" links, split
-    by a rule between two lines of the same small text
-- **2026-09-05** — On `/zerops` the word is environment, and the organization is said once, in the
-  bar: "Every environment in the account, the agent in each one, and what it needs next.", "6
-  environments", "Reading your environments…".
-  - _Why:_ the sentence under "Environments" said "project", and the count line repeated the
-    organization the switcher above it already named
-- **2026-09-05** — While the stored Zerops session is checked (under a second on a reload), the
-  account gate shows the frame, the live mark and a spinner — no title, no sentence; "Checking your
-  Zerops session…" is read to assistive technology only (`role="status"`). Nothing is written that
-  the next frame replaces.
-  - _Why:_ every reload flashed an `h1` reading "Zerops Mate" and a sentence for ~600 ms before the
-    list took the page — the product's name as text, against the lockup decision, and words that
-    only ever flashed
-- **2026-09-05** — The draft headline's project picker names each entry by its environment's Zerops
-  project (`acme-docs-dev`, `beviro-crm-stage`, …), read from `zeropsEnvironmentNamesAtom` — derived
-  from the candidate listing atom, read by `useZeropsEnvironmentNames` without loading anything. The
-  logical group's name is the fallback for environments Zerops does not know.
-  - _Why:_ the picker listed "www" six times — the workspace folder is the same in every container,
-    so the list said nothing
-- **2026-09-05** — A draft in a Zerops environment never asks a person to "choose a project above":
-  one environment is one project (spec §9.3), so a draft whose project the environment no longer
-  lists re-attaches to the environment's only project, and the repaired ref is written back to the
-  draft. The composer's project question stays for environments that really hold several projects.
-  - _Why:_ a persisted draft came back from a reload pointing at a project that did not exist, and
-    the page asked a question the product has no business asking
-- **2026-09-06** — The service map is the Zerops dashboard's service card compressed for a side
-  panel — and compressed means two lines. On the surface only what a glance needs: name + port, the
-  public route as a glyph (the one thing reached for without hovering), the status word, and the
-  three resources as figure + inline graph of the last day's use (`POST
-/stats-history/group-by-search`, 24 hourly buckets, the dashboard's own default range). Everything
-  the dashboard card shows around those waits in a hover pop: the dashboard-page link, what the
-  service is and how it was deployed, the routes as hosts, used / allocated with a fill. The graph
-  is scaled to use, never to the allocation — the figure already says the allocation, and against it
-  an idle service's line is a sliver and the ceiling an artifact. Nothing boxed inside a card; the
-  platform's status token is a word; a settled-but-not-running state takes the off tone; a service
-  holding nothing is one line.
-  - _Why:_ three passes were rejected in a row: boxed tiles of the autoscaling envelope ("heavy,
-    junior"), a strip of live figures with hairlines ("almost none of this needs to be visible … the
-    card shows history"), figure-over-graph columns ("unnecessarily huge"). The Zerops card is graph
-    and chips; Mate's side panel has a third of its width, so the chips go behind hover and the
-    graph goes inline
 - **2026-09-06** — **A Mate's subject is the last task as the person put it, never the first.** With
   one conversation per environment the conversation's title names the first task forever, so the
   row's second line and the header's crumb after the Mate read the shell's **preview of the person's
@@ -201,14 +58,6 @@ Mate`, `Wait for it`) is the grey `secondary` pill; `Open` is `outline`. Row pil
   - _Why:_ the owner: "I set it out on a new task and it's still 'create todo app'", "simply to know
     what's being worked on / last worked on… either as summary, last messages or both… definitely
     not the first"
-- **2026-09-06** — **A banner over the composer floats; it never moves the conversation.**
-  `ComposerBannerStack` renders from a zero-height anchor above the composer and paints upward over
-  the bottom of the timeline (`absolute inset-x-0 bottom-0`, the drawer's overlap tucked under the
-  composer), so an environment reconnecting, a version notice or a branch change comes and goes
-  without the history or the composer moving.
-  - _Why:_ the owner: "'reconnect' and status is still popping up from the top of the chat bar and
-    it's still causing layout shift of the chat history… can it at least not be like absolutely
-    positioned or something?"
 - **2026-09-06** — **A conversation is headed by its Mate.** Where a Mate lives, the thread header's
   leading crumb is the Mate — its 20 px face wearing the conversation's state and its name — not a
   folder and a container name; the thread's title follows only once somebody has spoken into the
@@ -235,111 +84,6 @@ Mate`, `Wait for it`) is the grey `secondary` pill; `Open` is `outline`. Row pil
   - _Why:_ the owner: "this 'coding agent' empty / non-authorized state could be done properly as an
     empty state at the 'Send a message to start the conversation.' place", "I still don't understand
     what this is useful for" (the band)
-- **2026-09-06** — **One environment is one conversation, everywhere you enter.** Landing on the
-  index opens the environment's one conversation when it has one (`resolvePrimaryConversation`),
-  else a draft in the project — for the named environment and for the most recently active one
-  alike; a request for a new thread in a Mate's project (`useNewThreadHandler`: the draft's project
-  picker, any new-thread surface) opens the Mate's conversation instead of creating a second one,
-  typed content following when the caller carries it. zcp's introduction is composed into the
-  conversation's composer when nobody has spoken there yet (`composeZeropsFirstPrompt` takes any
-  composer target), as it was into a fresh draft.
-  - _Why:_ the owner: "the functionality should be that it will send the message to the existing
-    thread as if it was written there + redirect to the thread"
-- **2026-09-06** — **The control plane's card is the Mate's home, and the coding agents grow out of
-  it.** Under the zcp card's resources: the Mate's 20 px face in its colour wearing the
-  conversation's state and `Fen lives here` — the same identity and face the header reads
-  (`useZeropsMates`, `useZeropsAgentActivity`), handed to the map as `mate` (R2: the map renders
-  what the panel resolved). The coding agents' card is handed to the map too (`agents`) and is
-  slotted into the mint panel's bottom edge — pulled 12 px up over the mint, inset 12 px — so it
-  reads as growing out of the container it signs in to; the hover pop's trigger is the mint's text
-  alone, so a hand on the agents card opens nothing. The _Coding agents_ section of its own remains
-  only while the map has no control plane to hang it from.
-  - _Why:_ the owner: "this should say 'Fen lives here' in the card somewhere somehow and imo the
-    agents card should be visually connected with it, like it's growing out of the zcp card"
-- **2026-09-06** — **The card reads as the dashboard's, and the pop states the envelope.** The
-  status word sits above the name (the dashboard's own order), the name line says what the service
-  is beside the port (`db :5432, :6432 PostgreSQL 16` — the platform's name and the major version,
-  the exact version stays in the pop), and a public route is a real button at the card's right, one
-  per route, never a glyph in the text. The pop's figures each carry the effective autoscaling range
-  at the right (`currentAutoscaling` from the service-stack read — the profile resolved, not the
-  overrides), the cores' with the CPU mode; a service holding nothing yet shows the envelope alone.
-  - _Why:_ the owner: "this has space so it should show the autoscaling configuration range as
-    well + the row should have hostname port + type", "I'd add state like this [the dashboard's ●
-    ACTIVE over the name] … and use the right position for the external link, as button, better
-    clickable"
-- **2026-09-06** — **The wordmark reads smaller and closer** — this supersedes the proportion in the
-  2026-09-05 lockup row. `MATE_WORDMARK` is the same shaping (Sora SemiBold, −0.015 em, outlined) at
-  x-height 0.35 of the mark's height (18.2 of 52, baseline 35.1) with the first stem's ink two
-  fifths of it (20.8) right of the mark's edge — the 2026-09-05 cut scaled by 14/15 about the
-  baseline at that stem, which is the layout `scripts/brand/wordmark.py` re-derives from its
-  constants. The lockup's box follows the ink: `0 0 148 52`, the word's `44 0 104 52`.
-  - _Why:_ the owner: "can we make the 'mate' a little smaller and little close to the logo?"
-- **2026-09-06** — **A Mate's conversation opens in Zerops, not in an editor.** Where a Mate lives,
-  the header's editor picker is gone (`shouldShowOpenInPicker`, `mateLivesHere`): a zcp container is
-  nobody's SSH host, so the picker either sat disabled or handed the OS a
-  `vscode://vscode-remote/ssh-remote+…` deep link to a machine the person cannot reach. Its place is
-  taken by one outline button of the same size, the Zerops loop (`ZeropsMark`) with `Open in Zerops`
-  beside it — the label from `@3xl/header-actions` up, the mark alone below, as the row's other
-  actions collapse — linking to the Mate's project on the dashboard in a new tab
-  (`zeropsProjectUrl`, the one place that URL is shaped, riding on `ZeropsMateIdentity.projectUrl`).
-  - _Why:_ the owner, on the VS Code split button: "this should basically be open in zerops",
-    "zerops logo instead of the cloud lol"
-- **2026-09-06** — **A Mate sleeps until its container is connected, on every surface.**
-  `mateFaceFor(connected, activity)` is the one rule — asleep when the container is not connected,
-  the conversation's face when it is, idle as that rule's floor — and the roster, the projects
-  screen, the conversation's header and the Mate's home on the map all call it. It matters because a
-  Mate is known before its socket is up: from its project's tags and its container's origin
-  (`registeredOrigins`), which is why `ZeropsMateIdentity` carries `connected`.
-  - _Why:_ the owner: "are these at all occurrences reflecting the eye state properly? think about
-    it"
-- **2026-09-07** — **Both halves of a dev/stage pair are services, and read alike.** The folded
-  stage carries its own status word above its name, its `:port`, its route buttons and its own three
-  resources with graphs (`stageMetrics`, `stageTrends`, `stagePortLabel`); one `ServiceHeader`
-  renders the dev half and the stage half so they cannot drift apart again.
-  - _Why:_ as a bare status line the stage rendered identically to a service holding nothing — the
-    card's other one-line state — so a running stage read as never deployed; the owner: "why is the
-    pair without its graphs?", then "why is the active on different place and there is no link to
-    the appstage?"
-- **2026-09-07** — **A created environment opens on its job, and that one prompt mate sends
-  itself.** A creation writes down what the environment is, where its application came from and
-  which services the clone could not build (`creationHandoff.ts`), keyed on the project; the connect
-  moves it onto the environment id; the compose says it instead of the fixed onboarding line. It is
-  sent, not left in the composer — but only once a coding agent is signed in, because until then
-  there is nothing to run it. MC-8 is unchanged: the onboarding prompt is still composed and never
-  sent, and a handoff is spent on first use, so a reconnect or a second tab says nothing.
-  - _Why:_ "Introduce yourself, tell me what is running here" asks a Mate that was created for a
-    reason to guess what that reason was, and leaves the person who waited two minutes for the
-    environment to work out the next step themselves
-- **2026-09-09** — **The version-skew banner is gone; one quiet line and one verb replace it.** The
-  upstream "Server versions differ" banner, `versionSkew.ts` and its localStorage dismissals encoded
-  "client and server ship in one box", which this product does not — the client compares versions in
-  exactly one place, the sign-in floor. Everywhere else, `mateUpdateLine` reads the descriptor's
-  `update` field only: the installed version alone, or "0.8.0 · 0.8.1 available" with the glossary's
-  update role (`--zerops-update-role`, teal) on the "· x.y.z available" clause alone, never the
-  whole line. `ZeropsMateUpdateControl` renders the line and, only with `capabilities.mateUpdate`
-  and `update.available` both true, the Update verb: idle → confirm ("Running threads stop. Update
-  now?") → updating → updated/already-current, settling to idle on its own; a failure shows inline,
-  never a toast. Same control on the Mate card and the thread header, next to "Open in Zerops"
-  (spec-mate.md §2.9, MU-1/MU-2/MU-3).
-  - _Why:_ spec-mate.md §2.9; superseded the S1-era restart banner once `zerops.mate.update` existed
-    to do the same job without a container restart
-- **2026-09-10** — **A Zerops RPC is sent only where the descriptor advertises it; a Mate that lacks
-  the feature says so, with the update line beside it.** `capabilities.dataConsole` gates the Data
-  surface: absent, the panel renders one muted line ("This Mate doesn't include the data console
-  yet.") and `ZeropsMateUpdateControl`'s line and verb, and never issues `zerops.dataConsole.call` —
-  never a generic "Something went wrong." from an older server's unknown request tag.
-  - _Why:_ spec-mate.md §2.9 steps 5–6; a release stayed invisible for up to two hours behind two
-    caches, and an older server answered the Data panel with a defect
-- **2026-09-24** — **An empty conversation opens on an empty composer.** Nothing writes into a
-  Zerops environment's composer on its own: a creation leaves no opening job on its birth
-  (`birthStore.ts` keeps births only, and reads an older build's `handoff` and `jobs` as nothing),
-  and neither the landing nor a new-thread request composes an introduction.
-  **Supersedes:** the 2026-09-07 row whole, and of the 2026-09-06 _one environment is one
-  conversation_ row the sentence that composes zcp's introduction into an unspoken conversation.
-  Everything else in that row stands.
-  - _Why:_ the owner, 2026-09-24: "When I enter an empty conversation there must be no prefilled
-    text in the composer" — the hand-off ("You were just created as …") sat in front of whatever the
-    person typed
 - **2026-09-25** — **A card is correct at every instant of a live turn, and reads the same after a
   reload.** Nothing on a card moves, shrinks or is merged away because something newer arrived: a
   same-turn retry is its own card (the R8 fold is gone); an attempt number appears only once it can
@@ -381,17 +125,10 @@ Mate`, `Wait for it`) is the grey `secondary` pill; `Open` is `outline`. Row pil
 - **2026-09-26** — No "Done" on the work line: the face carries the state (✓ · ! · ⏸ · ■), the line
   keeps the last note the person saw.
   - _Why:_ "Done" covered a success, an abort and a usage limit alike
-- **2026-09-26** — The server version and its Update leave the conversation header; they live in the
-  right panel's Zerops view, beside the Mate's body.
-  - _Why:_ the header is the Mate — face, name, the last task as the person put it
 - **2026-09-26** — A dock above the composer holds what changes size while the Mate works: running
   pipelines, helpers, the task list, a pause countdown.
   - _Why:_ a helper starting or a deploy stepping on must never move a message; the task list had no
     home at all
-- **2026-09-26** — _Your move_ stays the next-step banner above the composer, read from the
-  project's flow — not a row of the outcome card.
-  - _Why:_ a live action frozen into a turn's history goes stale; the banner already answers from
-    the flow, not from what the agent said
 - **2026-09-26** — One clock (today "9:14 PM", "Yesterday 9:14 PM", "Sep 24 9:14 PM") and one
   duration format ("42s", "1m 12s", "13m", "2h 6m" — seconds only under ten minutes, nothing under a
   second).
@@ -486,14 +223,6 @@ Mate`, `Wait for it`) is the grey `secondary` pill; `Open` is `outline`. Row pil
   once — in the opened log, else beside the face.
   - _Why:_ notes started at 406 px, thinking at 430, calls at 432; the last note stood twice when a
     line was opened
-- **2026-09-26** — **The composer before and while a session starts**: a Mate's conversation invites
-  with one sentence whether or not its session runs; the send button keeps its spinner until the
-  turn runs and turns into Stop; the context meter is a pie, never a ring that reads as a spinner
-  beside Send; the empty conversation's heading keeps clear of the banners; _New session_ says
-  "Started a new session".
-  - _Why:_ the empty state's banner covered the heading, "send follow-ups" invited follow-ups to
-    nothing, the arrow came back for 1.5 s between Sending and Stop, and the toast said "Thread
-    archived"
 - **2026-09-26** — **The conversation is one column.** Every box sits on the composer's edges, every
   line of text on its text edge (its 1 px frame and 16 px padding); a mark leads its words on that
   edge.
@@ -572,14 +301,6 @@ Mate`, `Wait for it`) is the grey `secondary` pill; `Open` is `outline`. Row pil
   sent while it ran is drawn as its own run.
   - _Why:_ Juno: every message and all the work after a /compact vanished from the log while the
     title showed them
-- **2026-09-26** — **The Mate's question is the one ask while it waits**: the next-step banner steps
-  aside while a question or an approval waits and comes back once it is answered; the composer says
-  "Waiting for you" in sentence case in the attention colour, not as a `MicroLabel`; the question
-  tool's call is never a line of its own. Answered, the Mate at work streams on under the answer in
-  a panel of its own.
-  - _Why:_ "Nova is waiting on you to merge #2" stood over the question panel; "WAITING FOR YOU" in
-    capitals under the panel's own amber "Waiting for your answer"; "Used AskUserQuestion" over the
-    question it asked; thoughts from before the question streamed on below the person's reply
 - **2026-09-26** — **The Mate thinks in its own hand.** In the panel a thought is no bubble: text on
   a hairline (drawn, 1 px `border`, the text's height) in the muted ink and in italics, in a note's
   box to the pixel; its words to the person stay the bubble, its corner toward the face, filled in
@@ -877,38 +598,6 @@ Mate`, `Wait for it`) is the grey `secondary` pill; `Open` is `outline`. Row pil
   error, the usage pause, background work and the older work rows keep a 20 px mark column and start
   their words 20 px past the prose edge; the person's bubble keeps the chat's 14 px padding.
   - _Why:_ their words started 22, 24 and 26 px in, a callout's 14
-- **2026-09-29** — **The preview says once that sign-ins and carts need a new tab.** One muted line
-  under the address, its cookie glyph in the globe's column so its words start where the address
-  does, and one verb, _Got it_, that hides it for this browser (`useLocalStorage`,
-  `mate:zerops:preview-cookie-note-read`). It names the header's _Open in new tab_ rather than
-  repeating the control.
-  - _Why:_ Unlike the removed "Page not showing?" footer, which was wrong almost every time it
-    showed, this is true of every preview: a framed `*.zerops.app` page is cross-site wherever Mate
-    runs, and browsers keep out the cookies it sets without `SameSite=None` (verified.md,
-    2026-09-29)
-- **2026-09-29** — **Each Mate wears its own shape as well as its colour.** Eight silhouettes
-  (`MATE_SHAPES`: squircle, gem, hexagon, pentagon, clover, flower, seal, pick), each the same area
-  of its box, each holding every eye pose and the mouth, one per tint (`MATE_SHAPE_OF_TINT`), so the
-  account's first eight Mates, which never share a tint, never share a shape (past eight both
-  repeat, as the palette does). Hues that sit close are apart in silhouette: the blues a pick, a
-  squircle and a gem; the warm four a pentagon, a hexagon, a flower and a seal; the green the
-  clover. No plain disc.
-  - _Why:_ eight discs that differ only in hue read as copies at 28 px (sky beside slate, amber
-    beside sand) and as one face to anybody who does not see the hue; a silhouette is read before
-    either
-- **2026-09-29** — **A Mate's face moves with its state.** Every pose is one drawing, so a change of
-  state morphs (the eyes narrow into work, the o opens) rather than swapping pictures. At work the
-  shape turns a notch at a time on a spring, by its own symmetry and about its own centre, and the
-  eyes glance; as it starts to need you it hops three times, the first at once, then waits (a person
-  can be away for hours); done after work or a question while you watch, it pops once
-  (`mateFaceArrival`: never marking a Mate unread, never on a first paint or a remount, never from a
-  pose that stood in until the Mate's state was read, `known`); idle and asleep it is still. Each
-  Mate keeps its own beat, offset inside each loop's rest so work starts still; reduced motion
-  leaves only the morph. Its own
-  motion is transform and opacity, the morph easing the eyes' and mouth's geometry; the turn and the
-  glance are R6 exceptions.
-  - _Why:_ the owner, 2026-09-29: "give each mate a different shape, more expressive current state";
-    a still face said working and idle apart only by its eyelids
 - **2026-09-29** — **The run's status line moves with what the Mate does.** Its face looks up and
   aside while the Mate thinks and down along its line while it writes (`gaze`); the line's words
   rise into place from just below, out of a 2 px blur, when they change (never on a first paint,
@@ -1141,26 +830,6 @@ Mate`, `Wait for it`) is the grey `secondary` pill; `Open` is `outline`. Row pil
   a sentence is marked_ row.
   - _Why:_ text scrolled half visible under the header; commas stood apart from the code before
     them; the brand mark said nothing of who lives there
-- **2026-09-29** — **Superseded 2026-10-02 in part: HQ's answer, not Gitea's, confirms the
-  remembered strip.**
-  **A reload paints the composer's top it will keep.** Each conversation's strip is
-  remembered in this browser, per account (`composerTopMemory.ts`, 64 conversations), and painted in
-  the first frame; Gitea's answer confirms it, changes its words or takes it away.
-  - _Why:_ measured live: the strip arrived with Gitea's answer 8.6 s after a reload, and the
-    composer's 61 px growth moved the conversation
-- **2026-09-29** — **One quiet control for the model and its effort** (C4). "Sonnet 5 · High" at 13
-  px opens one menu, the models on the left and a radio list per choice with _Access_ on the right —
-  radio lists, since six efforts do not fit a segmented row; picking an effort keeps it open.
-  _Access_ stands in the toolbar only while it is not the usual setting, and whenever the one
-  control cannot open. Send, disabled, is a grey disc, never a faded blue; 32 px, 36 on a phone for
-  the finger.
-  - _Why:_ three 14 px dropdowns at 500 were louder than the conversation's own words
-- **2026-09-29** — **A fix request joins an unsent draft.** Written into a composer that holds the
-  person's words, the request goes after them, a blank line apart, the caret where it continues; the
-  same request twice changes nothing. A change's fix goes only to the Mate that wrote it, which
-  alone can push its branch; a run's only to the run's own Mate, whose services it found the problem
-  in (2026-09-29: "'ask lena to fix' when im at iris").
-  - _Why:_ a request must never take the person's own words away
 - **2026-09-29** — **The server relays the live step, in memory, and the client paces it.** A
   running thread's shell carries its step — thinking, writing, or the calls running — only while its
   session runs a turn, cleared however the turn ends; nothing is persisted, there is no migration,
@@ -1216,14 +885,6 @@ Mate`, `Wait for it`) is the grey `secondary` pill; `Open` is `outline`. Row pil
   Mate_ row's crumb — the Mate is the strip's first entry.
   - _Why:_ the Mate stood twice (the header and the strip's pill), names were cut to six characters
     behind status words, "+ New chat" was the loudest thing on the line, and a compass meant nothing
-- **2026-09-29** — **A popover opens at its own height** (the owner, of the model menu: "this
-  brutally overshots height on open before the scrollbar takes effect"). Kit popovers no longer sit
-  in Base UI's Viewport part, which exists to morph one popup between several triggers and measured
-  a capped popup uncapped: its content is a plain box capped by the room in CSS, and it enters by
-  scale and fade only. The model menu's wheel scrolls its choices column: the page stays still
-  behind an open menu, except inside the popup.
-  - _Why:_ the model menu drew 644 px tall for its whole entrance, then snapped to 450; an unseen
-    194 px box over the conversation took clicks; the choices column never scrolled by wheel
 - **2026-09-29** — **Superseded 2026-09-30 by the lone card below.** **A line with nothing under it
   is no card** (the owner, of a closed run with nothing below: "shape of this with no items below is
   pretty weird"). A settled run whose card would hold its line alone — no result under it, what it
@@ -1249,78 +910,6 @@ Mate`, `Wait for it`) is the grey `secondary` pill; `Open` is `outline`. Row pil
   crew is its face and name. No _New chat_ anywhere; a Mate's older chats are listed from a ⌄ after
   its name. **Supersedes** the strip, the subject line, the lane bar and the lead's bar.
   - _Why:_ every mechanic of crew mode stood in the header in the engine's words
-- **2026-09-29** — **A picked tint recolours nobody.** A Mate that picked its tint wears it; the
-  rest share the tints their names give them among themselves alone, exactly as before any Mate
-  could pick, so two Mates may wear one tint and their shapes tell them apart. The New Mate dialog
-  offers a name its own tint walking past every tint a Mate already wears (`newMateTint`), so a Mate
-  added with the offer changes no other face either.
-  - _Why:_ adding one Mate in a live trial turned four others' faces: picked tints were reserved
-    before the rest were derived, so a pick of the tint another Mate wore by its name pushed that
-    Mate along, and the walk recoloured Mates across the account
-- **2026-09-29** — **_New Mate_ asks who the Mate is — a name, a colour, a shape — and always
-  deploys the recipe** (the owner: the dialog "basically doesn't need anything other than input for
-  mate's name, its color and shape, it should always deploy the recipe"). The name, focused with the
-  proposed one selected so a key replaces it, beside the face the three make at 112 px; under it a
-  row of the eight colours and a row of the eight shapes, 36 px buttons ending on the field's edges,
-  each a radio in a named radiogroup — one Tab stop per row, the arrows walking and picking — the
-  picked one ringed 2 px in its tint a gap out, so nothing changes size. Until its person picks, the
-  face follows the name as typed — the tint offered for it and that tint's shape — and a pick
-  sticks; a change cross-fades the face in its cell (the new one settling from 92 % in 220 ms, the
-  old fading in 160; a fade alone under reduced motion). What the old form asked is decided: the
-  Mate runs its agent, gets the project's recipe (the tier on the group repo's `main`) and is called
-  what the project calls its Mates ("Acme Docs - Quinn"). The description says what happens ("It
-  gets its own copy of Acme Docs with the recipe deployed. It takes a couple of minutes."), or,
-  where `main` has no recipe, that it sets the application up itself, in the same room; it names no
-  Mate, so typing never reflows it; the button reads "Add Quinn to Acme Docs". A press while the
-  repo is read waits and goes the moment the recipe arrives, the quiet line beside the button saying
-  so; a project read as having none waits for a second press rather than getting an empty Mate it
-  was not asked for; a refused name is said on that line ("Another Mate already has that name.").
-  573 px tall before, 323 after. Stage and production keep their form. **Supersedes:** for a Mate,
-  the 2026-09-05 _creation form_ row — the environment's name, the agent switch and the
-  application's radio cards.
-  - _Why:_ the form asked what nobody adding a Mate decides — the environment's name, whether it
-    runs an agent, which application — and nothing of who the Mate is
-- **2026-09-29** — **Superseded 2026-10-02 in part by the HQ row below: the ask is HQ's birth record
-  (`standupRequestedBy`), not a `mate:standup:` tag, and the Mate's server sends the stand-up once
-  its asker has signed in (`ZeropsSetup.ts`).**
-  **A new Mate stands development up once its person has signed in.** _Add a Mate_
-  writes `mate:standup:<userId>` on the Mate's project, naming who pressed it (read permissively,
-  kept through every other tag write, cleared by its own patch). The moment that person has signed
-  an agent in, their own client sends "Stand up development of the project." as them, through the
-  composer's own send, into the Mate's main conversation, and clears the tag once the conversation
-  holds it. Exactly once: only into a conversation read live from its Mate and found empty — a
-  cached copy is never read as empty — once per environment in a session, and every client of the
-  person sends the identical command, its ids derived from the conversation and the attempt, which
-  the server takes once. A send seen leaving that left the conversation empty, or never seen leaving
-  within 8 s, did not go through: "The message to Quinn didn't go through." with _Try again_, the
-  next attempt under new ids; nothing is sent again on its own. A colleague, another of the Mate's
-  chats and a Mate nobody asked it of keep the question; a tab closed before the send loses nothing,
-  since the next open of the conversation sends it. **Supersedes:** for the person who added a Mate,
-  "nothing writes into a Zerops environment's composer on its own" of the 2026-09-24 _empty
-  conversation opens on an empty composer_ row: the stand-up goes through it, sent, never left
-  there.
-  - _Why:_ a Mate added to a project arrives with its services empty, and the owner's call of
-    2026-09-18 is that a new Mate fetches and runs its code itself rather than asking the person to
-    send the bootstrap message; it is sent from the person's own client because only their session
-    may start a turn on the agent they signed in (D6), and a Mate's own key cannot write its
-    project's tags
-- **2026-09-29** — **While the stand-up waits on its person, the conversation is one sentence and
-  the buttons to authorize** (the owner, on its first live run: "textarea should be hidden, the only
-  message here is 'Quinn will stand up development on [the project] after you authorize your
-  agent'"). To the person who added the Mate, its empty conversation says "Quinn will stand up
-  development on Acme Docs after you authorize your agent." over one _Authorize_ button per agent
-  that offers a sign-in, and the composer gives way — kept in its place, since it sends the
-  stand-up, but unseen and out of reach — until the stand-up has gone or did not go through, then
-  fades back in 180 ms. Signed in, "Quinn is standing up development on Acme Docs…" until the
-  message appears; not through, the failure with _Try again_ 12 px under it. The phases share one
-  box, the tallest's, and cross-fade in place (180 ms, 4 px of travel; a fade alone under reduced
-  motion); the headline breaks between its clauses, never inside a name. Every empty conversation's
-  face now stands a third of the way down the pane, so neither a sign-in arriving nor a Mate
-  switched to moves it. **Supersedes:** for that person, the question and the sign-in rows of the
-  2026-09-06 _empty conversation is the Mate's opening_ row.
-  - _Why:_ under the headline the sign-in rows said "ACTION REQUIRED" with an amber dot, what the
-    headline had just said, and an open composer invited the person to type what the stand-up was
-    about to send for them
 - **2026-09-29** — **Switching between a Mate and its crew moves the conversation's line as one**
   (the owner: "why isn't the transition between these ten time more smooth, animated, beautiful?").
   The band travels from the seat left to the seat opened — three pieces, its round ends moving and
@@ -1394,47 +983,6 @@ Mate`, `Wait for it`) is the grey `secondary` pill; `Open` is `outline`. Row pil
   - _Why:_ at the owner's 1.58× the strip, hung a pixel outside the tray's padding box, snapped to
     another device pixel than the tray's sides, and a square slice's side took two device columns
     where a rounded one's took one: the side jogged at every joint, a notch under the run's line
-- **2026-09-29** — **A Mate's session that reached its end reads as reconnecting, never as a
-  refusal.** A Mate ends a session after a day and the door mints the next by itself, so nothing is
-  wrong: the conversation's banner waits out its 2 s grace and then says only "Reconnecting to
-  Fen…", and a query on that Mate keeps its last answer, as through a backoff, instead of failing.
-  Every other refusal still reads "Couldn't connect to Fen" and "Fen refused the connection." Under
-  it, the client never presents a session within 30 s of its deadline or one its Mate refused, and a
-  link blocked on one waits for the door's new session rather than trying again on every wake
-  (`account-lifecycle.md`).
-  - _Why:_ at a session's day boundary the banner said "Couldn't connect to Fen. Fen refused the
-    connection." until the door minted the next, and a tab left open presented its ended sessions to
-    every Mate at once on each wake
-- **2026-09-30** — **A face changed after birth recolours nobody either**
-  (`mate:face:<tint>:<shape>:named`). A Mate nobody picked a face for wears its name's tint, shared
-  out over every such name in name order; changing its face took its name out of that sharing, and
-  every name that had walked past it walked back — over a ten-Mate account, up to seven others
-  recoloured. So a Mate that wore its name's tint keeps its name in the sharing when its face is
-  changed: its tag says so (`:named`), it wears its pick, and the tint its name held stays held. A
-  Mate whose face was picked at its birth never had a place there and takes none now. Older clients
-  ignore the third part and read the face as a plain pick. **Supersedes:** for a Mate whose face is
-  changed after birth, "the rest share the tints their names give them among themselves alone" of
-  the 2026-09-29 _picked tint recolours nobody_ row: its name stays among them.
-  - _Why:_ the rule that a pick recolours nobody would have broken on the first face changed live
-- **2026-09-30** — **Superseded 2026-10-02 in part by the HQ row below: the name, the face and the
-  stand-up ask are HQ's birth record, not project tags.**
-  **_New project_ asks who its first Mate is, and that Mate stands development up
-  after its sign-in.** Under the project's name the wizard asks for its _First Mate_ as New Mate
-  does, in the same picker: the name, proposed free on the account and selected so a key replaces
-  it, beside the face the name, a colour and a shape make, the face following the name until a pick
-  sticks. Its line: "Name it and its first Mate. The Mate is up in a few minutes, with Git hosting
-  alongside." A name that will not do is said beside _Create project_ once it is pressed, and while
-  the account's Mates are read the button waits, saying "Checking which names are taken…". The Mate
-  is born as New Mate makes one, through one birth for both paths (`withZeropsMateAtBirth`): the
-  marker, the name, the face on its project and `mate:standup:<userId>` — so its empty conversation
-  shows the stand-up, and its person's first sign-in sends "Stand up development of the project."
-  once.
-  - _Why:_ the wizard called its first Mate by a random name nobody saw, in the face that name gave
-    it, moving every Mate its name walked past, and its person's first sign-in sent nothing
-- **2026-09-30** — **The stand-up's _Authorize_ buttons stand bare under its headline.** The layer
-  that holds them had wrapped them in the sign-in rows' white card; in the stand-up it only ever
-  shows the buttons, so they stand on the page as they are.
-  - _Why:_ seen live on a new Mate in the test org: a white bar behind two blue pills
 - **2026-09-30** — **A card holding nothing but its line is the composer's rounded rectangle, and it
   keeps its box closed** (the owner: "why the collapsed state has no bg at all?", then of the live
   card at its first thought: "the state of border radiuses in the initial thinking with no other
@@ -1446,27 +994,6 @@ Mate`, `Wait for it`) is the grey `secondary` pill; `Open` is `outline`. Row pil
   list's layout. **Supersedes** "a line with nothing under it is no card".
   - _Why:_ a bare line floated between bubbles; the pill read as a stadium; a leftover 75 px stood
     under the live line
-- **2026-09-30** — **A project whose Mates haven't written its recipe takes no other Mate** (the
-  owner: "we need to deal with states where you are trying to add a second mate but the first
-  haven't created the group's imports yet - shouldn't be possible with explanation"). A new Mate is
-  made from `0 — AI Agent/import.yaml` on the group repo's `main`. A project with Mates and no
-  recipe opens the New Mate dialog on the reason instead of the form (`newMateDoor`):
-  - the recipe waiting in a change: _Review the change_;
-  - none yet: _Open Cleo_, the Mate that writes it, or no action when several could;
-  - unreadable: _Try again_, with Add off.
-
-  A project with no Mates still takes its first. A failed read is never taken for "no recipe", so
-  a quick Add no longer makes an empty Mate.
-  - _Why:_ Add quietly made an empty Mate beside one that had set the project up
-
-- **2026-09-30** — **A new project's first Mate gets no stand-up; its person says what to build.**
-  _New project_ no longer writes `mate:standup:`, so its Mate's sign-in reads "Once it's signed
-  in, Enzo writes and runs code on its own copy of Kestrel." and its first turn is the person's, as
-  the dialog's "You sign Enzo in and tell it what to build" promised. It supersedes the stand-up
-  half of "_New project_ asks who its first Mate is". A Mate added to a project with a recipe still
-  stands it up.
-  - _Why:_ on the live run (Kestrel, Enzo) the stand-up went to a project with no recipe and no
-    code, and the Mate could only report that there was nothing to set up
 
 - **2026-09-30** — **A switch between Mates is at once** (amended the same evening: a return shows
   the conversation as it stood, below) (the owner: "transition between mates
@@ -1481,14 +1008,6 @@ Mate`, `Wait for it`) is the grey `secondary` pill; `Open` is `outline`. Row pil
     and faded over the next one for 150 ms, two texts at once; the composer's frame faded three
     times during one first open, showing the page through it
 
-- **2026-09-30** — **The composer never leaves the screen across a switch.** A Mate's own view
-  while it is reached, and a reload's stage before its conversation arrives, draw the composer
-  standing where the conversation's will stand, and the conversation header's subject, ··· menu and
-  panel toggles, inert until it connects. The stand-in takes typing into that conversation's
-  draft, and the real composer takes the caret where the person left it. After the hand-over the
-  list shows its Mate at work at once until its rows are placed.
-  - _Why:_ a first open after a reload went 2.5–6 s with no composer at all, and the face, nothing,
-    face, rows sequence read as flicker
 - **2026-09-30** — **A Mate's link speaks with one voice** (the owner: "banners and snacks and
   weirdly aligned states all over the place"). Over a conversation that shows, only the banner
   above the composer speaks; where no conversation can show, the Mate's stage does — face, name,
@@ -1500,26 +1019,6 @@ Mate`, `Wait for it`) is the grey `secondary` pill; `Open` is `outline`. Row pil
   the Mate's name and face this browser remembers (per account, cleared on sign-out).
   - _Why:_ one restart stacked four surfaces saying overlapping things, a first load said
     "Reconnecting…" for 3.4 s though nothing was lost, and a reload showed a blank pane for 2–3 s
-- **2026-09-30** — **A slow first connect lists what the platform is doing** (the owner: "why isnt
-  this showing the processes or something?"). Past 1.5 s the stage's line is followed by the
-  project's services as the arrival's chips — the zcp service first while a process runs on it —
-  in the order first seen.
-  - _Why:_ "Connecting…" said nothing while the platform knew exactly what was happening
-- **2026-09-30** — **Superseded 2026-10-02 by the HQ row below: the Mate's server keeps one signer
-  per login, replaced at each sign-in (`zeropsSignIns.ts`), so no record names two people.**
-  **Two signer records for one login name nobody.** When a login carries signer
-  tags for two people, the Mate reads as signed in, no ownership notice shows and no owner badge
-  names anyone; the server still lets in anyone the tags name.
-  - _Why:_ a restart showed "Signed in by another project member" to the person who signed it in;
-    naming nobody is never wrong, naming the wrong person is
-- **2026-09-30** — **The arrival says what each step waits on.** The copy step names its managed
-  services from the press (the creation writes them on the birth record); the runtimes sit under
-  the workspace, and while they come up after the sign-in shows, one quiet line under the sign-in
-  names them ("appdev · webdev coming up") — its words fade when all are up, its height stays until
-  the sign-in goes. Chips keep the order first seen. The steps are as wide as their words and
-  centred on the sentence's axis. A step's clock counts from the earliest start it knows.
-  - _Why:_ the copy step listed runtimes it did not wait for, chips reordered at 168 s, a clock ran
-    0:12 → 0:08, and the runtimes left the page 100–150 s before they were up
 - **2026-09-30** — **The stand-up's card shows its builds** (the owner: "what is even this state?
   it shows nothing"). A stand-up call docks a bar of the platform's builds for the services it
   deploys: a segment each, the one building's pipeline step or "3 building", "1 of 4", a failed one
@@ -1528,31 +1027,11 @@ Mate`, `Wait for it`) is the grey `secondary` pill; `Open` is `outline`. Row pil
   a clock of its own beside the run's.
   - _Why:_ zcp's progress notifications never reach the card — the Claude CLI drops them from its
     headless stream — while the platform's own processes already reach the client
-- **2026-09-30** — **The stand-up answers once development is up** (zcp; the owner: "that's
-  crazy … whether something couldn't have been run in parallel better?"). Every dev half deploys at
-  once; a stage waits only for its dev half and the stages its build reads (the recipe's
-  `${host_…}` build variables; the recipe writer sets priorities from the same reads). The first
-  call returns with the stages queued; the Mate starts the dev servers, says so, and a second call
-  builds the stages. Stages beside their dev halves stay out: their start-up migrations would race
-  on the project's one database.
-  - _Why:_ Beviro's 26 minutes were four builds in a row; the one real build-time edge is the
-    storefront's stage reading its API's stage
 - **2026-09-30** — **A link in an answer reads as part of its sentence** (the owner: "design of
   this is total shit oh my god, so painful"). Links take the sentence's ink with a quiet underline
   that fills on hover; a service the side panel opens leads with the panel's own globe, nothing
   fetched; nothing stands between a link's words and its full stop. External links drop their ↗.
   - _Why:_ a blurry fetched favicon, saturated blue and a glyph glued before the full stop
-- **2026-09-30** — **The preview loads exactly the address it shows.** No cache-key query; a new
-  deploy or Reload remounts the frame. A static page may show its previous copy after a deploy
-  until the browser lets go of it; zcp tells static apps to send HTML with `Cache-Control:
-no-cache`.
-  - _Why:_ an app that routes on the exact address answered "Not found" to `/?_mate_preview=…`
-- **2026-09-30** — **The Mate being opened connects first, and paints before its socket.** Other
-  Mates' sockets wait until the route's is open (5 s at most); the Mate's descriptor names what
-  the thread's snapshot needs, so the conversation paints over HTTP while the socket connects and
-  the socket resumes from the snapshot.
-  - _Why:_ the route's socket queued 4th–6th behind the others (one socket connects at a time to
-    the one Zerops address); measured p50 9.8 s, worst 15 s to the conversation
 - **2026-09-30** — **An empty conversation keeps its row, and a draft shows on the person's line**
   (the owner: "empty conversation not showing draft and has weird position of the name without the
   questions and response under it"). Every Mate row is three lines tall; the second line is the
@@ -1593,67 +1072,6 @@ no-cache`.
   because I saw it finish live?"). It stays open when it ends under the person's eyes and carries
   _Hide work_, folding as a settling run does; _Show work_ reopens it.
   - _Why:_ the toggle drew only for runs that ended unwatched
-- **2026-09-30** — **The person's step names what they sign in with** (the owner: "should convey you
-  sign in with your agent subscription … logos for brand recognition", "the 'next' is sloppy").
-  "You sign Wren in with your Claude or ChatGPT subscription", each brand wearing its app's logo
-  inline, wrapping at a phone's width; no "next" note; the subtitle drops "Then you sign it in." A
-  coming-up Mate's header is its face and name; _Open in Zerops_ returns with the conversation.
-  - _Why:_ the step read as signing a person in, and _Open in Zerops_ stood as a stray link on the
-    arrival
-- **2026-09-30** — **A project someone else makes is read at once** (a colleague's "Checking which names
-  are taken…" without end; the owner's "Still reading…" for no reason, and Sana missing until a
-  reload). The organization's project list hands a project the grant doesn't hold to the grant,
-  which verifies it at once and reads it once the platform has answered for it; a Mate's name is
-  judged from the project list alone, since names live on project tags; "Still reading…" speaks
-  only of a list known in part, after 1.5 s, and over existing rows for 20 s at most.
-  - _Why:_ a project created by someone else stayed out of the grant until its renewal, up to about
-    12 minutes
-- **2026-09-30** — **A stand-up's bar is the whole environment** (the owner: "why doesnt this show
-  dbs etc?"). Data services first, as the platform says, then utilities (development only), then
-  the half's runtimes filling from their builds; the figure counts "5 of 7 up", and opened each
-  says Up, its step, Queued, Failed or the platform's reason. A settled call keeps its list as it
-  ended — all up when it succeeded; when it failed, the runtimes as its report says and the rest
-  "not checked", counted only where known — never today's statuses, and nothing made after it.
-  - _Why:_ the bar showed only the runtimes the call builds, so the databases looked forgotten
-- **2026-09-30** — **The Mate being opened is never kept waiting by another** (supersedes the same
-  day's "connects first"; the owner's Sana took 50 s to open, and Juno stuck while other Mates
-  restarted). Whether an attempt is the route's is judged when it starts: a waiting Mate that
-  becomes the route starts at once, and every other attempt still connecting gives way, the
-  previous route's included; others connect one at a time, each given 8 s before it must give way while someone else waits (a
-  lone attempt keeps its own 15 s), and the phone app, with no browser lock, never queues; a socket's turn covers only
-  its opening, and its wait in line never counts against its setup or a replacement's; with no
-  route named they still go one at a time, and a Mate coming up names itself the route. The route's Mate never waits out the five-minute cap — it stays on the ladder (≤ ~36 s),
-  a capped Mate that becomes the route is tried at once, and a route that doesn't answer has its
-  container read every 2 s and is tried the moment it answers.
-  - _Why:_ Chrome connects one socket at a time per address, every Mate sits behind one address,
-    and the balancer holds a restarting Mate's upgrade 3–5 s — so a Mate restarting elsewhere held
-    the open Mate's socket, and a Mate back up waited out its ladder
-- **2026-09-30** — **The sign-in's end says nothing** (the owner: "there still flashes the 'saving
-  the auth to zerops' which layout shifts"). The server's own "being registered" status is hidden
-  once the login is spent; every other provider status — an error, a disabled provider, a warning
-  that can't verify the sign-in — still shows.
-  - _Why:_ the status and the auth snapshot raced at the end of registration, so the banner came
-    and went above the timeline
-- **2026-09-30** — **Superseded 2026-10-02 in part by the HQ row below: the signer record is the
-  Mate's server's own, written at the sign-in, so no tag is waited for; a turn waits up to 30 s only
-  on a sign-in code still being checked (`SIGN_IN_CHECK_WAIT`).**
-  **The first ask waits for its signer record** (Ada's first ask was refused as
-  unrecorded a second before its tag landed). When this server's own login succeeded, was started
-  by the same person and is under 30 minutes old, the turn gate re-reads the signer tags every 1 s
-  for up to 15 s — over no record, another person's, or one that names two people — before it
-  refuses; the earlier signer is refused on the new person's credential. The gate and the client that
-  records the signer both go by the latest sign-in that succeeded, so an attempt cancelled or failed
-  after it changes nothing. Every browser of one person sends the same command id per attempt, so one runs. A refused send's error stands until
-  the person's own next turn.
-  - _Why:_ the stand-up sends on the local signer the moment the sign-in succeeds, while the client
-    writes the tag after it
-- **2026-10-01** — **A queued message whose send failed says why** (Milo's follow-up stayed queued
-  after the turn ended). A send cut off — the link dropped, the command interrupted, the account's
-  wait out — goes back unheld and is retried, at most three times, with the same message and
-  command ids, so the engine's command receipt drops a second start. A refused send is held with its
-  reason in the clock's place and ↑ becomes Retry (fresh ids); the ones behind it say "Waits for the
-  message above"; while a question is open the next says "Waits for your answer above".
-  - _Why:_ a held message never went again, blocked the queue and looked like a waiting one
 - **2026-10-01** — **A row opens only when opening adds something** (a colleague: "you don't need an
   arrow if it doesn't show anything"). A docked operation's chevron shows only for its services'
   lines or a reason cut short; a cut-short reason opens whole, wrapped, in place.
@@ -1662,13 +1080,6 @@ no-cache`.
   text it had"). The echo stays one line (2026-09-28), now the first line of the words, never a
   picture label, with its pictures as a strip of thumbnails under it.
   - _Why:_ a message with a picture starts with its `[Picture 1]` line
-- **2026-10-01** — **Superseded 2026-10-03 in part by "A Mate is connected while something holds it"
-  below: the Mate on screen holds its own lease, and no ceiling is left to pass.**
-  **A coming-up Mate hands over the moment it answers** (Vera's creating browser
-  held "Almost there" for over an hour). A registered or connected Mate always wins over a leftover
-  setup record; every recorded Mate's setup record ends on load; the Mate on screen connects past
-  auto-connect's ceiling, and its connect is retried by the environment machine's ladder.
-  - _Why:_ a leftover record, a 12-Mate ceiling and a single untried connect kept the page waiting
 - **2026-10-01** — **One stalled subscription retries alone** ("Zerops isn't answering" kept coming
   back). While the org's socket is open, a subscription past its deadline retries on its own backoff
   and the rest keep observing; a socket is replaced only when it closes or misses a pong. The account
@@ -1676,92 +1087,10 @@ no-cache`.
   names what isn't; one organization's trouble holds no other's screens.
   - _Why:_ one stall re-registered all ~60 of the org's subscriptions four at a time, and Try now
     looked like it did nothing
-- **2026-10-02** — **A Mate's session outlives the load** (the owner, on the per-load throwaway: it
-  "feels like it's making the system brittle"). The session a throwaway opened is kept per account
-  and presented again on the next load, once the Mate's descriptor names the same project and
-  environment and the Mate answers that it still holds it; it is never sent anywhere else. A kept
-  session spends no mint and waits on no mint pace; signing out ends every kept session at its Mate.
-  - _Why:_ memory-only sessions (2026-09-07) cost nothing while the door took the person's own
-    token; once it took a throwaway (0.11.0) every load minted and deleted one per Mate — 38 of ~57
-    Zerops calls on a Mate page — waited on the pace and the Zerops API to reach Mates that were up,
-    and left each dropped session live on its Mate for a day, while the same storage keeps the
-    Zerops token that can open every Mate
-- **2026-10-01** — **Superseded 2026-10-02 in part by "A Mate's key reaches only its own project"
-  below: the key holds no grant on its siblings, and the press gives no sibling reach.**
-  **A new Mate's setup needs no browser after the press** (the owner: "never ever be
-  tied to user having to have browser open"). Every step that needs the person's rights runs in the
-  Add press, in the foreground: the project, the container with its own key (BASIC_USER on its
-  project, READ_ONLY on its siblings, no delegation), close-off, the registry and sibling reach.
-  zcp imports the runtimes itself once the project is closed off and its own deploy has finished,
-  the Mate serves its setup at a public `/mate/setup.json`, and it starts the stand-up when the
-  signer lands. _Finish setup_ repairs a half-made Mate from any browser.
-  - _Why:_ the setup ran in the creating browser; a closed tab or a connect stranded it mid-way
 - **2026-10-01** — **The Zerops data lives in one store the org sockets feed**, modelled on the
   legacy `zef` entity manager: streamed records by `clientId`, keyed cells for reads with no stream,
   and no fetch in a hook (a CI rule).
   - _Why:_ every view read on its own, and a cold open made 672 calls
-- **2026-10-02** — **A sign-in lands once** (the owner: landing on the projects page and then
-  jumping into some Mate "is very strange and disturbing"). It lands on the deep link it started
-  from, else on the projects page; no route from an earlier visit is restored.
-  - _Why:_ the return fell back to the last route the browser had open, usually an old Mate
-- **2026-10-02** — **A group recipe gives a search engine room to reindex, and keeps what a Mate
-  learns** (the owner: "while creating the recipe it should think about minimal viable resources
-  (but not go overboard either)"). zcp writes Meilisearch, Elasticsearch and Typesense at no less
-  than 2 GB with 0.5 GB free on every tier, every other service at the numbers it runs with, and
-  carries the free-memory buffer and Valkey's profile overrides. A scale change that leaves the
-  recipe behind says so, and one call proposes it as a recipe change for Review.
-  - _Why:_ a new Mate's catalog import ran Meilisearch out of memory at the recipe's 1 GB, and the
-    fix its agent made stopped at that one Mate
-- **2026-10-02** — **HQ replaces Gitea and its broker** (the owner, 2026-10-02). Every organization
-  has one HQ, and the app waits for it: an owner or an admin sees it born, anybody else is told whom
-  to ask (`ZeropsHqGate`). The organization's structure — its applications, their Mates and
-  environments — is HQ's and comes down its stream. A Mate's birth is HQ's record — its name and face, who
-  asked for its stand-up (`standupRequestedBy`) and that its project is closed off — and whose a
-  login is stays the Mate's server's own record (`~/.mate/signed-in.json`), which HQ relays. The Git
-  page is `/git`, every application's repositories and the changes open on them. An agent reaches
-  past its own project only through HQ, later. **Supersedes:** the 2026-09-17 _footer's Gitea
-  button_ and the 2026-09-30 _two signer records_ rows, and the Gitea, broker and tag parts of the
-  rows marked above.
-  - _Why:_ the owner's call: HQ is mandatory per organization and holds its structure, and an
-    agent's reach past its project waits on it
-- **2026-10-02** — **The old Gitea system stays as it is** (the owner, 2026-10-02). The Gitea
-  project, its broker token, the `deploy-*` tokens and each Mate's `GITEA_TOKEN` stay where they
-  are, and nothing writes to them. The client keeps a project tagged `mate:tool:gitea` out of the
-  applications and never writes to it (`tools.ts`). Retiring it is a separate decision, later.
-  - _Why:_ accounts that ran it still have it, and HQ replaces it without taking it down
-- **2026-10-02** — **Superseded 2026-10-03 in part by "A Mate's key is lowered only when Finish
-  setup adopts it" below: the projects page lowers no key on its read. Superseded 2026-10-05 in
-  part: the harden keeps no other grant on a key HQ knows by the id the Mate enrolled with — it sets
-  that key to its own project alone (`planMateKey`, `foundBy: "id"`), a widened key HQ tells by id
-  (`keyWider`) included; only a key found by its name alone is never narrowed, and the grants by
-  hand are that key's.**
-  **A Mate's key reaches only its own project** (the owner, ADR 0003). The key a
-  Mate's container holds is `NO_ACCESS` at the org and `BASIC_USER` on its own project, and nothing
-  more: the mint grants its own project alone (`api.ts:1791`), the press gives no sibling reach, and
-  the projects page only lowers a key minted `ADMIN` — for the Mates HQ places in an application —
-  keeping any other grant a key already holds (`planMateKey`, `groupReach.ts:233`;
-  `useZeropsMateKeys`). The `READ_ONLY` grants on siblings an earlier client gave are taken off by
-  hand. An agent reaches its application's stage, production and other Mates only through HQ, later:
-  a zcp tool that asks HQ, and HQ's rule over what the people who control the Mate may see.
-  **Supersedes:** the sibling reach of the 2026-10-01 _setup needs no browser_ row.
-  - _Why:_ a `READ_ONLY` grant on a production project reads its unmarked secrets — a database's
-    connection string in clear — for anyone with the Mate's terminal, and grants are writes somebody
-    must keep in step; HQ would need Admin rights to keep them
-- **2026-10-03** — **A Mate's key is lowered only when Finish setup adopts it** (step A, A11: a load
-  reads no token list). No page's read lowers a key; `useZeropsMateKeys` is gone. Finish setup
-  lowers the key of a Mate it adopts — one HQ holds no record of — for whoever may adopt it, and
-  the harden reads the key itself as it runs (`hardenMate`); a Mate HQ holds is never hardened. A
-  key the adopter may not write stays as it was, and Finish setup says so ("The Mate's key couldn't
-  be lowered: …; an owner can do it."). **Supersedes:** the projects page's lowering in the
-  2026-10-02 _A Mate's key reaches only its own project_ row; the key's reach there stands.
-  - _Why:_ the lowering read the organization's token list on every load, to find the keys only an
-    adoption leaves `ADMIN`
-- **2026-10-02** — **A reload during a Mate's arrival paints the asleep row.** A reload in the ~15 s
-  between ACTIVE and the Mate's first answer shows the asleep row with its sign-in line; the arrival
-  window stays 2 min from first seen ACTIVE. A Mate whose close-off is still pending arrives like
-  any other: "Coming up", Finish setup hidden, until its server answers its first probe.
-  - _Why:_ a reload paints nothing it takes back, and excluding a close-off-pending Mate would bring
-    the asleep row back for a normal press
 - **2026-10-03** — **The live card shows the moment whole, then plops it into the history** (the
   owner: "always show the things that is happening in full, at least up to some height … when this
   thing is done, it would animatedly 'plop' to the history"; "question what we show in the 'live'
@@ -1816,14 +1145,6 @@ no-cache`.
   open through the plop.
   - _Why:_ 0.11.88 moved a running deploy from the band into the slot, whose row read only the
     call's placeholder steps; a page-held memory of the read would tie the details to one tab.
-- **2026-10-03** — **One screen for a Mate coming up** (the owner, run 6: "why are these two screens
-  separate?"). Create and Add close their dialog at once and the person is on the Mate's coming-up
-  page. The steps the browser runs with the person's session (registered, created, closed off, the
-  Mate registered) are the first row's sub-steps there; "Keep this tab open for about half a minute"
-  shows only while they run. They live in the account's creations store, so moving to another page
-  stops nothing; a stop says its reason in its step's place without moving the rows above.
-  - _Why:_ the dialog and the page showed one coming-up twice, and the dialog's own steps held the
-    person on a modal for the half minute that needed them.
 - **2026-10-03** — **Superseded 2026-10-05: the client lists no Gitea; HQ's structure stream
   carries the changes.** **One Gitea listing a minute for the whole account** (run 6: idle windows made 22
   and 20 requests a minute, 13.4 of them one repository list per group org). The forge reads tick
@@ -1838,14 +1159,6 @@ no-cache`.
   The stream asks with `limit=100`, `desc=0`, `projectId`, and a `from` only as the newest line's id;
   the backfill keeps its time. "Waiting for the build's first line…" shows only while the build step
   runs and the stream's handshake has stood.
-
-- **2026-10-04** — **Origin's load and agent readiness fixes use HQ's facts.** A ready agent outside
-  Mate's personal sign-in flow is relayed in its overview's identity, alongside provider changes.
-  HQ's placement joins it onto the Mate's record: the signer comes first, else the maker of a Mate
-  with that ready agent. No `mate:runs:` tag is written. The server's stand-up reads its asker from
-  HQ and still admits the turn through project access. Candidate rows are remembered only as
-  a standing-in tree and join HQ's placement; unread detail pages say HQ's failure or an earned
-  missing project, without a Gitea session or another account read.
 
 - **2026-10-04** — **A Mate observes its application's stage and production through HQ**
   (parity 84, 260, 275; ADR 0003's boundary stands). `zerops_observe` uses the Mate's enrollment,
@@ -1862,23 +1175,6 @@ no-cache`.
   - _Supersedes:_ only "later" in the 2026-10-02 HQ and own-project key rows. Their key scope and
     legacy-grant removal rules still stand.
 
-- **2026-10-04** — **The home decides where it lands before it paints.** `homeDoor` answers
-  _landing_, _wait_ or _projects_. The projects page shows when no Mate is counted and the Mates are
-  settled, or when nothing will list them: no organization chosen, the grant failed, or the catalog
-  failed. Once shown, it stays until a Mate is counted.
-  - _Why:_ the owner: "when you go to mate.zerops.io it first redirect you to this page briefly for
-    whatever reason then redirecting you elsewhere". A cold load painted the projects page from
-    1.3 s to 2.7 s; it now never does.
-- **2026-10-04** — **A site opens only when the person asks.**
-  - Picking Browser lists the Mate's sites (dev, stage, production, by role) above the agent's own
-    browser.
-  - The conversation's top bar lists them under _Sites_. A click opens a panel tab; the arrow, a
-    middle click or a new-tab gesture opens a browser tab.
-  - Diff opens on a Mate whose workspace is not one repository and shows its turns.
-  - A snapshot skips untracked dependency trees (`node_modules`, `vendor`, `target`, virtualenvs).
-  - _Why:_ the owner: "browser automatically opens all tabs, imo it shouldnt", "the diff tab hasn't
-    been working / doing anything for ages". `node_modules` without a `.gitignore` blew the
-    snapshot's path budget, so no turn was ever recorded.
 - **2026-10-04** — **A helper is a run of its own.**
   - Each helper's calls reach the thread tagged with it: Claude's from its subagent snapshots,
     Codex's from a child's items. Other drivers keep the single row.
@@ -1936,53 +1232,6 @@ no-cache`.
   - Where 0.13 carries out an owner decision (D6, ADR 0003), the decision stands and only its fallout
     is fixed.
   - _Why:_ the owner: "we should fix everything, we have the knowhow of what we worked on".
-- **2026-10-04** — **A Mate signed in once has arrived for good; one whose agent needs no sign-in has
-  arrived once it is up** (`mateArrivingUntil`, `mateSignedInOnce`).
-  - A sign-out, or HQ's saved signers before the live ones arrive, no longer brings back the waking
-    face.
-  - **Supersedes:** the current-signer-only arrival from the 0.12.2 port.
-  - _Why:_ the waking face means "waiting on a first sign-in", and nothing else.
-- **2026-10-04** — **`/` decides before it paints and lands nowhere dead** (`homeTarget`, `homeView`).
-  - An empty organization, no chosen organization, and a failed catalog with no Mate named all land
-    on the projects page, which offers the way on.
-  - Only the organization in view lands. A cached registration whose socket is down never claims the
-    landing.
-  - A projects page once shown stays until the person acts.
-  - **Supersedes:** upstream's "What should we work on?" hero as the empty-org home (deleted).
-  - _Why:_ the hero's Add project led nowhere in Mate, and with no organization chosen `/` waited
-    forever.
-- **2026-10-04** — **Set up Mate is offered on an existing plain project, and a Mate's project keeps
-  its owner's own tags.**
-  - A project is plain on HQ's word alone (ADR 0002): HQ's structure is read and holds no record of
-    it of any kind, no press of it either — running elsewhere or stopped — and the official HQ's
-    anchor does not name it. Its tags and its age decide nothing. Set up Mate is offered where HQ
-    offers writing its Mate's record (`create_mate_record`, streamed beside each project it holds
-    nowhere), never on a client's own reading of the person's roles.
-  - Set up Mate asks first, in the app's own dialog: what it adds, and that the project's services
-    restart once while it is closed off.
-  - Declaring a Mate adds `mate` beside the project's tags and drops only old `mate:*` ones; a rename
-    puts every tag back.
-  - **Supersedes:** "limit Mate setup to declared development environments", and "a project carries
-    only the mate tag" (`project-metadata.md`).
-  - _Why:_ an owner could no longer bring Mate into an existing project, and declaring or renaming a
-    Mate wiped the project's own tags.
-- **2026-10-04** — **Finish setup takes an old Mate key's sibling grants off; HQ says which keys still
-  reach further.**
-  - HQ records a key wider than its project at enrollment and on its credential (`keyWider`, HQ
-    migration 0042). The Mate then offers Finish setup to whoever HQ offers its record
-    (`edit_mate_record`). HQ tells them that key's id, and the harden sets the key to its own
-    project alone by it (`planMateKey`, `foundBy: "id"`).
-  - The client keeps no path for a Core older than that: the fleet's Cores are updated first, as
-    an admin updates any Core from HQ's card (`ZeropsHqUpdate`).
-  - `planMateKey` writes a Mate's key as exactly its own project at `BASIC_USER`. Found by its name,
-    a key is a Mate's only with a single `ADMIN` or `BASIC_USER` grant on its own project and nothing
-    else (`mateKeyReach`, shared by HQ and the client); any other `zcp-*` key is never narrowed, and a
-    press mints a new one beside it (2026-10-05, the HQ-answers pass).
-  - No load reads a token list.
-  - **Supersedes in part:** the 2026-10-02 row's "taken off by hand", and the 2026-10-03 row's "a
-    Mate HQ holds is never hardened", for widened keys only.
-  - _Why:_ ADR 0003 (the owner). A `READ_ONLY` grant an earlier client left on production reads its
-    secrets for anyone with the Mate's terminal.
 - **2026-10-04** — **HQ's data reaches the client through its stream, and nothing is read while the
   tab is hidden.**
   - HQ's standing comes from the stream; its 30 s `/health` poll is gone. The stream also carries the
@@ -2008,18 +1257,6 @@ no-cache`.
   - **Supersedes:** "failed reads stay failed until the visible manual action"
     (`platform-data-architecture.md`).
   - _Why:_ a laptop waking before its Wi-Fi, or a 429, left pages failed until a click.
-- **2026-10-04** — **Superseded 2026-10-05: nothing is carried over. A project's tags decide nothing
-  (ADR 0002), and HQ already holds the signers its tag port moved off the tags, which zcp seeds an
-  absent record from.** **An old Mate's signer is carried into its sign-in record once** (D6
-  unchanged).
-  - At the first start of this build, a login held then, and never named in `~/.mate/signed-in.json`,
-    is recorded for the one person its `mate:signer:` tag or HQ's saved signer names.
-  - It closes once both sources answer, and at the latest on the third start. A credential that
-    appears later is never carried.
-  - A credential already present at the update is taken to be the one its tag was written for: 0.12.3
-    trusted the tag the same way.
-  - _Why:_ 0.13 dropped the tag fallback, so a login made before the record began (v0.11.79) was
-    refused for everyone, its signer too.
 - **2026-10-05** — **Automatic recovery is wanted; a clock standing in for an answer is not.**
   - **Wanted:** recovery with a clear logic — renewing a session, reconnecting, re-subscribing,
     re-reading, re-running an idempotent step after a transient failure (network, timeout, 5xx, the
@@ -2075,26 +1312,6 @@ no-cache`.
     build's end); a stand-up's quiet file (its zcp process by PID and start, and its turn); a Mate's
     retry cap kept across loads (the connection's own ladder, which a load starts over). Faces keep
     their own clocks: a pose is never a verdict.
-- **2026-10-05** — **D10 (the owner): a new conversation starts on Extra High, wherever its model
-  offers it.**
-  - **Every new conversation:** a new Mate's first (the bootstrap thread and its stand-up) and every
-    later one (a draft, a thread that never ran a turn), on the web and the phone. The drivers keep
-    their own `isDefault` (Port zone untouched); the preference lives in `@t3tools/shared/zeropsEffort`.
-  - **The rule:** the effort option (`effort`, `reasoningEffort`, `reasoning`, `variant`) takes
-    `xhigh` by id; without it, the highest step below `max` on the ladder `none < minimal < low <
-medium < high < xhigh` (a driver's own order does not rank: Grok reports its levels top first,
-    OpenCode's come from an object's keys); no effort option, or nothing on the ladder, selects
-    nothing; `max` never.
-  - **What stays:** a conversation that has run keeps its effort, a person's own pick always wins,
-    and crewmates keep their own rule (unset = the login's default).
-  - **The remembered selection carries no effort** (the lead, under the owner's delegation): the
-    last-used model and traits a new draft inherits drop the effort, since touching any trait
-    remembers every value, the default effort included. A pick inside a draft or a conversation
-    still wins there.
-  - **The server applies it too:** a non-crew thread's first turn naming no effort (a phone task
-    queued before the catalog arrived, the stand-up) runs on the preference, and the thread stores
-    what its first turn ran on, so a reload reads it back.
-  - _Why:_ the owner runs real work on Extra High — "at least extra high effort".
 - **2026-10-06** — **A helper is called what the Mate called it** (F6: the Mate's text said "the
   deep-sea builder", the card said the launch's task). Where a helper's launch gave it a name —
   Claude's Agent `name`, kept by the activity projection for an agent launch only — every place
