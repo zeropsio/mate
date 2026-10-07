@@ -50,6 +50,7 @@ export interface ZeropsDataBinding {
    * closed with the account before the registry goes.
    */
   readonly accountData: {
+    readonly store: AccountStore;
     readonly data: AccountStore["data"];
     readonly observation: AccountObservation;
   };
@@ -188,7 +189,7 @@ export function ZeropsAccountEnvironmentProvider({
         const current: ZeropsDataBinding = {
           account: scope,
           registry,
-          accountData: { data: store!.data, observation: observation! },
+          accountData: { store: store!, data: store!.data, observation: observation! },
         };
         binding = current;
         setValue({ binding: current, environments: null, error: null });

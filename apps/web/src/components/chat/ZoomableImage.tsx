@@ -224,6 +224,7 @@ export function ZoomableImage({
         }}
       >
         <AssetImage
+          original
           loading="lazy"
           decoding="async"
           src={src}

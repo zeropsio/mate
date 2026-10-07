@@ -1,3 +1,5 @@
+import { ThreadId } from "@t3tools/contracts";
+import { contentAssetsAt } from "./ContentAssets.ts";
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeCrypto from "node:crypto";
 
@@ -202,6 +204,26 @@ export const storeAttachmentUpload = Effect.fn("AttachmentUpload.store")(functio
       } satisfies StoreAttachmentUploadResult;
     }
     yield* fileSystem.rename(partPath, finalPath);
+    if (claims.mimeType.startsWith("image/")) {
+      const occurrence = yield* Effect.promise(() =>
+        contentAssetsAt(config.stateDir).upload(claims.attachmentId, finalPath, {
+          threadId: ThreadId.make("pending"),
+          ownerId: claims.attachmentId,
+          name: claims.name,
+          mimeType: claims.mimeType,
+          provenance: "upload",
+        }),
+      );
+      if (occurrence.original.status === "failed")
+        return {
+          ok: false,
+          status: occurrence.original.code === "storage-full" ? 507 : 500,
+          detail:
+            occurrence.original.code === "storage-full"
+              ? "Storage full"
+              : "Image could not be retained.",
+        } satisfies StoreAttachmentUploadResult;
+    }
     return { ok: true } satisfies StoreAttachmentUploadResult;
   }).pipe(
     Effect.catch((cause) =>
@@ -240,4 +262,5 @@ export const deletePendingAttachment = Effect.fn("AttachmentUpload.deletePending
 
   const fileSystem = yield* FileSystem.FileSystem;
   yield* fileSystem.remove(attachmentPath, { force: true }).pipe(Effect.orElseSucceed(() => {}));
+  yield* Effect.promise(() => contentAssetsAt(config.stateDir).releaseUpload(attachmentId));
 });

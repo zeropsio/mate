@@ -6,6 +6,7 @@
 import type { AssetResource, EnvironmentId } from "@t3tools/contracts";
 import { useMemo } from "react";
 
+import { AssetDownloadLink } from "~/assets/AssetDownloadLink";
 import { useAssetUrls } from "~/assets/assetUrls";
 import { useTheme } from "~/hooks/useTheme";
 import type { ChatAttachment } from "~/types";
@@ -52,14 +53,14 @@ export function MessageFile(props: { readonly file: ChatAttachment; readonly url
     />
   );
   return props.url ? (
-    <a
+    <AssetDownloadLink
       className="message-file"
-      href={props.url}
+      source={props.url}
       download={props.file.name}
       aria-label={`Download ${props.file.name}`}
     >
       {face}
-    </a>
+    </AssetDownloadLink>
   ) : (
     <span className="message-file">{face}</span>
   );

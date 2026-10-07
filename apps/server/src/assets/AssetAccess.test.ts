@@ -12,6 +12,7 @@ import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as PlatformError from "effect/PlatformError";
 import * as TestClock from "effect/testing/TestClock";
+import * as Schema from "effect/Schema";
 import { HttpServerResponse } from "effect/unstable/http";
 import { vi } from "vite-plus/test";
 
@@ -30,6 +31,11 @@ import {
 import { openMediaFile } from "./MediaFile.ts";
 import * as AssetSigningKey from "./AssetSigningKey.ts";
 import { TemporaryMediaRoots } from "./RetainedMedia.ts";
+import sharp from "sharp";
+import { contentAssetsAt } from "./ContentAssets.ts";
+import { base64UrlEncode, signPayload } from "../auth/utils.ts";
+
+const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 
 vi.mock("node:fs/promises", async (importOriginal) => {
   const actual = await importOriginal<typeof NodeFSP>();
@@ -52,6 +58,52 @@ const makeTestLayer = (services = NodeServices.layer) =>
   ).pipe(Layer.provideMerge(services));
 // Workspace fixtures use temp directories but model files on a persistent workspace volume.
 const testLayer = makeTestLayer().pipe(Layer.provideMerge(Layer.succeed(TemporaryMediaRoots, [])));
+
+it.effect.each(["attachment", "workspace-file", "media-file"] as const)(
+  "a captured %s original is only addressed by its protected digest route",
+  (kind) =>
+    Effect.gen(function* () {
+      const config = yield* ServerConfig.ServerConfig;
+      const occurrence = yield* Effect.promise(async () =>
+        contentAssetsAt(config.stateDir).ingestBytes(
+          await sharp({ create: { width: 2, height: 2, channels: 4, background: "red" } })
+            .png()
+            .toBuffer(),
+          {
+            threadId: ThreadId.make("thread"),
+            ownerId: "message",
+            name: "original.png",
+            provenance: "capture",
+          },
+        ),
+      );
+      if (occurrence.original.status !== "ready") throw new Error("not retained");
+      const issued = yield* issueAssetUrl({
+        resource:
+          kind === "attachment"
+            ? { _tag: "attachment", attachmentId: "thread-image", occurrenceId: occurrence.id }
+            : {
+                _tag: kind,
+                threadId: ThreadId.make("thread"),
+                path: `mate-asset:${occurrence.id}`,
+              },
+      });
+      expect(issued.relativeUrl).toBe(`/api/assets/objects/${occurrence.original.digest}/original`);
+      expect(issued.expiresAt).toBe(0);
+      const signingKey = yield* AssetSigningKey.AssetSigningKey;
+      const payload = base64UrlEncode(
+        encodeJson({
+          version: 1,
+          kind: "retained-media",
+          relativePath: `originals/${occurrence.original.digest}`,
+          mimeType: "image/png",
+          expiresAt: Number.MAX_SAFE_INTEGER,
+        }),
+      );
+      const token = `${payload}.${signPayload(payload, yield* signingKey.get)}`;
+      expect(yield* resolveAsset(token, "original.png")).toBeNull();
+    }).pipe(Effect.provide(testLayer)),
+);
 
 const recordingKeyServices = (read: Effect.Effect<void, PlatformError.PlatformError>) =>
   Layer.effect(

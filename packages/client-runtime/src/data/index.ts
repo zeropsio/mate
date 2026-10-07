@@ -317,3 +317,14 @@ export {
 export { makeMateUpdates, makeMateUpdateWire, type MateUpdateHost } from "./adapters/mateUpdate.ts";
 export { mateUpdate, mateUpdateStates, type MateUpdateRead } from "./projections/mateUpdate.ts";
 export { composerControl, type ComposerControlLook } from "./projections/composerControl.ts";
+export { mateImage, mateImagePreview, mateImageDimensions } from "./projections/mateImage.ts";
+export type { MateImageRead } from "./projections/mateImage.ts";
+export {
+  mateImageId,
+  mateImageScope,
+  mateImageSource,
+  parseMateImageSource,
+  demandedImageSize,
+} from "./families/mateImage.ts";
+export type { MateImageKey, MateImageReference } from "./families/mateImage.ts";
+export { makeMateImages, makeMateImageWire, classifyImageHttp } from "./adapters/mateImages.ts";

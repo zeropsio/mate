@@ -1,4 +1,5 @@
 import * as Schema from "effect/Schema";
+import { ImageOccurrence, AssetRepresentation } from "./assetReference.ts";
 
 import { NonNegativeInt, ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
 import {
@@ -20,6 +21,17 @@ export const AssetResource = Schema.Union([
     path: TrimmedNonEmptyString.check(Schema.isMaxLength(ASSET_PATH_MAX_LENGTH)),
   }),
   Schema.TaggedStruct("attachment", {
+    occurrenceId: Schema.optionalKey(Schema.String),
+    captureFailure: Schema.optionalKey(
+      Schema.Literals([
+        "source-missing",
+        "source-changed",
+        "storage-full",
+        "unsupported",
+        "persistence-failed",
+      ]),
+    ),
+    originalOccurrenceId: Schema.optionalKey(Schema.String),
     attachmentId: TrimmedNonEmptyString.check(Schema.isMaxLength(256)),
     /** Display name and mime from the `ChatAttachment` the caller holds. The
         server bakes both into the signed URL so downloads carry the real
@@ -39,6 +51,13 @@ export type AssetResource = typeof AssetResource.Type;
 
 export const AssetCreateUrlInput = Schema.Struct({
   resource: AssetResource,
+  imageMode: Schema.optionalKey(Schema.Literal("reference")),
+  preview: Schema.optionalKey(
+    Schema.Struct({
+      width: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 8192 })),
+      height: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 8192 })),
+    }),
+  ),
 });
 export type AssetCreateUrlInput = typeof AssetCreateUrlInput.Type;
 
@@ -51,6 +70,17 @@ export type AssetImageDimensions = typeof AssetImageDimensions.Type;
 export const AssetCreateUrlResult = Schema.Struct({
   relativeUrl: TrimmedNonEmptyString.check(Schema.isMaxLength(4096)),
   expiresAt: Schema.Number,
+  occurrence: Schema.optionalKey(ImageOccurrence),
+  representation: Schema.optionalKey(AssetRepresentation),
+  renditionFailure: Schema.optionalKey(
+    Schema.Literals([
+      "storage-full",
+      "preview-unavailable",
+      "unsupported",
+      "object-missing",
+      "persistence-failed",
+    ]),
+  ),
   sourcePath: Schema.optional(
     TrimmedNonEmptyString.check(Schema.isMaxLength(ASSET_PATH_MAX_LENGTH)),
   ),
@@ -267,7 +297,24 @@ export class AssetSigningKeyLoadError extends Schema.TaggedError<AssetSigningKey
   }
 }
 
+export class AssetImageAccessError extends Schema.TaggedError<AssetImageAccessError>()(
+  "AssetImageAccessError",
+  {
+    code: Schema.Literals([
+      "source-missing",
+      "source-changed",
+      "storage-full",
+      "object-missing",
+      "unsupported",
+      "persistence-failed",
+      "preview-unavailable",
+    ]),
+    status: Schema.Int,
+  },
+) {}
+
 export const AssetAccessError = Schema.Union([
+  AssetImageAccessError,
   AssetWorkspaceContextNotFoundError,
   AssetWorkspaceContextResolutionError,
   AssetWorkspaceRootNormalizationError,

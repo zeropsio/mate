@@ -1,3 +1,5 @@
+import { parseMateImageSource } from "@t3tools/client-runtime/data";
+import { useMateImage } from "~/assets/MateImages";
 import { AssetImage } from "~/assets/AssetImage";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { ChevronLeftIcon, ChevronRightIcon, XIcon } from "lucide-react";
@@ -53,6 +55,10 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
   }, [navigateImage, onClose, preview.images.length]);
 
   const item = preview.images[index];
+  const reference = parseMateImageSource(item?.src);
+  const original = useMateImage(
+    reference === null ? null : { ...reference, rendition: "original" },
+  );
   if (!item) return null;
 
   return (
@@ -111,6 +117,15 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
         )}
         <p className="mt-2 max-w-[var(--media-width)] truncate text-center text-xs text-muted-foreground/80">
           {item.name}
+          {reference !== null && original.read.kind === "ready" && original.url ? (
+            <a
+              className="ml-3 underline"
+              href={original.url}
+              download={original.read.occurrence?.name ?? item.name}
+            >
+              Download original
+            </a>
+          ) : null}
           {preview.images.length > 1 ? ` (${index + 1}/${preview.images.length})` : ""}
         </p>
       </div>

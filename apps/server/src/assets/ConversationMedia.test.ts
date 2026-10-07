@@ -1,0 +1,237 @@
+// @effect-diagnostics nodeBuiltinImport:off - producer fixtures remove their own temporary sources.
+import * as NodeFSP from "node:fs/promises";
+import * as NodePath from "node:path";
+import * as NodeServices from "@effect/platform-node/NodeServices";
+import { EventId, ThreadId } from "@t3tools/contracts";
+import { expect, it } from "@effect/vitest";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as Schema from "effect/Schema";
+import sharp from "sharp";
+import { ServerConfig, layerTest } from "../config.ts";
+import { captureActivityMedia, captureConversationText } from "./ConversationMedia.ts";
+import * as AssetSigningKey from "./AssetSigningKey.ts";
+import * as ProjectFaviconResolver from "../project/ProjectFaviconResolver.ts";
+import * as T3ProjectFileLoader from "../project/T3ProjectFileLoader.ts";
+import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
+import { resolveImageAsset } from "./ImageAsset.ts";
+import { contentAssetsAt } from "./ContentAssets.ts";
+import { projectActivityPayload } from "../orchestration/ActivityPayloadProjection.ts";
+const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
+
+const layer = Layer.mergeAll(
+  layerTest(process.cwd(), { prefix: "mate-capture-" }),
+  WorkspacePaths.layer,
+  ProjectFaviconResolver.layer.pipe(
+    Layer.provide(WorkspacePaths.layer),
+    Layer.provide(T3ProjectFileLoader.layer),
+  ),
+  Layer.succeed(AssetSigningKey.AssetSigningKey, { get: Effect.die("legacy signing is not used") }),
+).pipe(Layer.provideMerge(NodeServices.layer));
+it.effect(
+  "captures a produced image without a viewer and gives pathname reuse a new occurrence",
+  () =>
+    Effect.gen(function* () {
+      const config = yield* ServerConfig;
+      const source = NodePath.join(config.stateDir, "shot.png");
+      const bytes = yield* Effect.promise(() =>
+        sharp({ create: { width: 200, height: 120, channels: 4, background: "red" } })
+          .png()
+          .toBuffer(),
+      );
+      yield* Effect.promise(() => NodeFSP.writeFile(source, bytes));
+      const first = yield* captureConversationText(
+        `![first](${source})`,
+        ThreadId.make("thread"),
+        "first-message",
+        config.stateDir,
+      );
+      yield* Effect.promise(() => NodeFSP.unlink(source));
+      expect(first).toMatch(/^!\[first\]\(mate-asset:[a-f0-9-]{36}\)$/);
+      const occurrence = yield* Effect.promise(() =>
+        contentAssetsAt(config.stateDir).occurrence(
+          first.slice(first.indexOf("mate-asset:") + 11, -1),
+        ),
+      );
+      if (occurrence.original.status !== "ready") throw new Error("not retained");
+      const digest = occurrence.original.digest;
+      expect(
+        yield* Effect.promise(async () =>
+          NodeFSP.readFile((await contentAssetsAt(config.stateDir).object(digest)).path),
+        ),
+      ).toEqual(bytes);
+      yield* Effect.promise(() => NodeFSP.writeFile(source, bytes));
+      const second = yield* captureConversationText(
+        `![second](${source})`,
+        ThreadId.make("thread"),
+        "second-message",
+        config.stateDir,
+      );
+      expect(second).not.toContain(occurrence.id);
+    }).pipe(Effect.provide(layer)),
+);
+it.effect("a tool-card snapshot contains an occurrence and no image body", () =>
+  Effect.gen(function* () {
+    const config = yield* ServerConfig;
+    const bytes = yield* Effect.promise(() =>
+      sharp({ create: { width: 200, height: 120, channels: 4, background: "blue" } })
+        .png()
+        .toBuffer(),
+    );
+    const activity = yield* captureActivityMedia(
+      {
+        id: EventId.make("tool"),
+        kind: "tool.completed",
+        tone: "tool",
+        summary: "Screenshot",
+        createdAt: "2026-10-07T00:00:00.000Z",
+        turnId: null,
+        payload: {
+          data: { zerops: { images: [{ mimeType: "image/png", data: bytes.toString("base64") }] } },
+        },
+      },
+      ThreadId.make("thread"),
+      config.stateDir,
+    );
+    expect(activity.payload).toMatchObject({
+      data: {
+        zerops: { images: [{ asset: { original: { status: "ready", sizeBytes: bytes.length } } }] },
+      },
+    });
+    expect(activity.payload).not.toMatchObject({
+      data: { zerops: { images: [{ data: expect.anything() }] } },
+    });
+  }).pipe(Effect.provide(layer)),
+);
+it.effect.each(["https://example.org/picture.png", "movie.mp4"])(
+  "keeps external and non-image destinations unchanged: %s",
+  (destination) =>
+    Effect.gen(function* () {
+      const config = yield* ServerConfig;
+      const text = `![media](${destination})`;
+      expect(
+        yield* captureConversationText(text, ThreadId.make("thread"), "message", config.stateDir),
+      ).toBe(text);
+    }).pipe(Effect.provide(layer)),
+);
+
+it.effect.each(["inline", "reference"])(
+  "retains exact originals for unsupported preview codecs without a Markdown body leak: %s",
+  (syntax) =>
+    Effect.gen(function* () {
+      const config = yield* ServerConfig;
+      const bytes = Buffer.from("original codec bytes");
+      const source = `data:image/x-unrecognized;base64,${bytes.toString("base64")}`;
+      const text =
+        syntax === "inline"
+          ? `![picture](${source})`
+          : `![picture][shot]\n\n[shot]: ${source} "Title"`;
+      const captured = yield* captureConversationText(
+        text,
+        ThreadId.make("thread"),
+        "message",
+        config.stateDir,
+      );
+      expect(captured).not.toContain(source);
+      const id = /mate-asset:([a-f0-9-]{36})/.exec(captured)?.[1];
+      if (!id) throw new Error("No occurrence");
+      const result = yield* resolveImageAsset({
+        resource: {
+          _tag: "workspace-file",
+          threadId: ThreadId.make("thread"),
+          path: `mate-asset:${id}`,
+        },
+        imageMode: "reference",
+        preview: { width: 80, height: 40 },
+        workspaceRoot: config.stateDir,
+      });
+      expect(result?.renditionFailure).toBe("preview-unavailable");
+      const original = result?.occurrence?.original;
+      if (original?.status !== "ready") throw new Error("No retained original");
+      expect(
+        yield* Effect.promise(async () =>
+          NodeFSP.readFile((await contentAssetsAt(config.stateDir).object(original.digest)).path),
+        ),
+      ).toEqual(bytes);
+    }).pipe(Effect.provide(layer)),
+);
+
+it.effect(
+  "captures reference and parenthesized image paths while leaving code examples intact",
+  () =>
+    Effect.gen(function* () {
+      const config = yield* ServerConfig;
+      const source = "shot (1).png";
+      const bytes = yield* Effect.promise(() =>
+        sharp({ create: { width: 20, height: 12, channels: 4, background: "red" } })
+          .png()
+          .toBuffer(),
+      );
+      yield* Effect.promise(() => NodeFSP.writeFile(NodePath.join(config.stateDir, source), bytes));
+      const code = "```md\n![example](<shot (1).png>)\n```";
+      const captured = yield* captureConversationText(
+        `![one](<${source}> "Title")\n![two][shot]\n\n[shot]: <${source}>\n${code}`,
+        ThreadId.make("thread"),
+        "message",
+        config.stateDir,
+      );
+      expect(captured).toContain(code);
+      expect(captured.match(/mate-asset:/g)).toHaveLength(2);
+      expect(captured).toContain('"Title"');
+    }).pipe(Effect.provide(layer)),
+);
+
+it.effect.each(["storage-full", "source-missing", "source-changed"] as const)(
+  "retains the producer's refusal when the occurrence file could not be published: %s",
+  (code) =>
+    Effect.gen(function* () {
+      const config = yield* ServerConfig;
+      const result = yield* resolveImageAsset({
+        resource: {
+          _tag: "workspace-file",
+          threadId: ThreadId.make("thread"),
+          path: `mate-asset:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa:${code}`,
+        },
+        imageMode: "reference",
+        preview: { width: 80, height: 40 },
+        workspaceRoot: config.stateDir,
+      });
+      expect(result?.occurrence?.original).toEqual({ status: "failed", code });
+    }).pipe(Effect.provide(layer)),
+);
+
+it.effect(
+  "a replay preserves a captured tool image identity after its temporary file is removed",
+  () =>
+    Effect.gen(function* () {
+      const config = yield* ServerConfig;
+      const source = NodePath.join(config.stateDir, "tool-shot.png");
+      const bytes = yield* Effect.promise(() =>
+        sharp({ create: { width: 20, height: 12, channels: 4, background: "red" } })
+          .png()
+          .toBuffer(),
+      );
+      yield* Effect.promise(() => NodeFSP.writeFile(source, bytes));
+      const first = yield* captureActivityMedia(
+        {
+          id: EventId.make("tool"),
+          kind: "tool.completed",
+          tone: "tool",
+          summary: "Screenshot",
+          createdAt: "2026-10-07T00:00:00.000Z",
+          turnId: null,
+          payload: { data: { toolName: "Read", input: { file_path: source }, imagePath: source } },
+        },
+        ThreadId.make("thread"),
+        config.stateDir,
+      );
+      yield* Effect.promise(() => NodeFSP.unlink(source));
+      const replay = yield* captureActivityMedia(first, ThreadId.make("thread"), config.stateDir);
+      expect(replay.payload).toEqual(first.payload);
+      const projected = projectActivityPayload(replay);
+      expect(projected.payload).toMatchObject({
+        data: { imagePath: expect.stringMatching(/^mate-asset:/) },
+      });
+      expect(encodeJson(projected.payload)).not.toContain(`"imagePath":"${source}"`);
+    }).pipe(Effect.provide(layer)),
+);

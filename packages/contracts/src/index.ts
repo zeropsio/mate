@@ -31,6 +31,7 @@ export * from "./exec.ts";
 export * from "./project.ts";
 export * from "./filesystem.ts";
 export * from "./assets.ts";
+export * from "./assetReference.ts";
 export * from "./review.ts";
 export * from "./resourceTelemetry.ts";
 export * from "./zerops.ts";

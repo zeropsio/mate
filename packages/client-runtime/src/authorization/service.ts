@@ -49,6 +49,7 @@ export interface AuthorizedRemoteEnvironment {
   readonly httpAuthorization: PreparedHttpAuthorization;
   /** What the descriptor says of the thread snapshot; absent when it does not say. */
   readonly threadSnapshot?: ThreadSnapshotCapabilities;
+  readonly contentAddressedImages?: boolean;
 }
 
 /** The descriptor's word on the HTTP thread snapshot, only when it names both parameters. */
@@ -175,6 +176,7 @@ export const make = Effect.gen(function* () {
           _tag: "Bearer" as const,
           token: input.bearerToken,
         },
+        contentAddressedImages: descriptor.capabilities.contentAddressedImages === true,
         ...(threadSnapshot === undefined ? {} : { threadSnapshot }),
       };
     },
@@ -246,7 +248,11 @@ export const make = Effect.gen(function* () {
           CACHED_ENDPOINT_SOCKET_TIMEOUT_MS,
         ).pipe(Effect.result);
         if (Result.isSuccess(cachedSocket)) {
+          const descriptor = yield* fetchDescriptor(cached.value.endpoint.httpBaseUrl).pipe(
+            Effect.provideService(HttpClient.HttpClient, httpClient),
+          );
           return {
+            contentAddressedImages: descriptor.capabilities.contentAddressedImages === true,
             environmentId: cached.value.environmentId,
             label: cached.value.label,
             httpBaseUrl: cached.value.endpoint.httpBaseUrl,
@@ -322,6 +328,7 @@ export const make = Effect.gen(function* () {
         environmentId: descriptor.environmentId,
         label: descriptor.label,
         httpBaseUrl: bootstrap.endpoint.httpBaseUrl,
+        contentAddressedImages: descriptor.capabilities.contentAddressedImages === true,
         socketUrl,
         httpAuthorization: {
           _tag: "Dpop" as const,

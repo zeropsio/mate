@@ -139,6 +139,7 @@ export interface ThreadSnapshotCapabilities {
 }
 
 export interface PreparedConnection {
+  readonly contentAddressedImages?: boolean;
   readonly environmentId: EnvironmentId;
   readonly label: string;
   readonly httpBaseUrl: string;

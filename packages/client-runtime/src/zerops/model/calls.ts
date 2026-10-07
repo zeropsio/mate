@@ -1,3 +1,6 @@
+import { ImageOccurrence } from "@t3tools/contracts";
+import * as Schema from "effect/Schema";
+import * as Option from "effect/Option";
 /**
  * `collectZeropsCalls` — the call ledger. A Zerops call is a SET of activity
  * rows joined by `toolCallId`; every derived fact is a lattice over that set
@@ -157,20 +160,23 @@ function readZeropsImages(
   return images;
 }
 
+const decodeImageOccurrence = Schema.decodeUnknownOption(ImageOccurrence);
 function readImages(raw: ReadonlyArray<unknown>): ReadonlyArray<ZeropsCallImage> | undefined {
   const images: ZeropsCallImage[] = [];
   for (const candidate of raw) {
     const record = readRecord(candidate);
     const mimeType = record !== undefined ? readString(record.mimeType) : undefined;
     const data2 = record !== undefined ? readString(record.data) : undefined;
-    if (mimeType === undefined || data2 === undefined) {
+    const asset = Option.getOrUndefined(decodeImageOccurrence(record?.asset));
+    if (mimeType === undefined || (data2 === undefined && asset === undefined)) {
       continue;
     }
     const width = typeof record?.width === "number" ? record.width : undefined;
     const height = typeof record?.height === "number" ? record.height : undefined;
     images.push({
       mimeType,
-      data: data2,
+      ...(data2 === undefined ? {} : { data: data2 }),
+      ...(asset === undefined ? {} : { asset }),
       ...(width !== undefined ? { width } : {}),
       ...(height !== undefined ? { height } : {}),
     });

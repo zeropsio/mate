@@ -24,6 +24,9 @@ import * as NodeModule from "node:module";
  */
 export const CLI_RUNTIME_EXTERNAL_PREFIXES = [
   "node-pty",
+  "sharp",
+  "semver",
+  "@img/",
   "ffi-rs",
   "@yuuang/",
   "@ff-labs/",

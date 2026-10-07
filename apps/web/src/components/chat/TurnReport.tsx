@@ -297,9 +297,9 @@ function PictureTile({
 
 /** Where a picture is read from now: a check's own pixels, a file once its address is known. */
 function pictureUrl(picture: ResultPicture, files: ResultFiles): string | null {
-  if (picture.kind === "check") return picture.src;
-  const state = files.get(picture.path);
-  return state?._tag === "Success" ? state.url : null;
+  const state = files.get(picture.kind === "check" ? picture.src : picture.path);
+  if (state?._tag === "Success") return state.url;
+  return picture.kind === "check" && !picture.src.startsWith("mate-asset:") ? picture.src : null;
 }
 
 /**
@@ -347,7 +347,10 @@ function PictureStrip({
             state={
               picture.kind === "file"
                 ? (files.get(picture.path) ?? LOADING)
-                : { _tag: "Success", url: picture.src }
+                : (files.get(picture.src) ??
+                  (picture.src.startsWith("mate-asset:")
+                    ? LOADING
+                    : { _tag: "Success", url: picture.src }))
             }
           />
         );
@@ -418,7 +421,11 @@ function WorkspaceReport({
   const paths = useMemo(
     () =>
       resultPictures(props.outcome).flatMap((picture) =>
-        picture.kind === "file" ? [picture.path] : [],
+        picture.kind === "file"
+          ? [picture.path]
+          : picture.src.startsWith("mate-asset:")
+            ? [picture.src]
+            : [],
       ),
     [props.outcome],
   );
@@ -511,7 +518,11 @@ function Report({
               <RowSub onOpenTurnDiff={onOpenTurnDiff} row={row} />
               {own.length === 0 ? null : (
                 <div className="run-result-row-pictures">
-                  <PictureStrip onOpenImage={onOpenImage} pictures={own} files={NO_FILES} />
+                  <PictureStrip
+                    onOpenImage={onOpenImage}
+                    pictures={own}
+                    files={files ?? NO_FILES}
+                  />
                 </div>
               )}
             </div>

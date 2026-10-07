@@ -53,6 +53,7 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
   reasoningMessages: Schema.optionalKey(Schema.Boolean),
   /** Missing on older servers, which still accept inline image attachments. */
   attachmentUploads: Schema.optionalKey(Schema.Boolean),
+  contentAddressedImages: Schema.optionalKey(Schema.Boolean),
   /** Uploaded files may accompany question answers. */
   questionAttachments: Schema.optionalKey(Schema.Boolean),
   /** Missing on servers that only accept image attachments. */

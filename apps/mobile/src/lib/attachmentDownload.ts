@@ -168,7 +168,11 @@ export async function downloadAttachmentForPreview(input: {
       cached.preview.dispose();
       return null;
     }
-    await File.downloadFileAsync(input.url, cached.file, { signal: input.signal });
+    const inline = /^data:image\/[\w.+-]+;base64,([\s\S]+)$/.exec(input.url);
+    if (inline) {
+      cached.file.create();
+      cached.file.write(inline[1]!, { encoding: "base64" });
+    } else await File.downloadFileAsync(input.url, cached.file, { signal: input.signal });
     if (input.signal.aborted) {
       cached.preview.dispose();
       return null;

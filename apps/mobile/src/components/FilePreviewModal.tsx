@@ -59,8 +59,14 @@ function ResolvedFilePreview(props: {
     };
   }, [source]);
 
-  return uri === null ? null : (
-    <FilePreview source={{ ...source, uri }} onRequestClose={props.onRequestClose} />
+  const protectedImage =
+    source.kind === "image" &&
+    "resource" in source &&
+    ((connection._tag === "Some" && connection.value.contentAddressedImages === true) ||
+      uri?.startsWith("data:image/") === true);
+  const shownUri = protectedImage ? (asset._tag === "Success" ? asset.url : null) : uri;
+  return shownUri === null ? null : (
+    <FilePreview source={{ ...source, uri: shownUri }} onRequestClose={props.onRequestClose} />
   );
 }
 

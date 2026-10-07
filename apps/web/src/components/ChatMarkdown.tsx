@@ -1191,7 +1191,7 @@ function openMarkdownImage(button: HTMLElement, open: (preview: ExpandedImagePre
   if (index < 0) return;
   open({
     images: images.map((image) => ({
-      src: image.currentSrc || image.dataset.imageSrc || image.src,
+      src: image.dataset.imageSrc || image.currentSrc || image.src,
       name:
         image.alt ||
         (image.currentSrc || image.dataset.imageSrc || image.src).split("/").pop()?.split("?")[0] ||
@@ -1233,59 +1233,26 @@ function OpenableMarkdownImage({
   );
 }
 
-/** How long a picture whose bytes failed waits before it asks for them again, each time. */
-export const IMAGE_RETRY_DELAYS_MS: ReadonlyArray<number> = [1_500, 4_000];
-
-/**
- * Markdown images whose src is a workspace file path load through a signed
- * asset URL. A picture is unavailable only once its Mate says the file is not
- * there, or the tries again run out: until then it is loading, in the box its
- * size gives it (the owner, 2026-10-05: "image unavailable is a lot of the
- * times just slow loading + it shifts layout").
- */
+/** Locally authored pictures demand their bytes through the account image projection. */
 const ChatMarkdownWorkspaceImage = memo(function ChatMarkdownWorkspaceImage(props: {
   readonly threadRef: ScopedThreadRef;
   readonly path: string;
   readonly alt: string;
 }) {
-  const assetUrl = useAssetUrlState(
-    props.threadRef.environmentId,
-    {
-      _tag: "workspace-file",
-      threadId: props.threadRef.threadId,
-      path: props.path,
-    },
-    { retry: true },
-  );
-  // Its bytes that failed: asked for again after a wait, then given up on.
-  const [failed, setFailed] = useState<{ readonly url: string; readonly times: number } | null>(
-    null,
-  );
-  const [asking, setAsking] = useState(0);
+  const assetUrl = useAssetUrlState(props.threadRef.environmentId, {
+    _tag: "workspace-file",
+    threadId: props.threadRef.threadId,
+    path: props.path,
+  });
   const room = useImageRoom(
     props.path,
     true,
     assetUrl._tag === "Success" ? assetUrl.imageDimensions : undefined,
   );
-  const failedTimes =
-    assetUrl._tag === "Success" && failed?.url === assetUrl.url ? failed.times : 0;
-  useEffect(() => {
-    if (failedTimes === 0 || failedTimes > IMAGE_RETRY_DELAYS_MS.length) return;
-    const timer = setTimeout(() => setAsking((n) => n + 1), IMAGE_RETRY_DELAYS_MS[failedTimes - 1]);
-    return () => clearTimeout(timer);
-  }, [failedTimes]);
-
-  if (assetUrl._tag === "Failure" || failedTimes > IMAGE_RETRY_DELAYS_MS.length) {
-    return (
-      <ChatMarkdownImageFallback
-        alt={props.alt}
-        reason={assetUrl._tag === "Failure" ? assetUrl.reason : undefined}
-      />
-    );
-  }
+  if (assetUrl._tag === "Failure")
+    return <ChatMarkdownImageFallback alt={props.alt} reason={assetUrl.reason} />;
   if (assetUrl._tag !== "Success") {
-    // While its address is signed it holds the room it will stand in: its
-    // own, when it has been seen before.
+    // Reserve the size already observed for this conversation occurrence.
     return (
       <span
         role="status"
@@ -1305,9 +1272,6 @@ const ChatMarkdownWorkspaceImage = memo(function ChatMarkdownWorkspaceImage(prop
   return (
     <OpenableMarkdownImage alt={props.alt} block className={room.openerClassName}>
       <AssetImage
-        // Asked for again, it is a new picture: the page fetches it anew.
-        key={asking}
-        retrying={failedTimes <= IMAGE_RETRY_DELAYS_MS.length}
         src={assetUrl.url}
         alt={props.alt}
         loading="lazy"
@@ -1316,7 +1280,6 @@ const ChatMarkdownWorkspaceImage = memo(function ChatMarkdownWorkspaceImage(prop
         className={cn(CHAT_MARKDOWN_WORKSPACE_IMAGE_CLASS_NAME, room.className)}
         data-markdown-image
         height={room.height}
-        onError={() => setFailed({ url: assetUrl.url, times: failedTimes + 1 })}
         onLoad={room.onLoad}
         style={room.style}
         width={room.width}

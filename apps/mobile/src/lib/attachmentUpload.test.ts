@@ -604,14 +604,17 @@ describe("prepareTurnAttachments", () => {
     expect(removeCallsFor(MINTED_ID)).toBe(1);
   });
 
-  it("removes pending uploads when the native HTTP request fails", async () => {
-    mocks.upload.mockResolvedValue({ status: 500, body: "failed", headers: {} });
+  it.each([500, 507])(
+    "retains the owner's storage refusal and removes unclaimed pending uploads: %s",
+    async (status) => {
+      mocks.upload.mockResolvedValue({ status, body: "failed", headers: {} });
 
-    await expect(prepareTurnAttachments({ environmentId, attachments: [file] })).rejects.toThrow(
-      "Upload failed for 'report.pdf' (500).",
-    );
-    expect(removeCallsFor(MINTED_ID)).toBe(1);
-  });
+      await expect(prepareTurnAttachments({ environmentId, attachments: [file] })).rejects.toThrow(
+        status === 507 ? "Storage full" : "Upload failed for 'report.pdf' (500).",
+      );
+      expect(removeCallsFor(MINTED_ID)).toBe(1);
+    },
+  );
 
   it("keeps a previously persisted upload when a later attachment fails", async () => {
     const previouslyUploaded = {

@@ -81,6 +81,12 @@ export function classifyMarkdownImageSource(
   if (source.length === 0 || source.startsWith("#") || source.startsWith("?")) {
     return { _tag: "Blocked" };
   }
+  if (
+    /^mate-asset:[a-f0-9-]{36}(?::(?:source-missing|source-changed|storage-full|unsupported|persistence-failed))?$/.test(
+      source,
+    )
+  )
+    return { _tag: "WorkspaceFile", path: source };
   if (DIRECT_IMAGE_SOURCE_PATTERN.test(source)) {
     return { _tag: "Direct", uri: source };
   }

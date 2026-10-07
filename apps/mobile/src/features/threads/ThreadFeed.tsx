@@ -240,15 +240,19 @@ export interface ThreadFeedProps {
 function MessageAttachmentImage(props: {
   readonly environmentId: EnvironmentId;
   readonly attachmentId: string;
+  readonly occurrenceId?: string;
   readonly name: string;
   readonly className: string;
   readonly onPressPreview: (source: FilePreviewSource) => void;
 }) {
   const sourceIdentifier = useId();
-  const uri = useAssetUrl(props.environmentId, {
+  const resource = {
     _tag: "attachment",
     attachmentId: props.attachmentId,
-  });
+    mimeType: "image/png",
+    ...(props.occurrenceId === undefined ? {} : { occurrenceId: props.occurrenceId }),
+  } as const;
+  const uri = useAssetUrl(props.environmentId, resource);
 
   if (uri === null) {
     return (
@@ -264,7 +268,13 @@ function MessageAttachmentImage(props: {
         accessibilityRole="imagebutton"
         accessibilityLabel={`Open ${props.name}`}
         onPress={() =>
-          props.onPressPreview({ kind: "image", uri, name: props.name, sourceIdentifier })
+          props.onPressPreview({
+            kind: "image",
+            environmentId: props.environmentId,
+            resource,
+            name: props.name,
+            sourceIdentifier,
+          })
         }
       >
         <Image source={{ uri }} className={props.className} resizeMode="cover" />
@@ -626,7 +636,15 @@ function ThreadMarkdownImage(props: {
       }
       unavailable={assetUrl._tag === "Failure"}
       alt={props.alt}
-      onPressPreview={props.onPressPreview}
+      onPressPreview={(source) =>
+        props.onPressPreview({
+          kind: "image",
+          environmentId: props.environmentId,
+          resource: props.resource,
+          name: source.name,
+          sourceIdentifier: source.sourceIdentifier,
+        })
+      }
     />
   );
 }
@@ -1609,6 +1627,7 @@ function renderFeedEntry(
                   key={attachment.id}
                   environmentId={props.environmentId}
                   attachmentId={attachment.id}
+                  occurrenceId={(attachment.sourceAsset ?? attachment.asset)?.id}
                   name={attachment.name}
                   className="aspect-[1.3] w-full rounded-[14px] bg-white/15"
                   onPressPreview={props.onPressPreview}
@@ -1694,6 +1713,7 @@ function renderFeedEntry(
               key={attachment.id}
               environmentId={props.environmentId}
               attachmentId={attachment.id}
+              occurrenceId={(attachment.sourceAsset ?? attachment.asset)?.id}
               name={attachment.name}
               className="mt-1.5 aspect-[1.3] w-full rounded-[18px] bg-subtle-strong"
               onPressPreview={props.onPressPreview}

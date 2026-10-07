@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   shareFromSource: vi.fn(),
   available: vi.fn(),
   uuid: vi.fn(),
+  write: vi.fn(),
 }));
 
 vi.mock("expo-file-system", () => {
@@ -46,6 +47,10 @@ vi.mock("expo-file-system", () => {
 
   class File {
     static downloadFileAsync = mocks.download;
+    create() {}
+    write(value: string, options: unknown) {
+      mocks.write(value, options);
+    }
     readonly uri: string;
 
     constructor(source: Directory | string, name?: string) {
@@ -85,6 +90,7 @@ const input = {
 
 beforeEach(() => {
   mocks.directories.clear();
+  mocks.write.mockReset();
   mocks.deleted.mockReset();
   mocks.download.mockReset();
   mocks.copy.mockReset();
@@ -397,4 +403,15 @@ describe("attachment preview files", () => {
     expect(mocks.share).not.toHaveBeenCalled();
     expect(mocks.deleted).toHaveBeenCalledTimes(1);
   });
+});
+
+it("shares already authorized original bytes without making an unauthenticated second download", async () => {
+  await downloadAndShareAttachment({
+    url: "data:image/png;base64,AQID",
+    attachment: { name: "original.png", mimeType: "image/png" },
+    signal: new AbortController().signal,
+  });
+  expect(mocks.download).not.toHaveBeenCalled();
+  expect(mocks.write).toHaveBeenCalledWith("AQID", { encoding: "base64" });
+  expect(mocks.share).toHaveBeenCalledOnce();
 });

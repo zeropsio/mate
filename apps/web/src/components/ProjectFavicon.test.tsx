@@ -1,146 +1,56 @@
-import type { ComponentType, Dispatch, ReactElement, SetStateAction } from "react";
-import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import type { EnvironmentId } from "@t3tools/contracts";
-
-const testState = vi.hoisted(() => ({
-  faviconUrl: "https://environment.test/api/assets/token-a/v1-20-favicon.svg",
-  lastResource: null as unknown,
-}));
-
-const hooks = vi.hoisted(() => {
-  let cursor = 0;
-  let slots: unknown[] = [];
-  const nextIndex = () => cursor++;
-
-  return {
-    beginRender() {
-      cursor = 0;
-    },
-    reset() {
-      cursor = 0;
-      slots = [];
-    },
-    useMemoCache(size: number): unknown[] {
-      const index = nextIndex();
-      if (!slots[index]) {
-        slots[index] = Array.from({ length: size }, () => Symbol.for("react.memo_cache_sentinel"));
-      }
-      return slots[index] as unknown[];
-    },
-    useState<T>(initialValue: T | (() => T)): [T, Dispatch<SetStateAction<T>>] {
-      const index = nextIndex();
-      if (index >= slots.length) {
-        slots[index] =
-          typeof initialValue === "function" ? (initialValue as () => T)() : initialValue;
-      }
-      const setValue: Dispatch<SetStateAction<T>> = (nextValue) => {
-        const previous = slots[index] as T;
-        slots[index] =
-          typeof nextValue === "function" ? (nextValue as (value: T) => T)(previous) : nextValue;
-      };
-      return [slots[index] as T, setValue];
-    },
-  };
-});
-
-vi.mock("react", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("react")>();
-  return {
-    ...actual,
-    useState: hooks.useState,
-  };
-});
-
-vi.mock("react/compiler-runtime", () => ({ c: hooks.useMemoCache }));
-vi.mock("../assets/assetUrls", () => ({
-  useAssetUrlState: (_environmentId: unknown, resource: unknown) => {
-    testState.lastResource = resource;
-    return { _tag: "Success", url: testState.faviconUrl };
+import { EnvironmentId, type AssetResource } from "@t3tools/contracts";
+import { mateImageSource } from "@t3tools/client-runtime/data";
+import { act } from "react";
+import { create } from "react-test-renderer";
+import { beforeEach, expect, it, vi } from "vite-plus/test";
+const state = vi.hoisted(() => ({ url: undefined as string | undefined, demand: null as unknown }));
+vi.mock("~/assets/MateImages", () => ({
+  useMateImage: (key: unknown) => {
+    state.demand = key;
+    return { url: state.url };
   },
 }));
-
-import { ProjectFavicon } from "./ProjectFavicon";
-
-type ProjectFaviconImageProps = {
-  readonly cacheKey: string;
-  readonly src: string;
-  readonly className?: string | undefined;
-  readonly fallbackIcon: ComponentType<{ className?: string }>;
-};
-
-type ImageElement = ReactElement<{
-  readonly src: string;
-  readonly onLoad?: () => void;
-  readonly onError?: () => void;
-}>;
-
-type ProjectFaviconImageElement = ReactElement<{
-  readonly children: [ReactElement | null, ImageElement | null, ImageElement | null];
-}>;
-
-function resolveImageComponent(): {
-  readonly Component: (props: ProjectFaviconImageProps) => ProjectFaviconImageElement;
-  readonly props: ProjectFaviconImageProps;
-} {
-  hooks.beginRender();
-  const element = ProjectFavicon({
-    environmentId: "environment-test" as EnvironmentId,
-    cwd: "/workspace-test",
-  }) as ReactElement<ProjectFaviconImageProps>;
-  hooks.reset();
-
+vi.mock("../assets/assetUrls", async () => {
+  const { mateImageSource } = await import("@t3tools/client-runtime/data");
   return {
-    Component: element.type as (props: ProjectFaviconImageProps) => ProjectFaviconImageElement,
-    props: element.props,
+    useAssetUrlState: (environmentId: EnvironmentId, resource: AssetResource) => ({
+      _tag: "Success",
+      url: mateImageSource({ environmentId, resource }),
+    }),
   };
-}
-
-function renderImage(
-  Component: (props: ProjectFaviconImageProps) => ProjectFaviconImageElement,
-  props: ProjectFaviconImageProps,
-): ProjectFaviconImageElement {
-  hooks.beginRender();
-  return Component(props);
-}
-
-describe("ProjectFavicon", () => {
-  beforeEach(() => {
-    hooks.reset();
-  });
-
-  it("falls back when the displayed favicon fails without discarding a valid older image early", () => {
-    const { Component, props } = resolveImageComponent();
-    const initialLoadingImage = renderImage(Component, props).props.children[2];
-    initialLoadingImage?.props.onLoad?.();
-
-    const refreshedProps = {
-      ...props,
-      src: "https://environment.test/api/assets/token-b/v1-20-favicon.svg",
-    };
-    const refreshing = renderImage(Component, refreshedProps).props.children;
-    expect(refreshing[1]?.props.src).toBe(props.src);
-    refreshing[2]?.props.onError?.();
-
-    const afterRefreshError = renderImage(Component, refreshedProps).props.children;
-    expect(afterRefreshError[1]?.props.src).toBe(props.src);
-    afterRefreshError[1]?.props.onError?.();
-
-    const afterDisplayedError = renderImage(Component, refreshedProps).props.children;
-    expect(afterDisplayedError[0]).not.toBeNull();
-    expect(afterDisplayedError[1]).toBeNull();
-  });
-
-  it("requests a saved favicon path when one is set", () => {
-    ProjectFavicon({
-      environmentId: "environment-test" as EnvironmentId,
-      cwd: "/workspace-test",
-      faviconPath: "brand/icon.svg",
-    });
-
-    expect(testState.lastResource).toEqual({
-      _tag: "project-favicon",
-      cwd: "/workspace-test",
-      path: "brand/icon.svg",
-    });
-  });
 });
+import { ProjectFavicon } from "./ProjectFavicon";
+import { AssetImage } from "~/assets/AssetImage";
+beforeEach(() => {
+  state.url = undefined;
+  (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+});
+it.each([undefined, "blob:favicon"])(
+  "uses the projected favicon bytes or the existing folder fallback: %s",
+  (url) => {
+    state.url = url;
+    let renderer!: ReturnType<typeof create>;
+    act(() => {
+      renderer = create(
+        <ProjectFavicon
+          environmentId={EnvironmentId.make("mate")}
+          cwd="/workspace"
+          faviconPath=".zerops/favicon.png"
+        />,
+      );
+    });
+    expect(state.demand).toMatchObject({
+      environmentId: "mate",
+      resource: { _tag: "project-favicon", cwd: "/workspace", path: ".zerops/favicon.png" },
+    });
+    expect(renderer.root.findAllByType(AssetImage)).toHaveLength(url ? 1 : 0);
+    if (url) expect(renderer.root.findByType(AssetImage).props.src).toBe(url);
+    expect(
+      mateImageSource({
+        environmentId: EnvironmentId.make("mate"),
+        resource: { _tag: "project-favicon", cwd: "/workspace" },
+      }),
+    ).not.toContain("blob:");
+    act(() => renderer.unmount());
+  },
+);

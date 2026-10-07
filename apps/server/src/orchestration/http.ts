@@ -7,6 +7,7 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as HttpApiBuilder from "effect/unstable/httpapi/HttpApiBuilder";
 
+import { backfillThreadMedia } from "../assets/ConversationMedia.ts";
 import { projectThreadDetailSnapshot } from "./ActivityPayloadProjection.ts";
 import { cleanupFailedUploadedAttachments, normalizeDispatchCommand } from "./Normalizer.ts";
 import {
@@ -98,10 +99,18 @@ export const orchestrationHttpApiLayer = HttpApiBuilder.group(
           if (Option.isNone(snapshot)) {
             return yield* failEnvironmentNotFound("thread_not_found");
           }
-          return projectThreadDetailSnapshot(
-            snapshot.value,
-            args.payload.reasoningMessages === "true",
-          );
+          const project = yield* projectionSnapshotQuery
+            .getProjectShellById(snapshot.value.thread.projectId)
+            .pipe(
+              Effect.catch((cause) =>
+                failEnvironmentInternal("orchestration_thread_snapshot_failed", cause),
+              ),
+            );
+          const root =
+            snapshot.value.thread.worktreePath ??
+            (Option.isSome(project) ? project.value.workspaceRoot : undefined);
+          const compact = root ? yield* backfillThreadMedia(snapshot.value, root) : snapshot.value;
+          return projectThreadDetailSnapshot(compact, args.payload.reasoningMessages === "true");
         }),
       )
       .handle(

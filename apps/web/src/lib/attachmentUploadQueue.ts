@@ -47,7 +47,7 @@ export function pictureOriginalUploadKey(imageId: string): string {
 }
 
 function keptOriginal(image: ComposerImageAttachment): File | null {
-  return image.picture?.keepOriginal ? image.picture.source : null;
+  return image.picture?.source ?? null;
 }
 
 /** Every upload an image makes: its own, and its original's when it keeps one. */
@@ -141,7 +141,7 @@ function uploadBytes(input: {
       if (xhr.status >= 200 && xhr.status < 300) {
         resolve();
       } else {
-        reject(new Error(`Upload rejected (${xhr.status})`));
+        reject(new Error(xhr.status === 507 ? "Storage full" : `Upload rejected (${xhr.status})`));
       }
     });
     xhr.addEventListener("error", () => reject(new Error("Upload failed")));
@@ -392,9 +392,11 @@ function startUpload(environmentId: EnvironmentId, item: UploadItem): void {
     // The HTTP failure can arrive after the socket has already reconnected.
     // Wait for that attempt, then retry only if this job still owns the file.
     void job.settled.then(() => {
+      const outcome = readAttachmentUpload(job.item.key);
       if (
         jobsByImageId.get(job.item.key) === job &&
-        readAttachmentUpload(job.item.key)?.status === "failed" &&
+        outcome?.status === "failed" &&
+        outcome.reason !== "Storage full" &&
         isConnected()
       ) {
         retryUpload(input.environmentId, item);
@@ -573,7 +575,11 @@ export function getUploadedAttachments(input: {
   for (const image of input.images) {
     const id = readyId(image.id);
     if (id === null) return null;
+    const source = keptOriginal(image);
+    const sourceAttachmentId = source ? readyId(pictureOriginalUploadKey(image.id)) : null;
+    if (source && sourceAttachmentId === null) return null;
     attachments.push({
+      ...(sourceAttachmentId === null ? {} : { sourceAttachmentId }),
       type: "image",
       id,
       name: image.name,
@@ -582,7 +588,7 @@ export function getUploadedAttachments(input: {
       ...(image.picture ? { width: image.picture.width, height: image.picture.height } : {}),
     });
     const original = keptOriginal(image);
-    if (original) {
+    if (original && image.picture?.keepOriginal) {
       const item = originalUploadItem(image, original);
       const originalId = readyId(item.key);
       if (originalId === null) return null;

@@ -2052,6 +2052,7 @@ function ChecksBubble({ strip }: { readonly strip: BrowserStripModel }) {
       {disclosure.open || !takes ? null : (
         <div className="px-3 pb-2">
           <BrowserTakes
+            threadRef={ctx.threadRef}
             environmentId={ctx.activeThreadEnvironmentId}
             onOpenImage={ctx.onImageExpand}
             takes={strip.checks}

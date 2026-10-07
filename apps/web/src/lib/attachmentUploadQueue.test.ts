@@ -52,6 +52,7 @@ import {
   useAttachmentUploadStore,
 } from "./attachmentUploadQueue";
 import type { ComposerFileAttachment } from "./composerFiles";
+import { attachmentUploadBlockReason } from "./attachmentUploadState";
 
 type ProgressListener = (event: {
   readonly lengthComputable: boolean;
@@ -212,6 +213,28 @@ describe("attachmentUploadQueue", () => {
   });
 
   it.each([false, true])(
+    "Storage full waits for its owner even across a reconnect: %s",
+    async (lateFailure) => {
+      const image = makeImage("full-reconnect");
+      startAttachmentUpload({ environmentId: firstEnvironment, image });
+      await Promise.resolve();
+      const settled = awaitAttachmentUploads([image.id]);
+      setConnected(firstEnvironment, false);
+      if (lateFailure) setConnected(firstEnvironment, true);
+      TestXmlHttpRequest.requests[0]!.complete(507);
+      await settled;
+      if (!lateFailure) setConnected(firstEnvironment, true);
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(TestXmlHttpRequest.requests).toHaveLength(1);
+      expect(readAttachmentUpload(image.id)).toMatchObject({
+        status: "failed",
+        reason: "Storage full",
+      });
+    },
+  );
+
+  it.each([false, true])(
     "retries a failed file once after reconnect, including a late HTTP failure: %s",
     async (lateFailure) => {
       const image = makeImage("reconnect");
@@ -310,27 +333,42 @@ describe("attachmentUploadQueue", () => {
     );
   });
 
-  it("retries rejected uploads", async () => {
-    const image = makeImage("image-retry");
-    startAttachmentUpload({ environmentId: firstEnvironment, image });
-    await Promise.resolve();
+  it.each([500, 507])(
+    "retains a rejected upload and its owner actions until an explicit retry: %s",
+    async (status) => {
+      const image = makeImage("image-retry");
+      startAttachmentUpload({ environmentId: firstEnvironment, image });
+      await Promise.resolve();
 
-    let settled = awaitAttachmentUploads([image.id]);
-    TestXmlHttpRequest.requests[0]!.complete(500);
-    await settled;
-    expect(readAttachmentUpload(image.id)).toMatchObject({
-      status: "failed",
-      reason: "Upload rejected (500)",
-    });
+      let settled = awaitAttachmentUploads([image.id]);
+      TestXmlHttpRequest.requests[0]!.complete(status);
+      await settled;
+      expect(readAttachmentUpload(image.id)).toMatchObject({
+        status: "failed",
+        reason: status === 507 ? "Storage full" : "Upload rejected (500)",
+      });
+      expect(
+        attachmentUploadBlockReason({
+          imageIds: [image.id],
+          environmentId: firstEnvironment,
+          uploadsByImageId: useAttachmentUploadStore.getState().uploadsByImageId,
+        }),
+      ).toBe(
+        status === 507
+          ? "Storage full. Retry or remove the failed image"
+          : "Retry or remove the failed image",
+      );
+      expect(TestXmlHttpRequest.requests).toHaveLength(1);
 
-    retryAttachmentUpload({ environmentId: firstEnvironment, image });
-    await Promise.resolve();
-    settled = awaitAttachmentUploads([image.id]);
-    TestXmlHttpRequest.requests[1]!.complete();
-    await settled;
+      retryAttachmentUpload({ environmentId: firstEnvironment, image });
+      await Promise.resolve();
+      settled = awaitAttachmentUploads([image.id]);
+      TestXmlHttpRequest.requests[1]!.complete();
+      await settled;
 
-    expect(readAttachmentUpload(image.id)).toMatchObject({ status: "ready" });
-  });
+      expect(readAttachmentUpload(image.id)).toMatchObject({ status: "ready" });
+    },
+  );
 
   it("releases an upload URL that resolves after its image was removed", async () => {
     const image = makeImage("image-cancelled");
@@ -428,7 +466,7 @@ describe("attachmentUploadQueue", () => {
   describe("a picture's original", () => {
     it.each([
       ["a picture that keeps it uploads it too", true, ["pic", "pic~original"]],
-      ["a picture that does not, only its copy", false, ["pic"]],
+      ["a picture always retains its exact source", false, ["pic", "pic~original"]],
     ])("%s", (_label, keepOriginal, keys) => {
       expect(attachmentUploadKeys(makePicture("pic", keepOriginal))).toEqual(keys);
     });
@@ -460,6 +498,7 @@ describe("attachmentUploadQueue", () => {
         {
           type: "image",
           id: "pending-environment-1-pic.png",
+          sourceAttachmentId: "pending-environment-1-home-page.png",
           name: "pic.png",
           mimeType: "image/png",
           sizeBytes: 3,
@@ -476,11 +515,13 @@ describe("attachmentUploadQueue", () => {
       ]);
     });
 
-    it("lets the original go when the picture stops keeping it", async () => {
+    it("retains the source when the extra original attachment is disabled", async () => {
       startAttachmentUpload({ environmentId: firstEnvironment, image: makePicture("pic", true) });
       await Promise.resolve();
       startAttachmentUpload({ environmentId: firstEnvironment, image: makePicture("pic", false) });
-      expect(readAttachmentUpload(pictureOriginalUploadKey("pic"))).toBeUndefined();
+      expect(readAttachmentUpload(pictureOriginalUploadKey("pic"))).toMatchObject({
+        status: "uploading",
+      });
       expect(readAttachmentUpload("pic")).toMatchObject({ status: "uploading" });
     });
   });

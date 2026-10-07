@@ -1,3 +1,4 @@
+import type { ImageOccurrence } from "@t3tools/contracts";
 /**
  * The session and operation model — one object per thing Mate does to the
  * project, identity a domain fact (the provider's tool-call id) rather than a
@@ -24,8 +25,9 @@ export type ZeropsCallStatus =
 
 /** One image content block a `zerops_*` result carried (e.g. a `zerops_browser` screenshot). */
 export interface ZeropsCallImage {
+  readonly asset?: ImageOccurrence;
   readonly mimeType: string;
-  readonly data: string;
+  readonly data?: string;
   readonly width?: number;
   readonly height?: number;
 }

@@ -9,12 +9,10 @@
  * above its words as before.
  */
 import { AssetImage, ImageUnavailable } from "~/assets/AssetImage";
-import { useAtomValue } from "@effect/atom-react";
+import { useMateImageDimensions } from "~/assets/MateImages";
 import type { AssetResource, EnvironmentId } from "@t3tools/contracts";
-import { AsyncResult } from "effect/unstable/reactivity";
-import { Fragment, useMemo, type ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 
-import { assetEnvironment } from "~/state/assets";
 import type { AssetUrlState } from "~/assets/assetUrls";
 import type { ChatImageAttachment } from "~/types";
 import { formatPictureBytes } from "./ComposerPictureView";
@@ -35,17 +33,7 @@ export function useMessagePictureDimensions(
   environmentId: EnvironmentId,
   resources: ReadonlyArray<Extract<AssetResource, { readonly _tag: "attachment" }>>,
 ): ReadonlyMap<string, PictureSize> {
-  const results = useAtomValue(assetEnvironment.createUrls({ environmentId, resources }));
-  return useMemo(() => {
-    const dimensions = new Map<string, PictureSize>();
-    results.forEach((result, index) => {
-      const resource = resources[index];
-      if (resource && AsyncResult.isSuccess(result) && result.value.imageDimensions) {
-        dimensions.set(resource.attachmentId, result.value.imageDimensions);
-      }
-    });
-    return dimensions;
-  }, [resources, results]);
+  return useMateImageDimensions(resources.map((resource) => ({ environmentId, resource })));
 }
 
 export function MessagePictureBody(props: {

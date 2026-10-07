@@ -19,7 +19,10 @@ import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import { frameImageSrc } from "@t3tools/client-runtime/zerops/browserStream";
 import { CheckIcon, CodeXmlIcon, RotateCcwIcon, XIcon } from "lucide-react";
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { mateImageSource, parseMateImageSource } from "@t3tools/client-runtime/data/mateImage";
+import { useMateImage } from "~/assets/MateImages";
+import { ImageUnavailable } from "~/assets/AssetImage";
 
 import { cn } from "~/lib/utils";
 import { useRightPanelStore } from "../../rightPanelStore";
@@ -108,7 +111,60 @@ function takeFindings(check: ZeropsOperation): string | null {
 }
 
 /** A take's picture, its content cropped in when the page is mostly empty. */
+function takeSource(src: string | undefined, threadRef: ScopedThreadRef | null) {
+  return src?.startsWith("mate-asset:") && threadRef
+    ? mateImageSource({
+        environmentId: threadRef.environmentId,
+        resource: { _tag: "media-file", threadId: threadRef.threadId, path: src },
+      })
+    : src;
+}
 function TakeThumbnail({ src, aspect }: { readonly src: string; readonly aspect: number }) {
+  const reference = parseMateImageSource(src);
+  return reference ? (
+    <ManagedTakeThumbnail reference={reference} aspect={aspect} />
+  ) : (
+    <LocalTakeThumbnail src={src} aspect={aspect} />
+  );
+}
+function ManagedTakeThumbnail({
+  reference,
+  aspect,
+}: {
+  readonly reference: NonNullable<ReturnType<typeof parseMateImageSource>>;
+  readonly aspect: number;
+}) {
+  const { ref, near } = useNearViewport<HTMLSpanElement>();
+  const [size, setSize] = useState<{ width: number; height: number } | null>(null);
+  useEffect(() => {
+    const element = ref.current;
+    if (!element || !near) return;
+    const measure = () => {
+      const box = element.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      if (box.width > 0 && box.height > 0) {
+        const width = Math.min(8192, Math.ceil(box.width * dpr));
+        const height = Math.min(8192, Math.ceil(box.height * dpr));
+        setSize((old) => (old?.width === width && old.height === height ? old : { width, height }));
+      }
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [near, ref]);
+  const image = useMateImage(near && size ? { ...reference, rendition: size } : null);
+  return (
+    <span ref={ref} className="block size-full">
+      {image.read.kind === "failed" ? (
+        <ImageUnavailable reason={image.read.reason} />
+      ) : image.url ? (
+        <LocalTakeThumbnail src={image.url} aspect={aspect} />
+      ) : null}
+    </span>
+  );
+}
+function LocalTakeThumbnail({ src, aspect }: { readonly src: string; readonly aspect: number }) {
   const { ref, near } = useNearViewport<HTMLImageElement>();
   const thumbnail = useTakeThumbnail(near ? src : undefined, aspect);
   return (
@@ -159,7 +215,7 @@ export function BrowserStrip({
       ? liveFrame
         ? frameImageSrc(liveFrame)
         : undefined
-      : onStage.screenshot?.src;
+      : takeSource(onStage.screenshot?.src, threadRef);
   // A settled take with no picture: what it read stands in the picture's place.
   const readOnStage = stageSrc === undefined && onStage.phase !== "running";
   const staged = running || stageSrc !== undefined || readOnStage;
@@ -182,7 +238,13 @@ export function BrowserStrip({
 
   const shots = strip.checks.flatMap((check) =>
     check.screenshot
-      ? [{ key: check.key, src: check.screenshot.src, name: browserCheckCaption(check) }]
+      ? [
+          {
+            key: check.key,
+            src: takeSource(check.screenshot.src, threadRef)!,
+            name: browserCheckCaption(check),
+          },
+        ]
       : [],
   );
   const openShot = (key: string) => {
@@ -413,7 +475,7 @@ export function BrowserStrip({
                       {check.screenshot ? (
                         <TakeThumbnail
                           aspect={TAKE_ASPECT[takeDevice]}
-                          src={check.screenshot.src}
+                          src={takeSource(check.screenshot.src, threadRef)!}
                         />
                       ) : check.browserRead !== undefined ? (
                         <CheckRead
@@ -469,15 +531,23 @@ export function BrowserTakes({
   takes,
   onOpenImage,
   environmentId = null,
+  threadRef = null,
 }: {
   readonly takes: ReadonlyArray<ZeropsOperation>;
   readonly onOpenImage: (preview: ExpandedImagePreview) => void;
   /** Where the browser streams from, for a take still being taken. */
   readonly environmentId?: EnvironmentId | null;
+  readonly threadRef?: ScopedThreadRef | null;
 }) {
   const shots = takes.flatMap((take) =>
     take.screenshot
-      ? [{ key: take.key, src: take.screenshot.src, name: browserCheckCaption(take) }]
+      ? [
+          {
+            key: take.key,
+            src: takeSource(take.screenshot.src, threadRef)!,
+            name: browserCheckCaption(take),
+          },
+        ]
       : [],
   );
   const failedBare = (take: ZeropsOperation) =>
@@ -496,7 +566,7 @@ export function BrowserTakes({
           return <LiveTake key={take.key} environmentId={environmentId} take={take} />;
         }
         if (failedBare(take)) return <FailedTake key={take.key} take={take} />;
-        const src = take.screenshot?.src;
+        const src = takeSource(take.screenshot?.src, threadRef);
         if (src === undefined) return null;
         const state = browserTakeState(take, takes);
         const device = browserCheckDevice(take);

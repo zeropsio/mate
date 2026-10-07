@@ -121,10 +121,14 @@ function screenshotOf(image: ZeropsCallImage): Screenshot {
     image.width !== undefined && image.height !== undefined
       ? { width: image.width, height: image.height }
       : image.mimeType === "image/png"
-        ? pngSize(image.data)
+        ? image.data === undefined
+          ? undefined
+          : pngSize(image.data)
         : undefined;
   const screenshot: Screenshot = {
-    src: `data:${image.mimeType};base64,${image.data}`,
+    src: image.asset
+      ? `mate-asset:${image.asset.id}${image.asset.original.status === "failed" ? `:${image.asset.original.code}` : ""}`
+      : `data:${image.mimeType};base64,${image.data}`,
     ...(size !== undefined ? { width: size.width, height: size.height } : {}),
   };
   screenshots.set(image, screenshot);

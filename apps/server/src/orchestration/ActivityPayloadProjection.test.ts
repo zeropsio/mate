@@ -34,6 +34,42 @@ function activity(payload: Record<string, unknown>): OrchestrationThreadActivity
  * assertions are the tripwire.
  */
 describe("projectActivityPayload", () => {
+  it.each([
+    "",
+    ":source-missing",
+    ":source-changed",
+    ":storage-full",
+    ":unsupported",
+    ":persistence-failed",
+  ])(
+    "keeps a captured tool image reference through live events, reload and repeated projection: %s",
+    (failure) => {
+      const imagePath = `mate-asset:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa${failure}`;
+      const source = activity({
+        itemType: "dynamic_tool_call",
+        data: {
+          toolName: "Read",
+          input: { file_path: "/tmp/old.png" },
+          imagePath,
+        },
+      });
+      const once = projectActivityPayload(source);
+      expect(once.payload).toMatchObject({ data: { imagePath } });
+      expect(projectActivityPayload(once).payload).toMatchObject({ data: { imagePath } });
+      const event = projectActivityEvent({
+        type: "thread.activity-appended",
+        payload: { activity: source },
+      } as unknown as OrchestrationEvent);
+      expect(event).toMatchObject({ payload: { activity: { payload: { data: { imagePath } } } } });
+      const snapshot = projectThreadDetailSnapshot({
+        thread: { messages: [], activities: [source] },
+      } as unknown as OrchestrationThreadDetailSnapshot);
+      expect(snapshot).toMatchObject({
+        thread: { activities: [{ payload: { data: { imagePath } } }] },
+      });
+    },
+  );
+
   it("preserves tool attribution (agentId/parentToolUseId) through data slimming", () => {
     const projected = projectActivityPayload(
       activity({
