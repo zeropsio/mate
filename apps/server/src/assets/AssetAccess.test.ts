@@ -651,6 +651,49 @@ describe("AssetAccess", () => {
     }).pipe(Effect.provide(testLayer)),
   );
 
+  it.effect("previews workspace files with literal fragment characters in their paths", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const root = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-preview-literal-" });
+      const directory = path.join(root, "assets#archive");
+      yield* fileSystem.makeDirectory(directory);
+
+      for (const name of ["icon#v2.png", "report#draft.pdf"]) {
+        const filePath = path.join(directory, name);
+        yield* fileSystem.writeFileString(filePath, "preview fixture");
+        const canonicalFile = yield* fileSystem.realPath(filePath);
+        const result = yield* issueAssetUrl({
+          resource: {
+            _tag: "workspace-file",
+            threadId: ThreadId.make("thread-1"),
+            path: filePath,
+          },
+          workspaceRoot: root,
+        });
+        const suffix = result.relativeUrl.slice(`${ASSET_ROUTE_PREFIX}/`.length);
+        const token = suffix.slice(0, suffix.indexOf("/"));
+
+        expect(yield* resolveAsset(token, name)).toEqual({ kind: "file", path: canonicalFile });
+        if (name.endsWith(".png")) {
+          expect(yield* resolveAsset(token, "other.png")).toBeNull();
+        }
+      }
+
+      const disguisedPath = path.join(root, "image.png#notes.txt");
+      yield* fileSystem.writeFileString(disguisedPath, "not an image");
+      const error = yield* issueAssetUrl({
+        resource: {
+          _tag: "workspace-file",
+          threadId: ThreadId.make("thread-1"),
+          path: disguisedPath,
+        },
+        workspaceRoot: root,
+      }).pipe(Effect.flip);
+      expect(error).toBeInstanceOf(AssetPreviewTypeValidationError);
+    }).pipe(Effect.provide(testLayer)),
+  );
+
   it.effect("issues exact attachment capabilities by attachment id", () =>
     Effect.gen(function* () {
       const config = yield* ServerConfig.ServerConfig;
@@ -1051,7 +1094,8 @@ describe("AssetAccess — an image outside the workspace", () => {
     {
       name: "a name that only ends like an image is refused",
       at: (fixture, path) => path.join(fixture.home, "shots", "shot.png#x.txt"),
-      expected: { outcome: "refused", error: "AssetPreviewTypeValidationError" },
+      // A literal `#` no longer hides the real extension, so this is a text file outside the workspace.
+      expected: { outcome: "refused", error: "AssetWorkspacePathValidationError" },
     },
     {
       name: "a missing image in the home directory is not found",
