@@ -712,16 +712,47 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
     COMPARED,
   );
   const flow = flows.get(groupId);
+  if (flow === undefined) return <UnreadGroupDetail groupId={groupId} />;
+  return <KnownGroupDetail groupId={groupId} flow={flow} recipeFailure={recipeFailure} />;
+}
+
+function UnreadGroupDetail({ groupId }: { readonly groupId: string }) {
   const deployments = useStopDeploymentsShown();
-  const verbs = useFlowVerbs();
   const runtimeStops = useRuntimeStops(groupId);
   const navigate = useNavigate();
-  const environments = flow?.environments ?? [];
+  const crumbs = useCrumbs();
+  const groupName = useGroupName(groupId);
+  return (
+    <DetailShell crumbs={crumbs} title={groupName}>
+      <ZeropsRuntimeStops
+        stops={runtimeStops}
+        deployments={deployments}
+        onOpen={(projectId) => {
+          void navigate({ to: "/group/$groupId/$projectId", params: { groupId, projectId } });
+        }}
+      />
+      <UnreadDetail groupId={groupId} />
+    </DetailShell>
+  );
+}
+
+function KnownGroupDetail({
+  groupId,
+  flow,
+  recipeFailure,
+}: {
+  readonly groupId: string;
+  readonly flow: ZeropsProjectFlow;
+  readonly recipeFailure: ReturnType<typeof useHqRecipeFailure>;
+}) {
+  const deployments = useStopDeploymentsShown();
+  const verbs = useFlowVerbs();
+  const environments = flow.environments;
   const repo = groupRepository(environments);
-  const history = useRepositoryHistory({ appId: groupId, repo, repos: flow?.repos });
-  const tags = useReleaseTags(flow?.releases);
+  const history = useRepositoryHistory({ appId: groupId, repo, repos: flow.repos });
+  const tags = useReleaseTags(flow.releases);
   const openChange = useOpenChange(groupId, repo);
-  const waiting = flow?.release.summary ?? releaseContentsSummary(flow?.release.contents ?? [], 20);
+  const waiting = flow.release.summary ?? releaseContentsSummary(flow.release.contents, 20);
   const groupName = useGroupName(groupId);
   const openProjects = useOpenProjects();
   // The New Mate dialog over this page, as from every "Add a Mate" (`ZeropsNewMateHost`).
@@ -739,7 +770,7 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
   const firstDeployOf = useStageFirstDeploys(flow);
   const attention = useProjectAttention(groupId, mates, {
     environments: shown,
-    pullRequests: flow?.pullRequests ?? EMPTY_PULLS,
+    pullRequests: flow.pullRequests,
     notLive: waiting.total,
     notLiveAtLeast: waiting.atLeast,
     canRelease: release.offered,
@@ -752,21 +783,6 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
   const { halfMade, finishing } = useEnvironmentSetup(
     useMemo(() => heldCandidates(listing).rows.map(({ project }) => project.id), [listing]),
   );
-
-  if (flow === undefined) {
-    return (
-      <DetailShell crumbs={crumbs} title={groupName}>
-        <ZeropsRuntimeStops
-          stops={runtimeStops}
-          deployments={deployments}
-          onOpen={(projectId) => {
-            void navigate({ to: "/group/$groupId/$projectId", params: { groupId, projectId } });
-          }}
-        />
-        <UnreadDetail groupId={groupId} />
-      </DetailShell>
-    );
-  }
 
   const production = environments.find((entry) => entry.tier === "production");
   const halfMadeHere = halfMade.filter((entry) => entry.groupId === groupId);
@@ -2166,7 +2182,6 @@ const STAYS = () => {};
 
 /** Nobody to name, before the flow is read. */
 const EMPTY_MATE_NAMES: ReadonlyMap<string, string> = new Map();
-const EMPTY_PULLS: ReadonlyArray<FlowPullRequest> = [];
 const EMPTY_STOPS: ReadonlyArray<EnvironmentRow> = [];
 
 /** A stop whose project the flow has no listing for: not read, never "nothing". */
