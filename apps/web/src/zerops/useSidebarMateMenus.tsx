@@ -152,25 +152,29 @@ export function mateMenuTarget(input: {
   };
 }
 
-/** `build`, answered again for a Mate whose candidate and activity are the ones it last built for. */
-function builtOnce(
-  build: (
-    candidate: ZeropsCandidatePresentation,
-    activity: ZeropsAgentActivity | undefined,
-  ) => MateRowActions,
-): (
-  candidate: ZeropsCandidatePresentation,
-  activity: ZeropsAgentActivity | undefined,
-) => MateRowActions {
+/** Keeps each row's actions while its own inputs stand, even when another row's factory changes. */
+export function createMateMenuReader<A>() {
   const built = new WeakMap<
     ZeropsCandidatePresentation,
-    { readonly activity: ZeropsAgentActivity | undefined; readonly actions: MateRowActions }
+    {
+      readonly facts: ReadonlyArray<unknown>;
+      readonly actions: A;
+    }
   >();
-  return (candidate, activity) => {
-    const known = built.get(candidate);
-    if (known !== undefined && known.activity === activity) return known.actions;
-    const actions = build(candidate, activity);
-    built.set(candidate, { activity, actions });
+  return (
+    candidate: ZeropsCandidatePresentation,
+    facts: ReadonlyArray<unknown>,
+    build: () => A,
+  ): A => {
+    const held = built.get(candidate);
+    if (
+      held !== undefined &&
+      held.facts.length === facts.length &&
+      facts.every((fact, i) => Object.is(fact, held.facts[i]))
+    )
+      return held.actions;
+    const actions = build();
+    built.set(candidate, { facts, actions });
     return actions;
   };
 }
@@ -242,70 +246,90 @@ export function useSidebarMateMenus(input: {
   const completedAt = useMemo(() => completedAtOf(input.threads), [completedAtOf, input.threads]);
 
   const { actionsFor, renameInPlace, changeFace } = mateActions;
+  const [readActions] = useState(() => createMateMenuReader<MateRowActions>());
   // A row's menu stands while its Mate and its activity do: a memoised row redraws only when its
   // own menu changes.
   const getMateActions = useMemo(
-    () =>
-      builtOnce((candidate, activity) => {
-        const { environmentId, finished, stop } = mateMenuTarget({
-          environmentId: candidate.environmentId,
-          told: told[candidate.project.id],
+    () => (candidate: ZeropsCandidatePresentation, activity: ZeropsAgentActivity | undefined) =>
+      readActions(
+        candidate,
+        [
           activity,
-          completedAt,
-        });
-        const tags = readZeropsMembership(candidate.project);
-        const name = projectNameInApp(candidate.project);
-        const threadRef =
-          environmentId === undefined || activity === undefined
-            ? undefined
-            : scopeThreadRef(environmentId, activity.threadId);
-        return {
-          muted: environmentId !== undefined && muted.includes(environmentId),
-          toggleMute:
-            environmentId === undefined
+          told[candidate.project.id],
+          activity === undefined ? undefined : completedAt.get(activity.threadKey),
+          actionsFor,
+          changeFace,
+          copyToClipboard,
+          drawnOf,
+          interrupt,
+          markThreadUnread,
+          markThreadVisited,
+          muted,
+          renameInPlace,
+          router,
+          toggle,
+        ],
+        () => {
+          const { environmentId, finished, stop } = mateMenuTarget({
+            environmentId: candidate.environmentId,
+            told: told[candidate.project.id],
+            activity,
+            completedAt,
+          });
+          const tags = readZeropsMembership(candidate.project);
+          const name = projectNameInApp(candidate.project);
+          const threadRef =
+            environmentId === undefined || activity === undefined
               ? undefined
-              : () => {
-                  toggle(environmentId);
-                },
-          toggleUnread:
-            activity === undefined || finished === undefined
-              ? undefined
-              : () => {
-                  if (activity.unread)
-                    markThreadVisited(activity.threadKey, new Date().toISOString());
-                  else markThreadUnread(activity.threadKey, finished);
-                },
-          copyLink:
-            threadRef === undefined
-              ? undefined
-              : () => {
-                  const { href } = router.buildLocation({
-                    to: "/$environmentId/$threadId",
-                    params: buildThreadRouteParams(threadRef),
-                  });
-                  copyToClipboard(new URL(href, window.location.origin).toString(), { name });
-                },
-          rename: renameInPlace(candidate),
-          changeFace: changeFace(candidate),
-          stop:
-            stop === undefined
-              ? undefined
-              : () => {
-                  void interrupt(stop).then((result) => {
-                    if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
-                      const error = squashAtomCommandFailure(result);
-                      toastManager.add({
-                        type: "error",
-                        title: `Could not stop ${name}`,
-                        ...(error instanceof Error ? { description: error.message } : {}),
-                      });
-                    }
-                  });
-                },
-          entries: sidebarMateVerbs(actionsFor(candidate, tags)),
-          drawn: drawnOf(candidate.project.id),
-        };
-      }),
+              : scopeThreadRef(environmentId, activity.threadId);
+          return {
+            muted: environmentId !== undefined && muted.includes(environmentId),
+            toggleMute:
+              environmentId === undefined
+                ? undefined
+                : () => {
+                    toggle(environmentId);
+                  },
+            toggleUnread:
+              activity === undefined || finished === undefined
+                ? undefined
+                : () => {
+                    if (activity.unread)
+                      markThreadVisited(activity.threadKey, new Date().toISOString());
+                    else markThreadUnread(activity.threadKey, finished);
+                  },
+            copyLink:
+              threadRef === undefined
+                ? undefined
+                : () => {
+                    const { href } = router.buildLocation({
+                      to: "/$environmentId/$threadId",
+                      params: buildThreadRouteParams(threadRef),
+                    });
+                    copyToClipboard(new URL(href, window.location.origin).toString(), { name });
+                  },
+            rename: renameInPlace(candidate),
+            changeFace: changeFace(candidate),
+            stop:
+              stop === undefined
+                ? undefined
+                : () => {
+                    void interrupt(stop).then((result) => {
+                      if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+                        const error = squashAtomCommandFailure(result);
+                        toastManager.add({
+                          type: "error",
+                          title: `Could not stop ${name}`,
+                          ...(error instanceof Error ? { description: error.message } : {}),
+                        });
+                      }
+                    });
+                  },
+            entries: sidebarMateVerbs(actionsFor(candidate, tags)),
+            drawn: drawnOf(candidate.project.id),
+          };
+        },
+      ),
     [
       actionsFor,
       changeFace,
@@ -317,6 +341,7 @@ export function useSidebarMateMenus(input: {
       markThreadVisited,
       muted,
       renameInPlace,
+      readActions,
       router,
       toggle,
       told,

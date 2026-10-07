@@ -524,6 +524,22 @@ export const make = (
 
     const acp = yield* Effect.service(EffectAcpClient.AcpClient).pipe(Effect.provide(acpContext));
 
+    // effect-acp runs every session-update handler on its reader fiber and
+    // ignores only typed failures: one handler's defect ends the reader, and
+    // every later ACP message goes unanswered. A defect fails its own update.
+    const handleSessionUpdateSurvivingDefects: EffectAcpClient.AcpClient["Service"]["handleSessionUpdate"] =
+      (handler) =>
+        acp.handleSessionUpdate((notification) =>
+          handler(notification).pipe(
+            Effect.catchDefect((defect) =>
+              Effect.logError("ACP session update handler died", {
+                sessionUpdate: notification.update.sessionUpdate,
+                defect,
+              }),
+            ),
+          ),
+        );
+
     const processSessionUpdate = (notification: EffectAcpSchema.SessionNotification) =>
       handleSessionUpdate({
         queue: eventQueue,
@@ -536,7 +552,7 @@ export const make = (
         params: notification,
       });
 
-    yield* acp.handleSessionUpdate((notification) =>
+    yield* handleSessionUpdateSurvivingDefects((notification) =>
       notificationSemaphore.withPermit(
         Effect.gen(function* () {
           if (Option.isSome(yield* Ref.get(terminationErrorRef))) {
@@ -1014,7 +1030,7 @@ export const make = (
       handleTerminalWaitForExit: acp.handleTerminalWaitForExit,
       handleTerminalKill: acp.handleTerminalKill,
       handleTerminalRelease: acp.handleTerminalRelease,
-      handleSessionUpdate: acp.handleSessionUpdate,
+      handleSessionUpdate: handleSessionUpdateSurvivingDefects,
       handleElicitationComplete: acp.handleElicitationComplete,
       handleUnknownExtRequest: acp.handleUnknownExtRequest,
       handleUnknownExtNotification: acp.handleUnknownExtNotification,

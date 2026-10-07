@@ -10,7 +10,7 @@ import { emptyAccount, linkKeys, type AccountState, type StreamKey } from "../mo
 import { reduceAccount, streamOf, type AccountInput } from "../reducer.ts";
 import { readsOfState } from "../store.ts";
 import type { StreamEvent } from "../streamMachine.ts";
-import { matesAttention } from "./mateAttention.ts";
+import { readAttentionProjects } from "./mateAttention.ts";
 
 const ORG = "org";
 const P = "ada";
@@ -147,12 +147,60 @@ const placed = (unseen: number | null): ReadonlyArray<AccountInput> => [
 ];
 
 const read = (inputs: ReadonlyArray<AccountInput>) =>
-  matesAttention.derive(readsOfState(apply(emptyAccount, inputs)), {
+  readAttentionProjects(readsOfState(apply(emptyAccount, inputs)), {
     orgId: ORG,
     projectIds: [P],
   })[P];
 
 describe("matesAttention", () => {
+  it("reads placement membership once for one thousand known placements", () => {
+    const state = apply(emptyAccount, placed(2));
+    const read = readsOfState(state);
+    const projectIds = Array.from({ length: 1000 }, (_, index) => `mate-${index}`);
+    let membershipReads = 0;
+    const result = readAttentionProjects(
+      {
+        ...read,
+        fact: (family, id) => read.fact(family, family === "placement" ? P : id),
+        members: (scope) => {
+          membershipReads += 1;
+          return { ...read.members(scope), ids: projectIds };
+        },
+      },
+      { orgId: ORG, projectIds },
+    );
+    expect(membershipReads).toBe(1);
+    expect(Object.keys(result)).toEqual(projectIds);
+    expect(Object.values(result)).toEqual(
+      projectIds.map(() => ({ attention: null, live: false, unseen: 2 })),
+    );
+  });
+
+  it.each(["member", "absent-unverified", "removed", "excluded", "unknown"] as const)(
+    "uses only listed placement evidence for unseen: %s",
+    (status) => {
+      const state = apply(emptyAccount, [...placed(2), ...relay(attention("m1", 3), "stored")]);
+      const scope = placementsScope(ORG);
+      const held = state.memberships.get(scope)!;
+      const memberships = new Map(state.memberships);
+      memberships.set(scope, {
+        ...held,
+        members: new Map(status === "excluded" || status === "unknown" ? [] : [[P, status]]),
+        excluded: new Set(status === "excluded" ? [P] : []),
+      });
+      expect(
+        readAttentionProjects(readsOfState({ ...state, memberships }), {
+          orgId: ORG,
+          projectIds: [P],
+        })[P],
+      ).toEqual({
+        attention: attention("m1", 3),
+        live: false,
+        unseen: status === "member" ? 2 : null,
+      });
+    },
+  );
+
   it.each([
     {
       name: "uncounted baseline",
@@ -326,7 +374,7 @@ describe("matesAttention", () => {
     const state = apply(emptyAccount, direct(attention("m1", 1)));
     expect(streamOf(state, mateAttentionScope(P)).phase).toBe("live");
     expect(
-      matesAttention.derive(readsOfState(state), { orgId: ORG, projectIds: [P, "bea"] }),
+      readAttentionProjects(readsOfState(state), { orgId: ORG, projectIds: [P, "bea"] }),
     ).toEqual({
       [P]: { attention: attention("m1", 1), live: true, unseen: null },
       bea: { attention: null, live: false, unseen: null },

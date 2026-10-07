@@ -1,10 +1,10 @@
 import {
   conversationPhrase,
-  type MateVoice,
   type ConversationView,
   type RouteGate,
   type RouteGatePhrase,
 } from "@t3tools/client-runtime/zerops/environments";
+import type { WebMateVoice as MateVoice } from "../zerops/mateNoticeVoice";
 import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/serviceMap";
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
@@ -12,6 +12,8 @@ import type { ReactNode } from "react";
 import { ZeropsOrganizationScope } from "../components/zerops/ZeropsOrganizationScope";
 import { MateVoiceContext } from "../zerops/mateVoiceContext";
 import { Button } from "../components/ui/button";
+import type { RecoveryNotice } from "../zerops/mateRecovery.logic";
+import { CircleAlertIcon, CircleHelpIcon } from "lucide-react";
 import { PortalGate } from "../components/ui/portal-gate";
 import { useZeropsSession } from "../zerops/ZeropsSessionProvider";
 
@@ -27,6 +29,8 @@ export function RouteGateView({
   phrase,
   projectId,
   conversation,
+  recoveryPhrase,
+  projectUnavailable = false,
   voice,
   stage,
   children,
@@ -40,13 +44,17 @@ export function RouteGateView({
   /** The route's Zerops project, for "Open in Zerops"; null while it is not known. */
   readonly projectId: string | null;
   readonly conversation: ConversationView;
+  readonly recoveryPhrase?: RecoveryNotice | null;
+  /** An owner-proven access denial or deletion outranks a detail read's secondary failure. */
+  readonly projectUnavailable?: boolean;
   /** The route's outlet. */
   readonly children: ReactNode;
 }) {
   switch (gate.kind) {
     case "outlet": {
       const suppressed = conversation.kind === "suppressed";
-      const cause = conversationPhrase(conversation);
+      const cause =
+        suppressed && recoveryPhrase != null ? recoveryPhrase : conversationPhrase(conversation);
       return (
         <>
           <PortalGate closed={suppressed}>
@@ -59,7 +67,13 @@ export function RouteGateView({
               <MateVoiceContext value={voice}>{children}</MateVoiceContext>
             </div>
           </PortalGate>
-          {cause.text === null ? null : <RouteGateWords phrase={cause} projectId={projectId} />}
+          {cause.text === null ? null : (
+            <RouteGateWords
+              phrase={cause}
+              projectId={projectId}
+              tone={suppressed ? recoveryPhrase?.tone : undefined}
+            />
+          )}
         </>
       );
     }
@@ -71,10 +85,18 @@ export function RouteGateView({
         </div>
       );
     case "wait":
+      if (projectUnavailable && recoveryPhrase != null)
+        return (
+          <RouteGateWords phrase={recoveryPhrase} projectId={null} tone={recoveryPhrase.tone} />
+        );
       // The Mate's stage (`MateLinkStage`, drawn by the root): face asleep, name, the link's line.
       return stage;
     case "unavailable":
-      return <RouteGateWords phrase={phrase} projectId={projectId} />;
+      if (projectUnavailable && recoveryPhrase != null)
+        return (
+          <RouteGateWords phrase={recoveryPhrase} projectId={null} tone={recoveryPhrase.tone} />
+        );
+      return stage ?? <RouteGateWords phrase={phrase} projectId={projectId} />;
   }
 }
 
@@ -82,13 +104,20 @@ export function RouteGateView({
 function RouteGateWords({
   phrase,
   projectId,
+  tone,
 }: {
+  readonly tone?: RecoveryNotice["tone"] | undefined;
   readonly phrase: RouteGatePhrase;
   readonly projectId: string | null;
 }) {
   return (
     <div className="flex h-full flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
       <p className="text-sm text-muted-foreground" role="status">
+        {tone === "warning" ? (
+          <CircleHelpIcon aria-hidden="true" className="mr-2 inline size-4 text-status-attention" />
+        ) : tone === "error" ? (
+          <CircleAlertIcon aria-hidden="true" className="mr-2 inline size-4 text-error" />
+        ) : null}
         {phrase.text}
       </p>
       <div className="flex flex-wrap items-center justify-center gap-2">

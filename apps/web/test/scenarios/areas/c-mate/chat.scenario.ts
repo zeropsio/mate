@@ -16,7 +16,7 @@ const setup = Effect.gen(function* () {
 describe("C: opening a Mate and chat", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
     // Catches a broken identity door/OAuth exchange or a slow first opening that never reaches the chosen chat.
-    it.effect("first open crosses the door and OAuth within the opening budget", () =>
+    it.effect("first open crosses the door and OAuth", () =>
       Effect.gen(function* () {
         const { s, chat } = yield* setup;
         yield* s.given.signedIn;
@@ -27,7 +27,7 @@ describe("C: opening a Mate and chat", () => {
     );
 
     // Catches returning to a parked Mate losing its history, opening another chat, or repeating the cold door.
-    it.effect("returning to a parked Mate preserves history within the warm budget", () =>
+    it.effect("returning to a parked Mate preserves history", () =>
       Effect.gen(function* () {
         const { s, chat } = yield* setup;
         yield* s.given.project("Bea", { mate: true });
@@ -36,10 +36,13 @@ describe("C: opening a Mate and chat", () => {
         yield* chat.when.open();
         yield* chat.then.text("The existing conversation is still here");
         yield* chat.when.open("Bea", "Bea's conversation history");
-        const doors = chat.fixture().doorCount();
+        yield* chat.when.returnTo();
+        yield* chat.when.type("Keep this draft with Ada");
+        yield* chat.when.open("Bea", "Bea's conversation history");
         yield* chat.when.returnTo();
         yield* chat.then.text("The existing conversation is still here");
-        expect(chat.fixture().doorCount()).toBe(doors);
+        yield* chat.then.draft("Keep this draft with Ada");
+        yield* chat.then.noButton("Sign in");
         yield* s.then.noReload;
         yield* s.then.noExternalNetwork;
       }),
@@ -75,7 +78,7 @@ describe("C: opening a Mate and chat", () => {
     );
 
     // Catches reload losing the selected chat/history or turning a kept session into a slow cold opening.
-    it.effect("reload restores history within the reload budget", () =>
+    it.effect("reload restores history", () =>
       Effect.gen(function* () {
         const { s, chat } = yield* setup;
         yield* s.given.signedIn;
@@ -95,10 +98,10 @@ describe("C: opening a Mate and chat", () => {
         yield* s.given.signedIn;
         yield* chat.when.open();
         yield* chat.when.send("Please inspect the Shop project");
-        yield* chat.then.sent("Please inspect the Shop project");
+        yield* chat.then.once("Please inspect the Shop project");
         yield* chat.when.reload("Ada", "Please inspect the Shop project");
         yield* chat.then.headerName("Ada");
-        yield* chat.then.text("Please inspect the Shop project");
+        yield* chat.then.once("Please inspect the Shop project");
         yield* s.then.noExternalNetwork;
       }),
     );
@@ -142,6 +145,7 @@ describe("C: opening a Mate and chat", () => {
         const { s, chat } = yield* setup;
         yield* s.given.signedIn;
         yield* chat.when.open();
+        yield* chat.then.enabledControl("GPT-5.4");
         chat.fixture().question();
         yield* chat.then.text("Which environment should I inspect?");
         yield* chat.when.click("Staging");
@@ -149,6 +153,44 @@ describe("C: opening a Mate and chat", () => {
         yield* chat.then.noText("Which environment should I inspect?");
         expect(chat.fixture().receivedStagingAnswer()).toBe(true);
         expect(chat.fixture().responseCount()).toBe(1);
+        yield* chat.step(
+          "a free answer carries only the picture attached to that question",
+          Effect.gen(function* () {
+            chat.fixture().run("question-custom-run", "running");
+            chat.fixture().question("question-custom", "question-custom-run");
+            yield* chat.then.text("Which environment should I inspect?");
+            yield* chat.when.type("Inspect the preview shown here");
+            yield* chat.when.pastePicture("question-preview.png");
+            yield* chat.then.text("Attached to this answer");
+            chat.fixture().responseRefusal = "Your answer was refused. Sign in and retry.";
+            yield* chat.when.key("Enter");
+            yield* chat.then.text("Your answer was refused. Sign in and retry.");
+            yield* chat.then.composerText("Inspect the preview shown here");
+            yield* chat.then.text("question-preview.png");
+            chat.fixture().responseRefusal = null;
+            yield* chat.when.key("Enter");
+            const answer = yield* Effect.promise(() =>
+              chat.fixture().waitForCommand("thread.user-input.respond", 3),
+            );
+            expect(answer).toMatchObject({
+              requestId: "question-custom",
+              answers: { target: "Inspect the preview shown here" },
+              attachmentsByQuestionId: { target: [{ name: "question-preview.png" }] },
+            });
+            chat.fixture().run("question-custom-run", "completed");
+            yield* chat.then.once("Inspect the preview shown here");
+            yield* chat.when.activate("Show work");
+            yield* chat.when.press("Open question-preview.png");
+            yield* chat.then.text("question-preview.png");
+            yield* chat.when.key("Escape");
+            yield* chat.then.noText("Attached to this answer");
+            yield* chat.then.draft("");
+            yield* chat.when.reload();
+            yield* chat.when.activate("Show work");
+            yield* chat.then.once("Inspect the preview shown here");
+            yield* chat.then.control("Open question-preview.png");
+          }),
+        );
         yield* s.then.noExternalNetwork;
       }),
     );
@@ -164,7 +206,7 @@ describe("C: opening a Mate and chat", () => {
         chat.fixture().offboardSigner();
         yield* chat.then.signInRequired;
         yield* chat.then.text("The existing conversation is still here");
-        yield* chat.when.send("Do not start a turn on the removed login");
+        yield* chat.when.attemptSend("Do not start a turn on the removed login");
         yield* chat.then.noText("Do not start a turn on the removed login");
         expect(chat.fixture().sentTurnCount()).toBe(sent);
         expect(chat.fixture().responseCount()).toBe(0);
@@ -200,7 +242,7 @@ describe("C: opening a Mate and chat", () => {
         chat.fixture().ownership = "unrecorded";
         yield* s.given.signedIn;
         yield* chat.when.open();
-        yield* chat.when.send("This must not reach the agent");
+        yield* chat.when.attemptSend("This must not reach the agent");
         yield* chat.then.blockedPromptRemains("This must not reach the agent");
         yield* chat.then.sendDisabled;
         yield* chat.then.text("This agent's sign-in was not recorded");

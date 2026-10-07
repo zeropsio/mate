@@ -111,3 +111,12 @@ describe("first run", () => {
     expect(render()).not.toContain('data-zerops-surface="first-run"');
   });
 });
+
+it("does not declare a first run before HQ placement is read", () => {
+  const html = render({
+    onCreateProject: () => {},
+    placementNotice: "Placement not read — HQ is unavailable",
+  });
+  expect(html).not.toContain("Start a project");
+  expect(html).toContain("Placement not read — HQ is unavailable");
+});

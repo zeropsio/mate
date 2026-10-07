@@ -16,6 +16,18 @@ available pictures.
 On web and desktop, HEIC and HEIF photos are automatically converted to JPEG when you drag them into
 the composer or paste them into a message.
 
+## Answer a question with files
+
+When your Mate supports question attachments, paste pictures or files while answering its question.
+Each file is listed under **Attached to this answer**. Wait for uploads to finish before answering;
+retry or remove failed uploads. A refused answer keeps its text and files so you can try again.
+These attachments answer that question and do not become attachments to your next message.
+
+## Undo picture edits
+
+While editing a pasted picture, press `Cmd+Z` on macOS or `Ctrl+Z` on Windows and Linux to undo a
+note or crop change. Add `Shift` to redo. While typing note text, those keys edit the text itself.
+
 ## Custom models
 
 On web and desktop, use Settings → Providers → **Models** to add an unlisted model with a custom
@@ -101,3 +113,8 @@ Use `Cmd+Shift+Enter` on macOS or `Ctrl+Shift+Enter` on Windows and Linux to sen
 the oldest queued message now. Change `thread.steerQueuedMessage` in
 **Settings → Keybindings** to use another shortcut. It leaves the current draft
 in the composer and waits if the agent needs an approval or an answer.
+
+## Files in the file viewer
+
+The file viewer recognizes images, HTML, and PDF files by their filename extension,
+including filenames or folders containing `#` or `?`.

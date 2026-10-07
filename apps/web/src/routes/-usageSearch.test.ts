@@ -6,13 +6,13 @@ describe("validateUsageSearch", () => {
   it.each([
     {
       name: "keeps every present value",
-      raw: { person: "u1", project: "shop", mate: "env-a" },
-      expected: { person: "u1", project: "shop", mate: "env-a" },
+      raw: { person: "u1", app: "shop-id", mate: "env-a" },
+      expected: { person: "u1", project: "shop-id", mate: "env-a" },
     },
     {
       name: "trims surrounding whitespace",
       raw: { person: " u1 ", project: "\tshop\n" },
-      expected: { person: "u1", project: "shop" },
+      expected: { person: "u1", legacyProject: "shop" },
     },
     {
       name: "drops a whitespace-only value",

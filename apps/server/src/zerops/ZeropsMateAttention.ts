@@ -21,11 +21,14 @@
 import type {
   EnvironmentId,
   MateAttention,
+  MateHealth,
   OrchestrationEvent,
   OrchestrationThreadShell,
   ProjectId,
   ThreadId,
 } from "@t3tools/contracts";
+import * as Clock from "effect/Clock";
+import * as DateTime from "effect/DateTime";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as Cause from "effect/Cause";
@@ -35,6 +38,7 @@ import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
@@ -49,6 +53,7 @@ import { OrchestrationEngineService } from "../orchestration/Services/Orchestrat
 import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import { MateEngine } from "../engine/MateEngine.ts";
 import { engineAttentionReads } from "./engineOverview.ts";
+import { resourceHealthChanges } from "./mateResourceHealth.ts";
 import { mateAttentionOf } from "./zeropsAttentionValue.ts";
 
 /** The most chats followed one by one between two reads; past it, all are read whole again. */
@@ -73,12 +78,16 @@ export interface MateAttentionReads<E> {
   readonly thread: (id: ThreadId) => Effect.Effect<Option.Option<OrchestrationThreadShell>, E>;
   /** Every orchestration domain event. */
   readonly domainEvents: Stream.Stream<AttentionEvent>;
+  readonly healthDemand?: Effect.Effect<void>;
+  readonly health?: Stream.Stream<Omit<MateHealth, "source">>;
 }
 
 export class ZeropsMateAttention extends Context.Service<
   ZeropsMateAttention,
   {
     /** The attention as it stands. */
+    readonly healthCurrent: Effect.Effect<Option.Option<MateHealth>>;
+    readonly healthChanges: Stream.Stream<MateHealth>;
     readonly current: Effect.Effect<MateAttention>;
     /** The attention now, then each new revision. */
     readonly changes: Stream.Stream<MateAttention>;
@@ -94,6 +103,15 @@ export const makeZeropsMateAttention = <E>(
       epoch: reads.epoch,
       incarnation: reads.incarnation,
     };
+    const health = yield* SubscriptionRef.make<Option.Option<MateHealth>>(Option.none());
+    let healthRevision = 0;
+    if (reads.health !== undefined)
+      yield* Effect.forkScoped(
+        Stream.runForEach(reads.health, (value) => {
+          const next: MateHealth = { ...value, source: { ...source, revision: healthRevision++ } };
+          return SubscriptionRef.set(health, Option.some(next));
+        }),
+      );
     const chats = new Map<ThreadId, OrchestrationThreadShell>();
     let project = Option.none<ProjectId>();
     /**
@@ -199,6 +217,14 @@ export const makeZeropsMateAttention = <E>(
     });
 
     return ZeropsMateAttention.of({
+      healthCurrent: SubscriptionRef.get(health),
+      healthChanges: Stream.concat(
+        Stream.fromEffect(reads.healthDemand ?? Effect.void).pipe(Stream.drain),
+        SubscriptionRef.changes(health).pipe(
+          Stream.filter(Option.isSome),
+          Stream.map((value) => value.value),
+        ),
+      ),
       current: Effect.flatMap(started, SubscriptionRef.get),
       changes: Stream.unwrap(Effect.map(started, SubscriptionRef.changes)),
     });
@@ -242,18 +268,33 @@ export const layer = Layer.effect(
     const projection = yield* ProjectionSnapshotQuery;
     const engine = yield* OrchestrationEngineService;
     const mateEngine = yield* MateEngine;
-    const identity = {
+    const healthDemand = yield* PubSub.unbounded<void>();
+    // The Mate's identity and its container's health, whichever engine owns the conversation.
+    const shared = {
       environmentId: yield* (yield* ServerEnvironment).getEnvironmentId,
       epoch: yield* nextMateEpoch(config.mateEpochPath),
       incarnation: yield* (yield* Crypto.Crypto).randomUUIDv4,
+      healthDemand: PubSub.publish(healthDemand, undefined).pipe(Effect.asVoid),
+      health: resourceHealthChanges(
+        config.stateDir,
+        undefined,
+        Stream.fromPubSub(healthDemand),
+      ).pipe(
+        Stream.mapEffect((evidence) =>
+          Effect.map(Clock.currentTimeMillis, (ms) => ({
+            sampledAt: DateTime.formatIso(DateTime.makeUnsafe(ms)),
+            evidence,
+          })),
+        ),
+      ),
     };
     // While the Mate engine owns the conversation, the attention counts its runs and requests
     // alone: a thread V1 left running at the flip is never read, so it never counts as working.
     if (mateEngine.live) {
-      return yield* makeZeropsMateAttention({ ...identity, ...engineAttentionReads(mateEngine) });
+      return yield* makeZeropsMateAttention({ ...shared, ...engineAttentionReads(mateEngine) });
     }
     return yield* makeZeropsMateAttention({
-      ...identity,
+      ...shared,
       project: projection
         .getActiveProjectByWorkspaceRoot(config.cwd)
         .pipe(Effect.map(Option.map((project) => project.id))),

@@ -24,6 +24,20 @@ import {
 
 describe("G: outages, sleep and several tabs", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    // A completed HQ read remains evidence of absence while the source reconnects.
+    it.effect("HQ down retains a known Not in this HQ row", () =>
+      Effect.gen(function* () {
+        const s = yield* givenOutage();
+        yield* s.given.project("Wren", { mate: true, registered: false });
+        yield* s.given.signedIn;
+        yield* caughtUp(s, "Shop");
+        yield* menuSays(s.page, "Not in this HQ");
+        yield* s.when.hq.socket.drops;
+        yield* s.then.hq.isUnavailable;
+        yield* menuSays(s.page, "Not in this HQ");
+        yield* checkpoint(s);
+      }),
+    );
     // Catches HQ downtime making a retained Mate impossible to open or send a message to.
     it.effect("HQ down: the menu holds and a Mate still opens and chats", () =>
       Effect.gen(function* () {

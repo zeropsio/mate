@@ -1622,7 +1622,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                       showBadge={showInstanceBadge}
                       // Glyph dims, badge stays saturated; offset matches the composer trigger.
                       iconClassName={resolveThreadProviderIconClassName()}
-                      badgeClassName="right-[-0.1875rem] bottom-[-0.1875rem] h-3 min-w-3 px-0.5 text-3xs"
+                      badgeClassName="right-[-0.1875rem] bottom-[-0.1875rem] h-3 min-w-3 px-0.5 text-5xs"
                     />
                   </span>
                 ) : null}
@@ -2338,7 +2338,7 @@ export default function Sidebar() {
   // What each Mate is doing, off its attention — the one derivation the
   // projects screen reads too (`mateActivity.ts`), so a Mate says the same
   // thing in both places.
-  const zeropsAgentActivity = useMatesActivity();
+  const zeropsAgentActivity = useMatesActivity(true);
   // Each Mate's own menu: the projects screen's verbs, and this viewer's own.
   const zeropsMateMenus = useSidebarMateMenus({ threads });
   // What a Mate's row says (`useMateRowActivity`): its attention, at rest
@@ -3992,6 +3992,14 @@ export default function Sidebar() {
                     }
                     className="min-w-0 flex-1"
                   />
+                  {isSearchingThreads &&
+                  threadSearch.incomplete &&
+                  !threadSearch.isPending &&
+                  threadSearchResults.length > 0 ? (
+                    <p role="status" className="px-2 text-xs text-sidebar-muted-foreground">
+                      Some conversations could not be searched.
+                    </p>
+                  ) : null}
                   {isSearchingThreads ? (
                     <Button
                       type="button"
@@ -4194,6 +4202,7 @@ export default function Sidebar() {
               timestampFormat={timestampFormat}
               onOpenGroup={openGroup}
               getActivity={zeropsRowActivity}
+              keyedReadings
               getConversationsRead={zeropsConversationsRead}
               onSelect={onZeropsSelect}
               onOpenCrew={onZeropsOpenCrew}
@@ -4271,7 +4280,11 @@ export default function Sidebar() {
                 role="status"
                 className="px-2 py-6 text-center text-xs text-sidebar-muted-foreground"
               >
-                {threadSearch.isPending ? "Searching thread messages…" : "No threads found"}
+                {threadSearch.isPending
+                  ? "Searching thread messages…"
+                  : threadSearch.incomplete
+                    ? "Some conversations could not be searched."
+                    : "No threads found"}
               </p>
             )
           ) : null}

@@ -1,3 +1,4 @@
+import { MateStatusMarker } from "../zerops/MateStatusMarker";
 /**
  * The conversation's own rows — the line for each stretch of the Mate's work,
  * the receipt on a message it has not read yet, the quiet seams between days,
@@ -27,6 +28,8 @@ import { useEffect, useRef, type ReactNode } from "react";
 import { subscribeSecond } from "~/lib/secondTicker";
 import { cn } from "~/lib/utils";
 import { formatChatTimestampTooltip, formatDayAwareTimestamp } from "../../timestampFormat";
+import { usageLimitWords } from "../../zerops/noticeWords";
+import { Button } from "../ui/button";
 import { Switch } from "../ui/switch";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { formatWorkDuration } from "./conversation.logic";
@@ -344,12 +347,12 @@ export function ErrorLine({
   const extra = detail !== undefined && detail.trim() !== label.trim() ? detail : null;
   return (
     <div
-      className="flex min-h-7 min-w-0 items-start py-1 text-line text-status-failed-text"
+      className="flex min-h-7 min-w-0 items-start py-1 text-line text-foreground"
       data-conversation-error
       role="alert"
     >
       <LineMark className="h-5 items-center">
-        <CircleAlertIcon className="size-3.5" />
+        <CircleAlertIcon className="size-3.5 text-status-failed-text" />
       </LineMark>
       <div className="min-w-0">
         <p className="min-w-0">{label}</p>
@@ -367,14 +370,6 @@ function spokenMoment(iso: string, timestampFormat: TimestampFormat): string {
   return dated ? `on ${dated[1]} at ${dated[2]}` : `at ${stamp}`;
 }
 
-function untilText(resetsAt: string, nowMs: number): string {
-  const minutes = Math.max(0, Math.ceil((Date.parse(resetsAt) - nowMs) / 60_000));
-  if (minutes < 60) return minutes <= 1 ? "in a minute" : `in ${minutes} minutes`;
-  const hours = Math.floor(minutes / 60);
-  const rest = minutes % 60;
-  return rest === 0 ? `in ${hours}h` : `in ${hours}h ${rest}m`;
-}
-
 /** The server's own reading of a pause, when it keeps one: the reset and the thread's switch. */
 export interface ServerUsagePause {
   readonly resetsAt: string;
@@ -382,7 +377,7 @@ export interface ServerUsagePause {
 }
 
 /**
- * A usage limit as one pause — amber while it holds, quiet once the Mate
+ * A usage limit as one calm pause, quiet once the Mate
  * picked up again — however many attempts the limit refused. Both are one
  * block: its mark and words in one size, and what it says under its words.
  */
@@ -393,6 +388,7 @@ export function PauseBlock({
   timestampFormat,
   serverPause,
   onAutoResumeChange,
+  onContinue = null,
 }: {
   readonly row: Extract<MessagesTimelineRow, { kind: "pause" }>;
   readonly speaker: ConversationSpeaker;
@@ -401,6 +397,7 @@ export function PauseBlock({
   /** Present only on the pause that holds the thread now, on a server that keeps one. */
   readonly serverPause: ServerUsagePause | null;
   readonly onAutoResumeChange: ((enabled: boolean) => void) | null;
+  readonly onContinue?: (() => void) | null;
 }) {
   const resumed = row.resumedAt !== null;
   const resetsAt = serverPause?.resetsAt ?? row.resetsAt;
@@ -410,14 +407,14 @@ export function PauseBlock({
   const detail = resumed
     ? `${speaker.name} picked up again ${spokenMoment(row.resumedAt!, timestampFormat)}.`
     : resetsAt === null
-      ? "The limit resets later; the work continues from where it stopped."
+      ? "The coding agent hasn't given a reset time yet."
       : passed
-        ? autoResume
-          ? `The limit reset at ${formatDayAwareTimestamp(resetsAt, timestampFormat)}; ${speaker.name} is picking up where the work stopped.`
-          : `The limit reset at ${formatDayAwareTimestamp(resetsAt, timestampFormat)}. Send a message to pick up where the work stopped.`
-        : autoResume
-          ? `Resets at ${formatDayAwareTimestamp(resetsAt, timestampFormat)}, ${untilText(resetsAt, nowMs)}; ${speaker.name} picks up where the work stopped by itself.`
-          : `Resets at ${formatDayAwareTimestamp(resetsAt, timestampFormat)}, ${untilText(resetsAt, nowMs)}. Send a message then to pick up where the work stopped.`;
+        ? `${speaker.name} is still paused after the reset time; the coding agent hasn't allowed continuation.`
+        : serverPause === null
+          ? `Available again at ${formatDayAwareTimestamp(resetsAt, timestampFormat)}.`
+          : autoResume
+            ? `${speaker.name} will try again automatically at ${formatDayAwareTimestamp(resetsAt, timestampFormat)}.`
+            : `Available again at ${formatDayAwareTimestamp(resetsAt, timestampFormat)}. Automatic continuation is off.`;
   return (
     <div
       className={cn(
@@ -427,7 +424,7 @@ export function PauseBlock({
         "relative grid gap-1 rounded-xl border py-2.5",
         resumed
           ? "border-x-0 border-transparent text-muted-foreground"
-          : "border-status-attention/40 bg-status-attention-surface px-3.5",
+          : "border-border bg-muted/35 px-3.5",
       )}
       data-conversation-pause={resumed ? "resumed" : "paused"}
       role="status"
@@ -439,15 +436,25 @@ export function PauseBlock({
             className={cn("size-3.5", resumed ? "text-muted-foreground" : "text-status-attention")}
           />
         </LineMark>
-        <span
-          className={cn(
-            "font-medium",
-            resumed ? "text-muted-foreground" : "text-status-attention-text",
-          )}
-        >
-          Paused
+        <span className="font-medium">
+          {resumed
+            ? `${speaker.name} is back to work.`
+            : row.provider === undefined
+              ? usageLimitWords("coding agent", undefined, speaker.name)
+              : usageLimitWords(row.provider, undefined, speaker.name)}
         </span>
-        <span className="text-muted-foreground">Claude usage limit</span>
+        {resumed ? null : (
+          <MateStatusMarker
+            mateName={speaker.name}
+            status={{
+              kind: "limit",
+              severity: "attention",
+              until: resetsAt ?? undefined,
+              provider: row.provider,
+            }}
+            timestampFormat={timestampFormat}
+          />
+        )}
         {row.held > 0 ? (
           <Tooltip>
             <TooltipTrigger
@@ -459,7 +466,7 @@ export function PauseBlock({
             </TooltipTrigger>
             <TooltipPopup>
               The limit refused {row.held === 1 ? "one more attempt" : `${row.held} more attempts`}{" "}
-              before it reset.
+              during this pause.
             </TooltipPopup>
           </Tooltip>
         ) : null}
@@ -468,6 +475,13 @@ export function PauseBlock({
       <p className="ps-5 text-line text-muted-foreground" data-pause-detail>
         {detail}
       </p>
+      {!resumed && onContinue !== null ? (
+        <div className="ps-5">
+          <Button size="sm" variant="ghost" onClick={onContinue}>
+            Continue
+          </Button>
+        </div>
+      ) : null}
       {!resumed && serverPause !== null && onAutoResumeChange !== null ? (
         <label
           className="flex w-fit cursor-pointer items-center gap-2 ps-5 text-line text-foreground"
@@ -477,7 +491,7 @@ export function PauseBlock({
             checked={serverPause.autoResume}
             onCheckedChange={(checked) => onAutoResumeChange(checked)}
           />
-          Resume by itself at the reset
+          Continue automatically
         </label>
       ) : null}
     </div>

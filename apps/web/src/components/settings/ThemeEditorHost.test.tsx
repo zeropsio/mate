@@ -34,6 +34,7 @@ vi.mock("react", async (importOriginal) => {
   return {
     ...actual,
     useCallback: reactHookHarness.useCallback,
+    useEffect: reactHookHarness.useEffect,
     useSyncExternalStore: (
       subscribe: (listener: () => void) => () => void,
       getSnapshot: () => unknown,
@@ -66,12 +67,13 @@ import { ThemeEditorHost } from "./ThemeEditorHost";
 
 function renderEditor() {
   hooks.beginRender();
-  // The fork renders the editor directly, without a lazy Suspense boundary.
   const host = ThemeEditorHost() as ReactElement<{
-    editingTheme: ThemeDefinition | null;
-    seedTheme: ThemeDefinition | null;
+    children: ReactElement<{
+      editingTheme: ThemeDefinition | null;
+      seedTheme: ThemeDefinition | null;
+    }>;
   }> | null;
-  return host?.props ?? null;
+  return host?.props.children.props ?? null;
 }
 
 describe("ThemeEditorHost", () => {

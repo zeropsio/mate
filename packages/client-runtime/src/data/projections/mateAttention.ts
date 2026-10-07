@@ -11,6 +11,7 @@
  */
 import type { MateAttention } from "@t3tools/contracts";
 
+import { SHOWN_MATES } from "../families/mateLink.ts";
 import { hqMateScope } from "../families/hqMate.ts";
 import { placementsScope } from "../families/hqNavigation.ts";
 import { hqMateAttentionScope, mateAttentionScope } from "../families/mateAttention.ts";
@@ -29,12 +30,15 @@ export interface MateAttentionRead {
 
 const isLive = (read: ProjectionReads, key: StreamKey) => read.stream(key).phase === "live";
 
-function attentionOf(read: ProjectionReads, orgId: string, projectId: string): MateAttentionRead {
+function attentionOf(
+  read: ProjectionReads,
+  orgId: string,
+  projectId: string,
+  listed: boolean,
+): MateAttentionRead {
   const placement = read.fact("placement", projectId);
   const unseen =
-    placement.kind === "known" && read.members(placementsScope(orgId)).ids.includes(projectId)
-      ? (placement.value.person?.unseen ?? null)
-      : null;
+    placement.kind === "known" && listed ? (placement.value.person?.unseen ?? null) : null;
   const fact = read.fact("mateAttention", projectId);
   if (fact.kind !== "known") return { attention: null, live: false, unseen };
   const direct =
@@ -53,15 +57,68 @@ function attentionOf(read: ProjectionReads, orgId: string, projectId: string): M
   return { attention: fact.value, live: direct || relayedNow, unseen };
 }
 
-export const matesAttention: Projection<
-  { readonly orgId: string; readonly projectIds: ReadonlyArray<string> },
-  Readonly<Record<string, MateAttentionRead>>
-> = {
-  name: "matesAttention",
-  keyOf: ({ orgId, projectIds }) => `${orgId}/${projectIds.join(",")}`,
-  derive: (read, { orgId, projectIds }) =>
-    Object.fromEntries(
-      projectIds.map((projectId) => [projectId, attentionOf(read, orgId, projectId)]),
+export interface MateProjectKey {
+  readonly orgId: string;
+  readonly projectId: string;
+}
+
+/** One logical row, independent of every list or subset a surface draws. */
+export const mateAttention: Projection<MateProjectKey, MateAttentionRead> = {
+  name: "mateAttention",
+  keyOf: ({ orgId, projectId }) => `${orgId}/${projectId}`,
+  derive: (read, { orgId, projectId }) =>
+    attentionOf(
+      read,
+      orgId,
+      projectId,
+      read.members(placementsScope(orgId)).ids.includes(projectId),
     ),
+  equals: sameValue,
+};
+
+/** Current source membership, plus direct targets belonging to this organization or no listing. */
+export const attentionProjects: Projection<string, ReadonlyArray<string>> = {
+  name: "attentionProjects",
+  keyOf: (orgId) => orgId,
+  derive: (read, orgId) => {
+    const ids = new Set(read.members(placementsScope(orgId)).ids);
+    for (const key of read.index(SHOWN_MATES.name, SHOWN_MATES.key)) {
+      const link = read.fact("mateLink", key);
+      if (link.kind === "known" && (link.value.orgId === null || link.value.orgId === orgId))
+        ids.add(link.value.projectId);
+    }
+    return [...ids].sort();
+  },
+  equals: sameValue,
+};
+
+/** Pure subset composition for callers that already hold current membership; never cached by list. */
+export function readAttentionProjects(
+  read: ProjectionReads,
+  { orgId, projectIds }: { readonly orgId: string; readonly projectIds: ReadonlyArray<string> },
+): Readonly<Record<string, MateAttentionRead>> {
+  const listed = new Set(read.members(placementsScope(orgId)).ids);
+  return Object.fromEntries(
+    projectIds.map((id) => [id, attentionOf(read, orgId, id, listed.has(id))]),
+  );
+}
+
+/** Enumerating consumers share one reader per organization, regardless of list order or churn. */
+export const matesAttention: Projection<string, Readonly<Record<string, MateAttentionRead>>> = {
+  name: "matesAttention",
+  keyOf: (orgId) => orgId,
+  derive: (read, orgId) => {
+    // Membership is read once even when every Mate has an attention value.
+    const membership = read.members(placementsScope(orgId));
+    const members = {
+      ...read,
+      members: (scope: Parameters<ProjectionReads["members"]>[0]) =>
+        scope === placementsScope(orgId) ? membership : read.members(scope),
+    };
+    return readAttentionProjects(members, {
+      orgId,
+      projectIds: attentionProjects.derive(members, orgId),
+    });
+  },
   equals: sameValue,
 };

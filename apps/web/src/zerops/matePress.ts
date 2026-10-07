@@ -1,3 +1,14 @@
+import { useAtomValue } from "@effect/atom-react";
+import { Atom } from "effect/unstable/reactivity";
+import {
+  creationProgress,
+  creationPressStoreAtom,
+  beginCreationPress,
+  recordCreationProgress,
+  projectServicesAtom,
+} from "@t3tools/client-runtime/data";
+import { appAtomRegistry } from "../rpc/atomRegistry";
+import { randomUUID } from "~/lib/utils";
 /**
  * The press: everything a new environment needs the person's rights for, done in the foreground
  * before Add returns (pass 28; the owner: "this should never ever be tied to user having to have
@@ -16,6 +27,11 @@
  * again. Nothing is stored: a reload forgets it, and the listing — the project is tagged into its
  * group at birth — draws the rest.
  */
+import {
+  acquireHqPressLease,
+  hardenMateProject,
+  type PressHold,
+} from "@t3tools/client-runtime/data";
 import type { MateRegistration } from "@t3tools/client-runtime/data";
 import {
   resumableEnvironmentCreationStep,
@@ -41,8 +57,6 @@ import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import {
   birthIntentOf,
   heldOf,
-  HqError,
-  type HqApi,
   type HqEndpoint,
   type HqStructure,
 } from "@t3tools/client-runtime/zerops/hq";
@@ -57,7 +71,6 @@ import {
   withLockIfFree,
   type LockManagerLike,
 } from "./mateLocks";
-import { randomUUID } from "~/lib/utils";
 import { accountHqApi } from "./accountHq";
 import { HQ_UNFOLLOWED, type AccountOperations } from "./accountOperations";
 import { addGroupEnvironment } from "./addGroupEnvironment";
@@ -78,6 +91,7 @@ export type MatePressState =
       readonly kind: "failed";
       readonly step: EnvironmentCreationStep["kind"];
       readonly reason: string;
+      readonly uncertain?: true;
       /** Tries the press again from the step that stopped; null where that is not safe. */
       readonly retry: (() => Promise<void>) | null;
     };
@@ -121,7 +135,15 @@ export interface MatePress {
 }
 
 interface MatePressStore {
-  readonly presses: Readonly<Record<string, MatePress>>;
+  readonly presses: Readonly<
+    Record<
+      string,
+      Omit<MatePress, "state" | "progress"> & {
+        readonly requestId: string;
+        readonly retry?: (() => Promise<void>) | null;
+      }
+    >
+  >;
 }
 
 const usePressStore = create<MatePressStore>(() => ({ presses: {} }));
@@ -132,21 +154,27 @@ onAccountLifetimeClose(() => {
 
 /** The platform took the project of a press: it is drawn from now on. */
 export function beginPress(press: Omit<MatePress, "state">): void {
-  usePressStore.setState((store) => {
-    const stopped = store.presses[press.projectId];
-    return {
-      presses: {
-        ...store.presses,
-        [press.projectId]: {
-          ...press,
-          ...(stopped?.state.kind === "failed" && stopped.resumeSetup !== undefined
-            ? { resumeSetup: stopped.resumeSetup, progress: stopped.progress }
-            : {}),
-          state: { kind: "pressing" },
-        },
+  const owner = appAtomRegistry.get(creationPressStoreAtom);
+  if (owner === null) throw new Error("The account must be ready before starting a press.");
+  const stopped = readMatePress(press.projectId);
+  const requestId = randomUUID();
+  beginCreationPress(owner, requestId, press.organizationId, press.projectId);
+  const { progress: suppliedProgress, ...intent } = press;
+  const progress =
+    suppliedProgress ?? (stopped?.state.kind === "failed" ? stopped.progress : undefined);
+  if (progress !== undefined) recordCreationProgress(owner, requestId, { progress });
+  usePressStore.setState((store) => ({
+    presses: {
+      ...store.presses,
+      [press.projectId]: {
+        ...intent,
+        requestId,
+        ...(stopped?.state.kind === "failed" && stopped.resumeSetup !== undefined
+          ? { resumeSetup: stopped.resumeSetup }
+          : {}),
       },
-    };
-  });
+    },
+  }));
 }
 
 /** The harden of a Mate a press adopts could not lower its key, for `reason`. */
@@ -191,46 +219,64 @@ export const STOPPED_SHOWN_MS = 10_000;
  * menu offers Finish setup again. One that stopped bringing its container stands, for its own
  * view's *Try again*.
  */
-export function settlePress(
+export function recordPressOutcome(
   projectId: string,
   state: MatePressState,
   resumeSetup?: MatePress["resumeSetup"],
 ): void {
-  let stopped: MatePress | undefined;
-  usePressStore.setState((store) => {
-    const press = store.presses[projectId];
-    if (press === undefined) return store;
-    const { resumeSetup: previousResume, stopSaid: _said, ...held } = press;
-    const continuation = resumeSetup ?? (state.kind === "pressed" ? undefined : previousResume);
-    const settled: MatePress = {
-      ...held,
-      state,
-      ...(continuation === undefined ? {} : { resumeSetup: continuation }),
-    };
-    if (stoppedWithContainer(settled)) stopped = settled;
-    return { presses: { ...store.presses, [projectId]: settled } };
-  });
-  if (stopped === undefined) return;
-  const said = stopped;
+  const intent = usePressStore.getState().presses[projectId];
+  const owner = appAtomRegistry.get(creationPressStoreAtom);
+  if (intent === undefined || owner === null) return;
+  let requestId = intent.requestId;
+  if (state.kind === "pressing") {
+    requestId = randomUUID();
+    const previous = readMatePress(projectId)?.progress;
+    beginCreationPress(owner, requestId, intent.organizationId, projectId);
+    if (previous !== undefined) recordCreationProgress(owner, requestId, { progress: previous });
+  } else {
+    const evidence =
+      state.kind === "failed"
+        ? {
+            kind: "failed" as const,
+            step: state.step,
+            reason: state.reason,
+            ...(state.uncertain === true ? { uncertain: true as const } : {}),
+          }
+        : state;
+    recordCreationProgress(owner, requestId, { state: evidence });
+  }
+  const { resumeSetup: previousResume, retry: _retry, stopSaid: _said, ...held } = intent;
+  const continuation =
+    state.kind === "failed" && state.uncertain === true
+      ? undefined
+      : (resumeSetup ?? (state.kind === "pressed" ? undefined : previousResume));
+  const next = {
+    ...held,
+    requestId,
+    ...(state.kind === "failed" ? { retry: state.retry } : {}),
+    ...(continuation === undefined ? {} : { resumeSetup: continuation }),
+  };
+  usePressStore.setState((store) => ({ presses: { ...store.presses, [projectId]: next } }));
+  const stopped = readMatePress(projectId);
+  if (stopped === undefined || !stoppedWithContainer(stopped)) return;
   setTimeout(() => {
     usePressStore.setState((store) =>
-      store.presses[projectId] === said
-        ? { presses: { ...store.presses, [projectId]: { ...said, stopSaid: true } } }
+      store.presses[projectId] === next
+        ? { presses: { ...store.presses, [projectId]: { ...next, stopSaid: true } } }
         : store,
     );
   }, STOPPED_SHOWN_MS);
 }
 
-/** A press moved on: each step's state, kept on a press this tab holds. */
+/** The executor reports each observed child result into its retained operation receipt. */
 export function progressPress(
   projectId: string,
   progress: ReadonlyArray<EnvironmentCreationStepProgress>,
 ): void {
-  usePressStore.setState((store) => {
-    const press = store.presses[projectId];
-    if (press === undefined) return store;
-    return { presses: { ...store.presses, [projectId]: { ...press, progress } } };
-  });
+  const intent = usePressStore.getState().presses[projectId];
+  const owner = appAtomRegistry.get(creationPressStoreAtom);
+  if (intent !== undefined && owner !== null)
+    recordCreationProgress(owner, intent.requestId, { progress });
 }
 
 /**
@@ -248,11 +294,11 @@ export const FINISHED_SHOWN_MS = 4_000;
 
 /** A press is over: its record goes, Finish setup's after its view has said it is done. */
 function endPress(projectId: string, finishing: boolean): void {
+  recordPressOutcome(projectId, { kind: "pressed" });
   if (!finishing) {
     forgetPress(projectId);
     return;
   }
-  settlePress(projectId, { kind: "pressed" });
   setTimeout(() => {
     if (readMatePress(projectId)?.state.kind === "pressed") forgetPress(projectId);
   }, FINISHED_SHOWN_MS);
@@ -326,7 +372,19 @@ export const pressesInFlight = {
 
 /** The press this tab holds for a project, read outside a render. */
 export function readMatePress(projectId: string): MatePress | undefined {
-  return usePressStore.getState().presses[projectId];
+  const intent = usePressStore.getState().presses[projectId];
+  const owner = appAtomRegistry.get(creationPressStoreAtom);
+  if (intent === undefined || owner === null) return undefined;
+  const result = appAtomRegistry.get(owner.data.project(creationProgress, intent.requestId));
+  if (result === null) return undefined;
+  return {
+    ...intent,
+    progress: result.progress,
+    state:
+      result.state.kind === "failed"
+        ? { ...result.state, retry: intent.retry ?? null }
+        : result.state,
+  };
 }
 
 /**
@@ -448,13 +506,34 @@ export function forgetPress(projectId: string): void {
 
 /** Every press this tab made. */
 export function useMatePresses(): ReadonlyArray<MatePress> {
-  const presses = usePressStore((store) => store.presses);
-  return useMemo(() => Object.values(presses), [presses]);
+  const intents = usePressStore((store) => store.presses);
+  const atom = useMemo(
+    () =>
+      Atom.make((get) => {
+        const owner = get(creationPressStoreAtom);
+        if (owner === null) return [];
+        return Object.values(intents).flatMap((intent) => {
+          const result = get(owner.data.project(creationProgress, intent.requestId));
+          return result === null
+            ? []
+            : [
+                {
+                  ...intent,
+                  progress: result.progress,
+                  state:
+                    result.state.kind === "failed"
+                      ? { ...result.state, retry: intent.retry ?? null }
+                      : result.state,
+                },
+              ];
+        });
+      }),
+    [intents],
+  );
+  return useAtomValue(atom);
 }
-
-/** The press this tab made for a project, if any. */
 export function useMatePress(projectId: string | undefined): MatePress | undefined {
-  return usePressStore((store) => (projectId === undefined ? undefined : store.presses[projectId]));
+  return useMatePresses().find((press) => press.projectId === projectId);
 }
 
 /**
@@ -575,7 +654,12 @@ export function closeOffPendingOf(presses: ReadonlyArray<MatePress>): ReadonlySe
 /** `closeOffPendingOf` over this tab's presses, as the account's environments port reads it. */
 export const closeOffPendingProjects = {
   read: (): ReadonlySet<string> =>
-    closeOffPendingOf(Object.values(usePressStore.getState().presses)),
+    closeOffPendingOf(
+      Object.keys(usePressStore.getState().presses).flatMap((id) => {
+        const press = readMatePress(id);
+        return press === undefined ? [] : [press];
+      }),
+    ),
   subscribe: (listener: () => void): (() => void) => usePressStore.subscribe(listener),
 };
 
@@ -884,12 +968,12 @@ function pressedElsewhere(
 ): EnvironmentCreationOutcome {
   const failedStep = input.steps[resume.from] ?? input.steps[0]!;
   if (input.isCurrent()) {
-    settlePress(resume.projectId, {
+    recordPressOutcome(resume.projectId, {
       kind: "failed",
       step: failedStep.kind,
       reason,
       retry: async () => {
-        settlePress(resume.projectId, { kind: "pressing" });
+        recordPressOutcome(resume.projectId, { kind: "pressing" });
         await runPress(input);
       },
     });
@@ -903,115 +987,6 @@ function pressedElsewhere(
  * at most once a minute (Chrome's intensive throttling), so a press in a background tab keeps its
  * hold with four minutes to spare, and a closed tab's hold runs out within five.
  */
-export const PRESS_RENEW_MS = 60_000;
-
-/** The least time between two renewals a press's steps ask for: its steps move far more often. */
-export const PRESS_STEP_RENEW_MS = 20_000;
-
-/**
- * A press's hold at its organization's HQ (`PUT /api/presses/{projectId}`, B5): what another
- * browser reads to tell a press still running — however slow — from one whose tab closed, and what
- * keeps two presses from writing one project twice. Taken once the press's project is known,
- * renewed every {@link PRESS_RENEW_MS} and at each of its steps while it runs, given its container
- * import's process once Zerops answered it, and ended at its end: a press that finished leaves no
- * record, one that stopped keeps it for its setup to be finished for its kind. A hold HQ does not
- * answer is not the press's to wait on: it goes on, renewing; only HQ's refusal for another
- * browser's press stops it. One HQ refuses this person outright leaves the press unheld, never
- * asked again.
- */
-export interface PressHold {
-  /** Holds the press of `projectId`: `elsewhere` where another browser's press holds it. */
-  readonly take: (projectId: string) => Promise<"held" | "elsewhere">;
-  /**
-   * Renews the hold now — a step of the press moved — unless it was renewed within
-   * {@link PRESS_STEP_RENEW_MS}.
-   */
-  readonly renew: () => void;
-  /** Names the container import's Zerops process the press is followed by from now on. */
-  readonly imported: (processId: string) => Promise<void>;
-  /** Ends the hold at the press's end: whether it `finished`, or stopped. */
-  readonly end: (finished: boolean) => Promise<void>;
-}
-
-export function pressHold(
-  api: Pick<HqApi, "holdPress" | "endPress"> | null,
-  press: { readonly kind: "mate" | "stage" | "production"; readonly appId?: string | undefined },
-  owner: string = randomUUID(),
-): PressHold {
-  let projectId: string | null = null;
-  let importProcessId: string | undefined;
-  let renewal: ReturnType<typeof setInterval> | null = null;
-  let heldAt = Number.NEGATIVE_INFINITY;
-  // Whether HQ answered a hold of this press: from then on each hold only renews its own live
-  // hold, so one landing after the press's end changes nothing there.
-  let taken = false;
-  // Every hold sent, one after another: the end waits for the last to land.
-  let sending: Promise<void> = Promise.resolve();
-  const hold = (): Promise<void> => {
-    const held = projectId;
-    if (api === null || held === null) return Promise.resolve();
-    heldAt = Date.now();
-    const body = {
-      owner,
-      kind: press.kind,
-      ...(press.appId === undefined ? {} : { appId: press.appId }),
-      ...(importProcessId === undefined ? {} : { importProcessId }),
-    };
-    const sent = sending.then(async () => {
-      // The press ended while this waited its turn: nothing is held any more.
-      if (projectId !== held) return;
-      await api.holdPress(held, taken ? { ...body, renew: true } : body);
-      taken = true;
-    });
-    // The next waits for this one to land, however it lands; its caller hears how.
-    sending = Promise.allSettled([sent]).then(() => undefined);
-    return sent;
-  };
-  const renewNow = () => {
-    hold().catch(() => undefined);
-  };
-  const renew = () => {
-    if (Date.now() - heldAt >= PRESS_STEP_RENEW_MS) renewNow();
-  };
-  return {
-    take: async (pressed) => {
-      projectId = pressed;
-      try {
-        await hold();
-      } catch (cause) {
-        if (cause instanceof HqError && cause.reason === "press_held") return "elsewhere";
-        // HQ's refusal of this person's hold is definitive: the press goes on unheld, and is
-        // never asked again. One HQ did not answer is renewed as the press runs.
-        if (cause instanceof HqError && cause.kind === "refused") {
-          projectId = null;
-          return "held";
-        }
-      }
-      if (api !== null && renewal === null) renewal = setInterval(renewNow, PRESS_RENEW_MS);
-      return "held";
-    },
-    renew,
-    imported: async (processId) => {
-      importProcessId = processId;
-      await hold().catch(() => undefined);
-    },
-    end: async (finished) => {
-      if (renewal !== null) clearInterval(renewal);
-      renewal = null;
-      const held = projectId;
-      projectId = null;
-      importProcessId = undefined;
-      if (api === null || held === null) return;
-      // A renewal in flight lands first: the end is always the last word HQ hears of this press.
-      await sending;
-      try {
-        await api.endPress(held, owner, finished);
-      } catch {
-        // A hold HQ did not end runs out on its own: it is the press's lease.
-      }
-    },
-  };
-}
 
 async function pressRun(
   input: Parameters<typeof runPress>[0],
@@ -1075,36 +1050,36 @@ async function pressRun(
   const projectId = outcome.projectId;
   if (projectId === undefined || !input.isCurrent()) return outcome;
   if (outcome.ok) {
-    settlePress(projectId, { kind: "pressed" });
+    recordPressOutcome(projectId, { kind: "pressed" });
     return outcome;
   }
   const from = input.steps.indexOf(outcome.failedStep);
-  const resumeSetup: MatePress["resumeSetup"] = resumableEnvironmentCreationStep(outcome.failedStep)
-    ? async (heldLock, onProgress = input.onProgress, platform = input.platform) => {
-        settlePress(projectId, { kind: "pressing" });
-        return runPress({
-          ...input,
-          heldLock,
-          platform,
-          ...(onProgress === undefined ? {} : { onProgress }),
-          resume: {
-            from,
-            projectId,
-            projectName,
-            ...(outcome.serviceName === undefined ? {} : { serviceName: outcome.serviceName }),
-          },
-        });
-      }
-    : undefined;
-  settlePress(
+  const resumeSetup: MatePress["resumeSetup"] =
+    outcome.uncertain !== true && resumableEnvironmentCreationStep(outcome.failedStep)
+      ? async (heldLock, onProgress = input.onProgress, platform = input.platform) => {
+          recordPressOutcome(projectId, { kind: "pressing" });
+          return runPress({
+            ...input,
+            heldLock,
+            platform,
+            ...(onProgress === undefined ? {} : { onProgress }),
+            resume: {
+              from,
+              projectId,
+              projectName,
+              ...(outcome.serviceName === undefined ? {} : { serviceName: outcome.serviceName }),
+            },
+          });
+        }
+      : undefined;
+  recordPressOutcome(
     projectId,
     {
       kind: "failed",
       step: outcome.failedStep.kind,
+      ...(outcome.uncertain === true ? { uncertain: true as const } : {}),
       reason:
-        outcome.uncertain === true && resumeSetup !== undefined
-          ? `${outcome.error} ${PRESS_MAY_HAVE_LANDED}`
-          : outcome.error,
+        outcome.uncertain === true ? `${outcome.error} ${PRESS_MAY_HAVE_LANDED}` : outcome.error,
       retry:
         resumeSetup === undefined
           ? null
@@ -1165,12 +1140,12 @@ export async function finishMateSetup(input: {
     () => finishLocked({ ...input, locks }),
     () => {
       if (input.isCurrent()) {
-        settlePress(input.projectId, {
+        recordPressOutcome(input.projectId, {
           kind: "failed",
           step: "close-off",
           reason: PRESSED_ELSEWHERE,
           retry: async () => {
-            settlePress(input.projectId, { kind: "pressing" });
+            recordPressOutcome(input.projectId, { kind: "pressing" });
             await finishMateSetup(input);
           },
         });
@@ -1185,34 +1160,6 @@ export async function finishMateSetup(input: {
   );
 }
 
-/** The id of the key the Mate of `input.projectId` named to HQ; none where HQ does not say one. */
-async function mateKeyAtHq(input: Parameters<typeof finishMateSetup>[0]): Promise<string | null> {
-  if (input.hq === null) return null;
-  try {
-    return await accountHqApi(input.inputs.client, input.inputs.organizationId, input.hq).mateKey(
-      input.projectId,
-    );
-  } catch {
-    // HQ not answering, or not telling this person: the harden matches the token list instead.
-    return null;
-  }
-}
-
-/**
- * HQ asked to read the Mate's widened key again (`recheckKey`); HQ not answering leaves its word as
- * it was, and Finish setup offered again — nothing of the Mate's waits on it.
- */
-async function recheckKeyAtHq(input: Parameters<typeof finishMateSetup>[0]): Promise<void> {
-  if (input.hq === null) return;
-  try {
-    await accountHqApi(input.inputs.client, input.inputs.organizationId, input.hq).recheckKey(
-      input.projectId,
-    );
-  } catch {
-    // Said again on its menu; the harden it asked for is done.
-  }
-}
-
 /**
  * The Mate's zcp service of the project, one Mate per project (audit D2): its id where the project
  * holds one, none where it holds none yet; a project holding several is refused, naming them.
@@ -1224,9 +1171,7 @@ async function mateServiceOf(
   | { readonly ok: false; readonly error: string }
 > {
   try {
-    const container = mateContainerOf(
-      await input.inputs.client.listProjectServices(input.projectId),
-    );
+    const container = mateContainerOf(await currentProjectServices(input.projectId));
     if (container.kind === "several")
       return { ok: false, error: severalMatesLine(container.names) };
     return { ok: true, serviceId: container.kind === "one" ? container.service.id : undefined };
@@ -1242,12 +1187,12 @@ function finishStopped(
   error: string,
 ): EnvironmentCreationOutcome {
   if (input.isCurrent()) {
-    settlePress(input.projectId, {
+    recordPressOutcome(input.projectId, {
       kind: "failed",
       step: failedStep.kind,
       reason: error,
       retry: async () => {
-        settlePress(input.projectId, { kind: "pressing" });
+        recordPressOutcome(input.projectId, { kind: "pressing" });
         await finishMateSetup(input);
       },
     });
@@ -1284,13 +1229,18 @@ async function finishLocked(
   const hold =
     input.hq === null
       ? undefined
-      : pressHold(accountHqApi(input.inputs.client, input.inputs.organizationId, input.hq), {
-          kind: "mate",
-          appId:
-            input.registration !== null && input.registration.kind === "mate"
-              ? input.registration.groupId
-              : undefined,
-        });
+      : acquireHqPressLease(
+          accountHqApi(input.inputs.client, input.inputs.organizationId, input.hq),
+          {
+            kind: "mate",
+            active: input.isCurrent,
+            appId:
+              input.registration !== null && input.registration.kind === "mate"
+                ? input.registration.groupId
+                : undefined,
+          },
+          randomUUID(),
+        );
   const platform = pressPlatform(input.inputs, {
     register:
       input.registration === null
@@ -1303,21 +1253,19 @@ async function finishLocked(
   // The harden first, whatever plan this tab keeps: a kept plan never skips the key's lowering.
   if (input.harden === true) {
     let keyNotLowered: string | null = null;
-    // The key its Mate named to HQ by its id, hardened by it alone (audit K3) — a widened one
-    // included, which its id lets the harden narrow; matched on the token list only where the Mate
-    // named none, or HQ does not say.
-    const keyTokenId = await mateKeyAtHq(input);
     try {
-      const organizationId = input.inputs.organizationId;
-      ({ keyNotLowered } = await input.inputs.operations.run(
-        {
-          kind: "harden-project",
-          orgId: organizationId,
-          projectId: input.projectId,
-          ...(keyTokenId === null ? {} : { keyTokenId }),
-        },
-        { orgId: organizationId, unobserved: PRESS_MAY_HAVE_LANDED },
-      ));
+      ({ keyNotLowered } = await hardenMateProject({
+        api:
+          input.hq === null
+            ? null
+            : accountHqApi(input.inputs.client, input.inputs.organizationId, input.hq),
+        orgId: input.inputs.organizationId,
+        projectId: input.projectId,
+        keyWider: input.keyWider === true,
+        active: input.isCurrent,
+        run: input.inputs.operations.run,
+        unobserved: PRESS_MAY_HAVE_LANDED,
+      }));
     } catch (cause) {
       return finishStopped(input, { kind: "close-off" }, zeropsErrorMessage(cause));
     }
@@ -1325,8 +1273,6 @@ async function finishLocked(
     if (keyNotLowered !== null && input.isCurrent()) {
       noteKeyNotLowered(input.projectId, keyNotLowered);
     }
-    // HQ reads the key again, and stops saying it reads other projects once it does not.
-    if (input.keyWider === true && keyNotLowered === null) await recheckKeyAtHq(input);
   }
   if (resumeSetup !== undefined) return resumeSetup(true, input.onProgress, platform);
   return runPress({
@@ -1379,4 +1325,19 @@ export function useInterruptedPresses(
   );
   const setups = useZeropsAtomSelections(selections);
   return useMemo(() => interruptedPresses(candidates, setups), [candidates, setups]);
+}
+
+async function currentProjectServices(projectId: string) {
+  const atom = projectServicesAtom(projectId);
+  const mounted = appAtomRegistry.mount(atom);
+  try {
+    const read = appAtomRegistry.get(atom);
+    if (read.services === undefined || !read.live || read.unavailableReason !== undefined)
+      throw new Error(
+        "The project's current services are unavailable. Try Finish setup after they are read.",
+      );
+    return read.services;
+  } finally {
+    mounted();
+  }
 }

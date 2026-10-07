@@ -48,18 +48,18 @@ export const chatGateStages = [
     name: "B: client wire journeys (C)",
     commands: [
       {
-        cwd: ".",
+        cwd: "apps/web",
         args: [
           "test",
           "run",
           "--config",
-          "apps/web/test/scenarios/vitest.config.ts",
+          "test/scenarios/vitest.config.ts",
           "--project",
           "scenarios",
           "test/scenarios/areas/c-mate",
           "--allowOnly=false",
           "--reporter=default",
-          "--reporter=./scripts/chat-gate-reporter.ts",
+          "--reporter=../../scripts/chat-gate-reporter.ts",
         ],
       },
     ],
@@ -113,11 +113,15 @@ export const chatGateStages = [
 }>;
 
 async function runCommand(root: string, command: ChatGateCommand): Promise<number> {
+  const env = { ...process.env };
+  // PostgreSQL scenarios own their serial fixture policy, independently of unit-test workers.
+  if (command.args.some((arg) => arg.endsWith("/scenarios/vitest.config.ts")))
+    delete env.VITEST_MAX_WORKERS;
   return new Promise((resolve) => {
     const child = NodeChildProcess.spawn("vp", [...command.args], {
       cwd: NodePath.join(root, command.cwd),
       env: {
-        ...process.env,
+        ...env,
         PATH: [NodePath.join(root, "node_modules/.bin"), process.env.PATH ?? ""].join(
           NodePath.delimiter,
         ),

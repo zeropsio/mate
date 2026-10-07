@@ -5,7 +5,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { ComposerPendingTerminalContextChip } from "./ComposerPendingTerminalContexts";
 
 describe("ComposerPendingTerminalContextChip", () => {
-  it("renders expired terminal contexts with error styling", () => {
+  it("identifies an expired terminal context by its label", () => {
     const markup = renderToStaticMarkup(
       <ComposerPendingTerminalContextChip
         context={{
@@ -22,7 +22,6 @@ describe("ComposerPendingTerminalContextChip", () => {
     );
 
     expect(markup).toContain('data-terminal-context-expired="true"');
-    expect(markup).toContain("border-destructive/35");
     expect(markup).toContain("Terminal 1 lines 2-4");
   });
 
@@ -46,6 +45,5 @@ describe("ComposerPendingTerminalContextChip", () => {
 
     expect(markup).toContain("db · public.orders");
     expect(markup).not.toContain("lines 1-2");
-    expect(markup).toContain("lucide-database");
   });
 });

@@ -31,7 +31,12 @@ export function ProjectDialog() {
   if (dialog === null) return null;
   return createElement(
     Dialog,
-    { open: true },
+    {
+      open: true,
+      onOpenChange: (open) => {
+        if (!open) setDialog(null);
+      },
+    },
     createElement(DialogPopup, null, `dialog: ${dialog.names}`),
   );
 }

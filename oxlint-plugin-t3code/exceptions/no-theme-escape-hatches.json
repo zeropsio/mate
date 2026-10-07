@@ -26,7 +26,7 @@
   {
     "path": "apps/mobile/src/components/SourceControlIcon.tsx",
     "kind": "Literal",
-    "fingerprint": "\"#0078D4\"",
+    "fingerprint": "\"#0fafff\"",
     "owner": "karel",
     "reason": "vendor source-control icon colour",
     "expires": "never"
@@ -34,7 +34,7 @@
   {
     "path": "apps/mobile/src/components/SourceControlIcon.tsx",
     "kind": "Literal",
-    "fingerprint": "\"#0669BC\"",
+    "fingerprint": "\"#102784\"",
     "owner": "karel",
     "reason": "vendor source-control icon colour",
     "expires": "never"
@@ -42,7 +42,175 @@
   {
     "path": "apps/mobile/src/components/SourceControlIcon.tsx",
     "kind": "Literal",
-    "fingerprint": "\"#114A8B\"",
+    "fingerprint": "\"#102784\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#163697\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#163697\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#16bbda\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#16bbda\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#2052cb\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#2052cb\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#2052cb\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#2052cb\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#2052cb\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#26cfe8\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#26cfe8\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#2764e7\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#2764e7\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#2c68e0\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#367af2\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#367af2\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#367af2\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#367af2\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#66c0ff\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#6be7a0\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#6be7a0\"",
     "owner": "karel",
     "reason": "vendor source-control icon colour",
     "expires": "never"
@@ -59,22 +227,6 @@
     "path": "apps/mobile/src/components/SourceControlIcon.tsx",
     "kind": "Literal",
     "fingerprint": "\"#2684FF\"",
-    "owner": "karel",
-    "reason": "vendor source-control icon colour",
-    "expires": "never"
-  },
-  {
-    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"#2892DF\"",
-    "owner": "karel",
-    "reason": "vendor source-control icon colour",
-    "expires": "never"
-  },
-  {
-    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"#3CCBF4\"",
     "owner": "karel",
     "reason": "vendor source-control icon colour",
     "expires": "never"
@@ -786,7 +938,191 @@
   {
     "path": "apps/web/src/components/Icons.tsx",
     "kind": "Literal",
-    "fingerprint": "\"#0078d4\"",
+    "fingerprint": "\"#0fafff\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (AzureDevOpsIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#102784\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (AzureDevOpsIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#102784\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (AzureDevOpsIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#163697\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (AzureDevOpsIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#163697\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (AzureDevOpsIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#16bbda\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (AzureDevOpsIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#16bbda\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (AzureDevOpsIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#2052cb\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (AzureDevOpsIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#2052cb\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (AzureDevOpsIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#2052cb\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (AzureDevOpsIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#2052cb\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (AzureDevOpsIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#2052cb\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (AzureDevOpsIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#26cfe8\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (AzureDevOpsIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#26cfe8\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (AzureDevOpsIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#2764e7\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (AzureDevOpsIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#2764e7\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (AzureDevOpsIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#2c68e0\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (AzureDevOpsIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#367af2\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (AzureDevOpsIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#367af2\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (AzureDevOpsIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#367af2\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (AzureDevOpsIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#367af2\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (AzureDevOpsIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#66c0ff\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (AzureDevOpsIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#6be7a0\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (AzureDevOpsIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#6be7a0\"",
     "owner": "karel",
     "reason": "vendor icon path colour (AzureDevOpsIcon)",
     "expires": "never"
@@ -818,14 +1154,6 @@
   {
     "path": "apps/web/src/components/Icons.tsx",
     "kind": "Literal",
-    "fingerprint": "\"#0669bc\"",
-    "owner": "karel",
-    "reason": "vendor icon path colour (AzureDevOpsIcon)",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/Icons.tsx",
-    "kind": "Literal",
     "fingerprint": "\"#0e254f\"",
     "owner": "karel",
     "reason": "vendor icon path colour (JujutsuIcon)",
@@ -837,14 +1165,6 @@
     "fingerprint": "\"#0e254f\"",
     "owner": "karel",
     "reason": "vendor icon path colour (JujutsuIcon)",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/Icons.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"#114a8b\"",
-    "owner": "karel",
-    "reason": "vendor icon path colour (AzureDevOpsIcon)",
     "expires": "never"
   },
   {
@@ -914,14 +1234,6 @@
   {
     "path": "apps/web/src/components/Icons.tsx",
     "kind": "Literal",
-    "fingerprint": "\"#2892df\"",
-    "owner": "karel",
-    "reason": "vendor icon path colour (AzureDevOpsIcon)",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/Icons.tsx",
-    "kind": "Literal",
     "fingerprint": "\"#2f9fdf\"",
     "owner": "karel",
     "reason": "vendor icon path colour (JujutsuIcon)",
@@ -949,14 +1261,6 @@
     "fingerprint": "\"#3689FF\"",
     "owner": "karel",
     "reason": "vendor icon path colour (Gemini)",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/Icons.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"#3ccbf4\"",
-    "owner": "karel",
-    "reason": "vendor icon path colour (AzureDevOpsIcon)",
     "expires": "never"
   },
   {
@@ -2325,14 +2629,6 @@
     "fingerprint": "\"text-violet-600 dark:text-violet-300/90\"",
     "owner": "karel",
     "reason": "status hue awaiting F4 theme roles (W2-F4-THEME)",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/components/ui/alert.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"bg-transparent dark:bg-input/32 [&_svg]:text-muted-foreground\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in alert awaiting semantic roles",
     "expires": "F4"
   },
   {

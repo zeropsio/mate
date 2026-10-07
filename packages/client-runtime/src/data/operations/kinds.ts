@@ -1,4 +1,10 @@
+import { creationPress } from "./creationPress.ts";
+import { issueGitCredential, revokeGitCredential } from "./hqGitCredentials.ts";
+import { WORKSPACE_MUTATION_KINDS } from "./mateWorkspace.ts";
+import { mateWriteFile } from "./mateWriteFile.ts";
+import { mateAction } from "./mateActions.ts";
 import { mateUpdate } from "./mateUpdate.ts";
+import { mateSendTurn } from "./mateSendTurn.ts";
 /**
  * The operation kinds this account submits. A new kind is one module beside these and one line
  * here.
@@ -46,6 +52,13 @@ export function defineOperationKinds(
 }
 
 export const OPERATION_KINDS = defineOperationKinds([
+  creationPress,
+  issueGitCredential,
+  revokeGitCredential,
+  ...WORKSPACE_MUTATION_KINDS,
+  mateWriteFile,
+  mateSendTurn,
+  mateAction,
   throwawaySweep,
   mateRestart,
   mateUpdate,

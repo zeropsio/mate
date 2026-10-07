@@ -1,3 +1,4 @@
+import { mateSourceLink, classifyMateSourceFailure } from "./mateSource.ts";
 /**
  * A Mate's attention straight from the Mate the person has open (`subscribeZeropsAttention`): one
  * link per Mate, by its project, observed only while the app holds the Mate open. Each session of
@@ -18,11 +19,9 @@ import {
   type MateAttention,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
-import * as Clock from "effect/Clock";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
-import type * as Scope from "effect/Scope";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
@@ -31,11 +30,8 @@ import type { EnvironmentRegistry } from "../../connection/registry.ts";
 import { EnvironmentSupervisor } from "../../connection/supervisor.ts";
 
 import { mateAttentionScope } from "../families/mateAttention.ts";
-import { linkKeys, type LinkKey, type ScopeKey } from "../model.ts";
-import { streamOf } from "../reducer.ts";
+import { linkKeys } from "../model.ts";
 import type { AccountStore } from "../store.ts";
-import type { StreamEvent, StreamFault } from "../streamMachine.ts";
-import type { LinkOptions } from "../supervisor.ts";
 
 /** What one Mate's socket says of its attention: a session opening, its values, its end. */
 export type MateAttentionEvent =
@@ -56,132 +52,30 @@ export interface MateAttentionWire {
   >;
 }
 
-/** What an older server answers for a method it does not have (effect `RpcServer`). */
-const UNKNOWN_REQUEST_TAG = "Unknown request tag";
 const isAuthorizationError = Schema.is(EnvironmentAuthorizationError);
 
-const defectText = (defect: unknown): string =>
-  typeof defect === "string" ? defect : defect instanceof Error ? defect.message : String(defect);
-
-/** How the wire's failure classifies: a Mate without the method, a refusal, or a transient. */
-export function classifyMateAttentionFailure(
-  cause: Cause.Cause<unknown>,
-): StreamFault | "unsupported" {
-  for (const reason of cause.reasons) {
-    if (Cause.isDieReason(reason) && defectText(reason.defect).startsWith(UNKNOWN_REQUEST_TAG))
-      return "unsupported";
-    if (Cause.isFailReason(reason) && isAuthorizationError(reason.error))
-      return { outcome: "definitive-refusal", message: reason.error.message };
-  }
-  return {
-    outcome: "transient",
-    message: `The Mate's attention stopped (${defectText(Cause.squash(cause))}).`,
-  };
-}
-
-const SESSION_LOST: StreamFault = {
-  outcome: "transient",
-  message: "The Mate's socket is not connected.",
-};
-const ENDED: StreamFault = { outcome: "transient", message: "The Mate's attention ended." };
+export const classifyMateAttentionFailure = (cause: Cause.Cause<unknown>) =>
+  classifyMateSourceFailure(cause, "attention");
 
 export function mateAttentionLink(options: {
   readonly projectId: string;
   readonly wire: MateAttentionWire;
   readonly store: AccountStore;
-}): Pick<LinkOptions, "key" | "scopes" | "attempt"> {
-  const { projectId, wire, store } = options;
-  const key: LinkKey = linkKeys.mate(projectId);
-  const scope: ScopeKey = mateAttentionScope(projectId);
-
-  const attempt = (): Effect.Effect<never, StreamFault, Scope.Scope> =>
-    Effect.gen(function* () {
-      const signal = (target: LinkKey | ScopeKey, event: StreamEvent) =>
-        Effect.map(Clock.currentTimeMillis, (now) =>
-          store.dispatch({ kind: "stream", key: target, now, event }),
-        );
-      /** Whether the session under way committed its baseline yet. */
-      let based = false;
-      const generation = () => streamOf(store.state(), scope).generation;
-
-      const onEvent = (event: MateAttentionEvent): Effect.Effect<void, StreamFault> =>
-        Effect.gen(function* () {
-          switch (event.kind) {
-            case "session-lost":
-              return yield* Effect.fail(SESSION_LOST);
-            case "session":
-              based = false;
-              yield* signal(key, { kind: "handshake" });
-              yield* signal(scope, { kind: "attempt" });
-              yield* signal(scope, { kind: "handshake" });
-              return;
-            case "value": {
-              const row = {
-                family: "mateAttention",
-                id: projectId,
-                value: event.value,
-                revision: {
-                  kind: "mate-attention",
-                  environmentId: event.value.source.environmentId,
-                  epoch: event.value.source.epoch,
-                  incarnation: event.value.source.incarnation,
-                  revision: event.value.source.revision,
-                  live: true,
-                },
-              } as const;
-              if (based) {
-                store.dispatch({
-                  kind: "rows",
-                  scope,
-                  generation: generation(),
-                  method: "push",
-                  via: "mate-direct",
-                  rows: [row],
-                });
-                return;
-              }
-              store.dispatch({ kind: "baseline-begin", scope, generation: generation() });
-              store.dispatch({
-                kind: "baseline-commit",
-                scope,
-                generation: generation(),
-                via: "mate-direct",
-                members: [projectId],
-                rows: [row],
-              });
-              based = true;
-              yield* signal(key, { kind: "baseline-committed" });
-              yield* signal(scope, { kind: "baseline-committed" });
-              return;
-            }
-          }
-        });
-
-      yield* Stream.runForEach(wire.open, onEvent).pipe(
-        Effect.catchCause((cause) => {
-          const fault = Cause.findErrorOption(cause);
-          // A fault this attempt classified itself ends it as it is.
-          if (fault._tag === "Some" && isStreamFault(fault.value)) return Effect.fail(fault.value);
-          const classified = classifyMateAttentionFailure(cause);
-          if (classified !== "unsupported") return Effect.fail(classified);
-          return Effect.gen(function* () {
-            yield* signal(scope, { kind: "unsupported" });
-            yield* signal(key, { kind: "unsupported" });
-            return yield* Effect.fail<StreamFault>({
-              outcome: "definitive-refusal",
-              message: "This Mate does not publish its attention.",
-            });
-          });
-        }),
-      );
-      return yield* Effect.fail(ENDED);
-    });
-
-  return { key, scopes: [scope], attempt };
+}) {
+  const { projectId } = options;
+  return mateSourceLink({
+    ...options,
+    key: linkKeys.mate(projectId),
+    scope: mateAttentionScope(projectId),
+    label: "attention",
+    row: (value) => ({
+      family: "mateAttention",
+      id: projectId,
+      value,
+      revision: { kind: "mate-attention", ...value.source, live: true },
+    }),
+  });
 }
-
-const isStreamFault = (error: unknown): error is StreamFault =>
-  error === SESSION_LOST || error === ENDED;
 
 const SESSION: MateAttentionEvent = { kind: "session" };
 const LOST: MateAttentionEvent = { kind: "session-lost" };

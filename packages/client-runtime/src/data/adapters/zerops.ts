@@ -488,7 +488,6 @@ export function zeropsNavigationLink(options: {
         });
 
       yield* signal(key, { kind: "handshake" });
-      yield* signal(key, { kind: "baseline-committed" });
       const frames = yield* Effect.forkIn(Stream.runForEach(link.frames, onFrame), attemptScope);
 
       /**
@@ -671,13 +670,31 @@ export function zeropsNavigationLink(options: {
               ? link.get(path)
               : link.post(path, sampledSearch).pipe(Effect.map((body) => ({ status: 200, body })));
           const answer = yield* read.pipe(
-            Effect.map((read) =>
-              read.status === 403
+            Effect.map((read) => {
+              if (detail?.member === true && ownerId !== null) {
+                if (read.status === 404)
+                  store.dispatch({
+                    kind: "proven-deletion",
+                    family: spec.family,
+                    id: ownerId,
+                    scope,
+                    evidence: `GET ${path} answered 404`,
+                  });
+                else if (read.status === 403)
+                  store.dispatch({
+                    kind: "access",
+                    family: spec.family,
+                    id: ownerId,
+                    scope,
+                    access: "denied",
+                  });
+              }
+              return read.status === 403
                 ? classifyHttp(403)
                 : read.status === 404
                   ? classifyHttp(404)
-                  : read,
-            ),
+                  : read;
+            }),
             Effect.catchIf((fault) => fault.outcome !== "recoverable-session", Effect.succeed),
           );
           if ("outcome" in answer)
@@ -908,6 +925,7 @@ export function zeropsNavigationLink(options: {
       // own scope to be registered first, so no change of its members slips between.
       const details = yield* Effect.forkIn(observeForever, attemptScope);
       yield* registerNavigation;
+      yield* signal(key, { kind: "baseline-committed" });
       navigationRegistered = true;
       wake();
       yield* Effect.raceAllFirst([Fiber.join(frames), Fiber.join(details), Deferred.await(ended)]);

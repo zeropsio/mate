@@ -1,3 +1,5 @@
+import { mateStatus } from "../../zerops/mateStatus.logic";
+import { MateStatusMarker } from "./MateStatusMarker";
 /**
  * The left menu's projects: each a heading, then its Mates, each with its
  * crew and its open changes.
@@ -85,7 +87,12 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import type { EnvironmentConnectionPresentation } from "@t3tools/client-runtime/connection";
 import { useAtomValue } from "@effect/atom-react";
-import { shownHqPersonFactsAtom } from "@t3tools/client-runtime/data";
+import {
+  shownHqPersonFactsAtom,
+  hqMatePresenceAtom,
+  shownAttentionProjectsAtom,
+  shownHqMenuNavigationAtom,
+} from "@t3tools/client-runtime/data";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { mateOwnerRecords } from "@t3tools/client-runtime/zerops/mateAccess";
 import { deployActivatedAt } from "@t3tools/client-runtime/zerops/flow";
@@ -95,6 +102,7 @@ import type { TimestampFormat } from "@t3tools/contracts/settings";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import {
   BellOffIcon,
+  CircleAlertIcon,
   ChevronRightIcon,
   ChevronsDownUpIcon,
   ChevronsUpDownIcon,
@@ -104,6 +112,9 @@ import {
   PlusIcon,
   SquareIcon,
 } from "lucide-react";
+import { Atom } from "effect/unstable/reactivity";
+import { shareEqual } from "@t3tools/shared/structuralSharing";
+import { useProjectMateActivity } from "~/zerops/useZeropsAgentActivity";
 import {
   memo,
   useContext,
@@ -118,11 +129,7 @@ import {
 
 import { isCommandPaletteOpen } from "~/commandPaletteBus";
 import { cn } from "~/lib/utils";
-import {
-  formatRelativeTimeLabel,
-  formatShortTimestamp,
-  formatUpcomingTimestamp,
-} from "~/timestampFormat";
+import { formatShortTimestamp, formatUpcomingTimestamp } from "~/timestampFormat";
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { useChangedSinceShown } from "~/hooks/useChangedSinceShown";
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "../ui/menu";
@@ -146,8 +153,8 @@ import { useNowMs, useSecondsNowMs } from "~/zerops/useNowMs";
 import { useMateLinkedInHq } from "~/zerops/useMenuMateReadings";
 import type { FixProblem } from "~/zerops/fixRequest";
 import { useOpenReview } from "~/zerops/review";
-import { useSentAsks } from "~/zerops/sentAsk";
-import { hqDown, hqMatesAtom, hqPlacementsAtom, hqNavigationAtom } from "~/state/zerops";
+import { usePendingSentAsk } from "~/zerops/sentAsk";
+import { hqDown, hqPlacementsAtom, hqNavigationAtom } from "~/state/zerops";
 import { useMateCrew } from "~/zerops/crew/useCrew";
 import { useCrewAccess } from "~/zerops/crew/useCrewAccess";
 import { mayBearHq } from "@t3tools/shared/zeropsRoles";
@@ -162,11 +169,12 @@ import {
 } from "~/zerops/projectOrderPreference";
 import { useEnvironmentOffers } from "~/zerops/useAddEnvironment";
 import {
-  useHqProjectPeopleOf,
+  useHqProjectPerson,
+  zeropsMateOwnerOf,
   useWaitsOnViewer,
   type ZeropsMateOwner,
 } from "~/zerops/useZeropsMateOwners";
-import { compactSidebarTimeLabel } from "../Sidebar.logic";
+import { SidebarMateAge } from "./SidebarMateAge";
 import { SidebarCrewLine, type SidebarCrewRead } from "./crew/SidebarCrewLine";
 import { SidebarSelectedBand } from "./SidebarSelectedBand";
 import { KeyChip, MateFace } from "./primitives";
@@ -220,8 +228,6 @@ import {
   mateNotYours,
   mateOwnerView,
   mateRowAskLine,
-  mateRowSentAsk,
-  mateRowSentEchoed,
   mateRowDraft,
   mateRowPropsEqual,
   mateRowReading,
@@ -267,6 +273,32 @@ import {
 } from "./SidebarHeadingLine";
 import { headingMark, type HeadingLineInput } from "./SidebarHeadingLine.logic";
 
+const menuPlacementKnownAtom = Atom.make((get) => get(hqPlacementsAtom) !== null);
+const menuPersonFactsAtom = Atom.make((get) =>
+  Object.fromEntries(
+    Object.entries(get(shownHqPersonFactsAtom)).map(([id, fact]) => [id, { mine: fact.mine }]),
+  ),
+).pipe(Atom.withEquality((a, b) => shareEqual(a, b) === a));
+const menuHqPresenceAtom = Atom.make((get) => {
+  const mates = new Map<
+    string,
+    { readonly presence: import("@t3tools/shared/hqMates").MatePresence }
+  >();
+  for (const id of get(shownAttentionProjectsAtom)) {
+    const fact = get(hqMatePresenceAtom(id));
+    if (fact.live && fact.presence !== null) mates.set(id, { presence: fact.presence });
+  }
+  return mates;
+}).pipe(
+  Atom.withEquality(
+    (
+      a: ReadonlyMap<string, { readonly presence: import("@t3tools/shared/hqMates").MatePresence }>,
+      b,
+    ) =>
+      a.size === b.size &&
+      [...a].every(([id, mate]) => b.get(id)?.presence.online === mate.presence.online),
+  ),
+);
 /** What the client holds per environment, when it holds anything. */
 type RosterCandidate = ZeropsCandidate & {
   readonly connection?: EnvironmentConnectionPresentation;
@@ -411,6 +443,7 @@ export interface SidebarProjectFlow {
 
 export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
   readonly candidates: ReadonlyArray<T>;
+  readonly keyedReadings?: boolean;
   readonly onSelect: (candidate: T) => void;
   /**
    * Asks for a Mate in a project: the New Mate dialog opens over whatever is on screen
@@ -549,6 +582,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   onOpenGroup,
   activeProjectId,
   getActivity,
+  keyedReadings = false,
   getConversationsRead,
   getOwner,
   getFlow,
@@ -564,14 +598,14 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   shown,
   getCrew,
 }: SidebarZeropsTreeProps<T>) {
-  const structureView = useAtomValue(hqNavigationAtom);
+  const structureView = useAtomValue(shownHqMenuNavigationAtom);
   const session = useZeropsSessionOptional();
   const accountHq = useAccountHq(structureView.orgId ?? undefined);
   const carried = useCarriedCoreBuild();
   const [followingHqUpdate, setFollowingHqUpdate] = useState(false);
   const hqStale = structureView.structure !== null && hqDown(structureView);
   // Whose each Mate is, as HQ says it (invariant 11).
-  const personFacts = useAtomValue(shownHqPersonFactsAtom);
+  const personFacts = useAtomValue(menuPersonFactsAtom);
   const placements = useAtomValue(hqPlacementsAtom);
   const appsWithWork =
     placements === null || structureView.structure === null
@@ -583,8 +617,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
     ? undefined
     : mateEnvironmentsEmptyReason(candidates);
   const openReleaseReview = useOpenReview();
-  const hqView = useAtomValue(hqMatesAtom);
-  const hqMates = hqView?.current === true ? hqView.mates : null;
+  const hqMates = useAtomValue(menuHqPresenceAtom);
   // Which projects a build or deploy runs on now, as Zerops says: the headings' indicator.
   const building = useBuildsUnderWay(
     useMemo(() => candidates.map((candidate) => candidate.project.id), [candidates]),
@@ -836,7 +869,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         className={cn("flex flex-col items-start gap-1.5 px-2.5 py-2", className)}
         data-zerops-surface="sidebar-environments-empty"
       >
-        <span className="text-xs text-sidebar-muted-foreground">No environment has Mate yet</span>
+        <span className="text-xs text-sidebar-muted-foreground">No Mate yet</span>
         <button
           className="inline-flex cursor-pointer items-center rounded-md border border-sidebar-border px-2.5 py-1 text-xs font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
           onClick={onBrowseProjects}
@@ -1212,6 +1245,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
             const live = getActivity?.(item);
             const coming = getComing?.(item);
             const read = mateRowReading({
+              name: projectNameInApp(item.project),
               connected: mateAwake(item, hqMates),
               activity: live,
               reviewWaits: reviewWaits(item),
@@ -1407,9 +1441,10 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
             <div className="flex flex-col">
               <MateUnit active={active} projectId={item.project.id}>
                 <MateRow
+                  keyedReadings={keyedReadings}
                   actions={getMateActions?.(item, getActivity?.(item))}
                   active={active}
-                  activity={getActivity?.(item)}
+                  activity={keyedReadings ? undefined : getActivity?.(item)}
                   up={mateAwake(item, hqMates)}
                   appUrl={appUrl}
                   candidate={item}
@@ -1421,7 +1456,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
                   number={numbered <= 9 ? numbered : undefined}
                   numbers={altHeld}
                   onSelect={onSelect}
-                  owner={getOwner?.(item)}
+                  owner={keyedReadings ? undefined : getOwner?.(item)}
                   reviewWaits={reviewWaits(item)}
                   timestampFormat={timestampFormat}
                   {...faceOf(item.project)}
@@ -1758,7 +1793,7 @@ export function SidebarAccountLine({
 }) {
   return (
     <div
-      className="animate-zerops-appear flex shrink-0 items-center gap-1 ps-4 pe-2 py-1.5 text-xs text-sidebar-muted-foreground"
+      className="flex shrink-0 items-center gap-1 ps-4 pe-2 py-1.5 text-xs text-sidebar-muted-foreground"
       data-zerops-surface="sidebar-account-line"
       role="status"
     >
@@ -2489,7 +2524,26 @@ function MateUnit({
 import { mateOutsideHq, NOT_IN_HQ_LINE } from "./ZeropsProjectRow.logic";
 
 /** Memoised (`mateRowPropsEqual`): only the rows whose own props changed redraw with the tree. */
-const MateRow = memo(MateRowView, mateRowPropsEqual) as typeof MateRowView;
+function MateRowRead<T extends RosterCandidate>(
+  props: Parameters<typeof MateRowView<T>>[0] & { readonly keyedReadings?: boolean },
+) {
+  return props.keyedReadings ? <KeyedMateRow {...props} /> : <MateRowView {...props} />;
+}
+const MateRow = memo(MateRowRead, mateRowPropsEqual) as typeof MateRowRead;
+function KeyedMateRow<T extends RosterCandidate>(props: Parameters<typeof MateRowView<T>>[0]) {
+  const activity = useProjectMateActivity(props.candidate.project.id);
+  const person = useHqProjectPerson(props.candidate.project.id);
+  const viewer = useZeropsSessionOptional()?.user?.id;
+  const linked = useMateLinkedInHq(props.candidate.project.id);
+  return (
+    <MateRowView
+      {...props}
+      activity={activity}
+      up={props.up || linked}
+      owner={zeropsMateOwnerOf(person?.owner, viewer)}
+    />
+  );
+}
 
 function MateRowView<T extends RosterCandidate>({
   candidate,
@@ -2557,11 +2611,10 @@ function MateRowView<T extends RosterCandidate>({
   const press = useMatePress(candidate.project.id);
   const linkedInHq = useMateLinkedInHq(candidate.project.id);
   const linkedNow = candidate.group === "connected" || linkedInHq;
-  const navigation = useAtomValue(hqNavigationAtom);
-  const placements = useAtomValue(hqPlacementsAtom);
+  const placedKnown = useAtomValue(menuPlacementKnownAtom);
   const outsideHq = mateOutsideHq(
     candidate.project,
-    placements !== null && navigation.live,
+    placedKnown,
     coming !== undefined || press !== undefined,
   );
   const finishing =
@@ -2573,14 +2626,14 @@ function MateRowView<T extends RosterCandidate>({
   // remembers the row saying. A Mate still coming up says only that
   // (`mateComingRowView`).
   const viewer = useZeropsSessionOptional()?.user?.id;
-  const waitsOnViewer = useWaitsOnViewer();
-  const hqPeopleOf = useHqProjectPeopleOf();
+  const hqPeople = useHqProjectPerson(candidate.project.id);
   const nowMs = useNowMs();
   const read = mateRowReading({
+    name: projectNameInApp(candidate.project),
     connected: up,
     activity,
     reviewWaits,
-    mine: waitsOnViewer(candidate.project.id),
+    mine: hqPeople?.waitsOnViewer === true,
     // Waking while it comes up and arrives (`mateFaceFor`).
     pose: matePoseOf(candidate, nowMs, deleting ? "deleting" : mateLifeOf(coming)),
   });
@@ -2599,7 +2652,6 @@ function MateRowView<T extends RosterCandidate>({
   useEffect(() => drawn?.(), [drawn]);
   // Whose seat it is, and whether anybody has signed its agent in — read off
   // its own records, so from the first paint (`mateOwnerView`).
-  const hqPeople = hqPeopleOf(candidate.project.id);
   const records = mateOwnerRecords(candidate.project, hqPeople?.owned);
   const signers = hqPeople?.everSignedIn;
   const seated = mateOwnerView({
@@ -2623,7 +2675,14 @@ function MateRowView<T extends RosterCandidate>({
     outsideHq || deleting || finishing !== undefined || view.coming !== undefined || containerless
       ? undefined
       : seated.signInLine;
-  const dot = view.dot ?? (signIn !== undefined && seated.waitsOnViewer ? "attention" : undefined);
+  const status =
+    deleting || view.coming !== undefined ? null : mateStatus(activity, signIn !== undefined);
+  const dot =
+    (status?.severity === "attention" &&
+    (status.kind === "limit" ||
+      (status.kind === "sign-in" ? seated.waitsOnViewer : hqPeople?.waitsOnViewer === true))
+      ? "attention"
+      : view.dot) ?? (signIn !== undefined && seated.waitsOnViewer ? "attention" : undefined);
   // What its face's corner wears (`ownerBadge`), and whether its face is paler: not the viewer's.
   const badge =
     outsideHq || (containerless && seated.seat.kind === "nobody")
@@ -2646,25 +2705,17 @@ function MateRowView<T extends RosterCandidate>({
     }),
   );
   // What this browser just sent it, until its conversation says it (`mateRowSentAsk`).
-  const sentAsk = useSentAsks((state) =>
-    candidate.environmentId === undefined
-      ? undefined
-      : state.byEnvironment[candidate.environmentId],
-  );
-  // Said by its conversation, the held message is let go (`mateRowSentEchoed`).
-  const sentEchoed = sentAsk !== undefined && mateRowSentEchoed(sentAsk, activity);
-  useEffect(() => {
-    if (sentEchoed && sentAsk !== undefined && candidate.environmentId !== undefined) {
-      useSentAsks.getState().forget(candidate.environmentId, sentAsk.messageId);
-    }
-  }, [sentEchoed, sentAsk, candidate.environmentId]);
+  const sentAsk = usePendingSentAsk(candidate.environmentId);
   // The person's line (`mateRowAskLine`): what they asked, or are about to, or that nothing was.
   const askLine = mateRowAskLine({
     view,
     signIn:
       signIn === undefined ? undefined : { text: signIn, waitsOnViewer: seated.waitsOnViewer },
     draft,
-    sent: mateRowSentAsk(sentAsk, activity, conversationsRead),
+    sent:
+      sentAsk !== undefined && (activity === undefined || activity.threadId === sentAsk.threadId)
+        ? sentAsk.text
+        : undefined,
     deleting,
     finishing: finishing !== undefined,
     read: conversationsRead,
@@ -2799,6 +2850,11 @@ function MateRowView<T extends RosterCandidate>({
         // the menu's edge and every word at 56 (the list starts at 9). It
         // paints nothing of its own: its unit is lit, under the pointer or
         // by the list's one band, which slides to it (`SidebarSelectedBand`).
+        aria-label={
+          dot === undefined
+            ? undefined
+            : `${name}, ${status?.kind === "limit" ? "Provider limit" : mateDotLabel(dot)}`
+        }
         aria-disabled={deleting || outsideHq || undefined}
         className="menu-row grid w-full min-w-0 cursor-pointer grid-cols-[28px_minmax(0,1fr)] items-start gap-x-3 py-2.5 ps-1.75 pe-2 text-left text-sidebar-foreground outline-none select-none focus-visible:ring-2 focus-visible:ring-ring aria-disabled:cursor-default"
         data-zerops-surface="sidebar-mate"
@@ -2944,7 +3000,14 @@ function MateRowView<T extends RosterCandidate>({
           ) : (
             <MateAskLine line={askLine} rises={askChanged} />
           )}
-          {outsideHq || view.reply === undefined ? null : (
+          {outsideHq ? null : status !== null ? (
+            <span className="flex min-w-0 items-center gap-2">
+              <MateStatusMarker mateName={name} status={status} timestampFormat={timestampFormat} />
+              {status.kind === "limit" || view.reply === undefined ? null : (
+                <MateReply known={known} reply={view.reply} />
+              )}
+            </span>
+          ) : view.reply === undefined ? null : (
             <MateReply known={known} reply={view.reply} />
           )}
           {deleting ? <MateDeletingLine /> : null}
@@ -3166,20 +3229,14 @@ function MateSlot({
               <PauseIcon aria-hidden="true" className="size-2.5" />
               {formatShortTimestamp(slot.until, timestampFormat)}
             </span>
-            <span className="sr-only">{`Paused at a usage limit, picks up ${upcoming}`}</span>
+            <span className="sr-only">{`Paused at a usage limit, available again ${upcoming}`}</span>
           </TooltipTrigger>
-          <TooltipPopup side="right">{`Paused at a usage limit. Picks up ${upcoming}.`}</TooltipPopup>
+          <TooltipPopup side="right">{`Paused at a usage limit. Available again ${upcoming}.`}</TooltipPopup>
         </Tooltip>
       );
     }
-    case "age": {
-      const when = at === undefined ? "" : compactSidebarTimeLabel(formatRelativeTimeLabel(at));
-      return when.length === 0 ? null : (
-        <span className={cn(TIME_CLASS, fadeIn)} data-zerops-surface="sidebar-mate-time">
-          {when}
-        </span>
-      );
-    }
+    case "age":
+      return <SidebarMateAge at={at} className={cn(TIME_CLASS, fadeIn)} />;
   }
 }
 
@@ -3220,6 +3277,13 @@ function MateWorkingTime({
  * (T6); what the menu opened onto, or what this browser remembered, is
  * simply there.
  */
+const mateDotLabel = (tone: "attention" | "unread" | "failed"): string =>
+  tone === "unread"
+    ? "Unseen reply"
+    : tone === "failed"
+      ? "Stopped on an error"
+      : "Waiting for you";
+
 function MateDot({
   tone,
   known,
@@ -3243,11 +3307,12 @@ function MateDot({
 }
 
 /** The third line's inks: the answer muted, unread in the second ink, a question in ink, an error red. */
-const REPLY_TONE_CLASS: Record<"muted" | "ink-2" | "ink" | "failed", string> = {
+const REPLY_TONE_CLASS: Record<"muted" | "ink-2" | "ink" | "failed" | "attention", string> = {
   muted: "text-muted-foreground",
   "ink-2": "menu-ink-2",
   ink: "text-sidebar-foreground",
   failed: "text-status-failed-text",
+  attention: "text-status-attention-text",
 };
 
 /**
@@ -3457,13 +3522,16 @@ function MateComingLine({ line }: { readonly line: MateBornLine }) {
     <span
       className={cn(
         "truncate text-line leading-4.5 tabular-nums",
-        line.tone === "failed" ? "text-status-failed-text" : "text-muted-foreground",
+        line.tone === "attention" ? "text-status-attention-text" : "text-muted-foreground",
         risen && "animate-words-in motion-reduce:animate-none",
       )}
       data-zerops-coming-tone={line.tone}
       data-zerops-surface="sidebar-mate-coming-line"
       key={line.words}
     >
+      {line.tone === "attention" ? (
+        <CircleAlertIcon aria-hidden="true" className="mr-1 inline size-3" />
+      ) : null}
       {mateBornLineText(line, nowMs)}
     </span>
   );

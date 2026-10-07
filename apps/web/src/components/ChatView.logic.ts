@@ -601,6 +601,15 @@ export function resolveComposerInteractionMode(input: {
   };
 }
 
+/** A configured provider without model evidence cannot accept a model-backed turn. */
+export function getProviderCatalogSendBlockReason(
+  provider: Pick<ServerProvider, "models" | "message"> | null | undefined,
+): string | null {
+  return provider !== null && provider !== undefined && provider.models.length === 0
+    ? (provider.message ?? "No models are available for this provider.")
+    : null;
+}
+
 export function getAntigravitySendBlockReason(
   provider:
     | Pick<ServerProvider, "driver" | "installed" | "auth" | "models" | "status">
@@ -726,22 +735,7 @@ export interface PullRequestDialogState {
   key: number;
 }
 
-export function readFileAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.addEventListener("load", () => {
-      if (typeof reader.result === "string") {
-        resolve(reader.result);
-        return;
-      }
-      reject(new Error("Could not read image data."));
-    });
-    reader.addEventListener("error", () => {
-      reject(reader.error ?? new Error("Failed to read image."));
-    });
-    reader.readAsDataURL(file);
-  });
-}
+export { readFileAsDataUrl } from "../lib/imageCompression";
 
 /**
  * `read`, once for each file: a draft saved again and again reads only the

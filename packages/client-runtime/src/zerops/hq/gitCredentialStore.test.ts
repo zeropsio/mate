@@ -1,101 +1,181 @@
-import { describe, expect, it } from "@effect/vitest";
+import { describe, expect, it } from "vite-plus/test";
+import { AtomRegistry } from "effect/unstable/reactivity";
 import type { GitCredential } from "@t3tools/shared/hqGit";
-import { makeGitCredentialStore, selectGitCredentials } from "./gitCredentialStore.ts";
-const issued: GitCredential = {
-  id: "id",
+import { HqError } from "./client.ts";
+import { makeAccountStore, readsOfState } from "../../data/store.ts";
+import { makeGitCredentials } from "../../data/adapters/hqGitCredentials.ts";
+import { gitCredentials } from "../../data/projections/gitCredentials.ts";
+const key = { orgId: "org", appId: "app" };
+const credential: GitCredential = {
+  id: "key",
   appId: "app",
-  createdAt: "now",
-  expiresAt: "later",
-  token: "test-password",
+  token: "one-time-secret",
+  createdAt: "2026-10-07",
+  expiresAt: "2026-10-08",
 };
-describe("Git credential attempts", () => {
+const { token: _token, ...metadata } = credential;
+function waitFor(store: ReturnType<typeof makeAccountStore>, predicate: () => boolean) {
+  return new Promise<void>((resolve) => {
+    const stop = store.subscribe(() => check());
+    const check = () => {
+      if (predicate()) {
+        stop();
+        resolve();
+      }
+    };
+    check();
+  });
+}
+function rig(api: Parameters<typeof makeGitCredentials>[0]["api"]) {
+  const registry = AtomRegistry.make();
+  const store = makeAccountStore(registry);
+  let id = 0;
+  const host = makeGitCredentials({ store, api, makeId: () => `request-${++id}` });
+  return {
+    store,
+    host,
+    read: () => gitCredentials.derive(readsOfState(store.state()), key),
+    close: () => {
+      host.close();
+      registry.dispose();
+    },
+  };
+}
+describe("HQ credential facts and receipts", () => {
   it("projects retained records and a failed reread without treating an unread list as empty", async () => {
     let failed = false;
-    const store = makeGitCredentialStore({
-      list: async () => {
-        if (failed) throw new Error("offline");
-        return [issued];
+    const r = rig({
+      gitCredentials: async () => {
+        if (failed) throw new HqError({ kind: "refused", code: "git_credentials", message: "No." });
+        return [metadata];
       },
-      issue: async () => issued,
-      revoke: async () => undefined,
-      now: () => 1,
+      issueGitCredential: async () => credential,
+      revokeGitCredential: async () => {},
     });
-    expect(selectGitCredentials(store.snapshot()).credentials).toEqual({ state: "unread" });
-    await store.load();
-    expect(selectGitCredentials(store.snapshot()).credentials).toEqual({
-      state: "known",
-      records: [issued],
-      partial: false,
-      stale: false,
-    });
+    expect(r.read().credentials.state).toBe("unread");
+    const done = waitFor(r.store, () => r.read().credentials.state === "known");
+    const release = r.host.demand(key);
+    await done;
     failed = true;
-    await store.again();
-    expect(selectGitCredentials(store.snapshot()).credentials).toEqual({
+    const stale = waitFor(
+      r.store,
+      () =>
+        "stale" in r.read().credentials &&
+        r.read().credentials.state === "known" &&
+        (r.read().credentials as { stale: boolean }).stale,
+    );
+    r.host.again(key);
+    await stale;
+    expect(r.read().credentials).toMatchObject({
       state: "known",
-      records: [issued],
-      partial: false,
       stale: true,
+      records: [metadata],
     });
+    release();
+    r.close();
   });
   it("shares one issue attempt, exposes its failure, and allows a manual new attempt with metadata to revoke", async () => {
-    let resolve!: (value: GitCredential) => void;
-    let attempts = 0;
-    let lost = true;
-    const store = makeGitCredentialStore({
-      list: async () => [],
-      issue: async () => {
-        attempts++;
-        if (lost) throw new Error("lost");
-        return new Promise((done) => {
-          resolve = done;
-        });
+    let calls = 0;
+    let accepted = false;
+    const r = rig({
+      gitCredentials: async () => (accepted ? [metadata] : []),
+      issueGitCredential: async () => {
+        calls++;
+        if (!accepted)
+          throw new HqError({ kind: "refused", code: "forbidden", message: "Issue refused." });
+        return credential;
       },
-      revoke: async () => undefined,
-      now: () => 1,
+      revokeGitCredential: async () => {},
     });
-    await store.load();
-    await store.issue();
-    expect(store.snapshot().action).toMatchObject({ kind: "failed", words: "lost" });
-    expect(attempts).toBe(1);
-    lost = false;
-    const pending = store.issue();
-    const duplicate = store.issue();
-    expect(attempts).toBe(2);
-    resolve(issued);
-    await Promise.all([pending, duplicate]);
-    expect(store.snapshot().action).toMatchObject({ kind: "issued", credential: issued });
-    expect(store.snapshot().credentials).toMatchObject({
-      state: "known",
-      value: [expect.objectContaining({ id: "id" })],
-    });
-    await store.revoke("id");
-    expect(store.snapshot().action.kind).toBe("idle");
-    expect(store.snapshot().credentials).toMatchObject({ state: "known", value: [] });
+    const release = r.host.demand(key);
+    await r.host.issue(key);
+    expect(r.read().action).toMatchObject({ kind: "failed", words: "Issue refused." });
+    accepted = true;
+    await r.host.issue(key);
+    expect(calls).toBe(2);
+    expect(r.read().action).toMatchObject({ kind: "issued", credential });
+    // Durable receipts contain metadata; the one-time secret has a separately releasable lifetime.
+    for (const record of r.store.state().operations.values())
+      expect(JSON.stringify(record)).not.toContain(credential.token);
+    release();
+    expect(r.read().action.kind).toBe("idle");
+    r.close();
   });
   it("erases a password on access loss and drops a late issue after account close", async () => {
+    let denied = false;
     let resolve!: (value: GitCredential) => void;
-    const store = makeGitCredentialStore({
-      list: async () => [],
-      issue: () =>
-        new Promise((done) => {
-          resolve = done;
-        }),
-      revoke: async () => undefined,
-      now: () => 1,
+    let started!: () => void;
+    const entered = new Promise<void>((r) => {
+      started = r;
     });
-    const pending = store.issue();
-    store.close();
-    resolve(issued);
+    const r = rig({
+      gitCredentials: async () => {
+        if (denied)
+          throw new HqError({ kind: "refused", code: "forbidden", message: "Access denied." });
+        return [metadata];
+      },
+      issueGitCredential: () => {
+        started();
+        return new Promise((r) => {
+          resolve = r;
+        });
+      },
+      revokeGitCredential: async () => {},
+    });
+    const release = r.host.demand(key);
+    const pending = r.host.issue(key);
+    await entered;
+    r.host.close();
+    resolve(credential);
     await pending;
-    expect(store.snapshot().action.kind).toBe("idle");
-    const fresh = makeGitCredentialStore({
-      list: async () => [],
-      issue: async () => issued,
-      revoke: async () => undefined,
-      now: () => 1,
+    expect(r.read().action.kind).not.toBe("issued");
+    release();
+    r.close();
+    const active = rig({
+      gitCredentials: async () => {
+        if (denied)
+          throw new HqError({ kind: "refused", code: "forbidden", message: "Access denied." });
+        return [metadata];
+      },
+      issueGitCredential: async () => credential,
+      revokeGitCredential: async () => {},
     });
-    await fresh.issue();
-    fresh.forgetPassword();
-    expect(fresh.snapshot().action.kind).toBe("idle");
+    const hold = active.host.demand(key);
+    await active.host.issue(key);
+    denied = true;
+    const withheld = waitFor(active.store, () => active.read().credentials.state === "withheld");
+    active.host.again(key);
+    await withheld;
+    expect(active.read().action.kind).not.toBe("issued");
+    hold();
+    active.close();
+  });
+  it("retains uncertain issuance across remount and never creates a second password blindly", async () => {
+    let calls = 0;
+    let revokes = 0;
+    const r = rig({
+      gitCredentials: async () => [metadata],
+      issueGitCredential: async () => {
+        calls++;
+        throw new HqError({ kind: "uncertain", code: "network", message: "Lost answer." });
+      },
+      revokeGitCredential: async () => {
+        revokes++;
+      },
+    });
+    const release = r.host.demand(key);
+    await r.host.issue(key);
+    release();
+    const remount = r.host.demand(key);
+    await r.host.issue(key);
+    expect(calls).toBe(1);
+    expect(r.read().action.kind).toBe("unresolved");
+    await r.host.revoke(key, metadata.id);
+    expect(revokes).toBe(1);
+    await r.host.issue(key);
+    expect(calls).toBe(1);
+    expect(r.read().action.kind).toBe("unresolved");
+    remount();
+    r.close();
   });
 });

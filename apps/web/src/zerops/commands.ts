@@ -1,3 +1,8 @@
+import {
+  mateSetupRetryCommand,
+  mateActionCommand,
+  mateAuthCheckCommand,
+} from "@t3tools/client-runtime/data";
 /**
  * The reviewed set of Zerops commands a client may issue.
  *
@@ -24,61 +29,28 @@
  * The resulting login state rides the read-only agent-auth feed; callers
  * await these commands only for the RPC result itself.
  */
+import { makeMateBrowserInputCommand } from "@t3tools/client-runtime/data";
 import type { EnvironmentRegistry } from "@t3tools/client-runtime/connection";
-import { createEnvironmentRpcCommand } from "@t3tools/client-runtime/state/runtime";
-import { WS_METHODS } from "@t3tools/contracts";
 import { Atom } from "effect/unstable/reactivity";
 
 export function createZeropsCommandAtoms<R, E>(
   runtime: Atom.AtomRuntime<EnvironmentRegistry | R, E>,
 ) {
-  const standUpRetry = createEnvironmentRpcCommand(runtime, {
-    label: "environment-data:zerops:standUp:retry",
-    tag: WS_METHODS.zeropsStandUpRetry,
-  });
-  const agentAuthCheck = createEnvironmentRpcCommand(runtime, {
-    label: "environment-data:zerops:agentAuth:check",
-    tag: WS_METHODS.zeropsAgentAuthCheck,
-  });
-  const agentLoginStart = createEnvironmentRpcCommand(runtime, {
-    label: "environment-data:zerops:agentLogin:start",
-    tag: WS_METHODS.zeropsAgentLoginStart,
-  });
+  const standUpRetry = mateSetupRetryCommand(runtime);
+  const agentAuthCheck = mateAuthCheckCommand(runtime);
+  const agentLoginStart = mateActionCommand(runtime, "agentLoginStart");
 
-  const agentLoginCancel = createEnvironmentRpcCommand(runtime, {
-    label: "environment-data:zerops:agentLogin:cancel",
-    tag: WS_METHODS.zeropsAgentLoginCancel,
-  });
+  const agentLoginCancel = mateActionCommand(runtime, "agentLoginCancel");
 
-  const agentLoginSubmitCode = createEnvironmentRpcCommand(runtime, {
-    label: "environment-data:zerops:agentLogin:submitCode",
-    tag: WS_METHODS.zeropsAgentLoginSubmitCode,
-  });
+  const agentLoginSubmitCode = mateActionCommand(runtime, "agentLoginSubmitCode");
 
-  const agentSignOut = createEnvironmentRpcCommand(runtime, {
-    label: "environment-data:zerops:agentLogin:signOut",
-    tag: WS_METHODS.zeropsAgentLoginSignOut,
-  });
+  const agentSignOut = mateActionCommand(runtime, "agentSignOut");
 
-  const loginAdd = createEnvironmentRpcCommand(runtime, {
-    label: "environment-data:zerops:login:add",
-    tag: WS_METHODS.zeropsLoginAdd,
-  });
+  const loginAdd = mateActionCommand(runtime, "loginAdd");
 
-  const loginRemove = createEnvironmentRpcCommand(runtime, {
-    label: "environment-data:zerops:login:remove",
-    tag: WS_METHODS.zeropsLoginRemove,
-  });
+  const loginRemove = mateActionCommand(runtime, "loginRemove");
 
-  const browserInput = createEnvironmentRpcCommand(runtime, {
-    label: "environment-data:zerops:browserInput",
-    tag: WS_METHODS.zeropsBrowserInput,
-  });
-
-  const gitProbeRemote = createEnvironmentRpcCommand(runtime, {
-    label: "environment-data:zerops:git:probeRemote",
-    tag: WS_METHODS.zeropsGitProbeRemote,
-  });
+  const browserInput = makeMateBrowserInputCommand(runtime);
 
   return {
     standUpRetry,
@@ -90,6 +62,5 @@ export function createZeropsCommandAtoms<R, E>(
     loginAdd,
     loginRemove,
     browserInput,
-    gitProbeRemote,
   };
 }

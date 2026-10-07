@@ -1,5 +1,8 @@
+// @vitest-environment happy-dom
+import { act } from "react";
+import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 import { ComposerBannerStack, type ComposerBannerStackItem } from "./ComposerBannerStack";
 
@@ -10,94 +13,48 @@ const banner = (
   id,
   variant,
   icon: <span aria-hidden="true">!</span>,
-  title: `${id} warning`,
+  title: `${id} notice`,
 });
 
 describe("ComposerBannerStack", () => {
-  it("keeps expanded banners in layout flow so surrounding content moves out of their way", () => {
+  it("says nothing where there are no notices", () => {
+    expect(renderToStaticMarkup(<ComposerBannerStack items={[]} />)).toBe("");
+  });
+
+  it("keeps every notice in priority order", () => {
     const markup = renderToStaticMarkup(
       <ComposerBannerStack items={[banner("front"), banner("stacked")]} />,
     );
-
-    const expandedItems = markup.match(
-      /<div data-composer-banner-stack-expanded-items="true" class="([^"]+)">/,
-    );
-
-    expect(expandedItems?.[1]).toContain("grid-rows-[0fr]");
-    expect(expandedItems?.[1]).toContain("group-hover/banner-stack:grid-rows-[1fr]");
-    expect(expandedItems?.[1]).toContain("z-20");
-    expect(expandedItems?.[1]).not.toContain("absolute");
-    expect(markup.indexOf("front warning")).toBeLessThan(markup.indexOf("stacked warning"));
-    expect(markup).toContain("invisible pointer-events-none");
-    expect(markup).toContain("group-focus-within/banner-stack:visible");
+    expect(markup.indexOf("front notice")).toBeLessThan(markup.indexOf("stacked notice"));
+    expect(markup).toContain("stacked notice");
   });
 
-  it("colors the collapsed stack cap by the hidden banner's variant, not a fixed warning", () => {
-    const neutralBehind = renderToStaticMarkup(
-      <ComposerBannerStack items={[banner("front", "default"), banner("stacked", "default")]} />,
-    );
-    expect(neutralBehind).toContain("chat-composer-banner-stack-cap");
-    expect(neutralBehind).toContain("border-[var(--chat-composer-attached-outline)]");
-    expect(neutralBehind).not.toContain("border-border");
-    expect(neutralBehind).not.toContain("border-warning/24");
+  it.each(["default", "warning", "info"] as const)(
+    "announces an expected %s notice as status",
+    (variant) => {
+      const markup = renderToStaticMarkup(
+        <ComposerBannerStack items={[banner("front", variant)]} />,
+      );
+      expect(markup).toContain('role="status"');
+      expect(markup).not.toContain('role="alert"');
+      expect(markup).toContain("front notice");
+    },
+  );
 
-    const warningBehind = renderToStaticMarkup(
-      <ComposerBannerStack items={[banner("front", "default"), banner("stacked", "warning")]} />,
-    );
-    expect(warningBehind).toContain("border-warning/24");
-  });
-
-  it("does not render an expandable region for a single banner", () => {
-    const markup = renderToStaticMarkup(<ComposerBannerStack items={[banner("front")]} />);
-
-    expect(markup).not.toContain("data-composer-banner-stack-expanded-items");
-    expect(markup).toContain("chat-composer-drawer-surface");
-    expect(markup).toContain("chat-composer-drawer-attached");
-    expect(markup).not.toContain("before:mask-none");
-    expect(markup).toContain("text-xs");
-    expect(markup).toContain('data-composer-banner-drawer="true"');
-    expect(markup).toContain('data-variant="warning"');
-    expect(markup).toContain("transform:none");
-    expect(markup).not.toContain("will-change:transform");
-  });
-  // The front banner's drawer surface rounds its top at 16px; a banner
-  // stacked above it once the stack expands used 22px, so the two corners
-  // visibly disagreed one above the other.
-  it("rounds a stacked banner like the front banner's drawer corners", () => {
+  it("announces an actual broken action as an alert", () => {
     const markup = renderToStaticMarkup(
-      <ComposerBannerStack items={[banner("front"), banner("stacked")]} />,
+      <ComposerBannerStack items={[banner("failed", "error")]} />,
     );
-
-    expect(markup).toContain("alert-glass rounded-2xl");
-    expect(markup).not.toContain("rounded-[22px]");
+    expect(markup).toContain('role="alert"');
+    expect(markup).toContain("failed notice");
   });
 
-  it("applies item-specific surface and action layout classes", () => {
+  it("keeps unavailable compaction disabled and offers the named dismissal", () => {
     const markup = renderToStaticMarkup(
       <ComposerBannerStack
         items={[
           {
-            ...banner("branch"),
-            className: "branch-surface",
-            actionClassName: "branch-actions",
-            actions: <button type="button">Repair</button>,
-          },
-        ]}
-      />,
-    );
-
-    expect(markup).toContain("branch-surface");
-    expect(markup).toContain("branch-actions");
-  });
-
-  it("renders a disabled compaction action on the shared accessible banner surface", () => {
-    const markup = renderToStaticMarkup(
-      <ComposerBannerStack
-        items={[
-          {
-            id: "resume-compaction",
-            variant: "info",
-            icon: <span aria-hidden="true">!</span>,
+            ...banner("resume-compaction", "info"),
             title: "Resume with less context",
             description: "250k tokens from an older session",
             actions: (
@@ -111,10 +68,43 @@ describe("ComposerBannerStack", () => {
         ]}
       />,
     );
-
-    expect(markup).toContain('role="alert"');
-    expect(markup).toContain("chat-composer-drawer-attached");
+    expect(markup).toContain("250k tokens from an older session");
     expect(markup).toContain('disabled=""');
     expect(markup).toContain('aria-label="Keep full history"');
+  });
+
+  it("runs the action offered beside its notice", async () => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    const host = document.body.appendChild(document.createElement("div"));
+    const root = createRoot(host);
+    const repair = vi.fn();
+    try {
+      await act(() =>
+        root.render(
+          <ComposerBannerStack
+            items={[
+              {
+                ...banner("branch", "error"),
+                actions: (
+                  <button type="button" onClick={repair}>
+                    Repair
+                  </button>
+                ),
+              },
+            ]}
+          />,
+        ),
+      );
+      const button = Array.from(host.querySelectorAll("button")).find(
+        (item) => item.textContent === "Repair",
+      );
+      if (button === undefined) throw new Error("The notice has no Repair action.");
+      await act(() => button.click());
+      expect(repair).toHaveBeenCalledOnce();
+    } finally {
+      await act(() => root.unmount());
+      host.remove();
+      vi.unstubAllGlobals();
+    }
   });
 });

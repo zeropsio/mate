@@ -181,10 +181,11 @@ describe("D: change review, comments and merge", () => {
       Effect.gen(function* () {
         const { s, change, r, area } = yield* setup;
         const organizations = anotherOrganization(s);
-        yield* Effect.promise(() => s.clock.install());
         yield* Effect.all([s.given.signedIn, r.chooseInitialOrganization(organizations.original)], {
           concurrency: "unbounded",
         });
+        // Freeze the review document after the initial organization choice has settled.
+        yield* Effect.promise(() => s.clock.install());
         yield* r.direct(change.direct);
         yield* r.mergeEnabled;
         yield* Effect.promise(() =>

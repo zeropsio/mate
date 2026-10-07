@@ -96,6 +96,123 @@ const appName = (state: AccountState, id: string) => {
 const members = (state: AccountState, scope: ScopeKey) => readsOfState(state).members(scope);
 
 describe("an HQ scope's delivery", () => {
+  it.each([
+    { revision: 2, keys: ["hqApp:shop"] },
+    { revision: 1, keys: [] },
+    { revision: 0, keys: [] },
+  ])(
+    "publishes only admitted facts for an existing member at revision $revision",
+    ({ revision, keys }) => {
+      const held = apply(attached(), [
+        delivery({
+          revision: 1,
+          rows: [{ family: "hqApp", id: "shop", value: app("shop", "Shop") }],
+        }),
+      ]);
+      const reduced = reduceAccount(
+        held,
+        delivery({
+          revision,
+          rows: [{ family: "hqApp", id: "shop", value: app("shop", "Changed") }],
+        }),
+      );
+      expect([...reduced.changed]).toEqual(keys);
+      expect(reduced.state.memberships).toBe(held.memberships);
+    },
+  );
+
+  it("does not relist a retained fact from a rejected row", () => {
+    const held = apply(attached(), [
+      delivery({
+        revision: 2,
+        rows: [{ family: "hqApp", id: "shop", value: app("shop", "Shop") }],
+      }),
+      { kind: "left", scope: apps, generation: 1, id: "shop" },
+    ]);
+    const rejected = reduceAccount(
+      held,
+      delivery({ revision: 1, rows: [{ family: "hqApp", id: "shop", value: app("shop", "Old") }] }),
+    );
+    expect(rejected.changed.size).toBe(0);
+    expect(rejected.state).toBe(held);
+    expect(members(rejected.state, apps).ids).toEqual([]);
+  });
+
+  it("lists a new admitted member and retains omitted reset keys without publication", () => {
+    const added = reduceAccount(
+      attached(),
+      delivery({
+        revision: 1,
+        rows: [{ family: "hqApp", id: "shop", value: app("shop", "Shop") }],
+      }),
+    );
+    expect(added.changed).toEqual(new Set(["hqApp:shop", `members:${apps}`]));
+    const omitted = reduceAccount(
+      added.state,
+      delivery({ reset: true, incarnation: "b", revision: 0 }),
+    );
+    expect(omitted.changed.size).toBe(0);
+    expect(omitted.state).toBe(added.state);
+  });
+
+  it.each(["deleted", "no-access"] as const)(
+    "publishes exclusion and owner reauthorization after %s",
+    (reason) => {
+      const held = apply(attached(), [
+        delivery({
+          revision: 1,
+          rows: [{ family: "hqApp", id: "shop", value: app("shop", "Shop") }],
+        }),
+      ]);
+      const removed = reduceAccount(
+        held,
+        delivery({ revision: 2, removals: [{ family: "hqApp", id: "shop", reason }] }),
+      );
+      expect(removed.changed).toEqual(new Set(["hqApp:shop", `members:${apps}`]));
+      expect(members(removed.state, apps).excluded).toEqual(["shop"]);
+      const repeated = reduceAccount(
+        removed.state,
+        delivery({ revision: 2, removals: [{ family: "hqApp", id: "shop", reason }] }),
+      );
+      expect(repeated.changed).toEqual(new Set(["hqApp:shop"]));
+      expect(repeated.state.memberships).toBe(removed.state.memberships);
+      const restored = reduceAccount(
+        removed.state,
+        delivery({
+          reset: true,
+          revision: 3,
+          rows: [{ family: "hqApp", id: "shop", value: app("shop", "Restored") }],
+        }),
+      );
+      expect(restored.changed).toEqual(new Set(["hqApp:shop", `members:${apps}`]));
+      expect(members(restored.state, apps)).toMatchObject({ ids: ["shop"], excluded: [] });
+    },
+  );
+
+  it("publishes coverage once and rejects obsolete deliveries without publication", () => {
+    const held = attached();
+    const ready = reduceAccount(held, { kind: "hq-ready", scopes: scopes() });
+    expect(ready.changed).toEqual(
+      new Set([
+        `coverage:${apps}`,
+        `members:${apps}`,
+        `coverage:${placements}`,
+        `members:${placements}`,
+      ]),
+    );
+    expect(reduceAccount(ready.state, { kind: "hq-ready", scopes: scopes() }).changed.size).toBe(0);
+    const late = reduceAccount(
+      ready.state,
+      delivery({
+        generation: 0,
+        revision: 9,
+        rows: [{ family: "hqApp", id: "late", value: app("late", "Late") }],
+      }),
+    );
+    expect(late.changed.size).toBe(0);
+    expect(late.state).toBe(ready.state);
+  });
+
   it.each([undefined, "bad", { head: 42 }])(
     "commits readable facts while the offered release is unknown: %s",
     (releaseOffer) => {

@@ -9,7 +9,7 @@ import { create, type ReactTestInstance, type ReactTestRenderer } from "react-te
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { Dialog } from "../ui/dialog";
-import { ZeropsDeleteMateDialog, ZeropsDeleteMateForm } from "./ZeropsDeleteMateDialog";
+import { ZeropsDeleteMateForm } from "./ZeropsDeleteMateDialog";
 import { deleteMateWords } from "./ZeropsDeleteMateDialog.logic";
 
 type FormProps = Parameters<typeof ZeropsDeleteMateForm>[0];
@@ -100,7 +100,7 @@ describe("ZeropsDeleteMateForm", () => {
     const tree = mount(form());
     type(tree, typed);
     expect(button(tree, "submit").props.disabled).toBe(!enabled);
-    expect(button(tree, "button").props.disabled).toBe(false);
+    expect(button(tree, "button").props.disabled).not.toBe(true);
   });
 
   it("deletes on Enter only once the name is typed", () => {
@@ -114,14 +114,14 @@ describe("ZeropsDeleteMateForm", () => {
     expect(onConfirm).toHaveBeenCalledTimes(1);
   });
 
-  it("says Deleting… and takes no press from either button while the platform answers", () => {
+  it("says Deleting… and allows dismissal but prevents another delete while the platform answers", () => {
     const onConfirm = vi.fn();
     const tree = mount(form({ onConfirm, pending: true }));
     type(tree, "Quinn");
     const submit = button(tree, "submit");
     expect(submit.props.disabled).toBe(true);
     expect(submit.props["aria-busy"]).toBe(true);
-    expect(button(tree, "button").props.disabled).toBe(true);
+    expect(button(tree, "button").props.disabled).not.toBe(true);
     expect(submit.props["aria-label"]).toBe("Deleting…");
     const shown = submit.findAll(
       (node) =>
@@ -147,36 +147,6 @@ describe("ZeropsDeleteMateForm", () => {
     expect(button(tree, "submit").props.disabled).toBe(false);
     enter(tree);
     expect(onConfirm).toHaveBeenCalledTimes(1);
-  });
-});
-
-describe("ZeropsDeleteMateDialog", () => {
-  it("stays open while the platform answers, and closes on the way out otherwise", () => {
-    const onOpenChange = vi.fn();
-    const at = (pending: boolean) =>
-      mount(
-        <ZeropsDeleteMateDialog
-          error={null}
-          name="Quinn"
-          onCancel={() => {}}
-          onConfirm={() => {}}
-          onOpenChange={onOpenChange}
-          open={false}
-          pending={pending}
-          words={WORDS}
-        />,
-      );
-    // The kit's root, as Escape, the backdrop and the corner's X all ask it to close.
-    const request = (tree: ReactTestRenderer) => {
-      const root = tree.root.findByType(Dialog);
-      act(() => {
-        root.props.onOpenChange(false, {});
-      });
-    };
-    request(at(true));
-    expect(onOpenChange).not.toHaveBeenCalled();
-    request(at(false));
-    expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 });
 

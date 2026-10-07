@@ -16,6 +16,11 @@ import { shownInFacts } from "./shownInFacts.ts";
 
 declare module "../model.ts" {
   interface OperationIntents {
+    readonly "update-mate-face": {
+      readonly orgId: string;
+      readonly projectId: string;
+      readonly face: string;
+    };
     readonly "create-app": {
       readonly orgId: string;
       readonly name: string;
@@ -183,8 +188,15 @@ export const deployKeyShown = (
 
 export const keepDeployKey = shown("keep-deploy-key", (intent) => intent.projectId, deployKeyShown);
 
+export const updateMateFace = shown(
+  "update-mate-face",
+  (intent) => intent.projectId,
+  (read, intent) => placementOf(read, intent.projectId)?.mate?.face === intent.face,
+);
+
 /** Each HQ write's kind. */
 export const HQ_WRITE_KINDS = [
+  updateMateFace,
   createApp,
   recordBirth,
   bindBirth,

@@ -91,4 +91,26 @@ describe("FileSaveCoordinator", () => {
     expect(onPendingChange).toHaveBeenCalledWith(true);
     expect(onPendingChange).not.toHaveBeenCalledWith(false);
   });
+
+  it("closing after an uncertain save keeps the draft pending without resending it", async () => {
+    vi.useFakeTimers();
+    const persist = vi
+      .fn()
+      .mockResolvedValue(AsyncResult.failure(Cause.fail({ message: "Save unresolved." })));
+    const onPendingChange = vi.fn();
+    const onConfirmed = vi.fn();
+    const coordinator = new FileSaveCoordinator({
+      debounceMs: 500,
+      persist,
+      onPendingChange,
+      onConfirmed,
+    });
+    coordinator.change("draft");
+    await vi.advanceTimersByTimeAsync(500);
+    coordinator.dispose();
+    await vi.runAllTimersAsync();
+    expect(persist).toHaveBeenCalledOnce();
+    expect(onConfirmed).not.toHaveBeenCalled();
+    expect(onPendingChange).not.toHaveBeenCalledWith(false);
+  });
 });

@@ -1,3 +1,4 @@
+import { useMateFeeds } from "./useMateFeeds";
 /**
  * The signed-in account's data layer: one store per account (its atom registry), and the active
  * organization's Zerops navigation observed for as long as it is shown, with the details screens
@@ -8,6 +9,9 @@ import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import {
   buildsUnderWay,
   makeAccountStore,
+  closeSharedMateSetupDemand,
+  mateConversationStoreAtom,
+  creationPressStoreAtom,
   makeVaultReveal,
   makeZeropsWire,
   observeAccount,
@@ -29,7 +33,9 @@ import {
 import { Atom } from "effect/unstable/reactivity";
 import { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
 
+import { sameValue } from "../lib/sameValue";
 import { MateBrowserFrames } from "./browserStreamLinks";
+import { useAccountWorkspace } from "./accountWorkspace";
 import { useAccountDatabase } from "./accountDatabase";
 import { useAccountBuildLogs } from "./accountBuildLogs";
 import { onAccountLifetimeClose } from "./accountLifetime";
@@ -77,6 +83,26 @@ export function ZeropsAccountData({ children }: { readonly children: ReactNode }
   const { client, status, activeOrganization } = useZeropsSession();
   const registry = useContext(RegistryContext);
   const store = useMemo(() => makeAccountStore(registry), [registry]);
+  useEffect(() => {
+    registry.set(mateConversationStoreAtom, store);
+    registry.set(creationPressStoreAtom, store);
+    let closed = false;
+    const close = () => {
+      if (closed) return;
+      closed = true;
+      closeSharedMateSetupDemand(store);
+      if (registry.get(mateConversationStoreAtom) === store)
+        registry.set(mateConversationStoreAtom, null);
+      if (registry.get(creationPressStoreAtom) === store)
+        registry.set(creationPressStoreAtom, null);
+    };
+    const stop = onAccountLifetimeClose(close);
+    return () => {
+      stop();
+      close();
+    };
+  }, [registry, store]);
+  useMateFeeds(store);
   const observation = useMemo(
     () =>
       observeAccount({
@@ -89,6 +115,7 @@ export function ZeropsAccountData({ children }: { readonly children: ReactNode }
   const logs = useAccountBuildLogs(client, store);
   const reveal = useMemo(() => makeVaultReveal(client), [client]);
   const database = useAccountDatabase(store);
+  useAccountWorkspace(store);
   const orgId = status === "signed-in" ? (activeOrganization?.id ?? null) : null;
   // The account's lifetime closes (sign-out, another account) before React unmounts this, and
   // disposes the registry right after: the account's data ends first, so what the unmounting
@@ -121,7 +148,7 @@ export function ZeropsAccountData({ children }: { readonly children: ReactNode }
   );
   // Each open Mate's attention straight from it, and what the person saw of its results to HQ.
   useOpenMatesAttention(store);
-  useMateResultsSeen(orgId, observation.seen);
+  useMateResultsSeen(store, orgId, observation.seen);
   // The operations are built here, over the store this mount owns: no screen reaches its writer.
   const operations = useMemo(
     () =>
@@ -221,6 +248,19 @@ export function useProjectsServices(
   projectIds: ReadonlyArray<string>,
 ): Readonly<Record<string, ProjectServices>> {
   return useAtomValue(projectsServicesAtom(projectIds.join(",")));
+}
+
+const projectsServiceValues = Atom.family((key: string) =>
+  Atom.make((get): Readonly<Record<string, ProjectServices["services"]>> =>
+    Object.fromEntries(
+      Object.entries(get(projectsServicesAtom(key))).map(([id, read]) => [id, read.services]),
+    ),
+  ).pipe(Atom.withEquality(sameValue)),
+);
+
+/** Service contents for drawings that do not display the listing's freshness. */
+export function useProjectsServiceValues(projectIds: ReadonlyArray<string>) {
+  return useAtomValue(projectsServiceValues(projectIds.join(",")));
 }
 
 /**

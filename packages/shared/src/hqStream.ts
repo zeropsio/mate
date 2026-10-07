@@ -1,3 +1,4 @@
+import { MateHealth } from "@t3tools/contracts";
 import { MateAttention as HqAttentionValue } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import { AgentUsageScope, AGENT_USAGE_REPORT_PROTOCOL } from "@t3tools/contracts";
@@ -418,6 +419,8 @@ export const HqAppDetailFields = {
 };
 
 export const HqAttentionScopeValue = Schema.Struct({
+  health: Schema.optionalKey(Schema.NullOr(MateHealth)),
+  healthState: Schema.optionalKey(Schema.Literals(["live", "stored", "none"])),
   presence: MatePresence,
   overview: Schema.NullOr(MateOverview),
   attention: Schema.NullOr(HqAttentionValue),

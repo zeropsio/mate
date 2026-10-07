@@ -154,7 +154,10 @@ export const CONTAINERS_NOT_IN_A_PROJECT = "Not in a project";
  * and how many a re-probe (*Try again*) would ask again — the ones not
  * answering, which a browser cannot tell from one that predates Mate (H9).
  */
-export function containersSummary(kinds: ReadonlyArray<ZeropsRowAction["kind"]>): {
+export function containersSummary(
+  kinds: ReadonlyArray<ZeropsRowAction["kind"]>,
+  placementNotice?: string,
+): {
   readonly line: string;
   readonly retry: number;
 } {
@@ -168,7 +171,7 @@ export function containersSummary(kinds: ReadonlyArray<ZeropsRowAction["kind"]>)
     return count === 0 ? [] : [`${String(count)} ${word}`];
   });
   return {
-    line: [CONTAINERS_NOT_IN_A_PROJECT, ...parts].join(" · "),
+    line: [placementNotice ?? CONTAINERS_NOT_IN_A_PROJECT, ...parts].join(" · "),
     retry: counts.get("not-answering") ?? 0,
   };
 }

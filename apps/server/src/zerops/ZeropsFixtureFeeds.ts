@@ -562,6 +562,8 @@ export const makeFixtureZeropsLayer = (scene: ShowcaseScene) => {
     Layer.succeed(
       ZeropsMateAttentionModule.ZeropsMateAttention,
       ZeropsMateAttentionModule.ZeropsMateAttention.of({
+        healthCurrent: Effect.succeed(Option.none()),
+        healthChanges: Stream.empty,
         current: Effect.succeed(FIXTURE_ATTENTION),
         changes: Stream.make(FIXTURE_ATTENTION),
       }),

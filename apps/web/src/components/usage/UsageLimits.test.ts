@@ -15,12 +15,24 @@ describe("limitsPlaceName", () => {
   }>([
     {
       name: "names the Mate and its project",
-      identity: { mateName: "Juno", projectName: "Shop", owner: null },
+      identity: {
+        mateName: "Juno",
+        projectId: "shop",
+        ownerState: "unknown",
+        projectName: "Shop",
+        owner: null,
+      },
       place: "Juno · Shop",
     },
     {
       name: "names the Mate alone when its project has no real name",
-      identity: { mateName: "Juno", projectName: null, owner: null },
+      identity: {
+        mateName: "Juno",
+        projectId: null,
+        ownerState: "unknown",
+        projectName: null,
+        owner: null,
+      },
       place: "Juno",
     },
     {

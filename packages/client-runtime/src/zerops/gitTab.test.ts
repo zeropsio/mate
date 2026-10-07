@@ -761,3 +761,9 @@ describe("one answer on every surface (DESIGN §4.7)", () => {
     expect(surfaces(change("conflicting", LANDED)).tab.state).toBe("merged");
   });
 });
+
+it("does not call an unread working tree clean or claim it has no repository", () => {
+  const unread = checkout({ read: false, isRepo: false, changed: [] });
+  expect(gitCheckoutLine(unread)).toBe("Reading repository…");
+  expect(block(unread).state).toBe("unread");
+});

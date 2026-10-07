@@ -3,7 +3,7 @@ import DiffsWorker from "@pierre/diffs/worker/worker.js?worker";
 import * as Schema from "effect/Schema";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useTheme } from "../hooks/useTheme";
-import { resolveDiffThemeName, type DiffThemeName } from "../lib/diffRendering";
+import { resolveDiffThemeName, type DiffThemeName } from "../lib/diffPresentation";
 
 export class DiffWorkerError extends Schema.TaggedError<DiffWorkerError>()("DiffWorkerError", {
   operation: Schema.Literals(["create-worker", "get-render-options", "set-render-options"]),
@@ -46,7 +46,7 @@ function DiffWorkerThemeSync({ themeName }: { themeName: DiffThemeName }) {
 }
 
 // Plain-text views do not queue a highlight task that could retry a blank first render.
-function DiffWorkerReady({ children }: { children?: ReactNode }) {
+function DiffWorkerReady({ children, fallback }: { children?: ReactNode; fallback?: ReactNode }) {
   const workerPool = useWorkerPool();
   const [ready, setReady] = useState(
     () => !workerPool || workerPool.isInitialized() || !workerPool.isWorkingPool(),
@@ -66,19 +66,25 @@ function DiffWorkerReady({ children }: { children?: ReactNode }) {
     };
   }, [ready, workerPool]);
 
-  return ready ? (
-    children
-  ) : (
-    <div
-      role="status"
-      className="flex min-h-0 flex-1 items-center justify-center p-4 text-xs text-muted-foreground"
-    >
-      Loading code...
-    </div>
-  );
+  return ready
+    ? children
+    : (fallback ?? (
+        <div
+          role="status"
+          className="flex min-h-0 flex-1 items-center justify-center p-4 text-xs text-muted-foreground"
+        >
+          Loading code...
+        </div>
+      ));
 }
 
-export function DiffWorkerPoolProvider({ children }: { children?: ReactNode }) {
+export function DiffWorkerPoolProvider({
+  children,
+  loadingFallback,
+}: {
+  children?: ReactNode;
+  loadingFallback?: ReactNode;
+}) {
   const { resolvedTheme } = useTheme();
   const diffThemeName = resolveDiffThemeName(resolvedTheme);
   const workerPoolSize = useMemo(() => {
@@ -111,7 +117,7 @@ export function DiffWorkerPoolProvider({ children }: { children?: ReactNode }) {
       }}
     >
       <DiffWorkerThemeSync themeName={diffThemeName} />
-      <DiffWorkerReady>{children}</DiffWorkerReady>
+      <DiffWorkerReady fallback={loadingFallback}>{children}</DiffWorkerReady>
     </WorkerPoolContextProvider>
   );
 }

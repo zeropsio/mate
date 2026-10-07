@@ -21,14 +21,16 @@ import {
 import type { EnvironmentId } from "@t3tools/contracts";
 import type { HqPeople } from "@t3tools/shared/hqMates";
 import * as Option from "effect/Option";
+import { shareEqual } from "@t3tools/shared/structuralSharing";
 import { Atom } from "effect/unstable/reactivity";
 import {
   inventoryTopology,
   EMPTY_PROJECT_TOPOLOGY_SNAPSHOT,
   type ProjectTopologySnapshot,
   accountReadsAtom,
-  inventory,
+  inventoryContents,
   inventoryPlacements,
+  inventoryPlacementStatus,
   shownHqMatesAtom,
   shownHqNavigationAtom,
   shownHqStatusAtom,
@@ -36,18 +38,16 @@ import {
   type HqNavigationRead,
 } from "@t3tools/client-runtime/data";
 
-import { connectionAtomRuntime } from "../connection/runtime";
+import { sameValue } from "../lib/sameValue";
 import type { HqStanding } from "../zerops/accountHq";
 import { registeredZeropsOrigins, rowEnvironment } from "../zerops/environmentOrigins";
-import { createZeropsFeedAtoms } from "../zerops/feeds";
+export { zeropsFeeds } from "../zerops/feeds";
 import { findInventoryProjectRef, type InventoryProjection } from "../zerops/inventoryContext";
 import type {
   ZeropsOrganizationStatus,
   ZeropsSessionStatus,
 } from "../zerops/ZeropsSessionProvider";
 import { environmentPresentations } from "./presentation";
-
-export const zeropsFeeds = createZeropsFeedAtoms(connectionAtomRuntime);
 
 /**
  * `deriveZeropsThreadModel`, re-exported from thread state alongside the
@@ -127,7 +127,7 @@ export const hqStandingAtom = Atom.make((get): HqStanding => {
 
 /**
  * Where HQ places each project of the organization in view, as last known; null while nothing
- * is known of its structure — its projects are then placed nowhere. A stage's or a production's
+ * is known of its structure — placement is unread, not ungrouped. A stage's or a production's
  * project HQ holds nowhere is placed by its press's record, unregistered (`placementsOf`).
  */
 export const hqPlacementsAtom = Atom.make((get): ReadonlyMap<string, HqPlacement> | null => {
@@ -136,6 +136,14 @@ export const hqPlacementsAtom = Atom.make((get): ReadonlyMap<string, HqPlacement
     ? null
     : get(account.data.project(inventoryPlacements, account.orgId));
 }).pipe(Atom.withLabel("zerops:hq-placements"));
+
+/** Coverage of HQ placement; an app baseline alone cannot prove an ungrouped row. */
+export const hqPlacementStatusAtom = Atom.make((get) => {
+  const account = get(accountReadsAtom);
+  return account?.orgId == null
+    ? { complete: false, live: false, reconnecting: false }
+    : get(account.data.project(inventoryPlacementStatus, account.orgId));
+}).pipe(Atom.withLabel("zerops:hq-placement-status"));
 
 /**
  * The Mates the reader may observe, as HQ relays them (`hqMates`): each by its project, its
@@ -150,7 +158,7 @@ export interface HqMatesView {
 
 /** The Mates of the organization in view, as HQ last told them; null without one in view. */
 export const hqMatesAtom = Atom.make((get): HqMatesView | null => {
-  const orgId = get(shownHqNavigationAtom).orgId;
+  const orgId = get(accountReadsAtom)?.orgId ?? null;
   if (orgId === null) return null;
   const { mates, live } = get(shownHqMatesAtom);
   return { organizationId: orgId, mates: new Map(Object.entries(mates)), current: live };
@@ -185,7 +193,7 @@ export const inventoryReadAtom = Atom.make((get): InventoryProjection | null => 
   const organization = get(zeropsSessionAtom)?.activeOrganization;
   return account === null || organization == null || account.orgId !== organization.organizationId
     ? null
-    : get(account.data.project(inventory, { organization, viewer: account.viewer }));
+    : get(account.data.project(inventoryContents, { organization, viewer: account.viewer }));
 }).pipe(Atom.withLabel("data:inventory"));
 
 /** One environment this renderer registered, as the connection catalog presents it. */
@@ -335,7 +343,13 @@ export const environmentProjectsAtom = Atom.make((get): EnvironmentProjects => {
       listed.set(environmentId, row.project.id);
   }
   return { described, listed };
-}).pipe(Atom.withLabel("zerops:environment-projects"));
+}).pipe(
+  Atom.withEquality<EnvironmentProjects>(
+    (a, b) =>
+      sameValue([...a.described], [...b.described]) && sameValue([...a.listed], [...b.listed]),
+  ),
+  Atom.withLabel("zerops:environment-projects"),
+);
 
 /**
  * The project an environment belongs to (C3): its descriptor's word first, then the Mate this tab
@@ -393,4 +407,36 @@ export function projectTopologyAtom(project: ProjectRef): Atom.Atom<ProjectTopol
   const key = projectKeyOf(project);
   if (!topologyProjects.has(key)) topologyProjects.set(key, project);
   return projectTopologies(key);
+}
+
+export const hqMateVersionsAtom = Atom.make((get) => {
+  const hq = get(hqMatesAtom);
+  return Object.fromEntries(
+    [...(hq?.mates ?? [])].map(([id, mate]) => [id, mate.identity?.serverVersion]),
+  );
+}).pipe(Atom.withEquality((a, b) => shareEqual(a, b) === a));
+export const hqMainChatsAtom = Atom.make((get) => {
+  const hq = get(hqMatesAtom);
+  return Object.fromEntries(
+    [...(hq?.mates ?? [])].map(([id, mate]) => [
+      id,
+      {
+        read: mate.main !== undefined,
+        chat:
+          mate.identity === undefined || !mate.main
+            ? undefined
+            : { environmentId: mate.identity.environmentId, threadId: mate.main.id },
+      },
+    ]),
+  );
+}).pipe(Atom.withEquality((a, b) => shareEqual(a, b) === a));
+
+const projectTopologyViews = Atom.family((key: string) =>
+  Atom.make((get) => get(projectTopologies(key)).view).pipe(Atom.withEquality(sameValue)),
+);
+
+/** The topology's contents, without subscribing a drawing to source freshness. */
+export function projectTopologyViewAtom(project: ProjectRef) {
+  projectTopologyAtom(project);
+  return projectTopologyViews(projectKeyOf(project));
 }

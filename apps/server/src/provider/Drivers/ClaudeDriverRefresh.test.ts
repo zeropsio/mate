@@ -93,7 +93,7 @@ const writeFakeClaude = Effect.fn("ClaudeDriverRefresh.test.writeFakeClaude")(fu
       "    },",
       '  }) + "\\n");',
       "});",
-      "setInterval(() => {}, 1_000);",
+      'lines.on("close", () => process.exit(0));',
       "",
     ].join("\n"),
   );

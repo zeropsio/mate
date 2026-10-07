@@ -1,5 +1,5 @@
-import { createGitEnvironmentAtoms } from "@t3tools/client-runtime/state/git";
-
-import { connectionAtomRuntime } from "../connection/runtime";
-
-export const gitEnvironment = createGitEnvironmentAtoms(connectionAtomRuntime);
+import { workspaceQuery, workspaceCommand } from "./workspace";
+export const gitEnvironment = {
+  pullRequestResolution: workspaceQuery("pullRequest"),
+  preparePullRequestThread: workspaceCommand("mate-prepare-pull-request-thread"),
+};

@@ -36,6 +36,7 @@ import { NodeWS } from "@effect/platform-node/NodeSocket";
 import type {
   CrewSnapshot,
   MateAttention,
+  MateHealth,
   OrchestrationThreadShell,
   ServerProvider,
 } from "@t3tools/contracts";
@@ -84,6 +85,8 @@ import { ZeropsLogins } from "./ZeropsLogins.ts";
 import { ZeropsMateAttention } from "./ZeropsMateAttention.ts";
 import { ZeropsMateUpdate } from "./ZeropsMateUpdate.ts";
 import { ZeropsProjectAccess } from "./ZeropsProjectAccess.ts";
+import { makeUsageLink, type UsageLink } from "../usage/UsageLink.ts";
+import * as UsageSqlite from "../persistence/NodeSqliteClient.ts";
 
 /** The part of a WebSocket the link uses; the global `WebSocket` is one. */
 export interface LinkSocket {
@@ -126,6 +129,8 @@ export type HqStanding =
   | { readonly kind: "linked"; readonly mate: MateState };
 
 export interface ZeropsHqLinkOptions {
+  readonly health?: Stream.Stream<MateHealth>;
+  readonly usage?: UsageLink;
   /** The enrollment as it stands now; none until zcp has enrolled. */
   readonly readEnrollment: Effect.Effect<Option.Option<HqEnrollment>>;
   /** zcp's last word on enrolling; none when it said nothing this build reads. */
@@ -288,6 +293,8 @@ export const makeZeropsHqLink = (
           return Option.none();
         }
 
+        const usage = options.usage ? yield* options.usage.open(send) : undefined;
+
         const openedAt = yield* Clock.currentTimeMillis;
         const family = socket.family?.();
         const answered = yield* Deferred.make<void>();
@@ -313,6 +320,10 @@ export const makeZeropsHqLink = (
           }),
         );
         const heard = Stream.runForEach(options.changes, () => Ref.set(dirty, true));
+        const health =
+          options.health === undefined
+            ? Effect.never
+            : Stream.runForEach(options.health, (value) => send({ type: "health", health: value }));
         const attention = Stream.runForEach(options.attention, (value) =>
           send({ type: "attention", attention: value }),
         );
@@ -324,10 +335,11 @@ export const makeZeropsHqLink = (
             if (Option.isNone(message)) return Effect.void;
             switch (message.value.type) {
               case "ping":
-                return send({ type: "pong" });
+                return send({ type: "pong" }).pipe(Effect.andThen(usage?.ping ?? Effect.void));
               case "state":
                 return SubscriptionRef.set(state, Option.some(message.value.mate)).pipe(
                   Effect.andThen(Deferred.succeed(answered, undefined)),
+                  Effect.andThen(usage?.state(message.value) ?? Effect.void),
                 );
               case "access":
                 return options.relayAccess({
@@ -335,15 +347,16 @@ export const makeZeropsHqLink = (
                   ageMs: message.value.ageMs,
                 });
               default:
-                // Usage has its own negotiated journal consumer; legacy links ignore this lane.
-                return Effect.void;
+                return usage?.receive(message.value) ?? Effect.void;
             }
           }),
         );
         const relayed = yield* Effect.forkScoped(
           Effect.raceFirst(
             relay,
-            Effect.all([overviews, heard, attention], { concurrency: 3 }),
+            Effect.all([overviews, heard, attention, health, ...(usage ? [usage.run] : [])], {
+              concurrency: "unbounded",
+            }),
           ).pipe(Effect.ensuring(quit)),
         );
         return Option.some({
@@ -545,6 +558,20 @@ export const layer = (crew: OverviewSources["crew"]) =>
       const projection = yield* ProjectionSnapshotQuery;
       const engine = yield* OrchestrationEngineService;
       const providers = yield* ProviderInstances;
+      // Separate home database: capture IO cannot lock the orchestration event store.
+      const usage = yield* Effect.gen(function* () {
+        const usageDatabase = yield* Layer.build(
+          UsageSqlite.layer({ filename: paths.join(config.stateDir, "usage.sqlite") }),
+        );
+        return yield* makeUsageLink(engine.streamDomainEvents).pipe(Effect.provide(usageDatabase));
+      }).pipe(
+        Effect.asSome,
+        Effect.catchCause(() =>
+          Effect.logWarning("Usage ledger unavailable; HQ link remains active").pipe(
+            Effect.as(Option.none<UsageLink>()),
+          ),
+        ),
+      );
       // While the Mate engine owns the conversation, its conversations are the chats: V1's
       // projections (a thread left running at the flip among them) are never read.
       const chats = chatsSource(yield* MateEngine, {
@@ -584,6 +611,8 @@ export const layer = (crew: OverviewSources["crew"]) =>
         connect: connectLinkSocket,
         relayAccess: (yield* ZeropsProjectAccess).relayed,
         attention: (yield* ZeropsMateAttention).changes,
+        health: (yield* ZeropsMateAttention).healthChanges,
+        ...(Option.isSome(usage) ? { usage: usage.value } : {}),
         ...feed,
       });
     }),

@@ -49,14 +49,10 @@ const NO_ATTENTION = Atom.make(NO_ATTENTION_READ);
 export function ThreadNotificationCoordinator() {
   const view = useAtomValue(hqMatesAtom);
   const orgId = useAccountOrgId();
+  const attention = useProjection(matesAttention, orgId, NO_ATTENTION);
   const projectIds = useMemo(
-    () => (view === null ? [] : [...view.mates.keys()].toSorted()),
-    [view],
-  );
-  const attention = useProjection(
-    matesAttention,
-    orgId === null ? null : { orgId, projectIds },
-    NO_ATTENTION,
+    () => [...new Set([...(view?.mates.keys() ?? []), ...Object.keys(attention)])].toSorted(),
+    [view, attention],
   );
   const told = view?.mates ?? null;
   const current = view?.current === true;

@@ -1,9 +1,9 @@
+import { creationHandoff } from "../data/projections/creationHandoff.ts";
 import { describe, expect, it } from "vite-plus/test";
 
 import { environmentRow, type EnvironmentRow } from "./groupRows.ts";
 import {
   compareForRelease,
-  firstReleaseHandoff,
   flowReleaseOf,
   isReleaseTag,
   releaseRunBy,
@@ -656,7 +656,7 @@ describe("a production whose version names spell short shas", () => {
 // Adding a production is the intent to release (P7): once it is there, main has code and the person
 // may release, its first release's review opens by itself; otherwise the production row says it
 // waits, and nothing opens.
-describe("firstReleaseHandoff", () => {
+describe("creationHandoff", () => {
   it.each([
     {
       case: "HQ does not hold the production yet",
@@ -714,6 +714,6 @@ describe("firstReleaseHandoff", () => {
       want: "wait",
     },
   ])("is $want when $case", ({ input, want }) => {
-    expect(firstReleaseHandoff(input)).toBe(want);
+    expect(creationHandoff(input)).toBe(want);
   });
 });

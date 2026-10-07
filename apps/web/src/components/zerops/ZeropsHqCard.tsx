@@ -91,7 +91,15 @@ export function ZeropsHqCard() {
   const project: HqProjectRead | undefined = !open
     ? undefined
     : listed.unavailableReason !== undefined || activity.history === "failed"
-      ? { kind: "failed", reason: "Zerops refused to say." }
+      ? {
+          kind: "failed",
+          reason:
+            listed.unavailableReason === "forbidden" || listed.unavailableReason === "refused"
+              ? "Zerops refused this read."
+              : listed.unavailableReason === "expired-session"
+                ? "Sign in again to read HQ services."
+                : "HQ process history is unavailable. Retry the read.",
+        }
       : listed.services === undefined ||
           activity.history !== "read" ||
           activity.processes === undefined
@@ -99,7 +107,7 @@ export function ZeropsHqCard() {
         : { kind: "read" };
 
   if (hq === undefined) return null;
-  const services = project?.kind === "read" ? listed.services : undefined;
+  const services = listed.services;
   const processes = project?.kind === "read" ? activity.processes : undefined;
   // HQ's builds say something only beside its `hq` service and the Core this app carries.
   const service = services?.find((entry) => entry.name === HQ_SERVICE);
@@ -121,7 +129,7 @@ export function ZeropsHqCard() {
                   : undefined,
             }),
           };
-  const view = hqCardView({
+  const resolvedView = hqCardView({
     admin,
     standing,
     services,
@@ -131,6 +139,20 @@ export function ZeropsHqCard() {
     updating,
     time: (ms) => formatDayAwareTimestamp(new Date(ms).toISOString(), timestampFormat),
   });
+  const view: HqCardView =
+    resolvedView.state !== null || navigation.read === "read"
+      ? resolvedView
+      : {
+          ...resolvedView,
+          troubles: [
+            ...resolvedView.troubles,
+            navigation.refusal !== null
+              ? `HQ read refused: ${navigation.refusal}`
+              : navigation.capped || navigation.reconnecting
+                ? "HQ is unavailable. Restore its connection or retry."
+                : "Reading HQ navigation…",
+          ],
+        };
   const mount = hqUpdateMount({
     admin,
     standing,

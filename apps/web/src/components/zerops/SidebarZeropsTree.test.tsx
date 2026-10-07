@@ -23,6 +23,8 @@ import type { CrewDigest } from "@t3tools/shared/mateLink";
 
 import { DraftId, useComposerDraftStore } from "~/composerDraftStore";
 import { getLocalStorageItem, setLocalStorageItem } from "~/hooks/useLocalStorage";
+import { useMatesActivity } from "~/zerops/useZeropsAgentActivity";
+import { useMateRowActivity } from "~/zerops/useMenuMateReadings";
 import { restingActivity, type ZeropsAgentActivity } from "~/zerops/agentActivity";
 import { markMateDeleting, settleDeletingMates } from "~/zerops/deletingMates";
 import type { ZeropsMateOwner } from "~/zerops/useZeropsMateOwners";
@@ -110,14 +112,14 @@ vi.mock("~/zerops/useZeropsMateOwners", async (original) => ({
   ...(await original<typeof import("~/zerops/useZeropsMateOwners")>()),
   useWaitsOnViewer: () => (projectId: string) =>
     session.viewer !== undefined && signerOf.get(projectId) === session.viewer,
-  useHqProjectPeopleOf: () => (projectId: string) => {
+  useHqProjectPerson: (projectId: string) => {
     if (!hqSigners.said) return undefined;
     const signer = signerOf.get(projectId);
     const signers = signer === undefined ? {} : { "claude-code": signer };
     return {
       owned: ownedBy.has(projectId),
       owner: null,
-      waitsOnViewer: false,
+      waitsOnViewer: session.viewer !== undefined && signer === session.viewer,
       signedInNow: signers,
       everSignedIn: signers,
     };
@@ -513,7 +515,7 @@ describe("SidebarZeropsTree", () => {
     const html = render([], { complete: false, notice: READING });
 
     expect(html).toContain("Reading your projects…");
-    expect(html).not.toContain("No environment has Mate yet");
+    expect(html).not.toContain("No Mate yet");
     // Read and Mate-less: the empty state, as before.
     expect(render([candidate("unplaced", {}, "ready", false)], { complete: true })).toContain(
       "sidebar-environments-empty",
@@ -526,7 +528,7 @@ describe("SidebarZeropsTree", () => {
   ])("a cold menu with no row and no notice: $name", ({ reading, drawn }) => {
     const html = render([], { complete: false, notice: null, reading });
     expect(html.includes('data-zerops-surface="sidebar-environments-skeleton"')).toBe(drawn);
-    expect(html).not.toContain("No environment has Mate yet");
+    expect(html).not.toContain("No Mate yet");
   });
 
   it("draws no skeleton once a row is there", () => {
@@ -562,10 +564,10 @@ describe("SidebarZeropsTree", () => {
 
     expect(html.match(/Zerops didn(?:&#x27;|')t answer\./g)).toHaveLength(1);
     expect(html.match(/Try again/g)).toHaveLength(1);
-    expect(html).not.toContain("No environment has Mate yet");
+    expect(html).not.toContain("No Mate yet");
   });
 
-  it('never says "No environment has Mate yet" while a project\'s presence is unknown', () => {
+  it('never says "No Mate yet" while a project\'s presence is unknown', () => {
     // The project is listed, but whether a container runs in it is not read yet.
     const html = render([candidate("unplaced", {}, "ready", false)], {
       complete: false,
@@ -577,7 +579,7 @@ describe("SidebarZeropsTree", () => {
     });
 
     expect(html).toContain("Still reading…");
-    expect(html).not.toContain("No environment has Mate yet");
+    expect(html).not.toContain("No Mate yet");
   });
 
   it("a partial listing says Still reading… under the Mates it already holds", () => {
@@ -692,7 +694,7 @@ describe("SidebarZeropsTree", () => {
     {
       name: "says Mate is missing, and offers to set one up, when the account has projects",
       candidates: [candidate("unplaced", {}, "ready", false)],
-      shows: ["sidebar-environments-empty", "No environment has Mate yet", "Set up Mate"],
+      shows: ["sidebar-environments-empty", "No Mate yet", "Set up Mate"],
       hides: ["No Zerops projects yet", "New project"],
     },
     {
@@ -867,7 +869,7 @@ describe("a Mate with no owner, or nobody signed in", () => {
       // One line of the row's leading, on the words' edge, the words' muted ink.
       expect(found?.[0]).toEqual(expect.stringContaining("leading-4.5"));
       expect(found?.[0]).toEqual(expect.stringContaining("text-muted-foreground"));
-      expect(html).not.toContain(">Sign in<");
+      expect(html).not.toMatch(/<button[^>]*>Sign in<\/button>/u);
       expect(html).not.toContain("sidebar-mate-sign-in-verb");
     },
   );
@@ -1054,7 +1056,7 @@ describe("a creation under way in the menu", () => {
     const row = html.slice(html.lastIndexOf("<button", at), html.indexOf("</button>", at));
     expect(row).toContain('data-mate-face-state="sleep"');
     expect(row).toContain(">Setting up stopped<");
-    expect(row).toContain('data-zerops-coming-tone="failed"');
+    expect(row).toContain('data-zerops-coming-tone="attention"');
   });
 
   // The owner, 2026-09-29: "on the left it looks like its ready to be opened, but it's not" — and
@@ -1158,7 +1160,7 @@ describe("a creation under way in the menu", () => {
     const html = render([], { births: [birth({ groupId: "new", groupName: "Todo" })] });
     expect(html).toContain('data-zerops-group="new"');
     expect(comingRows(html)).toHaveLength(1);
-    expect(html).not.toContain("No environment has Mate yet");
+    expect(html).not.toContain("No Mate yet");
   });
 });
 
@@ -1179,7 +1181,7 @@ describe("a listed Mate still coming up", () => {
       case: "not created",
       coming: FAILED,
       says: "Setting up stopped",
-      tone: "failed",
+      tone: "attention",
       face: "sleep",
     },
   ] as const)(
@@ -2228,7 +2230,7 @@ describe("a project collapsed to its heading", () => {
     const heading = classesOf(/<div class="([^"]*)"[^>]*data-zerops-surface="sidebar-project"/u);
     const title = classesOf(/<span class="([^"]*zerops-project-name[^"]*)"/u);
     const rows = classesOf(/data-zerops-surface="sidebar-project-rows"><div class="([^"]*)"/u);
-    const mate = classesOf(/<button class="([^"]*)"[^>]*data-zerops-surface="sidebar-mate"/u);
+    const mate = classesOf(/<button[^>]*class="([^"]*)"[^>]*data-zerops-surface="sidebar-mate"/u);
     const block = classesOf(/<div class="(flex flex-col mt-2\.5)"/u);
     const folded = classesOf(
       /<div aria-hidden="true" class="([^"]*)"[^>]*data-zerops-surface="sidebar-project-room"/u,
@@ -2930,7 +2932,10 @@ describe("arranging the projects by hand", () => {
       ["shop", "links"],
     );
     const spoken = mounted.root.find(
-      (node) => typeof node.type === "string" && node.props.role === "status",
+      (node) =>
+        typeof node.type === "string" &&
+        node.props.role === "status" &&
+        node.props["aria-live"] === "polite",
     );
     expect(text(spoken)).toBe("Shop moved to 1 of 2.");
   });
@@ -2972,6 +2977,22 @@ describe("a Mate's row says more without words", () => {
     /<span[^>]*data-zerops-surface="sidebar-mate-time"[^>]*>(?:<span[^>]*><\/span>)?(.*?)<\/span>/u.exec(
       html,
     )?.[0] ?? "";
+
+  it("shows a named limit and attention before the Mate is opened", () => {
+    const html = render([CRM_DEV], {
+      getActivity: () =>
+        live({
+          kind: "failed",
+          usageLimited: true,
+          errorLine: "Claude usage limit reached",
+          pausedUntil: "2099-10-07T14:00:00Z",
+        }),
+    });
+    expect(html).toContain(">Limit · until ");
+    expect(html).toContain("hit the Claude limit.");
+    expect(html).toContain("Provider limit");
+    expect(html).not.toContain("I've hit");
+  });
 
   // The working face turns and glances, and its step is the row's third
   // line: no ring around it repeats the step as a count in blue (S3).
@@ -4270,4 +4291,83 @@ describe("the menu's release offer", () => {
       registry.dispose();
     }
   });
+});
+
+it("the tree retains its order on a timestamp-only delivery and each row reads only its own Mate", () => {
+  const registry = AtomRegistry.make();
+  const at = "2026-10-07T00:00:00Z";
+  const overview = (id: string, words: string, updatedAt = at) => ({
+    presence: { online: true, since: at, overview: "live" as const },
+    identity: {
+      environmentId: EnvironmentId.make(`env-${id}`),
+      serverVersion: "0.14.35",
+      update: null,
+    },
+    main: {
+      id: ThreadId.make(`chat-${id}`),
+      title: "Task",
+      hasPendingApprovals: false,
+      hasPendingUserInput: false,
+      hasActionableProposedPlan: false,
+      interactionMode: "default" as const,
+      backgroundLiveness: null,
+      session: null,
+      latestTurn: null,
+      latestUserMessageAt: at,
+      updatedAt,
+      latestMessagePreview: { role: "assistant" as const, text: words },
+      latestUserMessagePreview: { text: "Task" },
+      planProgress: null,
+      pendingQuestion: null,
+      usagePause: null,
+      liveStep: null,
+    },
+  });
+  const a = candidate("a", { tags: ["mate"], hq: AAA() });
+  const b = candidate("b", { tags: ["mate"], hq: AAA() });
+  const candidates = [a, b];
+  let mates = { a: overview("a", "First"), b: overview("b", "First") };
+  const hq = mountHqNavigation(registry, "org", { mates });
+  const onSelect = vi.fn();
+  function Menu() {
+    const activity = useMatesActivity(true);
+    const getActivity = useMateRowActivity(activity);
+    return (
+      <SidebarZeropsTree
+        candidates={candidates}
+        complete
+        keyedReadings
+        getActivity={getActivity}
+        onSelect={onSelect}
+        onBrowseProjects={onSelect}
+      />
+    );
+  }
+  const tree = mount(
+    <RegistryContext.Provider value={registry}>
+      <Menu />
+    </RegistryContext.Provider>,
+  );
+  const rows = () =>
+    tree.root.findAll(
+      (node) => node.type === "button" && node.props["data-zerops-surface"] === "sidebar-mate",
+    );
+  const root = () => surface(tree, "sidebar-environments");
+  const before = rows().map((row) => row.props);
+  const treeBefore = root().props;
+  const deliver = (next: typeof mates.a) => {
+    mates = { ...mates, a: next };
+    act(() => hq.seed({ mates }));
+  };
+  deliver(overview("a", "Second"));
+  expect(rows().filter((row, i) => row.props !== before[i])).toHaveLength(1);
+  expect(root().props).toBe(treeBefore);
+  expect(text(rows()[0]!)).toContain("Second");
+  const messageRows = rows().map((row) => row.props);
+  deliver(overview("a", "Second", "2026-10-07T00:00:01Z"));
+  expect(rows().filter((row, i) => row.props !== messageRows[i])).toHaveLength(0);
+  expect(root().props).toBe(treeBefore);
+  // Click selection still use the candidate the row actually represents.
+  act(() => rows()[1]!.props.onClick());
+  expect(onSelect).toHaveBeenLastCalledWith(b);
 });

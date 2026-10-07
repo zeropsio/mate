@@ -24,8 +24,10 @@ export type UsageDimension = "person" | "project" | "mate";
 export interface UsageScope {
   /** An owner's `UsageEnvironmentOwner.id`. */
   readonly person?: string | undefined;
-  /** A project's name as the left menu's group header shows it. */
+  /** An HQ application's stable id. */
   readonly project?: string | undefined;
+  /** An old name-based bookmark, rejected visibly after the baseline. */
+  readonly legacyProject?: string | undefined;
   readonly mate?: EnvironmentId | undefined;
 }
 
@@ -41,18 +43,22 @@ export interface UsageMateRow extends UsageAmounts {
   readonly environmentId: EnvironmentId;
   /** The Mate's name, or the environment's label when it is not a Mate. */
   readonly mateName: string;
+  readonly projectId: string | null;
   readonly projectName: string | null;
+  readonly ownerState: "known" | "unassigned" | "unknown";
   readonly owner: UsageEnvironmentOwner | null;
 }
 
 export interface UsagePersonRow extends UsageAmounts {
-  /** Null for the environments whose owner is unknown: "Unassigned". */
+  /** Source-owned current attribution; unread ownership is separate from unassigned. */
+  readonly ownerState: "known" | "unassigned" | "unknown";
   readonly owner: UsageEnvironmentOwner | null;
   readonly mates: readonly UsageMateRow[];
 }
 
 export interface UsageProjectRow extends UsageAmounts {
-  /** Null for the environments outside any named project: "Unassigned". */
+  /** Stable HQ app ID; null while placement is unknown or no app is named. */
+  readonly projectId: string | null;
   readonly projectName: string | null;
   /** Distinct owners of the project's Mates, costliest first. */
   readonly owners: readonly UsageEnvironmentOwner[];
@@ -119,6 +125,8 @@ export function usageDimensions(input: {
         environmentId: row.environmentId,
         mateName:
           identity?.mateName ?? input.labels.get(row.environmentId) ?? String(row.environmentId),
+        projectId: identity?.projectId ?? null,
+        ownerState: identity?.ownerState ?? "unknown",
         projectName: identity?.projectName ?? null,
         owner: identity?.owner ?? null,
         costUsd: row.costUsd,
@@ -130,28 +138,37 @@ export function usageDimensions(input: {
     .toSorted(sort);
 
   const people: UsagePersonRow[] = [
-    ...rollUp(mates, (mate) => mate.owner?.id ?? null, totalCost, totalTokens).values(),
+    ...rollUp(mates, (mate) => mate.owner?.id ?? mate.ownerState, totalCost, totalTokens).values(),
   ]
-    .map((group) => ({ ...group, owner: group.mates[0]?.owner ?? null }))
+    .map((group) => ({
+      ...group,
+      owner: group.mates[0]?.owner ?? null,
+      ownerState: group.mates[0]?.ownerState ?? "unknown",
+    }))
     .toSorted(sort);
 
   const projects: UsageProjectRow[] = [
-    ...rollUp(mates, (mate) => mate.projectName, totalCost, totalTokens),
+    ...rollUp(mates, (mate) => mate.projectId, totalCost, totalTokens),
   ]
-    .map(([projectName, group]) => {
+    .map(([projectId, group]) => {
       const owners = new Map<string, UsageEnvironmentOwner>();
       for (const mate of group.mates) {
         if (mate.owner !== null && !owners.has(mate.owner.id))
           owners.set(mate.owner.id, mate.owner);
       }
-      return { ...group, projectName, owners: [...owners.values()] };
+      return {
+        ...group,
+        projectId,
+        projectName: group.mates[0]?.projectName ?? null,
+        owners: [...owners.values()],
+      };
     })
     .toSorted(sort);
 
   return {
     visible: {
-      person: people.filter((row) => row.owner !== null).length >= 2,
-      project: projects.filter((row) => row.projectName !== null).length >= 2,
+      person: people.length >= 2,
+      project: projects.filter((row) => row.projectId !== null).length >= 2,
       mate: mates.length >= 2,
     },
     people,
@@ -169,10 +186,15 @@ export function usageScopeIncludes(
   if (scope.mate !== undefined && scope.mate !== environmentId) return false;
   const identity = identities.get(environmentId);
   if (scope.person !== undefined && identity?.owner?.id !== scope.person) return false;
-  if (scope.project !== undefined && identity?.projectName !== scope.project) return false;
+  if (scope.project !== undefined && identity?.projectId !== scope.project) return false;
   return true;
 }
 
 export function isUsageScopeEmpty(scope: UsageScope): boolean {
-  return scope.person === undefined && scope.project === undefined && scope.mate === undefined;
+  return (
+    scope.person === undefined &&
+    scope.project === undefined &&
+    scope.legacyProject === undefined &&
+    scope.mate === undefined
+  );
 }

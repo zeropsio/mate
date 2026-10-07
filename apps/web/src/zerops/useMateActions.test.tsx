@@ -5,8 +5,22 @@
  * nothing else changed. *Rename Mate* renames the Mate's project in Zerops, whose name is the
  * Mate's (D3).
  */
-import { RegistryContext } from "@effect/atom-react";
+import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import { readZeropsMembership, type ZeropsMateFace } from "@t3tools/client-runtime/zerops";
+import {
+  makeAccountStore,
+  creationPressStoreAtom,
+  makeOperations,
+  makeHqExecutor,
+  operationProgress,
+  runToEnd,
+  type AccountStore,
+  type Operations,
+  type RunToEnd,
+  type Projection,
+} from "@t3tools/client-runtime/data";
+import { Atom } from "effect/unstable/reactivity";
+import { HqError } from "@t3tools/client-runtime/zerops/hq";
 import type { MateLiveView } from "@t3tools/shared/hqMates";
 import type { HqMateOfferStates, HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 import { EnvironmentId, ThreadId, TurnId } from "@t3tools/contracts";
@@ -26,6 +40,7 @@ import {
 import { KEY_WIDER_WHY, mateAddedBy, useMateActions, type MateActions } from "./useMateActions";
 import type { ZeropsCandidatePresentation } from "./useZeropsCandidates";
 import { mountHqNavigation } from "~/zerops/__fixtures__/hqNavigation";
+import { appAtomRegistry } from "~/rpc/atomRegistry";
 
 interface AssignDialogProps {
   readonly candidates: ReadonlyArray<{ readonly clientUserId: string; readonly name: string }>;
@@ -78,6 +93,10 @@ const mock = vi.hoisted(() => ({
   mateOffers: (_projectId: string): unknown => undefined,
   /** HQ's `PATCH /api/mates/{projectId}`, a write here being the promise the test answers. */
   updateMate: vi.fn(),
+  faceStore: null as AccountStore | null,
+  faceRegistry: null as AtomRegistry.AtomRegistry | null,
+  faceOperations: null as Operations | null,
+  faceRun: null as RunToEnd | null,
   /** HQ's move of a project, and its creation of an application a Mate is moved into. */
   moveProject: vi.fn(),
   moveRemainders: new Map<
@@ -133,6 +152,7 @@ const mock = vi.hoisted(() => ({
   /** The delete dialog as the hook mounts it. */
   deleteDialog: {
     current: null as {
+      readonly onOpenChange: (open: boolean) => void;
       readonly onConfirm: () => void;
       readonly error: string | null;
       readonly cleanup?: boolean;
@@ -177,10 +197,22 @@ vi.mock("./useHqOffers", () => ({
       : { kind: "refused", reason: "not_structure_writer" },
 }));
 vi.mock("./ZeropsAccountData", () => ({
-  useProjection: () => ({
-    renames: currentAccountId() === mock.user?.id ? mock.moveRemainders : new Map(),
-    deletions: [],
-  }),
+  useProjection: (
+    projection: Projection<unknown, unknown>,
+    key: unknown,
+    fallback: Atom.Atom<unknown>,
+  ) => {
+    const value = useAtomValue(
+      projection.name === "faceAction" && key !== null && mock.faceStore !== null
+        ? mock.faceStore.data.project(projection, key)
+        : fallback,
+    );
+    if (projection.name === "faceAction") return value;
+    return {
+      renames: currentAccountId() === mock.user?.id ? mock.moveRemainders : new Map(),
+      deletions: [],
+    };
+  },
   useAccountDataOptional: () =>
     mock.noAccountData
       ? null
@@ -262,7 +294,15 @@ vi.mock("./accountOperations", () => ({
         };
       }
     },
-    readProgress: () => ({ stage: "uncertain" }),
+    readProgress: (id: string) =>
+      mock.faceStore === null
+        ? { stage: "uncertain" }
+        : mock.faceRegistry!.get(mock.faceStore.data.project(operationProgress, id)),
+    // HQ still has no new answer in this surface fixture; owner recovery is tested in hqWrites.
+    askAgain: async (id: string) => {
+      if (!mock.faceStore?.state().operations.has(id))
+        throw new Error("This request belongs to a closed account.");
+    },
     untilMoveRemainder: async ({ requestId }: { requestId: string }) => {
       const remainder = [...mock.moveRemainders.values()].find(
         (value) => value.requestId === requestId,
@@ -280,6 +320,8 @@ vi.mock("./accountOperations", () => ({
     run: async (
       intent: {
         readonly kind: string;
+        readonly orgId?: string;
+        readonly face?: string;
         readonly name?: string;
         readonly projectId?: string;
         readonly to?: unknown;
@@ -287,8 +329,22 @@ vi.mock("./accountOperations", () => ({
         readonly completion?: string;
         readonly tokenId?: string;
       },
-      options: { requestId?: string },
+      options: { requestId?: string; orgId?: string; unobserved?: string },
     ) => {
+      if (intent.kind === "update-mate-face")
+        return mock.faceRun!(
+          {
+            kind: "update-mate-face",
+            orgId: intent.orgId!,
+            projectId: intent.projectId!,
+            face: intent.face!,
+          },
+          {
+            ...(options.requestId === undefined ? {} : { requestId: options.requestId }),
+            orgId: options.orgId!,
+            unobserved: options.unobserved!,
+          },
+        );
       if (options.requestId !== undefined && mock.runReceipts.has(options.requestId))
         return mock.runReceipts.get(options.requestId);
       if (intent.kind === "move-project") {
@@ -382,8 +438,8 @@ vi.mock("./usePressesElsewhere", () => ({
   usePressesElsewhere: () => (projectId: string) => mock.pressElsewhere(projectId),
 }));
 vi.mock("./inventoryContext", async () => {
-  const { useState } = await import("react");
-  return { useProjectDialog: () => useState(null) };
+  const { useDialogState } = await import("./useDialogState");
+  return { useProjectDialog: useDialogState };
 });
 // The organization's official HQ, where a Mate's face is written.
 vi.mock("./accountHq", async (original) => ({
@@ -488,6 +544,7 @@ function Probe() {
 const mounted: ReactTestRenderer[] = [];
 beforeEach(() => {
   openAccountLifetime("user-ada");
+  appAtomRegistry.set(creationPressStoreAtom, makeAccountStore(appAtomRegistry));
   mock.restartContainer.mockReset();
   mock.restartContainer.mockResolvedValue(undefined);
   mock.threads = [];
@@ -545,10 +602,45 @@ afterEach(() => {
     });
   }
   closeAccountLifetime();
+  appAtomRegistry.get(creationPressStoreAtom)?.close();
+  appAtomRegistry.set(creationPressStoreAtom, null);
 });
 
 /** The hook mounted, over `registry` where the case seeds HQ's structure in one. */
 function mount(registry?: AtomRegistry.AtomRegistry): void {
+  registry ??= AtomRegistry.make();
+  mock.faceRegistry = registry;
+  mock.faceStore = makeAccountStore(registry);
+  const unused = () => Promise.reject(new Error("Unexpected HQ write"));
+  mock.faceOperations = makeOperations({
+    makeId: () => "unnamed-face",
+    store: mock.faceStore,
+    executors: {
+      hq: makeHqExecutor({
+        zerops: { mintIntegrationToken: unused, deleteIntegrationToken: unused },
+        apiOf: () => ({
+          updateMate: mock.updateMate,
+          commentOnChange: unused,
+          renameApp: unused,
+          deleteApp: unused,
+          createApp: unused,
+          recordBirth: unused,
+          bindBirth: unused,
+          attachProject: unused,
+          createMate: unused,
+          recordClosedOff: unused,
+          keepDeployToken: unused,
+          release: unused,
+          rollback: unused,
+          redeploy: unused,
+          addService: unused,
+          mergeChange: unused,
+          closeChange: unused,
+        }),
+      }),
+    },
+  });
+  mock.faceRun = runToEnd({ operations: mock.faceOperations, store: mock.faceStore, registry });
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   act(() => {
     mounted.push(
@@ -673,8 +765,8 @@ describe("useMateActions — Change face…", () => {
     await act(async () => {
       answer(undefined);
     });
-    // It closes the way a dialog does, fading over the face it saved, still saying Saving…
-    expect(mock.dialog.current).toMatchObject({ open: false, pending: true });
+    // HQ answered, so the finished dialog fades without claiming it is still saving.
+    expect(mock.dialog.current).toMatchObject({ open: false, pending: false });
     act(() => {
       mock.dialog.current!.onOpenChangeComplete(false);
     });
@@ -684,6 +776,31 @@ describe("useMateActions — Change face…", () => {
     });
     expect(mock.dialog.current).toBeNull();
   });
+
+  it.each([false, true])(
+    "a dismissed face save cannot reopen or replace a later dialog (reopen %s)",
+    async (reopen) => {
+      let answer!: (value: unknown) => void;
+      mock.updateMate.mockReturnValue(
+        new Promise((resolve) => {
+          answer = resolve;
+        }),
+      );
+      mount();
+      openFace(FEN);
+      await act(async () => mock.dialog.current!.onSave({ tint: "rose", shape: "seal" }));
+      act(() => {
+        mock.dialog.current!.onCancel();
+        mock.dialog.current!.onOpenChangeComplete(false);
+      });
+      mock.dialog.current = null;
+      if (reopen) openFace(QUINN);
+      await act(async () => answer(undefined));
+      act(() => mounted[0]!.update(<Probe />));
+      if (reopen) expect(mock.dialog.current).toMatchObject({ open: true, name: "Quinn" });
+      else expect(mock.dialog.current).toBeNull();
+    },
+  );
 
   it("closes the way a dialog does on Cancel too, and then is gone", () => {
     mount();
@@ -704,7 +821,13 @@ describe("useMateActions — Change face…", () => {
   });
 
   it("says a refused write's reason in the dialog, and changes nothing else", async () => {
-    mock.updateMate.mockRejectedValue(new Error("HQ refused the change (forbidden)."));
+    mock.updateMate.mockRejectedValue(
+      new HqError({
+        kind: "refused",
+        code: "forbidden",
+        message: "HQ refused the change (forbidden).",
+      }),
+    );
     mount();
     openFace(FEN);
     await act(async () => {
@@ -717,6 +840,45 @@ describe("useMateActions — Change face…", () => {
     });
     expect(mock.updateMate).toHaveBeenCalledTimes(1);
     expect(actions().trouble).toBeNull();
+  });
+  it("keeps a lost face request visible after closing and reopening without sending it again", async () => {
+    mock.updateMate.mockRejectedValue(
+      new HqError({ kind: "uncertain", code: "network", message: "HQ's answer was lost." }),
+    );
+    mount();
+    openFace(FEN);
+    await act(async () => mock.dialog.current!.onSave({ tint: "rose", shape: "seal" }));
+    expect(mock.dialog.current).toMatchObject({ open: true, pending: false });
+    expect(mock.dialog.current?.error).toContain("may have saved");
+    act(() => {
+      mock.dialog.current!.onCancel();
+      mock.dialog.current!.onOpenChangeComplete(false);
+    });
+    openFace(FEN);
+    expect(mock.dialog.current?.error).toContain("may have saved");
+    await act(async () => mock.dialog.current!.onSave({ tint: "rose", shape: "seal" }));
+    expect(mock.updateMate).toHaveBeenCalledOnce();
+    expect(mock.dialog.current).toMatchObject({ open: true, pending: false });
+  });
+  it("a reopened account can save a face without inheriting the previous lifetime's request", async () => {
+    const registry = AtomRegistry.make();
+    mock.updateMate.mockRejectedValue(
+      new HqError({ kind: "uncertain", code: "network", message: "HQ's answer was lost." }),
+    );
+    mount(registry);
+    openFace(FEN);
+    await act(async () => mock.dialog.current!.onSave({ tint: "rose", shape: "seal" }));
+    act(() => mounted.splice(0).forEach((tree) => tree.unmount()));
+    closeAccountLifetime();
+    openAccountLifetime("user-ada");
+    appAtomRegistry.set(creationPressStoreAtom, makeAccountStore(appAtomRegistry));
+    mock.updateMate.mockReset().mockResolvedValue(undefined);
+    mock.dialog.current = null;
+    mount(registry);
+    openFace(FEN);
+    await act(async () => mock.dialog.current!.onSave({ tint: "rose", shape: "seal" }));
+    expect(mock.updateMate).toHaveBeenCalledOnce();
+    expect(mock.dialog.current).toMatchObject({ open: false, pending: false, error: null });
   });
 });
 
@@ -2002,6 +2164,24 @@ describe("useMateActions — deletion failures finish visibly", () => {
     expect(mock.deleteProject).not.toHaveBeenCalled();
     expect(mock.completeProjectDeletion).not.toHaveBeenCalled();
     expect(mock.deletedTokens).toEqual([]);
+  });
+
+  it("a deletion finishing after dismissal cannot resurrect its confirmation", async () => {
+    let finish!: () => void;
+    mock.deleteProject.mockImplementation(
+      () =>
+        new Promise<{ value: undefined }>((resolve) => {
+          finish = () => resolve({ value: undefined });
+        }),
+    );
+    openDelete();
+    await confirm();
+    act(() => mock.deleteDialog.current!.onOpenChange(false));
+    mock.deleteDialog.current = null;
+    await act(async () => finish());
+    act(() => mounted[0]!.update(<Probe />));
+    expect(mock.deleteDialog.current).toBeNull();
+    expect(mock.completeProjectDeletion).toHaveBeenCalledOnce();
   });
 
   it("removes connection demand before the delete runs and keeps it off through cleanup", async () => {

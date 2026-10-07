@@ -18,6 +18,7 @@ vi.mock("~/zerops/crew/useCrew", async (original) => ({
 }));
 vi.mock("~/zerops/crew/useCrewCommand", () => ({
   useCrewCommand: () => ({
+    files: { state: "unread", waitingFor: "mate-session" },
     send: async () => null,
     readFiles: async () => null,
     writeFiles: async () => false,

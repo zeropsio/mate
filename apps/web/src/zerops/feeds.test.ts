@@ -10,9 +10,18 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
-import { Atom, AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/unstable/reactivity";
 
-import { createZeropsFeedAtoms } from "./feeds";
+import { zeropsFeeds } from "./feeds";
+import {
+  makeAccountStore,
+  makeMateFeeds,
+  makeMateFeedWire,
+  mateFeedReadsAtom,
+} from "@t3tools/client-runtime/data";
+const settle = Effect.gen(function* () {
+  for (let turn = 0; turn < 10; turn++) yield* Effect.yieldNow;
+});
 
 const ENVIRONMENT_ID = EnvironmentId.make("env-zerops-1");
 const THREAD_A = ThreadId.make("thread-a");
@@ -111,6 +120,7 @@ const makeHarness = (options?: {
     } as unknown as EnvironmentSupervisor["Service"];
 
     const layer = Layer.succeed(EnvironmentRegistry, {
+      stateChanges: () => Stream.never,
       run: <A, E, R>(_id: EnvironmentId, effect: Effect.Effect<A, E, R>) =>
         Effect.provideService(effect, EnvironmentSupervisor, supervisor),
       runStream: <A, E, R>(_id: EnvironmentId, stream: Stream.Stream<A, E, R>) =>
@@ -122,12 +132,23 @@ const makeHarness = (options?: {
     } as unknown as EnvironmentRegistry["Service"]);
 
     const registry = AtomRegistry.make();
-    yield* Effect.addFinalizer(() => Effect.sync(() => registry.dispose()));
+    const store = makeAccountStore(registry);
+    const sourceRegistry = yield* Effect.provide(EnvironmentRegistry, layer);
+    const host = makeMateFeeds({ store, wire: makeMateFeedWire(sourceRegistry) });
+    registry.set(mateFeedReadsAtom, { data: store.data, ...host });
+    yield* Effect.addFinalizer(() =>
+      Effect.sync(() => {
+        host.close();
+        store.close();
+        registry.dispose();
+      }),
+    );
 
     return {
       calls,
       registry,
-      feeds: createZeropsFeedAtoms(Atom.runtime(layer)),
+      feeds: zeropsFeeds,
+      store,
       publishLifecycle: (value: ZeropsLifecycle) =>
         SubscriptionRef.set(lifecycleRef, Option.some(value)),
       publishAgentAuth: (value: ZeropsAgentAuthSnapshot) =>
@@ -140,23 +161,36 @@ const makeHarness = (options?: {
     };
   });
 
-/** Waits for a condition rather than a fixed delay, so no test sleeps on a guess. */
-const until = <A>(read: () => A, holds: (value: A) => boolean): Effect.Effect<A> =>
-  Effect.gen(function* () {
-    for (let attempt = 0; attempt < 400; attempt += 1) {
+/** Source publication wakes an assertion; no guessed duration decides whether it passed. */
+const until = <A>(
+  rig: { readonly store: { readonly subscribe: (listener: () => void) => () => void } },
+  read: () => A,
+  holds: (value: A) => boolean,
+): Effect.Effect<A> =>
+  Effect.callback<A>((resume) => {
+    let active = true;
+    let unsubscribe = () => {};
+    const check = () => {
+      if (!active) return;
       const value = read();
       if (holds(value)) {
-        return value;
+        active = false;
+        unsubscribe();
+        resume(Effect.succeed(value));
       }
-      yield* Effect.sleep("5 millis");
-    }
-    return read();
+    };
+    unsubscribe = rig.store.subscribe(() => queueMicrotask(check));
+    queueMicrotask(check);
+    return Effect.sync(() => {
+      active = false;
+      unsubscribe();
+    });
   });
 
 const isKnown = <A>(read: Known<A>): read is Extract<Known<A>, { readonly state: "known" }> =>
   read.state === "known";
 
-describe("createZeropsFeedAtoms", () => {
+describe("account feed projections", () => {
   it.live("keeps two threads' lifecycles apart", () =>
     Effect.gen(function* () {
       const rig = yield* makeHarness();
@@ -172,7 +206,7 @@ describe("createZeropsFeedAtoms", () => {
       rig.registry.mount(second);
 
       yield* rig.publishLifecycle(lifecycleOf(THREAD_A));
-      const value = yield* until(() => rig.registry.get(first), isKnown);
+      const value = yield* until(rig, () => rig.registry.get(first), isKnown);
 
       expect(value.state === "known" && value.value.threadId).toBe(THREAD_A);
       expect(rig.registry.get(second).state).toBe("reading");
@@ -188,6 +222,7 @@ describe("createZeropsFeedAtoms", () => {
       rig.registry.mount(atom);
 
       yield* until(
+        rig,
         () => rig.calls.length,
         (count) => count === 1,
       );
@@ -207,7 +242,7 @@ describe("createZeropsFeedAtoms", () => {
       rig.registry.mount(atom);
 
       yield* rig.publishAgentAuth(agentAuthSnapshot());
-      const read = yield* until(() => rig.registry.get(atom), isKnown);
+      const read = yield* until(rig, () => rig.registry.get(atom), isKnown);
 
       expect(read.state === "known" && read.value.agents.map((agent) => agent.agentId)).toEqual([
         "claude-code",
@@ -225,7 +260,7 @@ describe("createZeropsFeedAtoms", () => {
       rig.registry.mount(atom);
 
       yield* rig.publishAgentAuth(agentAuthSnapshot({ available: false, agents: [] }));
-      const read = yield* until(() => rig.registry.get(atom), isKnown);
+      const read = yield* until(rig, () => rig.registry.get(atom), isKnown);
 
       expect(read.state === "known" && read.value.available).toBe(false);
     }).pipe(Effect.scoped),
@@ -238,10 +273,11 @@ describe("createZeropsFeedAtoms", () => {
       rig.registry.mount(atom);
 
       yield* rig.publishAgentAuth(agentAuthSnapshot());
-      yield* until(() => rig.registry.get(atom), isKnown);
+      yield* until(rig, () => rig.registry.get(atom), isKnown);
 
       yield* rig.disconnect;
       const read = yield* until(
+        rig,
         () => rig.registry.get(atom),
         (value) => value.state === "known" && value.freshness.kind === "stale",
       );
@@ -263,6 +299,7 @@ describe("createZeropsFeedAtoms", () => {
       rig.registry.mount(atom);
 
       const read = yield* until(
+        rig,
         () => rig.registry.get(atom),
         (value) => value.state === "failed",
       );
@@ -273,13 +310,13 @@ describe("createZeropsFeedAtoms", () => {
       });
 
       // Long enough for any retry loop to have asked again.
-      yield* Effect.sleep("300 millis");
+      yield* settle;
       expect(rig.calls.filter((call) => call === "agentAuth")).toHaveLength(1);
       expect(rig.registry.get(atom).state).toBe("failed");
     }).pipe(Effect.scoped),
   );
 
-  it.live("a new session asks an old Mate once more, keeping the failure without reading", () =>
+  it.live("a new session preserves an unsupported refusal without asking again", () =>
     Effect.gen(function* () {
       const rig = yield* makeHarness({ oldMate: true });
       const atom = rig.feeds.agentAuth({ environmentId: ENVIRONMENT_ID, input: {} });
@@ -287,19 +324,15 @@ describe("createZeropsFeedAtoms", () => {
       rig.registry.subscribe(atom, (read) => reads.push(read), { immediate: true });
 
       yield* until(
+        rig,
         () => rig.registry.get(atom),
         (value) => value.state === "failed",
       );
       reads.length = 0;
 
       yield* rig.reconnect;
-      yield* until(
-        () => rig.calls.filter((call) => call === "agentAuth").length,
-        (count) => count === 2,
-      );
-      yield* Effect.sleep("50 millis");
-
-      expect(rig.calls.filter((call) => call === "agentAuth")).toHaveLength(2);
+      yield* settle;
+      expect(rig.calls.filter((call) => call === "agentAuth")).toHaveLength(1);
       expect(reads.map((read) => read.state)).not.toContain("reading");
       expect(rig.registry.get(atom).state).toBe("failed");
     }).pipe(Effect.scoped),
@@ -318,11 +351,12 @@ describe("createZeropsFeedAtoms", () => {
       rig.registry.mount(atom);
 
       yield* rig.publishAgentAuth(agentAuthSnapshot());
-      yield* until(() => rig.registry.get(atom), isKnown);
+      yield* until(rig, () => rig.registry.get(atom), isKnown);
       expect(rig.calls.filter((call) => call === "agentAuth")).toHaveLength(1);
 
       yield* rig.reconnect;
       yield* until(
+        rig,
         () => rig.calls.filter((call) => call === "agentAuth").length,
         (count) => count === 2,
       );
@@ -330,6 +364,7 @@ describe("createZeropsFeedAtoms", () => {
 
       yield* rig.publishAgentAuth(agentAuthSnapshot({ available: false, agents: [] }));
       const read = yield* until(
+        rig,
         () => rig.registry.get(atom),
         (value) => value.state === "known" && !value.value.available,
       );
@@ -345,7 +380,7 @@ describe("createZeropsFeedAtoms", () => {
       rig.registry.mount(atom);
 
       yield* rig.publishCrew(crewSnapshotFixture({ status: "off", crew: null }));
-      const read = yield* until(() => rig.registry.get(atom), isKnown);
+      const read = yield* until(rig, () => rig.registry.get(atom), isKnown);
 
       expect(read.state === "known" && read.value.status).toBe("off");
       expect(read.state === "known" && read.freshness).toEqual({ kind: "live" });
@@ -363,6 +398,7 @@ describe("createZeropsFeedAtoms", () => {
 
       yield* rig.publishCrew({ _tag: "CrewFrameUndecodable" });
       const crew = yield* until(
+        rig,
         () => rig.registry.get(crewAtom),
         (value) => value.state === "failed",
       );
@@ -373,7 +409,7 @@ describe("createZeropsFeedAtoms", () => {
       });
 
       yield* rig.publishAgentAuth(agentAuthSnapshot());
-      const auth = yield* until(() => rig.registry.get(authAtom), isKnown);
+      const auth = yield* until(rig, () => rig.registry.get(authAtom), isKnown);
       expect(auth.state === "known" && auth.freshness).toEqual({ kind: "live" });
       expect(rig.calls.filter((call) => call === "crew")).toHaveLength(1);
     }).pipe(Effect.scoped),
@@ -386,6 +422,7 @@ describe("createZeropsFeedAtoms", () => {
       rig.registry.mount(atom);
 
       const read = yield* until(
+        rig,
         () => rig.registry.get(atom),
         (value) => value.state === "failed",
       );

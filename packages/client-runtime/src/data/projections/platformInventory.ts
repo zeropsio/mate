@@ -4,6 +4,7 @@ import { organizationProjects } from "./projects.ts";
 import { platformAccess } from "./platformAccess.ts";
 import { sameValue } from "./equal.ts";
 import type { Projection } from "../store.ts";
+import { linkKeys } from "../model.ts";
 import { projectsScope } from "../families/project.ts";
 import type { ProjectValue } from "../families/project.ts";
 export interface PlatformInventory {
@@ -35,6 +36,11 @@ export const platformInventory: Projection<
       }
       return access.kind === "allowed";
     });
+    const link = read.stream(linkKeys.zerops(orgId));
+    const scope = read.stream(projectsScope(orgId));
+    const failedRecovery =
+      (link.failures > 0 && link.phase !== "live") ||
+      (scope.failures > 0 && scope.phase !== "live");
     return {
       projects,
       denied: [...denied],
@@ -42,11 +48,7 @@ export const platformInventory: Projection<
       live: roster.live,
       failure: roster.unavailableReason === undefined ? null : "Zerops isn't answering.",
       trouble:
-        roster.unavailableReason !== undefined
-          ? "refused"
-          : roster.reconnecting
-            ? "retrying"
-            : null,
+        roster.unavailableReason !== undefined ? "refused" : failedRecovery ? "retrying" : null,
     };
   },
   equals: sameValue,

@@ -19,6 +19,7 @@ import { normalizeOrigin } from "@t3tools/client-runtime/zerops/candidates";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import {
   presentCandidates,
+  heldCandidates,
   type CandidateRow,
   type TakenBotNames,
 } from "@t3tools/client-runtime/zerops/projections";
@@ -31,6 +32,7 @@ import {
   takenBotNamesAtom,
   zeropsEnvironmentsAtom,
 } from "../state/zerops";
+import { sameValue } from "../lib/sameValue";
 import { invalidateZerops } from "./accountInvalidations";
 import { useAccountDataOptional } from "./ZeropsAccountData";
 import { useZeropsInventory } from "./inventoryContext";
@@ -145,6 +147,15 @@ export const candidateListingAtom = Atom.make(
     });
   },
 ).pipe(Atom.withLabel("zerops:candidate-listing"));
+
+export const heldCandidateRowsAtom = Atom.make(
+  (get) => heldCandidates(get(candidateListingAtom)).rows,
+).pipe(Atom.withEquality(sameValue));
+
+/** Held rows for readers that draw content, without claiming the listing is fresh or complete. */
+export function useHeldZeropsCandidates() {
+  return useAtomValue(heldCandidateRowsAtom);
+}
 
 export function useZeropsCandidates(): {
   /**

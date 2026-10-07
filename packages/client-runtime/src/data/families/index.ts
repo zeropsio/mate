@@ -1,4 +1,35 @@
+import { mateShellFamily, mateThreadFamily } from "./mateConversation.ts";
+import { mateGitRemoteFamily } from "./mateGitRemote.ts";
+import { mateRepositoryDiscoveryFamily } from "./mateRepositoryDiscovery.ts";
+import { mateRepositoryFamily } from "./mateRepository.ts";
+import { mateThreadSearchFamily } from "./mateThreadSearch.ts";
+import { mateTurnDiffFamily } from "./mateTurnDiff.ts";
+import { mateThreadDiffFamily } from "./mateThreadDiff.ts";
+import { mateWorkflowScriptFamily } from "./mateWorkflowScript.ts";
+import { mateTraceDiagnosticsFamily } from "./mateTraceDiagnostics.ts";
+import { mateProcessDiagnosticsFamily } from "./mateProcessDiagnostics.ts";
+import { mateProcessResourceHistoryFamily } from "./mateProcessResourceHistory.ts";
+import { mateResourceTelemetryHistoryFamily } from "./mateResourceTelemetryHistory.ts";
+import { mateArchiveFamily } from "./mateArchive.ts";
+import { mateVcsFamily } from "./mateVcs.ts";
+import { hqGitCredentialsFamily, hqGitCredentialRequestFamily } from "./hqGitCredentials.ts";
+import { mateAssetUrlFamily } from "./mateAssetUrl.ts";
+import { mateFilesystemFamily } from "./mateFilesystem.ts";
+import { matePullRequestFamily } from "./matePullRequest.ts";
+import { mateReviewFamily } from "./mateReview.ts";
+import { mateReviewFileFamily } from "./mateReviewFile.ts";
+import { mateWorkspaceFileFamily } from "./mateWorkspaceFile.ts";
+import { mateWorkspaceEntriesFamily } from "./mateWorkspaceEntries.ts";
+import { mateWorkspacePathsFamily } from "./mateWorkspacePaths.ts";
+import { mateWorkspaceContentsFamily } from "./mateWorkspaceContents.ts";
+import { mateMcpServersFamily } from "./mateMcpServers.ts";
+import { mateVcsRefsFamily } from "./mateVcsRefs.ts";
+import { hqRepositorySourceFamily } from "./hqRepositorySource.ts";
+import { mateActionRequestFamily } from "./mateActionRequest.ts";
+import { MATE_FEED_FAMILIES } from "./mateFeeds.ts";
 import { mateUpdateAvailabilityFamily, mateUpdateRequestFamily } from "./mateUpdate.ts";
+import { mateSetupFamily } from "./mateSetup.ts";
+import { locationLatencyFamily } from "./locationLatency.ts";
 import { hqLifecycleFamily } from "./hqLifecycle.ts";
 import { mateImageFamily } from "./mateImage.ts";
 /**
@@ -24,6 +55,7 @@ import { hqAppDetailFamily } from "./hqAppDetail.ts";
 import { hqProtocolFamily } from "./hqProtocol.ts";
 import { hqPictureFamily } from "./hqPicture.ts";
 import { hqMateFamily } from "./hqMate.ts";
+import { mateHealthFamily } from "./mateHealth.ts";
 import { mateAttentionFamily } from "./mateAttention.ts";
 import { organizationLocationsFamily } from "./organizationLocations.ts";
 import { organizationMembersFamily } from "./organizationMembers.ts";
@@ -63,6 +95,40 @@ export function defineFamilies(
 }
 
 export const FAMILIES = defineFamilies([
+  mateShellFamily,
+  mateThreadFamily,
+  mateGitRemoteFamily,
+  mateRepositoryDiscoveryFamily,
+  mateRepositoryFamily,
+  mateThreadSearchFamily,
+  mateTurnDiffFamily,
+  mateThreadDiffFamily,
+  mateWorkflowScriptFamily,
+  mateTraceDiagnosticsFamily,
+  mateProcessDiagnosticsFamily,
+  mateProcessResourceHistoryFamily,
+  mateResourceTelemetryHistoryFamily,
+
+  mateArchiveFamily,
+  mateVcsFamily,
+  hqGitCredentialsFamily,
+  hqGitCredentialRequestFamily,
+  mateAssetUrlFamily,
+  mateFilesystemFamily,
+  matePullRequestFamily,
+  mateReviewFamily,
+  mateReviewFileFamily,
+  mateWorkspaceFileFamily,
+  mateWorkspaceEntriesFamily,
+  mateWorkspacePathsFamily,
+  mateWorkspaceContentsFamily,
+  mateMcpServersFamily,
+  mateVcsRefsFamily,
+
+  hqRepositorySourceFamily,
+  mateSetupFamily,
+  ...Object.values(MATE_FEED_FAMILIES),
+  mateActionRequestFamily,
   hqLifecycleFamily,
   projectFamily,
   processFamily,
@@ -76,11 +142,13 @@ export const FAMILIES = defineFamilies([
   hqMateFamily,
   serviceFamily,
   mateAttentionFamily,
+  mateHealthFamily,
   hqDiscussionFamily,
   usageFamily,
   usageHistoryFamily,
   organizationMembersFamily,
   organizationLocationsFamily,
+  locationLatencyFamily,
   serviceAgentsFamily,
   publicRoutingFamily,
   hqAppDetailFamily,
@@ -138,8 +206,9 @@ export function streamMode(key: string): "realtime" | "sampled" | "once" {
   if (key.startsWith("mate:image/")) return "once";
   if (key.startsWith("mate:browser-") || key.startsWith("mate:database-session-"))
     return "realtime";
-  if (key.startsWith("mate:"))
-    return bySuffix.get(key.split(":")[2] ?? "")?.spec.scope.mode ?? "sampled";
+  const declaredMode = bySuffix.get(key.split(":")[2] ?? "")?.spec.scope.mode;
+  if (declaredMode !== undefined) return declaredMode;
+  if (key.startsWith("mate:")) return "sampled";
   const sampled = bySuffix.get(key.split(":")[2] ?? "")?.spec.sampled;
   if (sampled === undefined) return "realtime";
   return sampled.freshMs === null ? "once" : "sampled";

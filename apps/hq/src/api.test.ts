@@ -1866,12 +1866,16 @@ describe("HQ API", () => {
             appName: null,
             changes: [],
           };
-          assert.deepStrictEqual(yield* link.next("state"), {
-            mate: { ...state, standupRequestedBy: null, closedOff: false },
+          assert.deepStrictEqual((yield* link.next("state")).mate, {
+            ...state,
+            standupRequestedBy: null,
+            closedOff: false,
           });
           yield* call("POST", "/api/mates/P_MATE/closed-off", { session: owner });
-          assert.deepStrictEqual(yield* link.next("state"), {
-            mate: { ...state, standupRequestedBy: null, closedOff: true },
+          assert.deepStrictEqual((yield* link.next("state")).mate, {
+            ...state,
+            standupRequestedBy: null,
+            closedOff: true,
           });
 
           // The owner operates the Mate and follows its overview; a reader only sees it listed.
@@ -1950,18 +1954,16 @@ describe("HQ API", () => {
             logins: { "claude-code": login("U1", "U1"), codex: login(null, null) },
           }),
         });
-        assert.deepStrictEqual((yield* link.next("state")) as unknown, {
-          mate: {
-            projectId: "P_MATE",
-            name: "P_MATE",
-            face: "face-1",
-            standupRequestedBy: null,
-            closedOff: false,
-            signers: { "claude-code": "U1" },
-            appId: null,
-            appName: null,
-            changes: [],
-          },
+        assert.deepStrictEqual((yield* link.next("state")).mate, {
+          projectId: "P_MATE",
+          name: "P_MATE",
+          face: "face-1",
+          standupRequestedBy: null,
+          closedOff: false,
+          signers: { "claude-code": "U1" },
+          appId: null,
+          appName: null,
+          changes: [],
         });
         assert.deepStrictEqual(yield* signers, { "claude-code": "U1" });
         // A later sign-in replaces the earlier one; a login that lost its signer keeps the record.

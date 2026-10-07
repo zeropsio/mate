@@ -19,7 +19,6 @@ import {
   mateRowPropsEqual,
   ownerBadge,
   mateRowAskLine,
-  mateRowSentAsk,
   mateRowDraft,
   mateRowReading,
   mateRowView,
@@ -554,7 +553,7 @@ describe("mateRowView — a row's state lives in its right slot and its third li
       state: "paused",
       rowFace: "sleep",
       slot: { kind: "paused", until: "2026-09-29T14:20:00.000Z" },
-      dot: undefined,
+      dot: "attention",
       strong: false,
       reply: {
         kind: "words",
@@ -577,11 +576,11 @@ describe("mateRowView — a row's state lives in its right slot and its third li
       state: "paused",
       rowFace: "sleep",
       slot: { kind: "paused", until: "2026-09-29T14:20:00.000Z" },
-      dot: undefined,
+      dot: "attention",
       strong: false,
       reply: {
         kind: "words",
-        text: "Thumbnails load lazily now; the gallery opens in 90 ms.",
+        text: "The Mate hit the Claude limit.",
         tone: "muted",
       },
     },
@@ -698,7 +697,7 @@ describe("mateRowView — a row's state lives in its right slot and its third li
       slot: { kind: "age" },
       dot: "failed",
       ask: undefined,
-      reply: { kind: "words", text: "Setting up stopped", tone: "failed" },
+      reply: { kind: "words", text: "Setting up stopped", tone: "attention" },
     },
     {
       case: "the stand-up asking the person: any Mate's question",
@@ -960,7 +959,7 @@ describe("mateRowReading — the face follows the work, and the words never outr
       }),
       state: "paused",
       face: "sleep",
-      dot: undefined,
+      dot: "attention",
     },
     {
       case: "stopped on an error, its change waits: the error shows",
@@ -1046,10 +1045,10 @@ describe("mateComingRowView — a Mate coming up, or one that did not come", () 
       dot: undefined,
     },
     {
-      case: "not created: asleep, the red dot of something broken",
+      case: "not created: asleep, the attention dot",
       coming: { kind: "failed", line: "Could not be created.", verb: "remove" },
       face: "sleep",
-      dot: "failed",
+      dot: "attention",
     },
   ] as const)("$case", ({ coming, face, dot }) => {
     expect(mateComingRowView(view, coming)).toMatchObject({
@@ -1172,21 +1171,21 @@ describe("mateBornLine — a Mate being born, as its row's one line", () => {
       },
       nowMs: SINCE,
       text: "Setting up stopped",
-      tone: "failed",
+      tone: "attention",
     },
     {
       case: "the platform refused it",
       coming: { kind: "failed", line: "Could not be created.", verb: "remove" },
       nowMs: SINCE,
       text: "Setting up stopped",
-      tone: "failed",
+      tone: "attention",
     },
     {
       case: "a New project's step stopped before the platform took anything",
       coming: { kind: "failed", line: "Git hosting could not be set up.", verb: "try-again" },
       nowMs: SINCE,
       text: "Setting up stopped",
-      tone: "failed",
+      tone: "attention",
     },
   ] as const)("$case", ({ coming, nowMs, text, tone }) => {
     const line = mateBornLine(coming);
@@ -1216,7 +1215,7 @@ describe("pendingBornLine — a Mate the listing does not hold yet", () => {
       case: "stopped",
       member: { ...MEMBER, failed: true },
       text: "Setting up stopped",
-      tone: "failed",
+      tone: "attention",
     },
   ] as const)("$case", ({ member, text, tone }) => {
     const line = pendingBornLine(member);
@@ -1603,89 +1602,6 @@ describe("mateRowOffersMenu", () => {
     },
   ])("$case: $want", ({ deleting, coming, want }) => {
     expect(mateRowOffersMenu({ deleting, coming })).toBe(want);
-  });
-});
-
-// A message sent from this browser stands in the row's second line until its echo reaches the
-// row's conversation (live, 2026-10-02: the draft cleared on send 0.4 s before the echo, and the
-// row read "Nothing asked yet" in between). The echo carries the message's own time, the one this
-// browser stamped it with: compared with it, no two clocks meet.
-describe("mateRowSentAsk — what this browser just sent, until the conversation says it", () => {
-  const SENT = {
-    messageId: "message-2",
-    threadId: "thread-1",
-    text: "Build a minimal todo app",
-    at: "2026-10-02T10:00:00.000Z",
-  };
-  const activity = (overrides: Partial<ZeropsAgentActivity> = {}): ZeropsAgentActivity => ({
-    threadId: ThreadId.make("thread-1"),
-    kind: "idle",
-    status: null,
-    face: "idle",
-    subject: "Speed up the photo gallery",
-    at: "2026-10-02T09:00:00.000Z",
-    askedAt: "2026-10-02T08:59:00.000Z",
-    snippet: "Thumbnails load lazily now.",
-    unread: false,
-    pausedUntil: undefined,
-    threadKey: "env:thread-1",
-    task: "Speed up the photo gallery",
-    ...overrides,
-  });
-
-  it.each([
-    { case: "nothing sent", sent: undefined, activity: activity(), read: true, text: undefined },
-    {
-      case: "sent, its conversations read and none there: the first, the row's",
-      sent: SENT,
-      activity: undefined,
-      read: true,
-      text: SENT.text,
-    },
-    {
-      case: "sent, its conversations not read: nothing to say it is the row's",
-      sent: SENT,
-      activity: undefined,
-      read: false,
-      text: undefined,
-    },
-    {
-      case: "sent, the conversation not caught up",
-      sent: SENT,
-      activity: activity(),
-      read: true,
-      text: SENT.text,
-    },
-    {
-      case: "sent, the conversation says it",
-      sent: SENT,
-      activity: activity({ kind: "working", task: SENT.text, askedAt: SENT.at }),
-      read: true,
-      text: undefined,
-    },
-    {
-      case: "sent, said, the server's clock behind this browser's",
-      sent: SENT,
-      activity: activity({ task: SENT.text, at: "2026-10-02T09:59:58.000Z", askedAt: SENT.at }),
-      read: true,
-      text: undefined,
-    },
-    {
-      case: "sent, not said yet, the server's clock ahead of this browser's",
-      sent: SENT,
-      activity: activity({ at: "2026-10-02T10:00:03.000Z" }),
-      read: true,
-      text: SENT.text,
-    },
-    {
-      case: "sent into another conversation than the row's",
-      sent: { ...SENT, threadId: "thread-2" },
-      activity: activity(),
-      read: true,
-      text: undefined,
-    },
-  ])("$case", ({ sent, activity, read, text }) => {
-    expect(mateRowSentAsk(sent, activity, read)).toBe(text);
   });
 });
 

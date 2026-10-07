@@ -1,10 +1,9 @@
-import { preloadPatchFile } from "@pierre/diffs/ssr";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ComposerPromptEditor, type ComposerPromptEditorHandle } from "../ComposerPromptEditor";
 import { terminalThemeFromApp } from "../ThreadTerminalDrawer";
 import { useTheme } from "../../hooks/useTheme";
 import { DISCONNECTED_COMPOSER_PLACEHOLDER } from "../../composerPlaceholder";
-import { resolveDiffThemeName, type DiffThemeName } from "../../lib/diffRendering";
+import { resolveDiffThemeName, type DiffThemeName } from "../../lib/diffPresentation";
 import { GhosttyTerminalSurface } from "~/terminal/ghostty/surface";
 
 // The font previews are the real surfaces, not lookalikes: the composer's
@@ -77,10 +76,14 @@ const diffPreviewHtmlByTheme = new Map<DiffThemeName, Promise<readonly string[]>
 function loadDiffPreviewHtml(theme: DiffThemeName): Promise<readonly string[]> {
   let promise = diffPreviewHtmlByTheme.get(theme);
   if (promise === undefined) {
-    promise = preloadPatchFile({
-      patch: DIFF_PREVIEW_PATCH,
-      options: { diffStyle: "unified", theme },
-    }).then((results) => results.map((result) => result.prerenderedHTML));
+    promise = import("@pierre/diffs/ssr")
+      .then(({ preloadPatchFile }) =>
+        preloadPatchFile({
+          patch: DIFF_PREVIEW_PATCH,
+          options: { diffStyle: "unified", theme },
+        }),
+      )
+      .then((results) => results.map((result) => result.prerenderedHTML));
     diffPreviewHtmlByTheme.set(theme, promise);
   }
   return promise;

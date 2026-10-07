@@ -924,20 +924,22 @@ function OpenCommandPaletteDialog(props: {
   );
 
   const addProjectEnvironmentOptions = useMemo(() => {
-    const options = environments.map((environment): AddProjectEnvironmentOption => {
-      const isPrimary = environment.entry.target._tag === "PrimaryConnectionTarget";
-      return {
-        environmentId: environment.environmentId,
-        label: resolveEnvironmentOptionLabel({
-          isPrimary,
+    const options = environments
+      .filter((environment) => canCreateProjectInEnvironment(environment.connection.phase))
+      .map((environment): AddProjectEnvironmentOption => {
+        const isPrimary = environment.entry.target._tag === "PrimaryConnectionTarget";
+        return {
           environmentId: environment.environmentId,
-          runtimeLabel: environment.label,
-        }),
-        isPrimary,
-        isConnected: canCreateProjectInEnvironment(environment.connection.phase),
-        status: connectionStatusText(environment.connection),
-      };
-    });
+          label: resolveEnvironmentOptionLabel({
+            isPrimary,
+            environmentId: environment.environmentId,
+            runtimeLabel: environment.label,
+          }),
+          isPrimary,
+          isConnected: canCreateProjectInEnvironment(environment.connection.phase),
+          status: connectionStatusText(environment.connection),
+        };
+      });
 
     options.sort((left, right) => {
       if (left.isPrimary !== right.isPrimary) {
@@ -1583,6 +1585,13 @@ function OpenCommandPaletteDialog(props: {
         void startAddProjectSourceSelection(environmentId);
         return;
       }
+      // With no connected environment there is nothing to browse, so the only
+      // useful next step is connecting one.
+      if (addProjectEnvironmentOptions.length === 0) {
+        setOpen(false);
+        void navigate({ to: "/settings/connections" });
+        return;
+      }
       if (addProjectEnvironmentOptions.length > 1 || defaultAddProjectEnvironmentId === null) {
         pushPaletteView({
           addonIcon: <FolderPlusIcon className={ADDON_ICON_CLASS} />,
@@ -1609,7 +1618,9 @@ function OpenCommandPaletteDialog(props: {
       addProjectEnvironmentGroups,
       addProjectEnvironmentOptions.length,
       defaultAddProjectEnvironmentId,
+      navigate,
       pushPaletteView,
+      setOpen,
       startAddProjectSourceSelection,
     ],
   );
@@ -2622,6 +2633,11 @@ function OpenCommandPaletteDialog(props: {
           </div>
         </div>
       ) : null}
+      {threadSearch.incomplete && !threadSearch.isPending ? (
+        <p role="status" className="px-3 pb-2 text-xs text-muted-foreground">
+          Some conversations could not be searched.
+        </p>
+      ) : null}
       <CommandPaletteResults
         groups={displayedGroups}
         highlightedItemValue={highlightedItemValue}
@@ -2643,9 +2659,11 @@ function OpenCommandPaletteDialog(props: {
                 ? {
                     emptyStateMessage: "Press Enter to create this folder and add it as a project.",
                   }
-                : threadSearch.isPending
-                  ? { emptyStateMessage: "Searching thread messages…" }
-                  : { emptyStateMessage: paletteNoMatchMessage({ isActionsOnly, listsRead }) })}
+                : threadSearch.incomplete && !threadSearch.isPending
+                  ? { emptyStateMessage: "Some conversations could not be searched." }
+                  : threadSearch.isPending
+                    ? { emptyStateMessage: "Searching thread messages…" }
+                    : { emptyStateMessage: paletteNoMatchMessage({ isActionsOnly, listsRead }) })}
       />
     </CommandPaletteContent>
   );

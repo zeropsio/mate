@@ -24,6 +24,8 @@ import type {
 } from "@t3tools/contracts";
 import { ArrowUpRightIcon, CheckIcon, CopyIcon, RotateCcwIcon } from "lucide-react";
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -34,7 +36,7 @@ import {
 } from "react";
 
 import { ClaudeAI, OpenAI } from "~/components/Icons";
-import { TerminalViewport } from "~/components/ThreadTerminalDrawer";
+import { SurfaceLoading } from "../SurfaceLoading";
 import { Button } from "~/components/ui/button";
 import {
   Dialog,
@@ -75,6 +77,12 @@ import {
   type AgentSignInSteps,
 } from "./ZeropsAgentSignIn.logic";
 
+const TerminalViewport = lazy(() =>
+  import("~/components/ThreadTerminalDrawer").then((module) => ({
+    default: module.TerminalViewport,
+  })),
+);
+
 const EASE_OUT_STRONG = "cubic-bezier(0.23, 1, 0.32, 1)";
 
 /** Where an opening card comes from: the chosen card's box, or — a switch, a retry — a fade. */
@@ -100,6 +108,8 @@ export interface AgentSignInViewProps {
   readonly title?: string | undefined;
   /** The Mate takes Claude's code in a field (`agentLoginCode`). */
   readonly codeField: boolean;
+  /** Retained login instructions are inert while their Mate is disconnected. */
+  readonly available?: boolean;
   readonly onStart: (agentId: ZeropsAgentId) => void;
   readonly onCancel: (agentId: ZeropsAgentId) => void;
   /** Resolves whether the Mate took the code. */
@@ -134,7 +144,7 @@ export function AgentSignInView(props: AgentSignInViewProps) {
     origin.current = from;
     setChosen(agentId);
     setSince(Date.now());
-    props.onStart(agentId);
+    if (props.available !== false) props.onStart(agentId);
   };
 
   // A dialog opened on an agent starts its login at once, unless the agent holds a sign-in: a login
@@ -146,7 +156,8 @@ export function AgentSignInView(props: AgentSignInViewProps) {
   const [pressed, setPressed] = useState(false);
   const started = useRef(false);
   useEffect(() => {
-    if (!fixed || waitsForPress || started.current || chosen === null) return;
+    if (!fixed || waitsForPress || started.current || chosen === null || props.available === false)
+      return;
     started.current = true;
     props.onStart(chosen);
   }, [chosen, fixed, props, waitsForPress]);
@@ -167,6 +178,7 @@ export function AgentSignInView(props: AgentSignInViewProps) {
       {agents.map((agent) => (
         <AgentCard
           agentId={agent.agentId}
+          disabled={props.available === false}
           key={agent.agentId}
           onChoose={(event) => {
             setCardsLeaving(true);
@@ -182,6 +194,8 @@ export function AgentSignInView(props: AgentSignInViewProps) {
   return (
     <div
       className="arrival-sign-in"
+      inert={props.available === false}
+      aria-disabled={props.available === false || undefined}
       data-arrives={props.arrives === true ? "" : undefined}
       data-open={open ?? undefined}
       data-zerops-surface="agent-sign-in"
@@ -251,14 +265,22 @@ function AgentCard({
   agentId,
   usual,
   onChoose,
+  disabled,
 }: {
+  readonly disabled: boolean;
   readonly agentId: ZeropsAgentId;
   readonly usual: boolean;
   readonly onChoose: (event: MouseEvent<HTMLButtonElement>) => void;
 }) {
   const card = AGENT_SIGN_IN_CARDS[agentId];
   return (
-    <button className="arrival-card" data-agent-id={agentId} onClick={onChoose} type="button">
+    <button
+      disabled={disabled}
+      className="arrival-card"
+      data-agent-id={agentId}
+      onClick={onChoose}
+      type="button"
+    >
       <AgentLogoTile agentId={agentId} />
       <span className="arrival-card-words">
         <span className="arrival-card-name">
@@ -281,6 +303,7 @@ function OpenCard({
   mateName,
   title,
   codeField,
+  available = true,
   origin,
   since,
   replace,
@@ -374,6 +397,10 @@ function OpenCard({
   }, [origin]);
 
   const openPage = (event: MouseEvent) => {
+    if (!available) {
+      event.preventDefault();
+      return;
+    }
     setOpenedAt(Date.now());
     if (url !== undefined) return;
     // Its address is not printed yet: the tab opens now, on the person's press, and is sent there.
@@ -387,7 +414,7 @@ function OpenCard({
 
   const submit = (code: string) => {
     const trimmed = code.trim();
-    if (trimmed.length === 0 || sent !== undefined) return;
+    if (!available || trimmed.length === 0 || sent !== undefined) return;
     setSent(trimmed);
     setSendFailed(false);
     void onSubmitCode(agentId, trimmed).then((accepted) => {
@@ -429,6 +456,7 @@ function OpenCard({
       <div aria-live="polite" className="arrival-open-body">
         {replace === null ? (
           <OpenCardSteps
+            disabled={!available}
             agentId={agentId}
             onOpenPage={openPage}
             onRetry={onRetry}
@@ -476,6 +504,7 @@ function OpenCard({
 }
 
 function OpenCardSteps({
+  disabled,
   agentId,
   steps,
   words,
@@ -484,6 +513,7 @@ function OpenCardSteps({
   onSubmit,
   onRetry,
 }: {
+  readonly disabled: boolean;
   readonly agentId: ZeropsAgentId;
   readonly steps: AgentSignInSteps;
   readonly words: ReturnType<typeof agentSignInWords>;
@@ -512,7 +542,7 @@ function OpenCardSteps({
         <span className="arrival-open-step-words" role="alert">
           {steps.why}
         </span>
-        <Button onClick={onRetry} size="sm" variant="outline">
+        <Button disabled={disabled} onClick={onRetry} size="sm" variant="outline">
           <RotateCcwIcon aria-hidden="true" />
           {words.tryAgain}
         </Button>
@@ -540,6 +570,7 @@ function OpenCardSteps({
           )
         ) : (
           <Button
+            disabled={disabled}
             data-sign-in-open={agentId}
             onClick={onOpenPage}
             render={
@@ -560,6 +591,7 @@ function OpenCardSteps({
         <TypeCodeStep code={second.code} words={words} />
       ) : (
         <PasteCodeStep
+          disabled={disabled}
           checking={second.kind === "checking" ? (second.code ?? "") : null}
           focus={pageDone}
           onSubmit={onSubmit}
@@ -573,6 +605,7 @@ function OpenCardSteps({
 }
 
 function PasteCodeStep({
+  disabled,
   checking,
   terminal,
   focus,
@@ -580,6 +613,7 @@ function PasteCodeStep({
   words,
   onSubmit,
 }: {
+  readonly disabled: boolean;
   /** The code being checked, as sent; null while there is none. */
   readonly checking: string | null;
   readonly terminal: boolean;
@@ -591,8 +625,8 @@ function PasteCodeStep({
   const [value, setValue] = useState("");
   const field = useRef<HTMLInputElement>(null);
   useEffect(() => {
-    if (focus && checking === null) field.current?.focus();
-  }, [checking, focus]);
+    if (!disabled && focus && checking === null) field.current?.focus();
+  }, [checking, disabled, focus]);
   return (
     <div className="arrival-open-step" data-sign-in-step="code">
       <span className="arrival-num">2</span>
@@ -602,6 +636,7 @@ function PasteCodeStep({
         <span className="arrival-open-step-field">
           {checking === null ? (
             <input
+              disabled={disabled}
               aria-label={words.paste}
               autoComplete="one-time-code"
               className="arrival-input"
@@ -717,7 +752,8 @@ export function ZeropsAgentSignIn({
   /** Opened on a login beyond the agents' own. */
   readonly login?: SignInLogin | null;
 }) {
-  const snapshot = zeropsAgentAuthView(useZeropsAgentAuth(environmentId)).snapshot;
+  const auth = useZeropsAgentAuth(environmentId);
+  const snapshot = zeropsAgentAuthView(auth).snapshot;
   const project = useZeropsEnvironmentProject(environmentId);
   const usual = useUsualAgent(project?.projectId);
   const viewerSubject = useZeropsSessionOptional()?.user?.id;
@@ -726,16 +762,26 @@ export function ZeropsAgentSignIn({
   const start = useAgentLogin(threadRef, { terminalSurface: "embedded" });
   const cancel = useAgentLoginCancel(threadRef);
   const submitCode = useAgentLoginSubmitCode(threadRef);
-  const codeField =
-    useEnvironment(environmentId)?.serverConfig?.environment?.capabilities.agentLoginCode === true;
+  const environment = useEnvironment(environmentId);
+  const available =
+    environment?.connection.phase === "connected" &&
+    auth?.state === "known" &&
+    auth.freshness.kind === "live";
+  const codeField = environment?.serverConfig?.environment?.capabilities.agentLoginCode === true;
   const loginId = login?.id;
   // It waited for the project's order: its cards arrive rather than stand there.
   const waited = useRef(!usual.settled);
-  const onStart = useCallback((id: ZeropsAgentId) => start(id, loginId), [loginId, start]);
+  const onStart = useCallback(
+    (id: ZeropsAgentId) => {
+      if (available) start(id, loginId);
+    },
+    [available, loginId, start],
+  );
   const onCancel = useCallback((id: ZeropsAgentId) => cancel(id, loginId), [cancel, loginId]);
   const onSubmitCode = useCallback(
-    (id: ZeropsAgentId, code: string) => submitCode(id, code, loginId),
-    [loginId, submitCode],
+    (id: ZeropsAgentId, code: string) =>
+      available ? submitCode(id, code, loginId) : Promise.resolve(false),
+    [available, loginId, submitCode],
   );
   const terminal = useCallback(
     (id: ZeropsAgentId, attempt: ZeropsAgentLoginState) =>
@@ -756,6 +802,7 @@ export function ZeropsAgentSignIn({
   if (!usual.settled && login === null && agentId === null) return null;
   return (
     <AgentSignInView
+      available={available}
       arrives={waited.current}
       agents={agents}
       codeField={codeField}
@@ -785,23 +832,31 @@ function SignInTerminal({
 }) {
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   return (
-    <TerminalViewport
-      advancedTypography={false}
-      autoFocus={false}
-      cwd="/var/www"
-      drawerHeight={128}
-      focusRequestId={0}
-      key={attempt.terminalId}
-      keybindings={keybindings}
-      onAddTerminalContext={NOOP}
-      onSessionExited={NOOP}
-      resizeEpoch={0}
-      terminalId={attempt.terminalId}
-      terminalLabel={`${AGENT_SIGN_IN_CARDS[agentId].name} sign-in`}
-      threadId={threadRef.threadId}
-      threadRef={threadRef}
-      visible
-    />
+    <Suspense
+      fallback={
+        <div className="h-32">
+          <SurfaceLoading />
+        </div>
+      }
+    >
+      <TerminalViewport
+        advancedTypography={false}
+        autoFocus={false}
+        cwd="/var/www"
+        drawerHeight={128}
+        focusRequestId={0}
+        key={attempt.terminalId}
+        keybindings={keybindings}
+        onAddTerminalContext={NOOP}
+        onSessionExited={NOOP}
+        resizeEpoch={0}
+        terminalId={attempt.terminalId}
+        terminalLabel={`${AGENT_SIGN_IN_CARDS[agentId].name} sign-in`}
+        threadId={threadRef.threadId}
+        threadRef={threadRef}
+        visible
+      />
+    </Suspense>
   );
 }
 

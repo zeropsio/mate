@@ -22,8 +22,8 @@ import {
   keybindingValueForCommand,
   decodeProjectScriptKeybindingRule,
 } from "~/lib/projectScriptKeybindings";
-import { keybindingFromKeyboardEvent } from "~/components/settings/KeybindingsSettings.logic";
 import { commandForProjectScript, nextProjectScriptId } from "~/projectScripts";
+import { scriptKeybindingKeydown } from "./projectScriptEditor.logic";
 import {
   AlertDialog,
   AlertDialogClose,
@@ -163,15 +163,11 @@ export function ProjectScriptEditorDialog({
   }, [request]);
 
   const captureKeybinding = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === "Tab") return;
+    const keydown = scriptKeybindingKeydown(event, navigator.platform);
+    if (keydown.type === "pass") return;
     event.preventDefault();
-    if (event.key === "Backspace" || event.key === "Delete") {
-      setKeybinding("");
-      return;
-    }
-    const next = keybindingFromKeyboardEvent(event, navigator.platform);
-    if (!next) return;
-    setKeybinding(next);
+    if (keydown.type === "clear") setKeybinding("");
+    if (keydown.type === "record") setKeybinding(keydown.keybinding);
   };
 
   const submit = async (event: FormEvent) => {

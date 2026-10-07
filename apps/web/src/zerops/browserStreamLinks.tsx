@@ -4,6 +4,7 @@ import { EnvironmentRegistry } from "@t3tools/client-runtime/connection";
 import {
   makeMateBrowserFrameWire,
   mateBrowserFrame,
+  mateBrowserFrames,
   mateBrowserStream,
   startMateBrowserFrames,
   UNKNOWN_BROWSER_FRAME,
@@ -26,6 +27,7 @@ type Hold = (environmentId: EnvironmentId) => () => void;
 const BrowserDemandContext = createContext<Hold | null>(null);
 const UNKNOWN_FRAME = Atom.make(UNKNOWN_BROWSER_FRAME);
 const UNKNOWN_STREAM = Atom.make(undefined);
+const UNKNOWN_FRAMES = Atom.make<ReadonlyArray<MateBrowserFrameRead>>([]);
 /** Multiple views share one demand; ending its account prevents a late mount from reopening it. */
 export function makeBrowserFrameDemand(
   start: (environmentId: EnvironmentId) => { readonly stop: () => void },
@@ -106,5 +108,20 @@ export function useMateBrowserCallFrame(
       ? null
       : { environmentId, threadId, turnId, callId },
     UNKNOWN_FRAME,
+  );
+}
+
+/** The chat's browser strip shares the card's account demand and call identity. */
+export function useMateBrowserCallFrames(
+  environmentId: EnvironmentId | null,
+  threadId: string | null,
+  calls: ReadonlyArray<{ readonly callId: string | null; readonly turnId: string | null }>,
+  live: boolean,
+): ReadonlyArray<MateBrowserFrameRead> {
+  useBrowserDemand(live ? environmentId : null);
+  return useProjection(
+    mateBrowserFrames,
+    environmentId === null || threadId === null ? null : { environmentId, threadId, calls },
+    UNKNOWN_FRAMES,
   );
 }

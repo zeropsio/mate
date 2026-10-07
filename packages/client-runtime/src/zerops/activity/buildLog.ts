@@ -28,11 +28,14 @@
  * frame (identical top-level `{items:[…]}` shape).
  */
 
-export interface BuildLogQuery {
+export type BuildLogQuery = {
   readonly buildServiceStackId: string;
-  readonly appVersionId: string;
   readonly fromIso?: string;
-}
+  readonly tillIso?: string;
+} & (
+  | { readonly appVersionId: string; readonly processId?: never }
+  | { readonly processId: string; readonly appVersionId?: never }
+);
 
 const DEFAULT_LIMIT = 500;
 /** Live-verified: the GUI's stream request always sends this, independent of the backfill's own limit. */
@@ -59,7 +62,10 @@ export function buildLogUrls(
 ): { readonly http: string; readonly ws: string } {
   const httpUrl = new URL(rawAccessUrl(access.url));
   httpUrl.searchParams.set("serviceStackId", query.buildServiceStackId);
-  httpUrl.searchParams.set("tags", `zbuilder@${query.appVersionId}`);
+  if (query.appVersionId !== undefined)
+    httpUrl.searchParams.set("tags", `zbuilder@${query.appVersionId}`);
+  else httpUrl.searchParams.delete("tags");
+  if (query.tillIso !== undefined) httpUrl.searchParams.set("till", query.tillIso);
   httpUrl.searchParams.set("limit", String(limit));
   if (query.fromIso !== undefined) {
     httpUrl.searchParams.set("from", query.fromIso);

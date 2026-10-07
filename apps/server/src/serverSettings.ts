@@ -6,10 +6,12 @@
  * text generation model selection).
  *
  * Follows the same pattern as `keybindings.ts`: JSON file + Cache + PubSub +
- * Semaphore + FileSystem.watch for concurrency and external edit detection.
+ * Semaphore + scoped native watchers for concurrency and external edit detection.
  *
  * @module ServerSettings
  */
+// @effect-diagnostics nodeBuiltinImport:off -- native watch acquisition exposes attachment readiness.
+import * as NodeFS from "node:fs";
 import {
   DEFAULT_TEXT_GENERATION_MODEL,
   DEFAULT_TEXT_GENERATION_MODEL_BY_PROVIDER,
@@ -40,6 +42,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as PubSub from "effect/PubSub";
+import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
@@ -47,6 +50,7 @@ import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import { writeFileStringAtomically } from "./atomicWrite.ts";
+import { resolveSymlinkTarget } from "@t3tools/shared/symlink";
 import * as ServerConfig from "./config.ts";
 import { type DeepPartial, deepMerge } from "@t3tools/shared/Struct";
 import { fromJsonStringPretty, fromLenientJson } from "@t3tools/shared/schemaJson";
@@ -528,10 +532,14 @@ const make = Effect.gen(function* () {
     );
   });
 
-  const settingsCache = yield* Cache.make<typeof cacheKey, ServerSettings, ServerSettingsError>({
-    capacity: 1,
-    lookup: () => loadSettingsFromDisk,
-  });
+  // A failed read is not kept: the next read retries instead of replaying the failure.
+  const settingsCache = yield* Cache.makeWith<typeof cacheKey, ServerSettings, ServerSettingsError>(
+    () => loadSettingsFromDisk,
+    {
+      capacity: 1,
+      timeToLive: (exit) => (Exit.isSuccess(exit) ? Duration.infinity : Duration.zero),
+    },
+  );
 
   const getSettingsFromCache = Cache.get(settingsCache, cacheKey);
 
@@ -890,10 +898,43 @@ const make = Effect.gen(function* () {
     }),
   );
 
+  const attachFileWatcher = (
+    filePath: string,
+    scope: Scope.Scope,
+    changes: Queue.Queue<void, ServerSettingsError>,
+  ) => {
+    const directory = pathService.dirname(filePath);
+    const fileName = pathService.basename(filePath);
+    const resolvedFilePath = pathService.resolve(filePath);
+    return Effect.gen(function* () {
+      const watcher = yield* Effect.acquireRelease(
+        Effect.try({
+          try: () =>
+            NodeFS.watch(directory, (_event, name) => {
+              if (
+                name !== null &&
+                (name === fileName ||
+                  name === filePath ||
+                  pathService.resolve(directory, name) === resolvedFilePath)
+              )
+                Queue.offerUnsafe(changes, undefined);
+            }),
+          catch: (cause) =>
+            new ServerSettingsError({ settingsPath, operation: "watch-file", cause }),
+        }),
+        (watcher) => Effect.sync(() => watcher.close()),
+      );
+      watcher.on("error", (cause) =>
+        Queue.failCauseUnsafe(
+          changes,
+          Cause.fail(new ServerSettingsError({ settingsPath, operation: "watch-file", cause })),
+        ),
+      );
+    }).pipe(Scope.provide(scope));
+  };
+
   const startWatcher = Effect.gen(function* () {
     const settingsDir = pathService.dirname(settingsPath);
-    const settingsFile = pathService.basename(settingsPath);
-    const settingsPathResolved = pathService.resolve(settingsPath);
 
     yield* fs.makeDirectory(settingsDir, { recursive: true }).pipe(
       Effect.mapError(
@@ -908,25 +949,50 @@ const make = Effect.gen(function* () {
 
     const revalidateAndEmitSafely = revalidateAndEmit.pipe(Effect.ignoreCause({ log: true }));
 
+    // A symlinked settings file is rewritten in its destination's directory,
+    // which a watch on the link's directory never sees. The link is resolved
+    // again whenever it changes, so repointing it moves the watch along.
+    const watchLinkTarget = Effect.gen(function* () {
+      const linkTargetPath = yield* resolveSymlinkTarget(settingsPath).pipe(
+        Effect.provideService(FileSystem.FileSystem, fs),
+        Effect.provideService(Path.Path, pathService),
+      );
+      if (linkTargetPath === pathService.resolve(settingsPath)) {
+        return Option.none<string>();
+      }
+      yield* fs
+        .makeDirectory(pathService.dirname(linkTargetPath), { recursive: true })
+        .pipe(Effect.ignore({ log: true }));
+      return Option.some(linkTargetPath);
+    }).pipe(Effect.orElseSucceed(() => Option.none<string>()));
+
+    const changes = yield* Queue.unbounded<void, ServerSettingsError>();
+    yield* Scope.addFinalizer(watcherScope, Queue.shutdown(changes));
+    yield* attachFileWatcher(settingsPath, watcherScope, changes);
+    let currentTarget = Option.none<string>();
+    let targetScope: Scope.Closeable | undefined;
+    const attachLinkTarget = Effect.gen(function* () {
+      const target = yield* watchLinkTarget;
+      if (Equal.equals(target, currentTarget)) return;
+      if (targetScope !== undefined) yield* Scope.close(targetScope, Exit.void);
+      if (Option.isSome(target)) {
+        targetScope = yield* Scope.fork(watcherScope);
+        yield* attachFileWatcher(target.value, targetScope, changes);
+      } else targetScope = undefined;
+      currentTarget = target;
+    });
+    yield* attachLinkTarget;
+
     // Debounce watch events so the file is fully written before we read it.
     // Editors emit multiple events per save (truncate, write, rename) and
     // `fs.watch` can fire before the content has been flushed to disk.
-    const debouncedSettingsEvents = fs.watch(settingsDir).pipe(
-      Stream.filter((event) => {
-        return (
-          event.path === settingsFile ||
-          event.path === settingsPath ||
-          pathService.resolve(settingsDir, event.path) === settingsPathResolved
-        );
-      }),
+    const debouncedSettingsEvents = Stream.fromQueue(changes).pipe(
       Stream.debounce(Duration.millis(100)),
     );
 
-    yield* Stream.runForEach(debouncedSettingsEvents, () => revalidateAndEmitSafely).pipe(
-      Effect.ignoreCause({ log: true }),
-      Effect.forkIn(watcherScope),
-      Effect.asVoid,
-    );
+    yield* Stream.runForEach(debouncedSettingsEvents, () =>
+      attachLinkTarget.pipe(Effect.andThen(revalidateAndEmitSafely)),
+    ).pipe(Effect.ignoreCause({ log: true }), Effect.forkIn(watcherScope), Effect.asVoid);
   });
 
   const start = Effect.gen(function* () {

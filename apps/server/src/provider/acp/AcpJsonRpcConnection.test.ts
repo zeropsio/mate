@@ -86,6 +86,30 @@ describe("AcpSessionRuntime", () => {
     );
   }
 
+  it.live("a session-update handler that dies leaves the connection answering", () =>
+    Effect.gen(function* () {
+      const runtime = yield* AcpSessionRuntime.make(mockRuntimeOptions);
+      yield* runtime.start();
+      const handlerCalls: Array<string> = [];
+      yield* runtime.handleSessionUpdate((notification) =>
+        Effect.sync(() => handlerCalls.push(notification.update.sessionUpdate)).pipe(
+          Effect.andThen(Effect.die(new Error("handler bug"))),
+        ),
+      );
+      const updates = yield* Stream.toPull(
+        runtime.getEvents().pipe(Stream.filter((event) => event._tag === "ConfigOptionsUpdated")),
+      );
+
+      yield* runtime.request("_test/startup-metadata", {}).pipe(Effect.timeout("5 seconds"));
+      expect(handlerCalls.length).toBeGreaterThan(0);
+      expect((yield* updates)[0]?.configOptions).toEqual(yield* runtime.getConfigOptions);
+      const selected = yield* runtime
+        .setConfigOption("model", "composer-2")
+        .pipe(Effect.timeout("5 seconds"));
+      expect((yield* updates)[0]?.configOptions).toEqual(selected.configOptions);
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  );
+
   it.effect("publishes model changes returned by a config request and live notifications", () =>
     Effect.gen(function* () {
       const runtime = yield* AcpSessionRuntime.make(mockRuntimeOptions);

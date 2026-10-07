@@ -2,6 +2,8 @@ import { AtomRegistry, type Atom } from "effect/unstable/reactivity";
 import { describe, expect, it } from "vite-plus/test";
 
 import { liveZerops, ORG, processValue } from "./__fixtures__/account.ts";
+import { placementsScope, type PlacementValue } from "./families/hqNavigation.ts";
+import { mateAttention } from "./projections/mateAttention.ts";
 import { runningScope } from "./families/process.ts";
 import { linkKeys } from "./model.ts";
 import { runningWork, type ProjectKey, type RunningWork } from "./projections/processes.ts";
@@ -38,6 +40,89 @@ const processRows = (
 });
 
 describe("makeAccountStore", () => {
+  it("derives and publishes only the changed Mate among thirty attention readers", () => {
+    const registry = AtomRegistry.make();
+    const store = makeAccountStore(registry);
+    const scope = placementsScope(ORG);
+    const projectIds = Array.from({ length: 30 }, (_, index) => `mate-${index}`);
+    const value = (id: string, unseen: number): PlacementValue => ({
+      projectId: id,
+      appId: null,
+      name: id,
+      kind: "mate",
+      mate: null,
+      person: {
+        role: "DEVELOPER",
+        mayWrite: true,
+        mine: false,
+        ownerUserId: null,
+        waitsOnViewer: false,
+        unseen,
+      },
+      signedInNow: {},
+      everSignedIn: {},
+    });
+    const delivery = (ids: ReadonlyArray<string>, revision: number, unseen = 0): AccountInput => ({
+      kind: "hq-delivery",
+      scopes: [{ scope, generation: 0 }],
+      reset: false,
+      removals: [],
+      rows: ids.map((id) => ({
+        family: "placement",
+        id,
+        value: value(id, unseen),
+        revision: { kind: "hq", incarnation: "a", revision },
+      })),
+    });
+    store.dispatch(delivery(projectIds, 1));
+    const derived: string[] = [];
+    const published: string[] = [];
+    const counted: typeof mateAttention = {
+      ...mateAttention,
+      derive: (read, key) => {
+        derived.push(key.projectId);
+        return mateAttention.derive(read, key);
+      },
+    };
+    const releases = projectIds.map((projectId) => {
+      const atom = store.data.project(counted, { orgId: ORG, projectId });
+      return registry.subscribe(
+        atom,
+        () => {
+          registry.get(atom);
+          published.push(projectId);
+        },
+        { immediate: true },
+      );
+    });
+    derived.length = 0;
+    published.length = 0;
+    store.dispatch(delivery([projectIds[0]!], 2, 1));
+    expect(derived).toEqual([projectIds[0]]);
+    expect(published).toEqual([projectIds[0]]);
+    derived.length = 0;
+    published.length = 0;
+    // A newer delivery still publishes its source metadata without a visible notification.
+    store.dispatch(delivery([projectIds[0]!], 3, 1));
+    expect(derived).toEqual([projectIds[0]]);
+    expect(published).toEqual([]);
+    expect(registry.get(store.data.fact("placement", projectIds[0]!))).toMatchObject({
+      revision: { revision: 3 },
+    });
+    derived.length = 0;
+    store.dispatch(delivery([projectIds[0]!], 3, 1));
+    store.dispatch(delivery([projectIds[0]!], 1));
+    expect(derived).toEqual([]);
+    expect(published).toEqual([]);
+    // Real membership changes still reach every holder of this shared scope.
+    store.dispatch(delivery(["new-mate"], 3));
+    expect(derived).toEqual(projectIds);
+    expect(published).toEqual([]);
+    releases.forEach((release) => release());
+    store.close();
+    registry.dispose();
+  });
+
   it("publishes a reduction to the keys it changed and to no other", () => {
     const registry = AtomRegistry.make();
     const store = makeAccountStore(registry);

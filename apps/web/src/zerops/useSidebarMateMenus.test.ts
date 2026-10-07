@@ -6,7 +6,7 @@ import { describe, expect, it } from "vite-plus/test";
 import type { ZeropsMenuEntry } from "~/components/zerops/ZeropsProjectMenu";
 
 import type { ZeropsAgentActivity } from "./agentActivity";
-import { mateMenuTarget, sidebarMateVerbs } from "./useSidebarMateMenus";
+import { createMateMenuReader, mateMenuTarget, sidebarMateVerbs } from "./useSidebarMateMenus";
 
 const entry = (id: string, label: string): ZeropsMenuEntry => ({ id, label, onSelect: () => {} });
 
@@ -118,4 +118,33 @@ describe("mateMenuTarget — where a Mate's own menu acts", () => {
       }).stop,
     ).toEqual({ environmentId: "env-vera", input: { threadId: "t1" } });
   });
+});
+
+it("finishing one Mate keeps every other row's menu actions and refreshed factories act on current inputs", () => {
+  const read = createMateMenuReader<{
+    readonly finished: string | undefined;
+    readonly act: () => string;
+  }>();
+  const candidates = Array.from({ length: 30 }, (_, i) => ({
+    project: { id: `mate-${i}` },
+  })) as unknown as ReadonlyArray<import("./useZeropsCandidates").ZeropsCandidatePresentation>;
+  const activities = candidates.map((_, i) => ({ threadKey: `env-${i}:thread-${i}` }));
+  let builds = 0;
+  let finished = new Map<string, string>();
+  const actions = (current: string) =>
+    candidates.map((candidate, i) =>
+      read(candidate, [activities[i], finished.get(activities[i]!.threadKey)], () => {
+        builds++;
+        return { finished: finished.get(activities[i]!.threadKey), act: () => current };
+      }),
+    );
+  const before = actions("before");
+  builds = 0;
+  finished = new Map([[activities[0]!.threadKey, "2026-10-07T00:00:00Z"]]);
+  const after = actions("after");
+  expect(builds).toBe(1);
+  expect(after.slice(1)).toEqual(before.slice(1));
+  expect(after[1]).toBe(before[1]);
+  expect(after[0]?.act()).toBe("after");
+  expect(after[0]?.finished).toBe("2026-10-07T00:00:00Z");
 });

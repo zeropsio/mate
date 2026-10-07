@@ -1,3 +1,4 @@
+import { mateHealth } from "./projections/mateHealth.ts";
 /**
  * What a screen, and the account runtime's derivations outside React, may reach of the account's
  * data: the store's reads and the hold on a detail — never its writer. An app sets
@@ -27,7 +28,15 @@ import {
   type OrganizationProjects,
   type ProjectStanding,
 } from "./projections/projects.ts";
-import { hqMates, type HqMatesRead } from "./projections/hqMates.ts";
+import { mateAttention, matesAttention, attentionProjects } from "./projections/mateAttention.ts";
+import {
+  hqMateOverview,
+  hqMatePresence,
+  hqMateLogins,
+  hqMateReady,
+  hqMates,
+  type HqMatesRead,
+} from "./projections/hqMates.ts";
 import { hqVerdict } from "./projections/hqVerdict.ts";
 import type { HqVerdict } from "./families/hqVerdict.ts";
 import type { MateLinkValue } from "./families/mateLink.ts";
@@ -35,6 +44,7 @@ import { mateLinks, mateOfEnvironment, type MateLinksRead } from "./projections/
 import {
   hqAppChanges,
   hqNavigation,
+  hqMenuNavigation,
   hqPersonFacts,
   hqStatus,
   type HqNavigationRead,
@@ -416,4 +426,59 @@ export const hqMateSetupAtom = Atom.family((projectId: string) =>
     if (account === null || account.orgId === null) return UNKNOWN_MATE_SETUP;
     return get(account.data.project(hqMateSetup, { orgId: account.orgId, projectId }));
   }),
+);
+
+/** Account/org switching replaces dependencies; every surface shares the same project reader. */
+function projectReader<Key, Value>(
+  projection: import("./store.ts").Projection<Key, Value>,
+  key: (orgId: string, projectId: string) => Key,
+  empty: Value,
+) {
+  return Atom.family((projectId: string) =>
+    Atom.make((get): Value => {
+      const account = get(accountReadsAtom);
+      return account?.orgId == null
+        ? empty
+        : get(account.data.project(projection, key(account.orgId, projectId)));
+    }),
+  );
+}
+const mateKey = (orgId: string, projectId: string) => ({ orgId, projectId });
+export const hqMateOverviewAtom = projectReader(hqMateOverview, mateKey, null);
+export const hqMatePresenceAtom = projectReader(hqMatePresence, mateKey, {
+  presence: null,
+  live: false,
+});
+export const hqMateLoginsAtom = projectReader(hqMateLogins, mateKey, undefined);
+export const hqMateReadyAtom = projectReader(hqMateReady, mateKey, undefined);
+export const mateHealthAtom = projectReader(mateHealth, mateKey, {
+  health: null,
+  live: false,
+  configuredMinimumBytes: null,
+});
+export const mateAttentionAtom = projectReader(mateAttention, mateKey, {
+  attention: null,
+  live: false,
+  unseen: null,
+});
+export const shownAttentionProjectsAtom = Atom.make((get): ReadonlyArray<string> => {
+  const account = get(accountReadsAtom);
+  return account?.orgId == null ? [] : get(account.data.project(attentionProjects, account.orgId));
+}).pipe(
+  Atom.withEquality(
+    (a: ReadonlyArray<string>, b) => a.length === b.length && a.every((id, i) => id === b[i]),
+  ),
+);
+export const shownMatesAttentionAtom = Atom.make((get) => {
+  const account = get(accountReadsAtom);
+  return account?.orgId == null ? {} : get(account.data.project(matesAttention, account.orgId));
+});
+
+export const shownHqMenuNavigationAtom = Atom.make(
+  (get): HqNavigationRead & { readonly orgId: string | null } => {
+    const account = get(accountReadsAtom);
+    return account?.orgId == null
+      ? { ...NOT_READ_HQ, orgId: null }
+      : { ...get(account.data.project(hqMenuNavigation, account.orgId)), orgId: account.orgId };
+  },
 );

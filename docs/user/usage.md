@@ -2,8 +2,14 @@
 
 The Usage page combines Codex, Claude Code, and Grok Build activity from your connected
 environments. It reads the providers' local session history and shows API-equivalent token cost,
-processed tokens, cache savings, provider shares, and model breakdowns. Subscription billing is
-separate from the raw token cost shown here.
+processed tokens, estimated cache savings, provider shares, and model breakdowns. These are agent
+API-equivalent estimates, not subscription payments or Zerops resource charges.
+
+Totals are transcript snapshots. Answers appear progressively with partial or unavailable coverage;
+a reconnect retains the last authorized snapshot. An unread scope is never shown as zero activity.
+**Owner** groups history by each Mate’s current owner, so reassignment moves its historical total.
+Unknown owners stay separate from explicitly unassigned Mates. Project filters use stable HQ app
+IDs (`?app=<id>`); old `?project=<name>` bookmarks show an error and require selecting a project.
 
 Open **Usage** from the command palette, or press `mod+u` on web and desktop when the terminal is
 not focused. Customize `usage.open` in **Settings → Keybindings**.
@@ -17,8 +23,13 @@ variable. Use absolute paths or `~/` paths in the account's environment settings
 environment paths depend on each project's working directory and cannot be reliably discovered
 by Usage. Accounts sharing a history directory count once.
 
+When your app and server support different providers, usage totals may cover only the providers
+your app understands. Update the app to include newly supported providers.
+
 The **Limits** view shows how much of each subscription window you have used on Codex and Claude
-Code, per connected environment: the session and weekly windows, plus a per-model weekly window
+Code. Limits are account-wide and shared across projects and Mates; project and owner filters do not
+apply. Accounts reported by several Mates are consolidated. The view includes the session and
+weekly windows, plus a per-model weekly window
 such as Fable when your plan has one. Each window is a bar from the moment it opened to its reset,
 filled by the share of quota left; a thin line marks how much of the window is left, which is
 also where even spending would keep the fill, and the icon beside the label says whether you

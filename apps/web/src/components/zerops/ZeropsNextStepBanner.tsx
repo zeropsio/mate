@@ -18,10 +18,7 @@
  * cannot go on until that is answered, and the review would be a second ask
  * stacked on the first. It comes back once the answer is in.
  *
- * A reload paints the strip the conversation showed last
- * (`composerTopMemory.ts`), and HQ's answer, seconds later, confirms it,
- * changes its words or takes it away: the composer grew 61 px under a
- * conversation pinned to its end when the strip only arrived with the answer.
+ * An unread HQ reserves the slot. Review text comes only from the account's source facts.
  *
  * Kept out of `ChatView.tsx`, which is upstream-shaped: the conversation takes
  * the strip from here and hands it to the composer as its top.
@@ -31,13 +28,12 @@ import type { ScopedThreadRef } from "@t3tools/contracts";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { useNavigate } from "@tanstack/react-router";
 import { XIcon } from "lucide-react";
-import { useCallback, useEffect, useMemo, useReducer, type ReactNode } from "react";
+import { useCallback, useMemo, useReducer, type ReactNode } from "react";
 
 import {
-  rememberComposerTop,
-  rememberedComposerTop,
-  type RememberedComposerTop,
-} from "../../zerops/composerTopMemory";
+  dismissComposerReview,
+  dismissedComposerReview,
+} from "../../zerops/composerReviewDismissal";
 import { useOpenReview, type ReviewTarget } from "../../zerops/review";
 import { useZeropsMateNextStep, type ZeropsMateNextStep } from "../../zerops/useZeropsMateNextStep";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -73,100 +69,50 @@ export interface ZeropsNextStepStripModel {
   readonly target: Extract<ReviewTarget, { kind: "change" }>;
 }
 
-/** What the composer's top shows, and what its conversation remembers of it. */
 export interface ZeropsComposerTop {
   readonly strip: ZeropsNextStepStripModel | null;
-  /**
-   * What the conversation remembers after this answer: the strip as shown,
-   * nothing (`null`) once nothing waits, or — HQ not having answered —
-   * whatever it remembered (`undefined`).
-   */
-  readonly remember: RememberedComposerTop | null | undefined;
+  readonly reserved: boolean;
 }
 
-function stripOf(top: RememberedComposerTop): ZeropsNextStepStripModel {
-  return {
-    title: top.words,
-    detail: top.title,
-    tint: top.tint,
-    shape: top.shape,
-    target: {
-      kind: "change",
-      groupId: top.groupId,
-      repository: top.repository,
-      number: top.number,
-    },
-    ...(top.lines === undefined
-      ? {}
-      : {
-          lines: top.lines.map((line) => ({
-            label: line.label,
-            target: {
-              kind: "change" as const,
-              groupId: top.groupId,
-              repository: line.repository,
-              number: line.number,
-            },
-          })),
-        }),
-    ...(top.more === undefined ? {} : { more: top.more }),
-  };
+export function composerReviewId(target: ZeropsNextStepStripModel["target"]): string {
+  return JSON.stringify([target.groupId, target.repository, target.number]);
 }
 
-/**
- * The composer's top for `nextStep`: HQ's answer once it has given one,
- * and until then what this conversation showed last — so a reload paints the
- * strip it will keep. Nothing while a question or an approval waits on the
- * person first, nor while the Mate works.
- */
+/** Source projection alone supplies the strip; preferences can only dismiss its identity. */
 export function zeropsComposerTop(input: {
   readonly nextStep: ZeropsMateNextStep;
-  /** What this conversation's top showed last (`composerTopMemory.ts`). */
-  readonly remembered: RememberedComposerTop | undefined;
+  readonly dismissed?: string | undefined;
   readonly pending: ZeropsNextStepPending;
 }): ZeropsComposerTop {
-  const { nextStep, remembered, pending } = input;
+  const { nextStep, dismissed, pending } = input;
   const held = pending.question || pending.approval || pending.working;
-  switch (nextStep.kind) {
-    case "unknown":
-      return {
-        strip:
-          held || remembered === undefined || remembered.dismissed ? null : stripOf(remembered),
-        remember: undefined,
-      };
-    case "none":
-      return { strip: null, remember: null };
-    case "review": {
-      // The face keeps the tint and the shape it was painted in until the Mate is known.
-      const shape = nextStep.tint === undefined ? remembered?.shape : nextStep.shape;
-      const dismissed =
-        remembered?.dismissed === true &&
-        remembered.groupId === nextStep.target.groupId &&
-        remembered.repository === nextStep.target.repository &&
-        remembered.number === nextStep.target.number;
-      const shown: RememberedComposerTop = {
-        groupId: nextStep.target.groupId,
-        repository: nextStep.target.repository,
-        number: nextStep.target.number,
-        title: nextStep.step.detail,
-        words: nextStep.step.title,
-        tint: nextStep.tint ?? remembered?.tint ?? "slate",
-        ...(shape === undefined ? {} : { shape }),
-        ...(nextStep.step.lines.length === 0
-          ? {}
-          : {
-              lines: nextStep.step.lines.map((line) => ({
+  if (nextStep.kind === "unknown") return { strip: null, reserved: !held };
+  if (held || nextStep.kind === "none" || dismissed === composerReviewId(nextStep.target))
+    return { strip: null, reserved: false };
+  return {
+    reserved: false,
+    strip: {
+      title: nextStep.step.title,
+      detail: nextStep.step.detail,
+      tint: nextStep.tint ?? "slate",
+      shape: nextStep.shape,
+      target: nextStep.target,
+      ...(nextStep.step.lines.length === 0
+        ? {}
+        : {
+            lines: nextStep.step.lines.map((line) => ({
+              label: line.label,
+              target: {
+                kind: "change" as const,
+                groupId: nextStep.target.groupId,
                 repository: line.pull.repository,
                 number: line.pull.number,
-                label: line.label,
-              })),
-            }),
-        ...(nextStep.step.more === 0 ? {} : { more: nextStep.step.more }),
-        ...(dismissed ? { dismissed: true as const } : {}),
-      };
-      return { strip: held || dismissed ? null : stripOf(shown), remember: shown };
-    }
-  }
+              },
+            })),
+          }),
+      ...(nextStep.step.more === 0 ? {} : { more: nextStep.step.more }),
+    },
+  };
 }
 
 export function ZeropsNextStepStrip({
@@ -312,30 +258,22 @@ export function useZeropsNextStepStrip(
   const openReview = useOpenReview();
   const navigate = useNavigate();
   const threadKey = threadRef === null ? null : scopedThreadKey(threadRef);
-  // A dismissal lives in the memory, which nothing watches: this draws it.
   const [, redraw] = useReducer((count: number) => count + 1, 0);
   const dismiss = useCallback(
-    (_target: ZeropsNextStepStripModel["target"], from: HTMLElement) => {
+    (target: ZeropsNextStepStripModel["target"], from: HTMLElement) => {
       if (threadKey === null) return;
       foldAway(from.closest<HTMLElement>("[data-composer-top]"), () => {
-        const remembered = rememberedComposerTop(threadKey);
-        if (remembered === undefined) return;
-        rememberComposerTop(threadKey, { ...remembered, dismissed: true });
+        dismissComposerReview(threadKey, composerReviewId(target));
         redraw();
       });
     },
     [threadKey],
   );
-  const { strip, remember } = zeropsComposerTop({
+  const { strip, reserved } = zeropsComposerTop({
     nextStep: useZeropsMateNextStep(threadRef),
-    remembered: threadKey === null ? undefined : rememberedComposerTop(threadKey),
+    dismissed: threadKey === null ? undefined : dismissedComposerReview(threadKey),
     pending,
   });
-  // HQ's answer is what the next reload paints first.
-  useEffect(() => {
-    if (threadKey === null || remember === undefined) return;
-    rememberComposerTop(threadKey, remember);
-  }, [remember, threadKey]);
   // The composer is memoised: the strip keeps its identity while what it
   // says does — a remembered strip HQ confirms is the same node, so the
   // answer re-renders nothing — and a conversation's re-render never
@@ -343,7 +281,11 @@ export function useZeropsNextStepStrip(
   const shown = strip === null ? null : JSON.stringify(strip);
   return useMemo(
     () =>
-      shown === null ? null : (
+      shown === null ? (
+        reserved ? (
+          <div aria-label="Reading review" data-composer-top="unread" className="h-[61px]" />
+        ) : null
+      ) : (
         <ZeropsNextStepStrip
           onMore={(groupId) => {
             void navigate({ to: "/group/$groupId/flow", params: { groupId } });
@@ -355,6 +297,6 @@ export function useZeropsNextStepStrip(
           strip={JSON.parse(shown) as ZeropsNextStepStripModel}
         />
       ),
-    [dismiss, navigate, openReview, shown],
+    [dismiss, navigate, openReview, reserved, shown],
   );
 }

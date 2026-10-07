@@ -60,7 +60,7 @@ it.each([
     trouble: null,
   },
   {
-    name: "outage retains facts",
+    name: "transport recovery retains facts without an outage verdict",
     inputs: [
       ...liveProjects("org", [{ id: "p" }]),
       { kind: "stream", key: projectsScope("org"), now: 0, event: { kind: "parent-lost" } },
@@ -68,7 +68,7 @@ it.each([
     projects: ["p"],
     denied: [],
     read: "read",
-    trouble: "retrying",
+    trouble: null,
   },
   {
     name: "owner denial remains visible to protection guards",
@@ -91,7 +91,7 @@ it.each([
     projects: [],
     denied: ["p"],
     read: "read",
-    trouble: "retrying",
+    trouble: null,
   },
   {
     name: "a newer realtime row cannot reopen a revoked project",

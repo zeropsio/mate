@@ -12,7 +12,16 @@ import {
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { gatedPortal } from "~/components/ui/portal-gate";
 
-const Dialog = DialogPrimitive.Root;
+type DialogProps = Omit<DialogPrimitive.Root.Props, "open" | "onOpenChange"> &
+  (
+    | { open: boolean; onOpenChange: NonNullable<DialogPrimitive.Root.Props["onOpenChange"]> }
+    | { open?: never; onOpenChange?: DialogPrimitive.Root.Props["onOpenChange"] }
+  );
+
+/** A controlled dialog must give dismissal back to the owner of its open state. */
+function Dialog(props: DialogProps) {
+  return <DialogPrimitive.Root {...props} />;
+}
 
 const DialogPortal = gatedPortal(DialogPrimitive.Portal);
 
@@ -53,13 +62,15 @@ function DialogPopup({
   children,
   showCloseButton = true,
   bottomStickOnMobile = true,
+  keepMounted = false,
   ...props
 }: DialogPrimitive.Popup.Props & {
   showCloseButton?: boolean;
   bottomStickOnMobile?: boolean;
+  keepMounted?: boolean;
 }) {
   return (
-    <DialogPortal>
+    <DialogPortal keepMounted={keepMounted}>
       <DialogBackdrop />
       <DialogViewport
         className={cn(bottomStickOnMobile && "max-sm:grid-rows-[1fr_auto] max-sm:p-0 max-sm:pt-12")}

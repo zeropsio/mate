@@ -25,6 +25,7 @@ export type StreamKey = LinkKey | ScopeKey;
 export const linkKeys = {
   zerops: (orgId: string): LinkKey => `zerops:${orgId}`,
   hq: (orgId: string): LinkKey => `hq:${orgId}`,
+  mateHealth: (projectId: string): LinkKey => `mate:health:${projectId}`,
   mate: (projectId: string): LinkKey => `mate:${projectId}`,
 } as const;
 
@@ -70,6 +71,8 @@ export type FactContent<T> =
   | { readonly kind: "purged" };
 
 export interface Fact<T> {
+  /** Family-declared display identity; retained after payload deletion or denial. Never grants access. */
+  readonly label?: string;
   readonly content: FactContent<T>;
   readonly revision: Revision;
   readonly authority: Authority;
@@ -253,8 +256,12 @@ export type PublicRead<T> =
       readonly producer?: "up" | "down";
     }
   | { readonly kind: "unknown" }
-  | { readonly kind: "deleted"; readonly evidence: string }
-  | { readonly kind: "withheld"; readonly reason: "unverified" | "denied" };
+  | { readonly kind: "deleted"; readonly evidence: string; readonly label?: string }
+  | {
+      readonly kind: "withheld";
+      readonly reason: "unverified" | "denied";
+      readonly label?: string;
+    };
 
 /** The keys a reduction publishes: one per fact, membership, index and stream. */
 export type ReadKey =

@@ -1,7 +1,14 @@
+import { historyScope, runningScope } from "@t3tools/client-runtime/data";
+import { mountRoster } from "@t3tools/client-runtime/zerops/testing";
+import { AtomRegistry } from "effect/unstable/reactivity";
 import type { ActivityProcess } from "@t3tools/client-runtime/zerops/activity/dto";
 import { describe, expect, it } from "vite-plus/test";
 
-import { type DeployBuildsInput, deployBuildLookup } from "./useDeployBuilds";
+import {
+  type DeployBuildsInput,
+  deployBuildLookup,
+  projectBuildProcesses,
+} from "./useDeployBuilds";
 import type { ProjectActivitySnapshot } from "./useProjectActivity";
 
 const BUILDING: ActivityProcess = {
@@ -31,7 +38,7 @@ describe("deployBuildLookup — what the thread's project says of a build a depl
     { name: "the store read the project", input: input({}), expected: "running" },
     {
       name: "nothing read of it yet",
-      input: input({ snapshot: { processes: undefined, live: false, processHistory: "unread" } }),
+      input: input({ snapshot: { processes: undefined, processHistory: "unread" } }),
       expected: "unread",
     },
     {
@@ -65,8 +72,6 @@ describe("deployBuildLookup — what the thread's project says of a build a depl
       input: input({
         snapshot: {
           processes: undefined,
-          live: false,
-          reconnecting: true,
           processHistory: "reading",
         },
       }),
@@ -74,10 +79,68 @@ describe("deployBuildLookup — what the thread's project says of a build a depl
     },
     {
       name: "Zerops out with the project read: as it was read",
-      input: input({ snapshot: { ...READ, live: false, reconnecting: true } }),
+      input: input({ snapshot: READ }),
       expected: "running",
     },
   ] as const)("$name: $expected", ({ input: given, expected }) => {
     expect(deployBuildLookup(given)("av-1")).toBe(expected);
   });
+});
+
+it("a chat keeps completed build evidence without rendering transport recovery", () => {
+  const registry = AtomRegistry.make();
+  const store = mountRoster(registry, "org", [{ id: "proj-1", name: "Project", status: "ACTIVE" }]);
+  const history = historyScope("org", "proj-1");
+  for (const scope of [runningScope("org"), history]) {
+    store.dispatch({
+      kind: "stream",
+      key: scope,
+      now: 0,
+      event: { kind: "demand", demanded: true },
+    });
+    store.dispatch({ kind: "stream", key: scope, now: 0, event: { kind: "attempt" } });
+    store.dispatch({ kind: "stream", key: scope, now: 0, event: { kind: "handshake" } });
+    store.dispatch({ kind: "baseline-begin", scope, generation: 1 });
+    store.dispatch({
+      kind: "baseline-commit",
+      scope,
+      generation: 1,
+      via: "zerops-realtime",
+      members: [],
+      rows: [],
+    });
+    store.dispatch({ kind: "stream", key: scope, now: 0, event: { kind: "baseline-committed" } });
+  }
+  const read = store.data.project(projectBuildProcesses, { orgId: "org", projectId: "proj-1" });
+  let renders = 0;
+  const stop = registry.subscribe(read, () => renders++);
+  const before = registry.get(read);
+  renders = 0;
+  for (const key of [runningScope("org"), history]) {
+    store.dispatch({ kind: "stream", key, now: 0, event: { kind: "parent-lost" } });
+  }
+  expect(registry.get(read)).toBe(before);
+  expect(deployBuildLookup(input({ snapshot: registry.get(read) }))("missing")).toBe(
+    "unobservable",
+  );
+  expect(renders).toBe(0);
+  store.dispatch({
+    kind: "rows",
+    scope: history,
+    generation: 1,
+    method: "push",
+    via: "zerops-realtime",
+    rows: [
+      {
+        family: "process",
+        id: BUILDING.id,
+        value: { ...BUILDING, status: "FINISHED", appVersion: { id: "av-1", status: "ACTIVE" } },
+        revision: { kind: "zerops", version: 2 },
+      },
+    ],
+  });
+  expect(deployBuildLookup(input({ snapshot: registry.get(read) }))("av-1")).toBe("finished");
+  expect(renders).toBe(1);
+  stop();
+  registry.dispose();
 });

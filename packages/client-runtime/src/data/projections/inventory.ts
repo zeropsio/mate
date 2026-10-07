@@ -11,9 +11,11 @@ import { deriveZeropsCandidates, type ZeropsCandidate } from "../../zerops/candi
 import { placeProjects, placementsOf, type HqPlacements } from "../../zerops/hq/placement.ts";
 import type { Projection } from "../store.ts";
 import { platformInventory, type PlatformInventory } from "./platformInventory.ts";
-import { hqNavigation } from "./hqNavigation.ts";
-import { hqMates } from "./hqMates.ts";
+import { hqMenuNavigation } from "./hqNavigation.ts";
+import { hqMateLogins, hqMateReady } from "./hqMates.ts";
 import { projectServices } from "./services.ts";
+import { placementsScope } from "../families/hqNavigation.ts";
+import { scopeFreshness, type ScopeFreshness } from "./freshness.ts";
 import { sameValue } from "./equal.ts";
 
 export interface InventoryKey {
@@ -29,27 +31,35 @@ export interface InventoryRead extends Omit<PlatformInventory, "projects"> {
   readonly error: string | null;
 }
 
+/** Placement coverage is separate from the app listing and from retained placement values. */
+export const inventoryPlacementStatus: Projection<string, ScopeFreshness> = {
+  name: "inventoryPlacementStatus",
+  keyOf: (orgId) => orgId,
+  derive: (read, orgId) => scopeFreshness(read, placementsScope(orgId)),
+  equals: sameValue,
+};
+
 /** HQ's placement facts, with only the labels its Mate overview supplied. */
 export const inventoryPlacements: Projection<string, HqPlacements | null> = {
   name: "inventoryPlacements",
   keyOf: (orgId) => orgId,
   derive: (read, orgId) => {
-    const navigation = hqNavigation.derive(read, orgId);
+    const navigation = hqMenuNavigation.derive(read, orgId);
     if (navigation.structure === null) return null;
-    const mates = hqMates.derive(read, orgId).mates;
+    const ids = read.members(placementsScope(orgId)).ids;
     return placementsOf(
       navigation.structure,
       new Map(
-        Object.entries(mates).flatMap(([id, mate]) =>
-          mate.logins === undefined ? [] : [[id, mate.logins] as const],
-        ),
+        ids.flatMap((projectId) => {
+          const logins = hqMateLogins.derive(read, { orgId, projectId });
+          return logins === undefined ? [] : [[projectId, logins] as const];
+        }),
       ),
       new Map(
-        Object.entries(mates).flatMap(([id, mate]) =>
-          mate.identity?.runsWithoutSignIn === undefined
-            ? []
-            : [[id, mate.identity.runsWithoutSignIn] as const],
-        ),
+        ids.flatMap((projectId) => {
+          const ready = hqMateReady.derive(read, { orgId, projectId });
+          return ready === undefined ? [] : [[projectId, ready] as const];
+        }),
       ),
       navigation.presses,
     );
@@ -97,6 +107,28 @@ export const inventory: Projection<InventoryKey, InventoryRead> = {
       isLoading: platform.read !== "read",
       error: platform.failure,
     };
+  },
+  equals: (a, b) =>
+    sameValue(
+      { ...a, projectRefs: [...a.projectRefs], authority: [...a.authority], lost: [...a.lost] },
+      { ...b, projectRefs: [...b.projectRefs], authority: [...b.authority], lost: [...b.lost] },
+    ),
+};
+
+/** Content and access drawn by inventory consumers, independent of transport status. */
+export type InventoryContents = Pick<
+  InventoryRead,
+  "projects" | "projectRefs" | "authority" | "lost" | "isLoading" | "error"
+>;
+export const inventoryContents: Projection<InventoryKey, InventoryContents> = {
+  name: "inventoryContents",
+  keyOf: inventory.keyOf,
+  derive: (read, key) => {
+    const { projects, projectRefs, authority, lost, isLoading, error } = inventory.derive(
+      read,
+      key,
+    );
+    return { projects, projectRefs, authority, lost, isLoading, error };
   },
   equals: (a, b) =>
     sameValue(

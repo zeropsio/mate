@@ -84,6 +84,9 @@ baseline, and ends only by failing with a classified fault. Run it under
   machine and the supervisor. A read beside a live link (a detail, a row by id) that fails
   transiently is retried alone on the same policy (`retryDelayMs`, `Retry-After` a floor): the link
   and its registrations stay.
+- An established transport closing starts recovery, without declaring an outage. A failed
+  connection or baseline attempt proves retryable unavailability. Keep transport freshness
+  separate from content subscriptions; an identical baseline publishes no facts or memberships.
 - A definitive refusal is final until the person tries again or an input changes. Focus, remount,
   socket rotation, a link's next attempt and time do not revive it. A refused link refuses its
   scopes.

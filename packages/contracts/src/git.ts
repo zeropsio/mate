@@ -1,10 +1,20 @@
 import * as Schema from "effect/Schema";
-import { NonNegativeInt, PositiveInt, ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import {
+  ForwardCompatibleOptional,
+  NonNegativeInt,
+  PositiveInt,
+  ThreadId,
+  TrimmedNonEmptyString,
+} from "./baseSchemas.ts";
 import { SourceControlProviderError, SourceControlProviderInfo } from "./sourceControl.ts";
 import { VcsDriverKind } from "./vcs.ts";
 
 const TrimmedNonEmptyStringSchema = TrimmedNonEmptyString;
 const GIT_LIST_BRANCHES_MAX_LIMIT = 200;
+
+// Git reads an argument that starts with a dash as an option (`--upload-pack=…` runs a
+// command), and no branch name may start with one, so a ref name never does.
+export const GitRefName = TrimmedNonEmptyStringSchema.check(Schema.isPattern(/^[^-]/));
 
 // Domain Types
 
@@ -136,9 +146,9 @@ export type VcsListRefsInput = typeof VcsListRefsInput.Type;
 
 export const VcsCreateWorktreeInput = Schema.Struct({
   cwd: TrimmedNonEmptyStringSchema,
-  refName: TrimmedNonEmptyStringSchema,
-  newRefName: Schema.optional(TrimmedNonEmptyStringSchema),
-  baseRefName: Schema.optional(TrimmedNonEmptyStringSchema),
+  refName: GitRefName,
+  newRefName: Schema.optional(GitRefName),
+  baseRefName: Schema.optional(GitRefName),
   path: Schema.NullOr(TrimmedNonEmptyStringSchema),
 });
 export type VcsCreateWorktreeInput = typeof VcsCreateWorktreeInput.Type;
@@ -166,7 +176,7 @@ export type VcsRemoveWorktreeInput = typeof VcsRemoveWorktreeInput.Type;
 
 export const VcsCreateRefInput = Schema.Struct({
   cwd: TrimmedNonEmptyStringSchema,
-  refName: TrimmedNonEmptyStringSchema,
+  refName: GitRefName,
   switchRef: Schema.optional(Schema.Boolean),
 });
 export type VcsCreateRefInput = typeof VcsCreateRefInput.Type;
@@ -178,7 +188,7 @@ export type VcsCreateRefResult = typeof VcsCreateRefResult.Type;
 
 export const VcsSwitchRefInput = Schema.Struct({
   cwd: TrimmedNonEmptyStringSchema,
-  refName: TrimmedNonEmptyStringSchema,
+  refName: GitRefName,
 });
 export type VcsSwitchRefInput = typeof VcsSwitchRefInput.Type;
 
@@ -335,6 +345,23 @@ export const VcsPullResult = Schema.Struct({
 export type VcsPullResult = typeof VcsPullResult.Type;
 
 // RPC / domain errors
+
+// Well-known git failures, recognized from stderr at the driver and carried as
+// a closed set of diagnostic tags. Git's stderr itself stays off the error: it
+// echoes argv and remote URLs, which can hold credentials. The tag names the
+// cause for logs and callers; it does not select a message.
+export const GitCommandFailureReason = Schema.Literals([
+  "authentication_failed",
+  "branch_already_exists",
+  "branch_checked_out_in_worktree",
+  "host_key_unverified",
+  "not_a_repository",
+  "path_already_exists",
+  "remote_unreachable",
+  "tag_would_be_clobbered",
+]);
+export type GitCommandFailureReason = typeof GitCommandFailureReason.Type;
+
 export class GitCommandError extends Schema.TaggedError<GitCommandError>()("GitCommandError", {
   operation: Schema.String,
   command: Schema.String,
@@ -344,11 +371,14 @@ export class GitCommandError extends Schema.TaggedError<GitCommandError>()("GitC
   stdoutLength: Schema.optional(Schema.Number),
   stderrLength: Schema.optional(Schema.Number),
   outputLength: Schema.optional(Schema.Number),
+  // A newer server may name a reason this build does not know; it decodes as absent.
+  reason: ForwardCompatibleOptional(GitCommandFailureReason),
   detail: Schema.String,
   cause: Schema.optional(Schema.Defect()),
 }) {
   override get message(): string {
-    return `Git command failed in ${this.operation} (${this.cwd}): ${this.detail}`;
+    const reason = this.reason === undefined ? "" : ` (${this.reason})`;
+    return `Git command failed in ${this.operation} (${this.cwd}): ${this.detail}${reason}`;
   }
 }
 

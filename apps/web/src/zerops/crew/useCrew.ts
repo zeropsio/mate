@@ -26,11 +26,13 @@ import {
   resolveThreadStatus,
   type ThreadStatusInput,
 } from "@t3tools/shared/threadStatus";
+import { hqMateOverviewAtom, hqMatePresenceAtom } from "@t3tools/client-runtime/data";
 import { Atom } from "effect/unstable/reactivity";
 import { useMemo } from "react";
+import { shareEqual } from "@t3tools/shared/structuralSharing";
 
 import { useThreadShells } from "../../state/entities";
-import { hqMatesAtom, zeropsFeeds } from "../../state/zerops";
+import { zeropsFeeds } from "../../state/zerops";
 
 const NO_CREW_ATOM = Atom.make(undefined).pipe(Atom.withLabel("zerops:crew-empty"));
 
@@ -116,9 +118,15 @@ export function mateCrewOf(mate: MateLiveView | undefined, current: boolean): Ma
  * The crew of the Mate in `projectId`, as the organization in view's HQ last told this tab of it;
  * none for no project.
  */
+const NO_MATE_CREW = Atom.make(mateCrewOf(undefined, false));
+const mateCrewAtom = Atom.family((projectId: string) =>
+  Atom.make((get) =>
+    mateCrewOf(
+      get(hqMateOverviewAtom(projectId)) ?? undefined,
+      get(hqMatePresenceAtom(projectId)).live,
+    ),
+  ).pipe(Atom.withEquality((a, b) => shareEqual(a, b) === a)),
+);
 export function useMateCrew(projectId: string | null): MateCrewRead {
-  const view = useAtomValue(hqMatesAtom);
-  const mate = projectId === null ? undefined : view?.mates?.get(projectId);
-  const current = view?.current === true;
-  return useMemo(() => mateCrewOf(mate, current), [current, mate]);
+  return useAtomValue(projectId === null ? NO_MATE_CREW : mateCrewAtom(projectId));
 }

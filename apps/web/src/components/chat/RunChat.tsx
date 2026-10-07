@@ -83,6 +83,11 @@ import { flushSync } from "react-dom";
 
 import { afterLayout } from "~/lib/afterLayout";
 import { cn } from "~/lib/utils";
+import { MessageFilesAbove, useMessageFileUrls } from "./MessageFiles";
+import { useMateBrowserCallFrames } from "../../zerops/browserStreamLinks";
+import { frameImageSrc } from "@t3tools/client-runtime/zerops/browserStream";
+import { FixAction } from "./FixAction";
+import { useMateOfEnvironment } from "../../zerops/accountEnvironments";
 import { RunShimmer } from "./RunShimmer";
 import { FileWriteDetail } from "./FileWriteDetail";
 import { stepWriteCalls } from "./fileWrites.logic";
@@ -93,7 +98,7 @@ import {
   type TurnPlanEntry,
   type WorkLogEntry,
 } from "../../session-logic";
-import type { ChatImageAttachment, ChatMessage } from "../../types";
+import type { ChatImageAttachment, ChatMessage, ChatAttachment } from "../../types";
 import { echoOfMessage } from "./messagePictures.logic";
 import ChatMarkdown from "../ChatMarkdown";
 import { ChangeChipMomentContext } from "../zerops/ZeropsChangeLinkChip";
@@ -152,6 +157,7 @@ import {
   movesAsPerson,
 } from "./runMotion.logic";
 import { easeRooms, forgetScrollTop, noteScrollTop, type Rooms, unclamp } from "./runRoom";
+import { followScrollTo } from "~/lib/followScroll";
 import { StatusBar } from "./StatusBar";
 import { versionText } from "../zerops/operation/version";
 import { ImportDetail } from "./ImportDetail";
@@ -750,7 +756,7 @@ function SlotBox({ follows = false, detail = false, part, className, children }:
       if (stickRef.current) {
         const bottom = box.scrollHeight - box.clientHeight;
         if (Math.abs(box.scrollTop - bottom) > 1) {
-          box.scrollTop = bottom;
+          followScrollTo(box, bottom);
           ownTopRef.current = box.scrollTop;
         }
       }
@@ -1926,7 +1932,7 @@ function OperationLine({
       ) : (
         <div className={CALL_PAD}>{head}</div>
       )}
-      {opens && disclosure.open && lines !== 0 ? (
+      {opens && disclosure.open ? (
         <div
           className={cn(
             "px-3 pb-2",
@@ -1936,16 +1942,46 @@ function OperationLine({
           data-chat-detail
           data-chat-detail-rises={disclosure.made ? "" : undefined}
         >
-          <OperationDetail
-            environmentId={ctx.activeThreadEnvironmentId}
-            operation={operation}
-            threadRef={ctx.threadRef}
-            turnRuns={turnRuns}
-            {...(regions === null ? {} : { regions })}
-          />
+          {lines !== 0 ? (
+            <OperationDetail
+              environmentId={ctx.activeThreadEnvironmentId}
+              operation={operation}
+              threadRef={ctx.threadRef}
+              turnRuns={turnRuns}
+              {...(regions === null ? {} : { regions })}
+            />
+          ) : null}
+          {failed && !undone ? (
+            <OperationFixAction
+              environmentId={ctx.activeThreadEnvironmentId}
+              operation={operation}
+            />
+          ) : null}
         </div>
       ) : null}
     </CallRow>
+  );
+}
+
+function OperationFixAction({
+  environmentId,
+  operation,
+}: {
+  readonly environmentId: EnvironmentId | null;
+  readonly operation: ZeropsOperation;
+}) {
+  const mate = useMateOfEnvironment(environmentId);
+  return (
+    <FixAction
+      mate={mate === undefined ? undefined : { projectId: mate.projectId, groupId: undefined }}
+      problem={{
+        what: operationLineWords(operation),
+        at: operation.settledAt ?? operation.anchorAt,
+        error: operation.explanation?.reason ?? operation.closing,
+        logLines: operation.explanation?.logTail,
+        ask: "Find out why, fix it, and try again.",
+      }}
+    />
   );
 }
 
@@ -1961,8 +1997,44 @@ function checkHost(subject: string): string {
  * the frame its picture will stand in, so the row never changes height when
  * the picture comes. The stage with every take opens under it.
  */
-function ChecksBubble({ strip }: { readonly strip: BrowserStripModel }) {
+function ChecksBubble({ strip: recorded }: { readonly strip: BrowserStripModel }) {
   const ctx = use(TimelineRowCtx);
+  const calls = useMemo(
+    () =>
+      recorded.checks.map((check) => ({
+        callId: check.callIds.length === 1 ? check.callIds[0]! : null,
+        turnId: check.turnId,
+      })),
+    [recorded.checks],
+  );
+  const activity = use(TimelineRowActivityCtx);
+  const frames = useMateBrowserCallFrames(
+    ctx.activeThreadEnvironmentId,
+    ctx.threadRef?.threadId ?? null,
+    calls,
+    activity.isWorking,
+  );
+  const strip = useMemo(
+    () => ({
+      ...recorded,
+      checks: recorded.checks.map((check, index): ZeropsOperation => {
+        const read = frames[index];
+        if (read === undefined || read.kind === "unknown") return check;
+        const { screenshot: _recorded, ...withoutPicture } = check;
+        return read.frame === null
+          ? withoutPicture
+          : {
+              ...check,
+              screenshot: {
+                src: frameImageSrc(read.frame),
+                width: read.frame.width,
+                height: read.frame.height,
+              },
+            };
+      }),
+    }),
+    [recorded, frames],
+  );
   const disclosure = useDisclosure();
   const latest = strip.checks.at(-1)!;
   const running = latest.phase === "running";
@@ -2604,6 +2676,22 @@ function PersonMark({ item }: { readonly item: Extract<RecordItem, { kind: "pers
   );
 }
 
+/** Files recorded with a question response, beside the answer's own words. */
+function AnswerFiles({ attachments }: { readonly attachments: ReadonlyArray<ChatAttachment> }) {
+  const { activeThreadEnvironmentId } = use(TimelineRowCtx);
+  const pictures = attachments.filter(
+    (attachment): attachment is ChatImageAttachment => attachment.type === "image",
+  );
+  const files = attachments.filter((attachment) => attachment.type !== "image");
+  const urls = useMessageFileUrls(activeThreadEnvironmentId, files);
+  return (
+    <div className="grid gap-2">
+      <PersonPictures pictures={pictures} />
+      <MessageFilesAbove files={files} urls={urls} />
+    </div>
+  );
+}
+
 /** The pictures of a message the person sent into the run: a compact strip, each opening the viewer on all of them. */
 function PersonPictures({ pictures }: { readonly pictures: ReadonlyArray<ChatImageAttachment> }) {
   const { activeThreadEnvironmentId, onImageExpand } = use(TimelineRowCtx);
@@ -2675,6 +2763,10 @@ function itemLine(item: RecordItem, undone: ReadonlySet<string>): ChatLine | nul
         call: true,
       };
     case "call":
+      if (item.entry.questionAnswer !== undefined) {
+        const attachments = Object.values(item.entry.questionAnswer.attachmentsByQuestionId).flat();
+        return { key: item.key, bubble: <AnswerFiles attachments={attachments} />, theirs: true };
+      }
       return {
         key: item.key,
         bubble: <StepBubble step={stepOf(item.entry, undefined, false)} />,
@@ -4335,7 +4427,7 @@ function RunScroll({
     const slotEases = () => motionRef?.current.slot?.easing() ?? false;
     /** The page puts its top at `top`, and remembers where the browser took it. */
     const putAt = (element: HTMLElement, top: number) => {
-      element.scrollTop = top;
+      followScrollTo(element, top);
       noteScrollTop(element);
       heard({ kind: "set", top: element.scrollTop });
     };

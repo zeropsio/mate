@@ -65,7 +65,6 @@ import {
 } from "../../persistence/Layers/Sqlite.ts";
 import * as ServerConfig from "../../config.ts";
 import * as ServerSettings from "../../serverSettings.ts";
-import * as AnalyticsService from "../../telemetry/AnalyticsService.ts";
 import { makeAdapterRegistryMock } from "../testUtils/providerAdapterRegistryMock.ts";
 
 const defaultServerSettingsLayer = ServerSettings.ServerSettingsService.layerTest();
@@ -412,7 +411,6 @@ function makeProviderServiceLayer(
         Layer.provide(directoryLayer),
         Layer.provide(defaultServerSettingsLayer),
         Layer.provide(serverConfigTestLayer),
-        Layer.provideMerge(AnalyticsService.layerTest),
         Layer.provide(
           Layer.succeed(
             ProviderEventLoggers.ProviderEventLoggers,
@@ -465,7 +463,6 @@ it.effect("ProviderServiceLive catches stopAll failures during shutdown", () =>
         Layer.provide(directoryLayer),
         Layer.provide(defaultServerSettingsLayer),
         Layer.provide(serverConfigTestLayer),
-        Layer.provideMerge(AnalyticsService.layerTest),
         Layer.provide(
           Layer.succeed(
             ProviderEventLoggers.ProviderEventLoggers,
@@ -486,6 +483,74 @@ it.effect("ProviderServiceLive catches stopAll failures during shutdown", () =>
     assert.equal(Exit.isSuccess(closeExit), true);
     assert.equal(codex.stopAll.mock.calls.length, 1);
   }),
+);
+
+it.effect("ProviderServiceLive shutdown leaves settled session rows untouched", () =>
+  Effect.gen(function* () {
+    const codex = makeFakeCodexAdapter();
+    const persistence = yield* Layer.build(
+      ProviderSessionDirectoryLive.pipe(
+        Layer.provide(ProviderSessionRuntime.layer.pipe(Layer.provide(SqlitePersistenceMemory))),
+      ),
+    );
+    const directory = yield* ProviderSessionDirectory.ProviderSessionDirectory.pipe(
+      Effect.provide(persistence),
+    );
+    const seed = (threadId: ThreadId, status: "running" | "stopped", activeTurnId: TurnId | null) =>
+      directory.upsert({
+        threadId,
+        provider: CODEX_DRIVER,
+        providerInstanceId: codexInstanceId,
+        status,
+        runtimePayload: { cwd: "/repo", activeTurnId },
+      });
+    const readBindings = directory
+      .listBindings()
+      .pipe(
+        Effect.map((bindings) => new Map(bindings.map((binding) => [binding.threadId, binding]))),
+      );
+    const settledId = asThreadId("shutdown-settled");
+    const runningId = asThreadId("shutdown-running");
+    const stoppedWithTurnId = asThreadId("shutdown-stopped-with-turn");
+    yield* seed(settledId, "stopped", null);
+    yield* seed(runningId, "running", asTurnId("running-turn"));
+    yield* seed(stoppedWithTurnId, "stopped", asTurnId("stale-turn"));
+    const settledBefore = (yield* readBindings).get(settledId);
+    assert(settledBefore !== undefined);
+
+    const scope = yield* Scope.make();
+    yield* Layer.build(
+      makeProviderServiceLive().pipe(
+        Layer.provide(NodeServices.layer),
+        Layer.provide(Layer.succeed(ProviderSessionDirectory.ProviderSessionDirectory, directory)),
+        Layer.provide(
+          Layer.succeed(
+            ProviderAdapterRegistry.ProviderAdapterRegistry,
+            makeStaticInstanceRegistry([[codexInstanceId, codex.adapter]]),
+          ),
+        ),
+        Layer.provide(defaultServerSettingsLayer),
+        Layer.provide(serverConfigTestLayer),
+        Layer.provide(
+          Layer.succeed(
+            ProviderEventLoggers.ProviderEventLoggers,
+            ProviderEventLoggers.NoOpProviderEventLoggers,
+          ),
+        ),
+      ),
+    ).pipe(Scope.provide(scope));
+    yield* TestClock.adjust("1 minute");
+    yield* Scope.close(scope, Exit.void);
+
+    const byThread = yield* readBindings;
+    assert.deepStrictEqual(byThread.get(settledId), settledBefore);
+    for (const threadId of [runningId, stoppedWithTurnId]) {
+      const binding = byThread.get(threadId);
+      assert.equal(binding?.status, "stopped");
+      assert.propertyVal(binding?.runtimePayload, "activeTurnId", null);
+      assert.propertyVal(binding?.runtimePayload, "lastRuntimeEvent", "provider.stopAll");
+    }
+  }).pipe(Effect.provide(NodeServices.layer)),
 );
 
 it.effect("ProviderServiceLive rejects new sessions for disabled providers", () =>
@@ -526,7 +591,6 @@ it.effect("ProviderServiceLive rejects new sessions for disabled providers", () 
       Layer.provide(directoryLayer),
       Layer.provide(defaultServerSettingsLayer),
       Layer.provide(serverConfigTestLayer),
-      Layer.provide(AnalyticsService.layerTest),
       Layer.provide(
         Layer.succeed(
           ProviderEventLoggers.ProviderEventLoggers,
@@ -610,7 +674,6 @@ it.effect(
         Layer.provide(directoryLayer),
         Layer.provide(serverSettingsLayer),
         Layer.provide(serverConfigTestLayer),
-        Layer.provide(AnalyticsService.layerTest),
         Layer.provide(
           Layer.succeed(
             ProviderEventLoggers.ProviderEventLoggers,
@@ -680,7 +743,6 @@ it.effect("ProviderServiceLive rejects new sessions for disabled custom instance
       Layer.provide(directoryLayer),
       Layer.provide(defaultServerSettingsLayer),
       Layer.provide(serverConfigTestLayer),
-      Layer.provide(AnalyticsService.layerTest),
       Layer.provide(
         Layer.succeed(
           ProviderEventLoggers.ProviderEventLoggers,
@@ -972,7 +1034,6 @@ it.effect(
         Layer.provide(directoryLayer),
         Layer.provide(defaultServerSettingsLayer),
         Layer.provide(serverConfigTestLayer),
-        Layer.provide(AnalyticsService.layerTest),
         Layer.provide(
           Layer.succeed(
             ProviderEventLoggers.ProviderEventLoggers,
@@ -1031,7 +1092,6 @@ it.effect("ProviderServiceLive writes canonical events to the emitting thread se
       Layer.provide(directoryLayer),
       Layer.provide(defaultServerSettingsLayer),
       Layer.provide(serverConfigTestLayer),
-      Layer.provide(AnalyticsService.layerTest),
       Layer.provide(
         Layer.succeed(
           ProviderEventLoggers.ProviderEventLoggers,
@@ -1093,7 +1153,6 @@ it.effect("ProviderServiceLive keeps persisted resumable sessions on startup", (
       Layer.provide(directoryLayer),
       Layer.provide(defaultServerSettingsLayer),
       Layer.provide(serverConfigTestLayer),
-      Layer.provide(AnalyticsService.layerTest),
       Layer.provide(
         Layer.succeed(
           ProviderEventLoggers.ProviderEventLoggers,
@@ -1161,7 +1220,6 @@ it.effect(
         Layer.provide(firstDirectoryLayer),
         Layer.provide(defaultServerSettingsLayer),
         Layer.provide(serverConfigTestLayer),
-        Layer.provide(AnalyticsService.layerTest),
         Layer.provide(
           Layer.succeed(
             ProviderEventLoggers.ProviderEventLoggers,
@@ -1222,7 +1280,6 @@ it.effect(
         Layer.provide(secondDirectoryLayer),
         Layer.provide(defaultServerSettingsLayer),
         Layer.provide(serverConfigTestLayer),
-        Layer.provide(AnalyticsService.layerTest),
         Layer.provide(
           Layer.succeed(
             ProviderEventLoggers.ProviderEventLoggers,
@@ -2470,7 +2527,6 @@ routing.layer("ProviderServiceLive routing", (it) => {
         Layer.provide(firstDirectoryLayer),
         Layer.provide(defaultServerSettingsLayer),
         Layer.provide(serverConfigTestLayer),
-        Layer.provide(AnalyticsService.layerTest),
         Layer.provide(
           Layer.succeed(
             ProviderEventLoggers.ProviderEventLoggers,
@@ -2510,7 +2566,6 @@ routing.layer("ProviderServiceLive routing", (it) => {
         Layer.provide(secondDirectoryLayer),
         Layer.provide(defaultServerSettingsLayer),
         Layer.provide(serverConfigTestLayer),
-        Layer.provide(AnalyticsService.layerTest),
         Layer.provide(
           Layer.succeed(
             ProviderEventLoggers.ProviderEventLoggers,
@@ -2580,7 +2635,6 @@ routing.layer("ProviderServiceLive routing", (it) => {
           Layer.provide(firstDirectoryLayer),
           Layer.provide(defaultServerSettingsLayer),
           Layer.provide(serverConfigTestLayer),
-          Layer.provide(AnalyticsService.layerTest),
           Layer.provide(
             Layer.succeed(
               ProviderEventLoggers.ProviderEventLoggers,
@@ -2615,7 +2669,6 @@ routing.layer("ProviderServiceLive routing", (it) => {
           Layer.provide(secondDirectoryLayer),
           Layer.provide(defaultServerSettingsLayer),
           Layer.provide(serverConfigTestLayer),
-          Layer.provide(AnalyticsService.layerTest),
           Layer.provide(
             Layer.succeed(
               ProviderEventLoggers.ProviderEventLoggers,

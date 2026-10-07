@@ -50,6 +50,8 @@ import type { ZeropsTopologyService } from "./topology.ts";
 
 /** What the container says about one checkout (`subscribeVcsStatus`). */
 export interface GitCheckoutState {
+  /** False until the checkout owner has answered; omitted on retained clients. */
+  readonly read?: boolean;
   /** The service's hostname, which is its repository's name in the group's org. */
   readonly repository: string;
   readonly isRepo: boolean;
@@ -281,6 +283,7 @@ export function gitCheckoutLine(
   /** Whose checkout it is, so its own branch reads as a name (`branchLabel`). */
   mateName?: string | undefined,
 ): string {
+  if (checkout.read === false) return "Reading repository…";
   if (!checkout.isRepo) return "no repository yet";
   const branch = branchLabel(checkout.headRef, mateName);
   const ahead = checkout.aheadCount > 0 ? ` ↑${String(checkout.aheadCount)}` : "";
@@ -448,7 +451,7 @@ function runsInTheContainer(action: GitBlockAction): boolean {
 }
 
 function stateOf(checkout: GitCheckoutState, changes: GitChangeState): GitBlockState {
-  if (!changes.read) return "unread";
+  if (checkout.read === false || !changes.read) return "unread";
   if (!checkout.isRepo) return "no-repository";
   if (changes.change?.merged === true) return "merged";
   if (changes.change?.state === "open") return "in-review";
@@ -531,7 +534,7 @@ export function gitBlock(input: {
   });
   return {
     repository: checkout.repository,
-    branch: checkout.headRef ?? MAIN,
+    branch: checkout.read === false ? "" : (checkout.headRef ?? MAIN),
     verdict,
     checkoutLine: gitCheckoutLine(checkout, input.mateName),
     state,

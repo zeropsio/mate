@@ -40,7 +40,6 @@ import * as ServerLifecycleEvents from "../src/serverLifecycleEvents.ts";
 import * as ServerRuntimeStartup from "../src/serverRuntimeStartup.ts";
 import { engineLayerInert } from "../src/engine/layer.ts";
 import * as ServerSettings from "../src/serverSettings.ts";
-import * as AnalyticsService from "../src/telemetry/AnalyticsService.ts";
 
 const providerInstanceId = ProviderInstanceId.make("codex");
 const projectId = ProjectId.make("project-startup-orphan");
@@ -98,7 +97,6 @@ const startupDependencies = Layer.mergeAll(
       serve: (() => Effect.void) as HttpServer.HttpServer["Service"]["serve"],
     }),
   ),
-  AnalyticsService.layerTest,
   Layer.succeed(ProviderService.ProviderService, {
     startSession: () => Effect.die("unused"),
     sendTurn: () => Effect.die("unused"),

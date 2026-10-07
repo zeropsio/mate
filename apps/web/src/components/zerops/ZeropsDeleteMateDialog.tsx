@@ -94,7 +94,7 @@ export function ZeropsDeleteMateForm({
         </div>
       </DialogPanel>
       <DialogFooter>
-        <Button disabled={pending} onClick={onCancel} type="button" variant="ghost">
+        <Button onClick={onCancel} type="button" variant="ghost">
           {cleanup ? "Close" : "Cancel"}
         </Button>
         <Button
@@ -141,14 +141,7 @@ export function ZeropsDeleteMateDialog({
   readonly onOpenChange: (open: boolean) => void;
 }) {
   return (
-    <Dialog
-      onOpenChange={(next) => {
-        // A press the platform is answering is seen through: its refusal has somewhere to land.
-        if (!next && form.pending) return;
-        onOpenChange(next);
-      }}
-      open={open}
-    >
+    <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogPopup className="max-w-md">
         <ZeropsDeleteMateForm {...form} />
       </DialogPopup>

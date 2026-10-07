@@ -1,3 +1,6 @@
+import { MateHealth } from "@t3tools/contracts";
+import * as Schema from "effect/Schema";
+import { hqMateHealthScope } from "../families/mateHealth.ts";
 import { hqMateSetup } from "../projections/hqMateSetup.ts";
 import { describe, expect, it } from "@effect/vitest";
 import type { MateAttention } from "@t3tools/contracts";
@@ -990,3 +993,58 @@ describe("HQ lifecycle receipt delivery", () => {
       }),
   );
 });
+
+it.effect("relays health without an overview or attention and keeps it when HQ goes away", () =>
+  Effect.gen(function* () {
+    const health = yield* Schema.decodeUnknownEffect(MateHealth)({
+      source: { environmentId: "env", epoch: 1, incarnation: "run", revision: 4 },
+      sampledAt: "2026-10-07T12:00:00Z",
+      evidence: {
+        status: "strained",
+        severity: "critical",
+        resources: ["memory"],
+        memory: null,
+        cpu: null,
+        io: null,
+        disk: null,
+        unavailable: [],
+      },
+    });
+    const store = makeAccountStore(AtomRegistry.make());
+    const fixture = hqFixtureWire();
+    const { fiber } = yield* live(store, fixture);
+    const scope = { kind: "attention", projectId: "ada" } as const;
+    yield* fixture.send({
+      type: "scope-reset",
+      scope,
+      incarnation: "hq1",
+      revision: 1,
+      values: [
+        {
+          key: "ada",
+          value: {
+            presence: { online: true, since: health.sampledAt, overview: "none" },
+            overview: null,
+            attention: null,
+            attentionState: "none",
+            health,
+            healthState: "live",
+          },
+        },
+      ],
+      removals: [],
+    });
+    yield* fixture.send({ type: "scope-ready", scope, incarnation: "hq1", revision: 1 });
+    yield* settle;
+    expect(publicRead(factOf(store.state(), "mateHealth", "ada"))).toMatchObject({
+      kind: "known",
+      value: health,
+    });
+    expect(phase(store, hqMateHealthScope(ORG, "ada"))).toBe("live");
+    yield* Fiber.interrupt(fiber);
+    expect(publicRead(factOf(store.state(), "mateHealth", "ada"))).toMatchObject({
+      kind: "known",
+      value: health,
+    });
+  }),
+);

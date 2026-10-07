@@ -10,16 +10,22 @@ import { shownHqProjectPeopleAtom } from "@t3tools/client-runtime/data";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { useMemo } from "react";
 
-import { hqPeopleAtom, hqNavigationAtom, zeropsEnvironmentsAtom } from "../state/zerops";
+import {
+  hqPeopleAtom,
+  hqNavigationAtom,
+  hqPlacementStatusAtom,
+  zeropsEnvironmentsAtom,
+} from "../state/zerops";
 import { registeredZeropsOrigins } from "./environmentOrigins";
 import {
   usageEnvironmentIdentities,
+  usageBaselineStatus,
   usageOwnersStatus,
   type UsageEnvironmentIdentities,
   type UsageOwnersStatus,
   type UsagePeopleStatus,
 } from "./usageEnvironmentIdentities";
-import { useMatesSettled } from "./useMatesSettled";
+import { useDiscoveryStatus } from "./useDiscoveryStatus";
 import { useZeropsCandidates } from "./useZeropsCandidates";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
@@ -28,15 +34,21 @@ const NONE: UsageEnvironmentIdentities = new Map();
 export function useUsageEnvironmentIdentities(): {
   readonly identities: UsageEnvironmentIdentities;
   readonly owners: UsageOwnersStatus;
-  /** The environments are listed whole: no Mate is still to be registered (`useMatesSettled`). */
+  /** The environments are listed whole: no Mate is still to be registered (`useDiscoveryStatus`). */
   readonly listed: boolean;
+  readonly baseline: UsageOwnersStatus;
+  readonly projects: ReadonlyMap<string, string>;
 } {
   const session = useZeropsSession();
   const signedIn = session.status === "signed-in";
   const { listing } = useZeropsCandidates();
   const environments = useAtomValue(zeropsEnvironmentsAtom);
   const people = useAtomValue(hqPeopleAtom);
-  const hqAnswered = useAtomValue(hqNavigationAtom).live;
+  const navigation = useAtomValue(hqNavigationAtom);
+  const placementStatus = useAtomValue(hqPlacementStatusAtom);
+  const currentOrgId = session.activeOrganization?.id ?? null;
+  const sameOrg = currentOrgId !== null && navigation.orgId === currentOrgId;
+  const hqAnswered = navigation.live;
   const peopleStatus: UsagePeopleStatus =
     !signedIn || session.activeOrganization === null
       ? "idle"
@@ -46,25 +58,18 @@ export function useUsageEnvironmentIdentities(): {
           ? "failed"
           : "loading";
   const projectPeople = useAtomValue(shownHqProjectPeopleAtom);
-  const mateOwners = useMemo(
-    () =>
-      Object.fromEntries(
-        Object.entries(projectPeople).map(([projectId, entry]) => [projectId, entry.owner]),
-      ),
-    [projectPeople],
-  );
   const viewerUserId = session.user?.id ?? null;
   const identities = useMemo(
     () =>
-      signedIn
+      signedIn && sameOrg
         ? usageEnvironmentIdentities({
             candidates: heldCandidates(listing).rows,
             registeredOrigins: registeredZeropsOrigins(environments),
-            owners: mateOwners,
+            owners: projectPeople,
             viewerUserId,
           })
         : NONE,
-    [signedIn, listing, environments, mateOwners, viewerUserId],
+    [signedIn, sameOrg, listing, environments, projectPeople, viewerUserId],
   );
   const owners = usageOwnersStatus({
     session: session.status,
@@ -72,6 +77,22 @@ export function useUsageEnvironmentIdentities(): {
     people: peopleStatus,
     listing: listing.state,
   });
-  const listed = useMatesSettled();
-  return { identities, owners, listed };
+  const listed = useDiscoveryStatus() === "complete";
+  const baseline =
+    session.status === "loading"
+      ? "resolving"
+      : usageBaselineStatus({
+          orgId: currentOrgId,
+          navigationOrgId: navigation.orgId,
+          navigation,
+          placement: placementStatus,
+          listing: listing.state,
+        });
+  const projects = useMemo(() => {
+    const projects = new Map<string, string>();
+    if (sameOrg && navigation.structure !== null)
+      for (const app of navigation.structure.apps) projects.set(app.id, app.name);
+    return projects;
+  }, [sameOrg, navigation.structure]);
+  return { identities, owners, listed, baseline, projects };
 }

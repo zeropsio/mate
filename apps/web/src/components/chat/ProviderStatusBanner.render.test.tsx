@@ -95,7 +95,7 @@ describe("ProviderStatusBanner", () => {
       <ProviderStatusBanner status={warningProvider()} onDismiss={() => {}} />,
     );
 
-    expect(markup).toContain('role="alert"');
+    expect(markup).toContain('role="status"');
     expect(markup).toContain('aria-label="Dismiss Codex provider warning"');
   });
 
@@ -134,7 +134,7 @@ describe("getProviderStatusMessage", () => {
         auth: { status: "unauthenticated" },
         message: "",
       }),
-    ).toBe("Open provider setup to sign in with Google.");
+    ).toBe("Open coding agent setup to sign in with Google.");
   });
 
   it("requires installation on the environment before sign-in", () => {
@@ -148,7 +148,7 @@ describe("getProviderStatusMessage", () => {
         auth: { status: "unauthenticated" },
         message: "",
       }),
-    ).toBe("Open provider setup to install Antigravity on this environment.");
+    ).toBe("Open coding agent setup to install Antigravity on this environment.");
   });
 
   it("keeps CLI sign-in advice for a provider without integrated setup", () => {

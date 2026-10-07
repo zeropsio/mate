@@ -3,7 +3,7 @@ import { WebSocket } from "ws";
 import { serve, deadline } from "../harness/http.ts";
 import { hqConnection } from "./hqConnection.ts";
 
-it("readiness follows any HQ websocket's first frame and counts bytes in both directions", async () => {
+it("HTTP readiness does not claim a socket frame; transport counts bytes in both directions", async () => {
   const upstream = await serve(
     (request) =>
       request.method === "POST"
@@ -15,13 +15,17 @@ it("readiness follows any HQ websocket's first frame and counts bytes in both di
     },
   );
   const proxy = await hqConnection(upstream.origin);
+  await fetch(`${proxy.origin}/initial/http`);
+  await proxy.ready();
+  expect(proxy.counters.wsDownFrames).toBe(0);
+  const socketReceipt = proxy.socketReady().then(() => proxy.counters.wsDownFrames);
   const socket = new WebSocket(`${proxy.origin.replace("http:", "ws:")}/future/protocol`);
   try {
     const frame = deadline(
       new Promise<string>((resolve) => socket.once("message", (data) => resolve(data.toString()))),
       "first proxy frame",
     );
-    await proxy.ready();
+    expect(await socketReceipt).toBeGreaterThan(0);
     expect(await frame).toBe("snapshot");
     const echo = deadline(
       new Promise<string>((resolve) => socket.once("message", (data) => resolve(data.toString()))),

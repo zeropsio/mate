@@ -1,3 +1,4 @@
+import { resolveDiffThemeName } from "~/lib/diffPresentation";
 import type {
   CheckpointHistory,
   CheckpointHistoryRoot,
@@ -18,7 +19,6 @@ import { useCheckpointDiff } from "../lib/checkpointDiffState";
 import {
   buildFileDiffRenderKey,
   getRenderablePatch,
-  resolveDiffThemeName,
   resolveFileDiffPath,
 } from "../lib/diffRendering";
 import { AnnotatableCodeView, type AnnotatableCodeViewHandle } from "./diffs/AnnotatableCodeView";

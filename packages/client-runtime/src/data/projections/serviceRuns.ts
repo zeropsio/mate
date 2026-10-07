@@ -54,8 +54,26 @@ export const serviceRuns: Projection<
   derive: (read, { orgId, serviceId }) => {
     const fact = read.fact("service", serviceId);
     // A service that left the listing is no longer one of its project's (`serviceProject`).
-    if (fact.kind === "known" && read.index("serviceProject", fact.value.projectId).has(serviceId))
-      return runsOf(fact.value);
+    if (
+      fact.kind === "known" &&
+      read.index("serviceProject", fact.value.projectId).has(serviceId)
+    ) {
+      const runs = runsOf(fact.value);
+      if (typeof runs === "string" || runs.activeId === null || runs.name !== null) return runs;
+      // A later attempt changes the service's variables. Its active id can still join the
+      // exact version named by a retained process, without using the later attempt's name.
+      for (const id of read.index("project", fact.value.projectId)) {
+        const process = read.fact("process", id);
+        if (
+          process.kind === "known" &&
+          process.value.serviceStackIds.includes(serviceId) &&
+          process.value.appVersion?.id === runs.activeId &&
+          process.value.appVersion.name
+        )
+          return { ...runs, name: process.value.appVersion.name };
+      }
+      return runs;
+    }
     return read.coverage(servicesScope(orgId)) === "complete" ? "absent" : "unread";
   },
   equals: sameValue,

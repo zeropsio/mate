@@ -5,9 +5,9 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import {
   clearProjectFileQueryData,
   confirmProjectFileQueryData,
-  getOptimisticProjectFileQueryData,
+  getProjectFileDraft,
   resolveProjectFileQueryData,
-  setProjectFileQueryData,
+  setProjectFileDraft,
 } from "./projectFilesQueryState";
 
 const environmentId = EnvironmentId.make("environment-project-files-query-test");
@@ -16,6 +16,7 @@ describe("project files queries", () => {
   afterEach(() => {
     clearProjectFileQueryData(environmentId, "/repo", "convex.json");
     vi.unstubAllGlobals();
+    vi.useRealTimers();
   });
 
   it("keeps the latest optimistic draft when an older write finishes", () => {
@@ -26,10 +27,10 @@ describe("project files queries", () => {
       byteLength: 20,
       truncated: false,
     } satisfies ProjectReadFileResult;
-    setProjectFileQueryData(environmentId, "/repo", "convex.json", '{"nodeVersion":"220"}');
-    setProjectFileQueryData(environmentId, "/repo", "convex.json", '{"nodeVersion":"22"}');
+    setProjectFileDraft(environmentId, "/repo", "convex.json", '{"nodeVersion":"220"}');
+    setProjectFileDraft(environmentId, "/repo", "convex.json", '{"nodeVersion":"22"}');
 
-    expect(getOptimisticProjectFileQueryData(environmentId, "/repo", "convex.json")?.contents).toBe(
+    expect(getProjectFileDraft(environmentId, "/repo", "convex.json")?.contents).toBe(
       '{"nodeVersion":"22"}',
     );
 
@@ -47,5 +48,12 @@ describe("project files queries", () => {
     expect(
       confirmProjectFileQueryData(environmentId, "/repo", "convex.json", '{"nodeVersion":"22"}'),
     ).toBe(true);
+  });
+
+  it("retains an unsaved draft after its editor releases it", async () => {
+    vi.useFakeTimers();
+    setProjectFileDraft(environmentId, "/repo", "convex.json", "unsaved");
+    await vi.runAllTimersAsync();
+    expect(getProjectFileDraft(environmentId, "/repo", "convex.json")?.contents).toBe("unsaved");
   });
 });

@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 const testState = vi.hoisted(() => ({
-  useUsage: vi.fn(),
+  useProviderUsage: vi.fn(),
   identities: new Map() as ReadonlyMap<EnvironmentId, UsageEnvironmentIdentity>,
   owners: "resolved" as "resolving" | "resolved" | "unavailable",
   mates: [] as ReadonlyArray<UsageMate>,
@@ -42,11 +42,20 @@ vi.mock("react", async (importOriginal) => {
 });
 
 vi.mock("../../env", () => ({ isElectron: false }));
-vi.mock("../../state/usage", () => ({ useUsage: testState.useUsage }));
+vi.mock("../../state/usage", () => ({ useProviderUsage: testState.useProviderUsage }));
 vi.mock("../../zerops/useUsageEnvironmentIdentities", () => ({
   useUsageEnvironmentIdentities: () => ({
     identities: testState.identities,
     owners: testState.owners,
+    listed: true,
+    baseline: "resolved",
+    projects: new Map(
+      [...testState.identities.values()].flatMap((identity) =>
+        identity.projectId === null
+          ? []
+          : [[identity.projectId, identity.projectName ?? identity.projectId]],
+      ),
+    ),
   }),
 }));
 vi.mock("../../zerops/useUsageMates", () => ({ useUsageMates: () => testState.mates }));
@@ -162,7 +171,7 @@ beforeEach(() => {
       },
     ],
   };
-  testState.useUsage.mockReturnValue({
+  testState.useProviderUsage.mockReturnValue({
     merged,
     overall: merged,
     environments: [],
@@ -248,7 +257,7 @@ function withEnvironments(
   }[],
 ) {
   const totalCost = rows.reduce((sum, row) => sum + row.costUsd, 0);
-  const current = testState.useUsage();
+  const current = testState.useProviderUsage();
   const merged = {
     ...current.merged,
     costUsd: totalCost,
@@ -264,7 +273,7 @@ function withEnvironments(
       providers: ["claude"],
     })),
   };
-  testState.useUsage.mockReturnValue({
+  testState.useProviderUsage.mockReturnValue({
     ...current,
     merged,
     overall: merged,
@@ -273,7 +282,12 @@ function withEnvironments(
       label: `label ${row.id}`,
       isPending: false,
       error: row.error ?? null,
-      summary: null,
+      summary: {
+        contractVersion: USAGE_CONTRACT_VERSION,
+        sources: [],
+        pricing: { status: "fresh" },
+        readAt: "2026-10-07T12:00:00Z",
+      },
     })),
   });
   testState.identities = new Map(
@@ -295,15 +309,21 @@ describe("UsagePage dimensions", () => {
       {
         id: "a",
         costUsd: 10,
-        identity: { mateName: "Lena", projectName: "shop", owner: owner("u1", "Ales", true) },
+        identity: {
+          mateName: "Lena",
+          projectId: "shop",
+          ownerState: "known",
+          projectName: "shop",
+          owner: owner("u1", "Ales", true),
+        },
       },
     ]);
 
     const markup = renderPage();
 
     expect(breakdownOptions(markup)).toEqual(["Model", "Hour"]);
-    expect(markup).not.toContain("Mates");
-    expect(markup).not.toContain("people");
+    expect(markup).not.toContain("contributing Mates");
+    expect(markup).not.toContain("· 2 owners");
     expect(markup).toContain("expensive-model");
   });
 
@@ -313,21 +333,33 @@ describe("UsagePage dimensions", () => {
       {
         id: "a",
         costUsd: 10,
-        identity: { mateName: "Lena", projectName: "shop", owner: owner("u1", "Ales", true) },
+        identity: {
+          mateName: "Lena",
+          projectId: "shop",
+          ownerState: "known",
+          projectName: "shop",
+          owner: owner("u1", "Ales", true),
+        },
       },
       {
         id: "b",
         costUsd: 30,
-        identity: { mateName: "Otto", projectName: "blog", owner: owner("u2", "Bara") },
+        identity: {
+          mateName: "Otto",
+          projectId: "blog",
+          ownerState: "known",
+          projectName: "blog",
+          owner: owner("u2", "Bara"),
+        },
       },
     ]);
 
     const markup = renderPage();
     const body = markup.match(/<tbody>(.*?)<\/tbody>/)?.[1] ?? "";
 
-    expect(breakdownOptions(markup)).toEqual(["Person", "Project", "Mate", "Model", "Hour"]);
+    expect(breakdownOptions(markup)).toEqual(["Owner", "Project", "Mate", "Model", "Hour"]);
     expect(body).toMatch(/Bara.*Ales/);
-    expect(markup).toContain("· 2 Mates · 2 people");
+    expect(markup).toContain("· 2 contributing Mates · 2 owners");
     expect(markup).toMatch(/Ales.*You/);
   });
 
@@ -337,12 +369,24 @@ describe("UsagePage dimensions", () => {
       {
         id: "a",
         costUsd: 10,
-        identity: { mateName: "Lena", projectName: "shop", owner: owner("u1", "Ales", true) },
+        identity: {
+          mateName: "Lena",
+          projectId: "shop",
+          ownerState: "known",
+          projectName: "shop",
+          owner: owner("u1", "Ales", true),
+        },
       },
       {
         id: "b",
         costUsd: 30,
-        identity: { mateName: "Otto", projectName: "blog", owner: owner("u1", "Ales", true) },
+        identity: {
+          mateName: "Otto",
+          projectId: "blog",
+          ownerState: "known",
+          projectName: "blog",
+          owner: owner("u1", "Ales", true),
+        },
       },
     ]);
 
@@ -351,8 +395,8 @@ describe("UsagePage dimensions", () => {
 
     expect(breakdownOptions(markup)).toEqual(["Project", "Mate", "Model", "Hour"]);
     expect(body).toMatch(/blog.*shop/);
-    expect(markup).toContain("· 2 Mates");
-    expect(markup).not.toContain("people");
+    expect(markup).toContain("· 2 contributing Mates");
+    expect(markup).not.toContain("· 2 owners");
   });
 
   it("narrows the merge to the scope and names it in the breadcrumb", () => {
@@ -360,17 +404,29 @@ describe("UsagePage dimensions", () => {
       {
         id: "a",
         costUsd: 10,
-        identity: { mateName: "Lena", projectName: "shop", owner: owner("u1", "Ales", true) },
+        identity: {
+          mateName: "Lena",
+          projectId: "shop",
+          ownerState: "known",
+          projectName: "shop",
+          owner: owner("u1", "Ales", true),
+        },
       },
       {
         id: "b",
         costUsd: 30,
-        identity: { mateName: "Otto", projectName: "blog", owner: owner("u2", "Bara") },
+        identity: {
+          mateName: "Otto",
+          projectId: "blog",
+          ownerState: "known",
+          projectName: "blog",
+          owner: owner("u2", "Bara"),
+        },
       },
     ]);
 
     const markup = renderPage({ person: "u2" });
-    const include = testState.useUsage.mock.lastCall?.[1] as
+    const include = testState.useProviderUsage.mock.lastCall?.[1] as
       | ((environmentId: EnvironmentId) => boolean)
       | undefined;
 
@@ -413,12 +469,24 @@ describe("UsagePage dimensions", () => {
       {
         id: "b",
         costUsd: 30,
-        identity: { mateName: "Otto", projectName: "blog", owner: owner("u2", "Bara") },
+        identity: {
+          mateName: "Otto",
+          projectId: "blog",
+          ownerState: "known",
+          projectName: "blog",
+          owner: owner("u2", "Bara"),
+        },
       },
       {
         id: "d",
         costUsd: 0,
-        identity: { mateName: "Ida", projectName: "blog", owner: owner("u2", "Bara") },
+        identity: {
+          mateName: "Ida",
+          projectId: "blog",
+          ownerState: "known",
+          projectName: "blog",
+          owner: owner("u2", "Bara"),
+        },
       },
     ]);
     testState.owners = owners;
@@ -428,7 +496,7 @@ describe("UsagePage dimensions", () => {
     expect(markup.includes("$30.00")).toBe(total);
     // Every device has answered: waiting on owners is not a device scan.
     expect(markup).not.toContain("still scanning");
-    expect(markup.includes("Can&#x27;t tell whose Mates these are right now.")).toBe(notice);
+    expect(markup.includes("Retry HQ owner facts.")).toBe(notice);
   });
 
   it.each([
@@ -455,17 +523,38 @@ describe("UsagePage dimensions", () => {
       {
         id: "a",
         costUsd: 10,
-        identity: { mateName: "Lena", projectName: "shop", owner: owner("u1", "Ales", true) },
+        identity: {
+          mateName: "Lena",
+          projectId: "shop",
+          ownerState: "known",
+          projectName: "shop",
+          owner: owner("u1", "Ales", true),
+        },
       },
       {
         id: "b",
         costUsd: 30,
-        identity: { mateName: "Otto", projectName: "blog", owner: owner("u2", "Bara") },
+        identity: {
+          mateName: "Otto",
+          projectId: "blog",
+          ownerState: "known",
+          projectName: "blog",
+          owner: owner("u2", "Bara"),
+        },
       },
     ]);
     testState.identities = new Map([
       ...testState.identities,
-      ["c" as EnvironmentId, { mateName: "Ida", projectName: "docs", owner: owner("u3", "Cyril") }],
+      [
+        "c" as EnvironmentId,
+        {
+          mateName: "Ida",
+          projectId: "docs",
+          ownerState: "known",
+          projectName: "docs",
+          owner: owner("u3", "Cyril"),
+        },
+      ],
     ]);
 
     const markup = renderPage(scope);
@@ -481,7 +570,13 @@ describe("UsagePage dimensions", () => {
       {
         id: "a",
         costUsd: 10,
-        identity: { mateName: "Lena", projectName: "shop", owner: owner("u1", "Ales", true) },
+        identity: {
+          mateName: "Lena",
+          projectId: "shop",
+          ownerState: "known",
+          projectName: "shop",
+          owner: owner("u1", "Ales", true),
+        },
         error: "down",
       },
       { id: "b", costUsd: 5, error: "down" },

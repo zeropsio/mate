@@ -114,7 +114,7 @@ export function ZeropsHqUpdatePanel({
         </div>
       </DialogPanel>
       <DialogFooter>
-        <DialogClose render={<Button disabled={running} variant="ghost" />}>Close</DialogClose>
+        <DialogClose render={<Button variant="ghost" />}>Close</DialogClose>
         {action === null ? null : (
           <Button data-hq-update-action disabled={running} onClick={() => void update()}>
             {action}
@@ -187,16 +187,9 @@ export function ZeropsHqUpdate({
       <Button onClick={() => setOpen(true)} size="xs" variant="link">
         {trigger}
       </Button>
-      <Dialog
-        onOpenChange={(next) => {
-          // An update under way is seen through: its end has somewhere to land.
-          if (!next && busy) return;
-          setOpen(next);
-        }}
-        open={open}
-      >
-        <DialogPopup className="max-w-md">
-          {open ? (
+      <Dialog onOpenChange={setOpen} open={open}>
+        <DialogPopup className="max-w-md" keepMounted={busy}>
+          {open || busy ? (
             <ZeropsHqUpdatePanel answering={answering} onBusy={busyNow} read={read} run={run} />
           ) : null}
         </DialogPopup>

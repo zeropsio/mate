@@ -14,14 +14,24 @@ import { useCallback } from "react";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
 import { projectEnvironment } from "~/state/projects";
 import { useProjectPathSearch } from "~/state/queries";
-import { executeAtomQuery } from "@t3tools/client-runtime/state/runtime";
 
 const EMPTY_PROJECT_FILE_PATH = "";
 const EMPTY_PROJECT_FILE_QUERY_ATOM = Atom.make(
   AsyncResult.initial<ProjectReadFileResult, never>(false),
 ).pipe(Atom.withLabel("project-file-query:empty"));
-function optimisticFileAtom(environmentId: EnvironmentId, cwd: string, relativePath: string) {
-  return projectEnvironment.optimisticFile({ environmentId, cwd, relativePath });
+const drafts = Atom.family((key: string) =>
+  Atom.make<string | null>(null).pipe(Atom.keepAlive, Atom.withLabel(`file-draft:${key}`)),
+);
+function fileDraftAtom(environmentId: EnvironmentId, cwd: string, relativePath: string) {
+  return drafts(JSON.stringify([environmentId, cwd, relativePath]));
+}
+function draftFile(relativePath: string, contents: string): ProjectReadFileResult {
+  return {
+    relativePath,
+    contents,
+    byteLength: new TextEncoder().encode(contents).byteLength,
+    truncated: false,
+  };
 }
 
 interface ProjectQueryState<A> {
@@ -35,7 +45,7 @@ function getProjectEntriesQueryAtom(environmentId: EnvironmentId, cwd: string) {
   return projectEnvironment.listEntries({ environmentId, input: { cwd } });
 }
 
-export function getProjectFileQueryAtom(
+export function getWorkspaceFileAtom(
   environmentId: EnvironmentId,
   cwd: string,
   relativePath: string | null,
@@ -46,75 +56,51 @@ export function getProjectFileQueryAtom(
   });
 }
 
-export function setProjectFileQueryData(
+/** Only text typed in this client: the owner fact is never overwritten. */
+export function setProjectFileDraft(
   environmentId: EnvironmentId,
   cwd: string,
   relativePath: string,
   contents: string,
 ): void {
-  appAtomRegistry.set(optimisticFileAtom(environmentId, cwd, relativePath), {
-    confirmedAgainst: undefined,
-    data: {
-      relativePath,
-      contents,
-      byteLength: new TextEncoder().encode(contents).byteLength,
-      truncated: false,
-    },
-  });
+  appAtomRegistry.set(fileDraftAtom(environmentId, cwd, relativePath), contents);
 }
-
-export function getOptimisticProjectFileQueryData(
+export function getProjectFileDraft(
   environmentId: EnvironmentId,
   cwd: string,
   relativePath: string,
 ): ProjectReadFileResult | null {
-  return appAtomRegistry.get(optimisticFileAtom(environmentId, cwd, relativePath))?.data ?? null;
+  const text = appAtomRegistry.get(fileDraftAtom(environmentId, cwd, relativePath));
+  return text === null ? null : draftFile(relativePath, text);
 }
-
+/** Called only once mate-write-file has verified its later owner read-back. */
 export function confirmProjectFileQueryData(
   environmentId: EnvironmentId,
   cwd: string,
   relativePath: string,
   contents: string,
 ): boolean {
-  const atom = optimisticFileAtom(environmentId, cwd, relativePath);
-  const optimisticFile = appAtomRegistry.get(atom);
-  if (optimisticFile?.data.contents !== contents) return false;
-
-  const queryAtom = getProjectFileQueryAtom(environmentId, cwd, relativePath);
-  const confirmed = {
-    ...optimisticFile,
-    confirmedAgainst: appAtomRegistry.get(queryAtom),
-  };
-  appAtomRegistry.set(atom, confirmed);
-  appAtomRegistry.refresh(queryAtom);
-  void executeAtomQuery(appAtomRegistry, queryAtom, {
-    reportDefect: false,
-    reportFailure: false,
-  }).then((result) => {
-    if (result._tag === "Success" && appAtomRegistry.get(atom) === confirmed) {
-      appAtomRegistry.set(atom, null);
-    }
-  });
+  const atom = fileDraftAtom(environmentId, cwd, relativePath);
+  if (appAtomRegistry.get(atom) !== contents) return false;
+  appAtomRegistry.set(atom, null);
   return true;
 }
-
 export function resolveProjectFileQueryData(
   environmentId: EnvironmentId,
   cwd: string,
   relativePath: string | null,
   data: ProjectReadFileResult | null,
 ): ProjectReadFileResult | null {
-  if (relativePath === null) return data;
-  return appAtomRegistry.get(optimisticFileAtom(environmentId, cwd, relativePath))?.data ?? data;
+  return relativePath === null
+    ? data
+    : (getProjectFileDraft(environmentId, cwd, relativePath) ?? data);
 }
-
 export function clearProjectFileQueryData(
   environmentId: EnvironmentId,
   cwd: string,
   relativePath: string,
 ): void {
-  appAtomRegistry.set(optimisticFileAtom(environmentId, cwd, relativePath), null);
+  appAtomRegistry.set(fileDraftAtom(environmentId, cwd, relativePath), null);
 }
 
 function failureCause<A>(result: AsyncResult.AsyncResult<A, unknown>): unknown {
@@ -191,22 +177,27 @@ export function useProjectFileQuery(
   enabled = true,
 ): ProjectFileQueryState {
   const atom = enabled
-    ? getProjectFileQueryAtom(environmentId, cwd, relativePath)
+    ? getWorkspaceFileAtom(environmentId, cwd, relativePath)
     : EMPTY_PROJECT_FILE_QUERY_ATOM;
   const result = useAtomValue(atom);
   const refreshAtom = useAtomRefresh(atom);
   const refresh = useCallback(() => refreshAtom(), [refreshAtom]);
   const data = Option.getOrNull(AsyncResult.value(result));
-  const optimisticResult = useAtomValue(
-    optimisticFileAtom(environmentId, cwd, relativePath ?? EMPTY_PROJECT_FILE_PATH),
+  const draft = useAtomValue(
+    fileDraftAtom(environmentId, cwd, relativePath ?? EMPTY_PROJECT_FILE_PATH),
   );
-  const optimisticFile = relativePath === null ? null : optimisticResult;
+  const drafted = relativePath === null || draft === null ? null : draftFile(relativePath, draft);
   const cause = failureCause(result);
 
   return {
-    data: optimisticFile?.data ?? data,
+    data: drafted ?? data,
     error: errorMessage(cause),
-    isNotFile: isProjectReadFileError(cause) && cause.failure === "path_not_file",
+    isNotFile:
+      (isProjectReadFileError(cause) && cause.failure === "path_not_file") ||
+      (typeof cause === "object" &&
+        cause !== null &&
+        "code" in cause &&
+        cause.code === "ProjectReadFileError:path_not_file"),
     isPending: result.waiting,
     refresh,
   };

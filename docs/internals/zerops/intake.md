@@ -196,3 +196,50 @@ table keeps the decisions.
     px) was not done. **Decided after the row (2026-09-26):** "T3 Code" leaves agent instructions
     and messages (`fork.md` §4.1, guarded by `scripts/product-name.test.ts`).
   - _Open security candidates:_ none
+- `10f39eb9ac80c9a4b7f5097575dd2addc3b6f631` (nightly `v0.0.46-nightly.20261007.2761`, 2026-10-07)
+  - _Date:_ 2026-10-07
+  - _Decisions:_ 500 upstream commits since row 5, every one given a verdict in eight triage slices
+    (take 106, adapt 74, blocked 84, deleted 108, irrelevant 61, superseded 35, idea 22, skip 9,
+    security 1); five port lanes landed **90 `port:` + 1 `import:` + 16 fork fixes**, merged in
+    one branch with three integration fixes. **Declined: upstream's V2 orchestrator** (`de3439142`
+    deletes V1 and the V1 adapters behind a protocol-2 wire cut): Mate is building its own engine,
+    so the fork stays on V1, and V2-only driver fixes arrive as hand translations into the V1
+    adapters. Effect stays at `4.0.0-rc.115` (4.0.1 waits for a codemod over the tree). **Now
+    lane (1 port + 6 fixes):** upstream's PostHog telemetry is deleted outright (on by default,
+    keyed by a hash of the agent account id; the service, its heartbeat, the ws client properties
+    and all 13 provider call sites go, with `product-analytics.md`); **security:** workspace HTML
+    is served under `Content-Security-Policy: sandbox …`, and git can no longer read a ref or a
+    remote as an option — `e65063ccf` (`--` before a clone URL), `--end-of-options` on fetch,
+    branch and worktree add (not on checkout: git before 2.43.1 mis-parses it), a dash-led name
+    refused before git runs, and `GitRefName` on the switch/create/worktree/review contracts.
+    **Provider lane (19 ports + import + 2 fixes):** wire packages re-imported at `422248515`
+    (not the range end — at the target effect-acp is rewritten for V2 and Effect 4.0.1); Claude
+    in long conversations, ws defects no longer fatal, an interim guard so a dying ACP
+    session-update handler can't silence the agent, process lifecycle (shutdown leaves settled
+    session rows alone, the reaper asks only for live bindings), Grok crash wording, Antigravity
+    1.3.0 (manifest stays `=1.1.1` until a live turn), OpenCode `>=2.0.0` and Grok `<1.0.13`
+    marked broken. **Server lane (33 ports + 2 fixes):** observability (subprocess span names,
+    SIGUSR2 heap snapshot, event-loop stalls, fewer empty spans, a failing trace disk no longer
+    stalls), SQLite (WAL shrinks back, `BEGIN IMMEDIATE`), git (fewer processes on idle polls,
+    `GIT_OPTIONAL_LOCKS=0`, no failed repacks, a named failure `reason` decoded forward-compatibly),
+    pricing and usage, editors; repository identity keeps main's cache lifetimes. **Runtime lane
+    (16 ports + 3 fixes):** the connection ladder (2 s doubling to 30 s, jittered; an explicit
+    retry probes before replacing; a credential rotation still replaces the socket), RPC
+    resubscribe back-off, forward-compatible V1 thread and shell streams (an unknown event is
+    skipped and its sequence passed), markdown file links keep their prose label, settings writes
+    follow symlinks. **Web lane (21 ports + 3 fixes):** badges and type scale, a11y landmarks,
+    usage shares follow the metric, model picker, tooltips close on a person's scroll (not on a
+    box following its end), titlebar zoom, monospace fonts, pictures off the main thread, bare
+    `<a>` in replies; a project-script binding needs a modifier. **Integration:** the telemetry
+    deletion wins over the provider lane's analytics rename; the git option guard and the
+    failure-reason classifier sit side by side. **Not taken, with the lanes' reasons:** the mobile
+    halves of the file-link label and the usage share, preview mute/Woke/project order,
+    `3a7058da5` (its runtime half is V2) and `295d7cba0` (the fork's queue and stash diverged) wait
+    for their own change. **Open for the owner:** one live Antigravity 1.3.0 turn, a live
+    decode of Codex 0.155.1 against the new import, `git --version` ≥ 2.24 in the zcp image, and
+    the `/ws` URL still carries the client-device parameters only the session list reads.
+  - _Open security candidates:_ `rev-parse --verify <rev>` sites take no `--end-of-options` (git
+    learned it there in 2.30); the dead desktop bootstrap grant (`PairingGrantStore.ts`, nothing
+    sends one in a Mate); `28ce9d1c1`'s split of `settings:write`/`providers:manage` out of
+    `orchestration:operate`; undici 6.28.1 unaudited (`pnpm audit`); upstream's mermaid SVG
+    hardening if `5e35272fd` is ever ported
