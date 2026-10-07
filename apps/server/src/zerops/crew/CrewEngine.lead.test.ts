@@ -579,30 +579,41 @@ describe("CrewEngine lead", () => {
     withCrewEngine((world) =>
       Effect.gen(function* () {
         yield* withLead(world);
-        yield* startRun({ landing: "lead" });
-        const thread = yield* firstTurn(world, () =>
-          write(world.root, ".crew/backend/ok.txt", "ok\n"),
-        );
-        yield* reportDone(thread);
-        yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
-        const inReview = yield* snapshotWhere(
-          (current) => current.board.tasks[0]?.state === "review",
-        );
+        const lead = yield* memberOf(yield* leadThread(world));
+        yield* (yield* CrewToolHost).propose(lead, [PLAN[0]!]);
         const store = yield* CrewStore;
         const [row] = yield* store.assignments(CREW_ID);
-        // An accept an earlier landing left on a task its crewmate took back as rework.
+        // Start with the retained rework outcome, without a merge/check still holding the copy.
         yield* store.putAssignment({
           ...row!,
           state: "rework",
+          attempt: 1,
           review: { verdict: "accept", note: "Fine.", by: "lead" },
           waiting: { on: "conflict", reason: null, paths: ["ok.txt"] },
         });
-        yield* command({ _tag: "askResolve", taskId: inReview.board.tasks[0]!.id });
+        yield* command({ _tag: "askResolve", taskId: row!.assignment });
         const reworking = yield* snapshotWhere(
           (current) => current.board.tasks[0]?.state === "working",
         );
         assert.deepStrictEqual(
           [reworking.board.tasks[0]!.attempts, reworking.board.tasks[0]!.review],
+          [2, null],
+        );
+        yield* startRun({ landing: "lead" });
+        const thread = (yield* dispatchedOf(world, "thread.turn.start")).find(
+          (turn) =>
+            turn.threadId ===
+            reworking.crewmates.find((mate) => mate.handle === "backend")!.currentThreadId,
+        )!.threadId;
+        yield* world.publish(spiEvent("turn.started", thread, {}));
+        write(world.root, ".crew/backend/ok.txt", "ok\n");
+        yield* reportDone(thread);
+        yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+        const reviewed = yield* snapshotWhere(
+          (current) => current.board.tasks[0]?.state === "review",
+        );
+        assert.deepStrictEqual(
+          [reviewed.board.tasks[0]!.attempts, reviewed.board.tasks[0]!.review],
           [2, null],
         );
       }),
