@@ -5,8 +5,9 @@
  * in the same transaction as its consequences. A retryable failure backs off; past the attempt
  * limit it fails for good. A fiber sleeps until the next row comes due or the actor rings.
  *
- * Boot reconcile runs before the worker starts: replay-safe rows are requeued, and every owner
- * with cut process-bound work or a live run is told `Recovered`.
+ * Boot reconcile runs before the worker starts: replay-safe rows are requeued, and every
+ * conversation with process-bound work left behind, a live run or an open session is told
+ * `Recovered`.
  *
  * @module engine/outbox/EffectWorker
  */
@@ -153,7 +154,10 @@ export const makeEffectWorker = Effect.fn("makeEffectWorker")(function* (
     Effect.forever,
   );
 
-  /** Boot: requeue replay-safe rows, tell each owner what was cut, close whatever stayed open. */
+  /**
+   * Boot: requeue replay-safe rows, tell each conversation the restart touched what it cut and
+   * what never started, and close those rows.
+   */
   const reconcileAtBoot = Effect.gen(function* () {
     const now = yield* Clock.currentTimeMillis;
     const requeued = yield* outbox.requeueReplaySafe(boot, now);
@@ -163,9 +167,14 @@ export const makeEffectWorker = Effect.fn("makeEffectWorker")(function* (
         commandId: recoveredCommandId(boot, owner.conversationId),
         conversationId: owner.conversationId,
         principal: ENGINE,
-        command: { _tag: "Recovered", bootId: boot, cutEffects: owner.cut },
+        command: {
+          _tag: "Recovered",
+          bootId: boot,
+          cutEffects: owner.cut,
+          unstartedEffects: owner.unstarted,
+        },
       });
-      for (const effect of owner.cut) {
+      for (const effect of [...owner.cut, ...owner.unstarted]) {
         yield* outbox.close(effect, "cut", "the server restarted");
       }
     }

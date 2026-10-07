@@ -40,8 +40,9 @@ const fail = (invariant: string, detail: string): void => {
 const LEGAL: Readonly<Record<RunState | "none", ReadonlyArray<RunState>>> = {
   none: ["queued"],
   queued: ["admitted", "ended"],
-  admitted: ["sending", "running", "ended"],
-  sending: ["running", "ended"],
+  // Back to the queue before the message reached the agent (a send the restart never started).
+  admitted: ["sending", "running", "queued", "ended"],
+  sending: ["running", "queued", "ended"],
   running: ["waiting", "ended"],
   waiting: ["running", "ended"],
   ended: [],
@@ -259,6 +260,12 @@ const applyEvent = (model: Model, envelope: Envelope, now: number, event: KnownE
     }
     case "RunSending":
       return move(event.runId, "sending");
+    case "RunRequeued": {
+      move(event.runId, "queued");
+      model.queue.unshift(event.runId);
+      if (model.active === event.runId) model.active = null;
+      return;
+    }
     case "RunStarted":
       return move(event.runId, "running");
     case "RunWaiting":

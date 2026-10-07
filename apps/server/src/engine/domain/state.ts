@@ -60,6 +60,8 @@ export interface RunRecord {
   readonly nextItemOrdinal: number;
   readonly nextRequestOrdinal: number;
   readonly sessionOpenAttempts: number;
+  /** Sends asked for this run: a run requeued before its send started sends again. */
+  readonly sendAttempts: number;
   /** The person message that queued it, as the record shows it. */
   readonly personBody: PersonBody | null;
 }

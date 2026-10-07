@@ -515,6 +515,11 @@ export const RunStopAsked = event("RunStopAsked", {
 });
 export const RunEnded = event("RunEnded", { runId: RunId, end: RunEnd, source: RunEndSource });
 export const RunNotContinued = event("RunNotContinued", { runId: RunId, reason: Schema.String });
+/**
+ * A run goes back to the head of the queue before its message reached the agent: a restart cut
+ * its send before it started, or the agent opened a turn of its own while the run was prepared.
+ */
+export const RunRequeued = event("RunRequeued", { runId: RunId, reason: Schema.String });
 export const RunUnresponsive = event("RunUnresponsive", { runId: RunId, silentSince: Millis });
 export const RunResponsive = event("RunResponsive", { runId: RunId });
 export const ItemOpened = event("ItemOpened", {
@@ -609,6 +614,7 @@ const knownEvents = [
   RunStopAsked,
   RunEnded,
   RunNotContinued,
+  RunRequeued,
   RunUnresponsive,
   RunResponsive,
   ItemOpened,

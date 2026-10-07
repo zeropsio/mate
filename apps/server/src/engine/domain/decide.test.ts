@@ -22,7 +22,7 @@ import {
 import type { TurnOutcome } from "../bridge/spi3.ts";
 
 import type { Command, Decision, EffectDraft, ProviderSignal } from "./command.ts";
-import { CONTINUE_TEXT, WATCHDOG_SILENCE_MS, decide } from "./decide.ts";
+import { CONTINUE_TEXT, WATCHDOG_SILENCE_MS, decide, resentText } from "./decide.ts";
 import { fold, stampEvents } from "./evolve.ts";
 import { initialState, type ConversationState } from "./state.ts";
 
@@ -432,6 +432,46 @@ const transitions: ReadonlyArray<Row> = [
     given: [...running, recovered(), { _tag: "Archive" }],
     when: fired("restart-continuation", r(1)),
     events: ["WakeFired", "RunNotContinued"],
+  },
+  {
+    name: "a restart puts a message whose send never started back at the head, to go as it was",
+    given: [...running, turnEnded, send("second")],
+    when: {
+      command: {
+        _tag: "Recovered",
+        bootId: "boot-2" as never,
+        cutEffects: [],
+        unstartedEffects: [effectId(r(2), "provider.send", 1)],
+      },
+    },
+    events: [
+      "EffectOutcomeRecorded",
+      "RunRequeued",
+      "SessionClosed",
+      "RunAdmitted",
+      "EffectRequested",
+    ],
+    effects: ["session.open"],
+    run: { n: 2, state: "admitted" },
+    also: (scene) => expect(scene.state.runs[r(2)]?.text).toBe("second"),
+  },
+  {
+    name: "a message whose send a restart cut mid-flight goes again in its own words, marked",
+    given: [...running, turnEnded, send("second")],
+    when: recovered([effectId(r(2), "provider.send", 1)]),
+    run: { n: 2, end: "cut-by-restart", source: "inferred-from-restart" },
+    also: (scene) =>
+      expect(scene.events.find((event) => event._tag === "WakeArmed")).toMatchObject({
+        kind: "restart-continuation",
+        text: resentText("second"),
+      }),
+  },
+  {
+    name: "a restart closes the session of an idle conversation",
+    given: [...running, turnEnded],
+    when: recovered(),
+    events: ["SessionClosed"],
+    also: (scene) => expect(scene.state.session).toBeNull(),
   },
   {
     name: "a restart asks again for the session of an admitted run whose opening it cut",

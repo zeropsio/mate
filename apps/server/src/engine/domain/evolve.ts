@@ -92,6 +92,7 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
         nextItemOrdinal: 1,
         nextRequestOrdinal: 1,
         sessionOpenAttempts: 0,
+        sendAttempts: 0,
         personBody: null,
       };
       const next: ConversationState = {
@@ -185,6 +186,16 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
         pausedUntil: pauseAfter(event.end, state.pausedUntil),
       };
     }
+    case "RunRequeued":
+      return withRun(
+        {
+          ...state,
+          queue: [event.runId, ...state.queue.filter((id) => id !== event.runId)],
+          activeRunId: state.activeRunId === event.runId ? null : state.activeRunId,
+        },
+        event.runId,
+        (run) => ({ ...run, state: "queued", sessionId: null, admittedAt: null }),
+      );
     case "RunNotContinued":
       return withRun(state, event.runId, (run) =>
         run.end?.kind === "cut-by-restart"
@@ -298,7 +309,9 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
               ...run,
               sessionOpenAttempts: run.sessionOpenAttempts + 1,
             }))
-          : state;
+          : event.kind === "provider.send"
+            ? withRun(state, event.runId, (run) => ({ ...run, sendAttempts: run.sendAttempts + 1 }))
+            : state;
       return {
         ...counted,
         effects: {

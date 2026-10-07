@@ -214,7 +214,12 @@ export class Gen {
         const boot = BootId.make(`boot-${++this.boots}`);
         return {
           envelope: this.env(
-            { _tag: "Recovered", bootId: boot, cutEffects: effects.map((effect) => effect.id) },
+            {
+              _tag: "Recovered",
+              bootId: boot,
+              cutEffects: effects.filter((_, i) => i % 2 === 0).map((effect) => effect.id),
+              unstartedEffects: effects.filter((_, i) => i % 2 === 1).map((effect) => effect.id),
+            },
             ENGINE,
             recoveredCommandId(boot, this.conversation),
           ),

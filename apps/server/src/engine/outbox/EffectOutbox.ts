@@ -38,10 +38,13 @@ export interface EffectRow {
   readonly lastError: string | null;
 }
 
-/** One owner's work a restart cut, and whether it had a run alive. */
+/** One conversation a restart touched, and the process-bound work it left behind. */
 export interface RecoveryOwner {
   readonly conversationId: ConversationId;
+  /** Tried, and cut mid-flight: it may have acted. */
   readonly cut: ReadonlyArray<EffectId>;
+  /** Never tried (still pending at attempt 0): nothing of it happened. */
+  readonly unstarted: ReadonlyArray<EffectId>;
 }
 
 export interface EffectOutboxShape {
@@ -70,8 +73,9 @@ export interface EffectOutboxShape {
     now: number,
   ) => Effect.Effect<number, EngineStoreError>;
   /**
-   * Boot: the owners to recover — every conversation with process-bound rows another boot left
-   * pending or running (those rows are cut), and every conversation whose run was alive.
+   * Boot: the conversations to recover — every one with process-bound rows another boot left
+   * pending or running (tried ones are cut, untried ones reported apart), every one whose run was
+   * alive, and every one with a session still open (its process died with the server).
    */
   readonly recoveryOwners: (
     boot: BootId,
@@ -190,27 +194,41 @@ export const makeEffectOutbox = Effect.fn("makeEffectOutbox")(function* () {
       ),
     recoveryOwners: (boot) =>
       Effect.gen(function* () {
-        const cut = yield* sql<{ readonly effect_id: string; readonly conversation_id: string }>`
-          SELECT effect_id, conversation_id FROM engine_effect
+        const left = yield* sql<{
+          readonly effect_id: string;
+          readonly conversation_id: string;
+          readonly state: string;
+          readonly attempt: number;
+        }>`
+          SELECT effect_id, conversation_id, state, attempt FROM engine_effect
           WHERE class = 'process-bound'
             AND (state = 'pending'
               OR (state = 'running' AND (claimed_boot IS NULL OR claimed_boot != ${boot})))
           ORDER BY rowid
         `;
-        const live = yield* sql<{ readonly conversation_id: string }>`
-          SELECT DISTINCT conversation_id FROM engine_run
+        const touched = yield* sql<{ readonly conversation_id: string }>`
+          SELECT conversation_id FROM engine_run
           WHERE state IN ('admitted', 'sending', 'running', 'waiting')
+          UNION
+          SELECT conversation_id FROM engine_session WHERE state = 'open'
         `;
-        const owners = new Map<string, Array<EffectId>>();
-        for (const row of live) owners.set(row.conversation_id, []);
-        for (const row of cut) {
-          const list = owners.get(row.conversation_id) ?? [];
-          list.push(row.effect_id as EffectId);
-          owners.set(row.conversation_id, list);
+        const owners = new Map<
+          string,
+          { readonly cut: Array<EffectId>; readonly unstarted: Array<EffectId> }
+        >();
+        const owner = (conversation: string) => {
+          const found = owners.get(conversation) ?? { cut: [], unstarted: [] };
+          owners.set(conversation, found);
+          return found;
+        };
+        for (const row of touched) owner(row.conversation_id);
+        for (const row of left) {
+          const untried = row.state === "pending" && row.attempt === 0;
+          owner(row.conversation_id)[untried ? "unstarted" : "cut"].push(row.effect_id as EffectId);
         }
         return [...owners].map(([conversationId, effects]): RecoveryOwner => ({
           conversationId: conversationId as ConversationId,
-          cut: effects,
+          ...effects,
         }));
       }).pipe(Effect.mapError(failed("recoveryOwners"))),
   });

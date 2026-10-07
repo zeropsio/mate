@@ -182,6 +182,7 @@ export const makeEngineStore = Effect.fn("makeEngineStore")(function* (
       case "RunStopAsked":
       case "RunEnded":
       case "RunNotContinued":
+      case "RunRequeued":
       case "RunUnresponsive":
       case "RunResponsive":
         return upsertRun(state, event.runId, event.seq);

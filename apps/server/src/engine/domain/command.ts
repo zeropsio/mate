@@ -148,8 +148,10 @@ export type Command =
   | {
       readonly _tag: "Recovered";
       readonly bootId: BootId;
-      /** Process-bound effects the boot cut. */
+      /** Process-bound effects the restart cut while they were being tried. */
       readonly cutEffects: ReadonlyArray<EffectId>;
+      /** Process-bound effects the restart found never tried: nothing of them happened. */
+      readonly unstartedEffects?: ReadonlyArray<EffectId>;
     };
 
 export type CommandTag = Command["_tag"];

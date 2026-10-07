@@ -55,6 +55,9 @@ import { activeRun, runOfTurn, type ConversationState, type RunRecord } from "./
 export const WATCHDOG_SILENCE_MS = 10 * 60_000;
 /** What a continuation or a usage resume tells the agent. */
 export const CONTINUE_TEXT = "Continue where you left off.";
+/** A message a restart cut mid-send goes again in its own words, marked so the agent knows. */
+export const resentText = (text: string): string =>
+  `(Sent again after a server restart; it may have reached you already.)\n\n${text}`;
 /** How a run reads when its own agent interrupted the turn, no Stop asked. */
 export const AGENT_STOPPED_ITSELF = "The agent stopped the turn itself.";
 
@@ -193,7 +196,7 @@ const handle = (b: StepBuilder, command: Command): void => {
     case "ProviderSignals":
       return signals(b, command.sessionId, command.signals);
     case "Recovered":
-      return recovered(b, command.cutEffects);
+      return recovered(b, command.cutEffects, command.unstartedEffects ?? []);
   }
 };
 
@@ -244,7 +247,7 @@ const dispatch = (b: StepBuilder, run: RunRecord, justOpened = false): void => {
   const session = b.state.session;
   const fits = b.state.model === null || session?.model === b.state.model || justOpened;
   if (session !== null && fits) {
-    const effect = b.effect("provider.send", run.id, 1, run.id, {
+    const effect = b.effect("provider.send", run.id, run.sendAttempts + 1, run.id, {
       runId: run.id,
       sessionId: session.id,
       turn: run.id,
@@ -904,19 +907,37 @@ export const continuationRefusal = (state: ConversationState, run: RunRecord): s
   return null;
 };
 
-const recovered = (b: StepBuilder, cutEffects: ReadonlyArray<EffectId>): void => {
-  for (const id of cutEffects) {
+const recovered = (
+  b: StepBuilder,
+  cutEffects: ReadonlyArray<EffectId>,
+  unstartedEffects: ReadonlyArray<EffectId>,
+): void => {
+  const record = (id: EffectId, reason: string) => {
     const effect = b.state.effects[id];
-    if (effect === undefined) continue;
+    if (effect === undefined) return undefined;
     b.emit({
       _tag: "EffectOutcomeRecorded",
       effectId: id,
       kind: effect.kind,
-      outcome: { kind: "cut", reason: "the server restarted" },
+      outcome: { kind: "cut", reason },
     });
+    return effect;
+  };
+  for (const id of cutEffects) record(id, "the server restarted");
+  const neverSent = new Set<string>();
+  for (const id of unstartedEffects) {
+    const effect = record(id, "the server restarted before it was tried");
+    if (effect?.kind === "provider.send" && effect.runId !== null) neverSent.add(effect.runId);
   }
   const run = activeRun(b.state);
-  if (run !== undefined && isLive(run)) {
+  if (run !== undefined && run.state === "sending" && neverSent.has(run.id)) {
+    // Its send never started: nothing reached the agent, so it goes again, as it was.
+    b.emit({
+      _tag: "RunRequeued",
+      runId: run.id,
+      reason: "the server restarted before it was sent",
+    });
+  } else if (run !== undefined && isLive(run)) {
     const refusal = continuationRefusal(b.state, run);
     endRun(
       b,
@@ -935,7 +956,8 @@ const recovered = (b: StepBuilder, cutEffects: ReadonlyArray<EffectId>): void =>
         cron: null,
         principal: run.principal,
         joins: run.id,
-        text: CONTINUE_TEXT,
+        // A send cut mid-flight may or may not have arrived: its own words go again, marked.
+        text: run.state === "sending" ? resentText(run.text) : CONTINUE_TEXT,
       });
     }
   }
