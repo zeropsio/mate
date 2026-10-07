@@ -7,7 +7,7 @@ import {
   ProviderDriverKind,
   type ProviderInstanceConfig,
   type UsageOrigin,
-  type OrchestrationEvent,
+  type ProviderRuntimeEvent,
   AGENT_USAGE_CAPTURE_PROTOCOL,
 } from "@t3tools/contracts";
 import { type MateLinkDown, type MateLinkUp } from "@t3tools/shared/mateLink";
@@ -26,8 +26,14 @@ import { expandHomePath } from "../pathExpansion.ts";
 import { codexHomeLayout, providerInstanceEnvironment } from "../spi/driverHomes.ts";
 import { ZeropsOrgRead } from "../zerops/ZeropsOrgRead.ts";
 import { makeUsageLedger, unknownCoverage, type UsageBinding } from "./UsageLedger.ts";
-import { captureSource, watchCaptureSource, type CaptureSource } from "./usageCapture.ts";
+import {
+  captureSource,
+  watchDirectory,
+  type CaptureSource,
+  type WatchDirectory,
+} from "./usageCapture.ts";
 import { makeUsageReplication } from "./usageReplication.ts";
+import { DEFAULT_WATCH_RETRY, makeSourceWatches, type WatchRetry } from "./usageWatches.ts";
 
 export interface UsageLane {
   readonly ping: Effect.Effect<void>;
@@ -46,8 +52,16 @@ const validateOrg = Schema.decodeUnknownEffect(orgBody);
 const decodeClaudeSettings = Schema.decodeOption(ClaudeSettings);
 const decodeCodexSettings = Schema.decodeOption(CodexSettings);
 
+/** What capture reads of a provider runtime event: either conversation engine emits these. */
+export type UsageRuntimeEvent = Pick<ProviderRuntimeEvent, "type">;
+export interface UsageLinkOptions {
+  readonly watch?: WatchDirectory;
+  readonly retry?: WatchRetry;
+}
+
 export const makeUsageLink = Effect.fnUntraced(function* (
-  runEvents: Stream.Stream<OrchestrationEvent>,
+  runtimeEvents: Stream.Stream<UsageRuntimeEvent>,
+  options: UsageLinkOptions = {},
 ) {
   const ledger = yield* makeUsageLedger;
   const config = yield* ServerConfig;
@@ -58,12 +72,11 @@ export const makeUsageLink = Effect.fnUntraced(function* (
   let binding: UsageBinding | undefined;
   const dirty = yield* Queue.sliding<void>(1);
   let wake: (() => void) | undefined;
-  const watchers = new Map<string, () => void>();
-  yield* Effect.addFinalizer(() =>
-    Effect.sync(() => {
-      for (const close of watchers.values()) close();
-    }),
-  );
+  const watches = yield* makeSourceWatches({
+    watch: options.watch ?? watchDirectory,
+    nudge: () => Queue.offerUnsafe(dirty, undefined),
+    retry: options.retry ?? DEFAULT_WATCH_RETRY,
+  });
   const scan = Effect.gen(function* () {
     if (!binding) return;
     const current = yield* settings.getSettings;
@@ -135,16 +148,7 @@ export const makeUsageLink = Effect.fnUntraced(function* (
       yield* captureSource(ledger, binding, source).pipe(
         Effect.catchCause(() => Effect.logWarning("Usage source capture unavailable")),
       );
-      if (!watchers.has(source.directory)) {
-        const watching = yield* Effect.try(() =>
-          watchCaptureSource(source, () => Queue.offerUnsafe(dirty, undefined)),
-        ).pipe(Effect.option);
-        if (Option.isSome(watching)) {
-          watchers.set(source.directory, watching.value);
-          // Close the scan/watch race by reconciling once after the watcher is attached.
-          Queue.offerUnsafe(dirty, undefined);
-        }
-      }
+      yield* watches.ensure(source.directory);
     }
     wake?.();
   }).pipe(Effect.catchCause(() => Effect.logWarning("Usage ledger capture unavailable")));
@@ -153,10 +157,9 @@ export const makeUsageLink = Effect.fnUntraced(function* (
     Stream.runForEach(settings.streamChanges, () => Queue.offer(dirty, undefined)),
   );
   yield* Effect.forkScoped(
-    Stream.runForEach(runEvents, (event) =>
-      event.type === "thread.turn-start-requested" ||
-      event.type === "thread.turn-diff-completed" ||
-      event.type === "thread.session-set"
+    // A session start attaches watches for directories its first run creates; a finished turn is read.
+    Stream.runForEach(runtimeEvents, (event) =>
+      event.type === "session.started" || event.type === "turn.completed"
         ? Queue.offer(dirty, undefined)
         : Effect.void,
     ),

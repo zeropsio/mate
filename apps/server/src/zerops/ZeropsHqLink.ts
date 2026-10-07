@@ -83,6 +83,7 @@ import { ZeropsMateAttention } from "./ZeropsMateAttention.ts";
 import { ZeropsMateUpdate } from "./ZeropsMateUpdate.ts";
 import { ZeropsProjectAccess } from "./ZeropsProjectAccess.ts";
 import { makeUsageLink, type UsageLink } from "../usage/UsageLink.ts";
+import { ProviderRuntimeEventBus } from "../spi/ProviderRuntimeEventBus.ts";
 import * as UsageSqlite from "../persistence/NodeSqliteClient.ts";
 
 /** The part of a WebSocket the link uses; the global `WebSocket` is one. */
@@ -550,12 +551,13 @@ export const layer = (crew: OverviewSources["crew"]) =>
       const projection = yield* ProjectionSnapshotQuery;
       const engine = yield* OrchestrationEngineService;
       const providers = yield* ProviderInstances;
+      const runtimeEvents = yield* ProviderRuntimeEventBus;
       // Separate home database: capture IO cannot lock the orchestration event store.
       const usage = yield* Effect.gen(function* () {
         const usageDatabase = yield* Layer.build(
           UsageSqlite.layer({ filename: paths.join(config.stateDir, "usage.sqlite") }),
         );
-        return yield* makeUsageLink(engine.streamDomainEvents).pipe(Effect.provide(usageDatabase));
+        return yield* makeUsageLink(runtimeEvents.events).pipe(Effect.provide(usageDatabase));
       }).pipe(
         Effect.asSome,
         Effect.catchCause(() =>

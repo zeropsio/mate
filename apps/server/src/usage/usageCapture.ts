@@ -194,11 +194,21 @@ export const captureSource = Effect.fnUntraced(function* (
   yield* ledger.coverage(origin.originId, coverage);
 });
 
-/** Watch source changes, never attention/report ticks. The same ledger transaction owns each scan. */
-export function watchCaptureSource(source: CaptureSource, changed: () => void): () => void {
-  const watcher = NodeFS.watch(source.directory, { recursive: true }, (_event, name) => {
-    if (name === null || String(name).endsWith(".jsonl")) changed();
-  });
-  watcher.on("error", changed);
-  return () => watcher.close();
+export interface WatchOptions {
+  /** Every entry beneath the directory, or only its own entries. */
+  readonly recursive: boolean;
+  /** The changed entry's name relative to the directory, or null when the platform gives none. */
+  readonly changed: (name: string | null) => void;
+  /** The watch stopped working; the caller replaces it. */
+  readonly failed: () => void;
 }
+export type WatchDirectory = (directory: string, options: WatchOptions) => () => void;
+
+/** Watch source changes, never attention/report ticks. The same ledger transaction owns each scan. */
+export const watchDirectory: WatchDirectory = (directory, { recursive, changed, failed }) => {
+  const watcher = NodeFS.watch(directory, { recursive }, (_event, name) =>
+    changed(name === null ? null : String(name)),
+  );
+  watcher.on("error", failed);
+  return () => watcher.close();
+};

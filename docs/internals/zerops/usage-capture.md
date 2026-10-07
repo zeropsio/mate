@@ -30,8 +30,10 @@ HQ's standard/fast 5-minute or 1-hour bands; unknown or mixed durations remain u
 settled cancellation coverage or inferred run/actor provenance. Grok, Cursor, OpenCode and
 Antigravity publish unsupported meter coverage, including configured disabled instances.
 
-Startup reconciliation, transcript filesystem changes, settings changes and durable run/session
-events drive capture. Run-end reconciliation also attaches watchers to newly created histories. The
+Startup reconciliation, transcript filesystem changes, settings changes and provider runtime events
+(`session.started`, `turn.completed`, which both conversation engines emit) drive capture. A
+transcript directory that does not exist yet is awaited from its nearest existing parent; a watcher
+that errors is replaced after a growing delay. The
 first retained import declares backfilling before reading; its durable marker prevents repeated
 backfill declarations. Subsequent reads reconcile source checkpoints. Each reconciliation admits
 at most 2,048 files and 64 MiB of new transcript bytes, in 1 MiB chunks. A whole-prefix fingerprint
