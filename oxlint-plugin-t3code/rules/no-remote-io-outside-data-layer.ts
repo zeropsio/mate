@@ -7,6 +7,7 @@ import {
   normalizeFingerprint,
   shouldReportLedgered,
 } from "../exceptions.ts";
+import { compactSyntax, enclosingFunction, syntaxNodes } from "./boundaries.ts";
 import { getPropertyName, resolveVariable, unwrapExpression } from "../utils.ts";
 
 /**
@@ -45,8 +46,6 @@ const ADAPTER_PATHS = [
 ] as const;
 /** Modules that fetch or upload files, never source data; each one names its file. */
 const FILE_TRANSFER_PATHS: ReadonlySet<string> = new Set([
-  // Theme extensions and their manifests from Open VSX.
-  "apps/web/src/openVsxThemes.ts",
   // The terminal's bundled wasm.
   "apps/web/src/terminal/ghostty/runtime.ts",
   // The bundled notification sounds.
@@ -180,6 +179,8 @@ export const ZEROPS_CLIENT_VERBS = [
   "renewHeldSession",
   "requestData",
   "restartService",
+  "revealProjectVariable",
+  "revealServiceVariable",
   "setIntegrationTokenProjects",
   "setProjectMemberRole",
   "startProject",
@@ -246,11 +247,61 @@ const receiverName = (node: unknown): string | undefined => {
 };
 
 /** `client.verb(…)` for a Zerops or HQ client verb, called on something that is that client. */
-const isClientCall = (node: unknown): boolean => {
+const isClientCall = (
+  context: Parameters<typeof resolveVariable>[0],
+  node: unknown,
+  path: string,
+): boolean => {
   const callee = Option.getOrUndefined(unwrapExpression(node));
   if (callee?.type !== "MemberExpression" || callee.computed) return false;
   const verb = Option.getOrUndefined(getPropertyName(callee.property));
   if (verb === undefined || !CLIENT_VERBS.has(verb)) return false;
+  const receiver = Option.getOrUndefined(unwrapExpression(callee.object));
+  // The creation input's typed operation port is not ZeropsApiClient.register (sign-up).
+  if (
+    path === "packages/client-runtime/src/zerops/runEnvironmentCreation.ts" &&
+    verb === "register" &&
+    receiver?.type === "MemberExpression" &&
+    receiver.object.type === "Identifier" &&
+    receiverName(receiver) === "platform"
+  ) {
+    const input = resolveVariable(context, receiver.object)?.defs[0]?.name;
+    if (
+      input !== undefined &&
+      compactSyntax(context, input) === "input:RunEnvironmentCreationInput"
+    )
+      return false;
+  }
+  if (receiver?.type === "Identifier") {
+    const definition = resolveVariable(context, receiver)?.defs[0];
+    const annotation = definition?.name;
+    if (
+      annotation !== undefined &&
+      "typeAnnotation" in annotation &&
+      annotation.typeAnnotation !== undefined
+    ) {
+      for (const type of syntaxNodes(annotation.typeAnnotation)) {
+        if (type.type !== "Identifier") continue;
+        const imported = resolveVariable(context, type)?.defs[0]?.node;
+        const name =
+          imported?.type === "ImportSpecifier" ? specifierName(imported.imported) : type.name;
+        if (["ZeropsApiClient", "HqApi"].includes(name)) return true;
+      }
+    }
+    const declaration = definition?.node;
+    if (declaration?.type === "VariableDeclarator") {
+      const init = Option.getOrUndefined(unwrapExpression(declaration.init));
+      if (init?.type === "NewExpression" || init?.type === "CallExpression") {
+        const imported = resolveVariable(context, init.callee)?.defs[0]?.node;
+        const name =
+          imported?.type === "ImportSpecifier"
+            ? specifierName(imported.imported)
+            : calleeName(init.callee);
+        if (name === "ZeropsApiClient" || name === "makeHqApi" || name === "makeBrowserHqApi")
+          return true;
+      }
+    }
+  }
   return CLIENT_RECEIVER.test(receiverName(callee.object) ?? "");
 };
 
@@ -334,17 +385,156 @@ export default defineRule({
       });
     };
 
+    const isBundledCoreFetch = (node: ESTree.CallExpression): boolean => {
+      if (path !== "apps/web/src/zerops/accountHq.ts") return false;
+      const argument = node.arguments[0];
+      const fn = enclosingFunction(node);
+      if (
+        fn?.type === "FunctionDeclaration" &&
+        ["readCarriedCoreBuild", "readBundledCore"].includes(fn.id?.name ?? "")
+      ) {
+        // Only the injected artifact transport and the three declared bundle files.
+        return (
+          node.callee.type === "Identifier" &&
+          node.callee.name === "fetch" &&
+          fn.params.some((param) => param.type === "Identifier" && param.name === "fetch") &&
+          argument?.type === "TemplateLiteral" &&
+          argument.expressions.length === 1 &&
+          argument.expressions[0]?.type === "Identifier" &&
+          argument.expressions[0].name === "base" &&
+          ["/build.json", "/core.tgz.bin", "/zerops.yml"].includes(
+            argument.quasis[1]?.value.cooked ?? "",
+          )
+        );
+      }
+      // Pass the global fetch only as this build's artifact loader, never as a general client.
+      const wrapper = fn?.parent;
+      const call = wrapper?.type === "CallExpression" ? wrapper : undefined;
+      return (
+        call !== undefined &&
+        ["readCarriedCoreBuild", "readBundledCore"].includes(calleeName(call.callee) ?? "") &&
+        call.arguments[0] === fn &&
+        call.arguments[1] !== undefined &&
+        compactSyntax(context, call.arguments[1]) === "`${appBasePath()}/hq-core`" &&
+        compactSyntax(context, node) === "fetch(input,init)"
+      );
+    };
+
+    const isThemeArtifactFetch = (node: ESTree.CallExpression): boolean => {
+      if (path !== "apps/web/src/openVsxThemes.ts") return false;
+      let fn: ESTree.Node | null = node.parent;
+      while (fn !== null && fn.type !== "FunctionDeclaration") fn = fn.parent;
+      if (fn?.type !== "FunctionDeclaration") return false;
+      const argument = node.arguments[0];
+      if (argument === undefined) return false;
+      if (fn.id?.name === "fetchPackage") {
+        return (
+          compactSyntax(context, argument) === "url" &&
+          compactSyntax(context, fn).includes("readCappedResponse(response,MAX_VSIX_BYTES,")
+        );
+      }
+      if (!["searchOpenVsxThemes", "importOpenVsxThemeExtension"].includes(fn.id?.name ?? ""))
+        return false;
+      if (
+        argument.type === "MemberExpression" &&
+        argument.object.type === "Identifier" &&
+        argument.object.name === "extension" &&
+        !argument.computed &&
+        ["manifestUrl", "vsixUrl", "sha256Url"].includes(calleeName(argument) ?? "")
+      )
+        return true;
+      const binding = resolveVariable(context, argument)?.defs[0]?.node;
+      if (binding?.type !== "VariableDeclarator" || binding.init === null) return false;
+      const init = compactSyntax(context, binding.init);
+      return (
+        init === "newURL(OPEN_VSX_SEARCH_URL)" ||
+        init.startsWith(
+          "`https://open-vsx.org/api/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}",
+        )
+      );
+    };
+
+    const errorOnlyImport = (
+      source: string,
+      values: ReadonlyArray<ESTree.ImportDeclaration["specifiers"][number]>,
+    ): boolean =>
+      source === "effect/unstable/http/HttpClientError" ||
+      (source === "effect/unstable/http" &&
+        values.every(
+          (specifier) =>
+            specifier.type === "ImportSpecifier" &&
+            specifierName(specifier.imported) === "HttpClientError",
+        ));
+
+    /** Only the OTLP tracing-disable tag is allowed here, not the HTTP client operations. */
+    const tracingTagImport = (node: ESTree.ImportDeclaration): boolean => {
+      if (
+        path !== "apps/web/src/observability/clientTracing.ts" ||
+        node.source.value !== "effect/unstable/http"
+      )
+        return false;
+      const values = node.specifiers.filter(
+        (specifier) => specifier.type !== "ImportSpecifier" || specifier.importKind !== "type",
+      );
+      return values.every((specifier) => {
+        if (
+          specifier.type !== "ImportSpecifier" ||
+          specifierName(specifier.imported) !== "HttpClient"
+        )
+          return false;
+        const variable = resolveVariable(context, specifier.local);
+        return (
+          variable !== undefined &&
+          variable.references.every((reference) => {
+            const member = reference.identifier.parent;
+            return (
+              member?.type === "MemberExpression" &&
+              member.object === reference.identifier &&
+              !member.computed &&
+              getPropertyName(member.property).pipe(Option.getOrUndefined) === "TracerDisabledWhen"
+            );
+          })
+        );
+      });
+    };
+
     /** Shorthand properties can visit one identifier twice; a site reports once. */
     const reported = new Set<number>();
 
     return {
       CallExpression(node) {
         const head = headOf(context.sourceCode.getText(node.callee));
-        if (globalName(node.callee) === "fetch" || isBeacon(node.callee)) return report(node, head);
+        if (globalName(node.callee) === "fetch") {
+          if (!isBundledCoreFetch(node) && !isThemeArtifactFetch(node)) report(node, head);
+          return;
+        }
+        if (isBeacon(node.callee)) return report(node, head);
         const name = calleeName(node.callee);
+        const variable =
+          node.callee.type === "Identifier" ? resolveVariable(context, node.callee) : undefined;
+        const binding = variable?.defs[0]?.node;
+        if (binding?.type === "ImportSpecifier") {
+          const imported = specifierName(binding.imported);
+          const source =
+            binding.parent?.type === "ImportDeclaration" ? String(binding.parent.source.value) : "";
+          if (
+            (source.startsWith("@t3tools/client-runtime/") || source.startsWith(".")) &&
+            (REMOTE_ATOM_CONSTRUCTORS.has(imported) || CLIENT_FACTORIES.has(imported))
+          ) {
+            return report(node, head);
+          }
+          // Existing direct wire consumers stay ledgered until their migration. This closes aliases
+          // at new sites without changing the identity of today's retained direct call findings.
+          if (
+            name !== imported &&
+            /^@t3tools\/client-runtime\/(?:rpc(?:\/|$)|zerops\/hq(?:\/|$))/u.test(source) &&
+            ["request", "subscribe", "subscribeDynamic", "makeHqApi"].includes(imported)
+          )
+            return report(node, head);
+        }
         if (name !== undefined && REMOTE_ATOM_CONSTRUCTORS.has(name)) return report(node, head);
         if (name !== undefined && CLIENT_FACTORIES.has(name)) return report(node, head);
-        if (isClientCall(node.callee)) report(node, head);
+        if (isClientCall(context, node.callee, path)) report(node, head);
       },
       ImportDeclaration(node) {
         if (node.importKind === "type") return;
@@ -353,7 +543,10 @@ export default defineRule({
           (specifier) => specifier.type !== "ImportSpecifier" || specifier.importKind !== "type",
         );
         if (values.length === 0) return;
-        if (REMOTE_LIBRARY.test(source)) return report(node, source);
+        if (REMOTE_LIBRARY.test(source)) {
+          if (!errorOnlyImport(source, values) && !tracingTagImport(node)) report(node, source);
+          return;
+        }
         if (!REACTIVITY.test(source)) return;
         const remoteAtoms = values.some(
           (specifier) =>

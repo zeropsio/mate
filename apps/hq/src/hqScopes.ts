@@ -80,6 +80,8 @@ class ScopeReadRefused extends Schema.TaggedError<ScopeReadRefused>()("ScopeRead
 
 const validKey = (scope: HqScope, key: string) => {
   switch (scope.kind) {
+    case "agentUsage":
+      return key === "report";
     case "navigation":
       return (
         key === "org" || key === "status" || /^(?:app|project|person|press):[^:]{1,128}$/u.test(key)
@@ -290,7 +292,7 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
       };
       const permitted = (scope: HqScope, current: StructureSource, userId: string) => {
         const view = viewFor(current, userId);
-        return scope.kind === "navigation"
+        return scope.kind === "navigation" || scope.kind === "agentUsage"
           ? true
           : scope.kind === "attention"
             ? observedProjects(view).some((project) => project.projectId === scope.projectId)
@@ -378,6 +380,11 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
         Effect.gen(function* () {
           const view = viewFor(current, entry.userId);
           const scope = entry.scope;
+          if (scope.kind === "agentUsage")
+            return yield* new ScopeReadRefused({
+              code: "unsupported",
+              reason: "usage_reader_not_installed",
+            });
           const all = yield* overviewsNow;
           const observable = observedProjects(view);
           // Permission comes first: unknown ids must not reveal source membership.

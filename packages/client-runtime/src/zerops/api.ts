@@ -2663,6 +2663,30 @@ export class ZeropsApiClient {
   }
 
   /**
+   * `GET /project-env/{id}/reveal` — a sensitive Shared value, decrypted. Zerops reveals only in
+   * sudo mode: this client's personal access token is always in it (its `sudoUntil` slides two
+   * hours ahead with each call), a password session is not (`403 notInSudoMode`), and a member
+   * who may not read secrets is refused (measured 2026-10-07).
+   */
+  async revealProjectVariable(id: string): Promise<string> {
+    return this.#reveal(`/project-env/${id}/reveal`);
+  }
+
+  /** `GET /user-data/{id}/reveal` — a sensitive service value (its own, or Zerops-made), decrypted. */
+  async revealServiceVariable(id: string): Promise<string> {
+    return this.#reveal(`/user-data/${id}/reveal`);
+  }
+
+  async #reveal(path: string): Promise<string> {
+    const response = await this.#request<{ readonly content?: unknown }>(
+      path,
+      { signal: null },
+      { clearSessionOnUnauthorized: false, operationKind: "read" },
+    );
+    return typeof response?.content === "string" ? response.content : "";
+  }
+
+  /**
    * One vault write: `sensitive` is on the wire of every add and update, because a write that
    * leaves it out turns a sensitive value plain (measured 2026-10-07). Answers its process id.
    */

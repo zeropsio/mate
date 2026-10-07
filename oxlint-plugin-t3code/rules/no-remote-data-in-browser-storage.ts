@@ -7,6 +7,7 @@ import {
   normalizeFingerprint,
   shouldReportLedgered,
 } from "../exceptions.ts";
+import { compactSyntax } from "./boundaries.ts";
 import { getPropertyName, resolveVariable, unwrapExpression } from "../utils.ts";
 
 /**
@@ -143,6 +144,59 @@ export default defineRule({
     const path = coveredPath(context.filename);
     if (path === undefined) return {};
 
+    // Existing tab intent port: only account-keyed opaque input, never a source result.
+    // Keep this scoped to the typed record until its codec moves; the rest of this file is guarded.
+    const ownIntentUse = (reference: ESTree.Node): boolean => {
+      if (
+        path !== "apps/web/src/zerops/environmentPorts.ts" &&
+        path !== "apps/web/src/zerops/containerIntentStorage.ts"
+      )
+        return false;
+      let declaration: ESTree.Node | null = reference;
+      while (declaration !== null && declaration.type !== "VariableDeclarator")
+        declaration = declaration.parent;
+      // A nested key declaration belongs to the same object, so find the enclosing intent binding.
+      while (declaration !== null) {
+        if (
+          declaration.type === "VariableDeclarator" &&
+          declaration.id.type === "Identifier" &&
+          ["intentStorage", "containerIntentStorage"].includes(declaration.id.name)
+        )
+          break;
+        declaration = declaration.parent;
+      }
+      if (declaration?.type !== "VariableDeclarator") return false;
+      const contract = compactSyntax(context, declaration.id);
+      if (!contract.includes('AccountEnvironmentPorts["intents"]')) return false;
+      const member = reference.parent;
+      const call = member?.parent;
+      if (
+        member?.type !== "MemberExpression" ||
+        call?.type !== "CallExpression" ||
+        call.callee !== member
+      )
+        return false;
+      const method = getPropertyName(member.property).pipe(Option.getOrUndefined);
+      const key = call.arguments[0];
+      if (key?.type !== "Identifier" || key.name !== "key") return false;
+      const keyBinding = resolveVariable(context, key)?.defs[0]?.node;
+      if (
+        keyBinding?.type !== "VariableDeclarator" ||
+        keyBinding.init === null ||
+        compactSyntax(context, keyBinding.init) !== 'accountStorageKey("container-intents.v1")'
+      )
+        return false;
+      if (method === "getItem" || method === "removeItem") return call.arguments.length === 1;
+      if (method !== "setItem" || call.arguments.length !== 2) return false;
+      const value = call.arguments[1];
+      if (value?.type !== "Identifier" || value.name !== "value") return false;
+      const binding = resolveVariable(context, value);
+      return (
+        binding?.defs[0]?.type === "Parameter" &&
+        binding.references.every((reference) => !reference.isWrite())
+      );
+    };
+
     const textOf = (node: ESTree.Node): string => context.sourceCode.getText(node);
 
     const report = (node: ESTree.Node, fingerprintText: string) => {
@@ -168,6 +222,7 @@ export default defineRule({
      * passed on.
      */
     const reportUse = (reference: ESTree.Node) => {
+      if (ownIntentUse(reference)) return;
       const parent = reference.parent;
       if (parent?.type === "CallExpression" && parent.callee === reference) {
         const key = parent.arguments[0];

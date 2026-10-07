@@ -41,6 +41,7 @@ import {
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
+import { UsageLinkUp, UsageLinkDown } from "./agentUsage.ts";
 import { MateChanges } from "./hqChanges.ts";
 import { MateAccessMember } from "./mateAccess.ts";
 
@@ -274,6 +275,7 @@ export const MateOverviewSections = Schema.Struct({
 export type MateOverviewSections = typeof MateOverviewSections.Type;
 
 export const MateLinkUp = Schema.Union([
+  ...UsageLinkUp.members,
   Schema.Struct({ type: Schema.Literal("pong") }),
   Schema.Struct({
     type: Schema.Literal("overview"),
@@ -290,8 +292,15 @@ export const MateLinkUp = Schema.Union([
 export type MateLinkUp = typeof MateLinkUp.Type;
 
 export const MateLinkDown = Schema.Union([
+  ...UsageLinkDown.members,
   Schema.Struct({ type: Schema.Literal("ping") }),
-  Schema.Struct({ type: Schema.Literal("state"), mate: MateState }),
+  Schema.Struct({
+    type: Schema.Literal("state"),
+    mate: MateState,
+    usage: Schema.optionalKey(
+      Schema.Struct({ capture: Schema.Int, report: Schema.Int, mateId: TrimmedNonEmptyString }),
+    ),
+  }),
   Schema.Struct({
     type: Schema.Literal("access"),
     /** How long before it was sent Zerops answered the view it was computed from. */

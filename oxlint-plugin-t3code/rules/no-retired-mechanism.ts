@@ -1,4 +1,4 @@
-import { defineRule } from "@oxlint/plugins";
+import { defineRule, type ESTree } from "@oxlint/plugins";
 
 import {
   formatFindingMessage,
@@ -6,6 +6,7 @@ import {
   normalizeFingerprint,
   shouldReportLedgered,
 } from "../exceptions.ts";
+import { compactSyntax, functionNamed, syntaxNodes } from "./boundaries.ts";
 import { RETIRED_MECHANISMS, type RetiredMechanism } from "../retiredMechanisms.ts";
 
 /**
@@ -116,14 +117,147 @@ export default defineRule({
     const path = coveredPath(context.filename);
     if (path === undefined) return {};
 
+    /** Sanction behavior at its reviewed boundary, rather than banning its old name. */
+    const sanctioned = (program: ESTree.Program, token: string): boolean => {
+      const text = compactSyntax(context, program);
+      const body = (name: string): string => {
+        const fn = functionNamed(program, name);
+        return fn === undefined ? "" : compactSyntax(context, fn);
+      };
+      const hasWriter = (value: string): boolean =>
+        /(?:Atom\.make\(|create(?:Store|Environment\w*)?\(|useState\(|\.setState\(|\.subscribe\(|\.set\()/u.test(
+          value,
+        );
+      switch (token) {
+        case "useZeropsRegistry":
+          if (path === "apps/web/src/zerops/useZeropsRegistry.ts") {
+            const facade = body("useZeropsRegistry");
+            return (
+              facade.includes("useAtomValue(hqNavigationAtom)") &&
+              facade.includes("registryFromHq(structure)") &&
+              facade.includes("loading:true") &&
+              !hasWriter(facade)
+            );
+          }
+          return [...syntaxNodes(program)].some(
+            (node) =>
+              node.type === "ImportDeclaration" &&
+              String(node.source.value).endsWith("/useZeropsRegistry") &&
+              node.specifiers.some(
+                (specifier) =>
+                  specifier.type === "ImportSpecifier" &&
+                  specifier.imported.type === "Identifier" &&
+                  specifier.imported.name === "useZeropsRegistry",
+              ),
+          );
+        case "bear(false)":
+          // The old permission read has gone; dispatch and refusal live in hq-birth.
+          return (
+            path === "apps/web/src/components/zerops/ZeropsHqGate.tsx" &&
+            text.includes('kind:"hq-birth"') &&
+            text.includes("operations.submit(")
+          );
+        case "useZeropsOrganizationMembersRead":
+          return (
+            (path === "apps/web/src/zerops/useZeropsMateOwners.ts" &&
+              body(token).includes("useProjection(organizationMembers,") &&
+              body(token).includes('family:"organizationMembers"') &&
+              !hasWriter(body(token))) ||
+            (path === "apps/web/src/zerops/accountHq.ts" &&
+              text.includes("findOfficialHq(members)") &&
+              !/(?:isViewer|mayWrite|mine)(?::|=)/u.test(text))
+          );
+        case "ownersAndAdmins(":
+          return (
+            (path === "packages/client-runtime/src/zerops/hq/anchor.ts" &&
+              body("ownersAndAdmins").includes("members.filter(") &&
+              body("ownersAndAdmins").includes("!isTokenMember(member)") &&
+              !hasWriter(body("ownersAndAdmins"))) ||
+            (path === "apps/web/src/zerops/accountHq.ts" &&
+              text.includes("findOfficialHq(members)") &&
+              !/(?:isViewer|mayWrite|mine)(?::|=)/u.test(text))
+          );
+        case "setInterval(renewNow, PRESS_RENEW_MS)": {
+          const lease = body("pressHold");
+          return (
+            path === "apps/web/src/zerops/matePress.ts" &&
+            lease.includes("api.holdPress(") &&
+            lease.includes("api.endPress(") &&
+            lease.includes("clearInterval(renewal)") &&
+            !/(?:settlePress|setState|phase:|state:)/u.test(lease)
+          );
+        }
+        case "settleToIdleAfter": {
+          const display = body(token);
+          return (
+            path === "apps/web/src/zerops/useZeropsMateUpdate.ts" &&
+            display.includes('state:{phase:"idle"}') &&
+            !/(?:phase:["'](?:failed|updated|already-current)|settle\()/u.test(display) &&
+            [...syntaxNodes(program)]
+              .filter(
+                (node) =>
+                  node.type === "CallExpression" &&
+                  node.callee.type === "Identifier" &&
+                  node.callee.name === token,
+              )
+              .every((call) => {
+                for (let parent = call.parent; parent !== null; parent = parent.parent) {
+                  if (
+                    parent.type !== "IfStatement" ||
+                    call.start < parent.consequent.start ||
+                    call.end > parent.consequent.end
+                  )
+                    continue;
+                  const test = compactSyntax(context, parent.test);
+                  if (
+                    test === 'state.phase==="updated"' ||
+                    test === 'state.phase==="already-current"||state.phase==="updated"'
+                  )
+                    return true;
+                }
+                return false;
+              })
+          );
+        }
+        case "serverConfigState":
+          return (
+            path === "packages/client-runtime/src/rpc/session.ts" &&
+            text.includes("Ref.make(Option.none<ServerConfigReplayState>())") &&
+            /PubSub\.sliding<BufferedServerConfigEvent>\(\d+\)/u.test(text) &&
+            text.includes("buffered.revision>snapshot.value.revision") &&
+            !/(?:Atom\.make|\.setState|localStorage|sessionStorage)/u.test(text)
+          );
+        case "await fetch(url, { signal: requestSignal })":
+          return (
+            path === "apps/web/src/openVsxThemes.ts" &&
+            text.includes("newURL(OPEN_VSX_SEARCH_URL)") &&
+            text.includes('url.searchParams.set("category","Themes")')
+          );
+        case "createWorkspaceFileImageAtomFamily(": {
+          const prefetch = body("prefetchWithNativeImage");
+          const family = body("createWorkspaceFileImageAtomFamily");
+          return (
+            path === "apps/mobile/src/features/files/workspace-file-image-cache.ts" &&
+            prefetch.includes("Image.prefetch(uri)") &&
+            family.includes("prefetch(key.uri)") &&
+            family.includes("returnkey.uri;") &&
+            !/(?:exists|mayWrite|permission|metadata):/u.test(family)
+          );
+        }
+        default:
+          return false;
+      }
+    };
+
     return {
-      Program() {
+      Program(program) {
         const comments = context.sourceCode
           .getAllComments()
           .map((comment) => [comment.start, comment.end] as const);
         const source = compact(context.sourceCode.text, comments);
 
         for (const [mechanism, token] of COMPACT_TOKENS) {
+          if (sanctioned(program, mechanism.token)) continue;
           if (mechanism.paths !== undefined && !mechanism.paths.includes(path)) continue;
           for (const index of occurrences(source.text, token)) {
             const fingerprint = normalizeFingerprint(mechanism.token);

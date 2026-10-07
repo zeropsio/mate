@@ -1,5 +1,7 @@
 import { MateAttention as HqAttentionValue } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
+import { AgentUsageScope, AGENT_USAGE_REPORT_PROTOCOL } from "@t3tools/contracts";
+import { usageCanonical } from "./agentUsage.ts";
 import { MatePresence } from "./hqMates.ts";
 import { MateOverview } from "./mateLink.ts";
 import { RecipeTierResponse } from "./hqRecipe.ts";
@@ -50,6 +52,7 @@ export type HqNavigationStatus = typeof HqNavigationStatus.Type;
 
 /** One renderer opens one socket for its organization and registers only demanded scopes. */
 export const HqScope = Schema.Union([
+  AgentUsageScope,
   Schema.Struct({ kind: Schema.Literal("navigation") }),
   Schema.Struct({ kind: Schema.Literal("app-detail"), appId: Schema.String }),
   Schema.Struct({
@@ -158,6 +161,7 @@ export const HQ_NAVIGATION_PROTOCOL = 1;
 export const HqCoreProtocol = Schema.Struct({
   protocol: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
   build: Schema.optionalKey(Schema.String),
+  agentUsage: Schema.optionalKey(Schema.Literal(AGENT_USAGE_REPORT_PROTOCOL)),
 });
 export type HqCoreProtocol = typeof HqCoreProtocol.Type;
 
@@ -245,6 +249,8 @@ export const hqScopeKey = (scope: HqScope): string => {
   switch (scope.kind) {
     case "navigation":
       return "navigation";
+    case "agentUsage":
+      return usageCanonical([scope.kind, scope.query, scope.detail ?? null]);
     case "app-detail":
     case "operation":
       return JSON.stringify([scope.kind, scope.appId]);

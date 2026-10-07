@@ -69,6 +69,7 @@ export {
 } from "../zerops/data/zeropsSession.ts";
 export { endIssuedSession } from "./adapters/issuedSessions.ts";
 export { makeBuildLogTransport } from "./adapters/buildLog.ts";
+export { makeVaultReveal, type VaultReveal, type VaultRevealed } from "./adapters/vaultReveal.ts";
 export {
   buildLogSessionKeyOf,
   makeAccountBuildLogs,
