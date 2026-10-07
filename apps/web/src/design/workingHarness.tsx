@@ -15,10 +15,9 @@ import { StrictMode, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { EnvironmentId, MessageId, TurnId } from "@t3tools/contracts";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
-import type { ManagedZeropsDataRuntime } from "@t3tools/client-runtime/zerops/data";
+import type { AccountScope } from "@t3tools/client-runtime/zerops/data";
 import { enrollmentRefusalWords } from "@t3tools/client-runtime/zerops/hq";
 import { emptyAgentPanelModel } from "@t3tools/client-runtime/state/subagentRuntime";
-import * as Stream from "effect/Stream";
 
 import { ConversationAfterWork, ConversationWorking } from "~/components/chat/ConversationWorking";
 import type { ConversationSpeaker } from "~/components/chat/ConversationRows";
@@ -1432,13 +1431,12 @@ function Standins({ children }: { readonly children: ReactNode }) {
     error: null,
     projectRefs: new Map(),
     authority: new Map(),
-    account: { kind: "authorized" },
     lost: new Set(),
   };
   const data: ZeropsDataContextValue = {
     // The markdown's commands ask the account's grant what they may do: a
     // grant that never answers, since nothing here is run.
-    runtime: { access: { changes: Stream.empty } } as unknown as ManagedZeropsDataRuntime,
+    scope: {} as AccountScope,
     signals: { hidden: () => false, online: () => true, listen: () => () => undefined },
     organizationRef: () => {
       throw new Error("not in the harness");

@@ -255,22 +255,23 @@ describe("mate-restart", () => {
     }),
   );
 
-  it.effect("a restart its admission refused before sending is unsent, never maybe-landed", () =>
-    Effect.gen(function* () {
-      const { store, registry } = account();
-      const { platform } = platformOf({
-        restart: () =>
-          Promise.reject(
-            new ZeropsWriteNotSent({ message: "Project access could not be verified." }),
-          ),
-      });
-      yield* operationsOf(store, registry, platform).submit(RESTART);
-      expect(progress(store)).toEqual({
-        stage: "unsent",
-        next: "send-again",
-        reason: "Project access could not be verified.",
-      });
-    }),
+  it.effect(
+    "a restart its admission refused before sending stays refused, never maybe-landed",
+    () =>
+      Effect.gen(function* () {
+        const { store, registry } = account();
+        const { platform } = platformOf({
+          restart: () =>
+            Promise.reject(
+              new ZeropsWriteNotSent({ message: "Project access could not be verified." }),
+            ),
+        });
+        yield* operationsOf(store, registry, platform).submit(RESTART);
+        expect(progress(store)).toEqual({
+          stage: "refused",
+          reason: "Project access could not be verified.",
+        });
+      }),
   );
 
   it.effect("a refusal says what Zerops said, not its status", () =>

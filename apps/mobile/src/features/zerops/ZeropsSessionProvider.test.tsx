@@ -57,10 +57,10 @@ vi.mock("@t3tools/client-runtime/zerops", async (importOriginal) => {
 });
 
 vi.mock("./storage", () => ({ mobileZeropsStorage: {} }));
-// ZeropsDataProvider hands the account runtime the device's native ports; these tests start none.
+// ZeropsAccountEnvironmentProvider hands the account runtime the device's native ports; these tests start none.
 vi.mock("./environment-ports", () => ({ mobileAccountPorts: () => new Promise(() => undefined) }));
 
-// ZeropsSessionProvider renders ZeropsDataProvider, which imports react-native
+// ZeropsSessionProvider renders ZeropsAccountEnvironmentProvider, which imports react-native
 // for AppState-based visibility; the real package ships Flow syntax the test
 // transform cannot parse.
 vi.mock("react-native", () => ({

@@ -28,10 +28,10 @@ const GUARDS: EnvironmentGuards = {
   want: true,
   routeTarget: true,
   visible: true,
-  postGrant: true,
-  identityMint: { allowed: true },
-  zeropsFailing: false,
-  grantVerifiedAtMs: 0,
+  verified: true,
+
+  zeropsState: "live",
+
   budget: true,
 };
 
@@ -270,11 +270,10 @@ const ROWS: ReadonlyArray<{
     row: 9,
     name: "a network failure after two identity failures offers no Restart",
     machine: machine({
-      guards: { ...GUARDS, grantVerifiedAtMs: NOW - 10_000 },
+      guards: GUARDS,
       identityFailures: {
         reads: 2,
         lastCheckedAt: "2026-09-23T10:00:20.000Z",
-        sinceMs: NOW - 30_000,
       },
       credential: {
         kind: "backoff",
@@ -292,13 +291,12 @@ const ROWS: ReadonlyArray<{
   },
   {
     row: 9,
-    name: "identity failed twice with a fresh grant offers Restart",
+    name: "identity failed twice while Zerops is live offers Restart",
     machine: machine({
-      guards: { ...GUARDS, grantVerifiedAtMs: NOW - 10_000 },
+      guards: GUARDS,
       identityFailures: {
         reads: 2,
         lastCheckedAt: "2026-09-23T10:00:20.000Z",
-        sinceMs: NOW - 30_000,
       },
       credential: {
         kind: "backoff",
@@ -672,8 +670,11 @@ describe("reachability over the machine's own transitions", () => {
       failedAt(attemptOf(opened), "2026-09-23T10:00:00.000Z"),
       { type: "TICK" },
     ]).machine;
-    // The grant's last round predates the failures: Zerops has not answered us since.
-    const second = drive(first, [failedAt(attemptOf(first), "2026-09-23T10:00:30.000Z")]);
+    // The source reports a Zerops outage after the second identity check.
+    const second = drive(first, [
+      failedAt(attemptOf(first), "2026-09-23T10:00:30.000Z"),
+      { type: "GUARDS", guards: { ...GUARDS, zeropsState: "unavailable" } },
+    ]);
     const verdict = selectReachability(second.machine, ENV_A);
     expect(verdict).toMatchObject({
       kind: "retrying",
@@ -688,7 +689,7 @@ describe("reachability over the machine's own transitions", () => {
 
     // Then the grant's rounds fail too: the Mate waits for Zerops instead of retrying.
     const outage = drive(second.machine, [
-      { type: "GUARDS", guards: { ...GUARDS, zeropsFailing: true } },
+      { type: "GUARDS", guards: { ...GUARDS, zeropsState: "unavailable" } },
       { type: "TICK" },
     ]).machine;
     expect(selectReachability(outage, ENV_A)).toEqual({ kind: "waiting-for-zerops" });

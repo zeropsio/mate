@@ -9,13 +9,11 @@
  */
 import type { ZeropsProject, ZeropsUser } from "../api.ts";
 import { makeHarnessBrowser, type HarnessBrowser } from "./browserTabs.ts";
-import { makeFakeDatastream, type FakeDatastream } from "./fakeDatastream.ts";
 import { makeFakeZeropsRest, type FakeZeropsRest } from "./fakeZeropsRest.ts";
 
 export * from "./accountRoster.ts";
 export * from "./browserTabs.ts";
 export * from "./deadlineClock.ts";
-export * from "./fakeDatastream.ts";
 export * from "./fakeMate.ts";
 export * from "./fakeZeropsRest.ts";
 
@@ -26,7 +24,6 @@ export * from "./fakeZeropsRest.ts";
 export interface AccountHarness {
   readonly browser: HarnessBrowser;
   readonly rest: FakeZeropsRest;
-  readonly datastream: FakeDatastream;
 }
 
 export interface AccountHarnessOptions {
@@ -52,6 +49,5 @@ export function makeAccountHarness(options: AccountHarnessOptions): AccountHarne
       options.signedIn === undefined ? {} : { session: rest.issueSession(options.signedIn) },
     ),
     rest,
-    datastream: makeFakeDatastream(rest),
   };
 }

@@ -1,5 +1,5 @@
 /**
- * The Mate environments of the post-grant stage (DESIGN §4.4, §4.5, §4.8, §5): how the account
+ * The Mate environments of the verified account stage (DESIGN §4.4, §4.5, §4.8, §5): how the account
  * runtime feeds the Mate adapter it built (`data/adapters/mate.ts`), and what surfaces ask of it.
  *
  * - Every target's presence comes from the account's listing — the projects of the organization
@@ -10,7 +10,7 @@
  *   change that changes no row and settles no absence feeds nothing. No React holds a fact here:
  *   the web and mobile hand over ports and send intents — the route, the active organization, a
  *   Connect.
- * - The account's guards come from its grant, the tab from the account's signals, a container's
+ * - The account starts after sign-in verifies its principal, the tab from the account's signals, a container's
  *   re-read from the account's bus.
  * - A Mate is connected while it holds a lease (krok-a-hub §3): the route's and the screen's, the
  *   one left last for `RECENT_MS`, an action's, a Connect's, a page's that draws every Mate
@@ -24,35 +24,28 @@
  *   no lease's connection until it is; *Finish setup* closes it off.
  *
  * The adapter is constructed by the account runtime alone (§7.2 rule 6); this module only wires
- * it. Plain callbacks and promises, like the adapter: the one Effect it runs is the data
- * runtime's, with the account's services.
+ * it. Plain callbacks and promises, like the adapter: the bus runs with the account's services.
  */
 import type { EnvironmentId } from "@t3tools/contracts";
 import type { ConnectionAdmission } from "../../connection/admission.ts";
-import type * as Context from "effect/Context";
-import * as Effect from "effect/Effect";
-import * as Fiber from "effect/Fiber";
-import type { AtomRegistry } from "effect/unstable/reactivity";
+import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
 
 import type { MateAdapter, MateAdapterPorts, MateTarget } from "../../data/adapters/mate.ts";
 import type { ProjectProcesses } from "../../data/projections/processes.ts";
 import {
   holdProjectHistory,
   holdServiceRead,
+  holdProjectServices,
   projectProcessesAtom,
   readMateFlag,
 } from "../../data/reads.ts";
 
 import { normalizeOrigin } from "../candidates.ts";
-import { identityMint } from "../data/access/capabilities.ts";
-import type { AccessGrantView } from "../data/access/grantDriver.ts";
-import type { ManagedZeropsDataRuntime } from "../data/runtime.ts";
 import {
   ZeropsOrganizationId,
   ZeropsProjectId,
   type OrganizationRef,
   type ProjectRef,
-  type LeaseAdmissionError,
 } from "../data/types.ts";
 import type { IdentityExchangeReason } from "../diagnostics.ts";
 import {
@@ -61,6 +54,8 @@ import {
   type MateFlag,
 } from "../environments/containerMachine.ts";
 import type { AccountStore } from "../../data/store.ts";
+import { accountReadsAtom } from "../../data/reads.ts";
+import { organizationProjects } from "../../data/projections/projects.ts";
 import { type IntentRequest, type IntentStorage } from "../environments/exchange.ts";
 import {
   indexDescriptors,
@@ -219,10 +214,6 @@ export type { CloseOffHold };
 export interface AccountEnvironments {
   /** Projects whose detail is currently held by a route, screen, or action. */
   readonly detailProjects: () => ReadonlySet<string>;
-  /** Why the route or screen's project inventory demand ended before it was admitted. */
-  readonly detailFailure: (projectId: string) => LeaseAdmissionError | null;
-  /** One explicit new attempt at a refused project inventory demand. */
-  readonly retryDetail: (projectId: string) => void;
   /**
    * Told after the detail, the close-off holds or a Mate moved. Each Mate itself is read from the
    * account's store (`mateLinks`).
@@ -278,8 +269,6 @@ export interface AccountEnvironments {
 /** What the account runtime drives the stage with, besides its adapter. */
 export interface EnvironmentStage {
   readonly environments: AccountEnvironments;
-  /** The grant's views, each one the stage's account guards (§4.4 CAN). */
-  readonly grant: (view: AccessGrantView) => void;
   /** The tab (§6.4): retries wait while hidden and fire on a visible wake. */
   readonly hear: (signal: PlatformSignal) => void;
   /** A container's facts may have changed at the source (§6.2): it is read again. */
@@ -298,11 +287,9 @@ export interface EnvironmentWiringOptions {
   readonly ports: AccountEnvironmentPorts;
   /** The account's store: the Mate adapter writes what it reads of each Mate there. */
   readonly store: AccountStore;
-  readonly data: ManagedZeropsDataRuntime;
+  readonly account: import("../data/types.ts").AccountRef;
   readonly atomRegistry: AtomRegistry.AtomRegistry;
   readonly invalidations: InvalidationBus;
-  /** The account's services, which the data runtime's reads and the bus run with. */
-  readonly services: Context.Context<never>;
   /** Whether the tab is hidden when the stage starts. */
   readonly hidden: boolean;
 }
@@ -333,8 +320,7 @@ const RECENT_MS = 5 * 60_000;
 // ── The wiring ───────────────────────────────────────────────────────────────────────────────
 
 export function makeEnvironmentWiring(options: EnvironmentWiringOptions): EnvironmentWiring {
-  const { ports, data, atomRegistry } = options;
-  const run = Effect.runForkWith(options.services);
+  const { ports, atomRegistry } = options;
   let adapter: MateAdapter | null = null;
   let closed = false;
   let listings: ReadonlyArray<OrganizationListing> = [];
@@ -371,7 +357,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
   /** What runs in each booting target's project, as the account's store holds it: followed. */
   const activity = new Map<string, { readonly stop: () => void }>();
   const listeners = new Set<() => void>();
-  const detailLeases = new Map<string, Fiber.Fiber<void>>();
+  const detailLeases = new Map<string, () => void>();
   /**
    * The processes each project of the active organization is read for while a container of it is
    * ACTIVE without its address — the listing reads from them whether the platform is turning its
@@ -379,16 +365,13 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
    * after that, which says whether the record caught up: what lets each go.
    */
   const addressWatch = new Map<string, () => void>();
-  /** The project lease each drawn Mate's project holds, so its Mate is listed (`updateDrawn`). */
-  const drawnLeases = new Map<string, Fiber.Fiber<void>>();
-  const detailFailures = new Map<string, LeaseAdmissionError>();
   let detailProjects: ReadonlySet<string> = new Set();
   let closeOffHolds: ReadonlyMap<string, CloseOffHold> = new Map();
 
   const rowOf = (key: TargetKey) => rows.find((row) => row.key === key);
   const organizationRef = (organizationId: string): OrganizationRef => ({
     kind: "organization",
-    account: data.scope.account,
+    account: options.account,
     organizationId: ZeropsOrganizationId.make(organizationId),
   });
   /** The organization whose listing holds the project. */
@@ -553,43 +536,10 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
    * A page that draws every Mate wants the targets its environments name now, in the background,
    * and none of them becomes the Mate left last. On a cold load no project is opened, so — as the
    * route's is — each environment's project is found through its kept session or HQ, and holds a
-   * project lease that admits it and lists its Mate. One nothing names yet waits.
+   * service listing that finds its Mate. One nothing names yet waits.
    */
   const updateDrawn = () => {
     if (adapter === null || closed) return;
-    const projects = new Set(
-      drawn.flatMap((environmentId) => {
-        const projectId = projectOfEnvironment(environmentId);
-        return projectId !== null &&
-          projectRefOf(projectId)?.organization.organizationId === activeOrganization
-          ? [projectId]
-          : [];
-      }),
-    );
-    for (const [id, fiber] of drawnLeases) {
-      if (projects.has(id)) continue;
-      drawnLeases.delete(id);
-      run(Fiber.interrupt(fiber));
-    }
-    for (const id of projects) {
-      const project = projectRefOf(id);
-      if (drawnLeases.has(id) || project === undefined) continue;
-      // A refused lease is not held as taken: the page's next demand asks for it again.
-      let refused = false;
-      const fiber = run(
-        Effect.scoped(
-          data.acquire({ kind: "project-inventory", project }).pipe(Effect.andThen(Effect.never)),
-        ).pipe(
-          Effect.catch(() =>
-            Effect.sync(() => {
-              refused = true;
-              if (drawnLeases.get(id) === fiber) drawnLeases.delete(id);
-            }),
-          ),
-        ),
-      );
-      if (!refused) drawnLeases.set(id, fiber);
-    }
     const keys = drawn.flatMap((environmentId) => targetOf(environmentId) ?? []);
     if (keys.length === drawnKeys.length && keys.every((key, at) => key === drawnKeys[at])) return;
     drawnKeys = keys;
@@ -734,32 +684,13 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       detailProjects = wanted;
       updateAddressWatch();
     }
-    for (const [id, fiber] of detailLeases) {
+    for (const [id, release] of detailLeases) {
       if (wanted.has(id)) continue;
       detailLeases.delete(id);
-      detailFailures.delete(id);
-      run(Fiber.interrupt(fiber));
+      release();
     }
     for (const id of wanted) {
-      if (detailLeases.has(id)) continue;
-      const project = projectRefOf(id);
-      if (project === undefined || project.organization.organizationId !== activeOrganization)
-        continue;
-      detailLeases.set(
-        id,
-        run(
-          Effect.scoped(
-            data.acquire({ kind: "project-inventory", project }).pipe(Effect.andThen(Effect.never)),
-          ).pipe(
-            Effect.catch((error) =>
-              Effect.sync(() => {
-                detailFailures.set(id, error);
-                notify();
-              }),
-            ),
-          ),
-        ),
-      );
+      if (!detailLeases.has(id)) detailLeases.set(id, holdProjectServices(atomRegistry, id));
     }
     const shown = rows.flatMap((row) => (row.project.id === onScreen ? [row.key] : []));
     if (route === null) {
@@ -967,6 +898,25 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     preferRoute();
     const stops: Array<() => void> = [];
     built.setVisible(!options.hidden);
+    const platformState = Atom.make((get) => {
+      const account = get(accountReadsAtom);
+      if (account?.orgId == null) return "unknown" as const;
+      const source = get(options.store.data.project(organizationProjects, account.orgId));
+      return source.live
+        ? ("live" as const)
+        : source.reconnecting || source.unavailableReason !== undefined
+          ? ("unavailable" as const)
+          : ("unknown" as const);
+    });
+    stops.push(
+      atomRegistry.subscribe(
+        platformState,
+        (zeropsState) => {
+          if (!closed) built.setAccount({ verified: true, zeropsState });
+        },
+        { immediate: true },
+      ),
+    );
     const holdBackground = () => built.holdBackground(ports.pressInFlight?.read() ?? false);
     holdBackground();
     stops.push(
@@ -1003,7 +953,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         link: (environmentId, phase) => built.link(environmentId, phase),
       }),
       atomRegistry.subscribe(
-        mateListingsAtom(data),
+        mateListingsAtom,
         (next) => {
           const before = listings;
           listings = next;
@@ -1028,13 +978,6 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
 
     const environments: AccountEnvironments = {
       detailProjects: () => detailProjects,
-      detailFailure: (projectId) => detailFailures.get(projectId) ?? null,
-      retryDetail: (projectId) => {
-        if (closed || !detailFailures.delete(projectId)) return;
-        detailLeases.delete(projectId);
-        updateRoute();
-        notify();
-      },
       subscribe: (listener) => {
         if (closed) return () => undefined;
         listeners.add(listener);
@@ -1093,15 +1036,6 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
 
     return {
       environments,
-      grant: (view) => {
-        if (closed) return;
-        built.setAccount({
-          postGrant: true,
-          identityMint: identityMint(view.machine),
-          zeropsFailing: false,
-          grantVerifiedAtMs: null,
-        });
-      },
       hear: (signal) => {
         if (closed) return;
         switch (signal.type) {
@@ -1131,13 +1065,10 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         activity.clear();
         recent?.disarm();
         actions.clear();
-        for (const fiber of detailLeases.values()) run(Fiber.interrupt(fiber));
+        for (const release of detailLeases.values()) release();
         detailLeases.clear();
         for (const stop of addressWatch.values()) stop();
         addressWatch.clear();
-        for (const fiber of drawnLeases.values()) run(Fiber.interrupt(fiber));
-        drawnLeases.clear();
-        detailFailures.clear();
         detailProjects = new Set();
         built.dispose();
         preferRoute();

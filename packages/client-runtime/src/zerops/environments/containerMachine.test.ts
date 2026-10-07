@@ -1,7 +1,7 @@
 import { EnvironmentId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import type { Instant } from "../data/access/grant.ts";
+import type { Instant } from "./exchange.ts";
 import {
   CONTAINER_CAPS_MS,
   containerVerdict,

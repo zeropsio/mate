@@ -13,7 +13,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { LegendListRef } from "@legendapp/list/react";
-import type { ManagedZeropsDataRuntime } from "@t3tools/client-runtime/zerops/data";
+import type { AccountScope } from "@t3tools/client-runtime/zerops/data";
 import { InventoryContext, type Inventory } from "../../zerops/inventoryContext";
 import { ZeropsDataContext, type ZeropsDataContextValue } from "../../zerops/zeropsDataContext";
 import { forgetRunFolds, setRunFold } from "./runCard.logic";
@@ -1174,11 +1174,10 @@ describe("MessagesTimeline", () => {
       error: null,
       projectRefs: new Map(),
       authority: new Map(),
-      account: { kind: "authorized" },
       lost: new Set(),
     };
     const zeropsData: ZeropsDataContextValue = {
-      runtime: {} as ManagedZeropsDataRuntime,
+      scope: {} as AccountScope,
       signals: { hidden: () => false, online: () => true, listen: () => () => undefined },
       organizationRef: () => {
         throw new Error("not used");
@@ -1259,11 +1258,10 @@ describe("MessagesTimeline — the conversation", () => {
       error: null,
       projectRefs: new Map(),
       authority: new Map(),
-      account: { kind: "authorized" },
       lost: new Set(),
     };
     const zeropsData: ZeropsDataContextValue = {
-      runtime: {} as ManagedZeropsDataRuntime,
+      scope: {} as AccountScope,
       signals: { hidden: () => false, online: () => true, listen: () => () => undefined },
       organizationRef: () => {
         throw new Error("not used");

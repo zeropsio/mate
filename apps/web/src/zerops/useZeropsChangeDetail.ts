@@ -1,27 +1,14 @@
-/**
- * What a review reads of one change beyond what the flow carries (pass 16, R4 · R8; SPEC §3.2a):
- * HQ's detail of it — the files it changes with their diffs, the commits it squashes, how it
- * merges into `main` and whether `main` moved on under it — in one read (`changeReadout.ts`).
- *
- * Read when the review opens, never polled, and kept per head and per `main`: a push moves the
- * head, and `main` moves only by HQ's own merge, which comes down HQ's stream as a landed change
- * (`main`, the newest landed one's commit). Either is a new question; the same ones read the same,
- * so opening it again paints at once with nothing to wait for. A read that failed is asked again on
- * *Try again* (`retry`), or the next time it opens. What is kept is bounded by count and by size.
- */
+import { Atom } from "effect/unstable/reactivity";
+/** Review bodies and commits are demanded HQ facts keyed by the displayed head and main. */
 import {
   changeReadout,
   type ChangeReadout,
   type FlowPullRequest,
 } from "@t3tools/client-runtime/zerops";
-import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
-import type { HqApi } from "@t3tools/client-runtime/zerops/hq";
-import type { ChangeDetailQuery, ChangeLink } from "@t3tools/shared/hqChanges";
-import { useCallback, useEffect, useState } from "react";
-
-import { LRUCache } from "~/lib/lruCache";
-
-import { useOfficialHq } from "./accountHq";
+import { changeReadOwner, hqChangeRead } from "@t3tools/client-runtime/data";
+import type { ChangeLink } from "@t3tools/shared/hqChanges";
+import { useCallback, useMemo } from "react";
+import { useAccountDataOptional, useProjection, useDetailDemand } from "./ZeropsAccountData";
 
 export type ReadoutPart<T> =
   | { readonly kind: "none" }
@@ -43,102 +30,48 @@ export interface ZeropsChangeDetail {
   readonly retry: () => void;
 }
 
-const NONE = { kind: "none" } as const;
 const READING = { kind: "reading" } as const;
-
-/** Reads kept, the least recently used going first past either bound. */
-const KEPT = 24;
-const KEPT_BYTES = 16 * 1024 * 1024;
-
-const settled = new LRUCache<ReadoutPart<ChangeReadout>>(KEPT, KEPT_BYTES);
-const inflight = new Map<string, Promise<ReadoutPart<ChangeReadout>>>();
-
-/** One read per key at a time; a read that answered is kept, one that failed is not. */
-function readOnce(
-  key: string,
-  api: Pick<HqApi, "change">,
-  link: ChangeLink,
-  snapshot: ChangeDetailQuery,
-): Promise<ReadoutPart<ChangeReadout>> {
-  const running = inflight.get(key);
-  if (running !== undefined) return running;
-  const next = api.change(link, undefined, snapshot).then(
-    (detail): ReadoutPart<ChangeReadout> => {
-      const part = { kind: "read", value: changeReadout(detail) } as const;
-      // Held as lines, a diff weighs about three times its text.
-      const bytes = detail.files.reduce((sum, file) => sum + file.hunks.length * 3, 1024);
-      settled.set(key, part, bytes);
-      return part;
-    },
-    (cause: unknown): ReadoutPart<ChangeReadout> => ({
-      kind: "failed",
-      reason: zeropsErrorMessage(cause),
-    }),
-  );
-  inflight.set(key, next);
-  void next.finally(() => inflight.delete(key));
-  return next;
-}
-
-/** Forgets every kept read — for tests. */
-export function forgetChangeDetails(): void {
-  settled.clear();
-  inflight.clear();
-}
-
+const UNREAD = Atom.make<import("@t3tools/client-runtime/data").HqChangeRead>(READING);
 export function useZeropsChangeDetail(
   request: ZeropsChangeDetailRequest | null,
 ): ZeropsChangeDetail {
-  const hq = useOfficialHq();
-  const [attempt, setAttempt] = useState(0);
-  const retry = useCallback(() => {
-    setAttempt((current) => current + 1);
-  }, []);
-  const link = request?.link;
-  const key =
-    request === null || hq === null || request.head === undefined || link === undefined
+  const account = useAccountDataOptional();
+  const owner =
+    request === null || request.head === undefined
       ? null
-      : `${hq.address}|${link.appId}/${link.repo}#${String(link.number)}@${request.head}|${request.main ?? ""}`;
-  const initial = (): ReadoutPart<ChangeReadout> =>
-    key === null ? NONE : (settled.get(key) ?? READING);
-  const [held, setHeld] = useState<{
-    readonly key: string | null;
-    readonly attempt: number;
-    readonly part: ReadoutPart<ChangeReadout>;
-  }>(() => ({ key, attempt, part: initial() }));
-  let part = held.part;
-  // Another question, or *Try again* after a failure: it is read again where it stood.
-  if (held.key !== key || (held.attempt !== attempt && held.part.kind === "failed")) {
-    part = initial();
-    setHeld({ key, attempt, part });
-  }
-  const reading = part.kind === "reading";
-  const appId = link?.appId;
-  const repo = link?.repo;
-  const number = link?.number;
-  const head = request?.head;
-  const main = request?.main;
-  useEffect(() => {
-    if (!reading || key === null || hq === null) return;
-    if (appId === undefined || repo === undefined || number === undefined || head === undefined)
-      return;
-    let live = true;
-    void readOnce(
-      key,
-      hq.api,
-      { appId, repo, number },
-      { expectedHead: head, ...(main === undefined ? {} : { expectedMain: main }) },
-    ).then((answer) => {
-      if (!live) return;
-      setHeld((current) =>
-        current.key === key && current.attempt === attempt ? { ...current, part: answer } : current,
-      );
-    });
-    return () => {
-      live = false;
-    };
-  }, [appId, attempt, head, hq, key, main, number, reading, repo]);
-  return { readout: part, retry };
+      : changeReadOwner({
+          link: request.link,
+          snapshot: {
+            expectedHead: request.head,
+            ...(request.main === undefined ? {} : { expectedMain: request.main }),
+          },
+        });
+  useDetailDemand("hqChangeRead", undefined, owner);
+  useDetailDemand("hqAppDetail", undefined, request?.link.appId ?? null);
+  const read = useProjection(
+    hqChangeRead,
+    owner === null || account?.orgId == null ? null : { orgId: account.orgId, owner },
+    UNREAD,
+  );
+  const readout = useMemo<ReadoutPart<ChangeReadout>>(
+    () =>
+      owner === null
+        ? { kind: "none" }
+        : read.kind === "read"
+          ? { kind: "read", value: changeReadout(read.detail) }
+          : read.kind === "reading"
+            ? READING
+            : {
+                kind: "failed",
+                reason: read.kind === "gone" ? "This change is not there." : read.reason,
+              },
+    [owner, read],
+  );
+  const retry = useCallback(() => {
+    if (owner !== null && readout.kind === "failed")
+      account?.retryDetail({ family: "hqChangeRead", ownerId: owner });
+  }, [account, owner, readout.kind]);
+  return { readout, retry };
 }
 
 /** The main commit of this repository, independent of merges in the application's other repos. */

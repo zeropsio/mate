@@ -5,7 +5,10 @@
  */
 import type { EnvironmentId } from "@t3tools/contracts";
 
-import type { GrantCapability, Instant } from "../data/access/grant.ts";
+export interface Instant {
+  readonly wall: number;
+  readonly mono: number;
+}
 import type { IdentityExchangeReason } from "../diagnostics.ts";
 import type { DescriptorFacts } from "./environmentMachine.ts";
 import type { Reachability } from "./reachability.ts";
@@ -33,12 +36,10 @@ export const EXCHANGE_CONCURRENCY = 3;
 
 /** The account's half of the guards (§4.4 CAN). */
 export interface AccountGuards {
-  /** The epoch's first grant is admitted. */
-  readonly postGrant: boolean;
-  readonly identityMint: GrantCapability;
-  /** The grant's rounds are failing with a transport or server cause. */
-  readonly zeropsFailing: boolean;
-  readonly grantVerifiedAtMs: number | null;
+  /** The account's sign-in has verified its principal. */
+  readonly verified: boolean;
+  /** The source's own observation state, retained independently from its facts. */
+  readonly zeropsState: "unknown" | "live" | "unavailable";
 }
 
 export interface ExchangeRequest {

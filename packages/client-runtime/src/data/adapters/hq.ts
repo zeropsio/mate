@@ -73,6 +73,9 @@ export interface HqSegment {
 /** Today's HQ transport behind the adapter — a ticket, then the socket — or a fixture. */
 export interface HqWire {
   readonly open: Effect.Effect<HqSegment, StreamFault, Scope.Scope>;
+  readonly change?: (
+    request: import("../families/hqChangeRead.ts").ChangeReadRequest,
+  ) => Effect.Effect<import("@t3tools/shared/hqChanges").ChangeDetailResponse, StreamFault>;
   readonly picture?: (link: AttachmentLink) => Effect.Effect<Blob, StreamFault>;
 }
 
@@ -126,6 +129,7 @@ export function hqNavigationLink(options: {
   readonly wire: HqWire;
   readonly store: AccountStore;
 }): Pick<LinkOptions, "key" | "scopes" | "details" | "attempt" | "childMoved"> & {
+  readonly retryDetail: (demand: DetailDemand) => void;
   /** A screen's hold on a detail scope; the release lets it go once nothing holds it. */
   readonly demandDetail: (demand: DetailDemand) => () => void;
   /** Asks HQ where a Mate may move, on the open socket. */
@@ -244,6 +248,7 @@ export function hqNavigationLink(options: {
   const pendingOffers = new Map<string, Deferred.Deferred<unknown, StreamFault>>();
   let requests = 0;
   /** Looks at the demanded details again in the attempt under way, if one is. */
+  const refresh = new Set<ScopeKey>();
   let wakeAttempt: (() => void) | null = null;
   /** The scopes HQ refused, by key: asked again only with the person's explicit `retry`. */
   const refused = new Set<string>();
@@ -552,6 +557,10 @@ export function hqNavigationLink(options: {
       const stopListening = demands.onChange(wake);
       wakeAttempt = wake;
       const pictures = yield* makeHqPictureReads({
+        refresh,
+        change: (request) =>
+          wire.change?.(request) ??
+          Effect.fail({ outcome: "definitive-refusal", message: "HQ cannot read this change." }),
         orgId,
         store,
         signal,
@@ -659,6 +668,24 @@ export function hqNavigationLink(options: {
     details: () => demands.scopes().flatMap(fedBy),
     attempt,
     childMoved: () => wakeAttempt?.(),
+    retryDetail: (demand) => {
+      const scope = detailScopeOf(orgId, demand);
+      refresh.add(scope);
+      void Effect.runFork(
+        Effect.gen(function* () {
+          const now = yield* Clock.currentTimeMillis;
+          store.dispatch({
+            kind: "stream",
+            key: scope,
+            now,
+            event: {
+              kind: streamOf(store.state(), scope).phase === "live" ? "revalidate" : "manual-retry",
+            },
+          });
+          wakeAttempt?.();
+        }),
+      );
+    },
     demandDetail: (demand) => demands.hold(detailScopeOf(orgId, demand)),
     moveOffers: (projectId) =>
       ask<HqMoveOffers>("move-offers", (requestId) => ({

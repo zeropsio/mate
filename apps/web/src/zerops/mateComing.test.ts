@@ -936,8 +936,8 @@ describe("mateArrivalShown — what a Mate's own view keeps saying once it came 
       want: true,
       routeTarget: true,
       visible: true,
-      postGrant: true,
-      identityMint: { allowed: true },
+      verified: true,
+
       budget: true,
     } as const;
     let nowMs = 1_000;

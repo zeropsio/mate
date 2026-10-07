@@ -6,15 +6,12 @@
  * its last day from the account's store while it shows them in a visible tab.
  */
 import { usageOwnerOf } from "@t3tools/client-runtime/data";
-import type { RuntimeInterestDescriptor } from "@t3tools/client-runtime/zerops/data";
 import type { EnvironmentId } from "@t3tools/contracts";
-import { useMemo, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 
 import type { ProjectTopologySnapshot } from "../state/zerops";
 import { useEnvironmentProjectRef, useEnvironmentTopology } from "./useZeropsFeeds";
-import * as Effect from "effect/Effect";
 import { useAccountDataOptional, useDetailDemand } from "./ZeropsAccountData";
-import { useZeropsData, useZeropsDataInterest } from "./zeropsDataContext";
 
 const subscribeVisibility = (notify: () => void) => {
   document.addEventListener("visibilitychange", notify);
@@ -29,13 +26,8 @@ export function useProjectTopology(
 ): ProjectTopologySnapshot & { readonly again: () => void } {
   const tabVisible = useSyncExternalStore(subscribeVisibility, visibleSnapshot, () => true);
   const project = useEnvironmentProjectRef(environmentId);
-  const { runtime } = useZeropsData();
-  const retry = useAccountDataOptional()?.retry;
-  const topologyDescriptor = useMemo<RuntimeInterestDescriptor | null>(
-    () => (project === null ? null : { kind: "project-topology", project }),
-    [project],
-  );
-  useZeropsDataInterest(topologyDescriptor);
+  const account = useAccountDataOptional();
+  useDetailDemand("service", "services", project?.projectId ?? null);
   // The project's own organization, whichever is shown: a thread's Mate may run in another.
   const shownOwner =
     metrics && tabVisible && project !== null
@@ -47,8 +39,13 @@ export function useProjectTopology(
   return {
     ...snapshot,
     again: () => {
-      if (project !== null) void Effect.runPromise(runtime.refresh(project));
-      retry?.();
+      if (project !== null)
+        account?.retryDetail({
+          family: "service",
+          listing: "services",
+          ownerId: project.projectId,
+        });
+      account?.retry();
     },
   };
 }

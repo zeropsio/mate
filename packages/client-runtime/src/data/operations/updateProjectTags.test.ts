@@ -53,7 +53,7 @@ describe("update-project-tags", () => {
         [
           () =>
             Promise.reject({
-              _tag: "ZeropsDataAdapterError",
+              _tag: "ZeropsProjectTagWriteError",
               kind: "rejected",
               message: "This project's tags changed after the write. Try again.",
             }),

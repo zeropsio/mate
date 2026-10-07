@@ -59,14 +59,12 @@ export function useAccountVoice(): AccountVoice | null {
     facts === null
       ? null
       : accountFootLine({
-          lapse: facts.lapse,
           trouble: facts.trouble ?? tryingOn,
           attempt: unanswered ? attempt : "idle",
         });
   const sentence = line?.sentence ?? null;
   const actions = line?.actions.join(" ") ?? "";
   const title = facts?.subject ?? (tryingOn === null ? null : lastSubjectRef.current);
-  const signOut = facts?.signOut;
   return useMemo(
     (): AccountVoice | null =>
       sentence === null
@@ -74,19 +72,14 @@ export function useAccountVoice(): AccountVoice | null {
         : {
             sentence,
             title,
-            actions: actions.split(" ").map((kind) =>
-              kind === "try-now"
-                ? { kind, label: "Try now" as const, run: tryNow, busy: false }
-                : kind === "trying"
-                  ? { kind, label: "Trying…" as const, run: tryNow, busy: true }
-                  : {
-                      kind: "sign-out" as const,
-                      label: "Sign out" as const,
-                      run: () => signOut?.(),
-                      busy: false,
-                    },
-            ),
+            actions: actions
+              .split(" ")
+              .map((kind) =>
+                kind === "try-now"
+                  ? { kind, label: "Try now" as const, run: tryNow, busy: false }
+                  : { kind: "trying" as const, label: "Trying…" as const, run: tryNow, busy: true },
+              ),
           },
-    [actions, sentence, signOut, title, tryNow],
+    [actions, sentence, title, tryNow],
   );
 }

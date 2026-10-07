@@ -1,22 +1,8 @@
 /**
- * What each stop's services run (DESIGN §4.7, D6), as surfaces read it: the stop's service listing
- * from the data runtime (services are not a family of the account's store yet), joined with the
- * store's word on its running work (`stopWork`), on what each service's own row says it runs
- * (`serviceRuns`) and on each version's source (`versionSource`). Nothing here holds a fact: a name outlives its build because the store keeps
- * the ended process, and a stop reads again whenever what it reads changes.
- *
- * What it does hold is demand. The services demand of each drawn stop: summary demand while a
- * surface draws it, the project's topology while one opens it, and the platform's refusal to take
- * that demand, which fails the stop until a manual Again. A stop nobody demands reads `unread`.
- * And a read by id of each version a stop or an asked service runs that the active versions do not
- * hold, until they hold it or the platform says it has none; and an opened stop's process history,
- * whose builds name the versions a roll back activates by id alone.
- *
- * @module zerops/account/stops
+ * A stop's deployments join the account store's services, work and version projections.
+ * A drawn stop holds its services, an opened one also its process history; versions absent
+ * from the active listing are read by id. Closing the account releases every demand.
  */
-import type * as Context from "effect/Context";
-import * as Effect from "effect/Effect";
-import * as Fiber from "effect/Fiber";
 import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
 
 import { stopWork, type StopWork } from "../../data/projections/stopWork.ts";
@@ -26,14 +12,17 @@ import {
 } from "../../data/projections/serviceRuns.ts";
 import { versionSource, type VersionSource } from "../../data/projections/versionSource.ts";
 import type { DetailDemand } from "../../data/demand.ts";
-import { accountReadsAtom, type AccountReads } from "../../data/reads.ts";
-import type { ManagedZeropsDataRuntime } from "../data/runtime.ts";
+import {
+  accountReadsAtom,
+  projectServicesAtom,
+  holdProjectServices,
+  type AccountReads,
+} from "../../data/reads.ts";
 import { projectKeyOf, serviceKeyOf, type ProjectRef, type ServiceRef } from "../data/types.ts";
 import {
   listedVersions,
   stopServices,
   unnamedVersions,
-  type DemandRefusal,
   type StopService,
 } from "../flow/deployment.ts";
 import type { Known, Shown } from "../knowledge/known.ts";
@@ -63,16 +52,12 @@ export interface Stops {
 interface Demanded {
   readonly project: ProjectRef;
   readonly detail: boolean;
-  readonly refused: DemandRefusal | null;
 }
 
 interface Entry {
   readonly project: ProjectRef;
   leases: number;
   detailLeases: number;
-  refused: DemandRefusal | null;
-  /** How often the platform refused the demand; it keeps a demand it admitted. */
-  refusals: number;
   unfollow: () => void;
 }
 
@@ -88,13 +73,7 @@ const NOT_READ: StopWork = {
   active: {},
 };
 
-export function makeStops(
-  data: ManagedZeropsDataRuntime,
-  atomRegistry: AtomRegistry.AtomRegistry,
-  /** The account's services, which the demand runs with. */
-  services: Context.Context<never>,
-): Stops {
-  const run = Effect.runForkWith(services);
+export function makeStops(atomRegistry: AtomRegistry.AtomRegistry): Stops {
   const entries = new Map<string, Entry>();
   let disposed = false;
 
@@ -107,9 +86,7 @@ export function makeStops(
   const publish = (key: string, entry: Entry | undefined): void => {
     atomRegistry.set(
       demandedAtom(key),
-      entry === undefined
-        ? null
-        : { project: entry.project, detail: entry.detailLeases > 0, refused: entry.refused },
+      entry === undefined ? null : { project: entry.project, detail: entry.detailLeases > 0 },
     );
     const keys = new Set(atomRegistry.get(demandedKeys).keys);
     if (entry === undefined ? keys.delete(key) : !keys.has(key) && keys.add(key))
@@ -145,7 +122,7 @@ export function makeStops(
           code: "serviceStackNotFound",
           words: "The service is not there.",
         },
-        atMs: data.access.clock.currentTimeMillisUnsafe(),
+        atMs: 0,
         attempt: 1,
         retryAtMs: null,
       };
@@ -163,7 +140,7 @@ export function makeStops(
       const demanded = get(demandedAtom(key));
       if (demanded === null) return UNREAD;
       const project = demanded.project;
-      const listing = get(data.reads.servicesOf(project));
+      const listing = { project, ...get(projectServicesAtom(project.projectId)) };
       const account = get(accountReadsAtom);
       const listed = listedVersions(listing);
       const work =
@@ -185,7 +162,6 @@ export function makeStops(
               versionId === null ? [] : [[versionId, sourceOf(get, account, versionId)] as const],
             ),
           ),
-          refused: demanded.refused,
           stated: new Map(
             unnamedVersions(listing, work.names).map(({ service, versionId }) => [
               versionId,
@@ -194,7 +170,7 @@ export function makeStops(
           ),
           detail: demanded.detail,
         },
-        data.access.clock.currentTimeMillisUnsafe(),
+        0,
       );
     }),
   );
@@ -238,7 +214,7 @@ export function makeStops(
                 : source.kind === "unreadable"
                   ? { kind: "malformed", detail: "Zerops sent an answer that couldn't be read." }
                   : { kind: "transport", detail: "Zerops refused its active versions." },
-            atMs: data.access.clock.currentTimeMillisUnsafe(),
+            atMs: 0,
             attempt: 1,
             retryAtMs: null,
           };
@@ -265,7 +241,10 @@ export function makeStops(
       const demanded = get(demandedAtom(key));
       if (demanded === null) continue;
       if (demanded.detail) histories.add(demanded.project.projectId);
-      for (const { versionId } of listedVersions(get(data.reads.servicesOf(demanded.project))))
+      for (const { versionId } of listedVersions({
+        project: demanded.project,
+        ...get(projectServicesAtom(demanded.project.projectId)),
+      }))
         want(versionId);
     }
     for (const { service } of get(heldServices).services.values()) want(unstatedOf(get, service));
@@ -308,32 +287,13 @@ export function makeStops(
   );
 
   /** Asks for the stop's demand; a refusal fails the stop until it is asked for again. */
-  const follow = (key: string, entry: Entry): void => {
-    const project = entry.project;
-    const lease = run(
-      Effect.scoped(
-        data
-          .acquire({
-            kind: entry.detailLeases > 0 ? "project-topology" : "project-inventory",
-            project,
-          })
-          .pipe(Effect.andThen(Effect.never)),
-      ).pipe(
-        Effect.catch((error) =>
-          Effect.sync(() => {
-            if (disposed || entries.get(key) !== entry) return;
-            entry.refused = { reason: error.reason, attempt: ++entry.refusals };
-            publish(key, entry);
-          }),
-        ),
-      ),
-    );
-    entry.unfollow = () => run(Fiber.interrupt(lease));
+  const follow = (entry: Entry): void => {
+    entry.unfollow = holdProjectServices(atomRegistry, entry.project.projectId);
   };
 
   const refollow = (key: string, entry: Entry): void => {
     entry.unfollow();
-    follow(key, entry);
+    follow(entry);
     publish(key, entry);
   };
 
@@ -373,13 +333,11 @@ export function makeStops(
           project,
           leases: 0,
           detailLeases: scope === "detail" ? 1 : 0,
-          refused: null,
-          refusals: 0,
           unfollow: () => undefined,
         };
         // Held before it is followed: a demand refused as it is taken reaches the entry.
         entries.set(key, created);
-        follow(key, created);
+        follow(created);
         publish(key, created);
         entry = created;
       } else if (scope === "detail") {
@@ -408,12 +366,8 @@ export function makeStops(
       const key = projectKeyOf(project);
       const entry = entries.get(key);
       if (entry === undefined) return;
-      const refused = entry.refused;
       entry.unfollow();
-      follow(key, entry);
-      // Refused again as it was asked, the stop already published its new refusal.
-      if (entry.refused !== refused) return;
-      entry.refused = null;
+      follow(entry);
       publish(key, entry);
     },
     dispose: () => {

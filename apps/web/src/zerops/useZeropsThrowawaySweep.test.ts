@@ -1,7 +1,8 @@
 // @effect-diagnostics globalDate:off -- fake timers own `Date.now()`; the sweep and the platform read it.
+import { AtomRegistry } from "effect/unstable/reactivity";
 import { act, createElement, useLayoutEffect } from "react";
 import { create } from "react-test-renderer";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import type { ZeropsApiClient } from "@t3tools/client-runtime/zerops";
 import { ZeropsApiError } from "@t3tools/client-runtime/zerops";
@@ -9,11 +10,16 @@ import {
   connectThroughThrowaway,
   THROWAWAY_SWEEP_AGE_MS,
   zeropsThrowawayPlatform,
+  makeThrowawayDebt,
+  type ThrowawayDebt,
 } from "@t3tools/client-runtime/zerops/doorThrowaway";
 
+import { openAccountLifetime, closeAccountLifetime } from "./accountLifetime";
 import { useZeropsThrowawaySweep } from "./useZeropsThrowawaySweep";
 
 const mock = vi.hoisted(() => ({
+  registry: null as AtomRegistry.AtomRegistry | null,
+  debt: null as ThrowawayDebt | null,
   /** Every read of an organization's token list, by the organization it asked. */
   reads: [] as Array<string>,
   /** The token list as the platform answers it. */
@@ -21,13 +27,19 @@ const mock = vi.hoisted(() => ({
   deleted: [] as Array<string>,
 }));
 
+vi.mock("./throwawayDebt", () => ({ accountThrowawayDebt: () => mock.debt! }));
 vi.mock("./ZeropsSessionProvider", () => {
   const client = {
     listIntegrationTokens: async (clientId: string) => {
       mock.reads.push(clientId);
       return mock.tokens.map(({ tokenId, ...token }) => ({ id: tokenId, ...token }));
     },
-    deleteIntegrationToken: async ({ tokenId }: { readonly tokenId: string }) => {
+    deleteIntegrationToken: async (
+      { tokenId }: { readonly tokenId: string },
+      _signal?: AbortSignal,
+      beforeWrite?: () => Promise<void>,
+    ) => {
+      await beforeWrite?.();
       mock.deleted.push(tokenId);
     },
   };
@@ -36,15 +48,13 @@ vi.mock("./ZeropsSessionProvider", () => {
 // The account's operations as its data mount builds them, over a store of the test's registry.
 vi.mock("./accountOperations", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./accountOperations")>();
-  const { RegistryContext } = await import("@effect/atom-react");
   const { makeAccountStore } = await import("@t3tools/client-runtime/data");
-  const { useContext } = await import("react");
   const { useZeropsSession } = await import("./ZeropsSessionProvider");
   const stores = new WeakMap<object, ReturnType<typeof makeAccountStore>>();
   return {
     ...actual,
     useAccountOperations: () => {
-      const registry = useContext(RegistryContext);
+      const registry = mock.registry!;
       let store = stores.get(registry);
       if (store === undefined) {
         store = makeAccountStore(registry);
@@ -56,6 +66,7 @@ vi.mock("./accountOperations", async (importOriginal) => {
         useZeropsSession().client,
         () => () => {},
         () => {},
+        async () => false,
       );
     },
   };
@@ -84,7 +95,14 @@ async function mounted(clientId: string) {
 }
 
 describe("useZeropsThrowawaySweep", () => {
+  beforeEach(() => {
+    openAccountLifetime("ada");
+    mock.registry = AtomRegistry.make();
+    mock.debt = makeThrowawayDebt();
+  });
   afterEach(() => {
+    closeAccountLifetime();
+    mock.registry?.dispose();
     vi.useRealTimers();
     mock.reads.length = 0;
     mock.deleted.length = 0;
@@ -117,7 +135,7 @@ describe("useZeropsThrowawaySweep", () => {
       } as unknown as ZeropsApiClient;
       await act(async () => {
         await connectThroughThrowaway({
-          platform: zeropsThrowawayPlatform(client, { asked: true }),
+          platform: zeropsThrowawayPlatform(client, { asked: true, debt: mock.debt! }),
           clientId: "org-left",
           projectId: "p1",
           nonce: "n1",

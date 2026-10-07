@@ -294,8 +294,7 @@ export function ZeropsGitPage() {
         <ZeropsGitOverview
           onAgain={() => {
             retryAccount?.();
-            if (inventory?.error || accountTrouble?.trouble || accountTrouble?.lapse)
-              accountTrouble?.retry();
+            if (inventory?.error || accountTrouble?.trouble) accountTrouble?.retry();
           }}
           repositoryHref={(appId, repo) =>
             `${appBasePath()}/git?${new URLSearchParams({ appId, repo })}`

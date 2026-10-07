@@ -35,9 +35,8 @@ import {
 import { createRoot } from "react-dom/client";
 import type { LegendListRef } from "@legendapp/list/react";
 import { EnvironmentId, MessageId, TurnId } from "@t3tools/contracts";
-import type { ManagedZeropsDataRuntime } from "@t3tools/client-runtime/zerops/data";
+import type { AccountScope } from "@t3tools/client-runtime/zerops/data";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
-import * as Stream from "effect/Stream";
 
 import { emptyAgentPanelModel } from "@t3tools/client-runtime/state/subagentRuntime";
 import { deriveDock } from "~/components/chat/conversationDock.logic";
@@ -723,7 +722,7 @@ function Pane() {
         plan: null,
         pause: null,
       }),
-    [entries, ended],
+    [entries, ended, second],
   );
   const routeThreadKey = `${ENVIRONMENT}:live-${epoch}`;
   return (
@@ -821,11 +820,10 @@ function Standins({ children }: { readonly children: ReactNode }) {
     error: null,
     projectRefs: new Map(),
     authority: new Map(),
-    account: { kind: "authorized" },
     lost: new Set(),
   };
   const data: ZeropsDataContextValue = {
-    runtime: { access: { changes: Stream.empty } } as unknown as ManagedZeropsDataRuntime,
+    scope: {} as AccountScope,
     signals: { hidden: () => false, online: () => true, listen: () => () => undefined },
     organizationRef: () => {
       throw new Error("not in the harness");

@@ -75,7 +75,7 @@ export function startZeropsNavigation(options: {
   };
 }
 
-export interface RunningHq extends Omit<RunningLink, "revalidate" | "retryDetail" | "renew"> {
+export interface RunningHq extends Omit<RunningLink, "revalidate" | "renew"> {
   /** The same organization's HQ reached over a new wire: the next socket opens over it. */
   readonly rewire: (wire: HqWire) => void;
   /** Asks HQ where a Mate may move, as the move opens. */
@@ -108,6 +108,7 @@ export function startHqNavigation(options: {
   return {
     signal: (signal) => void Effect.runFork(supervisor.signal(signal)),
     demandDetail: link.demandDetail,
+    retryDetail: link.retryDetail,
     moveOffers: (projectId) => Effect.runPromise(link.moveOffers(projectId)),
     handoverCandidates: (projectId) => Effect.runPromise(link.handoverCandidates(projectId)),
     compare: (ask) =>
@@ -382,7 +383,10 @@ export function observeAccount(options: {
         });
       }),
     revalidate: (demand) => shown?.link.revalidate(demand),
-    retryDetail: (demand) => shown?.link.retryDetail(demand),
+    retryDetail: (demand) => {
+      if (familySpec(demand.family).scope.source === "hq") hq?.link.retryDetail(demand);
+      else shown?.link.retryDetail(demand);
+    },
     retry: () => {
       shown?.link.signal("manual-retry");
       hq?.link.signal("manual-retry");

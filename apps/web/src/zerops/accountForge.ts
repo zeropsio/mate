@@ -7,7 +7,7 @@
  * Closing the account lifetime unbinds it at once: a reader after sign-out sees nothing of it.
  */
 import { useAtomValue } from "@effect/atom-react";
-import type { PostGrantStage, Stops } from "@t3tools/client-runtime/zerops/account/runtime";
+import type { AccountStage, Stops } from "@t3tools/client-runtime/zerops/account/runtime";
 import {
   stopDeploymentOf,
   type Deployment,
@@ -43,7 +43,7 @@ onAccountLifetimeClose(() => {
  * Makes the open account's post-grant stage the one the stops' surfaces read. Returns the way to
  * unbind it, which leaves a newer binding alone.
  */
-export function bindAccountFlow(stage: Pick<PostGrantStage, "stops">): () => void {
+export function bindAccountFlow(stage: Pick<AccountStage, "stops">): () => void {
   const stops = stage.stops;
   publish(stops);
   return () => {

@@ -18,7 +18,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { mobileCandidates, type MobileCandidate } from "./candidate-listing";
-import { useZeropsData } from "./ZeropsDataProvider";
+import { useZeropsData } from "./ZeropsAccountEnvironmentProvider";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 import {
   NOT_READ_PROJECTS,

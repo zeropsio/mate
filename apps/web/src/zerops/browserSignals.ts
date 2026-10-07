@@ -4,16 +4,12 @@
  * sleep detection. The account's data provider makes one per account epoch, and every consumer of
  * the account hears the tab through it.
  */
-import type { ZeropsVisibility } from "@t3tools/client-runtime/zerops/data";
 import {
   makePlatformSignals,
   SIGNALS_TICK_MS,
   type PageEvent,
   type PlatformSignals,
 } from "@t3tools/client-runtime/zerops/knowledge";
-import * as Effect from "effect/Effect";
-import * as Queue from "effect/Queue";
-import * as Stream from "effect/Stream";
 
 /** The tab `document` and `window` belong to, bound to them whichever tab later holds the globals. */
 export function browserPlatformSignals(document: Document, window: Window): PlatformSignals {
@@ -53,22 +49,4 @@ export function browserPlatformSignals(document: Document, window: Window): Plat
       };
     },
   });
-}
-
-/** The data runtime's visibility (it pauses its push half in a hidden tab), heard through the port. */
-export function signalsVisibility(signals: PlatformSignals): ZeropsVisibility {
-  const of = (hidden: boolean) => (hidden ? ("hidden" as const) : ("visible" as const));
-  return {
-    current: Effect.sync(() => of(signals.hidden())),
-    changes: Stream.callback<"hidden" | "visible">((queue) =>
-      Effect.acquireRelease(
-        Effect.sync(() =>
-          signals.listen((signal) => {
-            if (signal.type === "visibility") Queue.offerUnsafe(queue, of(signal.hidden));
-          }),
-        ),
-        (unlisten) => Effect.sync(unlisten),
-      ),
-    ),
-  };
 }

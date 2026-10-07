@@ -17,10 +17,9 @@ import { mateLink, mateLinks } from "../projections/mateLinks.ts";
 import { makeMateAdapter, type MateAdapter, type MateTarget } from "./mate.ts";
 
 const GRANTED: AccountGuards = {
-  postGrant: true,
-  identityMint: { allowed: true },
-  zeropsFailing: false,
-  grantVerifiedAtMs: 0,
+  verified: true,
+
+  zeropsState: "live",
 };
 
 const flush = async (): Promise<void> => {

@@ -46,7 +46,7 @@ import { EnvironmentId, type ExecutionEnvironmentUpdate } from "@t3tools/contrac
 
 import { zeropsMateBaseUrl } from "./candidates.ts";
 import type { DescriptorFacts } from "./environments/environmentMachine.ts";
-import type { Instant } from "./data/access/grant.ts";
+import type { Instant } from "./environments/exchange.ts";
 import type { ProbeAnswer, ProbeRead } from "./environments/probe.ts";
 
 /** What a `/healthz` probe concluded about a container. */

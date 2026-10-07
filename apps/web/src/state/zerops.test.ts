@@ -1,36 +1,17 @@
 import type { ZeropsProject, ZeropsService } from "@t3tools/client-runtime/zerops";
-import {
-  DEFAULT_ZEROPS_DATA_POLICY,
-  createZeropsDataAtoms,
-  makeInitialZeropsDataState,
-  projectKeyOf,
-  reduceZeropsDataState,
-  type ManagedZeropsDataRuntime,
-} from "@t3tools/client-runtime/zerops/data";
+import { projectKeyOf } from "@t3tools/client-runtime/zerops/data";
 import { mateListingsAtom } from "@t3tools/client-runtime/zerops/environments";
 import type { HqStructure } from "@t3tools/client-runtime/zerops/hq";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { MateLiveView } from "@t3tools/shared/hqMates";
 import * as Schema from "effect/Schema";
-import { Atom, AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/unstable/reactivity";
 import { describe, expect, it } from "vite-plus/test";
 
-import {
-  desiredInterest,
-  identity,
-  organization,
-  project,
-  scope,
-} from "../zerops/__fixtures__/platformData";
+import { organization, project } from "../zerops/__fixtures__/platformData";
 import { mountRoster } from "@t3tools/client-runtime/zerops/testing";
 import type { InventoryProjection } from "../zerops/inventoryContext";
-import {
-  mateRowsAtom,
-  takenBotNamesAtom,
-  zeropsDataRuntimeAtom,
-  zeropsInventoryAtom,
-  zeropsSessionAtom,
-} from "./zerops";
+import { mateRowsAtom, takenBotNamesAtom, zeropsInventoryAtom, zeropsSessionAtom } from "./zerops";
 import { mountHqNavigation } from "../zerops/__fixtures__/hqNavigation";
 
 /** A Mate's record as HQ's navigation says it, nothing said beyond its face. */
@@ -67,47 +48,13 @@ const ZCP: ZeropsService = {
  * A runtime under a grant that names the organization; the organization's projects and services
  * are the account store's (`mountRoster`).
  */
-function readRuntime(): ManagedZeropsDataRuntime {
-  const id = identity();
-  const state = reduceZeropsDataState(
-    makeInitialZeropsDataState(scope()),
-    { kind: "interest-upserted", interest: desiredInterest(id) },
-    DEFAULT_ZEROPS_DATA_POLICY,
-  ).state;
-  const granted = {
-    machine: {
-      phase: {
-        phase: "granted",
-        evidence: {
-          account: { organizations: [{ organization }] },
-          // The grant admits the project: its services are its Mates'.
-          projects: new Map([
-            [
-              owner.projectId,
-              { access: { project: owner, role: "OWNER", mutationsAllowed: true } },
-            ],
-          ]),
-          unverified: new Map(),
-          closedProjects: new Map(),
-        },
-      },
-    },
-  };
-  return {
-    scope: scope(),
-    reads: createZeropsDataAtoms(Atom.make(state)).reads,
-    access: { view: Atom.make(granted) },
-  } as unknown as ManagedZeropsDataRuntime;
-}
 
 describe("the candidate rows", () => {
   it("the web candidate rows are the account listing's rows", () => {
     const registry = AtomRegistry.make();
-    const runtime = readRuntime();
     mountRoster(registry, organization.organizationId, [PROJECT], {
       services: [{ ...ZCP, projectId: PROJECT.id }],
     });
-    registry.set(zeropsDataRuntimeAtom, runtime);
     registry.set(zeropsSessionAtom, {
       status: "signed-in",
       organizationStatus: "selected",
@@ -117,12 +64,11 @@ describe("the candidate rows", () => {
       projects: [PROJECT],
       projectRefs: new Map([[projectKeyOf(owner), owner]]),
       authority: new Map(),
-      account: { kind: "authorized" },
     });
 
     const rows = registry.get(mateRowsAtom);
     const listed = registry
-      .get(mateListingsAtom(runtime))
+      .get(mateListingsAtom)
       .find(({ organizationId }) => organizationId === organization.organizationId);
 
     expect(heldCandidates(rows).rows.map(({ key }) => key)).toEqual([`${PROJECT.id}:${ZCP.id}`]);
@@ -136,7 +82,6 @@ describe("the candidate rows", () => {
     const roster = mountRoster(registry, organization.organizationId, [PROJECT], {
       services: [{ ...ZCP, projectId: PROJECT.id }],
     });
-    registry.set(zeropsDataRuntimeAtom, readRuntime());
     registry.set(zeropsSessionAtom, {
       status: "signed-in",
       organizationStatus: "selected",
@@ -146,7 +91,6 @@ describe("the candidate rows", () => {
       projects: [PROJECT],
       projectRefs: new Map([[projectKeyOf(owner), owner]]),
       authority: new Map(),
-      account: { kind: "authorized" },
     });
     const hq = mountHqNavigation(
       registry,
@@ -231,44 +175,32 @@ describe("the names the organization's Mates go by", () => {
       label: "a list read whole, with a project the inventory does not hold yet",
       listed: [named, UMA],
       totalCount: 2,
-      account: { kind: "authorized" as const },
       expected: { names: ["Ada", "Uma"], complete: true },
     },
     {
       label: "a list still partial: a name missing from it may yet be taken",
       listed: [named],
       totalCount: 2,
-      account: { kind: "authorized" as const },
       expected: { names: ["Ada"], complete: false },
     },
     {
       label: "a list read whole, with HQ's structure not answered now: a name is unread",
       listed: [named, UMA],
       totalCount: 2,
-      account: { kind: "authorized" as const },
       current: false,
       expected: { names: ["Ada", "Uma"], complete: false },
-    },
-    {
-      label: "an account whose access lapsed",
-      listed: [named, UMA],
-      totalCount: 2,
-      account: { kind: "withheld" as const, reason: "access-lapsed" as const, cause: null },
-      expected: { names: [], complete: false },
     },
   ] as ReadonlyArray<{
     readonly label: string;
     readonly listed: ReadonlyArray<ZeropsProject>;
     readonly totalCount: number;
-    readonly account: InventoryProjection["account"];
     readonly current?: boolean;
     readonly expected: { readonly names: ReadonlyArray<string>; readonly complete: boolean };
-  }>)("$label", ({ listed, totalCount, account, current = true, expected }) => {
+  }>)("$label", ({ listed, totalCount, current = true, expected }) => {
     const registry = AtomRegistry.make();
     const roster = mountRoster(registry, organization.organizationId, listed, {
       unreadMembers: totalCount > listed.length ? [UMA.id] : [],
     });
-    registry.set(zeropsDataRuntimeAtom, readRuntime());
     registry.set(zeropsSessionAtom, {
       status: "signed-in",
       organizationStatus: "selected",
@@ -279,7 +211,6 @@ describe("the names the organization's Mates go by", () => {
       projects: [named],
       projectRefs: new Map([[projectKeyOf(owner), owner]]),
       authority: new Map(),
-      account,
     });
     mountHqNavigation(
       registry,

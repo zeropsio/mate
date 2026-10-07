@@ -13,8 +13,8 @@ describe("mobile Zerops integration", () => {
   it("directs users to hosted Mate with an inactive data boundary", () => {
     const app = readSource("src/App.tsx");
     expect(app).toContain('Linking.openURL("https://mate.zerops.io")');
-    expect(app).toContain("<ZeropsDataProvider account={null}>");
-    expect(app.match(/<ZeropsDataProvider/g)).toHaveLength(1);
+    expect(app).toContain("<ZeropsAccountEnvironmentProvider account={null}>");
+    expect(app.match(/<ZeropsAccountEnvironmentProvider/g)).toHaveLength(1);
     expect(app).not.toContain("ZeropsSessionProvider");
     expect(app).not.toContain("CloudAuthProvider");
     expect(app).not.toContain('from "./Stack"');
@@ -31,7 +31,7 @@ describe("mobile Zerops integration", () => {
   });
 
   it("hosts the account runtime, and connects a Mate through its exchange driver", () => {
-    const provider = readSource("src/features/zerops/ZeropsDataProvider.tsx");
+    const provider = readSource("src/features/zerops/ZeropsAccountEnvironmentProvider.tsx");
     const connectRoute = readSource("src/features/zerops/ZeropsConnectRouteScreen.tsx");
 
     expect(provider).toContain("makeAccountRuntime(");

@@ -1,13 +1,3 @@
-import {
-  DEFAULT_ZEROPS_DATA_POLICY,
-  decodeEntityDirectResponse,
-  makeInitialZeropsDataState,
-  reduceZeropsDataState,
-  runtimeServicesRead,
-  selectTopology,
-  serviceRecordToZeropsService,
-  type ProtocolDecodeResult,
-} from "@t3tools/client-runtime/zerops/data";
 import type { ZeropsService } from "@t3tools/client-runtime/zerops";
 import { projectTopology } from "@t3tools/client-runtime/zerops/topology";
 import {
@@ -17,14 +7,7 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import { describe, expect, it } from "vite-plus/test";
 
-import {
-  desiredInterest,
-  directTicket,
-  identity,
-  project,
-  scope,
-  stamp,
-} from "./__fixtures__/platformData";
+import { project } from "./__fixtures__/platformData";
 import { projectTopologySnapshotFromRead } from "../state/zerops";
 
 const owner = project();
@@ -102,49 +85,19 @@ const services: ReadonlyArray<ZeropsService> = [
 ];
 
 function fixture() {
-  const id = identity();
-  let state = reduceZeropsDataState(
-    makeInitialZeropsDataState(scope()),
-    { kind: "interest-upserted", interest: desiredInterest(id) },
-    DEFAULT_ZEROPS_DATA_POLICY,
-  ).state;
-  let ordinal = 1;
-  const ingest = (decoded: ProtocolDecodeResult) => {
-    expect(decoded.issues).toEqual([]);
-    for (const input of decoded.observations) {
-      state = reduceZeropsDataState(
-        state,
-        {
-          kind: "observation",
-          observation: { input, stamp: stamp(++ordinal), accessEvidence: null },
-        },
-        DEFAULT_ZEROPS_DATA_POLICY,
-      ).state;
-    }
-  };
-  ingest(decodeEntityDirectResponse(directTicket({ kind: "project", ref: owner }, id), projectDto));
-  // The organization's services listing, as the account's store holds it: each row names its
-  // project, and a push replaces a whole row.
   let rows = services.map((row) => ({ ...row, projectId: owner.projectId }));
-  const listed = () =>
-    runtimeServicesRead(owner, { services: rows, live: true, reconnecting: false });
+  const listed = () => ({ services: rows, live: true, reconnecting: false });
   const pushed = (row: Partial<ZeropsService> & { readonly id: string }) => {
     rows = rows.map((held) => (held.id === row.id ? { ...held, ...row } : held));
   };
-  const snapshot = () =>
-    projectTopologySnapshotFromRead(projectDto, selectTopology(state, owner, listed()), []).view!;
+  const snapshot = () => projectTopologySnapshotFromRead(projectDto, listed(), []).view!;
   return { snapshot, listed, pushed };
 }
 
 describe("original topology behavior through the central data pipeline", () => {
   it("preserves project tags and presentation plus public routes, offers and environment summaries", () => {
     const f = fixture();
-    const readDtos = () =>
-      f.listed().value.flatMap((entry) => {
-        if (entry.knowledge !== "observed") return [];
-        const dto = serviceRecordToZeropsService(entry.record);
-        return dto === null ? [] : [dto];
-      });
+    const readDtos = () => f.listed().services;
     const dtos = readDtos();
     expect(derivePublicRoutes(projectDto, dtos)).toHaveLength(1);
     expect(derivePublicRoutes(projectDto, dtos)).toEqual(derivePublicRoutes(projectDto, services));

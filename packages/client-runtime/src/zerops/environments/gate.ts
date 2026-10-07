@@ -7,7 +7,8 @@
  * its way somewhere renders as a banner over the mounted route.
  */
 import type { EnvironmentShellStatus } from "../../state/shell.ts";
-import type { Instant, ScopeAuthority } from "../data/access/grant.ts";
+import type { Instant } from "./exchange.ts";
+import type { ScopeAuthority } from "../data/types.ts";
 import type { WithheldReason } from "../knowledge/known.ts";
 import { knownPresentation } from "../knowledge/presentation.ts";
 import type { EnvironmentMachine } from "./environmentMachine.ts";
@@ -125,7 +126,7 @@ export function routeGatePhrase(
  */
 export const CONVERSATION_UNVERIFIED_BOUND_MS = 10 * 60_000;
 
-/** The route project's access as the grant last published it, or its loss confirmed (G6). */
+/** The route project's access as its owner last answered, or its loss confirmed (G6). */
 export type ConversationAccess = ScopeAuthority | { readonly kind: "lost" };
 
 export type ConversationView =

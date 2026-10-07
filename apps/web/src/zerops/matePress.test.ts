@@ -47,15 +47,11 @@ import {
 import { accountHqApi } from "./accountHq";
 import type { LockManagerLike } from "./mateLocks";
 
-/** What an old command fake answered, as the write's own answer. */
+/** A step's owner answer. */
 const answered = <A>(answer: { readonly value: A }) => Promise.resolve(answer.value);
-/** What an old command fake refused with, as the write's own failure. */
-const refused = (error: { readonly _tag?: string; readonly message: string }) =>
-  Promise.reject(new Error(error.message));
-
 /**
  * The account's operations as a press's tests stand them in: each Zerops write a step runs goes
- * to the fake that test names — a platform method, or the old command of the same write — and a
+ * to the fake platform method that test names, and a
  * lost answer is the client's own uncertain failure, as `runToEnd` makes it.
  */
 type FakeWrite = (...args: ReadonlyArray<never>) => unknown;
@@ -128,35 +124,23 @@ function platformOf(
   };
 }
 
-/**
- * A press's inputs as the tests built them for the old command layer — `data.runtime.commands`
- * and the client's isolation read — run as the account's operations.
- */
-function asPressInputs(raw: unknown): PressInputs {
-  const old = raw as {
-    readonly client: {
-      readonly readProjectEnv?: () => Promise<ReadonlyArray<{ key: string; content?: string }>>;
-    };
-    readonly organizationId: string;
-    readonly data?: { readonly runtime: { readonly commands: Record<string, FakeWrite> } };
-  };
-  const commands = old.data?.runtime.commands ?? {};
+type OperationIntent = Parameters<RunToEnd>[0];
+
+/** One operation's owner answer, with the other steps using the account's fake executor. */
+function withOperation<K extends OperationIntent["kind"]>(
+  inputs: PressInputs,
+  kind: K,
+  answer: (intent: Extract<OperationIntent, { readonly kind: K }>) => unknown,
+): PressInputs {
   return {
-    client: old.client as never,
-    organizationId: old.organizationId,
-    operations: operationsOf(
-      fakeRun(
-        {
-          importDevelopmentContainer: commands.importDevelopmentContainer,
-          importServices: commands.importServices,
-          isolateProjectEnv: commands.isolateProjectEnv,
-          closeOff: commands.isolateProjectEnv,
-        },
-        async () =>
-          (await old.client.readProjectEnv?.())?.find((entry) => entry.key === "envIsolation")
-            ?.content,
-      ),
-    ),
+    ...inputs,
+    operations: {
+      ...inputs.operations,
+      run: (async (intent: OperationIntent, options: Parameters<RunToEnd>[1]) =>
+        intent.kind === kind
+          ? answer(intent as Extract<OperationIntent, { readonly kind: K }>)
+          : inputs.operations.run(intent, options)) as RunToEnd,
+    },
   };
 }
 
@@ -1191,45 +1175,32 @@ describe("finishMateSetup — the harden path", () => {
     harden: () => boolean,
     calls: Array<string>,
     services: ReadonlyArray<ReturnType<typeof zcp>> = [],
-  ) =>
-    ({
-      client: {
-        readProjectEnv: async () => {
-          calls.push("read isolation");
-          return [{ key: "envIsolation", content: "service" }];
-        },
-        listProjectServices: async () => services,
+  ): PressInputs => {
+    const client = {
+      readProjectEnv: async () => {
+        calls.push("read isolation");
+        return [{ key: "envIsolation", content: "service" }];
       },
+      listProjectServices: async () => services,
+    };
+    const isolateProjectEnv = () => {
+      calls.push("harden");
+      return harden()
+        ? Promise.resolve({ keyNotLowered: null })
+        : Promise.reject(new Error("The isolation was refused."));
+    };
+    return {
+      client: client as unknown as PressInputs["client"],
       organizationId: "org-acme",
-      data: {
-        organizationRef: (organizationId: string) => ({ kind: "organization", organizationId }),
-        projectRef: (_organizationId: string, projectId: string) => ({
-          kind: "project",
-          projectId,
-        }),
-        runtime: {
-          commands: {
-            isolateProjectEnv: () => {
-              calls.push("harden");
-              return harden()
-                ? answered({
-                    value: {
-                      tokenLowered: true,
-                      keyNotLowered: null,
-                      delegationsDropped: 0,
-                      isolationSteps: 1,
-                      restarted: false,
-                    },
-                  })
-                : refused({
-                    _tag: "IsolationRefused" as const,
-                    message: "The isolation was refused.",
-                  });
-            },
-          },
-        },
-      },
-    }) as never;
+      operations: operationsOf(
+        fakeRun(
+          { isolateProjectEnv, closeOff: isolateProjectEnv },
+          async () =>
+            (await client.readProjectEnv()).find((entry) => entry.key === "envIsolation")?.content,
+        ),
+      ),
+    };
+  };
   const finish = (
     harden: () => boolean,
     calls: Array<string>,
@@ -1237,7 +1208,7 @@ describe("finishMateSetup — the harden path", () => {
   ) => {
     hq.calls = calls;
     return finishMateSetup({
-      inputs: asPressInputs(inputs(harden, calls)),
+      inputs: inputs(harden, calls),
       projectId: "p-old",
       projectName: "Acme - Ada",
       container: null,
@@ -1264,29 +1235,15 @@ describe("finishMateSetup — the harden path", () => {
   it("writes its record in its application before its container, and marks it closed off after", async () => {
     begin();
     const calls: Array<string> = [];
-    const base = inputs(() => true, calls) as unknown as {
-      readonly data: { readonly runtime: { readonly commands: Record<string, unknown> } };
-    };
-    const withContainer = {
-      ...base,
-      data: {
-        ...base.data,
-        runtime: {
-          ...base.data.runtime,
-          commands: {
-            ...base.data.runtime.commands,
-            importDevelopmentContainer: () => {
-              calls.push("container");
-              return answered({ value: { serviceName: "zcp", imported: true } });
-            },
-          },
-        },
-      },
-    };
+    const base = inputs(() => true, calls);
+    const withContainer = withOperation(base, "import-container", () => {
+      calls.push("container");
+      return answered({ value: { serviceName: "zcp", imported: true } });
+    });
     hq.calls = calls;
     expect(
       await finishMateSetup({
-        inputs: asPressInputs(withContainer as never),
+        inputs: withContainer,
         projectId: "p-old",
         projectName: "mate-rig-e2e-d - Dan",
         container: { agents: [] },
@@ -1312,25 +1269,11 @@ describe("finishMateSetup — the harden path", () => {
   it("brings a Mate into an existing plain project: its record, its container, its close-off", async () => {
     begin();
     const calls: Array<string> = [];
-    const base = inputs(() => true, calls) as unknown as {
-      readonly data: { readonly runtime: { readonly commands: Record<string, unknown> } };
-    };
-    const withContainer = {
-      ...base,
-      data: {
-        ...base.data,
-        runtime: {
-          ...base.data.runtime,
-          commands: {
-            ...base.data.runtime.commands,
-            importDevelopmentContainer: () => {
-              calls.push("container");
-              return answered({ value: { serviceName: "zcp", imported: true } });
-            },
-          },
-        },
-      },
-    };
+    const base = inputs(() => true, calls);
+    const withContainer = withOperation(base, "import-container", () => {
+      calls.push("container");
+      return answered({ value: { serviceName: "zcp", imported: true } });
+    });
     const endpoint = { projectId: "hq-project", address: "https://hq.test" };
     const registration = mateFinishRegistration({
       hq: endpoint,
@@ -1347,7 +1290,7 @@ describe("finishMateSetup — the harden path", () => {
     hq.calls = calls;
     expect(
       await finishMateSetup({
-        inputs: asPressInputs(withContainer as never),
+        inputs: withContainer,
         projectId: "p-old",
         projectName: "shop",
         container: { agents: [] },
@@ -1371,25 +1314,11 @@ describe("finishMateSetup — the harden path", () => {
   it("a stopped registration retains its birth intent for another browser's Finish setup", async () => {
     begin();
     const calls: Array<string> = [];
-    const base = inputs(() => true, calls) as unknown as {
-      readonly data: { readonly runtime: { readonly commands: Record<string, unknown> } };
-    };
-    const withContainer = {
-      ...base,
-      data: {
-        ...base.data,
-        runtime: {
-          ...base.data.runtime,
-          commands: {
-            ...base.data.runtime.commands,
-            importDevelopmentContainer: () => {
-              calls.push("container");
-              return answered({ value: { serviceName: "zcp", imported: true } });
-            },
-          },
-        },
-      },
-    };
+    const base = inputs(() => true, calls);
+    const withContainer = withOperation(base, "import-container", () => {
+      calls.push("container");
+      return answered({ value: { serviceName: "zcp", imported: true } });
+    });
     const HQ_ENDPOINT = { projectId: "hq-project", address: "https://hq.test" };
     hq.calls = calls;
     hq.attachFailure = new HqError({
@@ -1400,7 +1329,7 @@ describe("finishMateSetup — the harden path", () => {
     });
     // The first browser's press stops at the one attach HQ answers with 503.
     const pressed = await finishMateSetup({
-      inputs: asPressInputs(withContainer as never),
+      inputs: withContainer,
       projectId: "gus-project",
       projectName: "mate-rig-e2e-g - Gus",
       container: { agents: [] },
@@ -1476,7 +1405,7 @@ describe("finishMateSetup — the harden path", () => {
     });
     expect(
       await finishMateSetup({
-        inputs: asPressInputs(withContainer as never),
+        inputs: withContainer,
         projectId: "gus-project",
         projectName: "mate-rig-e2e-g - Gus",
         container: { agents: [] },
@@ -1498,7 +1427,7 @@ describe("finishMateSetup — the harden path", () => {
     hq.calls = calls;
     expect(
       await finishMateSetup({
-        inputs: asPressInputs(inputs(() => true, calls)),
+        inputs: inputs(() => true, calls),
         projectId: "p-old",
         projectName: "mate-rig-e2e-g - Gus",
         container: null,
@@ -1550,7 +1479,7 @@ describe("finishMateSetup — the harden path", () => {
     hq.calls = calls;
     expect(
       await finishMateSetup({
-        inputs: asPressInputs(inputs(() => true, calls)),
+        inputs: inputs(() => true, calls),
         projectId: "p-old",
         projectName: "mate-rig-e2e-d - Dan",
         container: null,
@@ -1588,9 +1517,7 @@ describe("finishMateSetup — the harden path", () => {
   it("writes no other Mate's key", async () => {
     begin();
     const calls: Array<string> = [];
-    const base = inputs(() => true, calls) as unknown as {
-      readonly client: Record<string, unknown>;
-    };
+    const base = inputs(() => true, calls);
     const client = {
       ...base.client,
       listIntegrationTokens: async () => {
@@ -1612,7 +1539,7 @@ describe("finishMateSetup — the harden path", () => {
     hq.calls = calls;
     expect(
       await finishMateSetup({
-        inputs: asPressInputs({ ...(base as object), client } as never),
+        inputs: { ...base, client: client as unknown as PressInputs["client"] },
         projectId: "p-old",
         projectName: "Acme - Ada",
         container: null,
@@ -1632,35 +1559,22 @@ describe("finishMateSetup — the harden path", () => {
   it("says a key it could not lower, and finishes", async () => {
     begin();
     const calls: Array<string> = [];
-    const base = inputs(() => true, calls) as unknown as {
-      readonly data: { readonly runtime: { readonly commands: Record<string, unknown> } };
-    };
-    const refusedKey = {
-      ...base,
-      data: {
-        ...base.data,
-        runtime: {
-          ...base.data.runtime,
-          commands: {
-            ...base.data.runtime.commands,
-            isolateProjectEnv: () =>
-              answered({
-                value: {
-                  tokenLowered: false,
-                  keyNotLowered: "This Zerops account is not allowed to do that.",
-                  delegationsDropped: 0,
-                  isolationSteps: 1,
-                  restarted: false,
-                },
-              }),
-          },
+    const base = inputs(() => true, calls);
+    const refusedKey = withOperation(base, "harden-project", () =>
+      answered({
+        value: {
+          tokenLowered: false,
+          keyNotLowered: "This Zerops account is not allowed to do that.",
+          delegationsDropped: 0,
+          isolationSteps: 1,
+          restarted: false,
         },
-      },
-    };
+      }),
+    );
     hq.calls = calls;
     expect(
       await finishMateSetup({
-        inputs: asPressInputs(refusedKey as never),
+        inputs: refusedKey,
         projectId: "p-old",
         projectName: "Acme - Ada",
         container: null,
@@ -1705,38 +1619,24 @@ describe("finishMateSetup — the harden path", () => {
   it("hardens an adopted Mate's key by the id HQ names", async () => {
     begin();
     const calls: Array<string> = [];
-    const base = inputs(() => true, calls) as unknown as {
-      readonly data: { readonly runtime: { readonly commands: Record<string, unknown> } };
-    };
+    const base = inputs(() => true, calls);
     const asked: Array<string | undefined> = [];
-    const byId = {
-      ...base,
-      data: {
-        ...base.data,
-        runtime: {
-          ...base.data.runtime,
-          commands: {
-            ...base.data.runtime.commands,
-            isolateProjectEnv: (_project: unknown, keyTokenId?: string) => {
-              asked.push(keyTokenId);
-              return answered({
-                value: {
-                  tokenLowered: true,
-                  keyNotLowered: null,
-                  delegationsDropped: 0,
-                  isolationSteps: 1,
-                  restarted: false,
-                },
-              });
-            },
-          },
+    const byId = withOperation(base, "harden-project", ({ keyTokenId }) => {
+      asked.push(keyTokenId);
+      return answered({
+        value: {
+          tokenLowered: true,
+          keyNotLowered: null,
+          delegationsDropped: 0,
+          isolationSteps: 1,
+          restarted: false,
         },
-      },
-    };
+      });
+    });
     hq.calls = calls;
     const finishOld = () =>
       finishMateSetup({
-        inputs: asPressInputs(byId as never),
+        inputs: byId,
         projectId: "p-old",
         projectName: "Acme - Ada",
         container: null,
@@ -1760,40 +1660,26 @@ describe("finishMateSetup — the harden path", () => {
   it("hardens a Mate whose key reads other projects, then asks HQ to read its key again", async () => {
     begin();
     const calls: Array<string> = [];
-    const base = inputs(() => true, calls) as unknown as {
-      readonly data: { readonly runtime: { readonly commands: Record<string, unknown> } };
-    };
+    const base = inputs(() => true, calls);
     const asked: Array<string | undefined> = [];
-    const matched = {
-      ...base,
-      data: {
-        ...base.data,
-        runtime: {
-          ...base.data.runtime,
-          commands: {
-            ...base.data.runtime.commands,
-            isolateProjectEnv: (_project: unknown, keyTokenId?: string) => {
-              asked.push(keyTokenId);
-              calls.push("harden");
-              return answered({
-                value: {
-                  tokenLowered: true,
-                  keyNotLowered: null,
-                  delegationsDropped: 0,
-                  isolationSteps: 1,
-                  restarted: false,
-                },
-              });
-            },
-          },
+    const matched = withOperation(base, "harden-project", ({ keyTokenId }) => {
+      asked.push(keyTokenId);
+      calls.push("harden");
+      return answered({
+        value: {
+          tokenLowered: true,
+          keyNotLowered: null,
+          delegationsDropped: 0,
+          isolationSteps: 1,
+          restarted: false,
         },
-      },
-    };
+      });
+    });
     hq.calls = calls;
     hq.key = "token-wide";
     expect(
       await finishMateSetup({
-        inputs: asPressInputs(matched as never),
+        inputs: matched,
         projectId: "p-old",
         projectName: "Acme - Ada",
         container: null,
@@ -1819,7 +1705,7 @@ describe("finishMateSetup — the harden path", () => {
     const services = [zcp("svc-1", "zcp"), zcp("svc-2", "zcp1")];
     hq.calls = calls;
     const finishing = {
-      inputs: asPressInputs(inputs(() => true, calls, services)),
+      inputs: inputs(() => true, calls, services),
       projectId: "p-old",
       projectName: "Acme - Ada",
       container: null,
@@ -1879,7 +1765,7 @@ describe("finishMateSetup — the harden path", () => {
     hq.calls = calls;
     expect(
       await finishMateSetup({
-        inputs: asPressInputs(inputs(() => true, calls, [zcp("svc-1", "zcp")])),
+        inputs: inputs(() => true, calls, [zcp("svc-1", "zcp")]),
         projectId: "p-old",
         projectName: "mate-rig-e2e-d - Dan",
         container: null,
@@ -1932,7 +1818,7 @@ describe("finishMateSetup — the harden path", () => {
     hq.calls = calls;
     expect(
       await finishMateSetup({
-        inputs: asPressInputs(inputs(() => true, calls, [zcp("svc-1", "zcp")])),
+        inputs: inputs(() => true, calls, [zcp("svc-1", "zcp")]),
         projectId: "p-old",
         projectName: "Acme - Ada",
         container: { agents: [] },
@@ -1957,9 +1843,9 @@ describe("finishMateSetup — the harden path", () => {
     begin();
     const calls: Array<string> = [];
     let reads = 0;
-    const base = inputs(() => true, calls) as unknown as { client: Record<string, unknown> };
+    const base = inputs(() => true, calls);
     const finishing = {
-      inputs: asPressInputs({
+      inputs: {
         ...base,
         client: {
           ...base.client,
@@ -1968,8 +1854,8 @@ describe("finishMateSetup — the harden path", () => {
             if (reads === 1) throw new Error("Zerops isn't answering.");
             return [];
           },
-        },
-      }),
+        } as unknown as PressInputs["client"],
+      },
       projectId: "p-old",
       projectName: "Acme - Ada",
       container: null,

@@ -5,9 +5,7 @@ import type { ZeropsThrowawayPlatform } from "../authorization/zeropsThrowaway.t
 import {
   ZeropsApiClient,
   ZeropsApiError,
-  ZeropsWriteNotSent,
   type FetchImplementation,
-  type WriteAdmission,
   type ZeropsUser,
 } from "./api.ts";
 import { mateDiagnostics } from "./diagnostics.ts";
@@ -427,16 +425,7 @@ describe("zeropsThrowawayPlatform's debt", () => {
   });
 });
 
-/** An epoch's admission while its project writes are closed. */
-const writesClosed: WriteAdmission = {
-  beforeProjectWrite: () =>
-    Promise.reject({
-      _tag: "ZeropsCommandAdmissionError",
-      reason: "access-expired",
-      message: "Project access could not be verified.",
-    }),
-};
-
+/** A verified Zerops account. */
 function member(id: string, roleCode: string): ZeropsUser {
   return {
     id,
@@ -453,7 +442,7 @@ function browserFetch(fetch: FetchImplementation): FetchImplementation {
       : fetch(input, init);
 }
 
-/** One tab signed in to the account harness's Zerops, its project writes admitted. */
+/** One tab signed in to the account harness's Zerops, with a verified principal. */
 function signedInTab(roleCode = "OWNER") {
   const rest = makeFakeZeropsRest();
   rest.addUser({ user: member("user-1", roleCode), password: "one" });
@@ -504,79 +493,6 @@ describe("throwaway hygiene", () => {
     await renewal;
   });
 
-  // T-L6's lapse half under C6: a throwaway carries no rights, so closed
-  // project writes do not hold it up; a mint that grants anything keeps them.
-  describe("a door throwaway mints while project writes are closed; a project-granting mint is refused", () => {
-    type Tab = ReturnType<typeof signedInTab>;
-    for (const row of [
-      {
-        mint: "a door throwaway",
-        minted: true,
-        run: (tab: Tab) => tab.throwaways().mint({ clientId: "org-1", name: "mate-door:p1:n1" }),
-      },
-      {
-        mint: "a NO_ACCESS token granting a project",
-        minted: false,
-        run: (tab: Tab) =>
-          tab.client.mintIntegrationToken({
-            clientId: "org-1",
-            name: "deploy-p1",
-            roleCode: "NO_ACCESS",
-            projects: [{ projectId: "p1", roleCode: "BASIC_USER" }],
-          }),
-      },
-      {
-        mint: "a READ_ONLY token with no projects",
-        minted: false,
-        run: (tab: Tab) =>
-          tab.client.mintIntegrationToken({
-            clientId: "org-1",
-            name: "reader",
-            roleCode: "READ_ONLY",
-            projects: [],
-          }),
-      },
-      {
-        mint: "a NO_ACCESS token that sends no project list",
-        minted: false,
-        run: (tab: Tab) =>
-          tab.client.mintIntegrationToken({
-            clientId: "org-1",
-            name: "bare",
-            roleCode: "NO_ACCESS",
-          }),
-      },
-    ] as const) {
-      it(`${row.mint} ${row.minted ? "mints" : "is refused"}`, async () => {
-        vi.useFakeTimers();
-        const tab = signedInTab();
-        tab.client.admitWritesThrough(writesClosed);
-
-        let outcome: unknown = "pending";
-        void row.run(tab).then(
-          () => {
-            outcome = "minted";
-          },
-          (cause: unknown) => {
-            outcome = cause;
-          },
-        );
-        await settle();
-
-        if (row.minted) {
-          expect(outcome).toBe("minted");
-          expect(tab.mints()).toHaveLength(1);
-        } else {
-          expect(outcome).toBeInstanceOf(ZeropsWriteNotSent);
-          expect(outcome).toMatchObject({
-            refusal: { _tag: "ZeropsCommandAdmissionError", reason: "access-expired" },
-          });
-          expect(tab.mints()).toEqual([]);
-        }
-      });
-    }
-  });
-
   // AL-12: the account-write admission changes nothing about a lost answer.
   // Zerops may hold the token, so the mint is uncertain, never a network
   // failure a caller would read as "nothing happened".
@@ -591,7 +507,6 @@ describe("throwaway hygiene", () => {
       },
     });
     client.restoreSession(tab.session);
-    client.admitWritesThrough(writesClosed);
 
     const failure = await zeropsThrowawayPlatform(client, { budgets: makeThrowawayMintBudgets() })
       .mint({ clientId: "org-1", name: "mate-door:p1:n1" })

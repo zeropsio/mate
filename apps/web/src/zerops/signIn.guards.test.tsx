@@ -1,14 +1,5 @@
-import {
-  BearerConnectionCredential,
-  BearerConnectionProfile,
-  BearerConnectionRegistration,
-  BearerConnectionTarget,
-} from "@t3tools/client-runtime/connection";
 import type { ZeropsUser } from "@t3tools/client-runtime/zerops";
-import { KEPT_SESSIONS_KEY } from "@t3tools/client-runtime/zerops/keptSessions";
-import { EnvironmentId } from "@t3tools/contracts";
-import * as Schema from "effect/Schema";
-import { makeAccountHarness, type FakeDatastream } from "@t3tools/client-runtime/zerops/testing";
+import { makeAccountHarness } from "@t3tools/client-runtime/zerops/testing";
 import type { ComponentType, ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -16,10 +7,7 @@ import type { AppRouter } from "../router";
 import { resolveZeropsAccountGate } from "../routes/-accountGate";
 import { mountTab, preloadTabs, settle, unmountTabs } from "./__fixtures__/harnessTabs";
 
-preloadTabs(
-  () => import("./accountEnvironments"),
-  () => import("./__fixtures__/harnessRuntime"),
-);
+preloadTabs(() => import("./accountEnvironments"));
 
 /**
  * What `AppRoot`'s tree reaches outside itself in a harness tab: the fixture's
@@ -33,25 +21,9 @@ preloadTabs(
  */
 const seams = vi.hoisted(() => ({
   Probe: (() => null) as ComponentType,
-  datastream: null as FakeDatastream | null,
-  dataProvider: async (importOriginal: <T>() => Promise<T>) => {
-    const actual = await importOriginal<typeof import("./ZeropsDataProvider")>();
-    const [{ useState }, { harnessRuntime }] = await Promise.all([
-      import("react"),
-      import("./__fixtures__/harnessRuntime"),
-    ]);
-    return {
-      ...actual,
-      ZeropsDataProvider: ({ children }: { readonly children: ReactNode }) => {
-        const [makeRuntime] = useState(() => harnessRuntime(seams.datastream!));
-        return (
-          <actual.ZeropsDataProvider makeRuntime={makeRuntime}>
-            {children}
-          </actual.ZeropsDataProvider>
-        );
-      },
-    };
-  },
+  dataProvider: async () => ({
+    ZeropsAccountEnvironmentProvider: ({ children }: { readonly children: ReactNode }) => children,
+  }),
 }));
 
 vi.mock("../components/zerops/landing/ZeropsHostedLanding", async () => {
@@ -73,7 +45,7 @@ vi.mock("../components/zerops/landing/ZeropsLandingShell", () => ({
   }) => children ?? label,
 }));
 
-vi.mock("./ZeropsDataProvider", seams.dataProvider);
+vi.mock("./ZeropsAccountEnvironmentProvider", seams.dataProvider);
 
 const person: ZeropsUser = {
   id: "user-1",
@@ -185,7 +157,6 @@ function productHarness() {
     people: [{ user: person, password: "secret" }],
     projects: [{ id: "p1", clientId: "org-1", name: "One", status: "ACTIVE" }],
   });
-  seams.datastream = harness.datastream;
   return harness;
 }
 
@@ -203,7 +174,7 @@ async function appTab(
     path: DEEP_LINK,
     app: async (Probe) => {
       seams.Probe = Probe;
-      vi.doMock("./ZeropsDataProvider", seams.dataProvider);
+      vi.doMock("./ZeropsAccountEnvironmentProvider", seams.dataProvider);
       const [{ AppRoot }, { productRouter }, { createElement, Fragment }, Beside] =
         await Promise.all([
           import("../AppRoot"),
@@ -277,95 +248,6 @@ describe("a sign-in in another tab", () => {
   });
 });
 
-const encodeRegistration = Schema.encodeSync(BearerConnectionRegistration);
-
-describe("cold sign-in", () => {
-  it("mounts the router on the first grant while services are unknown: the sidebar shows its placeholder, never none, and nothing exchanges before the grant", async () => {
-    const harness = productHarness();
-    // A Mate this browser reached before: its kept session names it, and the post-grant stage
-    // restores it.
-    const connectionId = "bearer:environment-1";
-    harness.browser.openTab().localStorage.setItem(
-      `mate:account:user-1:${KEPT_SESSIONS_KEY}`,
-      JSON.stringify({
-        "p1:zcp": encodeRegistration(
-          new BearerConnectionRegistration({
-            target: new BearerConnectionTarget({
-              environmentId: EnvironmentId.make("environment-1"),
-              label: "One",
-              connectionId,
-            }),
-            profile: new BearerConnectionProfile({
-              connectionId,
-              environmentId: EnvironmentId.make("environment-1"),
-              label: "One",
-              httpBaseUrl: "https://zcp-1-8080.prg1.zerops.app/mate/",
-              wsBaseUrl: "wss://zcp-1-8080.prg1.zerops.app/mate/",
-            }),
-            credential: new BearerConnectionCredential({
-              token: "session-one",
-              expiresAtEpochMs: Date.now() + 86_400_000,
-              origin: "zerops-identity",
-            }),
-          }),
-        ),
-      }),
-    );
-    const round = harness.rest.hold("GET /project/p1");
-    const establishing = harness.datastream.holdRegistrations();
-    const accessAtMount: string[] = [];
-    /** Whether the Mate of `p1` is among the Mates the account's store holds, as a surface reads them. */
-    let mateHeld = false;
-    const { tab } = await appTab(harness, async () => {
-      const [{ ProductChild, SidebarListing }, { createElement, Fragment }] = await Promise.all([
-        import("./__fixtures__/accountProduct"),
-        import("react"),
-      ]);
-      const { useEnvironmentMachines } = await import("./accountEnvironments");
-      const onMount = (access: string) => accessAtMount.push(access);
-      function Mates() {
-        mateHeld = useEnvironmentMachines().has("p1:zcp");
-        return null;
-      }
-      return () =>
-        createElement(
-          Fragment,
-          null,
-          createElement(ProductChild, { label: "", onMount }),
-          createElement(SidebarListing),
-          createElement(Mates),
-        );
-    });
-    const mints = () =>
-      harness.rest
-        .requests()
-        .filter(({ route }) => route === "POST /client/org-1/integration-token");
-
-    await tab.run(() => tab.session().signIn("person@example.test", "secret"));
-
-    // The first round's project read is out: no grant, no route, and no
-    // post-grant stage to exchange for the remembered Mate.
-    expect(round.waiting()).toBe(0);
-    expect(tab.text()).toContain("Project p1");
-    expect(mints()).toEqual([]);
-
-    await tab.run(() => round.release());
-    await settle();
-
-    // Granted while the push half still establishes: the route is on screen,
-    // and the menu says it is reading rather than that there is nothing.
-    expect(accessAtMount).toEqual(["verified"]);
-    expect(mateHeld).toBe(true);
-    expect(tab.text()).toContain("Project p1");
-    expect(tab.text()).toContain("Reading your projects…");
-    expect(tab.text()).not.toMatch(/No projects|No environment has Mate yet/);
-
-    establishing.release();
-    await settle();
-
-    // The push half's answers reach the mounted product: nothing mounts again.
-    expect(tab.text()).toContain("Project p1");
-    expect(tab.text()).not.toMatch(/No projects|No environment has Mate yet/);
-    expect(accessAtMount).toEqual(["verified"]);
-  });
-});
+vi.mock("./ZeropsInventoryProvider", () => ({
+  ZeropsInventoryProvider: ({ children }: { readonly children: ReactNode }) => children,
+}));

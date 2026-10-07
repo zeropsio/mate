@@ -1,6 +1,6 @@
 /**
  * The web's binding to the account runtime's Mate environments (DESIGN §7.3): the post-grant
- * stage the host binds once the epoch's first grant built it — what surfaces ask of it — and the
+ * stage the host binds once the verified account built it — what surfaces ask of it — and the
  * hooks surfaces read each Mate through: projections of what the Mate adapter wrote to the
  * account's store (`mateLinks`). Nothing here holds a fact of its own.
  *
@@ -17,7 +17,7 @@ import type {
   CloseOffHold,
 } from "@t3tools/client-runtime/zerops/account/runtime";
 import { normalizeOrigin, type ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import type { CapabilityRefusal, OrganizationRef } from "@t3tools/client-runtime/zerops/data";
+import type { OrganizationRef } from "@t3tools/client-runtime/zerops/data";
 import {
   mateOfEnvironmentAtom,
   shownMateLinksAtom,
@@ -45,6 +45,7 @@ import { useAtomCommand } from "../state/use-atom-command";
 import { hqMatesAtom, hqProjectOf, hqProjectAtom } from "../state/zerops";
 import { invalidateZerops } from "./accountInvalidations";
 import { onAccountLifetimeClose } from "./accountLifetime";
+import { useAccountDataOptional, useProjectServices } from "./ZeropsAccountData";
 import { useInventoryCandidates } from "./inventoryContext";
 import { batchedPerTask } from "./taskBatch";
 
@@ -71,7 +72,7 @@ onAccountLifetimeClose(() => {
 });
 
 /**
- * Makes `environments` — the open account's post-grant stage — the one surfaces read. Returns the
+ * Makes `environments` — the open account's verified account stage — the one surfaces read. Returns the
  * way to unbind it, which leaves a newer binding alone.
  */
 export function bindAccountEnvironments(environments: AccountEnvironments): () => void {
@@ -81,7 +82,7 @@ export function bindAccountEnvironments(environments: AccountEnvironments): () =
   };
 }
 
-/** The bound stage; null before the epoch's first grant and after sign-out. */
+/** The bound stage; null while the account starts and after sign-out. */
 export function currentAccountEnvironments(): AccountEnvironments | null {
   return bound;
 }
@@ -194,20 +195,20 @@ export function useMateDetailRead(
   projectId: string | null,
   environmentId: EnvironmentId | null = null,
 ) {
-  const account = useAccountEnvironments();
+  const account = useAccountDataOptional();
   const hqProject = useAtomValue(
     environmentId === null ? NO_DETAIL_PROJECT : hqProjectAtom(environmentId),
   );
   const mate = useMateOfEnvironment(environmentId);
   const project = projectId ?? hqProject ?? mate?.projectId ?? null;
-  const read = useCallback(
-    (environments: AccountEnvironments) =>
-      project === null ? null : environments.detailFailure(project),
-    [project],
-  );
-  const failure = useAccountEnvironmentsSnapshot(read, null);
+  const read = useProjectServices(project);
+  const failure =
+    read.unavailableReason === undefined
+      ? null
+      : { message: "Zerops refused this project's services." };
   const again = useCallback(() => {
-    if (account !== null && project !== null) account.retryDetail(project);
+    if (project !== null)
+      account?.retryDetail({ family: "service", listing: "services", ownerId: project });
   }, [account, project]);
   return { failure, again };
 }
@@ -328,7 +329,7 @@ export function useMateHeld(environmentId: EnvironmentId | null): void {
 export function useMateCommand<A, E, W extends { readonly environmentId: EnvironmentId }>(
   command: AtomCommand<W, A, E>,
   options?: string | AtomCommandOptions,
-): (value: W) => Promise<AtomCommandResult<A, E | CapabilityRefusal>> {
+): (value: W) => Promise<AtomCommandResult<A, E>> {
   const send = useAtomCommand(command, options);
   const environments = useAccountEnvironments();
   const atoms = useContext(RegistryContext);
