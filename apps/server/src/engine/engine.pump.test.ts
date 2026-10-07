@@ -1,0 +1,732 @@
+/**
+ * The running engine, end to end: the live layer over a scripted ProviderService (each driver
+ * answering as its adapter does, through the real SPI bus and the bridge), a WorkspaceHistory
+ * that remembers what it was asked, and a SQLite file. Titles are engine sentences; "(×6)" runs
+ * once per driver.
+ */
+import { assert, describe, it } from "@effect/vitest";
+import * as Clock from "effect/Clock";
+import * as DateTime from "effect/DateTime";
+import * as Deferred from "effect/Deferred";
+import * as Effect from "effect/Effect";
+import * as Stream from "effect/Stream";
+import { RequestId, runId, type RunId, type ThreadId } from "@t3tools/contracts";
+
+import type { BridgeDriver } from "./bridge/spi3.ts";
+import type { Command } from "./domain/command.ts";
+import { CONTINUE_TEXT, resentText } from "./domain/decide.ts";
+import { DRIVERS, makeEngineWorld, mate, type EngineWorld } from "./testing/pump/engineWorld.ts";
+
+const r = (n: number): RunId => runId(mate, n);
+const MINUTE = 60_000;
+
+/** A world booted with its conversation given an agent on this driver. */
+const world = (
+  driver: BridgeDriver,
+  options: {
+    readonly refuse?: string;
+    readonly scripted?: Partial<{ ignoreInterrupt: boolean; holdNextSend: boolean }>;
+  } = {},
+) =>
+  Effect.gen(function* () {
+    const w = yield* makeEngineWorld({
+      driver,
+      ...(options.refuse === undefined ? {} : { refuse: options.refuse }),
+    });
+    Object.assign(w.provider.options, options.scripted ?? {});
+    yield* w.boot;
+    yield* w.tell({
+      _tag: "AssignAgent",
+      agent: { instanceId: driver, driver, model: "m1", profile: { kind: "mate" } },
+    });
+    return w;
+  });
+
+const send = (w: EngineWorld, text = "hello") => w.tell({ _tag: "Send", text });
+const stop = (w: EngineWorld) => w.tell({ _tag: "Stop" });
+const ending = (w: EngineWorld, n: number) =>
+  Effect.map(w.run(r(n)), (run) => [run?.state, run?.end?.kind, run?.source]);
+const sendLine = (w: EngineWorld, text: string) => `send ${w.thread}: ${text}`;
+
+/** Runs a scene and always closes its world, so no fiber outlives the test. */
+const scene = <E, R>(body: Effect.Effect<void, E, R>) => Effect.scoped(body);
+
+describe("the running engine", () => {
+  it.effect(
+    "a message is confirmed at once and reaches the agent only after the workspace capture",
+    () =>
+      scene(
+        Effect.gen(function* () {
+          const w = yield* world("claudeAgent");
+          const result = yield* send(w);
+          assert.strictEqual(result._tag, "Accepted");
+          assert.strictEqual(w.history.calls[0], `prepare ${r(1)}`);
+          assert.deepStrictEqual(w.provider.calls, [`start ${w.thread}`, sendLine(w, "hello")]);
+          assert.strictEqual((yield* w.run(r(1)))?.state, "running");
+          yield* w.agent((agent, thread) => agent.say(thread, "hi there"));
+          yield* w.agent((agent, thread) => agent.finish(thread));
+          assert.deepStrictEqual(yield* ending(w, 1), ["ended", "completed", "agent"]);
+          assert.deepStrictEqual(
+            (yield* w.items(r(1))).map((item) => [item.kind, item.body.text]),
+            [
+              ["person", "hello"],
+              ["note", "hi there"],
+            ],
+          );
+          // The capture is finished by the turn the message went into.
+          assert.deepStrictEqual(w.history.calls, [
+            `prepare ${r(1)}`,
+            `sent ${r(1)} → T1`,
+            "bind T1",
+            "finish T1",
+          ]);
+          yield* w.shutdown;
+        }),
+      ),
+  );
+
+  it.effect(
+    "a capture that can't snapshot a service still sends the message and records the gap",
+    () =>
+      scene(
+        Effect.gen(function* () {
+          const w = yield* world("claudeAgent");
+          w.history.controls.breaks = "ssh timed out";
+          yield* send(w);
+          assert.deepStrictEqual(w.provider.calls.at(-1), sendLine(w, "hello"));
+          const marker = (yield* w.items(r(1))).find((item) => item.kind === "marker");
+          assert.deepStrictEqual(marker?.body.marker, {
+            kind: "capture-gap",
+            reason: "workspace: ssh timed out",
+          });
+          yield* w.shutdown;
+        }),
+      ),
+  );
+
+  it.effect("a refused admission ends the run with the refusal's words, before any capture", () =>
+    scene(
+      Effect.gen(function* () {
+        const w = yield* world("codex", { refuse: "Ana's sign-in was removed." });
+        yield* send(w);
+        const run = yield* w.run(r(1));
+        assert.deepStrictEqual(
+          [run?.end, run?.source],
+          [
+            { kind: "failed", reason: "Ana's sign-in was removed.", next: null },
+            "inferred-from-effect",
+          ],
+        );
+        assert.isFalse(w.history.calls.some((call) => call.startsWith("prepare")));
+        assert.deepStrictEqual(w.provider.calls, []);
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  it.effect(
+    "a session opens explicitly before the first send; a live one is adopted, not restarted",
+    () =>
+      scene(
+        Effect.gen(function* () {
+          const fresh = yield* world("codex");
+          yield* send(fresh);
+          assert.deepStrictEqual(fresh.provider.calls, [
+            `start ${fresh.thread}`,
+            sendLine(fresh, "hello"),
+          ]);
+          yield* fresh.shutdown;
+
+          const adopting = yield* world("codex");
+          yield* adopting.provider.service.startSession(adopting.thread as ThreadId, {
+            threadId: adopting.thread as ThreadId,
+            runtimeMode: "full-access",
+          });
+          yield* send(adopting);
+          assert.deepStrictEqual(adopting.provider.calls, [
+            `start ${adopting.thread}`,
+            sendLine(adopting, "hello"),
+          ]);
+          yield* adopting.shutdown;
+        }),
+      ),
+  );
+
+  it.effect("nothing is sent, stopped or answered without a live session", () =>
+    scene(
+      Effect.gen(function* () {
+        const w = yield* world("claudeAgent");
+        yield* send(w);
+        yield* w.agent((agent, thread) => agent.ask(thread, "approval"));
+        // The agent's process is gone, and nothing has said so yet.
+        w.provider.sessions.get(w.thread)!.alive = false;
+        const [request] = yield* w.requests;
+        yield* w.tell({
+          _tag: "Answer",
+          requestId: RequestId.make(request!.request_id),
+          answer: "accept",
+          summary: "Yes",
+        });
+        assert.strictEqual((yield* w.requests)[0]?.state, "expired");
+        yield* stop(w);
+        assert.deepStrictEqual(yield* ending(w, 1), ["ended", "stopped", "stop-asked"]);
+        yield* send(w, "again");
+        assert.deepStrictEqual(w.provider.calls, [
+          `start ${w.thread}`,
+          sendLine(w, "hello"),
+          `start ${w.thread}`,
+          sendLine(w, "again"),
+        ]);
+        assert.strictEqual((yield* w.run(r(2)))?.state, "running");
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  it.effect(
+    "a session the host recovered on its own is recorded as a replacement nobody asked for",
+    () =>
+      scene(
+        Effect.gen(function* () {
+          const w = yield* world("claudeAgent");
+          yield* send(w);
+          yield* w.agent((agent, thread) => agent.finish(thread));
+          w.provider.options.recoverOnNextSend = true;
+          yield* send(w, "second");
+          assert.deepStrictEqual(yield* ending(w, 2), ["ended", "crashed", "inferred-from-crash"]);
+          // The unasked session is closed: the next message opens one of the engine's own.
+          assert.strictEqual(w.provider.calls.at(-1), `stop ${w.thread}`);
+          yield* send(w, "third");
+          assert.deepStrictEqual(w.provider.calls.slice(-2), [
+            `start ${w.thread}`,
+            sendLine(w, "third"),
+          ]);
+          assert.deepStrictEqual(
+            (yield* w.sessionsOpen).map((session) => [session.state, session.close_reason]),
+            [
+              ["closed", "exited"],
+              ["open", null],
+            ],
+          );
+          yield* w.shutdown;
+        }),
+      ),
+  );
+
+  it.effect(
+    "on a driver whose send returns at the turn's end, an answer and a Stop reach the agent mid-turn",
+    () =>
+      scene(
+        Effect.gen(function* () {
+          const w = yield* world("cursor");
+          yield* send(w);
+          const asked = yield* w.agent((agent, thread) => agent.ask(thread, "approval"));
+          const [request] = yield* w.requests;
+          yield* w.tell({
+            _tag: "Answer",
+            requestId: RequestId.make(request!.request_id),
+            answer: "accept",
+            summary: "Yes",
+          });
+          yield* stop(w);
+          assert.deepStrictEqual(w.provider.calls, [
+            `start ${w.thread}`,
+            sendLine(w, "hello"),
+            `approve ${asked} accept`,
+            `interrupt ${w.thread} T1`,
+          ]);
+          assert.deepStrictEqual(yield* ending(w, 1), ["ended", "stopped", "stop-asked"]);
+          yield* w.shutdown;
+        }),
+      ),
+  );
+
+  const STOP_SOURCES: Record<BridgeDriver, string> = {
+    claudeAgent: "stop-asked",
+    codex: "stop-confirmed",
+    opencode: "stop-confirmed",
+    cursor: "stop-asked",
+    grok: "stop-asked",
+    antigravity: "stop-confirmed",
+  };
+  for (const driver of DRIVERS) {
+    it.effect(
+      `a Stop ends the run on its turn's end, and the next message starts after it (${driver})`,
+      () =>
+        scene(
+          Effect.gen(function* () {
+            const w = yield* world(driver);
+            yield* send(w);
+            yield* w.agent((agent, thread) => agent.call(thread));
+            yield* stop(w);
+            yield* send(w, "next");
+            assert.deepStrictEqual(yield* ending(w, 1), ["ended", "stopped", STOP_SOURCES[driver]]);
+            const calls = w.provider.calls;
+            const stopped = calls.findIndex((call) => call.startsWith("interrupt"));
+            assert.isAbove(stopped, 0);
+            assert.isAbove(calls.indexOf(sendLine(w, "next")), stopped);
+            assert.strictEqual((yield* w.run(r(2)))?.state, "running");
+            yield* w.shutdown;
+          }),
+        ),
+    );
+  }
+
+  it.effect("a stopped turn's late end and late items stay in the stopped run's card", () =>
+    scene(
+      Effect.gen(function* () {
+        const w = yield* world("cursor");
+        yield* send(w);
+        yield* stop(w);
+        yield* w.agent((agent, thread) => agent.stream(thread, "late-1", "still going"));
+        yield* send(w, "next");
+        assert.deepStrictEqual(yield* ending(w, 1), ["ended", "stopped", "stop-asked"]);
+        const late = (yield* w.items(r(1))).filter((item) => item.kind !== "person");
+        assert.deepStrictEqual(
+          late.map((item) => [item.kind, item.state]),
+          [["note", "closed"]],
+        );
+        assert.deepStrictEqual(
+          (yield* w.items(r(2))).map((item) => item.kind),
+          ["person"],
+        );
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  it.effect("a second Stop closes the session", () =>
+    scene(
+      Effect.gen(function* () {
+        const w = yield* world("codex", { scripted: { ignoreInterrupt: true } });
+        yield* send(w);
+        yield* stop(w);
+        assert.strictEqual((yield* w.run(r(1)))?.state, "running");
+        yield* stop(w);
+        assert.deepStrictEqual(yield* ending(w, 1), ["ended", "stopped", "inferred-from-close"]);
+        assert.strictEqual(w.provider.calls.at(-1), `stop ${w.thread}`);
+        assert.deepStrictEqual(
+          (yield* w.sessionsOpen).map((session) => session.close_reason),
+          ["stop"],
+        );
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  const CRASH_SOURCES: Record<BridgeDriver, string> = {
+    claudeAgent: "agent",
+    codex: "inferred-from-crash",
+    opencode: "inferred-from-crash",
+    cursor: "agent",
+    grok: "agent",
+    antigravity: "inferred-from-crash",
+  };
+  for (const driver of DRIVERS) {
+    it.effect(
+      `a crash ends the run crashed, with the bridge's source; the next message resumes (${driver})`,
+      () =>
+        scene(
+          Effect.gen(function* () {
+            const w = yield* world(driver);
+            yield* send(w);
+            yield* w.agent((agent, thread) => agent.call(thread));
+            yield* w.agent((agent, thread) => agent.crash(thread));
+            assert.deepStrictEqual(yield* ending(w, 1), [
+              "ended",
+              "crashed",
+              CRASH_SOURCES[driver],
+            ]);
+            yield* send(w, "again");
+            assert.deepStrictEqual(w.provider.calls.slice(-2), [
+              `start ${w.thread}`,
+              sendLine(w, "again"),
+            ]);
+            assert.strictEqual((yield* w.run(r(2)))?.state, "running");
+            yield* w.shutdown;
+          }),
+        ),
+    );
+  }
+
+  for (const driver of DRIVERS) {
+    it.effect(`a restart cuts the running run and a continuation joins it (${driver})`, () =>
+      scene(
+        Effect.gen(function* () {
+          const w = yield* world(driver);
+          yield* send(w);
+          yield* w.agent((agent, thread) => agent.call(thread));
+          yield* w.crash;
+          yield* w.boot;
+          const cut = yield* w.run(r(1));
+          assert.deepStrictEqual(
+            [cut?.end?.kind, cut?.source],
+            ["cut-by-restart", "inferred-from-restart"],
+          );
+          const continued = yield* w.run(r(2));
+          assert.deepStrictEqual(
+            [continued?.trigger.cause, continued?.joins, continued?.state],
+            ["restart-continuation", r(1), "running"],
+          );
+          assert.deepStrictEqual(w.provider.calls, [
+            `start ${w.thread}`,
+            sendLine(w, CONTINUE_TEXT),
+          ]);
+          yield* w.shutdown;
+        }),
+      ),
+    );
+  }
+
+  it.effect.each<readonly [string, ReadonlyArray<Command>, string]>([
+    ["a newer person message", [{ _tag: "Send", text: "newer" }], "a newer person message"],
+    ["a Stop", [{ _tag: "Stop" }], "a Stop was asked"],
+    ["an archive", [{ _tag: "Archive" }], "archived"],
+  ])("a restart never continues a run against %s", ([, after, refusal]) =>
+    scene(
+      Effect.gen(function* () {
+        const w = yield* world("codex", { scripted: { ignoreInterrupt: true } });
+        yield* send(w);
+        for (const command of after) yield* w.tell(command);
+        yield* w.crash;
+        yield* w.boot;
+        const cut = yield* w.run(r(1));
+        assert.deepStrictEqual(cut?.end, {
+          kind: "cut-by-restart",
+          continuedBy: null,
+          notContinued: refusal,
+          words: "Mate restarted.",
+        });
+        assert.isFalse(w.provider.calls.includes(sendLine(w, CONTINUE_TEXT)));
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  it.effect("a restart never continues a maintenance turn", () =>
+    scene(
+      Effect.gen(function* () {
+        const w = yield* world("codex");
+        yield* w.tell({ _tag: "Send", text: "/compact", maintenance: true });
+        yield* w.crash;
+        yield* w.boot;
+        assert.strictEqual((yield* w.run(r(1)))?.end?.kind, "cut-by-restart");
+        assert.deepStrictEqual(w.provider.calls, []);
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  it.effect("a run cut while being sent sends its message again", () =>
+    scene(
+      Effect.gen(function* () {
+        const w = yield* world("codex", { scripted: { holdNextSend: true } });
+        yield* send(w);
+        assert.strictEqual((yield* w.run(r(1)))?.state, "sending");
+        yield* w.crash;
+        yield* w.boot;
+        assert.deepStrictEqual(w.provider.calls, [
+          `start ${w.thread}`,
+          sendLine(w, resentText("hello")),
+        ]);
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  it.effect("the first message after a restart opens a new session", () =>
+    scene(
+      Effect.gen(function* () {
+        const w = yield* world("codex");
+        yield* send(w);
+        yield* w.agent((agent, thread) => agent.finish(thread));
+        yield* w.crash;
+        yield* w.boot;
+        yield* send(w, "after");
+        assert.deepStrictEqual(w.provider.calls, [`start ${w.thread}`, sendLine(w, "after")]);
+        assert.deepStrictEqual(
+          (yield* w.sessionsOpen).map((session) => [
+            session.session_id,
+            session.state,
+            session.close_reason,
+          ]),
+          [
+            [`${w.thread}.1`, "closed", "restart"],
+            [`${w.thread}.2`, "open", null],
+          ],
+        );
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  it.effect("a graceful shutdown leaves its running run for the next boot to cut", () =>
+    scene(
+      Effect.gen(function* () {
+        const w = yield* world("claudeAgent");
+        yield* send(w);
+        // The server stops: ProviderService ends every live turn as it goes down.
+        yield* w.shutdown;
+        yield* w.provider.service.stopSession({ threadId: w.thread as ThreadId });
+        yield* w.boot;
+        const cut = yield* w.run(r(1));
+        assert.deepStrictEqual(
+          [cut?.end?.kind, cut?.source],
+          ["cut-by-restart", "inferred-from-restart"],
+        );
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  it.effect("a known reset resumes 30 s after it", () =>
+    scene(
+      Effect.gen(function* () {
+        const w = yield* world("claudeAgent");
+        yield* send(w);
+        const resetsAt = (yield* Clock.currentTimeMillis) + 2 * 60 * MINUTE;
+        yield* w.agent((agent, thread) =>
+          agent.limit(thread, DateTime.formatIso(DateTime.makeUnsafe(resetsAt))),
+        );
+        const limited = yield* w.run(r(1));
+        assert.deepStrictEqual(limited?.end, { kind: "usage-limit", resetsAt });
+        yield* w.advance(resetsAt + 29_000 - (yield* Clock.currentTimeMillis));
+        assert.isUndefined(yield* w.run(r(2)));
+        yield* w.advance(1_000);
+        const resumed = yield* w.run(r(2));
+        assert.deepStrictEqual(
+          [resumed?.trigger.cause, resumed?.joins, resumed?.state],
+          ["usage-resume", r(1), "running"],
+        );
+        assert.strictEqual(w.provider.calls.at(-1), sendLine(w, CONTINUE_TEXT));
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  it.effect(
+    "an unknown reset is probed at 15 and 30 minutes, then every hour, until it lifts",
+    () =>
+      scene(
+        Effect.gen(function* () {
+          const w = yield* world("codex");
+          yield* send(w);
+          const waits: Array<number> = [];
+          for (let run = 1; run <= 4; run++) {
+            yield* w.agent((agent, thread) => agent.limit(thread, null));
+            assert.deepStrictEqual((yield* w.run(r(run)))?.end, {
+              kind: "usage-limit",
+              resetsAt: null,
+            });
+            const now = yield* Clock.currentTimeMillis;
+            const probe = (yield* w.wakes).find(
+              (wake) => wake.kind === "usage-probe" && wake.state === "armed",
+            );
+            waits.push((probe!.due_at - now) / MINUTE);
+            yield* w.advance(probe!.due_at - now);
+            assert.strictEqual((yield* w.run(r(run + 1)))?.trigger.cause, "usage-probe");
+          }
+          assert.deepStrictEqual(waits, [15, 30, 60, 60]);
+          yield* w.agent((agent, thread) => agent.finish(thread));
+          assert.deepStrictEqual(yield* ending(w, 5), ["ended", "completed", "agent"]);
+          yield* w.shutdown;
+        }),
+      ),
+  );
+
+  it.effect("Claude's parked turn is closed when the limit ends its run", () =>
+    scene(
+      Effect.gen(function* () {
+        const w = yield* world("claudeAgent");
+        yield* send(w);
+        yield* w.agent((agent, thread) => agent.limit(thread, null));
+        assert.deepStrictEqual((yield* w.run(r(1)))?.end, { kind: "usage-limit", resetsAt: null });
+        assert.strictEqual(w.provider.calls.at(-1), `stop ${w.thread}`);
+        assert.deepStrictEqual(
+          (yield* w.sessionsOpen).map((session) => session.close_reason),
+          ["usage-limit"],
+        );
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  it.effect(
+    "Claude's background-result turn is a self-woken run, joined to the run whose work it reports",
+    () =>
+      scene(
+        Effect.gen(function* () {
+          const w = yield* world("claudeAgent");
+          yield* send(w);
+          const work = yield* w.agent((agent, thread) => agent.startWork(thread));
+          yield* w.agent((agent, thread) => agent.finish(thread));
+          yield* w.agent((agent, thread) => agent.endWork(thread, work));
+          yield* w.agent((agent, thread) => agent.selfTurn(thread));
+          const self = yield* w.run(r(2));
+          assert.deepStrictEqual(
+            [self?.trigger, self?.joins, self?.state],
+            [{ kind: "wake", cause: "self", wakeId: null }, r(1), "running"],
+          );
+          yield* w.agent((agent, thread) => agent.say(thread, "The build is green."));
+          yield* w.agent((agent, thread) => agent.finish(thread));
+          assert.deepStrictEqual(yield* ending(w, 2), ["ended", "completed", "agent"]);
+          yield* w.shutdown;
+        }),
+      ),
+  );
+
+  it.effect(
+    "a self turn during preparation sends the prepared message back to the head of the queue",
+    () =>
+      scene(
+        Effect.gen(function* () {
+          const w = yield* world("claudeAgent");
+          yield* send(w);
+          const work = yield* w.agent((agent, thread) => agent.startWork(thread));
+          yield* w.agent((agent, thread) => agent.finish(thread));
+          const gate = yield* Deferred.make<void>();
+          w.history.controls.gate = gate;
+          yield* send(w, "second");
+          assert.strictEqual((yield* w.run(r(2)))?.state, "admitted");
+          yield* w.agent((agent, thread) => agent.endWork(thread, work));
+          yield* w.agent((agent, thread) => agent.selfTurn(thread));
+          assert.deepStrictEqual(
+            [(yield* w.run(r(2)))?.state, (yield* w.run(r(3)))?.trigger.cause],
+            ["queued", "self"],
+          );
+          yield* w.agent((agent, thread) => agent.finish(thread));
+          yield* Deferred.succeed(gate, void 0);
+          yield* w.settle;
+          assert.strictEqual(w.provider.calls.at(-1), sendLine(w, "second"));
+          assert.strictEqual((yield* w.run(r(2)))?.state, "running");
+          yield* w.shutdown;
+        }),
+      ),
+  );
+
+  it.effect("only a running run is marked unresponsive; resuming clears the mark", () =>
+    scene(
+      Effect.gen(function* () {
+        const w = yield* world("codex");
+        yield* send(w);
+        yield* w.advance(10 * MINUTE);
+        assert.isNotNull((yield* w.run(r(1)))?.unresponsiveSince);
+        yield* w.agent((agent, thread) => agent.say(thread, "still here"));
+        assert.isNull((yield* w.run(r(1)))?.unresponsiveSince);
+        yield* w.agent((agent, thread) => agent.ask(thread, "question"));
+        assert.strictEqual((yield* w.run(r(1)))?.state, "waiting");
+        yield* w.advance(30 * MINUTE);
+        assert.isNull((yield* w.run(r(1)))?.unresponsiveSince);
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  it.effect(
+    "streamed text reaches subscribers live and is never written; a late subscriber gets the text so far",
+    () =>
+      scene(
+        Effect.gen(function* () {
+          const w = yield* world("claudeAgent");
+          yield* send(w);
+          yield* w.agent((agent, thread) => agent.stream(thread, "live-1", "Hel"));
+          const frames = yield* (yield* w.live).subscribe(mate);
+          yield* w.agent((agent, thread) => agent.stream(thread, "live-1", "lo"));
+          const key = `${r(1)}.i1`;
+          const seen = yield* Stream.runCollect(Stream.take(frames, 2));
+          assert.deepStrictEqual(
+            seen.map((frame) =>
+              frame._tag === "Open"
+                ? ["Open", frame.items]
+                : frame._tag === "Append"
+                  ? ["Append", frame.key, frame.text]
+                  : [frame._tag],
+            ),
+            [
+              ["Open", [{ key, stream: "text", text: "Hel" }]],
+              ["Append", key, "lo"],
+            ],
+          );
+          const streaming = (yield* w.items(r(1))).find((item) => item.kind === "note");
+          assert.deepStrictEqual([streaming?.body.text, streaming?.body.streaming], ["", true]);
+          yield* w.agent((agent, thread) => agent.finish(thread));
+          const written = (yield* w.items(r(1))).find((item) => item.kind === "note");
+          assert.deepStrictEqual([written?.body.text, written?.body.streaming], ["Hello", false]);
+          yield* w.shutdown;
+        }),
+      ),
+  );
+
+  it.effect("an event for an unowned thread is dropped and counted", () =>
+    scene(
+      Effect.gen(function* () {
+        const w = yield* world("codex");
+        yield* send(w);
+        yield* w.agent((agent) => agent.foreign("helper-thread"));
+        yield* w.agent((agent) => agent.foreign("helper-thread"));
+        assert.deepStrictEqual([...(yield* (yield* w.pump).foreign)], [["helper-thread", 2]]);
+        assert.strictEqual((yield* w.run(r(1)))?.state, "running");
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  it.effect("an idle session closes after 30 minutes", () =>
+    scene(
+      Effect.gen(function* () {
+        const w = yield* world("codex");
+        yield* send(w);
+        yield* w.agent((agent, thread) => agent.finish(thread));
+        yield* w.advance(29 * MINUTE);
+        assert.notInclude(w.provider.calls, `stop ${w.thread}`);
+        yield* w.advance(MINUTE);
+        assert.strictEqual(w.provider.calls.at(-1), `stop ${w.thread}`);
+        assert.deepStrictEqual(
+          (yield* w.sessionsOpen).map((session) => session.close_reason),
+          ["idle"],
+        );
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  it.effect("an idle session is kept while its background work lives", () =>
+    scene(
+      Effect.gen(function* () {
+        const w = yield* world("claudeAgent");
+        yield* send(w);
+        yield* w.agent((agent, thread) => agent.startWork(thread));
+        yield* w.agent((agent, thread) => agent.finish(thread));
+        yield* w.advance(30 * MINUTE);
+        assert.notInclude(w.provider.calls, `stop ${w.thread}`);
+        assert.deepStrictEqual(
+          (yield* w.sessionsOpen).map((session) => session.state),
+          ["open"],
+        );
+        assert.isTrue(
+          (yield* w.wakes).some((wake) => wake.kind === "session-idle" && wake.state === "armed"),
+        );
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  it.effect("signing out stops the session and ends its run", () =>
+    scene(
+      Effect.gen(function* () {
+        const w = yield* world("codex");
+        yield* send(w);
+        yield* (yield* w.engine).stopSessionsOn(["codex"], "sign-out");
+        yield* w.settle;
+        assert.strictEqual(w.provider.calls.at(-1), `stop ${w.thread}`);
+        const run = yield* w.run(r(1));
+        assert.deepStrictEqual([run?.end?.kind, run?.source], ["crashed", "inferred-from-close"]);
+        assert.deepStrictEqual(
+          (yield* w.sessionsOpen).map((session) => session.close_reason),
+          ["signed-out"],
+        );
+        yield* w.shutdown;
+      }),
+    ),
+  );
+});
