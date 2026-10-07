@@ -54,21 +54,43 @@ describe("B: menu liveness", () => {
       }),
     );
 
-    // Catches a moved Mate stranded under the old application or duplicated in the menu.
-    it.effect("moving a Mate changes its application and removes the old placement", () =>
+    // Placement updates in both tabs while the Mate's conversation keeps its identity and history.
+    it.effect("moving an open Mate updates both tabs without losing its conversation", () =>
       Effect.gen(function* () {
         const s = yield* menuScenario();
         yield* s.given.project("Ada", { mate: true, app: "Shop" });
         yield* s.given.project("Cara", { mate: true, app: "Other" });
+        yield* s.colleague.said("Ada", "Keep this conversation when Ada moves");
         yield* s.given.signedIn;
         yield* s.menu.grouped("Ada", "Shop");
-        yield* s.colleague.moves("Ada", "Other");
+        yield* s.when.menu.opensMate("Ada");
+        yield* s.then.conversation.appears;
+        yield* s.then.conversation.showsMessage("Keep this conversation when Ada moves");
+        const url = s.page.url();
+        const second = yield* s.given.browserActor();
+        yield* second.given.signedIn;
+        yield* s.menu.grouped("Ada", "Shop", second.page);
+        yield* second.when.menu.opensMate("Ada");
+        yield* second.then.conversation.appears;
+        yield* second.then.conversation.showsMessage("Keep this conversation when Ada moves");
+        const secondUrl = second.page.url();
+        yield* s.menu.movesMate("Ada", "Other");
         yield* s.menu.grouped("Ada", "Other");
+        yield* s.menu.grouped("Ada", "Other", second.page);
+        yield* s.menu.keepsConversation(url);
+        yield* s.menu.keepsConversation(secondUrl, second.page);
+        yield* s.then.conversation.showsMessage("Keep this conversation when Ada moves");
+        yield* second.then.conversation.showsMessage("Keep this conversation when Ada moves");
+        yield* s.when.conversation.sends("Continue in the same Mate after Move");
+        yield* s.then.conversation.showsMessage("Continue in the same Mate after Move");
+        yield* second.then.conversation.showsMessage("Continue in the same Mate after Move");
         yield* s.menu.toggle("Other");
         yield* s.menu.absent("Ada");
         yield* s.menu.toggle("Other");
         yield* s.menu.grouped("Ada", "Other");
         yield* s.then.noReload;
+        yield* second.then.noReload;
+        yield* s.then.noExternalNetwork;
       }),
     );
 

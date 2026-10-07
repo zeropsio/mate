@@ -11,11 +11,13 @@ import { enrollMate } from "../../../../../hq/test/harness/runningCore.ts";
 import type { MateFake } from "../../fakes/mate.ts";
 import type { ScenarioExtension, ScenarioDrivers } from "../../harness/scenario.ts";
 
-// This area drives the real Mate → HQ link, never the browser's stores.
-export const installMenu: ScenarioExtension = () => {};
 const AT = "2026-10-06T12:00:00.000Z";
 const encode = Schema.encodeEffect(MateLinkUp);
 const decode = Schema.decodeUnknownEffect(MateOverview);
+
+export const conversationHistory = (drivers: ScenarioDrivers, name: string, text: string) =>
+  Effect.sync(() => drivers.mates.get(name)!.message("history", text, "seed-history"));
+
 export const reportConversation = Effect.fn("menu.reportConversation")(function* (
   drivers: Pick<ScenarioDrivers, "mates"> & {
     links: ReadonlyMap<string, { send: (value: unknown) => Effect.Effect<void> }>;
@@ -145,10 +147,11 @@ export const moveMate = Effect.fn("menu.moveMate")(function* (
   drivers: ScenarioDrivers,
   name: string,
   app: string | null,
+  kind: "mate" | "stage" | "production" | "devstage" = "mate",
 ) {
   const response = yield* drivers.core.call("PUT", `/api/projects/${name}/app`, {
     session: drivers.owner,
-    body: { appId: app === null ? null : drivers.appIds.get(app), kind: "mate" },
+    body: { appId: app === null ? null : drivers.appIds.get(app), kind },
   });
   if (response.status !== 200)
     return yield* Effect.die(new Error(`Move refused: ${response.status}`));

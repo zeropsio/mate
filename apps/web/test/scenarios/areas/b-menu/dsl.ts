@@ -1,11 +1,13 @@
 import type { MateFake } from "../../fakes/mate.ts";
+import { expect } from "@effect/vitest";
+import type { Page } from "puppeteer-core";
 import * as Effect from "effect/Effect";
 import { clickText } from "../../harness/browser.ts";
-import type { ScenarioExtension } from "../../harness/scenario.ts";
+import type { ScenarioExtension, ScenarioOptions } from "../../harness/scenario.ts";
 import type { OverviewMain, MateThreadKind } from "@t3tools/shared/mateLink";
 import { createScenario } from "../../harness/scenario.ts";
 import {
-  installMenu,
+  conversationHistory,
   relayAttention,
   restartMate,
   speakFromRunBefore,
@@ -23,9 +25,43 @@ import {
 
 export const menuScenario = Effect.fn("menu.scenario")(function* (
   extensions: ScenarioExtension[] = [],
+  options: ScenarioOptions = {},
 ) {
-  const s = yield* createScenario([installMenu, ...extensions]);
+  const s = yield* createScenario(extensions, options);
   const menu = {
+    actions: (name: string, expected: ReadonlyArray<string>) =>
+      Effect.promise(async () => {
+        await s.page.locator(`[data-zerops-mate-row="${name}"]`).click({ button: "right" });
+        await s.page.waitForSelector('[data-zerops-mate-menu="open"]', {
+          visible: true,
+          timeout: 8_000,
+        });
+        const mutations = ["rename", "face", "assign", "move", "delete"];
+        await s.page.waitForFunction(
+          (expected, mutations) =>
+            expected.every((id) => {
+              const entry = document.querySelector(`[data-zerops-mate-menu="${id}"]`);
+              return entry !== null && entry.getAttribute("aria-disabled") !== "true";
+            }) &&
+            [...document.querySelectorAll("[data-zerops-mate-menu]")].filter((entry) =>
+              mutations.includes(entry.getAttribute("data-zerops-mate-menu")!),
+            ).length === expected.length,
+          { timeout: 8_000, polling: "raf" },
+          expected,
+          mutations,
+        );
+        expect(
+          await s.page.$$eval(
+            "[data-zerops-mate-menu]",
+            (entries, mutations) =>
+              entries
+                .map((entry) => entry.getAttribute("data-zerops-mate-menu")!)
+                .filter((id) => mutations.includes(id)),
+            mutations,
+          ),
+        ).toEqual(expected);
+        await s.page.keyboard.press("Escape");
+      }),
     text: (name: string, words: string, surface = "sidebar-mate", within = 15_000) =>
       Effect.promise(async () => {
         try {
@@ -139,9 +175,60 @@ export const menuScenario = Effect.fn("menu.scenario")(function* (
           name,
         );
       }),
-    grouped: (name: string, app: string) =>
+    keepsConversation: (url: string, page: Page = s.page) =>
       Effect.promise(async () => {
+        expect(page.url()).toBe(url);
+        expect(await page.$('[role="textbox"]')).not.toBeNull();
+      }),
+    opensApplication: (name: string) =>
+      Effect.promise(async () => {
+        await s.page.locator(`::-p-aria(More for ${name})`).setTimeout(8_000).click();
+        await s.page.locator("::-p-aria(Open project)").setTimeout(8_000).click();
         await s.page.waitForFunction(
+          (name) =>
+            [...document.querySelectorAll("h1")].some((heading) => heading.textContent === name),
+          { timeout: 8_000, polling: "raf" },
+          name,
+        );
+      }),
+    movesMate: (name: string, app: string) =>
+      Effect.promise(async () => {
+        await s.page.locator(`[data-zerops-mate-row="${name}"]`).click({ button: "right" });
+        await s.page.locator('[data-zerops-mate-menu="move"]').setTimeout(8_000).click();
+        const form = '[data-zerops-surface="move-to-group-form"]';
+        await s.page.locator(`${form} ::-p-aria(${app})`).setTimeout(8_000).click();
+        await s.page.locator(`${form} ::-p-aria(Move)`).setTimeout(8_000).click();
+        await s.page.waitForSelector(form, { hidden: true, timeout: 8_000 });
+      }),
+    environmentSlots: (words: string, offered: ReadonlyArray<"Add stage" | "Add production">) =>
+      Effect.promise(async () => {
+        try {
+          await s.page.waitForFunction(
+            (words, offered) => {
+              const main = document.querySelector("main");
+              const buttons = [...(main?.querySelectorAll("button") ?? [])]
+                .map((button) => button.innerText.trim())
+                .filter((name) => name === "Add stage" || name === "Add production");
+              return (
+                main?.innerText.includes(words) === true &&
+                buttons.length === offered.length &&
+                offered.every((name) => buttons.includes(name))
+              );
+            },
+            { timeout: 8_000, polling: "raf" },
+            words,
+            offered,
+          );
+        } catch (cause) {
+          throw new Error(
+            `Environment slots did not show ${words} with ${offered.join(", ")}\n${await s.page.evaluate(() => document.body.innerText)}`,
+            { cause },
+          );
+        }
+      }),
+    grouped: (name: string, app: string, page: Page = s.page) =>
+      Effect.promise(async () => {
+        await page.waitForFunction(
           (name, app) => {
             const headings = [
               ...document.querySelectorAll<HTMLElement>('[data-zerops-surface="sidebar-project"]'),
@@ -200,6 +287,7 @@ export const menuScenario = Effect.fn("menu.scenario")(function* (
         yield* stageService(s.drivers, name);
       }),
     colleague: {
+      said: (name: string, text: string) => conversationHistory(s.drivers, name, text),
       reports: (name: string, patch: Partial<OverviewMain> = {}, kind: MateThreadKind = "idle") =>
         reportConversation(s.drivers, name, patch, kind),
       attends: (name: string, says: Parameters<MateFake["publishAttention"]>[0]) =>
@@ -214,7 +302,11 @@ export const menuScenario = Effect.fn("menu.scenario")(function* (
         speakFromRunBefore(s.drivers, name, says),
       holdsDetails: (app: string) => holdDetails(s.drivers, app),
       releasesDetails: releaseDetails(s.drivers),
-      moves: (name: string, app: string | null) => moveMate(s.drivers, name, app),
+      moves: (
+        name: string,
+        app: string | null,
+        kind?: "mate" | "stage" | "production" | "devstage",
+      ) => moveMate(s.drivers, name, app, kind),
       deletes: (name: string) => removeProject(s.drivers, name),
       denies: (name: string) => denyProjectRead(s.drivers, name),
       settlesRefusal: (name: string) =>
