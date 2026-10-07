@@ -207,8 +207,13 @@ export const closeChangeWrite: OperationKind<"close-change"> = {
   kind: "close-change",
   executor: "hq",
   reflected: (read, intent) => (changeOf(read, intent.link)?.state ?? "open") !== "open",
-  settledBy: (read, intent) =>
-    (changeOf(read, intent.link)?.state ?? "open") === "open" ? null : { kind: "succeeded" },
+  settledBy: (read, intent) => {
+    const state = changeOf(read, intent.link)?.state ?? "open";
+    if (state === "open") return null;
+    return state === "closed"
+      ? { kind: "succeeded" }
+      : { kind: "failed", reason: "The change was merged instead of closed." };
+  },
   observedIn: (intent) => appDetail(intent.link.appId),
   effectHandles: (read, intent) =>
     changeOf(read, intent.link)?.state === "closed" ? [changeHandle(intent.link)] : [],
