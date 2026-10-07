@@ -129,9 +129,8 @@ it("counts new kills across a changed RAM cap, but never subtracts counters from
 it.effect("reports missing notification coverage alongside the remaining measured limits", () =>
   Effect.gen(function* () {
     const dir = yield* Effect.promise(() => fixture({ "memory.high": "150" }));
-    const values = yield* Stream.runCollect(
-      resourceHealthChanges(NodePath.join(dir, "missing-state"), [dir]).pipe(Stream.take(1)),
-    );
+    yield* Effect.promise(() => NodeFSP.unlink(NodePath.join(dir, "memory.swap.max")));
+    const values = yield* Stream.runCollect(resourceHealthChanges(dir, [dir]).pipe(Stream.take(1)));
     expect(values[0]).toMatchObject({ status: "unknown", memory: { high: 150 } });
     expect(values[0]?.unavailable).toContain("kernel-events");
   }),
