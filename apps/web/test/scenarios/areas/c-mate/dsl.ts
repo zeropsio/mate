@@ -162,7 +162,8 @@ export function mateChat(
             expected,
           );
           const pictures = await page.$$('button[aria-label^="Open picture "]');
-          await pictures.at(-1)!.click();
+          await pictures.at(-1)!.focus();
+          await page.keyboard.press("Enter");
         }),
       type: (value: string) =>
         Effect.promise(async () => {
