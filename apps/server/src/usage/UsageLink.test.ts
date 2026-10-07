@@ -148,6 +148,9 @@ const mate = (
       offer: (message: Extract<MateLinkDown, { type: "state" }>) => lane.state(message),
       /** HQ's answer on the current link. */
       answer: (message: MateLinkDown) => lane.receive(message),
+      /** HQ's ping on the current link. */
+      ping: Effect.suspend(() => lane.ping),
+      database,
       /** A new link, whose first state is `message`. */
       reconnect: (message: Extract<MateLinkDown, { type: "state" }>) =>
         Effect.gen(function* () {
@@ -424,6 +427,34 @@ it.live("Grok, OpenCode and Antigravity are captured while Cursor is still unsup
       assert.equal(coverage.get("cursor"), "unsupported");
       for (const provider of ["grok", "opencode", "antigravity"] as const)
         assert.equal(coverage.get(provider), "partial");
+    }),
+  ),
+);
+
+it.live("a ledger that cannot be read at the offer is asked again later, never replaced", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const { watch } = silentWatch();
+      const subject = yield* mate({ watch, beginRetry: { baseMs: 50, maxMs: 200 } });
+      const [first] = yield* eventually(subject.hellos, (sent) => sent.length > 0);
+      yield* eventually(subject.origins, (origins) => origins.length > 0);
+      yield* subject.write("session.jsonl", response("kept", 120));
+      yield* subject.emit("turn.completed");
+      assert.equal(yield* eventually(subject.total, (total) => total === 120n), 120n);
+      // The ledger cannot be read when HQ offers capture again (another process mid-write).
+      const raw = new NodeSqlite.DatabaseSync(subject.database);
+      const held = raw.prepare("SELECT value FROM usage_meta WHERE id=1").get()!["value"];
+      raw.prepare("UPDATE usage_meta SET value='damaged' WHERE id=1").run();
+      yield* subject.reconnect(state);
+      assert.lengthOf(yield* subject.hellos, 1);
+      raw.prepare("UPDATE usage_meta SET value=? WHERE id=1").run(String(held));
+      raw.close();
+      const hellos = yield* eventually(
+        Effect.andThen(subject.ping, subject.hellos),
+        (sent) => sent.length > 1,
+      );
+      assert.isTrue(hellos.every((hello) => hello.ledgerId === first!.ledgerId));
+      assert.equal(yield* subject.total, 120n);
     }),
   ),
 );

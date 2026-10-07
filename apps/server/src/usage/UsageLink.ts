@@ -13,6 +13,7 @@ import {
 import { type MateLinkDown, type MateLinkUp } from "@t3tools/shared/mateLink";
 import { usageDigest } from "@t3tools/shared/agentUsage";
 import { HostProcessEnvironment } from "@t3tools/shared/hostProcess";
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
@@ -68,6 +69,8 @@ export type UsageRuntimeEvent = Pick<ProviderRuntimeEvent, "type">;
 export interface UsageLinkOptions {
   readonly watch?: WatchDirectory;
   readonly retry?: WatchRetry;
+  /** How soon a ledger that could not be read at HQ's offer is asked again. */
+  readonly beginRetry?: WatchRetry;
 }
 
 export const makeUsageLink = Effect.fnUntraced(function* (
@@ -75,6 +78,7 @@ export const makeUsageLink = Effect.fnUntraced(function* (
   options: UsageLinkOptions = {},
 ) {
   const ledger = yield* makeUsageLedger;
+  const beginRetry = options.beginRetry ?? { baseMs: 5_000, maxMs: 300_000 };
   const config = yield* ServerConfig;
   const settings = yield* ServerSettingsService;
   const path = yield* Path.Path;
@@ -225,6 +229,8 @@ export const makeUsageLink = Effect.fnUntraced(function* (
         let negotiated = false;
         let halted = false;
         let renewed = false;
+        let beginDelay = 0;
+        let beginRetryAt = 0;
         let lastState: Extract<MateLinkDown, { type: "state" }> | undefined;
         const halt = Effect.sync(() => {
           halted = true;
@@ -292,9 +298,26 @@ export const makeUsageLink = Effect.fnUntraced(function* (
                 mateId: message.usage.mateId,
               };
               // Frozen home binding refuses clone/transfer before any old-org facts leave this socket.
-              // A Mate registered again (or moved) captures into a new ledger from now on.
+              if ((yield* Clock.currentTimeMillis) < beginRetryAt) return;
+              // A Mate registered again (or moved) captures into a new ledger from now on; a ledger
+              // that cannot be read now (busy, damaged) keeps its journal and is asked again later.
               const begun = yield* Effect.result(ledger.begin(nextBinding));
-              if (begun._tag === "Failure") yield* renew(nextBinding, "binding-changed");
+              if (begun._tag === "Failure") {
+                if (
+                  !isLedgerError(begun.failure) ||
+                  begun.failure.code !== "source-binding-conflict"
+                ) {
+                  beginDelay =
+                    beginDelay === 0
+                      ? beginRetry.baseMs
+                      : Math.min(beginDelay * 2, beginRetry.maxMs);
+                  beginRetryAt = (yield* Clock.currentTimeMillis) + beginDelay;
+                  yield* Effect.logWarning("Usage ledger unavailable at HQ's offer; asking again");
+                  return;
+                }
+                yield* renew(nextBinding, "binding-changed");
+              }
+              beginDelay = 0;
               binding = nextBinding;
               active?.stop();
               active = replication;

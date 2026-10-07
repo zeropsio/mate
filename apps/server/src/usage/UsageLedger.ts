@@ -51,7 +51,7 @@ const Metadata = Schema.Struct({
   /** Whether the transcripts on disk when capture began have their checkpoints at their end. */
   baselined: Schema.optionalKey(Schema.Boolean),
 });
-const decodeMeta = Schema.decodeUnknownSync(Schema.fromJsonString(Metadata));
+const readMeta = Schema.decodeUnknownEffect(Schema.fromJsonString(Metadata));
 export type UsageBinding = Pick<UsageOrigin, "orgId" | "projectId" | "mateId">;
 export const USAGE_LOCAL_SOFT_BYTES = 256 * 1024 * 1024;
 const LOSS_METADATA_RESERVE_BYTES = 4 * 1024 * 1024;
@@ -86,9 +86,10 @@ export const makeUsageLedger = Effect.gen(function* () {
     ack: 0,
     ackDigest: USAGE_GENESIS_DIGEST,
   })})`;
+  // A ledger that cannot be read is a typed failure: the lane asks again, never starts anew.
   const metadata = Effect.gen(function* () {
     const rows = yield* sql<{ value: string }>`SELECT value FROM usage_meta WHERE id=1`;
-    return decodeMeta(rows[0]!.value);
+    return yield* readMeta(rows[0]?.value).pipe(Effect.mapError(() => fail("ledger-unreadable")));
   });
   const saveMeta = (meta: typeof Metadata.Type) =>
     sql`UPDATE usage_meta SET value=${usageCanonical(meta)} WHERE id=1`;
