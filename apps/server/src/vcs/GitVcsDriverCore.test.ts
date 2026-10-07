@@ -1,6 +1,7 @@
 // @effect-diagnostics nodeBuiltinImport:off - realpathSync.native resolves Windows 8.3 short names, which the Effect realPath does not.
 import * as NodeFS from "node:fs";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import { WORKTREE_BRANCH_PREFIX } from "@t3tools/shared/git";
 import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import { assert, it, describe } from "@effect/vitest";
 import * as Deferred from "effect/Deferred";
@@ -2654,6 +2655,31 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
         assert.equal(
           yield* fileSystem.exists(pathService.join(worktreePath, "shared", "SHARED.md")),
           true,
+        );
+      }),
+    );
+
+    // Git stores refs as paths: a plain `t3code` branch makes every
+    // `t3code/<hex>` ref impossible, so the worktree takes the flat sibling.
+    it.effect("a worktree thread survives a local branch named like the prefix", () =>
+      Effect.gen(function* () {
+        const pathService = yield* Path.Path;
+        const cwd = yield* makeTmpDir();
+        const { initialBranch } = yield* initRepoWithCommit(cwd);
+        yield* git(cwd, ["branch", WORKTREE_BRANCH_PREFIX]);
+
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        const created = yield* driver.createWorktree({
+          cwd,
+          path: pathService.join(yield* makeTmpDir("git-worktrees-"), "blocked-prefix"),
+          refName: initialBranch,
+          newRefName: `${WORKTREE_BRANCH_PREFIX}/abcd1234`,
+        });
+
+        assert.equal(created.worktree.refName, `${WORKTREE_BRANCH_PREFIX}-abcd1234`);
+        assert.equal(
+          yield* git(created.worktree.path, ["branch", "--show-current"]),
+          `${WORKTREE_BRANCH_PREFIX}-abcd1234`,
         );
       }),
     );

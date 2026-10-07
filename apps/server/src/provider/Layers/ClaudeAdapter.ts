@@ -57,9 +57,11 @@ import {
   type TaskAgentLinkage,
   type TaskRunHandles,
   ThreadId,
+  type ToolPresentation,
   TurnId,
   type UserInputQuestion,
 } from "@t3tools/contracts";
+import { claudeToolUseMeta, mcpToolPresentation } from "@t3tools/shared/toolActivity";
 import {
   applyClaudePromptEffortPrefix,
   getModelSelectionBooleanOptionValue,
@@ -373,6 +375,18 @@ interface ToolInFlight {
   /** Owning agent when this tool ran inside a subagent (see attribution note). */
   readonly agentId?: string;
   readonly parentToolUseId?: string;
+  /** How Claude Code presents the call (an MCP tool's title and server), once its frame says. */
+  readonly presentation?: ToolPresentation;
+}
+
+/** An MCP call's presentation from Claude Code's `tool_use_meta` for it, if any. */
+function claudeCallPresentation(
+  meta: ReturnType<typeof claudeToolUseMeta>,
+  toolName: string,
+  itemId: string,
+): ToolPresentation | undefined {
+  const said = meta.get(itemId);
+  return said === undefined ? undefined : mcpToolPresentation({ toolName, ...said });
 }
 
 interface ClaudeTaskState {
@@ -2040,6 +2054,24 @@ function toolResultBlocksFromUserMessage(message: SDKMessage): Array<{
   return blocks;
 }
 
+/**
+ * Claude's own word for a result that is no execution (`tool_result_meta`, not
+ * yet in the SDK's message type): `cancelled` when the call was stopped before
+ * it ran, which its error text alone cannot tell apart from a refusal.
+ */
+function toolNonExecutionKind(message: SDKMessage, toolUseId: string): string | undefined {
+  const meta = (message as { readonly tool_result_meta?: unknown }).tool_result_meta;
+  if (!Array.isArray(meta)) return undefined;
+  const entry: unknown = meta.find(
+    (candidate: unknown) =>
+      typeof candidate === "object" &&
+      candidate !== null &&
+      (candidate as { readonly id?: unknown }).id === toolUseId,
+  );
+  const kind = (entry as { readonly non_execution_kind?: unknown } | undefined)?.non_execution_kind;
+  return typeof kind === "string" ? kind : undefined;
+}
+
 function toSessionError(
   threadId: ThreadId,
   cause: unknown,
@@ -3310,6 +3342,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           toolName: tool.toolName,
           input: tool.input,
         },
+        ...(tool.presentation ? { presentation: tool.presentation } : {}),
         unreturned: true,
       },
       providerRefs: nativeProviderRefs(context, {
@@ -3359,6 +3392,47 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
   };
 
   /**
+   * The Mate's calls as Claude Code presents them: its assistant frame names each call's title
+   * and server (`tool_use_meta`) after the stream has started it, so a call it presents says so
+   * in an update, and every step after carries it.
+   */
+  const presentCalls = Effect.fn("presentCalls")(function* (
+    context: ClaudeSessionContext,
+    message: Extract<SDKMessage, { type: "assistant" }>,
+  ) {
+    const meta = claudeToolUseMeta(message);
+    if (meta.size === 0) return;
+    for (const [key, tool] of context.inFlightTools) {
+      if (tool.presentation !== undefined) continue;
+      const presentation = claudeCallPresentation(meta, tool.toolName, tool.itemId);
+      if (presentation === undefined) continue;
+      context.inFlightTools.set(key, { ...tool, presentation });
+      const stamp = yield* makeEventStamp();
+      yield* offerRuntimeEvent({
+        type: "item.updated",
+        eventId: stamp.eventId,
+        provider: PROVIDER,
+        createdAt: stamp.createdAt,
+        threadId: context.session.threadId,
+        ...(context.turnState ? { turnId: asCanonicalTurnId(context.turnState.turnId) } : {}),
+        itemId: asRuntimeItemId(tool.itemId),
+        payload: {
+          itemType: tool.itemType,
+          status: "inProgress",
+          title: tool.title,
+          ...(tool.detail ? { detail: tool.detail } : {}),
+          ...(tool.agentId ? { agentId: tool.agentId } : {}),
+          ...(tool.parentToolUseId ? { parentToolUseId: tool.parentToolUseId } : {}),
+          data: { toolName: tool.toolName, input: tool.input },
+          presentation,
+        },
+        providerRefs: nativeProviderRefs(context, { providerItemId: tool.itemId }),
+        raw: { source: "claude.sdk.message", method: "claude/assistant", payload: message },
+      });
+    }
+  });
+
+  /**
    * A helper's calls, from its snapshot: the SDK streams no events for a
    * helper's response, so its snapshot is the first sight of each call. Each
    * starts as a step of the helper that made it (the owner of its parent
@@ -3372,6 +3446,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
   ) {
     const content = (message.message as { content?: unknown }).content;
     if (!Array.isArray(content)) return;
+    const meta = claudeToolUseMeta(message);
     for (const entry of content) {
       if (typeof entry !== "object" || entry === null) continue;
       const block = entry as { type?: unknown; id?: unknown; name?: unknown; input?: unknown };
@@ -3393,6 +3468,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           : {};
       const itemType = classifyToolItemType(block.name, toolInput);
       const owningAgentId = helperOfCall(context.taskAgents, parentToolUseId);
+      const presentation = claudeCallPresentation(meta, block.name, itemId);
       const tool: ToolInFlight = {
         itemId,
         itemType,
@@ -3403,6 +3479,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         partialInputJson: "",
         ...(owningAgentId ? { agentId: owningAgentId } : {}),
         parentToolUseId,
+        ...(presentation ? { presentation } : {}),
       };
       context.inFlightTools.set(`${parentToolUseId}#${itemId}`, tool);
       const stamp = yield* makeEventStamp();
@@ -3422,6 +3499,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           ...(owningAgentId ? { agentId: owningAgentId } : {}),
           parentToolUseId,
           data: { toolName: block.name, input: toolInput },
+          ...(presentation ? { presentation } : {}),
         },
         providerRefs: nativeProviderRefs(context, { providerItemId: itemId }),
         raw: {
@@ -3450,7 +3528,8 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       }
 
       const [index, tool] = toolEntry;
-      const itemStatus = toolResult.isError ? "failed" : "completed";
+      const cancelled = toolNonExecutionKind(message, toolResult.toolUseId) === "cancelled";
+      const itemStatus = cancelled ? "stopped" : toolResult.isError ? "failed" : "completed";
       const toolUseResult = readClaudeToolUseResult(message);
       const toolData = {
         toolName: tool.toolName,
@@ -3471,11 +3550,12 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           itemId: asRuntimeItemId(tool.itemId),
           payload: {
             itemType: tool.itemType,
-            status: toolResult.isError ? "failed" : "inProgress",
+            status: cancelled ? "stopped" : toolResult.isError ? "failed" : "inProgress",
             title: tool.title,
             ...(tool.detail ? { detail: tool.detail } : {}),
             ...(tool.parentToolUseId ? { parentToolUseId: tool.parentToolUseId } : {}),
             data: toolData,
+            ...(tool.presentation ? { presentation: tool.presentation } : {}),
           },
           providerRefs: nativeProviderRefs(context, {
             providerItemId: tool.itemId,
@@ -3531,6 +3611,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           ...(tool.agentId ? { agentId: tool.agentId } : {}),
           ...(tool.parentToolUseId ? { parentToolUseId: tool.parentToolUseId } : {}),
           data: toolData,
+          ...(tool.presentation ? { presentation: tool.presentation } : {}),
         },
         providerRefs: nativeProviderRefs(context, {
           providerItemId: tool.itemId,
@@ -3727,6 +3808,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       });
     }
 
+    yield* presentCalls(context, message);
     const content = message.message?.content;
     if (Array.isArray(content)) {
       for (const block of content) {

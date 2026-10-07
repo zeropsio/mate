@@ -1,4 +1,5 @@
 import { LexicalComposer, type InitialConfigType } from "@lexical/react/LexicalComposer";
+import { composerEditorAria } from "./composerEditorAria";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import { ContentEditable } from "@lexical/react/LexicalContentEditable";
 import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary";
@@ -1298,6 +1299,12 @@ interface ComposerPromptEditorProps {
   disabled: boolean;
   placeholder: string;
   className?: string;
+  /** The editor's name for a screen reader. */
+  ariaLabel?: string | undefined;
+  /** The suggestion list's id: names an editor that offers suggestions, even while it is shut. */
+  suggestionListId?: string | undefined;
+  /** The highlighted option's id, only while its list is drawn. */
+  activeSuggestionId?: string | undefined;
   onRemoveTerminalContext: (contextId: string) => void;
   onChange: (
     nextValue: string,
@@ -2332,6 +2339,9 @@ function ComposerPromptEditorInner({
   disabled,
   placeholder,
   className,
+  ariaLabel,
+  suggestionListId,
+  activeSuggestionId,
   onRemoveTerminalContext,
   onChange,
   onCommandKeyDown,
@@ -2619,6 +2629,12 @@ function ComposerPromptEditorInner({
                   )}
                   data-testid="composer-editor"
                   aria-placeholder={placeholder}
+                  {...composerEditorAria({
+                    ariaLabel,
+                    suggestionListId,
+                    activeSuggestionId,
+                    disabled,
+                  })}
                   placeholder={<span />}
                   onPaste={onPaste}
                 />
@@ -2678,6 +2694,9 @@ export function ComposerPromptEditor({
   disabled,
   placeholder,
   className,
+  ariaLabel,
+  suggestionListId,
+  activeSuggestionId,
   onRemoveTerminalContext,
   onChange,
   onCommandKeyDown,
@@ -2737,6 +2756,9 @@ export function ComposerPromptEditor({
         onRetryFile={onRetryFile}
         disabled={disabled}
         placeholder={placeholder}
+        ariaLabel={ariaLabel}
+        suggestionListId={suggestionListId}
+        activeSuggestionId={activeSuggestionId}
         onRemoveTerminalContext={onRemoveTerminalContext}
         onChange={onChange}
         onPaste={onPaste}

@@ -145,4 +145,32 @@ describe("project file query failures", () => {
       atomHooks.registry = null;
     }
   });
+
+  it("keeps the read's failure, with the path it tried, for the preview to say", async () => {
+    const failure = new ProjectReadFileError({
+      cwd: "/repo",
+      relativePath: "docs/missing.md",
+      failure: "operation_failed",
+      operation: "realpath-target",
+      resolvedPath: "/repo/docs/missing.md",
+    });
+    const readAtom = Atom.make(Effect.fail(failure));
+    const registry = AtomRegistry.make();
+    const unmount = registry.mount(readAtom);
+    projectMocks.readFile.mockReturnValue(readAtom);
+    projectMocks.optimisticFile.mockReturnValue(Atom.make(null));
+    atomHooks.registry = registry;
+
+    try {
+      await flushEffects();
+      reactHooks.beginRender();
+      const query = useProjectFileQuery(environmentId, "/repo", "docs/missing.md");
+      expect(query.readError?.resolvedPath).toBe("/repo/docs/missing.md");
+      expect(query.isNotFile).toBe(false);
+    } finally {
+      unmount();
+      registry.dispose();
+      atomHooks.registry = null;
+    }
+  });
 });

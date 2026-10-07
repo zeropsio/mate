@@ -1,5 +1,7 @@
+import type { ModelSelection, ProviderInteractionMode, RuntimeMode } from "@t3tools/contracts";
 import { create } from "zustand";
 
+import type { LocalDispatchSnapshot } from "./components/ChatView.logic";
 import type { ComposerSubmissionIntent } from "./composer-logic";
 import type { ComposerImageAttachment, ComposerSendIds } from "./composerDraftStore";
 import type { ComposerFileAttachment } from "./lib/composerFiles";
@@ -8,6 +10,28 @@ import { randomUUID } from "./lib/utils";
 import type { ReviewCommentContext } from "./reviewCommentContext";
 import type { SessionPhase } from "./types";
 import { onAccountLifetimeClose } from "./zerops/accountLifetime";
+
+/**
+ * The composer's agent, model and modes when the message was queued. A message that leaves
+ * while its conversation is not on screen goes with these, not with whatever composer is open.
+ */
+export interface QueuedMessageSendSettings {
+  readonly modelSelection: ModelSelection;
+  readonly runtimeMode: RuntimeMode;
+  readonly interactionMode: ProviderInteractionMode;
+  /** The effort written into the text, for the agents that read it there; null where none is. */
+  readonly promptEffort: string | null;
+}
+
+/**
+ * A thread's queued message under way, whichever sender took it — the open conversation or the
+ * root sender: preparing (uploads, the thread's settings) until its turn start goes out, then
+ * the thread as it was at that moment. The next message waits until the server has moved past
+ * it, so two messages never leave on one boundary.
+ */
+export type QueuedSendInFlight =
+  | { readonly phase: "preparing" }
+  | { readonly phase: "dispatched"; readonly thread: LocalDispatchSnapshot };
 
 /**
  * A composer submission held back while the thread's turn is running. It
@@ -23,6 +47,11 @@ export interface QueuedComposerMessage {
   terminalContexts: TerminalContextDraft[];
   reviewComments: ReviewCommentContext[];
   submissionIntent: ComposerSubmissionIntent;
+  /**
+   * What it goes with when it leaves while its conversation is not on screen. Absent on the
+   * overflow a restore queues: that one waits for its conversation's Send now.
+   */
+  sendSettings?: QueuedMessageSendSettings;
   /**
    * The newest completed tool activity at queue time. A different id later
    * means a tool call finished after the user queued, which is the boundary
@@ -49,11 +78,23 @@ export interface QueuedComposerMessage {
 interface QueuedMessageStoreState {
   queuesByThreadKey: Record<string, QueuedComposerMessage[]>;
   /**
-   * Bumped by `drain`. A send that took a message before a drain and finishes
-   * its upload after it compares this to the value it captured and gives up,
-   * so Stop cannot be followed by a queued message starting a new turn.
+   * Bumped per thread by `drain`. A send that took a message before its thread's drain and
+   * finishes its upload after it compares this to the value it captured and gives up, so Stop
+   * cannot be followed by a queued message starting a new turn. Per thread: Stop in one
+   * conversation never holds another's send.
    */
-  drainGeneration: number;
+  drainGenerationByThreadKey: Record<string, number>;
+  /**
+   * How many views of each conversation are on screen. An open conversation sends its own
+   * queue; the root sender sends the others'.
+   */
+  openThreadKeys: Record<string, number>;
+  /** Each thread's queued send in flight, while it prepares and until the server picks it up. */
+  queuedSendByThreadKey: Record<string, QueuedSendInFlight>;
+  /** Marks a conversation on screen until the returned release runs. */
+  holdOpen: (threadKey: string) => () => void;
+  /** Records a thread's queued send in flight, or forgets it (null). */
+  setQueuedSend: (threadKey: string, send: QueuedSendInFlight | null) => void;
   enqueue: (threadKey: string, message: Omit<QueuedComposerMessage, "id">) => QueuedComposerMessage;
   /**
    * Removes one message and returns it, or null when another caller already
@@ -102,7 +143,34 @@ export const useQueuedMessageStore = create<QueuedMessageStoreState>()((set, get
   };
   return {
     queuesByThreadKey: {},
-    drainGeneration: 0,
+    drainGenerationByThreadKey: {},
+    openThreadKeys: {},
+    queuedSendByThreadKey: {},
+    holdOpen: (threadKey) => {
+      const step = (by: 1 | -1) =>
+        set((state) => {
+          const count = (state.openThreadKeys[threadKey] ?? 0) + by;
+          const openThreadKeys = { ...state.openThreadKeys };
+          if (count > 0) openThreadKeys[threadKey] = count;
+          else delete openThreadKeys[threadKey];
+          return { openThreadKeys };
+        });
+      step(1);
+      let released = false;
+      return () => {
+        if (released) return;
+        released = true;
+        step(-1);
+      };
+    },
+    setQueuedSend: (threadKey, send) => {
+      set((state) => {
+        const queuedSendByThreadKey = { ...state.queuedSendByThreadKey };
+        if (send === null) delete queuedSendByThreadKey[threadKey];
+        else queuedSendByThreadKey[threadKey] = send;
+        return { queuedSendByThreadKey };
+      });
+    },
     enqueue: (threadKey, message) => {
       const entry: QueuedComposerMessage = { ...message, id: randomUUID() };
       set((state) => ({
@@ -186,13 +254,20 @@ export const useQueuedMessageStore = create<QueuedMessageStoreState>()((set, get
     },
     drain: (threadKey) => {
       const queue = get().queuesByThreadKey[threadKey];
+      const bumped = (state: QueuedMessageStoreState) => ({
+        ...state.drainGenerationByThreadKey,
+        [threadKey]: (state.drainGenerationByThreadKey[threadKey] ?? 0) + 1,
+      });
+      // Bumped even with nothing left queued: the one message a send already took and is
+      // still uploading must not start a turn after Stop either.
       if (!queue || queue.length === 0) {
+        set((state) => ({ drainGenerationByThreadKey: bumped(state) }));
         return EMPTY_QUEUE;
       }
       set((state) => {
         const queuesByThreadKey = { ...state.queuesByThreadKey };
         delete queuesByThreadKey[threadKey];
-        return { queuesByThreadKey, drainGeneration: state.drainGeneration + 1 };
+        return { queuesByThreadKey, drainGenerationByThreadKey: bumped(state) };
       });
       return queue;
     },
@@ -308,9 +383,42 @@ export function queuedBubbleState(input: {
 }
 
 onAccountLifetimeClose(() => {
-  useQueuedMessageStore.setState({ queuesByThreadKey: {} });
+  useQueuedMessageStore.setState({ queuesByThreadKey: {}, queuedSendByThreadKey: {} });
 });
 
 export function useQueuedMessages(threadKey: string): QueuedComposerMessage[] {
   return useQueuedMessageStore((state) => state.queuesByThreadKey[threadKey] ?? EMPTY_QUEUE);
+}
+
+/** The thread's drain count: a send captures it at its take and gives up if Stop moved it. */
+export function drainGenerationOf(threadKey: string): number {
+  return useQueuedMessageStore.getState().drainGenerationByThreadKey[threadKey] ?? 0;
+}
+
+/**
+ * Takes a thread's queued message to send it — either sender, the open conversation or the
+ * root one — and marks the thread's send in flight. Null when another caller took it first.
+ */
+export function beginQueuedSend(
+  threadKey: string,
+  id: string,
+  toolActivityId: string | null,
+): QueuedComposerMessage | null {
+  const store = useQueuedMessageStore.getState();
+  const taken = store.take(threadKey, id, toolActivityId);
+  if (taken !== null) store.setQueuedSend(threadKey, { phase: "preparing" });
+  return taken;
+}
+
+/** The thread's queued send went out as it was then (a snapshot), or ended without one (null). */
+export function settleQueuedSend(
+  threadKey: string,
+  dispatched: LocalDispatchSnapshot | null,
+): void {
+  useQueuedMessageStore
+    .getState()
+    .setQueuedSend(
+      threadKey,
+      dispatched === null ? null : { phase: "dispatched", thread: dispatched },
+    );
 }

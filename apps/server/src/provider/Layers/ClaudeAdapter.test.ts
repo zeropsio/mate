@@ -2064,6 +2064,93 @@ describe("ClaudeAdapterLive", () => {
     );
   });
 
+  // The same error text can describe a cancellation or a real refusal: each
+  // result reads its own native metadata, never the text.
+  it.effect.each([
+    { kind: "cancelled", status: "stopped" },
+    { kind: "denied", status: "failed" },
+    { kind: undefined, status: "failed" },
+  ] as const)("a call Claude cancelled ends stopped, not failed ($kind)", ({ kind, status }) => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+      const session = yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "full-access",
+      });
+      const eventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.takeUntil((event) => event.type === "turn.completed"),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      yield* adapter.sendTurn({ threadId: session.threadId, input: "hello", attachments: [] });
+      for (const [index, id, command] of [
+        [1, "tool-error", "make"],
+        [2, "tool-ok", "ls"],
+      ] as const) {
+        harness.query.emit({
+          type: "stream_event",
+          session_id: "sdk-session-non-execution",
+          uuid: `stream-${id}`,
+          parent_tool_use_id: null,
+          event: {
+            type: "content_block_start",
+            index,
+            content_block: { type: "tool_use", id, name: "Bash", input: { command } },
+          },
+        } as unknown as SDKMessage);
+      }
+      harness.query.emit({
+        type: "user",
+        session_id: "sdk-session-non-execution",
+        uuid: "user-tool-results",
+        parent_tool_use_id: null,
+        message: {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "tool-error",
+              is_error: true,
+              content: "STOP and wait for the user.",
+            },
+            { type: "tool_result", tool_use_id: "tool-ok", is_error: false, content: "OK" },
+          ],
+        },
+        ...(kind === undefined
+          ? {}
+          : {
+              tool_result_meta: [
+                { id: "tool-error", non_execution_kind: kind },
+                { id: "tool-ok", non_execution_kind: null },
+              ],
+            }),
+      } as unknown as SDKMessage);
+      harness.query.emit({
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        errors: [],
+        session_id: "sdk-session-non-execution",
+        uuid: "result-non-execution",
+      } as unknown as SDKMessage);
+
+      const events = Array.from(yield* Fiber.join(eventsFiber));
+      const completedStatus = (itemId: string) =>
+        events.flatMap((event) =>
+          event.type === "item.completed" && String(event.itemId) === itemId
+            ? [event.payload.status]
+            : [],
+        );
+      assert.deepEqual(completedStatus("tool-error"), [status]);
+      assert.deepEqual(completedStatus("tool-ok"), ["completed"]);
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
   it.effect("backfills Claude thinking summaries from assistant snapshots", () => {
     const harness = makeHarness();
     return Effect.gen(function* () {
@@ -3041,6 +3128,103 @@ describe("ClaudeAdapterLive", () => {
         ["tool-h1", null],
         ["tool-a3", "msg-a"],
         ["tool-b1", "msg-b"],
+      ]);
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
+  it.effect("an MCP call presents the title and server Claude Code gives it", () => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+      const eventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.takeUntil((event) => event.type === "turn.completed"),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      const session = yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "full-access",
+      });
+      yield* adapter.sendTurn({ threadId: session.threadId, input: "scrape", attachments: [] });
+      const toolName = "mcp__claude_ai_Firecrawl__firecrawl_scrape";
+      const input = { url: "https://example.com" };
+      harness.query.emit({
+        type: "stream_event",
+        session_id: "sdk-session-mcp",
+        uuid: "s1",
+        parent_tool_use_id: null,
+        event: {
+          type: "content_block_start",
+          index: 0,
+          content_block: { type: "tool_use", id: "toolu_fc", name: toolName, input },
+        },
+      } as unknown as SDKMessage);
+      harness.query.emit({
+        type: "assistant",
+        session_id: "sdk-session-mcp",
+        uuid: "assistant-mcp",
+        parent_tool_use_id: null,
+        message: {
+          id: "msg-mcp",
+          role: "assistant",
+          model: "claude-sonnet-4-6",
+          content: [{ type: "tool_use", id: "toolu_fc", name: toolName, input }],
+        },
+        tool_use_meta: [
+          {
+            id: "toolu_fc",
+            display_name: "Firecrawl scrape",
+            server_display_name: "Firecrawl",
+            icon_url: "https://firecrawl.dev/icon.png",
+          },
+        ],
+      } as unknown as SDKMessage);
+      harness.query.emit({
+        type: "user",
+        session_id: "sdk-session-mcp",
+        uuid: "user-mcp",
+        parent_tool_use_id: null,
+        message: {
+          role: "user",
+          content: [{ type: "tool_result", tool_use_id: "toolu_fc", content: "# Example" }],
+        },
+      } as unknown as SDKMessage);
+      harness.query.emit({
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        errors: [],
+        session_id: "sdk-session-mcp",
+        uuid: "result-mcp",
+      } as unknown as SDKMessage);
+
+      const events = Array.from(yield* Fiber.join(eventsFiber));
+      const presented = {
+        title: "Firecrawl scrape",
+        source: {
+          key: "mcp:claude_ai_firecrawl",
+          name: "Firecrawl",
+          iconUrl: "https://firecrawl.dev/icon.png",
+        },
+      };
+      const lifecycle = events.flatMap((event) =>
+        (event.type === "item.started" ||
+          event.type === "item.updated" ||
+          event.type === "item.completed") &&
+        event.itemId === "toolu_fc"
+          ? [[event.type, event.payload.presentation ?? null] as const]
+          : [],
+      );
+      // Started before Claude Code named it; every step after says it.
+      assert.deepStrictEqual(lifecycle[0], ["item.started", null]);
+      assert.deepStrictEqual(lifecycle.slice(1), [
+        ["item.updated", presented],
+        ["item.updated", presented],
+        ["item.completed", presented],
       ]);
     }).pipe(
       Effect.provideService(Random.Random, makeDeterministicRandomService()),

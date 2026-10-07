@@ -202,6 +202,7 @@ import { crewRunsOn } from "./zerops/crew/CrewEditors.logic";
 import { crewChatNotices } from "./zerops/crew/crewChatNotices";
 import { crewChatEntries } from "./zerops/crew/crewChatSeams";
 import { crewComposerMentions, crewMessageCommand } from "./zerops/crew/crewComposerSend";
+import { queuedSendAwaitsServer } from "./chat/queuedMessageSender.logic";
 import {
   crewMessagePlaceholder,
   crewRunsOnWord,
@@ -318,7 +319,10 @@ import {
   type TerminalContextSelection,
 } from "../lib/terminalContext";
 import {
+  beginQueuedSend,
+  drainGenerationOf,
   isQueuedMessageDue,
+  settleQueuedSend,
   queuedSendAttemptIds,
   latestCompletedToolActivityId,
   type QueuedComposerMessage,
@@ -443,6 +447,7 @@ import {
   collectUserMessageBlobPreviewUrls,
   createLocalDispatchSnapshot,
   deriveComposerSendState,
+  projectScriptKeybindingWrites,
   dismissBranchMismatchForSession,
   hasEnvironmentReconnectWarningGraceElapsed,
   latestTurnStartFailureId,
@@ -608,6 +613,17 @@ type EnvironmentUnavailableState = {
   readonly connection: EnvironmentConnectionPresentation;
 };
 
+/** The effort written into a prompt's text, for the agents that read it there; null where none is. */
+function outgoingPromptEffort(params: {
+  provider: ProviderDriverKind;
+  model: string | null;
+  models: ReadonlyArray<ServerProvider["models"][number]>;
+  effort: string | null;
+}): string | null {
+  const caps = getProviderModelCapabilities(params.models, params.model, params.provider);
+  return resolvePromptInjectedEffort(caps, params.effort) ?? null;
+}
+
 function formatOutgoingPrompt(params: {
   provider: ProviderDriverKind;
   model: string | null;
@@ -615,9 +631,7 @@ function formatOutgoingPrompt(params: {
   effort: string | null;
   text: string;
 }): string {
-  const caps = getProviderModelCapabilities(params.models, params.model, params.provider);
-  const promptEffort = resolvePromptInjectedEffort(caps, params.effort);
-  return applyClaudePromptEffortPrefix(params.text, promptEffort);
+  return applyClaudePromptEffortPrefix(params.text, outgoingPromptEffort(params));
 }
 const SCRIPT_TERMINAL_COLS = 120;
 const SCRIPT_TERMINAL_ROWS = 30;
@@ -1372,6 +1386,9 @@ export default function ChatView(props: ChatViewProps) {
   );
   const routeThreadKey = useMemo(() => scopedThreadKey(routeThreadRef), [routeThreadRef]);
   const updateProjectScriptSettings = useAtomCommand(serverEnvironment.updateSettings, {
+    reportFailure: false,
+  });
+  const removeKeybinding = useAtomCommand(serverEnvironment.removeKeybinding, {
     reportFailure: false,
   });
   const upsertKeybinding = useAtomCommand(serverEnvironment.upsertKeybinding, {
@@ -3610,18 +3627,44 @@ export default function ChatView(props: ChatViewProps) {
         command: input.keybindingCommand,
       });
 
-      if (isElectron && keybindingRule) {
-        return mapAtomCommandResult(
-          await upsertKeybinding({
-            environmentId,
-            input: keybindingRule,
-          }),
-          () => undefined,
-        );
+      if (!isElectron) return updateResult;
+      const scriptId =
+        input.keybindingCommand === null
+          ? null
+          : projectScriptIdFromCommand(input.keybindingCommand);
+      const writes = projectScriptKeybindingWrites({
+        rule: keybindingRule,
+        command: input.keybindingCommand,
+        bound: environmentById.get(environmentId)?.serverConfig?.keybindings ?? [],
+        retainedElsewhere:
+          scriptId !== null &&
+          allProjects.some(
+            (other) =>
+              other.environmentId === environmentId &&
+              other.id !== input.projectId &&
+              resolveProjectScripts(settings, other).some((script) => script.id === scriptId),
+          ),
+      });
+      for (const rule of writes.remove) {
+        const removed = await removeKeybinding({ environmentId, input: rule });
+        if (removed._tag === "Failure") return mapAtomCommandResult(removed, () => undefined);
       }
-      return updateResult;
+      return writes.upsert === null
+        ? updateResult
+        : mapAtomCommandResult(
+            await upsertKeybinding({ environmentId, input: writes.upsert }),
+            () => undefined,
+          );
     },
-    [environmentId, updateProjectScriptSettings, upsertKeybinding],
+    [
+      allProjects,
+      environmentById,
+      environmentId,
+      removeKeybinding,
+      settings,
+      updateProjectScriptSettings,
+      upsertKeybinding,
+    ],
   );
   const saveProjectScript = useCallback(
     async (input: NewProjectScriptInput): Promise<AtomCommandResult<void, unknown>> => {
@@ -6603,6 +6646,18 @@ export default function ChatView(props: ChatViewProps) {
         terminalContexts: [...composerTerminalContexts],
         reviewComments: [...composerReviewComments],
         submissionIntent,
+        // What it leaves with if its conversation is not on screen by then.
+        sendSettings: {
+          modelSelection: ctxSelectedModelSelection,
+          runtimeMode,
+          interactionMode: sendInteractionMode,
+          promptEffort: outgoingPromptEffort({
+            provider: ctxSelectedProvider,
+            model: ctxSelectedModel,
+            models: ctxSelectedProviderModels,
+            effort: ctxSelectedPromptEffort,
+          }),
+        },
         queuedAfterToolActivityId: latestCompletedToolActivityId(threadActivities),
         createdAt: new Date().toISOString(),
       });
@@ -6689,14 +6744,13 @@ export default function ChatView(props: ChatViewProps) {
     // Every early return above leaves a queued message in the queue for a
     // later retry. From here on a failure hands it back held.
     if (queuedMessage) {
+      // Marked in flight for both senders: the next message waits for this one.
       const taken = activeThreadKey
-        ? useQueuedMessageStore
-            .getState()
-            .take(
-              activeThreadKey,
-              queuedMessage.id,
-              latestCompletedToolActivityId(threadActivities),
-            )
+        ? beginQueuedSend(
+            activeThreadKey,
+            queuedMessage.id,
+            latestCompletedToolActivityId(threadActivities),
+          )
         : null;
       if (!taken) {
         sendInFlightRef.current = false;
@@ -6706,7 +6760,7 @@ export default function ChatView(props: ChatViewProps) {
     // Stop drains the queue. A queued send whose upload was still running at
     // that moment must not start a turn afterwards; it checks this before
     // dispatch and hands the message back to the composer instead.
-    const drainGenerationAtTake = useQueuedMessageStore.getState().drainGeneration;
+    const drainGenerationAtTake = activeThreadKey ? drainGenerationOf(activeThreadKey) : 0;
     // A queued send always knows its ids: a retry after an interruption goes with the same ones.
     const attemptIds =
       queuedMessage === undefined
@@ -6726,6 +6780,7 @@ export default function ChatView(props: ChatViewProps) {
       message: QueuedComposerMessage | undefined = queuedMessage,
     ) => {
       if (!message || !activeThreadKey) return;
+      settleQueuedSend(activeThreadKey, null);
       const outcome = queuedSendOutcome(failure, message.retries ?? 0);
       const store = useQueuedMessageStore.getState();
       if (outcome.action === "requeue") {
@@ -6796,9 +6851,11 @@ export default function ChatView(props: ChatViewProps) {
     }
     if (
       queuedMessage &&
-      useQueuedMessageStore.getState().drainGeneration !== drainGenerationAtTake
+      activeThreadKey &&
+      drainGenerationOf(activeThreadKey) !== drainGenerationAtTake
     ) {
       sendInFlightRef.current = false;
+      settleQueuedSend(activeThreadKey, null);
       restoreQueuedMessagesToComposer([queuedMessage]);
       return;
     }
@@ -6836,6 +6893,7 @@ export default function ChatView(props: ChatViewProps) {
       }
       const crewResult = await sendCrewCommand({ environmentId, input: crewMessage });
       if (crewResult._tag === "Success") {
+        if (queuedMessage && activeThreadKey) settleQueuedSend(activeThreadKey, null);
         if (supportsAttachmentUploads) {
           releaseAttachmentUploads(composerImagesSnapshot);
           releaseAttachmentUploads(composerFilesSnapshot);
@@ -7097,6 +7155,9 @@ export default function ChatView(props: ChatViewProps) {
       const toldVault =
         vaultTurn.note !== null && turnAgentNotes.includes(vaultTurn.note) ? vaultTurn.changes : [];
       turnStartAttempted = true;
+      if (queuedMessage && activeThreadKey) {
+        settleQueuedSend(activeThreadKey, createLocalDispatchSnapshot(activeThread));
+      }
       const startResult = await startThreadTurn({
         environmentId,
         input: {
@@ -7252,6 +7313,10 @@ export default function ChatView(props: ChatViewProps) {
       }
     }
     sendInFlightRef.current = false;
+    // A queued send that ended without its turn leaves nothing in flight for the next to wait on.
+    if (queuedMessage && activeThreadKey && !turnStartSucceeded) {
+      settleQueuedSend(activeThreadKey, null);
+    }
     if (!turnStartSucceeded) {
       setDockedDraftHeroThreadKey((currentThreadKey) =>
         currentThreadKey === activeThreadKey ? null : currentThreadKey,
@@ -7275,11 +7340,28 @@ export default function ChatView(props: ChatViewProps) {
   // user resolves them.
   const queueBlockedByPendingRequest =
     activePendingApproval !== null || pendingUserInputs.length > 0;
+  // The open conversation sends its own queue; the root sender sends the others'
+  // (`QueuedMessageSender`). A send in flight from either is waited for here.
+  useEffect(
+    () =>
+      activeThreadKey ? useQueuedMessageStore.getState().holdOpen(activeThreadKey) : undefined,
+    [activeThreadKey],
+  );
+  const queuedSendInFlight = useQueuedMessageStore((state) =>
+    activeThreadKey ? state.queuedSendByThreadKey[activeThreadKey] : undefined,
+  );
+  const queuedSendInFlightAwaitsServer = queuedSendAwaitsServer({
+    send: queuedSendInFlight,
+    thread: activeThread ?? null,
+    phase,
+    pendingRequest: queueBlockedByPendingRequest,
+  });
   // onSend bails early on transient gates (environment offline, checkpoint
   // rewinding, messages loading, no provider yet, zerops D6 block) and
   // leaves the message queued. Re-run when any of them clear so a due
   // message does not wait for an unrelated phase change.
   const queueSendGate =
+    queuedSendInFlightAwaitsServer ||
     activeEnvironmentUnavailable ||
     isRevertingCheckpoint ||
     threadDetailLoading ||

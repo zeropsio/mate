@@ -28,7 +28,13 @@ import {
   type ReviewDiffPreviewSource,
   type VcsRef,
 } from "@t3tools/contracts";
-import { dedupeRemoteBranchesWithLocalMatches, normalizeGitRemoteUrl } from "@t3tools/shared/git";
+import {
+  dedupeRemoteBranchesWithLocalMatches,
+  flattenTemporaryWorktreeBranchName,
+  isTemporaryWorktreeBranch,
+  normalizeGitRemoteUrl,
+  WORKTREE_BRANCH_PREFIX,
+} from "@t3tools/shared/git";
 import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import { compactTraceAttributes } from "@t3tools/shared/observability";
 import { decodeJsonResult } from "@t3tools/shared/schemaJson";
@@ -491,7 +497,7 @@ function classifyGitFailure(stderr: string): GitCommandFailureReason | null {
       (line) =>
         GIT_DIAGNOSTIC_LINE_PATTERN.test(line) ||
         // A remote hook can echo ssh's wording; only the local ssh's line counts.
-        (!/^remote:/.test(line) && SSH_TRANSPORT_REFUSAL_PATTERN.test(line)),
+        (!line.startsWith("remote:") && SSH_TRANSPORT_REFUSAL_PATTERN.test(line)),
     )
     .join("\n");
   if (diagnostics.length === 0) return null;
@@ -3232,12 +3238,20 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
   const createWorktree: GitVcsDriver.GitVcsDriver["Service"]["createWorktree"] = Effect.fn(
     "createWorktree",
   )(function* (input, options) {
-    const targetBranch = input.newRefName ?? input.refName;
+    // Git stores refs as paths: a plain `t3code` branch makes every
+    // `t3code/<hex>` ref impossible, so a temporary name takes the flat sibling.
+    const newRefName =
+      input.newRefName !== undefined &&
+      isTemporaryWorktreeBranch(input.newRefName) &&
+      (yield* branchExists(input.cwd, WORKTREE_BRANCH_PREFIX))
+        ? flattenTemporaryWorktreeBranchName(input.newRefName)
+        : input.newRefName;
+    const targetBranch = newRefName ?? input.refName;
     const sanitizedBranch = targetBranch.replace(/\//g, "-");
     const repoName = path.basename(input.cwd);
     const worktreePath = input.path ?? path.join(worktreesDir, repoName, sanitizedBranch);
-    const args = input.newRefName
-      ? ["worktree", "add", "-b", input.newRefName, "--end-of-options", worktreePath, input.refName]
+    const args = newRefName
+      ? ["worktree", "add", "-b", newRefName, "--end-of-options", worktreePath, input.refName]
       : ["worktree", "add", "--end-of-options", worktreePath, input.refName];
 
     yield* executeGit("GitVcsDriver.createWorktree", input.cwd, args, {
@@ -3288,7 +3302,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       );
     }
 
-    if (input.newRefName && input.baseRefName) {
+    if (newRefName && input.baseRefName) {
       const remoteNames = yield* listRemoteNames(input.cwd).pipe(Effect.orElseSucceed(() => []));
       const parsedBaseRef = parseRemoteRefWithRemoteNames(
         input.baseRefName,
@@ -3297,7 +3311,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       const baseBranch = parsedBaseRef?.branchName ?? input.baseRefName;
       yield* runGit("GitVcsDriver.createWorktree.configureBaseRef", input.cwd, [
         "config",
-        `branch.${input.newRefName}.gh-merge-base`,
+        `branch.${newRefName}.gh-merge-base`,
         baseBranch,
       ]);
     }

@@ -77,7 +77,14 @@ export type RuntimeTurnState = typeof RuntimeTurnState.Type;
 const RuntimePlanStepStatus = Schema.Literals(["pending", "inProgress", "completed"]);
 export type RuntimePlanStepStatus = typeof RuntimePlanStepStatus.Type;
 
-const RuntimeItemStatus = Schema.Literals(["inProgress", "completed", "failed", "declined"]);
+/** `stopped`: the call was cancelled before it ran to an answer — no result, no failure. */
+const RuntimeItemStatus = Schema.Literals([
+  "inProgress",
+  "completed",
+  "failed",
+  "declined",
+  "stopped",
+]);
 export type RuntimeItemStatus = typeof RuntimeItemStatus.Type;
 
 const RuntimeContentStreamKind = Schema.Literals([
@@ -363,6 +370,25 @@ const TurnDiffUpdatedPayload = Schema.Struct({
 });
 export type TurnDiffUpdatedPayload = typeof TurnDiffUpdatedPayload.Type;
 
+/**
+ * How a call presents itself where its tool name says too little: an MCP tool's own title and
+ * the server it comes from, with that server's icon. Provider-neutral; derived by
+ * `mcpToolPresentation` (`@t3tools/shared/toolActivity`).
+ */
+export const ToolPresentation = Schema.Struct({
+  title: Schema.optional(TrimmedNonEmptyStringSchema),
+  source: Schema.optional(
+    Schema.Struct({
+      /** `mcp:<server>`, lowercased: one source however its name is spelled. */
+      key: TrimmedNonEmptyStringSchema,
+      name: TrimmedNonEmptyStringSchema,
+      iconUrl: Schema.optional(TrimmedNonEmptyStringSchema),
+      iconUrlDark: Schema.optional(TrimmedNonEmptyStringSchema),
+    }),
+  ),
+});
+export type ToolPresentation = typeof ToolPresentation.Type;
+
 export const ItemLifecyclePayload = Schema.Struct({
   itemType: CanonicalItemType,
   status: Schema.optional(RuntimeItemStatus),
@@ -388,6 +414,8 @@ export const ItemLifecyclePayload = Schema.Struct({
    * call that came back.
    */
   unreturned: Schema.optional(Schema.Boolean),
+  /** How the call presents itself, where its agent says (an MCP tool's title and server). */
+  presentation: Schema.optional(ToolPresentation),
 });
 export type ItemLifecyclePayload = typeof ItemLifecyclePayload.Type;
 

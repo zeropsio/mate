@@ -35,6 +35,7 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
+  useId,
   useImperativeHandle,
   useLayoutEffect,
   useMemo,
@@ -152,7 +153,11 @@ import {
 import { ProviderModelPicker } from "./ProviderModelPicker";
 import { composerThreadControlKey } from "./composerControlMemory";
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
-import { type ComposerCommandItem, ComposerCommandMenu } from "./ComposerCommandMenu";
+import {
+  type ComposerCommandItem,
+  ComposerCommandMenu,
+  composerSuggestionOptionId,
+} from "./ComposerCommandMenu";
 import { ComposerPendingApprovalActions } from "./ComposerPendingApprovalActions";
 import { ComposerPrimaryActions } from "./ComposerPrimaryActions";
 import { ComposerPendingApprovalPanel } from "./ComposerPendingApprovalPanel";
@@ -1544,6 +1549,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   ]);
 
   const composerMenuOpen = Boolean(composerTrigger);
+  // The suggestion list's id, apart for every composer on the page: the editor points a screen
+  // reader at the option the keys are on by it.
+  const composerSuggestionListId = `${useId()}-suggestions`;
   const composerMenuSearchKey = composerTrigger
     ? `${composerTrigger.kind}:${composerTrigger.query.trim().toLowerCase()}`
     : null;
@@ -1590,6 +1598,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   );
 
   const isComposerApprovalState = activePendingApproval !== null;
+  const composerSuggestionsVisible = composerMenuOpen && !isComposerApprovalState;
   const activePendingUserInput = pendingUserInputs[0] ?? null;
   const isChoiceOnlyPendingQuestion =
     activePendingProgress?.activeQuestion?.allowCustomAnswer === false;
@@ -3664,9 +3673,17 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   </ComposerCommandMenuLayer>
                 )}
 
-                {composerMenuOpen && !isComposerApprovalState && (
+                <div role="status" aria-atomic="true" className="sr-only">
+                  {composerSuggestionsVisible && composerMenuItems.length === 0
+                    ? isComposerMenuLoading
+                      ? "Searching workspace files..."
+                      : composerMenuEmptyState
+                    : ""}
+                </div>
+                {composerSuggestionsVisible && (
                   <ComposerCommandMenuLayer anchor={composerMenuAnchor}>
                     <ComposerCommandMenu
+                      listId={composerSuggestionListId}
                       items={composerMenuItems}
                       resolvedTheme={resolvedTheme}
                       isLoading={isComposerMenuLoading}
@@ -3706,6 +3723,18 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
 
                 <div className="relative">
                   <ComposerPromptEditor
+                    ariaLabel="Message"
+                    suggestionListId={composerSuggestionListId}
+                    activeSuggestionId={
+                      composerSuggestionsVisible &&
+                      composerMenuItems.length > 0 &&
+                      activeComposerMenuItem
+                        ? composerSuggestionOptionId(
+                            composerSuggestionListId,
+                            activeComposerMenuItem.id,
+                          )
+                        : undefined
+                    }
                     editorRef={composerEditorRef}
                     value={
                       isComposerApprovalState

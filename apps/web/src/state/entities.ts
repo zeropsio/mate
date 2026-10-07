@@ -265,6 +265,14 @@ export function readThreadShell(ref: ScopedThreadRef): EnvironmentThreadShell | 
   return appAtomRegistry.get(environmentThreadShells.threadShellAtom(ref));
 }
 
+/** The thread as `useThread` returns it, read outside React. */
+export function readThread(ref: ScopedThreadRef): EnvironmentThread | null {
+  return mergeEnvironmentThread(
+    appAtomRegistry.get(environmentThreadDetails.detailAtom(ref)),
+    readThreadShell(ref),
+  );
+}
+
 /** Whether an environment accepts worktree-backed threads. Missing retains
     the upstream behavior for older servers and while the descriptor loads. */
 export function readEnvironmentAllowsWorktrees(environmentId: EnvironmentId): boolean {
