@@ -85,6 +85,19 @@ describe("a Mate's changes in HQ, as the flow shows them", () => {
   });
   const flow = (changes: ReadonlyArray<HqChange>) => flowChanges({ changes, hqAddress: `${HQ}/` });
 
+  it.each(["required", "advisory", "unknown"] as const)(
+    "carries exact-head %s pipeline evidence into review",
+    (requirement) => {
+      const pipeline = {
+        head: SHA,
+        requirements: "known",
+        checks: [{ id: "build", name: "Build", requirement, state: "running" }],
+      } as const;
+      expect(flowChange(change({ pipeline }), HQ).pipeline).toEqual(pipeline);
+      expect(flowChange(change(), HQ).pipeline).toBeUndefined();
+    },
+  );
+
   // SPEC §3.2c: the recipe repository's change is a recipe change; its row wears the tag, so its
   // line is its number alone, and the one zcp titles is the Mate's proposal of the recipe.
   it("draws a change in the recipe repository as a recipe change, its proposal known by title", () => {

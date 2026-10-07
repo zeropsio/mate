@@ -564,18 +564,29 @@ describe("a change merged into main, or closed", () => {
           yield* ada.commit("a.txt", "ada\n", "Ada's a");
           const { head } = yield* ada.push("P_MATE", 1);
           yield* recorded(url, 1, head);
-          const close = (session: string) =>
-            call("POST", `/api/apps/${appId}/changes/appdev/1/close`, { session });
+          const close = (session: string, expectedHead = head) =>
+            call("POST", `/api/apps/${appId}/changes/appdev/1/close`, {
+              session,
+              body: { expectedHead },
+            });
 
           const reader = yield* sessionFor(call, "door-reader");
           assert.deepStrictEqual((yield* close(reader)).body, {
             code: "forbidden",
             reason: "not_app_developer",
           });
-          const closed = yield* close(owner);
+          yield* ada.commit("new.txt", "new\n", "A push after review");
+          const currentHead = (yield* ada.push("P_MATE", 1)).head;
+          yield* recorded(url, 1, currentHead);
+          const staleClose = yield* close(owner);
+          assert.deepStrictEqual(
+            [staleClose.status, staleClose.body],
+            [409, { code: "conflict", reason: "head_moved" }],
+          );
+          const closed = yield* close(owner, currentHead);
           assert.strictEqual(closed.status, 200);
           const change = closed.body as Record<string, unknown>;
-          assert.deepStrictEqual([change["state"], change["head"]], ["closed", head]);
+          assert.deepStrictEqual([change["state"], change["head"]], ["closed", currentHead]);
           assert.isString(change["closedAt"]);
           yield* rowsWhere(
             url,
@@ -584,7 +595,7 @@ describe("a change merged into main, or closed", () => {
           );
           assert.strictEqual(
             yield* git.checked(["ls-remote", "origin", "refs/heads/mate/P_MATE/1"], ada.work),
-            `${head}\trefs/heads/mate/P_MATE/1`,
+            `${currentHead}\trefs/heads/mate/P_MATE/1`,
           );
           yield* ada.commit("b.txt", "b\n", "More");
           const later = yield* ada.push("P_MATE", 1);
@@ -620,6 +631,7 @@ describe("a change merged into main, or closed", () => {
           );
           const closed = yield* call("POST", `/api/apps/${appId}/changes/appdev/1/close`, {
             session: owner,
+            body: { expectedHead: null },
           });
           assert.deepStrictEqual(
             [closed.status, (closed.body as { readonly state: string }).state],

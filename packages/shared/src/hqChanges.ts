@@ -119,7 +119,23 @@ export const JUDGED_PER_MAIN_MOVE = 20;
  * that branch was last pushed to, none until the first push lands. Once merged, `mergedSha` is the
  * squash on `main` and `landedHead` the head it squashed.
  */
+/** Requirements and results supplied by the repository owner for one exact head. */
+export const ChangePipeline = Schema.Struct({
+  head: Sha,
+  requirements: Schema.Literals(["known", "unknown"]),
+  checks: Schema.Array(
+    Schema.Struct({
+      id: Schema.String,
+      name: Schema.String,
+      requirement: Schema.Literals(["required", "advisory", "unknown"]),
+      state: Schema.Literals(["running", "passed", "failed", "unknown"]),
+    }),
+  ),
+});
+export type ChangePipeline = typeof ChangePipeline.Type;
+
 export const HqChange = Schema.Struct({
+  pipeline: Schema.optionalKey(ChangePipeline),
   appId: Schema.String,
   repo: RepoName,
   /** Grows within the repository, from 1. */
@@ -428,6 +444,9 @@ export const PostCommentRequest = Schema.Struct({ body: CommentBody });
  * with one of {@link MERGE_REFUSALS}. Its branch stays.
  */
 export const MergeChangeRequest = Schema.Struct({ expectedHead: Sha });
+
+/** A close applies only to the head the person reviewed, including an unpushed change. */
+export const CloseChangeRequest = Schema.Struct({ expectedHead: Schema.NullOr(Sha) });
 
 /**
  * Why HQ does not merge: the head moved since it was shown; the change conflicts with `main`, would

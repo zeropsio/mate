@@ -275,7 +275,7 @@ function ChangeReviewData({
   };
   const close = async () => {
     setClosing({ kind: "running" });
-    const outcome = await verbs.close(target.groupId, change);
+    const outcome = await verbs.close(target.groupId, change, pull.headSha ?? null);
     setClosing(outcome.ok ? { kind: "done" } : { kind: "refused", reason: outcome.reason });
   };
 

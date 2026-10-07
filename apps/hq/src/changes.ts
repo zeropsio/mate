@@ -270,7 +270,8 @@ export class Changes extends Context.Service<
       appId: string,
       repo: string,
       number: number,
-    ) => Effect.Effect<HqChange, ReadError | NotLeader>;
+      expectedHead: string | null,
+    ) => Effect.Effect<HqChange, ReadError | NotLeader | GitError>;
     /**
      * The changes of every application the person may read them of, by application id: what the
      * structure socket carries (`stream.ts`).
@@ -601,12 +602,13 @@ export const changesLayer: Layer.Layer<
     /** In a fenced write: the change, locked, while it is open. Whose it is, `can` has decided. */
     const openChangeLocked = (appId: string, repo: string, number: number) =>
       Effect.gen(function* () {
-        const [change] = yield* sql<{ readonly state: string }>`
-          SELECT state FROM hq_change
+        const [change] = yield* sql<{ readonly state: string; readonly head: string | null }>`
+          SELECT state, head FROM hq_change
           WHERE app_id = ${appId}::uuid AND repo = ${repo} AND number = ${number}
           FOR UPDATE`;
         if (change === undefined) return yield* refuse("change_not_found", "change_not_found");
         if (change.state !== "open") return yield* refuse("conflict", "change_not_open");
+        return change;
       });
 
     /**
@@ -743,12 +745,22 @@ export const changesLayer: Layer.Layer<
       });
 
     /** The change closed without merging, as `by` says; its branch stays. */
-    const close = (appId: string, repo: string, number: number, by: object) =>
+    const close = (
+      appId: string,
+      repo: string,
+      number: number,
+      by: object,
+      expectedHead: string | null,
+    ) =>
       touched(
         leader.write(
           Effect.gen(function* () {
             const change = yield* changeIn(appId, repo, number);
-            yield* openChangeLocked(change.appId, change.repo, number);
+            const current = yield* openChangeLocked(change.appId, change.repo, number);
+            if (current.head !== expectedHead) return yield* refuse("conflict", "head_moved");
+            const git = yield* gitHost.git;
+            const head = yield* git.changeHead({ appId, id: repo }, change.mateProjectId, number);
+            if (head !== expectedHead) return yield* refuse("conflict", "head_moved");
             return yield* closeLocked(change, by);
           }),
         ),
@@ -1340,10 +1352,10 @@ export const changesLayer: Layer.Layer<
           const change = yield* changeIn(appId, repo, number);
           return yield* land(change, expectedHead, { userId }, asItIs);
         }),
-      closeChange: (userId, appId, repo, number) =>
+      closeChange: (userId, appId, repo, number, expectedHead) =>
         Effect.andThen(
           personApp(userId, appId, "close_change"),
-          close(appId, repo, number, { userId }),
+          close(appId, repo, number, { userId }, expectedHead),
         ),
       attachment: (userId, appId, repo, number, id) =>
         Effect.gen(function* () {

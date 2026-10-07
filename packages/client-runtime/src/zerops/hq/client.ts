@@ -367,7 +367,7 @@ export interface HqApi {
    */
   readonly mergeChange: (link: ChangeLink, expectedHead: string) => Promise<Asked<HqChange>>;
   /** Closes a change without merging it, as the person; its branch stays. */
-  readonly closeChange: (link: ChangeLink) => Promise<HqChange>;
+  readonly closeChange: (link: ChangeLink, expectedHead: string | null) => Promise<HqChange>;
   /** A picture of a change, read as the person (`attachmentPath`). */
   readonly changeAttachment: (link: AttachmentLink, signal?: AbortSignal) => Promise<Blob>;
   /**
@@ -1119,10 +1119,16 @@ export function makeHqApi(input: {
         async () => heldAsked(await changeIn(link, "merged")),
         ["already_merged", "change_not_open"],
       ),
-    closeChange: (link) =>
+    closeChange: (link, expectedHead) =>
       confirmed(
         async () =>
-          readChange(await authorized(`${changePath(link)}/close`, { method: "POST" }, true)),
+          readChange(
+            await authorized(
+              `${changePath(link)}/close`,
+              { method: "POST", body: JSON.stringify({ expectedHead }) },
+              true,
+            ),
+          ),
         () => changeIn(link, "closed"),
         ["change_not_open"],
       ),

@@ -37,6 +37,7 @@ export type FlowPullRequestKind = "code" | "recipe";
 
 /** One open pull request of the project, as every surface shows it. */
 export interface FlowPullRequest {
+  readonly pipeline?: HqChange["pipeline"] | undefined;
   /** The repository's name in the group's org. */
   readonly repository: string;
   readonly number: number;
@@ -140,6 +141,7 @@ const FALLBACK_BASE = "main";
 export function flowChange(change: HqChange, hqAddress: string): FlowPullRequest {
   const merged = change.state === "merged";
   return {
+    pipeline: change.pipeline,
     repository: change.repo,
     number: change.number,
     title: change.title,

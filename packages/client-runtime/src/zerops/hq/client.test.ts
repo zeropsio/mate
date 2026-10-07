@@ -1140,7 +1140,7 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
     const { hq, api: hqApi } = api((seen) =>
       seen.path === "/api/apps/app-1/changes/app/3/close" ? json(200, CLOSED) : undefined,
     );
-    await expect(hqApi.closeChange(LINK)).resolves.toEqual(CLOSED);
+    await expect(hqApi.closeChange(LINK, "a".repeat(40))).resolves.toEqual(CLOSED);
     expect(hq.seen.at(-1)).toMatchObject({ method: "POST", authorization: "Bearer session-1" });
   });
 
@@ -1244,7 +1244,7 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
         seen.path === "/api/apps/app-1/changes/app/3"
           ? json(200, { ...DETAIL, change: { ...CHANGE, state: "closed" } })
           : undefined,
-      ask: (hqApi) => hqApi.closeChange(LINK),
+      ask: (hqApi) => hqApi.closeChange(LINK, "a".repeat(40)),
       made: { ...CHANGE, state: "closed" },
     },
     {
@@ -1390,7 +1390,7 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
         seen.path === "/api/apps/app-1/changes/app/3"
           ? json(200, { ...DETAIL, change: { ...CHANGE, state: "closed" } })
           : undefined,
-      ask: (hqApi) => hqApi.closeChange(LINK),
+      ask: (hqApi) => hqApi.closeChange(LINK, "a".repeat(40)),
       made: { ...CHANGE, state: "closed" },
     },
     {
@@ -1413,7 +1413,7 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
         seen.path === "/api/apps/app-1/changes/app/3"
           ? json(200, { ...DETAIL, change: { ...CHANGE, state: "merged" } })
           : undefined,
-      ask: (hqApi) => hqApi.closeChange(LINK),
+      ask: (hqApi) => hqApi.closeChange(LINK, "a".repeat(40)),
       made: "refused",
     },
     {

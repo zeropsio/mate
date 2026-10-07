@@ -91,6 +91,7 @@ describe("a takeover after git moved past HQ's records", () => {
           yield* open(ada.auth, "Ada's first");
           yield* first.call("POST", `/api/apps/${appId}/changes/appdev/1/close`, {
             session: owner,
+            body: { expectedHead: null },
           });
           yield* open(ada.auth, "Ada's second");
           const bo = yield* anotherMate(first.call, first.fake, owner, appId, "P_MATE2");

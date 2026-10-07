@@ -107,6 +107,7 @@ import {
   EditChangeRequest,
   EnsureRepoRequest,
   MergeChangeRequest,
+  CloseChangeRequest,
   OpenChangeRequest,
   PostCommentRequest,
   RepoName,
@@ -726,11 +727,15 @@ const routes = (
       "/api/apps/:appId/changes/:repo/:n/close",
       handle(
         Effect.gen(function* () {
+          const { expectedHead } = yield* jsonBody(CloseChangeRequest, BODY_LIMIT);
           return yield* outliving(
             Effect.gen(function* () {
               const { userId } = yield* principal;
               const { appId, repo, number } = yield* appChangePath;
-              return json(yield* (yield* Changes).closeChange(userId, appId, repo, number), 200);
+              return json(
+                yield* (yield* Changes).closeChange(userId, appId, repo, number, expectedHead),
+                200,
+              );
             }),
           );
         }),

@@ -677,7 +677,7 @@ describe("ZeropsChangeReview: a change its project's flow does not hold yet", ()
       expect(host.textContent).toContain("Close #1 without merging?");
       await pressed(host, "Close without merging");
       expect(account.verbs).toEqual([
-        ["close", "group-orchard", { repository: "apidev", number: 1 }],
+        ["close", "group-orchard", { repository: "apidev", number: 1 }, "d".repeat(40)],
       ]);
       expect(host.textContent).toContain("Closed without merging");
     });

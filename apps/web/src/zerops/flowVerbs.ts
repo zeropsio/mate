@@ -57,10 +57,11 @@ export interface FlowVerbs {
     change: { readonly repository: string; readonly number: number },
     expectedHead: string | undefined,
   ) => Promise<FlowVerbOutcome>;
-  /** A change closed without merging. */
+  /** A change closed without merging, only at the head the person reviewed. */
   readonly close: (
     groupId: string,
     change: { readonly repository: string; readonly number: number },
+    expectedHead: string | null,
   ) => Promise<FlowVerbOutcome>;
   /**
    * "Run again": the environment `projectId`'s newest deploy of `service`, at `sha`, asked again;
@@ -244,11 +245,12 @@ export function useFlowVerbs(): FlowVerbs {
     (
       groupId: string,
       change: { readonly repository: string; readonly number: number },
+      expectedHead: string | null,
     ): Promise<FlowVerbOutcome> => {
       const link: ChangeLink = { appId: groupId, repo: change.repository, number: change.number };
       return run(
         { kind: "close", groupId, ...change },
-        (orgId) => ({ kind: "close-change", orgId, link }),
+        (orgId) => ({ kind: "close-change", orgId, link, expectedHead }),
         false,
       );
     },

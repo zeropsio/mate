@@ -124,7 +124,7 @@ function flowWrite(
       );
     case "close-change":
       return Effect.map(
-        write(() => api.closeChange(intent.link)),
+        write(() => api.closeChange(intent.link, intent.expectedHead)),
         () => receipt(requestId, changeHandle(intent.link), undefined, PENDING),
       );
   }

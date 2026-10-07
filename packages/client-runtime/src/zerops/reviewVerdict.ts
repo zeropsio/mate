@@ -20,6 +20,7 @@
  * @module reviewVerdict
  */
 
+import type { ChangePipeline } from "@t3tools/shared/hqChanges";
 import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
 
 import type { MergeabilityKind } from "./changeMergeability.ts";
@@ -151,18 +152,6 @@ export interface ReviewQuestion {
   readonly options: ReadonlyArray<{ readonly tier: GroupEnvironmentTier; readonly label: string }>;
   /** The word that closes the question and keeps the slots in the application's page. */
   readonly dismiss: string;
-}
-
-/** Pipeline evidence for one shown head. Only the forge/repository may mark a check required. */
-interface ChangePipeline {
-  readonly head: string;
-  readonly requirements: "known" | "unknown";
-  readonly checks: ReadonlyArray<{
-    readonly id: string;
-    readonly name: string;
-    readonly requirement: "required" | "advisory" | "unknown";
-    readonly state: "running" | "passed" | "failed" | "unknown";
-  }>;
 }
 
 export interface ReviewModel {

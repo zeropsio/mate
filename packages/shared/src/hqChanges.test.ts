@@ -16,6 +16,8 @@ import {
   EditChangeRequest,
   EnsureRepoRequest,
   HqChange,
+  ChangePipeline,
+  CloseChangeRequest,
   MergeChangeRequest,
   MateChanges,
   OpenChangeRequest,
@@ -434,4 +436,27 @@ describe("hqChanges — a merge", () => {
   it("lands as Gitea's squash did: the change's title, its number after it", () => {
     expect(mergeSubject("Add a login page", 7)).toBe("Add a login page (#7)");
   });
+});
+
+describe("head-scoped review evidence", () => {
+  it.each(["required", "advisory", "unknown"] as const)(
+    "retains %s check evidence for its exact head",
+    (requirement) => {
+      const pipeline = {
+        head: "a".repeat(40),
+        requirements: "unknown",
+        checks: [{ id: "build", name: "Build", requirement, state: "running" }],
+      };
+      expect(Schema.decodeUnknownSync(ChangePipeline)(pipeline)).toEqual(pipeline);
+    },
+  );
+  it.each([null, "a".repeat(40)])(
+    "carries the reviewed head even before a first push (%s)",
+    (expectedHead) => {
+      expect(Schema.decodeUnknownSync(CloseChangeRequest)({ expectedHead })).toEqual({
+        expectedHead,
+      });
+      expect(() => Schema.decodeUnknownSync(CloseChangeRequest)({})).toThrow();
+    },
+  );
 });

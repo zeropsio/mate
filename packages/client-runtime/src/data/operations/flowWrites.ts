@@ -66,6 +66,7 @@ declare module "../model.ts" {
     readonly "close-change": {
       readonly orgId: string;
       readonly link: ChangeLink;
+      readonly expectedHead: string | null;
     };
   }
   interface OperationResults {

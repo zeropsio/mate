@@ -211,7 +211,7 @@ const ADD_SERVICE = {
   service: "db",
 } as const;
 const MERGE = { kind: "merge-change", orgId: ORG, link: LINK, expectedHead: HEAD } as const;
-const CLOSE = { kind: "close-change", orgId: ORG, link: LINK } as const;
+const CLOSE = { kind: "close-change", orgId: ORG, link: LINK, expectedHead: HEAD } as const;
 
 describe("a flow's writes, executed by HQ", () => {
   it.effect.each([
@@ -265,7 +265,7 @@ describe("a flow's writes, executed by HQ", () => {
       name: "a close",
       intent: CLOSE,
       answer: change("closed"),
-      call: ["closeChange", LINK],
+      call: ["closeChange", LINK, HEAD],
       operationId: "web#7",
       result: undefined,
       before: (store: AccountStore) => detail(store, "changes", [change("open")]),
