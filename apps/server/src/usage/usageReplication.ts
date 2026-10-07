@@ -59,6 +59,8 @@ export const makeUsageReplication = (ledger: UsageLedger) => {
     if (message.type === "usage-error") {
       if (message.disposition === "transient") return yield* hello;
       stopped = true;
+      // A newer socket took the lane over; its own hello reopens it on the new channel.
+      if (message.disposition === "fenced") return undefined;
       return yield* conflict(message.code);
     }
     if (message.type === "usage-resume") {

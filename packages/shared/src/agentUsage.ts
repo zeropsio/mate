@@ -86,11 +86,20 @@ export const UsageLinkDown = Schema.Union([
     type: Schema.Literal("usage-error"),
     ledgerId: UsageIdentity,
     code: UsageIdentity,
-    disposition: Schema.Literals(["refused", "transient", "unsupported"]),
+    disposition: Schema.Literals(["refused", "transient", "unsupported", "fenced"]),
     cursor: Schema.optionalKey(UsageQuantity),
   }),
 ]);
 export type UsageLinkDown = typeof UsageLinkDown.Type;
+/** A newer socket of the same Mate holds the lane: the old one stops and reopens on the new channel. */
+export const USAGE_FENCE_CODES: ReadonlyArray<string> = ["channel_replaced", "hello_required"];
+/** How a Mate reads HQ's refusal `code`; an unavailable HQ is `transient`, never a refusal. */
+export const usageRefusalDisposition = (code: string): "refused" | "unsupported" | "fenced" =>
+  USAGE_FENCE_CODES.includes(code)
+    ? "fenced"
+    : code === "unsupported_protocol"
+      ? "unsupported"
+      : "refused";
 /** Canonical JSON makes content equality independent of object key order on the wire. */
 export const usageCanonical = (value: unknown): string => {
   if (Array.isArray(value)) return `[${value.map(usageCanonical).join(",")}]`;

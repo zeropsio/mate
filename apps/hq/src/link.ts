@@ -38,6 +38,7 @@ import {
   UsageLinkUp,
   AGENT_USAGE_CAPTURE_PROTOCOL,
   AGENT_USAGE_REPORT_PROTOCOL,
+  usageRefusalDisposition,
 } from "@t3tools/shared/agentUsage";
 import { Changes } from "./changes.ts";
 import { Leader } from "./leader.ts";
@@ -173,9 +174,7 @@ export const serveMateLink = (
                           error._tag === "UsageRefused" ? error.code : "usage_ingest_unavailable",
                         disposition:
                           error._tag === "UsageRefused"
-                            ? error.code === "unsupported_protocol"
-                              ? "unsupported"
-                              : "refused"
+                            ? usageRefusalDisposition(error.code)
                             : "transient",
                       }),
                     ),

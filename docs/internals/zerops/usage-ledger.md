@@ -28,7 +28,8 @@ Unknown frames remain tolerated. A malformed usage lane never destroys overview/
 
 Every socket receives a fresh process-bound opaque sender fence. Admission and each write lock
 the execution project and check the still-live credential in the leader transaction. Replacement
-or revocation serializes with commit. A new socket can fence an old sender; a high-water or digest
+or revocation serializes with commit. A new socket can fence an old sender, answered with the
+`fenced` disposition (`channel_replaced`, `hello_required`), never `refused`; a high-water or digest
 conflict refuses the lane rather than electing a divergent clone. Hello returns HQ's actual cursor,
 even after restoration. Gap/replay errors never advance it. Interrupted pinned manifests must resume with the same page identity or use `usage-snapshot-abandon`; accepted contributions survive abandonment. Snapshot pages use idempotent upserts
 and explicit tombstones, not deletion by absence; progress, page count, fact count and pinned

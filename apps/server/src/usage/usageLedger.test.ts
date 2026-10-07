@@ -334,6 +334,33 @@ describe("durable Mate usage boundary", () => {
       ),
   );
 
+  it.effect("a fenced lane stops quietly and the next link's lane carries the journal on", () =>
+    withLedger((ledger) =>
+      Effect.gen(function* () {
+        const origin = yield* ledger.bind("source", binding, "claude");
+        yield* ledger.capture(fact(origin.originId, "a", "120"), "file", 1);
+        const hq = new Hq();
+        const fenced = makeUsageReplication(ledger);
+        const hello = yield* fenced.hello;
+        yield* fenced.receive(hq.resume(hello, "old"));
+        const answer = yield* fenced.receive({
+          type: "usage-error",
+          ledgerId: hello.ledgerId,
+          code: "channel_replaced",
+          disposition: "fenced",
+        });
+        assert.isUndefined(answer);
+        assert.isUndefined(yield* fenced.next);
+        const lane = makeUsageReplication(ledger);
+        const reopened = yield* lane.hello;
+        hq.apply((yield* lane.receive(hq.resume(reopened, "new")))!);
+        yield* lane.receive(hq.ack(reopened.ledgerId, "new"));
+        assert.equal(hq.total(), 120n);
+        assert.equal((yield* ledger.metadata).ack, Number(hq.cursor));
+      }),
+    ),
+  );
+
   it.effect(
     "a stale-channel ACK cannot compact; capture and source checkpoint roll back together",
     () =>
