@@ -29,7 +29,9 @@ A new native session is a new counter. A fork or spawned child counts from the t
 parent history ends at (the counts within 1 s of its first meta) and names that parent session as
 `parentId`, as a Claude sub-agent (`agentId`) names its parent's. Model
 switches leave model allocation unknown. Counter times remain intervals or undated, so HQ does not
-invent daily allocation. Claude cache categories retain unknown components. Reported single cache-write durations use
+invent daily allocation. Claude cache categories retain unknown components. A cache write is `"0"`
+only where the provider has no cache-write meter at all (Codex without the field); a meter that
+leaves a value out is unknown. Claude reasoning is its `thinking_tokens`, unknown without them. Reported single cache-write durations use
 HQ's standard/fast 5-minute or 1-hour bands; unknown or mixed durations remain unpriced; reasoning is never added to output twice. Neither meter declares historical completeness,
 settled cancellation coverage or inferred run/actor provenance. Grok, Cursor, OpenCode and
 Antigravity publish unsupported meter coverage, including configured disabled instances.

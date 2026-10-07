@@ -470,6 +470,63 @@ describe("Claude/Codex meters", () => {
     assert.equal(first.components.cachedInput, "20");
     assert.isNull(first.components.cacheCreation);
   });
+  it("reads Claude reasoning from thinking tokens and leaves it unknown when they are absent", () => {
+    const line = (usage: unknown) =>
+      JSON.stringify({
+        type: "assistant",
+        sessionId: "s",
+        message: { id: "m", model: "claude", usage },
+      });
+    const thinking = meterLine(
+      "claude",
+      line({
+        input_tokens: 2,
+        output_tokens: 442,
+        output_tokens_details: { thinking_tokens: 285 },
+      }),
+      initialMeterState(),
+    ).fact!;
+    assert.equal(thinking.components.reasoning, "285");
+    const silent = meterLine(
+      "claude",
+      line({ input_tokens: 2, output_tokens: 442 }),
+      initialMeterState(),
+    ).fact!;
+    assert.isNull(silent.components.reasoning);
+  });
+  it("a Codex cache write is counted when its meter reports one and is a structural zero otherwise", () => {
+    const counter = (usage: Record<string, number>) =>
+      codexLine("event_msg", { type: "token_count", info: { total_token_usage: usage } });
+    const written = initialMeterState();
+    meterLine("codex", codexLine("session_meta", { id: "w" }), written);
+    const write = meterLine(
+      "codex",
+      counter({
+        input_tokens: 300,
+        cached_input_tokens: 100,
+        cache_write_input_tokens: 50,
+        output_tokens: 10,
+        total_tokens: 310,
+      }),
+      written,
+    ).fact!;
+    assert.equal(write.components.cacheCreation, "50");
+    assert.equal(write.components.uncachedInput, "150");
+    const plain = initialMeterState();
+    meterLine("codex", codexLine("session_meta", { id: "p" }), plain);
+    const none = meterLine(
+      "codex",
+      counter({
+        input_tokens: 300,
+        cached_input_tokens: 100,
+        output_tokens: 10,
+        total_tokens: 310,
+      }),
+      plain,
+    ).fact!;
+    assert.equal(none.components.cacheCreation, "0");
+    assert.equal(none.components.uncachedInput, "200");
+  });
   it("files a Claude sub-agent's requests under its own session, nested in its parent's", () => {
     const line = JSON.stringify({
       type: "assistant",

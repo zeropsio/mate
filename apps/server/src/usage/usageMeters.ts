@@ -18,6 +18,9 @@ const Counts = Schema.Struct({
   reasoning_output_tokens: Schema.optionalKey(Count),
   total_tokens: Schema.optionalKey(Count),
   speed: Schema.optionalKey(Schema.String),
+  output_tokens_details: Schema.optionalKey(
+    Schema.Struct({ thinking_tokens: Schema.optionalKey(Count) }),
+  ),
   cache_creation: Schema.optionalKey(
     Schema.Struct({
       ephemeral_5m_input_tokens: Schema.optionalKey(Count),
@@ -198,12 +201,18 @@ export function meterLine(
       hour !== counts.cache_creation_input_tokens,
     );
     if (durationUnknown) pricingBand = mixed ? "mixed-cache-duration" : "cache-duration-unknown";
+    const thinking = counts.output_tokens_details?.thinking_tokens;
     const components: UsageComponents = {
       uncachedInput: quantity(counts.input_tokens),
       cachedInput: quantity(counts.cache_read_input_tokens),
       cacheCreation: quantity(counts.cache_creation_input_tokens),
       output: quantity(counts.output_tokens),
-      reasoning: null,
+      // Thinking is part of output; a record without the detail leaves it unknown, never zero.
+      reasoning:
+        thinking !== undefined &&
+        (counts.output_tokens === undefined || thinking <= counts.output_tokens)
+          ? String(thinking)
+          : null,
       inclusiveTotal: null,
     };
     return {
@@ -301,15 +310,21 @@ export function meterLine(
   const total = String(counts.total_tokens);
   if (total === "0") return {};
   const cached = counts.cached_input_tokens;
-  if (cached !== undefined && counts.input_tokens !== undefined && cached > counts.input_tokens)
+  // OpenAI has no cache-write meter: without the field a write is a structural zero.
+  const written = counts.cache_write_input_tokens ?? 0;
+  if (
+    cached !== undefined &&
+    counts.input_tokens !== undefined &&
+    cached + written > counts.input_tokens
+  )
     return { gap: "codex-invalid-cache-subset" };
   const components: UsageComponents = {
     uncachedInput:
       cached !== undefined && counts.input_tokens !== undefined
-        ? String(counts.input_tokens - cached)
+        ? String(counts.input_tokens - cached - written)
         : null,
     cachedInput: quantity(cached),
-    cacheCreation: "0",
+    cacheCreation: String(written),
     output: quantity(counts.output_tokens),
     reasoning: quantity(counts.reasoning_output_tokens),
     inclusiveTotal: total,
