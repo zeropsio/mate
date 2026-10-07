@@ -235,7 +235,7 @@ describe("leaderLayer", () => {
             Scope.provide(rival),
           );
           yield* other.query(
-            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE application_name = 'hq-leader'",
+            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = current_database() AND application_name = 'hq-leader'",
           );
           yield* other.query(`SELECT pg_advisory_lock(${String(LOCK_KEY)})`);
           const standby = yield* statusWhere(core.leader, (status) => status.state === "standby");
@@ -269,7 +269,8 @@ describe("leaderLayer", () => {
           });
           yield* admin.query(`ALTER DATABASE ${database} WITH ALLOW_CONNECTIONS false`);
           yield* admin.query(
-            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE application_name = 'hq-leader'",
+            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND application_name = 'hq-leader'",
+            [database],
           );
           yield* statusWhere(core.leader, (status) => status.state === "failed");
 

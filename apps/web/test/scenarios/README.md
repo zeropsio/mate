@@ -27,12 +27,13 @@ within this worktree. Git discovers tracked and new non-ignored source files, in
 the key. This conservative source set can invalidate on unrelated edits; vendored reference
 repositories and generated routes are excluded. Concurrent runs await the builder, failed builds
 never publish, and unchanged invocations reuse the bundle.
-Each run launches headless Chrome and starts real HQ Core with disposable Postgres/git roots
+Each run launches headless Chrome and starts real HQ Core with isolated databases on the
+[shared host test PostgreSQL](../../../../docs/internals/test-postgres.md) and disposable git roots
 through `apps/hq/test/harness`. Nothing imports application modules into the browser or replaces
 its stores. This lives in `apps/web/test` because the observable subject is the hosted web client;
 Core's established test infrastructure remains reusable by its own tests.
 
-Prerequisites: workspace dependencies, installed Chrome and local Postgres binaries. Override
+Prerequisites: workspace dependencies, installed Chrome, `flock` and local Postgres binaries. Override
 Chrome with `MATE_CHROME_BIN` and Postgres with `MATE_PG_BIN`. Puppeteer Core never downloads Chrome.
 Use `pnpm install --offline` when dependencies are absent and the package cache is populated.
 HTTP and WebSockets are routed to loopback only; Chrome background networking and external DNS
