@@ -141,6 +141,31 @@ it.layer(NodeServices.layer)("guard exception driver", (it) => {
     ),
   );
 
+  it.effect("reconciles several rule ledgers from one scan", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const directory = yield* fs.makeTempDirectoryScoped({ prefix: "guard-batch-" });
+        yield* writeFixtureLedger(directory, [entry("apps/web/src/dead.ts")]);
+        yield* fs.writeFileString(`${directory}/second-rule.json`, "[]");
+        let calls = 0;
+        const result = yield* checkGuardExceptions({
+          cwd: "/repo",
+          directory,
+          runLint: fakeLint([], (request) => {
+            calls++;
+            assert.ok(request.args.includes("t3code/second-rule"));
+            assert.ok(request.args.includes(`t3code/${RULE_NAME}`));
+          }),
+        });
+        assert.equal(calls, 1);
+        assert.equal(result.exitCode, 1);
+        assert.equal(result.reports.length, 2);
+        assert.match(result.reports.join("\n"), /dead\.ts/u);
+      }),
+    ),
+  );
+
   it.effect("exits zero when every ledger entry has a ledgered hit", () =>
     Effect.scoped(
       Effect.gen(function* () {
