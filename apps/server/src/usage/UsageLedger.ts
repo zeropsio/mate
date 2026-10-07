@@ -72,6 +72,8 @@ export const makeUsageLedger = Effect.gen(function* () {
   yield* sql`CREATE TABLE IF NOT EXISTS usage_facts (
     origin TEXT NOT NULL, native TEXT NOT NULL, value TEXT NOT NULL,
     position TEXT NOT NULL, ordinal INTEGER NOT NULL, PRIMARY KEY(origin,native))`;
+  yield* sql`CREATE TABLE IF NOT EXISTS usage_aliases (
+    origin TEXT NOT NULL, alias TEXT NOT NULL, native TEXT NOT NULL, PRIMARY KEY(origin,alias))`;
   yield* sql`CREATE TABLE IF NOT EXISTS usage_checkpoints (source TEXT PRIMARY KEY, value TEXT NOT NULL)`;
   yield* sql`CREATE TABLE IF NOT EXISTS usage_journal (sequence INTEGER PRIMARY KEY, digest TEXT NOT NULL, value TEXT NOT NULL)`;
   yield* sql`CREATE TABLE IF NOT EXISTS usage_prefix (sequence INTEGER PRIMARY KEY, digest TEXT NOT NULL)`;
@@ -191,11 +193,34 @@ export const makeUsageLedger = Effect.gen(function* () {
   ) {
     const origin = (yield* origins).find((origin) => origin.originId === input.originId);
     if (!origin || origin.provider !== input.provider) return yield* fail("unknown-origin");
+    // A native record seen under more identities over time (an Antigravity generation) keeps the
+    // fact it was first captured as: every identity it has carried resolves to that one.
+    const identities = [input.nativeId, ...input.aliases];
+    const known = yield* sql<{ native: string }>`
+      SELECT DISTINCT native FROM usage_aliases WHERE origin=${input.originId} AND alias IN ${sql.in(identities)}`;
+    if (known.length > 1) {
+      yield* coverage(origin.originId, unknownCoverage("native-identity-conflict"));
+      return false;
+    }
+    const native = known[0]?.native ?? input.nativeId;
     const rows = yield* sql<{ value: string; position: string; ordinal: number }>`
-      SELECT value,position,ordinal FROM usage_facts WHERE origin=${input.originId} AND native=${input.nativeId}`;
+      SELECT value,position,ordinal FROM usage_facts WHERE origin=${input.originId} AND native=${native}`;
     const row = rows[0];
     const previous = row ? decodeFact(row.value) : undefined;
-    const fact = { ...input, revision: previous?.revision ?? "1" };
+    const aliases = [...new Set([...(previous?.aliases ?? []), ...identities])]
+      .filter((alias) => alias !== native)
+      .sort();
+    if (aliases.length > 16) {
+      yield* coverage(origin.originId, unknownCoverage("native-identity-overflow"));
+      return false;
+    }
+    const fact = {
+      ...input,
+      nativeId: native,
+      factId: native === input.nativeId ? input.factId : (previous?.factId ?? native),
+      aliases,
+      revision: previous?.revision ?? "1",
+    };
     yield* validateFact(fact);
     if (previous && usageCanonical(previous) === usageCanonical(fact)) return false;
     if (row && (row.position !== position || ordinal <= row.ordinal)) {
@@ -206,6 +231,8 @@ export const makeUsageLedger = Effect.gen(function* () {
     yield* append([fact], []);
     yield* sql`INSERT INTO usage_facts VALUES (${fact.originId}, ${fact.nativeId}, ${usageCanonical(fact)}, ${position}, ${ordinal})
       ON CONFLICT(origin,native) DO UPDATE SET value=excluded.value, position=excluded.position,ordinal=excluded.ordinal`;
+    for (const alias of [native, ...aliases])
+      yield* sql`INSERT OR IGNORE INTO usage_aliases VALUES (${fact.originId}, ${alias}, ${native})`;
     return true;
   });
   const checkpoint = Effect.fnUntraced(function* (source: string) {
@@ -375,6 +402,7 @@ export const makeUsageLedger = Effect.gen(function* () {
     yield* sql`DELETE FROM usage_prefix`;
     yield* sql`DELETE FROM usage_snapshot`;
     yield* sql`DELETE FROM usage_facts`;
+    yield* sql`DELETE FROM usage_aliases`;
     yield* sql`DELETE FROM usage_origins`;
     yield* sql`DELETE FROM usage_checkpoints`;
     yield* saveMeta({

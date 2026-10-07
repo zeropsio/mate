@@ -47,8 +47,10 @@ records last application placement. Recreating that project cannot attach the ol
 
 One leader-fenced transaction replaces the receipt and subtracts its old contribution before
 adding the new one. Same revision/content is a no-op; older revisions cannot replace newer
-facts; same revision/different content refuses the lane, as does a fact id another native
-identity holds (`fact_identity_conflict`): a conflict is permanent, never `transient`. Retraction leaves a permanent zero
+facts. Same revision/different content, a fact id another native identity holds, aliases of two
+records or an uncountable contribution are refused for good, that fact alone: it stays a
+`refused:<code>` gap in its origin's coverage (kept over the Mate's later coverage), the rest of the
+entry commits and the lane flows; a conflict is never `transient`. Retraction leaves a permanent zero
 contribution receipt. Late facts, redating, model changes and corrections still work after
 raw expiry. Arithmetic overflow, negative cells and damaged evidence fail instead of clamping.
 

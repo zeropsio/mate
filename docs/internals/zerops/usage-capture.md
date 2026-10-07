@@ -16,7 +16,9 @@ in its own project, independently of HQ availability.
 Each provider's container history is one origin, including multiple configured homes. Claude
 native response identity deduplicates repeated blocks and inherited/copied transcripts; a later comparable
 position in the same transcript can correct a response. Incomparable conflicting copies produce a
-gap. Each ledger mints its own origins. A new registration, or HQ refusing the ledger's lineage
+gap. A record seen under more identities over time (an Antigravity generation) keeps the fact it was
+first captured as: its identities resolve to that one, and a change is its next revision. Each
+ledger mints its own origins. A new registration, or HQ refusing the ledger's lineage
 (`ledger_rollback_conflict` after a restored `usage.sqlite`, `origin_lineage_conflict`, a binding or
 prefix conflict), starts a new ledger that captures from that moment: the old journal, facts and
 positions go, so nothing grows behind a stopped lane, and the gap between stays unknown. A link

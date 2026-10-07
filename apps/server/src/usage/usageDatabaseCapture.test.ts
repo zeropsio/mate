@@ -9,6 +9,7 @@ import { usageCanonical, usageDigest, type UsageLinkUp } from "@t3tools/shared/a
 import * as Sqlite from "../persistence/NodeSqliteClient.ts";
 import { makeUsageLedger, type UsageLedger } from "./UsageLedger.ts";
 import { captureDatabaseSource } from "./usageDatabaseCapture.ts";
+import { meterAntigravityGeneration } from "./usageMeters.ts";
 import { protoBytes, protoNumber, protoText } from "./testing/protobuf.ts";
 
 const binding = { orgId: "org", projectId: "project", mateId: "mate" };
@@ -226,4 +227,59 @@ it.effect(
         );
       }),
     ),
+);
+
+it.effect("an Antigravity generation keeps one fact as its identities arrive", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const directory = yield* temporary;
+      yield* withLedger(directory, (ledger) =>
+        Effect.gen(function* () {
+          const origin = yield* ledger.bind("antigravity", binding, "antigravity");
+          const generation = (keys: ReadonlyArray<string>, output: number) =>
+            meterAntigravityGeneration({
+              path: "conversation.db",
+              keys,
+              timestampQuality: 2,
+              record: {
+                provider: "antigravity",
+                sessionId: "conversation",
+                timestampMs: floor + 1_000,
+                model: "gemini-3-pro",
+                totals: {
+                  uncachedInputTokens: 10,
+                  cachedInputTokens: 0,
+                  cacheCreationTokens: 0,
+                  outputTokens: output,
+                  reasoningTokens: 0,
+                },
+                reportedCostUsd: null,
+                fast: false,
+                dedupeKey: keys[0] ?? null,
+              },
+            }).facts[0]!;
+          yield* ledger.capture(
+            { ...generation(["antigravity:12:x"], 5), originId: origin.originId },
+            "conversation",
+            1,
+          );
+          yield* ledger.capture(
+            {
+              ...generation(["antigravity:11:y", "antigravity:12:x"], 7),
+              originId: origin.originId,
+            },
+            "conversation",
+            2,
+          );
+          const facts = [...(yield* journaled(ledger)).values()];
+          assert.lengthOf(facts, 1);
+          const [fact] = facts;
+          assert.equal(fact!.nativeId, usageDigest(["antigravity", ["antigravity:12:x"]]));
+          assert.equal(fact!.revision, "2");
+          assert.include(fact!.aliases, usageDigest(["antigravity", ["antigravity:11:y"]]));
+          assert.equal(fact!.components.output, "7");
+        }),
+      );
+    }),
+  ),
 );
