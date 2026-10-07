@@ -69,7 +69,7 @@ describe("hqCardView — the headline", () => {
     [
       "an update another started, as the opened card read it",
       { update: { kind: "read", state: { kind: "updating", target: CARRIED } } },
-      { kind: "updating", tone: "busy", word: "Updating" },
+      { kind: "healthy", tone: "ok", word: "Healthy" },
     ],
     [
       "an update while HQ does not answer",
