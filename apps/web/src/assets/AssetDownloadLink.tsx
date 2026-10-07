@@ -27,7 +27,9 @@ export function AssetDownloadLink({
     } else {
       const link = document.createElement("a");
       link.href = original.url;
-      link.download = typeof props.download === "string" ? props.download : "image";
+      link.download =
+        original.read.occurrence?.name ??
+        (typeof props.download === "string" ? props.download : "image");
       link.click();
     }
     setPending(false);
@@ -41,6 +43,7 @@ export function AssetDownloadLink({
           props.onClick?.(event);
           if (reference === null || event.defaultPrevented) return;
           event.preventDefault();
+          event.stopPropagation();
           if (props.target === "_blank" && !props.download) {
             destination.current = window.open("about:blank", "_blank");
             if (destination.current) destination.current.opener = null;

@@ -118,7 +118,11 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
         <p className="mt-2 max-w-[var(--media-width)] truncate text-center text-xs text-muted-foreground/80">
           {item.name}
           {reference !== null && original.read.kind === "ready" && original.url ? (
-            <a className="ml-3 underline" href={original.url} download={item.name}>
+            <a
+              className="ml-3 underline"
+              href={original.url}
+              download={original.read.occurrence?.name ?? item.name}
+            >
               Download original
             </a>
           ) : null}

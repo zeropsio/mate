@@ -112,6 +112,42 @@ function turnStartCommand(input: {
 }
 
 describe("normalizeDispatchCommand attachments", () => {
+  it.effect("keeps the uploaded original name when the displayed image was transformed", () =>
+    Effect.gen(function* () {
+      const config = yield* ServerConfig.ServerConfig;
+      const bytes = encodePng(1, 1, new Uint8Array([0, 0, 255, 255]));
+      const id = `pending-${attachmentUuid}`;
+      const sourceAttachmentId = "pending-00000000-0000-4000-8000-0000000000bb";
+      const sourcePath = NodePath.join(config.attachmentsDir, `${sourceAttachmentId}.png`);
+      NodeFS.writeFileSync(sourcePath, bytes);
+      NodeFS.writeFileSync(NodePath.join(config.attachmentsDir, `${id}.png`), bytes);
+      yield* Effect.promise(() =>
+        contentAssetsAt(config.stateDir).upload(sourceAttachmentId, sourcePath, {
+          threadId: ThreadId.make("pending"),
+          ownerId: sourceAttachmentId,
+          name: "original.png",
+          mimeType: "image/png",
+          provenance: "upload",
+        }),
+      );
+      const normalized = yield* normalizeDispatchCommand(
+        turnStartCommand({
+          attachments: [
+            { id, sourceAttachmentId, name: "fitted.png", sizeBytes: bytes.byteLength },
+          ],
+        }),
+      );
+      if (normalized.type !== "thread.turn.start") throw new Error("Wrong command");
+      expect(normalized.message.attachments?.[0]).toMatchObject({
+        name: "fitted.png",
+        sourceAsset: {
+          name: "original.png",
+          original: { digest: NodeCrypto.hash("sha256", bytes) },
+        },
+      });
+    }).pipe(Effect.provide(testLayer)),
+  );
+
   it.effect.each([
     { code: "storage-full" as const, message: "Storage full" },
     { code: "persistence-failed" as const, message: "The original image could not be retained." },

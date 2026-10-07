@@ -135,7 +135,13 @@ function ManagedAssetImage({
             Download original
           </AssetDownloadLink>
         ) : null}
-        <button type="button" onClick={retry}>
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            retry();
+          }}
+        >
           Try again
         </button>
       </span>

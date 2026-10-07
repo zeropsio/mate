@@ -231,7 +231,7 @@ export const claimMessageAttachments = Effect.fn("Normalizer.claimMessageAttachm
                 contentAssetsAt(serverConfig.stateDir).claim(sourceOccurrence, {
                   threadId: ThreadId.make(threadId),
                   ownerId: sourceClaim.finalId,
-                  name: attachment.name,
+                  name: sourceOccurrence.name,
                   provenance: "upload",
                 }),
               catch: (cause) =>
