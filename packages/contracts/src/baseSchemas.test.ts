@@ -1,13 +1,16 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Schema from "effect/Schema";
 
+import * as BaseSchemas from "./baseSchemas.ts";
 import {
   ForwardCompatibleArray,
   ForwardCompatibleUnion,
   ForwardCompatibleUnionArray,
   isUnknownUnionMember,
+  TrimmedNonEmptyString,
   UnknownUnionMember,
 } from "./baseSchemas.ts";
 
@@ -42,6 +45,21 @@ describe("ForwardCompatibleArray", () => {
     expect(Schema.decodeUnknownSync(ForwardCompatibleArray(WithDefault))([{ name: "a" }])).toEqual([
       { name: "a", count: 7 },
     ]);
+  });
+
+  it("sends an element it cannot encode as a hole instead of failing the array", () => {
+    const Named = ForwardCompatibleArray(Schema.Struct({ name: TrimmedNonEmptyString }));
+    const wire = JSON.parse(
+      JSON.stringify(
+        Schema.encodeUnknownSync(Schema.toCodecJson(Named))([
+          { name: "a" },
+          { name: " " },
+          { name: "b" },
+        ]),
+      ),
+    );
+    expect(wire).toEqual([{ name: "a" }, null, { name: "b" }]);
+    expect(fromWire(Named)(wire)).toEqual([{ name: "a" }, { name: "b" }]);
   });
 });
 
@@ -103,5 +121,95 @@ describe("ForwardCompatibleUnionArray", () => {
     );
     const square = { kind: "square" as const, side: 2 };
     expect(encode([square])).toEqual([square]);
+  });
+});
+
+describe("trimmed non-empty strings", () => {
+  const entityIds = [
+    "ThreadId",
+    "ProjectId",
+    "EnvironmentId",
+    "CommandId",
+    "EventId",
+    "MessageId",
+    "TurnId",
+    "AuthSessionId",
+    "ProviderItemId",
+    "RuntimeSessionId",
+    "RuntimeItemId",
+    "RuntimeRequestId",
+    "RuntimeTaskId",
+    "ApprovalRequestId",
+    "CheckpointRef",
+  ] as const;
+  const schemas = [
+    ["TrimmedNonEmptyString", TrimmedNonEmptyString],
+    ...entityIds.map((name) => [name, BaseSchemas[name]] as const),
+  ] as const;
+
+  // Every kind of whitespace `trim()` removes, around ordinary values and alone.
+  const whitespace = [" ", "\t", "\n", "\r\n", "\v", "\f", "\u00a0", "\u2028", "\u3000", "\ufeff"];
+  const inputs = [
+    "thread-1",
+    "a b",
+    ...whitespace.map((space) => `${space}id${space}`),
+    ...whitespace.map((space) => `${space}${space}`),
+    whitespace.join(""),
+    "",
+  ];
+
+  for (const [name, schema] of schemas) {
+    const make = schema.makeOption;
+    const encode = Schema.encodeUnknownExit(schema);
+    const decode = Schema.decodeExit(schema);
+
+    it.each(inputs)(
+      `${name}: whatever make accepts of %j encodes to something that decodes back`,
+      (input) => {
+        const made = make(input);
+        if (made._tag === "None") {
+          expect(input.trim()).toBe("");
+          return;
+        }
+        const encoded = encode(made.value);
+        expect(encoded).toStrictEqual(Exit.succeed(input.trim()));
+        expect(decode(input.trim())).toStrictEqual(Exit.succeed(input.trim()));
+      },
+    );
+
+    it.each(inputs)(`${name}: decoding then encoding %j is stable`, (input) => {
+      const decoded = decode(input);
+      if (Exit.isFailure(decoded)) {
+        expect(input.trim()).toBe("");
+        expect(Exit.isFailure(encode(input))).toBe(true);
+        return;
+      }
+      expect(decoded.value).toBe(input.trim());
+      expect(encode(decoded.value)).toStrictEqual(Exit.succeed(decoded.value));
+    });
+  }
+
+  const isThreadId = Schema.is(BaseSchemas.ThreadId);
+  const encodeThreadId = Schema.encodeUnknownExit(BaseSchemas.ThreadId);
+  const decodeThreadId = Schema.decodeExit(BaseSchemas.ThreadId);
+
+  it("rejects whitespace-only values everywhere", () => {
+    for (const value of [" ", "\t\n", "\u00a0\u3000"]) {
+      expect(() => BaseSchemas.ThreadId.make(value)).toThrow();
+      expect(isThreadId(value)).toBe(false);
+      expect(Exit.isFailure(encodeThreadId(value))).toBe(true);
+      expect(Exit.isFailure(decodeThreadId(value))).toBe(true);
+    }
+  });
+
+  it("keeps the encoded form and JSON Schema of valid values", () => {
+    expect(encodeThreadId(BaseSchemas.ThreadId.make("thread-1"))).toStrictEqual(
+      Exit.succeed("thread-1"),
+    );
+    expect(encodeThreadId("  a b  ")).toStrictEqual(Exit.succeed("a b"));
+    expect(Schema.toJsonSchemaDocument(Schema.toType(BaseSchemas.ThreadId)).schema).toEqual({
+      type: "string",
+      minLength: 1,
+    });
   });
 });
