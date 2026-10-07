@@ -73,6 +73,7 @@ import { WorkspaceHistory } from "../../checkpointing/WorkspaceHistory.ts";
 import { OrchestrationEngineService } from "../Services/OrchestrationEngine.ts";
 import { ProviderCommandReactor } from "../Services/ProviderCommandReactor.ts";
 import { ProjectionSnapshotQuery } from "../Services/ProjectionSnapshotQuery.ts";
+import { TerminalManager } from "../../terminal/Manager.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Clock from "effect/Clock";
 import { ServerSettingsService } from "../../serverSettings.ts";
@@ -319,6 +320,7 @@ describe("ProviderCommandReactor", () => {
       (input: { readonly refName: string; readonly path: string | null }) =>
         Effect.succeed({ worktree: { path: input.path ?? "", refName: input.refName } }),
     );
+    const closeIdleTerminals = vi.fn((_: { readonly threadId: string }) => Effect.void);
     const refreshStatus = vi.fn((_: string) =>
       Effect.succeed({
         isRepo: true,
@@ -513,6 +515,7 @@ describe("ProviderCommandReactor", () => {
           generateThreadTitle,
         }),
       ),
+      Layer.provideMerge(Layer.mock(TerminalManager)({ closeIdle: closeIdleTerminals })),
       Layer.provideMerge(ServerSettingsService.layerTest()),
       Layer.provideMerge(ThreadBackgroundLiveness.layer),
       Layer.provideMerge(SqlitePersistenceMemory),
@@ -651,6 +654,7 @@ describe("ProviderCommandReactor", () => {
       pruneWorktrees,
       createWorktree,
       refreshStatus,
+      closeIdleTerminals,
       generateBranchName,
       generateThreadTitle,
       runtimeSessions,
@@ -4023,6 +4027,74 @@ describe("ProviderCommandReactor", () => {
           modelSelection: { options: [{ id: "fastMode", value: true }] },
         });
       }),
+  );
+
+  // Idle shells hold the worktree; a terminal running a command stays for
+  // the person to close (TerminalManager.closeIdle decides which is which).
+  effectIt.effect("settling a thread closes its idle shells", () =>
+    Effect.gen(function* () {
+      const harness = yield* Effect.promise(() => createHarness());
+      const terminalsClosed = yield* Deferred.make<void>();
+      harness.closeIdleTerminals.mockImplementation(() =>
+        Deferred.succeed(terminalsClosed, undefined).pipe(Effect.asVoid),
+      );
+
+      yield* harness.engine.dispatch({
+        type: "thread.settle",
+        commandId: CommandId.make("cmd-settle-closes-shells"),
+        threadId: ThreadId.make("thread-1"),
+      });
+      yield* Deferred.await(terminalsClosed);
+      yield* Effect.promise(() => harness.drain());
+
+      expect(harness.closeIdleTerminals).toHaveBeenCalledWith({
+        threadId: ThreadId.make("thread-1"),
+      });
+      expect(harness.stopSession).not.toHaveBeenCalled();
+    }),
+  );
+
+  effectIt.effect("a thread un-settled before its settle is handled keeps its shells", () =>
+    Effect.gen(function* () {
+      const harness = yield* Effect.promise(() => createHarness());
+      const threadId = ThreadId.make("thread-1");
+      const firstCloseStarted = yield* Deferred.make<void>();
+      const releaseFirstClose = yield* Deferred.make<void>();
+      harness.closeIdleTerminals.mockImplementationOnce(() =>
+        Deferred.succeed(firstCloseStarted, undefined).pipe(
+          Effect.andThen(Deferred.await(releaseFirstClose)),
+        ),
+      );
+
+      yield* harness.engine.dispatch({
+        type: "thread.settle",
+        commandId: CommandId.make("cmd-settle-first"),
+        threadId,
+      });
+      // The reactor is busy with the first settle while the person changes their mind.
+      yield* Deferred.await(firstCloseStarted);
+      yield* harness.engine.dispatch({
+        type: "thread.unsettle",
+        commandId: CommandId.make("cmd-unsettle-first"),
+        threadId,
+        reason: "user",
+      });
+      yield* harness.engine.dispatch({
+        type: "thread.settle",
+        commandId: CommandId.make("cmd-settle-second"),
+        threadId,
+      });
+      yield* harness.engine.dispatch({
+        type: "thread.unsettle",
+        commandId: CommandId.make("cmd-unsettle-second"),
+        threadId,
+        reason: "user",
+      });
+      yield* Deferred.succeed(releaseFirstClose, undefined);
+      yield* Effect.promise(() => harness.drain());
+
+      expect(harness.closeIdleTerminals).toHaveBeenCalledTimes(1);
+    }),
   );
 
   it("restarts the provider session when runtime mode is updated on the thread", async () => {

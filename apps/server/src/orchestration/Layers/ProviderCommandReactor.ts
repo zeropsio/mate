@@ -62,6 +62,7 @@ import {
 } from "../../serverSettings.ts";
 import { VcsStatusBroadcaster } from "../../vcs/VcsStatusBroadcaster.ts";
 import { GitWorkflowService } from "../../git/GitWorkflowService.ts";
+import { TerminalManager } from "../../terminal/Manager.ts";
 import { withAgentNotes } from "../agentNotes.ts";
 import { makeSendLanes } from "../../sendLanes.ts";
 import { classifyModelSelectionChange, selectionAtSend } from "../modelSelectionChange.ts";
@@ -258,6 +259,7 @@ const make = Effect.gen(function* () {
   const vcsStatusBroadcaster = yield* VcsStatusBroadcaster;
   const textGeneration = yield* TextGeneration;
   const serverSettingsService = yield* ServerSettingsService;
+  const terminalManager = yield* TerminalManager;
   const serverCommandId = (tag: string) =>
     crypto.randomUUIDv4.pipe(Effect.map((uuid) => CommandId.make(`server:${tag}:${uuid}`)));
   const serverEventId = () => crypto.randomUUIDv4.pipe(Effect.map(EventId.make));
@@ -2044,6 +2046,15 @@ const make = Effect.gen(function* () {
       case "thread.session-stop-requested":
         yield* processSessionStopRequested(event);
         return;
+      case "thread.settled": {
+        // A thread re-engaged before this event ran keeps its shells.
+        const thread = yield* resolveThreadShell(event.payload.threadId);
+        if (thread?.settledOverride !== "settled") return;
+        // Idle shells close so they stop holding the worktree. A terminal that
+        // runs a command (a dev server, an editor) stays for the person to close.
+        yield* terminalManager.closeIdle({ threadId: event.payload.threadId });
+        return;
+      }
     }
   });
 
@@ -2093,7 +2104,8 @@ const make = Effect.gen(function* () {
         event.type === "thread.turn-interrupt-requested" ||
         event.type === "thread.approval-response-requested" ||
         event.type === "thread.user-input-response-requested" ||
-        event.type === "thread.session-stop-requested"
+        event.type === "thread.session-stop-requested" ||
+        event.type === "thread.settled"
       ) {
         return yield* worker.enqueue(event);
       }
