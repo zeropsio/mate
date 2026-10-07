@@ -314,7 +314,10 @@ export function mateChat(
         Effect.promise(async () => {
           const input = page.locator(composer).setTimeout(8000);
           await (await input.waitHandle()).focus();
-          await input.fill(message);
+          await page.keyboard.down("a", { commands: ["selectAll"] });
+          await page.keyboard.up("a");
+          await page.keyboard.press("Backspace");
+          await page.keyboard.type(message);
           await page.keyboard.press("Enter");
         }),
     },

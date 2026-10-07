@@ -306,13 +306,16 @@ describe("C: calls, results and crew actions", () => {
             wire.message("browser-answer", "assistant", "The page checks returned", "browser-run");
             wire.run("browser-run", "completed", null, "browser-answer");
             yield* chat.then.once("The page checks returned");
+            yield* chat.then.control("Stop generation", "button", false);
+            yield* chat.then.noText("Ada stopped after");
             yield* chat.when.activate("Show work");
             yield* chat.when.pressEnding(". Show the checks");
-            yield* chat.when.press("/orders on desktop");
-            yield* chat.when.press("View of /orders on desktop");
+            yield* chat.when.press("View of /orders on phone");
             yield* chat.then.picture(picture);
             yield* chat.when.key("Escape");
-            yield* chat.then.control("View of /checkout on desktop", "button", false);
+            yield* chat.when.pressEnding(". Hide the checks");
+            yield* chat.then.control("/orders. Open the screenshot");
+            yield* chat.then.control("/checkout. Open the screenshot", "button", false);
             wire.browser({
               type: "call-result",
               callId: "browser-order",
@@ -321,7 +324,7 @@ describe("C: calls, results and crew actions", () => {
               revision: 3,
               completeness: "partial",
             });
-            yield* chat.then.control("View of /orders on desktop");
+            yield* chat.then.control("/orders. Open the screenshot");
             wire.browser({
               type: "call-result",
               callId: "browser-order",
@@ -331,7 +334,7 @@ describe("C: calls, results and crew actions", () => {
               completeness: "complete",
               frame: null,
             });
-            yield* chat.then.control("View of /orders on desktop", "button", false);
+            yield* chat.then.control("/orders. Open the screenshot", "button", false);
             yield* chat.when.press("Toggle right panel");
           }),
         );
