@@ -544,6 +544,42 @@ describe("Claude/Codex meters", () => {
         }),
       ),
   );
+  it("a Codex session resumed after capture began never sends the total it had before", () => {
+    const floor = Date.parse("2026-10-07T12:00:00.000Z");
+    const state = initialMeterState();
+    meterLine(
+      "codex",
+      codexLine("session_meta", { id: "s" }, "2026-10-01T10:00:00.000Z"),
+      state,
+      floor,
+    );
+    meterLine("codex", codexLine("turn_context", { model: "a" }), state, floor);
+    const before = codexLine(
+      "event_msg",
+      {
+        type: "token_count",
+        info: {
+          total_token_usage: {
+            input_tokens: 1000,
+            cached_input_tokens: 0,
+            output_tokens: 0,
+            total_tokens: 1000,
+          },
+        },
+      },
+      "2026-10-01T10:05:00.000Z",
+    );
+    assert.isUndefined(meterLine("codex", before, state, floor).fact);
+    const after = meterLine("codex", cumulative(1300), state, floor).fact!;
+    assert.equal(after.components.inclusiveTotal, "300");
+    assert.equal(after.components.uncachedInput, "300");
+    assert.deepEqual(after.time, {
+      kind: "interval",
+      since: "2026-10-01T10:05:00.000Z",
+      until: "2026-10-07T12:00:00.000Z",
+      provenance: "provider-counter-range",
+    });
+  });
   it("excludes fork overlap and invalid cache subsets; keeps mixed-model counter allocation unknown", () => {
     const fork = initialMeterState();
     meterLine("codex", codexLine("session_meta", { id: "fork", forked_from_id: "parent" }), fork);

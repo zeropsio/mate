@@ -41,6 +41,10 @@ export interface CaptureSource {
   readonly directory: string;
 }
 export interface CaptureOptions {
+  /** When capture began (epoch ms): a record from before it is never a fact. */
+  readonly floor?: number;
+  /** Capture is beginning: a Claude transcript with no checkpoint starts at its last record's end. */
+  readonly baseline?: boolean;
   /** Every byte read from a transcript, for IO accounting. */
   readonly onRead?: (bytes: number) => void;
 }
@@ -89,16 +93,7 @@ export const captureSource = Effect.fnUntraced(function* (
     ),
   );
   if (!files) return;
-  const importKey = `${sourceId}:retained-import`;
   const gaps = new Set<string>(origin.coverage.gaps);
-  const retainedImport = (yield* ledger.checkpoint(importKey)) === undefined;
-  if (retainedImport)
-    yield* ledger.coverage(origin.originId, {
-      state: "backfilling",
-      since: null,
-      through: null,
-      gaps: ["retained-history-unsealed"],
-    });
   for (const file of files) {
     const key = usageDigest([sourceId, file]);
     const scan = ledger.transaction(
@@ -123,6 +118,30 @@ export const captureSource = Effect.fnUntraced(function* (
         const stamp = usageDigest([stats.dev, stats.ino, stats.size, stats.mtimeMs, stats.ctimeMs]);
         // Unchanged files need no IO. This cache never changes a fact or declares coverage.
         if (saved && checkpoint.offset === stats.size && checkpoint.stamp === stamp) return false;
+        if (!saved && options.baseline && source.provider === "claude") {
+          // Capture begins after the last complete record; nothing before it is read.
+          let end = stats.size;
+          let newline = -1;
+          while (newline < 0 && end > 0) {
+            const from = Math.max(0, end - CAPTURE_READ_BYTES);
+            const tail = yield* read(from, end - from);
+            const index = tail.lastIndexOf(10);
+            if (index >= 0) newline = from + index;
+            end = from;
+          }
+          const offset = newline + 1;
+          const from = Math.max(0, offset - CAPTURE_GUARD_BYTES);
+          yield* ledger.saveCheckpoint(
+            key,
+            usageCanonical({
+              offset,
+              guard: { from, digest: bytesDigest(yield* read(from, offset - from)) },
+              identity,
+              meter: initialMeterState(),
+            }),
+          );
+          return false;
+        }
         // A bounded guard before the checkpoint notices a truncated, replaced or rewritten tail
         // without re-reading the prefix; a checkpoint from an older build is trusted once.
         const guard = checkpoint.guard;
@@ -156,7 +175,7 @@ export const captureSource = Effect.fnUntraced(function* (
         let offset = start;
         for (const line of utf8.decode(consumed).split("\n").slice(0, -1)) {
           offset += Buffer.byteLength(line, "utf8") + 1;
-          const result = meterLine(source.provider, line, checkpoint.meter);
+          const result = meterLine(source.provider, line, checkpoint.meter, options.floor);
           if (result.gap) gaps.add(result.gap);
           if (result.fact)
             yield* ledger.capture({ ...result.fact, originId: origin.originId }, key, offset);
@@ -199,15 +218,12 @@ export const captureSource = Effect.fnUntraced(function* (
       yield* Effect.yieldNow;
     }
   }
-  if (retainedImport)
-    yield* ledger.transaction(ledger.saveCheckpoint(importKey, "bounded-import-attempted"));
   const latest = (yield* ledger.origins).find((item) => item.originId === origin.originId);
   for (const gap of latest?.coverage.gaps ?? []) gaps.add(gap);
-  // A scan proves recorded contributions, not cancellation, completeness or a historical zero.
-  gaps.add("retained-history-unsealed");
+  // A scan proves recorded contributions since capture began, not cancellation or completeness.
   const coverage: UsageCoverage = {
     state: "partial",
-    since: null,
+    since: origin.coverage.since,
     through: null,
     gaps: [...gaps].slice(0, 32),
   };

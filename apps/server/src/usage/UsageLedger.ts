@@ -14,6 +14,7 @@ import {
   usageDigest,
   UsageSnapshot,
 } from "@t3tools/shared/agentUsage";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
@@ -32,12 +33,23 @@ const validateOrigin = Schema.decodeEffect(UsageOrigin);
 const validateEntry = Schema.decodeEffect(UsageJournalEntry);
 const validatePage = Schema.decodeEffect(UsageSnapshot);
 const bytes = (value: unknown) => new TextEncoder().encode(usageCanonical(value)).byteLength;
+const Binding = Schema.Struct({
+  orgId: Schema.String,
+  projectId: Schema.String,
+  mateId: Schema.String,
+});
 const Metadata = Schema.Struct({
   ledgerId: Schema.String,
   highWater: Schema.Number,
   highDigest: Schema.String,
   ack: Schema.Number,
   ackDigest: Schema.String,
+  /** The registration this ledger captures for, fixed at HQ's first offer. */
+  binding: Schema.optionalKey(Binding),
+  /** When capture began: nothing a transcript held before it is ever a fact. */
+  startedAt: Schema.optionalKey(Schema.String),
+  /** Whether the transcripts on disk when capture began have their checkpoints at their end. */
+  baselined: Schema.optionalKey(Schema.Boolean),
 });
 const decodeMeta = Schema.decodeUnknownSync(Schema.fromJsonString(Metadata));
 export type UsageBinding = Pick<UsageOrigin, "orgId" | "projectId" | "mateId">;
@@ -78,6 +90,7 @@ export const makeUsageLedger = Effect.gen(function* () {
   });
   const saveMeta = (meta: typeof Metadata.Type) =>
     sql`UPDATE usage_meta SET value=${usageCanonical(meta)} WHERE id=1`;
+  const now = Effect.map(DateTime.now, DateTime.formatIso);
   const capacity = Effect.fnUntraced(function* (additional: number, reserve: number) {
     const pages = yield* sql<{ page_count: number }>`PRAGMA page_count`;
     const size = yield* sql<{ page_size: number }>`PRAGMA page_size`;
@@ -138,6 +151,7 @@ export const makeUsageLedger = Effect.gen(function* () {
       return origin;
     }
     if ((yield* origins).length >= 64) return yield* fail("source-capacity");
+    const meta = yield* metadata;
     const origin: UsageOrigin = {
       // A wiped home with surviving native history must be refused by HQ's existing lineage,
       // rather than minting another origin for the same registration/provider history.
@@ -146,7 +160,7 @@ export const makeUsageLedger = Effect.gen(function* () {
       writerId: NodeCrypto.randomUUID(),
       provider,
       label: provider,
-      coverage: { state: "backfilling", since: null, through: null, gaps: [] },
+      coverage: { state: "partial", since: meta.startedAt ?? null, through: null, gaps: [] },
     };
     yield* validateOrigin(origin);
     yield* sql`INSERT INTO usage_origins VALUES (${source}, ${usageCanonical(origin)})`;
@@ -338,14 +352,41 @@ export const makeUsageLedger = Effect.gen(function* () {
       : meta.ack;
     yield* sql`DELETE FROM usage_journal WHERE sequence<=${through}`;
   });
+  /** Fixes the registration at HQ's first offer; capture begins then, never before. */
+  const begin = Effect.fnUntraced(function* (binding: UsageBinding) {
+    const meta = yield* metadata;
+    if (meta.binding === undefined) {
+      yield* saveMeta({ ...meta, binding, startedAt: yield* now, baselined: false });
+      return;
+    }
+    if (usageCanonical(meta.binding) !== usageCanonical(binding))
+      return yield* fail("source-binding-conflict");
+  });
+  const markBaselined = Effect.gen(function* () {
+    yield* saveMeta({ ...(yield* metadata), baselined: true });
+  });
   const transaction = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     sql.withTransaction(
       // Obtain a write lock before reading a checkpoint: SQLite's lock is shared across processes.
       sql`UPDATE usage_meta SET value=value WHERE id=1`.pipe(Effect.andThen(effect)),
     );
+  // A ledger from a build that imported history begins capture now, bound as its origins are.
+  const loaded = yield* metadata;
+  const retained = yield* origins;
+  if (loaded.startedAt === undefined && retained.length > 0) {
+    const { orgId, projectId, mateId } = retained[0]!;
+    yield* saveMeta({
+      ...loaded,
+      binding: { orgId, projectId, mateId },
+      startedAt: yield* now,
+      baselined: false,
+    });
+  }
   return {
     metadata,
     origins,
+    begin: (binding: UsageBinding) => transaction(begin(binding)),
+    markBaselined: transaction(markBaselined),
     hello,
     digestAt,
     batch,

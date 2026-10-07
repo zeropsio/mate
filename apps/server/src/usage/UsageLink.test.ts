@@ -7,6 +7,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { AGENT_USAGE_CAPTURE_PROTOCOL } from "@t3tools/contracts";
 import { usageCanonical, type UsageLinkUp } from "@t3tools/shared/agentUsage";
 import type { MateLinkDown } from "@t3tools/shared/mateLink";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Queue from "effect/Queue";
@@ -23,7 +24,7 @@ const response = (id: string, amount: number) =>
     type: "assistant",
     sessionId: "session",
     requestId: "request",
-    timestamp: "2026-10-07T12:00:00.000Z",
+    timestamp: DateTime.formatIso(DateTime.nowUnsafe()),
     message: {
       id,
       model: "claude",
@@ -233,4 +234,27 @@ it.live("capture waits for HQ to name the org and never asks Zerops for it", () 
       assert.isTrue((yield* subject.origins).every((origin) => origin.orgId === "org"));
     }),
   ),
+);
+
+it.live(
+  "capture starts at HQ's first offer: what transcripts held before it is never counted",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { watch } = silentWatch();
+        const { orgId: _, ...older } = state.usage!;
+        const subject = yield* mate({ watch, offer: { ...state, usage: older } });
+        const before = response("before", 500);
+        yield* subject.write("session.jsonl", before);
+        yield* subject.offer(state);
+        yield* eventually(subject.origins, (origins) => origins.length > 0);
+        yield* subject.emit("turn.completed");
+        yield* Effect.sleep("200 millis");
+        yield* subject.write("session.jsonl", before + response("after", 120));
+        yield* subject.emit("turn.completed");
+        assert.equal(yield* eventually(subject.total, (total) => total === 120n), 120n);
+        yield* Effect.sleep("200 millis");
+        assert.equal(yield* subject.total, 120n);
+      }),
+    ),
 );

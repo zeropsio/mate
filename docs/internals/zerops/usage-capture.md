@@ -33,9 +33,10 @@ Antigravity publish unsupported meter coverage, including configured disabled in
 Startup reconciliation, transcript filesystem changes, settings changes and provider runtime events
 (`session.started`, `turn.completed`, which both conversation engines emit) drive capture. A
 transcript directory that does not exist yet is awaited from its nearest existing parent; a watcher
-that errors is replaced after a growing delay. The
-first retained import declares backfilling before reading; its durable marker prevents repeated
-backfill declarations. Subsequent reads continue from source checkpoints, one 1 MiB chunk per
+that errors is replaced after a growing delay. Capture
+begins at HQ's first offer and nothing is backfilled: a Claude transcript on disk then is
+checkpointed after its last record, a Codex session's total then is the baseline its later totals
+count from, and a record dated before it is never a fact. Reads continue from source checkpoints, one 1 MiB chunk per
 transaction, with no size cutoff; a reconciliation admits at most 2,048 files. The 64 KiB before a
 checkpoint guard a resumed position (a rewrite before them goes unnoticed); a source change during
 parsing rolls back its facts/checkpoint. Records over 32 MiB, damaged records, incomplete listings,

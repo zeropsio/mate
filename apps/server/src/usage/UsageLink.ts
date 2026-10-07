@@ -139,12 +139,17 @@ export const makeUsageLink = Effect.fnUntraced(function* (
       seen.add(source.directory);
       sources.push(source);
     }
+    const meta = yield* ledger.metadata;
+    const floor = meta.startedAt === undefined ? undefined : Date.parse(meta.startedAt);
+    const baseline = meta.baselined === false;
     for (const source of sources) {
-      yield* captureSource(ledger, binding, source).pipe(
-        Effect.catchCause(() => Effect.logWarning("Usage source capture unavailable")),
-      );
+      yield* captureSource(ledger, binding, source, {
+        ...(floor === undefined ? {} : { floor }),
+        baseline,
+      }).pipe(Effect.catchCause(() => Effect.logWarning("Usage source capture unavailable")));
       yield* watches.ensure(source.directory);
     }
+    if (baseline) yield* ledger.markBaselined;
     wake?.();
   }).pipe(Effect.catchCause(() => Effect.logWarning("Usage ledger capture unavailable")));
   yield* Effect.forkScoped(Effect.forever(Queue.take(dirty).pipe(Effect.andThen(scan))));
@@ -160,10 +165,9 @@ export const makeUsageLink = Effect.fnUntraced(function* (
     ),
   );
   // A home bound in this project resumes capture before HQ answers; HQ refuses another org's origin.
-  const retained = yield* ledger.origins;
-  if (retained.length && config.zerops && retained[0]!.projectId === config.zerops.projectId) {
-    const origin = retained[0]!;
-    binding = { orgId: origin.orgId, projectId: origin.projectId, mateId: origin.mateId };
+  const bound = (yield* ledger.metadata).binding;
+  if (bound && config.zerops && bound.projectId === config.zerops.projectId) {
+    binding = bound;
     Queue.offerUnsafe(dirty, undefined);
   }
   let active: ReturnType<typeof makeUsageReplication> | undefined;
@@ -229,16 +233,11 @@ export const makeUsageLink = Effect.fnUntraced(function* (
                 mateId: message.usage.mateId,
               };
               // Frozen home binding refuses clone/transfer before any old-org facts leave this socket.
-              for (const origin of yield* ledger.origins) {
-                if (
-                  origin.orgId !== nextBinding.orgId ||
-                  origin.projectId !== nextBinding.projectId ||
-                  origin.mateId !== nextBinding.mateId
-                ) {
-                  halted = true;
-                  replication.stop();
-                  return;
-                }
+              const begun = yield* Effect.result(ledger.begin(nextBinding));
+              if (begun._tag === "Failure") {
+                halted = true;
+                replication.stop();
+                return;
               }
               binding = nextBinding;
               active?.stop();

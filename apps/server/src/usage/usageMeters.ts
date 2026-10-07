@@ -14,6 +14,7 @@ const Counts = Schema.Struct({
   cache_read_input_tokens: Schema.optionalKey(Count),
   cache_creation_input_tokens: Schema.optionalKey(Count),
   cached_input_tokens: Schema.optionalKey(Count),
+  cache_write_input_tokens: Schema.optionalKey(Count),
   reasoning_output_tokens: Schema.optionalKey(Count),
   total_tokens: Schema.optionalKey(Count),
   speed: Schema.optionalKey(Schema.String),
@@ -74,6 +75,16 @@ export interface MeterResult {
   readonly fact?: MeterFact;
   readonly gap?: string;
 }
+/** A cumulative counter as it stood when capture began, subtracted from every later total. */
+const CounterBaseline = Schema.Struct({
+  input_tokens: Schema.optionalKey(Schema.Number),
+  cached_input_tokens: Schema.optionalKey(Schema.Number),
+  cache_write_input_tokens: Schema.optionalKey(Schema.Number),
+  output_tokens: Schema.optionalKey(Schema.Number),
+  reasoning_output_tokens: Schema.optionalKey(Schema.Number),
+  total_tokens: Schema.optionalKey(Schema.Number),
+});
+type CounterBaseline = typeof CounterBaseline.Type;
 export const CodexMeterState = Schema.Struct({
   sessionId: Schema.NullOr(Schema.String),
   fork: Schema.Boolean,
@@ -82,6 +93,7 @@ export const CodexMeterState = Schema.Struct({
   total: Schema.NullOr(Schema.String),
   counterReset: Schema.optionalKey(Schema.Boolean),
   since: Schema.NullOr(Schema.String),
+  baseline: Schema.optionalKey(CounterBaseline),
 });
 export type CodexMeterState = {
   -readonly [K in keyof typeof CodexMeterState.Type]: (typeof CodexMeterState.Type)[K];
@@ -110,10 +122,26 @@ const common = (native: unknown, sessionId: string, provider: "claude" | "codex"
     state: "provisional" as const,
   };
 };
+const COUNTER_FIELDS = [
+  "input_tokens",
+  "cached_input_tokens",
+  "cache_write_input_tokens",
+  "output_tokens",
+  "reasoning_output_tokens",
+  "total_tokens",
+] as const;
+const before = (at: UsageFact["time"], floor: number | undefined) =>
+  floor !== undefined && at.kind === "instant" && Date.parse(at.at) < floor;
+
+/**
+ * One transcript line as normalized evidence. A record from before `floor` (when capture began)
+ * is never a fact: a Codex counter there becomes the baseline its later totals are measured from.
+ */
 export function meterLine(
   provider: "claude" | "codex",
   line: string,
   state: CodexMeterState,
+  floor?: number,
 ): MeterResult {
   const json = decodeJson(line);
   if (Option.isNone(json)) return { gap: "damaged-transcript" };
@@ -124,6 +152,7 @@ export function meterLine(
       return isAssistant ? { gap: "claude-missing-native-meter" } : {};
     }
     const row = decoded.value;
+    if (before(time(row.timestamp), floor)) return {};
     if (!row.sessionId || !row.message.id) return { gap: "claude-missing-native-identity" };
     const counts = row.message.usage;
     const five = counts.cache_creation?.ephemeral_5m_input_tokens;
@@ -212,13 +241,37 @@ export function meterLine(
   if (!tokens.value.info) return { gap: "codex-missing-meter" };
   if (!state.sessionId || state.fork || state.counterReset)
     return { gap: "codex-unproved-counter-lineage" };
-  const counts = tokens.value.info.total_token_usage;
-  const total = quantity(counts.total_tokens);
-  if (total === null) return { gap: "codex-missing-inclusive-counter" };
-  if (state.total !== null && BigInt(total) < BigInt(state.total)) {
+  const cumulative = tokens.value.info.total_token_usage;
+  const reached = quantity(cumulative.total_tokens);
+  if (reached === null) return { gap: "codex-missing-inclusive-counter" };
+  if (state.total !== null && BigInt(reached) < BigInt(state.total)) {
     state.counterReset = true;
     return { gap: "codex-unproved-counter-reset" };
   }
+  const at = time(row.timestamp);
+  if (before(at, floor)) {
+    // What the session had used when capture began; its later totals count from here.
+    state.baseline = Object.fromEntries(
+      COUNTER_FIELDS.flatMap((field) =>
+        cumulative[field] === undefined ? [] : [[field, cumulative[field]]],
+      ),
+    ) as CounterBaseline;
+    state.total = reached;
+    state.since = at.kind === "instant" ? at.at : state.since;
+    return {};
+  }
+  const base = state.baseline;
+  const counts: Partial<Record<(typeof COUNTER_FIELDS)[number], number>> = {};
+  for (const field of COUNTER_FIELDS) {
+    const value = cumulative[field];
+    if (value !== undefined) counts[field] = value - (base?.[field] ?? 0);
+  }
+  if (Object.values(counts).some((value) => value < 0)) {
+    state.counterReset = true;
+    return { gap: "codex-unproved-counter-reset" };
+  }
+  const total = String(counts.total_tokens);
+  if (total === "0") return {};
   const cached = counts.cached_input_tokens;
   if (cached !== undefined && counts.input_tokens !== undefined && cached > counts.input_tokens)
     return { gap: "codex-invalid-cache-subset" };
@@ -234,8 +287,8 @@ export function meterLine(
     inclusiveTotal: total,
   };
   if (Option.isNone(decodeComponents(components))) return { gap: "codex-inconsistent-counter" };
-  state.total = total;
-  const until = time(row.timestamp);
+  state.total = reached;
+  const until = at;
   const period: UsageFact["time"] =
     state.since && until.kind === "instant" && Date.parse(state.since) < Date.parse(until.at)
       ? {
