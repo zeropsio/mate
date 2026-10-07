@@ -529,27 +529,6 @@ still to come says so.
 
 ### Continuing release features
 
-- **3.1** — The app mints and deletes throwaways
-  - _State:_ live
-  - _Built in:_ mate 0.11.0 `83a082e1d`
-  - _Proven by:_ `zeropsThrowaway.test.ts`, `doorThrowaway.test.ts`
-- **3.2** — The door accepts only a throwaway
-  - _State:_ live — `zerops-throwaway` is the one bootstrap method in Zerops mode
-  - _Built in:_ mate 0.11.0 `e430e9838`; the member-list key, 0.11.1 `7e57be0e3`
-  - _Proven by:_ ledger _The first Mate on an emptied org…_; `ZeropsThrowawayIdentity.test.ts`,
-    `ZeropsIdentityGate.test.ts`
-- **3.3** — The Mate re-checks roles itself
-  - _State:_ live
-  - _Built in:_ mate 0.11.0 `f2d80d23e`
-  - _Proven by:_ `ZeropsMembershipWatch.test.ts`
-- **3.4** — `READ_ONLY` sees a Mate, cannot open it
-  - _State:_ live
-  - _Built in:_ mate 0.11.0 `9af8881fd`
-  - _Proven by:_ `mateAccess.test.ts`
-- **3.5** — No Zerops token to a container; the 15-minute re-mint gone
-  - _State:_ live — minimum server 0.11.0
-  - _Built in:_ mate 0.11.0 `e816562f5`
-  - _Proven by:_ `credentialRenewal.ts` — nothing renews a Zerops session
 - **4.2, 4.3** — _New project_ and _Add Mate_: a name, a face, a Mate registered at birth
   - _State:_ live — the press writes the Mate's record into HQ; _Add Mate_ reads its tier from HQ's
     recipe and converts it to `startWithoutCode`; since pass 19 _New Mate_ opens over the view on
@@ -697,20 +676,6 @@ still to come says so.
   - _Proven by:_ `RunChat.test.tsx`; the harnesses `/design-working.html` and
     `/design-switch.html?end=<ms>`
 
-- **—** — Pass 19: a Mate's ended session is never presented again
-  - _State:_ built, 2026-09-29: the client answers a bearer within 30 s of its deadline, or one its
-    Mate refused, itself; a link blocked on it waits for the door's new bearer through wakes and
-    network changes; a session that reached its end reads "Reconnecting to …", never a refusal; the
-    server's 401 says `expired: true` and its log line names the session; the logout sweep skips an
-    ended session. Cause, read from the ten test-org Mates' logs: a long-lived client re-presenting
-    sessions past their 24 h life on every wake, to all its Mates in one second. **Open**: not
-    verified live (§7, 23)
-  - _Built in:_ mate 0.11.67 (PR #37): `5980ed13c` `bac5764c8` `24421cdda` `dbc8ecb36` `34797def3`
-    `be37a0978`
-  - _Proven by:_ `resolver.test.ts`, `supervisor.test.ts`, `presentation.test.ts`,
-    `runtime.test.ts`, `EnvironmentAuth.test.ts`, `environmentHttp.test.ts`, `storage.test.ts`;
-    `account-lifecycle.md`
-
 - **—** — Pass 21: a run is opened by the message that started it; Stop settles a start that never
   ran
   - _State:_ built, 2026-09-30, from Juno's "Thinking · 17:42:08": a message whose run never came
@@ -721,18 +686,6 @@ still to come says so.
   - _Built in:_ mate 0.11.69 (PR #39): `e75b3831a` `026ecb572` `d2ad2c4e7`
   - _Proven by:_ `conversation.logic.test.ts`, `ProviderCommandReactor.test.ts`; the harness
     `/design-switch.html`
-- **—** — Pass 21: every door opens a Mate's own view while its conversation cannot open
-  - _State:_ **live** on the localhost pair, 2026-09-30: Quinn pressed a second after a load opened
-    its own view, "Reconnecting…", and handed over to its conversation about 6 s later — before, the
-    row's press sent the person to the projects screen, silently (the owner: "it just throws me at
-    /zerops page"). Causes proved in tests: the row stood for its project until the project's
-    services were read, and a registration its machine held could be released for a record it
-    lacked. **Open**: §7, 25
-  - _Built in:_ mate 0.11.69 (PR #39): `fdb071abc` `cced7161c` `18caf093a` `b2c6bea6c` `25ab4ee17`
-  - _Proven by:_ `mateLink.test.ts`, `accountRuntime.test.ts`, `-environmentTargets.test.tsx`,
-    `useOpenMate.test.ts`, `useAskMate.test.ts`, `ZeropsMateComingPage.test.tsx`; the harness
-    `/design-standup.html`
-
 - **—** — Pass 21: the run's card holding only its line
   - _State:_ built, 2026-09-30: a closed card whose line stands alone keeps its box again (0.11.64
     had dropped it); a card holding nothing but its line — live at its first thought, or closed — is
