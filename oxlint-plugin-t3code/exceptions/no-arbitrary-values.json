@@ -80,30 +80,6 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/ComposerPromptEditor.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> [@media(max-width:39.999rem)_and_(pointer:coarse)]:[font-size:max(var(--font-size-prompt,1rem),16px)] in \"relative [font-family:var(--font-composer,var(--font-sans))] [font-size:var(--font-size-prompt,0.875rem)] [@media(max-width:39.999rem)_and_(pointer:coarse)]:[font-size:max(var(--font-size-prompt,1rem),16px)]\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/ComposerPromptEditor.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> [font-family:var(--font-composer,var(--font-sans))] in \"relative [font-family:var(--font-composer,var(--font-sans))] [font-size:var(--font-size-prompt,0.875rem)] [@media(max-width:39.999rem)_and_(pointer:coarse)]:[font-size:max(var(--font-size-prompt,1rem),16px)]\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/ComposerPromptEditor.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> [font-size:var(--font-size-prompt,0.875rem)] in \"relative [font-family:var(--font-composer,var(--font-sans))] [font-size:var(--font-size-prompt,0.875rem)] [@media(max-width:39.999rem)_and_(pointer:coarse)]:[font-size:max(var(--font-size-prompt,1rem),16px)]\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
     "path": "apps/web/src/components/DiffPanel.tsx",
     "kind": "Literal",
     "fingerprint": "<> text-[11px] in \"text-[11px] text-muted-foreground/75\"",

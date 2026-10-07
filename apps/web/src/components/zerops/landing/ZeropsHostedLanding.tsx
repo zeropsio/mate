@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { lazy, Suspense, useRef, useState } from "react";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 import { startZeropsHandover } from "~/zerops/handover";
 import {
@@ -6,15 +6,24 @@ import {
   runZeropsNativeSignIn,
   type ZeropsNativeSignInState,
 } from "~/zerops/nativeSignIn";
-import { ZeropsProjectsPage } from "../ZeropsProjectsPage";
+import { SurfaceLoading } from "../../SurfaceLoading";
 import { ZeropsFrameWait, ZeropsHandoverActions, ZeropsLandingShell } from "./ZeropsLandingShell";
+
+const ZeropsProjectsPage = lazy(() =>
+  import("../ZeropsProjectsPage").then((module) => ({ default: module.ZeropsProjectsPage })),
+);
 
 /** Registration and second factors belong to the Zerops account application. */
 export function ZeropsHostedLanding() {
   const { status, adoptHandover, signOut, verifyAgain, retrying } = useZeropsSession();
   const [nativeState, setNativeState] = useState<ZeropsNativeSignInState>({ kind: "idle" });
   const generation = useRef(0);
-  if (status === "signed-in") return <ZeropsProjectsPage />;
+  if (status === "signed-in")
+    return (
+      <Suspense fallback={<SurfaceLoading />}>
+        <ZeropsProjectsPage />
+      </Suspense>
+    );
   if (status === "loading")
     return <ZeropsFrameWait label="Checking your Zerops account…" signedIn={false} />;
   if (status === "unavailable")

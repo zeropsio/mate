@@ -45,9 +45,9 @@ import { PanelTabCloseButton } from "~/components/ui/panel-tab-close-button";
 import { readTextFromClipboard, writeTextToClipboard } from "~/hooks/useCopyToClipboard";
 import { cn } from "~/lib/utils";
 import { type TerminalContextSelection } from "~/lib/terminalContext";
-import {
+import type {
   GhosttyTerminalSurface,
-  type GhosttyTerminalSurfaceOptions,
+  GhosttyTerminalSurfaceOptions,
 } from "~/terminal/ghostty/surface";
 import { type GhosttyColor, type GhosttyTheme } from "~/terminal/ghostty/core";
 import { useOpenInPreferredEditor } from "../editorPreferences";
@@ -559,6 +559,8 @@ export function TerminalViewport({
           if (terminalRef.current) void showTerminalContextMenu(event);
         },
       };
+      const { GhosttyTerminalSurface } = await import("~/terminal/ghostty/surface");
+      if (cancelled) return null;
       const terminal = await GhosttyTerminalSurface.create(mount, terminalOptions);
       if (cancelled) {
         terminal.dispose();

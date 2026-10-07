@@ -1,3 +1,4 @@
+import { isField } from "./ZeropsReview.logic";
 /**
  * The review, drawn: every read already done and handed in, so a harness and a test can show
  * every state of it without a forge or a crew behind it. The reads and the verbs are the per-kind
@@ -272,16 +273,6 @@ export function ZeropsReviewSurface({
     <div className="rv-page" data-zerops-surface="review" onKeyDown={pressFromKeys}>
       {content}
     </div>
-  );
-}
-
-/** A field somebody types into: its keys are its own, ⌘↵ included. */
-export function isField(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  return (
-    target.isContentEditable ||
-    target instanceof HTMLTextAreaElement ||
-    target instanceof HTMLInputElement
   );
 }
 

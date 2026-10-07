@@ -1,3 +1,4 @@
+import { removeFailedZeropsProject } from "./removeFailedZeropsProject";
 import { useAtomValue } from "@effect/atom-react";
 import { Atom } from "effect/unstable/reactivity";
 import { mateArrival } from "@t3tools/client-runtime/data";
@@ -145,7 +146,7 @@ import { MateDetailFailure } from "./MateDetailFailure";
 import { useCloseOffHolds, useMateDetailRead } from "~/zerops/accountEnvironments";
 import { MateLinkLine, MateOpeningLine } from "./MateLinkLine";
 import { zeropsAccountDisplay } from "./landing/ZeropsAccountControl.logic";
-import { ZeropsProjectLink } from "../chat/ChatHeader";
+import { ZeropsProjectLink } from "./ZeropsProjectLink";
 import { Button } from "../ui/button";
 import { SidebarInset } from "../ui/sidebar";
 import { WorkspacePageHeader } from "../WorkspacePageHeader";
@@ -163,7 +164,6 @@ import {
   useMateEmptyState,
   type MateEmptyComing,
 } from "./ZeropsMateEmptyState";
-import { removeFailedZeropsProject } from "./ZeropsProjectsPage";
 import { usePreferredConnection } from "~/zerops/mateConnectionPreference";
 
 /** The coming page reads no server version: its *Finish setup* is all it takes of the menu. */

@@ -1,5 +1,6 @@
 import { useQuestionAttachments } from "./chat/useQuestionAttachments";
 import { vaultNote } from "@t3tools/client-runtime/data";
+import { SurfaceLoading } from "./SurfaceLoading";
 import { useStandupsDone } from "../zerops/activity/useStandupReading";
 import { useThreadModelSelection } from "../zerops/useThreadModelSelection";
 import type {
@@ -174,15 +175,8 @@ import {
 } from "../rightPanelStore";
 import { makeWorkspaceFileDropHandlers } from "./chat/workspaceFileDrop";
 import { RightPanelTabs } from "./RightPanelTabs";
-import { AgentsPanel } from "./AgentsPanel";
 import { ServiceBrowserPanels } from "./ServiceBrowserPanel";
-import { ZeropsBrowserSurface } from "./zerops/ZeropsBrowserSurface";
 import { useMateAddresses } from "../zerops/useMateAddresses";
-import { ZeropsDataPanel } from "./zerops/ZeropsDataPanel";
-import { ZeropsChangeDetailPage } from "./zerops/ZeropsGroupDetail";
-import { ZeropsGitSurface } from "./zerops/ZeropsGitSurface";
-import { CrewPanel } from "./zerops/crew/CrewPanel";
-import { McpPanel } from "./mcp/McpPanel";
 import { useCrew } from "../zerops/crew/useCrew";
 import { useCrewAccess } from "../zerops/crew/useCrewAccess";
 import { useOpenZeropsChange } from "../zerops/useOpenZeropsChange";
@@ -192,8 +186,6 @@ import { mateVoiceSpeaks } from "@t3tools/client-runtime/zerops/environments";
 import { useMateVoice } from "../zerops/mateVoiceContext";
 import { useReviveFailedMate } from "../zerops/mateRestart";
 import { useZeropsMate, useZeropsMateDirectory } from "../zerops/useZeropsMates";
-import { ZeropsPanel } from "./zerops/ZeropsPanel";
-import { VaultPanelContainer } from "./zerops/vault/VaultPanelContainer";
 import { ZeropsLifecycleStrip } from "./zerops/ZeropsLifecycleStrip";
 import { ZeropsReadOnlyConversationFooter } from "./zerops/ZeropsReadOnlyConversationFooter";
 import { ComposerRoomHeld } from "./chat/ComposerStandIn";
@@ -608,6 +600,39 @@ function useDraftHeroLayoutTransition(isDraftHeroState: boolean) {
 
   return [attachTransitionGroupRef, attachComposerAnchorRef, captureComposerRect] as const;
 }
+const AgentsPanel = lazy(() =>
+  import("./AgentsPanel").then((module) => ({ default: module.AgentsPanel })),
+);
+const ZeropsBrowserSurface = lazy(() =>
+  import("./zerops/ZeropsBrowserSurface").then((module) => ({
+    default: module.ZeropsBrowserSurface,
+  })),
+);
+const ZeropsGitSurface = lazy(() =>
+  import("./zerops/ZeropsGitSurface").then((module) => ({ default: module.ZeropsGitSurface })),
+);
+const ZeropsDataPanel = lazy(() =>
+  import("./zerops/ZeropsDataPanel").then((module) => ({ default: module.ZeropsDataPanel })),
+);
+const ZeropsChangeDetailPage = lazy(() =>
+  import("./zerops/ZeropsGroupDetail").then((module) => ({
+    default: module.ZeropsChangeDetailPage,
+  })),
+);
+const CrewPanel = lazy(() =>
+  import("./zerops/crew/CrewPanel").then((module) => ({ default: module.CrewPanel })),
+);
+const McpPanel = lazy(() =>
+  import("./mcp/McpPanel").then((module) => ({ default: module.McpPanel })),
+);
+const ZeropsPanel = lazy(() =>
+  import("./zerops/ZeropsPanel").then((module) => ({ default: module.ZeropsPanel })),
+);
+const VaultPanelContainer = lazy(() =>
+  import("./zerops/vault/VaultPanelContainer").then((module) => ({
+    default: module.VaultPanelContainer,
+  })),
+);
 const DiffPanel = lazy(() => import("./DiffPanel"));
 const FilePreviewPanel = lazy(() => import("./files/FilePreviewPanel"));
 const EMPTY_PENDING_FILE_SURFACE_IDS: ReadonlySet<string> = new Set();
@@ -8206,8 +8231,9 @@ export default function ChatView(props: ChatViewProps) {
     kind satisfies never;
   };
   const rightPanelContent =
-    activeThreadRef && activeRightPanelSurface
-      ? (() => {
+    activeThreadRef && activeRightPanelSurface ? (
+      <Suspense fallback={<SurfaceLoading />}>
+        {(() => {
           switch (activeRightPanelSurface.kind) {
             case "terminal":
               return (
@@ -8232,7 +8258,7 @@ export default function ChatView(props: ChatViewProps) {
               );
             case "diff":
               return (
-                <Suspense fallback={null}>
+                <Suspense fallback={<SurfaceLoading />}>
                   <DiffPanel
                     key={activeThreadKey}
                     mode="embedded"
@@ -8334,7 +8360,7 @@ export default function ChatView(props: ChatViewProps) {
             case "file":
               if (!activeProject || !activeWorkspaceRoot) return null;
               return (
-                <Suspense fallback={null}>
+                <Suspense fallback={<SurfaceLoading />}>
                   <FilePreviewPanel
                     key={`${activeProject.environmentId}:${activeWorkspaceRoot}`}
                     environmentId={activeProject.environmentId}
@@ -8359,8 +8385,9 @@ export default function ChatView(props: ChatViewProps) {
           }
           const exhaustiveSurface: never = activeRightPanelSurface;
           return exhaustiveSurface;
-        })()
-      : null;
+        })()}
+      </Suspense>
+    ) : null;
 
   const workspaceFileDropHandlers = makeWorkspaceFileDropHandlers({
     setDragActive: setIsWorkspaceFileDragActive,

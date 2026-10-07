@@ -1,4 +1,4 @@
-import { useCallback, useSyncExternalStore } from "react";
+import { lazy, Suspense, useCallback, useSyncExternalStore } from "react";
 
 import { useTheme } from "../../hooks/useTheme";
 import {
@@ -8,8 +8,12 @@ import {
   type ThemeDefinition,
 } from "../../themePalette";
 import { stackedThreadToast, toastManager } from "../ui/toast";
-import { ThemeEditorPanel } from "./ThemeEditorPanel";
+import { SurfaceLoading } from "../SurfaceLoading";
 import { useThemeEditorStore } from "./themeEditorStore";
+
+const ThemeEditorPanel = lazy(() =>
+  import("./ThemeEditorPanel").then((module) => ({ default: module.ThemeEditorPanel })),
+);
 
 function useThemeDefinition(id: string | null | undefined) {
   return useSyncExternalStore(
@@ -106,18 +110,31 @@ export function ThemeEditorHost() {
   if (!session) return null;
 
   return (
-    <ThemeEditorPanel
-      editingTheme={editingTheme}
-      initialAppearance={session.initialAppearance}
-      key={session.id}
-      onOpenChange={(open) => {
-        if (!open) closeThemeEditor();
-      }}
-      onSaved={handleSaved}
-      open
-      restoreTheme={refreshTheme}
-      seedName={session.seedName ?? undefined}
-      seedTheme={seedTheme}
-    />
+    <Suspense
+      fallback={
+        <div
+          className="fixed bottom-4 right-4 h-96 w-104 max-w-full"
+          role="dialog"
+          aria-label="Loading theme editor"
+          style={{ zIndex: 110 }}
+        >
+          <SurfaceLoading />
+        </div>
+      }
+    >
+      <ThemeEditorPanel
+        editingTheme={editingTheme}
+        initialAppearance={session.initialAppearance}
+        key={session.id}
+        onOpenChange={(open) => {
+          if (!open) closeThemeEditor();
+        }}
+        onSaved={handleSaved}
+        open
+        restoreTheme={refreshTheme}
+        seedName={session.seedName ?? undefined}
+        seedTheme={seedTheme}
+      />
+    </Suspense>
   );
 }

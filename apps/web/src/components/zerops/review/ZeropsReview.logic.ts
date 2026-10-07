@@ -490,3 +490,13 @@ export function changeReadVerdict(input: {
     return verdict("attention", "This change's project isn't known here");
   return verdict("quiet", "Waiting for the organization's HQ");
 }
+
+/** A field somebody types into: its keys are its own, ⌘↵ included. */
+export function isField(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return (
+    target.isContentEditable ||
+    target instanceof HTMLTextAreaElement ||
+    target instanceof HTMLInputElement
+  );
+}
