@@ -166,6 +166,13 @@ import * as ZeropsDataConsoleModule from "./zerops/ZeropsDataConsole.ts";
 import * as ZeropsGitRemoteProbeModule from "./zerops/ZeropsGitRemoteProbe.ts";
 import type { CrewEngine } from "./zerops/crew/CrewEngine.ts";
 import { crewLayerInert } from "./zerops/crew/crewLayer.ts";
+import {
+  ENGINE_MOVED,
+  inertMateEngine,
+  MateEngine,
+  type MateEngineService,
+} from "./engine/MateEngine.ts";
+import { engineLayerInert } from "./engine/layer.ts";
 import * as ZeropsIdentityStatusModule from "./zerops/ZeropsIdentityStatus.ts";
 import * as ZeropsLifecycle from "./zerops/ZeropsLifecycle.ts";
 import * as ZeropsMateKeyModule from "./zerops/ZeropsMateKey.ts";
@@ -547,6 +554,8 @@ const unavailableZeropsAgentLogin = {
 const buildAppUnderTest = (options?: {
   onPairingChangesSubscribed?: Effect.Effect<void>;
   config?: Partial<ServerConfig.ServerConfig["Service"]>;
+  /** The Mate engine the server runs; inert (V1 owns the conversation) unless given. */
+  mateEngine?: MateEngineService;
   fixtureZeropsLayer?: Layer.Layer<
     | ZeropsLifecycle.ZeropsLifecycle
     | ZeropsAgentAuth.ZeropsAgentAuth
@@ -561,7 +570,8 @@ const buildAppUnderTest = (options?: {
     | ZeropsGitRemoteProbeModule.ZeropsGitRemoteProbe
     | ZeropsProjectSignersModule.ZeropsProjectSigners
     | ZeropsTurnAdmissionModule.ZeropsTurnAdmission
-    | CrewEngine,
+    | CrewEngine
+    | MateEngine,
     never,
     | ServerConfig.ServerConfig
     | ProjectionSnapshotQuery.ProjectionSnapshotQuery
@@ -1273,6 +1283,9 @@ const buildAppUnderTest = (options?: {
             // Crew mode off, as outside a Zerops project: the crew RPCs answer
             // `off` and refuse the rest.
             crewLayerInert,
+            options?.mateEngine === undefined
+              ? engineLayerInert
+              : Layer.succeed(MateEngine, options.mateEngine),
             options?.layers?.zeropsSetup === undefined
               ? Layer.empty
               : Layer.mock(ZeropsSetupModule.ZeropsSetup)(options.layers.zeropsSetup),
@@ -2562,6 +2575,92 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
 
       assert.equal(response.status, 403);
       assert.equal(body.reason, "zerops_turn_refused");
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect(
+    "refuses a V1 command over the socket, before admission, once the Mate engine owns the conversation",
+    () =>
+      Effect.gen(function* () {
+        const dispatched: Array<string> = [];
+        yield* buildAppUnderTest({
+          mateEngine: { ...inertMateEngine, live: true },
+          layers: {
+            orchestrationEngine: {
+              dispatch: (command) =>
+                Effect.sync(() => void dispatched.push(command.type)).pipe(
+                  Effect.as({ sequence: 1 }),
+                ),
+            },
+          },
+        });
+
+        const wsUrl = yield* getWsServerUrl("/ws");
+        const refused = yield* Effect.scoped(
+          withWsRpcClient(wsUrl, (client) =>
+            client[ORCHESTRATION_WS_METHODS.dispatchCommand]({
+              type: "thread.turn.start",
+              commandId: CommandId.make("cmd-engine-moved"),
+              threadId: defaultThreadId,
+              message: {
+                messageId: MessageId.make("msg-engine-moved"),
+                role: "user",
+                text: "hello",
+                attachments: [],
+              },
+              runtimeMode: "full-access",
+              interactionMode: "default",
+              createdAt: "2026-10-07T10:00:00.000Z",
+            }).pipe(Effect.flip),
+          ),
+        );
+
+        assert.equal(refused.message, ENGINE_MOVED);
+        assert.deepEqual(dispatched, []);
+      }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("refuses a V1 command over HTTP once the Mate engine owns the conversation", () =>
+    Effect.gen(function* () {
+      const dispatched: Array<string> = [];
+      yield* buildAppUnderTest({
+        mateEngine: { ...inertMateEngine, live: true },
+        layers: {
+          orchestrationEngine: {
+            dispatch: (command) =>
+              Effect.sync(() => void dispatched.push(command.type)).pipe(
+                Effect.as({ sequence: 1 }),
+              ),
+          },
+        },
+      });
+
+      const response = yield* fetchEffect(yield* getHttpServerUrl("/api/orchestration/dispatch"), {
+        method: "POST",
+        headers: {
+          authorization: yield* getAuthenticatedAuthorizationHeader(),
+          "content-type": "application/json",
+        },
+        body: jsonRequestBody({
+          type: "thread.turn.start",
+          commandId: CommandId.make("cmd-http-engine-moved"),
+          threadId: defaultThreadId,
+          message: {
+            messageId: MessageId.make("msg-http-engine-moved"),
+            role: "user",
+            text: "hello",
+            attachments: [],
+          },
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          createdAt: "2026-10-07T10:00:00.000Z",
+        }),
+      });
+      const body = yield* responseJsonEffect<{ readonly reason?: string }>(response);
+
+      assert.equal(response.status, 403);
+      assert.equal(body.reason, "engine_moved");
+      assert.deepEqual(dispatched, []);
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 

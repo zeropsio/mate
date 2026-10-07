@@ -20,6 +20,7 @@ import {
 import * as ProjectCloneTracker from "../project/ProjectCloneTracker.ts";
 import { OrchestrationEngineService } from "./Services/OrchestrationEngine.ts";
 import { ProjectionSnapshotQuery } from "./Services/ProjectionSnapshotQuery.ts";
+import { MateEngine } from "../engine/MateEngine.ts";
 import { ZeropsTurnAdmission } from "../zerops/ZeropsTurnAdmission.ts";
 import { makeFirstTurnEffort } from "../zerops/firstTurnEffort.ts";
 import { ProviderRegistry } from "../provider/Services/ProviderRegistry.ts";
@@ -32,6 +33,7 @@ export const orchestrationHttpApiLayer = HttpApiBuilder.group(
     const orchestrationEngine = yield* OrchestrationEngineService;
     const projectCloneTracker = yield* ProjectCloneTracker.ProjectCloneTracker;
     const turnAdmission = yield* ZeropsTurnAdmission;
+    const mateEngine = yield* MateEngine;
     // D10: a new conversation's first turn runs on Extra High when it names no effort, and the
     // thread stores what it runs on — over HTTP as over the socket.
     const firstTurnEffort = makeFirstTurnEffort({
@@ -109,6 +111,8 @@ export const orchestrationHttpApiLayer = HttpApiBuilder.group(
         Effect.fn("environment.orchestration.dispatch")(function* (args) {
           yield* annotateEnvironmentRequest(args.endpoint.name);
           const session = yield* requireEnvironmentScope(AuthOrchestrationOperateScope);
+          // The Mate engine owns the conversation: V1's door is closed, before admission.
+          if (mateEngine.live) return yield* failEnvironmentOperationForbidden("engine_moved");
           yield* ProjectCloneTracker.rejectCommandsDuringClone(
             projectCloneTracker,
             args.payload,

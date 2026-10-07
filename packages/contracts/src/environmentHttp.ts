@@ -76,6 +76,8 @@ export const EnvironmentOperationForbiddenReason = Schema.Literals([
   // D6: the command would start a turn on an agent this session may not run
   // — not signed in, or signed in by somebody else.
   "zerops_turn_refused",
+  // The Mate engine owns this Mate's conversation: V1's commands are refused.
+  "engine_moved",
 ]);
 export type EnvironmentOperationForbiddenReason = typeof EnvironmentOperationForbiddenReason.Type;
 

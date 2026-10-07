@@ -46,6 +46,7 @@ import * as ServerSecretStore from "./auth/ServerSecretStore.ts";
 import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
 import { environmentAuthenticatedAuthLayer } from "./auth/http.ts";
 import { ZeropsTurnAdmission } from "./zerops/ZeropsTurnAdmission.ts";
+import { engineLayerInert } from "./engine/layer.ts";
 import { ProviderRegistry } from "./provider/Services/ProviderRegistry.ts";
 
 const CliRuntimeLayer = Layer.mergeAll(NodeServices.layer, NetService.layer);
@@ -356,6 +357,7 @@ const withLiveProjectCliServer = <A, E, R>(baseDir: string, run: () => Effect.Ef
           ),
           // The project CLI sends project commands, never a turn: nothing to gate.
           Layer.provide(Layer.mock(ZeropsTurnAdmission)({ admit: () => Effect.void })),
+          Layer.provide(engineLayerInert),
           Layer.provide(Layer.mock(ProviderRegistry)({ getProviders: Effect.succeed([]) })),
         ),
       ),
