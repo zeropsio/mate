@@ -6,7 +6,7 @@ import { assert, it } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { AGENT_USAGE_CAPTURE_PROTOCOL } from "@t3tools/contracts";
 import { usageCanonical, type UsageLinkUp } from "@t3tools/shared/agentUsage";
-import type { MateLinkDown } from "@t3tools/shared/mateLink";
+import type { MateLinkDown, MateLinkUp } from "@t3tools/shared/mateLink";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -107,7 +107,9 @@ const mate = (
     const link = yield* makeUsageLink(Stream.fromQueue(runtime), options).pipe(
       Effect.provide(context),
     );
-    const lane = yield* link.open(() => Effect.void);
+    const sent: MateLinkUp[] = [];
+    const send = (frame: MateLinkUp) => Effect.sync(() => void sent.push(frame));
+    let lane = yield* link.open(send);
     yield* lane.state(options.offer ?? state);
     const reader = yield* makeUsageLedger.pipe(
       Effect.provide(yield* Layer.build(Sqlite.layer({ filename: database }))),
@@ -123,7 +125,19 @@ const mate = (
       emit: (type: UsageRuntimeEvent["type"]) => Queue.offer(runtime, { type }),
       total: recorded(reader),
       origins: reader.origins,
-      offer: lane.state,
+      offer: (message: Extract<MateLinkDown, { type: "state" }>) => lane.state(message),
+      /** HQ's answer on the current link. */
+      answer: (message: MateLinkDown) => lane.receive(message),
+      /** A new link, whose first state is `message`. */
+      reconnect: (message: Extract<MateLinkDown, { type: "state" }>) =>
+        Effect.gen(function* () {
+          lane = yield* link.open(send);
+          yield* lane.state(message);
+        }),
+      /** The hellos sent so far, oldest first. */
+      hellos: Effect.sync(() =>
+        sent.flatMap((frame) => (frame.type === "usage-hello" ? [frame] : [])),
+      ),
     };
   });
 
@@ -258,3 +272,69 @@ it.live(
       }),
     ),
 );
+
+it.live("a Mate registered again starts a new ledger from that moment and keeps capturing", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const { watch } = silentWatch();
+      const subject = yield* mate({ watch });
+      yield* eventually(subject.origins, (origins) => origins.length > 0);
+      const first = (yield* subject.hellos)[0]!;
+      const before = response("before", 500);
+      yield* subject.write("session.jsonl", before);
+      yield* subject.emit("turn.completed");
+      yield* eventually(subject.total, (total) => total === 500n);
+      yield* subject.reconnect({ ...state, usage: { ...state.usage!, mateId: "mate-2" } });
+      const hellos = yield* eventually(subject.hellos, (sent) =>
+        sent.some((hello) => hello.ledgerId !== first.ledgerId),
+      );
+      const renewed = hellos.find((hello) => hello.ledgerId !== first.ledgerId)!;
+      assert.isTrue(renewed.origins.every((origin) => origin.mateId === "mate-2"));
+      yield* eventually(subject.origins, (origins) => origins.length > 0);
+      yield* subject.emit("turn.completed");
+      yield* Effect.sleep("200 millis");
+      yield* subject.write("session.jsonl", before + response("after", 120));
+      yield* subject.emit("turn.completed");
+      assert.equal(yield* eventually(subject.total, (total) => total === 120n), 120n);
+      assert.isTrue((yield* subject.origins).every((origin) => origin.mateId === "mate-2"));
+    }),
+  ),
+);
+
+for (const code of ["ledger_rollback_conflict", "origin_lineage_conflict"])
+  it.live(`HQ refusing the ledger (${code}) starts a new one and capture goes on`, () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { watch } = silentWatch();
+        const subject = yield* mate({ watch });
+        const [first] = yield* eventually(subject.hellos, (sent) => sent.length > 0);
+        const before = response("before", 500);
+        yield* subject.write("session.jsonl", before);
+        yield* subject.emit("turn.completed");
+        yield* eventually(subject.total, (total) => total === 500n);
+        yield* subject.answer({
+          type: "usage-error",
+          ledgerId: first!.ledgerId,
+          code,
+          disposition: "refused",
+        });
+        const hellos = yield* eventually(subject.hellos, (sent) =>
+          sent.some((hello) => hello.ledgerId !== first!.ledgerId),
+        );
+        const renewed = hellos.find((hello) => hello.ledgerId !== first!.ledgerId)!;
+        assert.equal(renewed.highWater, "0");
+        assert.notInclude(
+          renewed.origins.map((origin) => origin.originId),
+          first!.origins[0]?.originId,
+        );
+        // The refused ledger's journal is gone: nothing grows behind a stopped lane.
+        assert.equal(yield* subject.total, 0n);
+        yield* eventually(subject.origins, (origins) => origins.length > 0);
+        yield* subject.emit("turn.completed");
+        yield* Effect.sleep("200 millis");
+        yield* subject.write("session.jsonl", before + response("after", 120));
+        yield* subject.emit("turn.completed");
+        assert.equal(yield* eventually(subject.total, (total) => total === 120n), 120n);
+      }),
+    ),
+  );

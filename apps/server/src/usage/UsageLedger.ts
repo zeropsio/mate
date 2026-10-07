@@ -150,13 +150,17 @@ export const makeUsageLedger = Effect.gen(function* () {
         return yield* fail("source-binding-conflict");
       return origin;
     }
-    if ((yield* origins).length >= 64) return yield* fail("source-capacity");
     const meta = yield* metadata;
+    // A scan that began before a new ledger cannot mint an origin for the registration it replaced.
+    if (meta.binding !== undefined && usageCanonical(meta.binding) !== usageCanonical(binding))
+      return yield* fail("source-binding-conflict");
+    if ((yield* origins).length >= 64) return yield* fail("source-capacity");
     const origin: UsageOrigin = {
       // A wiped home with surviving native history must be refused by HQ's existing lineage,
       // rather than minting another origin for the same registration/provider history.
       ...binding,
-      originId: usageDigest([binding, provider, source]),
+      // A new ledger never claims an origin another ledger (a lost or restored home) registered.
+      originId: usageDigest([binding, provider, source, meta.ledgerId]),
       writerId: NodeCrypto.randomUUID(),
       provider,
       label: provider,
@@ -362,6 +366,28 @@ export const makeUsageLedger = Effect.gen(function* () {
     if (usageCanonical(meta.binding) !== usageCanonical(binding))
       return yield* fail("source-binding-conflict");
   });
+  /**
+   * Abandons this ledger for a new one that captures from now (HQ refused its lineage, or the Mate
+   * was registered again): its journal, facts and positions go, and what fell between stays unknown.
+   */
+  const restart = Effect.fnUntraced(function* (binding: UsageBinding) {
+    yield* sql`DELETE FROM usage_journal`;
+    yield* sql`DELETE FROM usage_prefix`;
+    yield* sql`DELETE FROM usage_snapshot`;
+    yield* sql`DELETE FROM usage_facts`;
+    yield* sql`DELETE FROM usage_origins`;
+    yield* sql`DELETE FROM usage_checkpoints`;
+    yield* saveMeta({
+      ledgerId: NodeCrypto.randomUUID(),
+      highWater: 0,
+      highDigest: USAGE_GENESIS_DIGEST,
+      ack: 0,
+      ackDigest: USAGE_GENESIS_DIGEST,
+      binding,
+      startedAt: yield* now,
+      baselined: false,
+    });
+  });
   const markBaselined = Effect.gen(function* () {
     yield* saveMeta({ ...(yield* metadata), baselined: true });
   });
@@ -386,6 +412,7 @@ export const makeUsageLedger = Effect.gen(function* () {
     metadata,
     origins,
     begin: (binding: UsageBinding) => transaction(begin(binding)),
+    restart: (binding: UsageBinding) => transaction(restart(binding)),
     markBaselined: transaction(markBaselined),
     hello,
     digestAt,

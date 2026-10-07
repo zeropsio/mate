@@ -47,6 +47,8 @@ export interface CaptureOptions {
   readonly baseline?: boolean;
   /** Every byte read from a transcript, for IO accounting. */
   readonly onRead?: (bytes: number) => void;
+  /** The ledger this scan began in: a ledger started anew meanwhile ends the scan. */
+  readonly ledgerId?: string;
 }
 
 /** Fails on incomplete listings, rather than certifying a swallowed IO error as an empty source. */
@@ -98,6 +100,8 @@ export const captureSource = Effect.fnUntraced(function* (
     const key = usageDigest([sourceId, file]);
     const scan = ledger.transaction(
       Effect.gen(function* () {
+        if (options.ledgerId && (yield* ledger.metadata).ledgerId !== options.ledgerId)
+          return yield* new UsageLedgerError({ code: "ledger-restarted" });
         const saved = yield* ledger.checkpoint(key);
         let checkpoint: Checkpoint = saved
           ? decodeCheckpoint(saved)

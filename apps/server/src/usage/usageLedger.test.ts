@@ -335,6 +335,20 @@ describe("durable Mate usage boundary", () => {
       ),
   );
 
+  it.effect("a new ledger never takes an origin under the registration it replaced", () =>
+    withLedger((ledger) =>
+      Effect.gen(function* () {
+        yield* ledger.begin(binding);
+        yield* ledger.restart({ ...binding, mateId: "mate-2" });
+        const stale = yield* ledger.bind("source", binding, "claude").pipe(Effect.flip);
+        assert.equal(
+          stale._tag === "UsageLedgerError" ? stale.code : stale._tag,
+          "source-binding-conflict",
+        );
+        assert.lengthOf(yield* ledger.origins, 0);
+      }),
+    ),
+  );
   it.effect("an unavailable HQ is asked again after a growing delay, never at once", () =>
     withLedger((ledger) =>
       Effect.gen(function* () {

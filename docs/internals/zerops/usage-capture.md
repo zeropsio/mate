@@ -16,8 +16,11 @@ in its own project, independently of HQ availability.
 Each provider's container history is one origin, including multiple configured homes. Claude
 native response identity deduplicates repeated blocks and inherited/copied transcripts; a later comparable
 position in the same transcript can correct a response. Incomparable conflicting copies produce a
-gap. The origin key survives a home wipe for the same registration/provider; its new writer/ledger
-must reconcile with HQ rather than import the same history under another counting identity.
+gap. Each ledger mints its own origins. A new registration, or HQ refusing the ledger's lineage
+(`ledger_rollback_conflict` after a restored `usage.sqlite`, `origin_lineage_conflict`, a binding or
+prefix conflict), starts a new ledger that captures from that moment: the old journal, facts and
+positions go, so nothing grows behind a stopped lane, and the gap between stays unknown. A link
+renews at most once; a lost `usage.sqlite` is simply a new ledger.
 
 Codex uses its native session identity and inclusive cumulative total as one replaceable segment.
 The first sample of a non-fork session is retained. A decrease freezes that counter pending lineage

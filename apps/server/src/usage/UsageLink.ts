@@ -24,7 +24,12 @@ import { ServerConfig } from "../config.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { expandHomePath } from "../pathExpansion.ts";
 import { codexHomeLayout, providerInstanceEnvironment } from "../spi/driverHomes.ts";
-import { makeUsageLedger, unknownCoverage, type UsageBinding } from "./UsageLedger.ts";
+import {
+  makeUsageLedger,
+  unknownCoverage,
+  UsageLedgerError,
+  type UsageBinding,
+} from "./UsageLedger.ts";
 import {
   captureSource,
   watchDirectory,
@@ -34,6 +39,21 @@ import {
 import { makeUsageReplication } from "./usageReplication.ts";
 import { DEFAULT_WATCH_RETRY, makeSourceWatches, type WatchRetry } from "./usageWatches.ts";
 
+/**
+ * Refusals a new ledger recovers from: HQ restored past this one or holds its origins under another
+ * lineage (a lost or restored `usage.sqlite`), or the two disagree on the journal's prefix.
+ */
+const isLedgerError = Schema.is(UsageLedgerError);
+const USAGE_RENEWING_CODES: ReadonlySet<string> = new Set([
+  "ledger_rollback_conflict",
+  "origin_lineage_conflict",
+  "ledger_binding_conflict",
+  "origin_binding",
+  "prefix_conflict",
+  "prefix-conflict",
+  "ledger-rollback",
+  "unproved-replay-prefix",
+]);
 export interface UsageLane {
   readonly ping: Effect.Effect<void>;
   readonly state: (message: Extract<MateLinkDown, { type: "state" }>) => Effect.Effect<void>;
@@ -146,6 +166,7 @@ export const makeUsageLink = Effect.fnUntraced(function* (
       yield* captureSource(ledger, binding, source, {
         ...(floor === undefined ? {} : { floor }),
         baseline,
+        ledgerId: meta.ledgerId,
       }).pipe(Effect.catchCause(() => Effect.logWarning("Usage source capture unavailable")));
       yield* watches.ensure(source.directory);
     }
@@ -174,7 +195,7 @@ export const makeUsageLink = Effect.fnUntraced(function* (
   return {
     open: (send) =>
       Effect.gen(function* () {
-        const replication = makeUsageReplication(ledger);
+        let replication = makeUsageReplication(ledger);
         const changed = yield* Queue.sliding<void>(1);
         let manifest = "";
         const advertise = ledger.hello.pipe(
@@ -185,21 +206,46 @@ export const makeUsageLink = Effect.fnUntraced(function* (
         );
         let negotiated = false;
         let halted = false;
+        let renewed = false;
         let lastState: Extract<MateLinkDown, { type: "state" }> | undefined;
+        const halt = Effect.sync(() => {
+          halted = true;
+          replication.stop();
+        }).pipe(
+          Effect.andThen(
+            Effect.logWarning(
+              "Usage replication lane stopped; overview and attention remain available",
+            ),
+          ),
+        );
+        /** A new ledger capturing from now replaces one HQ cannot accept; the gap stays unknown. */
+        const renew = (next: UsageBinding, reason: string) =>
+          Effect.gen(function* () {
+            replication.stop();
+            yield* ledger.restart(next);
+            binding = next;
+            replication = makeUsageReplication(ledger);
+            if (negotiated) active = replication;
+            Queue.offerUnsafe(dirty, undefined);
+            yield* Effect.logInfo("Usage capture started a new ledger").pipe(
+              Effect.annotateLogs({ reason }),
+            );
+          });
         const safely = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
           effect.pipe(
-            Effect.catchCause(() =>
-              Effect.sync(() => {
-                halted = true;
-                replication.stop();
-              }).pipe(
-                Effect.andThen(
-                  Effect.logWarning(
-                    "Usage replication lane stopped; overview and attention remain available",
-                  ),
-                ),
-              ),
-            ),
+            Effect.catch((error) => {
+              // One renewal per link: a refusal of the new ledger waits for the next link.
+              if (
+                renewed ||
+                !binding ||
+                !isLedgerError(error) ||
+                !USAGE_RENEWING_CODES.has(error.code)
+              )
+                return halt;
+              renewed = true;
+              return renew(binding, error.code).pipe(Effect.andThen(advertise));
+            }),
+            Effect.catchCause(() => halt),
             Effect.asVoid,
           );
         const transmit = (value: MateLinkUp | undefined) => (value ? send(value) : Effect.void);
@@ -233,12 +279,9 @@ export const makeUsageLink = Effect.fnUntraced(function* (
                 mateId: message.usage.mateId,
               };
               // Frozen home binding refuses clone/transfer before any old-org facts leave this socket.
+              // A Mate registered again (or moved) captures into a new ledger from now on.
               const begun = yield* Effect.result(ledger.begin(nextBinding));
-              if (begun._tag === "Failure") {
-                halted = true;
-                replication.stop();
-                return;
-              }
+              if (begun._tag === "Failure") yield* renew(nextBinding, "binding-changed");
               binding = nextBinding;
               active?.stop();
               active = replication;
