@@ -711,21 +711,6 @@ still to come says so.
     `runtime.test.ts`, `EnvironmentAuth.test.ts`, `environmentHttp.test.ts`, `storage.test.ts`;
     `account-lifecycle.md`
 
-- **—** — Pass 19: _Change face…_, and _New project_'s first Mate with its face
-  - _State:_ **live** for _Change face…_ on the same throwaway Mate, 2026-09-29: saved in about 1.5
-    s — then into the project's tags, every other kept; into HQ's record of the Mate now
-    (`updateMate`) — the face held over a reload. Measured in the
-    harness: the dialog 512 × 291 px in every state; over a save, one row geometry and one face
-    geometry across 94 frames, the face swapped under the backdrop's veil; the wizard's card 576 ×
-    306 px throughout. A face changed on a Mate that wore its name's tint writes `:named`, so nobody
-    recolours — in tests, every Mate of a six-Mate account changed in turn. The wizard's first Mate
-    not yet made live. **Open**: §7, 23
-  - _Built in:_ mate 0.11.67 (PR #37): `49c105cfd` `3e0976bc0` `f2f1882f5` `d6bd47788` `132306274`
-    `26be501e6`
-  - _Proven by:_ `groups.test.ts`, `mateTints.test.ts`, `structure.test.ts`, `newProject.test.ts`,
-    `ZeropsChangeFaceDialog.logic.test.ts`, `ZeropsChangeFaceDialog.test.tsx`,
-    `useMateActions.test.tsx`, `ZeropsNewProjectForm.test.tsx`; the harnesses `/design-face.html`
-    and `/design-newproject.html`
 - **—** — Pass 21: a run is opened by the message that started it; Stop settles a start that never
   ran
   - _State:_ built, 2026-09-30, from Juno's "Thinking · 17:42:08": a message whose run never came

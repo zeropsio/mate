@@ -73,16 +73,6 @@ here (the owner decides only what the orchestrator brief §6 lists).
   `Connecting` while a registered socket comes up; the dot keeps the connected tone (teal). The
   socket is the client's business; the row answers what the agent is up to.
   - _Why:_ "Connected" on every row answered a question nobody on the roster was asking
-- **2026-09-05** — The product's name is set once, by the lockup: the still mark beside the "mate"
-  wordmark from identity v1 §06 (Sora SemiBold, lowercase, −0.015 em, outlined into `MATE_WORDMARK`
-  so no page waits on a webfont; x-height three eighths of the mark's height, its band centred on
-  the mark, the ink half the mark's height right of it — the owner's two corrections of 2026-09-05,
-  superseding identity v1's window-height word and 2 s gap). No surface repeats "Zerops" or "Zerops
-  Mate" as a text, eyebrow or breadcrumb beside it. Inside a link that names itself the lockup is
-  `decorative` (aria-hidden) so the name is announced once. The boot splash shows the still open
-  mark — the favicon's — so the frame before React and the first frame after it agree.
-  - _Why:_ the first screen a person saw had "Zerops" three times (header, eyebrow, copy) and no
-    product mark; a Zerops logo flashed before the Mate mark on every reload
 - **2026-09-05** — Choosing an organization is a page (`h1`, one sentence, a 1/2/3-column grid of
   cards), not a section under an "Environments" title that does not apply yet. The chosen
   organization is a control in the bar, with no "Organization" label of its own.
@@ -219,21 +209,6 @@ Mate`, `Wait for it`) is the grey `secondary` pill; `Open` is `outline`. Row pil
   composer target), as it was into a fresh draft.
   - _Why:_ the owner: "the functionality should be that it will send the message to the existing
     thread as if it was written there + redirect to the thread"
-- **2026-09-06** — **The wordmark reads smaller and closer** — this supersedes the proportion in the
-  2026-09-05 lockup row. `MATE_WORDMARK` is the same shaping (Sora SemiBold, −0.015 em, outlined) at
-  x-height 0.35 of the mark's height (18.2 of 52, baseline 35.1) with the first stem's ink two
-  fifths of it (20.8) right of the mark's edge — the 2026-09-05 cut scaled by 14/15 about the
-  baseline at that stem, which is the layout `scripts/brand/wordmark.py` re-derives from its
-  constants. The lockup's box follows the ink: `0 0 148 52`, the word's `44 0 104 52`.
-  - _Why:_ the owner: "can we make the 'mate' a little smaller and little close to the logo?"
-- **2026-09-06** — **A Mate sleeps until its container is connected, on every surface.**
-  `mateFaceFor(connected, activity)` is the one rule — asleep when the container is not connected,
-  the conversation's face when it is, idle as that rule's floor — and the roster, the projects
-  screen, the conversation's header and the Mate's home on the map all call it. It matters because a
-  Mate is known before its socket is up: from its project's tags and its container's origin
-  (`registeredOrigins`), which is why `ZeropsMateIdentity` carries `connected`.
-  - _Why:_ the owner: "are these at all occurrences reflecting the eye state properly? think about
-    it"
 - **2026-09-07** — **A created environment opens on its job, and that one prompt mate sends
   itself.** A creation writes down what the environment is, where its application came from and
   which services the clone could not build (`creationHandoff.ts`), keyed on the project; the connect
@@ -788,29 +763,6 @@ Mate`, `Wait for it`) is the grey `secondary` pill; `Open` is `outline`. Row pil
   error, the usage pause, background work and the older work rows keep a 20 px mark column and start
   their words 20 px past the prose edge; the person's bubble keeps the chat's 14 px padding.
   - _Why:_ their words started 22, 24 and 26 px in, a callout's 14
-- **2026-09-29** — **Each Mate wears its own shape as well as its colour.** Eight silhouettes
-  (`MATE_SHAPES`: squircle, gem, hexagon, pentagon, clover, flower, seal, pick), each the same area
-  of its box, each holding every eye pose and the mouth, one per tint (`MATE_SHAPE_OF_TINT`), so the
-  account's first eight Mates, which never share a tint, never share a shape (past eight both
-  repeat, as the palette does). Hues that sit close are apart in silhouette: the blues a pick, a
-  squircle and a gem; the warm four a pentagon, a hexagon, a flower and a seal; the green the
-  clover. No plain disc.
-  - _Why:_ eight discs that differ only in hue read as copies at 28 px (sky beside slate, amber
-    beside sand) and as one face to anybody who does not see the hue; a silhouette is read before
-    either
-- **2026-09-29** — **A Mate's face moves with its state.** Every pose is one drawing, so a change of
-  state morphs (the eyes narrow into work, the o opens) rather than swapping pictures. At work the
-  shape turns a notch at a time on a spring, by its own symmetry and about its own centre, and the
-  eyes glance; as it starts to need you it hops three times, the first at once, then waits (a person
-  can be away for hours); done after work or a question while you watch, it pops once
-  (`mateFaceArrival`: never marking a Mate unread, never on a first paint or a remount, never from a
-  pose that stood in until the Mate's state was read, `known`); idle and asleep it is still. Each
-  Mate keeps its own beat, offset inside each loop's rest so work starts still; reduced motion
-  leaves only the morph. Its own
-  motion is transform and opacity, the morph easing the eyes' and mouth's geometry; the turn and the
-  glance are R6 exceptions.
-  - _Why:_ the owner, 2026-09-29: "give each mate a different shape, more expressive current state";
-    a still face said working and idle apart only by its eyelids
 - **2026-09-29** — **The run's status line moves with what the Mate does.** Its face looks up and
   aside while the Mate thinks and down along its line while it writes (`gaze`); the line's words
   rise into place from just below, out of a 2 px blur, when they change (never on a first paint,
@@ -1151,14 +1103,6 @@ Mate`, `Wait for it`) is the grey `secondary` pill; `Open` is `outline`. Row pil
   crew is its face and name. No _New chat_ anywhere; a Mate's older chats are listed from a ⌄ after
   its name. **Supersedes** the strip, the subject line, the lane bar and the lead's bar.
   - _Why:_ every mechanic of crew mode stood in the header in the engine's words
-- **2026-09-29** — **A picked tint recolours nobody.** A Mate that picked its tint wears it; the
-  rest share the tints their names give them among themselves alone, exactly as before any Mate
-  could pick, so two Mates may wear one tint and their shapes tell them apart. The New Mate dialog
-  offers a name its own tint walking past every tint a Mate already wears (`newMateTint`), so a Mate
-  added with the offer changes no other face either.
-  - _Why:_ adding one Mate in a live trial turned four others' faces: picked tints were reserved
-    before the rest were derived, so a pick of the tint another Mate wore by its name pushed that
-    Mate along, and the walk recoloured Mates across the account
 - **2026-09-29** — **_New Mate_ asks who the Mate is — a name, a colour, a shape — and always
   deploys the recipe** (the owner: the dialog "basically doesn't need anything other than input for
   mate's name, its color and shape, it should always deploy the recipe"). The name, focused with the
@@ -1307,17 +1251,6 @@ Mate`, `Wait for it`) is the grey `secondary` pill; `Open` is `outline`. Row pil
   - _Why:_ at a session's day boundary the banner said "Couldn't connect to Fen. Fen refused the
     connection." until the door minted the next, and a tab left open presented its ended sessions to
     every Mate at once on each wake
-- **2026-09-30** — **A face changed after birth recolours nobody either**
-  (`mate:face:<tint>:<shape>:named`). A Mate nobody picked a face for wears its name's tint, shared
-  out over every such name in name order; changing its face took its name out of that sharing, and
-  every name that had walked past it walked back — over a ten-Mate account, up to seven others
-  recoloured. So a Mate that wore its name's tint keeps its name in the sharing when its face is
-  changed: its tag says so (`:named`), it wears its pick, and the tint its name held stays held. A
-  Mate whose face was picked at its birth never had a place there and takes none now. Older clients
-  ignore the third part and read the face as a plain pick. **Supersedes:** for a Mate whose face is
-  changed after birth, "the rest share the tints their names give them among themselves alone" of
-  the 2026-09-29 _picked tint recolours nobody_ row: its name stays among them.
-  - _Why:_ the rule that a pick recolours nobody would have broken on the first face changed live
 - **2026-09-30** — **Superseded 2026-10-02 in part by the HQ row below: the name, the face and the
   stand-up ask are HQ's birth record, not project tags.**
   **_New project_ asks who its first Mate is, and that Mate stands development up
