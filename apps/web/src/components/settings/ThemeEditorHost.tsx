@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useSyncExternalStore } from "react";
+import { lazy, Suspense, useCallback, useEffect, useSyncExternalStore } from "react";
 
 import { useTheme } from "../../hooks/useTheme";
 import {
@@ -8,6 +8,8 @@ import {
   type ThemeDefinition,
 } from "../../themePalette";
 import { stackedThreadToast, toastManager } from "../ui/toast";
+import { XIcon } from "lucide-react";
+import { Button } from "../ui/button";
 import { SurfaceLoading } from "../SurfaceLoading";
 import { useThemeEditorStore } from "./themeEditorStore";
 
@@ -32,6 +34,20 @@ export function ThemeEditorHost() {
   const session = useThemeEditorStore((store) => store.session);
   const closeThemeEditor = useThemeEditorStore((store) => store.closeThemeEditor);
   const { theme, setTheme, themeHalves, refreshTheme } = useTheme();
+  useEffect(() => {
+    if (session === null) return;
+    const dismiss = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      // A nested popup or another modal owns Escape first. The editor itself is nonmodal.
+      const target = event.target instanceof Element ? event.target : null;
+      const popup = target?.closest('[role="dialog"], [role="alertdialog"], [data-slot$="popup"]');
+      if (popup && !popup.closest("[data-theme-editor-panel], [data-theme-editor-loading]")) return;
+      event.preventDefault();
+      closeThemeEditor();
+    };
+    window.addEventListener("keydown", dismiss);
+    return () => window.removeEventListener("keydown", dismiss);
+  }, [closeThemeEditor, session]);
   // A saved definition can change without its id changing between sessions.
   const editingTheme = useThemeDefinition(session?.editingThemeId);
   const seedTheme = useThemeDefinition(session?.seedThemeId);
@@ -114,10 +130,21 @@ export function ThemeEditorHost() {
       fallback={
         <div
           className="fixed bottom-4 right-4 h-96 w-104 max-w-full"
+          data-theme-editor-loading
           role="dialog"
           aria-label="Loading theme editor"
           style={{ zIndex: 110 }}
         >
+          <div className="absolute end-2 top-2">
+            <Button
+              aria-label="Close the theme editor"
+              size="icon"
+              variant="ghost"
+              onClick={closeThemeEditor}
+            >
+              <XIcon />
+            </Button>
+          </div>
           <SurfaceLoading />
         </div>
       }

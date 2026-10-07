@@ -124,13 +124,13 @@ it("withholds a destination withdrawn after the form opened, including Enter", (
   expect(tree.root.findByProps({ type: "submit" }).props.disabled).toBe(true);
 });
 
-it("locks the picker, Cancel and Enter while Move is being answered", () => {
+it("locks the picker and repeat submit while allowing Cancel during Move", () => {
   const onSubmit = vi.fn();
   const { tree } = mount({ onSubmit, pending: true });
   submit(tree);
   expect(onSubmit).not.toHaveBeenCalled();
   expect(tree.root.findByProps({ type: "submit" }).props.disabled).toBe(true);
-  expect(tree.root.findByProps({ type: "button" }).props.disabled).toBe(true);
+  expect(tree.root.findByProps({ type: "button" }).props.disabled).not.toBe(true);
   expect(tree.root.findAllByType(RadioGroup).every((group) => group.props.disabled)).toBe(true);
 });
 

@@ -1,7 +1,7 @@
 /**
  * Renaming a project, wherever it is offered — the projects screen's row and the project's own page.
  *
- * The dialog stays until HQ answers (M04, e2e 2026-10-03: closing at once left a slow rename
+ * Unless dismissed, the dialog follows HQ until it answers (M04, e2e 2026-10-03: closing at once left a slow rename
  * unseen and a refused one unsaid): it closes once HQ takes the name and keeps HQ's refusal for
  * another try. Every project of the application is named after it in Zerops, so the dialog waits
  * for those renames too: one Zerops refuses is said, with its reason, and Retry sends the same
@@ -9,7 +9,7 @@
  */
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import type { ZeropsGroup } from "@t3tools/client-runtime/zerops";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   projectRenameLeftNotice,
@@ -28,6 +28,18 @@ export function ZeropsRenameProjectDialog({
   readonly onClose: () => void;
 }) {
   const { rename, retry } = useRenameGroup();
+  const active = useRef(true);
+  useEffect(() => {
+    active.current = true;
+    return () => {
+      active.current = false;
+    };
+  }, []);
+  const close = () => {
+    if (!active.current) return;
+    active.current = false;
+    onClose();
+  };
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // The projects Zerops refused, as planned: HQ has the name, a retry is theirs alone.
@@ -35,7 +47,7 @@ export function ZeropsRenameProjectDialog({
 
   const settled = (failures: ReadonlyArray<ProjectRenameFailure>) => {
     if (failures.length === 0) {
-      onClose();
+      close();
       return;
     }
     setLeft(renamesLeft(failures));
@@ -50,10 +62,9 @@ export function ZeropsRenameProjectDialog({
       // An unread name's id is a handle, not a name to edit.
       initialValue={group.nameSource === "unread" ? "" : group.name}
       label="Project name"
-      onCancel={onClose}
+      onCancel={close}
       onOpenChange={(open) => {
-        // Escape and the backdrop wait for HQ too: its refusal needs the dialog to land in.
-        if (!open && !pending) onClose();
+        if (!open) close();
       }}
       onSubmit={(name) => {
         setPending(true);

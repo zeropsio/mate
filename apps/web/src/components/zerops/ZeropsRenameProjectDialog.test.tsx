@@ -1,7 +1,7 @@
 /**
  * M04 (e2e, 2026-10-03): renaming a project closed its dialog at once, with no pending state and
- * no error: two of five renames had not applied when the watch ended, the door being slow. The
- * dialog stays until HQ answers — closed once HQ takes the name, open with its refusal — and says
+ * no error: two of five renames had not applied when the watch ended, the door being slow. Unless dismissed, the
+ * dialog follows HQ until it answers — closed once HQ takes the name, open with its refusal — and says
  * what a rename does: Mate shows the new name, and its environments in Zerops keep theirs.
  */
 import type { ZeropsGroup } from "@t3tools/client-runtime/zerops";
@@ -91,17 +91,13 @@ describe("ZeropsRenameProjectDialog", () => {
     );
   });
 
-  it("stays open and pending until HQ answers, then closes", async () => {
+  it("follows the rename until HQ answers when not dismissed", async () => {
     const press = mount();
     act(() => {
       mock.dialog!.onSubmit("Harbor");
     });
     expect(press.rename).toHaveBeenCalledWith(GROUP, "Harbor");
     expect(mock.dialog).toMatchObject({ pending: true, error: null });
-    // Nothing closes it while HQ is answering: its refusal has somewhere to land.
-    act(() => {
-      mock.dialog!.onOpenChange(false);
-    });
     expect(press.onClose).not.toHaveBeenCalled();
 
     await act(async () => {
