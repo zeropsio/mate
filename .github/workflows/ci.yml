@@ -172,6 +172,15 @@ jobs:
           cache: true
           run-install: true
 
+      - name: Cache the scenarios' Chrome for Testing
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/mate-test-browser
+          key: mate-test-browser-${{ runner.os }}-${{ hashFiles('apps/web/test/testBrowser.ts') }}
+
+      - name: Install the scenarios' Chrome for Testing
+        run: vp run test:browser
+
       - name: Provider goldens, client wire journeys and typecheck
         run: node scripts/chat-gate.ts
 
