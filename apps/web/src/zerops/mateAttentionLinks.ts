@@ -10,6 +10,8 @@ import { useAtomValue } from "@effect/atom-react";
 import { EnvironmentRegistry } from "@t3tools/client-runtime/connection";
 import {
   makeMateAttentionWire,
+  makeMateHealthWire,
+  startMateHealth,
   matesAttention,
   startMateAttention,
   type AccountStore,
@@ -65,14 +67,22 @@ export function useOpenMatesAttention(store: AccountStore): void {
     for (const entry of wanted) {
       if (links.has(entry)) continue;
       const [projectId, environmentId] = entry.split("=") as [string, EnvironmentId];
-      links.set(
-        entry,
-        startMateAttention({
-          projectId,
-          store,
-          wire: makeMateAttentionWire({ registry, environmentId }),
-        }),
-      );
+      const health = startMateHealth({
+        projectId,
+        store,
+        wire: makeMateHealthWire({ registry, environmentId }),
+      });
+      const attention = startMateAttention({
+        projectId,
+        store,
+        wire: makeMateAttentionWire({ registry, environmentId }),
+      });
+      links.set(entry, {
+        stop: () => {
+          health.stop();
+          attention.stop();
+        },
+      });
     }
   }, [open, registry, store]);
   useEffect(

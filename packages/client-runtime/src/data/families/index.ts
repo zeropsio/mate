@@ -43,6 +43,7 @@ import { hqAppDetailFamily } from "./hqAppDetail.ts";
 import { hqProtocolFamily } from "./hqProtocol.ts";
 import { hqPictureFamily } from "./hqPicture.ts";
 import { hqMateFamily } from "./hqMate.ts";
+import { mateHealthFamily } from "./mateHealth.ts";
 import { mateAttentionFamily } from "./mateAttention.ts";
 import { organizationLocationsFamily } from "./organizationLocations.ts";
 import { organizationMembersFamily } from "./organizationMembers.ts";
@@ -115,6 +116,7 @@ export const FAMILIES = defineFamilies([
   hqMateFamily,
   serviceFamily,
   mateAttentionFamily,
+  mateHealthFamily,
   hqDiscussionFamily,
   usageFamily,
   usageHistoryFamily,

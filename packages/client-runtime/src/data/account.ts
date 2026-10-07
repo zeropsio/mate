@@ -15,6 +15,7 @@ import {
   type HqMoveOffers,
   type HqWire,
 } from "./adapters/hq.ts";
+import { mateHealthLink, type MateHealthWire } from "./adapters/mateHealth.ts";
 import { mateAttentionLink, type MateAttentionWire } from "./adapters/mateAttention.ts";
 import { zeropsNavigationLink, type ZeropsWire } from "./adapters/zerops.ts";
 import { detailScopeOf, type DetailDemand } from "./demand.ts";
@@ -147,6 +148,24 @@ export function startMateAttention(options: {
     },
   };
 }
+export function startMateHealth(options: {
+  readonly projectId: string;
+  readonly store: AccountStore;
+  readonly wire: MateHealthWire;
+}): Pick<RunningLink, "signal" | "stop"> {
+  const supervisor = Effect.runSync(
+    superviseLink({ ...mateHealthLink(options), store: options.store, repairSession: Effect.void }),
+  );
+  const fiber = Effect.runFork(supervisor.run);
+  return {
+    signal: (signal) => void Effect.runFork(supervisor.signal(signal)),
+    stop: () => {
+      Effect.runSync(supervisor.release);
+      Effect.runFork(Fiber.interrupt(fiber));
+    },
+  };
+}
+
 /** An organization's HQ as the app names it: its official HQ, or the verdict there is none yet. */
 export type ShownHq =
   | { readonly orgId: string; readonly wire: HqWire }

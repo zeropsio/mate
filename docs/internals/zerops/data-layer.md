@@ -54,3 +54,11 @@ New families, projections and operations use these same boundaries. Replacing an
 every existing product test sentence and follows all affected clients. Keep source-specific wire
 shapes, policies and surface behavior in code and tests; platform assumptions belong beside the
 code that depends on them or in a short ledger with a verification command.
+
+Mate resource health has its own revision and subscription, independent of conversation reads,
+and travels to HQ in an independent `health` frame, retained in `hq_mate_health`. Both paths enter the `mateHealth` family. The health
+projection joins these with the zcp service's configured RAM minimum. Kernel cgroup v2 evidence
+and state-disk free space determine resource strain; a transport failure never does. An unavailable
+source retains the permitted report labelled last-known. The server samples at startup and on
+kernel notifications, PSI triggers and state-directory changes. PSI's unprivileged two-second
+trigger window schedules reads only; counter growth and measured limits determine the fact.

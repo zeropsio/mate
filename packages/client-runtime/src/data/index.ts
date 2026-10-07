@@ -444,3 +444,8 @@ export {
   setupFailureLogQuery,
   setupFailureReason,
 } from "./projections/setupFailure.ts";
+export { mateHealth, mateHealthCopy, type MateHealthRead } from "./projections/mateHealth.ts";
+export { mateHealthAtom } from "./reads.ts";
+
+export { makeMateHealthWire } from "./adapters/mateHealth.ts";
+export { startMateHealth } from "./account.ts";
