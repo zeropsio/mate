@@ -4,6 +4,10 @@ import * as NodeURL from "node:url";
 import * as NodeOS from "node:os";
 import { testWorkerBudget } from "./scripts/lib/test-worker-budget.ts";
 
+// An unset budget leaves the key out: the config's types take no explicit undefined.
+const withMaxWorkers = (budget: number | undefined) =>
+  budget === undefined ? {} : { maxWorkers: budget };
+
 /** Import restrictions every file keeps. */
 const RESTRICTED_IMPORT_PATHS = [
   {
@@ -40,7 +44,7 @@ export default defineConfig({
     },
   },
   test: {
-    maxWorkers: testWorkerBudget(process.env.MATE_TEST_JOBS, NodeOS.availableParallelism()),
+    ...withMaxWorkers(testWorkerBudget(process.env.MATE_TEST_JOBS, NodeOS.availableParallelism())),
     environment: "node",
     exclude: [
       "**/.repos/**",
