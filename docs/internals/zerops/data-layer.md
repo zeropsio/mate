@@ -9,7 +9,9 @@ and desktop uses the web client. Provider evidence enters through the [provider 
 Each fact has one authoritative source and one writer in the client. Facts are keyed by domain
 identity, within the verified account's lifetime. Remote values and verdicts stay in account memory;
 browser storage holds local preferences, drafts and sign-in state under their own contracts.
-A remembered value grants no access. Each write is authorized by its owner when it runs.
+A family may declare a display label safe to retain after deletion or denial. The project family
+retains only its name for recovery messages; its protected payload is still purged. Returning
+membership requests an owner read before restoring a purged project. A remembered value grants no access. Each write is authorized by its owner when it runs.
 
 Keep value, authority, source order, coverage, freshness and access separate. A working transport
 does not prove that a scope is current or authorized. Missing, partial, stale and refused evidence

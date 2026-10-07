@@ -131,3 +131,12 @@ stream does not repeat your writes.
 Move places a Mate within the same organization and HQ. Its container, conversations and repository history stay in place. Cross-organization, cross-HQ and physical container migration are unsupported. HQ explains destination refusals in the Move dialog; changing between a Mate and a deploy environment is refused until its credential and job migration can be completed.
 
 If Move was accepted but Zerops still has its original name, **Finish renaming** completes that remainder. After a deleted Mate is gone, **Finish deleting Mate** on Projects completes its original HQ and exact-key cleanup. Reopening the account restores these actions from HQ; a lost answer does not start another Move or project deletion.
+
+If access to a Mate's project is removed, Mate names the project and asks you to contact its owner.
+A confirmed project deletion has a separate message and no link to the deleted project. An
+authoritative restoration of access lets the open route reconnect.
+
+A stopped container offers **Start**. A failed start or restart names the Mate and the startup
+failure, with **Retry restart** and **Open in Zerops** for the process details. During a lost
+connection, provider sign-in controls stay inactive until the Mate reconnects. Reported disk
+exhaustion asks you to free space; it does not claim that a conversation write failed.

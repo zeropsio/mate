@@ -8,6 +8,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { ComposerBannerStack } from "./ComposerBannerStack";
 import {
   environmentConnectionBannerItem,
+  mateVoiceBannerItem,
   environmentRetryFailureToast,
 } from "./EnvironmentConnectionBanner";
 
@@ -106,5 +107,32 @@ describe("environmentRetryFailureToast", () => {
     { name: "an interrupted retry", result: AsyncResult.failure(Cause.interrupt(0)) },
   ])("$name: says nothing", ({ result }) => {
     expect(environmentRetryFailureToast(result)).toBeNull();
+  });
+});
+
+describe("Mate lifecycle recovery actions", () => {
+  it.each([
+    { action: "start" as const, label: "Start", tone: "default" as const },
+    { action: "restart" as const, label: "Retry restart", tone: "error" as const },
+  ])("offers $label directly with its source severity", ({ action, label, tone }) => {
+    const item = mateVoiceBannerItem({
+      environmentId: EnvironmentId.make("env-Wren"),
+      voice: {
+        surface: "banner",
+        text: "Wren's container needs attention.",
+        actions: [action, "open-in-zerops"],
+        processes: false,
+        severity: tone === "error" ? "danger" : "info",
+      },
+      onRetry: () => undefined,
+      onContainerAction: () => undefined,
+      projects: <a href="/zerops" />,
+      projectUrl: "https://app.zerops.io/project/Wren",
+    });
+    expect(item?.variant).toBe(tone);
+    const html = renderToStaticMarkup(item?.actions);
+    expect(html).toContain(label);
+    expect(html).toContain("https://app.zerops.io/project/Wren");
+    expect(html).not.toContain("Go to projects");
   });
 });

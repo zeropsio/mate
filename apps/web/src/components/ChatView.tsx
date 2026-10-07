@@ -1,3 +1,5 @@
+import { useMateRecoveryAction } from "../zerops/useMateRecoveryAction";
+import { expiredAgentNotice } from "../zerops/mateRecovery.logic";
 import { useQuestionAttachments } from "./chat/useQuestionAttachments";
 import { vaultNote } from "@t3tools/client-runtime/data";
 import { SurfaceLoading } from "./SurfaceLoading";
@@ -2445,6 +2447,10 @@ export default function ChatView(props: ChatViewProps) {
   const whoLivesHereKind = useZeropsMate(environmentId).kind;
   const mateLinkVoice = useMateVoice();
   const reviveFailedMate = useReviveFailedMate();
+  const recoveryMate = zeropsMateAt(zeropsMates, environmentId);
+  const mateRecoveryAction = useMateRecoveryAction(
+    recoveryMate.kind === "mate" ? (recoveryMate.mate.projectId ?? null) : null,
+  );
   const tryMateAgain = useTryMateAgain();
   const systemComposerBannerItems = useMemo<ComposerBannerStackItem[]>(() => {
     const items: ComposerBannerStackItem[] = [];
@@ -2461,6 +2467,9 @@ export default function ChatView(props: ChatViewProps) {
       const banner = mateVoiceBannerItem({
         environmentId,
         voice: mateLinkVoice,
+        onContainerAction: mateRecoveryAction.act,
+        busy: mateRecoveryAction.busy,
+        projectUrl: routeMateAt.mate.projectUrl,
         // A container that failed is stopped and started; any other Mate is asked again, its
         // exchange as well as its link.
         onRetry: () => {
@@ -2487,6 +2496,8 @@ export default function ChatView(props: ChatViewProps) {
     activeEnvironmentUnavailableState,
     environmentId,
     mateLinkVoice,
+    mateRecoveryAction.act,
+    mateRecoveryAction.busy,
     reconnectWarningGraceElapsed,
     reviveFailedMate,
     tryMateAgain,
@@ -5428,11 +5439,27 @@ export default function ChatView(props: ChatViewProps) {
     if (zeropsOwnedAgent === undefined) return null;
     // Said only on a known answer: "nobody can run it" is not what loading looks like.
     if (zeropsWriterKind === "unknown") return null;
-    // A token-authorized agent is nobody's personal login: an API key belongs
-    // to the project, so nothing is said about it.
-    if (zeropsOwnedAgent.flagToken) return null;
     // Someone else's agent says so in the footer that replaces the composer.
     if (zeropsReadOnly !== null) return null;
+    const expired = expiredAgentNotice(
+      zeropsOwnedAgent,
+      chromeMate?.kind === "mate" ? chromeMate.mate.name : "This Mate",
+      zeropsOwnedAgent.agentId === "codex" ? "Codex" : "Claude Code",
+    );
+    if (expired !== null)
+      return {
+        id: `agent-login:${zeropsOwnedAgent.agentId}`,
+        variant: "warning",
+        icon: <LockIcon />,
+        title: expired,
+        actions: (
+          <Button size="xs" onClick={openAgentAuthDialog}>
+            Sign in
+          </Button>
+        ),
+      };
+    // A working token belongs to the project and needs no ownership notice.
+    if (zeropsOwnedAgent.flagToken) return null;
     const notice = agentOwnershipComposerNotice(zeropsAgentOwnership);
     if (notice === undefined) return null;
     return {
@@ -5452,6 +5479,7 @@ export default function ChatView(props: ChatViewProps) {
     zeropsWriterKind,
     zeropsOwnedAgent,
     zeropsReadOnly,
+    chromeMate,
   ]);
 
   /**

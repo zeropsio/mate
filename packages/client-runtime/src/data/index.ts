@@ -462,3 +462,4 @@ export { mateFeedServices } from "./adapters/mateFeeds.ts";
 
 export { sharedMateSetupDemand, closeSharedMateSetupDemand } from "./adapters/mateSetup.ts";
 export { mateSetupRetryCommand } from "./mateActionReads.ts";
+export { mateRecovery, type MateRecovery } from "./projections/mateRecovery.ts";
