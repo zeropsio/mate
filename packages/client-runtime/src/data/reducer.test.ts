@@ -68,6 +68,56 @@ function apply(state: AccountState, inputs: ReadonlyArray<AccountInput>): Accoun
 }
 
 describe("reduceAccount", () => {
+  it("publishes no membership for duplicate additions, removals or excluded departures", () => {
+    const held = apply(attached(), [commit(["p1"], [row("p1", 1)])]);
+    const duplicate = reduceAccount(held, delta({ add: ["p1"], remove: [] }));
+    expect(duplicate.changed.size).toBe(0);
+    expect(duplicate.state).toBe(held);
+    const removed = reduceAccount(held, delta({ add: [], remove: ["p1"] }));
+    expect(removed.changed).toEqual(new Set([`members:${scope}`, "index:running:x"]));
+    const repeated = reduceAccount(removed.state, delta({ add: [], remove: ["p1"] }));
+    expect(repeated.changed.size).toBe(0);
+    expect(repeated.state).toBe(removed.state);
+    const excluded = apply(held, [
+      { kind: "access", family: "process", id: "p1", access: "denied" },
+    ]);
+    expect(reduceAccount(excluded, delta({ add: [], remove: ["p1"] })).changed.size).toBe(0);
+  });
+
+  it("retains invisible baseline staging and replays a currently duplicate addition", () => {
+    const held = apply(attached(), [commit(["p1"], [row("p1", 1)])]);
+    const begun = reduceAccount(held, { kind: "baseline-begin", scope, generation: 1 });
+    expect(begun.changed.size).toBe(0);
+    const staged = reduceAccount(begun.state, delta({ add: ["p1"], remove: [] }));
+    expect(staged.changed.size).toBe(0);
+    expect(staged.state.memberships.get(scope)?.baseline?.staged).toEqual([
+      { add: ["p1"], remove: [] },
+    ]);
+    const committed = reduceAccount(staged.state, commit([], []));
+    expect(committed.state.memberships.get(scope)?.members.get("p1")).toBe("member");
+    expect(committed.state.memberships.get(scope)?.baseline).toBeNull();
+    expect(committed.changed.size).toBe(0);
+    const late = reduceAccount(begun.state, {
+      kind: "membership",
+      scope,
+      generation: 0,
+      delta: { add: ["late"], remove: [] },
+    });
+    expect(late.changed.size).toBe(0);
+    expect(late.state).toBe(begun.state);
+  });
+
+  it("publishes partial coverage even when its membership stays unchanged", () => {
+    const held = apply(attached(), [commit(["p1"], [row("p1", 1)])]);
+    const partial = reduceAccount(held, { ...commit(["p1"], []), partial: true } as AccountInput);
+    expect(partial.changed).toEqual(new Set([`coverage:${scope}`, `members:${scope}`]));
+    expect(partial.state.memberships.get(scope)?.coverage).toBe("partial");
+    expect(
+      reduceAccount(partial.state, { ...commit(["p1"], []), partial: true } as AccountInput).changed
+        .size,
+    ).toBe(0);
+  });
+
   it.each([
     { key: linkKeys.mate("p1"), mode: "sampled" },
     { key: "mate:p1:link", mode: "sampled" },

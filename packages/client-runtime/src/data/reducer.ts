@@ -27,6 +27,7 @@ import {
   type Family,
   type FamilyValues,
   type Membership,
+  type MemberState,
   type MembershipDelta,
   type ReadKey,
   type Revision,
@@ -362,21 +363,34 @@ function reduceMembership(
     leaving,
   } = scopeListing(scope);
   const membership = state.memberships.get(scope) ?? EMPTY_MEMBERSHIP;
-  changed.add(`members:${scope}`);
   // While a baseline is read, a delta may be older or newer than its answer: replay it after.
   if (membership.baseline !== null)
     return withMembership(state, scope, {
       ...membership,
       baseline: { ...membership.baseline, staged: [...membership.baseline.staged, delta] },
     });
-  const members = new Map(membership.members);
-  for (const id of delta.add) members.set(id, "member");
+  let members: Map<string, MemberState> | null = null;
+  for (const id of delta.add) {
+    if ((members ?? membership.members).get(id) === "member") continue;
+    members ??= new Map(membership.members);
+    members.set(id, "member");
+  }
   const removed = delta.remove.filter((id) => !membership.excluded.has(id));
-  for (const id of removed) members.set(id, leaving);
+  for (const id of removed) {
+    if ((members ?? membership.members).get(id) === leaving) continue;
+    members ??= new Map(membership.members);
+    members.set(id, leaving);
+  }
   const unresolved = delta.add.filter((id) => !state.facts.has(factKey(family, id)));
   if (unresolved.length > 0) directives.push({ kind: "resolve-rows", key: scope, ids: unresolved });
   if (leaving === "absent-unverified" && removed.length > 0)
     directives.push({ kind: "verify-absence", key: scope, ids: removed });
+  if (members === null) return state;
+  const membershipChanged = [...delta.add, ...removed].some(
+    (id) => members.get(id) !== membership.members.get(id),
+  );
+  if (!membershipChanged) return state;
+  changed.add(`members:${scope}`);
   return withMembership(state, scope, { ...membership, members });
 }
 
@@ -386,7 +400,7 @@ const withMembership = (
   membership: Membership,
 ): AccountState => ({ ...state, memberships: new Map(state.memberships).set(scope, membership) });
 
-function beginBaseline(state: AccountState, scope: ScopeKey, changed: Set<ReadKey>): AccountState {
+function beginBaseline(state: AccountState, scope: ScopeKey): AccountState {
   const prefix = `${scopeSpec(scope).family}:`;
   const membership = state.memberships.get(scope) ?? EMPTY_MEMBERSHIP;
   const knownAtBegin = new Set<string>();
@@ -395,7 +409,6 @@ function beginBaseline(state: AccountState, scope: ScopeKey, changed: Set<ReadKe
   for (const [key, fact] of state.facts)
     if (fact.scope === scope && fact.content.kind === "value" && key.startsWith(prefix))
       knownAtBegin.add(key.slice(prefix.length));
-  changed.add(`members:${scope}`);
   return withMembership(state, scope, { ...membership, baseline: { knownAtBegin, staged: [] } });
 }
 
@@ -415,7 +428,10 @@ function commitBaseline(
   const knownAtBegin = membership.baseline?.knownAtBegin ?? new Set<string>();
   let next = reduceRows(state, { ...input, method: "baseline" }, changed);
   const coverage = input.partial === true ? "partial" : "complete";
-  if (membership.coverage !== coverage) changed.add(`coverage:${scope}`);
+  if (membership.coverage !== coverage) {
+    changed.add(`coverage:${scope}`);
+    changed.add(`members:${scope}`);
+  }
   next = withMembership(next, scope, {
     coverage,
     members: new Map(membership.members),
@@ -423,6 +439,7 @@ function commitBaseline(
     baseline: null,
   });
   const admitted = new Set(input.members);
+  const membershipChanges = new Set<ReadKey>();
   next = reduceMembership(
     next,
     scope,
@@ -431,10 +448,18 @@ function commitBaseline(
       // A partial answer's absences say nothing: what it lacks has not left the scope.
       remove: coverage === "partial" ? [] : [...knownAtBegin].filter((id) => !admitted.has(id)),
     },
-    changed,
+    membershipChanges,
     directives,
   );
-  for (const delta of staged) next = reduceMembership(next, scope, delta, changed, directives);
+  for (const delta of staged)
+    next = reduceMembership(next, scope, delta, membershipChanges, directives);
+  const members = next.memberships.get(scope)!.members;
+  if (
+    membershipChanges.size > 0 &&
+    (members.size !== membership.members.size ||
+      [...members].some(([id, member]) => membership.members.get(id) !== member))
+  )
+    changed.add(`members:${scope}`);
   return next;
 }
 
@@ -463,6 +488,7 @@ function unlist(state: AccountState, family: Family, id: string, changed: Set<Re
     const membership = state.memberships.get(scope) ?? EMPTY_MEMBERSHIP;
     if (scopeSpec(scope).family !== family || (scope !== ownScope && !membership.members.has(id)))
       continue;
+    if (!membership.members.has(id) && membership.excluded.has(id)) continue;
     const members = new Map(membership.members);
     members.delete(id);
     const excluded = new Set(membership.excluded).add(id);
@@ -576,20 +602,27 @@ function reduceHqDelivery(
     const family = scopeSpec(scope).family;
     const rows = input.rows.filter((row) => row.family === family);
     if (rows.length === 0) continue;
+    const before = next;
     next = reduceRows(
       next,
       { scope, via: "hq-stream", method: input.reset ? "baseline" : "push", rows },
       changed,
     );
     const membership = next.memberships.get(scope) ?? EMPTY_MEMBERSHIP;
-    const members = new Map(membership.members);
+    let members: Map<string, MemberState> | null = null;
     for (const row of rows) {
-      // A record withheld from the reader returns to its listing only with its value.
-      if (next.facts.get(factKey(family, row.id))?.content.kind !== "value") continue;
+      const key = factKey(family, row.id);
+      const fact = next.facts.get(key);
+      // Only an admitted owner value lists a record; rejected rows say nothing about membership.
+      if (fact === before.facts.get(key) || fact?.content.kind !== "value") continue;
+      if ((members ?? membership.members).get(row.id) === "member") continue;
+      members ??= new Map(membership.members);
       members.set(row.id, "member");
     }
-    changed.add(`members:${scope}`);
-    next = withMembership(next, scope, { ...membership, members });
+    if (members !== null) {
+      changed.add(`members:${scope}`);
+      next = withMembership(next, scope, { ...membership, members });
+    }
   }
   for (const removal of input.removals)
     next =
@@ -671,7 +704,7 @@ export function reduceAccount(state: AccountState, input: AccountInput): Reducti
     input.kind === "proven-deletion" || input.kind === "access"
       ? reduceEvidence(state, input, changed)
       : input.kind === "baseline-begin"
-        ? beginBaseline(state, input.scope, changed)
+        ? beginBaseline(state, input.scope)
         : input.kind === "baseline-commit"
           ? commitBaseline(state, input, changed, directives)
           : input.kind === "membership"
