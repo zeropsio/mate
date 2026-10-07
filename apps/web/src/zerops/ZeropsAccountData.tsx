@@ -1,3 +1,4 @@
+import { useMateFeeds } from "./useMateFeeds";
 /**
  * The signed-in account's data layer: one store per account (its atom registry), and the active
  * organization's Zerops navigation observed for as long as it is shown, with the details screens
@@ -78,6 +79,7 @@ export function ZeropsAccountData({ children }: { readonly children: ReactNode }
   const { client, status, activeOrganization } = useZeropsSession();
   const registry = useContext(RegistryContext);
   const store = useMemo(() => makeAccountStore(registry), [registry]);
+  useMateFeeds(store);
   const observation = useMemo(
     () =>
       observeAccount({

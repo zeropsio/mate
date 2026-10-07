@@ -1,3 +1,5 @@
+import { useAtomValue } from "@effect/atom-react";
+import { mateActionsForEnvironmentAtom } from "@t3tools/client-runtime/data";
 /**
  * Signs an agent out of this Zerops project (`zerops.agentLogin.signOut`,
  * spec-mate D6 round 5): stops its live provider sessions, runs the CLI's
@@ -56,6 +58,7 @@ export interface UseAgentSignOut {
 }
 
 export function useAgentSignOut(environmentId: EnvironmentId | null): UseAgentSignOut {
+  const actions = useAtomValue(mateActionsForEnvironmentAtom(environmentId ?? ""));
   const [pending, setPending] = useState<ReadonlySet<ZeropsAgentId>>(new Set());
   const [errors, setErrors] = useState<ReadonlyMap<ZeropsAgentId, string>>(new Map());
   const runSignOut = useAtomCommand(zeropsCommands.agentSignOut, "zerops agent sign out");
@@ -93,7 +96,18 @@ export function useAgentSignOut(environmentId: EnvironmentId | null): UseAgentSi
   );
 
   return {
-    statusFor: (agentId) => ({ pending: pending.has(agentId), error: errors.get(agentId) }),
+    statusFor: (agentId) => {
+      const retained = actions.find(
+        (action) =>
+          action.action === "agentSignOut" &&
+          action.target.agentId === agentId &&
+          action.target.loginId === undefined,
+      );
+      return {
+        pending: pending.has(agentId) || retained?.pending === true,
+        error: retained === undefined ? errors.get(agentId) : (retained.error ?? undefined),
+      };
+    },
     signOut,
   };
 }

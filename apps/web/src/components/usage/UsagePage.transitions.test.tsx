@@ -23,7 +23,7 @@ vi.mock("@effect/atom-react", async (original) => ({
 vi.mock("../../env", () => ({ isElectron: false }));
 vi.mock("../../state/use-atom-command", () => ({ useAtomCommand: () => vi.fn() }));
 vi.mock("../../state/usage", () => ({
-  useUsage: () => ({
+  useProviderUsage: () => ({
     merged: {
       ...mergeUsage([], USAGE_CONTRACT_VERSION),
       costUsd: state.answered && !state.pending ? 7.83 : 0,

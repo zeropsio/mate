@@ -1,3 +1,4 @@
+import { makeAccountStore, makeMateActions, mateActionsAtom } from "@t3tools/client-runtime/data";
 import { EnvironmentRegistry, EnvironmentSupervisor } from "@t3tools/client-runtime/connection";
 import type { RpcSession } from "@t3tools/client-runtime/rpc";
 import { EnvironmentId, ThreadId, WS_METHODS } from "@t3tools/contracts";
@@ -95,9 +96,26 @@ const makeHarness = Effect.gen(function* () {
       Stream.provideService(stream, EnvironmentSupervisor, supervisor),
   } as unknown as EnvironmentRegistry["Service"]);
   const registry = AtomRegistry.make();
-  yield* Effect.addFinalizer(() => Effect.sync(() => registry.dispose()));
+  const store = makeAccountStore(registry);
+  const sourceRegistry = yield* Effect.provide(EnvironmentRegistry, layer);
+  let counter = 0;
+  const actions = makeMateActions({
+    store,
+    registry: sourceRegistry,
+    makeId: () => `action-${++counter}`,
+    revalidate: () => {},
+  });
+  registry.set(mateActionsAtom, actions);
+  yield* Effect.addFinalizer(() =>
+    Effect.sync(() => {
+      actions.close();
+      store.close();
+      registry.dispose();
+    }),
+  );
 
   return {
+    store,
     cancelCalls,
     commands: createZeropsCommandAtoms(Atom.runtime(layer)),
     loginAddCalls,

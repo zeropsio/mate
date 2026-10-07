@@ -5,18 +5,15 @@
  * file — an editor sends only the files it changed, then reads them again.
  */
 import type { CrewFiles } from "@t3tools/contracts";
+import { crewHome } from "@t3tools/client-runtime/data";
 import {
-  parseCrewHome,
   renderCrewHome,
   type CrewDefinition,
   type CrewDefinitionIssue,
 } from "@t3tools/shared/crewHome";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useMemo } from "react";
 
 import type { UseCrewCommand } from "./useCrewCommand";
-
-/** The crew's id only names its directory on the server; the editors never see it. */
-const EDITOR_CREW_ID = "crew";
 
 export interface CrewHomeRead {
   /** `null` while reading, or when the read failed (the command's error says why). */
@@ -28,29 +25,11 @@ export interface CrewHomeRead {
   readonly reload: () => Promise<void>;
 }
 
-const parseFiles = (files: CrewFiles) => {
-  const parsed = parseCrewHome(EDITOR_CREW_ID, files.files);
-  return { definition: parsed.definition ?? null, issues: parsed.issues };
-};
-
 export function useCrewHome(
-  commands: Pick<UseCrewCommand, "readFiles" | "writeFiles">,
+  commands: Pick<UseCrewCommand, "files" | "readFiles" | "writeFiles">,
 ): CrewHomeRead {
   const { readFiles, writeFiles } = commands;
-  const [read, setRead] = useState<{
-    readonly definition: CrewDefinition | null;
-    readonly issues: ReadonlyArray<CrewDefinitionIssue>;
-  }>({ definition: null, issues: [] });
-
-  useEffect(() => {
-    let current = true;
-    void readFiles().then((files) => {
-      if (current && files !== null) setRead(parseFiles(files));
-    });
-    return () => {
-      current = false;
-    };
-  }, [readFiles]);
+  const read = useMemo(() => crewHome(commands.files), [commands.files]);
 
   const save = useCallback(
     async (definition: CrewDefinition, paths: ReadonlyArray<string>) => {
@@ -59,15 +38,13 @@ export function useCrewHome(
       );
       if (!(await writeFiles({ files }))) return false;
       const saved = await readFiles();
-      if (saved !== null) setRead(parseFiles(saved));
-      return true;
+      return saved !== null;
     },
     [readFiles, writeFiles],
   );
 
   const reload = useCallback(async () => {
-    const files = await readFiles();
-    if (files !== null) setRead(parseFiles(files));
+    await readFiles();
   }, [readFiles]);
 
   return { definition: read.definition, issues: read.issues, save, reload };

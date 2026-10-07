@@ -1,10 +1,18 @@
 import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
-import { EnvironmentId, UsageDay } from "@t3tools/contracts";
-import { AsyncResult, Atom, AtomRegistry } from "effect/unstable/reactivity";
+import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
+import { EnvironmentId, UsageDay, type UsageSummary } from "@t3tools/contracts";
+import { Atom, AtomRegistry } from "effect/unstable/reactivity";
 import { describe, expect, it } from "vite-plus/test";
 
-import { createUsageByWindowAtomFamily } from "./usage";
+import { createUsageWindowReadAtoms } from "./usage";
 
+const report = (summary: UsageSummary): Known<UsageSummary> => ({
+  state: "known",
+  value: summary,
+  asOf: { ordinal: 1, atMs: 1 },
+  coverage: "complete",
+  freshness: { kind: "settled" },
+});
 const OPEN = EnvironmentId.make("open-mate");
 const PARKED = EnvironmentId.make("parked-mate");
 const WINDOW = JSON.stringify({
@@ -23,16 +31,17 @@ const presentation = (label: string, phase: EnvironmentConnectionPhase) => ({
 describe("usage by window", () => {
   it("asks only the Mates it holds a socket to", () => {
     const asked: EnvironmentId[] = [];
-    const usageByWindow = createUsageByWindowAtomFamily({
+    const usageByWindow = createUsageWindowReadAtoms({
       presentationsAtom: Atom.make(
         new Map([
           [OPEN, presentation("Fen", "connected")],
           [PARKED, presentation("Ida", "available")],
         ]),
       ),
+      retainedUsageSummary: () => Atom.make({ state: "unread" as const, waitingFor: null }),
       usageSummary: ({ environmentId }) => {
         asked.push(environmentId);
-        return Atom.make(AsyncResult.initial(true));
+        return Atom.make({ state: "unread" as const, waitingFor: null });
       },
     });
     const registry = AtomRegistry.make();
@@ -41,6 +50,38 @@ describe("usage by window", () => {
 
     expect(statuses.map((status) => [status.environmentId, status.label])).toEqual([[OPEN, "Fen"]]);
     expect(asked).toEqual([OPEN]);
+    registry.dispose();
+  });
+  it("keeps a disconnected Mate's last report visibly stale without waking it", () => {
+    const summary: UsageSummary = {
+      contractVersion: 1,
+      readAt: "2026-10-03T00:00:00.000Z",
+      timeZone: "UTC",
+      sinceDay: UsageDay.make("2026-10-01"),
+      untilDay: UsageDay.make("2026-10-03"),
+      buckets: [],
+      sources: [],
+      pricing: { status: "fresh", source: "litellm", fetchedAt: null, knownModels: 0 },
+      scanDurationMs: 0,
+    };
+    const lastReport: Known<UsageSummary> = {
+      state: "known",
+      value: summary,
+      asOf: { ordinal: 1, atMs: 1 },
+      coverage: "complete",
+      freshness: { kind: "settled" },
+    };
+    const usageByWindow = createUsageWindowReadAtoms({
+      presentationsAtom: Atom.make(new Map([[PARKED, presentation("Ida", "available")]])),
+      retainedUsageSummary: () => Atom.make(lastReport),
+      usageSummary: () => {
+        throw new Error("A parked Mate must not be woken.");
+      },
+    });
+    const registry = AtomRegistry.make();
+    expect(registry.get(usageByWindow(WINDOW))).toMatchObject([
+      { environmentId: PARKED, summary, isStale: true, isPending: false },
+    ]);
     registry.dispose();
   });
 });
@@ -58,9 +99,10 @@ it("retains a known snapshot during reconnect and drops it after blocked access"
     pricing: { status: "fresh" as const, source: "test", fetchedAt: null, knownModels: 0 },
     scanDurationMs: 0,
   };
-  const byWindow = createUsageByWindowAtomFamily({
+  const byWindow = createUsageWindowReadAtoms({
     presentationsAtom: presentations,
-    usageSummary: () => Atom.make(AsyncResult.success(summary)),
+    retainedUsageSummary: () => Atom.make(report(summary)),
+    usageSummary: () => Atom.make(report(summary)),
   });
   const registry = AtomRegistry.make();
   const atom = byWindow(WINDOW);
@@ -75,16 +117,17 @@ it("retains a known snapshot during reconnect and drops it after blocked access"
 
 it("excludes warm connections outside the declared organization", () => {
   const asked: EnvironmentId[] = [];
-  const byWindow = createUsageByWindowAtomFamily({
+  const byWindow = createUsageWindowReadAtoms({
     presentationsAtom: Atom.make(
       new Map([
         [OPEN, presentation("Fen", "connected")],
         [PARKED, presentation("Other org", "connected")],
       ]),
     ),
+    retainedUsageSummary: () => Atom.make({ state: "unread" as const, waitingFor: null }),
     usageSummary: ({ environmentId }) => {
       asked.push(environmentId);
-      return Atom.make(AsyncResult.initial(true));
+      return Atom.make({ state: "unread" as const, waitingFor: null });
     },
   });
   const registry = AtomRegistry.make();

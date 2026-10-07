@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 const testState = vi.hoisted(() => ({
-  useUsage: vi.fn(),
+  useProviderUsage: vi.fn(),
   identities: new Map() as ReadonlyMap<EnvironmentId, UsageEnvironmentIdentity>,
   owners: "resolved" as "resolving" | "resolved" | "unavailable",
   mates: [] as ReadonlyArray<UsageMate>,
@@ -42,7 +42,7 @@ vi.mock("react", async (importOriginal) => {
 });
 
 vi.mock("../../env", () => ({ isElectron: false }));
-vi.mock("../../state/usage", () => ({ useUsage: testState.useUsage }));
+vi.mock("../../state/usage", () => ({ useProviderUsage: testState.useProviderUsage }));
 vi.mock("../../zerops/useUsageEnvironmentIdentities", () => ({
   useUsageEnvironmentIdentities: () => ({
     identities: testState.identities,
@@ -171,7 +171,7 @@ beforeEach(() => {
       },
     ],
   };
-  testState.useUsage.mockReturnValue({
+  testState.useProviderUsage.mockReturnValue({
     merged,
     overall: merged,
     environments: [],
@@ -257,7 +257,7 @@ function withEnvironments(
   }[],
 ) {
   const totalCost = rows.reduce((sum, row) => sum + row.costUsd, 0);
-  const current = testState.useUsage();
+  const current = testState.useProviderUsage();
   const merged = {
     ...current.merged,
     costUsd: totalCost,
@@ -273,7 +273,7 @@ function withEnvironments(
       providers: ["claude"],
     })),
   };
-  testState.useUsage.mockReturnValue({
+  testState.useProviderUsage.mockReturnValue({
     ...current,
     merged,
     overall: merged,
@@ -426,7 +426,7 @@ describe("UsagePage dimensions", () => {
     ]);
 
     const markup = renderPage({ person: "u2" });
-    const include = testState.useUsage.mock.lastCall?.[1] as
+    const include = testState.useProviderUsage.mock.lastCall?.[1] as
       | ((environmentId: EnvironmentId) => boolean)
       | undefined;
 

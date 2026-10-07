@@ -423,3 +423,13 @@ export {
   upgradeRecoveryFromEvidence,
   type MateUpgradeRecovery,
 } from "./projections/mateUpgradeRecovery.ts";
+export * from "./families/mateFeeds.ts";
+export * from "./projections/mateFeeds.ts";
+export * from "./adapters/mateFeeds.ts";
+export * from "./mateFeedReads.ts";
+export * from "./operations/mateActions.ts";
+export * from "./operations/executors/mateActions.ts";
+export * from "./mateActionReads.ts";
+export * from "./adapters/mateTerminal.ts";
+export * from "./operations/executors/mateTerminal.ts";
+export * from "./projections/mateActions.ts";

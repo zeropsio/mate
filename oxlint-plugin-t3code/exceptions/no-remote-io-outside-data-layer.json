@@ -32,14 +32,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/cloud/linkEnvironment.ts",
-    "kind": "ImportDeclaration",
-    "fingerprint": "effect/unstable/http",
-    "owner": "data-layer rewrite: Mate transport",
-    "reason": "Retained transport/auth boundary: this host supplies the existing HTTP, socket or tracing transport and Zerops sign-in session. Removing it would disconnect released clients; inventory, database and browser adapters consume these transports and do not replace account entry or tracing.",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/zerops/commands.ts",
     "kind": "CallExpression",
     "fingerprint": "createEnvironmentRpcCommand",
@@ -49,86 +41,6 @@
   },
   {
     "path": "apps/web/src/zerops/commands.ts",
-    "kind": "CallExpression",
-    "fingerprint": "createEnvironmentRpcCommand",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained Mate command or workspace boundary: this call supports attachment, MCP, workspace or agent/crew commands outside database reads and browser frames. Its command contract and callers need their own executor migration before this entry can be removed.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/commands.ts",
-    "kind": "CallExpression",
-    "fingerprint": "createEnvironmentRpcCommand",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained Mate command or workspace boundary: this call supports attachment, MCP, workspace or agent/crew commands outside database reads and browser frames. Its command contract and callers need their own executor migration before this entry can be removed.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/commands.ts",
-    "kind": "CallExpression",
-    "fingerprint": "createEnvironmentRpcCommand",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained Mate command or workspace boundary: this call supports attachment, MCP, workspace or agent/crew commands outside database reads and browser frames. Its command contract and callers need their own executor migration before this entry can be removed.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/commands.ts",
-    "kind": "CallExpression",
-    "fingerprint": "createEnvironmentRpcCommand",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained Mate command or workspace boundary: this call supports attachment, MCP, workspace or agent/crew commands outside database reads and browser frames. Its command contract and callers need their own executor migration before this entry can be removed.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/commands.ts",
-    "kind": "CallExpression",
-    "fingerprint": "createEnvironmentRpcCommand",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained Mate command or workspace boundary: this call supports attachment, MCP, workspace or agent/crew commands outside database reads and browser frames. Its command contract and callers need their own executor migration before this entry can be removed.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/commands.ts",
-    "kind": "CallExpression",
-    "fingerprint": "createEnvironmentRpcCommand",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained Mate command or workspace boundary: this call supports attachment, MCP, workspace or agent/crew commands outside database reads and browser frames. Its command contract and callers need their own executor migration before this entry can be removed.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/commands.ts",
-    "kind": "CallExpression",
-    "fingerprint": "createEnvironmentRpcCommand",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained Mate command or workspace boundary: this call supports attachment, MCP, workspace or agent/crew commands outside database reads and browser frames. Its command contract and callers need their own executor migration before this entry can be removed.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/commands.ts",
-    "kind": "CallExpression",
-    "fingerprint": "createEnvironmentRpcCommand",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained Mate command or workspace boundary: this call supports attachment, MCP, workspace or agent/crew commands outside database reads and browser frames. Its command contract and callers need their own executor migration before this entry can be removed.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/crew/crewCommands.ts",
-    "kind": "CallExpression",
-    "fingerprint": "createEnvironmentRpcCommand",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained Mate command or workspace boundary: this call supports attachment, MCP, workspace or agent/crew commands outside database reads and browser frames. Its command contract and callers need their own executor migration before this entry can be removed.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/crew/crewCommands.ts",
-    "kind": "CallExpression",
-    "fingerprint": "createEnvironmentRpcCommand",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained Mate command or workspace boundary: this call supports attachment, MCP, workspace or agent/crew commands outside database reads and browser frames. Its command contract and callers need their own executor migration before this entry can be removed.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/crew/crewCommands.ts",
     "kind": "CallExpression",
     "fingerprint": "createEnvironmentRpcCommand",
     "owner": "data-layer rewrite: Mate identity/connection",

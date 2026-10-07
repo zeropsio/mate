@@ -17,7 +17,7 @@ import { isElectron } from "../../env";
 import { cn } from "../../lib/utils";
 import { environmentPresentations } from "../../state/presentation";
 import { serverEnvironment } from "../../state/server";
-import { useUsage, type EnvironmentUsageStatus } from "../../state/usage";
+import { useProviderUsage, type EnvironmentUsageStatus } from "../../state/usage";
 import { useAtomCommand } from "../../state/use-atom-command";
 import type {
   UsageEnvironmentIdentities,
@@ -163,7 +163,7 @@ export function UsagePage({
       : (environmentId: EnvironmentId) => usageScopeIncludes(current, identities, environmentId);
   }, [identities, scopeMate, scopePerson, scopeProject]);
   const permitted = useMemo(() => new Set(identities.keys()), [identities]);
-  const { merged, overall, environments, isPending, isPartial, refresh } = useUsage(
+  const { merged, overall, environments, isPending, isPartial, refresh } = useProviderUsage(
     window,
     include,
     permitted,
@@ -969,7 +969,7 @@ function UsageDeviceStrip({
   return (
     <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 border border-border px-3 py-2 text-xs">
       {environments.map((environment) => {
-        if (environment.summary !== null) {
+        if (environment.summary !== null && !environment.isStale) {
           return (
             <span
               key={environment.environmentId}
@@ -977,6 +977,13 @@ function UsageDeviceStrip({
             >
               <CheckIcon className="size-3 text-emerald-600 dark:text-emerald-300/90" aria-hidden />
               {nameOf(environment)}
+            </span>
+          );
+        }
+        if (environment.isStale) {
+          return (
+            <span key={environment.environmentId} className="text-muted-foreground">
+              {nameOf(environment)} · last reported
             </span>
           );
         }

@@ -12,6 +12,8 @@ import { mateWorkspaceContentsFamily } from "./mateWorkspaceContents.ts";
 import { mateMcpServersFamily } from "./mateMcpServers.ts";
 import { mateVcsRefsFamily } from "./mateVcsRefs.ts";
 import { hqRepositorySourceFamily } from "./hqRepositorySource.ts";
+import { mateActionRequestFamily } from "./mateActionRequest.ts";
+import { MATE_FEED_FAMILIES } from "./mateFeeds.ts";
 import { mateUpdateAvailabilityFamily, mateUpdateRequestFamily } from "./mateUpdate.ts";
 import { mateSetupFamily } from "./mateSetup.ts";
 import { locationLatencyFamily } from "./locationLatency.ts";
@@ -96,6 +98,8 @@ export const FAMILIES = defineFamilies([
 
   hqRepositorySourceFamily,
   mateSetupFamily,
+  ...Object.values(MATE_FEED_FAMILIES),
+  mateActionRequestFamily,
   hqLifecycleFamily,
   projectFamily,
   processFamily,

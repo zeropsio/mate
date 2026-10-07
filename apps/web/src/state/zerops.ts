@@ -38,18 +38,15 @@ import {
   type HqNavigationRead,
 } from "@t3tools/client-runtime/data";
 
-import { connectionAtomRuntime } from "../connection/runtime";
 import type { HqStanding } from "../zerops/accountHq";
 import { registeredZeropsOrigins, rowEnvironment } from "../zerops/environmentOrigins";
-import { createZeropsFeedAtoms } from "../zerops/feeds";
+export { zeropsFeeds } from "../zerops/feeds";
 import { findInventoryProjectRef, type InventoryProjection } from "../zerops/inventoryContext";
 import type {
   ZeropsOrganizationStatus,
   ZeropsSessionStatus,
 } from "../zerops/ZeropsSessionProvider";
 import { environmentPresentations } from "./presentation";
-
-export const zeropsFeeds = createZeropsFeedAtoms(connectionAtomRuntime);
 
 /**
  * `deriveZeropsThreadModel`, re-exported from thread state alongside the

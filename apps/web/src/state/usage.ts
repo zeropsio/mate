@@ -1,3 +1,4 @@
+import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
 /**
  * Multi-environment usage state.
  *
@@ -16,18 +17,24 @@ import {
   type UsageSummaryInput,
 } from "@t3tools/contracts";
 import * as Option from "effect/Option";
-import { AsyncResult, Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/unstable/reactivity";
 import { useCallback, useMemo } from "react";
 
 import { mergeUsage, type EnvironmentUsage, type MergedUsage } from "@t3tools/shared/usageMerge";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { environmentPresentations } from "./presentation";
 import { serverEnvironment } from "./server";
+import {
+  providerUsageReport,
+  mateFeedAtom,
+  retainedMateFeedAtom,
+  mateFeedReadsAtom,
+} from "@t3tools/client-runtime/data";
 
 export interface EnvironmentUsageStatus {
   readonly environmentId: EnvironmentId;
   readonly label: string;
-  readonly isStale?: boolean;
+  readonly isStale: boolean;
   readonly isPending: boolean;
   readonly error: string | null;
   readonly summary: UsageSummary | null;
@@ -44,10 +51,14 @@ export interface UsageByWindowSources {
       }
     >
   >;
+  readonly retainedUsageSummary: (target: {
+    readonly environmentId: EnvironmentId;
+    readonly input: UsageSummaryInput;
+  }) => Atom.Atom<Known<UsageSummary>>;
   readonly usageSummary: (target: {
     readonly environmentId: EnvironmentId;
     readonly input: UsageSummaryInput;
-  }) => Atom.Atom<AsyncResult.AsyncResult<UsageSummary, unknown>>;
+  }) => Atom.Atom<Known<UsageSummary>>;
 }
 
 /**
@@ -58,37 +69,31 @@ export interface UsageByWindowSources {
  * cache, and so each environment's query is shared with any other reader of the
  * same window.
  */
-export function createUsageByWindowAtomFamily(sources: UsageByWindowSources) {
+export function createUsageWindowReadAtoms(sources: UsageByWindowSources) {
   return Atom.family((windowKey: string) =>
     Atom.make((get): readonly EnvironmentUsageStatus[] => {
       const { input, permitted } = JSON.parse(windowKey) as {
         input: UsageSummaryInput;
         permitted?: readonly EnvironmentId[];
       };
-      const previous = Option.getOrNull(get.self<readonly EnvironmentUsageStatus[]>()) ?? [];
       const presentations = get(sources.presentationsAtom);
 
       const statuses: EnvironmentUsageStatus[] = [];
       for (const [environmentId, presentation] of presentations) {
         if (permitted !== undefined && !permitted.includes(environmentId)) continue;
-        if (presentation.connection.phase !== "connected") {
-          const retained = previous.find((status) => status.environmentId === environmentId);
-          if (
-            retained?.summary !== null &&
-            retained?.summary !== undefined &&
-            presentation.connection.phase !== "error"
-          ) {
-            statuses.push({ ...retained, isPending: false, isStale: true });
-          }
-          continue;
-        }
-        const result = get(sources.usageSummary({ environmentId, input }));
+        if (presentation.connection.phase === "error") continue;
+        const connected = presentation.connection.phase === "connected";
+        const result = get(
+          (connected ? sources.usageSummary : sources.retainedUsageSummary)({
+            environmentId,
+            input,
+          }),
+        );
+        if (!connected && result.state !== "known" && result.state !== "failed") continue;
         statuses.push({
           environmentId,
           label: presentation.entry.target.label,
-          isPending: result.waiting,
-          error: result._tag === "Failure" ? "This environment could not report usage." : null,
-          summary: Option.getOrNull(AsyncResult.value(result)),
+          ...providerUsageReport(result, connected),
         });
       }
       return statuses;
@@ -96,9 +101,57 @@ export function createUsageByWindowAtomFamily(sources: UsageByWindowSources) {
   );
 }
 
-const usageByWindowAtom = createUsageByWindowAtomFamily({
+const providerPricesAtom = Atom.family((environmentId: EnvironmentId) =>
+  Atom.make((get) => {
+    const overrides = get(serverEnvironment.configValueAtom(environmentId))?.settings
+      .usagePriceOverrides;
+    return JSON.stringify(
+      overrides == null
+        ? []
+        : Object.keys(overrides)
+            .sort()
+            .map((model) => [
+              model,
+              overrides[model]?.inputCostPerMillionTokens,
+              overrides[model]?.outputCostPerMillionTokens,
+              overrides[model]?.cacheReadCostPerMillionTokens,
+              overrides[model]?.cacheWriteCostPerMillionTokens,
+            ]),
+    );
+  }),
+);
+const summaryAtom = Atom.family((key: string) => {
+  const [environmentId, input] = JSON.parse(key) as [EnvironmentId, UsageSummaryInput];
+  const scope = {
+    family: "mateUsage" as const,
+    environmentId,
+    input: input as unknown as Readonly<Record<string, unknown>>,
+  };
+  const source = mateFeedAtom(scope);
+  const invalidation = Atom.make((get) => {
+    const prices = get(providerPricesAtom(environmentId));
+    const host = get(mateFeedReadsAtom);
+    const previous = get.self<string>();
+    if (Option.isSome(previous) && previous.value !== prices) host?.revalidate(scope);
+    return prices;
+  });
+  return Atom.make((get) => {
+    get(invalidation);
+    return get(source);
+  });
+});
+const retainedSummaryAtom = Atom.family((key: string) => {
+  const [environmentId, input] = JSON.parse(key) as [
+    EnvironmentId,
+    Readonly<Record<string, unknown>>,
+  ];
+  return retainedMateFeedAtom({ family: "mateUsage", environmentId, input });
+});
+const usageByWindowAtom = createUsageWindowReadAtoms({
   presentationsAtom: environmentPresentations.presentationsAtom,
-  usageSummary: serverEnvironment.usageSummary,
+  retainedUsageSummary: (target) =>
+    retainedSummaryAtom(JSON.stringify([target.environmentId, target.input])),
+  usageSummary: (target) => summaryAtom(JSON.stringify([target.environmentId, target.input])),
 });
 
 export interface UsageView {
@@ -122,7 +175,7 @@ export interface UsageView {
  * `include` narrows `merged` to a scope; it must be stable across renders
  * (memoised) or every render re-merges.
  */
-export function useUsage(
+export function useProviderUsage(
   input: UsageSummaryInput,
   include?: (environmentId: EnvironmentId) => boolean,
   permitted?: ReadonlySet<EnvironmentId>,
@@ -153,16 +206,11 @@ export function useUsage(
   const atom = usageByWindowAtom(windowKey);
   const environments = useAtomValue(atom);
 
-  // Refreshing only the derived atom would re-read the per-environment SWR
-  // queries within their stale window and change nothing. Refresh each
-  // environment's query so the button always rescans.
   const refresh = useCallback(() => {
-    const { input } = JSON.parse(windowKey) as { input: UsageSummaryInput };
-    for (const environment of environments) {
-      appAtomRegistry.refresh(
-        serverEnvironment.usageSummary({ environmentId: environment.environmentId, input }),
-      );
-    }
+    const host = appAtomRegistry.get(mateFeedReadsAtom);
+    const { input } = JSON.parse(windowKey) as { input: Readonly<Record<string, unknown>> };
+    for (const environment of environments)
+      host?.retry({ family: "mateUsage", environmentId: environment.environmentId, input });
   }, [environments, windowKey]);
 
   const answered = useMemo(
@@ -196,7 +244,11 @@ export function useUsage(
     overall,
     environments,
     isPending: answeredCount === 0 && stillReporting > 0,
-    isPartial: answeredCount > 0 && stillReporting > 0,
+    isPartial:
+      answeredCount > 0 &&
+      environments.some(
+        (environment) => environment.isPending || environment.error !== null || environment.isStale,
+      ),
     refresh,
   };
 }

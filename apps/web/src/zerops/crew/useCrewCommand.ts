@@ -1,3 +1,6 @@
+import { useAtomValue } from "@effect/atom-react";
+import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
+import { Atom } from "effect/unstable/reactivity";
 /**
  * Presses on a crew surface, and the crew home's files for its editors.
  *
@@ -30,7 +33,7 @@ import * as Schema from "effect/Schema";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useAtomCommand } from "../../state/use-atom-command";
-import { crewCommands } from "./crewCommands";
+import { crewCommands, crewFilesAtom } from "./crewCommands";
 
 const isCrewCommandError = Schema.is(CrewCommandError);
 const isEnvironmentAuthorizationError = Schema.is(EnvironmentAuthorizationError);
@@ -63,7 +66,9 @@ export function crewFailureAt(failure: CrewFailure | null, origin: string | null
 
 export type CrewCommandTag = CrewCommand["_tag"];
 
+const UNREAD_FILES = Atom.make<Known<CrewFiles>>({ state: "unread", waitingFor: "mate-session" });
 export interface UseCrewCommand {
+  readonly files: Known<CrewFiles>;
   /**
    * Sends one press; its result, or `null` when it failed or was interrupted.
    * `origin` names the row or button it came from, where its failure shows.
@@ -88,6 +93,7 @@ export interface UseCrewCommand {
 type RequestKey = CrewCommandTag | "filesGet" | "filesPut";
 
 export function useCrewCommand(environmentId: EnvironmentId | null): UseCrewCommand {
+  const files = useAtomValue(environmentId === null ? UNREAD_FILES : crewFilesAtom(environmentId));
   const [inFlight, setInFlight] = useState<ReadonlyMap<RequestKey, number>>(new Map());
   const [failure, setFailure] = useState<CrewFailure | null>(null);
   const refusal = useRef<CrewRefusalReason | null>(null);
@@ -163,14 +169,23 @@ export function useCrewCommand(environmentId: EnvironmentId | null): UseCrewComm
     [environmentId, runFilesPut, track],
   );
 
+  const readFailure =
+    files.state === "failed"
+      ? files.failure.kind === "refused"
+        ? files.failure.words
+        : "The Mate could not report the crew files."
+      : null;
+  const shownFailure =
+    failure ?? (readFailure === null ? null : { sentence: readFailure, origin: null });
   return {
+    files,
     send,
     readFiles,
     writeFiles,
     pending: inFlight.size > 0,
     isPending: (key) => inFlight.has(key),
-    error: failure?.sentence ?? null,
-    errorAt: (origin) => crewFailureAt(failure, origin),
+    error: shownFailure?.sentence ?? null,
+    errorAt: (origin) => crewFailureAt(shownFailure, origin),
     lastRefusal: () => refusal.current,
     clearError: () => setFailure(null),
   };
