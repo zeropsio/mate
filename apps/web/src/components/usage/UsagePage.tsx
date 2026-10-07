@@ -5,7 +5,7 @@ import {
   type UsageProviderKind,
 } from "@t3tools/contracts";
 import { CheckIcon, InfoIcon, RefreshCwIcon, XIcon } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useMemo, useState } from "react";
 
 import {
   isModelCostUnknown,
@@ -17,7 +17,12 @@ import {
 import { isElectron } from "../../env";
 import { cn } from "../../lib/utils";
 import { environmentPresentations } from "../../state/presentation";
-import { serverEnvironment } from "../../state/server";
+import { primaryServerKeybindingsAtom, serverEnvironment } from "../../state/server";
+import { isCommandPaletteOpen } from "../../commandPaletteBus";
+import { isModelPickerOpen } from "../../modelPickerVisibility";
+import { shortcutLabelForCommand } from "../../keybindings";
+import { useEscapeToGoBack } from "../../hooks/useNavigateBack";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { useProviderUsage, type EnvironmentUsageStatus } from "../../state/usage";
 import { useAtomCommand } from "../../state/use-atom-command";
 import type {
@@ -64,7 +69,13 @@ import { UsageDimensionTable, UsagePeopleSplit } from "./UsageDimensionViews";
 import { usagePageState } from "./usagePage.logic";
 import { UsageLimitsSection } from "./UsageLimits";
 import { UsagePriceOverrides } from "./UsagePriceOverrides";
-import { UsageProviderChart, type UsageChartMetric } from "./UsageProviderChart";
+import { UsageProviderChart } from "./UsageProviderChart";
+import {
+  METRIC_OPTIONS,
+  WINDOW_OPTIONS,
+  resolveUsageShortcut,
+  type UsageMetric,
+} from "./usageShortcuts";
 import { modelShare, sortModelsByTokens, usageTotals, type UsageTotal } from "./usageBreakdown";
 import { UsageModelDialog } from "./UsageModelDialog";
 import { PROVIDER_ORDER, PROVIDER_PRESENTATION, providersWithUsage } from "./usageProviders";
@@ -74,23 +85,9 @@ import {
   type UsagePagePreferences,
 } from "./usagePagePreferences";
 
-type UsageMetric = UsageChartMetric | "limits";
-const METRIC_OPTIONS = [
-  { value: "cost", label: "Cost" },
-  { value: "tokens", label: "Tokens" },
-  { value: "limits", label: "Limits" },
-] as const satisfies readonly { value: UsageMetric; label: string }[];
-
 function isUsageMetric(value: string | null | undefined): value is UsageMetric {
   return METRIC_OPTIONS.some((option) => option.value === value);
 }
-
-const WINDOW_OPTIONS = [
-  { days: 1, label: "Past 24h" },
-  { days: 7, label: "7 days" },
-  { days: 30, label: "30 days" },
-  { days: 90, label: "90 days" },
-] as const;
 
 function isUsageWindowDays(value: number): value is UsagePagePreferences["windowDays"] {
   return WINDOW_OPTIONS.some((option) => option.days === value);
@@ -143,6 +140,10 @@ export function UsagePage({
   readonly onScopeChange: (scope: UsageScope) => void;
 }) {
   const [preferences, setPreferences] = useState(readUsagePagePreferences);
+  useEscapeToGoBack();
+  const keybindings = useAtomValue(primaryServerKeybindingsAtom);
+  const shortcutOf = (option: (typeof METRIC_OPTIONS)[number] | (typeof WINDOW_OPTIONS)[number]) =>
+    shortcutLabelForCommand(keybindings, option.command, { context: { usagePageOpen: true } });
   const [windowSelection, setWindowSelection] = useState(() => ({
     days: preferences.windowDays,
     window: makeWindow(
@@ -334,6 +335,29 @@ export function UsagePage({
     setPreferences(nextPreferences);
     saveUsagePagePreferences(nextPreferences);
   };
+  const onUsageKeyDown = useEffectEvent((event: KeyboardEvent) => {
+    if (
+      event.defaultPrevented ||
+      event.repeat ||
+      event.isComposing ||
+      isCommandPaletteOpen() ||
+      isModelPickerOpen()
+    )
+      return;
+    const command = resolveUsageShortcut(event, keybindings);
+    const metricOption = METRIC_OPTIONS.find((option) => option.command === command);
+    const periodOption = WINDOW_OPTIONS.find((option) => option.command === command);
+    if (!metricOption && !periodOption) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (metricOption) selectMetric(metricOption.value);
+    if (periodOption && !showingLimits) selectWindow(periodOption.days);
+  });
+  useEffect(() => {
+    globalThis.window.addEventListener("keydown", onUsageKeyDown, true);
+    return () => globalThis.window.removeEventListener("keydown", onUsageKeyDown, true);
+  }, []);
+
   const refreshWindow = () => {
     if (showingLimits) {
       const refreshes: Promise<unknown>[] = [];
@@ -410,9 +434,9 @@ export function UsagePage({
           }}
         >
           {METRIC_OPTIONS.map((option) => (
-            <Toggle key={option.value} value={option.value}>
-              {option.label}
-            </Toggle>
+            <ShortcutHint key={option.value} shortcut={shortcutOf(option)}>
+              <Toggle value={option.value}>{option.label}</Toggle>
+            </ShortcutHint>
           ))}
         </ToggleGroup>
         {/* The period does not apply to Limits, so it stays in place but
@@ -428,9 +452,9 @@ export function UsagePage({
           }}
         >
           {WINDOW_OPTIONS.map((option) => (
-            <Toggle key={option.days} value={String(option.days)}>
-              {option.label}
-            </Toggle>
+            <ShortcutHint key={option.days} shortcut={shortcutOf(option)}>
+              <Toggle value={String(option.days)}>{option.label}</Toggle>
+            </ShortcutHint>
           ))}
         </ToggleGroup>
         <Button
@@ -1201,6 +1225,23 @@ function UsageScopeFilters({
  * Static stand-in with the loaded page's shape. No shimmer; blocks fill in
  * exactly once when the last device answers.
  */
+/** A control's keyboard shortcut in a tooltip, when it has one. */
+function ShortcutHint({
+  shortcut,
+  children,
+}: {
+  readonly shortcut: string | null;
+  readonly children: React.ReactElement;
+}) {
+  if (shortcut === null) return children;
+  return (
+    <Tooltip>
+      <TooltipTrigger render={children} />
+      <TooltipPopup side="bottom">{shortcut}</TooltipPopup>
+    </Tooltip>
+  );
+}
+
 function UsageSkeleton() {
   return (
     <>
