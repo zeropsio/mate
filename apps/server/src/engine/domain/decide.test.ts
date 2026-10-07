@@ -1426,3 +1426,39 @@ describe("decide: sessions close as the engine asks", () => {
     expect(ends(log)).toEqual(["1:crashed/inferred-from-close"]);
   });
 });
+
+describe("decide: a turn the agent starts itself while a run is prepared", () => {
+  const selfTurn = signal({
+    kind: "turn-started",
+    turn: "bg" as TurnHandle,
+    origin: "self",
+    providerTurnId: "bg",
+  });
+  it("requeues the prepared run, which is sent when the agent's own turn ends", () => {
+    const scene = play([...running, turnEnded, send("next"), selfTurn]);
+    expect(tags(scene)).toEqual([
+      "RunRequeued",
+      "RunQueued",
+      "RunAdmitted",
+      "RunStarted",
+      "WakeArmed",
+    ]);
+    expect(scene.state.queue).toEqual([r(2)]);
+    expect(scene.state.runs[r(3)]).toMatchObject({ state: "running", joins: r(1) });
+    const after = play([
+      ...running,
+      turnEnded,
+      send("next"),
+      selfTurn,
+      prepared(2),
+      signal({
+        kind: "turn-ended",
+        turn: "bg" as TurnHandle,
+        outcome: { kind: "completed" },
+        source: "agent",
+      }),
+    ]);
+    expect(after.state.runs[r(2)]?.state).toBe("sending");
+    expect(after.effects.map((effect) => effect.kind)).toEqual(["provider.send"]);
+  });
+});

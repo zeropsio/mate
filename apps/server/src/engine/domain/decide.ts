@@ -787,6 +787,11 @@ const effectSettled = (b: StepBuilder, id: EffectId, outcome: EffectOutcome): vo
       return;
     }
     case "session.open":
+      // A run requeued meanwhile keeps the session for when it is admitted again.
+      if (run.state === "queued") {
+        if (outcome.kind === "ok") openSession(b, outcome.value);
+        return;
+      }
       if (failure !== null) {
         endRun(b, run, { kind: "failed", reason: failure, next: null }, "inferred-from-effect");
         admitNext(b);
@@ -985,7 +990,17 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
         if (run.state === "sending") markStarted(b, run, signal.providerTurnId, signal.turn);
         return;
       }
-      if (signal.origin !== "self" || b.state.activeRunId !== null) return;
+      if (signal.origin !== "self") return;
+      const active = activeRun(b.state);
+      // A run still being prepared has sent nothing: it goes back to the head of the queue and
+      // is sent when the agent's own turn ends.
+      if (active?.state === "admitted") {
+        b.emit({
+          _tag: "RunRequeued",
+          runId: active.id,
+          reason: "the agent started a turn of its own",
+        });
+      } else if (active !== undefined) return;
       return selfStarted(b, signal.turn, signal.providerTurnId, signal.reportsOn ?? null);
     }
     case "activity": {
@@ -1269,7 +1284,8 @@ const selfStarted = (
   providerTurnId: string | null,
   reportsOn: RunId | null,
 ) => {
-  const joins = reportsOn ?? b.state.latestRunId;
+  // The run whose work it reports: the bridge's word, else the latest that ran.
+  const joins = reportsOn ?? b.state.endedRuns.at(-1) ?? b.state.latestRunId;
   const joined = joins === null ? undefined : b.state.runs[joins];
   const run = queueRun(b, {
     trigger: () => ({ kind: "wake", cause: "self", wakeId: null }),
