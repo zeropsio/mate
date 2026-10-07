@@ -10,7 +10,8 @@ import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
-import { RequestId, runId, type RunId, type ThreadId } from "@t3tools/contracts";
+import { ConversationId, RequestId, runId, type RunId, type ThreadId } from "@t3tools/contracts";
+import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import type { BridgeDriver } from "./bridge/spi3.ts";
 import type { Command } from "./domain/command.ts";
@@ -745,5 +746,45 @@ describe("the running engine", () => {
         yield* w.shutdown;
       }),
     ),
+  );
+
+  it.effect(
+    "a conversation the boot cannot recover is retried on its own, and every other one runs",
+    () =>
+      scene(
+        Effect.gen(function* () {
+          const w = yield* world("codex");
+          const other = ConversationId.make("other");
+          yield* w.tell(
+            {
+              _tag: "AssignAgent",
+              agent: {
+                instanceId: "codex",
+                driver: "codex",
+                model: "m1",
+                profile: { kind: "mate" },
+              },
+            },
+            undefined,
+            other,
+          );
+          yield* send(w);
+          // The Mate's record is damaged: it cannot be loaded, so it cannot be told what the restart cut.
+          yield* w.within(
+            Effect.gen(function* () {
+              const sql = yield* SqlClient.SqlClient;
+              yield* sql`UPDATE engine_event SET payload_json = '{' WHERE conversation_id = ${mate}
+              AND seq = (SELECT max(seq) FROM engine_event WHERE conversation_id = ${mate})`;
+              yield* sql`UPDATE engine_conversation SET snapshot_json = NULL, snapshot_seq = NULL
+              WHERE conversation_id = ${mate}`;
+            }),
+          );
+          yield* w.crash;
+          yield* w.boot;
+          yield* w.tell({ _tag: "Send", text: "still here" }, undefined, other);
+          assert.include(w.provider.calls, "send other/s/1: still here");
+          yield* w.shutdown;
+        }),
+      ),
   );
 });

@@ -21,9 +21,11 @@ import * as Option from "effect/Option";
 import type * as Scope from "effect/Scope";
 import type { BootId, ConversationId, EffectOutcome } from "@t3tools/contracts";
 
+import type { StepFailure } from "../ConversationActor.ts";
 import { Conversations } from "../Conversations.ts";
 import { effectSettledCommandId, recoveredCommandId } from "../domain/ids.ts";
 import { EngineSignals } from "../EngineSignals.ts";
+import type { EngineStoreError } from "../store/EngineStore.ts";
 import { EffectOutbox, type EffectRow } from "./EffectOutbox.ts";
 
 /** What a handler's attempt came to. */
@@ -46,6 +48,10 @@ export class EffectHandlers extends Context.Service<
 
 export const handlersOf = (...handlers: ReadonlyArray<EffectHandler>) =>
   new Map(handlers.map((handler) => [handler.kind, handler]));
+
+/** A recovery the boot could not tell is told again after `min(5 min, 1 s · 2^(n − 1))`. */
+export const recoveryRetryMs = (attempt: number): number =>
+  Math.min(5 * 60_000, 1_000 * 2 ** Math.max(0, attempt - 1));
 
 export interface EffectWorkerOptions {
   readonly concurrency?: number;
@@ -203,30 +209,69 @@ export const makeEffectWorker = Effect.fn("makeEffectWorker")(function* (
         if (!(yield* sweepOnce(Number.POSITIVE_INFINITY))) break;
       }
       const owners = yield* outbox.recoveryOwners(boot);
+      const deferred: Array<Effect.Effect<void, StepFailure | EngineStoreError>> = [];
       for (const owner of owners) {
-        const words = yield* wordsFor(owner.conversationId);
-        yield* conversations.tell({
-          commandId: recoveredCommandId(boot, owner.conversationId),
-          conversationId: owner.conversationId,
-          principal: ENGINE,
-          command: {
-            _tag: "Recovered",
-            bootId: boot,
-            cutEffects: owner.cut,
-            unstartedEffects: owner.unstarted,
-            ...(words === undefined ? {} : { words }),
-          },
-        });
+        // Its process-bound rows are cut first, so nothing of them runs while it waits.
         for (const effect of [...owner.cut, ...owner.unstarted]) {
           yield* outbox.close(effect, "cut", "the server restarted");
         }
+        const words = yield* wordsFor(owner.conversationId);
+        const recover = Effect.asVoid(
+          conversations.tell({
+            commandId: recoveredCommandId(boot, owner.conversationId),
+            conversationId: owner.conversationId,
+            principal: ENGINE,
+            command: {
+              _tag: "Recovered",
+              bootId: boot,
+              cutEffects: owner.cut,
+              unstartedEffects: owner.unstarted,
+              ...(words === undefined ? {} : { words }),
+            },
+          }),
+        );
+        // One conversation that cannot be told never stops the boot: it is told again later.
+        const told = yield* Effect.exit(recover);
+        if (told._tag === "Failure") {
+          yield* Effect.logWarning("engine boot: a conversation could not be recovered yet", {
+            conversation: owner.conversationId,
+            cause: told.cause,
+          });
+          deferred.push(recover);
+        }
       }
-      return { requeued, recovered: owners.length };
+      return { requeued, recovered: owners.length - deferred.length, deferred };
     });
+
+  /** Tells each deferred recovery again with backoff until it is taken; for the boot's scope. */
+  const retryRecoveries = (
+    deferred: ReadonlyArray<Effect.Effect<void, StepFailure | EngineStoreError>>,
+  ) =>
+    Effect.forEach(
+      deferred,
+      (recover) =>
+        Effect.forkScoped(
+          Effect.gen(function* () {
+            for (let attempt = 1; ; attempt++) {
+              yield* Effect.sleep(recoveryRetryMs(attempt));
+              const told = yield* Effect.exit(recover);
+              if (told._tag === "Success") return;
+              if (attempt % 10 === 0) {
+                yield* Effect.logWarning("engine: a conversation still cannot be recovered", {
+                  attempt,
+                  cause: told.cause,
+                });
+              }
+            }
+          }),
+        ),
+      { discard: true },
+    );
 
   return {
     runOnce,
     reconcileAtBoot,
+    retryRecoveries,
     /** Starts the fibers in the caller's scope. */
     start: Effect.forEach(
       Array.from({ length: options.concurrency ?? 4 }),

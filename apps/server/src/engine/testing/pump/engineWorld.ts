@@ -165,13 +165,13 @@ export const makeEngineWorld = (options: WorldOptions) =>
     });
 
     let commands = 0;
-    const tell = (command: Command, by: Principal = ana) =>
+    const tell = (command: Command, by: Principal = ana, conversation: ConversationId = mate) =>
       within(
         Effect.gen(function* () {
           const conversations = yield* Conversations;
           const result = yield* conversations.tell({
             commandId: CommandId.make(`test-${lives}-${++commands}`),
-            conversationId: mate,
+            conversationId: conversation,
             principal: by,
             command,
           });
