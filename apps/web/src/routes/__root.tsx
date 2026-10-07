@@ -82,6 +82,8 @@ import {
   useRouteGateInputs,
 } from "./-environmentTargets";
 import { mateNoticeVoice } from "../zerops/mateNoticeVoice";
+import { mateRestarting } from "../zerops/mateMoments.logic";
+import { restartLineFor } from "../zerops/restartLine";
 import { MateLinkStage } from "../components/zerops/MateLinkStage";
 import { RouteStandIn } from "../components/zerops/RouteStandIn";
 import { resolveThreadRouteRef } from "../threadRoutes";
@@ -207,6 +209,7 @@ function SignedInRootRouteView() {
           recovery,
           conversationShown: gate.kind === "outlet" && conversation.kind === "shown",
           nowMs,
+          restartLine: restartLineFor(speaksFor, mateRestarting(linkReachability)),
           mateName:
             (routeEnvironment === null
               ? draftMate.kind === "mate"

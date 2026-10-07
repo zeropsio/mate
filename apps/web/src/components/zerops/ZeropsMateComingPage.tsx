@@ -120,7 +120,9 @@ import {
   madeOf,
   newProjectProgress,
 } from "~/zerops/newProjectBirth";
+import { mateRestarting } from "~/zerops/mateMoments.logic";
 import { mateNoticeVoice } from "~/zerops/mateNoticeVoice";
+import { restartLineFor } from "~/zerops/restartLine";
 import { useProjectActivity } from "~/zerops/activity/useProjectActivity";
 import { useNowMs, useSecondsNowMs } from "~/zerops/useNowMs";
 import { useToldActivity } from "~/zerops/useMenuMateReadings";
@@ -698,6 +700,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
     conversationShown: false,
     nowMs,
     mateName: named.name,
+    restartLine: restartLineFor(environmentId ?? named.name, mateRestarting(linkReachability)),
   });
   const view: MateEmptyComing | null =
     page === undefined
@@ -792,6 +795,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
                     ? undefined
                     : (linkVoice.headline ?? linkVoice.text ?? undefined),
                 sentence: linkVoice.surface === "none" ? undefined : linkVoice.secondary,
+                restarting: linkVoice.surface !== "none" && linkVoice.restarting === true,
                 below: (
                   <MateLinkLine
                     mateServiceId={mate.serviceId}

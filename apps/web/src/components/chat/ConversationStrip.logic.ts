@@ -34,6 +34,7 @@ import {
   type ThreadStatusInput,
 } from "@t3tools/shared/threadStatus";
 
+import type { MateFaceCue } from "~/components/zerops/primitives";
 import { mateFaceFor } from "~/zerops/agentActivity";
 
 function resolveChat(thread: ThreadStatusInput, lastVisitedAt: string | undefined): ThreadStatus {
@@ -101,6 +102,10 @@ export interface LineMate {
    * spoken into yet.
    */
   readonly tooltip: string | null;
+  /** The events its face greets (`useMateHeaderCues`). */
+  readonly cues?: ReadonlyArray<MateFaceCue> | undefined;
+  /** Its container is restarting: its face plays the restart while it lasts. */
+  readonly restarting?: boolean | undefined;
 }
 
 export function lineMate(input: {

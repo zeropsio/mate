@@ -127,6 +127,7 @@ function MateLinkStageOf({
             voice.text ??
             `${known?.name || "The Mate"} is opening the conversation.`,
           sentence: voice.secondary,
+          restarting: voice.restarting === true,
           below: (
             <MateLinkLine
               mateServiceId={mate?.serviceId}

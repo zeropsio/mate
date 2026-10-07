@@ -53,6 +53,7 @@ import {
 } from "~/components/zerops/ZeropsMateComingPage";
 import { MateLinkLineView, MateLinkProcessesView } from "~/components/zerops/MateLinkLine";
 import { MateEmptyStateView, type MateEmptyComing } from "~/components/zerops/ZeropsMateEmptyState";
+import { RESTART_LINES } from "~/zerops/mateNoticeVoice";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import {
   arrivalHeaderFace,
@@ -199,6 +200,8 @@ interface HarnessState {
   readonly coming?: "coming" | "coming-new" | "not-created" | "reaching";
   /** A Mate that is up, as its link's one voice says it (`mateVoice`). */
   readonly voice?: MateVoice;
+  /** Its container restarting: the stage speaks for it and its face plays the restart. */
+  readonly restarting?: boolean;
   readonly logins?: Logins;
   readonly addedBy?: string | null;
   readonly unknown?: KnownMessage;
@@ -247,7 +250,8 @@ const STATES: ReadonlyArray<HarnessState> = [
     mate: { ...WREN, connected: false },
     phase: null,
     coming: "reaching",
-    voice: { surface: "stage", text: "Wren is restarting.", actions: [], processes: false },
+    voice: { surface: "stage", text: RESTART_LINES[1], actions: [], processes: false },
+    restarting: true,
   },
   {
     id: "reconnecting",
@@ -527,7 +531,13 @@ function comingOf(state: HarnessState, nowMs: number): MateEmptyComing | null {
   if (state.coming === undefined) return null;
   if (state.coming === "reaching") {
     const voice = state.voice?.surface === "stage" ? state.voice : SILENT;
+    // A restart speaks on the stage as the Mate (`MateLinkStage`): its line is the headline.
+    const restart =
+      state.restarting === true
+        ? { face: "waking" as const, headline: voice.text ?? undefined, restarting: true }
+        : {};
     return {
+      ...restart,
       kind: "reaching",
       below: (
         <MateLinkLineView
@@ -535,7 +545,7 @@ function comingOf(state: HarnessState, nowMs: number): MateEmptyComing | null {
           processes={voice.processes ? <MateLinkProcessesView services={PROCESSES} /> : null}
           projects={<a href="#projects" />}
           projectUrl={undefined}
-          voice={voice}
+          voice={state.restarting === true ? { ...voice, text: null } : voice}
         />
       ),
     };

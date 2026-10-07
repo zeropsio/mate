@@ -37,7 +37,16 @@ import {
 } from "@t3tools/client-runtime/zerops/agentLogin";
 import type { KnownMessage } from "@t3tools/client-runtime/zerops/knowledge";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
-import { Fragment, useEffect, useId, useMemo, useRef, type ReactNode } from "react";
+import {
+  Fragment,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 
 import { MATE_SHAPE_OF_TINT, MATE_TINT_IDS, type MateMarkState } from "@t3tools/shared/brand";
 import { cn } from "~/lib/utils";
@@ -60,6 +69,8 @@ import { useZeropsEnvironmentProject } from "../../zerops/useZeropsEnvironmentPr
 import { useProjectServices } from "../../zerops/ZeropsAccountData";
 import { useZeropsAgentAuth } from "../../zerops/useZeropsFeeds";
 import { useNowMs } from "../../zerops/useNowMs";
+import { useChangeCue } from "../../zerops/useMateMoments";
+import { standUpDoneCue } from "../../zerops/mateMoments.logic";
 import { useHqPersonNames } from "../../zerops/useZeropsMateOwners";
 import { useZeropsSessionOptional } from "../../zerops/ZeropsSessionProvider";
 import { ArrivalSwap } from "./ArrivalSwap";
@@ -246,6 +257,8 @@ export interface MateEmptyComing {
   readonly severity?: "info" | "attention" | "danger" | undefined;
   /** A source-backed link state speaks as the Mate in the headline. */
   readonly headline?: string | undefined;
+  /** Its container is restarting: its face plays the restart while it lasts. */
+  readonly restarting?: boolean | undefined;
   readonly kind: MateViewKind;
   readonly below: ReactNode;
   /** The sentence under the headline: how long is left, or why it stopped. */
@@ -353,6 +366,11 @@ export function MateEmptyStateView({
   });
   // The minute clock its pose reads: it wakes only while it arrives (`mateArriving`).
   const nowMs = useNowMs();
+  // Standing up, it paces the headline's width; done, it gives a satisfied little dance.
+  const pacing = kind === "standing-up";
+  const [headlineWords, setHeadlineWords] = useState<HTMLSpanElement | null>(null);
+  const pace = useHeadlineReach(headlineWords, pacing);
+  const stoodUp = useChangeCue(kind, () => undefined, standUpDoneCue);
   const clauses =
     coming?.headline === undefined ? arrivalHeadlineClauses(mate, kind) : [coming.headline];
   const sentence =
@@ -411,8 +429,13 @@ export function MateEmptyStateView({
       <div className="flex w-full flex-col items-center" data-mate-empty-lead>
         <MateFace
           className={cn(MATE_EMPTY_FACE_CLASS, named === null && "invisible")}
+          cues={stoodUp === undefined ? undefined : [stoodUp]}
           data-mate-face-reserved={named === null ? "" : undefined}
+          paces={pacing}
+          restarting={coming?.restarting === true}
           size="lg"
+          style={{ "--mate-face-pace": `${pace}px` } as CSSProperties}
+          tracks
           shape={mate.shape}
           state={
             coming?.face ??
@@ -435,7 +458,7 @@ export function MateEmptyStateView({
             tabIndex={-1}
           >
             {/* One run of words, set on the room's last lines where it holds more than it says. */}
-            <span>
+            <span ref={setHeadlineWords}>
               {clauses.map((clause, at) => (
                 <Fragment key={clause}>
                   {at === 0 ? null : " "}
@@ -470,6 +493,26 @@ export function MateEmptyStateView({
       </div>
     </div>
   );
+}
+
+/**
+ * How far either way of centre the face may pace under a headline: half its words' width, less
+ * half the face. Measured when the headline's layout changes, never per frame.
+ */
+function useHeadlineReach(words: HTMLElement | null, measuring: boolean): number {
+  const [reach, setReach] = useState(0);
+  useEffect(() => {
+    if (!measuring || words === null || typeof ResizeObserver === "undefined") return;
+    // The words are inline, which a resize observer cannot watch: their block is watched, and
+    // the words' own width read once each time it lays out.
+    const block = words.parentElement ?? words;
+    const observer = new ResizeObserver(() =>
+      setReach(Math.max(0, Math.round(words.getBoundingClientRect().width / 2 - 36))),
+    );
+    observer.observe(block);
+    return () => observer.disconnect();
+  }, [words, measuring]);
+  return reach;
 }
 
 /** What stands in the slot under the sentence, and the name its hand-overs go by. */

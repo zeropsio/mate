@@ -13,11 +13,28 @@ export type WebMateVoice =
       readonly severity?: "info" | "attention" | "danger" | undefined;
       readonly headline?: string;
       readonly secondary?: string;
+      /** Its container is restarting: its face plays the restart for as long as it lasts. */
+      readonly restarting?: true;
     });
+
+/**
+ * What a Mate says while it restarts: one line per restart, picked once (`restartLineFor`) and
+ * kept until it is back.
+ */
+export const RESTART_LINES = [
+  "A little stretch, then back to work.",
+  "Splashing some cold water on its face.",
+  "Turning itself off and on again, like the professionals do.",
+  "Shaking off the cobwebs.",
+  "Back before your coffee cools.",
+] as const;
 
 /** Web copy and pose follow source evidence. Native clients keep their current presentation. */
 export function mateNoticeVoice(
-  input: Omit<MateVoiceInput, "heldMs"> & { readonly recovery?: MateRecovery },
+  input: Omit<MateVoiceInput, "heldMs"> & {
+    readonly recovery?: MateRecovery;
+    readonly restartLine?: number | undefined;
+  },
 ): WebMateVoice {
   const { reachability, conversationShown } = input;
   const name = input.mateName.trim() || "The Mate";
@@ -28,7 +45,7 @@ export function mateNoticeVoice(
     face: "idle" | "sleep" | "waking" = "sleep",
     actions: Exclude<MateVoice, { surface: "none" }>["actions"] = [],
     processes = false,
-  ): WebMateVoice => ({
+  ): Exclude<WebMateVoice, { readonly surface: "none" }> => ({
     surface,
     severity:
       reachability?.kind === "refused-configuration" ||
@@ -81,7 +98,14 @@ export function mateNoticeVoice(
   if (notice?.level === "restarting" || notice?.level === "updating") {
     if (!("overdue" in notice && notice.overdue)) {
       return notice.level === "restarting"
-        ? say(`${name} is restarting.`, "A little stretch, then back to work.", "waking")
+        ? {
+            ...say(
+              `${name} is restarting.`,
+              RESTART_LINES[(input.restartLine ?? 0) % RESTART_LINES.length]!,
+              "waking",
+            ),
+            restarting: true,
+          }
         : say(
             `${name} is updating.`,
             "The conversation will open once the update finishes.",
