@@ -469,7 +469,7 @@ const resolveFileManagerRevealKind = Effect.fn("externalLauncher.resolveFileMana
 // to every later connect for the whole TTL, breaking `server.getConfig`
 // permanently. Storing only on success means an interrupted scan leaves the
 // cache untouched and the next connect simply rescans.
-// Expiry uses the monotonic clock (Clock.currentTimeNanos), matching the
+// Expiry uses the monotonic clock (Clock.monotonicTimeNanos), matching the
 // command-resolution cache in @t3tools/shared/shell, so a backward wall-clock
 // adjustment cannot keep an expired entry alive.
 const EDITOR_DISCOVERY_CACHE_TTL_NANOS = 60_000_000_000n;
@@ -756,7 +756,7 @@ export const make = Effect.gen(function* () {
     Option.none(),
   );
   const cachedAvailableEditors = Effect.gen(function* () {
-    const nowNanos = yield* Clock.currentTimeNanos;
+    const nowNanos = yield* Clock.monotonicTimeNanos;
     const entry = yield* Ref.get(editorDiscoveryCache);
     if (Option.isSome(entry) && entry.value.expiresAtNanos > nowNanos) {
       return entry.value.editors;
