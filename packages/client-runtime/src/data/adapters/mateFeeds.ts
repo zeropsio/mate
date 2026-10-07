@@ -66,6 +66,7 @@ export function classifyMateFeedFailure(cause: Cause.Cause<unknown>): StreamFaul
   return { outcome: "transient", message: messageOf(Cause.squash(cause)) };
 }
 export type MateFeedEvent =
+  | { readonly kind: "session-unavailable" }
   | { readonly kind: "session" }
   | { readonly kind: "value"; readonly value: MateFeedValues[keyof MateFeedValues] };
 export interface MateFeedWire {
@@ -118,10 +119,7 @@ export function makeMateFeedWire(
               SubscriptionRef.changes(supervisor.session).pipe(
                 Stream.switchMap((session) => {
                   if (Option.isNone(session))
-                    return Stream.fail<StreamFault>({
-                      outcome: "transient",
-                      message: "The Mate's socket is not connected.",
-                    });
+                    return Stream.make({ kind: "session-unavailable" } as const);
                   const client = session.value.client;
                   let values: Stream.Stream<MateFeedValues[keyof MateFeedValues], unknown>;
                   switch (key.family) {
@@ -388,11 +386,17 @@ export function makeMateFeeds(options: {
           if (access) return yield* Effect.fail(access);
           for (;;) {
             let based = false;
-            let generation = 0;
+            let generation: number | undefined;
             let crewSeq = -1;
             yield* Stream.runForEach(wire.open(key), (event) =>
               Effect.gen(function* () {
                 if (closed || withheld.has(key.environmentId)) return;
+                if (event.kind === "session-unavailable") {
+                  based = false;
+                  generation = undefined;
+                  yield* signal(scope, { kind: "parent-lost" });
+                  return;
+                }
                 if (event.kind === "session") {
                   based = false;
                   crewSeq = -1;
@@ -402,7 +406,12 @@ export function makeMateFeeds(options: {
                   generation = streamOf(store.state(), scope).generation;
                   return;
                 }
-                if (generation !== streamOf(store.state(), scope).generation) return;
+                if (
+                  generation === undefined ||
+                  generation !== streamOf(store.state(), scope).generation
+                )
+                  return;
+                const observationGeneration = generation;
                 if (key.family === "mateCrew" && "seq" in event.value) {
                   if (event.value.seq <= crewSeq) return;
                   crewSeq = event.value.seq;
@@ -424,11 +433,15 @@ export function makeMateFeeds(options: {
                     access: "allowed",
                   });
                   if (!based) {
-                    store.dispatch({ kind: "baseline-begin", scope, generation });
+                    store.dispatch({
+                      kind: "baseline-begin",
+                      scope,
+                      generation: observationGeneration,
+                    });
                     store.dispatch({
                       kind: "baseline-commit",
                       scope,
-                      generation,
+                      generation: observationGeneration,
                       via: "mate-direct",
                       rows: [row],
                       members: [row.id],
@@ -438,7 +451,7 @@ export function makeMateFeeds(options: {
                     store.dispatch({
                       kind: "rows",
                       scope,
-                      generation,
+                      generation: observationGeneration,
                       method: "push",
                       via: "mate-direct",
                       rows: [row],

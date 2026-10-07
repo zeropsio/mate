@@ -361,7 +361,7 @@ it.live(
           initialConfig,
           client: { [WS_METHODS.subscribeServerConfig]: () => Stream.never },
         }) as unknown as RpcSession;
-      const sessions = yield* SubscriptionRef.make(Option.some(session(Deferred.await(first))));
+      const sessions = yield* SubscriptionRef.make(Option.none<RpcSession>());
       const supervisor = { session: sessions } as unknown as EnvironmentSupervisor["Service"];
       const registry = {
         followStream: <A, E, R>(_environmentId: string, stream: Stream.Stream<A, E, R>) =>
@@ -384,6 +384,9 @@ it.live(
         }) as ServerConfig;
       const release = feeds.hold(configKey);
       yield* settle;
+      expect(read().state).not.toBe("known");
+      yield* SubscriptionRef.set(sessions, Option.some(session(Deferred.await(first))));
+      yield* settle;
       expect(read().state).toBe("reading");
       yield* Deferred.succeed(first, config("/first"));
       yield* settle;
@@ -391,6 +394,13 @@ it.live(
         state: "known",
         coverage: "complete",
         freshness: { kind: "live" },
+        value: { config: { cwd: "/first" } },
+      });
+      yield* SubscriptionRef.set(sessions, Option.none());
+      yield* settle;
+      expect(read()).toMatchObject({
+        state: "known",
+        freshness: { kind: "stale" },
         value: { config: { cwd: "/first" } },
       });
       yield* SubscriptionRef.set(sessions, Option.some(session(Deferred.await(second))));
