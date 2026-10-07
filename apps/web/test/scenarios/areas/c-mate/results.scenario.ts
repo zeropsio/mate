@@ -261,6 +261,9 @@ describe("C: calls, results and crew actions", () => {
               "Check the order and checkout pages",
               "browser-run",
             );
+            yield* chat.when.press("Toggle right panel");
+            yield* chat.when.click("Browser");
+            yield* Effect.promise(() => wire.browserSubscribed());
             wire.run("browser-run", "running");
             for (const [callId, path] of [
               ["browser-order", "orders"],
@@ -329,6 +332,7 @@ describe("C: calls, results and crew actions", () => {
               frame: null,
             });
             yield* chat.then.control("View of /orders on desktop", "button", false);
+            yield* chat.when.press("Toggle right panel");
           }),
         );
         yield* s.then.noExternalNetwork;
