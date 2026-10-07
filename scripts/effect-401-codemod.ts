@@ -254,7 +254,7 @@ const CHANGED: ReadonlyArray<Pattern> = [
       "partition now returns [passes, fails] (rc.115: [fails, passes]): swap the destructuring",
   },
   {
-    test: /\bStream\.scan\(\s*(?!\(|function\b|async\b)/u,
+    test: /\bStream\.scan\(\s*(?!\(|function\b|async\b|[A-Za-z_$][\w$]*\s*,)/u,
     message: "Stream.scan takes a lazy initial state: pass () => initial",
   },
   {

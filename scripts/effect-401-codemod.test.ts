@@ -152,7 +152,10 @@ describe("effect-401 codemod", () => {
     expect(rewriteFile("file.ts", input).checks).not.toEqual([]);
   });
 
-  it("a Stream.scan already given a lazy initial state is not listed", () => {
-    expect(rewriteFile("file.ts", `Stream.scan(() => [], f);\n`).checks).toEqual([]);
-  });
+  it.each([`Stream.scan(() => [], f);\n`, `Stream.scan(seedState, f);\n`])(
+    "a Stream.scan already given a lazy initial state is not listed: %s",
+    (input) => {
+      expect(rewriteFile("file.ts", input).checks).toEqual([]);
+    },
+  );
 });
