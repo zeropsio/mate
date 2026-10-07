@@ -77,8 +77,8 @@ export const AGENT_STOPPED_ITSELF = "The agent stopped the turn itself.";
 export const EFFECT_KINDS = {
   "session.open": { lane: "turn", class: "process-bound" },
   "provider.send": { lane: "turn", class: "process-bound" },
-  "provider.interrupt": { lane: "turn", class: "process-bound" },
-  "provider.respond": { lane: "turn", class: "process-bound" },
+  "provider.interrupt": { lane: "control", class: "process-bound" },
+  "provider.respond": { lane: "control", class: "process-bound" },
   "provider.steer": { lane: "turn", class: "process-bound" },
 } as const satisfies Record<string, { lane: EffectLane; class: EffectClass }>;
 export type EngineEffectKind = keyof typeof EFFECT_KINDS;

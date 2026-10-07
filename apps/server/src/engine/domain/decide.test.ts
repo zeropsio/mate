@@ -1234,3 +1234,19 @@ describe("decide: the conversation holds the agent it belongs to", () => {
     expect(scene.events).toEqual([]);
   });
 });
+
+describe("decide: effect lanes", () => {
+  it("a send queues in the turn lane; a Stop and an answer in the control lane, never behind it", () => {
+    const sendScene = play([send(), opened(1)]);
+    const stopScene = play([...running, stop()]);
+    const answerScene = play([
+      ...waiting,
+      { _tag: "Answer", requestId: requestId(r(1), 1), answer: null, summary: "Allowed" },
+    ]);
+    expect(
+      [sendScene, stopScene, answerScene].flatMap((scene) =>
+        scene.effects.map((effect) => `${effect.kind}:${effect.lane}`),
+      ),
+    ).toEqual(["provider.send:turn", "provider.interrupt:control", "provider.respond:control"]);
+  });
+});

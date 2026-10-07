@@ -187,7 +187,13 @@ type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K>
 /** An event before the store stamps its header (version, conversation, seq, time, command). */
 export type EventDraft = DistributiveOmit<KnownEngineEvent, HeaderKey>;
 
-export type EffectLane = "turn" | "side";
+/**
+ * Where an effect queues; each conversation's lane is FIFO, lanes run side by side. `turn`: the
+ * session and what goes into it (open, send, steer) — a send settles once the driver accepted it,
+ * so the lane frees while the turn runs. `control`: what must never wait behind a send (interrupt,
+ * answer, close). `side`: work beside the agent (the workspace capture, its finish).
+ */
+export type EffectLane = "turn" | "control" | "side";
 /** Boot cuts a process-bound effect (its process is gone) and requeues a replay-safe one. */
 export type EffectClass = "process-bound" | "replay-safe";
 

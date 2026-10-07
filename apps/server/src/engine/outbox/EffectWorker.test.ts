@@ -201,6 +201,28 @@ describe("EffectOutbox", () => {
   });
 });
 
+describe("EffectOutbox: lanes", () => {
+  it.layer(engine)("control", (it) => {
+    it.effect("a Stop or an answer is claimed while the send before it is still in flight", () =>
+      Effect.gen(function* () {
+        const outbox = yield* EffectOutbox;
+        const c = ConversationId.make("lanes");
+        yield* enqueue(c, [
+          { id: "send", lane: "turn", class: "process-bound" },
+          { id: "next-send", lane: "turn", class: "process-bound" },
+          { id: "interrupt", lane: "control", class: "process-bound" },
+          { id: "answer", lane: "control", class: "process-bound" },
+        ]);
+        const take = outbox
+          .claim(boot1, 0)
+          .pipe(Effect.map(Option.match({ onNone: () => "none", onSome: (row) => row.effectId })));
+        const claimed = [yield* take, yield* take, yield* take];
+        assert.deepStrictEqual(claimed, ["send", "interrupt", "none"]);
+      }),
+    );
+  });
+});
+
 describe("EffectWorker", () => {
   it.layer(engine)("acting", (it) => {
     it.effect("runs an effect queued twice under one id once", () =>
