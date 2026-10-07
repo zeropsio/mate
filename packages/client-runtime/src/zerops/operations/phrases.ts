@@ -384,6 +384,7 @@ const ENV_VERB: Readonly<
   get: { asked: "Read", running: "Reading", done: "Read" },
   dotenv: { asked: "Write", running: "Writing", done: "Wrote" },
   dotenvPreview: { asked: "Read", running: "Reading", done: "Read" },
+  request: { asked: "Ask for", running: "Asking for", done: "Asked for" },
   // An action it does not know: neutral, never a claim of what it did.
   update: { asked: "Change", running: "Changing", done: "Changed" },
 };
@@ -399,12 +400,18 @@ export function envChangeWords(
 ): string {
   const verb = ENV_VERB[change.action];
   const dotenv = change.service === undefined ? "the .env" : `the .env for ${change.service}`;
+  // A request names the value it asks for, never a value: there is none.
+  if (change.action === "request" && change.request?.alreadySet === true && tense === "done") {
+    return `${change.request.key} is in the vault already`;
+  }
   const what =
     change.action === "dotenv"
       ? dotenv
       : change.action === "dotenvPreview"
         ? `what ${dotenv} would change`
-        : envVariablesWords(change);
+        : change.action === "request"
+          ? (change.request?.key ?? "a value")
+          : envVariablesWords(change);
   // zcp's safety gate kept it from writing over variables set by hand.
   if (tense === "done" && change.refused !== undefined) {
     const byHand =
