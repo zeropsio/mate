@@ -314,4 +314,6 @@ export {
   type ProjectTopologyLiveness,
 } from "./projections/inventoryTopology.ts";
 
+export { makeMateUpdates, makeMateUpdateWire, type MateUpdateHost } from "./adapters/mateUpdate.ts";
+export { mateUpdate, mateUpdateStates, type MateUpdateRead } from "./projections/mateUpdate.ts";
 export { composerControl, type ComposerControlLook } from "./projections/composerControl.ts";

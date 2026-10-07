@@ -47,8 +47,8 @@ const verbs = vi.hoisted(() => ({
   confirm: vi.fn(),
 }));
 
-vi.mock("../../zerops/useZeropsMateUpdate", () => ({
-  useZeropsMateUpdate: () => ({
+vi.mock("../../zerops/useMateUpdate", () => ({
+  useMateUpdate: () => ({
     state: mateUpdateState.state,
     update: verbs.update,
     checked: mateUpdateState.checked,

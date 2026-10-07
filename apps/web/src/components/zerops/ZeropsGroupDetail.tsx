@@ -124,7 +124,7 @@ import { useMatesActivity } from "~/zerops/useZeropsAgentActivity";
 import { useListingPatience } from "~/zerops/useListingPatience";
 import { useNowMs } from "~/zerops/useNowMs";
 import { mateUpdateStatus, type MateUpdateStatus } from "~/zerops/mateUpdate";
-import { useZeropsMateUpdateStates } from "~/zerops/useZeropsMateUpdate";
+import { useMateUpdateStates } from "~/zerops/useMateUpdate";
 import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
 import { useFlowVerbs, type FlowVerbOutcome } from "~/zerops/flowVerbs";
 import {
@@ -298,7 +298,7 @@ function useMateMenus(): {
       // *Check for updates* and *Update to x.y.z* are the server's own verbs,
       // and the control that reads that server is a mount per Mate — the same
       // one the Mate card uses, so a check started here and a check started
-      // there are the same check (`useZeropsMateUpdate` keys by environment).
+      // there are the same check (`useMateUpdate` keys by environment).
       if (candidate.group !== "connected" || candidate.environmentId === undefined) return menu([]);
       return (
         <ZeropsMateUpdateControl
@@ -386,7 +386,7 @@ function useGroupMates(
   // HQ's word of who is up, as the menu reads it (`mateAwake`).
   const hqView = useAtomValue(hqMatesAtom);
   const hqMates = hqView?.current === true ? hqView.mates : null;
-  const updates = useZeropsMateUpdateStates();
+  const updates = useMateUpdateStates();
   const nowMs = useNowMs();
   const waitsOnViewer = useWaitsOnViewer();
   const mates = useMemo(() => {
