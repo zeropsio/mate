@@ -1,79 +1,40 @@
-import {
-  DispatchResult,
-  ORCHESTRATION_WS_METHODS,
-  OrchestrationCommand,
-  OrchestrationEvent,
-  OrchestrationThread,
-  OrchestrationThreadActivity,
-  OrchestrationThreadStreamItem,
-  WS_METHODS,
-  ZeropsAgentAuthSnapshot,
-} from "@t3tools/contracts";
+import { WS_METHODS, ZeropsAgentAuthSnapshot } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import type { MateFake } from "../../fakes/mate.ts";
 import { definePerson } from "../../fakes/zeropsWorld.ts";
 import { deadline } from "../../harness/http.ts";
 import type { ScenarioDrivers, ScenarioExtension } from "../../harness/scenario.ts";
+import { V1ChatWire } from "./v1.ts";
+import type { ChatWire } from "./wire.ts";
 
 const decodeAuth = Schema.decodeUnknownSync(ZeropsAgentAuthSnapshot);
-const decodeActivity = Schema.decodeUnknownSync(OrchestrationThreadActivity);
-const decodeThread = Schema.decodeUnknownSync(OrchestrationThread);
-const decodeEvent = Schema.decodeUnknownSync(OrchestrationEvent);
-
-const AT = "2026-10-05T12:00:00.000Z";
-const decodeCommand = Schema.decodeUnknownSync(OrchestrationCommand);
-const encodeStream = Schema.encodeSync(OrchestrationThreadStreamItem);
-const encodeResult = Schema.encodeSync(DispatchResult);
 const encodeAuth = Schema.encodeSync(ZeropsAgentAuthSnapshot);
 
 /** Provider-side facts and response receipts, all outside the client. */
 export class ChatDriver {
   readonly http: string[] = [];
-  readonly responses: OrchestrationCommand[] = [];
   ownership: "project-token" | "owner" | "colleague" | "unrecorded" = "project-token";
-  acceptResponses = true;
   signerOffboarded = false;
   readonly mate: MateFake;
-  constructor(mate: MateFake) {
+  readonly wire: ChatWire;
+  constructor(mate: MateFake, wire: ChatWire = new V1ChatWire(mate)) {
     this.mate = mate;
+    this.wire = wire;
     const original = mate.handle;
     mate.handle = (request) => {
       this.http.push(`${request.method} ${request.url.pathname}`);
       return original(request);
     };
     mate.rpcHandlers.push((request, socket) => {
-      if (request.tag === WS_METHODS.subscribeZeropsAgentAuth) {
-        mate.subscriptions.get(socket)!.set(request.id, request);
-        mate.chunk(socket, request.id, [encodeAuth(this.auth())]);
-        return true;
-      }
-      if (request.tag !== ORCHESTRATION_WS_METHODS.dispatchCommand) return false;
-      const command = decodeCommand(request.payload);
-      if (
-        command.type !== "thread.approval.respond" &&
-        command.type !== "thread.user-input.respond"
-      )
-        return false;
-      this.responses.push(command);
-      if (this.acceptResponses) {
-        this.activity(
-          command.type === "thread.approval.respond" ? "approval.resolved" : "user-input.resolved",
-          "Agent received your response",
-          { requestId: command.requestId },
-        );
-        this.assistantReply("Agent received your response", command.commandId);
-      }
-      mate.reply(socket, request.id, encodeResult({ sequence: mate.sequence }));
+      if (request.tag !== WS_METHODS.subscribeZeropsAgentAuth) return false;
+      mate.subscriptions.get(socket)!.set(request.id, request);
+      mate.chunk(socket, request.id, [encodeAuth(this.auth())]);
       return true;
     });
   }
 
   sentTurnCount() {
-    return this.mate.requests.filter(
-      (request) =>
-        request.tag === ORCHESTRATION_WS_METHODS.dispatchCommand &&
-        request.payload.type === "thread.turn.start",
-    ).length;
+    return this.wire.intents().filter((intent) => intent.kind === "turn").length;
   }
 
   doorCount() {
@@ -81,30 +42,34 @@ export class ChatDriver {
   }
 
   commandDecisions() {
-    return this.responses.flatMap((command) =>
-      command.type === "thread.approval.respond"
-        ? [
-            command.decision === "accept"
-              ? "approved"
-              : command.decision === "decline"
-                ? "declined"
-                : command.decision,
-          ]
-        : [],
-    );
+    return this.wire
+      .intents()
+      .flatMap((intent) =>
+        intent.kind !== "decision"
+          ? []
+          : [
+              intent.decision === "accept"
+                ? "approved"
+                : intent.decision === "decline"
+                  ? "declined"
+                  : intent.decision,
+            ],
+      );
   }
 
   receivedStagingAnswer() {
-    return this.responses.some(
-      (command) =>
-        command.type === "thread.user-input.respond" &&
-        command.requestId === "question-target" &&
-        command.answers.target === "stage",
-    );
+    return this.wire
+      .intents()
+      .some(
+        (intent) =>
+          intent.kind === "answer" &&
+          intent.ask === "question" &&
+          intent.answers.target === "stage",
+      );
   }
 
   responseCount() {
-    return this.responses.length;
+    return this.wire.intents().filter((intent) => intent.kind !== "turn").length;
   }
 
   offboardSigner() {
@@ -152,105 +117,19 @@ export class ChatDriver {
   }
 
   history(text = "The existing conversation is still here") {
-    this.mate.message("history", text, "seed-history");
+    this.wire.history(text);
   }
 
   approval() {
-    this.activity("approval.requested", "Command approval requested", {
-      requestId: "approval-build",
-      requestKind: "command",
-      detail: "vp run build",
-    });
+    this.wire.approval();
   }
 
   question() {
-    this.activity("user-input.requested", "User input requested", {
-      requestId: "question-target",
-      questions: [
-        {
-          id: "target",
-          header: "Target",
-          question: "Which environment should I inspect?",
-          options: [
-            { label: "Staging", value: "stage", description: "Inspect the staging environment" },
-            {
-              label: "Production",
-              value: "production",
-              description: "Inspect the live environment",
-            },
-          ],
-          multiSelect: false,
-          allowCustomAnswer: true,
-        },
-      ],
-    });
+    this.wire.question();
   }
 
-  assistantReply(text: string, commandId: string) {
-    const mate = this.mate;
-    const message = {
-      id: `reply-${++mate.sequence}`,
-      role: "assistant",
-      text,
-      turnId: null,
-      streaming: false,
-      createdAt: AT,
-      updatedAt: AT,
-    };
-    mate.thread = decodeThread({ ...mate.thread, messages: [...mate.thread.messages, message] });
-    const event = decodeEvent({
-      sequence: mate.sequence,
-      eventId: `event-${mate.sequence}`,
-      aggregateKind: "thread",
-      aggregateId: mate.thread.id,
-      occurredAt: AT,
-      commandId,
-      causationEventId: null,
-      correlationId: commandId,
-      metadata: {},
-      type: "thread.message-sent",
-      payload: { ...message, threadId: mate.thread.id, messageId: message.id },
-    });
-    mate.events.push(event);
-    for (const [socket, subscriptions] of mate.subscriptions)
-      for (const [id, request] of subscriptions)
-        if (request.tag === ORCHESTRATION_WS_METHODS.subscribeThread)
-          mate.chunk(socket, id, [encodeStream({ kind: "event", event })]);
-  }
-
-  activity(kind: string, summary: string, payload: Record<string, unknown>) {
-    const mate = this.mate;
-    const activity = decodeActivity({
-      id: `activity-${++mate.sequence}`,
-      tone: kind.startsWith("approval.") ? "approval" : "info",
-      kind,
-      summary,
-      payload,
-      turnId: null,
-      createdAt: AT,
-    });
-    mate.thread = decodeThread({
-      ...mate.thread,
-      activities: [...mate.thread.activities, activity],
-    });
-    const event = decodeEvent({
-      sequence: mate.sequence,
-      eventId: activity.id,
-      aggregateKind: "thread",
-      aggregateId: mate.thread.id,
-      occurredAt: AT,
-      commandId: null,
-      causationEventId: null,
-      correlationId: null,
-      metadata: {},
-      type: "thread.activity-appended",
-      payload: { threadId: mate.thread.id, activity },
-    });
-    mate.events.push(event);
-    for (const [socket, subscriptions] of mate.subscriptions)
-      for (const [id, request] of subscriptions)
-        if (request.tag === ORCHESTRATION_WS_METHODS.subscribeThread)
-          mate.chunk(socket, id, [encodeStream({ kind: "event", event })]);
+  waitForMessage(text: string) {
+    return this.wire.waitForMessage(text);
   }
 }
 

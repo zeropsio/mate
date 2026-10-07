@@ -130,7 +130,7 @@ export function mateChat(s: Scenario) {
         Effect.gen(function* () {
           const mate = s.drivers.mates.get("Ada");
           if (!mate) throw new Error("Create Ada before sending a message");
-          yield* Effect.promise(() => mate.waitForMessage(message));
+          yield* Effect.promise(() => chatFor(mate).waitForMessage(message));
           yield* text(message);
         }),
       text,
