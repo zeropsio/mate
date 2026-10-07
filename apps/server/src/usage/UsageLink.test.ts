@@ -2,11 +2,14 @@
 import * as NodeFSP from "node:fs/promises";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
+import * as NodeSqlite from "node:sqlite";
 import { assert, it } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { AGENT_USAGE_CAPTURE_PROTOCOL } from "@t3tools/contracts";
 import { usageCanonical, type UsageLinkUp } from "@t3tools/shared/agentUsage";
+import { HostProcessEnvironment } from "@t3tools/shared/hostProcess";
 import type { MateLinkDown, MateLinkUp } from "@t3tools/shared/mateLink";
+import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -18,6 +21,7 @@ import * as ServerSettings from "../serverSettings.ts";
 import { makeUsageLedger, type UsageLedger } from "./UsageLedger.ts";
 import { makeUsageLink, type UsageLinkOptions, type UsageRuntimeEvent } from "./UsageLink.ts";
 import { watchDirectory, type WatchDirectory } from "./usageCapture.ts";
+import { protoBytes, protoNumber, protoText } from "./testing/protobuf.ts";
 
 const response = (id: string, amount: number) =>
   usageCanonical({
@@ -73,7 +77,16 @@ const eventually = <A, E>(read: Effect.Effect<A, E>, ok: (value: A) => boolean) 
     return value;
   });
 
-/** A Mate whose HQ link negotiated capture, its Claude home under `root`, nothing from V1. */
+/** Every provider a fact was journaled for. */
+const providers = (ledger: UsageLedger) =>
+  Effect.gen(function* () {
+    const frame = yield* ledger.batch("0", "test");
+    return new Set(
+      (frame?.entries ?? []).flatMap((entry) => entry.facts.map((fact) => fact.provider)),
+    );
+  });
+
+/** A Mate whose HQ link negotiated capture, every provider's home under `root`, nothing from V1. */
 const mate = (
   options: UsageLinkOptions & {
     readonly projects?: boolean;
@@ -91,6 +104,11 @@ const mate = (
     const context = yield* Layer.build(
       Layer.mergeAll(
         Sqlite.layer({ filename: database }),
+        Layer.succeed(HostProcessEnvironment, {
+          GROK_HOME: NodePath.join(root, "grok"),
+          OPENCODE_DATA_DIR: NodePath.join(root, "opencode"),
+          ANTIGRAVITY_DATA_DIR: NodePath.join(root, "antigravity"),
+        }),
         ServerSettings.layerTest({
           providers: {
             claudeAgent: { homePath: claudeHome },
@@ -120,8 +138,10 @@ const mate = (
         await NodeFSP.writeFile(NodePath.join(transcripts, "project", name), body);
       });
     return {
+      root,
       transcripts,
       write,
+      providers: providers(reader),
       emit: (type: UsageRuntimeEvent["type"]) => Queue.offer(runtime, { type }),
       total: recorded(reader),
       origins: reader.origins,
@@ -338,3 +358,72 @@ for (const code of ["ledger_rollback_conflict", "origin_lineage_conflict"])
       }),
     ),
   );
+
+it.live("Grok, OpenCode and Antigravity are captured while Cursor is still unsupported", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const { watch } = silentWatch();
+      const subject = yield* mate({ watch });
+      yield* eventually(subject.origins, (origins) => origins.length > 0);
+      yield* subject.emit("turn.completed");
+      yield* Effect.sleep("200 millis");
+      const now = (yield* Clock.currentTimeMillis) + 1000;
+      yield* Effect.tryPromise(async () => {
+        const grok = NodePath.join(subject.root, "grok", "sessions", "grok-session");
+        await NodeFSP.mkdir(grok, { recursive: true });
+        await NodeFSP.writeFile(
+          NodePath.join(grok, "updates.jsonl"),
+          usageCanonical({
+            params: {
+              sessionId: "grok-session",
+              update: {
+                sessionUpdate: "turn_completed",
+                prompt_id: "prompt",
+                usage: { inputTokens: 10, outputTokens: 2, cachedReadTokens: 0 },
+              },
+              _meta: { agentTimestampMs: now },
+            },
+          }) + "\n",
+        );
+        const opencode = NodePath.join(subject.root, "opencode");
+        await NodeFSP.mkdir(opencode, { recursive: true });
+        const messages = new NodeSqlite.DatabaseSync(NodePath.join(opencode, "opencode.db"));
+        messages.exec("CREATE TABLE message (id TEXT, session_id TEXT, data TEXT)");
+        messages.prepare("INSERT INTO message VALUES (?, ?, ?)").run(
+          "msg",
+          "session",
+          usageCanonical({
+            role: "assistant",
+            modelID: "model",
+            time: { created: now },
+            tokens: { input: 10, output: 2, reasoning: 0, cache: { read: 0, write: 0 } },
+          }),
+        );
+        messages.close();
+        const antigravity = NodePath.join(subject.root, "antigravity", "conversations");
+        await NodeFSP.mkdir(antigravity, { recursive: true });
+        const conversation = new NodeSqlite.DatabaseSync(NodePath.join(antigravity, "c.db"));
+        conversation.exec("CREATE TABLE steps (idx INTEGER, metadata BLOB)");
+        conversation
+          .prepare("INSERT INTO steps VALUES (?, ?)")
+          .run(
+            0,
+            new Uint8Array([
+              ...protoBytes(9, [...protoNumber(2, 10), ...protoText(11, "response")]),
+              ...protoBytes(8, protoNumber(1, Math.ceil(now / 1000))),
+            ]),
+          );
+        conversation.close();
+      });
+      yield* subject.emit("turn.completed");
+      const captured = yield* eventually(subject.providers, (found) => found.size >= 3);
+      assert.sameMembers([...captured], ["grok", "opencode", "antigravity"]);
+      const coverage = new Map(
+        (yield* subject.origins).map((origin) => [origin.provider, origin.coverage.state]),
+      );
+      assert.equal(coverage.get("cursor"), "unsupported");
+      for (const provider of ["grok", "opencode", "antigravity"] as const)
+        assert.equal(coverage.get(provider), "partial");
+    }),
+  ),
+);

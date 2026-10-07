@@ -33,8 +33,9 @@ invent daily allocation. Claude cache categories retain unknown components. A ca
 only where the provider has no cache-write meter at all (Codex without the field); a meter that
 leaves a value out is unknown. Claude reasoning is its `thinking_tokens`, unknown without them. Reported single cache-write durations use
 HQ's standard/fast 5-minute or 1-hour bands; unknown or mixed durations remain unpriced; reasoning is never added to output twice. Neither meter declares historical completeness,
-settled cancellation coverage or inferred run/actor provenance. Grok, Cursor, OpenCode and
-Antigravity publish unsupported meter coverage, including configured disabled instances.
+settled cancellation coverage or inferred run/actor provenance. Grok, OpenCode and Antigravity are
+captured too (a database record's position is its file, its ordinal the scan); Cursor, whose only
+source is an account-wide API, publishes unsupported meter coverage, even for a disabled instance.
 
 Startup reconciliation, transcript filesystem changes, settings changes and provider runtime events
 (`session.started`, `turn.completed`, which both conversation engines emit) drive capture. A

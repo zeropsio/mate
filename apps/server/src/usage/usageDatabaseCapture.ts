@@ -5,6 +5,7 @@
  */
 import { usageCanonical, usageDigest } from "@t3tools/shared/agentUsage";
 import { type UsageCoverage } from "@t3tools/contracts";
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { readAntigravityUsage } from "./antigravityUsageReader.ts";
@@ -85,7 +86,7 @@ export const captureDatabaseSource = Effect.fnUntraced(function* (
   const key = usageDigest(["database-watermark", source.provider, [...source.roots].sort()]);
   const saved = yield* ledger.checkpoint(key);
   const previous = saved ? decodeWatermark(saved) : undefined;
-  const startedAt = (options.now ?? Date.now)();
+  const startedAt = options.now ? options.now() : yield* Clock.currentTimeMillis;
   const ordinal = Math.max(startedAt, (previous?.ordinal ?? 0) + 1);
   // Capture never backfills; a resumed scan re-reads only what the last one may have missed.
   const since = Math.max(

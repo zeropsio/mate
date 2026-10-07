@@ -14,6 +14,7 @@ import { type MateLinkDown, type MateLinkUp } from "@t3tools/shared/mateLink";
 import { usageDigest } from "@t3tools/shared/agentUsage";
 import { HostProcessEnvironment } from "@t3tools/shared/hostProcess";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Queue from "effect/Queue";
@@ -36,7 +37,9 @@ import {
   type CaptureSource,
   type WatchDirectory,
 } from "./usageCapture.ts";
+import { captureDatabaseSource, type DatabaseSource } from "./usageDatabaseCapture.ts";
 import { makeUsageReplication, renewsLedger } from "./usageReplication.ts";
+import { resolveUsageStoreRoots } from "./usageStoreRoots.ts";
 import { DEFAULT_WATCH_RETRY, makeSourceWatches, type WatchRetry } from "./usageWatches.ts";
 
 const isLedgerError = Schema.is(UsageLedgerError);
@@ -54,6 +57,12 @@ export interface UsageLink {
 const decodeClaudeSettings = Schema.decodeOption(ClaudeSettings);
 const decodeCodexSettings = Schema.decodeOption(CodexSettings);
 
+/** Drivers whose history is a database rather than a transcript. */
+const DATABASE_DRIVERS: Record<string, DatabaseSource["provider"]> = {
+  opencode: "opencode",
+  antigravity: "antigravity",
+};
+
 /** What capture reads of a provider runtime event: either conversation engine emits these. */
 export type UsageRuntimeEvent = Pick<ProviderRuntimeEvent, "type">;
 export interface UsageLinkOptions {
@@ -70,6 +79,7 @@ export const makeUsageLink = Effect.fnUntraced(function* (
   const settings = yield* ServerSettingsService;
   const path = yield* Path.Path;
   const host = yield* HostProcessEnvironment;
+  const fileSystem = yield* FileSystem.FileSystem;
   let binding: UsageBinding | undefined;
   const dirty = yield* Queue.sliding<void>(1);
   let wake: (() => void) | undefined;
@@ -99,6 +109,7 @@ export const makeUsageLink = Effect.fnUntraced(function* (
         });
     }
     const seen = new Set<string>();
+    const databases = new Set<DatabaseSource["provider"]>();
     for (const instance of configured) {
       const environment = providerInstanceEnvironment(instance.environment, host);
       let source: CaptureSource | undefined;
@@ -121,13 +132,16 @@ export const makeUsageLink = Effect.fnUntraced(function* (
           ).pipe(Effect.provideService(Path.Path, path));
           source = { provider: "codex", directory: path.join(layout.sharedHomePath, "sessions") };
         }
+      } else if (instance.driver === "grok") {
+        const home = expandHomePath(
+          environment.GROK_HOME?.trim() || path.join(NodeOS.homedir(), ".grok"),
+        );
+        source = { provider: "grok", directory: path.resolve(home, "sessions") };
+      } else if (DATABASE_DRIVERS[instance.driver]) {
+        databases.add(DATABASE_DRIVERS[instance.driver]!);
       } else {
-        const unsupported: Record<string, UsageOrigin["provider"]> = {
-          grok: "grok",
-          cursor: "cursor",
-          opencode: "opencode",
-          antigravity: "antigravity",
-        };
+        // Cursor's only usage source is an account-wide API, not this Mate's history.
+        const unsupported: Record<string, UsageOrigin["provider"]> = { cursor: "cursor" };
         const provider = unsupported[String(instance.driver)];
         if (provider) {
           const origin = yield* ledger.bind(
@@ -155,6 +169,24 @@ export const makeUsageLink = Effect.fnUntraced(function* (
         ledgerId: meta.ledgerId,
       }).pipe(Effect.catchCause(() => Effect.logWarning("Usage source capture unavailable")));
       yield* watches.ensure(source.directory);
+    }
+    if (databases.size > 0) {
+      const stores = yield* resolveUsageStoreRoots({
+        hostEnvironment: host,
+        home: NodeOS.homedir(),
+        stateDir: config.stateDir,
+        providerInstances: current.providerInstances,
+      }).pipe(
+        Effect.provideService(FileSystem.FileSystem, fileSystem),
+        Effect.provideService(Path.Path, path),
+      );
+      for (const provider of databases)
+        yield* captureDatabaseSource(
+          ledger,
+          binding,
+          { provider, roots: stores[provider] },
+          { ...(floor === undefined ? {} : { floor }), ledgerId: meta.ledgerId },
+        ).pipe(Effect.catchCause(() => Effect.logWarning("Usage source capture unavailable")));
     }
     if (baseline) yield* ledger.markBaselined;
     wake?.();
