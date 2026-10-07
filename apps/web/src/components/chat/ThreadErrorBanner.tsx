@@ -1,12 +1,9 @@
-import {
-  AGENT_SIGN_IN_MESSAGE,
-  agentNeedsSignIn,
-  mateErrorWords,
-} from "@t3tools/client-runtime/zerops";
+import { agentNeedsSignIn } from "@t3tools/client-runtime/zerops";
+import { mateFailureWords, usageLimitProvider } from "../../zerops/noticeWords";
 import { memo } from "react";
 import { Alert, AlertAction, AlertDescription } from "../ui/alert";
 import { Button } from "../ui/button";
-import { CircleAlertIcon, XIcon } from "lucide-react";
+import { CircleAlertIcon, PauseIcon, XIcon } from "lucide-react";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
 export function getThreadErrorBannerKey(threadKey: string, error: string | null): string | null {
@@ -42,12 +39,12 @@ export const ThreadErrorBanner = memo(function ThreadErrorBanner({
   error,
   onDismiss,
   onAuthorize,
-  mate,
   driver,
+  usageLimitShown = false,
 }: {
   error: string | null;
-  /** The Mate whose conversation it is: a sign-in failure says it as the Mate's (`mateErrorWords`). */
-  mate?: string | undefined;
+  /** The timeline already owns this expected pause; say it once. */
+  usageLimitShown?: boolean;
   /** The conversation's agent driver (its session's `providerName`): only its own sign-in failure is one. */
   driver?: string | null | undefined;
   onDismiss?: () => void;
@@ -62,45 +59,52 @@ export const ThreadErrorBanner = memo(function ThreadErrorBanner({
   onAuthorize?: (() => void) | undefined;
 }) {
   if (!error) return null;
-  const needsSignIn = onAuthorize !== undefined && agentNeedsSignIn(error, driver);
+  const limit = usageLimitProvider(error);
+  if (limit !== null && usageLimitShown) return null;
+  const words = mateFailureWords(error, driver);
+  const needsSignIn = agentNeedsSignIn(error, driver);
   if (needsSignIn) {
     return (
       <div className="mx-auto w-fit max-w-[min(48rem,calc(100%-2rem))] pt-3">
-        <Alert variant="error" controlAlignment="first-line">
-          <CircleAlertIcon />
-          <AlertDescription>
-            {mate === undefined ? AGENT_SIGN_IN_MESSAGE : mateErrorWords(error, mate, driver)}
-          </AlertDescription>
-          <AlertAction>
-            <Button
-              data-zerops-primary-action="Authorize"
-              onClick={onAuthorize}
-              size="sm"
-              variant="ghost"
-            >
-              Authorize
-            </Button>
-          </AlertAction>
+        <Alert variant="default" role="status" controlAlignment="first-line">
+          {limit === null ? <CircleAlertIcon /> : <PauseIcon />}
+          <AlertDescription>{words}</AlertDescription>
+          {onAuthorize === undefined ? null : (
+            <AlertAction>
+              <Button
+                data-zerops-primary-action="Authorize"
+                onClick={onAuthorize}
+                size="sm"
+                variant="ghost"
+              >
+                Sign in
+              </Button>
+            </AlertAction>
+          )}
         </Alert>
       </div>
     );
   }
   return (
     <div className="mx-auto w-fit max-w-[min(48rem,calc(100%-2rem))] pt-3">
-      <Alert variant="error" controlAlignment="first-line">
-        <CircleAlertIcon />
+      <Alert
+        variant={limit === null ? "error" : "default"}
+        role={limit === null ? "alert" : "status"}
+        controlAlignment="first-line"
+      >
+        {limit === null ? <CircleAlertIcon /> : <PauseIcon />}
         <AlertDescription>
           <Tooltip>
-            <TooltipTrigger render={<div className="line-clamp-3" />}>{error}</TooltipTrigger>
+            <TooltipTrigger render={<div className="line-clamp-3" />}>{words}</TooltipTrigger>
             <TooltipPopup side="top" className="whitespace-pre-wrap">
-              {error}
+              {words}
             </TooltipPopup>
           </Tooltip>
         </AlertDescription>
         {onDismiss && (
           <AlertAction>
-            <Button variant="ghost" size="icon-xs" aria-label="Dismiss error" onClick={onDismiss}>
-              <XIcon className="text-destructive" />
+            <Button variant="ghost" size="icon-xs" aria-label="Dismiss notice" onClick={onDismiss}>
+              <XIcon />
             </Button>
           </AlertAction>
         )}

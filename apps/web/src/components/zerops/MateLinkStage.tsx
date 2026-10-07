@@ -3,7 +3,7 @@
  * thread, the route's link being made, the Mate down): its header — the face and the name — as its
  * conversation will draw it, awake where its container runs; until the directory names who lives
  * there, the header's place held empty, never a guess. Opening, the
- * page under it is quiet, with one line where the messages will land past its beat; where the link
+ * page under it is quiet, with one headline where the conversation will open; where the link
  * has words of its own (a restart, a reconnect, a container that is not running) the Mate's face
  * stands asleep over its name with them, on one axis (`stageSpeaks`).
  */
@@ -19,11 +19,9 @@ import { mateOpeningAwake, type ZeropsMateIdentity } from "~/zerops/mateIdentiti
 import { stageSpeaks } from "~/zerops/mateOpeningStage";
 import { useMateVoice } from "~/zerops/mateVoiceContext";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
-import { OPENING_WAIT_LINE_MS, openingConversationLine } from "~/zerops/waitLine.logic";
 import { Button } from "../ui/button";
 import { MateLinkLine, MateLinkProcesses, type Spoken } from "./MateLinkLine";
 import { RouteStandIn } from "./RouteStandIn";
-import { PageWaitLine } from "./WaitLine";
 import { MateComingFrame, MateComingHeader } from "./ZeropsMateComingPage";
 import { MateEmptyStateView } from "./ZeropsMateEmptyState";
 
@@ -67,11 +65,9 @@ function MateLinkWords({ voice }: { readonly voice: Spoken }) {
       </p>
     </div>
   ) : (
-    <PageWaitLine
-      delayMs={OPENING_WAIT_LINE_MS}
-      from="mount"
-      text={openingConversationLine(undefined)}
-    />
+    <div className="flex h-full items-center justify-center p-8" role="status">
+      <p className="text-sm text-muted-foreground">Opening the conversation…</p>
+    </div>
   );
 }
 
@@ -127,6 +123,8 @@ function MateLinkStageOf({
       <MateEmptyStateView
         coming={{
           kind: "reaching",
+          face: voice.face,
+          headline: voice.text ?? undefined,
           below: (
             <MateLinkLine
               mateServiceId={mate?.serviceId}
@@ -135,7 +133,7 @@ function MateLinkStageOf({
               projectUrl={
                 mate?.projectUrl ?? (projectId === null ? undefined : zeropsProjectUrl(projectId))
               }
-              voice={voice}
+              voice={{ ...voice, text: null }}
             />
           ),
         }}
@@ -152,7 +150,7 @@ function MateLinkStageOf({
 /**
  * A Mate's conversation on its way: its header as the conversation draws it — the face and the
  * name, its menu and the panel toggles in their places, inert; its place held empty while the Mate
- * is not known — the page quiet, one line where the messages will land past its beat, and the
+ * is not known — the page quiet, one headline where the conversation will open, and the
  * composer standing in.
  */
 function MateOpeningPage({
@@ -171,11 +169,18 @@ function MateOpeningPage({
         mate === undefined ? null : <MateComingHeader mate={mate} standsIn={{ subject: null }} />
       }
     >
-      <PageWaitLine
-        below={below}
-        delayMs={OPENING_WAIT_LINE_MS}
-        from="mount"
-        text={openingConversationLine(mate?.name)}
+      <MateEmptyStateView
+        coming={{
+          kind: "reaching",
+          face: "idle",
+          headline: "I'm opening the conversation.",
+          below,
+        }}
+        mate={mate ?? null}
+        phase={null}
+        signIn={null}
+        signInRequired={false}
+        unknown={null}
       />
     </MateComingFrame>
   );
@@ -184,7 +189,7 @@ function MateOpeningPage({
 /**
  * A Mate's own view while its conversation is on its way (a reload, before the catalog names its
  * thread or before the chat layout can draw it): its header's place at once, the composer's room
- * held at its draft's height, and the one opening line past its beat, or the link's own words
+ * held at its draft's height, with the opening line or the link's own words
  * where it has any.
  */
 export function MateOpeningView({ threadRef }: { readonly threadRef: ScopedThreadRef }) {

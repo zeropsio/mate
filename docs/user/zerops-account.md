@@ -43,6 +43,9 @@ and offers a connection check instead of automatically restarting again.
 
 **Restart** in a Mate's menu asks for confirmation. When Mate knows of running chats, the
 confirmation names them and says restarting interrupts their turns. You can still restart.
+While a confirmed restart prevents the conversation from opening, the Mate shows
+its waking face and says it is restarting. An unavailable link says it is
+reconnecting or unreachable instead; it does not claim a restart without evidence.
 After boot, an interrupted chat names the completed Zerops restart, stop or deploy and who asked
 for it when that information is available. A container replacement is identified when its start
 time proves it happened during the turn; otherwise the chat gives Mate's restart time. Send a

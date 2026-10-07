@@ -57,6 +57,7 @@ export interface JumpMate {
   readonly owner: { readonly name: string; readonly isViewer: boolean } | undefined;
   /** When the usage limit pausing it resets; absent while it is not paused. */
   readonly pausedUntil: string | undefined;
+  readonly usageLimited?: boolean | undefined;
   /** Its own change waits for the person's review (`mateReviewWaits`): it needs them. */
   readonly reviewWaits?: boolean;
   /** The viewer's own Mate (HQ's `waitsOnViewer`): only then does what it waits on need them. */
@@ -121,7 +122,14 @@ export const EMPTY_JUMP_INDEX: SidebarJumpIndex = {
 /** What the menu's row of a Mate says of its conversation (`agentActivity.ts`). */
 export type JumpActivity = Pick<
   ZeropsAgentActivity,
-  "threadId" | "kind" | "face" | "subject" | "snippet" | "pausedUntil" | "remembered"
+  | "threadId"
+  | "kind"
+  | "face"
+  | "subject"
+  | "snippet"
+  | "pausedUntil"
+  | "usageLimited"
+  | "remembered"
 >;
 
 /**
@@ -173,6 +181,7 @@ export function jumpMateOf(input: {
         : { threadId: live.threadId, kind: live.kind },
     owner: input.owner,
     pausedUntil: live?.pausedUntil,
+    usageLimited: live?.usageLimited,
     mine: input.mine,
     ...(input.reviewWaits === true ? { reviewWaits: true } : {}),
     ...(input.pose === undefined ? {} : { pose: input.pose }),
@@ -503,6 +512,7 @@ export function jumpWritePlan(input: {
   readonly conversation: JumpConversation;
   /** When a usage limit's pause ends, as the menu writes the time. */
   readonly pausedUntilLabel: string | undefined;
+  readonly usageLimited?: boolean | undefined;
   /** Whether anybody asked it anything yet; undefined while its conversation is unread. */
   readonly started: boolean | undefined;
   readonly readOnly: boolean;
@@ -550,9 +560,12 @@ export function jumpWritePlan(input: {
       default:
         break;
     }
-    if (input.pausedUntilLabel !== undefined) {
+    if (input.pausedUntilLabel !== undefined || input.usageLimited === true) {
       return {
-        hint: `${name} is paused until ${input.pausedUntilLabel} — it reads this then`,
+        hint:
+          input.pausedUntilLabel === undefined
+            ? "I've hit a usage limit. Sending tries again."
+            : `I've hit a usage limit — available again at ${input.pausedUntilLabel}. Sending tries again.`,
         action: "send",
       };
     }

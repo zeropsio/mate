@@ -1,3 +1,4 @@
+import { usageLimitProvider, usageLimitWords } from "../../zerops/noticeWords";
 /**
  * What a Mate's row in the left menu draws, read from what the row knows —
  * pure, so each rule has its table.
@@ -448,8 +449,18 @@ export function mateRowView(
       );
     case "unread":
       return view(asked("ink-2"));
-    case "paused":
-      return view(said("muted"), { kind: "paused", until: activity.pausedUntil ?? activity.at });
+    case "paused": {
+      const provider = usageLimitProvider(activity.errorLine);
+      const text = provider === null ? activity.errorLine : usageLimitWords(provider);
+      return view(
+        activity.errorLine === undefined
+          ? said("muted")
+          : { kind: "words", text: text ?? activity.errorLine, tone: "muted" },
+        activity.pausedUntil === undefined
+          ? undefined
+          : { kind: "paused", until: activity.pausedUntil },
+      );
+    }
     case "idle":
       return view(asked("muted"));
   }
@@ -520,7 +531,7 @@ export function mateRowReading(input: {
     mateFaceAwaitingReview(
       mateFaceFor(input.connected || live !== undefined, live, input.pose),
       input.reviewWaits === true,
-      activity?.pausedUntil !== undefined,
+      activity?.usageLimited === true || activity?.pausedUntil !== undefined,
       input.mine,
     ),
   );
@@ -751,7 +762,8 @@ function mateRowState(activity: ZeropsAgentActivity, face: MateMarkState): MateR
   // the pause standing, and the resume picks the work up without anybody
   // (`mateMarkStateForThread`). What waits on a person still wakes it: its
   // face is not asleep then.
-  if (face === "sleep" && activity.pausedUntil !== undefined) return "paused";
+  if (face === "sleep" && (activity.usageLimited === true || activity.pausedUntil !== undefined))
+    return "paused";
   if (activity.kind === "failed") return "failed";
   if (face === "needs") return "needs";
   if (

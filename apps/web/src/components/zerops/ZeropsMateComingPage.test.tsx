@@ -227,13 +227,18 @@ vi.mock("./ZeropsMateEmptyState", () => ({
     standUpFailure,
   }: {
     readonly standUpFailure?: { retry: () => void };
-    readonly coming: { readonly kind: string; readonly below: ReactNode };
+    readonly coming: {
+      readonly kind: string;
+      readonly below: ReactNode;
+      readonly headline?: string;
+    };
     readonly mate: { readonly name: string };
   }) =>
     h(
       "section",
       { "data-kind": coming.kind },
       mate.name,
+      coming.headline,
       coming.below,
       standUpFailure === undefined
         ? null
@@ -346,12 +351,8 @@ describe("a Mate's own view while its link is made", () => {
     openView();
     act(() => vi.advanceTimersByTime(10_000));
     openView();
-    // A blip says nothing; a link lost for longer says so in the Mate's name (`mateVoice`).
-    expect(said()).not.toContain("Reconnecting");
-    act(() => vi.advanceTimersByTime(MATE_VOICE_QUIET_MS));
-
     expect(said()).toContain("Quinn");
-    expect(said()).toContain("Reconnecting to Quinn…");
+    expect(said()).toContain("I'm reconnecting. Your conversation will open when I'm back.");
     expect(app.connect).toHaveBeenCalledWith({ key: KEY });
     expect(app.navigate).not.toHaveBeenCalled();
   });
@@ -368,7 +369,7 @@ describe("a Mate's own view while its link is made", () => {
       },
     } satisfies MateLink;
     openView();
-    expect(said()).toContain("This Mate isn't answering. Trying again in 5 s.");
+    expect(said()).toContain("I'm having trouble connecting. Trying again in 5 s.");
     expect(buttons()).toEqual(["Try now"]);
     app.connect.mockClear();
     act(() =>
@@ -389,7 +390,7 @@ describe("a Mate's own view while its link is made", () => {
       reachability: { kind: "refused-credential" },
     } satisfies MateLink;
     openView();
-    expect(said()).toContain("This Mate didn't accept the sign-in.");
+    expect(said()).toContain("I couldn't accept your sign-in.");
     expect(buttons()).toEqual(["Try again"]);
     app.connect.mockClear();
     act(() =>
@@ -414,8 +415,7 @@ describe("a Mate's own view while its link is made", () => {
   it("waits for a machine to name it before connecting: a Connect before the stage holds it ends unheard", () => {
     app.link = { key: KEY, environmentId: undefined, reachability: null } satisfies MateLink;
     openView();
-    act(() => vi.advanceTimersByTime(MATE_VOICE_QUIET_MS));
-    expect(said()).toContain("Opening Quinn…");
+    expect(said()).toContain("I'm opening the conversation.");
     expect(app.connect).not.toHaveBeenCalled();
     expect(app.navigate).not.toHaveBeenCalled();
   });

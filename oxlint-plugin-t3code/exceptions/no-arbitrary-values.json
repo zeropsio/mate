@@ -720,14 +720,6 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/zerops/ZeropsDataPanel.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> rounded-[var(--zerops-card-radius)] in \"rounded-[var(--zerops-card-radius)] bg-destructive/8 px-2 py-1 text-destructive-foreground text-xs\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
-    "expires": "F6"
-  },
-  {
     "path": "apps/web/src/components/zerops/ZeropsDataQuery.tsx",
     "kind": "Literal",
     "fingerprint": "<> rounded-[var(--zerops-card-radius)] in \"shrink-0 space-y-1 rounded-[var(--zerops-card-radius)] border border-border p-2\"",

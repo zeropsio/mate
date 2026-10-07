@@ -473,20 +473,12 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   -webkit-backdrop-filter: var(--glass-backdrop);
   backdrop-filter: var(--glass-backdrop);
 
-  &[data-variant="error"] {
-    --alert-glass-tint: var(--destructive);
-  }
-
   &[data-variant="info"] {
     --alert-glass-tint: var(--info);
   }
 
   &[data-variant="success"] {
     --alert-glass-tint: var(--success);
-  }
-
-  &[data-variant="warning"] {
-    --alert-glass-tint: var(--warning);
   }
 
   @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
@@ -842,8 +834,8 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   }
 
   :is(.chat-composer-drawer-surface, .chat-composer-top-drawer)[data-variant="error"] {
-    --chat-composer-attached-outline: color-mix(in srgb, var(--error) 32%, transparent);
-    --chat-composer-attached-tint: color-mix(in srgb, var(--error) 8%, transparent);
+    --chat-composer-attached-outline: var(--border);
+    --chat-composer-attached-tint: transparent;
   }
 
   :is(.chat-composer-drawer-surface, .chat-composer-top-drawer)[data-variant="info"] {
@@ -857,8 +849,8 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   }
 
   :is(.chat-composer-drawer-surface, .chat-composer-top-drawer)[data-variant="warning"] {
-    --chat-composer-attached-outline: color-mix(in srgb, var(--warning) 28%, transparent);
-    --chat-composer-attached-tint: color-mix(in srgb, var(--warning) 8%, transparent);
+    --chat-composer-attached-outline: var(--border);
+    --chat-composer-attached-tint: transparent;
   }
 
   /* The composer is the one white surface on screen, because that is where

@@ -10,7 +10,7 @@
  * waits on says.
  */
 import type { PendingApproval, PendingUserInput } from "@t3tools/client-runtime/pending-requests";
-import { mateErrorWords } from "@t3tools/client-runtime/zerops";
+import { mateFailureWords } from "../../zerops/noticeWords";
 import type { ProviderApprovalDecision, ProviderRequestKind } from "@t3tools/contracts";
 import type { ThreadStatusKind } from "@t3tools/shared/threadStatus";
 
@@ -125,7 +125,7 @@ export function mateDecision(input: {
         message:
           input.failure === undefined
             ? undefined
-            : mateErrorWords(input.failure, input.name, input.failureDriver),
+            : mateFailureWords(input.failure, input.failureDriver),
       };
     default:
       return undefined;

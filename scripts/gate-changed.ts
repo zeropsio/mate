@@ -247,12 +247,13 @@ if (import.meta.main) {
   if (areas.length)
     steps.push({
       name: `scenarios ${areas.join(",")}`,
+      cwd: "apps/web",
       command: "vp",
       args: [
         "test",
         "run",
         "--config",
-        "apps/web/test/scenarios/vitest.config.ts",
+        "test/scenarios/vitest.config.ts",
         ...(chatGate ? ["--exclude", "test/scenarios/areas/c-mate/**"] : []),
         ...(areas.length === scenarioAreas.length
           ? []

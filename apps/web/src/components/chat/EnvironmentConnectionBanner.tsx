@@ -30,7 +30,7 @@ export function environmentConnectionBannerItem(input: {
   if (copy === null) return null;
   return {
     id: `environment-unavailable:${input.environmentId}`,
-    variant: input.connection.phase === "error" ? "error" : "warning",
+    variant: input.connection.phase === "error" ? "error" : "default",
     icon: <WifiOffIcon />,
     title: copy.title,
     ...(copy.description === null ? {} : { description: copy.description }),
@@ -70,7 +70,7 @@ export function mateVoiceBannerItem(input: {
   );
   return {
     id: `mate-link:${input.environmentId}`,
-    variant: "warning",
+    variant: "default",
     icon: <WifiOffIcon />,
     title: voice.text,
     ...(askAgain !== null || toProjects

@@ -17,8 +17,8 @@ const world = vi.hoisted(() => ({
   retry: vi.fn(async (_input: unknown) => ({ _tag: "Success", value: true })),
 }));
 
-vi.mock("./registrationRecords", () => ({
-  useRegistrationRecord: () => ({ origin: "https://mate.test" }),
+vi.mock("./accountEnvironments", () => ({
+  useMateOfEnvironment: () => ({ origin: "https://mate.test" }),
 }));
 vi.mock("./useMateSetup", () => ({
   useMateSetup: () => ({

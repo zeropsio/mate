@@ -515,7 +515,7 @@ describe("SidebarZeropsTree", () => {
     const html = render([], { complete: false, notice: READING });
 
     expect(html).toContain("Reading your projects…");
-    expect(html).not.toContain("No environment has Mate yet");
+    expect(html).not.toContain("No Mate yet");
     // Read and Mate-less: the empty state, as before.
     expect(render([candidate("unplaced", {}, "ready", false)], { complete: true })).toContain(
       "sidebar-environments-empty",
@@ -528,7 +528,7 @@ describe("SidebarZeropsTree", () => {
   ])("a cold menu with no row and no notice: $name", ({ reading, drawn }) => {
     const html = render([], { complete: false, notice: null, reading });
     expect(html.includes('data-zerops-surface="sidebar-environments-skeleton"')).toBe(drawn);
-    expect(html).not.toContain("No environment has Mate yet");
+    expect(html).not.toContain("No Mate yet");
   });
 
   it("draws no skeleton once a row is there", () => {
@@ -564,10 +564,10 @@ describe("SidebarZeropsTree", () => {
 
     expect(html.match(/Zerops didn(?:&#x27;|')t answer\./g)).toHaveLength(1);
     expect(html.match(/Try again/g)).toHaveLength(1);
-    expect(html).not.toContain("No environment has Mate yet");
+    expect(html).not.toContain("No Mate yet");
   });
 
-  it('never says "No environment has Mate yet" while a project\'s presence is unknown', () => {
+  it('never says "No Mate yet" while a project\'s presence is unknown', () => {
     // The project is listed, but whether a container runs in it is not read yet.
     const html = render([candidate("unplaced", {}, "ready", false)], {
       complete: false,
@@ -579,7 +579,7 @@ describe("SidebarZeropsTree", () => {
     });
 
     expect(html).toContain("Still reading…");
-    expect(html).not.toContain("No environment has Mate yet");
+    expect(html).not.toContain("No Mate yet");
   });
 
   it("a partial listing says Still reading… under the Mates it already holds", () => {
@@ -694,7 +694,7 @@ describe("SidebarZeropsTree", () => {
     {
       name: "says Mate is missing, and offers to set one up, when the account has projects",
       candidates: [candidate("unplaced", {}, "ready", false)],
-      shows: ["sidebar-environments-empty", "No environment has Mate yet", "Set up Mate"],
+      shows: ["sidebar-environments-empty", "No Mate yet", "Set up Mate"],
       hides: ["No Zerops projects yet", "New project"],
     },
     {
@@ -1160,7 +1160,7 @@ describe("a creation under way in the menu", () => {
     const html = render([], { births: [birth({ groupId: "new", groupName: "Todo" })] });
     expect(html).toContain('data-zerops-group="new"');
     expect(comingRows(html)).toHaveLength(1);
-    expect(html).not.toContain("No environment has Mate yet");
+    expect(html).not.toContain("No Mate yet");
   });
 });
 

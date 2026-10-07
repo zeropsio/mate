@@ -730,6 +730,26 @@ describe("what a Mate's row says without words", () => {
     expect(deriveZeropsAgentActivity([RUNNING], {}).get(FEN)?.pausedUntil).toBeUndefined();
   });
 
+  it("a refused turn with no reset time still shows a calm usage pause", () => {
+    const refused = shell({
+      latestTurn: { ...COMPLETED, state: "error" },
+      session: {
+        threadId: ThreadId.make("thread-1"),
+        status: "error",
+        providerName: "claude-code",
+        runtimeMode: "full-access",
+        activeTurnId: null,
+        lastError: "Claude usage limit reached. Send the message again once the limit resets.",
+        updatedAt: "2026-09-05T10:05:00.000Z",
+      },
+    });
+    const activity = deriveZeropsAgentActivity([refused], {}).get(FEN);
+    expect(activity?.face).toBe("sleep");
+    expect(activity?.usageLimited).toBe(true);
+    expect(activity?.pausedUntil).toBeUndefined();
+    expect(activity?.errorLine).toBe("I've hit the Claude limit.");
+  });
+
   it("names its conversation by the key a draft is kept under", () => {
     expect(deriveZeropsAgentActivity([RUNNING], {}).get(FEN)?.threadKey).toBe(key);
   });
@@ -794,7 +814,7 @@ describe("agentActivityErrorLine", () => {
       lastError:
         "Claude's sign-in has expired. Sign Claude in again, then send a message to pick up where it left off.",
       kind: "failed",
-      line: "Signed out of Claude. Sign in again to continue.",
+      line: "I need a Claude sign-in to continue.",
     },
   ])("$name", ({ lastError, kind, line }) => {
     expect(agentActivityErrorLine({ session: session(lastError) }, kind).errorLine).toBe(line);
