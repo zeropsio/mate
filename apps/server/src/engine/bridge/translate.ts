@@ -84,7 +84,19 @@ export interface Translator {
   readonly nativeTurn: (turn: TurnHandle) => string | undefined;
   /** An open request's native id and kind; none once it closed: nothing can take an answer. */
   readonly nativeRequest: (key: RequestKey) => NativeRequest | undefined;
+  /** What the fold holds now, for its bounds: it never grows with a session's length. */
+  readonly retained: () => {
+    readonly turns: number;
+    readonly items: number;
+    readonly requests: number;
+    readonly dropped: number;
+  };
 }
+
+/** Ended turns a session remembers, for what arrives after their end. */
+export const KEPT_ENDED_TURNS = 8;
+/** Inputs it could not place, remembered for logs and tests. */
+export const KEPT_DROPPED = 100;
 
 /** The whole log at once. */
 export function translate(
@@ -172,6 +184,8 @@ interface SessionState {
   readonly requests: Map<string, RequestState>;
   requestCount: number;
   selfCount: number;
+  /** Its turns that ended (or never began), oldest first: the oldest are forgotten. */
+  readonly ended: Array<TurnState>;
 }
 
 // ── the fold ────────────────────────────────────────────────────────
@@ -192,6 +206,7 @@ export function makeTranslator(options: TranslatorOptions): Translator {
   };
   const drop = (reason: DroppedInput["reason"], type: string) => {
     dropped.push({ reason, type });
+    if (dropped.length > KEPT_DROPPED) dropped.shift();
   };
 
   const newSession = (
@@ -212,6 +227,7 @@ export function makeTranslator(options: TranslatorOptions): Translator {
     requests: new Map(),
     requestCount: 0,
     selfCount: 0,
+    ended: [],
   });
 
   const newTurn = (handle: TurnHandle, owner: SessionState): TurnState => {
@@ -306,6 +322,28 @@ export function makeTranslator(options: TranslatorOptions): Translator {
       source,
       ...(costUsd === undefined ? {} : { costUsd }),
     });
+    remember(turn);
+  };
+
+  /** A turn that is over is kept for what arrives late, until newer ones push it out. */
+  const remember = (turn: TurnState) => {
+    const owner = turn.session;
+    owner.ended.push(turn);
+    while (owner.ended.length > KEPT_ENDED_TURNS) forget(owner.ended.shift()!);
+  };
+
+  const forget = (turn: TurnState) => {
+    const owner = turn.session;
+    turns.delete(turn.handle);
+    if (turn.native !== undefined && owner.nativeTurns.get(turn.native) === turn) {
+      owner.nativeTurns.delete(turn.native);
+    }
+    for (const [id, item] of owner.items) if (item.turn === turn) owner.items.delete(id);
+    for (const [id, work] of owner.work) {
+      if (work.origin === turn.handle && (work.status === undefined || !isLiveWork(work.status))) {
+        owner.work.delete(id);
+      }
+    }
   };
 
   /** Who ended an interrupted turn: the agent on its own, or a Stop it did or did not confirm. */
@@ -386,6 +424,14 @@ export function makeTranslator(options: TranslatorOptions): Translator {
     owner.phase = "closed";
     owner.open = undefined;
     emit(owner, { type: "session.closed", cause, ...definedWords(words) });
+    // Nothing of a closed session is read again: its events are dropped from now on.
+    for (const [handle, turn] of turns) if (turn.session === owner) turns.delete(handle);
+    owner.items.clear();
+    owner.work.clear();
+    owner.requests.clear();
+    owner.nativeTurns.clear();
+    owner.pending.length = 0;
+    owner.ended.length = 0;
   };
 
   // ── items ──
@@ -536,6 +582,8 @@ export function makeTranslator(options: TranslatorOptions): Translator {
     how: "answered" | "cancelled" | "superseded" | "expired",
   ) => {
     request.open = false;
+    requestsByKey.delete(request.key);
+    if (request.native !== undefined) request.session.requests.delete(request.native);
     emit(request.session, { type: "request.closed", request: request.key, how });
   };
 
@@ -941,6 +989,7 @@ export function makeTranslator(options: TranslatorOptions): Translator {
             as: "steered",
             into: bound.handle,
           });
+          remember(turn);
           return;
         }
         turn.native = command.nativeTurn;
@@ -977,6 +1026,7 @@ export function makeTranslator(options: TranslatorOptions): Translator {
                 : "unknown"
               : true,
           });
+          remember(turn);
           return;
         }
         if (turn.phase !== "open") return;
@@ -1019,6 +1069,12 @@ export function makeTranslator(options: TranslatorOptions): Translator {
     },
     dropped: () => dropped,
     nativeTurn: (turn) => turns.get(turn)?.native,
+    retained: () => ({
+      turns: turns.size,
+      items: session?.items.size ?? 0,
+      requests: requestsByKey.size,
+      dropped: dropped.length,
+    }),
     nativeRequest: (key) => {
       const request = requestsByKey.get(key);
       return request?.open === true && request.native !== undefined

@@ -70,6 +70,8 @@ export interface WorldOptions {
   readonly driver: BridgeDriver;
   /** Admission refuses every run with these words, or the principals this names. */
   readonly refuse?: string | ((principal: Principal) => string | undefined);
+  /** Admission itself breaks (a defect) with these words. */
+  readonly admissionDies?: string;
 }
 
 let lives = 0;
@@ -89,6 +91,9 @@ export const makeEngineWorld = (options: WorldOptions) =>
         RunAdmission,
         RunAdmission.of({
           admit: ({ principal }) => {
+            if (options.admissionDies !== undefined) {
+              return Effect.die(new Error(options.admissionDies));
+            }
             const refusal =
               typeof options.refuse === "function" ? options.refuse(principal) : options.refuse;
             return refusal === undefined
@@ -164,13 +169,13 @@ export const makeEngineWorld = (options: WorldOptions) =>
     });
 
     let commands = 0;
-    const tell = (command: Command, by: Principal = ana) =>
+    const tell = (command: Command, by: Principal = ana, conversation: ConversationId = mate) =>
       within(
         Effect.gen(function* () {
           const conversations = yield* Conversations;
           const result = yield* conversations.tell({
             commandId: CommandId.make(`test-${lives}-${++commands}`),
-            conversationId: mate,
+            conversationId: conversation,
             principal: by,
             command,
           });

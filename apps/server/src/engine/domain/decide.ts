@@ -86,7 +86,7 @@ export const EFFECT_KINDS = {
   "provider.send": { lane: "turn", class: "process-bound" },
   "provider.interrupt": { lane: "control", class: "process-bound" },
   "provider.respond": { lane: "control", class: "process-bound" },
-  "session.close": { lane: "control", class: "process-bound" },
+  "session.close": { lane: "close", class: "process-bound" },
   "run.prepare": { lane: "side", class: "replay-safe" },
   "workspace.finish": { lane: "side", class: "replay-safe" },
   "provider.steer": { lane: "turn", class: "process-bound" },
@@ -100,6 +100,10 @@ export interface SessionOpenedValue {
   readonly model: string | null;
   readonly nativeRef: string | null;
   readonly capabilities: SessionCapabilities;
+  /** The model the open asked for (its payload's), when the handler says. */
+  readonly requestedModel?: string | null;
+  /** The instance the open asked for. */
+  readonly instanceId?: string | null;
 }
 
 const ENGINE: Principal = { kind: "engine" };
@@ -337,9 +341,9 @@ const closeSession = (b: StepBuilder, reason: SessionCloseReason): void => {
 };
 
 /**
- * Sends an admitted run on a fitting session, or asks for one. A session fits by the model the
- * engine asked for when it opened it, never by the driver's own spelling of it; a session just
- * opened for this run fits. One that does not fit is closed first (a model switch rotates it).
+ * Sends an admitted run on a fitting session, or asks for one. A session fits by what the engine
+ * asked for when it opened it — the model, the instance and the driver — never by the driver's own
+ * spelling of the model; a session just opened for this run fits. One that does not fit is closed first (a model switch rotates it).
  * A run whose workspace capture has not settled, or a session closing, waits.
  */
 const dispatch = (b: StepBuilder, run: RunRecord, justOpened = false): void => {
@@ -350,7 +354,16 @@ const dispatch = (b: StepBuilder, run: RunRecord, justOpened = false): void => {
   );
   if (opening) return;
   const session = b.state.session;
-  const fits = b.state.model === null || session?.requestedModel === b.state.model || justOpened;
+  const agent = b.state.agent;
+  // A session fits by what the engine asked for when it opened it: the model, and the agent's
+  // instance and driver (a session opened before the engine named its instance fits any).
+  const fits =
+    justOpened ||
+    (session !== null &&
+      session.requestedModel === b.state.model &&
+      (agent === null ||
+        session.instanceId === null ||
+        (session.instanceId === agent.instanceId && session.driver === agent.driver)));
   if (session !== null && !fits) return closeSession(b, "model");
   if (session !== null) {
     const effect = b.effect("provider.send", run.id, run.sendAttempts + 1, run.id, {
@@ -371,6 +384,7 @@ const dispatch = (b: StepBuilder, run: RunRecord, justOpened = false): void => {
     options: b.state.agent?.options ?? null,
     resume: b.state.lastNativeRef,
     rotateFrom: b.state.rotatingFrom,
+    generation: b.state.threadGeneration,
   });
 };
 
@@ -791,7 +805,11 @@ const effectSettled = (b: StepBuilder, id: EffectId, outcome: EffectOutcome): vo
       ? null
       : outcome.kind === "unknown"
         ? `an outcome this build does not know (${outcome.type})`
-        : outcome.reason;
+        : outcome.kind === "timed-out"
+          ? `The agent did not answer within ${Math.round(outcome.after / 1000)} s.`
+          : outcome.reason;
+  // A call that timed out says nothing of what the agent did: only evidence ends a run.
+  const timedOut = outcome.kind === "timed-out";
   if (effect.kind === "session.close") return sessionCloseSettled(b, closing, outcome);
   const run = effect.runId === null ? undefined : b.state.runs[effect.runId];
   if (run === undefined || run.state === "ended") {
@@ -874,14 +892,16 @@ const effectSettled = (b: StepBuilder, id: EffectId, outcome: EffectOutcome): vo
     }
     case "provider.interrupt":
       // The interrupt's acknowledgement is not the turn's end: the run stays until its own turn
-      // ends. An interrupt that failed leaves nothing to wait for, so the Stop ends the run.
-      if (failure !== null && run.stopAsked !== null && isLive(run)) {
+      // ends. An interrupt that failed leaves nothing to wait for, so the Stop ends the run; one
+      // that timed out may still land, so the run waits on its turn (or a second Stop).
+      if (failure !== null && !timedOut && run.stopAsked !== null && isLive(run)) {
         endRun(b, run, { kind: "stopped", by: run.stopAsked.by }, "stop-asked");
         admitNext(b);
       }
       return;
     case "provider.respond":
-      if (failure === null || answered === undefined || !isLive(run)) return;
+      // An answer that timed out may have reached the agent: the request's close will say.
+      if (failure === null || timedOut || answered === undefined || !isLive(run)) return;
       if (outcome.kind === "failed" && outcome.refused === true) {
         // The driver can no longer take any answer: the request expired, nothing waits on it.
         b.emit({
@@ -1010,7 +1030,9 @@ const openSession = (b: StepBuilder, value: unknown): void => {
     _tag: "SessionOpened",
     sessionId: opened.sessionId,
     driver: opened.driver,
-    requestedModel: b.state.model,
+    // What the open asked for, never what the conversation says now: a switch meanwhile rotates.
+    requestedModel: opened.requestedModel !== undefined ? opened.requestedModel : b.state.model,
+    ...(opened.instanceId === undefined ? {} : { instanceId: opened.instanceId }),
     model: opened.model,
     nativeRef: opened.nativeRef,
     capabilities: opened.capabilities,

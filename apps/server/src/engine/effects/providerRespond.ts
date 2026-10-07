@@ -6,6 +6,7 @@
  * @module engine/effects/providerRespond
  */
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import {
   ProviderApprovalDecision,
@@ -17,7 +18,7 @@ import { ProviderService } from "../../provider/Services/ProviderService.ts";
 import type { RequestKey } from "../bridge/spi3.ts";
 import type { EffectHandler } from "../outbox/EffectWorker.ts";
 import { TurnPump } from "../pump/TurnPump.ts";
-import { failed, liveHost, ok, recovering } from "./shared.ts";
+import { bounded, failed, liveHost, ok, recovering, timedOut } from "./shared.ts";
 
 /** An answer the agent can no longer take. */
 export const NOT_WAITING = "The agent no longer waits on this answer.";
@@ -52,7 +53,10 @@ export const makeProviderRespond = Effect.gen(function* () {
           const answer = payload.answer as { readonly decision?: unknown } | string;
           const decision = typeof answer === "string" ? answer : answer?.decision;
           if (!isDecision(decision)) return failed(`Not an approval decision: ${String(decision)}`);
-          yield* provider.respondToRequest({ threadId: host.thread, requestId, decision });
+          const answered = yield* bounded(
+            provider.respondToRequest({ threadId: host.thread, requestId, decision }),
+          );
+          if (Option.isNone(answered)) return timedOut;
         } else {
           const answer = payload.answer as { readonly answers?: unknown } | null;
           const answers = (
@@ -60,7 +64,10 @@ export const makeProviderRespond = Effect.gen(function* () {
               ? answer.answers
               : answer
           ) as ProviderUserInputAnswers;
-          yield* provider.respondToUserInput({ threadId: host.thread, requestId, answers });
+          const answered = yield* bounded(
+            provider.respondToUserInput({ threadId: host.thread, requestId, answers }),
+          );
+          if (Option.isNone(answered)) return timedOut;
         }
         return ok();
       }).pipe(Effect.catchCause(recovering)),

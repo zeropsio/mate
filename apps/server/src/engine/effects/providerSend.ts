@@ -49,7 +49,7 @@ export const makeDeliver = Effect.gen(function* () {
   ) {
     const host = yield* liveHost(provider, yield* pump.existing(row.conversationId), input.session);
     if (host === undefined) return { live: false as const };
-    yield* host.record({ kind: "send", turn: input.turn, mode: input.mode });
+    const evidence = yield* host.beginSend(input.turn, input.mode);
     const trimmed = input.text.trim();
     yield* host.forkInSession(
       provider
@@ -79,7 +79,7 @@ export const makeDeliver = Effect.gen(function* () {
           }),
         ),
     );
-    return { live: true as const, host, evidence: yield* host.awaitSend(input.turn) };
+    return { live: true as const, host, evidence: yield* evidence };
   });
 });
 

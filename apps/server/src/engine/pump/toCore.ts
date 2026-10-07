@@ -88,7 +88,25 @@ export interface ToCore {
   readonly step: (signal: DriverSignal, now: number) => CoreStep;
   /** Background work still alive in this session: an idle close keeps the session for it. */
   readonly liveWork: () => number;
+  /** What it holds now, for its bounds: open items, their streams, the turns it remembers. */
+  readonly retained: () => {
+    readonly items: number;
+    readonly text: number;
+    readonly turns: number;
+  };
 }
+
+/** Turns remembered for whom a self turn reports on; closed item keys remembered for repeats. */
+const KEPT_TURNS = 64;
+const KEPT_CLOSED_KEYS = 512;
+const TEXT_KINDS: ReadonlySet<string> = new Set(["text", "reasoning", "plan"]);
+
+/** Sets a key, the oldest going once the map holds more than `cap`. */
+const keep = <V>(map: Map<string, V>, key: string, value: V, cap: number) => {
+  map.delete(key);
+  map.set(key, value);
+  if (map.size > cap) map.delete(map.keys().next().value!);
+};
 
 interface ItemState {
   readonly turn: TurnHandle;
@@ -121,7 +139,9 @@ export const makeToCore = (options: ToCoreOptions = {}): ToCore => {
   const items = new Map<string, ItemState>();
   const liveWork = new Set<string>();
   /** Turns the engine sent, by handle: a self turn reports on the run whose work just ended. */
-  const engineTurns = new Set<string>();
+  const engineTurns = new Map<string, true>();
+  /** Items the record holds, with the state they closed in: a repeat of that end is not told. */
+  const closedKeys = new Map<string, ItemStatus>();
   const selfReports = new Map<string, RunId | null>();
   let lastEndedWorkOrigin: string | null = null;
   const lastActivity = new Map<string, number>();
@@ -183,9 +203,9 @@ export const makeToCore = (options: ToCoreOptions = {}): ToCore => {
         });
         break;
       case "turn.opened": {
-        if (signal.origin === "engine") engineTurns.add(signal.turn);
+        if (signal.origin === "engine") keep(engineTurns, signal.turn, true, KEPT_TURNS);
         const reports = signal.origin === "self" ? reportsOn() : null;
-        if (signal.origin === "self") selfReports.set(signal.turn, reports);
+        if (signal.origin === "self") keep(selfReports, signal.turn, reports, KEPT_TURNS);
         signals.push({
           kind: "turn-started",
           turn: signal.turn,
@@ -205,6 +225,14 @@ export const makeToCore = (options: ToCoreOptions = {}): ToCore => {
         });
         break;
       case "item.upsert": {
+        const settled = closedKeys.get(signal.item);
+        if (
+          settled !== undefined &&
+          (settled === signal.status || TEXT_KINDS.has(signal.body.kind))
+        ) {
+          // The same end said again (or a text whose words the record already holds).
+          break;
+        }
         let item = items.get(signal.item);
         const first = item === undefined;
         if (item === undefined) {
@@ -242,6 +270,9 @@ export const makeToCore = (options: ToCoreOptions = {}): ToCore => {
             ...afterEnd,
           });
           live.push({ _tag: "Settle", key: signal.item });
+          // The record holds it now: its text and state are let go.
+          items.delete(signal.item);
+          keep(closedKeys, signal.item, signal.status, KEPT_CLOSED_KEYS);
         } else if (first) {
           signals.push({
             kind: "item-opened",
@@ -342,7 +373,15 @@ export const makeToCore = (options: ToCoreOptions = {}): ToCore => {
     return { signals, evidence, live, session };
   };
 
-  return { step, liveWork: () => liveWork.size };
+  return {
+    step,
+    liveWork: () => liveWork.size,
+    retained: () => ({
+      items: items.size,
+      text: [...items.values()].reduce((sum, item) => sum + item.text.size, 0),
+      turns: engineTurns.size + selfReports.size + lastActivity.size,
+    }),
+  };
 };
 
 const resetTime = (resetsAt: string): number | null => {

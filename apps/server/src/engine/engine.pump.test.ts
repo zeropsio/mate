@@ -10,11 +10,13 @@ import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
-import { RequestId, runId, type RunId, type ThreadId } from "@t3tools/contracts";
+import { ConversationId, RequestId, runId, type RunId, type ThreadId } from "@t3tools/contracts";
+import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import type { BridgeDriver } from "./bridge/spi3.ts";
 import type { Command } from "./domain/command.ts";
 import { CONTINUE_TEXT, resentText } from "./domain/decide.ts";
+import { PROVIDER_CALL_BOUND_MS } from "./effects/shared.ts";
 import { DRIVERS, makeEngineWorld, mate, type EngineWorld } from "./testing/pump/engineWorld.ts";
 
 const r = (n: number): RunId => runId(mate, n);
@@ -25,13 +27,20 @@ const world = (
   driver: BridgeDriver,
   options: {
     readonly refuse?: string;
-    readonly scripted?: Partial<{ ignoreInterrupt: boolean; holdNextSend: boolean }>;
+    readonly admissionDies?: string;
+    readonly scripted?: Partial<{
+      ignoreInterrupt: boolean;
+      holdNextSend: boolean;
+      interruptHangs: boolean;
+      slowSendMs: number;
+    }>;
   } = {},
 ) =>
   Effect.gen(function* () {
     const w = yield* makeEngineWorld({
       driver,
       ...(options.refuse === undefined ? {} : { refuse: options.refuse }),
+      ...(options.admissionDies === undefined ? {} : { admissionDies: options.admissionDies }),
     });
     Object.assign(w.provider.options, options.scripted ?? {});
     yield* w.boot;
@@ -117,6 +126,21 @@ describe("the running engine", () => {
             "inferred-from-effect",
           ],
         );
+        assert.isFalse(w.history.calls.some((call) => call.startsWith("prepare")));
+        assert.deepStrictEqual(w.provider.calls, []);
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  it.effect("an admission that breaks ends the run failed, and nothing is captured or sent", () =>
+    scene(
+      Effect.gen(function* () {
+        const w = yield* world("codex", { admissionDies: "the signer store is unreachable" });
+        yield* send(w);
+        yield* w.advance(MINUTE);
+        const run = yield* w.run(r(1));
+        assert.deepStrictEqual([run?.end?.kind, run?.source], ["failed", "inferred-from-effect"]);
         assert.isFalse(w.history.calls.some((call) => call.startsWith("prepare")));
         assert.deepStrictEqual(w.provider.calls, []);
         yield* w.shutdown;
@@ -725,6 +749,148 @@ describe("the running engine", () => {
           (yield* w.sessionsOpen).map((session) => session.close_reason),
           ["signed-out"],
         );
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  it.effect(
+    "a conversation the boot cannot recover is retried on its own, and every other one runs",
+    () =>
+      scene(
+        Effect.gen(function* () {
+          const w = yield* world("codex");
+          const other = ConversationId.make("other");
+          yield* w.tell(
+            {
+              _tag: "AssignAgent",
+              agent: {
+                instanceId: "codex",
+                driver: "codex",
+                model: "m1",
+                profile: { kind: "mate" },
+              },
+            },
+            undefined,
+            other,
+          );
+          yield* send(w);
+          // The Mate's record is damaged: it cannot be loaded, so it cannot be told what the restart cut.
+          yield* w.within(
+            Effect.gen(function* () {
+              const sql = yield* SqlClient.SqlClient;
+              yield* sql`UPDATE engine_event SET payload_json = '{' WHERE conversation_id = ${mate}
+              AND seq = (SELECT max(seq) FROM engine_event WHERE conversation_id = ${mate})`;
+              yield* sql`UPDATE engine_conversation SET snapshot_json = NULL, snapshot_seq = NULL
+              WHERE conversation_id = ${mate}`;
+            }),
+          );
+          yield* w.crash;
+          yield* w.boot;
+          yield* w.tell({ _tag: "Send", text: "still here" }, undefined, other);
+          assert.include(w.provider.calls, "send other/s/1: still here");
+          yield* w.shutdown;
+        }),
+      ),
+  );
+
+  it.effect("a Stop asked while the message is being sent stops the turn the moment it opens", () =>
+    scene(
+      Effect.gen(function* () {
+        const w = yield* world("codex", { scripted: { slowSendMs: 300 } });
+        yield* send(w);
+        assert.strictEqual((yield* w.run(r(1)))?.state, "sending");
+        yield* stop(w);
+        yield* w.advance(300);
+        assert.deepStrictEqual(yield* ending(w, 1), ["ended", "stopped", "stop-confirmed"]);
+        assert.strictEqual(w.provider.calls.at(-1), `interrupt ${w.thread} T1`);
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  it.effect(
+    "a Stop the driver never answers lets the second Stop close the session; the call is bounded",
+    () =>
+      scene(
+        Effect.gen(function* () {
+          const w = yield* world("codex", { scripted: { interruptHangs: true } });
+          yield* send(w);
+          yield* stop(w);
+          yield* stop(w);
+          assert.deepStrictEqual(yield* ending(w, 1), ["ended", "stopped", "inferred-from-close"]);
+          assert.strictEqual(w.provider.calls.at(-1), `stop ${w.thread}`);
+          // The wedged interrupt settles as timed out: an effect's outcome, never the run's.
+          yield* w.advance(PROVIDER_CALL_BOUND_MS);
+          const outcome = yield* w.within(
+            Effect.gen(function* () {
+              const sql = yield* SqlClient.SqlClient;
+              return yield* sql<{ readonly kind: string }>`
+              SELECT json_extract(outcome_json, '$.kind') AS kind FROM engine_effect
+              WHERE kind = 'provider.interrupt'`;
+            }),
+          );
+          assert.deepStrictEqual(
+            outcome.map((row) => row.kind),
+            ["timed-out"],
+          );
+          assert.deepStrictEqual(yield* ending(w, 1), ["ended", "stopped", "inferred-from-close"]);
+          yield* w.shutdown;
+        }),
+      ),
+  );
+
+  it.effect("a server stopping never waits on a wedged call", () =>
+    scene(
+      Effect.gen(function* () {
+        const w = yield* world("codex", { scripted: { interruptHangs: true } });
+        yield* send(w);
+        yield* stop(w);
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  it.effect(
+    "a conversation moved to another instance starts a fresh native session on a thread of its own",
+    () =>
+      scene(
+        Effect.gen(function* () {
+          const w = yield* world("codex");
+          yield* send(w);
+          yield* w.agent((agent, thread) => agent.finish(thread));
+          yield* w.tell({
+            _tag: "AssignAgent",
+            agent: {
+              instanceId: "codex-bo",
+              driver: "codex",
+              model: "m1",
+              profile: { kind: "mate" },
+            },
+          });
+          yield* send(w, "again");
+          assert.deepStrictEqual(w.provider.calls.slice(-3), [
+            `stop ${w.thread}`,
+            "start mate/s/2",
+            "send mate/s/2: again",
+          ]);
+          yield* w.shutdown;
+        }),
+      ),
+  );
+
+  it.effect("a conversation's host is let go once its session closed and nothing waits on it", () =>
+    scene(
+      Effect.gen(function* () {
+        const w = yield* world("codex");
+        yield* send(w);
+        yield* w.agent((agent, thread) => agent.finish(thread));
+        yield* w.advance(30 * MINUTE);
+        assert.strictEqual(w.provider.calls.at(-1), `stop ${w.thread}`);
+        yield* w.advance(10 * MINUTE);
+        assert.isUndefined(yield* (yield* w.pump).existing(mate));
+        yield* send(w, "back");
+        assert.strictEqual(w.provider.calls.at(-1), sendLine(w, "back"));
         yield* w.shutdown;
       }),
     ),

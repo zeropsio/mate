@@ -373,6 +373,7 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
           id: event.sessionId,
           driver: event.driver,
           requestedModel: event.requestedModel,
+          instanceId: event.instanceId ?? null,
           model: event.model,
           nativeRef: event.nativeRef,
           capabilities: event.capabilities,
@@ -389,7 +390,19 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
         rotatingFrom: event.reason === "model" ? event.sessionId : state.rotatingFrom,
       };
     case "AgentAssigned":
-      return { ...state, agent: event.agent, model: event.agent.model ?? state.model };
+      // The agent's own model, none included: null runs its driver's default. Another instance or
+      // driver cannot resume this one's native session: the next session starts on a new thread.
+      return {
+        ...state,
+        agent: event.agent,
+        model: event.agent.model,
+        threadGeneration:
+          state.agent !== null &&
+          (state.agent.instanceId !== event.agent.instanceId ||
+            state.agent.driver !== event.agent.driver)
+            ? state.threadGeneration + 1
+            : state.threadGeneration,
+      };
     case "ModelSwitched":
       return {
         ...state,

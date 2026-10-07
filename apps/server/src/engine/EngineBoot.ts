@@ -8,6 +8,8 @@
  *    cut is recorded, a live run ends cut by the restart, its continuation is armed when its guards
  *    pass (no newer person message, no Stop, no archive, no maintenance turn), and every open
  *    session is closed, since its process died with the server.
+ *    A conversation that cannot be told (its record does not load) is retried on its own with
+ *    backoff; its cut work is closed first, so none of it runs meanwhile.
  * 4. Then the pump drains the subscription its layer made, the scheduler fires what came due, and
  *    the worker takes the outbox.
  *
@@ -33,6 +35,8 @@ export interface BootReport {
   readonly requeued: number;
   /** Conversations told `Recovered`. */
   readonly recovered: number;
+  /** Conversations that could not be told yet: each is retried on its own. */
+  readonly deferred: number;
 }
 
 export const bootEngine = (
@@ -57,9 +61,11 @@ export const bootEngine = (
         ),
         Effect.orElseSucceed(() => undefined),
       );
-    const reconciled = yield* worker.reconcileAtBoot(wordsFor);
+    const { deferred, ...reconciled } = yield* worker.reconcileAtBoot(wordsFor);
     yield* pump.start;
     yield* scheduler.start;
     yield* worker.start;
-    return { bootId, ...reconciled } satisfies BootReport;
+    // A conversation that could not be recovered is told again on its own; the engine runs.
+    yield* worker.retryRecoveries(deferred);
+    return { bootId, ...reconciled, deferred: deferred.length } satisfies BootReport;
   });

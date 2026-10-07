@@ -379,7 +379,7 @@ describe("EffectWorker", () => {
             replayable: yield* rowState("replayable"),
           },
           {
-            report: { requeued: 1, recovered: 2 },
+            report: { requeued: 1, recovered: 2, deferred: [] },
             liveRun: { state: "ended", end: "cut-by-restart" },
             continuation: "armed",
             cutOpening: "cut",

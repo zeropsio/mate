@@ -586,10 +586,13 @@ export const SessionCapabilities = Schema.Struct({
 });
 export type SessionCapabilities = typeof SessionCapabilities.Type;
 
-/** What an effect came to: done, failed for good, or cut by a restart before it finished. */
+/**
+ * What an effect came to: done, failed for good, cut by a restart before it finished, or timed
+ * out waiting on the provider.
+ */
 export const EffectOutcome = forwardCompatibleUnion({
   key: "kind",
-  known: ["ok", "failed", "cut", "unknown"],
+  known: ["ok", "failed", "cut", "timed-out", "unknown"],
   members: [
     Schema.Struct({ kind: Schema.Literal("ok"), value: Schema.optionalKey(Schema.Unknown) }),
     Schema.Struct({
@@ -604,6 +607,11 @@ export const EffectOutcome = forwardCompatibleUnion({
       undelivered: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Literal("unknown")])),
     }),
     Schema.Struct({ kind: Schema.Literal("cut"), reason: Schema.String }),
+    /**
+     * The provider call gave no answer within its bound: the engine stopped waiting. An effect's
+     * outcome only — a run still ends on evidence, never because a call timed out.
+     */
+    Schema.Struct({ kind: Schema.Literal("timed-out"), after: Millis }),
   ],
   fallback: unknownKind,
   toFallback: toUnknownKind,
@@ -725,6 +733,8 @@ export const SessionOpened = event("SessionOpened", {
   nativeRef: Schema.NullOr(Schema.String),
   capabilities: SessionCapabilities,
   rotatedFrom: Schema.NullOr(SessionId),
+  /** The provider instance the engine opened it on: a session fits only its own instance. */
+  instanceId: Schema.optionalKey(Schema.NullOr(Schema.String)),
 });
 /** The engine asked the session to close; nothing goes into it until it has. */
 export const SessionClosing = event("SessionClosing", {

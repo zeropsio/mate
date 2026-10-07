@@ -5,10 +5,12 @@
  *
  * @module engine/effects/admission
  */
+import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import type { Principal, RunTrigger } from "@t3tools/contracts";
 
 import { RunAdmission } from "../ports.ts";
+import { wordsOf } from "./shared.ts";
 
 /** Asks the door; the refusal's words, or `null` when admitted. */
 export const makeAdmit = Effect.map(
@@ -28,5 +30,11 @@ export const makeAdmit = Effect.map(
         .pipe(
           Effect.as(null),
           Effect.catchTag("RunRefused", (refusal) => Effect.succeed(refusal.message)),
+          // An admission that broke admits nothing: its words are the refusal's.
+          Effect.catchCause((cause) =>
+            Cause.hasInterrupts(cause)
+              ? Effect.failCause(cause)
+              : Effect.succeed(`The run could not be admitted: ${wordsOf(cause)}`),
+          ),
         ),
 );

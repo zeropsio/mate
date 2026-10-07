@@ -22,14 +22,20 @@
 import * as Clock from "effect/Clock";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
-import type * as Fiber from "effect/Fiber";
+import * as Fiber from "effect/Fiber";
 import * as Queue from "effect/Queue";
 import type * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
-import type { ConversationId, SpiEvent, ThreadId, TurnHandle } from "@t3tools/contracts";
+import type { ConversationId, SpiEvent, ThreadId, TurnHandle, TurnId } from "@t3tools/contracts";
 
 import type { ProviderServiceShape } from "../../provider/Services/ProviderService.ts";
-import type { BridgeDriver, EngineCommand, RequestKey, SessionId } from "../bridge/spi3.ts";
+import type {
+  BridgeDriver,
+  EngineCommand,
+  RequestKey,
+  SendMode,
+  SessionId,
+} from "../bridge/spi3.ts";
 import { type BridgeInput, makeTranslator, type NativeRequest } from "../bridge/translate.ts";
 import type { ConversationsShape } from "../Conversations.ts";
 import type { ProviderSignal } from "../domain/command.ts";
@@ -52,18 +58,34 @@ export interface SessionHost {
   readonly begin: (session: SessionId) => Effect.Effect<void>;
   /** Records a command the engine sent, in order with the provider's events. */
   readonly record: (command: EngineCommand) => Effect.Effect<void>;
-  /** What became of a send: taken, refused, or its session closed first. */
-  readonly awaitSend: (turn: TurnHandle) => Effect.Effect<SendEvidence>;
+  /**
+   * Records a send before its call and returns the wait for what became of it — taken, refused,
+   * or its session closed first. The wait holds its own evidence: one that came before the
+   * handler waits is never lost.
+   */
+  readonly beginSend: (
+    turn: TurnHandle,
+    mode: SendMode,
+  ) => Effect.Effect<Effect.Effect<SendEvidence>>;
   /** The session's open has committed: its held boundaries go, and every later one. */
   readonly openGate: (session: SessionId) => Effect.Effect<void>;
   /** The session never opened: what it held is dropped. */
   readonly discard: (session: SessionId) => Effect.Effect<void>;
   readonly nativeTurn: (turn: TurnHandle) => Effect.Effect<string | undefined>;
+  /**
+   * A Stop for a turn: records it and gives the turn's native id to interrupt now; a turn the
+   * driver has not named yet (its send is still on the way) is interrupted the moment it opens.
+   */
+  readonly interruptOrDefer: (turn: TurnHandle) => Effect.Effect<string | undefined>;
   readonly nativeRequest: (key: RequestKey) => Effect.Effect<NativeRequest | undefined>;
   /** Background work alive in the current session. */
   readonly liveWork: Effect.Effect<number>;
   /** Runs a driver call that outlives the handler that made it (a send that holds its turn). */
   readonly forkInSession: <A, E>(call: Effect.Effect<A, E>) => Effect.Effect<Fiber.Fiber<A, E>>;
+  /** Nothing of it is live: no session, no send waiting, no Stop waiting on a turn. */
+  readonly idle: Effect.Effect<boolean>;
+  /** Lets it go: its fold and its fiber end (the pump evicts an idle host). */
+  readonly close: Effect.Effect<void>;
   /** Takes one provider event (the pump's demux). */
   readonly offer: (event: SpiEvent) => Effect.Effect<void>;
   /** Returns once everything offered or recorded so far has been folded and told. */
@@ -93,6 +115,10 @@ interface Gate {
 
 const ENGINE = { kind: "engine" } as const;
 
+/** A batch the actor did not take is told again after `min(30 s, 100 ms · 2^(n − 1))`. */
+export const batchRetryMs = (attempt: number): number =>
+  Math.min(30_000, 100 * 2 ** Math.max(0, attempt - 1));
+
 export const makeSessionHost = Effect.fnUntraced(function* (
   input: {
     readonly conversationId: ConversationId;
@@ -111,35 +137,48 @@ export const makeSessionHost = Effect.fnUntraced(function* (
     TurnHandle,
     { readonly session: SessionId | null; readonly done: Deferred.Deferred<SendEvidence> }
   >();
+  /** Stops asked before the driver named their turn: sent the moment it does. */
+  const deferredInterrupts = new Set<TurnHandle>();
   let current: SessionId | null = null;
   let recording: SessionId | null = null;
 
-  const tell = (session: SessionId, gate: Gate, signals: ReadonlyArray<ProviderSignal>) => {
-    if (deps.stopping()) return Effect.void;
-    gate.batches += 1;
-    return deps.conversations
-      .tell({
+  /**
+   * Tells a batch until the actor takes it: a batch is content-idempotent, and one lost would
+   * leave its run running forever (its turn's end). Backs off, never drops; stops only with the
+   * server.
+   */
+  const tell = (session: SessionId, gate: Gate, signals: ReadonlyArray<ProviderSignal>) =>
+    Effect.gen(function* () {
+      if (deps.stopping()) return;
+      gate.batches += 1;
+      const envelope = {
         commandId: signalsCommandId(session, gate.batches),
         conversationId: input.conversationId,
         principal: ENGINE,
         command: { _tag: "ProviderSignals", sessionId: session, signals },
-      })
-      .pipe(
-        Effect.retry({ times: 3 }),
-        Effect.tap((result) =>
-          result._tag === "Rejected"
-            ? Effect.logDebug("engine pump: a batch was refused", {
-                session,
-                reason: result.rejection.reason,
-              })
-            : Effect.void,
-        ),
-        Effect.catchCause((cause) =>
-          Effect.logWarning("engine pump: a batch could not be told", { session, cause }),
-        ),
-        Effect.asVoid,
-      );
-  };
+      } as const;
+      for (let attempt = 1; ; attempt++) {
+        const told = yield* Effect.exit(deps.conversations.tell(envelope));
+        if (told._tag === "Success") {
+          if (told.value._tag === "Rejected") {
+            yield* Effect.logDebug("engine pump: a batch was refused", {
+              session,
+              reason: told.value.rejection.reason,
+            });
+          }
+          return;
+        }
+        if (deps.stopping()) return;
+        if (attempt === 1 || attempt % 10 === 0) {
+          yield* Effect.logWarning("engine pump: a batch was not taken; it is told again", {
+            session,
+            attempt,
+            cause: told.cause,
+          });
+        }
+        yield* Effect.sleep(batchRetryMs(attempt));
+      }
+    });
 
   const resolve = (turn: TurnHandle, evidence: SendEvidence) => {
     const send = waiting.get(turn);
@@ -209,9 +248,27 @@ export const makeSessionHost = Effect.fnUntraced(function* (
     for (const { session, words } of closed) {
       yield* closeWaiting(session, words);
       if (current === session) current = null;
+      // Its boundaries are all told: nothing more of a closed session goes to the actor.
+      gates.delete(session);
     }
     // 3. the live plane.
     yield* Effect.all(live, { discard: true });
+    // A Stop that came before its turn had a name: the turn has one now, or never will.
+    for (const { turn, evidence: said } of evidence) {
+      if (said._tag !== "Accepted") deferredInterrupts.delete(turn);
+    }
+    if (closed.length > 0) deferredInterrupts.clear();
+    for (const turn of deferredInterrupts) {
+      const native = translator.nativeTurn(turn);
+      if (native === undefined) continue;
+      deferredInterrupts.delete(turn);
+      yield* deps.provider.interruptTurn({ threadId: input.thread, turnId: native as TurnId }).pipe(
+        Effect.catchCause((cause) =>
+          Effect.logWarning("engine pump: a deferred Stop could not be sent", { cause }),
+        ),
+        Effect.forkIn(deps.scope),
+      );
+    }
     if (unasked) yield* replaceUnasked;
   });
 
@@ -237,7 +294,7 @@ export const makeSessionHost = Effect.fnUntraced(function* (
     );
   });
 
-  yield* Queue.takeAll(inbox).pipe(
+  const loop = yield* Queue.takeAll(inbox).pipe(
     Effect.flatMap((mail) =>
       lock.withPermits(1)(
         Effect.gen(function* () {
@@ -266,28 +323,22 @@ export const makeSessionHost = Effect.fnUntraced(function* (
         current = session;
         recording = session;
       }),
+    beginSend: (turn, mode) =>
+      Effect.gen(function* () {
+        // Armed now, before the call: its evidence can never come first.
+        const done = yield* Deferred.make<SendEvidence>();
+        waiting.set(turn, { session: recording, done });
+        yield* enqueue({ _tag: "input", input: { kind: "send", turn, mode } });
+        // The worker runs a handler uninterruptibly; this wait is not, so a stop never hangs on
+        // a driver that says nothing.
+        return Effect.interruptible(Deferred.await(done));
+      }),
     record: (command) =>
       Effect.gen(function* () {
-        if (command.kind === "send") {
-          // Armed now, before the call: its evidence can never come first.
-          waiting.set(command.turn, {
-            session: recording,
-            done: yield* Deferred.make<SendEvidence>(),
-          });
-        }
         // A call's result comes back faster than the events the driver emitted before it
         // returned (they travel the bus): it is placed after them, as the driver ordered them.
         if (command.kind === "sent" || command.kind === "send-failed") yield* deps.quiet;
         yield* enqueue({ _tag: "input", input: command });
-      }),
-    awaitSend: (turn) =>
-      Effect.suspend(() => {
-        const send = waiting.get(turn);
-        return send === undefined
-          ? Effect.succeed<SendEvidence>({ _tag: "Closed", words: "Nothing was sent." })
-          : // The worker runs a handler uninterruptibly; this wait is not, so a stop never hangs
-            // on a driver that says nothing.
-            Effect.interruptible(Deferred.await(send.done));
       }),
     openGate: (session) =>
       lock.withPermits(1)(
@@ -310,9 +361,28 @@ export const makeSessionHost = Effect.fnUntraced(function* (
         }),
       ),
     nativeTurn: (turn) => Effect.sync(() => translator.nativeTurn(turn)),
+    interruptOrDefer: (turn) =>
+      lock.withPermits(1)(
+        Effect.gen(function* () {
+          yield* enqueue({ _tag: "input", input: { kind: "interrupt", turn } });
+          const native = translator.nativeTurn(turn);
+          if (native === undefined) deferredInterrupts.add(turn);
+          return native;
+        }),
+      ),
     nativeRequest: (key) => Effect.sync(() => translator.nativeRequest(key)),
     liveWork: Effect.sync(() => toCore.liveWork()),
     forkInSession: (call) => Effect.forkIn(call, deps.scope),
+    idle: lock.withPermits(1)(
+      Effect.sync(
+        () =>
+          current === null &&
+          waiting.size === 0 &&
+          deferredInterrupts.size === 0 &&
+          [...gates.values()].every((gate) => gate.state === "dropped"),
+      ),
+    ),
+    close: Effect.asVoid(Fiber.interrupt(loop)),
     offer: (event) => enqueue({ _tag: "input", input: { kind: "event", event } }),
     settled: Effect.gen(function* () {
       const done = yield* Deferred.make<void>();

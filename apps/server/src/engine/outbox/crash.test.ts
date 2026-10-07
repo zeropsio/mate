@@ -373,7 +373,7 @@ describe("crash injection: what holds", () => {
           };
         }).pipe(Effect.provide(engineLayer(file, world.handlers())));
         expect(result).toEqual({
-          boot: { requeued: 1, recovered: 0 },
+          boot: { requeued: 1, recovered: 0, deferred: [] },
           acts: 1,
           outcome: { kind: "ok", value: "adopted" },
           problems: [],

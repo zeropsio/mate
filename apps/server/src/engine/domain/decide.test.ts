@@ -707,7 +707,7 @@ const transitions: ReadonlyArray<Row> = [
     events: ["EffectOutcomeRecorded", "EffectRequested", "SessionClosing"],
     effects: ["session.close"],
     also: (scene) =>
-      expect(scene.effects[0]).toMatchObject({ lane: "control", payload: { reason: "model" } }),
+      expect(scene.effects[0]).toMatchObject({ lane: "close", payload: { reason: "model" } }),
   },
   {
     name: "archiving an archived conversation records nothing",
@@ -1366,6 +1366,73 @@ describe("decide: the conversation holds the agent it belongs to", () => {
     ]);
     expect(state.agent).toEqual({ ...agent, model: "sonnet" });
   });
+  const openedAs = (
+    run: number,
+    asked: { readonly instanceId: string; readonly model: string | null },
+  ) =>
+    settled(r(run), "session.open", {
+      kind: "ok",
+      value: {
+        sessionId: "s1",
+        driver: "claudeAgent",
+        model: asked.model,
+        nativeRef: "native-1",
+        capabilities: { steer: false },
+        requestedModel: asked.model,
+        instanceId: asked.instanceId,
+      },
+    });
+  it("a model switched while the session opens rotates it before the next message", () => {
+    const scene = play([
+      { _tag: "AssignAgent", agent },
+      send("go"),
+      prepared(1),
+      { _tag: "SwitchModel", model: "sonnet" },
+      openedAs(1, { instanceId: "claude-ana", model: "opus" }),
+      ended(1),
+      send("next"),
+      prepared(2),
+    ]);
+    expect(scene.effects).toMatchObject([{ kind: "session.close", payload: { reason: "model" } }]);
+  });
+  it.each([
+    ["another instance of its driver", { ...agent, instanceId: "claude-bo" }],
+    ["no model of its own", { ...agent, model: null }],
+  ] as const)("a conversation given %s rotates its session before the next message", (_, next) => {
+    const scene = play([
+      { _tag: "AssignAgent", agent },
+      send("go"),
+      prepared(1),
+      openedAs(1, { instanceId: "claude-ana", model: "opus" }),
+      ended(1),
+      { _tag: "AssignAgent", agent: next },
+      send("next"),
+      prepared(2),
+    ]);
+    expect(scene.effects).toMatchObject([{ kind: "session.close", payload: { reason: "model" } }]);
+  });
+  it("a conversation given another instance opens a fresh native session; a model switch resumes its own", () => {
+    const generationOf = (steps: ReadonlyArray<Step>) =>
+      (play(steps).effects[0]?.payload as { readonly generation?: number }).generation;
+    const first = [{ _tag: "AssignAgent", agent } as const, send("go")];
+    expect(generationOf([...first, prepared(1)])).toBe(1);
+    expect(
+      generationOf([
+        { _tag: "AssignAgent", agent },
+        { _tag: "SwitchModel", model: "sonnet" },
+        send("go"),
+        prepared(1),
+      ]),
+    ).toBe(1);
+    expect(
+      generationOf([
+        { _tag: "AssignAgent", agent },
+        { _tag: "AssignAgent", agent: { ...agent, instanceId: "claude-bo" } },
+        send("go"),
+        prepared(1),
+      ]),
+    ).toBe(2);
+  });
   it("giving a conversation the agent it already has records nothing", () => {
     const scene = play([
       { _tag: "AssignAgent", agent },
@@ -1396,7 +1463,7 @@ describe("decide: sessions close as the engine asks", () => {
   it("a second Stop on a turn whose first was not confirmed closes its session", () => {
     const scene = play([...running, stop(), stop()]);
     expect(scene.effects).toMatchObject([
-      { kind: "session.close", lane: "control", payload: { sessionId: "s1", reason: "stop" } },
+      { kind: "session.close", lane: "close", payload: { sessionId: "s1", reason: "stop" } },
     ]);
     expect(closing(scene)).toMatchObject({ sessionId: "s1", reason: "stop" });
     expect(scene.state.runs[r(1)]?.state).toBe("running");
