@@ -42,6 +42,8 @@ export async function addGroupEnvironment(input: {
     readonly tier: GroupEnvironmentTier;
     /** The Zerops project just created. */
     readonly project: string;
+    /** A finish may read an existing placement from the account's projection. */
+    readonly registered?: boolean;
   };
 }): Promise<AddGroupEnvironmentOutcome> {
   const { operations, orgId, groupId } = input;
@@ -55,15 +57,16 @@ export async function addGroupEnvironment(input: {
 
   try {
     // Created for HQ to deploy: HQ turns its services' subdomains on at their first deploy.
-    await operations.run(
-      {
-        kind: "attach-project",
-        orgId,
-        appId: groupId,
-        attach: { projectId, kind: input.environment.tier, created: true },
-      },
-      unobserved,
-    );
+    if (input.environment.registered !== true)
+      await operations.run(
+        {
+          kind: "attach-project",
+          orgId,
+          appId: groupId,
+          attach: { projectId, kind: input.environment.tier, created: true },
+        },
+        unobserved,
+      );
     done.push("registry");
   } catch (cause) {
     return stop("registry", messageOf(cause));

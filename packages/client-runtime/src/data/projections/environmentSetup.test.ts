@@ -120,7 +120,9 @@ describe("environmentSetup", () => {
     {
       name: "a key still missing",
       state: placed,
-      expected: [{ groupId: "shop", projectId: "stage", tier: "stage", finish: false }],
+      expected: [
+        { groupId: "shop", projectId: "stage", tier: "stage", registered: true, finish: false },
+      ],
     },
     { name: "unread navigation", state: project, expected: [] },
     {
@@ -134,7 +136,9 @@ describe("environmentSetup", () => {
     {
       name: "a partial navigation reset",
       state: apply(placed, { ...deliver([]), reset: true }),
-      expected: [{ groupId: "shop", projectId: "stage", tier: "stage", finish: false }],
+      expected: [
+        { groupId: "shop", projectId: "stage", tier: "stage", registered: true, finish: false },
+      ],
     },
     {
       name: "an attached, keyed environment",

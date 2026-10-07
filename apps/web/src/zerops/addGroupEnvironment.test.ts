@@ -41,6 +41,38 @@ const add = (operations: Pick<AccountOperations, "run" | "untilEnvironment">) =>
   });
 
 describe("addGroupEnvironment", () => {
+  it.each([undefined, "Zerops refused this deploy key."])(
+    "finishes an attached environment's key without attaching it again: %s",
+    async (refusal) => {
+      const { operations, ran } = operationsOf({
+        refuse: {
+          "attach-project": "placed_or_production_taken",
+          ...(refusal === undefined ? {} : { "keep-deploy-key": refusal }),
+        },
+      });
+      const result = await addGroupEnvironment({
+        operations,
+        orgId: "org-1",
+        groupId: "g-1",
+        environment: { tier: "stage", project: "p-stage", registered: true },
+      });
+      expect(result).toEqual({
+        done: refusal === undefined ? ["registry", "deploy-token"] : ["registry"],
+        failed: refusal === undefined ? undefined : { step: "deploy-token", reason: refusal },
+      });
+      expect(ran).toEqual([
+        "environment org-1 g-1 p-stage",
+        {
+          kind: "keep-deploy-key",
+          orgId: "org-1",
+          appId: "g-1",
+          projectId: "p-stage",
+          environmentName: "acme-stage",
+        },
+      ]);
+    },
+  );
+
   it("attaches the project as its tier, then keeps the key under the name HQ gave it", async () => {
     const { operations, ran } = operationsOf({});
     expect(await add(operations)).toEqual({

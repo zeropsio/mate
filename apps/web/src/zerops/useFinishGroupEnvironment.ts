@@ -75,7 +75,11 @@ export function useFinishGroupEnvironment(input: {
             operations,
             orgId: clientId,
             groupId: entry.groupId,
-            environment: { tier: entry.tier, project: entry.projectId },
+            environment: {
+              tier: entry.tier,
+              project: entry.projectId,
+              registered: entry.registered,
+            },
           });
           wentThrough = outcome.failed === undefined;
         } catch {

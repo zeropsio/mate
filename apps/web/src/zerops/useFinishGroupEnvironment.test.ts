@@ -11,14 +11,19 @@ import {
 
 /** The finishes run, and how the next one goes. */
 const finishes = vi.hoisted(() => ({
-  run: [] as Array<{ readonly projectId: string }>,
+  run: [] as Array<{ readonly projectId: string; readonly registered: boolean | undefined }>,
   /** The next one fails a step the page cannot fix by itself. */
   failNext: false,
 }));
 
 vi.mock("./addGroupEnvironment", () => ({
-  addGroupEnvironment: async (input: { readonly environment: { readonly project: string } }) => {
-    finishes.run.push({ projectId: input.environment.project });
+  addGroupEnvironment: async (input: {
+    readonly environment: { readonly project: string; readonly registered?: boolean };
+  }) => {
+    finishes.run.push({
+      projectId: input.environment.project,
+      registered: input.environment.registered,
+    });
     if (finishes.failNext) {
       finishes.failNext = false;
       return {
@@ -33,7 +38,12 @@ vi.mock("./addGroupEnvironment", () => ({
   },
 }));
 
-const STAGE: HalfMadeGroupEnvironment = { groupId: "g1", projectId: "p-stage", tier: "stage" };
+const STAGE: HalfMadeGroupEnvironment = {
+  groupId: "g1",
+  projectId: "p-stage",
+  tier: "stage",
+  registered: true,
+};
 const HQ = { projectId: "hq-1", address: "https://hq-1-8080.prg1.zerops.app" } as const;
 /** The account's operations: `addGroupEnvironment` stands in for their use here. */
 const OPERATIONS = { run: vi.fn(), untilEnvironment: vi.fn() };
@@ -77,7 +87,7 @@ describe("useFinishGroupEnvironment", () => {
       page.latest().finish(STAGE);
     });
     expect([finishes.run, page.latest().unfinished.get("g1")]).toEqual([
-      [{ projectId: "p-stage" }],
+      [{ projectId: "p-stage", registered: true }],
       "stage",
     ]);
     // Asked again, it goes through, and the row says nothing more.

@@ -114,6 +114,8 @@ export interface HalfMadeGroupEnvironment {
   readonly groupId: string;
   readonly projectId: string;
   readonly tier: GroupEnvironmentTier;
+  /** HQ already places this project as its tier; finishing must preserve that placement. */
+  readonly registered: boolean;
 }
 
 export function halfMadeGroupEnvironments(input: {
@@ -162,7 +164,7 @@ export function halfMadeGroupEnvironments(input: {
     const keyed =
       environment !== undefined && (environmentKeyed(environment) || !input.mayKey(project.id));
     if (registered && keyed) continue;
-    out.push({ groupId: membership.groupId, projectId: project.id, tier });
+    out.push({ groupId: membership.groupId, projectId: project.id, tier, registered });
   }
   return out;
 }

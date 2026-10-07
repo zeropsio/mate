@@ -59,7 +59,7 @@ describe("halfMadeGroupEnvironments", () => {
     const environments = new Map([["g-1", [environment("p-stage")]]]);
     expect(
       halfMadeGroupEnvironments({ projects, registry, environments, mayKey: anybody }),
-    ).toEqual([{ groupId: "g-1", projectId: "p-prod", tier: "production" }]);
+    ).toEqual([{ groupId: "g-1", projectId: "p-prod", tier: "production", registered: false }]);
   });
 
   it("names a stage placed but held as no environment", () => {
@@ -71,8 +71,8 @@ describe("halfMadeGroupEnvironments", () => {
         mayKey: anybody,
       }),
     ).toEqual([
-      { groupId: "g-1", projectId: "p-stage", tier: "stage" },
-      { groupId: "g-1", projectId: "p-prod", tier: "production" },
+      { groupId: "g-1", projectId: "p-stage", tier: "stage", registered: true },
+      { groupId: "g-1", projectId: "p-prod", tier: "production", registered: false },
     ]);
   });
 
@@ -98,7 +98,11 @@ describe("halfMadeGroupEnvironments", () => {
           mayKey: anybody,
           pressing: (projectId) => pressing && projectId === "p-new-stage",
         }),
-      ).toEqual(named ? [{ groupId: "g-1", projectId: "p-new-stage", tier: "stage" }] : []);
+      ).toEqual(
+        named
+          ? [{ groupId: "g-1", projectId: "p-new-stage", tier: "stage", registered: false }]
+          : [],
+      );
     },
   );
 
@@ -146,7 +150,11 @@ describe("halfMadeGroupEnvironments", () => {
           environments: new Map([["g-1", [environment("p-stage"), prod]]]),
           mayKey,
         }),
-      ).toEqual(named ? [{ groupId: "g-1", projectId: "p-prod", tier: "production" }] : []);
+      ).toEqual(
+        named
+          ? [{ groupId: "g-1", projectId: "p-prod", tier: "production", registered: true }]
+          : [],
+      );
     },
   );
 });
