@@ -433,3 +433,5 @@ export * from "./mateActionReads.ts";
 export * from "./adapters/mateTerminal.ts";
 export * from "./operations/executors/mateTerminal.ts";
 export * from "./projections/mateActions.ts";
+export { makeArchiveReads, makeArchiveWire } from "./adapters/mateArchive.ts";
+export { mateArchive, type ArchiveReading } from "./projections/mateArchive.ts";
