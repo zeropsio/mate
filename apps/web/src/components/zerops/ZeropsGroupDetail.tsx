@@ -1,4 +1,6 @@
 import { usePublicAccess } from "~/zerops/usePublicAccess";
+import { StopVaultSide, StopVaultToggle, useStopVaultOpen } from "./vault/StopVault";
+import { useAccountOrgId } from "~/zerops/ZeropsAccountData";
 import { useMatesInventory } from "~/zerops/useMatesInventory";
 import { RuntimeStopPublicAccess, StopPublicAccessStatus } from "./StopPublicAccess";
 /**
@@ -1172,6 +1174,9 @@ export function ZeropsStopDetailPage({
   readonly projectId: string;
 }) {
   const recipeFailure = useHqRecipeFailure(groupId);
+  // The environment's vault beside its page, where the account reads its organization.
+  const orgId = useAccountOrgId();
+  const [vaultOpen, toggleVault] = useStopVaultOpen();
   // The application's flow, what a release would put live compared while the page is drawn.
   const { flows } = useProjectFlows(
     useMemo(() => [groupId], [groupId]),
@@ -1315,6 +1320,7 @@ export function ZeropsStopDetailPage({
     <>
       <StopPublicAccessStatus access={publicAccess} />
       <ZeropsStopPane
+        vault={orgId === null ? undefined : { orgId, open: vaultOpen, onToggle: toggleVault }}
         readAgain={<StopReadAgain projectId={projectId} />}
         readFailures={
           <ProjectReadFailures recipe={recipeFailure} comparison={flow.release.comparisonFailure} />
@@ -1580,7 +1586,16 @@ export function ZeropsStopPane({
   verdict,
   view,
   waiting,
+  vault,
 }: {
+  /** The environment's vault, where the account reads its organization: shown beside the page. */
+  readonly vault?:
+    | {
+        readonly orgId: string;
+        readonly open: boolean;
+        readonly onToggle: () => void;
+      }
+    | undefined;
   readonly readFailures?: React.ReactNode;
   /** Runtime read recovery belongs beside the verdict that reports it. */
   readonly readAgain?: React.ReactNode;
@@ -1669,16 +1684,26 @@ export function ZeropsStopPane({
   return (
     <DetailShell
       actions={
-        <ZeropsStopMenu
-          name={title}
-          projectId={stop.projectId}
-          onOpenStop={undefined}
-          routes={routes}
-          stop={view}
-          triggerClassName="inline-flex size-8 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
-        />
+        <>
+          {vault === undefined ? null : (
+            <StopVaultToggle onToggle={vault.onToggle} open={vault.open} />
+          )}
+          <ZeropsStopMenu
+            name={title}
+            projectId={stop.projectId}
+            onOpenStop={undefined}
+            routes={routes}
+            stop={view}
+            triggerClassName="inline-flex size-8 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
+          />
+        </>
       }
       crumbs={crumbs}
+      side={
+        vault?.open === true ? (
+          <StopVaultSide name={title} orgId={vault.orgId} projectId={stop.projectId} />
+        ) : undefined
+      }
 
       subtitle={stopMetaLine({ tier: stop.tier, source: stop.source, services: services.length })}
       title={title}
@@ -2667,6 +2692,7 @@ function DetailShell({
   subtitle,
   actions,
   crumbs,
+  side,
   children,
 }: {
   /** Undefined while the name is not read: its line is held, with no placeholder in it. */
@@ -2682,10 +2708,13 @@ function DetailShell({
    * and coming in again.
    */
   readonly crumbs: ReadonlyArray<Crumb>;
+  /** A column beside the page: an environment's vault. */
+  readonly side?: React.ReactNode;
   readonly children: React.ReactNode;
 }) {
   return (
     <ZeropsHostedFrame
+      side={side}
       // The trail is a way out, not the page's business: it sits in the bar,
       // where /zerops keeps its own, rather than competing with the verbs
       // beside the name.

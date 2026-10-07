@@ -713,6 +713,12 @@ interface StopCase {
   readonly carried?: ReadonlyMap<string, MovedCommits> | undefined;
   /** Production's services whose commit cannot be told. */
   readonly untold?: ReadonlyArray<string>;
+  /** The environment's vault beside its page. */
+  readonly vault?: {
+    readonly orgId: string;
+    readonly open: boolean;
+    readonly onToggle: () => void;
+  };
 }
 
 /** A stop's page with every read already done — the producers' words, the pane's drawing. */
@@ -780,6 +786,7 @@ function renderStop(input: StopCase): string {
   });
   return renderToStaticMarkup(
     <ZeropsStopPane
+      vault={input.vault}
       readAgain={input.readAgain}
       carried={input.carried}
       crumbs={[{ label: "Projects", onClick: () => {} }]}
@@ -1053,6 +1060,28 @@ describe("ZeropsStopPane — a service's job, and a version HQ did not deploy", 
       mayDeployAgain: true,
     });
     expect(markup).not.toContain('data-zerops-surface="stop-service-drift"');
+  });
+});
+
+describe("ZeropsStopPane — the environment's vault", () => {
+  const vaultToggle = (input: StopCase) => {
+    const document = new Window().document;
+    document.body.innerHTML = renderStop(input);
+    return Array.from(document.querySelectorAll("button")).find(
+      (entry) => entry.textContent === "Vault",
+    );
+  };
+  it("offers its vault beside the page, pressed while it shows", () => {
+    expect(
+      vaultToggle({
+        tier: "production",
+        services: [],
+        vault: { orgId: "org", open: false, onToggle: () => {} },
+      })?.getAttribute("aria-pressed"),
+    ).toBe("false");
+  });
+  it("offers no vault where the account's organization is not read", () => {
+    expect(vaultToggle({ tier: "stage", services: [] })).toBeUndefined();
   });
 });
 
