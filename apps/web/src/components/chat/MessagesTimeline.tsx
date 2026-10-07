@@ -363,6 +363,7 @@ interface MessagesTimelineProps {
   /** The server's pause on this thread, when a usage limit holds it now. */
   usagePause?: ServerUsagePause | null;
   onUsageAutoResumeChange?: ((enabled: boolean) => void) | null;
+  onUsageContinue?: (() => void) | null;
   onSteerQueuedMessage?: (id: string) => void;
   steerQueuedMessageShortcutLabel?: string | null;
   /** A question or an approval waits on the person: the queue waits with it. */
@@ -421,6 +422,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   queuedMessages = EMPTY_QUEUED_MESSAGES,
   usagePause = null,
   onUsageAutoResumeChange = null,
+  onUsageContinue = null,
   onSteerQueuedMessage = NOOP_QUEUED_MESSAGE_ACTION,
   steerQueuedMessageShortcutLabel = null,
   queueBlockedByAnswer = false,
@@ -1221,6 +1223,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       livePauseId,
       usagePause,
       onUsageAutoResumeChange,
+      onUsageContinue,
       agentPanelModel: agentPanelModel ?? EMPTY_AGENT_PANEL_MODEL,
       onOpenAgents,
       onStopBackgroundWork,
@@ -1250,6 +1253,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       livePauseId,
       usagePause,
       onUsageAutoResumeChange,
+      onUsageContinue,
       agentPanelModel,
       onOpenAgents,
       onStopBackgroundWork,
@@ -2438,6 +2442,7 @@ function PauseTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "pause" }
     <PauseBlock
       nowMs={nowMs}
       onAutoResumeChange={row.id === ctx.livePauseId ? ctx.onUsageAutoResumeChange : null}
+      onContinue={row.id === ctx.livePauseId ? (ctx.onUsageContinue ?? null) : null}
       row={row}
       serverPause={row.id === ctx.livePauseId ? ctx.usagePause : null}
       speaker={ctx.speaker}

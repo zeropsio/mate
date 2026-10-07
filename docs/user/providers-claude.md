@@ -246,6 +246,9 @@ Do not put environment variable assignments in `Launch arguments`.
 If your Claude subscription reaches a usage limit, Mate shows a quiet pause in the
 conversation and menu. A reset time appears only when Claude reports one.
 
+Use **Continue** to ask the coding agent to pick up the paused work. Your unsent
+message stays in the composer; the agent may still refuse while its limit holds.
+
 When the pause offers **Continue automatically**, turn it on to let Mate try the
 held work again at the reset. Turn it off to keep the work paused. Passing the
 reset time alone does not mean work has resumed; the conversation shows when the

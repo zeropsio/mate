@@ -6459,6 +6459,7 @@ export default function ChatView(props: ChatViewProps) {
     // Typed out in full rather than picked from the menu. Attachments or contexts
     // mean the user is sending a prompt, so those go through as usual.
     if (
+      !queuedMessage &&
       usageLimitsOffered &&
       usageLimitsKey !== null &&
       !composerHasNonPromptContent &&
@@ -8601,6 +8602,25 @@ export default function ChatView(props: ChatViewProps) {
                   queuedMessages,
                   usagePause: activeThreadShell?.usagePause ?? null,
                   onUsageAutoResumeChange,
+                  onUsageContinue:
+                    isWorking || isSendBusy || activePendingProgress || zeropsShownReadOnly !== null
+                      ? null
+                      : () => {
+                          if (activeThreadKey === null) return;
+                          const message = useQueuedMessageStore
+                            .getState()
+                            .enqueue(activeThreadKey, {
+                              prompt: "Continue the work that was paused.",
+                              images: [],
+                              terminalContexts: [],
+                              reviewComments: [],
+                              submissionIntent: "foreground",
+                              queuedAfterToolActivityId: null,
+                              createdAt: new Date().toISOString(),
+                              holdUntilUserAction: true,
+                            });
+                          void onSend(undefined, "foreground", message);
+                        },
                   onSteerQueuedMessage,
                   queueBlockedByAnswer: queueBlockedByPendingRequest,
                   steerQueuedMessageShortcutLabel: shortcutLabelForCommand(

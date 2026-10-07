@@ -76,6 +76,42 @@ describe("the pause's automatic-resume choice", () => {
     vi.unstubAllGlobals();
   });
 
+  it.each([null, new Date(NOW_MS + 3_600_000).toISOString()])(
+    "offers an explicit continuation whether the reset time is known (%s)",
+    async (resetsAt) => {
+      const continued = vi.fn();
+      const row = {
+        kind: "pause" as const,
+        id: "pause:continue",
+        createdAt: at(600),
+        resetsAt,
+        resumedAt: null,
+        held: 0,
+      };
+      const show = (resumedAt: string | null) =>
+        act(() =>
+          root!.render(
+            <PauseBlock
+              nowMs={NOW_MS}
+              row={{ ...row, resumedAt }}
+              serverPause={null}
+              onAutoResumeChange={null}
+              onContinue={continued}
+              speaker={NOVA}
+              timestampFormat="24-hour"
+            />,
+          ),
+        );
+      await show(null);
+      const button = document.querySelector<HTMLButtonElement>("button");
+      expect(button?.textContent).toBe("Continue");
+      await act(() => button!.click());
+      expect(continued).toHaveBeenCalledOnce();
+      await show(at(30));
+      expect(document.querySelector("button")).toBeNull();
+    },
+  );
+
   it.each([
     { autoResume: true, next: "off" },
     { autoResume: false, next: "on" },

@@ -28,6 +28,7 @@ import { subscribeSecond } from "~/lib/secondTicker";
 import { cn } from "~/lib/utils";
 import { formatChatTimestampTooltip, formatDayAwareTimestamp } from "../../timestampFormat";
 import { usageLimitWords } from "../../zerops/noticeWords";
+import { Button } from "../ui/button";
 import { Switch } from "../ui/switch";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { formatWorkDuration } from "./conversation.logic";
@@ -385,6 +386,7 @@ export function PauseBlock({
   timestampFormat,
   serverPause,
   onAutoResumeChange,
+  onContinue = null,
 }: {
   readonly row: Extract<MessagesTimelineRow, { kind: "pause" }>;
   readonly speaker: ConversationSpeaker;
@@ -393,6 +395,7 @@ export function PauseBlock({
   /** Present only on the pause that holds the thread now, on a server that keeps one. */
   readonly serverPause: ServerUsagePause | null;
   readonly onAutoResumeChange: ((enabled: boolean) => void) | null;
+  readonly onContinue?: (() => void) | null;
 }) {
   const resumed = row.resumedAt !== null;
   const resetsAt = serverPause?.resetsAt ?? row.resetsAt;
@@ -456,6 +459,13 @@ export function PauseBlock({
       <p className="ps-5 text-line text-muted-foreground" data-pause-detail>
         {detail}
       </p>
+      {!resumed && onContinue !== null ? (
+        <div className="ps-5">
+          <Button size="sm" variant="ghost" onClick={onContinue}>
+            Continue
+          </Button>
+        </div>
+      ) : null}
       {!resumed && serverPause !== null && onAutoResumeChange !== null ? (
         <label
           className="flex w-fit cursor-pointer items-center gap-2 ps-5 text-line text-foreground"
