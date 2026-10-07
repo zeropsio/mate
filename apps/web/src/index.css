@@ -9466,6 +9466,15 @@ button.rv-relrow:hover .rv-relrow-go {
   margin-top: 4px;
 }
 
+/* A page's sections (Apps, Values) sit further apart than the groups inside them. */
+.vault-section-title {
+  margin-top: 28px;
+}
+
+.vault-section-title + .vault-group {
+  margin-top: 6px;
+}
+
 /* A `${name}` inside a value, and the app a value belongs to: quiet chips in the line. */
 .vault-ref,
 .vault-only {

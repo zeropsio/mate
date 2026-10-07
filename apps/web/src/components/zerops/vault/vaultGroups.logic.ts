@@ -5,6 +5,8 @@
  */
 import type { VaultScope, VaultValue, VaultView } from "@t3tools/client-runtime/data";
 
+import { joinNames } from "./vault.logic";
+
 const ACRONYMS = new Set([
   "AI",
   "API",
@@ -253,8 +255,14 @@ export interface VaultGroup extends VaultGroupRef {
   readonly entries: ReadonlyArray<VaultEntry>;
 }
 
-/** Which values the list shows: every app's (the environment's and each app's own), or one app's own. */
-export type VaultFilter = { readonly kind: "all" } | { readonly kind: "app"; readonly id: string };
+/**
+ * Which values a list shows: the environment's (`all`, the main page), one app's own (`app`), or
+ * both together (`everything`: a search, and what needs the person).
+ */
+export type VaultFilter =
+  | { readonly kind: "all" }
+  | { readonly kind: "everything" }
+  | { readonly kind: "app"; readonly id: string };
 
 const entryMatches = (entry: VaultEntry, query: string) => {
   if (query === "") return true;
@@ -275,7 +283,11 @@ export function vaultGroups(
   query: string,
 ): ReadonlyArray<VaultGroup> {
   const scopes = view.scopes.filter((scope) =>
-    filter.kind === "all" ? scope.kind !== "managed" : scope.id === filter.id,
+    filter.kind === "all"
+      ? scope.kind === "shared"
+      : filter.kind === "everything"
+        ? scope.kind !== "managed"
+        : scope.id === filter.id,
   );
   const placed = scopes.flatMap((scope) =>
     scope.values.map((value) => ({ scope, value, ...place(value.key) })),
@@ -288,10 +300,11 @@ export function vaultGroups(
     firsts.set(first, (firsts.get(first) ?? 0) + 1);
   }
   const entries = placed.map((item): VaultEntry => {
-    const only = filter.kind === "all" && item.scope.hostname !== null ? item.scope.hostname : null;
+    const only =
+      filter.kind === "everything" && item.scope.hostname !== null ? item.scope.hostname : null;
     if (item.group !== null) return { ...item, group: item.group, only };
     // An app's own value no rule knows sits under the app's name, not under a prefix.
-    if (item.scope.hostname !== null) {
+    if (item.scope.hostname !== null && filter.kind === "everything") {
       return {
         ...item,
         group: { id: `app:${item.scope.id}`, title: item.scope.hostname, order: 6 },
@@ -357,25 +370,67 @@ export function unsetTitle(unset: ReadonlyArray<VaultEntry>): string {
 }
 
 /**
- * Who gets a value, in words. Zerops hands a value of the whole environment to every app, and an
- * app's own to that app, whatever their zerops.yml names (measured 2026-10-07).
+ * Who uses a value, in words: the apps whose deploy config names it. An app's zerops.yml
+ * `run.envVariables` is the list of what it reads; Zerops still hands it the rest until strict
+ * isolation lands, but nothing should rely on that (spec-mate §5.8).
  */
-export function usedByWords(scope: VaultScope): string {
-  return scope.hostname === null ? "Every app gets it." : `Only ${scope.hostname} gets it.`;
+export function usedByWords(value: VaultValue): string {
+  if (value.readers.length === 0)
+    return "No app uses it yet: an app's deploy config has to name it.";
+  return `Used by ${joinNames(value.readers.map((reader) => reader.hostname))}.`;
+}
+
+/** A service type for people: `postgresql@17` → postgresql, `valkey:single` → valkey. */
+export function typeWord(serviceType: string | null): string | null {
+  return serviceType === null ? null : (serviceType.split(/[@:]/u)[0] ?? null);
+}
+
+// ── the deploy config ───────────────────────────────────────────────────────
+
+const DEPLOY_CONFIG = /(^|\/)zerops\.ya?ml$/u;
+const PAIR_SUFFIX = /(dev|stage|prod|production)$/u;
+
+/**
+ * The workspace file an app's deploy config lives in: its own folder's zerops.yaml (a dev app is
+ * mounted at its hostname), else its dev sibling's (a stage app deploys from it: medusastage from
+ * medusadev), else the one at the workspace root; null where none is found.
+ */
+export function deployConfigPath(hostname: string, paths: ReadonlyArray<string>): string | null {
+  const configs = paths.filter((path) => DEPLOY_CONFIG.test(path));
+  const inFolder = (folder: string) =>
+    configs.find((path) => path === `${folder}/zerops.yaml` || path === `${folder}/zerops.yml`);
+  const own = inFolder(hostname);
+  if (own !== undefined) return own;
+  const base = hostname.replace(PAIR_SUFFIX, "");
+  if (base !== "" && base !== hostname) {
+    for (const suffix of ["dev", "", "stage"]) {
+      const sibling = inFolder(`${base}${suffix}`);
+      if (sibling !== undefined) return sibling;
+    }
+  }
+  const root = configs.filter((path) => !path.includes("/"));
+  return root.length === 1 ? (root[0] ?? null) : null;
 }
 
 /**
- * The apps still running a value's previous version: every app of the environment (or the one
- * app that owns it) whose containers last started before the value last changed. An app whose
- * start is not known is left out.
+ * The line an app's `setup:` starts on in a deploy config (1-based), or null: the setup named
+ * after the app, else the one its role names — a stage app builds with `prod` (or `stage`), a
+ * dev app with `dev`.
  */
-export function staleApps(
-  view: VaultView,
-  scope: VaultScope,
-  value: VaultValue,
-): ReadonlyArray<VaultScope> {
-  const changed = Date.parse(value.changedAt ?? value.createdAt ?? "");
-  if (Number.isNaN(changed)) return [];
-  const apps = scope.kind === "shared" ? view.scopes.filter((s) => s.kind === "runtime") : [scope];
-  return apps.filter((app) => app.startedAt !== null && Date.parse(app.startedAt) < changed);
+export function setupLine(content: string, hostname: string): number | null {
+  const lines = content.split("\n");
+  const role = PAIR_SUFFIX.exec(hostname)?.[1] ?? null;
+  const names = [
+    hostname,
+    ...(role === "dev" ? ["dev", "development"] : []),
+    ...(role === "stage" ? ["prod", "production", "stage"] : []),
+    ...(role === "prod" || role === "production" ? ["prod", "production"] : []),
+  ];
+  for (const name of names) {
+    const at = lines.findIndex((line) =>
+      new RegExp(`^\\s*-?\\s*setup:\\s*["']?${name}["']?\\s*(#.*)?$`, "u").test(line),
+    );
+    if (at !== -1) return at + 1;
+  }
+  return null;
 }

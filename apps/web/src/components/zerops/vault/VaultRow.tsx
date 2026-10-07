@@ -12,9 +12,7 @@ import type {
 } from "@t3tools/client-runtime/data";
 import {
   CheckIcon,
-  ChevronDownIcon,
   CopyIcon,
-  DatabaseIcon,
   DicesIcon,
   EyeIcon,
   EyeOffIcon,
@@ -44,7 +42,6 @@ import {
   isSignInPassword,
   looksSecret,
   showOf,
-  staleApps,
   usedByWords,
   type VaultShow,
 } from "./vaultGroups.logic";
@@ -257,10 +254,7 @@ function RowBody(props: VaultRowProps) {
   const busy = props.activity.kind === "busy";
   const reference = referenceFor(scope, value.key);
   const changed = value.sensitive ? draft !== "" : draft !== (value.value ?? "");
-  const restarts = staleApps(props.view, scope, value).map((app) => ({
-    serviceId: app.id,
-    hostname: app.hostname ?? "",
-  }));
+  const restarts = value.readers.filter((reader) => reader.state === "restart");
   const { copyToClipboard, isCopied } = useCopyToClipboard();
 
   const save = () => {
@@ -347,7 +341,7 @@ function RowBody(props: VaultRowProps) {
           </p>
         ) : null}
         <p>
-          {usedByWords(scope)}
+          {usedByWords(value)}
           {restarts.length > 0 ? (
             <span className="text-warning-foreground">
               {" "}
@@ -458,126 +452,80 @@ function RowBody(props: VaultRowProps) {
   );
 }
 
-/** A service Zerops runs for the environment (a database): folded to one line, its values read only. */
-export function VaultManagedFold({
-  scope,
-  open,
-  onToggle,
-}: {
-  readonly scope: VaultScope;
-  readonly open: boolean;
-  readonly onToggle: () => void;
-}) {
-  const type = scope.serviceType?.split("@")[0] ?? null;
+/** A service Zerops runs for the environment (a database): its values, read only. */
+export function VaultManagedValues({ scope }: { readonly scope: VaultScope }) {
   return (
-    <div className="vault-row mx-2" data-open={open ? "" : undefined} data-vault-managed={scope.id}>
-      <button
-        aria-expanded={open}
-        className="flex h-9 w-full items-center gap-2 rounded-lg px-2.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
-        onClick={onToggle}
-        type="button"
-      >
-        <DatabaseIcon aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
-        <span className="truncate text-line text-foreground">{scope.hostname}</span>
-        {type === null ? null : (
-          <span className="truncate text-xs text-muted-foreground">{type}</span>
-        )}
-        <span className="grow" />
-        <span className="shrink-0 text-xs text-muted-foreground">
-          {scope.values.length} {scope.values.length === 1 ? "value" : "values"}
-        </span>
-        <ChevronDownIcon
-          aria-hidden="true"
-          className="vault-chevron size-3.5 shrink-0 text-muted-foreground"
-        />
-      </button>
-      <div className="vault-row-body" inert={!open}>
-        <div>
-          {open ? (
-            <div className="grid pb-2">
-              <p className="px-2.5 pb-1 text-xs text-muted-foreground">
-                Made by Zerops, read only. An app uses one by its name.
-              </p>
-              {scope.values.map((value) => {
-                const reference = referenceFor(scope, value.key).own;
-                return (
-                  <div
-                    className="grid h-8 grid-cols-[minmax(0,5fr)_minmax(0,6fr)] items-center gap-x-4 px-2.5"
-                    data-vault-row={value.key}
-                    key={value.id}
-                  >
-                    <span className="truncate font-mono text-xs text-foreground">{value.key}</span>
-                    <span className="flex min-w-0 items-center gap-1 text-line text-muted-foreground">
-                      <span className="min-w-0 grow truncate">
-                        {value.sensitive || looksSecret(value.key) ? (
-                          <span className="vault-dots">{DOTS}</span>
-                        ) : (
-                          value.value
-                        )}
-                      </span>
-                      <CopyReference text={reference} />
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          ) : null}
-        </div>
-      </div>
+    <div className="grid pt-1 pb-2" data-vault-managed={scope.id}>
+      <p className="px-4.5 pb-1.5 text-xs text-muted-foreground">
+        Made by Zerops, read only. An app uses one by the name beside it.
+      </p>
+      {scope.values.map((value) => {
+        const reference = referenceFor(scope, value.key).own;
+        return (
+          <div
+            className="mx-2 grid h-9 grid-cols-[minmax(0,5fr)_minmax(0,6fr)] items-center gap-x-4 px-2.5"
+            data-vault-row={value.key}
+            key={value.id}
+          >
+            <span className="truncate text-line text-foreground">{value.key}</span>
+            <span className="flex min-w-0 items-center gap-1 text-line text-muted-foreground">
+              <span className="min-w-0 grow truncate">
+                {value.sensitive || looksSecret(value.key) ? (
+                  <span className="vault-dots">{DOTS}</span>
+                ) : (
+                  value.value
+                )}
+              </span>
+              <CopyReference text={reference} />
+            </span>
+          </div>
+        );
+      })}
     </div>
   );
 }
 
-/** What a runtime service reads from its deployed zerops.yml: each key and where it comes from. */
+/**
+ * What a runtime app reads from its deploy config: each key and where it comes from, under a
+ * heading that links the config itself when the workspace holds it.
+ */
 export function VaultReads({
   view,
   scope,
+  config,
   onGoto,
 }: {
   readonly view: VaultView;
   readonly scope: VaultScope;
+  /** A link to the app's zerops.yaml, where one is found. */
+  readonly config?: ReactNode;
   readonly onGoto: (scopeId: string, key: string) => void;
 }) {
   const host = scopeName(scope);
   return (
-    <div data-vault-reads={host}>
-      <div className="vault-section h-[30px] px-4 pt-1.5 font-medium text-2xs text-muted-foreground">
-        <span>What {host} reads</span>
-      </div>
+    <section className="vault-group" data-vault-reads={host}>
+      <h3 className="flex flex-wrap items-center gap-x-1.5 px-4.5 pb-0.5 font-medium text-xs text-muted-foreground">
+        <span>What {host} reads from the deploy config</span>
+        {config}
+      </h3>
       {scope.reads.length === 0 ? (
-        <p className="mx-4 mt-1 text-xs text-muted-foreground">Nothing deployed yet.</p>
+        <p className="mx-4.5 mt-1 text-xs text-muted-foreground">Nothing deployed yet.</p>
       ) : (
         <div className="grid px-2 pt-0.5">
           {scope.reads.map((read) => {
             const source = readSource(view, scope, read);
             const target = source.kind === "source" ? source.target : null;
-            const restart = view.scopes.some((candidate) =>
-              candidate.values.some(
-                (value) =>
-                  target !== null &&
-                  candidate.id === target.scopeId &&
-                  value.key === target.key &&
-                  value.readers.some(
-                    (reader) => reader.serviceId === scope.id && reader.state === "restart",
-                  ),
-              ),
-            );
             const content = (
               <>
-                <span className="flex min-w-0 items-center gap-1.5 font-mono text-xs leading-5 text-foreground">
-                  <span className="truncate">{read.key}</span>
-                  {restart ? (
-                    <Tip tip={`${host} runs the previous value`}>
-                      <span className="size-1.5 rounded-full bg-warning" />
-                    </Tip>
-                  ) : null}
+                <span className="min-w-0 truncate font-mono text-xs leading-5 text-foreground">
+                  {read.key}
                 </span>
                 <ReadSourceLabel host={host} source={source} />
               </>
             );
             return target === null ? (
               <div
-                className="grid h-[30px] grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 px-2"
+                className="grid h-8 grid-cols-[minmax(0,5fr)_minmax(0,6fr)] items-center gap-x-4 px-2.5"
                 data-vault-read={read.key}
                 key={read.key}
               >
@@ -585,7 +533,7 @@ export function VaultReads({
               </div>
             ) : (
               <button
-                className="grid h-[30px] w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 vault-read-link rounded-md px-2 text-left"
+                className="grid h-8 w-full grid-cols-[minmax(0,5fr)_minmax(0,6fr)] items-center gap-x-4 vault-read-link rounded-lg px-2.5 text-left"
                 data-vault-read={read.key}
                 key={read.key}
                 onClick={() => onGoto(target.scopeId, target.key)}
@@ -597,8 +545,7 @@ export function VaultReads({
           })}
         </div>
       )}
-      <p className="mx-4 mt-2 text-xs text-muted-foreground">From the deployed zerops.yml</p>
-    </div>
+    </section>
   );
 }
 
@@ -611,7 +558,7 @@ function ReadSourceLabel({
 }) {
   if (source.kind === "literal") {
     return (
-      <span className="max-w-40 truncate font-mono text-xs text-muted-foreground">
+      <span className="min-w-0 truncate font-mono text-xs text-muted-foreground">
         {source.text}
       </span>
     );
@@ -632,5 +579,13 @@ function ReadSourceLabel({
       </Tip>
     );
   }
-  return <span className="font-medium text-2xs text-muted-foreground">← {source.text}</span>;
+  if (source.target !== null) {
+    return (
+      <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+        <span className="truncate font-mono text-foreground/80">{source.target.key}</span>
+        <span className="shrink-0">· {source.text}</span>
+      </span>
+    );
+  }
+  return <span className="truncate text-xs text-muted-foreground">from {source.text}</span>;
 }

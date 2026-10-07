@@ -282,7 +282,13 @@ export function readSource(view: VaultView, scope: VaultScope, read: VaultRead):
     case "value": {
       const target = scopeOfRef(view, first.scope);
       const text =
-        target === undefined ? first.name : target.id === scope.id ? "own" : scopeName(target);
+        target === undefined
+          ? first.name
+          : target.id === scope.id
+            ? "its own"
+            : target.kind === "shared"
+              ? "vault"
+              : scopeName(target);
       return {
         kind: "source",
         text,
@@ -292,7 +298,7 @@ export function readSource(view: VaultView, scope: VaultScope, read: VaultRead):
     case "entry":
       return { kind: "source", text: first.key, target: null };
     case "platform":
-      return { kind: "source", text: "platform", target: null };
+      return { kind: "source", text: "Zerops", target: null };
     case "self":
       return { kind: "bad", text: "self", name: first.name };
     case "missing":

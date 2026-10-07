@@ -20,7 +20,15 @@ import {
 } from "@t3tools/client-runtime/data";
 import { useAtomValue } from "@effect/atom-react";
 import { Atom } from "effect/unstable/reactivity";
+import { FileCodeIcon } from "lucide-react";
 import { useCallback, useMemo } from "react";
+
+import { useActiveProjectTarget, type ActiveProjectTarget } from "~/hooks/useActiveProjectTarget";
+import { useRightPanelStore } from "~/rightPanelStore";
+
+import { useProjectFilePickerQuery, useProjectFileQuery } from "../../files/projectFilesQueryState";
+import { InlineButton } from "../../ui/button";
+import { deployConfigPath, setupLine } from "./vaultGroups.logic";
 import { useAccountOperations } from "~/zerops/accountOperations";
 import { useDetailDemand } from "~/zerops/ZeropsAccountData";
 import { useKnownMate } from "~/zerops/useZeropsMates";
@@ -123,12 +131,14 @@ export function ProjectVaultPanel({
   who,
   actor,
   onWritten,
+  renderDeployConfig,
 }: {
   /** `undefined` until known: a write that guessed the project would land on somebody else's. */
   readonly project: VaultProject | undefined;
   readonly who: VaultPanelBodyProps["who"];
   readonly actor: VaultPanelBodyProps["actor"];
   readonly onWritten?: (change: VaultChange) => void;
+  readonly renderDeployConfig?: VaultPanelBodyProps["renderDeployConfig"];
 }) {
   const projectId = project?.projectId ?? null;
   useDetailDemand("projectVariables", undefined, projectId);
@@ -166,6 +176,7 @@ export function ProjectVaultPanel({
       restarting={NO_RESTARTS}
       view={shown}
       who={who}
+      {...(renderDeployConfig === undefined ? {} : { renderDeployConfig })}
     />
   );
 }
@@ -188,12 +199,54 @@ export function VaultPanelContainer({ environmentId }: { readonly environmentId:
     },
     [projectId],
   );
+  const workspace = useActiveProjectTarget();
+  const renderDeployConfig = useCallback(
+    (hostname: string) =>
+      workspace === null || workspace.environmentId !== environmentId ? null : (
+        <DeployConfigLink hostname={hostname} workspace={workspace} />
+      ),
+    [environmentId, workspace],
+  );
   return (
     <ProjectVaultPanel
       actor={mate === undefined ? "environment" : "mate"}
       project={project}
+      renderDeployConfig={renderDeployConfig}
       who={who}
       {...(mate === undefined ? {} : { onWritten })}
     />
+  );
+}
+
+/**
+ * An app's deploy config in the Mate's workspace, as a link that opens it in the file browser at
+ * the app's `setup:`; nothing while it is looked for or where none is found.
+ */
+function DeployConfigLink({
+  hostname,
+  workspace,
+}: {
+  readonly hostname: string;
+  readonly workspace: ActiveProjectTarget;
+}) {
+  const search = useProjectFilePickerQuery(workspace.environmentId, workspace.cwd, "zerops.y", 50);
+  const path = deployConfigPath(
+    hostname,
+    search.entries.map((entry) => entry.path),
+  );
+  const file = useProjectFileQuery(workspace.environmentId, workspace.cwd, path, path !== null);
+  if (path === null) return null;
+  const line = file.data === null ? null : setupLine(file.data.contents, hostname);
+  return (
+    <span className="inline-flex items-center gap-1">
+      <FileCodeIcon aria-hidden="true" className="size-3" />
+      <InlineButton
+        onClick={() =>
+          useRightPanelStore.getState().openFile(workspace.threadRef, path, line ?? undefined)
+        }
+      >
+        {path}
+      </InlineButton>
+    </span>
   );
 }
