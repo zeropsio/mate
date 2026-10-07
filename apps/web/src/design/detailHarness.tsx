@@ -1,3 +1,4 @@
+import type { ReleaseOffer } from "~/components/zerops/ZeropsReleaseVerb";
 /**
  * Every page that stands in place of the thread, in the states it reaches.
  *
@@ -53,11 +54,7 @@ import {
 } from "@t3tools/client-runtime/zerops/data";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 
-import {
-  ZeropsGroupPane,
-  ZeropsStopPane,
-  type ReleaseOffer,
-} from "~/components/zerops/ZeropsGroupDetail";
+import { ZeropsGroupPane, ZeropsStopPane } from "~/components/zerops/ZeropsGroupDetail";
 import type { CompareCommit } from "@t3tools/shared/hqChanges";
 import type { ZeropsHistoryState } from "~/zerops/useRepositoryHistory";
 

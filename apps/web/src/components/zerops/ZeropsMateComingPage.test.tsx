@@ -244,7 +244,7 @@ vi.mock("../chat/ConversationStrip", () => ({
     readonly mate: { readonly tooltip: string | null; readonly face: string };
   }) => h("span", { "data-header-face": mate.face }, mate.tooltip),
 }));
-vi.mock("../chat/ChatHeader", () => ({ ZeropsProjectLink: () => null }));
+vi.mock("./ZeropsProjectLink", () => ({ ZeropsProjectLink: () => null }));
 vi.mock("../chat/PanelLayoutControls", () => ({ PanelLayoutControls: () => null }));
 vi.mock("../ui/sidebar", () => ({
   SidebarInset: ({ children }: { readonly children?: ReactNode }) => h("main", null, children),
@@ -266,7 +266,9 @@ vi.mock("../ui/button", () => ({
     readonly disabled?: boolean;
   }) => h("button", { onClick, inert, disabled }, children),
 }));
-vi.mock("./ZeropsProjectsPage", () => ({ removeFailedZeropsProject: async () => ({ ok: true }) }));
+vi.mock("./removeFailedZeropsProject", () => ({
+  removeFailedZeropsProject: async () => ({ ok: true }),
+}));
 
 let tree: ReactTestRenderer | undefined;
 
