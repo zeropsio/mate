@@ -21,6 +21,7 @@ const ALL_AVAILABLE = {
   git: "available",
   crew: "available",
   mcp: "available",
+  vault: "available",
 } as const;
 
 let host: HTMLDivElement;

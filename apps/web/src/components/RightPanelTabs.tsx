@@ -14,6 +14,7 @@ import {
   TerminalSquare,
   Plug,
   Users,
+  Vault,
 } from "lucide-react";
 import {
   type KeyboardEvent as ReactKeyboardEvent,
@@ -84,6 +85,7 @@ const SURFACE_DISABLED_REASONS = {
   git: "Git is only available from a Zerops project thread.",
   crew: "The crew is only available from a Zerops project thread with crew mode on.",
   mcp: "MCP servers are only available from a conversation.",
+  vault: "The vault is only available from a Zerops project thread.",
 } as const satisfies Record<Exclude<RightPanelKind, "file">, string>;
 
 /** Overlays that must win over the launcher's letter shortcuts. */
@@ -193,6 +195,8 @@ function surfaceLauncherIcon(kind: Exclude<RightPanelKind, "file">): LucideIcon 
       return Users;
     case "mcp":
       return Plug;
+    case "vault":
+      return Vault;
   }
 }
 
@@ -405,6 +409,8 @@ function surfaceTitle(
       return "Crew";
     case "mcp":
       return "MCP";
+    case "vault":
+      return "Vault";
     case "change":
       return `${surface.repository} #${String(surface.number)}`;
   }
@@ -441,6 +447,8 @@ function SurfaceIcon({ surface, theme }: { surface: RightPanelSurface; theme: "l
       return <Users className="size-3 shrink-0" />;
     case "mcp":
       return <Plug className="size-3 shrink-0" />;
+    case "vault":
+      return <Vault className="size-3 shrink-0" />;
     case "change":
       return <GitPullRequestArrow className="size-3 shrink-0" />;
   }
