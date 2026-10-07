@@ -756,6 +756,30 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
     }
   });
 
+  // A live session ending is otherwise invisible in the client trace, so record
+  // why, and how long it lasted, as its own root span.
+  const recordConnectionLost = Effect.fnUntraced(function* (
+    outcome: AttemptOutcome,
+    connectedAt: number,
+  ) {
+    if (outcome._tag !== "Failure") return outcome;
+    const connectedForMs = (yield* Clock.currentTimeMillis) - connectedAt;
+    yield* Effect.void.pipe(
+      Effect.withSpan("EnvironmentSupervisor.connectionLost", {
+        root: true,
+        attributes: {
+          "environment.id": target.environmentId,
+          "environment.label": target.label,
+          "environment.target.kind": target._tag,
+          "connection.connected_ms": connectedForMs,
+          "connection.failure.reason": outcome.failure.error.reason,
+          "connection.failure.detail": outcome.failure.error.detail,
+        },
+      }),
+    );
+    return outcome;
+  });
+
   const runAttempt = Effect.fnUntraced(function* (
     attempt: number,
     previousGeneration: number,
@@ -883,10 +907,16 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
             resetRetry: connectedEvent.exit.value,
           } satisfies AttemptOutcome;
         }
-        return failureFromExit(target, connectedEvent.exit, true, activeGeneration, stable);
+        return yield* recordConnectionLost(
+          failureFromExit(target, connectedEvent.exit, true, activeGeneration, stable),
+          connectedAt,
+        );
       }
       if (Exit.isFailure(connectedEvent.exit)) {
-        return failureFromExit(target, connectedEvent.exit, true, activeGeneration, stable);
+        return yield* recordConnectionLost(
+          failureFromExit(target, connectedEvent.exit, true, activeGeneration, stable),
+          connectedAt,
+        );
       }
       if (Option.isNone(connectedEvent.exit.value)) {
         return {
