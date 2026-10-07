@@ -202,6 +202,7 @@ export function creationOf(held: CreationAsk, read: CreationRead): NewProjectBir
 export interface NewProjectCreation {
   readonly name: string;
   readonly location?: string;
+  readonly appId: string;
   /** The birth intent HQ holds of its Mate. */
   readonly birth: string;
 }
@@ -232,14 +233,14 @@ export interface NewProjectPorts {
     birth: { readonly appId: string; readonly face: string },
   ) => Promise<{ readonly birthId: string }>;
   /**
-   * Creates the first Mate's project, alone: taken the moment the platform takes it. Its press
-   * attaches it to its application, then imports its container (F6b).
+   * Creates the first Mate's project, alone, and waits for its creation process to finish. Its
+   * accepted receipt already places it in the UI; setup then attaches it and imports its container.
    */
   readonly createProject: (
     requestId: string,
     creation: NewProjectCreation,
   ) => Promise<{ readonly projectId: string }>;
-  /** The platform took the first Mate's project: its press attaches it, then imports its container. */
+  /** The project finished creating: its press attaches it, then imports its container. */
   readonly accepted: (projectId: string, registration: NewProjectRegistration) => void;
 }
 
@@ -461,6 +462,7 @@ export async function runNewProjectBirth(
       (
         await ports.createProject(requestId, {
           name: appProjectName(ask.name, ask.botName),
+          appId,
           ...(ask.locationId === null ? {} : { location: ask.locationId }),
           birth: intent,
         })

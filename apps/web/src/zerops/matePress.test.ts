@@ -1964,9 +1964,9 @@ describe("mateFinishRegistration — what Finish setup and Set up Mate register"
 
   it.each([
     {
-      name: "HQ holds it in its application: there, under HQ's face",
+      name: "HQ holds it in its application: preserve its record and finish only remaining setup",
       input: { ...BASE, project: held("app-d") },
-      expected: { kind: "mate", groupId: "app-d", mate: { face: FACE } },
+      expected: null,
     },
     {
       name: "HQ holds it in its application, for someone who does not write the registry: nothing",

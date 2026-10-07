@@ -33,7 +33,6 @@ import {
   type ZeropsPlacedBirth,
   mateContainerOf,
   readMateFace,
-  readZeropsMembership,
   severalMatesLine,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
@@ -360,9 +359,7 @@ export function placedMateRegistration(
  * Mate where HQ holds one or may yet (F6b, F6c, 2026-10-03):
  *
  * - HQ's structure not read: nothing — a project it places nowhere has no record only once it is;
- * - HQ holds it in its application: there again, under HQ's face, by a registry writer — an
- *   attach that finds it there writes nothing; nothing for anyone else;
- * - HQ holds it in no application: nothing, its record standing;
+ * - HQ holds it already, in an application or none: nothing, its record standing;
  * - HQ holds no record of it: into the application its project's birth intent names, under its
  *   face, the attach closing the intent — in any browser; else into the application the press
  *   this tab still holds placed it in, under its face; else, for whoever HQ's rule lets write one,
@@ -387,22 +384,7 @@ export function mateFinishRegistration(input: {
   readonly candidates: ReadonlyArray<ZeropsCandidate>;
 }): PressRegistration | null {
   if (!input.hqKnown) return null;
-  if (heldOf(input.project) !== "none") {
-    const { groupId, face } = readZeropsMembership(input.project);
-    if (groupId === undefined || !input.writer) return null;
-    return {
-      hq: input.hq,
-      groupId,
-      kind: "mate",
-      mate: {
-        face:
-          face?.tint === undefined || face.shape === undefined
-            ? undefined
-            : { tint: face.tint, shape: face.shape },
-      },
-      standUp: false,
-    };
-  }
+  if (heldOf(input.project) !== "none") return null;
   const app = input.structure?.apps.find((entry) =>
     entry.births?.some((birth) => birth.projectId === input.project.id),
   );

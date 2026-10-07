@@ -4,7 +4,7 @@ import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.t
 import { createScenario } from "../../harness/scenario.ts";
 import { installCreation } from "./fake.ts";
 import { creation } from "./dsl.ts";
-import { productionRecipe } from "./recipe.ts";
+import { environmentRecipe } from "./recipe.ts";
 
 describe("F: creation through the hosted client", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
@@ -66,27 +66,88 @@ describe("F: creation through the hosted client", () => {
       );
     }
 
-    // Catches the default agent-off production path refusing a valid recipe or silently installing an agent.
-    it.effect("add production from its recipe with the agent off by default", () =>
+    for (const role of ["stage", "production"] as const) {
+      // Catches a valid deployment recipe being refused or silently installing an agent by default.
+      it.effect(`add ${role} from its recipe with the agent off by default`, () =>
+        Effect.gen(function* () {
+          const s = yield* createScenario([installCreation]);
+          yield* environmentRecipe(s, role);
+          yield* s.given.signedIn;
+          const c = creation(s);
+          yield* c.openAdd(role);
+          yield* c.fill("Environment", "Shop-b");
+          yield* c.agentIsOff;
+          yield* c.text(`The project's ${role} recipe`);
+          yield* c.click(`Add ${role} to Shop`);
+          yield* c.environmentAppears("Shop-b", role === "production" ? "prod" : "stage");
+          yield* c.text("Shop-b is set up");
+          yield* c.acceptedOnce("Shop-b");
+          yield* c.noAgentImported;
+          yield* s.then.noExternalNetwork;
+        }),
+      );
+    }
+
+    // Catches an accepted birth losing its exact project when the tab closes before attach/key.
+    it.effect("closing the tab before setup retains the birth's accepted project", () =>
       Effect.gen(function* () {
         const s = yield* createScenario([installCreation]);
-        yield* productionRecipe(s);
+        yield* s.given.project("Ada", { mate: true, app: "Shop" });
         yield* s.given.signedIn;
         const c = creation(s);
-        yield* c.openAdd("production");
-        yield* c.fill("Environment", "Shop-b");
-        yield* c.agentIsOff;
-        yield* c.text("The project's production recipe");
-        yield* c.click("Add production to Shop");
-        yield* c.environmentAppears("Shop-b", "prod");
-        yield* c.text("Shop-b is set up");
-        yield* c.acceptedOnce("Shop-b");
-        expect(
-          s.drivers.zerops.requests.get(
-            "PUT /project/created-1/first-class-recipe/development-container",
-          ) ?? 0,
-          "Agent-off creation must not install an agent container",
-        ).toBe(0);
+        c.holdProjectCreation();
+        yield* c.newProject;
+        const bound = c.projectBound();
+        yield* c.submitProject;
+        yield* bound;
+        yield* c.noSetupYet;
+        yield* c.reload;
+        yield* c.completeProjectCreation;
+        yield* c.finishSetup;
+        yield* s.then.conversation.appears;
+        yield* c.originalSetupOnly;
+        yield* s.then.menu.row("Ada").appears();
+        yield* s.then.noExternalNetwork;
+      }),
+    );
+
+    // Catches Finish setup recreating an accepted container/key after the creation view is lost.
+    it.effect("reload after an imported container finishes the original Mate's setup", () =>
+      Effect.gen(function* () {
+        const s = yield* createScenario([installCreation]);
+        yield* s.given.project("Ada", { mate: true, app: "Shop" });
+        yield* s.given.signedIn;
+        const c = creation(s);
+        c.stopAfterContainer();
+        yield* c.newProject;
+        yield* c.submitProject;
+        yield* c.text("isolation could not be read");
+        yield* c.settled;
+        c.allowSetup();
+        yield* c.reload;
+        yield* c.finishSetup;
+        yield* s.then.conversation.appears;
+        yield* c.originalSetupOnly;
+        yield* s.then.menu.row("Ada").appears();
+        yield* s.then.noExternalNetwork;
+      }),
+    );
+
+    // Catches cleanup targeting a sibling or forgetting a failed birth before its deletion is proved.
+    it.effect("Remove cleans up only the failed creation's project", () =>
+      Effect.gen(function* () {
+        const s = yield* createScenario([installCreation]);
+        yield* s.given.project("Ada", { mate: true, app: "Shop" });
+        yield* s.given.signedIn;
+        const c = creation(s);
+        c.failProject();
+        yield* c.newProject;
+        yield* c.submitProject;
+        yield* c.text("Project capacity exhausted");
+        yield* c.click("Remove");
+        yield* s.then.menu.row("Ada").appears();
+        yield* c.settled;
+        yield* c.failedProjectRemoved;
         yield* s.then.noExternalNetwork;
       }),
     );

@@ -196,9 +196,10 @@ export async function runEnvironmentCreation(
   const run = input.platform.run;
   const orgId = input.clientId;
   /** The project's acceptance told on, while the create waits for its end. */
-  let accepting: Promise<void> = Promise.resolve();
+  let accepting: Promise<{ readonly error: unknown } | null> = Promise.resolve(null);
   const accept = async (id: string) => {
     projectId = id;
+    assertCurrent();
     await input.onProjectAccepted?.(id);
   };
   report();
@@ -232,10 +233,16 @@ export async function runEnvironmentCreation(
               orgId,
               unobserved: UNCONFIRMED_PROJECT,
               accepted: ({ projectId: id }) => {
-                accepting = accept(id);
+                accepting = accept(id).then(
+                  () => null,
+                  (error: unknown) => ({ error }),
+                );
               },
             },
-          ).finally(() => accepting);
+          ).finally(async () => {
+            const stopped = await accepting;
+            if (stopped !== null) throw stopped.error;
+          });
           break;
         }
         case "import-project": {
@@ -263,6 +270,7 @@ export async function runEnvironmentCreation(
           );
           serviceName = imported.serviceName;
           if (imported.imported) containerImported = true;
+          assertCurrent();
           await input.onContainerImported?.(imported);
           break;
         }
@@ -276,6 +284,7 @@ export async function runEnvironmentCreation(
               { kind: "harden-project", orgId, projectId: target, confirm: true },
               { orgId, unobserved: UNCONFIRMED_WRITE },
             );
+          assertCurrent();
           await input.platform.markClosedOff(target);
           break;
         }

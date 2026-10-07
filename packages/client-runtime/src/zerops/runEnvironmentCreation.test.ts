@@ -219,6 +219,64 @@ describe("runEnvironmentCreation", () => {
     expect(outcome).toMatchObject({ ok: false, error: "This account session has ended." });
   });
 
+  it.each(["create-project", "import-project", "import-container", "close-off"] as const)(
+    "keeps the original handles but sends no setup continuation after logout during %s",
+    async (kind) => {
+      let current = true;
+      const continuations: string[] = [];
+      const { platform } = fakePlatform({
+        createProject: async () => {
+          current = false;
+          return { id: "proj-1" };
+        },
+        importProject: async () => {
+          current = false;
+          return { projectId: "proj-1" };
+        },
+        importDevelopmentContainer: async () => {
+          current = false;
+          return { serviceName: "zcp", imported: true, processId: "original-import" };
+        },
+        harden: async () => {
+          current = false;
+        },
+        markClosedOff: async () => {
+          continuations.push("mark-closed-off");
+        },
+      });
+      const steps: ReadonlyArray<EnvironmentCreationStep> =
+        kind === "create-project"
+          ? [{ kind, name: "Shop - Nova", tagList: [], location: undefined }]
+          : kind === "import-project"
+            ? [{ kind, name: "Shop - Nova", yaml: MANAGED_YAML, tagList: [] }]
+            : kind === "import-container"
+              ? [{ kind, agents: [] }]
+              : [{ kind }];
+      const outcome = await runEnvironmentCreation({
+        clientId: "client-1",
+        steps,
+        platform,
+        isCurrent: () => current,
+        ...(kind === "import-container" || kind === "close-off"
+          ? { resume: { from: 0, projectId: "proj-1", projectName: "Shop - Nova" } }
+          : {}),
+        onProjectAccepted: async () => {
+          continuations.push("bind-birth");
+        },
+        onContainerImported: async () => {
+          continuations.push("hold-import");
+        },
+      });
+      expect(outcome).toMatchObject({
+        ok: false,
+        projectId: "proj-1",
+        error: "This account session has ended.",
+      });
+      if (kind === "import-container") expect(outcome).toMatchObject({ serviceName: "zcp" });
+      expect(continuations).toEqual([]);
+    },
+  );
+
   it("runs the platform calls in the plan's order, feeding each the project it made", async () => {
     const { platform, calls } = fakePlatform();
     const { outcome } = await run(plan("dev"), platform);

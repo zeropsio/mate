@@ -17,6 +17,7 @@ const UPDATE = {
   projectId: "hq-project",
   serviceId: "hq-svc",
   running: "20261003T080500Z.ba9876543210",
+  carried: "20261004T100000Z.0123456789ab",
 } as const;
 const CORE = {
   build: "20261004T100000Z.0123456789ab",
@@ -30,7 +31,12 @@ function account() {
   return store;
 }
 
-const deployRow = (store: AccountStore, status: string, version: number) =>
+const deployRow = (
+  store: AccountStore,
+  status: string,
+  version: number,
+  name: string | null = `hq-core.${CORE.build}`,
+) =>
   store.dispatch({
     kind: "rows",
     scope: runningScope(ORG),
@@ -47,6 +53,7 @@ const deployRow = (store: AccountStore, status: string, version: number) =>
           serviceStackIds: ["hq-svc"],
           status,
           actionName: "stack.build",
+          ...(name === null ? {} : { appVersion: { id: "v1", name } }),
         }),
         revision: zeropsVersion(version),
       },
@@ -176,6 +183,46 @@ describe("hq-update", () => {
       });
       deployRow(store, "FINISHED", 2);
       expect(progress(store)).toMatchObject({ stage: "done", outcome: "succeeded" });
+    }),
+  );
+
+  it.effect("a lost answer never adopts an unnamed build or a different Core", () =>
+    Effect.gen(function* () {
+      for (const name of [null, `hq-core.${UPDATE.running}`, "unrelated-build"]) {
+        const store = account();
+        const { operations, calls } = operationsOf(store, {
+          step: "deploy v1 hq zerops: []",
+          error: new ZeropsApiError("No answer.", "uncertain"),
+          before: () => {
+            store.dispatch({
+              kind: "membership",
+              scope: runningScope(ORG),
+              generation: 1,
+              delta: { add: ["proc-build"], remove: [] },
+            });
+            deployRow(store, "RUNNING", 1, name);
+          },
+        });
+        yield* operations.submit(UPDATE);
+        expect(progress(store)).toEqual({ stage: "uncertain", next: "ask-owner-again" });
+        yield* operations.retry("r1");
+        expect(calls).toHaveLength(3);
+        expect(progress(store)).toEqual({ stage: "uncertain", next: "ask-owner-again" });
+      }
+    }),
+  );
+
+  it.effect("refuses a changed Core before making an app version", () =>
+    Effect.gen(function* () {
+      const store = account();
+      const { operations, calls } = operationsOf(store);
+      yield* operations.submit({ ...UPDATE, carried: UPDATE.running });
+      expect(progress(store)).toEqual({
+        stage: "refused",
+        reason:
+          "This app's Core changed since the update was reviewed. Reopen Update HQ to review it.",
+      });
+      expect(calls).toEqual([]);
     }),
   );
 });

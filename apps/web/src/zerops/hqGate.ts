@@ -1,7 +1,7 @@
 /**
  * The organization's HQ in front of the product (ADR 0001): Mate works only in an organization
  * that has one, so the product opens only over its official HQ. An owner or an admin opening an
- * organization without one bears it there and then (`hqBirth.ts`); anybody else is told whom to
+ * organization without one can choose to set it up (`hqBirth.ts`); anybody else is told whom to
  * ask, and offered nothing more. Settings stand outside it, as does an account still to choose its
  * organization.
  *
@@ -20,7 +20,7 @@ export type HqGate =
   | { readonly kind: "open" }
   /** The member list has not said yet; `failed` once reading it failed. */
   | { readonly kind: "reading"; readonly failed: boolean }
-  /** An owner or an admin, in an organization without HQ: it is born now. */
+  /** An owner or an admin, in an organization without HQ: setup is offered. */
   | { readonly kind: "birth" }
   | { readonly kind: "ask"; readonly line: string }
   | { readonly kind: "unclear"; readonly line: string };

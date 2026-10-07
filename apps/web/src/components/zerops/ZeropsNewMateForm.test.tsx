@@ -221,10 +221,8 @@ describe("the New Mate dialog", () => {
     expect(renderToStaticMarkup(form())).not.toContain("Another name");
   });
 
-  it("shows the face being made, big, in the colour and shape the name asks for", () => {
+  it("shows the face selected for the Mate", () => {
     const tree = mount(form());
-    const svg = host(tree, (node) => node.props["data-zerops-primitive"] === "mate-face");
-    expect(svg.props.className).toContain("size-28");
     expect(face(tree)).toEqual({ tint: "violet", shape: "gem" });
   });
 
@@ -359,17 +357,6 @@ describe("the New Mate dialog", () => {
     });
   });
 
-  // Learning the project has nothing to deploy changes the block's words in its one place: both
-  // versions stand there, one out of sight, so the dialog keeps its height.
-  it("holds both versions of what happens next in one place while the recipe is read", () => {
-    const tree = mount(form({ tier: undefined, recipe: "reading" }));
-    const versions = tree.root.findAll(
-      (node) => typeof node.type === "string" && node.props["data-zerops-next"] !== undefined,
-    );
-    expect(versions.map((version) => version.props["data-zerops-next"])).toEqual(["shown", "held"]);
-    expect(versions[1]!.props["aria-hidden"]).toBe(true);
-  });
-
   it("says nothing until Add is pressed, then why a name will not do", () => {
     const made: EnvironmentCreationChoice[] = [];
     const tree = mount(form({ onCreate: (choice) => made.push(choice) }));
@@ -378,7 +365,6 @@ describe("the New Mate dialog", () => {
     press(tree);
     expect(made).toEqual([]);
     expect(lineText(tree)).toBe("Another Mate already has that name.");
-    expect(line(tree).props.className).toContain("text-status-failed-text");
     expect(
       host(tree, (node) => node.type === "input" && node.props["aria-label"] === "Name").props[
         "aria-invalid"

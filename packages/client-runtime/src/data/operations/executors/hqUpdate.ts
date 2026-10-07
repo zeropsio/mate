@@ -32,6 +32,11 @@ export function hqUpdateExecutor(platform: {
 }) {
   const deploy = async (intent: IntentOf<"hq-update">) => {
     const core = await platform.core();
+    if (intent.carried !== undefined && intent.carried !== core.build)
+      throw new ZeropsApiError(
+        "This app's Core changed since the update was reviewed. Reopen Update HQ to review it.",
+        "invalid-input",
+      );
     const { id } = await platform.createAppVersion(intent.serviceId, hqCoreVersionName(core.build));
     await platform.uploadAppVersionArchive(id, core.archive);
     return platform.buildAndDeployAppVersion(id, { zeropsYaml: core.zeropsYaml, setup: HQ_SETUP });
