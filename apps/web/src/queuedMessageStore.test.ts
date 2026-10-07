@@ -97,7 +97,7 @@ describe("queuedMessageStore", () => {
     expect(drain("thread-a").map((message) => message.prompt)).toEqual(["first", "second"]);
     expect(useQueuedMessageStore.getState().drainGeneration).toBe(1);
     expect(drain("thread-a")).toEqual([]);
-    expect(useQueuedMessageStore.getState().drainGeneration).toBe(1);
+    expect(useQueuedMessageStore.getState().drainGeneration).toBe(2);
     expect(useQueuedMessageStore.getState().queuesByThreadKey["thread-b"]).toHaveLength(1);
   });
 });

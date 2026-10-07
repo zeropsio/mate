@@ -202,6 +202,7 @@ import { crewRunsOn } from "./zerops/crew/CrewEditors.logic";
 import { crewChatNotices } from "./zerops/crew/crewChatNotices";
 import { crewChatEntries } from "./zerops/crew/crewChatSeams";
 import { crewComposerMentions, crewMessageCommand } from "./zerops/crew/crewComposerSend";
+import { queuedSendAwaitsServer } from "./chat/queuedMessageSender.logic";
 import {
   crewMessagePlaceholder,
   crewRunsOnWord,
@@ -608,6 +609,17 @@ type EnvironmentUnavailableState = {
   readonly connection: EnvironmentConnectionPresentation;
 };
 
+/** The effort written into a prompt's text, for the agents that read it there; null where none is. */
+function outgoingPromptEffort(params: {
+  provider: ProviderDriverKind;
+  model: string | null;
+  models: ReadonlyArray<ServerProvider["models"][number]>;
+  effort: string | null;
+}): string | null {
+  const caps = getProviderModelCapabilities(params.models, params.model, params.provider);
+  return resolvePromptInjectedEffort(caps, params.effort) ?? null;
+}
+
 function formatOutgoingPrompt(params: {
   provider: ProviderDriverKind;
   model: string | null;
@@ -615,9 +627,7 @@ function formatOutgoingPrompt(params: {
   effort: string | null;
   text: string;
 }): string {
-  const caps = getProviderModelCapabilities(params.models, params.model, params.provider);
-  const promptEffort = resolvePromptInjectedEffort(caps, params.effort);
-  return applyClaudePromptEffortPrefix(params.text, promptEffort);
+  return applyClaudePromptEffortPrefix(params.text, outgoingPromptEffort(params));
 }
 const SCRIPT_TERMINAL_COLS = 120;
 const SCRIPT_TERMINAL_ROWS = 30;
@@ -6603,6 +6613,18 @@ export default function ChatView(props: ChatViewProps) {
         terminalContexts: [...composerTerminalContexts],
         reviewComments: [...composerReviewComments],
         submissionIntent,
+        // What it leaves with if its conversation is not on screen by then.
+        sendSettings: {
+          modelSelection: ctxSelectedModelSelection,
+          runtimeMode,
+          interactionMode: sendInteractionMode,
+          promptEffort: outgoingPromptEffort({
+            provider: ctxSelectedProvider,
+            model: ctxSelectedModel,
+            models: ctxSelectedProviderModels,
+            effort: ctxSelectedPromptEffort,
+          }),
+        },
         queuedAfterToolActivityId: latestCompletedToolActivityId(threadActivities),
         createdAt: new Date().toISOString(),
       });
@@ -7275,11 +7297,28 @@ export default function ChatView(props: ChatViewProps) {
   // user resolves them.
   const queueBlockedByPendingRequest =
     activePendingApproval !== null || pendingUserInputs.length > 0;
+  // The open conversation sends its own queue; the root sender sends the others'
+  // (`QueuedMessageSender`). One it sent before this opened is waited for here too.
+  useEffect(
+    () =>
+      activeThreadKey ? useQueuedMessageStore.getState().holdOpen(activeThreadKey) : undefined,
+    [activeThreadKey],
+  );
+  const backgroundQueuedSend = useQueuedMessageStore((state) =>
+    activeThreadKey ? state.backgroundSendByThreadKey[activeThreadKey] : undefined,
+  );
+  const backgroundQueuedSendAwaitsServer = queuedSendAwaitsServer({
+    send: backgroundQueuedSend,
+    thread: activeThread ?? null,
+    phase,
+    pendingRequest: queueBlockedByPendingRequest,
+  });
   // onSend bails early on transient gates (environment offline, checkpoint
   // rewinding, messages loading, no provider yet, zerops D6 block) and
   // leaves the message queued. Re-run when any of them clear so a due
   // message does not wait for an unrelated phase change.
   const queueSendGate =
+    backgroundQueuedSendAwaitsServer ||
     activeEnvironmentUnavailable ||
     isRevertingCheckpoint ||
     threadDetailLoading ||
