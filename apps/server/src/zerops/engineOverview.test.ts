@@ -243,6 +243,37 @@ describe("HQ's overview of a Mate on the engine", () => {
   });
 });
 
+describe("HQ's overview of a Mate held by a usage limit", () => {
+  it("shows the pause, never working, while a message waits for the reset, and counts what it holds", () => {
+    const shell = engineShellOf(
+      view({
+        lastEnded: ended(1, { kind: "usage-limit", resetsAt: T("2026-10-07T15:00:00.000Z") }),
+        queued: [run(2, { state: "queued", startedAt: null, admittedAt: null })],
+        pausedUntil: T("2026-10-07T15:00:00.000Z"),
+      }),
+    );
+    const main = overviewOf([shell]).main;
+    assert.strictEqual(resolveThreadStatus(shell).kind, "idle");
+    assert.deepStrictEqual(
+      [main?.session?.status, main?.latestTurn?.state],
+      ["ready", "interrupted"],
+    );
+    assert.deepStrictEqual(main?.usagePause, { resetsAt: "2026-10-07T15:00:00.000Z" });
+    assert.strictEqual(shell.usagePause?.held, 1);
+  });
+
+  it("with an unknown reset, the held message never reads working either", () => {
+    const shell = engineShellOf(
+      view({
+        lastEnded: ended(1, { kind: "usage-limit", resetsAt: null }),
+        queued: [run(2, { state: "queued", startedAt: null, admittedAt: null })],
+        pausedUntil: "unknown",
+      }),
+    );
+    assert.strictEqual(resolveThreadStatus(shell).kind, "idle");
+  });
+});
+
 describe("the Mate's attention on the engine", () => {
   it.effect(
     "counts a run on as working and a request as waiting, keyed by the conversation and its run",

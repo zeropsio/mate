@@ -48,9 +48,13 @@ const lineOf = (text: string | undefined): string | null => {
   return line === undefined ? null : line;
 };
 
-/** The run a shell's latest turn is: the one on, else the next queued, else the last that ended. */
+/**
+ * The run a shell's latest turn is: the one on; while a usage limit holds the queue, the run it
+ * ended (a held message is not working); else the next queued, else the last that ended.
+ */
 const latestRunOf = (view: ConversationView): ViewRun | null =>
-  view.activeRun ?? view.queued[0] ?? view.lastEnded;
+  view.activeRun ??
+  (view.pausedUntil !== null ? view.lastEnded : (view.queued[0] ?? view.lastEnded));
 
 const BEFORE_START: ReadonlySet<string> = new Set(["queued", "admitted", "sending"]);
 
@@ -156,7 +160,7 @@ export const engineShellOf = (view: ConversationView): OrchestrationThreadShell 
         ? {
             resetsAt: iso(view.pausedUntil),
             window: "usage",
-            held: 0,
+            held: view.queued.length,
             pausedAt: iso(view.lastEnded?.endedAt ?? view.updatedAt),
             autoResume: true,
           }
