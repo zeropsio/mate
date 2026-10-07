@@ -11,7 +11,7 @@ import {
   OrchestrationProposedPlanId,
   OrchestrationReadModel,
   OrchestrationThreadSearchSource,
-  OrchestrationShellSnapshot,
+  type OrchestrationShellSnapshot,
   OrchestrationThread,
   OrchestrationThreadDetailSnapshot,
   ProjectScript,
@@ -84,7 +84,6 @@ import {
 } from "../Services/ProjectionSnapshotQuery.ts";
 
 const decodeReadModel = Schema.decodeUnknownEffect(OrchestrationReadModel);
-const decodeShellSnapshot = Schema.decodeUnknownEffect(OrchestrationShellSnapshot);
 const decodeThread = Schema.decodeUnknownEffect(OrchestrationThread);
 // Keep detail reads consistent with the in-memory projector's retained
 // activity window. Applying the limit in SQL avoids decoding an unbounded
@@ -2813,7 +2812,10 @@ pending_approval_requests AS (
             );
             const pendingQuestions = questionsByThread(asks);
 
-            const snapshot = {
+            // Built from schema-decoded rows, so no second decode here. The HTTP
+            // and RPC layers encode it against OrchestrationShellSnapshot on the
+            // way out, like the per-item shells from getThreadShellById.
+            return {
               snapshotSequence: computeSnapshotSequence(stateRows),
               projects: Arr.filterMap(projectRows, (row) =>
                 row.deletedAt === null
@@ -2877,15 +2879,7 @@ pending_approval_requests AS (
                   : Result.failVoid,
               ),
               updatedAt: updatedAt ?? "1970-01-01T00:00:00.000Z",
-            };
-
-            return yield* decodeShellSnapshot(snapshot).pipe(
-              Effect.mapError(
-                toPersistenceDecodeError(
-                  "ProjectionSnapshotQuery.getShellSnapshot:decodeShellSnapshot",
-                ),
-              ),
-            );
+            } satisfies OrchestrationShellSnapshot;
           }),
         ),
         Effect.mapError((error) => {
@@ -2988,7 +2982,7 @@ pending_approval_requests AS (
             );
             const pendingQuestions = questionsByThread(asks);
 
-            const snapshot = {
+            return {
               snapshotSequence: computeSnapshotSequence(stateRows),
               projects: Arr.filterMap(projectRows, (row) =>
                 row.deletedAt === null && activeProjectIds.has(row.projectId)
@@ -3045,15 +3039,7 @@ pending_approval_requests AS (
                 ...(row.crew === null ? {} : { crew: row.crew }),
               })),
               updatedAt: updatedAt ?? "1970-01-01T00:00:00.000Z",
-            };
-
-            return yield* decodeShellSnapshot(snapshot).pipe(
-              Effect.mapError(
-                toPersistenceDecodeError(
-                  "ProjectionSnapshotQuery.getArchivedShellSnapshot:decodeShellSnapshot",
-                ),
-              ),
-            );
+            } satisfies OrchestrationShellSnapshot;
           }),
         ),
         Effect.mapError((error) => {

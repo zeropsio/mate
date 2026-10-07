@@ -251,6 +251,58 @@ it.layer(NodeServices.layer)("RepositoryIdentityResolverLive", (it) => {
     }).pipe(Effect.provide(RepositoryIdentityResolver.layer)),
   );
 
+  it.effect("a folder that becomes a repository resolves to it on the next resolve", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const cwd = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "t3-repository-identity-git-init-",
+      });
+      const resolver = yield* RepositoryIdentityResolver.RepositoryIdentityResolver;
+
+      expect(yield* resolver.resolve(cwd)).toBeNull();
+      yield* git(cwd, ["init"]);
+      yield* git(cwd, ["remote", "add", "origin", "git@github.com:T3Tools/t3code.git"]);
+
+      const identity = yield* resolver.resolve(cwd);
+      expect(identity?.canonicalKey).toBe("github.com/t3tools/t3code");
+    }).pipe(Effect.provide(Layer.merge(TestClock.layer(), RepositoryIdentityResolver.layer))),
+  );
+
+  it.effect("retries the remote lookup after git fails to list remotes", () => {
+    let remoteAttempts = 0;
+    const processRunner = Layer.succeed(ProcessRunner.ProcessRunner, {
+      run: (input) =>
+        Effect.sync(() => {
+          const rootLookup = input.args.includes("rev-parse");
+          const failed = !rootLookup && remoteAttempts++ === 0;
+          return {
+            stdout: rootLookup
+              ? "/repo\n"
+              : failed
+                ? ""
+                : "origin\tgit@github.com:T3Tools/t3code.git (fetch)\n",
+            stderr: failed ? "temporary Git failure" : "",
+            code: ChildProcessSpawner.ExitCode(failed ? 1 : 0),
+            timedOut: false,
+            stdoutTruncated: false,
+            stderrTruncated: false,
+            stdoutInvalidUtf8: false,
+            stderrInvalidUtf8: false,
+          };
+        }),
+    });
+    const resolverLayer = Layer.effect(
+      RepositoryIdentityResolver.RepositoryIdentityResolver,
+      RepositoryIdentityResolver.make(),
+    ).pipe(Layer.provide(processRunner));
+
+    return Effect.gen(function* () {
+      const resolver = yield* RepositoryIdentityResolver.RepositoryIdentityResolver;
+      expect(yield* resolver.resolve("/repo")).toBeNull();
+      expect((yield* resolver.resolve("/repo"))?.canonicalKey).toBe("github.com/t3tools/t3code");
+    }).pipe(Effect.provide(Layer.merge(TestClock.layer(), resolverLayer)));
+  });
+
   it.effect("returns null for non-git folders and repos without remotes", () =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;

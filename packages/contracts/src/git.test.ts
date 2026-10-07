@@ -3,6 +3,7 @@ import * as Schema from "effect/Schema";
 
 import {
   VcsCreateRefInput,
+  GitCommandError,
   VcsCreateWorktreeInput,
   VcsSwitchRefInput,
   GitPreparePullRequestThreadInput,
@@ -20,6 +21,7 @@ const decodeRunStackedActionResult = Schema.decodeUnknownSync(GitRunStackedActio
 const decodeResolvePullRequestResult = Schema.decodeUnknownSync(GitResolvePullRequestResult);
 const decodeSwitchRefInput = Schema.decodeUnknownSync(VcsSwitchRefInput);
 const decodeCreateRefInput = Schema.decodeUnknownSync(VcsCreateRefInput);
+const decodeGitCommandError = Schema.decodeUnknownSync(GitCommandError);
 
 describe("ref names that git would read as an option", () => {
   const inputs = [
@@ -175,5 +177,25 @@ describe("GitRunStackedActionResult", () => {
     if (parsed.toast.cta.kind === "run_action") {
       expect(parsed.toast.cta.action.kind).toBe("create_pr");
     }
+  });
+});
+
+describe("GitCommandError", () => {
+  const encoded = (reason: string) => ({
+    _tag: "GitCommandError",
+    operation: "GitVcsDriver.fetch",
+    command: "git fetch",
+    cwd: "/repo",
+    detail: "git fetch failed.",
+    reason,
+  });
+
+  it.each([
+    { reason: "authentication_failed", decoded: "authentication_failed" },
+    { reason: "dubious_ownership", decoded: undefined },
+  ])("an older client still decodes a failure whose reason is $reason", ({ reason, decoded }) => {
+    const error = decodeGitCommandError(encoded(reason));
+    expect(error.detail).toBe("git fetch failed.");
+    expect(error.reason).toBe(decoded);
   });
 });
