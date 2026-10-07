@@ -72,6 +72,7 @@ import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
+import * as Tracer from "effect/Tracer";
 import { ChildProcessSpawner } from "effect/unstable/process";
 import {
   FetchHttpClient,
@@ -569,6 +570,7 @@ const buildAppUnderTest = (options?: {
     | ProviderInstanceRegistry
   >;
   layers?: {
+    httpClient?: HttpClient.HttpClient;
     keybindings?: Partial<Keybindings.Keybindings["Service"]>;
     providerRegistry?: Partial<ProviderRegistry.ProviderRegistry["Service"]>;
     modelManifest?: Partial<ModelManifest.ModelManifest["Service"]>;
@@ -1431,7 +1433,11 @@ const buildAppUnderTest = (options?: {
       Layer.provideMerge(makeAuthTestLayer()),
       Layer.provideMerge(AssetSigningKey.layer.pipe(Layer.provideMerge(ServerSecretStore.layer))),
       Layer.provide(workspaceAndProjectServicesLayer),
-      Layer.provideMerge(FetchHttpClient.layer),
+      Layer.provideMerge(
+        options?.layers?.httpClient === undefined
+          ? FetchHttpClient.layer
+          : Layer.succeed(HttpClient.HttpClient, options.layers.httpClient),
+      ),
       Layer.provide(layerConfig),
     );
 
@@ -5293,6 +5299,56 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         assert.equal(record.resourceAttributes["service.name"], "t3-web");
         assert.equal(record.status?.code, String(span.status.code));
       }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("does not trace browser OTLP trace exports on the server", () =>
+    Effect.gen(function* () {
+      const spanNames: Array<string> = [];
+      const forwardedUrls: Array<string> = [];
+      yield* buildAppUnderTest({
+        config: { otlpTracesUrl: "http://collector.test/v1/traces" },
+        layers: {
+          httpClient: HttpClient.make((request) =>
+            Effect.sync(() => {
+              forwardedUrls.push(request.url);
+              return HttpClientResponse.fromWeb(request, new Response(null, { status: 204 }));
+            }),
+          ),
+        },
+      }).pipe(
+        Effect.provideService(
+          Tracer.Tracer,
+          Tracer.make({
+            span: (options) => {
+              spanNames.push(options.name);
+              return new Tracer.NativeSpan(options);
+            },
+          }),
+        ),
+      );
+      const authorization = yield* getAuthenticatedAuthorizationHeader();
+      spanNames.length = 0;
+
+      // The query string must not bring back the HTTP server span.
+      for (const url of ["/api/observability/v1/traces", "/api/observability/v1/traces?x=1"]) {
+        const response = yield* HttpClient.post(url, {
+          headers: { authorization, "content-type": "application/json" },
+          body: yield* HttpBody.json({ resourceSpans: [] }),
+        });
+        assert.equal(response.status, 204);
+      }
+
+      assert.deepEqual(forwardedUrls, [
+        "http://collector.test/v1/traces",
+        "http://collector.test/v1/traces",
+      ]);
+      assert.deepEqual(spanNames, []);
+
+      // Other routes keep their HTTP server span.
+      const session = yield* HttpClient.get("/api/auth/session", { headers: { authorization } });
+      assert.equal(session.status, 200);
+      assert.include(spanNames, "http.server GET");
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
   it.effect("routes websocket rpc server.upsertKeybinding", () =>

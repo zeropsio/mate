@@ -23,6 +23,7 @@ import {
   staticAndDevRouteLayer,
   browserApiCorsLayer,
   httpCompressionLayer,
+  untracedRequestsLayer,
 } from "./http.ts";
 import { guardHttpResponseWriteErrors } from "./httpResponseErrorGuard.ts";
 import { fixPath } from "./os-jank.ts";
@@ -602,6 +603,8 @@ export const makeRoutesLayer = Layer.mergeAll(
   zeropsSetupRouteLayer,
   staticAndDevRouteLayer,
   websocketRpcRouteLayer,
+  // Last, so no route layer can replace the server's one TracerDisabledWhen.
+  untracedRequestsLayer,
 ).pipe(
   Layer.provide(commandReadinessLayer),
   Layer.provide(browserApiCorsLayer),
