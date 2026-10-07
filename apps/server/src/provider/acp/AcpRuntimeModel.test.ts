@@ -153,6 +153,30 @@ describe("AcpRuntimeModel", () => {
     expect(response.modes?.availableModes).toHaveLength(2);
   });
 
+  it("keeps initialize mode state whose modes have null descriptions", () => {
+    const response = syntheticLoadSessionResponseFromInitialize({
+      protocolVersion: 1,
+      _meta: {
+        modeState: {
+          currentModeId: "code",
+          availableModes: [
+            { id: "ask", name: "Ask", description: null },
+            { id: "code", name: "Code", description: "Edit files", _meta: null },
+          ],
+          _meta: null,
+        },
+      },
+    } satisfies EffectAcpSchema.InitializeResponse);
+
+    expect(parseSessionModeState(response)).toEqual({
+      currentModeId: "code",
+      availableModes: [
+        { id: "ask", name: "Ask" },
+        { id: "code", name: "Code", description: "Edit files" },
+      ],
+    });
+  });
+
   it("projects typed ACP tool call updates into runtime events", () => {
     const created = parseSessionUpdateEvent({
       sessionId: "session-1",
