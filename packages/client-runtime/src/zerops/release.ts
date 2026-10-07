@@ -41,7 +41,6 @@ import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { compareReleaseTags, type Release, type ReleaseRollout } from "@t3tools/shared/hqRelease";
 
 import type { ReleaseDeployFailure } from "./groupDeploys.ts";
-import type { Moved, MovedCommits } from "./releaseCompare.ts";
 import type { EnvironmentRow } from "./groupRows.ts";
 import { sameCommit } from "./versionName.ts";
 

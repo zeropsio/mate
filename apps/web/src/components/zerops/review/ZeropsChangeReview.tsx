@@ -234,7 +234,7 @@ function ChangeReviewData({
   readonly frame: ReviewFrame;
   readonly onOpenPage: (() => void) | undefined;
   readonly back: ReviewButton | undefined;
-  readonly pull: FlowPullRequest & Pick<ChangeReviewInput["pull"], "pipeline">;
+  readonly pull: FlowPullRequest;
   readonly target: ChangeTarget;
   readonly titleId: string | undefined;
   readonly onClose: () => void;
@@ -426,7 +426,7 @@ const NO_REMARKS: ReadonlyArray<ChangeRemark> = [];
 export interface ChangeReviewViewProps {
   /** A dialog over the conversation, or the change's own page. */
   readonly frame?: ReviewFrame | undefined;
-  readonly pull: FlowPullRequest & Pick<ChangeReviewInput["pull"], "pipeline">;
+  readonly pull: FlowPullRequest;
   /** The Mate that wrote it — its name, its face, and whether it is the person's own. */
   readonly mate: {
     readonly name: string;
