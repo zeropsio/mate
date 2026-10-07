@@ -384,7 +384,7 @@ describe("VaultPanelBody — scopes", () => {
 
 describe("VaultPanelBody — states", () => {
   it("draws skeleton rows until the vault is read, and no values", async () => {
-    const unread: VaultView = { status: "unread", scopes: [], notLive: [] };
+    const unread: VaultView = { status: "unread", complete: false, scopes: [], notLive: [] };
     const { container } = await mount({ view: unread });
     expect(q(container, "[data-vault-skeleton]")).not.toBeNull();
     expect(container.querySelectorAll("[data-vault-row]")).toHaveLength(0);

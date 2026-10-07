@@ -324,6 +324,8 @@ export interface ZeropsAppVersion {
   readonly source?: string;
   readonly created?: string;
   readonly lastUpdate?: string;
+  /** When it became the service's active version: its containers started then. */
+  readonly activationDate?: string | null;
   readonly githubIntegration?: ZeropsGitIntegration | null;
   readonly gitlabIntegration?: ZeropsGitIntegration | null;
   readonly publicGitSource?: {

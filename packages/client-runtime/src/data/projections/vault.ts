@@ -9,10 +9,11 @@
  */
 import { isZcpService } from "../../zerops/containerAddress.ts";
 import { isManagedDataService, isRuntimeService } from "../../zerops/topology.ts";
+import { historyScope } from "../families/process.ts";
 import { projectVariablesScope, type VariableRow } from "../families/projectVariables.ts";
 import { serviceVariablesScope, type ServiceVariableValue } from "../families/serviceVariables.ts";
 import type { ServiceValue } from "../families/service.ts";
-import type { ScopeKey } from "../model.ts";
+import { linkKeys, type LinkKey, type ScopeKey } from "../model.ts";
 import type { Projection, ProjectionReads } from "../store.ts";
 import { sameValue } from "./equal.ts";
 import type {
@@ -51,6 +52,16 @@ const DEPLOY_ACTIONS: ReadonlySet<string> = new Set(["stack.build", "stack.deplo
 const isIdentityNoise = (key: string) =>
   key === "projectId" || key === "serviceId" || key.startsWith("ZEROPS_");
 
+/**
+ * The keys the Mate and its zcp own (its admin token, its git and setup keys): never a value in
+ * any scope, never in a note — removing one breaks the Mate. A reference to one is the platform's.
+ */
+export const isMateOwned = (key: string): boolean =>
+  key.startsWith("ZCP_") ||
+  key.startsWith("MATE_") ||
+  key.startsWith("GITEA_") ||
+  key === "GIT_TOKEN";
+
 const isUser = (row: { readonly type: string }) => row.type === "USER";
 const isSystem = (row: { readonly type: string }) => row.type === "SYSTEM";
 
@@ -60,10 +71,20 @@ const after = (left: string | null, right: string | null): boolean =>
 const newest = (left: string | null, right: string | undefined): string | null =>
   right === undefined || (left !== null && !after(right, left)) ? left : right;
 
-/** When each service last started, and the project's newest deploy, from its finished processes. */
-function startsOf(read: ProjectionReads, projectId: string) {
+/**
+ * When each service last started, and the project's newest deploy: from its finished processes,
+ * and from each service's active version's activation (a deploy the newest hundred processes may
+ * have lost), the newest of the two.
+ */
+function startsOf(read: ProjectionReads, projectId: string, services: ReadonlyArray<ServiceValue>) {
   const startedAt = new Map<string, string>();
   let deployedAt: string | null = null;
+  for (const service of services) {
+    const activated = service.activeAppVersion?.activationDate ?? undefined;
+    if (activated === undefined) continue;
+    startedAt.set(service.id, activated);
+    deployedAt = newest(deployedAt, activated);
+  }
   for (const id of read.index("project", projectId)) {
     const fact = read.fact("process", id);
     if (fact.kind !== "known") continue;
@@ -101,6 +122,10 @@ function sortRows(kind: ServiceKind, rows: ReadonlyArray<Held>) {
   const values: Held[] = [];
   for (const held of rows) {
     const { row } = held;
+    if (isMateOwned(row.key)) {
+      system.add(row.key);
+      continue;
+    }
     if (kind === "managed") {
       if (isSystem(row) && isIdentityNoise(row.key)) system.add(row.key);
       else values.push(held);
@@ -122,10 +147,10 @@ const typeOf = (service: ServiceValue): string | null => {
 const byKey = <T extends { readonly key: string }>(left: T, right: T) =>
   left.key.localeCompare(right.key);
 
-const failing = (read: ProjectionReads, scope: ScopeKey) => {
-  const { phase } = read.stream(scope);
-  return phase === "refused" || phase === "recovering";
-};
+/** Phases in which what the vault shows is not being kept current: its read failed or was refused. */
+const FAILING: ReadonlySet<string> = new Set(["refused", "recovering", "stale"]);
+const failing = (read: ProjectionReads, key: ScopeKey | LinkKey) =>
+  FAILING.has(read.stream(key).phase);
 
 export const vault: Projection<VaultKey, VaultView> = {
   name: "vault",
@@ -135,18 +160,22 @@ export const vault: Projection<VaultKey, VaultView> = {
     const servicesScope = serviceVariablesScope(orgId, projectId);
     const coverage = [read.coverage(sharedScope), read.coverage(servicesScope)];
     const status: VaultView["status"] =
-      failing(read, sharedScope) || failing(read, servicesScope)
+      failing(read, linkKeys.zerops(orgId)) ||
+      failing(read, sharedScope) ||
+      failing(read, servicesScope)
         ? "failed"
         : coverage.includes("unknown")
           ? "unread"
           : "ready";
-    // An absence proves nothing until both answers are whole: nothing is "unread" or "missing".
-    const whole = coverage.every((each) => each === "complete");
-
     const projectFact = read.fact("projectVariables", projectId);
+    // An absence proves nothing until both answers are whole: nothing is "unread" or "missing".
+    const whole =
+      coverage.every((each) => each === "complete") &&
+      (projectFact.kind !== "known" || projectFact.value.complete);
+
     const sharedRows: ReadonlyArray<VariableRow> =
       projectFact.kind === "known" ? projectFact.value.rows : [];
-    const sharedValues = sharedRows.filter(isUser);
+    const sharedValues = sharedRows.filter((row) => isUser(row) && !isMateOwned(row.key));
 
     const rowsByService = new Map<string, Held[]>();
     for (const id of read.members(servicesScope).ids) {
@@ -184,11 +213,20 @@ export const vault: Projection<VaultKey, VaultView> = {
 
     const world: RefWorld = {
       shared: new Map(sharedValues.map((row) => [row.key, row.value])),
-      sharedSystem: new Set(sharedRows.filter(isSystem).map((row) => row.key)),
+      sharedSystem: new Set(
+        sharedRows.filter((row) => isSystem(row) || isMateOwned(row.key)).map((row) => row.key),
+      ),
       services: services.map(({ ref }) => ref),
     };
     const readers = readersOf(world);
-    const { startedAt, deployedAt } = startsOf(read, projectId);
+    const { startedAt, deployedAt } = startsOf(
+      read,
+      projectId,
+      services.map(({ service }) => service),
+    );
+    // A start or a deploy the history has not answered yet may be newer than any known: no
+    // verdict waits on one until it has.
+    const historyRead = read.coverage(historyScope(orgId, projectId)) !== "unknown";
 
     const valueOf = (
       scope: VaultScopeRef,
@@ -205,7 +243,9 @@ export const vault: Projection<VaultKey, VaultView> = {
       madeByZerops,
       readers: (readers.get(valueIdOf(scope, row.key)) ?? []).map((reader) => ({
         ...reader,
-        state: readerState(startedAt.get(reader.serviceId) ?? null, row.lastUpdate),
+        state: historyRead
+          ? readerState(startedAt.get(reader.serviceId) ?? null, row.lastUpdate)
+          : "unknown",
       })),
     });
 
@@ -244,7 +284,12 @@ export const vault: Projection<VaultKey, VaultView> = {
     const managed = services.filter(({ ref }) => ref.kind === "managed").map(serviceScope);
     const scopes = [shared, ...runtimes, ...managed];
 
-    return { status, scopes, notLive: notLiveOf(scopes, deployedAt, whole) };
+    return {
+      status,
+      complete: whole,
+      scopes,
+      notLive: notLiveOf(scopes, deployedAt, whole, historyRead),
+    };
   },
   equals: sameValue,
 };
@@ -253,7 +298,10 @@ export const vault: Projection<VaultKey, VaultView> = {
 function notLiveOf(
   scopes: ReadonlyArray<VaultScope>,
   deployedAt: string | null,
+  /** Both answers whole: an absence proves something. */
   whole: boolean,
+  /** The history read: no deploy known proves something. */
+  historyRead: boolean,
 ): ReadonlyArray<VaultNotLive> {
   const restarts = new Map<string, { hostname: string; keys: Set<string> }>();
   const literal: VaultNotLive[] = [];
@@ -272,6 +320,7 @@ function notLiveOf(
       const written = value.changedAt ?? value.createdAt;
       if (
         whole &&
+        historyRead &&
         scope.editable &&
         value.readers.length === 0 &&
         (deployedAt === null || written === null || after(written, deployedAt))

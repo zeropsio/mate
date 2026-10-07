@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { liveZerops, ORG } from "../__fixtures__/account.ts";
+import { liveZerops, ORG, processValue } from "../__fixtures__/account.ts";
+import { historyScope } from "../families/process.ts";
 import { projectVariablesFamily, projectVariablesScope } from "../families/projectVariables.ts";
 import { serviceVariableFamily, serviceVariablesScope } from "../families/serviceVariables.ts";
-import { emptyAccount, type AccountState, type ScopeKey } from "../model.ts";
+import { emptyAccount, linkKeys, type AccountState, type ScopeKey } from "../model.ts";
 import { reduceAccount, type AccountInput, type Row } from "../reducer.ts";
 import { readsOfState } from "../store.ts";
 import { vault } from "./vault.ts";
@@ -186,7 +187,7 @@ function answered(
   ];
 }
 
-const refused = (scope: ScopeKey): AccountInput =>
+const refused = (scope: string): AccountInput =>
   event(scope, {
     kind: "fault",
     fault: { outcome: "definitive-refusal", message: "no" },
@@ -200,7 +201,35 @@ const viewOf = (...inputs: ReadonlyArray<ReadonlyArray<AccountInput>>): VaultVie
   return vault.derive(readsOfState(state), { orgId: ORG, projectId: PROJECT });
 };
 
-const base = liveZerops({ running: PROCESSES, services: SERVICES });
+/** The project's process history answered: these processes, newest hundred. */
+const historyAnswer = (
+  processes: ReadonlyArray<Parameters<typeof processValue>[0]>,
+): ReadonlyArray<AccountInput> => {
+  const scope = historyScope(ORG, PROJECT);
+  const rows = processes.map((process): Row => ({
+    family: "process",
+    id: process.id,
+    value: processValue(process),
+    revision: { kind: "zerops", version: 1 },
+  }));
+  return [
+    event(scope, { kind: "demand", demanded: true }),
+    event(scope, { kind: "attempt" }),
+    event(scope, { kind: "handshake" }),
+    { kind: "baseline-begin", scope, generation: 1 },
+    {
+      kind: "baseline-commit",
+      scope,
+      generation: 1,
+      via: "zerops-realtime",
+      members: rows.map((row) => row.id),
+      rows,
+    },
+    event(scope, { kind: "baseline-committed" }),
+  ];
+};
+
+const base = [...liveZerops({ running: [], services: SERVICES }), ...historyAnswer(PROCESSES)];
 const sharedAnswer = answered(SHARED_SCOPE, "projectVariables", [
   { id: PROJECT, envList: SHARED_ROWS },
 ]);
@@ -234,8 +263,20 @@ describe("vault", () => {
     expect(view().status).toBe(status);
   });
 
-  it("keeps what an earlier answer said once a read fails", () => {
-    const failed = viewOf(base, sharedAnswer, servicesAnswer, [refused(SERVICES_SCOPE)]);
+  it.each([
+    { name: "a read refused", input: refused(SERVICES_SCOPE) },
+    { name: "the organization's link refused", input: refused(linkKeys.zerops(ORG)) },
+    {
+      name: "the organization's link recovering",
+      input: event(linkKeys.zerops(ORG), {
+        kind: "fault",
+        fault: { outcome: "transient", message: "down" },
+        jitter: 0,
+      }),
+    },
+  ])("is failed with what an earlier answer said kept: $name", ({ input }) => {
+    const failed = viewOf(base, sharedAnswer, servicesAnswer, [input]);
+    expect(failed.status).toBe("failed");
     expect(failed.scopes).toEqual(ready.scopes);
   });
 
@@ -361,6 +402,7 @@ describe("vault", () => {
   it("calls every value nothing reads unread while no deploy is known", () => {
     const view = viewOf(
       liveZerops({ running: [], services: SERVICES }),
+      historyAnswer([]),
       sharedAnswer,
       servicesAnswer,
     );
@@ -370,12 +412,113 @@ describe("vault", () => {
     ]);
   });
 
-  it("claims nothing from an absence while an answer is partial", () => {
+  it.each([
+    {
+      name: "a service row is unreadable",
+      view: () =>
+        viewOf(
+          base,
+          sharedAnswer,
+          answered(SERVICES_SCOPE, "serviceVariable", [...SERVICE_ROWS, { id: "damaged" }], true),
+        ),
+    },
+    {
+      name: "a Shared row is unreadable",
+      view: () =>
+        viewOf(
+          base,
+          answered(SHARED_SCOPE, "projectVariables", [
+            { id: PROJECT, envList: [...SHARED_ROWS, { id: "damaged" }] },
+          ]),
+          servicesAnswer,
+        ),
+    },
+  ])("is incomplete and claims nothing from an absence while $name", ({ view }) => {
+    const partial = view();
+    expect(partial.complete).toBe(false);
+    expect(partial.notLive.map((each) => each.kind)).toEqual(["restart", "self"]);
+    expect(value(partial, "shared", "LOG_LEVEL").value).toBe("info");
+  });
+
+  it("is complete once both answers are whole", () => {
+    expect(ready.complete).toBe(true);
+    expect(viewOf(base).complete).toBe(false);
+  });
+});
+
+describe("vault — the Mate's own keys", () => {
+  const view = viewOf(
+    base,
+    answered(SHARED_SCOPE, "projectVariables", [
+      {
+        id: PROJECT,
+        envList: [
+          ...SHARED_ROWS,
+          env("ZCP_API_KEY", "admin-token", { created: T(13), lastUpdate: T(13) }),
+          env("GIT_TOKEN", "git-token", { created: T(13), lastUpdate: T(13) }),
+          env("GITEA_URL", "https://gitea", { created: T(13), lastUpdate: T(13) }),
+        ],
+      },
+    ]),
+    answered(SERVICES_SCOPE, "serviceVariable", [
+      ...SERVICE_ROWS,
+      userData("s-app", "MATE_SETUP_RUNTIMES", "x", { created: T(13), lastUpdate: T(13) }),
+      entry("s-app", "ADMIN", "${ZCP_API_KEY}"),
+    ]),
+  );
+  const keys = view.scopes.flatMap((each) => each.values.map((one) => one.key));
+
+  it.each(["ZCP_API_KEY", "GIT_TOKEN", "GITEA_URL", "MATE_SETUP_RUNTIMES"])(
+    "never lists %s as a value, nor as anything not live",
+    (key) => {
+      expect(keys).not.toContain(key);
+      expect(JSON.stringify(view.notLive)).not.toContain(key);
+    },
+  );
+
+  it("resolves a reference to one as the platform's", () => {
+    expect(scope(view, "s-app").reads.find((read) => read.key === "ADMIN")?.refs).toEqual([
+      { kind: "platform", name: "ZCP_API_KEY" },
+    ]);
+  });
+});
+
+describe("vault — when services started", () => {
+  it("claims nothing that waits on a start until the project's history has answered", () => {
+    // The processes are known from the running work, the history not read yet.
     const view = viewOf(
-      base,
+      liveZerops({ running: PROCESSES, services: SERVICES }),
       sharedAnswer,
-      answered(SERVICES_SCOPE, "serviceVariable", [...SERVICE_ROWS, { id: "damaged" }], true),
+      servicesAnswer,
     );
-    expect(view.notLive.map((each) => each.kind)).toEqual(["restart", "self"]);
+    expect(view.notLive.map((each) => each.kind)).toEqual(["missing", "self"]);
+    expect(value(view, "shared", "LOG_LEVEL").readers.map((each) => each.state)).toEqual([
+      "unknown",
+      "unknown",
+    ]);
+  });
+
+  it("takes a deploy also from a service's active version, newest of the two", () => {
+    const view = viewOf(
+      liveZerops({
+        running: [],
+        services: SERVICES.map((service) =>
+          service.id === "s-app"
+            ? { ...service, activeAppVersion: { id: "v1", activationDate: T(12) } }
+            : service,
+        ),
+      }),
+      // The deploy fell out of the newest hundred.
+      historyAnswer(PROCESSES.filter((process) => process.id !== "deploy")),
+      sharedAnswer,
+      servicesAnswer,
+    );
+    expect(scope(view, "s-app").startedAt).toBe(T(12));
+    expect(value(view, "shared", "LOG_LEVEL").readers.map((each) => each.state)).toEqual([
+      "live",
+      "live",
+    ]);
+    // Written before that deploy: nothing waits for one.
+    expect(view.notLive.filter((each) => each.kind === "unread")).toEqual([]);
   });
 });

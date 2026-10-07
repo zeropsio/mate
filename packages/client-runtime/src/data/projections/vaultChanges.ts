@@ -34,12 +34,17 @@ function servicesOf(list: ReadonlyArray<ServiceName>): ReadonlyArray<ServiceName
   return [...byId.values()].sort((left, right) => left.hostname.localeCompare(right.hostname));
 }
 
+/** An impact read off a view: where it was not whole, it claims no absence. */
+const asRead = (view: VaultView, impact: VaultImpact): VaultImpact =>
+  view.complete ? impact : { ...impact, unread: false, partial: true };
+
 /** A value held now: who runs the version before its last write until they restart. */
-const heldImpact = (readers: ReadonlyArray<VaultReader>): VaultImpact => ({
-  restart: servicesOf(readers.filter((reader) => reader.state !== "live")),
-  unread: readers.length === 0,
-  literal: [],
-});
+const heldImpact = (view: VaultView, readers: ReadonlyArray<VaultReader>): VaultImpact =>
+  asRead(view, {
+    restart: servicesOf(readers.filter((reader) => reader.state !== "live")),
+    unread: readers.length === 0,
+    literal: [],
+  });
 
 /** The runtimes whose run entries would read a value added under `key` in `ref`. */
 function wouldRead(view: VaultView, ref: VaultScopeRef, key: string): ReadonlyArray<ServiceName> {
@@ -67,6 +72,10 @@ function wouldRead(view: VaultView, ref: VaultScopeRef, key: string): ReadonlyAr
 
 /** What a write to one vault means for the services that read the value. */
 export function vaultImpact(view: VaultView, ref: VaultScopeRef, write: VaultWrite): VaultImpact {
+  return asRead(view, impactOn(view, ref, write));
+}
+
+function impactOn(view: VaultView, ref: VaultScopeRef, write: VaultWrite): VaultImpact {
   const scope = scopeIn(view, ref);
   const held: VaultValue | undefined =
     write.kind === "add"
@@ -122,7 +131,7 @@ export function vaultChangesSince(
         kind: added ? "added" : "changed",
         sensitive: value.sensitive,
         at: (added ? value.createdAt : value.changedAt) ?? since,
-        impact: heldImpact(value.readers),
+        impact: heldImpact(view, value.readers),
       });
     }
   }
@@ -160,8 +169,12 @@ function impactText(change: VaultChange): string {
       return `${reads(impact.literal)} — ${impact.literal.length === 1 ? "it now gets" : "they now get"} the literal text \${${key}}; stop using it`;
     if (impact.restart.length > 0)
       return `${reads(impact.restart)} — it runs Shared's ${key} after a restart; restart ${names(impact.restart)}`;
-    return "nothing read it";
+    return impact.partial === true
+      ? "who read it is not known — the vault was not read whole"
+      : "nothing read it";
   }
+  if (impact.restart.length === 0 && impact.partial === true)
+    return "who reads it is not known yet — the vault was not read whole";
   if (impact.unread)
     return "nothing reads it yet — reference it in zerops.yml where the app needs it, then deploy";
   if (impact.restart.length > 0)
