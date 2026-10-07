@@ -16,6 +16,8 @@ import {
   type ReactNode,
 } from "react";
 
+import { XIcon } from "lucide-react";
+
 import { ZeropsReviewDialog } from "../components/zerops/review/ZeropsReviewDialog";
 import { SurfaceLoading } from "../components/SurfaceLoading";
 import { ReviewContext, reviewTargetKey, type OpenReview, type ReviewTarget } from "./review";
@@ -112,10 +114,15 @@ function ReviewBody({
     <div className="contents" key={reviewTargetKey(target)}>
       <Suspense
         fallback={
-          <div className="h-96">
+          <div className="relative h-96">
             <h2 id={titleId} className="sr-only">
               Review
             </h2>
+            <div className="absolute end-2 top-2">
+              <button aria-label="Close" className="rv-x" onClick={close} type="button">
+                <XIcon aria-hidden="true" />
+              </button>
+            </div>
             <SurfaceLoading />
           </div>
         }

@@ -1,12 +1,12 @@
 /**
  * Deleting a project that holds nothing, from its menu on the projects screen (E2E 2026-10-03,
- * F5). The dialog stays until HQ answers: it closes once HQ deleted the project and keeps HQ's
+ * F5). Unless dismissed, the dialog follows HQ: it closes once HQ deleted the project and keeps HQ's
  * refusal — the project is no longer empty — for another look.
  */
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import type { ZeropsGroup } from "@t3tools/client-runtime/zerops";
 import type { HqAppContents } from "@t3tools/client-runtime/zerops/hq";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { useDeleteGroup } from "../../zerops/useDeleteGroup";
 import { Dialog, DialogPopup } from "../ui/dialog";
@@ -22,14 +22,25 @@ export function ZeropsDeleteProjectDialog({
   readonly onClose: () => void;
 }) {
   const remove = useDeleteGroup();
+  const active = useRef(true);
+  useEffect(() => {
+    active.current = true;
+    return () => {
+      active.current = false;
+    };
+  }, []);
+  const close = () => {
+    if (!active.current) return;
+    active.current = false;
+    onClose();
+  };
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   return (
     <Dialog
       onOpenChange={(open) => {
-        // Escape and the backdrop wait for HQ too: its refusal needs the dialog to land in.
-        if (!open && !pending) onClose();
+        if (!open) close();
       }}
       open
     >
@@ -38,12 +49,12 @@ export function ZeropsDeleteProjectDialog({
           error={error}
           contents={contents}
           name={group.name}
-          onCancel={onClose}
+          onCancel={close}
           onConfirm={() => {
             if (pending || contents?.empty !== true) return;
             setPending(true);
             setError(null);
-            remove(group).then(onClose, (cause: unknown) => {
+            remove(group).then(close, (cause: unknown) => {
               setPending(false);
               setError(zeropsErrorMessage(cause));
             });

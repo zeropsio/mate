@@ -238,7 +238,7 @@ export function ZeropsMoveToGroupForm({
       </DialogPanel>
 
       <DialogFooter>
-        <Button disabled={pending} onClick={onCancel} type="button" variant="ghost">
+        <Button onClick={onCancel} type="button" variant="ghost">
           Cancel
         </Button>
         <Button aria-busy={pending || undefined} disabled={!canSubmit} type="submit">
@@ -291,13 +291,7 @@ export function ZeropsMoveToGroupDialog({
   readonly onOpenChange: (open: boolean) => void;
 }) {
   return (
-    <Dialog
-      onOpenChange={(next) => {
-        if (!next && form.pending) return;
-        onOpenChange(next);
-      }}
-      open={open}
-    >
+    <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogPopup className="max-w-md">
         <ZeropsMoveToGroupForm {...form} />
       </DialogPopup>

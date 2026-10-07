@@ -235,6 +235,7 @@ function typeInto(value: string): void {
 }
 
 function Harness() {
+  const [open, setOpen] = useState(true);
   const dialog = STATE !== "menu" && STATE !== "before";
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -313,18 +314,18 @@ function Harness() {
       <main className="flex min-w-0 flex-1 items-start justify-center p-10">
         <p className="max-w-md text-sm text-muted-foreground">The conversation opens here.</p>
       </main>
-      {dialog ? (
+      {dialog && open ? (
         <ZeropsDeleteMateDialog
           error={error}
           name="Quinn"
-          onCancel={() => {}}
+          onCancel={() => setOpen(false)}
           onConfirm={() => {
             setPressed((count) => count + 1);
             setError(null);
             setPending(true);
           }}
-          onOpenChange={() => {}}
-          open
+          onOpenChange={setOpen}
+          open={open}
           pending={pending}
           words={deleteMateWords({
             name: "Quinn",

@@ -106,7 +106,7 @@ export function CrewRunDialog({
       }}
       open={ask !== null && snapshot !== null}
     >
-      <DialogPopup className="max-w-120" showCloseButton={false}>
+      <DialogPopup className="max-w-120">
         {snapshot === null || ask === null ? null : resuming === null ? (
           <CrewStartBody
             canAct={current && !commands.pending}

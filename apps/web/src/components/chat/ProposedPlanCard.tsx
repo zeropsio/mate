@@ -203,14 +203,7 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
         ) : null}
       </div>
 
-      <Dialog
-        open={isSaveDialogOpen}
-        onOpenChange={(open) => {
-          if (!isSavingToWorkspace) {
-            setIsSaveDialogOpen(open);
-          }
-        }}
-      >
+      <Dialog open={isSaveDialogOpen} onOpenChange={setIsSaveDialogOpen}>
         <DialogPopup className="max-w-xl">
           <DialogHeader>
             <DialogTitle>Save plan to workspace</DialogTitle>
@@ -232,12 +225,7 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
             </label>
           </DialogPanel>
           <DialogFooter>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIsSaveDialogOpen(false)}
-              disabled={isSavingToWorkspace}
-            >
+            <Button variant="outline" size="sm" onClick={() => setIsSaveDialogOpen(false)}>
               Cancel
             </Button>
             <Button

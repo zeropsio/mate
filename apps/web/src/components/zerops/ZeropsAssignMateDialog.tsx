@@ -139,7 +139,7 @@ export function ZeropsAssignMateForm({
         >
           {error}
         </p>
-        <Button disabled={pending} onClick={onCancel} type="button" variant="ghost">
+        <Button onClick={onCancel} type="button" variant="ghost">
           Cancel
         </Button>
         <Button aria-busy={pending || undefined} disabled={!canSubmit} type="submit">
@@ -157,14 +157,7 @@ export function ZeropsAssignMateDialog({
   readonly onOpenChange: (open: boolean) => void;
 }) {
   return (
-    <Dialog
-      open
-      onOpenChange={(next) => {
-        // A hand-over the platform is answering is seen through: its refusal has somewhere to land.
-        if (!next && form.pending) return;
-        onOpenChange(next);
-      }}
-    >
+    <Dialog open onOpenChange={onOpenChange}>
       <DialogPopup>
         <ZeropsAssignMateForm {...form} />
       </DialogPopup>

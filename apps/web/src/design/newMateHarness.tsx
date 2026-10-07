@@ -105,6 +105,7 @@ declare global {
 const created: Array<unknown> = [];
 
 function Harness() {
+  const [open, setOpen] = useState(true);
   const role = STATE === "stage" ? "stage" : "dev";
   const [read, setRead] = useState(STATE !== "reading");
   // Add pressed: the dialog gives way to the new Mate's page, at once.
@@ -149,7 +150,7 @@ function Harness() {
         groupName="Acme Docs"
         // As the app's host: Add lands on the new Mate's page, which takes the focus.
         landsElsewhere
-        onCancel={() => {}}
+        onCancel={() => setOpen(false)}
         onCreate={(choice) => {
           created.push(choice);
           setPage(
@@ -168,8 +169,8 @@ function Harness() {
               : `/mate/${action.projectId}`,
           );
         }}
-        onOpenChange={() => {}}
-        open
+        onOpenChange={setOpen}
+        open={open}
         proposeAnotherName={(current) => ROLLS.find((name) => name !== current) ?? current}
         role={role}
         takenBotNames={{ names: ["Fen", "Ada", "Nova"], complete: true }}
