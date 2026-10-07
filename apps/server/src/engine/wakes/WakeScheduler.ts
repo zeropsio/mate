@@ -4,7 +4,8 @@
  * wake's owner; the owner's step marks the row fired in the same transaction as what the wake
  * starts, so a fire repeated after a crash finds nothing armed. A recurring wake keeps its cron:
  * the step that fires it arms its next time. Wakes that came due while the server was down fire
- * as soon as the scheduler starts.
+ * as soon as the scheduler starts. A wake whose owner fails to load backs off on its own row
+ * (`retry_at`) and never holds the wakes behind it.
  *
  * @module engine/wakes/WakeScheduler
  */
@@ -23,9 +24,15 @@ import { EngineStoreError } from "../store/EngineStore.ts";
 interface DueWake {
   readonly wakeId: WakeId;
   readonly owner: ConversationId;
-  readonly dueAt: number;
+  /** When it fires: its due time, or later while a failed fire backs off. */
+  readonly at: number;
   readonly armedSeq: number;
+  readonly failures: number;
 }
+
+/** A failed fire waits `min(5 min, 1 s · 2^(failures − 1))` before it is tried again. */
+export const wakeRetryMs = (failures: number): number =>
+  Math.min(5 * 60_000, 1_000 * 2 ** Math.max(0, failures - 1));
 
 const ENGINE = { kind: "engine" } as const;
 
@@ -40,30 +47,52 @@ export const makeWakeScheduler = Effect.fn("makeWakeScheduler")(function* () {
   const earliest = sql<{
     readonly wake_id: string;
     readonly owner_conversation_id: string;
-    readonly due_at: number;
+    readonly at: number;
     readonly armed_seq: number;
+    readonly fire_failures: number;
   }>`
-    SELECT wake_id, owner_conversation_id, due_at, armed_seq FROM engine_wake
-    WHERE state = 'armed' ORDER BY due_at, wake_id LIMIT 1
+    SELECT wake_id, owner_conversation_id, max(due_at, coalesce(retry_at, 0)) AS at, armed_seq,
+      fire_failures
+    FROM engine_wake
+    WHERE state = 'armed' ORDER BY at, wake_id LIMIT 1
   `.pipe(
     Effect.map((rows) =>
       Option.map(Option.fromNullishOr(rows[0]), (row): DueWake => ({
         wakeId: row.wake_id as WakeId,
         owner: row.owner_conversation_id as ConversationId,
-        dueAt: row.due_at,
+        at: row.at,
         armedSeq: row.armed_seq,
+        failures: row.fire_failures,
       })),
     ),
     Effect.mapError((cause) => new EngineStoreError({ operation: "wakes.earliest", cause })),
   );
 
+  /** Its owner could not take the fire (it failed to load): this wake backs off, others fire. */
+  const backOff = Effect.fnUntraced(function* (wake: DueWake, error: unknown) {
+    yield* Effect.logWarning("engine wake fire failed; it backs off", error);
+    const now = yield* Clock.currentTimeMillis;
+    const failures = wake.failures + 1;
+    yield* sql`
+      UPDATE engine_wake SET fire_failures = ${failures}, retry_at = ${now + wakeRetryMs(failures)}
+      WHERE wake_id = ${wake.wakeId} AND state = 'armed' AND armed_seq = ${wake.armedSeq}
+    `.pipe(Effect.mapError((cause) => new EngineStoreError({ operation: "wakes.retry", cause })));
+  });
+
   const fire = Effect.fnUntraced(function* (wake: DueWake) {
-    const result = yield* conversations.tell({
-      commandId: wakeFiredCommandId(wake.wakeId, wake.armedSeq),
-      conversationId: wake.owner,
-      principal: ENGINE,
-      command: { _tag: "WakeFired", wakeId: wake.wakeId, armedSeq: wake.armedSeq },
-    });
+    const told = yield* conversations
+      .tell({
+        commandId: wakeFiredCommandId(wake.wakeId, wake.armedSeq),
+        conversationId: wake.owner,
+        principal: ENGINE,
+        command: { _tag: "WakeFired", wakeId: wake.wakeId, armedSeq: wake.armedSeq },
+      })
+      .pipe(
+        Effect.map(Option.some),
+        Effect.catch((error) => Effect.as(backOff(wake, error), Option.none())),
+      );
+    if (Option.isNone(told)) return;
+    const result = told.value;
     // The owner does not hold this arming: drop it so it cannot fire in a loop. A newer arming of
     // the same wake has another sequence and stays armed.
     if (result._tag === "Rejected") {
@@ -80,7 +109,7 @@ export const makeWakeScheduler = Effect.fn("makeWakeScheduler")(function* () {
     let fired = 0;
     while (fired < FIRE_BATCH) {
       const next = yield* earliest;
-      if (Option.isNone(next) || next.value.dueAt > now) break;
+      if (Option.isNone(next) || next.value.at > now) break;
       yield* fire(next.value);
       fired++;
     }
@@ -94,7 +123,7 @@ export const makeWakeScheduler = Effect.fn("makeWakeScheduler")(function* () {
     if ((yield* fireDue(now)) > 0) return;
     const next = yield* earliest;
     if (Option.isNone(next)) return yield* signals.wakes.wait;
-    yield* Effect.raceFirst(Effect.sleep(Math.max(0, next.value.dueAt - now)), signals.wakes.wait);
+    yield* Effect.raceFirst(Effect.sleep(Math.max(0, next.value.at - now)), signals.wakes.wait);
   });
 
   const loop = turn.pipe(

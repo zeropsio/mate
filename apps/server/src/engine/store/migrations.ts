@@ -10,6 +10,7 @@ import * as Migrator from "effect/unstable/sql/Migrator";
 import Migration0001 from "./Migrations/0001_EngineCore.ts";
 import Migration0002 from "./Migrations/0002_EngineWakeArming.ts";
 import Migration0003 from "./Migrations/0003_EngineEffectSettling.ts";
+import Migration0004 from "./Migrations/0004_EngineWakeRetry.ts";
 
 export const ENGINE_MIGRATIONS_TABLE = "engine_migrations";
 
@@ -17,6 +18,7 @@ const migrations = {
   "1_EngineCore": Migration0001,
   "2_EngineWakeArming": Migration0002,
   "3_EngineEffectSettling": Migration0003,
+  "4_EngineWakeRetry": Migration0004,
 } as const;
 
 const run = Migrator.make({});

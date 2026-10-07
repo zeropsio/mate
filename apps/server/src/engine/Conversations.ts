@@ -74,10 +74,16 @@ export const makeConversations = Effect.fn("makeConversations")(function* (
     idleTimeToLive: options.idleTimeToLive ?? DEFAULT_IDLE_TIME_TO_LIVE,
   });
 
+  /** The conversation's actor; a build that failed is forgotten, so the next use builds again. */
+  const actor = (conversation: ConversationId) =>
+    RcMap.get(actors, conversation).pipe(
+      Effect.tapError(() => RcMap.invalidate(actors, conversation)),
+    );
+
   const withActor = <A, E>(
     conversation: ConversationId,
     use: (actor: ConversationActor) => Effect.Effect<A, E>,
-  ) => Effect.scoped(Effect.flatMap(RcMap.get(actors, conversation), use));
+  ) => Effect.scoped(Effect.flatMap(actor(conversation), use));
 
   const backlog = Effect.fnUntraced(function* (conversation: ConversationId, afterSeq: number) {
     const events: Array<EngineEvent> = [];
@@ -94,9 +100,9 @@ export const makeConversations = Effect.fn("makeConversations")(function* (
     subscribe: (conversation, afterSeq) =>
       Stream.unwrap(
         Effect.gen(function* () {
-          const actor = yield* RcMap.get(actors, conversation);
+          const owner = yield* actor(conversation);
           // Subscribe before reading the backlog, so nothing committed in between is missed.
-          const live = yield* actor.subscribe;
+          const live = yield* owner.subscribe;
           const past = yield* backlog(conversation, afterSeq);
           const cursor = past.at(-1)?.seq ?? afterSeq;
           return Stream.concat(

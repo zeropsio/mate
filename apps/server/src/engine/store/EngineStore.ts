@@ -268,7 +268,8 @@ export const makeEngineStore = Effect.fn("makeEngineStore")(function* (
           )
           ON CONFLICT (wake_id) DO UPDATE SET kind = excluded.kind, due_at = excluded.due_at,
             cron = excluded.cron, state = 'armed', principal_json = excluded.principal_json,
-            payload_json = excluded.payload_json, fired_at = NULL, armed_seq = excluded.armed_seq
+            payload_json = excluded.payload_json, fired_at = NULL, armed_seq = excluded.armed_seq,
+            retry_at = NULL, fire_failures = 0
         `.pipe(Effect.asVoid);
       case "WakeFired":
         return sql`
