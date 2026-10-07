@@ -33,6 +33,7 @@ import type { Command } from "./domain/command.ts";
 import type { WakeKind } from "./ports.ts";
 import type { ConversationView } from "./read/conversationView.ts";
 
+export { brokeOffLine, conversationRowOf, restartLine } from "./read/conversationRow.ts";
 export type { ConversationView, ViewCall, ViewRequest, ViewRun } from "./read/conversationView.ts";
 
 /** What a V1 door answers once the Mate engine owns the conversation. */
