@@ -368,7 +368,7 @@ import {
 import { resolveAgentAuthorizer } from "~/zerops/agentSigner";
 import { mateArrivalHoldsComposer } from "~/zerops/mateStandUp";
 import { useMateStandUp } from "~/zerops/useMateStandUp";
-import { useSentAsks } from "~/zerops/sentAsk";
+import { useSendTurnReceipts } from "~/zerops/sentAsk";
 import { useZeropsAgentSignInDialog } from "~/zerops/useZeropsAgentSignInDialog";
 import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
@@ -2842,7 +2842,9 @@ export default function ChatView(props: ChatViewProps) {
       return next;
     });
   }, []);
+  const sendTurnReceipts = useSendTurnReceipts();
   const serverMessages = activeThread?.messages;
+
   const [projectServerMessagePreviews] = useState(createMessageAttachmentPreviewProjector);
   const [projectHandoffMessagePreviews] = useState(createMessageAttachmentPreviewProjector);
   const serverAttachmentResources = useMemo(
@@ -6967,7 +6969,7 @@ export default function ChatView(props: ChatViewProps) {
     if (!queuedMessage) {
       // The menu's row says what went until the conversation does (`sentAsk.ts`).
       if (trimmed.length > 0 && !isSlashCommand(trimmed)) {
-        useSentAsks.getState().note(environmentId, {
+        sendTurnReceipts?.requested(environmentId, {
           messageId: messageIdForSend,
           threadId: threadIdForSend,
           text: trimmed,
@@ -7007,6 +7009,7 @@ export default function ChatView(props: ChatViewProps) {
       ctxSelectedModelSelection.options,
     );
 
+    let turnStartAttempted = false;
     let failure: AtomCommandResult<unknown, unknown> | null = null;
     // Auto-title from first message
     if (isFirstMessage && isServerThread) {
@@ -7086,6 +7089,7 @@ export default function ChatView(props: ChatViewProps) {
       const turnAgentNotes = agentNotesFor(outgoingMessageText, agentNotes);
       const toldVault =
         vaultTurn.note !== null && turnAgentNotes.includes(vaultTurn.note) ? vaultTurn.changes : [];
+      turnStartAttempted = true;
       const startResult = await startThreadTurn({
         environmentId,
         input: {
@@ -7185,8 +7189,10 @@ export default function ChatView(props: ChatViewProps) {
       }
     }
 
+    if (failure === null && turnStartSucceeded)
+      sendTurnReceipts?.accepted(environmentId, messageIdForSend);
     if (failure !== null) {
-      useSentAsks.getState().forget(environmentId, messageIdForSend);
+      sendTurnReceipts?.failed(environmentId, messageIdForSend, turnStartAttempted);
       if (queuedMessage) {
         setOptimisticUserMessages((existing) => {
           const removed = existing.filter((message) => message.id === messageIdForSend);

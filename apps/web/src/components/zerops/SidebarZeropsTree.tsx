@@ -142,7 +142,7 @@ import { useNowMs, useSecondsNowMs } from "~/zerops/useNowMs";
 import { useMateLinkedInHq } from "~/zerops/useMenuMateReadings";
 import type { FixProblem } from "~/zerops/fixRequest";
 import { useOpenReview } from "~/zerops/review";
-import { useSentAsks } from "~/zerops/sentAsk";
+import { usePendingSentAsk } from "~/zerops/sentAsk";
 import { hqDown, hqMatesAtom, hqPlacementsAtom, hqNavigationAtom } from "~/state/zerops";
 import { useMateCrew } from "~/zerops/crew/useCrew";
 import { useCrewAccess } from "~/zerops/crew/useCrewAccess";
@@ -216,8 +216,6 @@ import {
   mateNotYours,
   mateOwnerView,
   mateRowAskLine,
-  mateRowSentAsk,
-  mateRowSentEchoed,
   mateRowDraft,
   mateRowPropsEqual,
   mateRowReading,
@@ -2642,25 +2640,17 @@ function MateRowView<T extends RosterCandidate>({
     }),
   );
   // What this browser just sent it, until its conversation says it (`mateRowSentAsk`).
-  const sentAsk = useSentAsks((state) =>
-    candidate.environmentId === undefined
-      ? undefined
-      : state.byEnvironment[candidate.environmentId],
-  );
-  // Said by its conversation, the held message is let go (`mateRowSentEchoed`).
-  const sentEchoed = sentAsk !== undefined && mateRowSentEchoed(sentAsk, activity);
-  useEffect(() => {
-    if (sentEchoed && sentAsk !== undefined && candidate.environmentId !== undefined) {
-      useSentAsks.getState().forget(candidate.environmentId, sentAsk.messageId);
-    }
-  }, [sentEchoed, sentAsk, candidate.environmentId]);
+  const sentAsk = usePendingSentAsk(candidate.environmentId);
   // The person's line (`mateRowAskLine`): what they asked, or are about to, or that nothing was.
   const askLine = mateRowAskLine({
     view,
     signIn:
       signIn === undefined ? undefined : { text: signIn, waitsOnViewer: seated.waitsOnViewer },
     draft,
-    sent: mateRowSentAsk(sentAsk, activity, conversationsRead),
+    sent:
+      sentAsk !== undefined && (activity === undefined || activity.threadId === sentAsk.threadId)
+        ? sentAsk.text
+        : undefined,
     deleting,
     finishing: finishing !== undefined,
     read: conversationsRead,

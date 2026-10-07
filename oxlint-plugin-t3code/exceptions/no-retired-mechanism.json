@@ -200,59 +200,11 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/components/ChatView.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useSentAsks",
-    "owner": "data-layer rewrite: operations",
-    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/ChatView.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useSentAsks",
-    "owner": "data-layer rewrite: operations",
-    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/ChatView.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useSentAsks",
-    "owner": "data-layer rewrite: operations",
-    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/components/usage/UsagePage.tsx",
     "kind": "retired-token",
     "fingerprint": "useUsage(",
     "owner": "data-layer rewrite: Mate attention/overview",
     "reason": "Retained conversation/usage boundary: this guard token supports route access, discovery completion or provider usage presentation. Its policy and retained client consumers require a separate migration; these inventory, database and browser changes do not supply that contract.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useSentAsks",
-    "owner": "data-layer rewrite: operations",
-    "reason": "Retained creation/handoff debt: sent asks or release handoff still depend on this local workflow record. Replacing it requires the corresponding operation result and navigation projection; inventory, database and browser facts do not prove that outcome.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useSentAsks",
-    "owner": "data-layer rewrite: operations",
-    "reason": "Retained creation/handoff debt: sent asks or release handoff still depend on this local workflow record. Replacing it requires the corresponding operation result and navigation projection; inventory, database and browser facts do not prove that outcome.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useSentAsks",
-    "owner": "data-layer rewrite: operations",
-    "reason": "Retained creation/handoff debt: sent asks or release handoff still depend on this local workflow record. Replacing it requires the corresponding operation result and navigation projection; inventory, database and browser facts do not prove that outcome.",
     "expires": "never"
   },
   {
@@ -645,46 +597,6 @@
     "fingerprint": "settlePress(",
     "owner": "data-layer rewrite: operations",
     "reason": "Retained press coordination debt: creation holds and settles a server press lease with its current renewal protocol. Deleting the mechanism would abandon active creation leases; replacement needs an operation executor and an observable owner settlement contract.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/sentAsk.ts",
-    "kind": "retired-token",
-    "fingerprint": "useSentAsks",
-    "owner": "data-layer rewrite: operations",
-    "reason": "Retained creation/handoff debt: sent asks or release handoff still depend on this local workflow record. Replacing it requires the corresponding operation result and navigation projection; inventory, database and browser facts do not prove that outcome.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/sentAsk.ts",
-    "kind": "retired-token",
-    "fingerprint": "useSentAsks",
-    "owner": "data-layer rewrite: operations",
-    "reason": "Retained creation/handoff debt: sent asks or release handoff still depend on this local workflow record. Replacing it requires the corresponding operation result and navigation projection; inventory, database and browser facts do not prove that outcome.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useMateSetup.ts",
-    "kind": "retired-token",
-    "fingerprint": "MATE_SETUP_POLL_MS",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained setup/crew observation debt: this mechanism observes provider setup or crew files, outside database and browser protocols. Removing it requires source events proving readiness/file replacement and corresponding setup projections.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useMateSetup.ts",
-    "kind": "retired-token",
-    "fingerprint": "MATE_SETUP_POLL_MS",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained setup/crew observation debt: this mechanism observes provider setup or crew files, outside database and browser protocols. Removing it requires source events proving readiness/file replacement and corresponding setup projections.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useMateSetup.ts",
-    "kind": "retired-token",
-    "fingerprint": "new Map<string, SetupObservation>()",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained setup/crew observation debt: this mechanism observes provider setup or crew files, outside database and browser protocols. Removing it requires source events proving readiness/file replacement and corresponding setup projections.",
     "expires": "never"
   },
   {

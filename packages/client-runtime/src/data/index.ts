@@ -365,7 +365,19 @@ export {
 } from "./operations/executors/hqPressLease.ts";
 export { hardenMateProject } from "./operations/executors/hardenMateProject.ts";
 
-export { faceAction, NO_FACE_ACTION } from "./projections/faceAction.ts";
-
 export { creationHandoff } from "./projections/creationHandoff.ts";
 export { mateArrival } from "./projections/mateArrival.ts";
+
+export { makeMateSetupDemand } from "./adapters/mateSetup.ts";
+export { mateSetupOwner, mateSetupSettled } from "./families/mateSetup.ts";
+export {
+  setupProgress,
+  NO_SETUP_PROGRESS,
+  type SetupProgress,
+} from "./projections/setupProgress.ts";
+
+export { makeSendTurnReceipts } from "./operations/executors/mateSendTurn.ts";
+export type { SentAsk } from "./operations/mateSendTurn.ts";
+
+export { STREAM_POLICY } from "./streamMachine.ts";
+export { faceAction, NO_FACE_ACTION } from "./projections/faceAction.ts";

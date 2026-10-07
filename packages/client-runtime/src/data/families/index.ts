@@ -13,6 +13,7 @@ import { mateMcpServersFamily } from "./mateMcpServers.ts";
 import { mateVcsRefsFamily } from "./mateVcsRefs.ts";
 import { hqRepositorySourceFamily } from "./hqRepositorySource.ts";
 import { mateUpdateAvailabilityFamily, mateUpdateRequestFamily } from "./mateUpdate.ts";
+import { mateSetupFamily } from "./mateSetup.ts";
 import { hqLifecycleFamily } from "./hqLifecycle.ts";
 import { mateImageFamily } from "./mateImage.ts";
 /**
@@ -93,6 +94,7 @@ export const FAMILIES = defineFamilies([
   mateVcsRefsFamily,
 
   hqRepositorySourceFamily,
+  mateSetupFamily,
   hqLifecycleFamily,
   projectFamily,
   processFamily,

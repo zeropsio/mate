@@ -1,190 +1,56 @@
-/**
- * A Mate's setup, read off its own `/mate/setup.json` (`mateSetup.ts`) while its view shows it
- * coming up: the same answer in any browser, and whether a browser watches or not. Read every few
- * seconds while there is something left to happen or nothing answers yet, and no more once its
- * Git access, its runtimes and its stand-up have settled. Nothing is read while the tab is hidden,
- * the first read either: a read that falls due then waits for the tab's return (527bbf7f7's rule).
- *
- * A read turned away, or answered with something that is not the setup, is a failure the view
- * says, and ends the observation until the person's *Try again* (`refreshMateSetup`) or a changed
- * input — its caller's `epoch`: a redeploy, its server restarting — reads it again. A server
- * outside a Zerops project has no setup (`404`): nothing is said, and nothing read again.
- */
+/** Setup demand shared by surfaces; source values and refusal live only in the account layer. */
+import { useAtomValue } from "@effect/atom-react";
 import {
-  readMateSetup,
-  type MateSetup,
-  type MateSetupFailure,
-} from "@t3tools/client-runtime/zerops/mateSetup";
-import { useCallback, useEffect, useSyncExternalStore } from "react";
+  makeMateSetupDemand,
+  mateSetupOwner,
+  setupProgress,
+  NO_SETUP_PROGRESS,
+  type SetupProgress,
+} from "@t3tools/client-runtime/data";
+import { Atom } from "effect/unstable/reactivity";
+import { useEffect, useMemo } from "react";
+import { useAccountDataOptional, useAccountStoreForAdapters } from "./ZeropsAccountData";
 import { onAccountLifetimeClose } from "./accountLifetime";
 import { whenShown } from "./whenShown";
 
-/** How often a Mate's setup is read while something in it is still to happen. */
-export const MATE_SETUP_POLL_MS = 4_000;
-
-/**
- * Nothing more will change: the Git access granted — one on its way, or failed, comes or heals
- * (HQ set up, the Mate's setup finished) — and the runtimes and the stand-up settled.
- */
-export function mateSetupSettled(setup: MateSetup): boolean {
-  const runtimes = setup.runtimes;
-  const standup = setup.standup;
-  return (
-    (setup.git === undefined || setup.git === "done") &&
-    (runtimes === "none" ||
-      runtimes === "done" ||
-      runtimes === "failed" ||
-      runtimes === "unknown") &&
-    (standup === "none" || standup === "done" || standup === "failed")
-  );
-}
-
-/** What a Mate's setup observation holds; the same object until it changes. */
-export interface MateSetupObserved {
-  /** The last setup its Mate told; undefined while none came back. Kept through a failed read. */
-  readonly setup: MateSetup | undefined;
-  /** Why the last read could not be its setup; undefined while nothing says so. */
-  readonly failure: MateSetupFailure | undefined;
-}
-
-const NOTHING_OBSERVED: MateSetupObserved = { setup: undefined, failure: undefined };
-
-interface SetupObservation {
-  readonly origin: string;
-  readonly listeners: Set<() => void>;
-  observed: MateSetupObserved;
-  controller: AbortController | undefined;
-  timer: ReturnType<typeof setTimeout> | undefined;
-  /** Stops waiting for the tab's return, while a read that fell due waits for it. */
-  unwait: (() => void) | undefined;
-  inFlight: boolean;
-  dirty: boolean;
-  /** The caller's input the last read answered for (`useMateSetup`'s `epoch`). */
-  epoch: string | undefined;
-}
-const observations = new Map<string, SetupObservation>();
-function observation(origin: string): SetupObservation {
-  let held = observations.get(origin);
-  if (held === undefined) {
-    held = {
-      origin,
-      listeners: new Set(),
-      observed: NOTHING_OBSERVED,
-      controller: undefined,
-      timer: undefined,
-      unwait: undefined,
-      inFlight: false,
-      dirty: false,
-      epoch: undefined,
-    };
-    observations.set(origin, held);
-  }
-  return held;
-}
-
-async function ask(held: SetupObservation): Promise<void> {
-  if (held.inFlight || held.listeners.size === 0) return;
-  const controller = held.controller ?? new AbortController();
-  held.controller = controller;
-  held.inFlight = true;
-  const reading = await readMateSetup(held.origin, undefined, controller.signal);
-  if (controller.signal.aborted || held.controller !== controller) return;
-  held.inFlight = false;
-  const observed: MateSetupObserved | null =
-    reading.kind === "setup"
-      ? { setup: reading.setup, failure: undefined }
-      : reading.kind === "refused" || reading.kind === "invalid"
-        ? { setup: held.observed.setup, failure: reading.kind }
-        : null;
-  if (observed !== null) {
-    held.observed = observed;
-    for (const listener of held.listeners) listener();
-  }
-  if (held.dirty) {
-    held.dirty = false;
-    void ask(held);
-  } else if (
-    reading.kind === "unreachable" ||
-    (reading.kind === "setup" && !mateSetupSettled(reading.setup))
-  ) {
-    held.timer = setTimeout(() => {
-      held.timer = undefined;
-      whenShownAsk(held);
-    }, MATE_SETUP_POLL_MS);
-  }
-}
-
-/** Reads now while the tab is shown, else once it is shown again. */
-function whenShownAsk(held: SetupObservation): void {
-  held.unwait = whenShown(() => {
-    held.unwait = undefined;
-    void ask(held);
-  });
-}
-
-function unwait(held: SetupObservation): void {
-  held.unwait?.();
-  held.unwait = undefined;
-}
-
-/** Re-read after an explicit action. Never clears the last answer. */
-export function refreshMateSetup(origin: string): void {
-  const held = observations.get(origin);
-  if (held === undefined) return;
-  if (held.timer !== undefined) clearTimeout(held.timer);
-  held.timer = undefined;
-  unwait(held);
-  if (held.inFlight) held.dirty = true;
-  else void ask(held);
-}
-
-function stop(held: SetupObservation): void {
-  held.controller?.abort();
-  held.controller = undefined;
-  held.inFlight = false;
-  held.dirty = false;
-  if (held.timer !== undefined) clearTimeout(held.timer);
-  held.timer = undefined;
-  unwait(held);
-}
-
-export function useMateSetup(
-  origin: string | undefined,
-  /** What its setup depends on beyond its origin; a change reads it again. */
-  epoch?: string,
-): MateSetupObserved {
-  const subscribe = useCallback(
-    (listener: () => void) => {
-      if (origin === undefined) return () => undefined;
-      const held = observation(origin);
-      held.listeners.add(listener);
-      if (held.listeners.size === 1) whenShownAsk(held);
-      return () => {
-        held.listeners.delete(listener);
-        if (held.listeners.size === 0) stop(held);
-      };
-    },
-    [origin],
-  );
-  const snapshot = useCallback(
-    () =>
-      origin === undefined
-        ? NOTHING_OBSERVED
-        : (observations.get(origin)?.observed ?? NOTHING_OBSERVED),
-    [origin],
-  );
-  const observed = useSyncExternalStore(subscribe, snapshot, snapshot);
-  useEffect(() => {
-    if (origin === undefined || epoch === undefined) return;
-    const held = observation(origin);
-    const before = held.epoch;
-    held.epoch = epoch;
-    if (before !== undefined && before !== epoch) refreshMateSetup(origin);
-  }, [origin, epoch]);
-  return observed;
-}
-
+export { mateSetupSettled } from "@t3tools/client-runtime/data";
+export type MateSetupObserved = SetupProgress;
+const NOTHING = Atom.make(NO_SETUP_PROGRESS);
+const managers = new WeakMap<object, ReturnType<typeof makeMateSetupDemand>>();
+const active = new Set<ReturnType<typeof makeMateSetupDemand>>();
 onAccountLifetimeClose(() => {
-  for (const held of observations.values()) stop(held);
-  observations.clear();
+  for (const manager of active) manager.close();
+  active.clear();
 });
+
+/** Revalidation after this account's own action or explicit Try again. */
+export function refreshMateSetup(origin: string): void {
+  for (const manager of active) manager.refresh(origin);
+}
+
+export function useMateSetup(origin: string | undefined, epoch?: string): MateSetupObserved {
+  const store = useAccountStoreForAdapters();
+  const orgId = useAccountDataOptional()?.orgId;
+  const manager = useMemo(() => {
+    if (store === null) return null;
+    let held = managers.get(store);
+    if (held === undefined) {
+      held = makeMateSetupDemand(store, whenShown);
+      managers.set(store, held);
+      active.add(held);
+    }
+    return held;
+  }, [store]);
+  const atom = useMemo(
+    () =>
+      store === null || origin === undefined || orgId == null
+        ? NOTHING
+        : store.data.project(setupProgress, mateSetupOwner(orgId, origin)),
+    [orgId, origin, store],
+  );
+  useEffect(() => {
+    if (manager === null || origin === undefined || orgId == null) return;
+    return manager.demand(orgId, origin, epoch);
+  }, [epoch, manager, orgId, origin]);
+  return useAtomValue(atom);
+}
