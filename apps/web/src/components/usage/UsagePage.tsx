@@ -11,6 +11,7 @@ import {
   isModelCostUnknown,
   type DailyTotals,
   type HourlyTotals,
+  type ModelTotals,
 } from "@t3tools/shared/usageMerge";
 
 import { isElectron } from "../../env";
@@ -64,7 +65,8 @@ import { usagePageState } from "./usagePage.logic";
 import { UsageLimitsSection } from "./UsageLimits";
 import { UsagePriceOverrides } from "./UsagePriceOverrides";
 import { UsageProviderChart, type UsageChartMetric } from "./UsageProviderChart";
-import { modelShare, sortModelsByTokens } from "./usageBreakdown";
+import { modelShare, sortModelsByTokens, usageTotals, type UsageTotal } from "./usageBreakdown";
+import { UsageModelDialog } from "./UsageModelDialog";
 import { PROVIDER_ORDER, PROVIDER_PRESENTATION, providersWithUsage } from "./usageProviders";
 import {
   readUsagePagePreferences,
@@ -304,6 +306,7 @@ export function UsagePage({
     () => (isPast24Hours ? merged.hourly : merged.daily).toReversed(),
     [isPast24Hours, merged.daily, merged.hourly],
   );
+  const [openModel, setOpenModel] = useState<ModelTotals | null>(null);
   const breakdownModels = useMemo(
     () =>
       breakdown === "model" && metric === "tokens"
@@ -685,18 +688,10 @@ export function UsagePage({
 
                 <section className="flex flex-col gap-2">
                   <h2 className="text-sm font-medium text-foreground">Totals</h2>
-                  <div className="grid grid-cols-2 gap-x-6 gap-y-4 py-1 md:grid-cols-5">
-                    <Metric label="Processed tokens" value={formatTokens(merged.totalTokens)} />
-                    <Metric label="Cached input" value={formatTokens(merged.cachedInputTokens)} />
-                    <Metric
-                      label="Uncached input"
-                      value={formatTokens(merged.uncachedInputTokens)}
-                    />
-                    <Metric label="Output" value={formatTokens(merged.outputTokens)} />
-                    <Metric
-                      label="Estimated cache savings"
-                      value={formatUsd(merged.costQuality.cacheSavingsUsd)}
-                    />
+                  <div className={USAGE_TOTALS_GRID}>
+                    {usageTotals(merged, dimensionMetric).map((total) => (
+                      <Metric key={total.label} {...total} />
+                    ))}
                   </div>
                 </section>
 
@@ -762,10 +757,15 @@ export function UsagePage({
                                 className="border-b border-border/50 transition-colors hover:bg-muted/50"
                               >
                                 <td className="py-2 text-foreground">
-                                  <span className="flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    className="flex max-w-full cursor-pointer items-center gap-2 text-left focus-visible:outline-2 focus-visible:outline-ring"
+                                    aria-label={`Open ${model.model}`}
+                                    onClick={() => setOpenModel(model)}
+                                  >
                                     <ProviderMark provider={model.provider} className="size-3.5" />
-                                    {model.model}
-                                  </span>
+                                    <span className="truncate">{model.model}</span>
+                                  </button>
                                 </td>
                                 <td className="py-2 text-right text-foreground tabular-nums">
                                   {isModelCostUnknown(model) ? (
@@ -857,6 +857,21 @@ export function UsagePage({
           </WorkspacePageContainer>
         </ScrollArea>
       </div>
+      {openModel === null ? null : (
+        <UsageModelDialog
+          model={openModel}
+          environments={scopedEnvironments}
+          metric={dimensionMetric}
+          chartWindow={{
+            days,
+            hours,
+            resolution: isPast24Hours ? "hour" : "day",
+            timeZone: window.timeZone,
+            referenceTime: window.untilTime,
+          }}
+          onClose={() => setOpenModel(null)}
+        />
+      )}
     </SidebarInset>
   );
 }
@@ -873,11 +888,25 @@ function ProviderMark({
   return <Mark className={cn("shrink-0", className)} aria-hidden />;
 }
 
-function Metric({ label, value }: { readonly label: string; readonly value: string }) {
+/** The Totals row's grid, shared with the loading skeleton so nothing moves when it settles. */
+const USAGE_TOTALS_GRID = "grid grid-cols-2 gap-x-6 gap-y-4 py-1 md:grid-cols-4 lg:grid-cols-7";
+
+/** The Totals the skeleton holds room for: every row but fast mode, which only some windows have. */
+const USAGE_TOTAL_LABELS = [
+  "Processed tokens",
+  "Uncached input",
+  "Cached input",
+  "Cache writes",
+  "Output",
+  "Estimated cache savings",
+] as const;
+
+function Metric({ label, value, detail }: UsageTotal) {
   return (
     <div className="flex min-w-0 flex-col gap-0.5">
       <span className="text-xs text-muted-foreground">{label}</span>
       <span className="text-base font-medium text-foreground tabular-nums">{value}</span>
+      <span className="truncate text-xs text-muted-foreground tabular-nums">{detail}</span>
     </div>
   );
 }
@@ -1207,15 +1236,14 @@ function UsageSkeleton() {
 
       <section className="flex flex-col gap-2">
         <h2 className="text-sm font-medium text-foreground">Totals</h2>
-        <div className="grid grid-cols-2 gap-x-6 gap-y-4 py-1 md:grid-cols-5">
-          {["Processed tokens", "Cached input", "Uncached input", "Output", "Cache savings"].map(
-            (label) => (
-              <div key={label} className="flex flex-col gap-0.5">
-                <span className="text-xs text-muted-foreground">{label}</span>
-                <div className="h-6 w-16 rounded-sm bg-muted" />
-              </div>
-            ),
-          )}
+        <div className={USAGE_TOTALS_GRID}>
+          {USAGE_TOTAL_LABELS.map((label) => (
+            <div key={label} className="flex flex-col gap-0.5">
+              <span className="text-xs text-muted-foreground">{label}</span>
+              <div className="h-6 w-16 rounded-sm bg-muted" />
+              <div className="h-4 w-12 rounded-sm bg-muted/60" />
+            </div>
+          ))}
         </div>
       </section>
 
