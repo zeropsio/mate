@@ -372,17 +372,6 @@ still to come says so.
   - _Proven by:_ `runCard.logic.test.ts`, `runResult.logic.test.ts`, `runResultFacts.test.ts`,
     `RunChat.test.tsx`, `TurnReport.test.tsx`, `workSteps.logic.test.ts`,
     `MessagesTimeline.logic.test.ts`; the harness `/design-working.html`
-- **—** — Pass 16: the conversation and the composer — its top, one control, one white
-  - _State:_ **live**, 2026-09-29: turns 24 px inside and about 65 apart, the neutral bubble, the
-    header's one button style, the composer the one white surface; the composer's top — the Mate's
-    own change as _Review_ — in the first paint wherever this browser remembers it, and the
-    conversation never moving (before, the strip came with the forge's answer 8.6 s after a reload
-    and moved the conversation 61 px). HQ's answer, not Gitea's, confirms the remembered strip now
-    (`changesKnown`)
-  - _Built in:_ mate 0.11.63 (PR #32)
-  - _Proven by:_ `MessagesTimeline.logic.test.ts` (the gaps, the seams),
-    `ZeropsNextStepBanner.test.tsx`, `composerTopMemory.test.ts`, `mateNextStep.test.ts`,
-    `ComposerModelControl.logic.test.ts`, `composerTypeScale.test.ts`
 - **—** — Pass 16: a thread's live step and waiting question on its shell (D5, D6)
   - _State:_ built — the Mate server relays a running thread's step and a waiting thread's first
     question on its shell, in memory, with no migration and no push added; replayed through the

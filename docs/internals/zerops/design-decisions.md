@@ -48,26 +48,6 @@ here (the owner decides only what the orchestrator brief §6 lists).
   `reduceZeropsOperations` (R5-R9, one `phaseFor`), `composeSession` — strip, map and every card
   read its single `ZeropsThreadModel`, never their own derivation. Concept:
   `../../../../zcp/plans/mate-session-model-2026-09-05.md`.
-- **2026-09-05** — A draft names its Zerops project the way a thread does: `ChatView` demands the
-  project's topology (`useProjectTopology`, derived from the account's runtime) keyed on the
-  environment, not the thread, and `resolveZeropsChatChrome` reads the project name off the topology
-  whenever it has answered. The draft headline prefers the caller's resolved name over the logical
-  group's.
-  - _Why:_ a draft in `acme-docs-dev` read `www / New thread` and "What should we build in www?" —
-    the workspace folder, the same on every container — because only the open panel mounted the
-    writer, so the panel's own default-open never fired either
-- **2026-09-05** — The draft headline's project picker names each entry by its environment's Zerops
-  project (`acme-docs-dev`, `beviro-crm-stage`, …), read from `zeropsEnvironmentNamesAtom` — derived
-  from the candidate listing atom, read by `useZeropsEnvironmentNames` without loading anything. The
-  logical group's name is the fallback for environments Zerops does not know.
-  - _Why:_ the picker listed "www" six times — the workspace folder is the same in every container,
-    so the list said nothing
-- **2026-09-05** — A draft in a Zerops environment never asks a person to "choose a project above":
-  one environment is one project (spec §9.3), so a draft whose project the environment no longer
-  lists re-attaches to the environment's only project, and the repaired ref is written back to the
-  draft. The composer's project question stays for environments that really hold several projects.
-  - _Why:_ a persisted draft came back from a reload pointing at a project that did not exist, and
-    the page asked a question the product has no business asking
 - **2026-09-06** — **A Mate's subject is the last task as the person put it, never the first.** With
   one conversation per environment the conversation's title names the first task forever, so the
   row's second line and the header's crumb after the Mate read the shell's **preview of the person's
@@ -78,14 +58,6 @@ here (the owner decides only what the orchestrator brief §6 lists).
   - _Why:_ the owner: "I set it out on a new task and it's still 'create todo app'", "simply to know
     what's being worked on / last worked on… either as summary, last messages or both… definitely
     not the first"
-- **2026-09-06** — **A banner over the composer floats; it never moves the conversation.**
-  `ComposerBannerStack` renders from a zero-height anchor above the composer and paints upward over
-  the bottom of the timeline (`absolute inset-x-0 bottom-0`, the drawer's overlap tucked under the
-  composer), so an environment reconnecting, a version notice or a branch change comes and goes
-  without the history or the composer moving.
-  - _Why:_ the owner: "'reconnect' and status is still popping up from the top of the chat bar and
-    it's still causing layout shift of the chat history… can it at least not be like absolutely
-    positioned or something?"
 - **2026-09-06** — **A conversation is headed by its Mate.** Where a Mate lives, the thread header's
   leading crumb is the Mate — its 20 px face wearing the conversation's state and its name — not a
   folder and a container name; the thread's title follows only once somebody has spoken into the
@@ -112,16 +84,6 @@ here (the owner decides only what the orchestrator brief §6 lists).
   - _Why:_ the owner: "this 'coding agent' empty / non-authorized state could be done properly as an
     empty state at the 'Send a message to start the conversation.' place", "I still don't understand
     what this is useful for" (the band)
-- **2026-09-24** — **An empty conversation opens on an empty composer.** Nothing writes into a
-  Zerops environment's composer on its own: a creation leaves no opening job on its birth
-  (`birthStore.ts` keeps births only, and reads an older build's `handoff` and `jobs` as nothing),
-  and neither the landing nor a new-thread request composes an introduction.
-  **Supersedes:** the 2026-09-07 row whole, and of the 2026-09-06 _one environment is one
-  conversation_ row the sentence that composes zcp's introduction into an unspoken conversation.
-  Everything else in that row stands.
-  - _Why:_ the owner, 2026-09-24: "When I enter an empty conversation there must be no prefilled
-    text in the composer" — the hand-off ("You were just created as …") sat in front of whatever the
-    person typed
 - **2026-09-25** — **A card is correct at every instant of a live turn, and reads the same after a
   reload.** Nothing on a card moves, shrinks or is merged away because something newer arrived: a
   same-turn retry is its own card (the R8 fold is gone); an attempt number appears only once it can
@@ -167,10 +129,6 @@ here (the owner decides only what the orchestrator brief §6 lists).
   pipelines, helpers, the task list, a pause countdown.
   - _Why:_ a helper starting or a deploy stepping on must never move a message; the task list had no
     home at all
-- **2026-09-26** — _Your move_ stays the next-step banner above the composer, read from the
-  project's flow — not a row of the outcome card.
-  - _Why:_ a live action frozen into a turn's history goes stale; the banner already answers from
-    the flow, not from what the agent said
 - **2026-09-26** — One clock (today "9:14 PM", "Yesterday 9:14 PM", "Sep 24 9:14 PM") and one
   duration format ("42s", "1m 12s", "13m", "2h 6m" — seconds only under ten minutes, nothing under a
   second).
@@ -265,14 +223,6 @@ here (the owner decides only what the orchestrator brief §6 lists).
   once — in the opened log, else beside the face.
   - _Why:_ notes started at 406 px, thinking at 430, calls at 432; the last note stood twice when a
     line was opened
-- **2026-09-26** — **The composer before and while a session starts**: a Mate's conversation invites
-  with one sentence whether or not its session runs; the send button keeps its spinner until the
-  turn runs and turns into Stop; the context meter is a pie, never a ring that reads as a spinner
-  beside Send; the empty conversation's heading keeps clear of the banners; _New session_ says
-  "Started a new session".
-  - _Why:_ the empty state's banner covered the heading, "send follow-ups" invited follow-ups to
-    nothing, the arrow came back for 1.5 s between Sending and Stop, and the toast said "Thread
-    archived"
 - **2026-09-26** — **The conversation is one column.** Every box sits on the composer's edges, every
   line of text on its text edge (its 1 px frame and 16 px padding); a mark leads its words on that
   edge.
@@ -351,14 +301,6 @@ here (the owner decides only what the orchestrator brief §6 lists).
   sent while it ran is drawn as its own run.
   - _Why:_ Juno: every message and all the work after a /compact vanished from the log while the
     title showed them
-- **2026-09-26** — **The Mate's question is the one ask while it waits**: the next-step banner steps
-  aside while a question or an approval waits and comes back once it is answered; the composer says
-  "Waiting for you" in sentence case in the attention colour, not as a `MicroLabel`; the question
-  tool's call is never a line of its own. Answered, the Mate at work streams on under the answer in
-  a panel of its own.
-  - _Why:_ "Nova is waiting on you to merge #2" stood over the question panel; "WAITING FOR YOU" in
-    capitals under the panel's own amber "Waiting for your answer"; "Used AskUserQuestion" over the
-    question it asked; thoughts from before the question streamed on below the person's reply
 - **2026-09-26** — **The Mate thinks in its own hand.** In the panel a thought is no bubble: text on
   a hairline (drawn, 1 px `border`, the text's height) in the muted ink and in italics, in a note's
   box to the pixel; its words to the person stay the bubble, its corner toward the face, filled in
@@ -888,26 +830,6 @@ here (the owner decides only what the orchestrator brief §6 lists).
   a sentence is marked_ row.
   - _Why:_ text scrolled half visible under the header; commas stood apart from the code before
     them; the brand mark said nothing of who lives there
-- **2026-09-29** — **Superseded 2026-10-02 in part: HQ's answer, not Gitea's, confirms the
-  remembered strip.**
-  **A reload paints the composer's top it will keep.** Each conversation's strip is
-  remembered in this browser, per account (`composerTopMemory.ts`, 64 conversations), and painted in
-  the first frame; Gitea's answer confirms it, changes its words or takes it away.
-  - _Why:_ measured live: the strip arrived with Gitea's answer 8.6 s after a reload, and the
-    composer's 61 px growth moved the conversation
-- **2026-09-29** — **One quiet control for the model and its effort** (C4). "Sonnet 5 · High" at 13
-  px opens one menu, the models on the left and a radio list per choice with _Access_ on the right —
-  radio lists, since six efforts do not fit a segmented row; picking an effort keeps it open.
-  _Access_ stands in the toolbar only while it is not the usual setting, and whenever the one
-  control cannot open. Send, disabled, is a grey disc, never a faded blue; 32 px, 36 on a phone for
-  the finger.
-  - _Why:_ three 14 px dropdowns at 500 were louder than the conversation's own words
-- **2026-09-29** — **A fix request joins an unsent draft.** Written into a composer that holds the
-  person's words, the request goes after them, a blank line apart, the caret where it continues; the
-  same request twice changes nothing. A change's fix goes only to the Mate that wrote it, which
-  alone can push its branch; a run's only to the run's own Mate, whose services it found the problem
-  in (2026-09-29: "'ask lena to fix' when im at iris").
-  - _Why:_ a request must never take the person's own words away
 - **2026-09-29** — **The server relays the live step, in memory, and the client paces it.** A
   running thread's shell carries its step — thinking, writing, or the calls running — only while its
   session runs a turn, cleared however the turn ends; nothing is persisted, there is no migration,
@@ -963,14 +885,6 @@ here (the owner decides only what the orchestrator brief §6 lists).
   Mate_ row's crumb — the Mate is the strip's first entry.
   - _Why:_ the Mate stood twice (the header and the strip's pill), names were cut to six characters
     behind status words, "+ New chat" was the loudest thing on the line, and a compass meant nothing
-- **2026-09-29** — **A popover opens at its own height** (the owner, of the model menu: "this
-  brutally overshots height on open before the scrollbar takes effect"). Kit popovers no longer sit
-  in Base UI's Viewport part, which exists to morph one popup between several triggers and measured
-  a capped popup uncapped: its content is a plain box capped by the room in CSS, and it enters by
-  scale and fade only. The model menu's wheel scrolls its choices column: the page stays still
-  behind an open menu, except inside the popup.
-  - _Why:_ the model menu drew 644 px tall for its whole entrance, then snapped to 450; an unseen
-    194 px box over the conversation took clicks; the choices column never scrolled by wheel
 - **2026-09-29** — **Superseded 2026-09-30 by the lone card below.** **A line with nothing under it
   is no card** (the owner, of a closed run with nothing below: "shape of this with no items below is
   pretty weird"). A settled run whose card would hold its line alone — no result under it, what it
@@ -1094,14 +1008,6 @@ here (the owner decides only what the orchestrator brief §6 lists).
     and faded over the next one for 150 ms, two texts at once; the composer's frame faded three
     times during one first open, showing the page through it
 
-- **2026-09-30** — **The composer never leaves the screen across a switch.** A Mate's own view
-  while it is reached, and a reload's stage before its conversation arrives, draw the composer
-  standing where the conversation's will stand, and the conversation header's subject, ··· menu and
-  panel toggles, inert until it connects. The stand-in takes typing into that conversation's
-  draft, and the real composer takes the caret where the person left it. After the hand-over the
-  list shows its Mate at work at once until its rows are placed.
-  - _Why:_ a first open after a reload went 2.5–6 s with no composer at all, and the face, nothing,
-    face, rows sequence read as flicker
 - **2026-09-30** — **A Mate's link speaks with one voice** (the owner: "banners and snacks and
   weirdly aligned states all over the place"). Over a conversation that shows, only the banner
   above the composer speaks; where no conversation can show, the Mate's stage does — face, name,
@@ -1166,13 +1072,6 @@ here (the owner decides only what the orchestrator brief §6 lists).
   because I saw it finish live?"). It stays open when it ends under the person's eyes and carries
   _Hide work_, folding as a settling run does; _Show work_ reopens it.
   - _Why:_ the toggle drew only for runs that ended unwatched
-- **2026-10-01** — **A queued message whose send failed says why** (Milo's follow-up stayed queued
-  after the turn ended). A send cut off — the link dropped, the command interrupted, the account's
-  wait out — goes back unheld and is retried, at most three times, with the same message and
-  command ids, so the engine's command receipt drops a second start. A refused send is held with its
-  reason in the clock's place and ↑ becomes Retry (fresh ids); the ones behind it say "Waits for the
-  message above"; while a question is open the next says "Waits for your answer above".
-  - _Why:_ a held message never went again, blocked the queue and looked like a waiting one
 - **2026-10-01** — **A row opens only when opening adds something** (a colleague: "you don't need an
   arrow if it doesn't show anything"). A docked operation's chevron shows only for its services'
   lines or a reason cut short; a cut-short reason opens whole, wrapped, in place.
@@ -1413,26 +1312,6 @@ here (the owner decides only what the orchestrator brief §6 lists).
     build's end); a stand-up's quiet file (its zcp process by PID and start, and its turn); a Mate's
     retry cap kept across loads (the connection's own ladder, which a load starts over). Faces keep
     their own clocks: a pose is never a verdict.
-- **2026-10-05** — **D10 (the owner): a new conversation starts on Extra High, wherever its model
-  offers it.**
-  - **Every new conversation:** a new Mate's first (the bootstrap thread and its stand-up) and every
-    later one (a draft, a thread that never ran a turn), on the web and the phone. The drivers keep
-    their own `isDefault` (Port zone untouched); the preference lives in `@t3tools/shared/zeropsEffort`.
-  - **The rule:** the effort option (`effort`, `reasoningEffort`, `reasoning`, `variant`) takes
-    `xhigh` by id; without it, the highest step below `max` on the ladder `none < minimal < low <
-medium < high < xhigh` (a driver's own order does not rank: Grok reports its levels top first,
-    OpenCode's come from an object's keys); no effort option, or nothing on the ladder, selects
-    nothing; `max` never.
-  - **What stays:** a conversation that has run keeps its effort, a person's own pick always wins,
-    and crewmates keep their own rule (unset = the login's default).
-  - **The remembered selection carries no effort** (the lead, under the owner's delegation): the
-    last-used model and traits a new draft inherits drop the effort, since touching any trait
-    remembers every value, the default effort included. A pick inside a draft or a conversation
-    still wins there.
-  - **The server applies it too:** a non-crew thread's first turn naming no effort (a phone task
-    queued before the catalog arrived, the stand-up) runs on the preference, and the thread stores
-    what its first turn ran on, so a reload reads it back.
-  - _Why:_ the owner runs real work on Extra High — "at least extra high effort".
 - **2026-10-06** — **A helper is called what the Mate called it** (F6: the Mate's text said "the
   deep-sea builder", the card said the launch's task). Where a helper's launch gave it a name —
   Claude's Agent `name`, kept by the activity projection for an agent launch only — every place
