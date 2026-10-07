@@ -30,6 +30,7 @@ const harness = Effect.fn("harness")(function* () {
   const objects = new Set<string>();
   const unavailable = new Set<string>();
   const readErrors = new Map<string, string>();
+  const captureErrors = new Map<string, string>();
   let captureBarrier: Deferred.Deferred<void> | undefined;
   const captureEntered = yield* Deferred.make<void>();
   const afterCaptureEntered = yield* Deferred.make<void>();
@@ -42,6 +43,16 @@ const harness = Effect.fn("harness")(function* () {
         if (input.checkpointRef.endsWith("/after"))
           yield* Deferred.succeed(afterCaptureEntered, undefined);
         if (captureBarrier) yield* Deferred.await(captureBarrier);
+        const refused = captureErrors.get(input.cwd);
+        if (refused !== undefined) {
+          return yield* new VcsProcessExitError({
+            operation: "test",
+            command: "git",
+            cwd: input.cwd,
+            exitCode: 1,
+            detail: refused,
+          });
+        }
         const oid = (captures.length + 1).toString(16).padStart(40, "0");
         captures.push({ cwd: input.cwd, ref: input.checkpointRef, oid });
         objects.add(oid);
@@ -149,6 +160,7 @@ const harness = Effect.fn("harness")(function* () {
     objects,
     unavailable,
     readErrors,
+    captureErrors,
     captureEntered,
     afterCaptureEntered,
     failJournalInsert: (value: boolean) => {
@@ -170,6 +182,19 @@ const harness = Effect.fn("harness")(function* () {
 const testLayer = Journal.layer.pipe(Layer.provide(SqlitePersistenceMemory));
 
 describe("Workspace history", () => {
+  it.effect("names each service a run's capture could not snapshot, and why", () =>
+    Effect.gen(function* () {
+      const h = yield* harness();
+      h.captureErrors.set("/var/www/api", "Snapshot refused: disk full");
+      yield* h.prepare();
+      const gaps = yield* h.history.gapsOf(threadId, "request");
+      expect(gaps).toHaveLength(1);
+      expect(gaps[0]?.service).toBe("api");
+      expect(gaps[0]?.reason).toContain("disk full");
+      expect(yield* h.history.gapsOf(threadId, "never-prepared")).toEqual([]);
+    }).pipe(Effect.provide(testLayer)),
+  );
+
   for (const [detail, status, reason] of [
     [
       "fatal: not a git repository",

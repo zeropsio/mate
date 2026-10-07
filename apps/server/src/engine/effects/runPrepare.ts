@@ -52,7 +52,12 @@ export const makeRunPrepare = Effect.gen(function* () {
             Effect.as(null),
             Effect.catchCause((cause) => Effect.succeed(wordsOf(cause))),
           );
-        return broke === null ? ok() : ok({ gaps: [{ service: "workspace", reason: broke }] });
+        // Each service the capture could not snapshot is the run's to record, with its reason.
+        const gaps = [
+          ...(yield* history.gapsOf(row.conversationId as string as ThreadId, payload.runId)),
+          ...(broke === null ? [] : [{ service: "workspace", reason: broke }]),
+        ];
+        return gaps.length === 0 ? ok() : ok({ gaps });
       }),
   } satisfies EffectHandler;
 });

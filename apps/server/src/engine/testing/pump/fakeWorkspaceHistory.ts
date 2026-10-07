@@ -6,18 +6,20 @@ import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
-import { WorkspaceHistory } from "../../../checkpointing/WorkspaceHistory.ts";
+import { WorkspaceHistory, type CaptureGap } from "../../../checkpointing/WorkspaceHistory.ts";
 
 export interface FakeHistoryControls {
   /** The next capture waits on this before it returns. */
   gate: Deferred.Deferred<void> | undefined;
   /** The next capture breaks with these words. */
   breaks: string | undefined;
+  /** The services the captures cannot snapshot, and why. */
+  gaps: ReadonlyArray<CaptureGap>;
 }
 
 export const makeFakeWorkspaceHistory = () => {
   const calls: Array<string> = [];
-  const controls: FakeHistoryControls = { gate: undefined, breaks: undefined };
+  const controls: FakeHistoryControls = { gate: undefined, breaks: undefined, gaps: [] };
   const layer = Layer.succeed(
     WorkspaceHistory,
     WorkspaceHistory.of({
@@ -31,6 +33,7 @@ export const makeFakeWorkspaceHistory = () => {
           controls.breaks = undefined;
           if (breaks !== undefined) return yield* Effect.die(new Error(breaks));
         }),
+      gapsOf: () => Effect.sync(() => controls.gaps),
       bindTurn: (_thread, turn) => Effect.sync(() => void calls.push(`bind ${turn}`)),
       markDispatched: () => Effect.void,
       sentTo: (_thread, run, turn) => Effect.sync(() => void calls.push(`sent ${run} → ${turn}`)),
